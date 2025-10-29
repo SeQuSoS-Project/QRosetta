@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  # Service 1: The main user-facing API
+  api:
+    build:
+      context: ./rosetta-api    # Look for a Dockerfile in ./rosetta-api
+      dockerfile: Dockerfile
+    container_name: rosetta-api
+    ports:
+      - "8000:8000"             # Map your host machine's port 8000 to the container's port 8000
+    volumes:
+      - ./rosetta-api:/app      # Mount the code for live-reloading
+    depends_on:
+      - qiskit_runner           # Don't start this 'api' until 'qiskit_runner' is ready
+
+  # Service 2: The isolated Qiskit runner
+  qiskit_runner:
+    build:
+      context: ./qiskit-runner   # Look for a Dockerfile in ./qiskit-runner
+      dockerfile: Dockerfile
+    container_name: qiskit-runner
+    ports:
+      - "8001:8000"             # Map host port 8001 to the container's port 8000 (to avoid conflict)
+    volumes:
+      - ./qiskit-runner:/app      # Mount the code for live-reloading
