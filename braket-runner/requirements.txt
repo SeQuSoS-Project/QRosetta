@@ -1,0 +1,5 @@
+fastapi
+uvicorn[standard]
+pytket
+pytket-braket
+amazon-braket-sdk

@@ -1,20 +1,21 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 import pytket.qasm
-import requests # This is the library for making HTTP calls
+import requests 
 
-# Create the main FastAPI application
 app = FastAPI(title="Quantum Rosetta API")
 
-# This defines the "shape" of the user's input.
 class QasmPayload(BaseModel):
     qasm_string: str
 
-# --- This is the key to our architecture ---
-# Inside the Docker network, containers can find each other
-# by their service name (from 'docker-compose.yml').
-# We are NOT using 'localhost'.
-QISKIT_RUNNER_URL = "http://qiskit_runner:8000/run"
+# --- Define the URLs for ALL our runner services ---
+RUNNER_URLS = {
+    "qiskit": "http://qiskit_runner:8000/run",
+    "cirq": "http://cirq_runner:8000/run",
+    "qulacs": "http://qulacs_runner:8000/run",
+    "braket": "http://braket_runner:8000/run",
+    "projectq": "http://projectq_runner:8000/run"  # <-- ADDED THIS LINE
+}
 # --- ---
 
 @app.get("/")
@@ -26,49 +27,54 @@ def read_root():
 async def compare_circuits(payload: QasmPayload):
     """
     Accepts an OpenQASM 2.0 string, validates it, dispatches it
-    to the qiskit-runner, and returns the result.
+    to ALL runners, aggregates the results, and returns them.
     """
     
     print(f"Received QASM: {payload.qasm_string}")
     
+    # --- This is the new aggregation logic ---
     try:
-        # Step 1: "Validate" the QASM.
-        # We parse it here to "fail fast." If the QASM is bad,
-        # we find out now, before we bother the runner.
+        # Step 1: Validate the QASM
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.qasm_string)
         print(f"Successfully parsed QASM into {tk_circ.n_qubits} qubit circuit.")
         
-        # Step 2: "Package" the payload.
-        # We create the JSON object that the 'qiskit-runner' expects.
+        # This is the payload we will send to *each* runner
         runner_payload = {"circuit_data": payload.qasm_string}
         
-        # Step 3: "Dispatch" the job.
-        # We use 'requests' to send an HTTP POST request to the
-        # 'qiskit_runner' URL, along with our JSON payload.
-        print("Dispatching job to qiskit-runner...")
-        response = requests.post(QISKIT_RUNNER_URL, json=runner_payload)
+        # This list will hold all our results
+        aggregated_results = []
         
-        # This will automatically raise an error if the runner
-        # returned a 4xx or 5xx status code.
-        response.raise_for_status() 
-        
-        # Step 4: "Receive" the result.
-        # We get the JSON response from the runner.
-        qiskit_result = response.json()
-        
+        # Step 2: Loop through our runners and dispatch jobs
+        for simulator_name, url in RUNNER_URLS.items():
+            print(f"Dispatching job to {simulator_name}-runner at {url}...")
+            
+            try:
+                # Send the HTTP request to the runner
+                response = requests.post(url, json=runner_payload, timeout=10)
+                response.raise_for_status() # Check for HTTP errors
+                
+                # Add the successful result to our list
+                aggregated_results.append(response.json())
+                
+            except requests.exceptions.RequestException as e:
+                # If one runner fails, log it but don't stop.
+                print(f"Error calling {simulator_name}-runner: {str(e)}")
+                aggregated_results.append({
+                    "simulator": simulator_name,
+                    "error": f"Failed to get response: {str(e)}"
+                })
+
     except Exception as e:
-        # This catches errors from parsing (Step 1) OR
-        # from the HTTP request (Step 3).
-        print(f"Error during processing: {str(e)}")
+        # This catches errors from the initial QASM parsing
+        print(f"Error during QASM parsing: {str(e)}")
         return {
             "input_qasm": payload.qasm_string,
             "error": str(e)
         }
+    # --- End of new logic ---
 
-    # "Aggregate" and return the final response to the user.
+    # Return the aggregated results from all runners
     return {
         "input_qasm": payload.qasm_string,
-        "results": [
-            qiskit_result  # We just nest the runner's result right in.
-        ]
+        "results": aggregated_results
     }

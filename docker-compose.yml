@@ -1,26 +1,72 @@
-version: '3.8'
-
 services:
   # Service 1: The main user-facing API
   api:
     build:
-      context: ./rosetta-api    # Look for a Dockerfile in ./rosetta-api
+      context: ./rosetta-api
       dockerfile: Dockerfile
     container_name: rosetta-api
     ports:
-      - "8000:8000"             # Map your host machine's port 8000 to the container's port 8000
+      - "8000:8000"
     volumes:
-      - ./rosetta-api:/app      # Mount the code for live-reloading
+      - ./rosetta-api:/app
     depends_on:
-      - qiskit_runner           # Don't start this 'api' until 'qiskit_runner' is ready
+      - qiskit_runner
+      - cirq_runner
+      - qulacs_runner
+      - braket_runner
+      - projectq_runner  # <-- ADDED THIS
 
   # Service 2: The isolated Qiskit runner
   qiskit_runner:
     build:
-      context: ./qiskit-runner   # Look for a Dockerfile in ./qiskit-runner
+      context: ./qiskit-runner
       dockerfile: Dockerfile
     container_name: qiskit-runner
     ports:
-      - "8001:8000"             # Map host port 8001 to the container's port 8000 (to avoid conflict)
+      - "8001:8000"
     volumes:
-      - ./qiskit-runner:/app      # Mount the code for live-reloading
+      - ./qiskit-runner:/app
+
+  # Service 3: The isolated Cirq runner
+  cirq_runner:
+    build:
+      context: ./cirq-runner
+      dockerfile: Dockerfile
+    container_name: cirq-runner
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./cirq-runner:/app
+
+  # Service 4: The isolated Qulacs runner
+  qulacs_runner:
+    build:
+      context: ./qulacs-runner
+      dockerfile: Dockerfile
+    container_name: qulacs-runner
+    ports:
+      - "8003:8000"
+    volumes:
+      - ./qulacs-runner:/app
+
+  # Service 5: The isolated Braket runner
+  braket_runner:
+    build:
+      context: ./braket-runner
+      dockerfile: Dockerfile
+    container_name: braket-runner
+    ports:
+      - "8004:8000"
+    volumes:
+      - ./braket-runner:/app
+
+  # Service 6: The isolated ProjectQ runner
+  projectq_runner:
+    build:
+      context: ./projectq-runner  # <-- NEW SERVICE
+      dockerfile: Dockerfile
+    container_name: projectq-runner
+    ports:
+      - "8005:8000"               # <-- Use a new host port (8005)
+    volumes:
+      - ./projectq-runner:/app
