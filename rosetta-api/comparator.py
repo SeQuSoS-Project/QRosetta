@@ -59,7 +59,7 @@ def create_divergence_report(results_list):
                 # --- FIX 2 ---
                 # We use our new, tight tolerance for the check.
                 # We also set rtol=0 to only use absolute tolerance.
-                if not np.isclose(fidelity, 1.0, atol=ABSOLUTE_TOLERANCE, rtol=0):
+                if not np.isclose(fidelity, 1.0, rtol=1e-15, atol=1e-15):
                     divergences_found.append({
                         "simulators": [sim_i, sim_j],
                         "fidelity": fidelity,
