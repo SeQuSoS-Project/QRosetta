@@ -14,9 +14,10 @@ services:
       - cirq_runner
       - qulacs_runner
       - braket_runner
-      - projectq_runner  # <-- ADDED THIS
+      - projectq_runner
+      - quest_runner     # <-- ADDED THIS
 
-  # Service 2: The isolated Qiskit runner
+  # Our 5 existing runners
   qiskit_runner:
     build:
       context: ./qiskit-runner
@@ -27,7 +28,6 @@ services:
     volumes:
       - ./qiskit-runner:/app
 
-  # Service 3: The isolated Cirq runner
   cirq_runner:
     build:
       context: ./cirq-runner
@@ -38,7 +38,6 @@ services:
     volumes:
       - ./cirq-runner:/app
 
-  # Service 4: The isolated Qulacs runner
   qulacs_runner:
     build:
       context: ./qulacs-runner
@@ -49,7 +48,6 @@ services:
     volumes:
       - ./qulacs-runner:/app
 
-  # Service 5: The isolated Braket runner
   braket_runner:
     build:
       context: ./braket-runner
@@ -59,14 +57,24 @@ services:
       - "8004:8000"
     volumes:
       - ./braket-runner:/app
-
-  # Service 6: The isolated ProjectQ runner
+  
   projectq_runner:
     build:
-      context: ./projectq-runner  # <-- NEW SERVICE
+      context: ./projectq-runner
       dockerfile: Dockerfile
     container_name: projectq-runner
     ports:
-      - "8005:8000"               # <-- Use a new host port (8005)
+      - "8005:8000"
     volumes:
       - ./projectq-runner:/app
+
+  # Service 7: The isolated QuEST runner
+  quest_runner:
+    build:
+      context: ./quest-runner   # <-- NEW SERVICE
+      dockerfile: Dockerfile
+    container_name: quest-runner
+    ports:
+      - "8006:8000"             # <-- Use a new host port (8006)
+    volumes:
+      - ./quest-runner:/app

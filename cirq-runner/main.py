@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 import numpy as np
 import pytket.qasm
-from pytket.extensions.cirq import tk_to_cirq  # <-- This was correct
+from pytket.extensions.cirq import tk_to_cirq  
 import cirq
 
 app = FastAPI(title="Cirq Runner")
@@ -18,7 +18,6 @@ async def run_circuit(payload: CircuitPayload):
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
         
         cirq_circ = tk_to_cirq(tk_circ)
-        # --- END OF FIX ---
         
         simulator = cirq.Simulator(dtype=np.complex128, seed=42)
         

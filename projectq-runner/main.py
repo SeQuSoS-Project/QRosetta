@@ -16,10 +16,7 @@ async def run_circuit(payload: CircuitPayload):
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
         
-        # --- THIS IS THE FIX ---
-        # The seed argument is removed as it's not supported
         backend = ProjectQBackend()
-        # --- END OF FIX ---
         
         compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
         handle = backend.process_circuit(compiled_circ)

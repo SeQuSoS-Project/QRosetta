@@ -21,10 +21,7 @@ async def run_circuit(payload: CircuitPayload):
         
         backend = AerSimulator(precision="double")
         
-        # --- THIS IS THE FIX ---
-        # 1. Set a constant seed for reproducibility
         job = backend.run(qiskit_circ, optimization_level=0, seed_simulator=42)
-        # --- END OF FIX ---
         
         result = job.result()
         statevector = result.get_statevector()
