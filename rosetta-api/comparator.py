@@ -13,11 +13,16 @@ def calculate_fidelity(sv1, sv2):
     if sv1.shape != sv2.shape:
         return 0.0
         
-    # Calculate the inner product
-    inner_product = np.dot(np.conjugate(sv1), sv2)
+    sv1_norm = sv1 / np.linalg.norm(sv1)
+    sv2_norm = sv2 / np.linalg.norm(sv2)
     
-    # Return the squared magnitude
-    return np.abs(inner_product)**2
+    inner_product = np.dot(np.conjugate(sv1_norm), sv2_norm)
+    
+    # --- FIX 1: Clamp fidelity to a max of 1.0 ---
+    # This prevents floating-point errors like 1.000...04
+    fidelity = min(1.0, np.abs(inner_product)**2)
+    
+    return fidelity
 
 def create_divergence_report(results_list):
     """
@@ -40,10 +45,6 @@ def create_divergence_report(results_list):
     fidelity_matrix = np.ones((n, n))
     divergences_found = []
     
-    # Define a very tight tolerance for our divergence check
-    # We want to find *any* deviation, even at the floating-point limit
-    ABSOLUTE_TOLERANCE = 1e-12 
-    
     for i in range(n):
         for j in range(i + 1, n):
             sim_i = simulators[i]
@@ -56,10 +57,10 @@ def create_divergence_report(results_list):
                 fidelity_matrix[i, j] = fidelity
                 fidelity_matrix[j, i] = fidelity
                 
-                # --- FIX 2 ---
-                # We use our new, tight tolerance for the check.
-                # We also set rtol=0 to only use absolute tolerance.
-                if not np.isclose(fidelity, 1.0, rtol=1e-15, atol=1e-15):
+                # --- FIX 2: Make the tolerance extremely small ---
+                # We catch any deviation beyond the 16th decimal.
+                if not np.isclose(fidelity, 1.0, rtol=1e-17, atol=1e-17):
+                # --- END OF FIX ---
                     divergences_found.append({
                         "simulators": [sim_i, sim_j],
                         "fidelity": fidelity,
