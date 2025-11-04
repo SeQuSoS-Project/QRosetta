@@ -1,0 +1,818 @@
+PROJECT EXPORT FOR 'Quantum Rosetta' (qsimulators)
+===================================================
+
+## Project Directory Architecture (Full Path List)
+
+```
+.
+./app.py
+./braket-runner
+./braket-runner/Dockerfile
+./braket-runner/main.py
+./braket-runner/__pycache__
+./braket-runner/requirements.txt
+./cirq-runner
+./cirq-runner/Dockerfile
+./cirq-runner/main.py
+./cirq-runner/__pycache__
+./cirq-runner/requirements.txt
+./curls.txt
+./docker-compose.yml
+./.git
+./project_export.txt
+./projectq-runner
+./projectq-runner/Dockerfile
+./projectq-runner/main.py
+./projectq-runner/__pycache__
+./projectq-runner/requirements.txt
+./qiskit-runner
+./qiskit-runner/Dockerfile
+./qiskit-runner/main.py
+./qiskit-runner/__pycache__
+./qiskit-runner/requirements.txt
+./quest-runner
+./quest-runner/Dockerfile
+./quest-runner/main.py
+./quest-runner/__pycache__
+./quest-runner/requirements.txt
+./qulacs-runner
+./qulacs-runner/Dockerfile
+./qulacs-runner/main.py
+./qulacs-runner/__pycache__
+./qulacs-runner/requirements.txt
+./rosetta-api
+./rosetta-api/benchmarks
+./rosetta-api/benchmarks/bell_state_2q.qasm
+./rosetta-api/benchmarks/ghz_state_3q.qasm
+./rosetta-api/benchmarks/rotation_1q.qasm
+./rosetta-api/comparator.py
+./rosetta-api/Dockerfile
+./rosetta-api/main.py
+./rosetta-api/__pycache__
+./rosetta-api/requirements.txt
+```
+
+===================================================
+## Source Code Files
+===================================================
+
+
+--- START OF FILE: ./app.py ---
+```
+
+```
+--- END OF FILE: ./app.py ---
+
+
+--- START OF FILE: ./braket-runner/main.py ---
+```
+from fastapi import FastAPI
+from pydantic import BaseModel
+import numpy as np
+import pytket.qasm
+from pytket.extensions.braket import BraketBackend
+
+app = FastAPI(title="Braket Runner")
+
+class CircuitPayload(BaseModel):
+    circuit_data: str 
+
+@app.post("/run")
+async def run_circuit(payload: CircuitPayload):
+    print(f"Received circuit data for Braket simulation.")
+    
+    try:
+        tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        backend = BraketBackend(local=True)
+        
+        compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
+        
+        handle = backend.process_circuit(compiled_circ)
+        
+        statevector = backend.get_result(handle).get_state()
+        statevector_str = [str(c) for c in statevector]
+        
+        print("Braket simulation successful.")
+        
+        return {
+            "simulator": "braket",
+            "statevector": statevector_str
+        }
+
+    except Exception as e:
+        print(f"Error during Braket simulation: {str(e)}")
+        return {
+            "simulator": "braket",
+            "error": str(e)
+        }
+```
+--- END OF FILE: ./braket-runner/main.py ---
+
+
+--- START OF FILE: ./braket-runner/requirements.txt ---
+```
+fastapi
+uvicorn[standard]
+pytket
+pytket-braket
+amazon-braket-sdk
+```
+--- END OF FILE: ./braket-runner/requirements.txt ---
+
+
+--- START OF FILE: ./cirq-runner/main.py ---
+```
+from fastapi import FastAPI
+from pydantic import BaseModel
+import numpy as np
+import pytket.qasm
+from pytket.extensions.cirq import tk_to_cirq  
+import cirq
+
+app = FastAPI(title="Cirq Runner")
+
+class CircuitPayload(BaseModel):
+    circuit_data: str 
+
+@app.post("/run")
+async def run_circuit(payload: CircuitPayload):
+    print(f"Received circuit data for Cirq simulation.")
+    
+    try:
+        tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        
+        cirq_circ = tk_to_cirq(tk_circ)
+        
+        simulator = cirq.Simulator(dtype=np.complex128, seed=42)
+        
+        result = simulator.simulate(cirq_circ)
+        statevector = result.final_state_vector
+        statevector_str = [str(c) for c in statevector]
+        
+        print("Cirq simulation successful.")
+        
+        return {
+            "simulator": "cirq",
+            "statevector": statevector_str
+        }
+
+    except Exception as e:
+        print(f"Error during Cirq simulation: {str(e)}")
+        return {
+            "simulator": "cirq",
+            "error": str(e)
+        }
+```
+--- END OF FILE: ./cirq-runner/main.py ---
+
+
+--- START OF FILE: ./cirq-runner/requirements.txt ---
+```
+fastapi
+uvicorn[standard]
+pytket
+pytket-cirq
+cirq
+```
+--- END OF FILE: ./cirq-runner/requirements.txt ---
+
+
+--- START OF FILE: ./curls.txt ---
+```
+3-qubit GHZ state
+curl -X POST "http://localhost:8000/compare" \
+     -H "Content-Type: application/json" \
+     -d '{
+           "qasm_string": "OPENQASM 2.0; include \"qelib1.inc\"; qreg q[3]; h q[0]; cx q[0],q[1]; cx q[1],q[2];"
+         }'
+         
+         
+bell state:
+curl -X POST "http://localhost:8000/compare" \
+     -H "Content-Type: application/json" \
+     -d '{
+           "qasm_string": "OPENQASM 2.0; include \"qelib1.inc\"; qreg q[2]; creg c[2]; h q[0]; cx q[0],q[1];"
+         }'
+         
+         
+         
+
+
+```
+--- END OF FILE: ./curls.txt ---
+
+
+--- START OF FILE: ./docker-compose.yml ---
+```
+services:
+  # Service 1: The main user-facing API
+  api:
+    build:
+      context: ./rosetta-api
+      dockerfile: Dockerfile
+    container_name: rosetta-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./rosetta-api:/app
+    depends_on:
+      - qiskit_runner
+      - cirq_runner
+      - qulacs_runner
+      - braket_runner
+      - projectq_runner
+      - quest_runner     # <-- ADDED THIS
+
+  # Our 5 existing runners
+  qiskit_runner:
+    build:
+      context: ./qiskit-runner
+      dockerfile: Dockerfile
+    container_name: qiskit-runner
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./qiskit-runner:/app
+
+  cirq_runner:
+    build:
+      context: ./cirq-runner
+      dockerfile: Dockerfile
+    container_name: cirq-runner
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./cirq-runner:/app
+
+  qulacs_runner:
+    build:
+      context: ./qulacs-runner
+      dockerfile: Dockerfile
+    container_name: qulacs-runner
+    ports:
+      - "8003:8000"
+    volumes:
+      - ./qulacs-runner:/app
+
+  braket_runner:
+    build:
+      context: ./braket-runner
+      dockerfile: Dockerfile
+    container_name: braket-runner
+    ports:
+      - "8004:8000"
+    volumes:
+      - ./braket-runner:/app
+  
+  projectq_runner:
+    build:
+      context: ./projectq-runner
+      dockerfile: Dockerfile
+    container_name: projectq-runner
+    ports:
+      - "8005:8000"
+    volumes:
+      - ./projectq-runner:/app
+
+  # Service 7: The isolated QuEST runner
+  quest_runner:
+    build:
+      context: ./quest-runner   # <-- NEW SERVICE
+      dockerfile: Dockerfile
+    container_name: quest-runner
+    ports:
+      - "8006:8000"             # <-- Use a new host port (8006)
+    volumes:
+      - ./quest-runner:/app
+```
+--- END OF FILE: ./docker-compose.yml ---
+
+
+--- START OF FILE: ./project_export.txt ---
+```
+
+```
+--- END OF FILE: ./project_export.txt ---
+
+
+--- START OF FILE: ./projectq-runner/main.py ---
+```
+from fastapi import FastAPI
+from pydantic import BaseModel
+import numpy as np
+import pytket.qasm
+from pytket.extensions.projectq import ProjectQBackend
+
+app = FastAPI(title="ProjectQ Runner")
+
+class CircuitPayload(BaseModel):
+    circuit_data: str 
+
+@app.post("/run")
+async def run_circuit(payload: CircuitPayload):
+    print(f"Received circuit data for ProjectQ simulation.")
+    
+    try:
+        tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        
+        backend = ProjectQBackend()
+        
+        compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
+        handle = backend.process_circuit(compiled_circ)
+
+        statevector = backend.get_result(handle).get_state()
+        statevector_str = [str(c) for c in statevector]
+        
+        print("ProjectQ simulation successful.")
+        
+        return {
+            "simulator": "projectq",
+            "statevector": statevector_str
+        }
+
+    except Exception as e:
+        print(f"Error during ProjectQ simulation: {str(e)}")
+        return {
+            "simulator": "projectq",
+            "error": str(e)
+        }
+```
+--- END OF FILE: ./projectq-runner/main.py ---
+
+
+--- START OF FILE: ./projectq-runner/requirements.txt ---
+```
+fastapi
+uvicorn[standard]
+pytket
+pytket-projectq
+```
+--- END OF FILE: ./projectq-runner/requirements.txt ---
+
+
+--- START OF FILE: ./qiskit-runner/main.py ---
+```
+from fastapi import FastAPI
+from pydantic import BaseModel
+import pytket.qasm
+from pytket.extensions.qiskit import tk_to_qiskit
+from qiskit_aer import AerSimulator
+from qiskit.circuit import QuantumCircuit
+
+app = FastAPI(title="Qiskit Runner")
+
+class CircuitPayload(BaseModel):
+    circuit_data: str 
+
+@app.post("/run")
+async def run_circuit(payload: CircuitPayload):
+    print(f"Received circuit data for simulation.")
+    
+    try:
+        tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        qiskit_circ = tk_to_qiskit(tk_circ)
+        qiskit_circ.save_statevector()
+        
+        backend = AerSimulator(precision="double")
+        
+        job = backend.run(qiskit_circ, optimization_level=0, seed_simulator=42)
+        
+        result = job.result()
+        statevector = result.get_statevector()
+        statevector_str = [str(c) for c in statevector]
+        
+        print("Simulation successful.")
+        
+        return {
+            "simulator": "qiskit",
+            "statevector": statevector_str
+        }
+
+    except Exception as e:
+        print(f"Error during simulation: {str(e)}")
+        return {
+            "simulator": "qiskit",
+            "error": str(e)
+        }
+```
+--- END OF FILE: ./qiskit-runner/main.py ---
+
+
+--- START OF FILE: ./qiskit-runner/requirements.txt ---
+```
+fastapi
+uvicorn[standard]
+pytket
+pytket-qiskit
+```
+--- END OF FILE: ./qiskit-runner/requirements.txt ---
+
+
+--- START OF FILE: ./quest-runner/main.py ---
+```
+from fastapi import FastAPI
+from pydantic import BaseModel
+import numpy as np
+import pytket.qasm
+from pytket.extensions.quest import QuESTBackend
+
+app = FastAPI(title="QuEST Runner")
+
+class CircuitPayload(BaseModel):
+    circuit_data: str 
+
+@app.post("/run")
+async def run_circuit(payload: CircuitPayload):
+    """
+    Accepts a QASM string, converts it to a Pytket circuit, 
+    simulates it on the QuEST simulator, and returns the statevector.
+    """
+    print(f"Received circuit data for QuEST simulation.")
+    
+    try:
+        tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        
+        backend = QuESTBackend()
+        
+        # Get the circuit, compiled only for compatibility (level 0)
+        compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
+        
+        # Run the compiled, un-optimized circuit
+        handle = backend.process_circuit(compiled_circ)
+
+        statevector = backend.get_result(handle).get_state()
+        statevector_str = [str(c) for c in statevector]
+        
+        print("QuEST simulation successful.")
+        
+        return {
+            "simulator": "quest",
+            "statevector": statevector_str
+        }
+
+    except Exception as e:
+        print(f"Error during QuEST simulation: {str(e)}")
+        return {
+            "simulator": "quest",
+            "error": str(e)
+        }
+```
+--- END OF FILE: ./quest-runner/main.py ---
+
+
+--- START OF FILE: ./quest-runner/requirements.txt ---
+```
+fastapi
+uvicorn[standard]
+pytket
+pytket-quest
+```
+--- END OF FILE: ./quest-runner/requirements.txt ---
+
+
+--- START OF FILE: ./qulacs-runner/main.py ---
+```
+from fastapi import FastAPI
+from pydantic import BaseModel
+import numpy as np
+import pytket.qasm
+from pytket.extensions.qulacs import QulacsBackend
+
+app = FastAPI(title="Qulacs Runner")
+
+class CircuitPayload(BaseModel):
+    circuit_data: str 
+
+@app.post("/run")
+async def run_circuit(payload: CircuitPayload):
+    print(f"Received circuit data for Qulacs simulation.")
+    
+    try:
+        tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        backend = QulacsBackend()
+        
+        compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
+        
+        handle = backend.process_circuit(compiled_circ)
+        
+        statevector = backend.get_result(handle).get_state()
+        statevector_str = [str(c) for c in statevector]
+        
+        print("Qulacs simulation successful.")
+        
+        return {
+            "simulator": "qulacs",
+            "statevector": statevector_str
+        }
+
+    except Exception as e:
+        print(f"Error during Qulacs simulation: {str(e)}")
+        return {
+            "simulator": "qulacs",
+            "error": str(e)
+        }
+```
+--- END OF FILE: ./qulacs-runner/main.py ---
+
+
+--- START OF FILE: ./qulacs-runner/requirements.txt ---
+```
+fastapi
+uvicorn[standard]
+pytket
+pytket-qulacs
+```
+--- END OF FILE: ./qulacs-runner/requirements.txt ---
+
+
+--- START OF FILE: ./rosetta-api/benchmarks/bell_state_2q.qasm ---
+```
+OPENQASM 2.0;
+include "qelib1.inc";
+qreg q[2];
+creg c[2];
+h q[0];
+cx q[0],q[1];
+```
+--- END OF FILE: ./rosetta-api/benchmarks/bell_state_2q.qasm ---
+
+
+--- START OF FILE: ./rosetta-api/benchmarks/ghz_state_3q.qasm ---
+```
+OPENQASM 2.0;
+include "qelib1.inc";
+qreg q[3];
+h q[0];
+cx q[0],q[1];
+cx q[1],q[2];
+```
+--- END OF FILE: ./rosetta-api/benchmarks/ghz_state_3q.qasm ---
+
+
+--- START OF FILE: ./rosetta-api/benchmarks/rotation_1q.qasm ---
+```
+OPENQASM 2.0;
+include "qelib1.inc";
+qreg q[1];
+ry(0.5) q[0];
+```
+--- END OF FILE: ./rosetta-api/benchmarks/rotation_1q.qasm ---
+
+
+--- START OF FILE: ./rosetta-api/comparator.py ---
+```
+import numpy as np
+
+def parse_statevector(sv_str_list):
+    """Converts a list of complex number strings into a numpy array."""
+    return np.array([complex(s) for s in sv_str_list])
+
+def calculate_inner_product(sv1, sv2):
+    """
+    Calculates the complex inner product of two statevectors.
+    We do NOT re-normalize, as this hides fidelity errors.
+    """
+    if sv1.shape != sv2.shape:
+        return complex(0, 0)
+        
+    # --- THIS IS THE FIX ---
+    # We calculate the inner product on the RAW vectors.
+    inner_product = np.dot(np.conjugate(sv1), sv2)
+    # --- END OF FIX ---
+    
+    return inner_product
+
+def create_divergence_report(results_list):
+    """
+    Generates a full report including fidelity, phase,
+    and a list of all divergence types.
+    """
+    simulators = [res.get('simulator', 'unknown') for res in results_list]
+    statevectors = []
+    
+    for res in results_list:
+        if "statevector" in res:
+            try:
+                statevectors.append(parse_statevector(res["statevector"]))
+            except Exception as e:
+                statevectors.append(None)
+        else:
+            statevectors.append(None)
+            
+    n = len(simulators)
+    fidelity_matrix = np.ones((n, n))
+    phase_matrix = np.zeros((n, n))
+    divergences_found = []
+    
+    # Define our strict tolerances
+    fidelity_tolerance = 1e-15
+    phase_tolerance = 1e-15
+    
+    for i in range(n):
+        for j in range(i + 1, n):
+            sim_i = simulators[i]
+            sim_j = simulators[j]
+            sv_i = statevectors[i]
+            sv_j = statevectors[j]
+            
+            if sv_i is not None and sv_j is not None:
+                inner_product = calculate_inner_product(sv_i, sv_j)
+                
+                # Fidelity is the squared magnitude of the raw inner product
+                fidelity = min(1.0, np.abs(inner_product)**2)
+                
+                # We calculate phase *after* normalizing,
+                # as phase is only meaningful for unit vectors.
+                sv1_norm = sv_i / np.linalg.norm(sv_i)
+                sv2_norm = sv_j / np.linalg.norm(sv_j)
+                norm_inner_product = np.dot(np.conjugate(sv1_norm), sv2_norm)
+                relative_phase = np.angle(norm_inner_product)
+                
+                fidelity_matrix[i, j] = fidelity
+                fidelity_matrix[j, i] = fidelity
+                phase_matrix[i, j] = relative_phase
+                phase_matrix[j, i] = -relative_phase
+                
+                # Check for a fidelity divergence
+                if not np.isclose(fidelity, 1.0, atol=fidelity_tolerance):
+                    divergences_found.append({
+                        "type": "Fidelity",
+                        "simulators": [sim_i, sim_j],
+                        "fidelity": fidelity,
+                        "relative_phase": relative_phase
+                    })
+                # Check for a phase-only divergence
+                elif not np.isclose(relative_phase, 0.0, atol=phase_tolerance):
+                    divergences_found.append({
+                        "type": "Phase",
+                        "simulators": [sim_i, sim_j],
+                        "fidelity": fidelity,
+                        "relative_phase": relative_phase
+                    })
+                    
+            else:
+                fidelity_matrix[i, j] = -1.0 
+                fidelity_matrix[j, i] = -1.0
+                
+    report = {
+        "simulators": simulators,
+        "fidelity_matrix": fidelity_matrix.tolist(),
+        "relative_phase_matrix": phase_matrix.tolist(),
+        "divergences_found": divergences_found
+    }
+    
+    return report
+```
+--- END OF FILE: ./rosetta-api/comparator.py ---
+
+
+--- START OF FILE: ./rosetta-api/main.py ---
+```
+from fastapi import FastAPI
+from pydantic import BaseModel
+import pytket.qasm
+import httpx  # The async-compatible requests library
+import asyncio # For running runners in parallel
+import os
+import glob     # For finding files
+
+# --- STEP 1: RE-INTRODUCE THE COMPARATOR ---
+import comparator 
+
+app = FastAPI(title="Quantum Rosetta API")
+
+class QasmPayload(BaseModel):
+    qasm_string: str
+
+# Our full list of 6 runners
+RUNNER_URLS = {
+    "qiskit": "http://qiskit_runner:8000/run",
+    "cirq": "http://cirq_runner:8000/run",
+    "qulacs": "http://qulacs_runner:8000/run",
+    "braket": "http://braket_runner:8000/run",
+    "projectq": "http://projectq_runner:8000/run",
+    "quest": "http://quest_runner:8000/run"
+}
+
+
+async def run_single_circuit_comparison(qasm_string: str):
+    """
+    This is our core logic. It takes a QASM string and
+    returns a full divergence report.
+    """
+    
+    print(f"Processing circuit...")
+    
+    try:
+        tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_string)
+        print(f"Successfully parsed QASM into {tk_circ.n_qubits} qubit circuit.")
+        
+        runner_payload = {"circuit_data": qasm_string}
+        
+        # This 'async with' block creates a new, local client
+        # for each call, preventing race conditions.
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            dispatch_tasks = []
+            for sim_name, url in RUNNER_URLS.items():
+                print(f"Dispatching job to {sim_name}-runner...")
+                dispatch_tasks.append(client.post(url, json=runner_payload))
+
+            responses = await asyncio.gather(*dispatch_tasks, return_exceptions=True)
+
+        # Aggregate results
+        aggregated_results = []
+        for i, res in enumerate(responses):
+            sim_name = list(RUNNER_URLS.keys())[i]
+            if isinstance(res, httpx.Response):
+                aggregated_results.append(res.json())
+            else:
+                print(f"Error calling {sim_name}-runner: {str(res)}")
+                aggregated_results.append({
+                    "simulator": sim_name,
+                    "error": f"Failed to get response: {str(res)}"
+                })
+
+    except Exception as e:
+        print(f"Error during QASM parsing: {str(e)}")
+        return {
+            "input_qasm": qasm_string,
+            "error": str(e)
+        }
+
+    # --- STEP 2: CALL THE NEW COMPARATOR ---
+    print("Generating divergence report...")
+    divergence_report = comparator.create_divergence_report(aggregated_results)
+
+    # Return the full report for this single circuit
+    return {
+        "input_qasm": qasm_string,
+        "divergence_report": divergence_report,
+        "raw_results": aggregated_results
+    }
+
+
+@app.get("/")
+def read_root():
+    """A simple health check endpoint."""
+    return {"status": "ok", "message": "Quantum Rosetta API is running"}
+
+
+@app.post("/compare")
+async def compare_circuits_endpoint(payload: QasmPayload):
+    """
+    (USER-FACING ENDPOINT 1)
+    Runs a single QASM string provided in a JSON payload.
+    """
+    return await run_single_circuit_comparison(payload.qasm_string)
+
+
+@app.post("/run_benchmark_suite")
+async def run_benchmark_suite_endpoint():
+    """
+    (USER-FACING ENDPOINT 2)
+    Runs all .qasm files found in the 'benchmarks/' directory.
+    """
+    benchmark_dir = "benchmarks/"
+    qasm_files = glob.glob(os.path.join(benchmark_dir, "*.qasm"))
+    
+    if not qasm_files:
+        return {"error": f"No .qasm files found in {benchmark_dir}"}
+        
+    print(f"--- Starting Benchmark Suite: Found {len(qasm_files)} circuits ---")
+    
+    benchmark_summary = []
+    
+    for qasm_file_path in qasm_files:
+        print(f"--- Running test: {qasm_file_path} ---")
+        try:
+            with open(qasm_file_path, 'r') as f:
+                qasm_string = f.read()
+            
+            # Run the comparison
+            report = await run_single_circuit_comparison(qasm_string)
+            report["benchmark_file"] = qasm_file_path
+            benchmark_summary.append(report)
+            
+        except Exception as e:
+            benchmark_summary.append({
+                "benchmark_file": qasm_file_path,
+                "error": f"Failed to read or process file: {str(e)}"
+            })
+            
+    print(f"--- Benchmark Suite Complete ---")
+    
+    return {"benchmark_summary": benchmark_summary}
+```
+--- END OF FILE: ./rosetta-api/main.py ---
+
+
+--- START OF FILE: ./rosetta-api/requirements.txt ---
+```
+fastapi
+uvicorn[standard]
+pytket
+requests
+httpx
+```
+--- END OF FILE: ./rosetta-api/requirements.txt ---
+
