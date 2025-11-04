@@ -2,8 +2,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 import numpy as np
 import pytket.qasm
-from pytket.extensions.cirq import tk_to_cirq  
-import cirq
+from pytket.extensions.cirq import CirqBackend  # <-- IMPORT THE BACKEND
 
 app = FastAPI(title="Cirq Runner")
 
@@ -17,12 +16,23 @@ async def run_circuit(payload: CircuitPayload):
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
         
-        cirq_circ = tk_to_cirq(tk_circ)
+        # --- THIS IS THE NEW, CORRECT LOGIC ---
         
-        simulator = cirq.Simulator(dtype=np.complex128)
+        # 1. Instantiate the Pytket backend for Cirq
+        backend = CirqBackend(use_statevector_simulator=True)
         
-        result = simulator.simulate(cirq_circ)
-        statevector = result.final_state_vector
+        # 2. Compile with optimization_level=0, just like all other runners
+        compiled_circ = backend.get_compiled_circuit(tk_circ, 
+                                                     optimisation_level=0)
+        
+        # 3. Process the circuit using the Pytket backend
+        handle = backend.process_circuit(compiled_circ)
+        
+        # 4. Get the result from the backend
+        statevector = backend.get_result(handle).get_state()
+        
+        # --- END OF NEW LOGIC ---
+        
         statevector_str = [str(c) for c in statevector]
         
         print("Cirq simulation successful.")
