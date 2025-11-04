@@ -19,7 +19,7 @@ async def run_circuit(payload: CircuitPayload):
         
         cirq_circ = tk_to_cirq(tk_circ)
         
-        simulator = cirq.Simulator(dtype=np.complex128, seed=42)
+        simulator = cirq.Simulator(dtype=np.complex128)
         
         result = simulator.simulate(cirq_circ)
         statevector = result.final_state_vector

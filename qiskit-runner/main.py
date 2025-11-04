@@ -21,7 +21,7 @@ async def run_circuit(payload: CircuitPayload):
         
         backend = AerSimulator(precision="double")
         
-        job = backend.run(qiskit_circ, optimization_level=0, seed_simulator=42)
+        job = backend.run(qiskit_circ, optimization_level=0)
         
         result = job.result()
         statevector = result.get_statevector()
