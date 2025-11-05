@@ -2,7 +2,8 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 import numpy as np
 import pytket.qasm
-from pytket.extensions.cirq import CirqBackend  # <-- IMPORT THE BACKEND
+from pytket.extensions.cirq import tk_to_cirq  
+import cirq
 
 app = FastAPI(title="Cirq Runner")
 
@@ -16,23 +17,15 @@ async def run_circuit(payload: CircuitPayload):
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
         
-        # --- THIS IS THE NEW, CORRECT LOGIC ---
+        cirq_circ = tk_to_cirq(tk_circ)
         
-        # 1. Instantiate the Pytket backend for Cirq
-        backend = CirqBackend(use_statevector_simulator=True)
-        
-        # 2. Compile with optimization_level=0, just like all other runners
-        compiled_circ = backend.get_compiled_circuit(tk_circ, 
-                                                     optimisation_level=0)
-        
-        # 3. Process the circuit using the Pytket backend
-        handle = backend.process_circuit(compiled_circ)
-        
-        # 4. Get the result from the backend
-        statevector = backend.get_result(handle).get_state()
-        
-        # --- END OF NEW LOGIC ---
-        
+        # --- THIS IS THE FIX ---
+        # We instantiate the simulator with NO seed
+        simulator = cirq.Simulator(dtype=np.complex128)
+        # --- END OF FIX ---
+      
+        result = simulator.simulate(cirq_circ)
+        statevector = result.final_state_vector
         statevector_str = [str(c) for c in statevector]
         
         print("Cirq simulation successful.")
@@ -40,7 +33,7 @@ async def run_circuit(payload: CircuitPayload):
         return {
             "simulator": "cirq",
             "statevector": statevector_str
-        }
+         }
 
     except Exception as e:
         print(f"Error during Cirq simulation: {str(e)}")
