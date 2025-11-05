@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.spatial.distance import jensenshannon
 
 def parse_statevector(sv_str_list):
     """Converts a list of complex number strings into a numpy array."""
@@ -156,3 +157,92 @@ def create_divergence_report(results_list):
     }
     
     return report
+
+def _normalize_counts(counts, n_shots):
+    """Converts a {bitstring: count} dict to a {bitstring: prob} dict."""
+    if n_shots == 0:
+        return {}
+    return {k: v / n_shots for k, v in counts.items()}
+
+# --- NEW COMPARATOR FUNCTION ---
+def create_counts_report(results_list, n_shots):
+    """
+    Generates a full report on the statistical divergence
+    between counts distributions using Jensen-Shannon (JS) divergence.
+    """
+    
+    simulators = [res.get('simulator', 'unknown') for res in results_list]
+    
+    # Get all bitstring outcomes observed by *any* simulator
+    all_bitstrings = set()
+    for res in results_list:
+        if "counts" in res:
+            all_bitstrings.update(res["counts"].keys())
+    
+    # Create a sorted, canonical list of all possible outcomes
+    all_bitstrings = sorted(list(all_bitstrings))
+    n_outcomes = len(all_bitstrings)
+    
+    # Create aligned probability vectors for each simulator
+    prob_vectors = []
+    for res in results_list:
+        if "counts" in res:
+            prob_vec = np.zeros(n_outcomes)
+            # Normalize the raw counts to get a probability distribution
+            norm_counts = _normalize_counts(res["counts"], n_shots)
+            
+            # Map the simulator's probabilities to the canonical list
+            for i, bitstring in enumerate(all_bitstrings):
+                prob_vec[i] = norm_counts.get(bitstring, 0.0)
+            
+            prob_vectors.append(prob_vec)
+        else:
+            prob_vectors.append(None) # For failed simulators
+
+    n = len(simulators)
+    
+    # Initialize the matrix for JS divergence
+    distance_matrix = np.zeros((n, n))
+    divergences_found = []
+    
+    # Define a threshold for what we consider a significant divergence
+    # JS divergence is bounded [0, 1].
+    divergence_threshold = 0.01 # (1% divergence)
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            sim_i = simulators[i]
+            sim_j = simulators[j]
+            pv_i = prob_vectors[i]
+            pv_j = prob_vectors[j]
+            
+            # Only compare if both simulators returned valid counts
+            if pv_i is not None and pv_j is not None:
+                # Calculate Jensen-Shannon divergence
+                # Note: scipy.spatial.distance.jensenshannon returns the
+                # *square root* of the JS divergence. We must square it.
+                js_div = (jensenshannon(pv_i, pv_j))**2
+                
+                # Handle potential float precision errors
+                if np.isnan(js_div):
+                    js_div = 0.0
+                
+                distance_matrix[i, j] = js_div
+                distance_matrix[j, i] = js_div
+                
+                if js_div > divergence_threshold:
+                    divergences_found.append({
+                        "type": "Distribution Divergence",
+                        "simulators": [sim_i, sim_j],
+                        "js_divergence": js_div
+                    })
+            else:
+                distance_matrix[i, j] = -1.0 # Error/Skip
+                distance_matrix[j, i] = -1.0
+                
+    return {
+        "simulators": simulators,
+        "statistical_distance_matrix (js_divergence)": distance_matrix.tolist(),
+        "divergences_found": divergences_found,
+        "all_outcomes_observed": all_bitstrings
+    }

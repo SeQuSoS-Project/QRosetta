@@ -3,3 +3,4 @@ uvicorn[standard]
 pytket
 requests
 httpx
+scipy
