@@ -19,7 +19,7 @@ services:
       - qulacs_runner
       - braket_runner
       - projectq_runner
-      - quest_runner
+      - quest_runner # <-- Changed back
 
   # Our 6 runners
   qiskit_runner:
@@ -83,6 +83,7 @@ services:
       - ./projectq-runner/main.py:/app/main.py
     # --- END FIX ---
 
+  # --- THIS SERVICE IS CHANGED BACK ---
   quest_runner:
     build:
       context: .

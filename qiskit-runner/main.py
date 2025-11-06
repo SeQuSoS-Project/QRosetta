@@ -1,6 +1,5 @@
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import ensure_circuit_is_measurable
 import pytket.qasm
 from pytket.extensions.qiskit import tk_to_qiskit
 from qiskit_aer import AerSimulator
@@ -16,7 +15,6 @@ async def run_circuit(payload: CircuitPayload):
     print(f"Received circuit data for simulation.")
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
-        tk_circ = ensure_circuit_is_measurable(tk_circ)
         qiskit_circ = tk_to_qiskit(tk_circ)
         qiskit_circ.save_statevector()
         backend = AerSimulator(precision="double")

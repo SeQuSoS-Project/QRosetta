@@ -20,20 +20,36 @@ class MeasuredQasmPayload(BaseModel):
     qasm_string: str
     n_shots: int = 1024
 
-# This new model is for our new endpoint.
-# It has a default, so it works even if no payload is sent.
 class MeasuredBenchmarkPayload(BaseModel):
     n_shots: int = 1024
 
+# --- CONFIGURATION (Includes Rec 3 & 4) ---
+
 RUNNER_SERVICES = {
-    "qiskit": {"base_url": "http://qiskit_runner:8000", "capabilities": ["statevector", "measured"]},
-    "cirq":   {"base_url": "http://cirq_runner:8000",   "capabilities": ["statevector", "measured"]},
-    "qulacs": {"base_url": "http://qulacs_runner:8000", "capabilities": ["statevector", "measured"]},
-    "braket": {"base_url": "http://braket_runner:8000", "capabilities": ["statevector", "measured"]},
-    "projectq": {"base_url": "http://projectq_runner:8000", "capabilities": ["statevector", "measured"]},
-    "quest":  {"base_url": "http://quest_runner:8000",  "capabilities": ["statevector", "measured"]}
-    # When we add a noisy runner, we'll do this:
-    # "qiskit_noisy": {"base_url": "http://qiskit_noisy:8007", "capabilities": ["measured"]}
+    "qiskit": {
+        "base_url": os.getenv("QISKIT_RUNNER_URL", "http://qiskit_runner:8000"),
+        "capabilities": ["statevector", "measured_native"]
+    },
+    "cirq":   {
+        "base_url": os.getenv("CIRQ_RUNNER_URL", "http://cirq_runner:8000"),
+        "capabilities": ["statevector", "measured_native"]
+    },
+    "qulacs": {
+        "base_url": os.getenv("QULACS_RUNNER_URL", "http://qulacs_runner:8000"),
+        "capabilities": ["statevector", "measured_native"]
+    },
+    "braket": {
+        "base_url": os.getenv("BRAKET_RUNNER_URL", "http://braket_runner:8000"),
+        "capabilities": ["statevector", "measured_native"]
+    },
+    "projectq": {
+        "base_url": os.getenv("PROJECTQ_RUNNER_URL", "http://projectq_runner:8000"),
+        "capabilities": ["statevector", "measured_sampled"]
+    },
+    "quest":  {
+        "base_url": os.getenv("QUEST_RUNNER_URL", "http://quest_runner:8000"),
+        "capabilities": ["statevector", "measured_sampled"]
+    }
 }
 
 # Our dynamic URL builders are now "capability-aware"
@@ -44,14 +60,14 @@ STATEVECTOR_RUNNER_URLS = {
 
 MEASURED_RUNNER_URLS = {
     name: f"{config['base_url']}/run_measured" for name, config in RUNNER_SERVICES.items()
-    if "measured" in config["capabilities"]
+    if "measured_native" in config["capabilities"] or "measured_sampled" in config["capabilities"]
 }
-# --- (NEW) MODULAR DISPATCH LOGIC ---
+
+# --- MODULAR DISPATCH LOGIC ---
 
 async def _dispatch_to_runners(runner_urls: dict, runner_payload: dict) -> list:
     """
     Internal helper to handle all async dispatch and aggregation.
-    This is the "DRY" (Don't Repeat Yourself) logic.
     """
     async with httpx.AsyncClient(timeout=10.0) as client:
         dispatch_tasks = []
@@ -75,7 +91,7 @@ async def _dispatch_to_runners(runner_urls: dict, runner_payload: dict) -> list:
     return aggregated_results
 
 
-# --- (REFACTORED) CORE LOGIC FUNCTIONS ---
+# --- CORE LOGIC FUNCTIONS ---
 
 async def run_single_circuit_comparison(qasm_string: str):
     """
@@ -109,18 +125,33 @@ async def run_single_circuit_comparison(qasm_string: str):
 
 async def run_single_circuit_measurement(qasm_string: str, n_shots: int):
     """
-    (REFACTORED - Counts)
-    Prepares the payload (with NO modification) and calls the dispatcher.
-    The runners are now responsible for adding measurements.
+    (REVERTED - Counts)
+    Prepares the *modified* payload, calls the dispatcher, and calls the comparator.
+    This logic MUST live in the API to create a standard, measurable
+    QASM contract for all runners.
     """
     print(f"Processing measured circuit for {n_shots} shots...")
-    
-    # 1. Prepare the payload (It's simple now!)
-    # We send the ORIGINAL QASM.
-    runner_payload = {
-        "circuit_data": qasm_string,
-        "n_shots": n_shots
-    }
+    try:
+        # 1. Parse and MODIFY the QASM
+        tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_string)
+        n_qubits = tk_circ.n_qubits
+        c_reg_name = "c"
+        if c_reg_name not in [reg.name for reg in tk_circ.c_registers]:
+            tk_circ.add_c_register(c_reg_name, n_qubits)
+        
+        all_qubits = tk_circ.qubits
+        c_register = tk_circ.get_c_register(c_reg_name)
+        
+        for i in range(n_qubits):
+            tk_circ.Measure(all_qubits[i], c_register[i])
+
+        modified_qasm_string = pytket.qasm.circuit_to_qasm_str(tk_circ)
+        runner_payload = {
+            "circuit_data": modified_qasm_string,
+            "n_shots": n_shots
+        }
+    except Exception as e:
+        return { "input_qasm": qasm_string, "error": str(e) }
 
     # 2. Call the generic dispatcher
     aggregated_results = await _dispatch_to_runners(
@@ -139,9 +170,9 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int):
             "raw_results": aggregated_results
         }
     
-    # 4. Note the 'modified_qasm' key is now gone
     return {
         "input_qasm": qasm_string,
+        "modified_qasm": modified_qasm_string, # <-- This key is restored
         "n_shots": n_shots,
         "divergence_report": divergence_report,
         "raw_results": aggregated_results
@@ -209,8 +240,6 @@ async def run_benchmark_suite_endpoint():
     return {"benchmark_summary": benchmark_summary}
 
 
-# --- (NEW) USER-FACING ENDPOINT 4 ---
-
 @app.post("/run_measured_benchmark_suite")
 async def run_measured_benchmark_suite_endpoint(payload: MeasuredBenchmarkPayload):
     """
@@ -223,7 +252,7 @@ async def run_measured_benchmark_suite_endpoint(payload: MeasuredBenchmarkPayloa
     n_shots = payload.n_shots # Get n_shots from the payload
     
     if not qasm_files:
-        return {"error": f"No .qasm files found in {benchmark_dir}"}
+        return {"error": f"No .qqasm files found in {benchmark_dir}"}
         
     print(f"--- Starting Measured Benchmark Suite ({n_shots} shots) ---")
     benchmark_summary = []
