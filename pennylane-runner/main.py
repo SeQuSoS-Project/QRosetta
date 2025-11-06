@@ -1,8 +1,9 @@
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import _sample_from_statevector # <-- IMPORT THE HELPER
+from qrosetta_commons.helpers import _sample_from_statevector 
 import pennylane as qml
 import numpy as np
+import functools # <-- We still need this
 
 app = FastAPI(title="Pennylane Runner")
 
@@ -30,6 +31,10 @@ async def run_circuit(payload: CircuitPayload):
         num_qubits = get_num_qubits_from_qasm(payload.circuit_data)
         dev = qml.device("lightning.qubit", wires=num_qubits, shots=None)
 
+        # --- THIS IS THE FIX ---
+        # Pass an empty pipeline to truly disable optimization,
+        # the equivalent of optimization_level=0.
+        @functools.partial(qml.compile, pipeline=[])
         @qml.qnode(dev)
         def statevector_circuit():
             qasm_op()
@@ -53,8 +58,6 @@ async def run_circuit(payload: CircuitPayload):
 async def run_measured_circuit(payload: MeasuredCircuitPayload):
     """
     Accepts QASM, simulates for statevector, and samples manually.
-    (This runner IGNORES the measure ops and samples from the statevector,
-     just like ProjectQ and QuEST).
     """
     print("Received measured circuit data for Pennylane (manual sampling).")
     try:
@@ -67,7 +70,11 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         # 3. Create the device with the *correct* number of wires
         dev = qml.device("lightning.qubit", wires=num_qubits, shots=None)
 
-        # 4. Define the QNode to get a statevector
+        # 4. Define the QNode
+        # --- THIS IS THE FIX ---
+        # Pass an empty pipeline to truly disable optimization,
+        # the equivalent of optimization_level=0.
+        @functools.partial(qml.compile, pipeline=[])
         @qml.qnode(dev)
         def statevector_circuit():
             qasm_op()

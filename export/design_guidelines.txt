@@ -1,35 +1,37 @@
----
-
-**Quantum Rosetta - Design Guidelines**
-**Version: 2.0 (As of 2025-11-06)**
+Quantum Rosetta - Design Guidelines
+Version: 3.0 (As of 2025-11-06)
 
 This document outlines the current architecture of the Quantum Rosetta project and provides strict guidelines for all future development to ensure the project remains modular, maintainable, and extensible.
 
 ==================================
-**1. Current System Architecture**
+1. Current System Architecture
 ==================================
 
-The project is a microservice architecture orchestrated by `docker-compose.yml`. It consists of one central "Brain" (rosetta-api) and six isolated "Hands" (the simulator runners).
+The project is a microservice architecture orchestrated by `docker-compose.yml`. It consists of one central "Brain" (rosetta-api) and seven isolated "Hands" (the simulator runners).
 
-## 1.1. Services (7 Total)
+## 1.1. Services (8 Total)
 
 * **rosetta-api**: The central orchestration and analysis service. It is the only service exposed to the user.
-* **qiskit-runner**: Runner for Qiskit Aer.
-* **cirq-runner**: Runner for Cirq.
-* **qulacs-runner**: Runner for Qulacs.
-* **braket-runner**: Runner for the local AWS Braket simulator.
-* **projectq-runner**: Runner for ProjectQ.
-* **quest-runner**: Runner for QuEST.
+* **qiskit-runner**: Runner for Qiskit Aer (uses Pytket).
+* **cirq-runner**: Runner for Cirq (uses Pytket).
+* **qulacs-runner**: Runner for Qulacs (uses Pytket).
+* **braket-runner**: Runner for the local AWS Braket simulator (uses Pytket).
+* **projectq-runner**: Runner for ProjectQ (uses Pytket).
+* **quest-runner**: Runner for QuEST (uses Pytket).
+* **pennylane-runner**: Runner for Pennylane Lightning (uses native Pennylane QASM parsing).
 
 ## 1.2. rosetta-api (The "Brain")
 
 The API service is responsible for all orchestration, circuit modification, and result analysis.
 
-* **Smart Configuration**: The `RUNNER_SERVICES` dictionary in `main.py` is the **single source of truth**. It defines runner **capabilities** (e.g., `"statevector"`, `"measured_native"`, `"measured_sampled"`). The runner base URLs are loaded from **environment variables** (e.g., `os.getenv("QISKIT_RUNNER_URL", ...)`), allowing for flexible deployment.
-* **Dynamic Routing**: The `STATEVECTOR_RUNNER_URLS` and `MEASURED_RUNNER_URLS` lists are built *dynamically* from the `RUNNER_SERVICES` config. The API will only dispatch jobs to runners that have the required capability.
+* **Smart Configuration**: The `RUNNER_SERVICES` dictionary in `main.py` is the **single source of truth**. It defines runner **capabilities** (e.g., `"statevector"`, `"measured_native"`, `"measured_sampled"`). Runner base URLs are loaded from **environment variables** (e.g., `os.getenv("QISKIT_RUNNER_URL", ...)`), allowing for flexible deployment.
+* **Dynamic Routing**: The API dynamically builds three URL lists from the `RUNNER_SERVICES` config: `STATEVECTOR_RUNNER_URLS`, `NATIVE_SAMPLING_URLS`, and `SAMPLED_SV_URLS`.
 * **Async Dispatch**: Uses an internal `_dispatch_to_runners` helper to send jobs to all compatible runners in parallel using `httpx` and `asyncio`.
-* **Standardized Request Contract**: The API acts as a request standardizer.
-    * `POST /compare_measured`: This endpoint *automatically* adds a classical register and `Measure` operations to the circuit before dispatch. This is a key design choice to **enforce a standard measurable QASM contract** for all runners, ensuring reliability.
+* **Standardized Request Contract (The Core Logic)**: The API is a "smart" orchestrator.
+    * When `POST /compare_measured` is called, the API dispatches **two different payloads** in parallel:
+        1.  **Native Runners (`measured_native`)**: The API first *modifies* the QASM to add a classical register and `Measure` operations. It sends this `modified_qasm` to all native runners.
+        2.  **Sampled Runners (`measured_sampled`)**: The API sends the **original, unmodified** QASM. These runners (ProjectQ, QuEST, PennyLane) must then calculate the statevector *without* measurements and use the shared helper to sample it.
+    * This dual-dispatch design is the key to achieving a scientifically valid, "apples-to-apples" comparison across incompatible backends.
 * **Endpoints (4)**:
     1.  `POST /compare`: Compares statevectors for a single QASM string.
     2.  `POST /compare_measured`: Compares measurement counts for a single QASM string.
@@ -37,7 +39,7 @@ The API service is responsible for all orchestration, circuit modification, and 
     4.  `POST /run_measured_benchmark_suite`: Runs counts comparison for all `.qasm` files in `benchmarks/`.
 * **Analysis (`comparator.py`)**:
     * **Statevector**: `create_divergence_report` calculates fidelity ($F = |\langle\psi'|\phi'\rangle|^2$) and relative phase.
-    * **Counts**: `create_counts_report` calculates the **Jensen-Shannon (JS) divergence** between probability distributions to find statistical differences.
+    * **Counts**: `create_counts_report` calculates the **Jensen-Shannon (JS) divergence** between probability distributions.
 
 ## 1.3. Runners (The "Hands")
 
@@ -45,28 +47,29 @@ The runners are isolated, single-purpose services. Their *only* job is to execut
 
 * **Standardized Interface**: Every runner *must* implement the standard endpoints it claims to support.
     * `POST /run`: Accepts QASM, returns a statevector.
-    * `POST /run_measured`: Accepts a *measurable* QASM and `n_shots`, returns a counts dictionary.
-* **Specialized Implementations**: The runners hide their internal complexity, guided by their capability.
-    * Runners with the `measured_native` capability (`qiskit`, `cirq`, `qulacs`, `braket`) use their native `n_shots` functionality on the provided measurable QASM.
-    * Runners with the `measured_sampled` capability (`projectq`, `quest`) are statevector-only. Their `/run_measured` endpoints *ignore* the measurement gates, calculate the statevector, and then *manually sample* from it using the shared helper function.
+    * `POST /run_measured`: Accepts QASM and `n_shots`, returns a counts dictionary.
+* **Specialized Implementations**: The runners hide their internal complexity.
+    * **`measured_native` (`qiskit`, `cirq`, `qulacs`, `braket`)**: These Pytket-based runners receive the `modified_qasm` and use their backend's native `n_shots` functionality.
+    * **`measured_sampled` (`projectq`, `quest`, `pennylane`)**: These runners receive the `original_qasm`. Their `/run_measured` endpoints calculate the full statevector (ignoring any potential `measure` gates) and then use the `_sample_from_statevector` helper to manually sample from it.
+    * **`pennylane-runner`** is a special case that proves the modularity. It does *not* use Pytket and parses the QASM natively, but still adheres to the same `measured_sampled` contract.
 
 ## 1.4. Code Modularity (qrosetta_commons)
 
 To prevent code duplication, common code is centralized into a formal, installable Python package named `qrosetta_commons`, located in the `shared/` directory.
 
 * **`qrosetta_commons.models`**: Contains the `CircuitPayload` and `MeasuredCircuitPayload` Pydantic models used by all runners.
-* **`qrosetta_commons.helpers`**: Contains the `_sample_from_statevector` function used by `measured_sampled` runners.
-* **`shared/setup.py`**: Defines this package and its dependencies.
+* **`qrosetta_commons.helpers`**: Contains the `_sample_from_statevector` function. This file is now free of all `pytket` dependencies.
+* **`shared/setup.py`**: Defines this package.
 
 ## 1.5. Build System (Docker)
 
-* **Build Context**: `docker-compose.yml` uses the project root (`.`) as the `context` for all 7 services.
+* **Build Context**: `docker-compose.yml` uses the project root (`.`) as the `context` for all 8 services.
 * **`Dockerfile`s**: Each `Dockerfile` copies its *own* files (e.g., `COPY qiskit-runner/main.py .`). It also copies the *entire* `shared/` directory and installs it as a package using `RUN pip install /tmp/shared-src`.
-* **No More `PYTHONPATH`**: The `ENV PYTHONPATH /app` "trick" has been removed. The shared package is now installed directly into the container's Python environment, making imports standard and explicit (e.g., `from qrosetta_commons.models import ...`).
+* **Standard Python Imports**: The `ENV PYTHONPATH /app` "trick" has been removed. The shared package is now installed directly into the container's Python environment, making imports standard and explicit (e.g., `from qrosetta_commons.models import ...`).
 * **Volumes**: The `docker-compose.yml` file uses **file-specific volumes** (e.g., `- ./qiskit-runner/main.py:/app/main.py`). This enables live code-reloading without hiding the shared package that was copied during the build.
 
 ==================================
-**2. Future Development Guidelines**
+2. Future Development Guidelines
 ==================================
 
 All future additions and modifications *must* adhere to these rules to maintain stability and modularity.
@@ -74,8 +77,8 @@ All future additions and modifications *must* adhere to these rules to maintain 
 ## 2.1. MUST DOs (The Contract)
 
 * **DO** register any new runner in the `RUNNER_SERVICES` dictionary in `rosetta-api/main.py`.
-* **DO** define the capabilities (e.g., `"statevector"`, `"measured_native"`, `"measured_sampled"`) for the new runner in `RUNNER_SERVICES`.
-* **DO** implement the Standardized Runner Interface (`/run`, `/run_measured`, etc.) for every capability you defined.
+* **DO** define the capabilities (e.g., `"statevector"`, `"measured_native"`, `"measured_sampled"`) for the new runner. This choice is critical.
+* **DO** implement the Standardized Runner Interface (`/run`, `/run_measured`) for every capability you defined.
 * **DO** import Pydantic models from `qrosetta_commons.models` in all runners.
 * **DO** use `qrosetta_commons.helpers` for any common, non-trivial logic (like manual sampling).
 * **DO** keep all dependencies isolated. Add new requirements *only* to the specific runner's `requirements.txt` file.
@@ -85,7 +88,7 @@ All future additions and modifications *must* adhere to these rules to maintain 
 ## 2.2. MUST DON'Ts (The Guardrails)
 
 * **DON'T** break the interface. Never change the JSON structure of the `CircuitPayload` or the expected output (statevector/counts) of the standard endpoints.
-* **DON'T** add **runner-specific** logic to the `rosetta-api`. The API should not have an `if simulator == "qiskit":` block. (Note: Logic that *enforces a standard contract*, like adding measurements for *all* runners, is acceptable and belongs in the API).
+* **DON'T** add **runner-specific** logic to the `rosetta-api`. The API should not have an `if simulator == "qiskit":` block. (Note: Logic that differentiates between *classes* of runners, like `measured_native` vs `measured_sampled`, is good and belongs in the API's dispatch logic).
 * **DON'T** duplicate code. If logic is shared, put it in `qrosetta_commons.helpers`. If models are shared, put them in `qrosetta_commons.models`.
 * **DON'T** use directory-level volumes (`- ./my-runner:/app`) for runners in `docker-compose.yml`. This is the #1 cause of bugs, as it **will** hide the `qrosetta_commons` package. Use file-specific mounts (e.g., `- ./my-runner/main.py:/app/main.py`).
 * **DON'T** add cross-dependencies. The `qiskit-runner` should *never* have `pytket-cirq` in its `requirements.txt`.
