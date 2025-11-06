@@ -1,8 +1,6 @@
-# ./shared/helpers.py
+# ./shared/qrosetta_commons/helpers.py
 import numpy as np
 from collections import Counter
-from pytket.circuit import Circuit
-
 
 def _sample_from_statevector(statevector, n_shots, n_qubits):
     """

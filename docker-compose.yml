@@ -19,7 +19,8 @@ services:
       - qulacs_runner
       - braket_runner
       - projectq_runner
-      - quest_runner # <-- Changed back
+      - quest_runner
+      - pennylane_runner
 
   # Our 6 runners
   qiskit_runner:
@@ -95,3 +96,13 @@ services:
     volumes:
       - ./quest-runner/main.py:/app/main.py
     # --- END FIX ---
+
+  pennylane_runner:
+      build:
+        context: .
+        dockerfile: ./pennylane-runner/Dockerfile
+      container_name: pennylane-runner
+      ports:
+        - "8007:8000" # <-- Using a new port
+      volumes:
+        - ./pennylane-runner/main.py:/app/main.py

@@ -1,0 +1,5 @@
+fastapi
+uvicorn[standard]
+pennylane  # We need the core library
+pennylane-lightning  # For the fast C++ simulator
+pennylane-qiskit
