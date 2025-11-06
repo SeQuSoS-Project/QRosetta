@@ -1,6 +1,5 @@
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import ensure_circuit_is_measurable
 import numpy as np
 import pytket.qasm
 from pytket.extensions.cirq import tk_to_cirq  
@@ -20,7 +19,6 @@ async def run_circuit(payload: CircuitPayload):
     print(f"Received circuit data for Cirq simulation.")
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
-        tk_circ = ensure_circuit_is_measurable(tk_circ)
         cirq_circ = tk_to_cirq(tk_circ)
         simulator = cirq.Simulator(dtype=np.complex128)
         result = simulator.simulate(cirq_circ)

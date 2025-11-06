@@ -4,7 +4,7 @@ import pytket.qasm
 from pytket.extensions.projectq import ProjectQBackend
 from collections import Counter
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import _sample_from_statevector, ensure_circuit_is_measurable
+from qrosetta_commons.helpers import _sample_from_statevector
 # ...
 
 # --- THIS IS THE FIX ---
@@ -42,7 +42,6 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
     print(f"Received measured circuit data for ProjectQ (manual sampling).")
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
-        tk_circ = ensure_circuit_is_measurable(tk_circ)
         n_qubits = tk_circ.n_qubits # We need this for formatting
         
         # 1. Run for statevector (n_shots=None)
