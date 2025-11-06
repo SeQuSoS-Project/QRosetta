@@ -2,79 +2,95 @@ services:
   # Service 1: The main user-facing API
   api:
     build:
-      context: ./rosetta-api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./rosetta-api/Dockerfile
     container_name: rosetta-api
     ports:
       - "8000:8000"
+    # --- FIX ---
+    # We mount the whole directory so it can access
+    # comparator.py, benchmarks/, and main.py
     volumes:
       - ./rosetta-api:/app
+    # --- END FIX ---
     depends_on:
       - qiskit_runner
       - cirq_runner
       - qulacs_runner
       - braket_runner
       - projectq_runner
-      - quest_runner     # <-- ADDED THIS
+      - quest_runner
 
-  # Our 5 existing runners
+  # Our 6 runners
   qiskit_runner:
     build:
-      context: ./qiskit-runner
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./qiskit-runner/Dockerfile
     container_name: qiskit-runner
     ports:
       - "8001:8000"
+    # --- FIX ---
+    # Mount only the main.py file, not the whole folder.
     volumes:
-      - ./qiskit-runner:/app
+      - ./qiskit-runner/main.py:/app/main.py
+    # --- END FIX ---
 
   cirq_runner:
     build:
-      context: ./cirq-runner
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./cirq-runner/Dockerfile
     container_name: cirq-runner
     ports:
       - "8002:8000"
+    # --- FIX ---
     volumes:
-      - ./cirq-runner:/app
+      - ./cirq-runner/main.py:/app/main.py
+    # --- END FIX ---
 
   qulacs_runner:
     build:
-      context: ./qulacs-runner
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./qulacs-runner/Dockerfile
     container_name: qulacs-runner
     ports:
       - "8003:8000"
+    # --- FIX ---
     volumes:
-      - ./qulacs-runner:/app
+      - ./qulacs-runner/main.py:/app/main.py
+    # --- END FIX ---
 
   braket_runner:
     build:
-      context: ./braket-runner
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./braket-runner/Dockerfile
     container_name: braket-runner
     ports:
       - "8004:8000"
+    # --- FIX ---
     volumes:
-      - ./braket-runner:/app
+      - ./braket-runner/main.py:/app/main.py
+    # --- END FIX ---
   
   projectq_runner:
     build:
-      context: ./projectq-runner
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./projectq-runner/Dockerfile
     container_name: projectq-runner
     ports:
       - "8005:8000"
+    # --- FIX ---
     volumes:
-      - ./projectq-runner:/app
+      - ./projectq-runner/main.py:/app/main.py
+    # --- END FIX ---
 
-  # Service 7: The isolated QuEST runner
   quest_runner:
     build:
-      context: ./quest-runner   # <-- NEW SERVICE
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./quest-runner/Dockerfile
     container_name: quest-runner
     ports:
-      - "8006:8000"             # <-- Use a new host port (8006)
+      - "8006:8000"
+    # --- FIX ---
     volumes:
-      - ./quest-runner:/app
+      - ./quest-runner/main.py:/app/main.py
+    # --- END FIX ---

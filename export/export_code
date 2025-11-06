@@ -1,0 +1,60 @@
+#!/bin/bash
+
+# --- Configuration ---
+# 1. Create a directory for our exports (if it doesn't exist)
+OUTPUT_DIR="export"
+mkdir -p "$OUTPUT_DIR"
+
+# 2. Create a unique filename with a timestamp
+TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')
+OUTPUT_FILE="$OUTPUT_DIR/project_export_$TIMESTAMP.txt"
+
+# 3. Define all paths to exclude
+#    We define this once and reuse it, making it easy to maintain.
+EXCLUDE_PATHS=(
+    -not -path '*/.git/*'
+    -not -path '*/__pycache__/*'
+    -not -path '*/.vscode/*'
+    -not -path "./$OUTPUT_DIR/*"  # Exclude the export directory itself
+    -not -path './curls.txt'
+    -not -path './export_code'     # Exclude this script
+    -not -path './project_export.txt' # Exclude the old file
+)
+
+# --- Main Script ---
+# Use a subshell (...) to redirect all 'echo' commands to our new file
+(
+    echo "PROJECT EXPORT FOR 'Quantum Rosetta' (qsimulators)"
+    echo "==================================================="
+    echo "Export Time: $TIMESTAMP"
+    echo ""
+    echo "## Project Directory Architecture (Full Path List)"
+    echo ""
+    echo "\`\`\`"
+    # Use find with all our exclusion rules
+    find . "${EXCLUDE_PATHS[@]}" | sort
+    echo "\`\`\`"
+    echo ""
+    echo "==================================================="
+    echo "## Source Code Files"
+    echo "==================================================="
+    echo ""
+
+    # Find all our important source files, using the same exclusions
+    find . -type f \( -name "*.py" -o -name "*.yml" -o -name "*.txt" -o -name "*.qasm" -o -name "Dockerfile" \) \
+           "${EXCLUDE_PATHS[@]}" | \
+    sort | \
+    while read -r file; do
+        echo ""
+        echo "--- START OF FILE: $file ---"
+        echo "\`\`\`"
+        # Print file contents
+        cat "$file"
+        echo ""
+        echo "\`\`\`"
+        echo "--- END OF FILE: $file ---"
+        echo ""
+    done
+) > "$OUTPUT_FILE"
+
+echo "✅ Success! Project exported to $OUTPUT_FILE"

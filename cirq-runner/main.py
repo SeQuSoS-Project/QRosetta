@@ -1,5 +1,6 @@
 from fastapi import FastAPI
-from pydantic import BaseModel
+from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
+from qrosetta_commons.helpers import ensure_circuit_is_measurable
 import numpy as np
 import pytket.qasm
 from pytket.extensions.cirq import tk_to_cirq  
@@ -10,13 +11,7 @@ from pytket.extensions.cirq.backends.cirq import CirqStateSampleBackend
 
 app = FastAPI(title="Cirq Runner")
 
-class CircuitPayload(BaseModel):
-    circuit_data: str 
 
-# --- NEW PAYLOAD ---
-class MeasuredCircuitPayload(BaseModel):
-    circuit_data: str
-    n_shots: int
 
 @app.post("/run")
 async def run_circuit(payload: CircuitPayload):
@@ -25,6 +20,7 @@ async def run_circuit(payload: CircuitPayload):
     print(f"Received circuit data for Cirq simulation.")
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        tk_circ = ensure_circuit_is_measurable(tk_circ)
         cirq_circ = tk_to_cirq(tk_circ)
         simulator = cirq.Simulator(dtype=np.complex128)
         result = simulator.simulate(cirq_circ)
