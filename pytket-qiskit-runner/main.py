@@ -5,6 +5,7 @@ from pytket.extensions.qiskit import tk_to_qiskit
 from qiskit_aer import AerSimulator
 from qiskit.circuit import QuantumCircuit
 import time
+import tracemalloc # <-- NEW: Use tracemalloc
 
 app = FastAPI(title="Qiskit Runner")
 
@@ -17,27 +18,37 @@ async def run_circuit(payload: CircuitPayload):
         qiskit_circ.save_statevector()
         backend = AerSimulator(precision="double")
         
+        tracemalloc.start() # <-- NEW
         start_time = time.perf_counter()
+        
         job = backend.run(qiskit_circ, optimization_level=0)
         result = job.result()
-        end_time = time.perf_counter()
-        execution_time = end_time - start_time
+        statevector = result.get_statevector() # <-- Include in profile
         
-        statevector = result.get_statevector()
+        end_time = time.perf_counter()
+        current, peak = tracemalloc.get_traced_memory() # <-- NEW
+        tracemalloc.stop() # <-- NEW
+
+        execution_time = end_time - start_time
+        memory_usage_mb = peak / (1024 * 1024) # <-- NEW: Use peak
+        
         statevector_str = [str(c) for c in statevector]
         print(f"Qiskit simulation successful in {execution_time:.4f}s.")
         
         return {
             "simulator": "qiskit",
             "statevector": statevector_str,
-            "execution_time_sec": execution_time
+            "execution_time_sec": execution_time,
+            "memory_usage_mb": memory_usage_mb
         }
     except Exception as e:
+        tracemalloc.stop() # <-- NEW: Stop on error
         print(f"Error during Qiskit simulation: {str(e)}")
         return { 
             "simulator": "qiskit", 
             "error": str(e),
-            "execution_time_sec": 0.0
+            "execution_time_sec": 0.0,
+            "memory_usage_mb": 0.0
         }
 
 @app.post("/run_measured")
@@ -48,15 +59,21 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         qiskit_circ = tk_to_qiskit(tk_circ)
         backend = AerSimulator(precision="double")
 
+        tracemalloc.start() # <-- NEW
         start_time = time.perf_counter()
+        
         job = backend.run(qiskit_circ, 
                           optimization_level=0, 
                           shots=payload.n_shots)
         result = job.result()
-        end_time = time.perf_counter()
-        execution_time = end_time - start_time
+        counts = result.get_counts() # <-- Include in profile
         
-        counts = result.get_counts()
+        end_time = time.perf_counter()
+        current, peak = tracemalloc.get_traced_memory() # <-- NEW
+        tracemalloc.stop() # <-- NEW
+
+        execution_time = end_time - start_time
+        memory_usage_mb = peak / (1024 * 1024) # <-- NEW: Use peak
         
         num_clbits = qiskit_circ.num_clbits
         counts_dict = {}
@@ -75,12 +92,15 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         return {
             "simulator": "qiskit",
             "counts": counts_dict,
-            "execution_time_sec": execution_time
+            "execution_time_sec": execution_time,
+            "memory_usage_mb": memory_usage_mb
         }
     except Exception as e:
+        tracemalloc.stop() # <-- NEW: Stop on error
         print(f"Error during Qiskit measurement simulation: {str(e)}")
         return {
             "simulator": "qiskit",
             "error": str(e),
-            "execution_time_sec": 0.0
+            "execution_time_sec": 0.0,
+            "memory_usage_mb": 0.0
         }

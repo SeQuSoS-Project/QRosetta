@@ -1,22 +1,29 @@
-3-qubit GHZ state
-curl -X POST "http://localhost:8000/compare" \
-     -H "Content-Type: application/json" \
-     -d '{
-           "qasm_string": "OPENQASM 2.0; include \"qelib1.inc\"; qreg q[3]; h q[0]; cx q[0],q[1]; cx q[1],q[2];"
-         }'
-         
-         
-bell state:
-curl -X POST "http://localhost:8000/compare" \
-     -H "Content-Type: application/json" \
-     -d '{
-           "qasm_string": "OPENQASM 2.0; include \"qelib1.inc\"; qreg q[2]; creg c[2]; h q[0]; cx q[0],q[1];"
-         }'
-         
-         
-curl -X POST "http://localhost:8000/compare_measured" -H "Content-Type: application/json" -d '{"qasm_string": "OPENQASM 2.0; include \"qelib1.inc\"; qreg q[2]; h q[0]; cx q[0],q[1];", "n_shots": 1000}'
+Status Check:
 
+curl "http://localhost:8000/"
+
+Statevector Comparison:
+
+curl -X POST "http://localhost:8000/compare" \
+-H "Content-Type: application/json" \
+-d '{"qasm_string": "OPENQASM 2.0;\ninclude \"qelib1.inc\";\nqreg q[2];\nh q[0];\ncx q[0],q[1];"}'
+
+Single Measured Comparison
+
+curl -X POST "http://localhost:8000/compare_measured" \
+-H "Content-Type: application/json" \
+-d '{
+    "qasm_string": "OPENQASM 2.0;\ninclude \"qelib1.inc\";\nqreg q[2];\nh q[0];\ncx q[0],q[1];",
+    "n_shots": 1024
+}'         
+         
+Statevector Benchmark Suite
 
 curl -X POST "http://localhost:8000/run_benchmark_suite"
 
-curl -X POST "http://localhost:8000/run_measured_benchmark_suite" -H "Content-Type: application/json" -d '{"n_shots": 500}'
+
+Measured Benchmark Suite
+
+curl -X POST "http://localhost:8000/run_measured_benchmark_suite" \
+-H "Content-Type: application/json" \
+-d '{"n_shots": 500}'  

@@ -1,5 +1,6 @@
 fastapi
 uvicorn[standard]
+psutil
 pennylane  # We need the core library
 pennylane-lightning  # For the fast C++ simulator
 pennylane-qiskit

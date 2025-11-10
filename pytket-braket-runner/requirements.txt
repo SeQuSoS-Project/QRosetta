@@ -1,5 +1,6 @@
 fastapi
 uvicorn[standard]
+psutil
 pytket
 pytket-braket
 amazon-braket-sdk

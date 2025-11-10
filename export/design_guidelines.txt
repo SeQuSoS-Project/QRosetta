@@ -1,5 +1,5 @@
 Quantum Rosetta - Design Guidelines
-Version: 4.1 (Renaming Complete)
+Version: 5.0 (As of 2025-11-10)
 
 This document outlines the current architecture of the Quantum Rosetta project and provides strict guidelines for all future development to ensure the project remains modular, maintainable, and extensible.
 
@@ -12,12 +12,12 @@ The project is a microservice architecture orchestrated by `docker-compose.yml`.
 ## 1.1. Services (9 Total)
 
 * **rosetta-api**: The central orchestration and analysis service.
-* **pytket-pytket-qiskit-runner**: Runner for Qiskit Aer (uses Pytket).
-* **pytket-pytket-cirq-runner**: Runner for Cirq (uses Pytket).
-* **pytket-pytket-qulacs-runner**: Runner for Qulacs (uses Pytket).
-* **pytket-pytket-braket-runner**: Runner for the local AWS Braket simulator (uses Pytket).
-* **pytket-pytket-projectq-runner**: Runner for ProjectQ (uses Pytket).
-* **pytket-pytket-quest-runner**: Runner for QuEST (uses Pytket).
+* **pytket-qiskit-runner**: Runner for Qiskit Aer (uses Pytket).
+* **pytket-cirq-runner**: Runner for Cirq (uses Pytket).
+* **pytket-qulacs-runner**: Runner for Qulacs (uses Pytket).
+* **pytket-braket-runner**: Runner for the local AWS Braket simulator (uses Pytket).
+* **pytket-projectq-runner**: Runner for ProjectQ (uses Pytket).
+* **pytket-quest-runner**: Runner for QuEST (uses Pytket).
 * **pennylane-lightning-runner**: Runner for Pennylane Lightning (uses native PennyLane QASM parsing).
 * **pennylane-default-runner**: Runner for Pennylane's default.qubit (uses native PennyLane QASM parsing).
 
@@ -50,8 +50,8 @@ The runners are isolated services. Their *only* job is to execute a circuit, tim
     * `POST /run`: Accepts QASM, returns a statevector and `execution_time_sec`.
     * `POST /run_measured`: Accepts QASM and `n_shots`, returns a counts dictionary and `execution_time_sec`.
 * **Specialized Implementations**:
-    * **`measured_native` (`pytket-pytket-qiskit-runner`, `pytket-pytket-cirq-runner`, etc.)**: These Pytket-based runners receive the `modified_qasm` and use their backend's native `n_shots` functionality.
-    * **`measured_sampled` (`pytket-pytket-projectq-runner`, `pytket-pytket-quest-runner`, etc.)**: These runners receive the `original_qasm`. Their `/run_measured` endpoints calculate the full statevector and use the `_sample_from_statevector` helper.
+    * **`measured_native` (`pytket-qiskit-runner`, `pytket-cirq-runner`, etc.)**: These Pytket-based runners receive the `modified_qasm` and use their backend's native `n_shots` functionality.
+    * **`measured_sampled` (`pytket-projectq-runner`, `pennylane-lightning-runner`, etc.)**: These runners receive the `original_qasm`. Their `/run_measured` endpoints calculate the full statevector and use the `_sample_from_statevector` helper.
 * **Performance Timing**: Each runner is responsible for timing *only* the core simulation call (e.g., `backend.run()` or `statevector_circuit()`) using `time.perf_counter()` and returning it as `execution_time_sec`.
 
 ## 1.4. Code Modularity (qrosetta_commons)
@@ -67,7 +67,7 @@ Common code is centralized into a formal, installable Python package `qrosetta_c
 * **Build Context**: `docker-compose.yml` uses the project root (`.`) as the `context`.
 * **`Dockerfile`s**: Each `Dockerfile` copies its *own* files and the *entire* `shared/` directory, which it installs using `RUN pip install /tmp/shared-src`.
 * **Standard Python Imports**: `ENV PYTHONPATH /app` is no longer used.
-* **Volumes**: The `docker-compose.yml` file uses **file-specific volumes** (e.g., `- ./pytket-pytket-qiskit-runner/main.py:/app/main.py`) to enable live code-reloading without hiding the installed package.
+* **Volumes**: The `docker-compose.yml` file uses **file-specific volumes** (e.g., `- ./pytket-qiskit-runner/main.py:/app/main.py`) to enable live code-reloading without hiding the installed package.
 
 ## 1.6. Naming Conventions
 
@@ -81,18 +81,18 @@ All runners **must** follow a clear naming convention. This applies to directory
     * Examples: `qiskit`, `cirq`, `lightning`, `default`, `braket`.
 
 **Current Runners (Adhering to Convention):**
-* `pytket-pytket-qiskit-runner`
-* `pytket-pytket-cirq-runner`
-* `pytket-pytket-qulacs-runner`
-* `pytket-pytket-braket-runner`
-* `pytket-pytket-projectq-runner`
-* `pytket-pytket-quest-runner`
+* `pytket-qiskit-runner`
+* `pytket-cirq-runner`
+* `pytket-qulacs-runner`
+* `pytket-braket-runner`
+* `pytket-projectq-runner`
+* `pytket-quest-runner`
 * `pennylane-lightning-runner`
 * `pennylane-default-runner`
 
 **Future Runner Examples:**
 * A runner using Qiskit without Pytket: `qiskit-native-runner`
-* A runner testing Qiskit via the PennyLane interface: `pennylane-pytket-qiskit-runner`
+* A runner testing Qiskit via the PennyLane interface: `pennylane-qiskit-runner` (This was tested and found to be incompatible with the current architecture).
 
 ==================================
 2. Future Development Guidelines
@@ -118,4 +118,4 @@ All future additions and modifications *must* adhere to these rules.
 * **DON'T** add **runner-specific** logic to the `rosetta-api`. (Logic for *classes* of runners, like `measured_native`, is good).
 * **DON'T** duplicate code. Put shared logic in `qrosetta_commons`.
 * **DON'T** use directory-level volumes (`- ./my-runner:/app`) in `docker-compose.yml`. This will break the build.
-* **DON'T** add cross-dependencies. The `pytket-pytket-qiskit-runner` should *never* have `pytket-cirq` in its `requirements.txt`.
+* **DON'T** add cross-dependencies. The `pytket-qiskit-runner` should *never* have `pytket-cirq` in its `requirements.txt`.
