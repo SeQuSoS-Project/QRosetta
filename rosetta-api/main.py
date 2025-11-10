@@ -6,10 +6,21 @@ import asyncio
 import os
 import glob
 import comparator 
+import gc
+
+# --- NEW IMPORTS ---
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+# --- END NEW IMPORTS ---
 
 from pytket.circuit import Circuit
 
 app = FastAPI(title="Quantum Rosetta API")
+
+# --- NEW: MOUNT STATIC DIRECTORY ---
+# This serves all files from the 'static' folder (like index.html)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 
 # --- PAYLOADS ---
 class QasmPayload(BaseModel):
@@ -20,62 +31,69 @@ class MeasuredQasmPayload(BaseModel):
 class MeasuredBenchmarkPayload(BaseModel):
     n_shots: int = 1024
 
-# --- CONFIGURATION (8 Runners) ---
+# --- CONFIGURATION (8 Runners, 2 Categories) ---
 RUNNER_SERVICES = {
-    "qiskit": {
-        "base_url": os.getenv("QISKIT_RUNNER_URL", "http://qiskit_runner:8000"),
+    # Category 1: Native Samplers (work with our modified QASM)
+    "pytket-qiskit-runner": {
+        "base_url": os.getenv("PYTKET_QISKIT_RUNNER_URL", "http://pytket-qiskit-runner:8000"),
         "capabilities": ["statevector", "measured_native"]
     },
-    "cirq":   {
-        "base_url": os.getenv("CIRQ_RUNNER_URL", "http://cirq_runner:8000"),
+    "pytket-cirq-runner":   {
+        "base_url": os.getenv("PYTKET_CIRQ_RUNNER_URL", "http://pytket-cirq-runner:8000"),
         "capabilities": ["statevector", "measured_native"]
     },
-    "qulacs": {
-        "base_url": os.getenv("QULACS_RUNNER_URL", "http://qulacs_runner:8000"),
+    "pytket-qulacs-runner": {
+        "base_url": os.getenv("PYTKET_QULACS_RUNNER_URL", "http://pytket-qulacs-runner:8000"),
         "capabilities": ["statevector", "measured_native"]
     },
-    "braket": {
-        "base_url": os.getenv("BRAKET_RUNNER_URL", "http://braket_runner:8000"),
+    "pytket-braket-runner": {
+        "base_url": os.getenv("PYTKET_BRAKET_RUNNER_URL", "http://pytket-braket-runner:8000"),
         "capabilities": ["statevector", "measured_native"]
     },
-    "projectq": {
-        "base_url": os.getenv("PROJECTQ_RUNNER_URL", "http://projectq_runner:8000"),
+    
+    # Category 2: Statevector Samplers (need original QASM)
+    "pytket-projectq-runner": {
+        "base_url": os.getenv("PYTKET_PROJECTQ_RUNNER_URL", "http://pytket-projectq-runner:8000"),
         "capabilities": ["statevector", "measured_sampled"]
     },
-    "quest":  {
-        "base_url": os.getenv("QUEST_RUNNER_URL", "http://quest_runner:8000"),
+    "pytket-quest-runner":  {
+        "base_url": os.getenv("PYTKET_QUEST_RUNNER_URL", "http://pytket-quest-runner:8000"),
         "capabilities": ["statevector", "measured_sampled"]
     },
-    "pennylane":  {
-        "base_url": os.getenv("PENNYLANE_RUNNER_URL", "http://pennylane_runner:8000"),
+    "pennylane-lightning-runner":  {
+        "base_url": os.getenv("PENNYLANE_LIGHTNING_RUNNER_URL", "http://pennylane-lightning-runner:8000"),
         "capabilities": ["statevector", "measured_sampled"]
     },
-    "pennylane-default":  {
-        "base_url": os.getenv("PENNYLANE_DEFAULT_RUNNER_URL", "http://pennylane_default_runner:8000"),
+    "pennylane-default-runner":  {
+        "base_url": os.getenv("PENNYLANE_DEFAULT_RUNNER_URL", "http://pennylane-default-runner:8000"),
         "capabilities": ["statevector", "measured_sampled"]
     }
+    # pennylane-qiskit-runner removed as it is incompatible
 }
 
-# --- DYNAMIC URL BUILDERS (REFACTORED) ---
+# --- DYNAMIC URL BUILDERS (2 Groups) ---
 STATEVECTOR_RUNNER_URLS = {
     name: f"{config['base_url']}/run" for name, config in RUNNER_SERVICES.items() 
     if "statevector" in config["capabilities"]
 }
+# Group 1: Native samplers that get MODIFIED QASM
 NATIVE_SAMPLING_URLS = {
     name: f"{config['base_url']}/run_measured" for name, config in RUNNER_SERVICES.items()
     if "measured_native" in config["capabilities"]
 }
+# Group 2: Statevector samplers that get ORIGINAL QASM
 SAMPLED_SV_URLS = {
     name: f"{config['base_url']}/run_measured" for name, config in RUNNER_SERVICES.items()
     if "measured_sampled" in config["capabilities"]
 }
+
 
 # --- MODULAR DISPATCH LOGIC ---
 async def _dispatch_to_runners(runner_urls: dict, runner_payload: dict) -> list:
     async with httpx.AsyncClient(timeout=10.0) as client:
         dispatch_tasks = []
         for sim_name, url in runner_urls.items():
-            print(f"Dispatching job to {sim_name}-runner...")
+            print(f"Dispatching job to {sim_name}...") 
             dispatch_tasks.append(client.post(url, json=runner_payload))
 
         responses = await asyncio.gather(*dispatch_tasks, return_exceptions=True)
@@ -120,15 +138,25 @@ async def run_single_circuit_comparison(qasm_string: str):
     print("Generating performance report...")
     performance_report = comparator.create_performance_report(aggregated_results)
 
+    print("Generating resource report...")
+    resource_report = comparator.create_resource_report(aggregated_results)
+
     return {
         "input_qasm": qasm_string,
         "divergence_report": divergence_report,
         "performance_report": performance_report,
+        "resource_report": resource_report,
         "raw_results": aggregated_results
     }
 
 
 async def run_single_circuit_measurement(qasm_string: str, n_shots: int):
+    """
+    (REFACTO RED - Counts)
+    Dispatches TWO types of payloads:
+    1. ORIGINAL QASM to sampled runners.
+    2. MODIFIED QASM to native runners.
+    """
     print(f"Processing measured circuit for {n_shots} shots...")
 
     # --- Payload 1: For SAMPLED_SV_URLS ---
@@ -164,6 +192,8 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int):
     native_task = _dispatch_to_runners(NATIVE_SAMPLING_URLS, native_payload)
 
     results_sampled, results_native = await asyncio.gather(sampled_task, native_task)
+
+    # Combine all results
     aggregated_results = results_native + results_sampled
 
     # --- Call the comparators ---
@@ -173,6 +203,9 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int):
         
         print("Generating performance report...")
         performance_report = comparator.create_performance_report(aggregated_results)
+        
+        print("Generating resource report...")
+        resource_report = comparator.create_resource_report(aggregated_results)
         
     except Exception as e:
         return {
@@ -187,16 +220,17 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int):
         "n_shots": n_shots,
         "divergence_report": divergence_report,
         "performance_report": performance_report,
-        # THIS IS THE LINE I ACCIDENTALLY ADDED, IT IS NOW GONE.
+        "resource_report": resource_report,
         "raw_results": aggregated_results
     }
 
 # --- USER-FACING ENDPOINTS ---
-# (These endpoints are all unchanged)
 
+# --- UPDATED ENDPOINT ---
 @app.get("/")
-def read_root():
-    return {"status": "ok", "message": "Quantum Rosetta API is running"}
+async def read_index():
+    """Serves the main HTML page."""
+    return FileResponse('static/index.html')
 
 @app.post("/compare")
 async def compare_circuits_endpoint(payload: QasmPayload):
@@ -236,6 +270,7 @@ async def run_benchmark_suite_endpoint():
             
     print(f"--- Statevector Benchmark Suite Complete ---")
     return {"benchmark_summary": benchmark_summary}
+
 
 @app.post("/run_measured_benchmark_suite")
 async def run_measured_benchmark_suite_endpoint(payload: MeasuredBenchmarkPayload):

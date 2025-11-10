@@ -78,6 +78,7 @@ def create_divergence_report(results_list):
             # --- 3. Analysis ---
             
             try:
+                
                 # A. Check for Normalization Divergence (on raw vectors)
                 norm_i = np.linalg.norm(sv_i)
                 norm_j = np.linalg.norm(sv_j)
@@ -277,5 +278,46 @@ def create_performance_report(results_list: list) -> dict:
     
     return {
         "summary": "Execution time in seconds (fastest first).",
+        "ranking": sorted_data
+    }
+
+# --- NEW FUNCTION ---
+def create_resource_report(results_list: list) -> dict:
+    """
+    Generates a report on the memory usage of each simulator.
+    """
+    resource_data = []
+    
+    for res in results_list:
+        sim_name = res.get('simulator', 'unknown')
+        
+        if 'error' in res:
+            resource_data.append({
+                "simulator": sim_name,
+                "status": "error",
+                "memory_usage_mb": None
+            })
+        elif 'memory_usage_mb' in res:
+            resource_data.append({
+                "simulator": sim_name,
+                "status": "success",
+                "memory_usage_mb": res['memory_usage_mb']
+            })
+        else:
+             # Handle case where runner might be old / not report memory
+             resource_data.append({
+                "simulator": sim_name,
+                "status": "success", # Succeeded, but didn't report mem
+                "memory_usage_mb": None
+            })
+    
+    # Sort the list by memory usage (lowest first)
+    sorted_data = sorted(
+        resource_data, 
+        key=lambda x: (x['memory_usage_mb'] is None, x['memory_usage_mb'])
+    )
+    
+    return {
+        "summary": "Memory usage delta in MiB (lowest first).",
         "ranking": sorted_data
     }
