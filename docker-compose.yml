@@ -21,88 +21,99 @@ services:
       - projectq_runner
       - quest_runner
       - pennylane_runner
+      - pennylane_default_runner
 
   # Our 6 runners
   qiskit_runner:
     build:
       context: .
-      dockerfile: ./qiskit-runner/Dockerfile
-    container_name: qiskit-runner
+      dockerfile: ./pytket-qiskit-runner/Dockerfile
+    container_name: pytket-qiskit-runner
     ports:
       - "8001:8000"
     # --- FIX ---
     # Mount only the main.py file, not the whole folder.
     volumes:
-      - ./qiskit-runner/main.py:/app/main.py
+      - ./pytket-qiskit-runner/main.py:/app/main.py
     # --- END FIX ---
 
   cirq_runner:
     build:
       context: .
-      dockerfile: ./cirq-runner/Dockerfile
-    container_name: cirq-runner
+      dockerfile: ./pytket-cirq-runner/Dockerfile
+    container_name: pytket-cirq-runner
     ports:
       - "8002:8000"
     # --- FIX ---
     volumes:
-      - ./cirq-runner/main.py:/app/main.py
+      - ./pytket-cirq-runner/main.py:/app/main.py
     # --- END FIX ---
 
   qulacs_runner:
     build:
       context: .
-      dockerfile: ./qulacs-runner/Dockerfile
-    container_name: qulacs-runner
+      dockerfile: ./pytket-qulacs-runner/Dockerfile
+    container_name: pytket-qulacs-runner
     ports:
       - "8003:8000"
     # --- FIX ---
     volumes:
-      - ./qulacs-runner/main.py:/app/main.py
+      - ./pytket-qulacs-runner/main.py:/app/main.py
     # --- END FIX ---
 
   braket_runner:
     build:
       context: .
-      dockerfile: ./braket-runner/Dockerfile
-    container_name: braket-runner
+      dockerfile: ./pytket-braket-runner/Dockerfile
+    container_name: pytket-braket-runner
     ports:
       - "8004:8000"
     # --- FIX ---
     volumes:
-      - ./braket-runner/main.py:/app/main.py
+      - ./pytket-braket-runner/main.py:/app/main.py
     # --- END FIX ---
   
   projectq_runner:
     build:
       context: .
-      dockerfile: ./projectq-runner/Dockerfile
-    container_name: projectq-runner
+      dockerfile: ./pytket-projectq-runner/Dockerfile
+    container_name: pytket-projectq-runner
     ports:
       - "8005:8000"
     # --- FIX ---
     volumes:
-      - ./projectq-runner/main.py:/app/main.py
+      - ./pytket-projectq-runner/main.py:/app/main.py
     # --- END FIX ---
 
   # --- THIS SERVICE IS CHANGED BACK ---
   quest_runner:
     build:
       context: .
-      dockerfile: ./quest-runner/Dockerfile
-    container_name: quest-runner
+      dockerfile: ./pytket-quest-runner/Dockerfile
+    container_name: pytket-quest-runner
     ports:
       - "8006:8000"
     # --- FIX ---
     volumes:
-      - ./quest-runner/main.py:/app/main.py
+      - ./pytket-quest-runner/main.py:/app/main.py
     # --- END FIX ---
 
   pennylane_runner:
       build:
         context: .
-        dockerfile: ./pennylane-runner/Dockerfile
-      container_name: pennylane-runner
+        dockerfile: ./pennylane-lightning-runner/Dockerfile
+      container_name: pennylane-lightning-runner
       ports:
         - "8007:8000" # <-- Using a new port
       volumes:
-        - ./pennylane-runner/main.py:/app/main.py
+        - ./pennylane-lightning-runner/main.py:/app/main.py
+
+  pennylane_default_runner:
+      build:
+        context: .
+        dockerfile: ./pennylane-default-runner/Dockerfile
+      container_name: pennylane-default-runner
+      ports:
+        - "8008:8000" # <-- Using a new port
+      volumes:
+        - ./pennylane-default-runner/main.py:/app/main.py

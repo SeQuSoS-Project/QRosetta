@@ -1,8 +1,9 @@
 FROM python:3.10-slim
+
 WORKDIR /app
 
 # Copy the runner-specific requirements
-COPY projectq-runner/requirements.txt .
+COPY pytket-qiskit-runner/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the entire shared package source
@@ -12,5 +13,6 @@ COPY shared /tmp/shared-src
 RUN pip install /tmp/shared-src
 
 # Copy the runner-specific main file
-COPY projectq-runner/main.py .
+COPY pytket-qiskit-runner/main.py .
+
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
