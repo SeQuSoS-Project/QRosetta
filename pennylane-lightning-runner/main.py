@@ -3,7 +3,8 @@ from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
 from qrosetta_commons.helpers import _sample_from_statevector 
 import pennylane as qml
 import numpy as np
-import functools # <-- We still need this
+import functools
+import time
 
 app = FastAPI(title="Pennylane Runner")
 
@@ -22,78 +23,75 @@ def get_num_qubits_from_qasm(qasm_string: str) -> int:
 
 @app.post("/run")
 async def run_circuit(payload: CircuitPayload):
-    """
-    Accepts QASM, simulates for statevector, and returns it.
-    """
     print("Received statevector circuit data for Pennylane simulation.")
     try:
         qasm_op = qml.from_qasm(payload.circuit_data)
         num_qubits = get_num_qubits_from_qasm(payload.circuit_data)
         dev = qml.device("lightning.qubit", wires=num_qubits, shots=None)
 
-        # --- THIS IS THE FIX ---
-        # Pass an empty pipeline to truly disable optimization,
-        # the equivalent of optimization_level=0.
         @functools.partial(qml.compile, pipeline=[])
         @qml.qnode(dev)
         def statevector_circuit():
             qasm_op()
             return qml.state()
 
+        start_time = time.perf_counter()
         statevector = statevector_circuit()
+        end_time = time.perf_counter()
+        execution_time = end_time - start_time
+        
         statevector_str = [str(c) for c in statevector]
 
-        print("Pennylane statevector simulation successful.")
+        print(f"Pennylane statevector simulation successful in {execution_time:.4f}s.")
         
         return {
             "simulator": "pennylane",
-            "statevector": statevector_str
+            "statevector": statevector_str,
+            "execution_time_sec": execution_time
         }
     except Exception as e:
         print(f"Error during Pennylane statevector simulation: {str(e)}")
-        return {"simulator": "pennylane", "error": str(e)}
+        return {
+            "simulator": "pennylane", 
+            "error": str(e),
+            "execution_time_sec": 0.0
+        }
 
 
 @app.post("/run_measured")
 async def run_measured_circuit(payload: MeasuredCircuitPayload):
-    """
-    Accepts QASM, simulates for statevector, and samples manually.
-    """
     print("Received measured circuit data for Pennylane (manual sampling).")
     try:
-        # 1. Load the QASM string
         qasm_op = qml.from_qasm(payload.circuit_data)
-
-        # 2. Get the *actual* number of qubits
         num_qubits = get_num_qubits_from_qasm(payload.circuit_data)
-
-        # 3. Create the device with the *correct* number of wires
         dev = qml.device("lightning.qubit", wires=num_qubits, shots=None)
 
-        # 4. Define the QNode
-        # --- THIS IS THE FIX ---
-        # Pass an empty pipeline to truly disable optimization,
-        # the equivalent of optimization_level=0.
         @functools.partial(qml.compile, pipeline=[])
         @qml.qnode(dev)
         def statevector_circuit():
             qasm_op()
             return qml.state() 
 
-        # 5. Execute the QNode
+        start_time = time.perf_counter()
         statevector = statevector_circuit()
+        end_time = time.perf_counter()
+        execution_time = end_time - start_time
 
-        # 6. Manually sample from the statevector (using shared helper)
         counts_dict = _sample_from_statevector(statevector, 
                                                payload.n_shots, 
                                                num_qubits)
 
-        print("Pennylane manual sampling successful.")
+        print(f"Pennylane manual sampling successful in {execution_time:.4f}s.")
         
         return {
             "simulator": "pennylane",
-            "counts": counts_dict
+            "counts": counts_dict,
+            "execution_time_sec": execution_time
         }
     except Exception as e:
         print(f"Error during Pennylane measurement simulation: {str(e)}")
-        return {"simulator": "pennylane", "error": str(e)}
+        return {
+            "simulator": "pennylane", 
+            "error": str(e),
+            "execution_time_sec": 0.0
+        }

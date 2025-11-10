@@ -246,3 +246,36 @@ def create_counts_report(results_list, n_shots):
         "divergences_found": divergences_found,
         "all_outcomes_observed": all_bitstrings
     }
+
+def create_performance_report(results_list: list) -> dict:
+    """
+    Generates a report on the execution time of each simulator.
+    """
+    performance_data = []
+    
+    for res in results_list:
+        sim_name = res.get('simulator', 'unknown')
+        
+        if 'error' in res:
+            performance_data.append({
+                "simulator": sim_name,
+                "status": "error",
+                "execution_time_sec": None
+            })
+        elif 'execution_time_sec' in res:
+            performance_data.append({
+                "simulator": sim_name,
+                "status": "success",
+                "execution_time_sec": res['execution_time_sec']
+            })
+    
+    # Sort the list by execution time (fastest first)
+    sorted_data = sorted(
+        performance_data, 
+        key=lambda x: (x['execution_time_sec'] is None, x['execution_time_sec'])
+    )
+    
+    return {
+        "summary": "Execution time in seconds (fastest first).",
+        "ranking": sorted_data
+    }

@@ -7,39 +7,39 @@ Export Time: 2025-11-06_12-48-14
 ```
 .
 ./app.py
-./braket-runner
-./braket-runner/Dockerfile
-./braket-runner/main.py
-./braket-runner/__pycache__
-./braket-runner/requirements.txt
-./cirq-runner
-./cirq-runner/Dockerfile
-./cirq-runner/main.py
-./cirq-runner/__pycache__
-./cirq-runner/requirements.txt
+./pytket-braket-runner
+./pytket-braket-runner/Dockerfile
+./pytket-braket-runner/main.py
+./pytket-braket-runner/__pycache__
+./pytket-braket-runner/requirements.txt
+./pytket-cirq-runner
+./pytket-cirq-runner/Dockerfile
+./pytket-cirq-runner/main.py
+./pytket-cirq-runner/__pycache__
+./pytket-cirq-runner/requirements.txt
 ./docker-compose.yml
 ./export
 ./.git
-./projectq-runner
-./projectq-runner/Dockerfile
-./projectq-runner/main.py
-./projectq-runner/__pycache__
-./projectq-runner/requirements.txt
-./qiskit-runner
-./qiskit-runner/Dockerfile
-./qiskit-runner/main.py
-./qiskit-runner/__pycache__
-./qiskit-runner/requirements.txt
-./quest-runner
-./quest-runner/Dockerfile
-./quest-runner/main.py
-./quest-runner/__pycache__
-./quest-runner/requirements.txt
-./qulacs-runner
-./qulacs-runner/Dockerfile
-./qulacs-runner/main.py
-./qulacs-runner/__pycache__
-./qulacs-runner/requirements.txt
+./pytket-projectq-runner
+./pytket-projectq-runner/Dockerfile
+./pytket-projectq-runner/main.py
+./pytket-projectq-runner/__pycache__
+./pytket-projectq-runner/requirements.txt
+./pytket-qiskit-runner
+./pytket-qiskit-runner/Dockerfile
+./pytket-qiskit-runner/main.py
+./pytket-qiskit-runner/__pycache__
+./pytket-qiskit-runner/requirements.txt
+./pytket-quest-runner
+./pytket-quest-runner/Dockerfile
+./pytket-quest-runner/main.py
+./pytket-quest-runner/__pycache__
+./pytket-quest-runner/requirements.txt
+./pytket-qulacs-runner
+./pytket-qulacs-runner/Dockerfile
+./pytket-qulacs-runner/main.py
+./pytket-qulacs-runner/__pycache__
+./pytket-qulacs-runner/requirements.txt
 ./rosetta-api
 ./rosetta-api/benchmarks
 ./rosetta-api/benchmarks/bell_state_2q.qasm
@@ -67,13 +67,13 @@ Export Time: 2025-11-06_12-48-14
 --- END OF FILE: ./app.py ---
 
 
---- START OF FILE: ./braket-runner/Dockerfile ---
+--- START OF FILE: ./pytket-braket-runner/Dockerfile ---
 ```
 FROM python:3.10-slim
 WORKDIR /app
 
 # Copy the runner-specific requirements
-COPY braket-runner/requirements.txt .
+COPY pytket-braket-runner/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the shared code (now this path is correct)
@@ -81,16 +81,16 @@ COPY shared/models.py .
 COPY shared/helpers.py .
 
 # Copy the runner-specific main file
-COPY braket-runner/main.py .
+COPY pytket-braket-runner/main.py .
 
 ENV PYTHONPATH /app
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
---- END OF FILE: ./braket-runner/Dockerfile ---
+--- END OF FILE: ./pytket-braket-runner/Dockerfile ---
 
 
---- START OF FILE: ./braket-runner/main.py ---
+--- START OF FILE: ./pytket-braket-runner/main.py ---
 ```
 from fastapi import FastAPI
 from models import CircuitPayload, MeasuredCircuitPayload
@@ -158,10 +158,10 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "error": str(e)
         }
 ```
---- END OF FILE: ./braket-runner/main.py ---
+--- END OF FILE: ./pytket-braket-runner/main.py ---
 
 
---- START OF FILE: ./braket-runner/requirements.txt ---
+--- START OF FILE: ./pytket-braket-runner/requirements.txt ---
 ```
 fastapi
 uvicorn[standard]
@@ -169,16 +169,16 @@ pytket
 pytket-braket
 amazon-braket-sdk
 ```
---- END OF FILE: ./braket-runner/requirements.txt ---
+--- END OF FILE: ./pytket-braket-runner/requirements.txt ---
 
 
---- START OF FILE: ./cirq-runner/Dockerfile ---
+--- START OF FILE: ./pytket-cirq-runner/Dockerfile ---
 ```
 FROM python:3.10-slim
 WORKDIR /app
 
 # Copy the runner-specific requirements
-COPY cirq-runner/requirements.txt .
+COPY pytket-cirq-runner/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the shared code (now this path is correct)
@@ -186,14 +186,14 @@ COPY shared/models.py .
 COPY shared/helpers.py .
 
 # Copy the runner-specific main file
-COPY cirq-runner/main.py .
+COPY pytket-cirq-runner/main.py .
 ENV PYTHONPATH /app
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
---- END OF FILE: ./cirq-runner/Dockerfile ---
+--- END OF FILE: ./pytket-cirq-runner/Dockerfile ---
 
 
---- START OF FILE: ./cirq-runner/main.py ---
+--- START OF FILE: ./pytket-cirq-runner/main.py ---
 ```
 from fastapi import FastAPI
 from models import CircuitPayload, MeasuredCircuitPayload
@@ -271,10 +271,10 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "error": str(e)
         }
 ```
---- END OF FILE: ./cirq-runner/main.py ---
+--- END OF FILE: ./pytket-cirq-runner/main.py ---
 
 
---- START OF FILE: ./cirq-runner/requirements.txt ---
+--- START OF FILE: ./pytket-cirq-runner/requirements.txt ---
 ```
 fastapi
 uvicorn[standard]
@@ -282,7 +282,7 @@ pytket
 pytket-cirq
 cirq
 ```
---- END OF FILE: ./cirq-runner/requirements.txt ---
+--- END OF FILE: ./pytket-cirq-runner/requirements.txt ---
 
 
 --- START OF FILE: ./docker-compose.yml ---
@@ -314,86 +314,86 @@ services:
   qiskit_runner:
     build:
       context: .
-      dockerfile: ./qiskit-runner/Dockerfile
-    container_name: qiskit-runner
+      dockerfile: ./pytket-qiskit-runner/Dockerfile
+    container_name: pytket-qiskit-runner
     ports:
       - "8001:8000"
     # --- FIX ---
     # Mount only the main.py file, not the whole folder.
     volumes:
-      - ./qiskit-runner/main.py:/app/main.py
+      - ./pytket-qiskit-runner/main.py:/app/main.py
     # --- END FIX ---
 
   cirq_runner:
     build:
       context: .
-      dockerfile: ./cirq-runner/Dockerfile
-    container_name: cirq-runner
+      dockerfile: ./pytket-cirq-runner/Dockerfile
+    container_name: pytket-cirq-runner
     ports:
       - "8002:8000"
     # --- FIX ---
     volumes:
-      - ./cirq-runner/main.py:/app/main.py
+      - ./pytket-cirq-runner/main.py:/app/main.py
     # --- END FIX ---
 
   qulacs_runner:
     build:
       context: .
-      dockerfile: ./qulacs-runner/Dockerfile
-    container_name: qulacs-runner
+      dockerfile: ./pytket-qulacs-runner/Dockerfile
+    container_name: pytket-qulacs-runner
     ports:
       - "8003:8000"
     # --- FIX ---
     volumes:
-      - ./qulacs-runner/main.py:/app/main.py
+      - ./pytket-qulacs-runner/main.py:/app/main.py
     # --- END FIX ---
 
   braket_runner:
     build:
       context: .
-      dockerfile: ./braket-runner/Dockerfile
-    container_name: braket-runner
+      dockerfile: ./pytket-braket-runner/Dockerfile
+    container_name: pytket-braket-runner
     ports:
       - "8004:8000"
     # --- FIX ---
     volumes:
-      - ./braket-runner/main.py:/app/main.py
+      - ./pytket-braket-runner/main.py:/app/main.py
     # --- END FIX ---
   
   projectq_runner:
     build:
       context: .
-      dockerfile: ./projectq-runner/Dockerfile
-    container_name: projectq-runner
+      dockerfile: ./pytket-projectq-runner/Dockerfile
+    container_name: pytket-projectq-runner
     ports:
       - "8005:8000"
     # --- FIX ---
     volumes:
-      - ./projectq-runner/main.py:/app/main.py
+      - ./pytket-projectq-runner/main.py:/app/main.py
     # --- END FIX ---
 
   quest_runner:
     build:
       context: .
-      dockerfile: ./quest-runner/Dockerfile
-    container_name: quest-runner
+      dockerfile: ./pytket-quest-runner/Dockerfile
+    container_name: pytket-quest-runner
     ports:
       - "8006:8000"
     # --- FIX ---
     volumes:
-      - ./quest-runner/main.py:/app/main.py
+      - ./pytket-quest-runner/main.py:/app/main.py
     # --- END FIX ---
 ```
 --- END OF FILE: ./docker-compose.yml ---
 
 
---- START OF FILE: ./projectq-runner/Dockerfile ---
+--- START OF FILE: ./pytket-projectq-runner/Dockerfile ---
 ```
 FROM python:3.10-slim
 WORKDIR /app
 
 # Copy the runner-specific requirements
-COPY projectq-runner/requirements.txt .
+COPY pytket-projectq-runner/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the shared code (now this path is correct)
@@ -401,14 +401,14 @@ COPY shared/models.py .
 COPY shared/helpers.py .
 
 # Copy the runner-specific main file
-COPY projectq-runner/main.py .
+COPY pytket-projectq-runner/main.py .
 ENV PYTHONPATH /app
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
---- END OF FILE: ./projectq-runner/Dockerfile ---
+--- END OF FILE: ./pytket-projectq-runner/Dockerfile ---
 
 
---- START OF FILE: ./projectq-runner/main.py ---
+--- START OF FILE: ./pytket-projectq-runner/main.py ---
 ```
 from fastapi import FastAPI
 import numpy as np
@@ -479,27 +479,27 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "error": str(e)
         }
 ```
---- END OF FILE: ./projectq-runner/main.py ---
+--- END OF FILE: ./pytket-projectq-runner/main.py ---
 
 
---- START OF FILE: ./projectq-runner/requirements.txt ---
+--- START OF FILE: ./pytket-projectq-runner/requirements.txt ---
 ```
 fastapi
 uvicorn[standard]
 pytket
 pytket-projectq
 ```
---- END OF FILE: ./projectq-runner/requirements.txt ---
+--- END OF FILE: ./pytket-projectq-runner/requirements.txt ---
 
 
---- START OF FILE: ./qiskit-runner/Dockerfile ---
+--- START OF FILE: ./pytket-qiskit-runner/Dockerfile ---
 ```
 FROM python:3.10-slim
 
 WORKDIR /app
 
 # Copy the runner-specific requirements
-COPY qiskit-runner/requirements.txt .
+COPY pytket-qiskit-runner/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the shared code (now this path is correct)
@@ -507,7 +507,7 @@ COPY shared/models.py .
 COPY shared/helpers.py .
 
 # Copy the runner-specific main file
-COPY qiskit-runner/main.py .
+COPY pytket-qiskit-runner/main.py .
 
 # --- THIS IS THE FIX ---
 # Tell Python to include /app in its module search path
@@ -516,10 +516,10 @@ ENV PYTHONPATH /app
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
---- END OF FILE: ./qiskit-runner/Dockerfile ---
+--- END OF FILE: ./pytket-qiskit-runner/Dockerfile ---
 
 
---- START OF FILE: ./qiskit-runner/main.py ---
+--- START OF FILE: ./pytket-qiskit-runner/main.py ---
 ```
 from fastapi import FastAPI
 from models import CircuitPayload, MeasuredCircuitPayload
@@ -608,26 +608,26 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "error": str(e)
         }
 ```
---- END OF FILE: ./qiskit-runner/main.py ---
+--- END OF FILE: ./pytket-qiskit-runner/main.py ---
 
 
---- START OF FILE: ./qiskit-runner/requirements.txt ---
+--- START OF FILE: ./pytket-qiskit-runner/requirements.txt ---
 ```
 fastapi
 uvicorn[standard]
 pytket
 pytket-qiskit
 ```
---- END OF FILE: ./qiskit-runner/requirements.txt ---
+--- END OF FILE: ./pytket-qiskit-runner/requirements.txt ---
 
 
---- START OF FILE: ./quest-runner/Dockerfile ---
+--- START OF FILE: ./pytket-quest-runner/Dockerfile ---
 ```
 FROM python:3.10-slim
 WORKDIR /app
 
 # Copy the runner-specific requirements
-COPY quest-runner/requirements.txt .
+COPY pytket-quest-runner/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the shared code (now this path is correct)
@@ -635,14 +635,14 @@ COPY shared/models.py .
 COPY shared/helpers.py .
 
 # Copy the runner-specific main file
-COPY quest-runner/main.py .
+COPY pytket-quest-runner/main.py .
 ENV PYTHONPATH /app
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
---- END OF FILE: ./quest-runner/Dockerfile ---
+--- END OF FILE: ./pytket-quest-runner/Dockerfile ---
 
 
---- START OF FILE: ./quest-runner/main.py ---
+--- START OF FILE: ./pytket-quest-runner/main.py ---
 ```
 from fastapi import FastAPI
 import numpy as np
@@ -711,26 +711,26 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "error": str(e)
         }
 ```
---- END OF FILE: ./quest-runner/main.py ---
+--- END OF FILE: ./pytket-quest-runner/main.py ---
 
 
---- START OF FILE: ./quest-runner/requirements.txt ---
+--- START OF FILE: ./pytket-quest-runner/requirements.txt ---
 ```
 fastapi
 uvicorn[standard]
 pytket
 pytket-quest
 ```
---- END OF FILE: ./quest-runner/requirements.txt ---
+--- END OF FILE: ./pytket-quest-runner/requirements.txt ---
 
 
---- START OF FILE: ./qulacs-runner/Dockerfile ---
+--- START OF FILE: ./pytket-qulacs-runner/Dockerfile ---
 ```
 FROM python:3.10-slim
 WORKDIR /app
 
 # Copy the runner-specific requirements
-COPY qulacs-runner/requirements.txt .
+COPY pytket-qulacs-runner/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the shared code (now this path is correct)
@@ -738,14 +738,14 @@ COPY shared/models.py .
 COPY shared/helpers.py .
 
 # Copy the runner-specific main file
-COPY qulacs-runner/main.py .
+COPY pytket-qulacs-runner/main.py .
 ENV PYTHONPATH /app
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
---- END OF FILE: ./qulacs-runner/Dockerfile ---
+--- END OF FILE: ./pytket-qulacs-runner/Dockerfile ---
 
 
---- START OF FILE: ./qulacs-runner/main.py ---
+--- START OF FILE: ./pytket-qulacs-runner/main.py ---
 ```
 from fastapi import FastAPI
 from models import CircuitPayload, MeasuredCircuitPayload
@@ -812,17 +812,17 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "error": str(e)
         }
 ```
---- END OF FILE: ./qulacs-runner/main.py ---
+--- END OF FILE: ./pytket-qulacs-runner/main.py ---
 
 
---- START OF FILE: ./qulacs-runner/requirements.txt ---
+--- START OF FILE: ./pytket-qulacs-runner/requirements.txt ---
 ```
 fastapi
 uvicorn[standard]
 pytket
 pytket-qulacs
 ```
---- END OF FILE: ./qulacs-runner/requirements.txt ---
+--- END OF FILE: ./pytket-qulacs-runner/requirements.txt ---
 
 
 --- START OF FILE: ./rosetta-api/benchmarks/bell_state_2q.qasm ---

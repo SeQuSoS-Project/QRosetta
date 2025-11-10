@@ -12,19 +12,15 @@ from pytket.circuit import Circuit
 app = FastAPI(title="Quantum Rosetta API")
 
 # --- PAYLOADS ---
-
 class QasmPayload(BaseModel):
     qasm_string: str
-
 class MeasuredQasmPayload(BaseModel):
     qasm_string: str
     n_shots: int = 1024
-
 class MeasuredBenchmarkPayload(BaseModel):
     n_shots: int = 1024
 
-# --- CONFIGURATION (Includes Rec 3 & 4) ---
-
+# --- CONFIGURATION (8 Runners) ---
 RUNNER_SERVICES = {
     "qiskit": {
         "base_url": os.getenv("QISKIT_RUNNER_URL", "http://qiskit_runner:8000"),
@@ -52,37 +48,30 @@ RUNNER_SERVICES = {
     },
     "pennylane":  {
         "base_url": os.getenv("PENNYLANE_RUNNER_URL", "http://pennylane_runner:8000"),
-        "capabilities": ["statevector", "measured_sampled"] # <-- This is correct
+        "capabilities": ["statevector", "measured_sampled"]
+    },
+    "pennylane-default":  {
+        "base_url": os.getenv("PENNYLANE_DEFAULT_RUNNER_URL", "http://pennylane_default_runner:8000"),
+        "capabilities": ["statevector", "measured_sampled"]
     }
 }
 
 # --- DYNAMIC URL BUILDERS (REFACTORED) ---
-
-# URL list for statevector comparison
 STATEVECTOR_RUNNER_URLS = {
     name: f"{config['base_url']}/run" for name, config in RUNNER_SERVICES.items() 
     if "statevector" in config["capabilities"]
 }
-
-# URL list for runners that do NATIVE sampling
 NATIVE_SAMPLING_URLS = {
     name: f"{config['base_url']}/run_measured" for name, config in RUNNER_SERVICES.items()
     if "measured_native" in config["capabilities"]
 }
-
-# URL list for runners that MANUALLY SAMPLE from a statevector
 SAMPLED_SV_URLS = {
     name: f"{config['base_url']}/run_measured" for name, config in RUNNER_SERVICES.items()
     if "measured_sampled" in config["capabilities"]
 }
 
-
 # --- MODULAR DISPATCH LOGIC ---
-
 async def _dispatch_to_runners(runner_urls: dict, runner_payload: dict) -> list:
-    """
-    Internal helper to handle all async dispatch and aggregation.
-    """
     async with httpx.AsyncClient(timeout=10.0) as client:
         dispatch_tasks = []
         for sim_name, url in runner_urls.items():
@@ -91,7 +80,6 @@ async def _dispatch_to_runners(runner_urls: dict, runner_payload: dict) -> list:
 
         responses = await asyncio.gather(*dispatch_tasks, return_exceptions=True)
 
-    # Aggregate results
     aggregated_results = []
     for i, res in enumerate(responses):
         sim_name = list(runner_urls.keys())[i]
@@ -99,7 +87,6 @@ async def _dispatch_to_runners(runner_urls: dict, runner_payload: dict) -> list:
             try:
                 aggregated_results.append(res.json())
             except Exception as e:
-                # Handle cases where the runner returns non-JSON (e.g., empty string)
                 aggregated_results.append({
                     "simulator": sim_name,
                     "error": f"Failed to decode JSON response: {str(e)}. Response text: {res.text}"
@@ -113,12 +100,7 @@ async def _dispatch_to_runners(runner_urls: dict, runner_payload: dict) -> list:
 
 
 # --- CORE LOGIC FUNCTIONS ---
-
 async def run_single_circuit_comparison(qasm_string: str):
-    """
-    (REFACTORED - Statevector)
-    Prepares the payload, calls the dispatcher, and calls the comparator.
-    """
     print(f"Processing circuit...")
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_string)
@@ -134,32 +116,28 @@ async def run_single_circuit_comparison(qasm_string: str):
 
     print("Generating divergence report...")
     divergence_report = comparator.create_divergence_report(aggregated_results)
+    
+    print("Generating performance report...")
+    performance_report = comparator.create_performance_report(aggregated_results)
 
     return {
         "input_qasm": qasm_string,
         "divergence_report": divergence_report,
+        "performance_report": performance_report,
         "raw_results": aggregated_results
     }
 
 
 async def run_single_circuit_measurement(qasm_string: str, n_shots: int):
-    """
-    (REFACTORED - Counts)
-    Dispatches TWO types of payloads:
-    1. The ORIGINAL QASM to sampled runners.
-    2. The MODIFIED QASM to native runners.
-    """
     print(f"Processing measured circuit for {n_shots} shots...")
 
     # --- Payload 1: For SAMPLED_SV_URLS ---
-    # We send the ORIGINAL QASM string
     sampled_payload = {
         "circuit_data": qasm_string,
         "n_shots": n_shots
     }
 
     # --- Payload 2: For NATIVE_SAMPLING_URLS ---
-    # We create and send the MODIFIED QASM string
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_string)
         n_qubits = tk_circ.n_qubits
@@ -185,16 +163,17 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int):
     sampled_task = _dispatch_to_runners(SAMPLED_SV_URLS, sampled_payload)
     native_task = _dispatch_to_runners(NATIVE_SAMPLING_URLS, native_payload)
 
-    # Wait for both sets to complete
     results_sampled, results_native = await asyncio.gather(sampled_task, native_task)
-
-    # Combine all results
     aggregated_results = results_native + results_sampled
 
-    # --- Call the comparator ---
+    # --- Call the comparators ---
     try:
         print("Generating counts divergence report...")
         divergence_report = comparator.create_counts_report(aggregated_results, n_shots)
+        
+        print("Generating performance report...")
+        performance_report = comparator.create_performance_report(aggregated_results)
+        
     except Exception as e:
         return {
             "input_qasm": qasm_string, "n_shots": n_shots,
@@ -207,6 +186,8 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int):
         "modified_qasm_for_native_runners": modified_qasm_string,
         "n_shots": n_shots,
         "divergence_report": divergence_report,
+        "performance_report": performance_report,
+        # THIS IS THE LINE I ACCIDENTALLY ADDED, IT IS NOW GONE.
         "raw_results": aggregated_results
     }
 
@@ -217,17 +198,14 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int):
 def read_root():
     return {"status": "ok", "message": "Quantum Rosetta API is running"}
 
-
 @app.post("/compare")
 async def compare_circuits_endpoint(payload: QasmPayload):
     return await run_single_circuit_comparison(payload.qasm_string)
-
 
 @app.post("/compare_measured")
 async def compare_measured_circuits_endpoint(payload: MeasuredQasmPayload):
     return await run_single_circuit_measurement(payload.qasm_string, 
                                                 payload.n_shots)
-
 
 @app.post("/run_benchmark_suite")
 async def run_benchmark_suite_endpoint():
@@ -258,7 +236,6 @@ async def run_benchmark_suite_endpoint():
             
     print(f"--- Statevector Benchmark Suite Complete ---")
     return {"benchmark_summary": benchmark_summary}
-
 
 @app.post("/run_measured_benchmark_suite")
 async def run_measured_benchmark_suite_endpoint(payload: MeasuredBenchmarkPayload):
