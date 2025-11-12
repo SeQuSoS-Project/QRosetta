@@ -5,7 +5,9 @@ import pennylane as qml
 import numpy as np
 import functools
 import time
-import tracemalloc # <-- NEW: Use tracemalloc
+import psutil
+import os
+import gc
 
 app = FastAPI(title="Pennylane Default Runner")
 
@@ -34,17 +36,19 @@ async def run_circuit(payload: CircuitPayload):
             qasm_op()
             return qml.state()
 
-        tracemalloc.start() # <-- NEW
+        process = psutil.Process(os.getpid())
+        gc.collect()
+        mem_before = process.memory_info().rss
+        
         start_time = time.perf_counter()
         
         statevector = statevector_circuit()
         
         end_time = time.perf_counter()
-        current, peak = tracemalloc.get_traced_memory() # <-- NEW
-        tracemalloc.stop() # <-- NEW
+        mem_after = process.memory_info().rss
         
         execution_time = end_time - start_time
-        memory_usage_mb = peak / (1024 * 1024) # <-- NEW: Use peak
+        memory_usage_mb = (mem_after - mem_before) / (1024 * 1024)
 
         statevector_str = [str(c) for c in statevector]
 
@@ -57,7 +61,6 @@ async def run_circuit(payload: CircuitPayload):
             "memory_usage_mb": memory_usage_mb
         }
     except Exception as e:
-        tracemalloc.stop() # <-- NEW: Stop on error
         print(f"Error during Pennylane-Default simulation: {str(e)}")
         return {
             "simulator": "pennylane-default",
@@ -81,17 +84,19 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             qasm_op()
             return qml.state() 
 
-        tracemalloc.start() # <-- NEW
+        process = psutil.Process(os.getpid())
+        gc.collect()
+        mem_before = process.memory_info().rss
+        
         start_time = time.perf_counter()
         
         statevector = statevector_circuit()
         
         end_time = time.perf_counter()
-        current, peak = tracemalloc.get_traced_memory() # <-- NEW
-        tracemalloc.stop() # <-- NEW
+        mem_after = process.memory_info().rss
 
         execution_time = end_time - start_time
-        memory_usage_mb = peak / (1024 * 1024) # <-- NEW: Use peak
+        memory_usage_mb = (mem_after - mem_before) / (1024 * 1024)
         
         counts_dict = _sample_from_statevector(statevector, 
                                                payload.n_shots, 
@@ -106,7 +111,6 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "memory_usage_mb": memory_usage_mb
         }
     except Exception as e:
-        tracemalloc.stop() # <-- NEW: Stop on error
         print(f"Error during Pennylane-Default measurement simulation: {str(e)}")
         return {
             "simulator": "pennylane-default",

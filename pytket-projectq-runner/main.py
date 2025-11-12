@@ -6,7 +6,9 @@ from collections import Counter
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
 from qrosetta_commons.helpers import _sample_from_statevector
 import time
-import tracemalloc # <-- NEW: Use tracemalloc
+import psutil
+import os
+import gc
 
 app = FastAPI(title="ProjectQ Runner")
 
@@ -18,18 +20,20 @@ async def run_circuit(payload: CircuitPayload):
         backend = ProjectQBackend()
         compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
         
-        tracemalloc.start() # <-- NEW
+        process = psutil.Process(os.getpid())
+        gc.collect()
+        mem_before = process.memory_info().rss
+        
         start_time = time.perf_counter()
         
         handle = backend.process_circuit(compiled_circ)
-        statevector = backend.get_result(handle).get_state() # <-- Include in profile
+        statevector = backend.get_result(handle).get_state()
         
         end_time = time.perf_counter()
-        current, peak = tracemalloc.get_traced_memory() # <-- NEW
-        tracemalloc.stop() # <-- NEW
+        mem_after = process.memory_info().rss
         
         execution_time = end_time - start_time
-        memory_usage_mb = peak / (1024 * 1024) # <-- NEW: Use peak
+        memory_usage_mb = (mem_after - mem_before) / (1024 * 1024)
         
         statevector_str = [str(c) for c in statevector]
         print(f"ProjectQ simulation successful in {execution_time:.4f}s.")
@@ -41,7 +45,6 @@ async def run_circuit(payload: CircuitPayload):
             "memory_usage_mb": memory_usage_mb
         }
     except Exception as e:
-        tracemalloc.stop() # <-- NEW: Stop on error
         print(f"Error during ProjectQ simulation: {str(e)}")
         return { 
             "simulator": "projectq", 
@@ -60,18 +63,20 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         backend = ProjectQBackend()
         compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
         
-        tracemalloc.start() # <-- NEW
+        process = psutil.Process(os.getpid())
+        gc.collect()
+        mem_before = process.memory_info().rss
+        
         start_time = time.perf_counter()
         
         handle = backend.process_circuit(compiled_circ)
-        statevector = backend.get_result(handle).get_state() # <-- Include in profile
+        statevector = backend.get_result(handle).get_state()
         
         end_time = time.perf_counter()
-        current, peak = tracemalloc.get_traced_memory() # <-- NEW
-        tracemalloc.stop() # <-- NEW
+        mem_after = process.memory_info().rss
         
         execution_time = end_time - start_time
-        memory_usage_mb = peak / (1024 * 1024) # <-- NEW: Use peak
+        memory_usage_mb = (mem_after - mem_before) / (1024 * 1024)
         
         counts_dict = _sample_from_statevector(statevector, 
                                                payload.n_shots, 
@@ -86,7 +91,6 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "memory_usage_mb": memory_usage_mb
         }
     except Exception as e:
-        tracemalloc.stop() # <-- NEW: Stop on error
         print(f"Error during ProjectQ measurement simulation: {str(e)}")
         return {
             "simulator": "projectq",
