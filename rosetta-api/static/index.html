@@ -1,32 +1,18 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full bg-gray-900">
+<html lang="en" class="h-full bg-gray-50">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quantum Rosetta</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                    },
-                },
-            }
-        }
-    </script>
     <style>
-        /* Simple spinner */
         .loader {
-            border-top-color: #3498db;
+            border-top-color: #3b82f6;
             animation: spin 1s linear infinite;
         }
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
-        
-        /* Vertical text for table headers */
         .matrix-table th.sim-header {
             writing-mode: vertical-rl;
             transform: rotate(180deg);
@@ -35,420 +21,383 @@
         }
     </style>
 </head>
-<body class="h-full font-sans text-gray-200">
+<body class="h-full font-sans text-gray-900">
     <div class="flex flex-col h-screen">
-        <!-- Header -->
-        <header class="bg-gray-800 border-b border-gray-700 shadow-lg">
+        <header class="bg-white border-b border-gray-200 shadow-sm">
             <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                 <div class="flex h-16 items-center justify-between">
                     <div class="flex items-center">
-                        <svg class="h-8 w-8 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M14.25 9.75L16.5 12l-2.25 2.25m-4.5 0L7.5 12l2.25-2.25M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z" />
-                        </svg>
-                        <span class="ml-3 text-2xl font-bold text-white">Quantum Rosetta</span>
+                        <span class="ml-3 text-2xl font-bold text-gray-900">Quantum Rosetta</span>
                     </div>
                 </div>
             </div>
         </header>
 
-        <!-- Main Content -->
         <main class="flex-1 flex flex-col md:flex-row min-h-0">
             
-            <!-- Input Panel -->
-            <div class="w-full md:w-1/2 p-4 sm:p-6 lg:p-8 flex flex-col border-r border-gray-700 overflow-y-auto">
-                <h2 class="text-xl font-semibold text-white mb-4">QASM 2.0 Input</h2>
-                <textarea id="qasm-input" class="w-full h-64 md:flex-1 p-3 bg-gray-800 border border-gray-600 rounded-lg text-white font-mono text-sm resize-y focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="OPENQASM 2.0;
-include &quot;qelib1.inc&quot;;
-qreg q[2];
-h q[0];
-cx q[0],q[1];"></textarea>
-                
-                <div class="mt-4">
-                    <label for="shots" class="block text-sm font-medium text-gray-300">Shots (for Measurement)</label>
-                    <input type="number" id="shots" value="1024" class="mt-1 block w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 sm:text-sm">
+            <div class="w-full md:w-1/2 p-4 sm:p-6 lg:p-8 flex flex-col border-r border-gray-200 overflow-y-auto bg-white">
+                <div>
+                    <h2 class="text-xl font-semibold text-gray-900 mb-4">On-Demand Comparison</h2>
+                    <textarea id="qasm-input" class="w-full h-64 md:flex-1 p-3 bg-gray-50 border border-gray-300 rounded-md text-gray-900 font-mono text-sm resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                    <div class="mt-4">
+                        <label for="shots" class="block text-sm font-medium text-gray-700">Shots (for Measurement)</label>
+                        <input type="number" id="shots" value="1024" class="mt-1 block w-full bg-white border border-gray-300 rounded-md px-3 py-2 text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 sm:text-sm">
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+                        <button onclick="runComparison('statevector')" id="btn-statevector" class="flex items-center justify-center rounded-md bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 text-white transition-all">Compare Statevectors</button>
+                        <button onclick="runComparison('measured')" id="btn-measured" class="flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 text-white transition-all">Compare Measurements</button>
+                    </div>
                 </div>
-
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
-                    <button onclick="runComparison('statevector')" id="btn-statevector" class="flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-blue-500 transition-all">
-                        Compare Statevectors
-                    </button>
-                    <button onclick="runComparison('measured')" id="btn-measured" class="flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-indigo-500 transition-all">
-                        Compare Measurements
-                    </button>
+                <div class="mt-8 pt-8 border-t border-gray-200">
+                    <h2 class="text-xl font-semibold text-gray-900 mb-2">Benchmark Suite</h2>
+                    <p class="text-sm text-gray-600 mb-4">Run all pre-loaded <code>.qasm</code> files from the server.</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <button onclick="runBenchmark('statevector')" id="btn-bench-statevector" class="flex items-center justify-center rounded-md bg-green-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-green-500 text-white transition-all">Run Statevector Suite</button>
+                        <button onclick="runBenchmark('measured')" id="btn-bench-measured" class="flex items-center justify-center rounded-md bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 text-white transition-all">Run Measured Suite</button>
+                    </div>
                 </div>
             </div>
 
-            <!-- Output Panel -->
-            <div class="w-full md:w-1/2 p-4 sm:p-6 lg:p-8 flex flex-col">
-                <h2 class="text-xl font-semibold text-white mb-4">Comparison Report</h2>
-                <div class="flex-1 flex flex-col bg-gray-800 border border-gray-600 rounded-lg min-h-0">
-                    <!-- Loader -->
-                    <div id="loader" class="absolute inset-0 z-10 flex items-center justify-center bg-gray-800 bg-opacity-75 rounded-lg hidden">
-                        <div class="loader h-12 w-12 rounded-full border-4 border-t-4 border-gray-600"></div>
+            <div class="w-full md:w-1/2 p-4 sm:p-6 lg:p-8 flex flex-col overflow-y-auto bg-gray-50">
+                <div class="flex-1 flex flex-col rounded-lg min-h-0 relative bg-white border border-gray-200 shadow-sm">
+                    <div id="loader" class="absolute inset-0 z-10 flex items-center justify-center bg-white bg-opacity-75 rounded-lg hidden">
+                        <div class="loader h-12 w-12 rounded-full border-4 border-t-4 border-gray-200"></div>
                     </div>
                     
-                    <!-- Tab Navigation -->
-                    <nav class="flex border-b border-gray-700" id="tab-nav">
-                        <!-- Tabs will be dynamically added here -->
-                    </nav>
+                    <div id="back-button-container" class="hidden p-4 border-b border-gray-200">
+                        <button onclick="renderSuiteSummary(currentSuiteData, currentSuiteTitle)" class="text-sm font-medium text-blue-600 hover:text-blue-500">&larr; Back to Suite Summary</button>
+                    </div>
 
-                    <!-- Tab Panels -->
+                    <nav class="flex border-b border-gray-200" id="tab-nav"></nav>
+
                     <div class="flex-1 overflow-y-auto" id="tab-content">
-                        <!-- Welcome Message -->
-                        <div id="welcome-message" class="p-4 text-gray-400 block">Click a button to run a comparison...</div>
-
-                        <!-- Summary Panel -->
+                        <div id="welcome-message" class="p-4 text-gray-500 block">Enter QASM code on the left and click a button to run a comparison.</div>
+                        
                         <div id="summary-panel" class="p-4 hidden"></div>
-                        
-                        <!-- Performance Panel -->
                         <div id="performance-panel" class="p-4 hidden"></div>
-
-                        <!-- Resources Panel -->
                         <div id="resources-panel" class="p-4 hidden"></div>
-                        
-                        <!-- Divergence Panel -->
                         <div id="divergence-panel" class="p-4 hidden"></div>
-
-                        <!-- Raw JSON Panel -->
-                        <div id="raw-json-panel" class="p-4 hidden relative">
-                            <!-- NEW: Copy Button -->
-                            <button id="copy-btn" onclick="copyRawJson()" class="absolute top-4 right-4 bg-gray-600 hover:bg-gray-500 text-white text-xs font-medium py-1 px-3 rounded-md transition-all">Copy</button>
-                            <pre id="json-output" class="h-full w-full p-0 overflow-auto text-sm text-gray-300 whitespace-pre-wrap break-words"></pre>
+                        <div id="suite-summary-panel" class="p-4 hidden"></div>
+                        
+                        <div id="raw-panel" class="p-0 hidden relative">
+                             <button id="copy-btn" onclick="copyRawJson(this)" class="absolute top-2 right-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-medium py-1 px-3 rounded-md transition-all z-10">Copy</button>
+                             <pre id="json-output" class="h-full w-full p-4 overflow-auto text-xs text-gray-700 whitespace-pre-wrap break-words bg-gray-50 rounded-b-lg"></pre>
                         </div>
                     </div>
                 </div>
             </div>
-
         </main>
     </div>
 
     <script>
-        // Set default QASM
+        // --- INIT ---
         document.getElementById('qasm-input').value = 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[2];\nh q[0];\ncx q[0],q[1];';
-
+        
+        // --- GLOBAL STATE ---
+        let currentSuiteData = null;
+        let currentSuiteTitle = '';
+        
+        // --- DOM ELEMENTS ---
         const qasmInput = document.getElementById('qasm-input');
         const shotsInput = document.getElementById('shots');
         const loader = document.getElementById('loader');
-        const btnStatevector = document.getElementById('btn-statevector');
-        const btnMeasured = document.getElementById('btn-measured');
-        
         const tabNav = document.getElementById('tab-nav');
-        const tabContent = document.getElementById('tab-content');
         const welcomeMessage = document.getElementById('welcome-message');
-        
-        // Store panel references by ID
+        const backButtonContainer = document.getElementById('back-button-container');
+        let jsonOutput = document.getElementById('json-output');
+
         const panelElements = {
             'summary': document.getElementById('summary-panel'),
             'performance': document.getElementById('performance-panel'),
             'resources': document.getElementById('resources-panel'),
             'divergence': document.getElementById('divergence-panel'),
-            'raw': document.getElementById('raw-json-panel')
+            'raw': document.getElementById('raw-panel'),
+            'suite-summary': document.getElementById('suite-summary-panel')
         };
-        
-        // Re-bind jsonOutput as it's inside 'raw'
-        let jsonOutput = document.getElementById('json-output');
 
-        function showTab(tabName) {
-            // Hide all panels
-            welcomeMessage.classList.add('hidden');
-            welcomeMessage.classList.remove('block');
-            
-            Object.values(panelElements).forEach(panel => {
-                panel.classList.add('hidden');
-                panel.classList.remove('block');
-            });
+        const allButtons = [
+            document.getElementById('btn-statevector'),
+            document.getElementById('btn-measured'),
+            document.getElementById('btn-bench-statevector'),
+            document.getElementById('btn-bench-measured')
+        ];
 
-            // Deactivate all buttons
-            tabNav.querySelectorAll('button').forEach(btn => {
-                btn.classList.remove('text-blue-400', 'border-blue-400');
-                btn.classList.add('text-gray-400', 'border-transparent');
-            });
+        // --- CORE FUNCTIONS ---
 
-            // Show selected panel and activate button
-            const panel = panelElements[tabName];
-            if (panel) {
-                panel.classList.remove('hidden');
-                panel.classList.add('block');
-            }
-            
-            const tabButton = tabNav.querySelector(`[data-tab="${tabName}"]`);
-            if (tabButton) {
-                tabButton.classList.add('text-blue-400', 'border-blue-400');
-                tabButton.classList.remove('text-gray-400', 'border-transparent');
+        function setLoading(isLoading) {
+            if (isLoading) {
+                loader.classList.remove('hidden');
+                loader.classList.add('flex');
+                allButtons.forEach(btn => btn.disabled = true);
+            } else {
+                loader.classList.add('hidden');
+                loader.classList.remove('flex');
+                allButtons.forEach(btn => btn.disabled = false);
             }
         }
 
         function clearReport() {
             welcomeMessage.classList.add('hidden');
-            welcomeMessage.classList.remove('block');
             tabNav.innerHTML = '';
+            backButtonContainer.classList.add('hidden');
             
             Object.values(panelElements).forEach(panel => {
-                panel.innerHTML = ''; // Clear content
+                panel.innerHTML = ''; 
                 panel.classList.add('hidden');
-                panel.classList.remove('block');
             });
             
-            // Re-add the pre tag and button to the raw-json-panel
+            // Re-bind Raw panel internals
             panelElements.raw.innerHTML = `
-                <button id="copy-btn" onclick="copyRawJson()" class="absolute top-4 right-4 bg-gray-600 hover:bg-gray-500 text-white text-xs font-medium py-1 px-3 rounded-md transition-all">Copy</button>
-                <pre id="json-output" class="h-full w-full p-0 overflow-auto text-sm text-gray-300 whitespace-pre-wrap break-words"></pre>
+                <button id="copy-btn" onclick="copyRawJson(this)" class="absolute top-2 right-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-medium py-1 px-3 rounded-md transition-all z-10">Copy</button>
+                <pre id="json-output" class="h-full w-full p-4 overflow-auto text-xs text-gray-700 whitespace-pre-wrap break-words bg-gray-50 rounded-b-lg"></pre>
             `;
-            // Re-bind the jsonOutput element
             jsonOutput = document.getElementById('json-output');
         }
 
-        async function runComparison(type) {
-            const qasm_string = qasmInput.value;
-            if (!qasm_string.trim()) {
-                welcomeMessage.textContent = JSON.stringify({ error: "QASM input cannot be empty." }, null, 2);
-                welcomeMessage.classList.remove('hidden');
-                welcomeMessage.classList.add('block');
-                return;
-            }
+        function showTab(tabName) {
+            welcomeMessage.classList.add('hidden');
+            
+            Object.values(panelElements).forEach(panel => panel.classList.add('hidden'));
+            
+            const panel = panelElements[tabName];
+            if (panel) panel.classList.remove('hidden');
 
-            let endpoint = '';
-            let payload = {};
-
-            if (type === 'statevector') {
-                endpoint = '/compare';
-                payload = { qasm_string };
-            } else {
-                endpoint = '/compare_measured';
-                const n_shots = parseInt(shotsInput.value, 10) || 1024;
-                payload = { qasm_string, n_shots };
-            }
-
-            loader.classList.remove('hidden');
-            loader.classList.add('flex');
-            clearReport();
-            btnStatevector.disabled = true;
-            btnMeasured.disabled = true;
-
-            try {
-                const response = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
-                });
-                const data = await response.json();
-                
-                if (!response.ok) {
-                    throw new Error(data.error || 'An unknown error occurred.');
-                }
-
-                // Render the full report
-                renderReport(data);
-
-            } catch (error) {
-                console.error('Error:', error);
-                panelElements.summary.innerHTML = `<div class="text-red-400">${JSON.stringify({ error: error.message }, null, 2)}</div>`;
-                renderTabs(['summary']); // Only show summary tab on error
-                showTab('summary');
-            } finally {
-                loader.classList.add('hidden');
-                loader.classList.remove('flex');
-                btnStatevector.disabled = false;
-                btnMeasured.disabled = false;
+            // Update Buttons
+            tabNav.querySelectorAll('button').forEach(btn => {
+                btn.classList.remove('border-blue-600', 'text-blue-600');
+                btn.classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-700');
+            });
+            const activeBtn = tabNav.querySelector(`[data-tab="${tabName}"]`);
+            if (activeBtn) {
+                activeBtn.classList.add('border-blue-600', 'text-blue-600');
+                activeBtn.classList.remove('border-transparent', 'text-gray-500', 'hover:text-gray-700');
             }
         }
 
         function renderTabs(tabList) {
-            tabNav.innerHTML = ''; // Clear old tabs
+            tabNav.innerHTML = '';
             tabList.forEach(tabName => {
                 const button = document.createElement('button');
-                button.className = 'px-4 py-2 font-medium text-sm text-gray-400 border-b-2 border-transparent hover:text-gray-200 hover:border-gray-500';
-                button.textContent = tabName.charAt(0).toUpperCase() + tabName.slice(1);
+                button.className = 'ml-4 px-3 py-3 font-medium text-sm border-b-2 border-transparent text-gray-500 hover:text-gray-700';
+                button.textContent = tabName.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase());
+                if (tabName === 'raw') button.textContent = "Raw JSON";
                 button.dataset.tab = tabName;
                 button.onclick = () => showTab(tabName);
                 tabNav.appendChild(button);
             });
         }
 
-        function renderReport(data) {
-            const tabs = ['summary', 'performance', 'resources', 'divergence', 'raw'];
-            renderTabs(tabs);
+        // --- API CALLS ---
+
+        async function runComparison(type) {
+            const qasm = qasmInput.value.trim();
+            if (!qasm) { alert("Please enter QASM code."); return; }
+
+            const endpoint = type === 'statevector' ? '/compare' : '/compare_measured';
+            const payload = type === 'statevector' ? { qasm_string: qasm } : { qasm_string: qasm, n_shots: parseInt(shotsInput.value) || 1024 };
+            const title = type === 'statevector' ? 'Statevector Report' : 'Measurement Report';
+
+            setLoading(true);
+            clearReport();
+
+            try {
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                renderDetailReport(data, title);
+            } catch (e) {
+                console.error(e);
+                renderDetailReport({ error: e.message }, "Error");
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        async function runBenchmark(type) {
+            const endpoint = type === 'statevector' ? '/run_benchmark_suite' : '/run_measured_benchmark_suite';
+            const payload = type === 'statevector' ? {} : { n_shots: parseInt(shotsInput.value) || 1024 };
+            const title = type === 'statevector' ? 'Statevector Suite' : 'Measured Suite';
+
+            setLoading(true);
+            clearReport();
+
+            try {
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                
+                currentSuiteData = data.benchmark_summary || [];
+                currentSuiteTitle = title;
+                
+                renderSuiteSummary(data, title);
+            } catch (e) {
+                console.error(e);
+                renderSuiteSummary({ error: e.message }, title);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        // --- RENDERERS ---
+
+        function renderDetailReport(data, title) {
+            renderTabs(['summary', 'performance', 'resources', 'divergence', 'raw']);
             
-            // 1. Render Summary
-            renderSummary(data);
-
-            // 2. Render Performance
-            renderRanking(data.performance_report, panelElements.performance, 'execution_time_sec', 's');
-
-            // 3. Render Resources
-            renderRanking(data.resource_report, panelElements.resources, 'memory_usage_mb', 'MiB');
-
-            // 4. Render Divergence
-            renderDivergence(data.divergence_report, panelElements.divergence);
-
-            // 5. Render Raw JSON
+            // Populate Raw Tab
             jsonOutput.textContent = JSON.stringify(data, null, 2);
 
-            // Show the 'summary' tab by default
+            // Populate Summary Tab
+            renderSummaryPanel(data, title);
+
+            if (!data.error) {
+                if (data.performance_report) renderRankingTable(data.performance_report, 'execution_time_sec', 's', panelElements.performance);
+                if (data.resource_report) renderRankingTable(data.resource_report, 'memory_usage_mb', 'MiB', panelElements.resources);
+                if (data.divergence_report) renderDivergenceTables(data.divergence_report, panelElements.divergence);
+            }
+
             showTab('summary');
         }
 
-        // --- UPDATED FUNCTION ---
-        function renderSummary(data) {
-            const report = data.divergence_report;
-            const divergences = report.divergences_found || [];
-            let html = '<div class="space-y-4">';
-            
-            html += `
-                <div>
-                    <h3 class="font-semibold text-white">Input</h3>
-                    <p class="text-sm text-gray-400 mt-1">${report.simulators.length} simulators tested.</p>
-                    ${data.n_shots ? `<p class="text-sm text-gray-400 mt-1">${data.n_shots} shots requested.</p>` : ''}
-                </div>
-            `;
-            
-            // --- LOGIC FIX: Differentiate success messages ---
-            if (divergences.length === 0) {
-                let resultMessage = '';
-                if (data.n_shots) {
-                    resultMessage = 'All simulators produced statistically identical measurement distributions.';
-                } else {
-                    resultMessage = 'All simulators produced identical statevectors (1.0 Fidelity).';
-                }
+        function renderSuiteSummary(data, title) {
+            clearReport();
+            renderTabs(['suite-summary', 'raw']);
+            jsonOutput.textContent = JSON.stringify(data, null, 2);
 
-                html += `
-                    <div>
-                        <h3 class="font-semibold text-white">Result</h3>
-                        <p class="mt-2 flex items-center text-lg text-green-400">
-                            <svg class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                            ${resultMessage}
-                        </p>
-                    </div>
-                `;
+            let html = `<h2 class="text-xl font-semibold text-gray-900 mb-4">${title}</h2>`;
+            
+            if (data.error) {
+                html += `<div class="p-4 bg-red-50 text-red-700 rounded border border-red-200">API Error: ${data.error}</div>`;
             } else {
-                 html += `
-                    <div>
-                        <h3 class="font-semibold text-white">Result</h3>
-                        <p class="mt-2 flex items-center text-lg text-yellow-400">
-                            <svg class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z" /></svg>
-                            Found ${divergences.length} divergence(s).
-                        </p>
-                        <ul class="list-disc list-inside mt-2 text-gray-300">
-                            ${divergences.map(d => `<li>${d.type} divergence between ${d.simulators.join(' and ')}</li>`).join('')}
-                        </ul>
-                    </div>
-                `;
+                const summary = data.benchmark_summary || [];
+                const errors = summary.filter(r => r.error).length;
+                html += `<div class="mb-4 p-4 bg-white border rounded shadow-sm">Processed <b>${summary.length}</b> files with <b>${errors}</b> errors.</div>`;
+                
+                html += `<div class="overflow-x-auto border rounded-lg"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">File</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fastest</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lightest</th>
+                    <th></th>
+                </tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
+
+                summary.forEach((item, idx) => {
+                    const fname = item.benchmark_file ? item.benchmark_file.replace('benchmarks/', '') : 'Unknown';
+                    let status = `<span class="px-2 py-1 text-xs rounded bg-green-100 text-green-800">Success</span>`;
+                    if (item.error) status = `<span class="px-2 py-1 text-xs rounded bg-red-100 text-red-800">Error</span>`;
+                    else if (item.divergence_report && item.divergence_report.divergences_found.length > 0) status = `<span class="px-2 py-1 text-xs rounded bg-yellow-100 text-yellow-800">Divergence</span>`;
+
+                    const fast = item.performance_report?.ranking[0]?.simulator || '-';
+                    const light = item.resource_report?.ranking[0]?.simulator || '-';
+
+                    html += `<tr>
+                        <td class="px-4 py-3 text-sm font-medium text-gray-900">${fname}</td>
+                        <td class="px-4 py-3">${status}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500">${fast}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500">${light}</td>
+                        <td class="px-4 py-3 text-right"><button onclick="viewDetail(${idx})" class="text-blue-600 hover:text-blue-900 text-sm font-medium">Details</button></td>
+                    </tr>`;
+                });
+                html += `</tbody></table></div>`;
             }
-            html += '</div>';
+            
+            panelElements['suite-summary'].innerHTML = html;
+            showTab('suite-summary');
+        }
+
+        function viewDetail(index) {
+            const item = currentSuiteData[index];
+            const fname = item.benchmark_file ? item.benchmark_file.replace('benchmarks/', '') : 'Unknown';
+            
+            clearReport();
+            backButtonContainer.classList.remove('hidden');
+            renderDetailReport(item, `Detail: ${fname}`);
+        }
+
+        // --- PANEL RENDERERS ---
+
+        function renderSummaryPanel(data, title) {
+            let html = `<h2 class="text-xl font-semibold text-gray-900 mb-4">${title}</h2>`;
+            
+            if (data.error) {
+                html += `<div class="p-4 bg-red-50 text-red-700 border border-red-200 rounded"><h3 class="font-bold">API Error</h3><pre class="mt-2 text-xs">${data.error}</pre></div>`;
+            } else {
+                const errors = data.raw_results ? data.raw_results.filter(r => r.error) : [];
+                const divergences = data.divergence_report ? data.divergence_report.divergences_found : [];
+
+                if (errors.length > 0) {
+                    html += `<div class="p-4 bg-red-50 text-red-700 border border-red-200 rounded"><h3 class="font-bold">Runner Errors (${errors.length})</h3><ul class="list-disc ml-5 mt-2 text-sm">${errors.map(e => `<li><b>${e.simulator}</b>: ${e.error}</li>`).join('')}</ul></div>`;
+                } else if (divergences.length > 0) {
+                    html += `<div class="p-4 bg-yellow-50 text-yellow-800 border border-yellow-200 rounded"><h3 class="font-bold">Divergences Found (${divergences.length})</h3><ul class="list-disc ml-5 mt-2 text-sm">${divergences.map(d => `<li>${d.type} between ${d.simulators.join(' & ')}</li>`).join('')}</ul></div>`;
+                } else {
+                    const msg = data.n_shots ? "All measurement distributions are statistically identical." : "All statevectors are identical (1.0 Fidelity).";
+                    html += `<div class="p-4 bg-green-50 text-green-800 border border-green-200 rounded flex items-center"><svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>${msg}</div>`;
+                }
+            }
             panelElements.summary.innerHTML = html;
         }
 
-        function renderRanking(report, panel, key, unit) {
-            let html = `<div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-700">
-                            <thead>
-                                <tr>
-                                    <th scope="col" class="w-16 px-3 py-3.5 text-left text-sm font-semibold text-white bg-gray-800">Rank</th>
-                                    <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-white bg-gray-800">Simulator</th>
-                                    <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-white bg-gray-800">${report.summary}</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-700">`;
+        function renderRankingTable(report, key, unit, panel) {
+            let html = `<h3 class="font-semibold text-gray-900 mt-4 mb-2">${report.summary}</h3>`;
+            html += `<div class="overflow-x-auto border rounded-lg"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rank</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Simulator</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Value</th></tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
             
-            report.ranking.forEach((item, index) => {
-                const value = item[key] !== null ? `${item[key].toFixed(4)} ${unit}` : 'N/A';
-                html += `
-                    <tr class="${index % 2 === 0 ? 'bg-gray-800 bg-opacity-50' : ''}">
-                        <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-300 text-center">${index + 1}</td>
-                        <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-300">${item.simulator}</td>
-                        <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-300">${value}</td>
-                    </tr>
-                `;
+            report.ranking.forEach((r, i) => {
+                const val = r.status === 'success' && r[key] !== null ? `${r[key].toFixed(6)} ${unit}` : `<span class="text-red-600">Error</span>`;
+                html += `<tr><td class="px-4 py-3 text-sm text-gray-500">${i+1}</td><td class="px-4 py-3 text-sm font-medium text-gray-900">${r.simulator}</td><td class="px-4 py-3 text-sm text-gray-500 font-mono">${val}</td></tr>`;
             });
-
             html += `</tbody></table></div>`;
             panel.innerHTML = html;
         }
-        
-        function renderDivergence(report, panel) {
-            let html = '<div class="space-y-6">';
 
-            if (report.fidelity_matrix) {
-                html += renderMatrixTable(report, 'fidelity_matrix', 'Fidelity Matrix');
-                html += renderMatrixTable(report, 'relative_phase_matrix', 'Relative Phase Matrix');
-            } else if (report['statistical_distance_matrix (js_divergence)']) {
-                html += renderMatrixTable(report, 'statistical_distance_matrix (js_divergence)', 'JS-Divergence Matrix');
-            }
-            
-            html += '</div>';
+        function renderDivergenceTables(report, panel) {
+            let html = `<div class="space-y-8">`;
+            let found = false;
+
+            // Helper to render one matrix
+            const renderMat = (key, title) => {
+                if (!report[key]) return;
+                found = true;
+                html += `<div><h3 class="font-semibold text-gray-900 mt-4 mb-2">${title}</h3><div class="overflow-x-auto"><table class="matrix-table border-collapse border border-gray-300"><thead class="bg-gray-50"><tr><th class="border p-2"></th>${report.simulators.map(s => `<th class="sim-header border p-2 text-xs text-gray-500">${s}</th>`).join('')}</tr></thead><tbody>`;
+                
+                report.simulators.forEach((s1, i) => {
+                    html += `<tr><th class="border p-2 text-xs text-left text-gray-500">${s1}</th>`;
+                    report[key][i].forEach((val, j) => {
+                        let bg = 'bg-white';
+                        let txt = val.toFixed(4);
+                        if (val === 1.0) { txt = "1.000"; bg = key.includes('fidelity') ? 'bg-green-50' : 'bg-white'; }
+                        else if (val === 0.0) { txt = "0.000"; }
+                        else if (val === -1.0) { txt = "ERR"; bg = 'bg-red-50'; }
+                        else { bg = 'bg-yellow-50'; } // Divergence!
+                        if (i===j) bg = 'bg-gray-100';
+                        html += `<td class="border p-2 text-xs text-center font-mono ${bg}">${txt}</td>`;
+                    });
+                    html += `</tr>`;
+                });
+                html += `</tbody></table></div></div>`;
+            };
+
+            renderMat('fidelity_matrix', 'Fidelity Matrix');
+            renderMat('relative_phase_matrix', 'Relative Phase Matrix');
+            renderMat('statistical_distance_matrix (js_divergence)', 'JS Divergence Matrix');
+
+            if (!found) html += `<p class="text-gray-500 mt-4">No matrices available.</p>`;
+            html += `</div>`;
             panel.innerHTML = html;
         }
 
-        function renderMatrixTable(report, matrixKey, title) {
-            const matrix = report[matrixKey];
-            const simulators = report.simulators;
-            let html = `
-                <div>
-                    <h3 class="text-lg font-semibold text-white mb-2">${title}</h3>
-                    <div class="overflow-x-auto">
-                        <table class="matrix-table border-collapse border border-gray-700">
-                            <thead>
-                                <tr>
-                                    <th class="border border-gray-600 bg-gray-800 p-2"></th>
-                                    ${simulators.map(sim => `<th class="sim-header border border-gray-600 bg-gray-800 p-2 text-sm">${sim}</th>`).join('')}
-                                </tr>
-                            </thead>
-                            <tbody>
-            `;
-            
-            simulators.forEach((sim, i) => {
-                html += `<tr><th class="border border-gray-600 bg-gray-800 p-2 text-sm text-left">${sim}</th>`;
-                matrix[i].forEach((value, j) => {
-                    let formattedValue = value.toFixed(4);
-                    if (value === 1.0) formattedValue = "1.0";
-                    if (value === 0.0) formattedValue = "0.0";
-                    if (value === -1.0) formattedValue = "ERR";
-                    
-                    let bgClass = 'bg-gray-800';
-                    if (value === 1.0) bgClass = 'bg-green-800 bg-opacity-30';
-                    if (value > 0.0 && value < 1.0) bgClass = 'bg-yellow-800 bg-opacity-30';
-                    if (value === -1.0) bgClass = 'bg-red-800 bg-opacity-30';
-
-                    html += `<td class="border border-gray-700 p-2 text-xs font-mono text-center ${bgClass}">${formattedValue}</td>`;
-                });
-                html += `</tr>`;
-            });
-
-            html += `</tbody></table></div></div>`;
-            return html;
+        function copyRawJson(btn) {
+            const txt = jsonOutput.textContent;
+            navigator.clipboard.writeText(txt).then(() => {
+                const old = btn.textContent;
+                btn.textContent = "Copied!";
+                setTimeout(() => btn.textContent = old, 2000);
+            }).catch(err => console.error(err));
         }
-        
-        // --- NEW FUNCTION ---
-        function copyRawJson() {
-            const jsonText = jsonOutput.textContent;
-            const copyButton = document.getElementById('copy-btn');
-            
-            // Create a temporary textarea to hold the text
-            const textArea = document.createElement('textarea');
-            textArea.value = jsonText;
-            textArea.style.position = 'fixed'; // Hide it
-            textArea.style.top = '0';
-            textArea.style.left = '0';
-            textArea.style.opacity = '0';
-            document.body.appendChild(textArea);
-            
-            textArea.focus();
-            textArea.select();
-            
-            try {
-                // Use document.execCommand as it's more reliable in iFrames
-                document.execCommand('copy');
-                copyButton.textContent = 'Copied!';
-                setTimeout(() => {
-                    copyButton.textContent = 'Copy';
-                }, 2000);
-            } catch (err) {
-                console.error('Failed to copy JSON:', err);
-                copyButton.textContent = 'Error';
-            }
-            
-            document.body.removeChild(textArea);
-        }
-
     </script>
 </body>
 </html>

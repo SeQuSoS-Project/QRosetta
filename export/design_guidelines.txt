@@ -1,121 +1,146 @@
 Quantum Rosetta - Design Guidelines
-Version: 5.0 (As of 2025-11-10)
+Version: 6.0 (As of 2025-11-12)
 
 This document outlines the current architecture of the Quantum Rosetta project and provides strict guidelines for all future development to ensure the project remains modular, maintainable, and extensible.
 
 ==================================
-1. Current System Architecture
+
+Current System Architecture
 ==================================
 
-The project is a microservice architecture orchestrated by `docker-compose.yml`. It consists of one central "Brain" (rosetta-api) and eight isolated "Hands" (the simulator runners).
+The project is a microservice architecture orchestrated by docker compose. It consists of one central "Brain" (rosetta-api) and eight isolated "Hands" (the simulator runners).
 
-## 1.1. Services (9 Total)
+1.1. Services (9 Total)
 
-* **rosetta-api**: The central orchestration and analysis service.
-* **pytket-qiskit-runner**: Runner for Qiskit Aer (uses Pytket).
-* **pytket-cirq-runner**: Runner for Cirq (uses Pytket).
-* **pytket-qulacs-runner**: Runner for Qulacs (uses Pytket).
-* **pytket-braket-runner**: Runner for the local AWS Braket simulator (uses Pytket).
-* **pytket-projectq-runner**: Runner for ProjectQ (uses Pytket).
-* **pytket-quest-runner**: Runner for QuEST (uses Pytket).
-* **pennylane-lightning-runner**: Runner for Pennylane Lightning (uses native PennyLane QASM parsing).
-* **pennylane-default-runner**: Runner for Pennylane's default.qubit (uses native PennyLane QASM parsing).
+rosetta-api: The central orchestration, analysis, and UI service.
 
-## 1.2. rosetta-api (The "Brain")
+pytket-qiskit-runner: Runner for Qiskit Aer (uses Pytket).
 
-The API service is responsible for all orchestration, circuit modification, and result analysis.
+pytket-cirq-runner: Runner for Cirq (uses Pytket).
 
-* **Smart Configuration**: The `RUNNER_SERVICES` dictionary in `main.py` is the **single source of truth**. It defines runner **capabilities** (e.g., `"statevector"`, `"measured_native"`, `"measured_sampled"`). Runner base URLs are loaded from **environment variables**.
-* **Dynamic Routing**: The API dynamically builds three URL lists from the `RUNNER_SERVICES` config: `STATEVECTOR_RUNNER_URLS`, `NATIVE_SAMPLING_URLS`, and `SAMPLED_SV_URLS`.
-* **Async Dispatch**: Uses an internal `_dispatch_to_runners` helper to send jobs in parallel.
-* **Standardized Request Contract (The Core Logic)**: The API is a "smart" orchestrator.
-    * When `POST /compare_measured` is called, the API dispatches **two different payloads** in parallel:
-        1.  **Native Runners (`measured_native`)**: Receives a `modified_qasm` string that has measurement and classical register operations *added* by the API.
-        2.  **Sampled Runners (`measured_sampled`)**: Receives the **original, unmodified** QASM. These runners must then calculate the statevector and manually sample it.
-* **Endpoints (4)**:
-    1.  `POST /compare`: Compares statevectors for a single QASM string.
-    2.  `POST /compare_measured`: Compares measurement counts for a single QASM string.
-    3.  `POST /run_benchmark_suite`: Runs statevector comparison for all `.qasm` files.
-    4.  `POST /run_measured_benchmark_suite`: Runs counts comparison for all `.qasm` files.
-* **Analysis (`comparator.py`)**:
-    * **Statevector**: `create_divergence_report` calculates fidelity and relative phase.
-    * **Counts**: `create_counts_report` calculates the **Jensen-Shannon (JS) divergence**.
-    * **Performance**: `create_performance_report` ranks all runners by their reported `execution_time_sec`.
+pytket-qulacs-runner: Runner for Qulacs (uses Pytket).
 
-## 1.3. Runners (The "Hands")
+pytket-braket-runner: Runner for the local AWS Braket simulator (uses Pytket).
 
-The runners are isolated services. Their *only* job is to execute a circuit, time the execution, and return the raw data.
+pytket-projectq-runner: Runner for ProjectQ (uses Pytket).
 
-* **Standardized Interface**: Every runner *must* implement:
-    * `POST /run`: Accepts QASM, returns a statevector and `execution_time_sec`.
-    * `POST /run_measured`: Accepts QASM and `n_shots`, returns a counts dictionary and `execution_time_sec`.
-* **Specialized Implementations**:
-    * **`measured_native` (`pytket-qiskit-runner`, `pytket-cirq-runner`, etc.)**: These Pytket-based runners receive the `modified_qasm` and use their backend's native `n_shots` functionality.
-    * **`measured_sampled` (`pytket-projectq-runner`, `pennylane-lightning-runner`, etc.)**: These runners receive the `original_qasm`. Their `/run_measured` endpoints calculate the full statevector and use the `_sample_from_statevector` helper.
-* **Performance Timing**: Each runner is responsible for timing *only* the core simulation call (e.g., `backend.run()` or `statevector_circuit()`) using `time.perf_counter()` and returning it as `execution_time_sec`.
+pytket-quest-runner: Runner for QuEST (uses Pytket).
 
-## 1.4. Code Modularity (qrosetta_commons)
+pennylane-lightning-runner: Runner for Pennylane Lightning (uses native PennyLane QASM parsing).
 
-Common code is centralized into a formal, installable Python package `qrosetta_commons`, located in the `shared/` directory.
+pennylane-default-runner: Runner for Pennylane's default.qubit (uses native PennyLane QASM parsing).
 
-* **`qrosetta_commons.models`**: Contains the Pydantic payloads.
-* **`qrosetta_commons.helpers`**: Contains the `_sample_from_statevector` function.
-* **`shared/setup.py`**: Defines this package.
+1.2. rosetta-api (The "Brain")
 
-## 1.5. Build System (Docker)
+The API service is responsible for all orchestration, circuit modification, result analysis, and front-end hosting.
 
-* **Build Context**: `docker-compose.yml` uses the project root (`.`) as the `context`.
-* **`Dockerfile`s**: Each `Dockerfile` copies its *own* files and the *entire* `shared/` directory, which it installs using `RUN pip install /tmp/shared-src`.
-* **Standard Python Imports**: `ENV PYTHONPATH /app` is no longer used.
-* **Volumes**: The `docker-compose.yml` file uses **file-specific volumes** (e.g., `- ./pytket-qiskit-runner/main.py:/app/main.py`) to enable live code-reloading without hiding the installed package.
+Smart Configuration: The RUNNER_SERVICES dictionary in main.py is the single source of truth. It defines runner capabilities (e.g., "statevector", "measured_native").
 
-## 1.6. Naming Conventions
+Dynamic Routing: The API dynamically builds URL lists from the RUNNER_SERVICES config.
 
-All runners **must** follow a clear naming convention. This applies to directory names, service names in `docker-compose.yml`, and keys in `RUNNER_SERVICES`.
+Async Dispatch: Uses an internal _dispatch_to_runners helper to send jobs in parallel.
 
-**Pattern:** `[interface]-[backend]-runner`
+Standardized Request Contract (The Core Logic):
 
-* **`[interface]`**: The primary *translation layer* or *entrypoint library* used in the runner's `main.py`.
-    * Examples: `pytket`, `pennylane`.
-* **`[backend]`**: The *target simulator* or *framework* being tested.
-    * Examples: `qiskit`, `cirq`, `lightning`, `default`, `braket`.
+measured_native: Receives a modified_qasm string that has measurement operations added by the API.
 
-**Current Runners (Adhering to Convention):**
-* `pytket-qiskit-runner`
-* `pytket-cirq-runner`
-* `pytket-qulacs-runner`
-* `pytket-braket-runner`
-* `pytket-projectq-runner`
-* `pytket-quest-runner`
-* `pennylane-lightning-runner`
-* `pennylane-default-runner`
+measured_sampled: Receives the original, unmodified QASM and must manually sample the resulting statevector.
 
-**Future Runner Examples:**
-* A runner using Qiskit without Pytket: `qiskit-native-runner`
-* A runner testing Qiskit via the PennyLane interface: `pennylane-qiskit-runner` (This was tested and found to be incompatible with the current architecture).
+Analysis (comparator.py):
+
+Correctness (Statevector): create_divergence_report calculates fidelity and relative phase.
+
+Correctness (Counts): create_counts_report calculates the Jensen-Shannon (JS) divergence.
+
+Performance: create_performance_report ranks runners by execution_time_sec.
+
+Resources: create_resource_report ranks runners by memory_usage_mb.
+
+Web UI (MVP): The API serves a simple, modular, single-file front-end from its /static directory via StaticFiles. This UI is a "dumb" client that provides a user-friendly way to access all API endpoints.
+
+1.3. Runners (The "Hands")
+
+The runners are isolated services. Their only job is to execute a circuit, perform validated benchmarking, and return the raw data.
+
+Standardized Interface (The 3D Contract): Every runner must implement:
+
+POST /run: Accepts QASM, returns a statevector, execution_time_sec, and memory_usage_mb.
+
+POST /run_measured: Accepts QASM and n_shots, returns a counts dictionary, execution_time_sec, and memory_usage_mb.
+
+Specialized Implementations:
+
+measured_native: Uses the backend's native n_shots functionality.
+
+measured_sampled: Calculates the statevector and uses the _sample_from_statevector helper.
+
+Performance & Resource Benchmarking (Crucial): All benchmarking must follow this validated methodology to ensure scientific validity.
+
+Time (execution_time_sec): Measured using time.perf_counter() placed only around the core simulation call (e.g., backend.run(), job.result()).
+
+Memory (memory_usage_mb): Measured using the psutil library.
+
+gc.collect() must be called immediately before the "before" measurement to establish a clean baseline.
+
+The memory is measured using psutil.Process(os.getpid()).memory_info().rss.
+
+The reported value is the "delta" (mem_after - mem_before) in MiB. This method correctly captures memory allocated by C++ extensions (unlike tracemalloc).
+
+1.4. Code Modularity (qrosetta_commons)
+
+Common code is centralized into a formal, installable Python package qrosetta_commons, located in the shared/ directory.
+
+qrosetta_commons.models: Pydantic payloads.
+
+qrosetta_commons.helpers: _sample_from_statevector function.
+
+1.5. Build System (Docker)
+
+Build Context: docker-compose.yml uses the project root (.) as the context.
+
+Dockerfiles: Each Dockerfile copies its own files and the entire shared/ directory, which it installs using RUN pip install /tmp/shared-src.
+
+Volumes: File-specific volumes are used for live-reloading.
+
+1.6. Naming Conventions
+
+All runners must follow the [interface]-[backend]-runner pattern (e.g., pytket-qiskit-runner).
 
 ==================================
 2. Future Development Guidelines
-==================================
 
-All future additions and modifications *must* adhere to these rules.
+All future additions and modifications must adhere to these rules.
 
-## 2.1. MUST DOs (The Contract)
+2.1. MUST DOs (The Contract)
 
-* **DO** follow the Naming Convention (`[interface]-[backend]-runner`).
-* **DO** register the new runner in the `RUNNER_SERVICES` dictionary in `rosetta-api/main.py`.
-* **DO** define the capabilities (e.g., `"statevector"`, `"measured_native"`, `"measured_sampled"`) for the new runner.
-* **DO** implement the Standardized Runner Interface (`/run`, `/run_measured`) and return `execution_time_sec`.
-* **DO** import models from `qrosetta_commons.models`.
-* **DO** use `qrosetta_commons.helpers` for common logic (like manual sampling).
-* **DO** keep dependencies isolated in the runner's `requirements.txt`.
-* **DO** follow the existing `Dockerfile` pattern.
-* **DO** add the new service to `docker-compose.yml` using `context: .` and file-specific volumes.
+DO follow the Naming Convention ([interface]-[backend]-runner).
 
-## 2.2. MUST DON'Ts (The Guardrails)
+DO register the new runner in the RUNNER_SERVICES dictionary in rosetta-api/main.py.
 
-* **DON'T** break the interface.
-* **DON'T** add **runner-specific** logic to the `rosetta-api`. (Logic for *classes* of runners, like `measured_native`, is good).
-* **DON'T** duplicate code. Put shared logic in `qrosetta_commons`.
-* **DON'T** use directory-level volumes (`- ./my-runner:/app`) in `docker-compose.yml`. This will break the build.
-* **DON'T** add cross-dependencies. The `pytket-qiskit-runner` should *never* have `pytket-cirq` in its `requirements.txt`.
+DO define the capabilities (e.g., "statevector", "measured_native").
+
+DO implement the Standardized Runner Interface (/run, /run_measured) and return execution_time_sec and memory_usage_mb.
+
+DO follow the benchmarking methodology in Section 1.3 (using time.perf_counter(), gc.collect(), and psutil).
+
+DO import models from qrosetta_commons.models.
+
+DO use qrosetta_commons.helpers for common logic.
+
+DO keep dependencies isolated in the runner's requirements.txt.
+
+DO follow the existing Dockerfile pattern.
+
+DO add the new service to docker-compose.yml (using docker compose) with file-specific volumes.
+
+2.2. MUST DON'Ts (The Guardrails)
+
+DON'T break the interface.
+
+DON'T add runner-specific logic to the rosetta-api.
+
+DON'T duplicate code. Put shared logic in qrosetta_commons.
+
+DON'T use directory-level volumes (- ./my-runner:/app).
+
+DON'T use tracemalloc for memory profiling, as it fails to capture C++ backend allocations.
