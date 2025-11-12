@@ -6,7 +6,9 @@ from pytket.extensions.cirq import tk_to_cirq
 import cirq
 from pytket.extensions.cirq.backends.cirq import CirqStateSampleBackend
 import time
-import tracemalloc # <-- NEW: Use tracemalloc
+import psutil
+import os
+import gc
 
 app = FastAPI(title="Cirq Runner")
 
@@ -18,18 +20,20 @@ async def run_circuit(payload: CircuitPayload):
         cirq_circ = tk_to_cirq(tk_circ)
         simulator = cirq.Simulator(dtype=np.complex128)
         
-        tracemalloc.start() # <-- NEW
+        process = psutil.Process(os.getpid())
+        gc.collect()
+        mem_before = process.memory_info().rss
+        
         start_time = time.perf_counter()
         
         result = simulator.simulate(cirq_circ)
-        statevector = result.final_state_vector # <-- Include in profile
+        statevector = result.final_state_vector
         
         end_time = time.perf_counter()
-        current, peak = tracemalloc.get_traced_memory() # <-- NEW
-        tracemalloc.stop() # <-- NEW
+        mem_after = process.memory_info().rss
         
         execution_time = end_time - start_time
-        memory_usage_mb = peak / (1024 * 1024) # <-- NEW: Use peak
+        memory_usage_mb = (mem_after - mem_before) / (1024 * 1024)
         
         statevector_str = [str(c) for c in statevector]
         print(f"Cirq simulation successful in {execution_time:.4f}s.")
@@ -41,7 +45,6 @@ async def run_circuit(payload: CircuitPayload):
             "memory_usage_mb": memory_usage_mb
         }
     except Exception as e:
-        tracemalloc.stop() # <-- NEW: Stop on error
         print(f"Error during Cirq simulation: {str(e)}")
         return { 
             "simulator": "cirq", 
@@ -59,19 +62,21 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         compiled_circ = backend.get_compiled_circuit(tk_circ, 
                                                      optimisation_level=0)
         
-        tracemalloc.start() # <-- NEW
+        process = psutil.Process(os.getpid())
+        gc.collect()
+        mem_before = process.memory_info().rss
+        
         start_time = time.perf_counter()
         
         handle = backend.process_circuit(compiled_circ, 
                                          n_shots=payload.n_shots)
-        counts = backend.get_result(handle).get_counts() # <-- Include in profile
+        counts = backend.get_result(handle).get_counts()
         
         end_time = time.perf_counter()
-        current, peak = tracemalloc.get_traced_memory() # <-- NEW
-        tracemalloc.stop() # <-- NEW
+        mem_after = process.memory_info().rss
         
         execution_time = end_time - start_time
-        memory_usage_mb = peak / (1024 * 1024) # <-- NEW: Use peak
+        memory_usage_mb = (mem_after - mem_before) / (1024 * 1024)
         
         counts_dict = { "".join(map(str, k)): v for k, v in counts.items() }
 
@@ -84,7 +89,6 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "memory_usage_mb": memory_usage_mb
         }
     except Exception as e:
-        tracemalloc.stop() # <-- NEW: Stop on error
         print(f"Error during Cirq measurement simulation: {str(e)}")
         return {
            "simulator": "cirq",

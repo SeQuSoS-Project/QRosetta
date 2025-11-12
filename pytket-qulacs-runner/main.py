@@ -4,7 +4,9 @@ import numpy as np
 import pytket.qasm
 from pytket.extensions.qulacs import QulacsBackend
 import time
-import tracemalloc # <-- NEW: Use tracemalloc
+import psutil
+import os
+import gc
 
 app = FastAPI(title="Qulacs Runner")
 
@@ -16,18 +18,20 @@ async def run_circuit(payload: CircuitPayload):
         backend = QulacsBackend()
         compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
         
-        tracemalloc.start() # <-- NEW
+        process = psutil.Process(os.getpid())
+        gc.collect()
+        mem_before = process.memory_info().rss
+        
         start_time = time.perf_counter()
         
         handle = backend.process_circuit(compiled_circ) # n_shots=None
-        statevector = backend.get_result(handle).get_state() # <-- Include in profile
+        statevector = backend.get_result(handle).get_state()
         
         end_time = time.perf_counter()
-        current, peak = tracemalloc.get_traced_memory() # <-- NEW
-        tracemalloc.stop() # <-- NEW
+        mem_after = process.memory_info().rss
         
         execution_time = end_time - start_time
-        memory_usage_mb = peak / (1024 * 1024) # <-- NEW: Use peak
+        memory_usage_mb = (mem_after - mem_before) / (1024 * 1024)
         
         statevector_str = [str(c) for c in statevector]
         
@@ -40,7 +44,6 @@ async def run_circuit(payload: CircuitPayload):
             "memory_usage_mb": memory_usage_mb
         }
     except Exception as e:
-        tracemalloc.stop() # <-- NEW: Stop on error
         print(f"Error during Qulacs simulation: {str(e)}")
         return { 
             "simulator": "qulacs", 
@@ -57,19 +60,21 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         backend = QulacsBackend()
         compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
         
-        tracemalloc.start() # <-- NEW
+        process = psutil.Process(os.getpid())
+        gc.collect()
+        mem_before = process.memory_info().rss
+        
         start_time = time.perf_counter()
         
         handle = backend.process_circuit(compiled_circ, 
                                          n_shots=payload.n_shots)
-        counts = backend.get_result(handle).get_counts() # <-- Include in profile
+        counts = backend.get_result(handle).get_counts()
                                          
         end_time = time.perf_counter()
-        current, peak = tracemalloc.get_traced_memory() # <-- NEW
-        tracemalloc.stop() # <-- NEW
+        mem_after = process.memory_info().rss
         
         execution_time = end_time - start_time
-        memory_usage_mb = peak / (1024 * 1024) # <-- NEW: Use peak
+        memory_usage_mb = (mem_after - mem_before) / (1024 * 1024)
         
         counts_dict = { "".join(map(str, k)): v for k, v in counts.items() }
 
@@ -82,7 +87,6 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "memory_usage_mb": memory_usage_mb
         }
     except Exception as e:
-        tracemalloc.stop() # <-- NEW: Stop on error
         print(f"Error during Qulacs measurement simulation: {str(e)}")
         return {
             "simulator": "qulacs",
