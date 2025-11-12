@@ -38,7 +38,11 @@
             <div class="w-full md:w-1/2 p-4 sm:p-6 lg:p-8 flex flex-col border-r border-gray-200 overflow-y-auto bg-white">
                 <div>
                     <h2 class="text-xl font-semibold text-gray-900 mb-4">On-Demand Comparison</h2>
-                    <textarea id="qasm-input" class="w-full h-64 md:flex-1 p-3 bg-gray-50 border border-gray-300 rounded-md text-gray-900 font-mono text-sm resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                    <textarea id="qasm-input" class="w-full h-64 md:flex-1 p-3 bg-gray-50 border border-gray-300 rounded-md text-gray-900 font-mono text-sm resize-y focus:outline-none focus:ring-2 focus:ring-blue-500">OPENQASM 2.0;
+include "qelib1.inc";
+qreg q[2];
+h q[0];
+cx q[0],q[1];</textarea>
                     <div class="mt-4">
                         <label for="shots" class="block text-sm font-medium text-gray-700">Shots (for Measurement)</label>
                         <input type="number" id="shots" value="1024" class="mt-1 block w-full bg-white border border-gray-300 rounded-md px-3 py-2 text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 sm:text-sm">
@@ -91,7 +95,6 @@
 
     <script>
         // --- INIT ---
-        document.getElementById('qasm-input').value = 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[2];\nh q[0];\ncx q[0],q[1];';
         
         // --- GLOBAL STATE ---
         let currentSuiteData = null;
@@ -104,7 +107,7 @@
         const tabNav = document.getElementById('tab-nav');
         const welcomeMessage = document.getElementById('welcome-message');
         const backButtonContainer = document.getElementById('back-button-container');
-        let jsonOutput = document.getElementById('json-output');
+        const jsonOutput = document.getElementById('json-output');
 
         const panelElements = {
             'summary': document.getElementById('summary-panel'),
@@ -141,17 +144,14 @@
             tabNav.innerHTML = '';
             backButtonContainer.classList.add('hidden');
             
-            Object.values(panelElements).forEach(panel => {
-                panel.innerHTML = ''; 
+            Object.entries(panelElements).forEach(([key, panel]) => {
+                if (key !== 'raw') {
+                    panel.innerHTML = '';
+                }
                 panel.classList.add('hidden');
             });
             
-            // Re-bind Raw panel internals
-            panelElements.raw.innerHTML = `
-                <button id="copy-btn" onclick="copyRawJson(this)" class="absolute top-2 right-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-medium py-1 px-3 rounded-md transition-all z-10">Copy</button>
-                <pre id="json-output" class="h-full w-full p-4 overflow-auto text-xs text-gray-700 whitespace-pre-wrap break-words bg-gray-50 rounded-b-lg"></pre>
-            `;
-            jsonOutput = document.getElementById('json-output');
+            jsonOutput.textContent = '';
         }
 
         function showTab(tabName) {
@@ -206,6 +206,12 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
+
+                if (!res.ok) {
+                    const errorText = await res.text();
+                    throw new Error(`HTTP error! Status: ${res.status} ${res.statusText}. Details: ${errorText}`);
+                }
+
                 const data = await res.json();
                 renderDetailReport(data, title);
             } catch (e) {
@@ -230,9 +236,15 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
+
+                if (!res.ok) {
+                    const errorText = await res.text();
+                    throw new Error(`HTTP error! Status: ${res.status} ${res.statusText}. Details: ${errorText}`);
+                }
+                
                 const data = await res.json();
                 
-                currentSuiteData = data.benchmark_summary || [];
+                currentSuiteData = data;
                 currentSuiteTitle = title;
                 
                 renderSuiteSummary(data, title);
@@ -311,7 +323,7 @@
         }
 
         function viewDetail(index) {
-            const item = currentSuiteData[index];
+            const item = currentSuiteData.benchmark_summary[index];
             const fname = item.benchmark_file ? item.benchmark_file.replace('benchmarks/', '') : 'Unknown';
             
             clearReport();
