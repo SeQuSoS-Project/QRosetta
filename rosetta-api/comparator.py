@@ -295,20 +295,17 @@ def create_resource_report(results_list: list) -> dict:
             resource_data.append({
                 "simulator": sim_name,
                 "status": "error",
-                "memory_usage_mb": None
+                "memory_usage_mb": None,
+                "process_peak_mb": None,
+                "theoretical_memory_mb": None
             })
-        elif 'memory_usage_mb' in res:
+        else:
             resource_data.append({
                 "simulator": sim_name,
                 "status": "success",
-                "memory_usage_mb": res['memory_usage_mb']
-            })
-        else:
-             # Handle case where runner might be old / not report memory
-             resource_data.append({
-                "simulator": sim_name,
-                "status": "success", # Succeeded, but didn't report mem
-                "memory_usage_mb": None
+                "memory_usage_mb": res.get('memory_usage_mb'),
+                "process_peak_mb": res.get('process_peak_mb'),
+                "theoretical_memory_mb": res.get('theoretical_memory_mb')
             })
     
     # Sort the list by memory usage (lowest first)
