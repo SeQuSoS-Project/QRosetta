@@ -1,0 +1,14 @@
+1. 
+The Error: Unable to allocate 16.0 TiB for an array with shape (1048576, 1048576)
+
+The Analysis:
+
+    The Math: A 20-qubit statevector has 220≈106 elements.
+
+    The Mistake: Braket is trying to allocate a matrix of shape (106,106). This is a Unitary Matrix representing the entire operation, not a Statevector.
+
+    The Size: (106)2×16 bytes≈16 Terabytes.
+
+    The Conclusion: The pytket-braket backend is likely attempting to calculate the full unitary matrix of the circuit instead of just evolving the statevector. This is an algorithmic failure for large circuits.
+
+2. 

@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
 import pytket.qasm
 import httpx
@@ -10,12 +11,16 @@ import gc
 
 # --- NEW IMPORTS ---
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import Response, JSONResponse, FileResponse
+import json
 # --- END NEW IMPORTS ---
 
 from pytket.circuit import Circuit
 
 app = FastAPI(title="Quantum Rosetta API")
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+RESULT_CACHE = {}
 
 # --- NEW: MOUNT STATIC DIRECTORY ---
 # This serves all files from the 'static' folder (like index.html)
@@ -90,7 +95,7 @@ SAMPLED_SV_URLS = {
 
 # --- MODULAR DISPATCH LOGIC ---
 async def _dispatch_to_runners(runner_urls: dict, runner_payload: dict) -> list:
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    async with httpx.AsyncClient(timeout=float(os.getenv("RUNNER_TIMEOUT_SEC", 60.0))) as client:
         dispatch_tasks = []
         for sim_name, url in runner_urls.items():
             print(f"Dispatching job to {sim_name}...") 
@@ -140,6 +145,15 @@ async def run_single_circuit_comparison(qasm_string: str):
 
     print("Generating resource report...")
     resource_report = comparator.create_resource_report(aggregated_results)
+
+    # --- Cache full results before sanitizing ---
+    RESULT_CACHE["latest_full_report"] = [res.copy() for res in aggregated_results]
+
+    # --- Browser Safety Valve ---
+    for result in aggregated_results:
+        if "statevector" in result and isinstance(result["statevector"], list):
+            if len(result["statevector"]) > 16384:
+                result["statevector"] = "<Statevector too large for display. Analysis included in reports.>"
 
     return {
         "input_qasm": qasm_string,
@@ -231,6 +245,14 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int):
 async def read_index():
     """Serves the main HTML page."""
     return FileResponse('static/index.html')
+
+@app.get("/download_latest_report")
+def download_latest_report():
+    data = RESULT_CACHE.get("latest_full_report")
+    if not data:
+        return JSONResponse(content={"error": "No report available"}, status_code=404)
+    json_str = json.dumps(data, indent=2)
+    return Response(content=json_str, media_type="application/json", headers={"Content-Disposition": "attachment; filename=full_quantum_report.json"})
 
 @app.post("/compare")
 async def compare_circuits_endpoint(payload: QasmPayload):

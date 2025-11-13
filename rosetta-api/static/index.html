@@ -84,8 +84,14 @@ cx q[0],q[1];</textarea>
                         <div id="suite-summary-panel" class="p-4 hidden"></div>
                         
                         <div id="raw-panel" class="p-0 hidden relative">
-                             <button id="copy-btn" onclick="copyRawJson(this)" class="absolute top-2 right-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-medium py-1 px-3 rounded-md transition-all z-10">Copy</button>
-                             <pre id="json-output" class="h-full w-full p-4 overflow-auto text-xs text-gray-700 whitespace-pre-wrap break-words bg-gray-50 rounded-b-lg"></pre>
+                             <div id="truncation-warning" class="hidden p-2 bg-yellow-100 text-yellow-800 text-xs border-b border-yellow-200">
+                                 ⚠️ Data Truncated: Large statevectors hidden. Download full report to view.
+                             </div>
+                             <div class="absolute top-2 right-2 z-10 flex items-center">
+                                 <button id="copy-btn" onclick="copyRawJson(this)" class="bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-medium py-1 px-3 rounded-md transition-all">Copy</button>
+                                 <button id="download-btn" onclick="downloadFullReport()" class="hidden ml-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium py-1 px-3 rounded-md transition-all">Download Full JSON</button>
+                             </div>
+                             <pre id="json-output" class="h-full w-full p-4 pt-10 overflow-auto text-xs text-gray-700 whitespace-pre-wrap break-words bg-gray-50 rounded-b-lg"></pre>
                         </div>
                     </div>
                 </div>
@@ -261,8 +267,20 @@ cx q[0],q[1];</textarea>
         function renderDetailReport(data, title) {
             renderTabs(['summary', 'performance', 'resources', 'divergence', 'raw']);
             
-            // Populate Raw Tab
-            jsonOutput.textContent = JSON.stringify(data, null, 2);
+            const jsonString = JSON.stringify(data, null, 2);
+            jsonOutput.textContent = jsonString;
+
+            // --- NEW: Check for truncation ---
+            const warningBanner = document.getElementById('truncation-warning');
+            const downloadButton = document.getElementById('download-btn');
+            if (jsonString.includes("<Statevector too large for display")) {
+                warningBanner.classList.remove('hidden');
+                downloadButton.classList.remove('hidden');
+            } else {
+                warningBanner.classList.add('hidden');
+                downloadButton.classList.add('hidden');
+            }
+            // --- END NEW ---
 
             // Populate Summary Tab
             renderSummaryPanel(data, title);
@@ -274,6 +292,19 @@ cx q[0],q[1];</textarea>
             }
 
             showTab('summary');
+        }
+
+        function copyRawJson(btn) {
+            const txt = jsonOutput.textContent;
+            navigator.clipboard.writeText(txt).then(() => {
+                const old = btn.textContent;
+                btn.textContent = "Copied!";
+                setTimeout(() => btn.textContent = old, 2000);
+            }).catch(err => console.error(err));
+        }
+
+        function downloadFullReport() {
+            window.location.href = "/download_latest_report";
         }
 
         function renderSuiteSummary(data, title) {

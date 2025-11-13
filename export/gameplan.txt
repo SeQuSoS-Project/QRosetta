@@ -1,0 +1,98 @@
+Based on the stable v7.0 state of "Quantum Rosetta," here are three distinct strategic paths for the next phase of development.
+
+### 🛠️ Phase 1: Immediate Engineering & Stability (The "hardening" path)
+Before adding features, you should address the limitations revealed by your recent 20-qubit stress test.
+
+1.  **Dynamic Timeout Configuration:**
+    * **Problem:** `pytket-projectq-runner` failed because the hardcoded `httpx` timeout (10s) in the API is too short for large simulations or unoptimized containers.
+    * **Action:** Move the timeout to an environment variable `RUNNER_TIMEOUT_SEC` (default to 30s or 60s) in `docker-compose.yml` and read it in `rosetta-api/main.py`.
+2.  **Browser Safety Valve:**
+    * **Problem:** Requesting a 20-qubit statevector crashed your browssimulationser.
+    * **Action:** Add a check in the API. If `len(statevector) > 1,000,000` (approx 20 qubits), do not return the raw list to the UI. Return a string placeholder like `"<Statevector too large for display: 16MB>"` so the user sees the memory usage without crashing.
+
+---
+
+### 📈 Phase 2: The "Scaling" Upgrade (The "scientific" path)
+Your new memory metrics (`Delta` vs `Theoretical`) are most valuable when viewed **across a range**. Instead of running *one* 20-qubit circuit, you should automate the curve.
+
+1.  **Parametric Benchmarking Endpoint:**
+    * Create `POST /run_scaling_suite`.
+    * **Input:** A QASM template (e.g., GHZ) and a range (e.g., `min_qubits=2`, `max_qubits=20`, `step=2`).
+    * **Logic:** The API generates 10 circuits, runs them all, and aggregates the data.
+2.  **Visual Plotting (Chart.js):**
+    * Update the UI to include a generic charting library.
+    * **Plot 1 (Time Complexity):** X-axis = Qubits, Y-axis = Time (Log Scale).
+    * **Plot 2 (Space Complexity):** X-axis = Qubits, Y-axis = Memory (show `Theoretical` as a baseline dotted line, and `Measured` as colored lines).
+    * *Value:* This visually proves which simulators allow for >30 qubits (Tensor Network / Stabilizer) vs. those that crash at 25 (Statevector).
+
+---
+
+### 🧠 Phase 3: The "Compiler" War (The "optimization" path)
+Currently, you benchmark the *execution* speed. But a huge part of the "Rosetta" value is translating languages.
+
+1.  **Transpilation Benchmarking:**
+    * Add a toggle: `Optimization Level` (0, 1, 2, 3).
+    * Measure **Compilation Time** vs. **Execution Time**.
+    * *Hypothesis:* Qiskit's compiler is slow but produces fast circuits. PennyLane is fast to compile but might produce slower circuits for certain backends.
+2.  **Circuit Depth Analysis:**
+    * Before running the simulation, have the API analyze the transpiled circuit.
+    * Report: "Original Depth: 20" -> "Transpiled Depth (Qiskit): 15" vs "Transpiled Depth (Cirq): 18".
+
+---
+
+### 🔮 Phase 4: The Content Library
+You currently have 3 hardcoded benchmark files.
+
+1.  **The "Classics" Suite:**
+    * Add standard algorithms: **QFT** (Quantum Fourier Transform), **Grover's Search**, **VQE** ansatz (Variational Quantum Eigensolver), and **QPE** (Quantum Phase Estimation).
+2.  **Random Circuit Generator:**
+    * Add a button "Generate Random Circuit (Depth D, Qubits N)".
+    * This is the industry standard for "Quantum Volume" style benchmarking to test raw stability without algorithmic shortcuts (like Qiskit's stabilizer trick).
+
+### Summary of Options
+
+| Path | Complexity | Value | Description |
+| :--- | :--- | :--- | :--- |
+| **Stability** | Low | High | Fix timeouts and prevent browser crashes. Essential for reliability. |
+| **Scaling** | Medium | **Very High** | Plotting Time/RAM vs Qubits ($N$). This turns data into insights. |
+| **Compilers** | High | Medium | Comparing optimization strategies (Transpilation depth vs speed). |
+| **Content** | Low | Medium | Adding QFT, Grover, and Random circuits. |
+
+**Which path excites you the most?** (I recommend starting with **Stability** to fix the ProjectQ error, then moving immediately to **Scaling** to utilize your new memory monitor).
+
+Here are some safety plans not to bankrupt myself:
+
+To host this safely without bankrupting yourself or crashing browsers, apply these three layers of defense:
+
+Layer 1: Gzip Compression (The "Free Lunch")
+
+Statevector JSON is highly compressible (text-based numbers). Enabling Gzip on your server (e.g., in FastAPI/Uvicorn or Nginx) can reduce the 16MB payload to ~2-3 MB.
+
+    Benefit: Reduces billing by ~80% and keeps you under the AWS API Gateway 10MB limit.
+
+    How: Add GZipMiddleware to your FastAPI app.
+
+Python
+
+from fastapi.middleware.gzip import GZipMiddleware
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+Layer 2: The "Presigned URL" Pattern (For Downloads)
+
+For your "Download Full Report" feature, do not stream the data through your API server.
+
+    Save to Object Storage: When the benchmark finishes, save the full JSON to AWS S3 (or Google Cloud Storage).
+
+    Generate a Link: The API returns a Presigned URL (a temporary, secure link to the file on S3).
+
+    Direct Download: The user's browser downloads the file directly from S3.
+
+    Benefit: This unloads your API server's CPU/RAM and is often cheaper or has a better free tier for pure storage retrieval.
+
+Layer 3: Hard Cap on "Free" Tier
+
+In your docker-compose.yml (or cloud env), set a hard limit on the n_shots or qubits for unauthenticated users.
+
+    Rule: MAX_QUBITS_PUBLIC=14 (Safe for browser/bandwidth).
+
+    Upsell/Auth: If qubits > 14, require an API key or login. This prevents anonymous abuse of your expensive 20-qubit simulations.

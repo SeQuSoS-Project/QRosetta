@@ -7,6 +7,8 @@ services:
     container_name: rosetta-api
     ports:
       - "8000:8000"
+    environment:
+      - RUNNER_TIMEOUT_SEC=60
     # --- FIX ---
     # We mount the whole directory so it can access
     # comparator.py, benchmarks/, and main.py
