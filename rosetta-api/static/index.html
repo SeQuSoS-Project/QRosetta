@@ -356,13 +356,41 @@ cx q[0],q[1];</textarea>
 
         function renderRankingTable(report, key, unit, panel) {
             let html = `<h3 class="font-semibold text-gray-900 mt-4 mb-2">${report.summary}</h3>`;
-            html += `<div class="overflow-x-auto border rounded-lg"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rank</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Simulator</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Value</th></tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
-            
-            report.ranking.forEach((r, i) => {
-                const val = r.status === 'success' && r[key] !== null ? `${r[key].toFixed(6)} ${unit}` : `<span class="text-red-600">Error</span>`;
-                html += `<tr><td class="px-4 py-3 text-sm text-gray-500">${i+1}</td><td class="px-4 py-3 text-sm font-medium text-gray-900">${r.simulator}</td><td class="px-4 py-3 text-sm text-gray-500 font-mono">${val}</td></tr>`;
-            });
-            html += `</tbody></table></div>`;
+
+            if (key === 'memory_usage_mb') {
+                // New Resource Report Table
+                html += `<div class="overflow-x-auto border rounded-lg"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" style="cursor: help; text-decoration: underline dotted;" title="The name of the runner service.">Simulator</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" style="cursor: help; text-decoration: underline dotted;" title="Actual RAM added by the circuit execution (End RSS - Start RSS). Can be 0 for small circuits using pre-allocated memory.">Mem Delta (MiB)</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" style="cursor: help; text-decoration: underline dotted;" title="The absolute maximum RAM used by the runner container during execution.">Process Peak (MiB)</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" style="cursor: help; text-decoration: underline dotted;" title="The mathematical minimum memory required for the statevector (16 bytes * 2^N).">Theoretical (MiB)</th>
+                </tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
+                
+                // The report is ranked by memory_usage_mb, which is fine.
+                report.ranking.forEach(r => {
+                    const mem_delta = r.status === 'success' && r.memory_usage_mb != null ? r.memory_usage_mb.toFixed(4) : `<span class="text-red-600">Error</span>`;
+                    const proc_peak = r.status === 'success' && r.process_peak_mb != null ? r.process_peak_mb.toFixed(1) : `<span class="text-red-600">Error</span>`;
+                    const theoretical = r.status === 'success' && r.theoretical_memory_mb != null ? r.theoretical_memory_mb.toFixed(4) : `<span class="text-red-600">Error</span>`;
+
+                    html += `<tr>
+                        <td class="px-4 py-3 text-sm font-medium text-gray-900">${r.simulator}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500 font-mono">${mem_delta}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500 font-mono">${proc_peak}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500 font-mono">${theoretical}</td>
+                    </tr>`;
+                });
+                html += `</tbody></table></div>`;
+
+            } else {
+                // Original Performance Report Table
+                html += `<div class="overflow-x-auto border rounded-lg"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rank</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Simulator</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Value</th></tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
+                
+                report.ranking.forEach((r, i) => {
+                    const val = r.status === 'success' && r[key] !== null ? `${r[key].toFixed(6)} ${unit}` : `<span class="text-red-600">Error</span>`;
+                    html += `<tr><td class="px-4 py-3 text-sm text-gray-500">${i+1}</td><td class="px-4 py-3 text-sm font-medium text-gray-900">${r.simulator}</td><td class="px-4 py-3 text-sm text-gray-500 font-mono">${val}</td></tr>`;
+                });
+                html += `</tbody></table></div>`;
+            }
             panel.innerHTML = html;
         }
 

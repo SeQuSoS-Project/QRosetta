@@ -1,0 +1,2875 @@
+PROJECT EXPORT FOR 'Quantum Rosetta' (qsimulators)
+===================================================
+Export Time: 2025-11-13_10-53-28
+
+## Project Directory Architecture (Full Path List)
+
+```
+.
+./app.py
+./design_guidelines.txt
+./docker-compose.yml
+./export
+./.git
+./pennylane-default-runner
+./pennylane-default-runner/Dockerfile
+./pennylane-default-runner/main.py
+./pennylane-default-runner/requirements.txt
+./pennylane-lightning-runner
+./pennylane-lightning-runner/Dockerfile
+./pennylane-lightning-runner/main.py
+./pennylane-lightning-runner/requirements.txt
+./pytket-braket-runner
+./pytket-braket-runner/Dockerfile
+./pytket-braket-runner/main.py
+./pytket-braket-runner/__pycache__
+./pytket-braket-runner/requirements.txt
+./pytket-cirq-runner
+./pytket-cirq-runner/Dockerfile
+./pytket-cirq-runner/main.py
+./pytket-cirq-runner/__pycache__
+./pytket-cirq-runner/requirements.txt
+./pytket-projectq-runner
+./pytket-projectq-runner/Dockerfile
+./pytket-projectq-runner/main.py
+./pytket-projectq-runner/__pycache__
+./pytket-projectq-runner/requirements.txt
+./pytket-qiskit-runner
+./pytket-qiskit-runner/Dockerfile
+./pytket-qiskit-runner/main.py
+./pytket-qiskit-runner/__pycache__
+./pytket-qiskit-runner/requirements.txt
+./pytket-quest-runner
+./pytket-quest-runner/Dockerfile
+./pytket-quest-runner/main.py
+./pytket-quest-runner/__pycache__
+./pytket-quest-runner/requirements.txt
+./pytket-qulacs-runner
+./pytket-qulacs-runner/Dockerfile
+./pytket-qulacs-runner/main.py
+./pytket-qulacs-runner/__pycache__
+./pytket-qulacs-runner/requirements.txt
+./rosetta-api
+./rosetta-api/benchmarks
+./rosetta-api/benchmarks/bell_state_2q.qasm
+./rosetta-api/benchmarks/ghz_state_3q.qasm
+./rosetta-api/benchmarks/rotation_1q.qasm
+./rosetta-api/comparator.py
+./rosetta-api/Dockerfile
+./rosetta-api/main.py
+./rosetta-api/__pycache__
+./rosetta-api/requirements.txt
+./rosetta-api/static
+./rosetta-api/static/index.html
+./shared
+./shared/qrosetta_commons
+./shared/qrosetta_commons/helpers.py
+./shared/qrosetta_commons/__init__.py
+./shared/qrosetta_commons/models.py
+./shared/setup.py
+./tests
+./tests/test_memory_monitor.py
+```
+
+===================================================
+## Source Code Files
+===================================================
+
+
+--- START OF FILE: ./app.py ---
+```
+
+```
+--- END OF FILE: ./app.py ---
+
+
+--- START OF FILE: ./design_guidelines.txt ---
+```
+Quantum Rosetta - Design Guidelines
+Version: 6.0 (As of 2025-11-12)
+
+This document outlines the current architecture of the Quantum Rosetta project and provides strict guidelines for all future development to ensure the project remains modular, maintainable, and extensible.
+
+==================================
+
+Current System Architecture
+==================================
+
+The project is a microservice architecture orchestrated by docker compose. It consists of one central "Brain" (rosetta-api) and eight isolated "Hands" (the simulator runners).
+
+1.1. Services (9 Total)
+
+rosetta-api: The central orchestration, analysis, and UI service.
+
+pytket-qiskit-runner: Runner for Qiskit Aer (uses Pytket).
+
+pytket-cirq-runner: Runner for Cirq (uses Pytket).
+
+pytket-qulacs-runner: Runner for Qulacs (uses Pytket).
+
+pytket-braket-runner: Runner for the local AWS Braket simulator (uses Pytket).
+
+pytket-projectq-runner: Runner for ProjectQ (uses Pytket).
+
+pytket-quest-runner: Runner for QuEST (uses Pytket).
+
+pennylane-lightning-runner: Runner for Pennylane Lightning (uses native PennyLane QASM parsing).
+
+pennylane-default-runner: Runner for Pennylane's default.qubit (uses native PennyLane QASM parsing).
+
+1.2. rosetta-api (The "Brain")
+
+The API service is responsible for all orchestration, circuit modification, result analysis, and front-end hosting.
+
+Smart Configuration: The RUNNER_SERVICES dictionary in main.py is the single source of truth. It defines runner capabilities (e.g., "statevector", "measured_native").
+
+Dynamic Routing: The API dynamically builds URL lists from the RUNNER_SERVICES config.
+
+Async Dispatch: Uses an internal _dispatch_to_runners helper to send jobs in parallel.
+
+Standardized Request Contract (The Core Logic):
+
+measured_native: Receives a modified_qasm string that has measurement operations added by the API.
+
+measured_sampled: Receives the original, unmodified QASM and must manually sample the resulting statevector.
+
+Analysis (comparator.py):
+
+Correctness (Statevector): create_divergence_report calculates fidelity and relative phase.
+
+Correctness (Counts): create_counts_report calculates the Jensen-Shannon (JS) divergence.
+
+Performance: create_performance_report ranks runners by execution_time_sec.
+
+Resources: create_resource_report ranks runners by memory_usage_mb.
+
+Web UI (MVP): The API serves a simple, modular, single-file front-end from its /static directory via StaticFiles. This UI is a "dumb" client that provides a user-friendly way to access all API endpoints.
+
+1.3. Runners (The "Hands")
+
+The runners are isolated services. Their only job is to execute a circuit, perform validated benchmarking, and return the raw data.
+
+Standardized Interface (The 3D Contract): Every runner must implement:
+
+POST /run: Accepts QASM, returns a statevector, execution_time_sec, and memory_usage_mb.
+
+POST /run_measured: Accepts QASM and n_shots, returns a counts dictionary, execution_time_sec, and memory_usage_mb.
+
+Specialized Implementations:
+
+measured_native: Uses the backend's native n_shots functionality.
+
+measured_sampled: Calculates the statevector and uses the _sample_from_statevector helper.
+
+Performance & Resource Benchmarking (Crucial): All benchmarking must follow this validated methodology to ensure scientific validity.
+
+Time (execution_time_sec): Measured using time.perf_counter() placed only around the core simulation call (e.g., backend.run(), job.result()).
+
+Memory (memory_usage_mb): Measured using the psutil library.
+
+gc.collect() must be called immediately before the "before" measurement to establish a clean baseline.
+
+The memory is measured using psutil.Process(os.getpid()).memory_info().rss.
+
+The reported value is the "delta" (mem_after - mem_before) in MiB. This method correctly captures memory allocated by C++ extensions (unlike tracemalloc).
+
+1.4. Code Modularity (qrosetta_commons)
+
+Common code is centralized into a formal, installable Python package qrosetta_commons, located in the shared/ directory.
+
+qrosetta_commons.models: Pydantic payloads.
+
+qrosetta_commons.helpers: _sample_from_statevector function.
+
+1.5. Build System (Docker)
+
+Build Context: docker-compose.yml uses the project root (.) as the context.
+
+Dockerfiles: Each Dockerfile copies its own files and the entire shared/ directory, which it installs using RUN pip install /tmp/shared-src.
+
+Volumes: File-specific volumes are used for live-reloading.
+
+1.6. Naming Conventions
+
+All runners must follow the [interface]-[backend]-runner pattern (e.g., pytket-qiskit-runner).
+
+==================================
+2. Future Development Guidelines
+
+All future additions and modifications must adhere to these rules.
+
+2.1. MUST DOs (The Contract)
+
+DO follow the Naming Convention ([interface]-[backend]-runner).
+
+DO register the new runner in the RUNNER_SERVICES dictionary in rosetta-api/main.py.
+
+DO define the capabilities (e.g., "statevector", "measured_native").
+
+DO implement the Standardized Runner Interface (/run, /run_measured) and return execution_time_sec and memory_usage_mb.
+
+DO follow the benchmarking methodology in Section 1.3 (using time.perf_counter(), gc.collect(), and psutil).
+
+DO import models from qrosetta_commons.models.
+
+DO use qrosetta_commons.helpers for common logic.
+
+DO keep dependencies isolated in the runner's requirements.txt.
+
+DO follow the existing Dockerfile pattern.
+
+DO add the new service to docker-compose.yml (using docker compose) with file-specific volumes.
+
+2.2. MUST DON'Ts (The Guardrails)
+
+DON'T break the interface.
+
+DON'T add runner-specific logic to the rosetta-api.
+
+DON'T duplicate code. Put shared logic in qrosetta_commons.
+
+DON'T use directory-level volumes (- ./my-runner:/app).
+
+DON'T use tracemalloc for memory profiling, as it fails to capture C++ backend allocations.
+```
+--- END OF FILE: ./design_guidelines.txt ---
+
+
+--- START OF FILE: ./docker-compose.yml ---
+```
+services:
+  # Service 1: The main user-facing API
+  api:
+    build:
+      context: .
+      dockerfile: ./rosetta-api/Dockerfile
+    container_name: rosetta-api
+    ports:
+      - "8000:8000"
+    # --- FIX ---
+    # We mount the whole directory so it can access
+    # comparator.py, benchmarks/, and main.py
+    volumes:
+      - ./rosetta-api:/app
+    # --- END FIX ---
+    depends_on:
+      - qiskit_runner
+      - cirq_runner
+      - qulacs_runner
+      - braket_runner
+      - projectq_runner
+      - quest_runner
+      - pennylane_runner
+      - pennylane_default_runner
+
+  # Our 6 runners
+  qiskit_runner:
+    build:
+      context: .
+      dockerfile: ./pytket-qiskit-runner/Dockerfile
+    container_name: pytket-qiskit-runner
+    ports:
+      - "8001:8000"
+    # --- FIX ---
+    # Mount only the main.py file, not the whole folder.
+    volumes:
+      - ./pytket-qiskit-runner/main.py:/app/main.py
+    # --- END FIX ---
+
+  cirq_runner:
+    build:
+      context: .
+      dockerfile: ./pytket-cirq-runner/Dockerfile
+    container_name: pytket-cirq-runner
+    ports:
+      - "8002:8000"
+    # --- FIX ---
+    volumes:
+      - ./pytket-cirq-runner/main.py:/app/main.py
+    # --- END FIX ---
+
+  qulacs_runner:
+    build:
+      context: .
+      dockerfile: ./pytket-qulacs-runner/Dockerfile
+    container_name: pytket-qulacs-runner
+    ports:
+      - "8003:8000"
+    # --- FIX ---
+    volumes:
+      - ./pytket-qulacs-runner/main.py:/app/main.py
+    # --- END FIX ---
+
+  braket_runner:
+    build:
+      context: .
+      dockerfile: ./pytket-braket-runner/Dockerfile
+    container_name: pytket-braket-runner
+    ports:
+      - "8004:8000"
+    # --- FIX ---
+    volumes:
+      - ./pytket-braket-runner/main.py:/app/main.py
+    # --- END FIX ---
+  
+  projectq_runner:
+    build:
+      context: .
+      dockerfile: ./pytket-projectq-runner/Dockerfile
+    container_name: pytket-projectq-runner
+    ports:
+      - "8005:8000"
+    # --- FIX ---
+    volumes:
+      - ./pytket-projectq-runner/main.py:/app/main.py
+    # --- END FIX ---
+
+  # --- THIS SERVICE IS CHANGED BACK ---
+  quest_runner:
+    build:
+      context: .
+      dockerfile: ./pytket-quest-runner/Dockerfile
+    container_name: pytket-quest-runner
+    ports:
+      - "8006:8000"
+    # --- FIX ---
+    volumes:
+      - ./pytket-quest-runner/main.py:/app/main.py
+    # --- END FIX ---
+
+  pennylane_runner:
+      build:
+        context: .
+        dockerfile: ./pennylane-lightning-runner/Dockerfile
+      container_name: pennylane-lightning-runner
+      ports:
+        - "8007:8000" # <-- Using a new port
+      volumes:
+        - ./pennylane-lightning-runner/main.py:/app/main.py
+
+  pennylane_default_runner:
+      build:
+        context: .
+        dockerfile: ./pennylane-default-runner/Dockerfile
+      container_name: pennylane-default-runner
+      ports:
+        - "8008:8000" # <-- Using a new port
+      volumes:
+        - ./pennylane-default-runner/main.py:/app/main.py
+
+
+```
+--- END OF FILE: ./docker-compose.yml ---
+
+
+--- START OF FILE: ./pennylane-default-runner/Dockerfile ---
+```
+FROM python:3.10-slim
+WORKDIR /app
+
+COPY pennylane-default-runner/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY shared /tmp/shared-src
+RUN pip install /tmp/shared-src
+
+COPY pennylane-default-runner/main.py .
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+--- END OF FILE: ./pennylane-default-runner/Dockerfile ---
+
+
+--- START OF FILE: ./pennylane-default-runner/main.py ---
+```
+from fastapi import FastAPI
+from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
+from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, calculate_theoretical_memory_mb
+import pennylane as qml
+import numpy as np
+import functools
+import time
+
+app = FastAPI(title="Pennylane Default Runner")
+
+# --- Helper Function (Unchanged) ---
+def get_num_qubits_from_qasm(qasm_string: str) -> int:
+    for line in qasm_string.split('\n'):
+        if line.strip().startswith("qreg"):
+            try:
+                return int(line.split('[')[1].split(']')[0])
+            except Exception:
+                pass
+    raise ValueError("Could not determine number of qubits from QASM.")
+
+
+@app.post("/run")
+async def run_circuit(payload: CircuitPayload):
+    print("Received statevector circuit data for Pennylane-Default simulation.")
+    try:
+        qasm_op = qml.from_qasm(payload.circuit_data)
+        num_qubits = get_num_qubits_from_qasm(payload.circuit_data)
+        dev = qml.device("default.qubit", wires=num_qubits, shots=None)
+
+        @functools.partial(qml.compile, pipeline=[])
+        @qml.qnode(dev)
+        def statevector_circuit():
+            qasm_op()
+            return qml.state()
+
+        with MemoryMonitor(interval=0.001) as monitor:
+            start_time = time.perf_counter()
+            
+            statevector = statevector_circuit()
+            
+            end_time = time.perf_counter()
+        
+        execution_time = end_time - start_time
+        memory_usage_mb = monitor.get_peak_usage_mb()
+        process_peak_mb = monitor.get_process_peak_mb()
+        theoretical_mb = calculate_theoretical_memory_mb(num_qubits)
+
+        statevector_str = [str(c) for c in statevector]
+
+        print(f"Pennylane-Default simulation successful in {execution_time:.4f}s.")
+
+        return {
+            "simulator": "pennylane-default",
+            "statevector": statevector_str,
+            "execution_time_sec": execution_time,
+            "memory_usage_mb": memory_usage_mb,
+            "theoretical_memory_mb": theoretical_mb,
+            "process_peak_mb": process_peak_mb
+        }
+    except Exception as e:
+        print(f"Error during Pennylane-Default simulation: {str(e)}")
+        return {
+            "simulator": "pennylane-default",
+            "error": str(e),
+            "execution_time_sec": 0.0,
+            "memory_usage_mb": 0.0,
+            "theoretical_memory_mb": 0.0,
+            "process_peak_mb": 0.0
+        }
+
+
+@app.post("/run_measured")
+async def run_measured_circuit(payload: MeasuredCircuitPayload):
+    print("Received measured circuit data for Pennylane-Default (manual sampling).")
+    try:
+        qasm_op = qml.from_qasm(payload.circuit_data)
+        num_qubits = get_num_qubits_from_qasm(payload.circuit_data)
+        dev = qml.device("default.qubit", wires=num_qubits, shots=None)
+
+        @functools.partial(qml.compile, pipeline=[])
+        @qml.qnode(dev)
+        def statevector_circuit():
+            qasm_op()
+            return qml.state() 
+
+        with MemoryMonitor(interval=0.001) as monitor:
+            start_time = time.perf_counter()
+            
+            statevector = statevector_circuit()
+            
+            end_time = time.perf_counter()
+
+        execution_time = end_time - start_time
+        memory_usage_mb = monitor.get_peak_usage_mb()
+        process_peak_mb = monitor.get_process_peak_mb()
+        theoretical_mb = calculate_theoretical_memory_mb(num_qubits)
+        
+        counts_dict = _sample_from_statevector(statevector, 
+                                               payload.n_shots, 
+                                               num_qubits)
+
+        print(f"Pennylane-Default manual sampling successful in {execution_time:.4f}s.")
+
+        return {
+            "simulator": "pennylane-default",
+            "counts": counts_dict,
+            "execution_time_sec": execution_time,
+            "memory_usage_mb": memory_usage_mb,
+            "theoretical_memory_mb": theoretical_mb,
+            "process_peak_mb": process_peak_mb
+        }
+    except Exception as e:
+        print(f"Error during Pennylane-Default measurement simulation: {str(e)}")
+        return {
+            "simulator": "pennylane-default",
+            "error": str(e),
+            "execution_time_sec": 0.0,
+            "memory_usage_mb": 0.0,
+            "theoretical_memory_mb": 0.0,
+            "process_peak_mb": 0.0
+        }
+```
+--- END OF FILE: ./pennylane-default-runner/main.py ---
+
+
+--- START OF FILE: ./pennylane-default-runner/requirements.txt ---
+```
+fastapi
+uvicorn[standard]
+psutil
+pennylane
+pennylane-qiskit
+```
+--- END OF FILE: ./pennylane-default-runner/requirements.txt ---
+
+
+--- START OF FILE: ./pennylane-lightning-runner/Dockerfile ---
+```
+FROM python:3.10-slim
+WORKDIR /app
+
+# Copy the runner-specific requirements
+COPY pennylane-lightning-runner/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the entire shared package source
+COPY shared /tmp/shared-src
+
+# Build and install the package
+RUN pip install /tmp/shared-src
+
+# Copy the runner-specific main file
+COPY pennylane-lightning-runner/main.py .
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+--- END OF FILE: ./pennylane-lightning-runner/Dockerfile ---
+
+
+--- START OF FILE: ./pennylane-lightning-runner/main.py ---
+```
+from fastapi import FastAPI
+from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
+from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, calculate_theoretical_memory_mb
+import pennylane as qml
+import numpy as np
+import functools
+import time
+
+app = FastAPI(title="Pennylane Lightning Runner")
+
+# --- Helper Function ---
+def get_num_qubits_from_qasm(qasm_string: str) -> int:
+    """A simple helper to find the number of qubits in a QASM string."""
+    for line in qasm_string.split('\n'):
+        if line.strip().startswith("qreg"):
+            try:
+                # e.g., "qreg q[3];"
+                return int(line.split('[')[1].split(']')[0])
+            except Exception:
+                pass
+    raise ValueError("Could not determine number of qubits from QASM.")
+
+
+@app.post("/run")
+async def run_circuit(payload: CircuitPayload):
+    print("Received statevector circuit data for Pennylane-Lightning simulation.")
+    try:
+        qasm_op = qml.from_qasm(payload.circuit_data)
+        num_qubits = get_num_qubits_from_qasm(payload.circuit_data)
+        dev = qml.device("lightning.qubit", wires=num_qubits, shots=None)
+
+        @functools.partial(qml.compile, 
+        pipeline=[])
+        @qml.qnode(dev)
+        def statevector_circuit():
+            qasm_op()
+            return qml.state()
+
+        with MemoryMonitor(interval=0.001) as monitor:
+            start_time = time.perf_counter()
+            
+            statevector = statevector_circuit()
+            
+            end_time = time.perf_counter()
+        
+        execution_time = end_time - start_time
+        memory_usage_mb = monitor.get_peak_usage_mb()
+        process_peak_mb = monitor.get_process_peak_mb()
+        theoretical_mb = calculate_theoretical_memory_mb(num_qubits)
+        
+        statevector_str = [str(c) for c in statevector]
+
+        print(f"Pennylane-Lightning statevector simulation successful in {execution_time:.4f}s.")
+        
+        return {
+            "simulator": "pennylane-lightning",
+            "statevector": statevector_str,
+            "execution_time_sec": execution_time,
+            "memory_usage_mb": memory_usage_mb,
+            "theoretical_memory_mb": theoretical_mb,
+            "process_peak_mb": process_peak_mb
+        }
+    except Exception as e:
+        print(f"Error during Pennylane-Lightning statevector simulation: {str(e)}")
+        return {
+            "simulator": "pennylane-lightning", 
+            "error": str(e),
+            "execution_time_sec": 0.0,
+            "memory_usage_mb": 0.0,
+            "theoretical_memory_mb": 0.0,
+            "process_peak_mb": 0.0
+        }
+
+
+@app.post("/run_measured")
+async def run_measured_circuit(payload: MeasuredCircuitPayload):
+    print("Received measured circuit data for Pennylane-Lightning (manual sampling).")
+    try:
+        qasm_op = qml.from_qasm(payload.circuit_data)
+        num_qubits = get_num_qubits_from_qasm(payload.circuit_data)
+        dev = qml.device("lightning.qubit", wires=num_qubits, shots=None)
+
+        @functools.partial(qml.compile, pipeline=[])
+        @qml.qnode(dev)
+        def statevector_circuit():
+            qasm_op()
+            return qml.state() 
+
+        with MemoryMonitor(interval=0.001) as monitor:
+            start_time = time.perf_counter()
+            
+            statevector = statevector_circuit()
+            
+            end_time = time.perf_counter()
+        
+        execution_time = end_time - start_time
+        memory_usage_mb = monitor.get_peak_usage_mb()
+        process_peak_mb = monitor.get_process_peak_mb()
+        theoretical_mb = calculate_theoretical_memory_mb(num_qubits)
+
+        counts_dict = _sample_from_statevector(statevector, 
+                                               payload.n_shots, 
+                                               num_qubits)
+
+        print(f"Pennylane-Lightning manual sampling successful in {execution_time:.4f}s.")
+        
+        return {
+            "simulator": "pennylane-lightning",
+            "counts": counts_dict,
+            "execution_time_sec": execution_time,
+            "memory_usage_mb": memory_usage_mb,
+            "theoretical_memory_mb": theoretical_mb,
+            "process_peak_mb": process_peak_mb
+        }
+    except Exception as e:
+        print(f"Error during Pennylane-Lightning measurement simulation: {str(e)}")
+        return {
+            "simulator": "pennylane-lightning", 
+            "error": str(e),
+            "execution_time_sec": 0.0,
+            "memory_usage_mb": 0.0,
+            "theoretical_memory_mb": 0.0,
+            "process_peak_mb": 0.0
+        }
+```
+--- END OF FILE: ./pennylane-lightning-runner/main.py ---
+
+
+--- START OF FILE: ./pennylane-lightning-runner/requirements.txt ---
+```
+fastapi
+uvicorn[standard]
+psutil
+pennylane  # We need the core library
+pennylane-lightning  # For the fast C++ simulator
+pennylane-qiskit
+```
+--- END OF FILE: ./pennylane-lightning-runner/requirements.txt ---
+
+
+--- START OF FILE: ./pytket-braket-runner/Dockerfile ---
+```
+FROM python:3.10-slim
+WORKDIR /app
+
+# Copy the runner-specific requirements
+COPY pytket-braket-runner/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the entire shared package source
+COPY shared /tmp/shared-src
+
+# Build and install the package
+RUN pip install /tmp/shared-src
+# Copy the runner-specific main file
+COPY pytket-braket-runner/main.py .
+
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+--- END OF FILE: ./pytket-braket-runner/Dockerfile ---
+
+
+--- START OF FILE: ./pytket-braket-runner/main.py ---
+```
+from fastapi import FastAPI
+from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
+from qrosetta_commons.helpers import MemoryMonitor, calculate_theoretical_memory_mb
+import numpy as np
+import pytket.qasm
+from pytket.extensions.braket import BraketBackend
+import time
+
+app = FastAPI(title="Braket Runner")
+
+@app.post("/run")
+async def run_circuit(payload: CircuitPayload):
+    print(f"Received circuit data for Braket simulation.")
+    try:
+        tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        backend = BraketBackend(local=True)
+        compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
+        
+        with MemoryMonitor(interval=0.001) as monitor:
+            start_time = time.perf_counter()
+            
+            handle = backend.process_circuit(compiled_circ)
+            statevector = backend.get_result(handle).get_state()
+            
+            end_time = time.perf_counter()
+
+        execution_time = end_time - start_time
+        memory_usage_mb = monitor.get_peak_usage_mb()
+        process_peak_mb = monitor.get_process_peak_mb()
+        theoretical_mb = calculate_theoretical_memory_mb(tk_circ.n_qubits)
+        
+        statevector_str = [str(c) for c in statevector]
+        
+        print(f"Braket simulation successful in {execution_time:.4f}s.")
+        
+        return {
+            "simulator": "braket",
+            "statevector": statevector_str,
+            "execution_time_sec": execution_time,
+            "memory_usage_mb": memory_usage_mb,
+            "theoretical_memory_mb": theoretical_mb,
+            "process_peak_mb": process_peak_mb
+        }
+    except Exception as e:
+        print(f"Error during Braket simulation: {str(e)}")
+        return { 
+            "simulator": "braket", 
+            "error": str(e),
+            "execution_time_sec": 0.0,
+            "memory_usage_mb": 0.0,
+            "theoretical_memory_mb": 0.0,
+            "process_peak_mb": 0.0
+        }
+
+@app.post("/run_measured")
+async def run_measured_circuit(payload: MeasuredCircuitPayload):
+    print(f"Received measured circuit data for Braket simulation.")
+    try:
+        tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        backend = BraketBackend(local=True)
+        compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
+        
+        with MemoryMonitor(interval=0.001) as monitor:
+            start_time = time.perf_counter()
+            
+            handle = backend.process_circuit(compiled_circ, 
+                                             n_shots=payload.n_shots)
+            counts = backend.get_result(handle).get_counts()
+                                             
+            end_time = time.perf_counter()
+        
+        execution_time = end_time - start_time
+        memory_usage_mb = monitor.get_peak_usage_mb()
+        process_peak_mb = monitor.get_process_peak_mb()
+        theoretical_mb = calculate_theoretical_memory_mb(tk_circ.n_qubits)
+        
+        counts_dict = { "".join(map(str, k)): v for k, v in counts.items() }
+
+        print(f"Braket measurement simulation successful in {execution_time:.4f}s.")
+        
+        return {
+            "simulator": "braket",
+            "counts": counts_dict,
+            "execution_time_sec": execution_time,
+            "memory_usage_mb": memory_usage_mb,
+            "theoretical_memory_mb": theoretical_mb,
+            "process_peak_mb": process_peak_mb
+        }
+    except Exception as e:
+        print(f"Error during Braket measurement simulation: {str(e)}")
+        return {
+            "simulator": "braket",
+            "error": str(e),
+            "execution_time_sec": 0.0,
+            "memory_usage_mb": 0.0,
+            "theoretical_memory_mb": 0.0,
+            "process_peak_mb": 0.0
+        }
+```
+--- END OF FILE: ./pytket-braket-runner/main.py ---
+
+
+--- START OF FILE: ./pytket-braket-runner/requirements.txt ---
+```
+fastapi
+uvicorn[standard]
+psutil
+pytket
+pytket-braket
+amazon-braket-sdk
+```
+--- END OF FILE: ./pytket-braket-runner/requirements.txt ---
+
+
+--- START OF FILE: ./pytket-cirq-runner/Dockerfile ---
+```
+FROM python:3.10-slim
+WORKDIR /app
+
+# Copy the runner-specific requirements
+COPY pytket-cirq-runner/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the entire shared package source
+COPY shared /tmp/shared-src
+
+# Build and install the package
+RUN pip install /tmp/shared-src
+
+# Copy the runner-specific main file
+COPY pytket-cirq-runner/main.py .
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+--- END OF FILE: ./pytket-cirq-runner/Dockerfile ---
+
+
+--- START OF FILE: ./pytket-cirq-runner/main.py ---
+```
+from fastapi import FastAPI
+from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
+from qrosetta_commons.helpers import MemoryMonitor, calculate_theoretical_memory_mb
+import numpy as np
+import pytket.qasm
+from pytket.extensions.cirq import tk_to_cirq  
+import cirq
+from pytket.extensions.cirq.backends.cirq import CirqStateSampleBackend
+import time
+
+app = FastAPI(title="Cirq Runner")
+
+@app.post("/run")
+async def run_circuit(payload: CircuitPayload):
+    print(f"Received circuit data for Cirq simulation.")
+    try:
+        tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        cirq_circ = tk_to_cirq(tk_circ)
+        simulator = cirq.Simulator(dtype=np.complex128)
+        
+        with MemoryMonitor(interval=0.001) as monitor:
+            start_time = time.perf_counter()
+            
+            result = simulator.simulate(cirq_circ)
+            statevector = result.final_state_vector
+            
+            end_time = time.perf_counter()
+        
+        execution_time = end_time - start_time
+        memory_usage_mb = monitor.get_peak_usage_mb()
+        process_peak_mb = monitor.get_process_peak_mb()
+        theoretical_mb = calculate_theoretical_memory_mb(tk_circ.n_qubits)
+        
+        statevector_str = [str(c) for c in statevector]
+        print(f"Cirq simulation successful in {execution_time:.4f}s.")
+        
+        return {
+            "simulator": "cirq",
+            "statevector": statevector_str,
+            "execution_time_sec": execution_time,
+            "memory_usage_mb": memory_usage_mb,
+            "theoretical_memory_mb": theoretical_mb,
+            "process_peak_mb": process_peak_mb
+        }
+    except Exception as e:
+        print(f"Error during Cirq simulation: {str(e)}")
+        return { 
+            "simulator": "cirq", 
+            "error": str(e),
+            "execution_time_sec": 0.0,
+            "memory_usage_mb": 0.0,
+            "theoretical_memory_mb": 0.0,
+            "process_peak_mb": 0.0
+        }
+
+@app.post("/run_measured")
+async def run_measured_circuit(payload: MeasuredCircuitPayload):
+    print(f"Received measured circuit data for Cirq simulation.")
+    try:
+        tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        backend = CirqStateSampleBackend()
+        compiled_circ = backend.get_compiled_circuit(tk_circ, 
+                                                     optimisation_level=0)
+        
+        with MemoryMonitor(interval=0.001) as monitor:
+            start_time = time.perf_counter()
+            
+            handle = backend.process_circuit(compiled_circ, 
+                                             n_shots=payload.n_shots)
+            counts = backend.get_result(handle).get_counts()
+            
+            end_time = time.perf_counter()
+        
+        execution_time = end_time - start_time
+        memory_usage_mb = monitor.get_peak_usage_mb()
+        process_peak_mb = monitor.get_process_peak_mb()
+        theoretical_mb = calculate_theoretical_memory_mb(tk_circ.n_qubits)
+        
+        counts_dict = { "".join(map(str, k)): v for k, v in counts.items() }
+
+        print(f"Cirq measurement simulation successful in {execution_time:.4f}s.")
+        
+        return {
+            "simulator": "cirq",
+            "counts": counts_dict,
+            "execution_time_sec": execution_time,
+            "memory_usage_mb": memory_usage_mb,
+            "theoretical_memory_mb": theoretical_mb,
+            "process_peak_mb": process_peak_mb
+        }
+    except Exception as e:
+        print(f"Error during Cirq measurement simulation: {str(e)}")
+        return {
+           "simulator": "cirq",
+           "error": str(e),
+           "execution_time_sec": 0.0,
+           "memory_usage_mb": 0.0,
+           "theoretical_memory_mb": 0.0,
+           "process_peak_mb": 0.0
+        }
+```
+--- END OF FILE: ./pytket-cirq-runner/main.py ---
+
+
+--- START OF FILE: ./pytket-cirq-runner/requirements.txt ---
+```
+fastapi
+uvicorn[standard]
+psutil
+pytket
+pytket-cirq
+cirq
+```
+--- END OF FILE: ./pytket-cirq-runner/requirements.txt ---
+
+
+--- START OF FILE: ./pytket-projectq-runner/Dockerfile ---
+```
+FROM python:3.10-slim
+WORKDIR /app
+
+# Copy the runner-specific requirements
+COPY pytket-projectq-runner/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the entire shared package source
+COPY shared /tmp/shared-src
+
+# Build and install the package
+RUN pip install /tmp/shared-src
+
+# Copy the runner-specific main file
+COPY pytket-projectq-runner/main.py .
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+--- END OF FILE: ./pytket-projectq-runner/Dockerfile ---
+
+
+--- START OF FILE: ./pytket-projectq-runner/main.py ---
+```
+from fastapi import FastAPI
+import numpy as np
+import pytket.qasm
+from pytket.extensions.projectq import ProjectQBackend
+from collections import Counter
+from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
+from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, calculate_theoretical_memory_mb
+import time
+
+app = FastAPI(title="ProjectQ Runner")
+
+@app.post("/run")
+async def run_circuit(payload: CircuitPayload):
+    print(f"Received circuit data for ProjectQ simulation.")
+    try:
+        tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        backend = ProjectQBackend()
+        compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
+        
+        with MemoryMonitor(interval=0.001) as monitor:
+            start_time = time.perf_counter()
+            
+            handle = backend.process_circuit(compiled_circ)
+            statevector = backend.get_result(handle).get_state()
+            
+            end_time = time.perf_counter()
+        
+        execution_time = end_time - start_time
+        memory_usage_mb = monitor.get_peak_usage_mb()
+        process_peak_mb = monitor.get_process_peak_mb()
+        theoretical_mb = calculate_theoretical_memory_mb(tk_circ.n_qubits)
+        
+        statevector_str = [str(c) for c in statevector]
+        print(f"ProjectQ simulation successful in {execution_time:.4f}s.")
+        
+        return {
+            "simulator": "projectq",
+            "statevector": statevector_str,
+            "execution_time_sec": execution_time,
+            "memory_usage_mb": memory_usage_mb,
+            "theoretical_memory_mb": theoretical_mb,
+            "process_peak_mb": process_peak_mb
+        }
+    except Exception as e:
+        print(f"Error during ProjectQ simulation: {str(e)}")
+        return { 
+            "simulator": "projectq", 
+            "error": str(e),
+            "execution_time_sec": 0.0,
+            "memory_usage_mb": 0.0,
+            "theoretical_memory_mb": 0.0,
+            "process_peak_mb": 0.0
+        }
+
+@app.post("/run_measured")
+async def run_measured_circuit(payload: MeasuredCircuitPayload):
+    print(f"Received measured circuit data for ProjectQ (manual sampling).")
+    try:
+        tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        n_qubits = tk_circ.n_qubits
+        
+        backend = ProjectQBackend()
+        compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
+        
+        with MemoryMonitor(interval=0.001) as monitor:
+            start_time = time.perf_counter()
+            
+            handle = backend.process_circuit(compiled_circ)
+            statevector = backend.get_result(handle).get_state()
+            
+            end_time = time.perf_counter()
+        
+        execution_time = end_time - start_time
+        memory_usage_mb = monitor.get_peak_usage_mb()
+        process_peak_mb = monitor.get_process_peak_mb()
+        theoretical_mb = calculate_theoretical_memory_mb(tk_circ.n_qubits)
+        
+        counts_dict = _sample_from_statevector(statevector, 
+                                               payload.n_shots, 
+                                               n_qubits)
+
+        print(f"ProjectQ manual sampling successful in {execution_time:.4f}s.")
+        
+        return {
+            "simulator": "projectq",
+            "counts": counts_dict,
+            "execution_time_sec": execution_time,
+            "memory_usage_mb": memory_usage_mb,
+            "theoretical_memory_mb": theoretical_mb,
+            "process_peak_mb": process_peak_mb
+        }
+    except Exception as e:
+        print(f"Error during ProjectQ measurement simulation: {str(e)}")
+        return {
+            "simulator": "projectq",
+            "error": str(e),
+            "execution_time_sec": 0.0,
+            "memory_usage_mb": 0.0,
+            "theoretical_memory_mb": 0.0,
+            "process_peak_mb": 0.0
+        }
+```
+--- END OF FILE: ./pytket-projectq-runner/main.py ---
+
+
+--- START OF FILE: ./pytket-projectq-runner/requirements.txt ---
+```
+fastapi
+uvicorn[standard]
+psutil
+pytket
+pytket-projectq
+```
+--- END OF FILE: ./pytket-projectq-runner/requirements.txt ---
+
+
+--- START OF FILE: ./pytket-qiskit-runner/Dockerfile ---
+```
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Copy the runner-specific requirements
+COPY pytket-qiskit-runner/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the entire shared package source
+COPY shared /tmp/shared-src
+
+# Build and install the package
+RUN pip install /tmp/shared-src
+
+# Copy the runner-specific main file
+COPY pytket-qiskit-runner/main.py .
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+--- END OF FILE: ./pytket-qiskit-runner/Dockerfile ---
+
+
+--- START OF FILE: ./pytket-qiskit-runner/main.py ---
+```
+from fastapi import FastAPI
+from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
+import pytket.qasm
+from pytket.extensions.qiskit import tk_to_qiskit
+from qiskit_aer import AerSimulator
+from qiskit.circuit import QuantumCircuit
+import time
+from qrosetta_commons.helpers import MemoryMonitor, calculate_theoretical_memory_mb
+
+app = FastAPI(title="Qiskit Runner")
+
+@app.post("/run")
+async def run_circuit(payload: CircuitPayload):
+    print(f"Received circuit data for Qiskit simulation.")
+    try:
+        tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        qiskit_circ = tk_to_qiskit(tk_circ)
+        qiskit_circ.save_statevector()
+        backend = AerSimulator(precision="double")
+        
+        with MemoryMonitor(interval=0.001) as monitor:
+            start_time = time.perf_counter()
+            
+            job = backend.run(qiskit_circ, optimization_level=0)
+            result = job.result()
+            statevector = result.get_statevector()
+            
+            end_time = time.perf_counter()
+
+        memory_usage_mb = monitor.get_peak_usage_mb()
+        process_peak_mb = monitor.get_process_peak_mb()
+        theoretical_mb = calculate_theoretical_memory_mb(tk_circ.n_qubits)
+        execution_time = end_time - start_time
+        
+        statevector_str = [str(c) for c in statevector]
+        print(f"Qiskit simulation successful in {execution_time:.4f}s.")
+        
+        return {
+            "simulator": "qiskit",
+            "statevector": statevector_str,
+            "execution_time_sec": execution_time,
+            "memory_usage_mb": memory_usage_mb,
+            "theoretical_memory_mb": theoretical_mb,
+            "process_peak_mb": process_peak_mb
+        }
+    except Exception as e:
+        print(f"Error during Qiskit simulation: {str(e)}")
+        return { 
+            "simulator": "qiskit", 
+            "error": str(e),
+            "execution_time_sec": 0.0,
+            "memory_usage_mb": 0.0,
+            "theoretical_memory_mb": 0.0,
+            "process_peak_mb": 0.0
+        }
+
+@app.post("/run_measured")
+async def run_measured_circuit(payload: MeasuredCircuitPayload):
+    print(f"Received measured circuit data for Qiskit simulation.")
+    try:
+        tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        qiskit_circ = tk_to_qiskit(tk_circ)
+        backend = AerSimulator(precision="double")
+
+        with MemoryMonitor(interval=0.001) as monitor:
+            start_time = time.perf_counter()
+            
+            job = backend.run(qiskit_circ, 
+                              optimization_level=0, 
+                              shots=payload.n_shots)
+            result = job.result()
+            counts = result.get_counts()
+            
+            end_time = time.perf_counter()
+
+        memory_usage_mb = monitor.get_peak_usage_mb()
+        process_peak_mb = monitor.get_process_peak_mb()
+        theoretical_mb = calculate_theoretical_memory_mb(tk_circ.n_qubits)
+        execution_time = end_time - start_time
+        
+        num_clbits = qiskit_circ.num_clbits
+        counts_dict = {}
+        if num_clbits > 0:
+            for k, v in counts.items():
+                if k.startswith('0x'):
+                    binary_key = format(int(k, 16), f'0{num_clbits}b')
+                else:
+                    binary_key = k.zfill(num_clbits)
+                counts_dict[binary_key] = v
+        else:
+            counts_dict = counts
+
+        print(f"Qiskit measurement simulation successful in {execution_time:.4f}s.")
+        
+        return {
+            "simulator": "qiskit",
+            "counts": counts_dict,
+            "execution_time_sec": execution_time,
+            "memory_usage_mb": memory_usage_mb,
+            "theoretical_memory_mb": theoretical_mb,
+            "process_peak_mb": process_peak_mb
+        }
+    except Exception as e:
+        print(f"Error during Qiskit measurement simulation: {str(e)}")
+        return {
+            "simulator": "qiskit",
+            "error": str(e),
+            "execution_time_sec": 0.0,
+            "memory_usage_mb": 0.0,
+            "theoretical_memory_mb": 0.0,
+            "process_peak_mb": 0.0
+        }
+```
+--- END OF FILE: ./pytket-qiskit-runner/main.py ---
+
+
+--- START OF FILE: ./pytket-qiskit-runner/requirements.txt ---
+```
+fastapi
+uvicorn[standard]
+psutil
+pytket
+pytket-qiskit
+```
+--- END OF FILE: ./pytket-qiskit-runner/requirements.txt ---
+
+
+--- START OF FILE: ./pytket-quest-runner/Dockerfile ---
+```
+FROM python:3.10-slim
+WORKDIR /app
+
+# Copy the runner-specific requirements
+COPY pytket-quest-runner/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the entire shared package source
+COPY shared /tmp/shared-src
+
+# Build and install the package
+RUN pip install /tmp/shared-src
+
+# Copy the runner-specific main file
+COPY pytket-quest-runner/main.py .
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+--- END OF FILE: ./pytket-quest-runner/Dockerfile ---
+
+
+--- START OF FILE: ./pytket-quest-runner/main.py ---
+```
+from fastapi import FastAPI
+import numpy as np
+import pytket.qasm
+from pytket.extensions.quest import QuESTBackend
+from collections import Counter
+from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
+from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, calculate_theoretical_memory_mb
+import time
+
+app = FastAPI(title="QuEST Runner")
+
+@app.post("/run")
+async def run_circuit(payload: CircuitPayload):
+    print(f"Received circuit data for QuEST simulation.")
+    try:
+        tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        backend = QuESTBackend()
+        compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
+        
+        with MemoryMonitor(interval=0.001) as monitor:
+            start_time = time.perf_counter()
+            
+            handle = backend.process_circuit(compiled_circ) 
+            statevector = backend.get_result(handle).get_state()
+            
+            end_time = time.perf_counter()
+        
+        execution_time = end_time - start_time
+        memory_usage_mb = monitor.get_peak_usage_mb()
+        process_peak_mb = monitor.get_process_peak_mb()
+        theoretical_mb = calculate_theoretical_memory_mb(tk_circ.n_qubits)
+        
+        statevector_str = [str(c) for c in statevector]
+        print(f"QuEST simulation successful in {execution_time:.4f}s.")
+        
+        return {
+            "simulator": "quest",
+            "statevector": statevector_str,
+            "execution_time_sec": execution_time,
+            "memory_usage_mb": memory_usage_mb,
+            "theoretical_memory_mb": theoretical_mb,
+            "process_peak_mb": process_peak_mb
+        }
+    except Exception as e:
+        print(f"Error during QuEST simulation: {str(e)}")
+        return { 
+            "simulator": "quest", 
+            "error": str(e),
+            "execution_time_sec": 0.0,
+            "memory_usage_mb": 0.0,
+            "theoretical_memory_mb": 0.0,
+            "process_peak_mb": 0.0
+        }
+
+@app.post("/run_measured")
+async def run_measured_circuit(payload: MeasuredCircuitPayload):
+    print(f"Received measured circuit data for QuEST (manual sampling).")
+    try:
+        tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        n_qubits = tk_circ.n_qubits
+        
+        backend = QuESTBackend()
+        compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
+        
+        with MemoryMonitor(interval=0.001) as monitor:
+            start_time = time.perf_counter()
+            
+            handle = backend.process_circuit(compiled_circ)
+            statevector = backend.get_result(handle).get_state()
+            
+            end_time = time.perf_counter()
+        
+        execution_time = end_time - start_time
+        memory_usage_mb = monitor.get_peak_usage_mb()
+        process_peak_mb = monitor.get_process_peak_mb()
+        theoretical_mb = calculate_theoretical_memory_mb(tk_circ.n_qubits)
+        
+        counts_dict = _sample_from_statevector(statevector, 
+                                               payload.n_shots, 
+                                               n_qubits)
+        
+        print(f"QuEST manual sampling successful in {execution_time:.4f}s.")
+        
+        return {
+            "simulator": "quest",
+            "counts": counts_dict,
+            "execution_time_sec": execution_time,
+            "memory_usage_mb": memory_usage_mb,
+            "theoretical_memory_mb": theoretical_mb,
+            "process_peak_mb": process_peak_mb
+        }
+    except Exception as e:
+        print(f"Error during QuEST measurement simulation: {str(e)}")
+        return {
+            "simulator": "quest",
+            "error": str(e),
+            "execution_time_sec": 0.0,
+            "memory_usage_mb": 0.0,
+            "theoretical_memory_mb": 0.0,
+            "process_peak_mb": 0.0
+        }
+```
+--- END OF FILE: ./pytket-quest-runner/main.py ---
+
+
+--- START OF FILE: ./pytket-quest-runner/requirements.txt ---
+```
+fastapi
+uvicorn[standard]
+psutil
+pytket
+pytket-quest
+```
+--- END OF FILE: ./pytket-quest-runner/requirements.txt ---
+
+
+--- START OF FILE: ./pytket-qulacs-runner/Dockerfile ---
+```
+FROM python:3.10-slim
+WORKDIR /app
+
+# Copy the runner-specific requirements
+COPY pytket-qulacs-runner/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the entire shared package source
+COPY shared /tmp/shared-src
+
+# Build and install the package
+RUN pip install /tmp/shared-src
+
+# Copy the runner-specific main file
+COPY pytket-qulacs-runner/main.py .
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+--- END OF FILE: ./pytket-qulacs-runner/Dockerfile ---
+
+
+--- START OF FILE: ./pytket-qulacs-runner/main.py ---
+```
+from fastapi import FastAPI
+from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
+from qrosetta_commons.helpers import MemoryMonitor, calculate_theoretical_memory_mb
+import numpy as np
+import pytket.qasm
+from pytket.extensions.qulacs import QulacsBackend
+import time
+
+app = FastAPI(title="Qulacs Runner")
+
+@app.post("/run")
+async def run_circuit(payload: CircuitPayload):
+    print(f"Received circuit data for Qulacs simulation.")
+    try:
+        tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        backend = QulacsBackend()
+        compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
+        
+        with MemoryMonitor(interval=0.001) as monitor:
+            start_time = time.perf_counter()
+            
+            handle = backend.process_circuit(compiled_circ) # n_shots=None
+            statevector = backend.get_result(handle).get_state()
+            
+            end_time = time.perf_counter()
+        
+        execution_time = end_time - start_time
+        memory_usage_mb = monitor.get_peak_usage_mb()
+        process_peak_mb = monitor.get_process_peak_mb()
+        theoretical_mb = calculate_theoretical_memory_mb(tk_circ.n_qubits)
+        
+        statevector_str = [str(c) for c in statevector]
+        
+        print(f"Qulacs simulation successful in {execution_time:.4f}s.")
+        
+        return {
+            "simulator": "qulacs",
+            "statevector": statevector_str,
+            "execution_time_sec": execution_time,
+            "memory_usage_mb": memory_usage_mb,
+            "theoretical_memory_mb": theoretical_mb,
+            "process_peak_mb": process_peak_mb
+        }
+    except Exception as e:
+        print(f"Error during Qulacs simulation: {str(e)}")
+        return { 
+            "simulator": "qulacs", 
+            "error": str(e),
+            "execution_time_sec": 0.0,
+            "memory_usage_mb": 0.0,
+            "theoretical_memory_mb": 0.0,
+            "process_peak_mb": 0.0
+        }
+
+@app.post("/run_measured")
+async def run_measured_circuit(payload: MeasuredCircuitPayload):
+    print(f"Received measured circuit data for Qulacs simulation.")
+    try:
+        tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        backend = QulacsBackend()
+        compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
+        
+        with MemoryMonitor(interval=0.001) as monitor:
+            start_time = time.perf_counter()
+            
+            handle = backend.process_circuit(compiled_circ, 
+                                             n_shots=payload.n_shots)
+            counts = backend.get_result(handle).get_counts()
+                                             
+            end_time = time.perf_counter()
+        
+        execution_time = end_time - start_time
+        memory_usage_mb = monitor.get_peak_usage_mb()
+        process_peak_mb = monitor.get_process_peak_mb()
+        theoretical_mb = calculate_theoretical_memory_mb(tk_circ.n_qubits)
+        
+        counts_dict = { "".join(map(str, k)): v for k, v in counts.items() }
+
+        print(f"Qulacs measurement simulation successful in {execution_time:.4f}s.")
+        
+        return {
+            "simulator": "qulacs",
+            "counts": counts_dict,
+            "execution_time_sec": execution_time,
+            "memory_usage_mb": memory_usage_mb,
+            "theoretical_memory_mb": theoretical_mb,
+            "process_peak_mb": process_peak_mb
+        }
+    except Exception as e:
+        print(f"Error during Qulacs measurement simulation: {str(e)}")
+        return {
+            "simulator": "qulacs",
+            "error": str(e),
+            "execution_time_sec": 0.0,
+            "memory_usage_mb": 0.0,
+            "theoretical_memory_mb": 0.0,
+            "process_peak_mb": 0.0
+        }
+```
+--- END OF FILE: ./pytket-qulacs-runner/main.py ---
+
+
+--- START OF FILE: ./pytket-qulacs-runner/requirements.txt ---
+```
+fastapi
+uvicorn[standard]
+psutil
+pytket
+pytket-qulacs
+```
+--- END OF FILE: ./pytket-qulacs-runner/requirements.txt ---
+
+
+--- START OF FILE: ./rosetta-api/benchmarks/bell_state_2q.qasm ---
+```
+OPENQASM 2.0;
+include "qelib1.inc";
+qreg q[2];
+creg c[2];
+h q[0];
+cx q[0],q[1];
+```
+--- END OF FILE: ./rosetta-api/benchmarks/bell_state_2q.qasm ---
+
+
+--- START OF FILE: ./rosetta-api/benchmarks/ghz_state_3q.qasm ---
+```
+OPENQASM 2.0;
+include "qelib1.inc";
+qreg q[3];
+h q[0];
+cx q[0],q[1];
+cx q[1],q[2];
+```
+--- END OF FILE: ./rosetta-api/benchmarks/ghz_state_3q.qasm ---
+
+
+--- START OF FILE: ./rosetta-api/benchmarks/rotation_1q.qasm ---
+```
+OPENQASM 2.0;
+include "qelib1.inc";
+qreg q[1];
+ry(0.5) q[0];
+```
+--- END OF FILE: ./rosetta-api/benchmarks/rotation_1q.qasm ---
+
+
+--- START OF FILE: ./rosetta-api/comparator.py ---
+```
+import numpy as np
+from scipy.spatial.distance import jensenshannon
+
+def parse_statevector(sv_str_list):
+    """Converts a list of complex number strings into a numpy array."""
+    if not sv_str_list:
+        return np.array([])
+    return np.array([complex(s) for s in sv_str_list])
+
+def create_divergence_report(results_list):
+    """
+    Generates a full report including fidelity, phase,
+    and a list of all divergence types (Normalization, Fidelity, Phase).
+    
+    Args:
+        results_list (list): The "raw_results" list from main.py, where
+                             each item is a dict from a runner.
+                             
+    Returns:
+        dict: A full divergence report.
+    """
+    
+    # --- 1. Data Preparation ---
+    
+    simulators = []
+    statevectors = []
+    
+    for res in results_list:
+        simulators.append(res.get('simulator', 'unknown'))
+        if "statevector" in res:
+            try:
+                statevectors.append(parse_statevector(res["statevector"]))
+            except Exception as e:
+                print(f"Error parsing statevector from {res.get('simulator')}: {e}")
+                statevectors.append(None) # Add None to keep lists in sync
+        else:
+            statevectors.append(None) # Add None if simulator failed
+
+    n = len(simulators)
+    
+    # Initialize matrices
+    fidelity_matrix = np.ones((n, n))
+    phase_matrix = np.zeros((n, n))
+    
+    # List to hold all found divergences
+    divergences_found = []
+    
+    # Define our strict tolerances for comparison
+    fidelity_tolerance = 1e-12
+    phase_tolerance = 1e-12
+    normalization_tolerance = 1e-9 # A bit looser for the initial norm check
+
+    # --- 2. Pairwise Comparison ---
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            sim_i = simulators[i]
+            sim_j = simulators[j]
+            sv_i = statevectors[i]
+            sv_j = statevectors[j]
+            
+            # Mark as -1 (Error/Skip) if either vector is missing
+            if sv_i is None or sv_j is None or sv_i.size == 0 or sv_j.size == 0:
+                fidelity_matrix[i, j] = -1.0
+                fidelity_matrix[j, i] = -1.0
+                continue
+                
+            if sv_i.shape != sv_j.shape:
+                fidelity_matrix[i, j] = 0.0 # Vectors are different shapes
+                fidelity_matrix[j, i] = 0.0
+                divergences_found.append({
+                    "type": "Shape Mismatch",
+                    "simulators": [sim_i, sim_j],
+                    "shapes": [sv_i.shape, sv_j.shape]
+                })
+                continue
+
+            # --- 3. Analysis ---
+            
+            try:
+                
+                # A. Check for Normalization Divergence (on raw vectors)
+                norm_i = np.linalg.norm(sv_i)
+                norm_j = np.linalg.norm(sv_j)
+                
+                if not np.isclose(norm_i, 1.0, atol=normalization_tolerance):
+                    divergences_found.append({
+                        "type": "Normalization",
+                        "simulator": sim_i,
+                        "norm": norm_i
+                    })
+                
+                if not np.isclose(norm_j, 1.0, atol=normalization_tolerance):
+                    divergences_found.append({
+                        "type": "Normalization",
+                        "simulator": sim_j,
+                        "norm": norm_j
+                    })
+
+                # B. Calculate Fidelity and Phase (on normalized vectors)
+                # This is the correct way: normalize FIRST, then compare.
+                # This prevents floating point norm errors from polluting fidelity.
+                sv_i_norm = sv_i / norm_i
+                sv_j_norm = sv_j / norm_j
+                
+                # Use the normalized vectors for the one, true inner product
+                inner_product = np.dot(np.conjugate(sv_i_norm), sv_j_norm)
+                
+                # Fidelity is the squared magnitude of the normalized inner product
+                fidelity = np.abs(inner_product)**2
+                
+                # Relative phase is the angle of that same inner product
+                relative_phase = np.angle(inner_product)
+
+                # Clamp fidelity near 1.0 for floating point precision
+                if np.isclose(fidelity, 1.0, atol=fidelity_tolerance):
+                    fidelity = 1.0
+                
+                # Clamp phase near 0.0 for floating point precision
+                if np.isclose(relative_phase, 0.0, atol=phase_tolerance):
+                    relative_phase = 0.0
+
+                # C. Populate matrices and report divergences
+                fidelity_matrix[i, j] = fidelity
+                fidelity_matrix[j, i] = fidelity
+                phase_matrix[i, j] = relative_phase
+                phase_matrix[j, i] = -relative_phase
+                
+                # Check for a *Fidelity* divergence (physically different states)
+                if fidelity < (1.0 - fidelity_tolerance):
+                    divergences_found.append({
+                        "type": "Fidelity",
+                        "simulators": [sim_i, sim_j],
+                        "fidelity": fidelity,
+                        "relative_phase": relative_phase
+                    })
+                # Check for a *Phase-only* divergence (physically same state, different convention)
+                elif relative_phase != 0.0:
+                    divergences_found.append({
+                        "type": "Phase",
+                        "simulators": [sim_i, sim_j],
+                        "fidelity": 1.0, # We know it's 1.0 from the 'elif'
+                        "relative_phase": relative_phase
+                    })
+
+            except Exception as e:
+                print(f"Error comparing {sim_i} and {sim_j}: {e}")
+                fidelity_matrix[i, j] = -1.0 # Mark as Error
+                fidelity_matrix[j, i] = -1.0
+
+    # --- 4. Final Report Assembly ---
+    
+    report = {
+        "simulators": simulators,
+        "fidelity_matrix": fidelity_matrix.tolist(),
+        "relative_phase_matrix": phase_matrix.tolist(),
+        "divergences_found": divergences_found
+    }
+    
+    return report
+
+def _normalize_counts(counts, n_shots):
+    """Converts a {bitstring: count} dict to a {bitstring: prob} dict."""
+    if n_shots == 0:
+        return {}
+    return {k: v / n_shots for k, v in counts.items()}
+
+# --- NEW COMPARATOR FUNCTION ---
+def create_counts_report(results_list, n_shots):
+    """
+    Generates a full report on the statistical divergence
+    between counts distributions using Jensen-Shannon (JS) divergence.
+    """
+    
+    simulators = [res.get('simulator', 'unknown') for res in results_list]
+    
+    # Get all bitstring outcomes observed by *any* simulator
+    all_bitstrings = set()
+    for res in results_list:
+        if "counts" in res:
+            all_bitstrings.update(res["counts"].keys())
+    
+    # Create a sorted, canonical list of all possible outcomes
+    all_bitstrings = sorted(list(all_bitstrings))
+    n_outcomes = len(all_bitstrings)
+    
+    # Create aligned probability vectors for each simulator
+    prob_vectors = []
+    for res in results_list:
+        if "counts" in res:
+            prob_vec = np.zeros(n_outcomes)
+            # Normalize the raw counts to get a probability distribution
+            norm_counts = _normalize_counts(res["counts"], n_shots)
+            
+            # Map the simulator's probabilities to the canonical list
+            for i, bitstring in enumerate(all_bitstrings):
+                prob_vec[i] = norm_counts.get(bitstring, 0.0)
+            
+            prob_vectors.append(prob_vec)
+        else:
+            prob_vectors.append(None) # For failed simulators
+
+    n = len(simulators)
+    
+    # Initialize the matrix for JS divergence
+    distance_matrix = np.zeros((n, n))
+    divergences_found = []
+    
+    # Define a threshold for what we consider a significant divergence
+    # JS divergence is bounded [0, 1].
+    divergence_threshold = 0.01 # (1% divergence)
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            sim_i = simulators[i]
+            sim_j = simulators[j]
+            pv_i = prob_vectors[i]
+            pv_j = prob_vectors[j]
+            
+            # Only compare if both simulators returned valid counts
+            if pv_i is not None and pv_j is not None:
+                # Calculate Jensen-Shannon divergence
+                # Note: scipy.spatial.distance.jensenshannon returns the
+                # *square root* of the JS divergence. We must square it.
+                js_div = (jensenshannon(pv_i, pv_j))**2
+                
+                # Handle potential float precision errors
+                if np.isnan(js_div):
+                    js_div = 0.0
+                
+                distance_matrix[i, j] = js_div
+                distance_matrix[j, i] = js_div
+                
+                if js_div > divergence_threshold:
+                    divergences_found.append({
+                        "type": "Distribution Divergence",
+                        "simulators": [sim_i, sim_j],
+                        "js_divergence": js_div
+                    })
+            else:
+                distance_matrix[i, j] = -1.0 # Error/Skip
+                distance_matrix[j, i] = -1.0
+                
+    return {
+        "simulators": simulators,
+        "statistical_distance_matrix (js_divergence)": distance_matrix.tolist(),
+        "divergences_found": divergences_found,
+        "all_outcomes_observed": all_bitstrings
+    }
+
+def create_performance_report(results_list: list) -> dict:
+    """
+    Generates a report on the execution time of each simulator.
+    """
+    performance_data = []
+    
+    for res in results_list:
+        sim_name = res.get('simulator', 'unknown')
+        
+        if 'error' in res:
+            performance_data.append({
+                "simulator": sim_name,
+                "status": "error",
+                "execution_time_sec": None
+            })
+        elif 'execution_time_sec' in res:
+            performance_data.append({
+                "simulator": sim_name,
+                "status": "success",
+                "execution_time_sec": res['execution_time_sec']
+            })
+    
+    # Sort the list by execution time (fastest first)
+    sorted_data = sorted(
+        performance_data, 
+        key=lambda x: (x['execution_time_sec'] is None, x['execution_time_sec'])
+    )
+    
+    return {
+        "summary": "Execution time in seconds (fastest first).",
+        "ranking": sorted_data
+    }
+
+# --- NEW FUNCTION ---
+def create_resource_report(results_list: list) -> dict:
+    """
+    Generates a report on the memory usage of each simulator.
+    """
+    resource_data = []
+    
+    for res in results_list:
+        sim_name = res.get('simulator', 'unknown')
+        
+        if 'error' in res:
+            resource_data.append({
+                "simulator": sim_name,
+                "status": "error",
+                "memory_usage_mb": None,
+                "process_peak_mb": None,
+                "theoretical_memory_mb": None
+            })
+        else:
+            resource_data.append({
+                "simulator": sim_name,
+                "status": "success",
+                "memory_usage_mb": res.get('memory_usage_mb'),
+                "process_peak_mb": res.get('process_peak_mb'),
+                "theoretical_memory_mb": res.get('theoretical_memory_mb')
+            })
+    
+    # Sort the list by memory usage (lowest first)
+    sorted_data = sorted(
+        resource_data, 
+        key=lambda x: (x['memory_usage_mb'] is None, x['memory_usage_mb'])
+    )
+    
+    return {
+        "summary": "Memory usage delta in MiB (lowest first).",
+        "ranking": sorted_data
+    }
+```
+--- END OF FILE: ./rosetta-api/comparator.py ---
+
+
+--- START OF FILE: ./rosetta-api/Dockerfile ---
+```
+FROM python:3.10-slim
+WORKDIR /app
+
+# Copy the API's requirements
+COPY rosetta-api/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy ALL the API's code (main.py, comparator.py, benchmarks/)
+COPY rosetta-api/ .
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+--- END OF FILE: ./rosetta-api/Dockerfile ---
+
+
+--- START OF FILE: ./rosetta-api/main.py ---
+```
+from fastapi import FastAPI
+from pydantic import BaseModel
+import pytket.qasm
+import httpx
+import asyncio
+import os
+import glob
+import comparator 
+import gc
+
+# --- NEW IMPORTS ---
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+# --- END NEW IMPORTS ---
+
+from pytket.circuit import Circuit
+
+app = FastAPI(title="Quantum Rosetta API")
+
+# --- NEW: MOUNT STATIC DIRECTORY ---
+# This serves all files from the 'static' folder (like index.html)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+# --- PAYLOADS ---
+class QasmPayload(BaseModel):
+    qasm_string: str
+class MeasuredQasmPayload(BaseModel):
+    qasm_string: str
+    n_shots: int = 1024
+class MeasuredBenchmarkPayload(BaseModel):
+    n_shots: int = 1024
+
+# --- CONFIGURATION (8 Runners, 2 Categories) ---
+RUNNER_SERVICES = {
+    # Category 1: Native Samplers (work with our modified QASM)
+    "pytket-qiskit-runner": {
+        "base_url": os.getenv("PYTKET_QISKIT_RUNNER_URL", "http://pytket-qiskit-runner:8000"),
+        "capabilities": ["statevector", "measured_native"]
+    },
+    "pytket-cirq-runner":   {
+        "base_url": os.getenv("PYTKET_CIRQ_RUNNER_URL", "http://pytket-cirq-runner:8000"),
+        "capabilities": ["statevector", "measured_native"]
+    },
+    "pytket-qulacs-runner": {
+        "base_url": os.getenv("PYTKET_QULACS_RUNNER_URL", "http://pytket-qulacs-runner:8000"),
+        "capabilities": ["statevector", "measured_native"]
+    },
+    "pytket-braket-runner": {
+        "base_url": os.getenv("PYTKET_BRAKET_RUNNER_URL", "http://pytket-braket-runner:8000"),
+        "capabilities": ["statevector", "measured_native"]
+    },
+    
+    # Category 2: Statevector Samplers (need original QASM)
+    "pytket-projectq-runner": {
+        "base_url": os.getenv("PYTKET_PROJECTQ_RUNNER_URL", "http://pytket-projectq-runner:8000"),
+        "capabilities": ["statevector", "measured_sampled"]
+    },
+    "pytket-quest-runner":  {
+        "base_url": os.getenv("PYTKET_QUEST_RUNNER_URL", "http://pytket-quest-runner:8000"),
+        "capabilities": ["statevector", "measured_sampled"]
+    },
+    "pennylane-lightning-runner":  {
+        "base_url": os.getenv("PENNYLANE_LIGHTNING_RUNNER_URL", "http://pennylane-lightning-runner:8000"),
+        "capabilities": ["statevector", "measured_sampled"]
+    },
+    "pennylane-default-runner":  {
+        "base_url": os.getenv("PENNYLANE_DEFAULT_RUNNER_URL", "http://pennylane-default-runner:8000"),
+        "capabilities": ["statevector", "measured_sampled"]
+    }
+    # pennylane-qiskit-runner removed as it is incompatible
+}
+
+# --- DYNAMIC URL BUILDERS (2 Groups) ---
+STATEVECTOR_RUNNER_URLS = {
+    name: f"{config['base_url']}/run" for name, config in RUNNER_SERVICES.items() 
+    if "statevector" in config["capabilities"]
+}
+# Group 1: Native samplers that get MODIFIED QASM
+NATIVE_SAMPLING_URLS = {
+    name: f"{config['base_url']}/run_measured" for name, config in RUNNER_SERVICES.items()
+    if "measured_native" in config["capabilities"]
+}
+# Group 2: Statevector samplers that get ORIGINAL QASM
+SAMPLED_SV_URLS = {
+    name: f"{config['base_url']}/run_measured" for name, config in RUNNER_SERVICES.items()
+    if "measured_sampled" in config["capabilities"]
+}
+
+
+# --- MODULAR DISPATCH LOGIC ---
+async def _dispatch_to_runners(runner_urls: dict, runner_payload: dict) -> list:
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        dispatch_tasks = []
+        for sim_name, url in runner_urls.items():
+            print(f"Dispatching job to {sim_name}...") 
+            dispatch_tasks.append(client.post(url, json=runner_payload))
+
+        responses = await asyncio.gather(*dispatch_tasks, return_exceptions=True)
+
+    aggregated_results = []
+    for i, res in enumerate(responses):
+        sim_name = list(runner_urls.keys())[i]
+        if isinstance(res, httpx.Response):
+            try:
+                aggregated_results.append(res.json())
+            except Exception as e:
+                aggregated_results.append({
+                    "simulator": sim_name,
+                    "error": f"Failed to decode JSON response: {str(e)}. Response text: {res.text}"
+                })
+        else:
+            aggregated_results.append({
+                "simulator": sim_name,
+                "error": f"Failed to get response: {str(res)}"
+            })
+    return aggregated_results
+
+
+# --- CORE LOGIC FUNCTIONS ---
+async def run_single_circuit_comparison(qasm_string: str):
+    print(f"Processing circuit...")
+    try:
+        tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_string)
+        print(f"Successfully parsed QASM into {tk_circ.n_qubits} qubit circuit.")
+        runner_payload = {"circuit_data": qasm_string}
+    except Exception as e:
+        return { "input_qasm": qasm_string, "error": str(e) }
+
+    aggregated_results = await _dispatch_to_runners(
+        runner_urls=STATEVECTOR_RUNNER_URLS,
+        runner_payload=runner_payload
+    )
+
+    print("Generating divergence report...")
+    divergence_report = comparator.create_divergence_report(aggregated_results)
+    
+    print("Generating performance report...")
+    performance_report = comparator.create_performance_report(aggregated_results)
+
+    print("Generating resource report...")
+    resource_report = comparator.create_resource_report(aggregated_results)
+
+    return {
+        "input_qasm": qasm_string,
+        "divergence_report": divergence_report,
+        "performance_report": performance_report,
+        "resource_report": resource_report,
+        "raw_results": aggregated_results
+    }
+
+
+async def run_single_circuit_measurement(qasm_string: str, n_shots: int):
+    """
+    (REFACTO RED - Counts)
+    Dispatches TWO types of payloads:
+    1. ORIGINAL QASM to sampled runners.
+    2. MODIFIED QASM to native runners.
+    """
+    print(f"Processing measured circuit for {n_shots} shots...")
+
+    # --- Payload 1: For SAMPLED_SV_URLS ---
+    sampled_payload = {
+        "circuit_data": qasm_string,
+        "n_shots": n_shots
+    }
+
+    # --- Payload 2: For NATIVE_SAMPLING_URLS ---
+    try:
+        tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_string)
+        n_qubits = tk_circ.n_qubits
+        c_reg_name = "c"
+        if c_reg_name not in [reg.name for reg in tk_circ.c_registers]:
+            tk_circ.add_c_register(c_reg_name, n_qubits)
+        
+        all_qubits = tk_circ.qubits
+        c_register = tk_circ.get_c_register(c_reg_name)
+        
+        for i in range(n_qubits):
+            tk_circ.Measure(all_qubits[i], c_register[i])
+
+        modified_qasm_string = pytket.qasm.circuit_to_qasm_str(tk_circ)
+        native_payload = {
+            "circuit_data": modified_qasm_string,
+            "n_shots": n_shots
+        }
+    except Exception as e:
+        return { "input_qasm": qasm_string, "error": str(e) }
+
+    # --- Dispatch both sets of jobs in parallel ---
+    sampled_task = _dispatch_to_runners(SAMPLED_SV_URLS, sampled_payload)
+    native_task = _dispatch_to_runners(NATIVE_SAMPLING_URLS, native_payload)
+
+    results_sampled, results_native = await asyncio.gather(sampled_task, native_task)
+
+    # Combine all results
+    aggregated_results = results_native + results_sampled
+
+    # --- Call the comparators ---
+    try:
+        print("Generating counts divergence report...")
+        divergence_report = comparator.create_counts_report(aggregated_results, n_shots)
+        
+        print("Generating performance report...")
+        performance_report = comparator.create_performance_report(aggregated_results)
+        
+        print("Generating resource report...")
+        resource_report = comparator.create_resource_report(aggregated_results)
+        
+    except Exception as e:
+        return {
+            "input_qasm": qasm_string, "n_shots": n_shots,
+            "error": f"Error during comparison: {str(e)}",
+            "raw_results": aggregated_results
+        }
+    
+    return {
+        "input_qasm": qasm_string,
+        "modified_qasm_for_native_runners": modified_qasm_string,
+        "n_shots": n_shots,
+        "divergence_report": divergence_report,
+        "performance_report": performance_report,
+        "resource_report": resource_report,
+        "raw_results": aggregated_results
+    }
+
+# --- USER-FACING ENDPOINTS ---
+
+# --- UPDATED ENDPOINT ---
+@app.get("/")
+async def read_index():
+    """Serves the main HTML page."""
+    return FileResponse('static/index.html')
+
+@app.post("/compare")
+async def compare_circuits_endpoint(payload: QasmPayload):
+    return await run_single_circuit_comparison(payload.qasm_string)
+
+@app.post("/compare_measured")
+async def compare_measured_circuits_endpoint(payload: MeasuredQasmPayload):
+    return await run_single_circuit_measurement(payload.qasm_string, 
+                                                payload.n_shots)
+
+@app.post("/run_benchmark_suite")
+async def run_benchmark_suite_endpoint():
+    benchmark_dir = "benchmarks/"
+    qasm_files = glob.glob(os.path.join(benchmark_dir, "*.qasm"))
+    
+    if not qasm_files:
+        return {"error": f"No .qasm files found in {benchmark_dir}"}
+        
+    print(f"--- Starting Statevector Benchmark Suite ---")
+    benchmark_summary = []
+    
+    for qasm_file_path in qasm_files:
+        print(f"--- Running test: {qasm_file_path} ---")
+        try:
+            with open(qasm_file_path, 'r') as f:
+                qasm_string = f.read()
+            
+            report = await run_single_circuit_comparison(qasm_string)
+            report["benchmark_file"] = qasm_file_path
+            benchmark_summary.append(report)
+            
+        except Exception as e:
+            benchmark_summary.append({
+                "benchmark_file": qasm_file_path,
+                "error": f"Failed to read or process file: {str(e)}"
+            })
+            
+    print(f"--- Statevector Benchmark Suite Complete ---")
+    return {"benchmark_summary": benchmark_summary}
+
+
+@app.post("/run_measured_benchmark_suite")
+async def run_measured_benchmark_suite_endpoint(payload: MeasuredBenchmarkPayload):
+    benchmark_dir = "benchmarks/"
+    qasm_files = glob.glob(os.path.join(benchmark_dir, "*.qasm"))
+    n_shots = payload.n_shots
+    
+    if not qasm_files:
+        return {"error": f"No .qasm files found in {benchmark_dir}"}
+        
+    print(f"--- Starting Measured Benchmark Suite ({n_shots} shots) ---")
+    benchmark_summary = []
+    
+    for qasm_file_path in qasm_files:
+        print(f"--- Running test: {qasm_file_path} ---")
+        try:
+            with open(qasm_file_path, 'r') as f:
+                qasm_string = f.read()
+            
+            report = await run_single_circuit_measurement(qasm_string, n_shots)
+            report["benchmark_file"] = qasm_file_path
+            benchmark_summary.append(report)
+            
+        except Exception as e:
+            benchmark_summary.append({
+                "benchmark_file": qasm_file_path,
+                "error": f"Failed to read or process file: {str(e)}"
+            })
+            
+    print(f"--- Measured Benchmark Suite Complete ---")
+    return {"benchmark_summary": benchmark_summary}
+```
+--- END OF FILE: ./rosetta-api/main.py ---
+
+
+--- START OF FILE: ./rosetta-api/requirements.txt ---
+```
+fastapi
+uvicorn[standard]
+pytket
+requests
+httpx
+scipy
+```
+--- END OF FILE: ./rosetta-api/requirements.txt ---
+
+
+--- START OF FILE: ./rosetta-api/static/index.html ---
+```
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Rosetta</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .loader {
+            border-top-color: #3b82f6;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .matrix-table th.sim-header {
+            writing-mode: vertical-rl;
+            transform: rotate(180deg);
+            white-space: nowrap;
+            padding-bottom: 8px;
+        }
+    </style>
+</head>
+<body class="h-full font-sans text-gray-900">
+    <div class="flex flex-col h-screen">
+        <header class="bg-white border-b border-gray-200 shadow-sm">
+            <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+                <div class="flex h-16 items-center justify-between">
+                    <div class="flex items-center">
+                        <span class="ml-3 text-2xl font-bold text-gray-900">Quantum Rosetta</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-1 flex flex-col md:flex-row min-h-0">
+            
+            <div class="w-full md:w-1/2 p-4 sm:p-6 lg:p-8 flex flex-col border-r border-gray-200 overflow-y-auto bg-white">
+                <div>
+                    <h2 class="text-xl font-semibold text-gray-900 mb-4">On-Demand Comparison</h2>
+                    <textarea id="qasm-input" class="w-full h-64 md:flex-1 p-3 bg-gray-50 border border-gray-300 rounded-md text-gray-900 font-mono text-sm resize-y focus:outline-none focus:ring-2 focus:ring-blue-500">OPENQASM 2.0;
+include "qelib1.inc";
+qreg q[2];
+h q[0];
+cx q[0],q[1];</textarea>
+                    <div class="mt-4">
+                        <label for="shots" class="block text-sm font-medium text-gray-700">Shots (for Measurement)</label>
+                        <input type="number" id="shots" value="1024" class="mt-1 block w-full bg-white border border-gray-300 rounded-md px-3 py-2 text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 sm:text-sm">
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+                        <button onclick="runComparison('statevector')" id="btn-statevector" class="flex items-center justify-center rounded-md bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 text-white transition-all">Compare Statevectors</button>
+                        <button onclick="runComparison('measured')" id="btn-measured" class="flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 text-white transition-all">Compare Measurements</button>
+                    </div>
+                </div>
+                <div class="mt-8 pt-8 border-t border-gray-200">
+                    <h2 class="text-xl font-semibold text-gray-900 mb-2">Benchmark Suite</h2>
+                    <p class="text-sm text-gray-600 mb-4">Run all pre-loaded <code>.qasm</code> files from the server.</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <button onclick="runBenchmark('statevector')" id="btn-bench-statevector" class="flex items-center justify-center rounded-md bg-green-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-green-500 text-white transition-all">Run Statevector Suite</button>
+                        <button onclick="runBenchmark('measured')" id="btn-bench-measured" class="flex items-center justify-center rounded-md bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 text-white transition-all">Run Measured Suite</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="w-full md:w-1/2 p-4 sm:p-6 lg:p-8 flex flex-col overflow-y-auto bg-gray-50">
+                <div class="flex-1 flex flex-col rounded-lg min-h-0 relative bg-white border border-gray-200 shadow-sm">
+                    <div id="loader" class="absolute inset-0 z-10 flex items-center justify-center bg-white bg-opacity-75 rounded-lg hidden">
+                        <div class="loader h-12 w-12 rounded-full border-4 border-t-4 border-gray-200"></div>
+                    </div>
+                    
+                    <div id="back-button-container" class="hidden p-4 border-b border-gray-200">
+                        <button onclick="renderSuiteSummary(currentSuiteData, currentSuiteTitle)" class="text-sm font-medium text-blue-600 hover:text-blue-500">&larr; Back to Suite Summary</button>
+                    </div>
+
+                    <nav class="flex border-b border-gray-200" id="tab-nav"></nav>
+
+                    <div class="flex-1 overflow-y-auto" id="tab-content">
+                        <div id="welcome-message" class="p-4 text-gray-500 block">Enter QASM code on the left and click a button to run a comparison.</div>
+                        
+                        <div id="summary-panel" class="p-4 hidden"></div>
+                        <div id="performance-panel" class="p-4 hidden"></div>
+                        <div id="resources-panel" class="p-4 hidden"></div>
+                        <div id="divergence-panel" class="p-4 hidden"></div>
+                        <div id="suite-summary-panel" class="p-4 hidden"></div>
+                        
+                        <div id="raw-panel" class="p-0 hidden relative">
+                             <button id="copy-btn" onclick="copyRawJson(this)" class="absolute top-2 right-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-medium py-1 px-3 rounded-md transition-all z-10">Copy</button>
+                             <pre id="json-output" class="h-full w-full p-4 overflow-auto text-xs text-gray-700 whitespace-pre-wrap break-words bg-gray-50 rounded-b-lg"></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // --- INIT ---
+        
+        // --- GLOBAL STATE ---
+        let currentSuiteData = null;
+        let currentSuiteTitle = '';
+        
+        // --- DOM ELEMENTS ---
+        const qasmInput = document.getElementById('qasm-input');
+        const shotsInput = document.getElementById('shots');
+        const loader = document.getElementById('loader');
+        const tabNav = document.getElementById('tab-nav');
+        const welcomeMessage = document.getElementById('welcome-message');
+        const backButtonContainer = document.getElementById('back-button-container');
+        const jsonOutput = document.getElementById('json-output');
+
+        const panelElements = {
+            'summary': document.getElementById('summary-panel'),
+            'performance': document.getElementById('performance-panel'),
+            'resources': document.getElementById('resources-panel'),
+            'divergence': document.getElementById('divergence-panel'),
+            'raw': document.getElementById('raw-panel'),
+            'suite-summary': document.getElementById('suite-summary-panel')
+        };
+
+        const allButtons = [
+            document.getElementById('btn-statevector'),
+            document.getElementById('btn-measured'),
+            document.getElementById('btn-bench-statevector'),
+            document.getElementById('btn-bench-measured')
+        ];
+
+        // --- CORE FUNCTIONS ---
+
+        function setLoading(isLoading) {
+            if (isLoading) {
+                loader.classList.remove('hidden');
+                loader.classList.add('flex');
+                allButtons.forEach(btn => btn.disabled = true);
+            } else {
+                loader.classList.add('hidden');
+                loader.classList.remove('flex');
+                allButtons.forEach(btn => btn.disabled = false);
+            }
+        }
+
+        function clearReport() {
+            welcomeMessage.classList.add('hidden');
+            tabNav.innerHTML = '';
+            backButtonContainer.classList.add('hidden');
+            
+            Object.entries(panelElements).forEach(([key, panel]) => {
+                if (key !== 'raw') {
+                    panel.innerHTML = '';
+                }
+                panel.classList.add('hidden');
+            });
+            
+            jsonOutput.textContent = '';
+        }
+
+        function showTab(tabName) {
+            welcomeMessage.classList.add('hidden');
+            
+            Object.values(panelElements).forEach(panel => panel.classList.add('hidden'));
+            
+            const panel = panelElements[tabName];
+            if (panel) panel.classList.remove('hidden');
+
+            // Update Buttons
+            tabNav.querySelectorAll('button').forEach(btn => {
+                btn.classList.remove('border-blue-600', 'text-blue-600');
+                btn.classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-700');
+            });
+            const activeBtn = tabNav.querySelector(`[data-tab="${tabName}"]`);
+            if (activeBtn) {
+                activeBtn.classList.add('border-blue-600', 'text-blue-600');
+                activeBtn.classList.remove('border-transparent', 'text-gray-500', 'hover:text-gray-700');
+            }
+        }
+
+        function renderTabs(tabList) {
+            tabNav.innerHTML = '';
+            tabList.forEach(tabName => {
+                const button = document.createElement('button');
+                button.className = 'ml-4 px-3 py-3 font-medium text-sm border-b-2 border-transparent text-gray-500 hover:text-gray-700';
+                button.textContent = tabName.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase());
+                if (tabName === 'raw') button.textContent = "Raw JSON";
+                button.dataset.tab = tabName;
+                button.onclick = () => showTab(tabName);
+                tabNav.appendChild(button);
+            });
+        }
+
+        // --- API CALLS ---
+
+        async function runComparison(type) {
+            const qasm = qasmInput.value.trim();
+            if (!qasm) { alert("Please enter QASM code."); return; }
+
+            const endpoint = type === 'statevector' ? '/compare' : '/compare_measured';
+            const payload = type === 'statevector' ? { qasm_string: qasm } : { qasm_string: qasm, n_shots: parseInt(shotsInput.value) || 1024 };
+            const title = type === 'statevector' ? 'Statevector Report' : 'Measurement Report';
+
+            setLoading(true);
+            clearReport();
+
+            try {
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!res.ok) {
+                    const errorText = await res.text();
+                    throw new Error(`HTTP error! Status: ${res.status} ${res.statusText}. Details: ${errorText}`);
+                }
+
+                const data = await res.json();
+                renderDetailReport(data, title);
+            } catch (e) {
+                console.error(e);
+                renderDetailReport({ error: e.message }, "Error");
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        async function runBenchmark(type) {
+            const endpoint = type === 'statevector' ? '/run_benchmark_suite' : '/run_measured_benchmark_suite';
+            const payload = type === 'statevector' ? {} : { n_shots: parseInt(shotsInput.value) || 1024 };
+            const title = type === 'statevector' ? 'Statevector Suite' : 'Measured Suite';
+
+            setLoading(true);
+            clearReport();
+
+            try {
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!res.ok) {
+                    const errorText = await res.text();
+                    throw new Error(`HTTP error! Status: ${res.status} ${res.statusText}. Details: ${errorText}`);
+                }
+                
+                const data = await res.json();
+                
+                currentSuiteData = data;
+                currentSuiteTitle = title;
+                
+                renderSuiteSummary(data, title);
+            } catch (e) {
+                console.error(e);
+                renderSuiteSummary({ error: e.message }, title);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        // --- RENDERERS ---
+
+        function renderDetailReport(data, title) {
+            renderTabs(['summary', 'performance', 'resources', 'divergence', 'raw']);
+            
+            // Populate Raw Tab
+            jsonOutput.textContent = JSON.stringify(data, null, 2);
+
+            // Populate Summary Tab
+            renderSummaryPanel(data, title);
+
+            if (!data.error) {
+                if (data.performance_report) renderRankingTable(data.performance_report, 'execution_time_sec', 's', panelElements.performance);
+                if (data.resource_report) renderRankingTable(data.resource_report, 'memory_usage_mb', 'MiB', panelElements.resources);
+                if (data.divergence_report) renderDivergenceTables(data.divergence_report, panelElements.divergence);
+            }
+
+            showTab('summary');
+        }
+
+        function renderSuiteSummary(data, title) {
+            clearReport();
+            renderTabs(['suite-summary', 'raw']);
+            jsonOutput.textContent = JSON.stringify(data, null, 2);
+
+            let html = `<h2 class="text-xl font-semibold text-gray-900 mb-4">${title}</h2>`;
+            
+            if (data.error) {
+                html += `<div class="p-4 bg-red-50 text-red-700 rounded border border-red-200">API Error: ${data.error}</div>`;
+            } else {
+                const summary = data.benchmark_summary || [];
+                const errors = summary.filter(r => r.error).length;
+                html += `<div class="mb-4 p-4 bg-white border rounded shadow-sm">Processed <b>${summary.length}</b> files with <b>${errors}</b> errors.</div>`;
+                
+                html += `<div class="overflow-x-auto border rounded-lg"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">File</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fastest</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lightest</th>
+                    <th></th>
+                </tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
+
+                summary.forEach((item, idx) => {
+                    const fname = item.benchmark_file ? item.benchmark_file.replace('benchmarks/', '') : 'Unknown';
+                    let status = `<span class="px-2 py-1 text-xs rounded bg-green-100 text-green-800">Success</span>`;
+                    if (item.error) status = `<span class="px-2 py-1 text-xs rounded bg-red-100 text-red-800">Error</span>`;
+                    else if (item.divergence_report && item.divergence_report.divergences_found.length > 0) status = `<span class="px-2 py-1 text-xs rounded bg-yellow-100 text-yellow-800">Divergence</span>`;
+
+                    const fast = item.performance_report?.ranking[0]?.simulator || '-';
+                    const light = item.resource_report?.ranking[0]?.simulator || '-';
+
+                    html += `<tr>
+                        <td class="px-4 py-3 text-sm font-medium text-gray-900">${fname}</td>
+                        <td class="px-4 py-3">${status}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500">${fast}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500">${light}</td>
+                        <td class="px-4 py-3 text-right"><button onclick="viewDetail(${idx})" class="text-blue-600 hover:text-blue-900 text-sm font-medium">Details</button></td>
+                    </tr>`;
+                });
+                html += `</tbody></table></div>`;
+            }
+            
+            panelElements['suite-summary'].innerHTML = html;
+            showTab('suite-summary');
+        }
+
+        function viewDetail(index) {
+            const item = currentSuiteData.benchmark_summary[index];
+            const fname = item.benchmark_file ? item.benchmark_file.replace('benchmarks/', '') : 'Unknown';
+            
+            clearReport();
+            backButtonContainer.classList.remove('hidden');
+            renderDetailReport(item, `Detail: ${fname}`);
+        }
+
+        // --- PANEL RENDERERS ---
+
+        function renderSummaryPanel(data, title) {
+            let html = `<h2 class="text-xl font-semibold text-gray-900 mb-4">${title}</h2>`;
+            
+            if (data.error) {
+                html += `<div class="p-4 bg-red-50 text-red-700 border border-red-200 rounded"><h3 class="font-bold">API Error</h3><pre class="mt-2 text-xs">${data.error}</pre></div>`;
+            } else {
+                const errors = data.raw_results ? data.raw_results.filter(r => r.error) : [];
+                const divergences = data.divergence_report ? data.divergence_report.divergences_found : [];
+
+                if (errors.length > 0) {
+                    html += `<div class="p-4 bg-red-50 text-red-700 border border-red-200 rounded"><h3 class="font-bold">Runner Errors (${errors.length})</h3><ul class="list-disc ml-5 mt-2 text-sm">${errors.map(e => `<li><b>${e.simulator}</b>: ${e.error}</li>`).join('')}</ul></div>`;
+                } else if (divergences.length > 0) {
+                    html += `<div class="p-4 bg-yellow-50 text-yellow-800 border border-yellow-200 rounded"><h3 class="font-bold">Divergences Found (${divergences.length})</h3><ul class="list-disc ml-5 mt-2 text-sm">${divergences.map(d => `<li>${d.type} between ${d.simulators.join(' & ')}</li>`).join('')}</ul></div>`;
+                } else {
+                    const msg = data.n_shots ? "All measurement distributions are statistically identical." : "All statevectors are identical (1.0 Fidelity).";
+                    html += `<div class="p-4 bg-green-50 text-green-800 border border-green-200 rounded flex items-center"><svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>${msg}</div>`;
+                }
+            }
+            panelElements.summary.innerHTML = html;
+        }
+
+        function renderRankingTable(report, key, unit, panel) {
+            let html = `<h3 class="font-semibold text-gray-900 mt-4 mb-2">${report.summary}</h3>`;
+
+            if (key === 'memory_usage_mb') {
+                // New Resource Report Table
+                html += `<div class="overflow-x-auto border rounded-lg"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" style="cursor: help; text-decoration: underline dotted;" title="The name of the runner service.">Simulator</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" style="cursor: help; text-decoration: underline dotted;" title="Actual RAM added by the circuit execution (End RSS - Start RSS). Can be 0 for small circuits using pre-allocated memory.">Mem Delta (MiB)</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" style="cursor: help; text-decoration: underline dotted;" title="The absolute maximum RAM used by the runner container during execution.">Process Peak (MiB)</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" style="cursor: help; text-decoration: underline dotted;" title="The mathematical minimum memory required for the statevector (16 bytes * 2^N).">Theoretical (MiB)</th>
+                </tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
+                
+                // The report is ranked by memory_usage_mb, which is fine.
+                report.ranking.forEach(r => {
+                    const mem_delta = r.status === 'success' && r.memory_usage_mb != null ? r.memory_usage_mb.toFixed(4) : `<span class="text-red-600">Error</span>`;
+                    const proc_peak = r.status === 'success' && r.process_peak_mb != null ? r.process_peak_mb.toFixed(1) : `<span class="text-red-600">Error</span>`;
+                    const theoretical = r.status === 'success' && r.theoretical_memory_mb != null ? r.theoretical_memory_mb.toFixed(4) : `<span class="text-red-600">Error</span>`;
+
+                    html += `<tr>
+                        <td class="px-4 py-3 text-sm font-medium text-gray-900">${r.simulator}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500 font-mono">${mem_delta}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500 font-mono">${proc_peak}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500 font-mono">${theoretical}</td>
+                    </tr>`;
+                });
+                html += `</tbody></table></div>`;
+
+            } else {
+                // Original Performance Report Table
+                html += `<div class="overflow-x-auto border rounded-lg"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rank</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Simulator</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Value</th></tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
+                
+                report.ranking.forEach((r, i) => {
+                    const val = r.status === 'success' && r[key] !== null ? `${r[key].toFixed(6)} ${unit}` : `<span class="text-red-600">Error</span>`;
+                    html += `<tr><td class="px-4 py-3 text-sm text-gray-500">${i+1}</td><td class="px-4 py-3 text-sm font-medium text-gray-900">${r.simulator}</td><td class="px-4 py-3 text-sm text-gray-500 font-mono">${val}</td></tr>`;
+                });
+                html += `</tbody></table></div>`;
+            }
+            panel.innerHTML = html;
+        }
+
+        function renderDivergenceTables(report, panel) {
+            let html = `<div class="space-y-8">`;
+            let found = false;
+
+            // Helper to render one matrix
+            const renderMat = (key, title) => {
+                if (!report[key]) return;
+                found = true;
+                html += `<div><h3 class="font-semibold text-gray-900 mt-4 mb-2">${title}</h3><div class="overflow-x-auto"><table class="matrix-table border-collapse border border-gray-300"><thead class="bg-gray-50"><tr><th class="border p-2"></th>${report.simulators.map(s => `<th class="sim-header border p-2 text-xs text-gray-500">${s}</th>`).join('')}</tr></thead><tbody>`;
+                
+                report.simulators.forEach((s1, i) => {
+                    html += `<tr><th class="border p-2 text-xs text-left text-gray-500">${s1}</th>`;
+                    report[key][i].forEach((val, j) => {
+                        let bg = 'bg-white';
+                        let txt = val.toFixed(4);
+                        if (val === 1.0) { txt = "1.000"; bg = key.includes('fidelity') ? 'bg-green-50' : 'bg-white'; }
+                        else if (val === 0.0) { txt = "0.000"; }
+                        else if (val === -1.0) { txt = "ERR"; bg = 'bg-red-50'; }
+                        else { bg = 'bg-yellow-50'; } // Divergence!
+                        if (i===j) bg = 'bg-gray-100';
+                        html += `<td class="border p-2 text-xs text-center font-mono ${bg}">${txt}</td>`;
+                    });
+                    html += `</tr>`;
+                });
+                html += `</tbody></table></div></div>`;
+            };
+
+            renderMat('fidelity_matrix', 'Fidelity Matrix');
+            renderMat('relative_phase_matrix', 'Relative Phase Matrix');
+            renderMat('statistical_distance_matrix (js_divergence)', 'JS Divergence Matrix');
+
+            if (!found) html += `<p class="text-gray-500 mt-4">No matrices available.</p>`;
+            html += `</div>`;
+            panel.innerHTML = html;
+        }
+
+        function copyRawJson(btn) {
+            const txt = jsonOutput.textContent;
+            navigator.clipboard.writeText(txt).then(() => {
+                const old = btn.textContent;
+                btn.textContent = "Copied!";
+                setTimeout(() => btn.textContent = old, 2000);
+            }).catch(err => console.error(err));
+        }
+    </script>
+</body>
+</html>
+```
+--- END OF FILE: ./rosetta-api/static/index.html ---
+
+
+--- START OF FILE: ./shared/qrosetta_commons/helpers.py ---
+```
+# ./shared/qrosetta_commons/helpers.py
+import numpy as np
+from collections import Counter
+import time
+import psutil
+import threading
+import os
+
+def calculate_theoretical_memory_mb(num_qubits):
+    """
+    Calculates the theoretical memory required to store a statevector in MB.
+    Formula: (2^num_qubits * 16) / (1024 * 1024), where 16 bytes are for complex128.
+    """
+    return (2**num_qubits * 16) / (1024 * 1024)
+
+def _sample_from_statevector(statevector, n_shots, n_qubits):
+    """
+    Manually samples from a statevector's probability distribution.
+    """
+    # 1. Get probabilities
+    probabilities = np.abs(statevector)**2
+    
+    # 2. Get samples
+    samples = np.random.choice(
+        range(len(statevector)), 
+        size=n_shots, 
+        p=probabilities
+    )
+    
+    # 3. Count the samples
+    sample_counts = Counter(samples)
+    
+    # 4. Convert integer keys (e.g., 3) to bitstring keys (e.g., "11")
+    counts_dict = {
+        format(k, f'0{n_qubits}b'): v 
+        for k, v in sample_counts.items()
+    }
+    return counts_dict
+
+class MemoryMonitor:
+    def __init__(self, interval=0.001):
+        """
+        interval: Sampling rate in seconds. 
+                  0.001 (1ms) is fast enough to catch C++ spikes 
+                  without slowing down the simulation significantly.
+        """
+        self.interval = interval
+        self.process = psutil.Process(os.getpid())
+        self.keep_measuring = True
+        self.peak_memory = 0
+        self.start_memory = 0
+        self.baseline_memory = 0
+
+    def _measure_loop(self):
+        while self.keep_measuring:
+            # fast access to RSS (Resident Set Size)
+            current_mem = self.process.memory_info().rss
+            if current_mem > self.peak_memory:
+                self.peak_memory = current_mem
+            time.sleep(self.interval)
+
+    def __enter__(self):
+        # 1. Record baseline (what the server uses at rest)
+        self.baseline_memory = self.process.memory_info().rss
+        self.peak_memory = self.baseline_memory
+        
+        # 2. Start the background spy
+        self.keep_measuring = True
+        self.thread = threading.Thread(target=self._measure_loop)
+        self.thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # 3. Stop measuring
+        self.keep_measuring = False
+        self.thread.join()
+
+    def get_peak_usage_mb(self):
+        # Peak usage is the highest point reached minus the baseline
+        # This isolates the *circuit's* contribution from the *server's* base load.
+        return (self.peak_memory - self.baseline_memory) / (1024 * 1024)
+
+    def get_process_peak_mb(self):
+        # Absolute peak RSS memory usage of the process
+        return self.peak_memory / (1024 * 1024)
+
+```
+--- END OF FILE: ./shared/qrosetta_commons/helpers.py ---
+
+
+--- START OF FILE: ./shared/qrosetta_commons/__init__.py ---
+```
+
+```
+--- END OF FILE: ./shared/qrosetta_commons/__init__.py ---
+
+
+--- START OF FILE: ./shared/qrosetta_commons/models.py ---
+```
+# ./shared/models.py
+from pydantic import BaseModel
+
+class CircuitPayload(BaseModel):
+    circuit_data: str 
+
+class MeasuredCircuitPayload(BaseModel):
+    circuit_data: str
+    n_shots: int
+```
+--- END OF FILE: ./shared/qrosetta_commons/models.py ---
+
+
+--- START OF FILE: ./shared/setup.py ---
+```
+from setuptools import setup, find_packages
+
+setup(
+    name='qrosetta_commons',
+    version='0.1.0',
+    packages=find_packages()
+)
+```
+--- END OF FILE: ./shared/setup.py ---
+
+
+--- START OF FILE: ./tests/test_memory_monitor.py ---
+```
+
+import sys
+import os
+import numpy as np
+import time
+
+# Add the 'shared' directory to the Python path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+shared_dir = os.path.join(project_root, 'shared')
+sys.path.insert(0, shared_dir)
+
+from qrosetta_commons.helpers import MemoryMonitor, calculate_theoretical_memory_mb
+
+def test_memory_monitor_captures_spike():
+    """
+    Tests if the MemoryMonitor can capture a sudden memory allocation.
+    """
+    print("Running Verification...")
+    
+    # We will allocate 100 MB of doubles (8 bytes each) -> ~12.5 million items
+    # 100 MB = 100 * 1024 * 1024 bytes
+    target_mb = 100
+    
+    with MemoryMonitor(interval=0.001) as monitor:
+        # 1. Allocate 100MB in C++ (numpy backend)
+        print(f"Allocating {target_mb} MB...")
+        arr = np.ones(int(target_mb * 1024 * 1024 / 8), dtype=np.float64)
+        
+        # 2. Sleep briefly to ensure the 1ms poll catches it
+        time.sleep(0.1) 
+        
+        # 3. Free it
+        del arr
+        
+    measured_mb = monitor.get_peak_usage_mb()
+    print(f"Actual Allocation: {target_mb} MB")
+    print(f"Measured Peak:     {measured_mb:.2f} MB")
+
+    assert abs(measured_mb - target_mb) < 5, "The monitor failed to capture the C++ memory spike."
+
+def test_theoretical_memory_calculation():
+    """
+    Tests the theoretical memory calculation for a few qubit sizes.
+    """
+    # Test case 1: 10 qubits
+    # (2^10 * 16) / (1024*1024) = (1024 * 16) / (1024*1024) = 16/1024 = 0.015625
+    assert abs(calculate_theoretical_memory_mb(10) - 0.015625) < 1e-9
+
+    # Test case 2: 20 qubits
+    # (2^20 * 16) / (1024*1024) = (1024*1024 * 16) / (1024*1024) = 16
+    assert abs(calculate_theoretical_memory_mb(20) - 16.0) < 1e-9
+
+    # Test case 3: 24 qubits
+    # (2^24 * 16) / (1024*1024) = (16 * 1024 * 1024 * 16) / (1024*1024) = 256
+    assert abs(calculate_theoretical_memory_mb(24) - 256.0) < 1e-9
+
+if __name__ == "__main__":
+    test_memory_monitor_captures_spike()
+    test_theoretical_memory_calculation()
+    print("✅ All memory tests passed!")
+
+```
+--- END OF FILE: ./tests/test_memory_monitor.py ---
+

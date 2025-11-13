@@ -5,9 +5,7 @@ from pytket.extensions.qiskit import tk_to_qiskit
 from qiskit_aer import AerSimulator
 from qiskit.circuit import QuantumCircuit
 import time
-import psutil
-import os
-import gc
+from qrosetta_commons.helpers import MemoryMonitor, calculate_theoretical_memory_mb
 
 app = FastAPI(title="Qiskit Runner")
 
@@ -20,21 +18,19 @@ async def run_circuit(payload: CircuitPayload):
         qiskit_circ.save_statevector()
         backend = AerSimulator(precision="double")
         
-        process = psutil.Process(os.getpid())
-        gc.collect()
-        mem_before = process.memory_info().rss
-        
-        start_time = time.perf_counter()
-        
-        job = backend.run(qiskit_circ, optimization_level=0)
-        result = job.result()
-        statevector = result.get_statevector()
-        
-        end_time = time.perf_counter()
-        mem_after = process.memory_info().rss
-        
+        with MemoryMonitor(interval=0.001) as monitor:
+            start_time = time.perf_counter()
+            
+            job = backend.run(qiskit_circ, optimization_level=0)
+            result = job.result()
+            statevector = result.get_statevector()
+            
+            end_time = time.perf_counter()
+
+        memory_usage_mb = monitor.get_peak_usage_mb()
+        process_peak_mb = monitor.get_process_peak_mb()
+        theoretical_mb = calculate_theoretical_memory_mb(tk_circ.n_qubits)
         execution_time = end_time - start_time
-        memory_usage_mb = (mem_after - mem_before) / (1024 * 1024)
         
         statevector_str = [str(c) for c in statevector]
         print(f"Qiskit simulation successful in {execution_time:.4f}s.")
@@ -43,7 +39,9 @@ async def run_circuit(payload: CircuitPayload):
             "simulator": "qiskit",
             "statevector": statevector_str,
             "execution_time_sec": execution_time,
-            "memory_usage_mb": memory_usage_mb
+            "memory_usage_mb": memory_usage_mb,
+            "theoretical_memory_mb": theoretical_mb,
+            "process_peak_mb": process_peak_mb
         }
     except Exception as e:
         print(f"Error during Qiskit simulation: {str(e)}")
@@ -51,7 +49,9 @@ async def run_circuit(payload: CircuitPayload):
             "simulator": "qiskit", 
             "error": str(e),
             "execution_time_sec": 0.0,
-            "memory_usage_mb": 0.0
+            "memory_usage_mb": 0.0,
+            "theoretical_memory_mb": 0.0,
+            "process_peak_mb": 0.0
         }
 
 @app.post("/run_measured")
@@ -62,23 +62,21 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         qiskit_circ = tk_to_qiskit(tk_circ)
         backend = AerSimulator(precision="double")
 
-        process = psutil.Process(os.getpid())
-        gc.collect()
-        mem_before = process.memory_info().rss
-        
-        start_time = time.perf_counter()
-        
-        job = backend.run(qiskit_circ, 
-                          optimization_level=0, 
-                          shots=payload.n_shots)
-        result = job.result()
-        counts = result.get_counts()
-        
-        end_time = time.perf_counter()
-        mem_after = process.memory_info().rss
+        with MemoryMonitor(interval=0.001) as monitor:
+            start_time = time.perf_counter()
+            
+            job = backend.run(qiskit_circ, 
+                              optimization_level=0, 
+                              shots=payload.n_shots)
+            result = job.result()
+            counts = result.get_counts()
+            
+            end_time = time.perf_counter()
 
+        memory_usage_mb = monitor.get_peak_usage_mb()
+        process_peak_mb = monitor.get_process_peak_mb()
+        theoretical_mb = calculate_theoretical_memory_mb(tk_circ.n_qubits)
         execution_time = end_time - start_time
-        memory_usage_mb = (mem_after - mem_before) / (1024 * 1024)
         
         num_clbits = qiskit_circ.num_clbits
         counts_dict = {}
@@ -98,7 +96,9 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "simulator": "qiskit",
             "counts": counts_dict,
             "execution_time_sec": execution_time,
-            "memory_usage_mb": memory_usage_mb
+            "memory_usage_mb": memory_usage_mb,
+            "theoretical_memory_mb": theoretical_mb,
+            "process_peak_mb": process_peak_mb
         }
     except Exception as e:
         print(f"Error during Qiskit measurement simulation: {str(e)}")
@@ -106,5 +106,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "simulator": "qiskit",
             "error": str(e),
             "execution_time_sec": 0.0,
-            "memory_usage_mb": 0.0
+            "memory_usage_mb": 0.0,
+            "theoretical_memory_mb": 0.0,
+            "process_peak_mb": 0.0
         }

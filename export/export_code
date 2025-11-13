@@ -10,19 +10,17 @@ TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')
 OUTPUT_FILE="$OUTPUT_DIR/project_export_$TIMESTAMP.txt"
 
 # 3. Define all paths to exclude
-#    We define this once and reuse it, making it easy to maintain.
 EXCLUDE_PATHS=(
     -not -path '*/.git/*'
     -not -path '*/__pycache__/*'
     -not -path '*/.vscode/*'
     -not -path "./$OUTPUT_DIR/*"  # Exclude the export directory itself
     -not -path './curls.txt'
-    -not -path './export_code'     # Exclude this script
-    -not -path './project_export.txt' # Exclude the old file
+    -not -path './export_code'     # Exclude this script itself
+    -not -path './project_export.txt'
 )
 
 # --- Main Script ---
-# Use a subshell (...) to redirect all 'echo' commands to our new file
 (
     echo "PROJECT EXPORT FOR 'Quantum Rosetta' (qsimulators)"
     echo "==================================================="
@@ -31,7 +29,6 @@ EXCLUDE_PATHS=(
     echo "## Project Directory Architecture (Full Path List)"
     echo ""
     echo "\`\`\`"
-    # Use find with all our exclusion rules
     find . "${EXCLUDE_PATHS[@]}" | sort
     echo "\`\`\`"
     echo ""
@@ -40,15 +37,22 @@ EXCLUDE_PATHS=(
     echo "==================================================="
     echo ""
 
-    # Find all our important source files, using the same exclusions
-    find . -type f \( -name "*.py" -o -name "*.yml" -o -name "*.txt" -o -name "*.qasm" -o -name "Dockerfile" \) \
-           "${EXCLUDE_PATHS[@]}" | \
+    # --- FIX: Added -o -name "*.html" below ---
+    find . -type f \( \
+        -name "*.py" \
+        -o -name "*.yml" \
+        -o -name "*.txt" \
+        -o -name "*.qasm" \
+        -o -name "Dockerfile" \
+        -o -name "*.html" \
+        -o -name "*.js" \
+        -o -name "*.css" \
+    \) "${EXCLUDE_PATHS[@]}" | \
     sort | \
     while read -r file; do
         echo ""
         echo "--- START OF FILE: $file ---"
         echo "\`\`\`"
-        # Print file contents
         cat "$file"
         echo ""
         echo "\`\`\`"

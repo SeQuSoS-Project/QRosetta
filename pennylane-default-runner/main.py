@@ -1,13 +1,10 @@
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import _sample_from_statevector 
+from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, calculate_theoretical_memory_mb
 import pennylane as qml
 import numpy as np
 import functools
 import time
-import psutil
-import os
-import gc
 
 app = FastAPI(title="Pennylane Default Runner")
 
@@ -36,19 +33,17 @@ async def run_circuit(payload: CircuitPayload):
             qasm_op()
             return qml.state()
 
-        process = psutil.Process(os.getpid())
-        gc.collect()
-        mem_before = process.memory_info().rss
-        
-        start_time = time.perf_counter()
-        
-        statevector = statevector_circuit()
-        
-        end_time = time.perf_counter()
-        mem_after = process.memory_info().rss
+        with MemoryMonitor(interval=0.001) as monitor:
+            start_time = time.perf_counter()
+            
+            statevector = statevector_circuit()
+            
+            end_time = time.perf_counter()
         
         execution_time = end_time - start_time
-        memory_usage_mb = (mem_after - mem_before) / (1024 * 1024)
+        memory_usage_mb = monitor.get_peak_usage_mb()
+        process_peak_mb = monitor.get_process_peak_mb()
+        theoretical_mb = calculate_theoretical_memory_mb(num_qubits)
 
         statevector_str = [str(c) for c in statevector]
 
@@ -58,7 +53,9 @@ async def run_circuit(payload: CircuitPayload):
             "simulator": "pennylane-default",
             "statevector": statevector_str,
             "execution_time_sec": execution_time,
-            "memory_usage_mb": memory_usage_mb
+            "memory_usage_mb": memory_usage_mb,
+            "theoretical_memory_mb": theoretical_mb,
+            "process_peak_mb": process_peak_mb
         }
     except Exception as e:
         print(f"Error during Pennylane-Default simulation: {str(e)}")
@@ -66,7 +63,9 @@ async def run_circuit(payload: CircuitPayload):
             "simulator": "pennylane-default",
             "error": str(e),
             "execution_time_sec": 0.0,
-            "memory_usage_mb": 0.0
+            "memory_usage_mb": 0.0,
+            "theoretical_memory_mb": 0.0,
+            "process_peak_mb": 0.0
         }
 
 
@@ -84,19 +83,17 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             qasm_op()
             return qml.state() 
 
-        process = psutil.Process(os.getpid())
-        gc.collect()
-        mem_before = process.memory_info().rss
-        
-        start_time = time.perf_counter()
-        
-        statevector = statevector_circuit()
-        
-        end_time = time.perf_counter()
-        mem_after = process.memory_info().rss
+        with MemoryMonitor(interval=0.001) as monitor:
+            start_time = time.perf_counter()
+            
+            statevector = statevector_circuit()
+            
+            end_time = time.perf_counter()
 
         execution_time = end_time - start_time
-        memory_usage_mb = (mem_after - mem_before) / (1024 * 1024)
+        memory_usage_mb = monitor.get_peak_usage_mb()
+        process_peak_mb = monitor.get_process_peak_mb()
+        theoretical_mb = calculate_theoretical_memory_mb(num_qubits)
         
         counts_dict = _sample_from_statevector(statevector, 
                                                payload.n_shots, 
@@ -108,7 +105,9 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "simulator": "pennylane-default",
             "counts": counts_dict,
             "execution_time_sec": execution_time,
-            "memory_usage_mb": memory_usage_mb
+            "memory_usage_mb": memory_usage_mb,
+            "theoretical_memory_mb": theoretical_mb,
+            "process_peak_mb": process_peak_mb
         }
     except Exception as e:
         print(f"Error during Pennylane-Default measurement simulation: {str(e)}")
@@ -116,5 +115,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "simulator": "pennylane-default",
             "error": str(e),
             "execution_time_sec": 0.0,
-            "memory_usage_mb": 0.0
+            "memory_usage_mb": 0.0,
+            "theoretical_memory_mb": 0.0,
+            "process_peak_mb": 0.0
         }
