@@ -4,6 +4,7 @@ from qrosetta_commons.helpers import MemoryMonitor, calculate_theoretical_memory
 import numpy as np
 import pytket.qasm
 from pytket.extensions.braket import BraketBackend
+from pytket.passes import RemoveBarriers
 import time
 
 app = FastAPI(title="Braket Runner")
@@ -13,6 +14,8 @@ async def run_circuit(payload: CircuitPayload):
     print(f"Received circuit data for Braket simulation.")
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        RemoveBarriers().apply(tk_circ)
+        
         backend = BraketBackend(local=True)
         compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
         
@@ -57,6 +60,8 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
     print(f"Received measured circuit data for Braket simulation.")
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        RemoveBarriers().apply(tk_circ)
+        
         backend = BraketBackend(local=True)
         compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
         
