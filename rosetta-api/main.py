@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
+from typing import List, Optional
 import pytket.qasm
 import httpx
 import asyncio
@@ -8,6 +9,7 @@ import os
 import glob
 import comparator 
 import gc
+import library
 
 # --- NEW IMPORTS ---
 from fastapi.staticfiles import StaticFiles
@@ -16,6 +18,9 @@ import json
 # --- END NEW IMPORTS ---
 
 from pytket.circuit import Circuit
+
+from pytket.passes import RemoveBarriers
+
 
 app = FastAPI(title="Quantum Rosetta API")
 app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -35,6 +40,18 @@ class MeasuredQasmPayload(BaseModel):
     n_shots: int = 1024
 class MeasuredBenchmarkPayload(BaseModel):
     n_shots: int = 1024
+class GenerateCircuitPayload(BaseModel):
+    algorithm: str
+    qubits: int
+
+class BenchmarkTask(BaseModel):
+    algorithm: str
+    qubits: int
+
+class BatchPayload(BaseModel):
+    tasks: List[BenchmarkTask]
+    n_shots: int = 1024
+    mode: str  # 'statevector' or 'measured'
 
 # --- CONFIGURATION (8 Runners, 2 Categories) ---
 RUNNER_SERVICES = {
@@ -128,7 +145,10 @@ async def run_single_circuit_comparison(qasm_string: str):
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_string)
         print(f"Successfully parsed QASM into {tk_circ.n_qubits} qubit circuit.")
-        runner_payload = {"circuit_data": qasm_string}
+        # Remove barriers (Pass)
+        RemoveBarriers().apply(tk_circ)
+        modified_qasm_string = pytket.qasm.circuit_to_qasm_str(tk_circ)
+        runner_payload = {"circuit_data": modified_qasm_string}
     except Exception as e:
         return { "input_qasm": qasm_string, "error": str(e) }
 
@@ -182,6 +202,8 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int):
     # --- Payload 2: For NATIVE_SAMPLING_URLS ---
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_string)
+        # Remove barriers (Pass)
+        RemoveBarriers().apply(tk_circ)
         n_qubits = tk_circ.n_qubits
         c_reg_name = "c"
         if c_reg_name not in [reg.name for reg in tk_circ.c_registers]:
@@ -254,6 +276,45 @@ def download_latest_report():
     json_str = json.dumps(data, indent=2)
     return Response(content=json_str, media_type="application/json", headers={"Content-Disposition": "attachment; filename=full_quantum_report.json"})
 
+@app.get("/algorithms")
+async def get_algorithms():
+    return [
+        {"id": "bell", "name": "Bell State (Simple)", "min_qubits": 2, "max_qubits": 2, "default_qubits": 2, "description": "Maximally entangled state on 2 qubits."},
+        {"id": "ghz", "name": "GHZ State (Entanglement)", "min_qubits": 2, "max_qubits": 20, "default_qubits": 3, "description": "Greenberger-Horne-Zeilinger state on N qubits."},
+        {"id": "qft", "name": "Quantum Fourier Transform", "min_qubits": 1, "max_qubits": 20, "default_qubits": 3, "description": "Standard QFT circuit (without inverse)."},
+        {"id": "grover", "name": "Grover Search (Oracle)", "min_qubits": 2, "max_qubits": 14, "default_qubits": 3, "description": "Grover's algorithm with a dummy oracle (limited to 14 qubits for browser safety due to depth)."},
+        {"id": "bv", "name": "Bernstein-Vazirani", "min_qubits": 2, "max_qubits": 20, "default_qubits": 4, "description": "BV algorithm with 'all-ones' secret string."},
+        {"id": "vqe", "name": "VQE Ansatz", "min_qubits": 2, "max_qubits": 20, "default_qubits": 4, "description": "Hardware Efficient Ansatz with rotation layers."},
+        {"id": "random", "name": "Random Circuit", "min_qubits": 2, "max_qubits": 20, "default_qubits": 5, "description": "Random gates to defeat compiler optimizations."}
+    ]
+
+@app.post("/generate_circuit")
+async def generate_circuit_endpoint(payload: GenerateCircuitPayload):
+    try:
+        if payload.algorithm == "ghz":
+            qasm = library.generate_ghz(payload.qubits)
+        elif payload.algorithm == "bell":
+            # Bell state ignores qubit count usually, but we pass it for safety
+            qasm = library.generate_bell_state(payload.qubits)
+        elif payload.algorithm == "qft":
+            qasm = library.generate_qft(payload.qubits)
+        elif payload.algorithm == "grover":
+            qasm = library.generate_grover_search(payload.qubits)
+        elif payload.algorithm == "bv":
+            qasm = library.generate_bernstein_vazirani(payload.qubits)
+        elif payload.algorithm == "vqe":
+            qasm = library.generate_vqe_ansatz(payload.qubits)
+        elif payload.algorithm == "random":
+            qasm = library.generate_random_circuit(payload.qubits)
+        else:
+            return JSONResponse(content={"error": f"Unknown algorithm: {payload.algorithm}"}, status_code=400)
+        
+        return {"qasm": qasm}
+    except ValueError as e:
+        return JSONResponse(content={"error": str(e)}, status_code=400)
+    except Exception as e:
+        return JSONResponse(content={"error": f"An unexpected error occurred: {str(e)}"}, status_code=500)
+
 @app.post("/compare")
 async def compare_circuits_endpoint(payload: QasmPayload):
     return await run_single_circuit_comparison(payload.qasm_string)
@@ -263,64 +324,40 @@ async def compare_measured_circuits_endpoint(payload: MeasuredQasmPayload):
     return await run_single_circuit_measurement(payload.qasm_string, 
                                                 payload.n_shots)
 
-@app.post("/run_benchmark_suite")
-async def run_benchmark_suite_endpoint():
-    benchmark_dir = "benchmarks/"
-    qasm_files = glob.glob(os.path.join(benchmark_dir, "*.qasm"))
-    
-    if not qasm_files:
-        return {"error": f"No .qasm files found in {benchmark_dir}"}
-        
-    print(f"--- Starting Statevector Benchmark Suite ---")
+@app.post("/run_batch_suite")
+async def run_batch_suite_endpoint(payload: BatchPayload):
+    print(f"--- Starting Batch Suite ({payload.mode}) with {len(payload.tasks)} tasks ---")
     benchmark_summary = []
-    
-    for qasm_file_path in qasm_files:
-        print(f"--- Running test: {qasm_file_path} ---")
+
+    for task in payload.tasks:
+        task_name = f"{task.algorithm} ({task.qubits}q)"
+        print(f"--- Running task: {task_name} ---")
         try:
-            with open(qasm_file_path, 'r') as f:
-                qasm_string = f.read()
+            # Generate QASM for the task
+            qasm_generation_endpoint = "/generate_circuit"
+            qasm_payload = {"algorithm": task.algorithm, "qubits": task.qubits}
+            async with httpx.AsyncClient(timeout=float(os.getenv("RUNNER_TIMEOUT_SEC", 60.0))) as client:
+                qasm_response = await client.post(f"http://localhost:8000{qasm_generation_endpoint}", json=qasm_payload)
+                qasm_response.raise_for_status()
+                qasm_data = qasm_response.json()
+                qasm_string = qasm_data["qasm"]
+
+            report = None
+            if payload.mode == 'statevector':
+                report = await run_single_circuit_comparison(qasm_string)
+            elif payload.mode == 'measured':
+                report = await run_single_circuit_measurement(qasm_string, payload.n_shots)
+            else:
+                raise ValueError(f"Unknown mode: {payload.mode}")
             
-            report = await run_single_circuit_comparison(qasm_string)
-            report["benchmark_file"] = qasm_file_path
+            report["task_name"] = task_name
             benchmark_summary.append(report)
-            
+
         except Exception as e:
             benchmark_summary.append({
-                "benchmark_file": qasm_file_path,
-                "error": f"Failed to read or process file: {str(e)}"
+                "task_name": task_name,
+                "error": f"Failed to process task: {str(e)}"
             })
             
-    print(f"--- Statevector Benchmark Suite Complete ---")
-    return {"benchmark_summary": benchmark_summary}
-
-
-@app.post("/run_measured_benchmark_suite")
-async def run_measured_benchmark_suite_endpoint(payload: MeasuredBenchmarkPayload):
-    benchmark_dir = "benchmarks/"
-    qasm_files = glob.glob(os.path.join(benchmark_dir, "*.qasm"))
-    n_shots = payload.n_shots
-    
-    if not qasm_files:
-        return {"error": f"No .qasm files found in {benchmark_dir}"}
-        
-    print(f"--- Starting Measured Benchmark Suite ({n_shots} shots) ---")
-    benchmark_summary = []
-    
-    for qasm_file_path in qasm_files:
-        print(f"--- Running test: {qasm_file_path} ---")
-        try:
-            with open(qasm_file_path, 'r') as f:
-                qasm_string = f.read()
-            
-            report = await run_single_circuit_measurement(qasm_string, n_shots)
-            report["benchmark_file"] = qasm_file_path
-            benchmark_summary.append(report)
-            
-        except Exception as e:
-            benchmark_summary.append({
-                "benchmark_file": qasm_file_path,
-                "error": f"Failed to read or process file: {str(e)}"
-            })
-            
-    print(f"--- Measured Benchmark Suite Complete ---")
+    print(f"--- Batch Suite Complete ---")
     return {"benchmark_summary": benchmark_summary}

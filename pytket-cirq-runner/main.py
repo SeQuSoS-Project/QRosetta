@@ -6,6 +6,8 @@ import pytket.qasm
 from pytket.extensions.cirq import tk_to_cirq  
 import cirq
 from pytket.extensions.cirq.backends.cirq import CirqStateSampleBackend
+from pytket.passes import RemoveBarriers
+from pytket.transform import Transform
 import time
 
 app = FastAPI(title="Cirq Runner")
@@ -15,6 +17,14 @@ async def run_circuit(payload: CircuitPayload):
     print(f"Received circuit data for Cirq simulation.")
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        RemoveBarriers().apply(tk_circ)
+        
+        # --- COMPATIBILITY LAYER ---
+        # Convert generic gates (TK1, U3) into Rx and Rz rotations.
+        # Cirq's converter natively understands these specific gates.
+        Transform.RebaseToRzRx().apply(tk_circ)
+        # ---------------------------
+        
         cirq_circ = tk_to_cirq(tk_circ)
         simulator = cirq.Simulator(dtype=np.complex128)
         
@@ -58,15 +68,19 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
     print(f"Received measured circuit data for Cirq simulation.")
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        RemoveBarriers().apply(tk_circ)
+        
+        # --- COMPATIBILITY LAYER ---
+        Transform.RebaseToRzRx().apply(tk_circ)
+        # ---------------------------
+        
         backend = CirqStateSampleBackend()
-        compiled_circ = backend.get_compiled_circuit(tk_circ, 
-                                                     optimisation_level=0)
+        compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
         
         with MemoryMonitor(interval=0.001) as monitor:
             start_time = time.perf_counter()
             
-            handle = backend.process_circuit(compiled_circ, 
-                                             n_shots=payload.n_shots)
+            handle = backend.process_circuit(compiled_circ, n_shots=payload.n_shots)
             counts = backend.get_result(handle).get_counts()
             
             end_time = time.perf_counter()

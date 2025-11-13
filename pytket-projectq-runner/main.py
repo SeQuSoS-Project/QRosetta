@@ -2,6 +2,8 @@ from fastapi import FastAPI
 import numpy as np
 import pytket.qasm
 from pytket.extensions.projectq import ProjectQBackend
+from pytket.passes import RemoveBarriers
+from pytket.transform import Transform
 from collections import Counter
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
 from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, calculate_theoretical_memory_mb
@@ -14,6 +16,10 @@ async def run_circuit(payload: CircuitPayload):
     print(f"Received circuit data for ProjectQ simulation.")
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        RemoveBarriers().apply(tk_circ)
+        # Rebase to standard TK1/CX gateset (decomposes SWAPs automatically)
+        Transform.RebaseToTket().apply(tk_circ)
+        
         backend = ProjectQBackend()
         compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
         
@@ -58,6 +64,10 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
         n_qubits = tk_circ.n_qubits
+        
+        RemoveBarriers().apply(tk_circ)
+        # Rebase to standard TK1/CX gateset (decomposes SWAPs automatically)
+        Transform.RebaseToTket().apply(tk_circ)
         
         backend = ProjectQBackend()
         compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
