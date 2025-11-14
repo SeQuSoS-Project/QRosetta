@@ -1,5 +1,7 @@
-fastapi
-uvicorn[standard]
-psutil
-pytket
-pytket-projectq
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+psutil==6.0.0
+pytket==1.33.0
+pytket-projectq==0.37.0
+projectq==0.8.0
+numpy==1.26.4

@@ -12,8 +12,8 @@ services:
     # --- FIX ---
     # We mount the whole directory so it can access
     # comparator.py, benchmarks/, and main.py
-    volumes:
-      - ./rosetta-api:/app
+    # volumes:
+    #   - ./rosetta-api:/app
     # --- END FIX ---
     depends_on:
       - qiskit_runner
@@ -24,6 +24,11 @@ services:
       - quest_runner
       - pennylane_runner
       - pennylane_default_runner
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "512M"
 
   # Our 6 runners
   qiskit_runner:
@@ -35,9 +40,14 @@ services:
       - "8001:8000"
     # --- FIX ---
     # Mount only the main.py file, not the whole folder.
-    volumes:
-      - ./pytket-qiskit-runner/main.py:/app/main.py
+    # volumes:
+    #   - ./pytket-qiskit-runner/main.py:/app/main.py
     # --- END FIX ---
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "512M"
 
   cirq_runner:
     build:
@@ -47,9 +57,14 @@ services:
     ports:
       - "8002:8000"
     # --- FIX ---
-    volumes:
-      - ./pytket-cirq-runner/main.py:/app/main.py
+    # volumes:
+    #   - ./pytket-cirq-runner/main.py:/app/main.py
     # --- END FIX ---
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "512M"
 
   qulacs_runner:
     build:
@@ -59,9 +74,14 @@ services:
     ports:
       - "8003:8000"
     # --- FIX ---
-    volumes:
-      - ./pytket-qulacs-runner/main.py:/app/main.py
+    # volumes:
+    #   - ./pytket-qulacs-runner/main.py:/app/main.py
     # --- END FIX ---
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "512M"
 
   braket_runner:
     build:
@@ -71,9 +91,14 @@ services:
     ports:
       - "8004:8000"
     # --- FIX ---
-    volumes:
-      - ./pytket-braket-runner/main.py:/app/main.py
+    # volumes:
+    #   - ./pytket-braket-runner/main.py:/app/main.py
     # --- END FIX ---
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "512M"
   
   projectq_runner:
     build:
@@ -83,9 +108,14 @@ services:
     ports:
       - "8005:8000"
     # --- FIX ---
-    volumes:
-      - ./pytket-projectq-runner/main.py:/app/main.py
+    # volumes:
+    #   - ./pytket-projectq-runner/main.py:/app/main.py
     # --- END FIX ---
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "512M"
 
   # --- THIS SERVICE IS CHANGED BACK ---
   quest_runner:
@@ -96,9 +126,14 @@ services:
     ports:
       - "8006:8000"
     # --- FIX ---
-    volumes:
-      - ./pytket-quest-runner/main.py:/app/main.py
+    # volumes:
+    #   - ./pytket-quest-runner/main.py:/app/main.py
     # --- END FIX ---
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "512M"
 
   pennylane_runner:
       build:
@@ -107,8 +142,13 @@ services:
       container_name: pennylane-lightning-runner
       ports:
         - "8007:8000" # <-- Using a new port
-      volumes:
-        - ./pennylane-lightning-runner/main.py:/app/main.py
+      # volumes:
+      #   - ./pennylane-lightning-runner/main.py:/app/main.py
+      deploy:
+        resources:
+          limits:
+            cpus: "0.5"
+            memory: "512M"
 
   pennylane_default_runner:
       build:
@@ -117,6 +157,11 @@ services:
       container_name: pennylane-default-runner
       ports:
         - "8008:8000" # <-- Using a new port
-      volumes:
-        - ./pennylane-default-runner/main.py:/app/main.py
+      # volumes:
+      #   - ./pennylane-default-runner/main.py:/app/main.py
+      deploy:
+        resources:
+          limits:
+            cpus: "0.5"
+            memory: "512M"
 

@@ -1,17 +1,22 @@
 FROM python:3.10-slim
-WORKDIR /app
 
-# Copy the runner-specific requirements
+# Create a non-root user
+RUN useradd -m appuser
+WORKDIR /home/appuser/app
+
+# Copy requirements and install dependencies
 COPY pytket-braket-runner/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the entire shared package source
+# Copy shared library and install it
 COPY shared /tmp/shared-src
-
-# Build and install the package
 RUN pip install /tmp/shared-src
-# Copy the runner-specific main file
+
+# Copy application code
 COPY pytket-braket-runner/main.py .
 
+# Change ownership and switch to non-root user
+RUN chown -R appuser:appuser /home/appuser/app
+USER appuser
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

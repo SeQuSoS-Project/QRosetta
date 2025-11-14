@@ -1,5 +1,7 @@
-fastapi
-uvicorn[standard]
-psutil
-pytket
-pytket-qulacs
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+psutil==6.0.0
+pytket==1.33.0
+pytket-qulacs==0.38.0
+qulacs==0.6.5
+numpy==1.26.4
