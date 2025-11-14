@@ -157,14 +157,26 @@ async def run_single_circuit_comparison(qasm_string: str):
         runner_payload=runner_payload
     )
 
+    loop = asyncio.get_event_loop()
+
     print("Generating divergence report...")
-    divergence_report = comparator.create_divergence_report(aggregated_results)
+    divergence_report_task = loop.run_in_executor(
+        None, comparator.create_divergence_report, aggregated_results
+    )
     
     print("Generating performance report...")
-    performance_report = comparator.create_performance_report(aggregated_results)
+    performance_report_task = loop.run_in_executor(
+        None, comparator.create_performance_report, aggregated_results
+    )
 
     print("Generating resource report...")
-    resource_report = comparator.create_resource_report(aggregated_results)
+    resource_report_task = loop.run_in_executor(
+        None, comparator.create_resource_report, aggregated_results
+    )
+
+    divergence_report, performance_report, resource_report = await asyncio.gather(
+        divergence_report_task, performance_report_task, resource_report_task
+    )
 
     # --- Cache full results before sanitizing ---
     RESULT_CACHE["latest_full_report"] = [res.copy() for res in aggregated_results]
@@ -234,14 +246,25 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int):
 
     # --- Call the comparators ---
     try:
+        loop = asyncio.get_event_loop()
         print("Generating counts divergence report...")
-        divergence_report = comparator.create_counts_report(aggregated_results, n_shots)
+        divergence_report_task = loop.run_in_executor(
+            None, comparator.create_counts_report, aggregated_results, n_shots
+        )
         
         print("Generating performance report...")
-        performance_report = comparator.create_performance_report(aggregated_results)
+        performance_report_task = loop.run_in_executor(
+            None, comparator.create_performance_report, aggregated_results
+        )
         
         print("Generating resource report...")
-        resource_report = comparator.create_resource_report(aggregated_results)
+        resource_report_task = loop.run_in_executor(
+            None, comparator.create_resource_report, aggregated_results
+        )
+
+        divergence_report, performance_report, resource_report = await asyncio.gather(
+            divergence_report_task, performance_report_task, resource_report_task
+        )
         
     except Exception as e:
         return {
@@ -334,13 +357,15 @@ async def run_batch_suite_endpoint(payload: BatchPayload):
         print(f"--- Running task: {task_name} ---")
         try:
             # Generate QASM for the task
-            qasm_generation_endpoint = "/generate_circuit"
-            qasm_payload = {"algorithm": task.algorithm, "qubits": task.qubits}
-            async with httpx.AsyncClient(timeout=float(os.getenv("RUNNER_TIMEOUT_SEC", 60.0))) as client:
-                qasm_response = await client.post(f"http://localhost:8000{qasm_generation_endpoint}", json=qasm_payload)
-                qasm_response.raise_for_status()
-                qasm_data = qasm_response.json()
-                qasm_string = qasm_data["qasm"]
+            qasm_payload = GenerateCircuitPayload(algorithm=task.algorithm, qubits=task.qubits)
+            qasm_response = await generate_circuit_endpoint(qasm_payload)
+
+            # Error handling if the circuit generation fails
+            if isinstance(qasm_response, JSONResponse):
+                error_content = json.loads(qasm_response.body)
+                raise Exception(f"Circuit generation failed: {error_content.get('error', 'Unknown error')}")
+
+            qasm_string = qasm_response["qasm"]
 
             report = None
             if payload.mode == 'statevector':

@@ -155,9 +155,6 @@
                     </div>
                 </div>
                 
-                <div class="text-center mt-auto pt-4">
-                    <button onclick="runBenchmarkSuite()" class="text-sm text-gray-500 hover:text-gray-700 hover:underline">Run Legacy File Suite</button>
-                </div>
             </div>
 
             <!-- === RIGHT PANEL (RESULTS) === -->
@@ -188,6 +185,7 @@
                              </div>
                              <div class="absolute top-14 right-4 z-10 flex items-center space-x-2">
                                  <button id="download-btn" onclick="downloadFullReport()" class="hidden bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium py-1 px-3 rounded-md transition-all">Download Full JSON</button>
+                                 <button onclick="downloadRawJson()" class="bg-green-600 hover:bg-green-700 text-white text-xs font-medium py-1 px-3 rounded-md transition-all">Download RAW JSON</button>
                                  <button id="copy-btn" onclick="copyRawJson(this)" class="bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-medium py-1 px-3 rounded-md transition-all">Copy View</button>
                              </div>
                              <pre id="json-output" class="flex-1 p-4 pt-10 overflow-auto text-xs text-gray-700 whitespace-pre-wrap break-words bg-gray-50 rounded-b-lg"></pre>
@@ -530,11 +528,6 @@
             const shots = parseInt(document.getElementById('shots-single').value) || 1024;
             runComparison(mode, shots);
         }
-        
-        function runBenchmarkSuite() {
-            const type = confirm("Run legacy statevector suite?") ? 'statevector' : 'measured';
-            runBenchmark(type);
-        }
 
 
         // --- AUTO-GENERATOR LOGIC ---
@@ -678,42 +671,6 @@
             }
         }
 
-        async function runBenchmark(type) {
-            const shots = parseInt(document.getElementById('shots-single').value) || 1024;
-            // Note: Legacy endpoints are not defined in main.py, this will fail.
-            // Keeping logic as-is per user request.
-            const endpoint = type === 'statevector' ? '/run_benchmark_suite' : '/run_measured_benchmark_suite';
-            const payload = type === 'statevector' ? {} : { n_shots: shots };
-            const title = type ==='statevector' ? 'Legacy Suite (Statevector)' : `Legacy Suite (Measured, ${shots} shots)`;
-
-            setLoading(true);
-            clearReport();
-            try {
-                // --- FIX: Use BASE_URL for fetch ---
-                const res = await fetch(`${BASE_URL}${endpoint}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                if (!res.ok) {
-                    const errorText = await res.text();
-                    throw new Error(`HTTP error! Status: ${res.status} ${res.statusText}. Details: ${errorText}`);
-                }
-                
-                const data = await res.json();
-                currentSuiteData = data;
-                currentSuiteTitle = title;
-                
-                renderSuiteSummary(data, title);
-            } catch (e) {
-                console.error(e);
-                renderSuiteSummary({ error: e.message }, title);
-            } finally {
-                setLoading(false);
-            }
-        }
-
         // --- RENDERERS ---
 
         function renderDetailReport(data, title) {
@@ -753,6 +710,21 @@
         function downloadFullReport() {
             // --- FIX: Use BASE_URL for fetch ---
             window.location.href = `${BASE_URL}/download_latest_report`;
+        }
+
+        function downloadRawJson() {
+            const jsonString = jsonOutput.textContent;
+            if (!jsonString || jsonString.trim() === '') {
+                alert("No JSON content to download.");
+                return;
+            }
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(jsonString);
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "rosetta_raw_report.json");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
         }
 
         function renderSuiteSummary(data, title) {
