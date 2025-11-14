@@ -22,8 +22,14 @@ Thumbs.db
 # VS Code
 .vscode/
 
-# Project Specific
+# Project Specific & Reports
 export/
 *.log
 full_quantum_report.json
 rosetta_raw_report.json
+
+# Documentation & Notes (to be ignored)
+BUGS.md
+TODO
+design_guidelines.txt
+app.py
