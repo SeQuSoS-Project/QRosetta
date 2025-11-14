@@ -90,7 +90,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         process_peak_mb = monitor.get_process_peak_mb()
         theoretical_mb = calculate_theoretical_memory_mb(tk_circ.n_qubits)
         
-        counts_dict = { "".join(map(str, k)): v for k, v in counts.items() }
+        counts_dict = { "".join(map(str, k)): int(v) for k, v in counts.items() }
 
         print(f"Cirq measurement simulation successful in {execution_time:.4f}s.")
         
