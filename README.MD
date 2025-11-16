@@ -2,6 +2,14 @@
 
 **Quantum Rosetta** is a production-grade microservices architecture designed to benchmark, validate, and analyze quantum circuit simulators. It acts as a translation layer and orchestration engine ("The Brain") that dispatches quantum tasks to isolated simulator containers ("The Hands") to measure fidelity, execution time, and memory efficiency.
 
+
+# How to cite
+
+QRosetta is free-to-use and to modify. However, you must add reference [1] in case of any publication/production/execution/etc.
+
+[1] to be updated later.
+
+
 ## System Architecture
 
 The system follows a strict **Microservices Architecture** orchestrated by Docker Compose.
@@ -134,3 +142,21 @@ The system captures three key metrics for every run:
 
 1.  **Add a new Algorithm:** Update `rosetta-api/library.py` and register it in `rosetta-api/main.py`.
 2.  **Add a new Runner:** Duplicate an existing runner folder, update the `requirements.txt` (pinned\!), and ensure it adheres to the `appuser` Dockerfile standard.
+
+
+## Acknowledgements
+
+This work has been supported by the Business Finland through project SeQuSoS (112/31/2024), and Research Council of Finland (Grants No. 365343).
+
+# Contributors
+
+- Shaswato Sarker  - ([@TheCatWalk](https://github.com/TheCatWalk)), *University of Jyväskylä*
+- Majid Haghparast - ([@MajidHaghparast](https://github.com/MajidHaghparast)), *University of Jyväskylä*
+
+## Contact
+
+Majid Haghparast <<majid.m.haghparast@jyu.fi>>
+
+
+
+
