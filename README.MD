@@ -144,7 +144,7 @@ The system captures three key metrics for every run:
 2.  **Add a new Runner:** Duplicate an existing runner folder, update the `requirements.txt` (pinned\!), and ensure it adheres to the `appuser` Dockerfile standard.
 
 
-## Acknowledgements
+# Acknowledgements
 
 This work has been supported by the Business Finland through project SeQuSoS (112/31/2024), and Research Council of Finland (Grants No. 365343).
 
