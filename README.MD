@@ -146,7 +146,7 @@ The system captures three key metrics for every run:
 
 # Acknowledgements
 
-This work has been supported by the Business Finland through project SeQuSoS (112/31/2024), and Research Council of Finland (Grants No. 365343).
+This work has been supported by the Business Finland through project SeQuSoS (112/31/2024).
 
 
 
