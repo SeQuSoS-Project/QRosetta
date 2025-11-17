@@ -1,12 +1,12 @@
 services:
-  # Service 0: Nginx Reverse Proxy
+  # --- Service 1: Nginx Reverse Proxy ---
   nginx:
     build:
       context: .
       dockerfile: ./nginx/Dockerfile
     container_name: nginx-reverse-proxy
     ports:
-      - "80:80"
+      - "80:80" # The only port exposed to the public
     depends_on:
       - api
     deploy:
@@ -15,18 +15,21 @@ services:
           cpus: "0.2"
           memory: "128M"
 
-  # Service 1: The main user-facing API
+  # --- Service 2: The Main API (The "Brain") ---
   api:
     build:
       context: .
       dockerfile: ./rosetta-api/Dockerfile
     container_name: rosetta-api
-    # --- FIX ---
-    # We mount the whole directory so it can access
-    # comparator.py, benchmarks/, and main.py
+    environment:
+      - RUNNER_TIMEOUT_SEC=60
+    # --- PRODUCTION CONFIG: VOLUMES DISABLED ---
+    # We comment these out so the container uses the secure, 
+    # immutable code inside the image, not your local files.
     # volumes:
-    #   - ./rosetta-api:/app
-    # --- END FIX ---
+    #   - ./rosetta-api:/home/appuser/app
+    #   - ./shared:/home/appuser/shared
+    # -------------------------------------------
     depends_on:
       - qiskit_runner
       - cirq_runner
@@ -42,7 +45,8 @@ services:
           cpus: "0.5"
           memory: "512M"
 
-  # Our 6 runners
+  # --- Services 3-10: The Simulator Runners (The "Hands") ---
+
   qiskit_runner:
     build:
       context: .
@@ -50,11 +54,6 @@ services:
     container_name: pytket-qiskit-runner
     ports:
       - "8001:8000"
-    # --- FIX ---
-    # Mount only the main.py file, not the whole folder.
-    # volumes:
-    #   - ./pytket-qiskit-runner/main.py:/app/main.py
-    # --- END FIX ---
     deploy:
       resources:
         limits:
@@ -68,10 +67,6 @@ services:
     container_name: pytket-cirq-runner
     ports:
       - "8002:8000"
-    # --- FIX ---
-    # volumes:
-    #   - ./pytket-cirq-runner/main.py:/app/main.py
-    # --- END FIX ---
     deploy:
       resources:
         limits:
@@ -85,10 +80,6 @@ services:
     container_name: pytket-qulacs-runner
     ports:
       - "8003:8000"
-    # --- FIX ---
-    # volumes:
-    #   - ./pytket-qulacs-runner/main.py:/app/main.py
-    # --- END FIX ---
     deploy:
       resources:
         limits:
@@ -102,10 +93,6 @@ services:
     container_name: pytket-braket-runner
     ports:
       - "8004:8000"
-    # --- FIX ---
-    # volumes:
-    #   - ./pytket-braket-runner/main.py:/app/main.py
-    # --- END FIX ---
     deploy:
       resources:
         limits:
@@ -119,17 +106,12 @@ services:
     container_name: pytket-projectq-runner
     ports:
       - "8005:8000"
-    # --- FIX ---
-    # volumes:
-    #   - ./pytket-projectq-runner/main.py:/app/main.py
-    # --- END FIX ---
     deploy:
       resources:
         limits:
           cpus: "0.5"
           memory: "512M"
 
-  # --- THIS SERVICE IS CHANGED BACK ---
   quest_runner:
     build:
       context: .
@@ -137,10 +119,6 @@ services:
     container_name: pytket-quest-runner
     ports:
       - "8006:8000"
-    # --- FIX ---
-    # volumes:
-    #   - ./pytket-quest-runner/main.py:/app/main.py
-    # --- END FIX ---
     deploy:
       resources:
         limits:
@@ -153,9 +131,7 @@ services:
         dockerfile: ./pennylane-lightning-runner/Dockerfile
       container_name: pennylane-lightning-runner
       ports:
-        - "8007:8000" # <-- Using a new port
-      # volumes:
-      #   - ./pennylane-lightning-runner/main.py:/app/main.py
+        - "8007:8000"
       deploy:
         resources:
           limits:
@@ -168,12 +144,9 @@ services:
         dockerfile: ./pennylane-default-runner/Dockerfile
       container_name: pennylane-default-runner
       ports:
-        - "8008:8000" # <-- Using a new port
-      # volumes:
-      #   - ./pennylane-default-runner/main.py:/app/main.py
+        - "8008:8000"
       deploy:
         resources:
           limits:
             cpus: "0.5"
             memory: "512M"
-
