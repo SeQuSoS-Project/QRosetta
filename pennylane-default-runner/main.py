@@ -1,10 +1,12 @@
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, calculate_theoretical_memory_mb
+from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, calculate_theoretical_memory_mb, get_logger
 import pennylane as qml
 import numpy as np
 import functools
 import time
+
+logger = get_logger("pennylane-default-runner")
 
 app = FastAPI(title="Pennylane Default Runner")
 
@@ -21,7 +23,7 @@ def get_num_qubits_from_qasm(qasm_string: str) -> int:
 
 @app.post("/run")
 async def run_circuit(payload: CircuitPayload):
-    print("Received statevector circuit data for Pennylane-Default simulation.")
+    logger.info("Received statevector circuit data for Pennylane-Default simulation.")
     try:
         qasm_op = qml.from_qasm(payload.circuit_data)
         num_qubits = get_num_qubits_from_qasm(payload.circuit_data)
@@ -47,7 +49,7 @@ async def run_circuit(payload: CircuitPayload):
 
         statevector_str = [str(c) for c in statevector]
 
-        print(f"Pennylane-Default simulation successful in {execution_time:.4f}s.")
+        logger.info(f"Pennylane-Default simulation successful in {execution_time:.4f}s.")
 
         return {
             "simulator": "pennylane-default",
@@ -58,7 +60,7 @@ async def run_circuit(payload: CircuitPayload):
             "process_peak_mb": process_peak_mb
         }
     except Exception as e:
-        print(f"Error during Pennylane-Default simulation: {str(e)}")
+        logger.error(f"Error during Pennylane-Default simulation: {str(e)}")
         return {
             "simulator": "pennylane-default",
             "error": str(e),
@@ -71,7 +73,7 @@ async def run_circuit(payload: CircuitPayload):
 
 @app.post("/run_measured")
 async def run_measured_circuit(payload: MeasuredCircuitPayload):
-    print("Received measured circuit data for Pennylane-Default (manual sampling).")
+    logger.info("Received measured circuit data for Pennylane-Default (manual sampling).")
     try:
         qasm_op = qml.from_qasm(payload.circuit_data)
         num_qubits = get_num_qubits_from_qasm(payload.circuit_data)
@@ -99,7 +101,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
                                                payload.n_shots, 
                                                num_qubits)
 
-        print(f"Pennylane-Default manual sampling successful in {execution_time:.4f}s.")
+        logger.info(f"Pennylane-Default manual sampling successful in {execution_time:.4f}s.")
 
         return {
             "simulator": "pennylane-default",
@@ -110,7 +112,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "process_peak_mb": process_peak_mb
         }
     except Exception as e:
-        print(f"Error during Pennylane-Default measurement simulation: {str(e)}")
+        logger.error(f"Error during Pennylane-Default measurement simulation: {str(e)}")
         return {
             "simulator": "pennylane-default",
             "error": str(e),

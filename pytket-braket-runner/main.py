@@ -1,17 +1,19 @@
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import MemoryMonitor, calculate_theoretical_memory_mb
+from qrosetta_commons.helpers import MemoryMonitor, calculate_theoretical_memory_mb, get_logger
 import numpy as np
 import pytket.qasm
 from pytket.extensions.braket import BraketBackend
 from pytket.passes import RemoveBarriers
 import time
 
+logger = get_logger("pytket-braket-runner")
+
 app = FastAPI(title="Braket Runner")
 
 @app.post("/run")
 async def run_circuit(payload: CircuitPayload):
-    print(f"Received circuit data for Braket simulation.")
+    logger.info(f"Received circuit data for Braket simulation.")
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
         RemoveBarriers().apply(tk_circ)
@@ -34,7 +36,7 @@ async def run_circuit(payload: CircuitPayload):
         
         statevector_str = [str(c) for c in statevector]
         
-        print(f"Braket simulation successful in {execution_time:.4f}s.")
+        logger.info(f"Braket simulation successful in {execution_time:.4f}s.")
         
         return {
             "simulator": "braket",
@@ -45,7 +47,7 @@ async def run_circuit(payload: CircuitPayload):
             "process_peak_mb": process_peak_mb
         }
     except Exception as e:
-        print(f"Error during Braket simulation: {str(e)}")
+        logger.error(f"Error during Braket simulation: {str(e)}")
         return { 
             "simulator": "braket", 
             "error": str(e),
@@ -57,7 +59,7 @@ async def run_circuit(payload: CircuitPayload):
 
 @app.post("/run_measured")
 async def run_measured_circuit(payload: MeasuredCircuitPayload):
-    print(f"Received measured circuit data for Braket simulation.")
+    logger.info(f"Received measured circuit data for Braket simulation.")
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
         RemoveBarriers().apply(tk_circ)
@@ -81,7 +83,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         
         counts_dict = { "".join(map(str, k)): int(v) for k, v in counts.items() }
 
-        print(f"Braket measurement simulation successful in {execution_time:.4f}s.")
+        logger.info(f"Braket measurement simulation successful in {execution_time:.4f}s.")
         
         return {
             "simulator": "braket",
@@ -92,7 +94,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "process_peak_mb": process_peak_mb
         }
     except Exception as e:
-        print(f"Error during Braket measurement simulation: {str(e)}")
+        logger.error(f"Error during Braket measurement simulation: {str(e)}")
         return {
             "simulator": "braket",
             "error": str(e),

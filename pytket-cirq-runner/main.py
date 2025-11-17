@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import MemoryMonitor, calculate_theoretical_memory_mb
+from qrosetta_commons.helpers import MemoryMonitor, calculate_theoretical_memory_mb, get_logger
 import numpy as np
 import pytket.qasm
 from pytket.extensions.cirq import tk_to_cirq  
@@ -10,11 +10,13 @@ from pytket.passes import RemoveBarriers
 from pytket.transform import Transform
 import time
 
+logger = get_logger("pytket-cirq-runner")
+
 app = FastAPI(title="Cirq Runner")
 
 @app.post("/run")
 async def run_circuit(payload: CircuitPayload):
-    print(f"Received circuit data for Cirq simulation.")
+    logger.info(f"Received circuit data for Cirq simulation.")
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
         RemoveBarriers().apply(tk_circ)
@@ -42,7 +44,7 @@ async def run_circuit(payload: CircuitPayload):
         theoretical_mb = calculate_theoretical_memory_mb(tk_circ.n_qubits)
         
         statevector_str = [str(c) for c in statevector]
-        print(f"Cirq simulation successful in {execution_time:.4f}s.")
+        logger.info(f"Cirq simulation successful in {execution_time:.4f}s.")
         
         return {
             "simulator": "cirq",
@@ -53,7 +55,7 @@ async def run_circuit(payload: CircuitPayload):
             "process_peak_mb": process_peak_mb
         }
     except Exception as e:
-        print(f"Error during Cirq simulation: {str(e)}")
+        logger.error(f"Error during Cirq simulation: {str(e)}")
         return { 
             "simulator": "cirq", 
             "error": str(e),
@@ -65,7 +67,7 @@ async def run_circuit(payload: CircuitPayload):
 
 @app.post("/run_measured")
 async def run_measured_circuit(payload: MeasuredCircuitPayload):
-    print(f"Received measured circuit data for Cirq simulation.")
+    logger.info(f"Received measured circuit data for Cirq simulation.")
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
         RemoveBarriers().apply(tk_circ)
@@ -92,7 +94,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         
         counts_dict = { "".join(map(str, k)): int(v) for k, v in counts.items() }
 
-        print(f"Cirq measurement simulation successful in {execution_time:.4f}s.")
+        logger.info(f"Cirq measurement simulation successful in {execution_time:.4f}s.")
         
         return {
             "simulator": "cirq",
@@ -103,7 +105,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "process_peak_mb": process_peak_mb
         }
     except Exception as e:
-        print(f"Error during Cirq measurement simulation: {str(e)}")
+        logger.error(f"Error during Cirq measurement simulation: {str(e)}")
         return {
            "simulator": "cirq",
            "error": str(e),

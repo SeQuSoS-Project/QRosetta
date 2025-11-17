@@ -5,13 +5,15 @@ from pytket.extensions.qiskit import tk_to_qiskit
 from qiskit_aer import AerSimulator
 from qiskit.circuit import QuantumCircuit
 import time
-from qrosetta_commons.helpers import MemoryMonitor, calculate_theoretical_memory_mb
+from qrosetta_commons.helpers import MemoryMonitor, calculate_theoretical_memory_mb, get_logger
+
+logger = get_logger("pytket-qiskit-runner")
 
 app = FastAPI(title="Qiskit Runner")
 
 @app.post("/run")
 async def run_circuit(payload: CircuitPayload):
-    print(f"Received circuit data for Qiskit simulation.")
+    logger.info(f"Received circuit data for Qiskit simulation.")
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
         qiskit_circ = tk_to_qiskit(tk_circ)
@@ -33,7 +35,7 @@ async def run_circuit(payload: CircuitPayload):
         execution_time = end_time - start_time
         
         statevector_str = [str(c) for c in statevector]
-        print(f"Qiskit simulation successful in {execution_time:.4f}s.")
+        logger.info(f"Qiskit simulation successful in {execution_time:.4f}s.")
         
         return {
             "simulator": "qiskit",
@@ -44,7 +46,7 @@ async def run_circuit(payload: CircuitPayload):
             "process_peak_mb": process_peak_mb
         }
     except Exception as e:
-        print(f"Error during Qiskit simulation: {str(e)}")
+        logger.error(f"Error during Qiskit simulation: {str(e)}")
         return { 
             "simulator": "qiskit", 
             "error": str(e),
@@ -56,7 +58,7 @@ async def run_circuit(payload: CircuitPayload):
 
 @app.post("/run_measured")
 async def run_measured_circuit(payload: MeasuredCircuitPayload):
-    print(f"Received measured circuit data for Qiskit simulation.")
+    logger.info(f"Received measured circuit data for Qiskit simulation.")
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
         qiskit_circ = tk_to_qiskit(tk_circ)
@@ -90,7 +92,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         else:
             counts_dict = counts
 
-        print(f"Qiskit measurement simulation successful in {execution_time:.4f}s.")
+        logger.info(f"Qiskit measurement simulation successful in {execution_time:.4f}s.")
         
         return {
             "simulator": "qiskit",
@@ -101,7 +103,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "process_peak_mb": process_peak_mb
         }
     except Exception as e:
-        print(f"Error during Qiskit measurement simulation: {str(e)}")
+        logger.error(f"Error during Qiskit measurement simulation: {str(e)}")
         return {
             "simulator": "qiskit",
             "error": str(e),

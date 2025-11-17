@@ -9,7 +9,10 @@ import os
 import glob
 import comparator 
 import gc
+from qrosetta_commons.helpers import get_logger
 import library
+
+logger = get_logger("rosetta-api")
 
 # --- NEW IMPORTS ---
 from fastapi.staticfiles import StaticFiles
@@ -115,7 +118,7 @@ async def _dispatch_to_runners(runner_urls: dict, runner_payload: dict) -> list:
     async with httpx.AsyncClient(timeout=60.0) as client:
         dispatch_tasks = []
         for sim_name, url in runner_urls.items():
-            print(f"Dispatching job to {sim_name}...") 
+            logger.info(f"Dispatching job to {sim_name}...") 
             dispatch_tasks.append(client.post(url, json=runner_payload))
 
         responses = await asyncio.gather(*dispatch_tasks, return_exceptions=True)
@@ -141,10 +144,10 @@ async def _dispatch_to_runners(runner_urls: dict, runner_payload: dict) -> list:
 
 # --- CORE LOGIC FUNCTIONS ---
 async def run_single_circuit_comparison(qasm_string: str):
-    print(f"Processing circuit...")
+    logger.info(f"Processing circuit...")
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_string)
-        print(f"Successfully parsed QASM into {tk_circ.n_qubits} qubit circuit.")
+        logger.info(f"Successfully parsed QASM into {tk_circ.n_qubits} qubit circuit.")
         # Remove barriers (Pass)
         RemoveBarriers().apply(tk_circ)
         modified_qasm_string = pytket.qasm.circuit_to_qasm_str(tk_circ)
@@ -159,17 +162,17 @@ async def run_single_circuit_comparison(qasm_string: str):
 
     loop = asyncio.get_event_loop()
 
-    print("Generating divergence report...")
+    logger.info("Generating divergence report...")
     divergence_report_task = loop.run_in_executor(
         None, comparator.create_divergence_report, aggregated_results
     )
     
-    print("Generating performance report...")
+    logger.info("Generating performance report...")
     performance_report_task = loop.run_in_executor(
         None, comparator.create_performance_report, aggregated_results
     )
 
-    print("Generating resource report...")
+    logger.info("Generating resource report...")
     resource_report_task = loop.run_in_executor(
         None, comparator.create_resource_report, aggregated_results
     )
@@ -203,7 +206,7 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int):
     1. ORIGINAL QASM to sampled runners.
     2. MODIFIED QASM to native runners.
     """
-    print(f"Processing measured circuit for {n_shots} shots...")
+    logger.info(f"Processing measured circuit for {n_shots} shots...")
 
     # --- Payload 1: For SAMPLED_SV_URLS ---
     sampled_payload = {
@@ -247,17 +250,17 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int):
     # --- Call the comparators ---
     try:
         loop = asyncio.get_event_loop()
-        print("Generating counts divergence report...")
+        logger.info("Generating counts divergence report...")
         divergence_report_task = loop.run_in_executor(
             None, comparator.create_counts_report, aggregated_results, n_shots
         )
         
-        print("Generating performance report...")
+        logger.info("Generating performance report...")
         performance_report_task = loop.run_in_executor(
             None, comparator.create_performance_report, aggregated_results
         )
         
-        print("Generating resource report...")
+        logger.info("Generating resource report...")
         resource_report_task = loop.run_in_executor(
             None, comparator.create_resource_report, aggregated_results
         )
@@ -333,10 +336,9 @@ async def generate_circuit_endpoint(payload: GenerateCircuitPayload):
             return JSONResponse(content={"error": f"Unknown algorithm: {payload.algorithm}"}, status_code=400)
         
         return {"qasm": qasm}
-    except ValueError as e:
-        return JSONResponse(content={"error": str(e)}, status_code=400)
     except Exception as e:
-        return JSONResponse(content={"error": f"An unexpected error occurred: {str(e)}"}, status_code=500)
+        logger.error(f"CRITICAL ERROR in generate_circuit: {str(e)}", exc_info=True)
+        return JSONResponse(content={"error": str(e)}, status_code=500)
 
 @app.post("/compare")
 async def compare_circuits_endpoint(payload: QasmPayload):
@@ -349,12 +351,12 @@ async def compare_measured_circuits_endpoint(payload: MeasuredQasmPayload):
 
 @app.post("/run_batch_suite")
 async def run_batch_suite_endpoint(payload: BatchPayload):
-    print(f"--- Starting Batch Suite ({payload.mode}) with {len(payload.tasks)} tasks ---")
+    logger.info(f"--- Starting Batch Suite ({payload.mode}) with {len(payload.tasks)} tasks ---")
     benchmark_summary = []
 
     for task in payload.tasks:
         task_name = f"{task.algorithm} ({task.qubits}q)"
-        print(f"--- Running task: {task_name} ---")
+        logger.info(f"--- Running task: {task_name} ---")
         try:
             # Generate QASM for the task
             qasm_payload = GenerateCircuitPayload(algorithm=task.algorithm, qubits=task.qubits)
@@ -384,5 +386,5 @@ async def run_batch_suite_endpoint(payload: BatchPayload):
                 "error": f"Failed to process task: {str(e)}"
             })
             
-    print(f"--- Batch Suite Complete ---")
+    logger.info(f"--- Batch Suite Complete ---")
     return {"benchmark_summary": benchmark_summary}
