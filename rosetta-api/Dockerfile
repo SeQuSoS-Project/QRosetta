@@ -4,9 +4,13 @@ FROM python:3.10-slim
 RUN useradd -m appuser
 WORKDIR /home/appuser/app
 
-# Copy requirements and install dependencies
+# Copy requirements using the correct path relative to project root
 COPY rosetta-api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy shared library and install it (Crucial step for the Logger)
+COPY shared /tmp/shared-src
+RUN pip install /tmp/shared-src
 
 # Copy application code
 COPY rosetta-api/ .
@@ -15,4 +19,5 @@ COPY rosetta-api/ .
 RUN chown -R appuser:appuser /home/appuser/app
 USER appuser
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Start Gunicorn with 4 workers for the API
+CMD ["gunicorn", "main:app", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--timeout", "60"]

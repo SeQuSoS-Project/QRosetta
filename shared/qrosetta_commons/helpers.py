@@ -1,10 +1,34 @@
-# ./shared/qrosetta_commons/helpers.py
 import numpy as np
 from collections import Counter
 import time
 import psutil
 import threading
 import os
+import logging
+import sys
+
+def get_logger(service_name: str) -> logging.Logger:
+    """
+    Configures a structured logger that outputs to stdout.
+    Format: [Timestamp] [Level] [Service] Message
+    """
+    logger = logging.getLogger(service_name)
+    
+    # Prevent duplicate logs if get_logger is called multiple times
+    if logger.hasHandlers():
+        return logger
+        
+    logger.setLevel(logging.INFO)
+    
+    handler = logging.StreamHandler(sys.stdout)
+    formatter = logging.Formatter(
+        fmt='%(asctime)s | %(levelname)-8s | %(name)-20s | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    
+    return logger
 
 def calculate_theoretical_memory_mb(num_qubits):
     """
@@ -40,9 +64,9 @@ def _sample_from_statevector(statevector, n_shots, n_qubits):
 class MemoryMonitor:
     def __init__(self, interval=0.001):
         """
-        interval: Sampling rate in seconds. 
-                  0.001 (1ms) is fast enough to catch C++ spikes 
-                  without slowing down the simulation significantly.
+        interval: Sampling rate in seconds.
+        0.001 (1ms) is fast enough to catch C++ spikes 
+        without slowing down the simulation significantly.
         """
         self.interval = interval
         self.process = psutil.Process(os.getpid())
@@ -77,7 +101,6 @@ class MemoryMonitor:
 
     def get_peak_usage_mb(self):
         # Peak usage is the highest point reached minus the baseline
-        # This isolates the *circuit's* contribution from the *server's* base load.
         return (self.peak_memory - self.baseline_memory) / (1024 * 1024)
 
     def get_process_peak_mb(self):
