@@ -112,7 +112,7 @@ SAMPLED_SV_URLS = {
 
 # --- MODULAR DISPATCH LOGIC ---
 async def _dispatch_to_runners(runner_urls: dict, runner_payload: dict) -> list:
-    async with httpx.AsyncClient(timeout=float(os.getenv("RUNNER_TIMEOUT_SEC", 60.0))) as client:
+    async with httpx.AsyncClient(timeout=60.0) as client:
         dispatch_tasks = []
         for sim_name, url in runner_urls.items():
             print(f"Dispatching job to {sim_name}...") 
