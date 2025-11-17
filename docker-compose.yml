@@ -1,14 +1,26 @@
 services:
+  # Service 0: Nginx Reverse Proxy
+  nginx:
+    build:
+      context: .
+      dockerfile: ./nginx/Dockerfile
+    container_name: nginx-reverse-proxy
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    deploy:
+      resources:
+        limits:
+          cpus: "0.2"
+          memory: "128M"
+
   # Service 1: The main user-facing API
   api:
     build:
       context: .
       dockerfile: ./rosetta-api/Dockerfile
     container_name: rosetta-api
-    ports:
-      - "8000:8000"
-    environment:
-      - RUNNER_TIMEOUT_SEC=60
     # --- FIX ---
     # We mount the whole directory so it can access
     # comparator.py, benchmarks/, and main.py

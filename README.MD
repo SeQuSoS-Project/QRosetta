@@ -51,15 +51,15 @@ This project is configured for **production deployment** by default (no volume m
     *Note: The first build may take time as it compiles dependencies for 9 separate containers.*
 
 3.  **Access the Interface**
-    * **Web UI:** [http://localhost:8000](http://localhost:8000)
-    * **API Docs (Swagger):** [http://localhost:8000/docs](http://localhost:8000/docs)
-
+    * **Web UI:** [http://localhost](http://localhost) (Served via Nginx on Port 80)
+    * **API Docs:** [http://localhost/docs](http://localhost/docs)
 ---
 
 ## Security & Reliability Features
 
 This project has undergone a rigorous **Hardening Sprint** to ensure stability and security.
 
+* **Reverse Proxy:** Nginx sits in front of the API, handling static assets and shielding the Python application server.
 * **Non-Root Execution:** All containers run as an unprivileged user (`appuser`) to prevent container breakout attacks.
 * **Resource Limits:** Every service is capped at **0.5 CPUs** and **512MB RAM** to prevent "Logic Bomb" circuits from crashing the host.
 * **Pinned Dependencies:** All `requirements.txt` files use strict version pinning (e.g., `pennylane==0.39.0`, `autoray==0.6.12`) to prevent dependency drift.
