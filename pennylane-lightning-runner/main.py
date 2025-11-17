@@ -1,12 +1,13 @@
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, calculate_theoretical_memory_mb
+from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, calculate_theoretical_memory_mb, get_logger
 import pennylane as qml
 import numpy as np
 import functools
 import time
 
 app = FastAPI(title="Pennylane Lightning Runner")
+logger = get_logger("pennylane-lightning-runner")
 
 # --- Helper Function ---
 def get_num_qubits_from_qasm(qasm_string: str) -> int:
@@ -14,7 +15,6 @@ def get_num_qubits_from_qasm(qasm_string: str) -> int:
     for line in qasm_string.split('\n'):
         if line.strip().startswith("qreg"):
             try:
-                # e.g., "qreg q[3];"
                 return int(line.split('[')[1].split(']')[0])
             except Exception:
                 pass
@@ -23,14 +23,13 @@ def get_num_qubits_from_qasm(qasm_string: str) -> int:
 
 @app.post("/run")
 async def run_circuit(payload: CircuitPayload):
-    print("Received statevector circuit data for Pennylane-Lightning simulation.")
+    logger.info("Received statevector circuit data for Pennylane-Lightning simulation.")
     try:
         qasm_op = qml.from_qasm(payload.circuit_data)
         num_qubits = get_num_qubits_from_qasm(payload.circuit_data)
         dev = qml.device("lightning.qubit", wires=num_qubits, shots=None)
 
-        @functools.partial(qml.compile, 
-        pipeline=[])
+        @functools.partial(qml.compile, pipeline=[])
         @qml.qnode(dev)
         def statevector_circuit():
             qasm_op()
@@ -38,9 +37,7 @@ async def run_circuit(payload: CircuitPayload):
 
         with MemoryMonitor(interval=0.001) as monitor:
             start_time = time.perf_counter()
-            
             statevector = statevector_circuit()
-            
             end_time = time.perf_counter()
         
         execution_time = end_time - start_time
@@ -50,7 +47,7 @@ async def run_circuit(payload: CircuitPayload):
         
         statevector_str = [str(c) for c in statevector]
 
-        print(f"Pennylane-Lightning statevector simulation successful in {execution_time:.4f}s.")
+        logger.info(f"Pennylane-Lightning statevector simulation successful in {execution_time:.4f}s.")
         
         return {
             "simulator": "pennylane-lightning",
@@ -61,7 +58,7 @@ async def run_circuit(payload: CircuitPayload):
             "process_peak_mb": process_peak_mb
         }
     except Exception as e:
-        print(f"Error during Pennylane-Lightning statevector simulation: {str(e)}")
+        logger.error(f"Error during Pennylane-Lightning statevector simulation: {str(e)}")
         return {
             "simulator": "pennylane-lightning", 
             "error": str(e),
@@ -74,7 +71,7 @@ async def run_circuit(payload: CircuitPayload):
 
 @app.post("/run_measured")
 async def run_measured_circuit(payload: MeasuredCircuitPayload):
-    print("Received measured circuit data for Pennylane-Lightning (manual sampling).")
+    logger.info("Received measured circuit data for Pennylane-Lightning (manual sampling).")
     try:
         qasm_op = qml.from_qasm(payload.circuit_data)
         num_qubits = get_num_qubits_from_qasm(payload.circuit_data)
@@ -90,6 +87,8 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             start_time = time.perf_counter()
             
             statevector = statevector_circuit()
+            # --- BENCHMARKING FIX: Sampling is now timed ---
+            counts_dict = _sample_from_statevector(statevector, payload.n_shots, num_qubits)
             
             end_time = time.perf_counter()
         
@@ -98,11 +97,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         process_peak_mb = monitor.get_process_peak_mb()
         theoretical_mb = calculate_theoretical_memory_mb(num_qubits)
 
-        counts_dict = _sample_from_statevector(statevector, 
-                                               payload.n_shots, 
-                                               num_qubits)
-
-        print(f"Pennylane-Lightning manual sampling successful in {execution_time:.4f}s.")
+        logger.info(f"Pennylane-Lightning manual sampling successful in {execution_time:.4f}s.")
         
         return {
             "simulator": "pennylane-lightning",
@@ -113,7 +108,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "process_peak_mb": process_peak_mb
         }
     except Exception as e:
-        print(f"Error during Pennylane-Lightning measurement simulation: {str(e)}")
+        logger.error(f"Error during Pennylane-Lightning measurement simulation: {str(e)}")
         return {
             "simulator": "pennylane-lightning", 
             "error": str(e),

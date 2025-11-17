@@ -1,4 +1,8 @@
+from qrosetta_commons.helpers import get_logger
 import numpy as np
+
+
+logger = get_logger(__name__)
 from scipy.spatial.distance import jensenshannon
 
 def parse_statevector(sv_str_list):
@@ -31,7 +35,7 @@ def create_divergence_report(results_list):
             try:
                 statevectors.append(parse_statevector(res["statevector"]))
             except Exception as e:
-                print(f"Error parsing statevector from {res.get('simulator')}: {e}")
+                logger.error(f"Error parsing statevector from {res.get('simulator')}: {e}")
                 statevectors.append(None) # Add None to keep lists in sync
         else:
             statevectors.append(None) # Add None if simulator failed
@@ -144,7 +148,7 @@ def create_divergence_report(results_list):
                     })
 
             except Exception as e:
-                print(f"Error comparing {sim_i} and {sim_j}: {e}")
+                logger.error(f"Error comparing {sim_i} and {sim_j}: {e}")
                 fidelity_matrix[i, j] = -1.0 # Mark as Error
                 fidelity_matrix[j, i] = -1.0
 

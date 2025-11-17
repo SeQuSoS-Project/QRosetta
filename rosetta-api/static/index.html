@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quantum Rosetta</title>
+    <title>Quantum Rosetta (Part of SeQuSoS Project)</title>
     <!-- --- CDN FIX: Corrected URL --- -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- --- END FIX --- -->
@@ -29,7 +29,8 @@
             <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                 <div class="flex h-16 items-center justify-between">
                     <div class="flex items-center">
-                        <span class="ml-3 text-2xl font-bold text-gray-900">Quantum Rosetta</span>
+                                                <span class="ml-3 text-3xl font-extrabold text-indigo-600">Quantum Rosetta</span>
+                                                <span class="ml-3 text-2xl font-bold text-gray-900">(Part of SeQuSoS Project)</span>
                     </div>
                 </div>
             </div>
@@ -41,10 +42,10 @@
                 
                 <!-- === BLOCK 1: GENERATOR === -->
                 <div class="p-4 border rounded-lg bg-gray-50">
-                    <h2 class="text-lg font-semibold text-gray-800 mb-3">1. Generate Circuit</h2>
+                    <h2 class="text-lg font-semibold text-gray-800 mb-3">Generate Circuits</h2>
                     <div class="space-y-3">
                         <div>
-                            <label for="algo-select" class="block text-sm font-medium text-gray-700">Algorithm</label>
+                            <label for="algo-select" class="block text-sm font-medium text-gray-700">Quantum Algorithms</label>
                             <select id="algo-select" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"></select>
                         </div>
                         <div>
@@ -69,7 +70,7 @@
                 <!-- === BLOCK 2: PLAYLIST (BATCH RUN) === -->
                 <div id="playlist-section" class="hidden p-4 border rounded-lg bg-yellow-50 border-yellow-200">
                     <div class="flex justify-between items-center mb-3">
-                        <h2 class="text-lg font-semibold text-yellow-900">2. Playlist (Batch Run) (<span id="queue-count">0</span>)</h2>
+                        <h2 class="text-lg font-semibold text-yellow-900">Playlist (Batch Run) (<span id="queue-count">0</span>)</h2>
                         <button onclick="clearBatch()" class="text-xs text-red-600 hover:text-red-800 font-medium">Clear</button>
                     </div>
                     
@@ -88,9 +89,9 @@
                         <label class="block text-xs font-medium text-yellow-800 mb-1">Quick Load:</label>
                         <div class="flex space-x-2">
                             <select id="preset-select" class="flex-1 text-xs border-yellow-300 bg-white rounded shadow-sm focus:ring-yellow-500 focus:border-yellow-500 p-1">
-                                <option value="sanity">1. Sanity Check (All Algos)</option>
-                                <option value="scaling">2. Scaling Test (GHZ 5-20)</option>
-                                <option value="stress">3. Memory Stress (20q)</option>
+                                <option value="sanity">Sanity Check (All Algos)</option>
+                                <option value="scaling">Scaling Test (GHZ 5-20)</option>
+                                <option value="stress">Memory Stress (20q)</option>
                             </select>
                             <button onclick="applyPreset()" class="bg-white border border-yellow-300 text-yellow-700 hover:bg-yellow-50 text-xs font-medium py-1 px-2 rounded shadow-sm">Apply</button>
                         </div>
@@ -127,7 +128,7 @@
 
                 <!-- === BLOCK 3: EDITOR (SINGLE RUN) === -->
                 <div class="p-4 border rounded-lg bg-gray-50 flex-1 flex flex-col">
-                    <h2 class="text-lg font-semibold text-gray-800 mb-3">3. Editor (Single Run)</h2>
+                    <h2 class="text-lg font-semibold text-gray-800 mb-3">Editor (Single Run)</h2>
                     
                     <textarea id="qasm-input" class="flex-1 w-full p-3 font-mono text-sm text-gray-800 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" style="min-height: 200px;"></textarea>
                     
@@ -198,7 +199,7 @@
 
     <script>
         // --- FIX: Define BASE_URL ---
-        const BASE_URL = 'http://localhost:8000';
+        const BASE_URL = '';
 
         // --- GLOBAL STATE ---
         let currentSuiteData = null;
@@ -402,7 +403,7 @@
                     const li = document.createElement('li');
                     li.className = "flex justify-between items-center bg-yellow-100 px-2 py-1 rounded";
                     li.innerHTML = `
-                        <span class="truncate flex-1 text-xs font-mono">${index + 1}. ${item.name} (${item.qubits}q)</span>
+                        <span class="truncate flex-1 text-xs font-mono">${item.name} (${item.qubits}q)</span>
                         <div class="flex space-x-1 ml-2">
                             <button onclick="viewBatchItem(${index})" title="Load QASM to Editor" class="text-blue-600 hover:text-blue-800 font-bold px-1">{ }</button>
                             <button onclick="removeFromBatch(${index})" title="Remove" class="text-yellow-700 hover:text-red-600 font-bold px-1">&times;</button>
@@ -733,6 +734,16 @@
             jsonOutput.textContent = JSON.stringify(data, null, 2);
 
             let html = `<h2 class="text-xl font-semibold text-gray-900 mb-4">${title}</h2>`;
+            
+            // --- ADDED LEGEND ---
+            html += `<div class="flex justify-start items-center space-x-4 text-xs text-gray-600 mb-4 p-2 bg-gray-50 rounded-lg border">
+                <span class="font-bold">Legend:</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-green-100 border border-green-300 mr-1.5"></span>Success / No Divergences</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-yellow-100 border border-yellow-300 mr-1.5"></span>Divergences Found</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-red-100 border border-red-300 mr-1.5"></span>Anomaly</span>
+            </div>`;
+            // --- END LEGEND ---
+
             if (data.error) {
                 html += `<div class="p-4 bg-red-50 text-red-700 rounded border border-red-200">API Error: ${data.error}</div>`;
             } else {
@@ -751,7 +762,7 @@
                     const fname = item.task_name || (item.benchmark_file ? item.benchmark_file.replace('benchmarks/', '') : 'Unknown');
                     
                     let status = `<span class="px-2 py-1 text-xs rounded bg-green-100 text-green-800">Success</span>`;
-                    if (item.error) status = `<span class="px-2 py-1 text-xs rounded bg-red-100 text-red-800">Error</span>`;
+                    if (item.error) status = `<span class="px-2 py-1 text-xs rounded bg-red-100 text-red-800">Anomaly</span>`;
                     else if (item.divergence_report && item.divergence_report.divergences_found.length > 0) status = `<span class="px-2 py-1 text-xs rounded bg-yellow-100 text-yellow-800">Divergence</span>`;
 
                     const fast = item.performance_report?.ranking[0]?.simulator || '-';
@@ -787,6 +798,16 @@
 
         function renderSummaryPanel(data, title) {
             let html = `<h2 class="text-xl font-semibold text-gray-900 mb-4">${title}</h2>`;
+            
+            // --- ADDED LEGEND ---
+            html += `<div class="flex justify-start items-center space-x-4 text-xs text-gray-600 mb-4 p-2 bg-gray-50 rounded-lg border">
+                <span class="font-bold">Legend:</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-green-100 border border-green-300 mr-1.5"></span>Success / No Divergences</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-yellow-100 border border-yellow-300 mr-1.5"></span>Divergences Found</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-red-100 border border-red-300 mr-1.5"></span>Anomaly</span>
+            </div>`;
+            // --- END LEGEND ---
+
             if (data.error) {
                 html += `<div class="p-4 bg-red-50 text-red-700 border border-red-200 rounded"><h3 class="font-bold">API Error</h3><pre class="mt-2 text-xs">${data.error}</pre></div>`;
             } else {
@@ -810,6 +831,11 @@
             if (!panel) return; // Add null check
             let html = `<h3 class="font-semibold text-gray-900 mt-4 mb-2">${report.summary}</h3>`;
             if (key === 'memory_usage_mb') {
+                report.ranking.sort((a, b) => {
+                    if (a.status !== 'success') return 1;
+                    if (b.status !== 'success') return -1;
+                    return (a.process_peak_mb || 0) - (b.process_peak_mb || 0);
+                });
                 html += `<div class="overflow-x-auto border rounded-lg"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr>
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" style="cursor: help; text-decoration: underline dotted;" title="The name of the runner service.">Simulator</th>
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" style="cursor: help; text-decoration: underline dotted;" title="Actual RAM added by the circuit execution (End RSS - Start RSS). Can be 0 for small circuits using pre-allocated memory.">Mem Delta (MiB)</th>
@@ -818,9 +844,9 @@
                 </tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
                 
                 report.ranking.forEach(r => {
-                    const mem_delta = r.status === 'success' && r.memory_usage_mb != null ? r.memory_usage_mb.toFixed(4) : `<span class="text-red-600">Error</span>`;
-                    const proc_peak = r.status === 'success' && r.process_peak_mb != null ? r.process_peak_mb.toFixed(1) : `<span class="text-red-600">Error</span>`;
-                    const theoretical = r.status === 'success' && r.theoretical_memory_mb != null ? r.theoretical_memory_mb.toFixed(4) : `<span class="text-red-600">Error</span>`;
+                    const mem_delta = r.status === 'success' && r.memory_usage_mb != null ? r.memory_usage_mb.toFixed(4) : `<span class="text-red-600">Anomaly</span>`;
+                    const proc_peak = r.status === 'success' && r.process_peak_mb != null ? r.process_peak_mb.toFixed(1) : `<span class="text-red-600">Anomaly</span>`;
+                    const theoretical = r.status === 'success' && r.theoretical_memory_mb != null ? r.theoretical_memory_mb.toFixed(4) : `<span class="text-red-600">Anomaly</span>`;
 
                     html += `<tr>
                         <td class="px-4 py-3 text-sm font-medium text-gray-900">${r.simulator}</td>
@@ -834,7 +860,7 @@
             } else {
                 html += `<div class="overflow-x-auto border rounded-lg"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rank</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Simulator</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Value</th></tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
                 report.ranking.forEach((r, i) => {
-                    const val = r.status === 'success' && r[key] !== null ? `${r[key].toFixed(6)} ${unit}` : `<span class="text-red-600">Error</span>`;
+                    const val = r.status === 'success' && r[key] !== null ? `${r[key].toFixed(6)} ${unit}` : `<span class="text-red-600">Anomaly</span>`;
                     html += `<tr><td class="px-4 py-3 text-sm text-gray-500">${i+1}</td><td class="px-4 py-3 text-sm font-medium text-gray-900">${r.simulator}</td><td class="px-4 py-3 text-sm text-gray-500 font-mono">${val}</td></tr>`;
                 });
                 html += `</tbody></table></div>`;
@@ -847,6 +873,14 @@
             let html = `<div class="space-y-8">`;
             let found = false;
 
+            html += `<div class="flex justify-start items-center space-x-4 text-xs text-gray-600 mb-4 p-2 bg-gray-50 rounded-lg border">
+                <span class="font-bold">Legend:</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-green-50 border border-green-300 mr-1.5"></span>Perfect Match</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-yellow-50 border border-yellow-300 mr-1.5"></span>Divergence</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-red-50 border border-red-300 mr-1.5"></span>Anomaly</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-gray-100 border border-gray-300 mr-1.5"></span>N/A (Self-Comparison)</span>
+            </div>`;
+
             const renderMat = (key, title) => {
                 if (!report[key]) return;
                 found = true;
@@ -854,13 +888,30 @@
                 report.simulators.forEach((s1, i) => {
                     html += `<tr><th class="border p-2 text-xs text-left text-gray-500">${s1}</th>`;
                     report[key][i].forEach((val, j) => {
-                        let bg = 'bg-white';
+                        let bg = 'bg-yellow-50';
                         let txt = val.toFixed(4);
-                        if (val === 1.0) { txt = "1.000"; bg = key.includes('fidelity') ? 'bg-green-50' : 'bg-white'; }
-                        else if (val === 0.0) { txt = "0.000"; }
-                        else if (val === -1.0) { txt = "ERR"; bg = 'bg-red-50'; }
-                        else { bg = 'bg-yellow-50'; } 
-                        if (i===j) bg = 'bg-gray-100';
+
+                        const epsilon = 1e-9;
+                        let isPerfectMatch = false;
+                        if (key.includes('fidelity') && Math.abs(val - 1.0) < epsilon) isPerfectMatch = true;
+                        if (key.includes('phase') && (Math.abs(val - 1.0) < epsilon || Math.abs(val) < epsilon)) isPerfectMatch = true;
+                        if (key.includes('js_divergence') && Math.abs(val) < epsilon) isPerfectMatch = true;
+
+                        if (isPerfectMatch) {
+                            bg = 'bg-green-50';
+                            if (key.includes('js_divergence') || (key.includes('phase') && Math.abs(val) < epsilon)) {
+                                txt = "0.000";
+                            } else {
+                                txt = "1.000";
+                            }
+                        } else if (val === -1.0) {
+                            txt = "ERR";
+                            bg = 'bg-red-50';
+                        }
+                        
+                        if (i===j) {
+                            bg = 'bg-gray-100';
+                        }
                         html += `<td class="border p-2 text-xs text-center font-mono ${bg}">${txt}</td>`;
                     });
                     html += `</tr>`;
