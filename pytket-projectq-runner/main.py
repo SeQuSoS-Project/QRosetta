@@ -9,13 +9,12 @@ from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
 from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, calculate_theoretical_memory_mb, get_logger
 import time
 
-logger = get_logger("pytket-projectq-runner")
-
 app = FastAPI(title="ProjectQ Runner")
+logger = get_logger("pytket-projectq-runner")
 
 @app.post("/run")
 async def run_circuit(payload: CircuitPayload):
-    logger.info(f"Received circuit data for ProjectQ simulation.")
+    logger.info("Received circuit data for ProjectQ simulation.")
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
         RemoveBarriers().apply(tk_circ)
@@ -62,7 +61,7 @@ async def run_circuit(payload: CircuitPayload):
 
 @app.post("/run_measured")
 async def run_measured_circuit(payload: MeasuredCircuitPayload):
-    logger.info(f"Received measured circuit data for ProjectQ (manual sampling).")
+    logger.info("Received measured circuit data for ProjectQ (manual sampling).")
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
         n_qubits = tk_circ.n_qubits
@@ -80,16 +79,15 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             handle = backend.process_circuit(compiled_circ)
             statevector = backend.get_result(handle).get_state()
             
+            # --- BENCHMARKING FIX: Sampling is now timed ---
+            counts_dict = _sample_from_statevector(statevector, payload.n_shots, n_qubits)
+            
             end_time = time.perf_counter()
         
         execution_time = end_time - start_time
         memory_usage_mb = monitor.get_peak_usage_mb()
         process_peak_mb = monitor.get_process_peak_mb()
         theoretical_mb = calculate_theoretical_memory_mb(tk_circ.n_qubits)
-        
-        counts_dict = _sample_from_statevector(statevector, 
-                                               payload.n_shots, 
-                                               n_qubits)
 
         logger.info(f"ProjectQ manual sampling successful in {execution_time:.4f}s.")
         

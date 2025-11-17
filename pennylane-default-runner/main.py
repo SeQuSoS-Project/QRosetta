@@ -6,9 +6,8 @@ import numpy as np
 import functools
 import time
 
-logger = get_logger("pennylane-default-runner")
-
 app = FastAPI(title="Pennylane Default Runner")
+logger = get_logger("pennylane-default-runner")
 
 # --- Helper Function (Unchanged) ---
 def get_num_qubits_from_qasm(qasm_string: str) -> int:
@@ -37,9 +36,7 @@ async def run_circuit(payload: CircuitPayload):
 
         with MemoryMonitor(interval=0.001) as monitor:
             start_time = time.perf_counter()
-            
             statevector = statevector_circuit()
-            
             end_time = time.perf_counter()
         
         execution_time = end_time - start_time
@@ -89,6 +86,8 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             start_time = time.perf_counter()
             
             statevector = statevector_circuit()
+            # --- BENCHMARKING FIX: Sampling is now timed ---
+            counts_dict = _sample_from_statevector(statevector, payload.n_shots, num_qubits)
             
             end_time = time.perf_counter()
 
@@ -97,10 +96,6 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         process_peak_mb = monitor.get_process_peak_mb()
         theoretical_mb = calculate_theoretical_memory_mb(num_qubits)
         
-        counts_dict = _sample_from_statevector(statevector, 
-                                               payload.n_shots, 
-                                               num_qubits)
-
         logger.info(f"Pennylane-Default manual sampling successful in {execution_time:.4f}s.")
 
         return {

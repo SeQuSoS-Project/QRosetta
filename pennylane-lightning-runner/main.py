@@ -6,9 +6,8 @@ import numpy as np
 import functools
 import time
 
-logger = get_logger("pennylane-lightning-runner")
-
 app = FastAPI(title="Pennylane Lightning Runner")
+logger = get_logger("pennylane-lightning-runner")
 
 # --- Helper Function ---
 def get_num_qubits_from_qasm(qasm_string: str) -> int:
@@ -16,7 +15,6 @@ def get_num_qubits_from_qasm(qasm_string: str) -> int:
     for line in qasm_string.split('\n'):
         if line.strip().startswith("qreg"):
             try:
-                # e.g., "qreg q[3];"
                 return int(line.split('[')[1].split(']')[0])
             except Exception:
                 pass
@@ -31,8 +29,7 @@ async def run_circuit(payload: CircuitPayload):
         num_qubits = get_num_qubits_from_qasm(payload.circuit_data)
         dev = qml.device("lightning.qubit", wires=num_qubits, shots=None)
 
-        @functools.partial(qml.compile, 
-        pipeline=[])
+        @functools.partial(qml.compile, pipeline=[])
         @qml.qnode(dev)
         def statevector_circuit():
             qasm_op()
@@ -40,9 +37,7 @@ async def run_circuit(payload: CircuitPayload):
 
         with MemoryMonitor(interval=0.001) as monitor:
             start_time = time.perf_counter()
-            
             statevector = statevector_circuit()
-            
             end_time = time.perf_counter()
         
         execution_time = end_time - start_time
@@ -92,6 +87,8 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             start_time = time.perf_counter()
             
             statevector = statevector_circuit()
+            # --- BENCHMARKING FIX: Sampling is now timed ---
+            counts_dict = _sample_from_statevector(statevector, payload.n_shots, num_qubits)
             
             end_time = time.perf_counter()
         
@@ -99,10 +96,6 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         memory_usage_mb = monitor.get_peak_usage_mb()
         process_peak_mb = monitor.get_process_peak_mb()
         theoretical_mb = calculate_theoretical_memory_mb(num_qubits)
-
-        counts_dict = _sample_from_statevector(statevector, 
-                                               payload.n_shots, 
-                                               num_qubits)
 
         logger.info(f"Pennylane-Lightning manual sampling successful in {execution_time:.4f}s.")
         
