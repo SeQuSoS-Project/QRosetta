@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Rosetta (Part of SeQuSoS Project)</title>
+    <!-- --- CDN FIX: Corrected URL --- -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- --- END FIX --- -->
+    <style>
+        .loader {
+            border-top-color: #3b82f6;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .matrix-table th.sim-header {
+            writing-mode: vertical-rl;
+            transform: rotate(180deg);
+            white-space: nowrap;
+            padding-bottom: 8px;
+        }
+    </style>
+</head>
+<body class="h-full font-sans text-gray-900">
+    <div class="flex flex-col h-screen">
+        <header class="bg-white border-b border-gray-200 shadow-sm">
+            <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+                <div class="flex h-16 items-center justify-between">
+                    <div class="flex items-center">
+                                                <span class="ml-3 text-3xl font-extrabold text-indigo-600">Quantum Rosetta</span>
+                                                <span class="ml-3 text-2xl font-bold text-gray-900">(Part of SeQuSoS Project)</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-1 flex flex-col md:flex-row min-h-0">
+            
+            <div class="w-full md:w-1/2 p-4 sm:p-6 lg:p-8 flex flex-col border-r border-gray-200 overflow-y-auto bg-white space-y-6">
+                
+                <!-- === BLOCK 1: GENERATOR === -->
+                <div class="p-4 border rounded-lg bg-gray-50">
+                    <h2 class="text-lg font-semibold text-gray-800 mb-3">Generate Circuits</h2>
+                    <div class="space-y-3">
+                        <div>
+                            <label for="algo-select" class="block text-sm font-medium text-gray-700">Quantum Algorithms</label>
+                            <select id="algo-select" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"></select>
+                        </div>
+                        <div>
+                            <label for="algo-qubits" class="block text-sm font-medium text-gray-700">Qubits</label>
+                            <input type="number" id="algo-qubits" value="3" min="2" max="20" class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        </div>
+                        
+                        <div class="grid grid-cols-3 gap-2">
+                            <button onclick="generateCircuit()" class="col-span-1 flex justify-center py-2 px-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none">
+                                Load
+                            </button>
+                            <button onclick="addToBatch()" class="col-span-1 flex justify-center py-2 px-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none">
+                                + Add
+                            </button>
+                            <button onclick="togglePlaylist()" class="col-span-1 flex justify-center py-2 px-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none">
+                                Manage
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- === BLOCK 2: PLAYLIST (BATCH RUN) === -->
+                <div id="playlist-section" class="hidden p-4 border rounded-lg bg-yellow-50 border-yellow-200">
+                    <div class="flex justify-between items-center mb-3">
+                        <h2 class="text-lg font-semibold text-yellow-900">Playlist (Batch Run) (<span id="queue-count">0</span>)</h2>
+                        <button onclick="clearBatch()" class="text-xs text-red-600 hover:text-red-800 font-medium">Clear</button>
+                    </div>
+                    
+                    <!-- Playlist Management -->
+                    <div class="flex space-x-2 mb-3">
+                        <button onclick="exportPlaylist()" class="flex-1 bg-white border border-yellow-300 text-yellow-700 hover:bg-yellow-50 text-xs font-medium py-1 px-2 rounded shadow-sm">
+                            ⬇ Save
+                        </button>
+                        <button onclick="document.getElementById('playlist-upload').click()" class="flex-1 bg-white border border-yellow-300 text-yellow-700 hover:bg-yellow-50 text-xs font-medium py-1 px-2 rounded shadow-sm">
+                            ⬆ Load
+                        </button>
+                        <input type="file" id="playlist-upload" class="hidden" accept=".json" onchange="importPlaylist(this)">
+                        <button onclick="openGeneratorModal()" class="flex-1 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs font-medium py-1 px-2 rounded shadow-sm">✨ Auto-Gen</button>
+                    </div>
+                    <div class="mb-3">
+                        <label class="block text-xs font-medium text-yellow-800 mb-1">Quick Load:</label>
+                        <div class="flex space-x-2">
+                            <select id="preset-select" class="flex-1 text-xs border-yellow-300 bg-white rounded shadow-sm focus:ring-yellow-500 focus:border-yellow-500 p-1">
+                                <option value="sanity">Sanity Check (All Algos)</option>
+                                <option value="scaling">Scaling Test (GHZ 5-20)</option>
+                                <option value="stress">Memory Stress (20q)</option>
+                            </select>
+                            <button onclick="applyPreset()" class="bg-white border border-yellow-300 text-yellow-700 hover:bg-yellow-50 text-xs font-medium py-1 px-2 rounded shadow-sm">Apply</button>
+                        </div>
+                    </div>
+
+                    <!-- Playlist Controls (Decoupled) -->
+                    <div class="space-y-3 border-t border-yellow-200 pt-3">
+                         <div>
+                            <label class="block text-sm font-medium text-yellow-800">Mode</label>
+                            <div class="mt-1 flex space-x-4">
+                                <label class="flex items-center">
+                                    <input type="radio" name="mode-batch" value="statevector" checked onchange="toggleBatchMode()">
+                                    <span class="ml-2 text-sm text-yellow-900">Statevector</span>
+                                </label>
+                                <label class="flex items-center">
+                                    <input type="radio" name="mode-batch" value="measured" onchange="toggleBatchMode()">
+                                    <span class="ml-2 text-sm text-yellow-900">Measured</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div id="shots-container-batch" class="hidden">
+                            <label for="shots-batch" class="block text-sm font-medium text-yellow-800">Shots</label>
+                            <input type="number" id="shots-batch" value="1024" class="mt-1 block w-full border border-yellow-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm">
+                        </div>
+                    </div>
+
+                    <ul id="queue-list" class="my-4 space-y-2 max-h-40 overflow-y-auto text-sm text-gray-700 border-t border-b border-yellow-200 py-2">
+                    </ul>
+                    
+                    <button id="btn-batch-run" onclick="runBatchQueue()" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
+                        Run Batch
+                    </button>
+                </div>
+
+                <!-- === BLOCK 3: EDITOR (SINGLE RUN) === -->
+                <div class="p-4 border rounded-lg bg-gray-50 flex-1 flex flex-col">
+                    <h2 class="text-lg font-semibold text-gray-800 mb-3">Editor (Single Run)</h2>
+                    
+                    <textarea id="qasm-input" class="flex-1 w-full p-3 font-mono text-sm text-gray-800 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" style="min-height: 200px;"></textarea>
+                    
+                    <div class="space-y-4 mt-4 pt-4 border-t border-gray-200">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Mode</label>
+                            <div class="mt-2 flex space-x-4">
+                                <label class="flex items-center">
+                                    <input type="radio" name="mode-single" value="statevector" checked onchange="toggleSingleMode()">
+                                    <span class="ml-2 text-sm text-gray-700">Statevector</span>
+                                </label>
+                                <label class="flex items-center">
+                                    <input type="radio" name="mode-single" value="measured" onchange="toggleSingleMode()">
+                                    <span class="ml-2 text-sm text-gray-700">Measured</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div id="shots-container-single" class="hidden">
+                            <label for="shots-single" class="block text-sm font-medium text-gray-700">Shots</label>
+                            <input type="number" id="shots-single" value="1024" class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        </div>
+                        <button onclick="handleRun()" id="btn-run" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                            Run Editor Code
+                        </button>
+                    </div>
+                </div>
+                
+            </div>
+
+            <!-- === RIGHT PANEL (RESULTS) === -->
+            <div class="w-full md:w-1/2 p-4 sm:p-6 lg:p-8 flex flex-col overflow-y-auto bg-gray-50">
+                <div class="flex-1 flex flex-col rounded-lg min-h-0 relative bg-white border border-gray-200 shadow-sm">
+                    <div id="loader" class="absolute inset-0 z-10 flex items-center justify-center bg-white bg-opacity-75 rounded-lg hidden">
+                        <div class="loader h-12 w-12 rounded-full border-4 border-t-4 border-gray-200"></div>
+                    </div>
+                    
+                    <div id="back-button-container" class="hidden p-4 border-b border-gray-200">
+                        <button onclick="renderSuiteSummary(currentSuiteData, currentSuiteTitle)" class="text-sm font-medium text-blue-600 hover:text-blue-500">&larr; Back to Suite Summary</button>
+                    </div>
+
+                    <nav class="flex border-b border-gray-200" id="tab-nav"></nav>
+
+                    <div class="flex-1 overflow-y-auto" id="tab-content">
+                        <div id="welcome-message" class="p-4 text-gray-500 block">Select an algorithm on the left to begin.</div>
+                        
+                        <div id="summary-panel" class="p-4 hidden"></div>
+                        <div id="performance-panel" class="p-4 hidden"></div>
+                        <div id="resources-panel" class="p-4 hidden"></div>
+                        <div id="divergence-panel" class="p-4 hidden"></div>
+                        <div id="suite-summary-panel" class="p-4 hidden"></div>
+                        
+                        <div id="raw-panel" class="p-0 hidden relative flex flex-col h-full">
+                             <div id="truncation-warning" class="hidden p-2 bg-yellow-100 text-yellow-800 text-xs border-b border-yellow-200">
+                                 ⚠️ Data Truncated: Large statevectors hidden. Download full report to view.
+                             </div>
+                             <div class="absolute top-14 right-4 z-10 flex items-center space-x-2">
+                                 <button id="download-btn" onclick="downloadFullReport()" class="hidden bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium py-1 px-3 rounded-md transition-all">Download Full JSON</button>
+                                 <button onclick="downloadRawJson()" class="bg-green-600 hover:bg-green-700 text-white text-xs font-medium py-1 px-3 rounded-md transition-all">Download RAW JSON</button>
+                                 <button id="copy-btn" onclick="copyRawJson(this)" class="bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-medium py-1 px-3 rounded-md transition-all">Copy View</button>
+                             </div>
+                             <pre id="json-output" class="flex-1 p-4 pt-10 overflow-auto text-xs text-gray-700 whitespace-pre-wrap break-words bg-gray-50 rounded-b-lg"></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // --- FIX: Define BASE_URL ---
+        const BASE_URL = '';
+
+        // --- GLOBAL STATE ---
+        let currentSuiteData = null;
+        let currentSuiteTitle = '';
+        let batchQueue = []; // Playlist
+        let allAlgorithms = []; // Metadata
+
+        // --- FIX: Declare DOM elements here, define them in window.onload ---
+        let qasmInput, loader, tabNav, welcomeMessage, backButtonContainer, jsonOutput;
+        let playlistSection, queueList, queueCount;
+        let panelElements = {};
+        let allButtons = [];
+
+        // --- INIT ---
+        window.onload = async () => {
+            // --- FIX: Define all DOM elements inside onload ---
+            qasmInput = document.getElementById('qasm-input');
+            loader = document.getElementById('loader');
+            tabNav = document.getElementById('tab-nav');
+            welcomeMessage = document.getElementById('welcome-message');
+            backButtonContainer = document.getElementById('back-button-container');
+            jsonOutput = document.getElementById('json-output');
+            
+            playlistSection = document.getElementById('playlist-section');
+            queueList = document.getElementById('queue-list');
+            queueCount = document.getElementById('queue-count');
+
+            panelElements = {
+                'summary': document.getElementById('summary-panel'),
+                'performance': document.getElementById('performance-panel'),
+                'resources': document.getElementById('resources-panel'),
+                'divergence': document.getElementById('divergence-panel'),
+                'raw': document.getElementById('raw-panel'),
+                'suite-summary': document.getElementById('suite-summary-panel')
+            };
+            
+            allButtons = [
+                document.getElementById('btn-run'),
+                document.getElementById('btn-batch-run')
+            ];
+            // --- END FIX ---
+
+            try {
+                // --- FIX: Use BASE_URL for fetch ---
+                const response = await fetch(`${BASE_URL}/algorithms`);
+                if (!response.ok) throw new Error('Failed to fetch algorithms');
+                allAlgorithms = await response.json();
+                
+                const select = document.getElementById('algo-select');
+                select.innerHTML = '';
+                allAlgorithms.forEach(algo => {
+                    const option = document.createElement('option');
+                    option.value = algo.id;
+                    option.textContent = algo.name;
+                    select.appendChild(option);
+                });
+                
+                select.addEventListener('change', updateQubitConstraints);
+                updateQubitConstraints(); 
+
+            } catch (error) {
+                console.error("Failed to load algorithms:", error);
+                // Display error to user
+                welcomeMessage.innerHTML = `<div class="p-4 bg-red-100 text-red-700 rounded"><strong>Connection Error:</strong> Could not load algorithms from ${BASE_URL}. Is the server running?</div>`;
+                welcomeMessage.classList.remove('text-gray-500');
+            }
+            // Set initial UI states for both blocks
+            toggleSingleMode();
+            toggleBatchMode();
+            // Only generate circuit if algorithms loaded
+            if (allAlgorithms.length > 0) {
+                generateCircuit(); 
+            }
+            renderBatchQueue(); 
+        };
+
+        // --- METADATA UI LOGIC ---
+        function updateQubitConstraints() {
+            const algoId = document.getElementById('algo-select').value;
+            const selectedAlgo = allAlgorithms.find(a => a.id === algoId);
+            const input = document.getElementById('algo-qubits');
+            
+            if (selectedAlgo) {
+                if (selectedAlgo.min_qubits !== undefined) input.min = selectedAlgo.min_qubits;
+                if (selectedAlgo.max_qubits !== undefined) input.max = selectedAlgo.max_qubits;
+                if (selectedAlgo.default_qubits !== undefined) input.value = selectedAlgo.default_qubits;
+                
+                if (selectedAlgo.min_qubits === selectedAlgo.max_qubits) {
+                    input.disabled = true;
+                } else {
+                    input.disabled = false;
+                }
+            }
+        }
+
+        // --- GENERATOR & PLAYLIST LOGIC ---
+
+        const PRESETS = {
+            "sanity": [
+                { algorithm: "bell", qubits: 2, name: "Bell State (Simple)" },
+                { algorithm: "ghz", qubits: 5, name: "GHZ State (Entanglement)" },
+                { algorithm: "qft", qubits: 5, name: "Quantum Fourier Transform" },
+                { algorithm: "grover", qubits: 5, name: "Grover Search (Oracle)" },
+                { algorithm: "random", qubits: 5, name: "Random Circuit" }
+            ],
+            "scaling": [
+                { algorithm: "ghz", qubits: 5, name: "GHZ State (Entanglement)" },
+                { algorithm: "ghz", qubits: 10, name: "GHZ State (Entanglement)" },
+                { algorithm: "ghz", qubits: 15, name: "GHZ State (Entanglement)" },
+                { algorithm: "ghz", qubits: 20, name: "GHZ State (Entanglement)" }
+            ],
+            "stress": [
+                { algorithm: "random", qubits: 20, name: "Random Circuit" },
+                { algorithm: "bv", qubits: 20, name: "Bernstein-Vazirani" },
+                { algorithm: "vqe", qubits: 20, name: "VQE Ansatz" }
+            ]
+        };
+
+        function applyPreset() {
+            const val = document.getElementById('preset-select').value;
+            if (PRESETS[val]) {
+                if(batchQueue.length > 0 && !confirm("This will replace your current playlist. Continue?")) return;
+                batchQueue = JSON.parse(JSON.stringify(PRESETS[val]));
+                renderBatchQueue();
+            }
+        }
+
+        async function generateCircuit() {
+            const algoId = document.getElementById('algo-select').value;
+            const qubits = parseInt(document.getElementById('algo-qubits').value);
+
+            if (!algoId || isNaN(qubits)) {
+                alert("Please select an algorithm and specify a valid number of qubits.");
+                return;
+            }
+
+            setLoading(true);
+            try {
+                // --- FIX: Use BASE_URL for fetch ---
+                const response = await fetch(`${BASE_URL}/generate_circuit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ algorithm: algoId, qubits: qubits })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    qasmInput.value = data.qasm;
+                } else {
+                    throw new Error(data.error || "Failed to generate circuit.");
+                }
+            } catch (error) {
+                console.error("Circuit generation failed:", error);
+                alert("Circuit generation failed: " + error.message);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        function addToBatch() {
+            const algoId = document.getElementById('algo-select').value;
+            const qubits = parseInt(document.getElementById('algo-qubits').value);
+            const selectElement = document.getElementById('algo-select');
+            const algoName = selectElement.options[selectElement.selectedIndex].text;
+
+            if (!algoId || isNaN(qubits)) return;
+
+            batchQueue.push({
+                algorithm: algoId,
+                qubits: qubits,
+                name: algoName
+            });
+            renderBatchQueue();
+            
+            if (playlistSection.classList.contains('hidden')) {
+                playlistSection.classList.remove('hidden');
+            }
+        }
+
+        function togglePlaylist() {
+            if (playlistSection.classList.contains('hidden')) {
+                playlistSection.classList.remove('hidden');
+            } else {
+                playlistSection.classList.add('hidden');
+            }
+        }
+
+        function renderBatchQueue() {
+            // --- FIX: Check if queueCount is defined (it might not be if onload failed) ---
+            if (queueCount) {
+                queueCount.textContent = batchQueue.length;
+            }
+            if (queueList) {
+                queueList.innerHTML = '';
+                
+                if (batchQueue.length === 0) {
+                    queueList.innerHTML = '<li class="text-gray-400 italic text-center py-2 text-xs">Playlist is empty.</li>';
+                    return;
+                }
+                
+                batchQueue.forEach((item, index) => {
+                    const li = document.createElement('li');
+                    li.className = "flex justify-between items-center bg-yellow-100 px-2 py-1 rounded";
+                    li.innerHTML = `
+                        <span class="truncate flex-1 text-xs font-mono">${item.name} (${item.qubits}q)</span>
+                        <div class="flex space-x-1 ml-2">
+                            <button onclick="viewBatchItem(${index})" title="Load QASM to Editor" class="text-blue-600 hover:text-blue-800 font-bold px-1">{ }</button>
+                            <button onclick="removeFromBatch(${index})" title="Remove" class="text-yellow-700 hover:text-red-600 font-bold px-1">&times;</button>
+                        </div>
+                    `;
+                    queueList.appendChild(li);
+                });
+            }
+        }
+
+        async function viewBatchItem(index) {
+            const item = batchQueue[index];
+            if (!item) return;
+
+            qasmInput.value = "// Loading preview from playlist...";
+            
+            try {
+                setLoading(true);
+                // --- FIX: Use BASE_URL for fetch ---
+                const response = await fetch(`${BASE_URL}/generate_circuit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ algorithm: item.algorithm, qubits: item.qubits })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    qasmInput.value = data.qasm;
+                    const sel = document.getElementById('algo-select');
+                    if (sel.querySelector(`option[value="${item.algorithm}"]`)) {
+                        sel.value = item.algorithm;
+                        document.getElementById('algo-qubits').value = item.qubits;
+                    }
+                } else {
+                    qasmInput.value = "// Error loading preview: " + data.error;
+                }
+            } catch (e) {
+                qasmInput.value = "// Error: " + e.message;
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        function removeFromBatch(index) {
+            batchQueue.splice(index, 1);
+            renderBatchQueue();
+        }
+
+        function clearBatch() {
+            batchQueue = [];
+            renderBatchQueue();
+        }
+
+        async function runBatchQueue() {
+            if (batchQueue.length === 0) return;
+            
+            const mode = document.querySelector('input[name="mode-batch"]:checked').value;
+            const shots = parseInt(document.getElementById('shots-batch').value) || 1024;
+            
+            const payload = {
+                tasks: batchQueue,
+                mode: mode,
+                n_shots: shots
+            };
+
+            setLoading(true);
+            clearReport();
+
+            try {
+                // --- FIX: Use BASE_URL for fetch ---
+                const res = await fetch(`${BASE_URL}/run_batch_suite`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!res.ok) {
+                    const errorText = await res.text();
+                    throw new Error(`HTTP error! Status: ${res.status}. Details: ${errorText}`);
+                }
+                
+                const data = await res.json();
+                currentSuiteData = data;
+                currentSuiteTitle = "Playlist Batch Report";
+                renderSuiteSummary(data, currentSuiteTitle);
+                
+            } catch (e) {
+                console.error(e);
+                renderSuiteSummary({ error: e.message }, "Batch Error");
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        // --- UI FIX: Decoupled Mode Toggles ---
+        
+        function toggleSingleMode() {
+            const mode = document.querySelector('input[name="mode-single"]:checked').value;
+            const shotsContainer = document.getElementById('shots-container-single');
+            if (mode === 'measured') {
+                shotsContainer.classList.remove('hidden');
+            } else {
+                shotsContainer.classList.add('hidden');
+            }
+        }
+
+        function toggleBatchMode() {
+            const mode = document.querySelector('input[name="mode-batch"]:checked').value;
+            const shotsContainer = document.getElementById('shots-container-batch');
+            const batchBtn = document.getElementById('btn-batch-run');
+            
+            if (mode === 'measured') {
+                shotsContainer.classList.remove('hidden');
+                batchBtn.textContent = "Run Batch (Measured)";
+            } else {
+                shotsContainer.classList.add('hidden');
+                batchBtn.textContent = "Run Batch (Statevector)";
+            }
+        }
+        // --- END FIX ---
+
+        function handleRun() {
+            const mode = document.querySelector('input[name="mode-single"]:checked').value;
+            const shots = parseInt(document.getElementById('shots-single').value) || 1024;
+            runComparison(mode, shots);
+        }
+
+
+        // --- AUTO-GENERATOR LOGIC ---
+        function openGeneratorModal() {
+            const list = document.getElementById('gen-algo-list');
+            list.innerHTML = '';
+            allAlgorithms.forEach(algo => {
+                const div = document.createElement('div');
+                div.className = "flex items-center";
+                div.innerHTML = `
+                    <input type="checkbox" value="${algo.id}" checked class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                    <label class="ml-2 block text-gray-900">${algo.name}</label>
+                `;
+                list.appendChild(div);
+            });
+            document.getElementById('gen-modal').classList.remove('hidden');
+        }
+
+        function closeGeneratorModal() {
+            document.getElementById('gen-modal').classList.add('hidden');
+        }
+
+        function runAutoGeneration() {
+            const checkboxes = document.querySelectorAll('#gen-algo-list input:checked');
+            const selectedAlgos = Array.from(checkboxes).map(cb => cb.value);
+            const minQ = parseInt(document.getElementById('gen-min').value);
+            const maxQ = parseInt(document.getElementById('gen-max').value);
+            const count = parseInt(document.getElementById('gen-count').value);
+
+            if (selectedAlgos.length === 0) { alert("Select at least one algorithm."); return; }
+            if (minQ > maxQ) { alert("Min qubits cannot be greater than Max qubits."); return; }
+
+            for (let i = 0; i < count; i++) {
+                const algoId = selectedAlgos[Math.floor(Math.random() * selectedAlgos.length)];
+                const algoMeta = allAlgorithms.find(a => a.id === algoId);
+                
+                const safeMin = Math.max(minQ, algoMeta.min_qubits || 2);
+                const safeMax = Math.min(maxQ, algoMeta.max_qubits || 20);
+                
+                if (safeMin <= safeMax) {
+                    const q = Math.floor(Math.random() * (safeMax - safeMin + 1)) + safeMin;
+                    batchQueue.push({ algorithm: algoId, qubits: q, name: algoMeta.name });
+                }
+            }
+            
+            renderBatchQueue();
+            closeGeneratorModal();
+        }
+
+        // --- CORE FUNCTIONS ---
+
+        function setLoading(isLoading) {
+            if (isLoading) {
+                loader.classList.remove('hidden');
+                loader.classList.add('flex');
+                allButtons.forEach(btn => { if(btn) btn.disabled = true }); // Add null check
+            } else {
+                loader.classList.add('hidden');
+                loader.classList.remove('flex');
+                allButtons.forEach(btn => { if(btn) btn.disabled = false }); // Add null check
+            }
+        }
+
+        function clearReport() {
+            welcomeMessage.classList.add('hidden');
+            tabNav.innerHTML = '';
+            backButtonContainer.classList.add('hidden');
+            
+            Object.entries(panelElements).forEach(([key, panel]) => {
+                if (key !== 'raw') {
+                    if (panel) panel.innerHTML = ''; // Add null check
+                }
+                if (panel) panel.classList.add('hidden'); // Add null check
+            });
+            if (jsonOutput) jsonOutput.textContent = ''; // Add null check
+        }
+
+        function showTab(tabName) {
+            welcomeMessage.classList.add('hidden');
+            Object.values(panelElements).forEach(panel => { if (panel) panel.classList.add('hidden') }); // Add null check
+            
+            const panel = panelElements[tabName];
+            if (panel) panel.classList.remove('hidden');
+            
+            tabNav.querySelectorAll('button').forEach(btn => {
+                btn.classList.remove('border-blue-600', 'text-blue-600');
+                btn.classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-700');
+            });
+            const activeBtn = tabNav.querySelector(`[data-tab="${tabName}"]`);
+            if (activeBtn) {
+                activeBtn.classList.add('border-blue-600', 'text-blue-600');
+                activeBtn.classList.remove('border-transparent', 'text-gray-500', 'hover:text-gray-700');
+            }
+        }
+
+        function renderTabs(tabList) {
+            tabNav.innerHTML = '';
+            tabList.forEach(tabName => {
+                const button = document.createElement('button');
+                button.className = 'ml-4 px-3 py-3 font-medium text-sm border-b-2 border-transparent text-gray-500 hover:text-gray-700';
+                button.textContent = tabName.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase());
+                if (tabName === 'raw') button.textContent = "Raw JSON";
+                button.dataset.tab = tabName;
+                button.onclick = () => showTab(tabName);
+                tabNav.appendChild(button);
+            });
+        }
+
+        // --- API CALLS (Single Run & Legacy) ---
+
+        async function runComparison(type, shots) {
+            const qasm = qasmInput.value.trim();
+            if (!qasm) { alert("Please enter QASM code."); return; }
+
+            const endpoint = type === 'statevector' ? '/compare' : '/compare_measured';
+            const payload = type === 'statevector' ? { qasm_string: qasm } : { qasm_string: qasm, n_shots: shots };
+            const title = type === 'statevector' ? 'Editor Run (Statevector)' : `Editor Run (Measured, ${shots} shots)`;
+
+            setLoading(true);
+            clearReport();
+
+            try {
+                // --- FIX: Use BASE_URL for fetch ---
+                const res = await fetch(`${BASE_URL}${endpoint}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!res.ok) {
+                    const errorText = await res.text();
+                    throw new Error(`HTTP error! Status: ${res.status} ${res.statusText}. Details: ${errorText}`);
+                }
+
+                const data = await res.json();
+                renderDetailReport(data, title);
+            } catch (e) {
+                console.error(e);
+                renderDetailReport({ error: e.message }, "Error");
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        // --- RENDERERS ---
+
+        function renderDetailReport(data, title) {
+            renderTabs(['summary', 'performance', 'resources', 'divergence', 'raw']);
+            const jsonString = JSON.stringify(data, null, 2);
+            jsonOutput.textContent = jsonString;
+
+            const warningBanner = document.getElementById('truncation-warning');
+            const downloadButton = document.getElementById('download-btn');
+            if (jsonString.includes("<Statevector too large for display")) {
+                warningBanner.classList.remove('hidden');
+                downloadButton.classList.remove('hidden');
+            } else {
+                warningBanner.classList.add('hidden');
+                downloadButton.classList.add('hidden');
+            }
+
+            renderSummaryPanel(data, title);
+            if (!data.error) {
+                if (data.performance_report) renderRankingTable(data.performance_report, 'execution_time_sec', 's', panelElements.performance);
+                if (data.resource_report) renderRankingTable(data.resource_report, 'memory_usage_mb', 'MiB', panelElements.resources);
+                if (data.divergence_report) renderDivergenceTables(data.divergence_report, panelElements.divergence);
+            }
+
+            showTab('summary');
+        }
+
+        function copyRawJson(btn) {
+            const txt = jsonOutput.textContent;
+            navigator.clipboard.writeText(txt).then(() => {
+                const old = btn.textContent;
+                btn.textContent = "Copied!";
+                setTimeout(() => btn.textContent = old, 2000);
+            }).catch(err => console.error(err));
+        }
+
+        function downloadFullReport() {
+            // --- FIX: Use BASE_URL for fetch ---
+            window.location.href = `${BASE_URL}/download_latest_report`;
+        }
+
+        function downloadRawJson() {
+            const jsonString = jsonOutput.textContent;
+            if (!jsonString || jsonString.trim() === '') {
+                alert("No JSON content to download.");
+                return;
+            }
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(jsonString);
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "rosetta_raw_report.json");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        }
+
+        function renderSuiteSummary(data, title) {
+            clearReport();
+            renderTabs(['suite-summary', 'raw']);
+            jsonOutput.textContent = JSON.stringify(data, null, 2);
+
+            let html = `<h2 class="text-xl font-semibold text-gray-900 mb-4">${title}</h2>`;
+            
+            // --- ADDED LEGEND ---
+            html += `<div class="flex justify-start items-center space-x-4 text-xs text-gray-600 mb-4 p-2 bg-gray-50 rounded-lg border">
+                <span class="font-bold">Legend:</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-green-100 border border-green-300 mr-1.5"></span>Success / No Divergences</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-yellow-100 border border-yellow-300 mr-1.5"></span>Divergences Found</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-red-100 border border-red-300 mr-1.5"></span>Anomaly</span>
+            </div>`;
+            // --- END LEGEND ---
+
+            if (data.error) {
+                html += `<div class="p-4 bg-red-50 text-red-700 rounded border border-red-200">API Error: ${data.error}</div>`;
+            } else {
+                const summary = data.benchmark_summary || [];
+                const errors = summary.filter(r => r.error).length;
+                html += `<div class="mb-4 p-4 bg-white border rounded shadow-sm">Processed <b>${summary.length}</b> tasks with <b>${errors}</b> errors.</div>`;
+                html += `<div class="overflow-x-auto border rounded-lg"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fastest</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lightest</th>
+                    <th></th>
+                </tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
+                
+                summary.forEach((item, idx) => {
+                    const fname = item.task_name || (item.benchmark_file ? item.benchmark_file.replace('benchmarks/', '') : 'Unknown');
+                    
+                    let status = `<span class="px-2 py-1 text-xs rounded bg-green-100 text-green-800">Success</span>`;
+                    if (item.error) status = `<span class="px-2 py-1 text-xs rounded bg-red-100 text-red-800">Anomaly</span>`;
+                    else if (item.divergence_report && item.divergence_report.divergences_found.length > 0) status = `<span class="px-2 py-1 text-xs rounded bg-yellow-100 text-yellow-800">Divergence</span>`;
+
+                    const fast = item.performance_report?.ranking[0]?.simulator || '-';
+                    const light = item.resource_report?.ranking[0]?.simulator || '-';
+
+                    html += `<tr>
+                        <td class="px-4 py-3 text-sm font-medium text-gray-900">${fname}</td>
+                        <td class="px-4 py-3">${status}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500">${fast}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500">${light}</td>
+                        <td class="px-4 py-3 text-right"><button onclick="viewDetail(${idx})" class="text-blue-600 hover:text-blue-900 text-sm font-medium">Details</button></td>
+                    </tr>`;
+                });
+                html += `</tbody></table></div>`;
+            }
+            
+            if (panelElements['suite-summary']) {
+                panelElements['suite-summary'].innerHTML = html;
+            }
+            showTab('suite-summary');
+        }
+
+        function viewDetail(index) {
+            const item = currentSuiteData.benchmark_summary[index];
+            const fname = item.task_name || (item.benchmark_file ? item.benchmark_file.replace('benchmarks/', '') : 'Unknown');
+            
+            clearReport();
+            backButtonContainer.classList.remove('hidden');
+            renderDetailReport(item, `Detail: ${fname}`);
+        }
+
+        // --- PANEL RENDERERS ---
+
+        function renderSummaryPanel(data, title) {
+            let html = `<h2 class="text-xl font-semibold text-gray-900 mb-4">${title}</h2>`;
+            
+            // --- ADDED LEGEND ---
+            html += `<div class="flex justify-start items-center space-x-4 text-xs text-gray-600 mb-4 p-2 bg-gray-50 rounded-lg border">
+                <span class="font-bold">Legend:</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-green-100 border border-green-300 mr-1.5"></span>Success / No Divergences</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-yellow-100 border border-yellow-300 mr-1.5"></span>Divergences Found</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-red-100 border border-red-300 mr-1.5"></span>Anomaly</span>
+            </div>`;
+            // --- END LEGEND ---
+
+            if (data.error) {
+                html += `<div class="p-4 bg-red-50 text-red-700 border border-red-200 rounded"><h3 class="font-bold">API Error</h3><pre class="mt-2 text-xs">${data.error}</pre></div>`;
+            } else {
+                const errors = data.raw_results ? data.raw_results.filter(r => r.error) : [];
+                const divergences = data.divergence_report ? data.divergence_report.divergences_found : [];
+                if (errors.length > 0) {
+                    html += `<div class="p-4 bg-red-50 text-red-700 border border-red-200 rounded"><h3 class="font-bold">Runner Errors (${errors.length})</h3><ul class="list-disc ml-5 mt-2 text-sm">${errors.map(e => `<li><b>${e.simulator}</b>: ${e.error}</li>`).join('')}</ul></div>`;
+                } else if (divergences.length > 0) {
+                    html += `<div class="p-4 bg-yellow-50 text-yellow-800 border border-yellow-200 rounded"><h3 class="font-bold">Divergences Found (${divergences.length})</h3><ul class="list-disc ml-5 mt-2 text-sm">${divergences.map(d => `<li>${d.type} between ${d.simulators.join(' & ')}</li>`).join('')}</ul></div>`;
+                } else {
+                    const msg = data.n_shots ? "All measurement distributions are statistically identical." : "All statevectors are identical (1.0 Fidelity).";
+                    html += `<div class="p-4 bg-green-50 text-green-800 border border-green-200 rounded flex items-center"><svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>${msg}</div>`;
+                }
+            }
+            if (panelElements.summary) {
+                panelElements.summary.innerHTML = html;
+            }
+        }
+
+        function renderRankingTable(report, key, unit, panel) {
+            if (!panel) return; // Add null check
+            let html = `<h3 class="font-semibold text-gray-900 mt-4 mb-2">${report.summary}</h3>`;
+            if (key === 'memory_usage_mb') {
+                report.ranking.sort((a, b) => {
+                    if (a.status !== 'success') return 1;
+                    if (b.status !== 'success') return -1;
+                    return (a.process_peak_mb || 0) - (b.process_peak_mb || 0);
+                });
+                html += `<div class="overflow-x-auto border rounded-lg"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" style="cursor: help; text-decoration: underline dotted;" title="The name of the runner service.">Simulator</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" style="cursor: help; text-decoration: underline dotted;" title="Actual RAM added by the circuit execution (End RSS - Start RSS). Can be 0 for small circuits using pre-allocated memory.">Mem Delta (MiB)</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" style="cursor: help; text-decoration: underline dotted;" title="The absolute maximum RAM used by the runner container during execution.">Process Peak (MiB)</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" style="cursor: help; text-decoration: underline dotted;" title="The mathematical minimum memory required for the statevector (16 bytes * 2^N).">Theoretical (MiB)</th>
+                </tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
+                
+                report.ranking.forEach(r => {
+                    const mem_delta = r.status === 'success' && r.memory_usage_mb != null ? r.memory_usage_mb.toFixed(4) : `<span class="text-red-600">Anomaly</span>`;
+                    const proc_peak = r.status === 'success' && r.process_peak_mb != null ? r.process_peak_mb.toFixed(1) : `<span class="text-red-600">Anomaly</span>`;
+                    const theoretical = r.status === 'success' && r.theoretical_memory_mb != null ? r.theoretical_memory_mb.toFixed(4) : `<span class="text-red-600">Anomaly</span>`;
+
+                    html += `<tr>
+                        <td class="px-4 py-3 text-sm font-medium text-gray-900">${r.simulator}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500 font-mono">${mem_delta}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500 font-mono">${proc_peak}</td>
+                        <td class="px-4 py-3 text-sm text-gray-500 font-mono">${theoretical}</td>
+                    </tr>`;
+                });
+                html += `</tbody></table></div>`;
+
+            } else {
+                html += `<div class="overflow-x-auto border rounded-lg"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rank</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Simulator</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Value</th></tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
+                report.ranking.forEach((r, i) => {
+                    const val = r.status === 'success' && r[key] !== null ? `${r[key].toFixed(6)} ${unit}` : `<span class="text-red-600">Anomaly</span>`;
+                    html += `<tr><td class="px-4 py-3 text-sm text-gray-500">${i+1}</td><td class="px-4 py-3 text-sm font-medium text-gray-900">${r.simulator}</td><td class="px-4 py-3 text-sm text-gray-500 font-mono">${val}</td></tr>`;
+                });
+                html += `</tbody></table></div>`;
+            }
+            panel.innerHTML = html;
+        }
+
+        function renderDivergenceTables(report, panel) {
+            if (!panel) return; // Add null check
+            let html = `<div class="space-y-8">`;
+            let found = false;
+
+            html += `<div class="flex justify-start items-center space-x-4 text-xs text-gray-600 mb-4 p-2 bg-gray-50 rounded-lg border">
+                <span class="font-bold">Legend:</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-green-50 border border-green-300 mr-1.5"></span>Perfect Match</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-yellow-50 border border-yellow-300 mr-1.5"></span>Divergence</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-red-50 border border-red-300 mr-1.5"></span>Anomaly</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-gray-100 border border-gray-300 mr-1.5"></span>N/A (Self-Comparison)</span>
+            </div>`;
+
+            const renderMat = (key, title) => {
+                if (!report[key]) return;
+                found = true;
+                html += `<div><h3 class="font-semibold text-gray-900 mt-4 mb-2">${title}</h3><div class="overflow-x-auto"><table class="matrix-table border-collapse border border-gray-300"><thead class="bg-gray-50"><tr><th class="border p-2"></th>${report.simulators.map(s => `<th class="sim-header border p-2 text-xs text-gray-500">${s}</th>`).join('')}</tr></thead><tbody>`;
+                report.simulators.forEach((s1, i) => {
+                    html += `<tr><th class="border p-2 text-xs text-left text-gray-500">${s1}</th>`;
+                    report[key][i].forEach((val, j) => {
+                        let bg = 'bg-yellow-50';
+                        let txt = val.toFixed(4);
+
+                        const epsilon = 1e-9;
+                        let isPerfectMatch = false;
+                        if (key.includes('fidelity') && Math.abs(val - 1.0) < epsilon) isPerfectMatch = true;
+                        if (key.includes('phase') && (Math.abs(val - 1.0) < epsilon || Math.abs(val) < epsilon)) isPerfectMatch = true;
+                        if (key.includes('js_divergence') && Math.abs(val) < epsilon) isPerfectMatch = true;
+
+                        if (isPerfectMatch) {
+                            bg = 'bg-green-50';
+                            if (key.includes('js_divergence') || (key.includes('phase') && Math.abs(val) < epsilon)) {
+                                txt = "0.000";
+                            } else {
+                                txt = "1.000";
+                            }
+                        } else if (val === -1.0) {
+                            txt = "ERR";
+                            bg = 'bg-red-50';
+                        }
+                        
+                        if (i===j) {
+                            bg = 'bg-gray-100';
+                        }
+                        html += `<td class="border p-2 text-xs text-center font-mono ${bg}">${txt}</td>`;
+                    });
+                    html += `</tr>`;
+                });
+                html += `</tbody></table></div></div>`;
+            };
+
+            renderMat('fidelity_matrix', 'Fidelity Matrix');
+            renderMat('relative_phase_matrix', 'Relative Phase Matrix');
+            renderMat('statistical_distance_matrix (js_divergence)', 'JS Divergence Matrix');
+            if (!found) html += `<p class="text-gray-500 mt-4">No matrices available.</p>`;
+            html += `</div>`;
+            panel.innerHTML = html;
+        }
+        function exportPlaylist() {
+            if (batchQueue.length === 0) {
+                alert("Playlist is empty.");
+                return;
+            }
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(batchQueue, null, 2));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "quantum_playlist.json");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        }
+
+        function importPlaylist(inputElement) {
+            const file = inputElement.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const loaded = JSON.parse(e.target.result);
+                    if (Array.isArray(loaded)) {
+                        batchQueue = loaded;
+                        renderBatchQueue();
+                    } else {
+                        alert("Invalid playlist file format. Expected a JSON array.");
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert("Error reading file: " + err.message);
+                }
+                inputElement.value = '';
+            };
+            reader.readAsText(file);
+        }
+    </script>
+<div id="gen-modal" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onclick="closeGeneratorModal()"></div>
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+        <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+            <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">Auto-Generate Playlist</h3>
+                <div class="mt-4 space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Include Algorithms:</label>
+                        <div id="gen-algo-list" class="grid grid-cols-2 gap-2 text-sm"></div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Min Qubits</label>
+                            <input type="number" id="gen-min" value="4" min="2" max="20" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Max Qubits</label>
+                            <input type="number" id="gen-max" value="10" min="2" max="20" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Total Circuits</label>
+                        <input type="number" id="gen-count" value="10" min="1" max="50" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                    </div>
+                </div>
+            </div>
+            <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                <button type="button" onclick="runAutoGeneration()" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none sm:ml-3 sm:w-auto sm:text-sm">Generate</button>
+                <button type="button" onclick="closeGeneratorModal()" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

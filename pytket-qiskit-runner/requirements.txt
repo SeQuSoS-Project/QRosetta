@@ -1,0 +1,9 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+psutil==6.0.0
+pytket==1.33.0
+pytket-qiskit==0.57.0
+qiskit==1.2.4
+qiskit-aer==0.15.1
+numpy==1.26.4
+gunicorn==23.0.0

@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.venv
+build/
+dist/
+*.egg-info/
+
+# Docker
+.dockerignore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/
+
+# Project Specific & Reports
+export/
+*.log
+full_quantum_report.json
+rosetta_raw_report.json
+
+# Documentation & Notes (to be ignored)
+BUGS.md
+TODO
+design_guidelines.txt
+app.py

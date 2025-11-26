@@ -1,0 +1,8 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+psutil==6.0.0
+pytket==1.33.0
+pytket-cirq==0.38.0
+cirq==1.4.1
+numpy==1.26.4
+gunicorn==23.0.0
