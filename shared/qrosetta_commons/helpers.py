@@ -52,12 +52,6 @@ def decode_statevector(encoded_str: str) -> np.ndarray:
         # Fallback for legacy list-of-strings format if needed, or just re-raise
         raise ValueError(f"Failed to decode statevector: {e}")
 
-def calculate_theoretical_memory_mb(num_qubits):
-    """
-    Calculates the theoretical memory required to store a statevector in MB.
-    Formula: (2^num_qubits * 16) / (1024 * 1024), where 16 bytes are for complex128.
-    """
-    return (2**num_qubits * 16) / (1024 * 1024)
 
 def _sample_from_statevector(statevector, n_shots, n_qubits):
     """

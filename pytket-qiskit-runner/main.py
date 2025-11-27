@@ -7,7 +7,7 @@ from qiskit_aer import AerSimulator
 from qiskit.circuit import QuantumCircuit
 import time
 import gc
-from qrosetta_commons.helpers import MemoryMonitor, calculate_theoretical_memory_mb, get_logger, encode_statevector
+from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector
 
 logger = get_logger("pytket-qiskit-runner")
 
@@ -37,7 +37,7 @@ async def run_circuit(payload: CircuitPayload):
 
         memory_usage_mb = monitor.get_peak_usage_mb()
         process_peak_mb = monitor.get_process_peak_mb()
-        theoretical_mb = calculate_theoretical_memory_mb(tk_circ.n_qubits)
+
         execution_time = end_time - start_time
         
         statevector_str = encode_statevector(np.array(statevector))
@@ -48,7 +48,6 @@ async def run_circuit(payload: CircuitPayload):
             "statevector": statevector_str,
             "execution_time_sec": execution_time,
             "memory_usage_mb": memory_usage_mb,
-            "theoretical_memory_mb": theoretical_mb,
             "process_peak_mb": process_peak_mb
         }
     except Exception as e:
@@ -58,7 +57,6 @@ async def run_circuit(payload: CircuitPayload):
             "error": str(e),
             "execution_time_sec": 0.0,
             "memory_usage_mb": 0.0,
-            "theoretical_memory_mb": 0.0,
             "process_peak_mb": 0.0
         }
 
@@ -87,7 +85,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
 
         memory_usage_mb = monitor.get_peak_usage_mb()
         process_peak_mb = monitor.get_process_peak_mb()
-        theoretical_mb = calculate_theoretical_memory_mb(tk_circ.n_qubits)
+
         execution_time = end_time - start_time
         
         num_clbits = qiskit_circ.num_clbits
@@ -109,7 +107,6 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "counts": counts_dict,
             "execution_time_sec": execution_time,
             "memory_usage_mb": memory_usage_mb,
-            "theoretical_memory_mb": theoretical_mb,
             "process_peak_mb": process_peak_mb
         }
     except Exception as e:
@@ -119,6 +116,5 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "error": str(e),
             "execution_time_sec": 0.0,
             "memory_usage_mb": 0.0,
-            "theoretical_memory_mb": 0.0,
             "process_peak_mb": 0.0
         }
