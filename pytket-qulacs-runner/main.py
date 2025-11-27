@@ -1,10 +1,11 @@
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import MemoryMonitor, calculate_theoretical_memory_mb, get_logger
+from qrosetta_commons.helpers import MemoryMonitor, calculate_theoretical_memory_mb, get_logger, encode_statevector
 import numpy as np
 import pytket.qasm
 from pytket.extensions.qulacs import QulacsBackend
 import time
+import gc
 
 logger = get_logger("pytket-qulacs-runner")
 
@@ -18,7 +19,11 @@ async def run_circuit(payload: CircuitPayload):
         backend = QulacsBackend()
         compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
         
-        with MemoryMonitor(interval=0.001) as monitor:
+        # --- WARM-UP ---
+        _ = backend.process_circuit(compiled_circ)
+
+        with MemoryMonitor(interval=0.01) as monitor:
+            gc.collect()
             start_time = time.perf_counter()
             
             handle = backend.process_circuit(compiled_circ) # n_shots=None
@@ -31,7 +36,7 @@ async def run_circuit(payload: CircuitPayload):
         process_peak_mb = monitor.get_process_peak_mb()
         theoretical_mb = calculate_theoretical_memory_mb(tk_circ.n_qubits)
         
-        statevector_str = [str(c) for c in statevector]
+        statevector_str = encode_statevector(np.array(statevector))
         
         logger.info(f"Qulacs simulation successful in {execution_time:.4f}s.")
         
@@ -62,7 +67,11 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         backend = QulacsBackend()
         compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
         
-        with MemoryMonitor(interval=0.001) as monitor:
+        # --- WARM-UP ---
+        _ = backend.process_circuit(compiled_circ, n_shots=payload.n_shots)
+
+        with MemoryMonitor(interval=0.01) as monitor:
+            gc.collect()
             start_time = time.perf_counter()
             
             handle = backend.process_circuit(compiled_circ, 

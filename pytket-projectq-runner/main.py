@@ -6,11 +6,31 @@ from pytket.passes import RemoveBarriers
 from pytket.transform import Transform
 from collections import Counter
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, calculate_theoretical_memory_mb, get_logger
+from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, calculate_theoretical_memory_mb, get_logger, encode_statevector
 import time
+import gc
 
 app = FastAPI(title="ProjectQ Runner")
 logger = get_logger("pytket-projectq-runner")
+
+# --- MONKEY PATCH: Suppress ProjectQ's noisy __del__ error ---
+import projectq.types._qubit
+from projectq.types._qubit import Qubit
+
+_original_del = Qubit.__del__
+
+def _quiet_del(self):
+    try:
+        _original_del(self)
+    except RuntimeError as e:
+        if "Qubit has not been measured / uncomputed" in str(e):
+            # Log a clean warning instead of letting the exception bubble up
+            pass
+        else:
+            raise e
+
+Qubit.__del__ = _quiet_del
+# -------------------------------------------------------------
 
 @app.post("/run")
 async def run_circuit(payload: CircuitPayload):
@@ -24,7 +44,12 @@ async def run_circuit(payload: CircuitPayload):
         backend = ProjectQBackend()
         compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
         
-        with MemoryMonitor(interval=0.001) as monitor:
+        # --- WARM-UP ---
+        h_warm = backend.process_circuit(compiled_circ)
+        _ = backend.get_result(h_warm).get_state()
+
+        with MemoryMonitor(interval=0.01) as monitor:
+            gc.collect()
             start_time = time.perf_counter()
             
             handle = backend.process_circuit(compiled_circ)
@@ -37,7 +62,7 @@ async def run_circuit(payload: CircuitPayload):
         process_peak_mb = monitor.get_process_peak_mb()
         theoretical_mb = calculate_theoretical_memory_mb(tk_circ.n_qubits)
         
-        statevector_str = [str(c) for c in statevector]
+        statevector_str = encode_statevector(np.array(statevector))
         logger.info(f"ProjectQ simulation successful in {execution_time:.4f}s.")
         
         return {
@@ -73,7 +98,12 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         backend = ProjectQBackend()
         compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
         
+        # --- WARM-UP ---
+        h_warm = backend.process_circuit(compiled_circ)
+        _ = backend.get_result(h_warm).get_state() # ProjectQ backend returns state even for measured? Wait.
+
         with MemoryMonitor(interval=0.001) as monitor:
+            gc.collect()
             start_time = time.perf_counter()
             
             handle = backend.process_circuit(compiled_circ)

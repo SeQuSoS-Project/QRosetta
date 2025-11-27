@@ -1,11 +1,13 @@
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
 import pytket.qasm
+import numpy as np
 from pytket.extensions.qiskit import tk_to_qiskit
 from qiskit_aer import AerSimulator
 from qiskit.circuit import QuantumCircuit
 import time
-from qrosetta_commons.helpers import MemoryMonitor, calculate_theoretical_memory_mb, get_logger
+import gc
+from qrosetta_commons.helpers import MemoryMonitor, calculate_theoretical_memory_mb, get_logger, encode_statevector
 
 logger = get_logger("pytket-qiskit-runner")
 
@@ -20,7 +22,11 @@ async def run_circuit(payload: CircuitPayload):
         qiskit_circ.save_statevector()
         backend = AerSimulator(precision="double")
         
-        with MemoryMonitor(interval=0.001) as monitor:
+        # --- WARM-UP ---
+        _ = backend.run(qiskit_circ, optimization_level=0)
+
+        with MemoryMonitor(interval=0.01) as monitor:
+            gc.collect()
             start_time = time.perf_counter()
             
             job = backend.run(qiskit_circ, optimization_level=0)
@@ -34,7 +40,7 @@ async def run_circuit(payload: CircuitPayload):
         theoretical_mb = calculate_theoretical_memory_mb(tk_circ.n_qubits)
         execution_time = end_time - start_time
         
-        statevector_str = [str(c) for c in statevector]
+        statevector_str = encode_statevector(np.array(statevector))
         logger.info(f"Qiskit simulation successful in {execution_time:.4f}s.")
         
         return {
@@ -64,7 +70,11 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         qiskit_circ = tk_to_qiskit(tk_circ)
         backend = AerSimulator(precision="double")
 
-        with MemoryMonitor(interval=0.001) as monitor:
+        # --- WARM-UP ---
+        _ = backend.run(qiskit_circ, optimization_level=0, shots=payload.n_shots)
+
+        with MemoryMonitor(interval=0.01) as monitor:
+            gc.collect()
             start_time = time.perf_counter()
             
             job = backend.run(qiskit_circ, 

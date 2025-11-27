@@ -1,15 +1,25 @@
-from qrosetta_commons.helpers import get_logger
+from qrosetta_commons.helpers import get_logger, decode_statevector
 import numpy as np
 
 
 logger = get_logger(__name__)
 from scipy.spatial.distance import jensenshannon
 
-def parse_statevector(sv_str_list):
-    """Converts a list of complex number strings into a numpy array."""
-    if not sv_str_list:
+def parse_statevector(sv_data):
+    """Converts a statevector (Base64 string or list) into a numpy array."""
+    if sv_data is None:
         return np.array([])
-    return np.array([complex(s) for s in sv_str_list])
+    
+    if isinstance(sv_data, str):
+        # New format: Base64 string
+        return decode_statevector(sv_data)
+    elif isinstance(sv_data, list):
+        # Legacy format: List of strings
+        if not sv_data:
+            return np.array([])
+        return np.array([complex(s) for s in sv_data])
+    else:
+        raise ValueError(f"Unknown statevector format: {type(sv_data)}")
 
 def create_divergence_report(results_list):
     """
@@ -265,6 +275,7 @@ def create_performance_report(results_list: list) -> dict:
             performance_data.append({
                 "simulator": sim_name,
                 "status": "error",
+                "error": res['error'], # Include the error message
                 "execution_time_sec": None
             })
         elif 'execution_time_sec' in res:
@@ -299,6 +310,7 @@ def create_resource_report(results_list: list) -> dict:
             resource_data.append({
                 "simulator": sim_name,
                 "status": "error",
+                "error": res['error'], # Include the error message
                 "memory_usage_mb": None,
                 "process_peak_mb": None,
                 "theoretical_memory_mb": None

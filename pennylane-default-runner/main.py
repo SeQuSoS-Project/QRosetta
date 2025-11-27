@@ -1,10 +1,11 @@
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, calculate_theoretical_memory_mb, get_logger
+from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, calculate_theoretical_memory_mb, get_logger, encode_statevector
 import pennylane as qml
 import numpy as np
 import functools
 import time
+import gc
 
 app = FastAPI(title="Pennylane Default Runner")
 logger = get_logger("pennylane-default-runner")
@@ -34,7 +35,11 @@ async def run_circuit(payload: CircuitPayload):
             qasm_op()
             return qml.state()
 
-        with MemoryMonitor(interval=0.001) as monitor:
+        # --- WARM-UP ---
+        _ = statevector_circuit()
+
+        with MemoryMonitor(interval=0.01) as monitor:
+            gc.collect()
             start_time = time.perf_counter()
             statevector = statevector_circuit()
             end_time = time.perf_counter()
@@ -44,7 +49,7 @@ async def run_circuit(payload: CircuitPayload):
         process_peak_mb = monitor.get_process_peak_mb()
         theoretical_mb = calculate_theoretical_memory_mb(num_qubits)
 
-        statevector_str = [str(c) for c in statevector]
+        statevector_str = encode_statevector(np.array(statevector))
 
         logger.info(f"Pennylane-Default simulation successful in {execution_time:.4f}s.")
 
@@ -82,7 +87,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             qasm_op()
             return qml.state() 
 
-        with MemoryMonitor(interval=0.001) as monitor:
+        with MemoryMonitor(interval=0.01) as monitor:
             start_time = time.perf_counter()
             
             statevector = statevector_circuit()

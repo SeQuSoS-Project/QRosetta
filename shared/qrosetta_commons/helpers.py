@@ -7,6 +7,8 @@ import os
 import logging
 import sys
 
+import base64
+
 def get_logger(service_name: str) -> logging.Logger:
     """
     Configures a structured logger that outputs to stdout.
@@ -29,6 +31,26 @@ def get_logger(service_name: str) -> logging.Logger:
     logger.addHandler(handler)
     
     return logger
+
+def encode_statevector(statevector: np.ndarray) -> str:
+    """
+    Serializes a NumPy array (complex128) to a Base64 string.
+    """
+    # Ensure it's complex128
+    if statevector.dtype != np.complex128:
+        statevector = statevector.astype(np.complex128)
+    return base64.b64encode(statevector.tobytes()).decode('utf-8')
+
+def decode_statevector(encoded_str: str) -> np.ndarray:
+    """
+    Deserializes a Base64 string back to a NumPy array (complex128).
+    """
+    try:
+        bytes_data = base64.b64decode(encoded_str)
+        return np.frombuffer(bytes_data, dtype=np.complex128)
+    except Exception as e:
+        # Fallback for legacy list-of-strings format if needed, or just re-raise
+        raise ValueError(f"Failed to decode statevector: {e}")
 
 def calculate_theoretical_memory_mb(num_qubits):
     """

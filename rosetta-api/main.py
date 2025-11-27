@@ -11,6 +11,8 @@ import comparator
 import gc
 from qrosetta_commons.helpers import get_logger
 import library
+from config import settings
+import cachetools
 
 logger = get_logger("rosetta-api")
 
@@ -28,7 +30,9 @@ from pytket.passes import RemoveBarriers
 app = FastAPI(title="Quantum Rosetta API")
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-RESULT_CACHE = {}
+RESULT_CACHE = cachetools.TTLCache(maxsize=10, ttl=3600) # Kept for backward compatibility if needed, but unused for download
+REPORTS_DIR = "export/reports"
+os.makedirs(REPORTS_DIR, exist_ok=True)
 
 # This serves all files from the 'static' folder (like index.html)
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -56,44 +60,7 @@ class BatchPayload(BaseModel):
     mode: str  # 'statevector' or 'measured'
 
 # --- CONFIGURATION (8 Runners, 2 Categories) ---
-RUNNER_SERVICES = {
-    # Category 1: Native Samplers (work with our modified QASM)
-    "pytket-qiskit-runner": {
-        "base_url": os.getenv("PYTKET_QISKIT_RUNNER_URL", "http://pytket-qiskit-runner:8000"),
-        "capabilities": ["statevector", "measured_native"]
-    },
-    "pytket-cirq-runner":   {
-        "base_url": os.getenv("PYTKET_CIRQ_RUNNER_URL", "http://pytket-cirq-runner:8000"),
-        "capabilities": ["statevector", "measured_native"]
-    },
-    "pytket-qulacs-runner": {
-        "base_url": os.getenv("PYTKET_QULACS_RUNNER_URL", "http://pytket-qulacs-runner:8000"),
-        "capabilities": ["statevector", "measured_native"]
-    },
-    "pytket-braket-runner": {
-        "base_url": os.getenv("PYTKET_BRAKET_RUNNER_URL", "http://pytket-braket-runner:8000"),
-        "capabilities": ["statevector", "measured_native"]
-    },
-    
-    # Category 2: Statevector Samplers (need original QASM)
-    "pytket-projectq-runner": {
-        "base_url": os.getenv("PYTKET_PROJECTQ_RUNNER_URL", "http://pytket-projectq-runner:8000"),
-        "capabilities": ["statevector", "measured_sampled"]
-    },
-    "pytket-quest-runner":  {
-        "base_url": os.getenv("PYTKET_QUEST_RUNNER_URL", "http://pytket-quest-runner:8000"),
-        "capabilities": ["statevector", "measured_sampled"]
-    },
-    "pennylane-lightning-runner":  {
-        "base_url": os.getenv("PENNYLANE_LIGHTNING_RUNNER_URL", "http://pennylane-lightning-runner:8000"),
-        "capabilities": ["statevector", "measured_sampled"]
-    },
-    "pennylane-default-runner":  {
-        "base_url": os.getenv("PENNYLANE_DEFAULT_RUNNER_URL", "http://pennylane-default-runner:8000"),
-        "capabilities": ["statevector", "measured_sampled"]
-    }
-    # pennylane-qiskit-runner removed as it is incompatible
-}
+RUNNER_SERVICES = settings.get_runner_services()
 
 # --- DYNAMIC URL BUILDERS (2 Groups) ---
 STATEVECTOR_RUNNER_URLS = {
@@ -154,6 +121,7 @@ async def run_single_circuit_comparison(qasm_string: str):
     except Exception as e:
         return { "input_qasm": qasm_string, "error": str(e) }
 
+    gc.collect() # Clean up before dispatch
     aggregated_results = await _dispatch_to_runners(
         runner_urls=STATEVECTOR_RUNNER_URLS,
         runner_payload=runner_payload
@@ -161,6 +129,7 @@ async def run_single_circuit_comparison(qasm_string: str):
 
     loop = asyncio.get_event_loop()
 
+    gc.collect() # Clean up before heavy reporting
     logger.info("Generating divergence report...")
     divergence_report_task = loop.run_in_executor(
         None, comparator.create_divergence_report, aggregated_results
@@ -180,8 +149,15 @@ async def run_single_circuit_comparison(qasm_string: str):
         divergence_report_task, performance_report_task, resource_report_task
     )
 
-    # --- Cache full results before sanitizing ---
-    RESULT_CACHE["latest_full_report"] = [res.copy() for res in aggregated_results]
+    # --- Cache full results to disk ---
+    full_report_data = [res.copy() for res in aggregated_results]
+    try:
+        with open(os.path.join(REPORTS_DIR, "latest_full_report.json"), "w") as f:
+            json.dump(full_report_data, f, indent=2)
+    except Exception as e:
+        logger.error(f"Failed to write report to disk: {e}")
+    
+    RESULT_CACHE["latest_full_report"] = full_report_data
 
     # --- Browser Safety Valve ---
     for result in aggregated_results:
@@ -238,6 +214,7 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int):
         return { "input_qasm": qasm_string, "error": str(e) }
 
     # --- Dispatch both sets of jobs in parallel ---
+    gc.collect() # Clean up before dispatch
     sampled_task = _dispatch_to_runners(SAMPLED_SV_URLS, sampled_payload)
     native_task = _dispatch_to_runners(NATIVE_SAMPLING_URLS, native_payload)
 
@@ -249,6 +226,7 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int):
     # --- Call the comparators ---
     try:
         loop = asyncio.get_event_loop()
+        gc.collect() # Clean up before heavy reporting
         logger.info("Generating counts divergence report...")
         divergence_report_task = loop.run_in_executor(
             None, comparator.create_counts_report, aggregated_results, n_shots
@@ -295,11 +273,10 @@ async def read_index():
 
 @app.get("/download_latest_report")
 def download_latest_report():
-    data = RESULT_CACHE.get("latest_full_report")
-    if not data:
+    report_path = os.path.join(REPORTS_DIR, "latest_full_report.json")
+    if not os.path.exists(report_path):
         return JSONResponse(content={"error": "No report available"}, status_code=404)
-    json_str = json.dumps(data, indent=2)
-    return Response(content=json_str, media_type="application/json", headers={"Content-Disposition": "attachment; filename=full_quantum_report.json"})
+    return FileResponse(report_path, media_type="application/json", filename="full_quantum_report.json")
 
 @app.get("/algorithms")
 async def get_algorithms():
@@ -313,27 +290,25 @@ async def get_algorithms():
         {"id": "random", "name": "Random Circuit", "min_qubits": 2, "max_qubits": 20, "default_qubits": 5, "description": "Random gates to defeat compiler optimizations."}
     ]
 
+# --- ALGORITHM HANDLERS ---
+ALGORITHM_HANDLERS = {
+    "ghz": library.generate_ghz,
+    "bell": library.generate_bell_state,
+    "qft": library.generate_qft,
+    "grover": library.generate_grover_search,
+    "bv": library.generate_bernstein_vazirani,
+    "vqe": library.generate_vqe_ansatz,
+    "random": library.generate_random_circuit
+}
+
 @app.post("/generate_circuit")
 async def generate_circuit_endpoint(payload: GenerateCircuitPayload):
     try:
-        if payload.algorithm == "ghz":
-            qasm = library.generate_ghz(payload.qubits)
-        elif payload.algorithm == "bell":
-            # Bell state ignores qubit count usually, but we pass it for safety
-            qasm = library.generate_bell_state(payload.qubits)
-        elif payload.algorithm == "qft":
-            qasm = library.generate_qft(payload.qubits)
-        elif payload.algorithm == "grover":
-            qasm = library.generate_grover_search(payload.qubits)
-        elif payload.algorithm == "bv":
-            qasm = library.generate_bernstein_vazirani(payload.qubits)
-        elif payload.algorithm == "vqe":
-            qasm = library.generate_vqe_ansatz(payload.qubits)
-        elif payload.algorithm == "random":
-            qasm = library.generate_random_circuit(payload.qubits)
-        else:
+        handler = ALGORITHM_HANDLERS.get(payload.algorithm)
+        if not handler:
             return JSONResponse(content={"error": f"Unknown algorithm: {payload.algorithm}"}, status_code=400)
         
+        qasm = handler(payload.qubits)
         return {"qasm": qasm}
     except Exception as e:
         logger.error(f"CRITICAL ERROR in generate_circuit: {str(e)}", exc_info=True)
