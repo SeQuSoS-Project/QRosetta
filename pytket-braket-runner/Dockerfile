@@ -6,6 +6,7 @@ WORKDIR /home/appuser/app
 
 # Copy requirements and install dependencies
 COPY pytket-braket-runner/requirements.txt .
+ENV PIP_DEFAULT_TIMEOUT=1000
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy shared library and install it

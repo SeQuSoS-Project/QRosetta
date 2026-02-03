@@ -180,10 +180,18 @@ def _normalize_counts(counts, n_shots):
     return {k: v / n_shots for k, v in counts.items()}
 
 # --- NEW COMPARATOR FUNCTION ---
+def calculate_hellinger_distance(p, q):
+    """
+    Calculates the Hellinger distance between two probability distributions.
+    H(P, Q) = 1/sqrt(2) * || sqrt(P) - sqrt(Q) ||_2
+    Range: [0, 1] where 0 is identical and 1 is disjoint.
+    """
+    return np.linalg.norm(np.sqrt(p) - np.sqrt(q)) / np.sqrt(2)
+
 def create_counts_report(results_list, n_shots):
     """
     Generates a full report on the statistical divergence
-    between counts distributions using Jensen-Shannon (JS) divergence.
+    between counts distributions using JS Divergence AND Hellinger Distance.
     """
     
     simulators = [res.get('simulator', 'unknown') for res in results_list]
@@ -216,13 +224,15 @@ def create_counts_report(results_list, n_shots):
 
     n = len(simulators)
     
-    # Initialize the matrix for JS divergence
-    distance_matrix = np.zeros((n, n))
+    # Initialize matrices
+    js_matrix = np.zeros((n, n))
+    hellinger_matrix = np.zeros((n, n))
+    
     divergences_found = []
     
-    # Define a threshold for what we consider a significant divergence
-    # JS divergence is bounded [0, 1].
-    divergence_threshold = 0.01 # (1% divergence)
+    # Thresholds
+    js_threshold = 0.01 
+    hellinger_threshold = 0.1 # Hellinger is more sensitive
 
     for i in range(n):
         for j in range(i + 1, n):
@@ -233,31 +243,39 @@ def create_counts_report(results_list, n_shots):
             
             # Only compare if both simulators returned valid counts
             if pv_i is not None and pv_j is not None:
-                # Calculate Jensen-Shannon divergence
-                # Note: scipy.spatial.distance.jensenshannon returns the
-                # *square root* of the JS divergence. We must square it.
+                # 1. JS Divergence
                 js_div = (jensenshannon(pv_i, pv_j))**2
+                if np.isnan(js_div): js_div = 0.0
                 
-                # Handle potential float precision errors
-                if np.isnan(js_div):
-                    js_div = 0.0
+                # 2. Hellinger Distance
+                h_dist = calculate_hellinger_distance(pv_i, pv_j)
+                if np.isnan(h_dist): h_dist = 0.0
+
+                # Populate Matrices
+                js_matrix[i, j] = js_div
+                js_matrix[j, i] = js_div
                 
-                distance_matrix[i, j] = js_div
-                distance_matrix[j, i] = js_div
+                hellinger_matrix[i, j] = h_dist
+                hellinger_matrix[j, i] = h_dist
                 
-                if js_div > divergence_threshold:
+                # Check thresholds
+                if js_div > js_threshold or h_dist > hellinger_threshold:
                     divergences_found.append({
                         "type": "Distribution Divergence",
                         "simulators": [sim_i, sim_j],
-                        "js_divergence": js_div
+                        "js_divergence": js_div,
+                        "hellinger_distance": h_dist
                     })
             else:
-                distance_matrix[i, j] = -1.0 # Error/Skip
-                distance_matrix[j, i] = -1.0
+                js_matrix[i, j] = -1.0 
+                js_matrix[j, i] = -1.0
+                hellinger_matrix[i, j] = -1.0 
+                hellinger_matrix[j, i] = -1.0
                 
     return {
         "simulators": simulators,
-        "statistical_distance_matrix (js_divergence)": distance_matrix.tolist(),
+        "statistical_distance_matrix (js_divergence)": js_matrix.tolist(),
+        "hellinger_distance_matrix": hellinger_matrix.tolist(),
         "divergences_found": divergences_found,
         "all_outcomes_observed": all_bitstrings
     }

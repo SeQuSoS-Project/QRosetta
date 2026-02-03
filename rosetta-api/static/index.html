@@ -910,7 +910,8 @@
         }
 
         function renderDivergenceTables(report, panel) {
-            if (!panel) return; // Add null check
+            if (!panel) return;
+            // Add null check
             let html = `<div class="space-y-8">`;
             let found = false;
 
@@ -918,10 +919,10 @@
                 <span class="font-bold">Legend:</span>
                 <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-green-50 border border-green-300 mr-1.5"></span>Perfect Match</span>
                 <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-yellow-50 border border-yellow-300 mr-1.5"></span>Divergence</span>
+             
                 <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-red-50 border border-red-300 mr-1.5"></span>Anomaly</span>
                 <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-gray-100 border border-gray-300 mr-1.5"></span>N/A (Self-Comparison)</span>
             </div>`;
-
             const renderMat = (key, title) => {
                 if (!report[key]) return;
                 found = true;
@@ -930,17 +931,20 @@
                     html += `<tr><th class="border p-2 text-xs text-left text-gray-500">${s1}</th>`;
                     report[key][i].forEach((val, j) => {
                         let bg = 'bg-yellow-50';
+
                         let txt = val.toFixed(4);
 
                         const epsilon = 1e-9;
                         let isPerfectMatch = false;
                         if (key.includes('fidelity') && Math.abs(val - 1.0) < epsilon) isPerfectMatch = true;
+
                         if (key.includes('phase') && (Math.abs(val - 1.0) < epsilon || Math.abs(val) < epsilon)) isPerfectMatch = true;
-                        if (key.includes('js_divergence') && Math.abs(val) < epsilon) isPerfectMatch = true;
+                        if ((key.includes('js_divergence') || key.includes('hellinger')) && Math.abs(val) < epsilon) isPerfectMatch = true; // Updated check
 
                         if (isPerfectMatch) {
+
                             bg = 'bg-green-50';
-                            if (key.includes('js_divergence') || (key.includes('phase') && Math.abs(val) < epsilon)) {
+                            if (key.includes('js_divergence') || key.includes('hellinger') || (key.includes('phase') && Math.abs(val) < epsilon)) {
                                 txt = "0.000";
                             } else {
                                 txt = "1.000";
@@ -963,6 +967,10 @@
             renderMat('fidelity_matrix', 'Fidelity Matrix');
             renderMat('relative_phase_matrix', 'Relative Phase Matrix');
             renderMat('statistical_distance_matrix (js_divergence)', 'JS Divergence Matrix');
+            // --- NEW: Add Hellinger Matrix ---
+            renderMat('hellinger_distance_matrix', 'Hellinger Distance Matrix (Geometric)');
+            // ---------------------------------
+
             if (!found) html += `<p class="text-gray-500 mt-4">No matrices available.</p>`;
             html += `</div>`;
             panel.innerHTML = html;
