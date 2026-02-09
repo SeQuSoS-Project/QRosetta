@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
@@ -26,6 +26,15 @@ from pytket.circuit import Circuit
 
 from pytket.passes import RemoveBarriers
 
+
+MAX_QUBITS = 24
+MAX_QASM_SIZE = 15000
+
+def validate_request(qasm: str):
+    if len(qasm) > MAX_QASM_SIZE:
+        raise HTTPException(status_code=413, detail="Payload too large")
+    if qasm.count(";") > 5000:
+        raise HTTPException(status_code=400, detail="Circuit too complex")
 
 app = FastAPI(title="Quantum Rosetta API")
 app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -303,6 +312,8 @@ ALGORITHM_HANDLERS = {
 
 @app.post("/generate_circuit")
 async def generate_circuit_endpoint(payload: GenerateCircuitPayload):
+    if payload.qubits > MAX_QUBITS:
+        return JSONResponse(status_code=400, content={"error": f"Qubit count {payload.qubits} exceeds limit of {MAX_QUBITS}"})
     try:
         handler = ALGORITHM_HANDLERS.get(payload.algorithm)
         if not handler:
@@ -316,10 +327,12 @@ async def generate_circuit_endpoint(payload: GenerateCircuitPayload):
 
 @app.post("/compare")
 async def compare_circuits_endpoint(payload: QasmPayload):
+    validate_request(payload.qasm_string)
     return await run_single_circuit_comparison(payload.qasm_string)
 
 @app.post("/compare_measured")
 async def compare_measured_circuits_endpoint(payload: MeasuredQasmPayload):
+    validate_request(payload.qasm_string)
     return await run_single_circuit_measurement(payload.qasm_string, 
                                                 payload.n_shots)
 
