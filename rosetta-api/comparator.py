@@ -300,7 +300,9 @@ def create_performance_report(results_list: list) -> dict:
             performance_data.append({
                 "simulator": sim_name,
                 "status": "success",
-                "execution_time_sec": res['execution_time_sec']
+                "execution_time_sec": res['execution_time_sec'],
+                "compilation_time_sec": res.get('compilation_time_sec'),
+                "simulation_time_sec": res.get('simulation_time_sec')
             })
     
     # Sort the list by execution time (fastest first)

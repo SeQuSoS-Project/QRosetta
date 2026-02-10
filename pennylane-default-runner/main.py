@@ -25,6 +25,8 @@ def get_num_qubits_from_qasm(qasm_string: str) -> int:
 async def run_circuit(payload: CircuitPayload):
     logger.info("Received statevector circuit data for Pennylane-Default simulation.")
     try:
+        # --- COMPILATION ---
+        t0 = time.perf_counter()
         qasm_op = qml.from_qasm(payload.circuit_data)
         num_qubits = get_num_qubits_from_qasm(payload.circuit_data)
         dev = qml.device("default.qubit", wires=num_qubits, shots=None)
@@ -34,29 +36,36 @@ async def run_circuit(payload: CircuitPayload):
         def statevector_circuit():
             qasm_op()
             return qml.state()
+        t1 = time.perf_counter()
+        compilation_time = t1 - t0
 
         # --- WARM-UP ---
         _ = statevector_circuit()
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
-            start_time = time.perf_counter()
+            
+            # --- SIMULATION ---
+            t2 = time.perf_counter()
             statevector = statevector_circuit()
-            end_time = time.perf_counter()
+            t3 = time.perf_counter()
+            simulation_time = t3 - t2
         
-        execution_time = end_time - start_time
         memory_usage_mb = monitor.get_peak_usage_mb()
         process_peak_mb = monitor.get_process_peak_mb()
-
+        
+        execution_time = compilation_time + simulation_time
 
         statevector_str = encode_statevector(np.array(statevector))
 
-        logger.info(f"Pennylane-Default simulation successful in {execution_time:.4f}s.")
+        logger.info(f"Pennylane-Default simulation successful in {execution_time:.4f}s (Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s).")
 
         return {
             "simulator": "pennylane-default",
             "statevector": statevector_str,
             "execution_time_sec": execution_time,
+            "compilation_time_sec": compilation_time,
+            "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb
         }
@@ -75,6 +84,8 @@ async def run_circuit(payload: CircuitPayload):
 async def run_measured_circuit(payload: MeasuredCircuitPayload):
     logger.info("Received measured circuit data for Pennylane-Default (manual sampling).")
     try:
+        # --- COMPILATION ---
+        t0 = time.perf_counter()
         qasm_op = qml.from_qasm(payload.circuit_data)
         num_qubits = get_num_qubits_from_qasm(payload.circuit_data)
         dev = qml.device("default.qubit", wires=num_qubits, shots=None)
@@ -84,27 +95,36 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         def statevector_circuit():
             qasm_op()
             return qml.state() 
+        t1 = time.perf_counter()
+        compilation_time = t1 - t0
+
+        # --- WARM-UP ---
+        _ = statevector_circuit() # Warm up the JIT/Compilation if any
 
         with MemoryMonitor(interval=0.01) as monitor:
-            start_time = time.perf_counter()
+            gc.collect()
             
+            # --- SIMULATION ---
+            t2 = time.perf_counter()
             statevector = statevector_circuit()
             # --- BENCHMARKING FIX: Sampling is now timed ---
             counts_dict = _sample_from_statevector(statevector, payload.n_shots, num_qubits)
-            
-            end_time = time.perf_counter()
+            t3 = time.perf_counter()
+            simulation_time = t3 - t2
 
-        execution_time = end_time - start_time
         memory_usage_mb = monitor.get_peak_usage_mb()
         process_peak_mb = monitor.get_process_peak_mb()
-
         
-        logger.info(f"Pennylane-Default manual sampling successful in {execution_time:.4f}s.")
+        execution_time = compilation_time + simulation_time
+        
+        logger.info(f"Pennylane-Default manual sampling successful in {execution_time:.4f}s (Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s).")
 
         return {
             "simulator": "pennylane-default",
             "counts": counts_dict,
             "execution_time_sec": execution_time,
+            "compilation_time_sec": compilation_time,
+            "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb
         }

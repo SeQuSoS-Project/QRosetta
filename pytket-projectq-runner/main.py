@@ -36,6 +36,8 @@ Qubit.__del__ = _quiet_del
 async def run_circuit(payload: CircuitPayload):
     logger.info("Received circuit data for ProjectQ simulation.")
     try:
+        # --- COMPILATION ---
+        t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
         RemoveBarriers().apply(tk_circ)
         # Rebase to standard TK1/CX gateset (decomposes SWAPs automatically)
@@ -43,6 +45,8 @@ async def run_circuit(payload: CircuitPayload):
         
         backend = ProjectQBackend()
         compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
+        t1 = time.perf_counter()
+        compilation_time = t1 - t0
         
         # --- WARM-UP ---
         h_warm = backend.process_circuit(compiled_circ)
@@ -50,25 +54,28 @@ async def run_circuit(payload: CircuitPayload):
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
-            start_time = time.perf_counter()
             
+            # --- SIMULATION ---
+            t2 = time.perf_counter()
             handle = backend.process_circuit(compiled_circ)
             statevector = backend.get_result(handle).get_state()
-            
-            end_time = time.perf_counter()
+            t3 = time.perf_counter()
+            simulation_time = t3 - t2
         
-        execution_time = end_time - start_time
         memory_usage_mb = monitor.get_peak_usage_mb()
         process_peak_mb = monitor.get_process_peak_mb()
-
         
+        execution_time = compilation_time + simulation_time
+
         statevector_str = encode_statevector(np.array(statevector))
-        logger.info(f"ProjectQ simulation successful in {execution_time:.4f}s.")
+        logger.info(f"ProjectQ simulation successful in {execution_time:.4f}s (Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s).")
         
         return {
             "simulator": "projectq",
             "statevector": statevector_str,
             "execution_time_sec": execution_time,
+            "compilation_time_sec": compilation_time,
+            "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb
         }
@@ -86,6 +93,8 @@ async def run_circuit(payload: CircuitPayload):
 async def run_measured_circuit(payload: MeasuredCircuitPayload):
     logger.info("Received measured circuit data for ProjectQ (manual sampling).")
     try:
+        # --- COMPILATION ---
+        t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
         n_qubits = tk_circ.n_qubits
         
@@ -95,6 +104,8 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         
         backend = ProjectQBackend()
         compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
+        t1 = time.perf_counter()
+        compilation_time = t1 - t0
         
         # --- WARM-UP ---
         h_warm = backend.process_circuit(compiled_circ)
@@ -102,27 +113,30 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
 
         with MemoryMonitor(interval=0.001) as monitor:
             gc.collect()
-            start_time = time.perf_counter()
             
+            # --- SIMULATION ---
+            t2 = time.perf_counter()
             handle = backend.process_circuit(compiled_circ)
             statevector = backend.get_result(handle).get_state()
             
             # --- BENCHMARKING FIX: Sampling is now timed ---
             counts_dict = _sample_from_statevector(statevector, payload.n_shots, n_qubits)
-            
-            end_time = time.perf_counter()
+            t3 = time.perf_counter()
+            simulation_time = t3 - t2
         
-        execution_time = end_time - start_time
         memory_usage_mb = monitor.get_peak_usage_mb()
         process_peak_mb = monitor.get_process_peak_mb()
+        
+        execution_time = compilation_time + simulation_time
 
-
-        logger.info(f"ProjectQ manual sampling successful in {execution_time:.4f}s.")
+        logger.info(f"ProjectQ manual sampling successful in {execution_time:.4f}s (Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s).")
         
         return {
             "simulator": "projectq",
             "counts": counts_dict,
             "execution_time_sec": execution_time,
+            "compilation_time_sec": compilation_time,
+            "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb
         }

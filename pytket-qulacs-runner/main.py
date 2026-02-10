@@ -15,35 +15,42 @@ app = FastAPI(title="Qulacs Runner")
 async def run_circuit(payload: CircuitPayload):
     logger.info(f"Received circuit data for Qulacs simulation.")
     try:
+        # --- COMPILATION ---
+        t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
         backend = QulacsBackend()
         compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
+        t1 = time.perf_counter()
+        compilation_time = t1 - t0
         
         # --- WARM-UP ---
         _ = backend.process_circuit(compiled_circ)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
-            start_time = time.perf_counter()
             
+            # --- SIMULATION ---
+            t2 = time.perf_counter()
             handle = backend.process_circuit(compiled_circ) # n_shots=None
             statevector = backend.get_result(handle).get_state()
-            
-            end_time = time.perf_counter()
+            t3 = time.perf_counter()
+            simulation_time = t3 - t2
         
-        execution_time = end_time - start_time
         memory_usage_mb = monitor.get_peak_usage_mb()
         process_peak_mb = monitor.get_process_peak_mb()
-
         
+        execution_time = compilation_time + simulation_time
+
         statevector_str = encode_statevector(np.array(statevector))
         
-        logger.info(f"Qulacs simulation successful in {execution_time:.4f}s.")
+        logger.info(f"Qulacs simulation successful in {execution_time:.4f}s (Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s).")
         
         return {
             "simulator": "qulacs",
             "statevector": statevector_str,
             "execution_time_sec": execution_time,
+            "compilation_time_sec": compilation_time,
+            "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb
         }
@@ -61,36 +68,43 @@ async def run_circuit(payload: CircuitPayload):
 async def run_measured_circuit(payload: MeasuredCircuitPayload):
     logger.info(f"Received measured circuit data for Qulacs simulation.")
     try:
+        # --- COMPILATION ---
+        t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
         backend = QulacsBackend()
         compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
+        t1 = time.perf_counter()
+        compilation_time = t1 - t0
         
         # --- WARM-UP ---
         _ = backend.process_circuit(compiled_circ, n_shots=payload.n_shots)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
-            start_time = time.perf_counter()
             
+            # --- SIMULATION ---
+            t2 = time.perf_counter()
             handle = backend.process_circuit(compiled_circ, 
                                              n_shots=payload.n_shots)
             counts = backend.get_result(handle).get_counts()
-                                             
-            end_time = time.perf_counter()
+            t3 = time.perf_counter()
+            simulation_time = t3 - t2
         
-        execution_time = end_time - start_time
         memory_usage_mb = monitor.get_peak_usage_mb()
         process_peak_mb = monitor.get_process_peak_mb()
-
         
+        execution_time = compilation_time + simulation_time
+
         counts_dict = { "".join(map(str, k)): int(v) for k, v in counts.items() }
 
-        logger.info(f"Qulacs measurement simulation successful in {execution_time:.4f}s.")
+        logger.info(f"Qulacs measurement simulation successful in {execution_time:.4f}s (Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s).")
         
         return {
             "simulator": "qulacs",
             "counts": counts_dict,
             "execution_time_sec": execution_time,
+            "compilation_time_sec": compilation_time,
+            "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb
         }

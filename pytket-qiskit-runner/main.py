@@ -17,36 +17,43 @@ app = FastAPI(title="Qiskit Runner")
 async def run_circuit(payload: CircuitPayload):
     logger.info(f"Received circuit data for Qiskit simulation.")
     try:
+        # --- COMPILATION ---
+        t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
         qiskit_circ = tk_to_qiskit(tk_circ)
         qiskit_circ.save_statevector()
         backend = AerSimulator(precision="double")
+        t1 = time.perf_counter()
+        compilation_time = t1 - t0
         
         # --- WARM-UP ---
         _ = backend.run(qiskit_circ, optimization_level=0)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
-            start_time = time.perf_counter()
             
+            # --- SIMULATION ---
+            t2 = time.perf_counter()
             job = backend.run(qiskit_circ, optimization_level=0)
             result = job.result()
             statevector = result.get_statevector()
+            t3 = time.perf_counter()
+            simulation_time = t3 - t2
             
-            end_time = time.perf_counter()
-
         memory_usage_mb = monitor.get_peak_usage_mb()
         process_peak_mb = monitor.get_process_peak_mb()
 
-        execution_time = end_time - start_time
+        execution_time = compilation_time + simulation_time
         
         statevector_str = encode_statevector(np.array(statevector))
-        logger.info(f"Qiskit simulation successful in {execution_time:.4f}s.")
+        logger.info(f"Qiskit simulation successful in {execution_time:.4f}s (Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s).")
         
         return {
             "simulator": "qiskit",
             "statevector": statevector_str,
             "execution_time_sec": execution_time,
+            "compilation_time_sec": compilation_time,
+            "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb
         }
@@ -64,29 +71,34 @@ async def run_circuit(payload: CircuitPayload):
 async def run_measured_circuit(payload: MeasuredCircuitPayload):
     logger.info(f"Received measured circuit data for Qiskit simulation.")
     try:
+        # --- COMPILATION ---
+        t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
         qiskit_circ = tk_to_qiskit(tk_circ)
         backend = AerSimulator(precision="double")
+        t1 = time.perf_counter()
+        compilation_time = t1 - t0
 
         # --- WARM-UP ---
         _ = backend.run(qiskit_circ, optimization_level=0, shots=payload.n_shots)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
-            start_time = time.perf_counter()
             
+            # --- SIMULATION ---
+            t2 = time.perf_counter()
             job = backend.run(qiskit_circ, 
                               optimization_level=0, 
                               shots=payload.n_shots)
             result = job.result()
             counts = result.get_counts()
+            t3 = time.perf_counter()
+            simulation_time = t3 - t2
             
-            end_time = time.perf_counter()
-
         memory_usage_mb = monitor.get_peak_usage_mb()
         process_peak_mb = monitor.get_process_peak_mb()
 
-        execution_time = end_time - start_time
+        execution_time = compilation_time + simulation_time
         
         num_clbits = qiskit_circ.num_clbits
         counts_dict = {}
@@ -100,12 +112,14 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         else:
             counts_dict = counts
 
-        logger.info(f"Qiskit measurement simulation successful in {execution_time:.4f}s.")
+        logger.info(f"Qiskit measurement simulation successful in {execution_time:.4f}s (Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s).")
         
         return {
             "simulator": "qiskit",
             "counts": counts_dict,
             "execution_time_sec": execution_time,
+            "compilation_time_sec": compilation_time,
+            "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb
         }
