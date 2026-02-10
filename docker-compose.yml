@@ -1,22 +1,25 @@
 services:
-  # --- Service 1: Nginx Reverse Proxy ---
+  # --- Service 1: Nginx ( The Bridge ) ---
   nginx:
     build:
       context: .
       dockerfile: ./nginx/Dockerfile
     container_name: nginx-reverse-proxy
     ports:
-      - "80:80" # The only port exposed to the public
+      - "80:80"
     depends_on:
       api:
         condition: service_healthy
+    networks:
+      - public_net      # Leg 1: Talk to Host (You)
+      - isolated_net    # Leg 2: Talk to API
     deploy:
       resources:
         limits:
           cpus: "0.2"
           memory: "128M"
 
-  # --- Service 2: The Main API (The "Brain") ---
+  # --- Service 2: The API ( The Brain ) ---
   api:
     build:
       context: .
@@ -24,43 +27,30 @@ services:
     container_name: rosetta-api
     environment:
       - RUNNER_TIMEOUT_SEC=60
+    networks:
+      - isolated_net    # Internal Only
     healthcheck:
       test: [ "CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/algorithms')" ]
       interval: 5s
       timeout: 5s
       retries: 10
       start_period: 5s
-    # --- PRODUCTION CONFIG: VOLUMES DISABLED ---
-    # We comment these out so the container uses the secure, 
-    # immutable code inside the image, not the local files.
-    # volumes:
-    #   - ./rosetta-api:/home/appuser/app
-    #   - ./shared:/home/appuser/shared
-    # -------------------------------------------
-    # depends_on:
-    #   - qiskit_runner
-    #   - cirq_runner
-    #   - qulacs_runner
-    #   - braket_runner
-    #   - projectq_runner
-    #   - quest_runner
-    #   - pennylane_runner
-    #   - pennylane_default_runner
     deploy:
       resources:
         limits:
           cpus: "0.5"
           memory: "512M"
 
-  # --- Services 3-10: The Simulator Runners (The "Hands") ---
+  # --- Services 3-10: The Runners ( The Hands ) ---
+  # All strictly internal.
 
   qiskit_runner:
     build:
       context: .
       dockerfile: ./pytket-qiskit-runner/Dockerfile
     container_name: pytket-qiskit-runner
-    ports:
-      - "8001:8000"
+    networks:
+      - isolated_net
     deploy:
       resources:
         limits:
@@ -72,8 +62,8 @@ services:
       context: .
       dockerfile: ./pytket-cirq-runner/Dockerfile
     container_name: pytket-cirq-runner
-    ports:
-      - "8002:8000"
+    networks:
+      - isolated_net
     deploy:
       resources:
         limits:
@@ -85,8 +75,8 @@ services:
       context: .
       dockerfile: ./pytket-qulacs-runner/Dockerfile
     container_name: pytket-qulacs-runner
-    ports:
-      - "8003:8000"
+    networks:
+      - isolated_net
     deploy:
       resources:
         limits:
@@ -98,8 +88,8 @@ services:
       context: .
       dockerfile: ./pytket-braket-runner/Dockerfile
     container_name: pytket-braket-runner
-    ports:
-      - "8004:8000"
+    networks:
+      - isolated_net
     deploy:
       resources:
         limits:
@@ -111,8 +101,8 @@ services:
       context: .
       dockerfile: ./pytket-projectq-runner/Dockerfile
     container_name: pytket-projectq-runner
-    ports:
-      - "8005:8000"
+    networks:
+      - isolated_net
     deploy:
       resources:
         limits:
@@ -124,8 +114,8 @@ services:
       context: .
       dockerfile: ./pytket-quest-runner/Dockerfile
     container_name: pytket-quest-runner
-    ports:
-      - "8006:8000"
+    networks:
+      - isolated_net
     deploy:
       resources:
         limits:
@@ -137,8 +127,8 @@ services:
       context: .
       dockerfile: ./pennylane-lightning-runner/Dockerfile
     container_name: pennylane-lightning-runner
-    ports:
-      - "8007:8000"
+    networks:
+      - isolated_net
     deploy:
       resources:
         limits:
@@ -150,10 +140,17 @@ services:
       context: .
       dockerfile: ./pennylane-default-runner/Dockerfile
     container_name: pennylane-default-runner
-    ports:
-      - "8008:8000"
+    networks:
+      - isolated_net
     deploy:
       resources:
         limits:
           cpus: "0.5"
           memory: "512M"
+
+# --- NETWORK DEFINITIONS ---
+networks:
+  public_net:       # Standard bridge (Allows Internet & Port Mapping)
+    driver: bridge
+  isolated_net:     # Air Gapped (No Internet)
+    internal: true
