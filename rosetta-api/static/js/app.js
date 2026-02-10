@@ -6,6 +6,8 @@ let currentSuiteData = null;
 let currentSuiteTitle = '';
 let batchQueue = []; // Playlist
 let allAlgorithms = []; // Metadata
+let currentOptLevel = 0;
+let currentAlgoName = "Custom";
 
 // --- FIX: Declare DOM elements here, define them in window.onload ---
 let qasmInput, loader, tabNav, welcomeMessage, backButtonContainer, jsonOutput;
@@ -59,6 +61,13 @@ window.onload = async () => {
 
         select.addEventListener('change', updateQubitConstraints);
         updateQubitConstraints();
+
+        // --- NEW: Context Bar Init ---
+        qasmInput.addEventListener('input', () => {
+            currentAlgoName = "Custom / Modified";
+            updateContextBar();
+        });
+        updateContextBar();
 
     } catch (error) {
         console.error("Failed to load algorithms:", error);
@@ -147,6 +156,10 @@ async function generateCircuit() {
         const data = await response.json();
         if (response.ok) {
             qasmInput.value = data.qasm;
+            // Update Context
+            const selectElement = document.getElementById('algo-select');
+            currentAlgoName = selectElement.options[selectElement.selectedIndex].text + ` (${qubits}q)`;
+            updateContextBar();
         } else {
             throw new Error(data.error || "Failed to generate circuit.");
         }
@@ -236,6 +249,9 @@ async function viewBatchItem(index) {
                 sel.value = item.algorithm;
                 document.getElementById('algo-qubits').value = item.qubits;
             }
+            // Update Context
+            currentAlgoName = item.name + ` (${item.qubits}q)`;
+            updateContextBar();
         } else {
             qasmInput.value = "// Error loading preview: " + data.error;
         }
@@ -265,7 +281,9 @@ async function runBatchQueue() {
     const payload = {
         tasks: batchQueue,
         mode: mode,
-        n_shots: shots
+        mode: mode,
+        n_shots: shots,
+        optimization_level: currentOptLevel
     };
 
     setLoading(true);
@@ -351,6 +369,30 @@ function closeGeneratorModal() {
     document.getElementById('gen-modal').classList.add('hidden');
 }
 
+// --- NEW: Config Modal Logic ---
+function openConfigModal() {
+    document.getElementById('opt-level-select').value = currentOptLevel;
+    document.getElementById('config-modal').classList.remove('hidden');
+}
+
+function closeConfigModal() {
+    document.getElementById('config-modal').classList.add('hidden');
+}
+
+function saveConfig() {
+    const val = parseInt(document.getElementById('opt-level-select').value);
+    currentOptLevel = val;
+    updateContextBar();
+    closeConfigModal();
+}
+
+function updateContextBar() {
+    const nameSpan = document.getElementById('ctx-algo-name');
+    const optSpan = document.getElementById('ctx-opt-level');
+    if (nameSpan) nameSpan.textContent = currentAlgoName;
+    if (optSpan) optSpan.textContent = `Opt Level: ${currentOptLevel}`;
+}
+
 function runAutoGeneration() {
     const checkboxes = document.querySelectorAll('#gen-algo-list input:checked');
     const selectedAlgos = Array.from(checkboxes).map(cb => cb.value);
@@ -385,7 +427,9 @@ async function runComparison(type, shots) {
     if (!qasm) { alert("Please enter QASM code."); return; }
 
     const endpoint = type === 'statevector' ? '/compare' : '/compare_measured';
-    const payload = type === 'statevector' ? { qasm_string: qasm } : { qasm_string: qasm, n_shots: shots };
+    const payload = type === 'statevector' ?
+        { qasm_string: qasm, optimization_level: currentOptLevel } :
+        { qasm_string: qasm, n_shots: shots, optimization_level: currentOptLevel };
     const title = type === 'statevector' ? 'Editor Run (Statevector)' : `Editor Run (Measured, ${shots} shots)`;
 
     setLoading(true);

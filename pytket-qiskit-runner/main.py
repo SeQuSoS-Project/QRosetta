@@ -33,8 +33,9 @@ async def run_circuit(payload: CircuitPayload):
             gc.collect()
             
             # --- SIMULATION ---
+            # --- SIMULATION ---
             t2 = time.perf_counter()
-            job = backend.run(qiskit_circ, optimization_level=0)
+            job = backend.run(qiskit_circ, optimization_level=payload.optimization_level)
             result = job.result()
             statevector = result.get_statevector()
             t3 = time.perf_counter()
@@ -86,9 +87,10 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             gc.collect()
             
             # --- SIMULATION ---
+            # --- SIMULATION ---
             t2 = time.perf_counter()
             job = backend.run(qiskit_circ, 
-                              optimization_level=0, 
+                              optimization_level=payload.optimization_level, 
                               shots=payload.n_shots)
             result = job.result()
             counts = result.get_counts()

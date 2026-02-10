@@ -44,7 +44,8 @@ async def run_circuit(payload: CircuitPayload):
         Transform.RebaseToTket().apply(tk_circ)
         
         backend = ProjectQBackend()
-        compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
+        opt_level = min(payload.optimization_level, 2)
+        compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=opt_level)
         t1 = time.perf_counter()
         compilation_time = t1 - t0
         
@@ -103,7 +104,8 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         Transform.RebaseToTket().apply(tk_circ)
         
         backend = ProjectQBackend()
-        compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=0)
+        opt_level = min(payload.optimization_level, 2)
+        compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=opt_level)
         t1 = time.perf_counter()
         compilation_time = t1 - t0
         

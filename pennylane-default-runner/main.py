@@ -31,7 +31,17 @@ async def run_circuit(payload: CircuitPayload):
         num_qubits = get_num_qubits_from_qasm(payload.circuit_data)
         dev = qml.device("default.qubit", wires=num_qubits, shots=None)
 
-        @functools.partial(qml.compile, pipeline=[])
+        # Optimization Pipeline
+        level = payload.optimization_level
+        passes = []
+        if level == 1:
+            passes = [qml.transforms.cancel_inverses]
+        elif level == 2:
+            passes = [qml.transforms.cancel_inverses, qml.transforms.merge_rotations]
+        elif level >= 3:
+            passes = [qml.transforms.commute_controlled, qml.transforms.cancel_inverses, qml.transforms.merge_rotations]
+
+        @functools.partial(qml.compile, pipeline=passes)
         @qml.qnode(dev)
         def statevector_circuit():
             qasm_op()
@@ -90,7 +100,17 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         num_qubits = get_num_qubits_from_qasm(payload.circuit_data)
         dev = qml.device("default.qubit", wires=num_qubits, shots=None)
 
-        @functools.partial(qml.compile, pipeline=[])
+        # Optimization Pipeline
+        level = payload.optimization_level
+        passes = []
+        if level == 1:
+            passes = [qml.transforms.cancel_inverses]
+        elif level == 2:
+            passes = [qml.transforms.cancel_inverses, qml.transforms.merge_rotations]
+        elif level >= 3:
+            passes = [qml.transforms.commute_controlled, qml.transforms.cancel_inverses, qml.transforms.merge_rotations]
+
+        @functools.partial(qml.compile, pipeline=passes)
         @qml.qnode(dev)
         def statevector_circuit():
             qasm_op()

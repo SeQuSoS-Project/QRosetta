@@ -22,7 +22,7 @@ logger = get_logger("rosetta-api")
 router = APIRouter()
 
 # --- CORE LOGIC FUNCTIONS ---
-async def run_single_circuit_comparison(qasm_string: str):
+async def run_single_circuit_comparison(qasm_string: str, optimization_level: int = 0):
     logger.info(f"Processing circuit...")
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_string)
@@ -30,7 +30,10 @@ async def run_single_circuit_comparison(qasm_string: str):
         # Remove barriers (Pass)
         RemoveBarriers().apply(tk_circ)
         modified_qasm_string = pytket.qasm.circuit_to_qasm_str(tk_circ)
-        runner_payload = {"circuit_data": modified_qasm_string}
+        runner_payload = {
+            "circuit_data": modified_qasm_string,
+            "optimization_level": optimization_level
+        }
     except Exception as e:
         return { "input_qasm": qasm_string, "error": str(e) }
 
@@ -81,7 +84,7 @@ async def run_single_circuit_comparison(qasm_string: str):
     }
 
 
-async def run_single_circuit_measurement(qasm_string: str, n_shots: int):
+async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimization_level: int = 0):
     """
     (REFACTO RED - Counts)
     Dispatches TWO types of payloads:
@@ -93,7 +96,8 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int):
     # --- Payload 1: For SAMPLED_SV_URLS ---
     sampled_payload = {
         "circuit_data": qasm_string,
-        "n_shots": n_shots
+        "n_shots": n_shots,
+        "optimization_level": optimization_level
     }
 
     # --- Payload 2: For NATIVE_SAMPLING_URLS ---
@@ -115,7 +119,8 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int):
         modified_qasm_string = pytket.qasm.circuit_to_qasm_str(tk_circ)
         native_payload = {
             "circuit_data": modified_qasm_string,
-            "n_shots": n_shots
+            "n_shots": n_shots,
+            "optimization_level": optimization_level
         }
     except Exception as e:
         return { "input_qasm": qasm_string, "error": str(e) }
@@ -173,13 +178,14 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int):
 @router.post("/compare")
 async def compare_circuits_endpoint(payload: QasmPayload):
     validate_request(payload.qasm_string)
-    return await run_single_circuit_comparison(payload.qasm_string)
+    return await run_single_circuit_comparison(payload.qasm_string, payload.optimization_level)
 
 @router.post("/compare_measured")
 async def compare_measured_circuits_endpoint(payload: MeasuredQasmPayload):
     validate_request(payload.qasm_string)
     return await run_single_circuit_measurement(payload.qasm_string, 
-                                                payload.n_shots)
+                                                payload.n_shots,
+                                                payload.optimization_level)
 
 @router.post("/run_batch_suite")
 async def run_batch_suite_endpoint(payload: BatchPayload):
@@ -203,9 +209,9 @@ async def run_batch_suite_endpoint(payload: BatchPayload):
 
             report = None
             if payload.mode == 'statevector':
-                report = await run_single_circuit_comparison(qasm_string)
+                report = await run_single_circuit_comparison(qasm_string, payload.optimization_level)
             elif payload.mode == 'measured':
-                report = await run_single_circuit_measurement(qasm_string, payload.n_shots)
+                report = await run_single_circuit_measurement(qasm_string, payload.n_shots, payload.optimization_level)
             else:
                 raise ValueError(f"Unknown mode: {payload.mode}")
             

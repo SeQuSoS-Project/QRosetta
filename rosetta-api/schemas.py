@@ -3,10 +3,12 @@ from typing import List, Dict, Any, Optional
 
 class QasmPayload(BaseModel):
     qasm_string: str
+    optimization_level: int = 0
 
 class MeasuredQasmPayload(BaseModel):
     qasm_string: str
     n_shots: int = 1024
+    optimization_level: int = 0
 
 class MeasuredBenchmarkPayload(BaseModel):
     n_shots: int = 1024
@@ -23,6 +25,7 @@ class BatchPayload(BaseModel):
     tasks: List[BenchmarkTask]
     n_shots: int = 1024
     mode: str  # 'statevector' or 'measured'
+    optimization_level: int = 0
 
 # --- NEW OUTPUT MODELS ---
 
