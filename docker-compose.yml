@@ -11,8 +11,8 @@ services:
       api:
         condition: service_healthy
     networks:
-      - public_net      # Leg 1: Talk to Host (You)
-      - isolated_net    # Leg 2: Talk to API
+      - public_net
+      - isolated_net
     deploy:
       resources:
         limits:
@@ -28,7 +28,7 @@ services:
     environment:
       - RUNNER_TIMEOUT_SEC=60
     networks:
-      - isolated_net    # Internal Only
+      - isolated_net
     healthcheck:
       test: [ "CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/algorithms')" ]
       interval: 5s
@@ -42,7 +42,6 @@ services:
           memory: "512M"
 
   # --- Services 3-10: The Runners ( The Hands ) ---
-  # All strictly internal.
 
   qiskit_runner:
     build:
@@ -150,7 +149,7 @@ services:
 
 # --- NETWORK DEFINITIONS ---
 networks:
-  public_net:       # Standard bridge (Allows Internet & Port Mapping)
+  public_net:
     driver: bridge
-  isolated_net:     # Air Gapped (No Internet)
+  isolated_net:
     internal: true

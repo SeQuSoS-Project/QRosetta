@@ -8,6 +8,13 @@ let batchQueue = []; // Playlist
 let allAlgorithms = []; // Metadata
 let currentOptLevel = 0;
 let currentAlgoName = "Custom";
+let currentRunnerConfig = {}; // For persistence across detailed views
+
+const OPT_CAPS = {
+    "default": 3,
+    "qulacs": 2, "braket": 2, "quest": 2, "projectq": 2, "cirq": 2, // Pytket caps
+    "pennylane-lightning": 3, "pennylane-default": 3, "qiskit": 3
+};
 
 // --- FIX: Declare DOM elements here, define them in window.onload ---
 let qasmInput, loader, tabNav, welcomeMessage, backButtonContainer, jsonOutput;
@@ -277,13 +284,15 @@ async function runBatchQueue() {
 
     const mode = document.querySelector('input[name="mode-batch"]:checked').value;
     const shots = parseInt(document.getElementById('shots-batch').value) || 1024;
+    const globalOpt = parseInt(document.getElementById('opt-global')?.value || 0);
+    currentRunnerConfig = getRunnerConfig();
 
     const payload = {
         tasks: batchQueue,
         mode: mode,
-        mode: mode,
         n_shots: shots,
-        optimization_level: currentOptLevel
+        optimization_level: globalOpt,
+        runner_config: currentRunnerConfig
     };
 
     setLoading(true);
@@ -369,28 +378,90 @@ function closeGeneratorModal() {
     document.getElementById('gen-modal').classList.add('hidden');
 }
 
-// --- NEW: Config Modal Logic ---
-function openConfigModal() {
-    document.getElementById('opt-level-select').value = currentOptLevel;
-    document.getElementById('config-modal').classList.remove('hidden');
+// --- CONFIG PANEL LOGIC ---
+
+function renderConfigPanel() {
+    const grid = document.getElementById('config-grid');
+    if (!grid) return;
+
+    grid.innerHTML = '';
+
+    // Global Control First
+    const globalDiv = document.createElement('div');
+    globalDiv.className = "col-span-1 sm:col-span-2 p-2 bg-blue-50 rounded border border-blue-100 mb-2";
+    globalDiv.innerHTML = `
+        <label class="block text-xs font-bold text-blue-700 uppercase mb-1">Global Default Level</label>
+        <select id="opt-global" onchange="updateContextBar()" class="block w-full text-xs border-blue-200 rounded p-1">
+            <option value="0" selected>0 (None)</option>
+            <option value="1">1 (Light)</option>
+            <option value="2">2 (Heavy)</option>
+            <option value="3">3 (Aggressive)</option>
+        </select>
+    `;
+    grid.appendChild(globalDiv);
+
+    const runners = [
+        { id: "qiskit", name: "Qiskit (IBM)" },
+        { id: "qulacs", name: "Qulacs" },
+        { id: "braket", name: "Braket (AWS)" },
+        { id: "quest", name: "QuEST" },
+        { id: "cirq", name: "Cirq (Google)" },
+        { id: "projectq", name: "ProjectQ" },
+        { id: "pennylane-lightning", name: "PL Lightning" },
+        { id: "pennylane-default", name: "PL Default" }
+    ];
+
+    runners.forEach(r => {
+        const max = OPT_CAPS[r.id] || 3;
+        const div = document.createElement('div');
+        div.className = "space-y-1";
+
+        let optionsHtml = '';
+        for (let i = 0; i <= max; i++) {
+            optionsHtml += `<option value="${i}">${i}</option>`;
+        }
+
+        div.innerHTML = `
+            <label class="block text-xs font-medium text-gray-600">${r.name}</label>
+            <select data-runner="${r.id}" class="runner-opt-select block w-full text-xs border-gray-300 rounded p-1 shadow-sm">
+                <option value="-1">Use Global</option>
+                ${optionsHtml}
+            </select>
+        `;
+        grid.appendChild(div);
+    });
 }
 
-function closeConfigModal() {
-    document.getElementById('config-modal').classList.add('hidden');
+function toggleConfigPanel() {
+    const panel = document.getElementById('config-panel');
+    if (panel.classList.contains('hidden')) {
+        renderConfigPanel();
+        panel.classList.remove('hidden');
+    } else {
+        panel.classList.add('hidden');
+    }
 }
 
-function saveConfig() {
-    const val = parseInt(document.getElementById('opt-level-select').value);
-    currentOptLevel = val;
-    updateContextBar();
-    closeConfigModal();
+function getRunnerConfig() {
+    const config = {};
+    const selects = document.querySelectorAll('.runner-opt-select');
+    selects.forEach(s => {
+        const val = parseInt(s.value);
+        if (val !== -1) {
+            config[s.getAttribute('data-runner')] = val;
+        }
+    });
+    return config;
 }
 
 function updateContextBar() {
     const nameSpan = document.getElementById('ctx-algo-name');
     const optSpan = document.getElementById('ctx-opt-level');
+    const globalSelect = document.getElementById('opt-global');
+    const level = globalSelect ? globalSelect.value : 0;
+
     if (nameSpan) nameSpan.textContent = currentAlgoName;
-    if (optSpan) optSpan.textContent = `Opt Level: ${currentOptLevel}`;
+    if (optSpan) optSpan.textContent = `Global Opt: ${level}`;
 }
 
 function runAutoGeneration() {
@@ -426,10 +497,20 @@ async function runComparison(type, shots) {
     const qasm = qasmInput.value.trim();
     if (!qasm) { alert("Please enter QASM code."); return; }
 
+    const globalOpt = parseInt(document.getElementById('opt-global')?.value || 0);
+    currentRunnerConfig = getRunnerConfig();
+
     const endpoint = type === 'statevector' ? '/compare' : '/compare_measured';
-    const payload = type === 'statevector' ?
-        { qasm_string: qasm, optimization_level: currentOptLevel } :
-        { qasm_string: qasm, n_shots: shots, optimization_level: currentOptLevel };
+    const payload = {
+        qasm_string: qasm,
+        optimization_level: globalOpt,
+        runner_config: currentRunnerConfig
+    };
+
+    if (type === 'measured') {
+        payload.n_shots = shots;
+    }
+
     const title = type === 'statevector' ? 'Editor Run (Statevector)' : `Editor Run (Measured, ${shots} shots)`;
 
     setLoading(true);
@@ -449,7 +530,7 @@ async function runComparison(type, shots) {
 
         const data = await res.json();
         currentSuiteData = data; // FIX: Set global data for single runs
-        renderDetailReport(data, title);
+        renderDetailReport(data, title, currentRunnerConfig);
     } catch (e) {
         console.error(e);
         renderDetailReport({ error: e.message }, "Error");

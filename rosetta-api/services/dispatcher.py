@@ -27,11 +27,30 @@ SAMPLED_SV_URLS = {
 
 # --- MODULAR DISPATCH LOGIC ---
 async def dispatch_to_runners(runner_urls: dict, runner_payload: dict) -> list:
+    """ runner_payload can contain 'optimization_level' (global) and 'runner_config' (overrides) """
+    global_opt = runner_payload.get("optimization_level", 0)
+    runner_overrides = runner_payload.get("runner_config", {})
+
     async with httpx.AsyncClient(timeout=60.0) as client:
         dispatch_tasks = []
         for sim_name, url in runner_urls.items():
-            logger.info(f"Dispatching job to {sim_name}...") 
-            dispatch_tasks.append(client.post(url, json=runner_payload))
+            # Determine specific opt level for this runner
+            # We map sim_name (e.g. 'qiskit') to payload keys
+            # The runner_urls keys match the sim_names we use in logs/logic
+            
+            # Map sim_name to a cleaner key if needed, but for now we assume they match
+            # e.g. 'qiskit_runner' vs 'qiskit'
+            # Let's standardize on the prefix before _runner if present
+            config_key = sim_name.replace("_runner", "")
+            
+            p_level = runner_overrides.get(config_key, global_opt)
+            
+            # Create a localized payload
+            local_payload = runner_payload.copy()
+            local_payload["optimization_level"] = p_level
+            
+            logger.info(f"Dispatching job to {sim_name} (Level: {p_level})...") 
+            dispatch_tasks.append(client.post(url, json=local_payload))
 
         responses = await asyncio.gather(*dispatch_tasks, return_exceptions=True)
 

@@ -42,13 +42,19 @@ const STATUS_STYLES = {
 
 // --- HELPER FUNCTIONS ---
 
+function isConnectionError(err) {
+    if (!err) return false;
+    const msg = err.toLowerCase();
+    return msg.includes("failed to fetch") || msg.includes("load resource") || msg.includes("service unavailable") || msg.includes("connection refused");
+}
+
 function renderTooltip(key, label) {
     const def = METRIC_DEFINITIONS[key];
     if (def) {
         const plainText = def.replace(/<b>/g, '').replace(/<\/b>/g, '');
         return `<span style="cursor: help; text-decoration: underline dotted;" title="${plainText}">${label}</span>`;
     }
-    return label; // No tooltip for undefined keys (e.g. Simulator)
+    return label;
 }
 
 function clearReport() {
@@ -96,7 +102,15 @@ function renderTabs(tabList) {
     });
 }
 
-function renderDetailReport(data, title) {
+function getOptBadge(simulator, config) {
+    const optLevel = config[simulator] !== undefined ? config[simulator] : 0;
+    if (optLevel > 0) {
+        return `<span class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800" title="Optimization Level ${optLevel}">L${optLevel}</span>`;
+    }
+    return '';
+}
+
+function renderDetailReport(data, title, config = currentRunnerConfig) {
     renderTabs(['summary', 'performance', 'resources', 'divergence', 'raw']);
     const jsonString = JSON.stringify(data, null, 2);
     jsonOutput.textContent = jsonString;
@@ -113,9 +127,9 @@ function renderDetailReport(data, title) {
 
     renderSummaryPanel(data, title);
     if (!data.error) {
-        if (data.performance_report) renderRankingTable(data.performance_report, 'execution_time_sec', 's', panelElements.performance);
-        if (data.resource_report) renderRankingTable(data.resource_report, 'memory_usage_mb', 'MiB', panelElements.resources);
-        if (data.divergence_report) renderDivergenceTables(data.divergence_report, panelElements.divergence);
+        if (data.performance_report) renderRankingTable(data.performance_report, 'execution_time_sec', 's', panelElements.performance, config);
+        if (data.resource_report) renderRankingTable(data.resource_report, 'memory_usage_mb', 'MiB', panelElements.resources, config);
+        if (data.divergence_report) renderDivergenceTables(data.divergence_report, panelElements.divergence, config);
     }
 
     showTab('summary');
@@ -221,7 +235,7 @@ function renderSummaryPanel(data, title) {
     }
 }
 
-function renderRankingTable(report, key, unit, panel) {
+function renderRankingTable(report, key, unit, panel, config = {}) {
     if (!panel) return;
     let html = `<h3 class="font-semibold text-gray-900 mt-4 mb-2">${report.summary}</h3>`;
 
@@ -266,7 +280,7 @@ function renderRankingTable(report, key, unit, panel) {
 
             html += `<tr>
                         <td class="px-4 py-3 text-sm text-gray-500">${i + 1}</td>
-                        <td class="px-4 py-3 text-sm font-medium text-gray-900">${r.simulator}</td>
+                        <td class="px-4 py-3 text-sm font-medium text-gray-900">${r.simulator}${getOptBadge(r.simulator, config)}</td>
                         <td class="px-4 py-3 text-sm text-gray-500 font-mono">${mem_delta_display}</td>
                         <td class="px-4 py-3 text-sm text-gray-500 font-mono">${proc_peak_display}</td>
                     </tr>`;
@@ -298,7 +312,7 @@ function renderRankingTable(report, key, unit, panel) {
 
             html += `<tr>
                         <td class="px-4 py-3 text-sm text-gray-500">${i + 1}</td>
-                        <td class="px-4 py-3 text-sm font-medium text-gray-900">${r.simulator}</td>
+                        <td class="px-4 py-3 text-sm font-medium text-gray-900">${r.simulator}${getOptBadge(r.simulator, config)}</td>
                         <td class="px-4 py-3 text-sm text-gray-500 font-mono">${comp_display}</td>
                         <td class="px-4 py-3 text-sm text-gray-500 font-mono">${sim_display}</td>
                         <td class="px-4 py-3 text-sm text-gray-900 font-mono font-medium">${total_display}</td>
@@ -320,14 +334,14 @@ function renderRankingTable(report, key, unit, panel) {
             } else if (offlineSims.has(r.simulator)) {
                 val_display = `<span class="${STATUS_STYLES.offline.cell}">Offline</span>`;
             }
-            html += `<tr><td class="px-4 py-3 text-sm text-gray-500">${i + 1}</td><td class="px-4 py-3 text-sm font-medium text-gray-900">${r.simulator}</td><td class="px-4 py-3 text-sm text-gray-500 font-mono">${val_display}</td></tr>`;
+            html += `<tr><td class="px-4 py-3 text-sm text-gray-500">${i + 1}</td><td class="px-4 py-3 text-sm font-medium text-gray-900">${r.simulator}${getOptBadge(r.simulator, config)}</td><td class="px-4 py-3 text-sm text-gray-500 font-mono">${val_display}</td></tr>`;
         });
         html += `</tbody></table></div>`;
     }
     panel.innerHTML = html;
 }
 
-function renderDivergenceTables(report, panel) {
+function renderDivergenceTables(report, panel, config = {}) {
     if (!panel) return;
     let html = `<div class="space-y-8">`;
     let found = false;
@@ -352,9 +366,9 @@ function renderDivergenceTables(report, panel) {
         if (!report[key]) return;
         found = true;
         // Added renderTooltip to the Matrix Title
-        html += `<div><h3 class="font-semibold text-gray-900 mt-4 mb-2">${renderTooltip(key, title)}</h3><div class="overflow-x-auto"><table class="matrix-table border-collapse border border-gray-300"><thead class="bg-gray-50"><tr><th class="border p-2"></th>${report.simulators.map(s => `<th class="sim-header border p-2 text-xs text-gray-500">${s}</th>`).join('')}</tr></thead><tbody>`;
+        html += `<div><h3 class="font-semibold text-gray-900 mt-4 mb-2">${renderTooltip(key, title)}</h3><div class="overflow-x-auto"><table class="matrix-table border-collapse border border-gray-300"><thead class="bg-gray-50"><tr><th class="border p-2"></th>${report.simulators.map(s => `<th class="sim-header border p-2 text-xs text-gray-500">${s}${getOptBadge(s, config)}</th>`).join('')}</tr></thead><tbody>`;
         report.simulators.forEach((s1, i) => {
-            html += `<tr><th class="border p-2 text-xs text-left text-gray-500">${s1}</th>`;
+            html += `<tr><th class="border p-2 text-xs text-left text-gray-500">${s1}${getOptBadge(s1, config)}</th>`;
             report[key][i].forEach((val, j) => {
                 let bg = STATUS_STYLES.divergence.cell; // Default to divergence
                 let txt = val.toFixed(4);
@@ -409,5 +423,5 @@ function viewDetail(index) {
 
     clearReport();
     backButtonContainer.classList.remove('hidden');
-    renderDetailReport(item, `Detail: ${fname}`);
+    renderDetailReport(item, `Detail: ${fname}`, currentRunnerConfig);
 }
