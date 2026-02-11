@@ -388,10 +388,10 @@ function renderConfigPanel() {
 
     // Global Control First
     const globalDiv = document.createElement('div');
-    globalDiv.className = "col-span-1 sm:col-span-2 p-2 bg-blue-50 rounded border border-blue-100 mb-2";
+    globalDiv.className = "col-span-1 sm:col-span-2 p-2 bg-indigo-100 rounded border border-indigo-200 mb-2";
     globalDiv.innerHTML = `
-        <label class="block text-xs font-bold text-blue-700 uppercase mb-1">Global Default Level</label>
-        <select id="opt-global" onchange="updateContextBar()" class="block w-full text-xs border-blue-200 rounded p-1">
+        <label class="block text-xs font-bold text-indigo-800 uppercase mb-1">Global Default Level</label>
+        <select id="opt-global" onchange="updateContextBar()" class="block w-full text-xs border-indigo-300 rounded p-1 focus:ring-indigo-500 focus:border-indigo-500">
             <option value="0" selected>0 (None)</option>
             <option value="1">1 (Light)</option>
             <option value="2">2 (Heavy)</option>

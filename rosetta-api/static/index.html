@@ -63,7 +63,7 @@
                                 class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                         </div>
 
-                        <div class="grid grid-cols-3 gap-2">
+                        <div class="grid grid-cols-4 gap-2">
                             <button onclick="generateCircuit()"
                                 class="col-span-1 flex justify-center py-2 px-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none">
                                 Load
@@ -76,22 +76,18 @@
                                 class="col-span-1 flex justify-center py-2 px-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none">
                                 Manage
                             </button>
-                        </div>
-                        <div class="mt-2">
                             <button onclick="toggleConfigPanel()"
-                                class="w-full flex justify-center py-2 px-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none">
-                                ⚙️ Config
+                                class="col-span-1 flex justify-center py-2 px-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none">
+                                Config
                             </button>
                         </div>
                     </div>
                 </div>
 
                 <!-- === CONFIG PANEL === -->
-                <div id="config-panel" class="hidden bg-gray-50 border border-gray-200 p-4 mb-4 rounded-lg">
+                <div id="config-panel" class="hidden p-4 border rounded-lg bg-indigo-50 border-indigo-200">
                     <div class="flex justify-between items-center mb-3">
-                        <h3 class="text-sm font-bold text-gray-700 uppercase tracking-wider">Runner Optimization
-                            Overrides</h3>
-                        <button onclick="toggleConfigPanel()" class="text-gray-400 hover:text-gray-600">&times;</button>
+                        <h2 class="text-lg font-semibold text-indigo-900">Runner Configuration</h2>
                     </div>
                     <div id="config-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <!-- Populated by JS -->
