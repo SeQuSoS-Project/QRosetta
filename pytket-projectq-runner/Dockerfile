@@ -39,4 +39,4 @@ RUN chown -R appuser:appuser /home/appuser/app
 USER appuser
 
 # Original CMD (Preserves consistency with your other runners)
-CMD ["gunicorn", "main:app", "--workers", "1", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--timeout", "120", "--access-logfile", "-"]
+CMD ["sh", "-c", "gunicorn main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000} --timeout 120 --access-logfile -"]

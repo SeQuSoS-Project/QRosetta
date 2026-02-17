@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     # Timeouts
     RUNNER_TIMEOUT_SEC: int = 60
 
+    # Storage Configuration
+    STORAGE_MODE: str = "local"  # Options: 'local', 'memory'
+
     class Config:
         env_file = ".env"
 

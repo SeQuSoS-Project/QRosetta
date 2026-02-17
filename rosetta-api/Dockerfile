@@ -21,4 +21,4 @@ RUN chown -R appuser:appuser /home/appuser/app
 USER appuser
 
 # Start Gunicorn with 4 workers for the API
-CMD ["gunicorn", "main:app", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--timeout", "60"]
+CMD ["sh", "-c", "gunicorn main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000} --timeout 60"]
