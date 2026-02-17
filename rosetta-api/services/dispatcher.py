@@ -26,12 +26,15 @@ SAMPLED_SV_URLS = {
 
 
 # --- MODULAR DISPATCH LOGIC ---
-async def dispatch_to_runners(runner_urls: dict, runner_payload: dict) -> list:
+async def dispatch_to_runners(runner_urls: dict, runner_payload: dict, timeout_seconds: int = settings.RUNNER_TIMEOUT_SEC) -> list:
     """ runner_payload can contain 'optimization_level' (global) and 'runner_config' (overrides) """
     global_opt = runner_payload.get("optimization_level", 0)
     runner_overrides = runner_payload.get("runner_config", {})
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    # Clamp timeout to be safe? Or assume caller did it? Pydantic/Validator should handle clamping usually.
+    # But let's be sure we cast to float for httpx
+    
+    async with httpx.AsyncClient(timeout=float(timeout_seconds)) as client:
         dispatch_tasks = []
         for sim_name, url in runner_urls.items():
             # Determine specific opt level for this runner
@@ -65,9 +68,24 @@ async def dispatch_to_runners(runner_urls: dict, runner_payload: dict) -> list:
                     "simulator": sim_name,
                     "error": f"Failed to decode JSON response: {str(e)}. Response text: {res.text}"
                 })
+        elif isinstance(res, httpx.TimeoutException):
+             aggregated_results.append({
+                "simulator": sim_name,
+                "error": f"TIMEOUT ({timeout_seconds}s): The runner took too long. This likely means the circuit is too complex for the allocated 512MB RAM or CPU limit."
+            })
+        elif isinstance(res, httpx.ConnectError):
+            aggregated_results.append({
+                "simulator": sim_name,
+                "error": "CONNECTION FAILED: The runner is unreachable. It may have crashed due to running out of memory (OOM) or is still booting."
+            })
+        elif isinstance(res, httpx.RemoteProtocolError):
+            aggregated_results.append({
+                "simulator": sim_name,
+                "error": "CRITICAL FAILURE: The runner crashed unexpectedly (SIGABRT/SEGV). This usually happens when the C++ simulator runs out of memory (OOM) or encounters an internal error."
+            })
         else:
             aggregated_results.append({
                 "simulator": sim_name,
-                "error": f"Failed to get response: {str(res)}"
+                "error": f"Network/System Error: {type(res).__name__}: {str(res)}"
             })
     return aggregated_results

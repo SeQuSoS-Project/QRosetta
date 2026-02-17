@@ -11,15 +11,19 @@ function isConnectionError(errorMsg) {
         msg.includes("failed to decode json");
 }
 
-function setLoading(isLoading) {
+function setLoading(isLoading, message = "Processing...") {
+    const loader = document.getElementById('loader');
+    const loaderText = document.getElementById('loader-text');
+
     if (isLoading) {
+        if (loaderText) loaderText.textContent = message;
         loader.classList.remove('hidden');
         loader.classList.add('flex');
-        allButtons.forEach(btn => { if (btn) btn.disabled = true }); // Add null check
+        allButtons.forEach(btn => { if (btn) btn.disabled = true });
     } else {
         loader.classList.add('hidden');
         loader.classList.remove('flex');
-        allButtons.forEach(btn => { if (btn) btn.disabled = false }); // Add null check
+        allButtons.forEach(btn => { if (btn) btn.disabled = false });
     }
 }
 

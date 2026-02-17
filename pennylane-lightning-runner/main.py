@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, get_logger, encode_statevector
+from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, get_logger, encode_statevector, check_qubits_limit, get_num_qubits_from_qasm
 import pennylane as qml
 import numpy as np
 import functools
@@ -10,22 +10,12 @@ import gc
 app = FastAPI(title="Pennylane Lightning Runner")
 logger = get_logger("pennylane-lightning-runner")
 
-# --- Helper Function ---
-def get_num_qubits_from_qasm(qasm_string: str) -> int:
-    """A simple helper to find the number of qubits in a QASM string."""
-    for line in qasm_string.split('\n'):
-        if line.strip().startswith("qreg"):
-            try:
-                return int(line.split('[')[1].split(']')[0])
-            except Exception:
-                pass
-    raise ValueError("Could not determine number of qubits from QASM.")
-
-
 @app.post("/run")
-async def run_circuit(payload: CircuitPayload):
+def run_circuit(payload: CircuitPayload):
     logger.info("Received statevector circuit data for Pennylane-Lightning simulation.")
     try:
+        check_qubits_limit(payload.circuit_data, 24)
+
         # --- COMPILATION ---
         t0 = time.perf_counter()
         qasm_op = qml.from_qasm(payload.circuit_data)
@@ -92,9 +82,11 @@ async def run_circuit(payload: CircuitPayload):
 
 
 @app.post("/run_measured")
-async def run_measured_circuit(payload: MeasuredCircuitPayload):
+def run_measured_circuit(payload: MeasuredCircuitPayload):
     logger.info("Received measured circuit data for Pennylane-Lightning (manual sampling).")
     try:
+        check_qubits_limit(payload.circuit_data, 24)
+
         # --- COMPILATION ---
         t0 = time.perf_counter()
         qasm_op = qml.from_qasm(payload.circuit_data)

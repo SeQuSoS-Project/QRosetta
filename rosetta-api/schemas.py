@@ -5,12 +5,14 @@ class QasmPayload(BaseModel):
     qasm_string: str
     optimization_level: int = 0
     runner_config: Dict[str, int] = {}
+    timeout_seconds: int = 60
 
 class MeasuredQasmPayload(BaseModel):
     qasm_string: str
     n_shots: int = 1024
     optimization_level: int = 0
     runner_config: Dict[str, int] = {}
+    timeout_seconds: int = 60
 
 class MeasuredBenchmarkPayload(BaseModel):
     n_shots: int = 1024
@@ -29,6 +31,7 @@ class BatchPayload(BaseModel):
     mode: str  # 'statevector' or 'measured'
     optimization_level: int = 0
     runner_config: Dict[str, int] = {}
+    timeout_seconds: int = 60
 
 # --- NEW OUTPUT MODELS ---
 

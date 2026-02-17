@@ -16,13 +16,15 @@ from services.dispatcher import (
 )
 from schemas import QasmPayload, MeasuredQasmPayload, BatchPayload, GenerateCircuitPayload
 from routers.generation import generate_circuit_endpoint
+from routers.generation import generate_circuit_endpoint
 import comparator
+from config import settings
 
 logger = get_logger("rosetta-api")
 router = APIRouter()
 
 # --- CORE LOGIC FUNCTIONS ---
-async def run_single_circuit_comparison(qasm_string: str, optimization_level: int = 0):
+async def run_single_circuit_comparison(qasm_string: str, optimization_level: int = 0, timeout_seconds: int = 60):
     logger.info(f"Processing circuit...")
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_string)
@@ -40,7 +42,8 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
     gc.collect() # Clean up before dispatch
     aggregated_results = await dispatch_to_runners(
         runner_urls=STATEVECTOR_RUNNER_URLS,
-        runner_payload=runner_payload
+        runner_payload=runner_payload,
+        timeout_seconds=timeout_seconds
     )
 
     loop = asyncio.get_event_loop()
@@ -84,7 +87,7 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
     }
 
 
-async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimization_level: int = 0):
+async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimization_level: int = 0, timeout_seconds: int = 60):
     """
     (REFACTO RED - Counts)
     Dispatches TWO types of payloads:
@@ -127,8 +130,8 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
 
     # --- Dispatch both sets of jobs in parallel ---
     gc.collect() # Clean up before dispatch
-    sampled_task = dispatch_to_runners(SAMPLED_SV_URLS, sampled_payload)
-    native_task = dispatch_to_runners(NATIVE_SAMPLING_URLS, native_payload)
+    sampled_task = dispatch_to_runners(SAMPLED_SV_URLS, sampled_payload, timeout_seconds)
+    native_task = dispatch_to_runners(NATIVE_SAMPLING_URLS, native_payload, timeout_seconds)
 
     results_sampled, results_native = await asyncio.gather(sampled_task, native_task)
 
@@ -178,14 +181,17 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
 @router.post("/compare")
 async def compare_circuits_endpoint(payload: QasmPayload):
     validate_request(payload.qasm_string)
-    return await run_single_circuit_comparison(payload.qasm_string, payload.optimization_level)
+    timeout = max(1, min(payload.timeout_seconds, 300))
+    return await run_single_circuit_comparison(payload.qasm_string, payload.optimization_level, timeout)
 
 @router.post("/compare_measured")
 async def compare_measured_circuits_endpoint(payload: MeasuredQasmPayload):
     validate_request(payload.qasm_string)
+    timeout = max(1, min(payload.timeout_seconds, 300))
     return await run_single_circuit_measurement(payload.qasm_string, 
                                                 payload.n_shots,
-                                                payload.optimization_level)
+                                                payload.optimization_level,
+                                                timeout)
 
 @router.post("/run_batch_suite")
 async def run_batch_suite_endpoint(payload: BatchPayload):
@@ -208,10 +214,11 @@ async def run_batch_suite_endpoint(payload: BatchPayload):
             qasm_string = qasm_response["qasm"]
 
             report = None
+            timeout = max(1, min(payload.timeout_seconds, 300))
             if payload.mode == 'statevector':
-                report = await run_single_circuit_comparison(qasm_string, payload.optimization_level)
+                report = await run_single_circuit_comparison(qasm_string, payload.optimization_level, timeout)
             elif payload.mode == 'measured':
-                report = await run_single_circuit_measurement(qasm_string, payload.n_shots, payload.optimization_level)
+                report = await run_single_circuit_measurement(qasm_string, payload.n_shots, payload.optimization_level, timeout)
             else:
                 raise ValueError(f"Unknown mode: {payload.mode}")
             

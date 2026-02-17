@@ -26,7 +26,7 @@ services:
       dockerfile: ./rosetta-api/Dockerfile
     container_name: rosetta-api
     environment:
-      - RUNNER_TIMEOUT_SEC=60
+      - RUNNER_TIMEOUT_SEC=${RUNNER_TIMEOUT_SEC:-60}
     networks:
       - isolated_net
     healthcheck:

@@ -1,5 +1,13 @@
 #!/bin/bash
 
+#!/bin/bash
+
+# --- 0. PRE-FLIGHT CHECK & CONFIGURATION ---
+echo ">>> [INIT] Starting safe boot..."
+
+export RUNNER_TIMEOUT_SEC=60
+
+
 # Define the core services that MUST succeed
 CORE_SERVICES=("nginx" "api")
 

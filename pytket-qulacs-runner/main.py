@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector
+from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, check_qubits_limit
 import numpy as np
 import pytket.qasm
 from pytket.extensions.qulacs import QulacsBackend
@@ -12,9 +12,11 @@ logger = get_logger("pytket-qulacs-runner")
 app = FastAPI(title="Qulacs Runner")
 
 @app.post("/run")
-async def run_circuit(payload: CircuitPayload):
+def run_circuit(payload: CircuitPayload):
     logger.info(f"Received circuit data for Qulacs simulation.")
     try:
+        check_qubits_limit(payload.circuit_data, 24)
+
         # --- COMPILATION ---
         t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
@@ -66,9 +68,11 @@ async def run_circuit(payload: CircuitPayload):
         }
 
 @app.post("/run_measured")
-async def run_measured_circuit(payload: MeasuredCircuitPayload):
+def run_measured_circuit(payload: MeasuredCircuitPayload):
     logger.info(f"Received measured circuit data for Qulacs simulation.")
     try:
+        check_qubits_limit(payload.circuit_data, 24)
+
         # --- COMPILATION ---
         t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)

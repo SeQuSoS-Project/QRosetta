@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     PENNYLANE_LIGHTNING_RUNNER_URL: str = "http://pennylane-lightning-runner:8000"
     PENNYLANE_DEFAULT_RUNNER_URL: str = "http://pennylane-default-runner:8000"
 
+    # Timeouts
+    RUNNER_TIMEOUT_SEC: int = 60
+
     class Config:
         env_file = ".env"
 

@@ -86,6 +86,7 @@ window.onload = async () => {
     toggleSingleMode();
     toggleBatchMode();
     // Only generate circuit if algorithms loaded
+    // Only generate circuit if algorithms loaded
     if (allAlgorithms.length > 0) {
         generateCircuit();
     }
@@ -152,7 +153,7 @@ async function generateCircuit() {
         return;
     }
 
-    setLoading(true);
+    setLoading(true, "Generating Circuit...");
     try {
         // --- FIX: Use BASE_URL for fetch ---
         const response = await fetch(`${BASE_URL}/generate_circuit`, {
@@ -241,7 +242,7 @@ async function viewBatchItem(index) {
     qasmInput.value = "// Loading preview from playlist...";
 
     try {
-        setLoading(true);
+        setLoading(true, "Loading Preview...");
         // --- FIX: Use BASE_URL for fetch ---
         const response = await fetch(`${BASE_URL}/generate_circuit`, {
             method: 'POST',
@@ -285,6 +286,7 @@ async function runBatchQueue() {
     const mode = document.querySelector('input[name="mode-batch"]:checked').value;
     const shots = parseInt(document.getElementById('shots-batch').value) || 1024;
     const globalOpt = parseInt(document.getElementById('opt-global')?.value || 0);
+    const timeout = parseInt(document.getElementById('timeout-input')?.value || 60);
     currentRunnerConfig = getRunnerConfig();
 
     const payload = {
@@ -292,10 +294,11 @@ async function runBatchQueue() {
         mode: mode,
         n_shots: shots,
         optimization_level: globalOpt,
+        timeout_seconds: timeout,
         runner_config: currentRunnerConfig
     };
 
-    setLoading(true);
+    setLoading(true, `Running Batch of ${batchQueue.length} Circuits...`);
     clearReport();
 
     try {
@@ -400,6 +403,24 @@ function renderConfigPanel() {
     `;
     grid.appendChild(globalDiv);
 
+
+    // System Info Section (Static)
+    const sysDiv = document.createElement('div');
+    sysDiv.className = "col-span-1 sm:col-span-2 p-2 bg-gray-50 rounded border border-gray-200 mb-2 flex justify-between items-center text-xs";
+    sysDiv.innerHTML = `
+        <span class="font-bold text-gray-500">⚡ System Limits:</span>
+        <div class="space-x-2">
+             <span class="text-gray-600 font-mono">Memory: 512MB (Fixed)</span>
+             <span class="text-gray-300">|</span>
+             <div class="flex items-center space-x-1">
+                <label for="timeout-input" class="text-xs text-gray-500">Timeout (s):</label>
+                <input type="number" id="timeout-input" min="1" max="300" value="60" 
+                       onchange="if(this.value < 1) this.value=1; if(this.value > 300) this.value=300;"
+                       class="w-16 text-xs border-gray-300 rounded p-1 focus:ring-indigo-500 focus:border-indigo-500 text-right">
+             </div>
+        </div>
+    `;
+    grid.appendChild(sysDiv);
     const runners = [
         { id: "qiskit", name: "Qiskit (IBM)" },
         { id: "qulacs", name: "Qulacs" },
@@ -498,12 +519,14 @@ async function runComparison(type, shots) {
     if (!qasm) { alert("Please enter QASM code."); return; }
 
     const globalOpt = parseInt(document.getElementById('opt-global')?.value || 0);
+    const timeout = parseInt(document.getElementById('timeout-input')?.value || 60);
     currentRunnerConfig = getRunnerConfig();
 
     const endpoint = type === 'statevector' ? '/compare' : '/compare_measured';
     const payload = {
         qasm_string: qasm,
         optimization_level: globalOpt,
+        timeout_seconds: timeout,
         runner_config: currentRunnerConfig
     };
 
@@ -513,7 +536,7 @@ async function runComparison(type, shots) {
 
     const title = type === 'statevector' ? 'Editor Run (Statevector)' : `Editor Run (Measured, ${shots} shots)`;
 
-    setLoading(true);
+    setLoading(true, "Running Simulation...");
     clearReport();
 
     try {
