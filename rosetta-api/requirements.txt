@@ -1,4 +1,5 @@
 fastapi==0.115.0
+slowapi
 uvicorn[standard]==0.30.0
 pytket==1.33.0
 requests==2.32.3

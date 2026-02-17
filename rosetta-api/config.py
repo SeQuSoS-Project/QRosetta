@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     # Storage Configuration
     STORAGE_MODE: str = "local"  # Options: 'local', 'memory'
 
+    # Safeguards
+    MAX_QUBITS: int = 24
+
     class Config:
         env_file = ".env"
 

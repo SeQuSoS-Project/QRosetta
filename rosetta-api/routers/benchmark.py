@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from qrosetta_commons.helpers import get_logger
 import asyncio
@@ -16,12 +16,23 @@ from services.dispatcher import (
 )
 from schemas import QasmPayload, MeasuredQasmPayload, BatchPayload, GenerateCircuitPayload
 from routers.generation import generate_circuit_endpoint
-from routers.generation import generate_circuit_endpoint
 import comparator
 from config import settings
+from security import limiter
 
 logger = get_logger("rosetta-api")
 router = APIRouter()
+
+# ... (CORE LOGIC FUNCTIONS untouched) ...
+# I will supply the full file content for the import section if I can't match it easily, 
+# but here I'll try to just edit the imports and the endpoint defs.
+# Actually I'll just use MultiReplace or Replace big chunk.
+# Let's replace the top imports first.
+
+# Wait, I can use multi_replace to do imports separate from decorators.
+# But replacing the whole top and the endpoint lines is easier with replace_content if I'm careful.
+# I'll replace the top section to add imports.
+
 
 # --- CORE LOGIC FUNCTIONS ---
 async def run_single_circuit_comparison(qasm_string: str, optimization_level: int = 0, timeout_seconds: int = 60):
@@ -179,13 +190,15 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
     }
 
 @router.post("/compare")
-async def compare_circuits_endpoint(payload: QasmPayload):
+@limiter.limit("10/minute")
+async def compare_circuits_endpoint(request: Request, payload: QasmPayload):
     validate_request(payload.qasm_string)
     timeout = max(1, min(payload.timeout_seconds, 300))
     return await run_single_circuit_comparison(payload.qasm_string, payload.optimization_level, timeout)
 
 @router.post("/compare_measured")
-async def compare_measured_circuits_endpoint(payload: MeasuredQasmPayload):
+@limiter.limit("10/minute")
+async def compare_measured_circuits_endpoint(request: Request, payload: MeasuredQasmPayload):
     validate_request(payload.qasm_string)
     timeout = max(1, min(payload.timeout_seconds, 300))
     return await run_single_circuit_measurement(payload.qasm_string, 
@@ -194,7 +207,8 @@ async def compare_measured_circuits_endpoint(payload: MeasuredQasmPayload):
                                                 timeout)
 
 @router.post("/run_batch_suite")
-async def run_batch_suite_endpoint(payload: BatchPayload):
+@limiter.limit("10/minute")
+async def run_batch_suite_endpoint(request: Request, payload: BatchPayload):
     logger.info(f"--- Starting Batch Suite ({payload.mode}) with {len(payload.tasks)} tasks ---")
     benchmark_summary = []
 

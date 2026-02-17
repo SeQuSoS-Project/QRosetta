@@ -1,9 +1,11 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from qrosetta_commons.helpers import get_logger
 import library
 from schemas import GenerateCircuitPayload
-from services.validator import MAX_QUBITS
+from services.validator import validate_request
+from config import settings
+from security import limiter
 
 logger = get_logger("rosetta-api")
 router = APIRouter()
@@ -31,9 +33,10 @@ async def get_algorithms():
     ]
 
 @router.post("/generate_circuit")
-async def generate_circuit_endpoint(payload: GenerateCircuitPayload):
-    if payload.qubits > MAX_QUBITS:
-        return JSONResponse(status_code=400, content={"error": f"Qubit count {payload.qubits} exceeds limit of {MAX_QUBITS}"})
+@limiter.limit("10/minute")
+async def generate_circuit_endpoint(request: Request, payload: GenerateCircuitPayload):
+    if payload.qubits > settings.MAX_QUBITS:
+        return JSONResponse(status_code=400, content={"error": f"Qubit count {payload.qubits} exceeds limit of {settings.MAX_QUBITS}"})
     try:
         handler = ALGORITHM_HANDLERS.get(payload.algorithm)
         if not handler:

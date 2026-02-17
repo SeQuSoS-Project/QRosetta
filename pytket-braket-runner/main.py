@@ -21,9 +21,16 @@ async def run_circuit(payload: CircuitPayload):
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
         RemoveBarriers().apply(tk_circ)
         
+        # backend = BraketBackend(local=True)
+        # Reverted back to standard local initialization
         backend = BraketBackend(local=True)
         opt_level = min(payload.optimization_level, 2)
         compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=opt_level)
+        
+        # CRITICAL FIX: Strip Global Phase
+        # Braket attempts to apply global phase as a unitary, causing 16TiB OOM on 20 qubits.
+        compiled_circ.add_phase(-compiled_circ.phase)
+        
         t1 = time.perf_counter()
         compilation_time = t1 - t0
         
@@ -80,6 +87,10 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         backend = BraketBackend(local=True)
         opt_level = min(payload.optimization_level, 2)
         compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=opt_level)
+        
+        # CRITICAL FIX: Strip Global Phase
+        compiled_circ.add_phase(-compiled_circ.phase)
+        
         t1 = time.perf_counter()
         compilation_time = t1 - t0
         
