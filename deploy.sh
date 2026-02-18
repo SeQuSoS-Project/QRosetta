@@ -6,7 +6,7 @@ REGION="us-central1"
 REPO="us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy"
 
 # Cloud-Specific Safeguards
-CLOUD_TIMEOUT="100s"
+CLOUD_TIMEOUT="300s"
 CLOUD_MAX_QUBITS="10"
 
 echo "==================================================="
