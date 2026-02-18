@@ -46,6 +46,7 @@ for RUNNER in "${RUNNERS[@]}"; do
     URL=$(gcloud run deploy $RUNNER \
         --image $IMAGE_URL \
         --ingress internal \
+        --allow-unauthenticated \
         --region $REGION \
         --memory 512Mi \
         --cpu 1 \
@@ -65,12 +66,12 @@ echo "==================================================="
 
 # 3. Prepare API Environment Variables mapping to the new secure runner URLs
 API_ENV_VARS="MAX_QUBITS=$CLOUD_MAX_QUBITS,STORAGE_MODE=memory"
-API_ENV_VARS+=",QISKIT_RUNNER_URL=${RUNNER_URLS['pytket-qiskit-runner']}"
-API_ENV_VARS+=",CIRQ_RUNNER_URL=${RUNNER_URLS['pytket-cirq-runner']}"
-API_ENV_VARS+=",QULACS_RUNNER_URL=${RUNNER_URLS['pytket-qulacs-runner']}"
-API_ENV_VARS+=",BRAKET_RUNNER_URL=${RUNNER_URLS['pytket-braket-runner']}"
-API_ENV_VARS+=",PROJECTQ_RUNNER_URL=${RUNNER_URLS['pytket-projectq-runner']}"
-API_ENV_VARS+=",QUEST_RUNNER_URL=${RUNNER_URLS['pytket-quest-runner']}"
+API_ENV_VARS+=",PYTKET_QISKIT_RUNNER_URL=${RUNNER_URLS['pytket-qiskit-runner']}"
+API_ENV_VARS+=",PYTKET_CIRQ_RUNNER_URL=${RUNNER_URLS['pytket-cirq-runner']}"
+API_ENV_VARS+=",PYTKET_QULACS_RUNNER_URL=${RUNNER_URLS['pytket-qulacs-runner']}"
+API_ENV_VARS+=",PYTKET_BRAKET_RUNNER_URL=${RUNNER_URLS['pytket-braket-runner']}"
+API_ENV_VARS+=",PYTKET_PROJECTQ_RUNNER_URL=${RUNNER_URLS['pytket-projectq-runner']}"
+API_ENV_VARS+=",PYTKET_QUEST_RUNNER_URL=${RUNNER_URLS['pytket-quest-runner']}"
 API_ENV_VARS+=",PENNYLANE_LIGHTNING_RUNNER_URL=${RUNNER_URLS['pennylane-lightning-runner']}"
 API_ENV_VARS+=",PENNYLANE_DEFAULT_RUNNER_URL=${RUNNER_URLS['pennylane-default-runner']}"
 
