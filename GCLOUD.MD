@@ -1,56 +1,18 @@
 
-## Code for GCLOUD RUN gcloud commands
-# Step 1: Recreate the Artifact Registry
+# Quantum Rosetta: Cloud Operations Runbook
 
-This creates the secure remote bin where the local Docker images will be pushed.
+This document outlines the standard operating procedures for managing the Quantum Rosetta microservice swarm on Google Cloud Run.
 
-gcloud artifacts repositories create cloud-run-source-deploy --repository-format=docker --location=us-central1
+## 1. First-Time Infrastructure Initialization (Run Once)
 
-# Step 2: Authenticate Local Docker
+Before deploying code to a fresh Google Cloud project, you must configure the underlying networking, security permissions, and storage infrastructure.
 
-This securely links the local Ubuntu Docker engine to the newly created Google Cloud repository.
-gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+### A. Network & IAM Configuration
 
-# Step 3: Execute the Deployment Swarm
+Because this architecture uses a secure "Air Gap" (where the API routes internal traffic to hidden runners), the automated Cloud Run Service Agent requires explicit permission to use your default Virtual Private Cloud (VPC).
 
-The deploy.sh script contains all nine gcloud run deploy commands configured with the 20-qubit limits, 3-instance maximums, and 100-second timeouts. Running this will automatically loop through the local builds, registry pushes, and cloud deployments.
-bash deploy.sh
-
-Once the script finishes, it will print out the final public URL for your rosetta-api gateway. Click that link to access the live web interface.
-
-## Code for GCLOUD TO DELETE
-# 0 Service Lists
-gcloud run services list --region=us-central1
-
-# 1. Delete all Cloud Run services to stop any potential compute
-gcloud run services delete rosetta-api pytket-qiskit-runner pytket-cirq-runner pytket-qulacs-runner pytket-braket-runner pytket-projectq-runner pytket-quest-runner pennylane-lightning-runner pennylane-default-runner --region=us-central1 --quiet
-
-OR JUST ONE
-
-gcloud run services delete pytket-qulacs-runner --region=us-central1 --quiet
-
-# 2. Delete the Artifact Registry repository holding the heavy images to stop storage billing
-gcloud artifacts repositories delete cloud-run-source-deploy --location=us-central1 --quiet
-
-# 3. Turn it on again
-sh deploy.sh
-
-## PAUSE THE SERVICE
-gcloud run services remove-iam-policy-binding rosetta-api \
-    --region=us-central1 \
-    --member="allUsers" \
-    --role="roles/run.invoker" \
-    --quiet
-
-# UNPAUSE THE SERVICE
-gcloud run services add-iam-policy-binding rosetta-api \
-    --region=us-central1 \
-    --member="allUsers" \
-    --role="roles/run.invoker" \
-    --quiet
-
-## ONE TIME IAM FIX WHEN FIRST SETTING UP
-# 1. Fetch the unique Project Number
+```bash
+# 1. Fetch the unique Project Number for the current project
 PROJECT_NUMBER=$(gcloud projects describe qrosetta --format='value(projectNumber)')
 
 # 2. Grant the Cloud Run Service Agent permission to use the VPC network
@@ -59,16 +21,119 @@ gcloud projects add-iam-policy-binding qrosetta \
     --role="roles/compute.networkUser" \
     --condition=None
 
-# 3. Check it with
+# 3. Verify the subnet exists (If prompted to enable the Compute API, type 'y')
 gcloud compute networks subnets list --regions=us-central1
-type y
 
-# 4. Enable Private Google Access
-
-Run this single command in your terminal. It flips the switch in your default virtual network so it knows how to correctly route the API's internal traffic to your runners:
-Bash
-
+# 4. Enable "Private Google Access" on the subnet
+# This allows the API to securely reach the internal runner URLs
 gcloud compute networks subnets update default \
     --region=us-central1 \
     --enable-private-ip-google-access \
     --quiet
+
+```
+
+### B. Artifact Registry Setup
+
+Create the secure remote storage repository where your local Docker images will be hosted, and authenticate your local Docker engine to access it.
+
+```bash
+# Create the Docker repository
+gcloud artifacts repositories create cloud-run-source-deploy --repository-format=docker --location=us-central1
+
+# Authenticate local Docker to push to GCP
+gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+```
+
+---
+
+## 2. Deployment Workflows
+
+### Option A: The Full Swarm Deployment
+
+Use this when initializing the project or when you have modified the `Dockerfile` or `requirements.txt` of the quantum runners. It iterates through all 8 runners and the API gateway, applying strict 20-qubit limits and 100s timeouts.
+
+```bash
+# Executes the full local-cache build, push, and deploy loop
+bash deploy.sh
+
+```
+
+### Option B: The "Fast-Path" API Deploy (Recommended for UI/API updates)
+
+Deploying the full swarm takes ~10 minutes due to Google's infrastructure provisioning. If you only modified frontend HTML/JS or the `rosetta-api` Python code, bypass the runners entirely. This updates the live site in ~20 seconds.
+
+```bash
+# 1. Build using the local cache
+docker build -t us-central1-docker.pkg.dev/qrosetta/cloud-run-source-deploy/rosetta-api:latest -f ./rosetta-api/Dockerfile .
+
+# 2. Push the updated layers
+docker push us-central1-docker.pkg.dev/qrosetta/cloud-run-source-deploy/rosetta-api:latest
+
+# 3. Deploy the new revision instantly
+gcloud run deploy rosetta-api \
+    --image us-central1-docker.pkg.dev/qrosetta/cloud-run-source-deploy/rosetta-api:latest \
+    --region us-central1 \
+    --quiet
+
+```
+
+---
+
+## 3. Access Control (Pause / Unpause)
+
+Cloud Run bills on a pay-per-use model. To temporarily take the application offline without destroying the infrastructure, simply lock the public "front door" of the API Gateway. The 8 backend runners are already internal-only.
+
+**Pause the Service (Lock public access):**
+
+```bash
+gcloud run services remove-iam-policy-binding rosetta-api \
+    --region=us-central1 \
+    --member="allUsers" \
+    --role="roles/run.invoker" \
+    --quiet
+
+```
+
+**Unpause the Service (Restore public access):**
+
+```bash
+gcloud run services add-iam-policy-binding rosetta-api \
+    --region=us-central1 \
+    --member="allUsers" \
+    --role="roles/run.invoker" \
+    --quiet
+
+```
+
+---
+
+## 4. Monitoring & Teardown
+
+When the project is not in active use, clean up the resources to ensure zero accidental billing.
+
+**List all active URLs and services:**
+
+```bash
+gcloud run services list --region=us-central1
+
+```
+
+**Nuke Compute (Delete all Cloud Run services):**
+
+```bash
+gcloud run services delete rosetta-api pytket-qiskit-runner pytket-cirq-runner pytket-qulacs-runner pytket-braket-runner pytket-projectq-runner pytket-quest-runner pennylane-lightning-runner pennylane-default-runner --region=us-central1 --quiet
+
+```
+
+*(Note: To delete a specific service, replace the list with a single name, e.g., `gcloud run services delete pytket-qulacs-runner ...`)*
+
+**Nuke Storage (Delete heavy Docker images):**
+
+```bash
+gcloud artifacts repositories delete cloud-run-source-deploy --location=us-central1 --quiet
+
+```
+
+*To restore the environment after a full teardown, simply run `bash deploy.sh` again.*

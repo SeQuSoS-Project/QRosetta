@@ -7,7 +7,7 @@ REPO="us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy"
 
 # Cloud-Specific Safeguards
 CLOUD_TIMEOUT="100s"
-CLOUD_MAX_QUBITS="20"
+CLOUD_MAX_QUBITS="10"
 
 echo "==================================================="
 echo "   Quantum Rosetta - Local Cache Deployer"

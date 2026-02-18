@@ -218,7 +218,7 @@ async def run_batch_suite_endpoint(request: Request, payload: BatchPayload):
         try:
             # Generate QASM for the task
             qasm_payload = GenerateCircuitPayload(algorithm=task.algorithm, qubits=task.qubits)
-            qasm_response = await generate_circuit_endpoint(qasm_payload)
+            qasm_response = await generate_circuit_endpoint(request, qasm_payload)
 
             # Error handling if the circuit generation fails
             if isinstance(qasm_response, JSONResponse):
