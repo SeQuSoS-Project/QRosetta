@@ -5,6 +5,7 @@ if (window.location.hostname !== 'localhost' && window.location.hostname !== '12
 }
 
 // --- GLOBAL STATE ---
+let isProcessing = false;
 let currentSuiteData = null;
 let currentSuiteTitle = '';
 let batchQueue = []; // Playlist
@@ -97,6 +98,11 @@ window.onload = async () => {
 };
 
 // --- METADATA UI LOGIC ---
+function getDynamicMaxQubits() {
+    const mode = document.querySelector('input[name="mode-single"]:checked')?.value || 'statevector';
+    return mode === 'statevector' ? 18 : 24;
+}
+
 function updateQubitConstraints() {
     const algoId = document.getElementById('algo-select').value;
     const selectedAlgo = allAlgorithms.find(a => a.id === algoId);
@@ -104,7 +110,7 @@ function updateQubitConstraints() {
 
     if (selectedAlgo) {
         if (selectedAlgo.min_qubits !== undefined) input.min = selectedAlgo.min_qubits;
-        if (selectedAlgo.max_qubits !== undefined) input.max = selectedAlgo.max_qubits;
+        input.max = Math.min(selectedAlgo.max_qubits || 24, getDynamicMaxQubits());
         if (selectedAlgo.default_qubits !== undefined) input.value = selectedAlgo.default_qubits;
 
         if (selectedAlgo.min_qubits === selectedAlgo.max_qubits) {
@@ -148,6 +154,7 @@ function applyPreset() {
 }
 
 async function generateCircuit() {
+    if (isProcessing) return;
     const algoId = document.getElementById('algo-select').value;
     const qubits = parseInt(document.getElementById('algo-qubits').value);
 
@@ -156,6 +163,7 @@ async function generateCircuit() {
         return;
     }
 
+    isProcessing = true;
     setLoading(true, "Generating Circuit...");
     try {
         // --- FIX: Use BASE_URL for fetch ---
@@ -179,21 +187,25 @@ async function generateCircuit() {
         alert("Circuit generation failed: " + error.message);
     } finally {
         setLoading(false);
+        isProcessing = false;
     }
 }
 
 function addToBatch() {
     const algoId = document.getElementById('algo-select').value;
     const qubits = parseInt(document.getElementById('algo-qubits').value);
-    const selectElement = document.getElementById('algo-select');
-    const algoName = selectElement.options[selectElement.selectedIndex].text;
+
+    // Explicitly grab the custom name and QASM content right now
+    const algoName = document.getElementById('ctx-algo-name').value || "Custom Circuit";
+    const currentQasm = qasmInput.value.trim();
 
     if (!algoId || isNaN(qubits)) return;
 
     batchQueue.push({
         algorithm: algoId,
         qubits: qubits,
-        name: algoName
+        name: algoName,
+        qasm_string: currentQasm || null
     });
     renderBatchQueue();
 
@@ -239,12 +251,28 @@ function renderBatchQueue() {
 }
 
 async function viewBatchItem(index) {
+    if (isProcessing) return;
     const item = batchQueue[index];
     if (!item) return;
+
+    if (item.qasm_string) {
+        qasmInput.value = item.qasm_string;
+        const sel = document.getElementById('algo-select');
+        if (sel.querySelector(`option[value="${item.algorithm}"]`)) {
+            sel.value = item.algorithm;
+            document.getElementById('algo-qubits').value = item.qubits;
+        }
+        // Update Context
+        document.getElementById('ctx-algo-name').value = item.name;
+        currentAlgoName = item.name;
+        updateContextBar();
+        return;
+    }
 
     qasmInput.value = "// Loading preview from playlist...";
 
     try {
+        isProcessing = true;
         setLoading(true, "Loading Preview...");
         // --- FIX: Use BASE_URL for fetch ---
         const response = await fetch(`${BASE_URL}/generate_circuit`, {
@@ -261,6 +289,7 @@ async function viewBatchItem(index) {
                 document.getElementById('algo-qubits').value = item.qubits;
             }
             // Update Context
+            document.getElementById('ctx-algo-name').value = item.name + ` (${item.qubits}q)`;
             currentAlgoName = item.name + ` (${item.qubits}q)`;
             updateContextBar();
         } else {
@@ -270,6 +299,7 @@ async function viewBatchItem(index) {
         qasmInput.value = "// Error: " + e.message;
     } finally {
         setLoading(false);
+        isProcessing = false;
     }
 }
 
@@ -284,6 +314,7 @@ function clearBatch() {
 }
 
 async function runBatchQueue() {
+    if (isProcessing) return;
     if (batchQueue.length === 0) return;
 
     const mode = document.querySelector('input[name="mode-batch"]:checked').value;
@@ -305,6 +336,7 @@ async function runBatchQueue() {
     clearReport();
 
     try {
+        isProcessing = true;
         // --- FIX: Use BASE_URL for fetch ---
         const res = await fetch(`${BASE_URL}/run_batch_suite`, {
             method: 'POST',
@@ -327,6 +359,7 @@ async function runBatchQueue() {
         renderSuiteSummary({ error: e.message }, "Batch Error");
     } finally {
         setLoading(false);
+        isProcessing = false;
     }
 }
 
@@ -340,6 +373,7 @@ function toggleSingleMode() {
     } else {
         shotsContainer.classList.add('hidden');
     }
+    updateQubitConstraints();
 }
 
 function toggleBatchMode() {
@@ -484,7 +518,13 @@ function updateContextBar() {
     const globalSelect = document.getElementById('opt-global');
     const level = globalSelect ? globalSelect.value : 0;
 
-    if (nameSpan) nameSpan.textContent = currentAlgoName;
+    if (nameSpan) {
+        if (nameSpan.tagName === 'INPUT') {
+            nameSpan.value = currentAlgoName;
+        } else {
+            nameSpan.textContent = currentAlgoName;
+        }
+    }
     if (optSpan) optSpan.textContent = `Global Opt: ${level}`;
 }
 
@@ -518,6 +558,7 @@ function runAutoGeneration() {
 // --- API CALLS (Single Run & Legacy) ---
 
 async function runComparison(type, shots) {
+    if (isProcessing) return;
     const qasm = qasmInput.value.trim();
     if (!qasm) { alert("Please enter QASM code."); return; }
 
@@ -543,6 +584,7 @@ async function runComparison(type, shots) {
     clearReport();
 
     try {
+        isProcessing = true;
         // --- FIX: Use BASE_URL for fetch ---
         const res = await fetch(`${BASE_URL}${endpoint}`, {
             method: 'POST',
@@ -562,5 +604,6 @@ async function runComparison(type, shots) {
         renderDetailReport({ error: e.message }, "Error");
     } finally {
         setLoading(false);
+        isProcessing = false;
     }
 }

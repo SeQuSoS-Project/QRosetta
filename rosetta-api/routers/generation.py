@@ -35,8 +35,8 @@ async def get_algorithms():
 @router.post("/generate_circuit")
 @limiter.limit("10/minute")
 async def generate_circuit_endpoint(request: Request, payload: GenerateCircuitPayload):
-    if payload.qubits > settings.MAX_QUBITS:
-        return JSONResponse(status_code=400, content={"error": f"Qubit count {payload.qubits} exceeds limit of {settings.MAX_QUBITS}"})
+    if payload.qubits > settings.MAX_QUBITS_MEASURED:
+        return JSONResponse(status_code=400, content={"error": f"Qubit count {payload.qubits} exceeds limit of {settings.MAX_QUBITS_MEASURED}"})
     try:
         handler = ALGORITHM_HANDLERS.get(payload.algorithm)
         if not handler:

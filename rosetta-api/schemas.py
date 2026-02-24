@@ -24,6 +24,7 @@ class GenerateCircuitPayload(BaseModel):
 class BenchmarkTask(BaseModel):
     algorithm: str
     qubits: int
+    qasm_string: Optional[str] = None
 
 class BatchPayload(BaseModel):
     tasks: List[BenchmarkTask]

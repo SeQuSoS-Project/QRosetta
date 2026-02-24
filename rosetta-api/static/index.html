@@ -113,11 +113,11 @@
                     <div class="flex space-x-2 mb-3">
                         <button onclick="exportPlaylist()"
                             class="flex-1 bg-white border border-yellow-300 text-yellow-700 hover:bg-yellow-50 text-xs font-medium py-1 px-2 rounded shadow-sm">
-                            ⬇ Save
+                            ⬇ Export JSON
                         </button>
                         <button onclick="document.getElementById('playlist-upload').click()"
                             class="flex-1 bg-white border border-yellow-300 text-yellow-700 hover:bg-yellow-50 text-xs font-medium py-1 px-2 rounded shadow-sm">
-                            ⬆ Load
+                            ⬆ Import JSON
                         </button>
                         <input type="file" id="playlist-upload" class="hidden" accept=".json"
                             onchange="importPlaylist(this)">
@@ -178,8 +178,13 @@
 
                     <div id="editor-context-bar"
                         class="flex justify-between items-center text-xs text-gray-500 mb-2 px-1">
-                        <span id="ctx-algo-name">No Circuit Loaded</span>
-                        <span id="ctx-opt-level">Opt Level: 0</span>
+                        <input type="text" id="ctx-algo-name" value="No Circuit Loaded" class="text-xs text-gray-700 bg-transparent border-b border-dashed border-gray-400 focus:outline-none focus:border-blue-500 w-1/2">
+                        <div class="flex space-x-2 items-center">
+                            <button onclick="document.getElementById('qasm-upload').click()" class="text-blue-600 hover:text-blue-800 font-medium">⬆ Import QASM</button>
+                            <button onclick="exportQasm()" class="text-blue-600 hover:text-blue-800 font-medium">⬇ Export QASM</button>
+                            <input type="file" id="qasm-upload" class="hidden" accept=".qasm" onchange="importQasm(this)">
+                            <span id="ctx-opt-level">Opt Level: 0</span>
+                        </div>
                     </div>
                     <textarea id="qasm-input"
                         class="flex-1 w-full p-3 font-mono text-sm text-gray-800 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
