@@ -216,16 +216,20 @@ async def run_batch_suite_endpoint(request: Request, payload: BatchPayload):
         task_name = f"{task.algorithm} ({task.qubits}q)"
         logger.info(f"--- Running task: {task_name} ---")
         try:
-            # Generate QASM for the task
-            qasm_payload = GenerateCircuitPayload(algorithm=task.algorithm, qubits=task.qubits)
-            qasm_response = await generate_circuit_endpoint(request, qasm_payload)
+            if task.qasm_string:
+                qasm_string = task.qasm_string
+            else:
+                # Generate QASM for the task
+                qasm_payload = GenerateCircuitPayload(algorithm=task.algorithm, qubits=task.qubits)
+                qasm_response = await generate_circuit_endpoint(request, qasm_payload)
 
-            # Error handling if the circuit generation fails
-            if isinstance(qasm_response, JSONResponse):
-                error_content = json.loads(qasm_response.body)
-                raise Exception(f"Circuit generation failed: {error_content.get('error', 'Unknown error')}")
+                # Error handling if the circuit generation fails
+                if isinstance(qasm_response, JSONResponse):
+                    error_content = json.loads(qasm_response.body)
+                    raise Exception(f"Circuit generation failed: {error_content.get('error', 'Unknown error')}")
 
-            qasm_string = qasm_response["qasm"]
+                qasm_string = qasm_response["qasm"]
+
             validate_request(qasm_string, mode=payload.mode)
 
             report = None

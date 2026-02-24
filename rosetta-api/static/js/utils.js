@@ -47,13 +47,15 @@ function downloadRawJson() {
         alert("No JSON content to download.");
         return;
     }
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(jsonString);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
     const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("href", url);
     downloadAnchorNode.setAttribute("download", "rosetta_raw_report.json");
     document.body.appendChild(downloadAnchorNode);
     downloadAnchorNode.click();
     downloadAnchorNode.remove();
+    URL.revokeObjectURL(url);
 }
 
 function exportPlaylist() {
@@ -61,13 +63,15 @@ function exportPlaylist() {
         alert("Playlist is empty.");
         return;
     }
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(batchQueue, null, 2));
+    const blob = new Blob([JSON.stringify(batchQueue, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
     const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("href", url);
     downloadAnchorNode.setAttribute("download", "quantum_playlist.json");
     document.body.appendChild(downloadAnchorNode);
     downloadAnchorNode.click();
     downloadAnchorNode.remove();
+    URL.revokeObjectURL(url);
 }
 
 function importPlaylist(inputElement) {
@@ -90,4 +94,42 @@ function importPlaylist(inputElement) {
         inputElement.value = '';
     };
     reader.readAsText(file);
+}
+
+function importQasm(inputElement) {
+    const file = inputElement.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        document.getElementById('qasm-input').value = e.target.result;
+        let fileName = file.name;
+        if (fileName.endsWith('.qasm')) {
+            fileName = fileName.substring(0, fileName.length - 5);
+        }
+        document.getElementById('ctx-algo-name').value = fileName;
+        currentAlgoName = fileName;
+        inputElement.value = '';
+    };
+    reader.readAsText(file);
+}
+
+function exportQasm() {
+    const qasmText = document.getElementById('qasm-input').value;
+    if (!qasmText || qasmText.trim() === '') {
+        alert("No QASM content to export.");
+        return;
+    }
+    let fileName = document.getElementById('ctx-algo-name').value.trim() || 'circuit';
+    if (!fileName.endsWith('.qasm')) {
+        fileName += '.qasm';
+    }
+    const blob = new Blob([qasmText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", url);
+    downloadAnchorNode.setAttribute("download", fileName);
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+    URL.revokeObjectURL(url);
 }
