@@ -1,5 +1,8 @@
 // --- FIX: Define BASE_URL ---
-const BASE_URL = '';
+let BASE_URL = '';
+if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    BASE_URL = 'https://rosetta-api-qrosetta.2.rahtiapp.fi';
+}
 
 // --- GLOBAL STATE ---
 let currentSuiteData = null;

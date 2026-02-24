@@ -123,16 +123,30 @@ gcloud run services list --region=us-central1
 **Nuke Compute (Delete all Cloud Run services):**
 
 ```bash
-gcloud run services delete rosetta-api pytket-qiskit-runner pytket-cirq-runner pytket-qulacs-runner pytket-braket-runner pytket-projectq-runner pytket-quest-runner pennylane-lightning-runner pennylane-default-runner --region=us-central1 --quiet
+for service in rosetta-api pytket-qiskit-runner pytket-cirq-runner pytket-qulacs-runner pytket-braket-runner pytket-projectq-runner pytket-quest-runner pennylane-lightning-runner pennylane-default-runner; do
+    echo "Deleting $service..."
+    gcloud run services delete $service --region=us-central1 --quiet
+done
 
 ```
 
 *(Note: To delete a specific service, replace the list with a single name, e.g., `gcloud run services delete pytket-qulacs-runner ...`)*
 
 **Nuke Storage (Delete heavy Docker images):**
+First get list of storage repositories:
 
 ```bash
+gcloud artifacts repositories list
+```
+
+Then delete the storage repository:
+
+```bash
+gcloud artifacts repositories delete <repository-name> --location=us-central1 --quiet
+
 gcloud artifacts repositories delete cloud-run-source-deploy --location=us-central1 --quiet
+
+gcloud artifacts repositories delete gcr.io --location=us --quiet
 
 ```
 

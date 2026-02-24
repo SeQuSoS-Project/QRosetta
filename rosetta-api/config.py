@@ -20,7 +20,8 @@ class Settings(BaseSettings):
     STORAGE_MODE: str = "local"  # Options: 'local', 'memory'
 
     # Safeguards
-    MAX_QUBITS: int = 24
+    MAX_QUBITS_STATEVECTOR: int = 18
+    MAX_QUBITS_MEASURED: int = 24
 
     class Config:
         env_file = ".env"

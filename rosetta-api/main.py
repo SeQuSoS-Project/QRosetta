@@ -33,14 +33,13 @@ class LimitUploadSize(BaseHTTPMiddleware):
 app.add_middleware(LimitUploadSize, max_upload_size=1048576) # 1MB limit
 
 # --- 3. CORS Middleware ---
-start = ["*"]
-frontend_url = os.getenv("FRONTEND_URL")
-if frontend_url:
-    start = [frontend_url]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=start,
+    allow_origins=[
+        "https://rosetta-frontend-652754634999.us-central1.run.app",
+        "http://localhost",
+        "http://127.0.0.1"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

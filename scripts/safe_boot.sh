@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#!/bin/bash
+cd "$(dirname "$0")/.." || exit 1
 
 # --- 0. PRE-FLIGHT CHECK & CONFIGURATION ---
 echo ">>> [INIT] Starting safe boot..."
