@@ -66,8 +66,8 @@ async def dispatch_to_runners(runner_urls: dict, runner_payload: dict, timeout_s
     global_opt = runner_payload.get("optimization_level", 0)
     runner_overrides = runner_payload.get("runner_config", {})
     
-    # We cast to float for httpx
-    timeout_float = float(timeout_seconds)
+    # We cast to float for httpx and ensure a minimum 120.0s timeout
+    timeout_float = max(120.0, float(timeout_seconds))
 
     async with httpx.AsyncClient(timeout=timeout_float) as client:
         tasks = []

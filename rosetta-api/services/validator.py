@@ -4,22 +4,24 @@ import re
 
 MAX_QASM_SIZE = 1000000
 
-def validate_request(qasm: str):
+def validate_request(qasm: str, mode: str = "statevector"):
     if len(qasm) > MAX_QASM_SIZE:
         raise HTTPException(status_code=413, detail="Payload too large")
     if qasm.count(";") > 10000:
         raise HTTPException(status_code=400, detail="Circuit too complex")
 
     # Dynamic Qubit Validation
+    max_qubits = settings.MAX_QUBITS_STATEVECTOR if mode == "statevector" else settings.MAX_QUBITS_MEASURED
+
     # Build regex to find 'qreg name[size];'
     # Common pattern: qreg q[5];
     match = re.search(r"qreg\s+\w+\[(\d+)\];", qasm)
     if match:
         qubit_count = int(match.group(1))
-        if qubit_count > settings.MAX_QUBITS:
+        if qubit_count > max_qubits:
             raise HTTPException(
                 status_code=400,
-                detail=f"Circuit exceeds the maximum limit of {settings.MAX_QUBITS} qubits (requested: {qubit_count})."
+                detail=f"Circuit exceeds the maximum limit of {max_qubits} qubits (requested: {qubit_count})."
             )
     else:
         # Fallback: scan for highest index used like q[4]
@@ -27,8 +29,8 @@ def validate_request(qasm: str):
         if indices:
             max_index = max(map(int, indices))
             # index is 0-based, so count is max_index + 1
-            if (max_index + 1) > settings.MAX_QUBITS:
+            if (max_index + 1) > max_qubits:
                  raise HTTPException(
                     status_code=400,
-                    detail=f"Circuit uses qubit index {max_index}, exceeding limit of {settings.MAX_QUBITS} qubits."
+                    detail=f"Circuit uses qubit index {max_index}, exceeding limit of {max_qubits} qubits."
                 )

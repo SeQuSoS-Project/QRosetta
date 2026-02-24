@@ -192,14 +192,14 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
 @router.post("/compare")
 @limiter.limit("10/minute")
 async def compare_circuits_endpoint(request: Request, payload: QasmPayload):
-    validate_request(payload.qasm_string)
+    validate_request(payload.qasm_string, mode="statevector")
     timeout = max(1, min(payload.timeout_seconds, 300))
     return await run_single_circuit_comparison(payload.qasm_string, payload.optimization_level, timeout)
 
 @router.post("/compare_measured")
 @limiter.limit("10/minute")
 async def compare_measured_circuits_endpoint(request: Request, payload: MeasuredQasmPayload):
-    validate_request(payload.qasm_string)
+    validate_request(payload.qasm_string, mode="measured")
     timeout = max(1, min(payload.timeout_seconds, 300))
     return await run_single_circuit_measurement(payload.qasm_string, 
                                                 payload.n_shots,
@@ -226,6 +226,7 @@ async def run_batch_suite_endpoint(request: Request, payload: BatchPayload):
                 raise Exception(f"Circuit generation failed: {error_content.get('error', 'Unknown error')}")
 
             qasm_string = qasm_response["qasm"]
+            validate_request(qasm_string, mode=payload.mode)
 
             report = None
             timeout = max(1, min(payload.timeout_seconds, 300))

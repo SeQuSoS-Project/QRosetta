@@ -17,8 +17,11 @@ RUN pip install /tmp/shared-src
 COPY rosetta-api/ .
 
 # Change ownership and switch to non-root user
-RUN chown -R appuser:appuser /home/appuser/app
+RUN chown -R appuser:appuser /home/appuser/app && \
+    chgrp -R 0 /home/appuser && \
+    chmod -R g=u /home/appuser
+ENV HOME=/home/appuser
 USER appuser
 
-# Start Gunicorn with 4 workers for the API
-CMD ["sh", "-c", "gunicorn main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000} --timeout 300"]
+# Start Gunicorn with 1 worker for the API
+CMD ["sh", "-c", "gunicorn main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000} --timeout 330 --access-logfile -"]
