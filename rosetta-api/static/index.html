@@ -185,6 +185,8 @@
                                 class="text-blue-600 hover:text-blue-800 font-medium">⬆ Import QASM</button>
                             <button onclick="exportQasm()" class="text-blue-600 hover:text-blue-800 font-medium">⬇
                                 Export QASM</button>
+                            <button onclick="generateAndVisualize()" id="btn-visualize"
+                                class="text-purple-600 hover:text-purple-800 font-medium ml-2">📊 Visualize</button>
                             <input type="file" id="qasm-upload" class="hidden" accept=".qasm"
                                 onchange="importQasm(this)">
                             <span id="ctx-opt-level">Opt Level: 0</span>
@@ -253,6 +255,18 @@
                         <div id="resources-panel" class="p-4 hidden"></div>
                         <div id="divergence-panel" class="p-4 hidden"></div>
                         <div id="suite-summary-panel" class="p-4 hidden"></div>
+
+                        <div id="visualizer-panel" class="p-0 hidden h-full w-full relative overflow-hidden bg-white">
+                            <button onclick="closeVisualizer()"
+                                class="absolute top-2 right-4 z-50 bg-red-100 text-red-700 px-3 py-1 rounded shadow hover:bg-red-200 font-bold border border-red-300">
+                                ❌ Close
+                            </button>
+
+                            <div class="w-full h-full" style="position: relative; overflow: hidden;">
+                                <iframe id="quirk-iframe" src="about:blank" class="border-0 w-full"
+                                    style="height: calc(100% + 120px); margin-top: -120px;"></iframe>
+                            </div>
+                        </div>
 
                         <div id="raw-panel" class="p-0 hidden relative flex flex-col h-full">
                             <div id="truncation-warning"

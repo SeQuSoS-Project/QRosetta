@@ -63,7 +63,7 @@ function clearReport() {
     backButtonContainer.classList.add('hidden');
 
     Object.entries(panelElements).forEach(([key, panel]) => {
-        if (key !== 'raw') {
+        if (key !== 'raw' && key !== 'visualizer') {
             if (panel) panel.innerHTML = '';
         }
         if (panel) panel.classList.add('hidden');
