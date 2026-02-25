@@ -350,13 +350,20 @@ async function runBatchQueue() {
     const timeout = parseInt(document.getElementById('timeout-input')?.value || 60);
     currentRunnerConfig = getRunnerConfig();
 
+    const targetSims = getTargetSimulators();
+    if (targetSims.length === 0) {
+        alert("Please select at least one simulator from the Config Panel to run.");
+        return;
+    }
+
     const payload = {
         tasks: batchQueue,
         mode: mode,
         n_shots: shots,
         optimization_level: globalOpt,
         timeout_seconds: timeout,
-        runner_config: currentRunnerConfig
+        runner_config: currentRunnerConfig,
+        target_simulators: targetSims
     };
 
     setLoading(true, `Running Batch of ${batchQueue.length} Circuits...`);
@@ -453,6 +460,14 @@ function renderConfigPanel() {
 
     grid.innerHTML = '';
 
+    // Toggle All Button
+    const btnDiv = document.createElement('div');
+    btnDiv.className = "col-span-1 sm:col-span-2 flex justify-end space-x-2 mb-2 border-b border-indigo-200 pb-2";
+    btnDiv.innerHTML = `
+        <button onclick="toggleAllSimulators()" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium bg-indigo-100 px-3 py-1 rounded border border-indigo-300 shadow-sm transition-colors duration-200">Toggle All</button>
+    `;
+    grid.appendChild(btnDiv);
+
     // Global Control First
     const globalDiv = document.createElement('div');
     globalDiv.className = "col-span-1 sm:col-span-2 p-2 bg-indigo-100 rounded border border-indigo-200 mb-2";
@@ -506,8 +521,14 @@ function renderConfigPanel() {
             optionsHtml += `<option value="${i}">${i}</option>`;
         }
 
+        const isDefaultChecked = ['pennylane-default', 'qiskit', 'cirq', 'qulacs'].includes(r.id);
         div.innerHTML = `
-            <label class="block text-xs font-medium text-gray-600">${r.name}</label>
+            <div class="flex items-center justify-between mb-1">
+                <label class="flex items-center space-x-2 cursor-pointer">
+                    <input type="checkbox" class="sim-checkbox h-3 w-3 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500" data-sim="${r.id}" ${isDefaultChecked ? 'checked' : ''}>
+                    <span class="block text-xs font-medium text-gray-600">${r.name}</span>
+                </label>
+            </div>
             <select data-runner="${r.id}" class="runner-opt-select block w-full text-xs border-gray-300 rounded p-1 shadow-sm">
                 <option value="-1">Use Global</option>
                 ${optionsHtml}
@@ -537,6 +558,23 @@ function getRunnerConfig() {
         }
     });
     return config;
+}
+
+function toggleAllSimulators() {
+    const checkboxes = document.querySelectorAll('.sim-checkbox');
+    // Check if ALL are currently checked
+    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+
+    // If all are checked, uncheck all. Otherwise (some or none checked), check all.
+    checkboxes.forEach(cb => cb.checked = !allChecked);
+}
+
+function getTargetSimulators() {
+    const checked = [];
+    document.querySelectorAll('.sim-checkbox:checked').forEach(cb => {
+        checked.push(cb.getAttribute('data-sim'));
+    });
+    return checked;
 }
 
 function updateContextBar() {
@@ -621,11 +659,18 @@ async function runComparison(type, shots) {
     currentRunnerConfig = getRunnerConfig();
 
     const endpoint = type === 'statevector' ? '/compare' : '/compare_measured';
+    const targetSims = getTargetSimulators();
+    if (targetSims.length === 0) {
+        alert("Please select at least one simulator from the Config Panel to run.");
+        return;
+    }
+
     const payload = {
         qasm_string: qasm,
         optimization_level: globalOpt,
         timeout_seconds: timeout,
-        runner_config: currentRunnerConfig
+        runner_config: currentRunnerConfig,
+        target_simulators: targetSims
     };
 
     if (type === 'measured') {
