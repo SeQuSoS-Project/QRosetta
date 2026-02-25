@@ -1,0 +1,49 @@
+1. DONE: REMOVE legacy file suit.
+2. DONE: Add download option for all RAW JSON
+3. DONE: In the dropdown, add custom circuit option!
+4. Check game plans
+5. DONE: Add download full report option
+6. stress test caused crash. add safeguards
+Containers on CSC but frontend on Google?
+
+
+NETWORK SECURITY
+QRTODO Gemini, Fix compilation time and simulation time in ALL runners and then VERIFY
+Send to LUMI
+Number of gates for each simulator and total
+VISUAL (Quirk e)
+
+System Limits (FIX IT,  Error | Loading... )
+
+CHECK 18-2-26:
+IMPORT AND LOAD FIX, change from json to qasm2.0 or a mix
+Creation of accounts (SECURE). projects, profiles, naming, credits
+TIMEOUT settings in cloud for batch running and playlists, estimated credit costs (ProjectQ still times out at 60s)
+When i click run on edit, then if i click other buttons, the spinning wheel disappears and keeps appearing if i keep click, and the process seems to abort, not sure though.
+
+CHECK: Check if export qasm is safe: 
+
+'''
+Instead of trying to force the browser to navigate to a raw data string, I have updated 
+
+exportQasm()
+ (as well as 
+
+exportPlaylist()
+ and 
+
+downloadRawJson()
+) in 
+
+utils.js
+ to use the Blob API and Object URLs.
+
+This safely creates a dedicated, temporary file object in the browser's memory and links the download anchor directly to it. This completely sidesteps browser security blocks and will reliably trigger the file download prompt for your QASM script (and JSON playlists)!
+'''
+
+implement folder selection for export qasm
+
+CHECK: HOW FEASIBLE IT IS TO MOVE TO LUMI from RAHTI!
+Lumi for runners, Rahti for API and PVC database, Allas for storage, integrate HAKA login(?) or OpenID Connect(?), slurm jobs for runners.
+
+CHECK: if GCR can serve multiple versions of the website
