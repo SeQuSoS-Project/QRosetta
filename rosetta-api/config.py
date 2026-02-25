@@ -29,37 +29,37 @@ class Settings(BaseSettings):
     def get_runner_services(self):
         return {
             # Category 1: Native Samplers (work with our modified QASM)
-            "pytket-qiskit-runner": {
+            "qiskit": {
                 "base_url": self.PYTKET_QISKIT_RUNNER_URL,
                 "capabilities": ["statevector", "measured_native"]
             },
-            "pytket-cirq-runner":   {
+            "cirq":   {
                 "base_url": self.PYTKET_CIRQ_RUNNER_URL,
                 "capabilities": ["statevector", "measured_native"]
             },
-            "pytket-qulacs-runner": {
+            "qulacs": {
                 "base_url": self.PYTKET_QULACS_RUNNER_URL,
                 "capabilities": ["statevector", "measured_native"]
             },
-            "pytket-braket-runner": {
+            "braket": {
                 "base_url": self.PYTKET_BRAKET_RUNNER_URL,
                 "capabilities": ["statevector", "measured_native"]
             },
             
             # Category 2: Statevector Samplers (need original QASM)
-            "pytket-projectq-runner": {
+            "projectq": {
                 "base_url": self.PYTKET_PROJECTQ_RUNNER_URL,
                 "capabilities": ["statevector", "measured_sampled"]
             },
-            "pytket-quest-runner":  {
+            "quest":  {
                 "base_url": self.PYTKET_QUEST_RUNNER_URL,
                 "capabilities": ["statevector", "measured_sampled"]
             },
-            "pennylane-lightning-runner":  {
+            "pennylane-lightning":  {
                 "base_url": self.PENNYLANE_LIGHTNING_RUNNER_URL,
                 "capabilities": ["statevector", "measured_sampled"]
             },
-            "pennylane-default-runner":  {
+            "pennylane-default":  {
                 "base_url": self.PENNYLANE_DEFAULT_RUNNER_URL,
                 "capabilities": ["statevector", "measured_sampled"]
             }

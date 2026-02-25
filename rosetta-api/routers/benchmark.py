@@ -53,7 +53,7 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
     gc.collect() # Clean up before dispatch
     
     if target_simulators:
-        filtered_urls = {k: v for k, v in STATEVECTOR_RUNNER_URLS.items() if k.replace('pytket-', '').replace('-runner', '') in target_simulators}
+        filtered_urls = {k: v for k, v in STATEVECTOR_RUNNER_URLS.items() if k in target_simulators}
     else:
         filtered_urls = STATEVECTOR_RUNNER_URLS
         
@@ -149,8 +149,8 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
     gc.collect() # Clean up before dispatch
     
     if target_simulators:
-        filtered_sampled = {k: v for k, v in SAMPLED_SV_URLS.items() if k.replace('pytket-', '').replace('-runner', '') in target_simulators}
-        filtered_native = {k: v for k, v in NATIVE_SAMPLING_URLS.items() if k.replace('pytket-', '').replace('-runner', '') in target_simulators}
+        filtered_sampled = {k: v for k, v in SAMPLED_SV_URLS.items() if k in target_simulators}
+        filtered_native = {k: v for k, v in NATIVE_SAMPLING_URLS.items() if k in target_simulators}
     else:
         filtered_sampled = SAMPLED_SV_URLS
         filtered_native = NATIVE_SAMPLING_URLS
