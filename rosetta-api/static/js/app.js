@@ -144,12 +144,39 @@ const PRESETS = {
     ]
 };
 
-function applyPreset() {
+async function applyPreset() {
     const val = document.getElementById('preset-select').value;
     if (PRESETS[val]) {
         if (batchQueue.length > 0 && !confirm("This will replace your current playlist. Continue?")) return;
-        batchQueue = JSON.parse(JSON.stringify(PRESETS[val]));
-        renderBatchQueue();
+
+        const selectedPreset = JSON.parse(JSON.stringify(PRESETS[val]));
+
+        setLoading(true, `Loading Preset: ${val}...`);
+        try {
+            for (let i = 0; i < selectedPreset.length; i++) {
+                const item = selectedPreset[i];
+                let qasmText = null;
+                const response = await fetch(`${BASE_URL}/generate_circuit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ algorithm: item.algorithm, qubits: item.qubits })
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    qasmText = data.qasm;
+                } else {
+                    console.warn(`Failed to pre-generate QASM for ${item.name}`);
+                }
+                item.qasm_string = qasmText;
+            }
+            batchQueue = selectedPreset;
+            renderBatchQueue();
+        } catch (e) {
+            console.error("Preset loading failed", e);
+            alert("Preset loading failed: " + e.message);
+        } finally {
+            setLoading(false);
+        }
     }
 }
 
@@ -528,7 +555,7 @@ function updateContextBar() {
     if (optSpan) optSpan.textContent = `Global Opt: ${level}`;
 }
 
-function runAutoGeneration() {
+async function runAutoGeneration() {
     const checkboxes = document.querySelectorAll('#gen-algo-list input:checked');
     const selectedAlgos = Array.from(checkboxes).map(cb => cb.value);
     const minQ = parseInt(document.getElementById('gen-min').value);
@@ -538,21 +565,48 @@ function runAutoGeneration() {
     if (selectedAlgos.length === 0) { alert("Select at least one algorithm."); return; }
     if (minQ > maxQ) { alert("Min qubits cannot be greater than Max qubits."); return; }
 
-    for (let i = 0; i < count; i++) {
-        const algoId = selectedAlgos[Math.floor(Math.random() * selectedAlgos.length)];
-        const algoMeta = allAlgorithms.find(a => a.id === algoId);
+    setLoading(true, `Generating ${count} Circuits for Playlist...`);
+    try {
+        for (let i = 0; i < count; i++) {
+            const algoId = selectedAlgos[Math.floor(Math.random() * selectedAlgos.length)];
+            const algoMeta = allAlgorithms.find(a => a.id === algoId);
 
-        const safeMin = Math.max(minQ, algoMeta.min_qubits || 2);
-        const safeMax = Math.min(maxQ, algoMeta.max_qubits || 20);
+            const safeMin = Math.max(minQ, algoMeta.min_qubits || 2);
+            const safeMax = Math.min(maxQ, algoMeta.max_qubits || 20);
 
-        if (safeMin <= safeMax) {
-            const q = Math.floor(Math.random() * (safeMax - safeMin + 1)) + safeMin;
-            batchQueue.push({ algorithm: algoId, qubits: q, name: algoMeta.name });
+            if (safeMin <= safeMax) {
+                const q = Math.floor(Math.random() * (safeMax - safeMin + 1)) + safeMin;
+
+                // Fetch literal QASM string from the backend for the generated task
+                let qasmText = null;
+                const response = await fetch(`${BASE_URL}/generate_circuit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ algorithm: algoId, qubits: q })
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    qasmText = data.qasm;
+                } else {
+                    console.warn(`Failed to pre-generate QASM for ${algoMeta.name} (${q}q)`);
+                }
+
+                batchQueue.push({
+                    algorithm: algoId,
+                    qubits: q,
+                    name: algoMeta.name,
+                    qasm_string: qasmText
+                });
+            }
         }
+        renderBatchQueue();
+        closeGeneratorModal();
+    } catch (e) {
+        console.error("Auto-generation failed", e);
+        alert("Auto-generation failed: " + e.message);
+    } finally {
+        setLoading(false);
     }
-
-    renderBatchQueue();
-    closeGeneratorModal();
 }
 
 // --- API CALLS (Single Run & Legacy) ---
