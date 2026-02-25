@@ -46,7 +46,8 @@ window.onload = async () => {
         'resources': document.getElementById('resources-panel'),
         'divergence': document.getElementById('divergence-panel'),
         'raw': document.getElementById('raw-panel'),
-        'suite-summary': document.getElementById('suite-summary-panel')
+        'suite-summary': document.getElementById('suite-summary-panel'),
+        'visualizer': document.getElementById('visualizer-panel')
     };
 
     allButtons = [
@@ -570,6 +571,11 @@ function toggleAllSimulators() {
 }
 
 function getTargetSimulators() {
+    const checkboxes = document.querySelectorAll('.sim-checkbox');
+    if (checkboxes.length === 0) {
+        return ['pennylane-default', 'qiskit', 'cirq', 'qulacs'];
+    }
+
     const checked = [];
     document.querySelectorAll('.sim-checkbox:checked').forEach(cb => {
         checked.push(cb.getAttribute('data-sim'));

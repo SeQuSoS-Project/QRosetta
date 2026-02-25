@@ -39,6 +39,9 @@ class BatchPayload(BaseModel):
 
 # --- NEW OUTPUT MODELS ---
 
+class VisualizerResponse(BaseModel):
+    url: str
+
 class RunnerPerformanceMetrics(BaseModel):
     simulator: str
     execution_time_sec: float

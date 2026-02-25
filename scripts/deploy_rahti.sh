@@ -3,7 +3,7 @@
 cd "$(dirname "$0")/.." || exit 1
 
 # Configuration Variables
-RAHTI_NAMESPACE=${1:-"my-rahti-project"}
+RAHTI_NAMESPACE=${1:-"qrosetta"}
 REGISTRY="image-registry.apps.2.rahti.csc.fi/$RAHTI_NAMESPACE"
 
 echo "========================================"
