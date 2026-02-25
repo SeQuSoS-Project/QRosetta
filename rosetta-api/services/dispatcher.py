@@ -73,7 +73,7 @@ async def dispatch_to_runners(runner_urls: dict, runner_payload: dict, timeout_s
         tasks = []
         for sim_name, url in runner_urls.items():
             # Determine specific opt level
-            config_key = sim_name.replace("_runner", "")
+            config_key = sim_name.replace('pytket-', '').replace('-runner', '')
             p_level = runner_overrides.get(config_key, global_opt)
             
             # Create a localized payload

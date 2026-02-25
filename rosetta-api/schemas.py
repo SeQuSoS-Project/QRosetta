@@ -6,6 +6,7 @@ class QasmPayload(BaseModel):
     optimization_level: int = 0
     runner_config: Dict[str, int] = {}
     timeout_seconds: int = 60
+    target_simulators: List[str] = Field(default_factory=list)
 
 class MeasuredQasmPayload(BaseModel):
     qasm_string: str
@@ -13,6 +14,7 @@ class MeasuredQasmPayload(BaseModel):
     optimization_level: int = 0
     runner_config: Dict[str, int] = {}
     timeout_seconds: int = 60
+    target_simulators: List[str] = Field(default_factory=list)
 
 class MeasuredBenchmarkPayload(BaseModel):
     n_shots: int = 1024
@@ -33,6 +35,7 @@ class BatchPayload(BaseModel):
     optimization_level: int = 0
     runner_config: Dict[str, int] = {}
     timeout_seconds: int = 60
+    target_simulators: List[str] = Field(default_factory=list)
 
 # --- NEW OUTPUT MODELS ---
 

@@ -178,11 +178,15 @@
 
                     <div id="editor-context-bar"
                         class="flex justify-between items-center text-xs text-gray-500 mb-2 px-1">
-                        <input type="text" id="ctx-algo-name" value="No Circuit Loaded" class="text-xs text-gray-700 bg-transparent border-b border-dashed border-gray-400 focus:outline-none focus:border-blue-500 w-1/2">
+                        <input type="text" id="ctx-algo-name" value="No Circuit Loaded"
+                            class="text-xs text-gray-700 bg-transparent border-b border-dashed border-gray-400 focus:outline-none focus:border-blue-500 w-1/2">
                         <div class="flex space-x-2 items-center">
-                            <button onclick="document.getElementById('qasm-upload').click()" class="text-blue-600 hover:text-blue-800 font-medium">⬆ Import QASM</button>
-                            <button onclick="exportQasm()" class="text-blue-600 hover:text-blue-800 font-medium">⬇ Export QASM</button>
-                            <input type="file" id="qasm-upload" class="hidden" accept=".qasm" onchange="importQasm(this)">
+                            <button onclick="document.getElementById('qasm-upload').click()"
+                                class="text-blue-600 hover:text-blue-800 font-medium">⬆ Import QASM</button>
+                            <button onclick="exportQasm()" class="text-blue-600 hover:text-blue-800 font-medium">⬇
+                                Export QASM</button>
+                            <input type="file" id="qasm-upload" class="hidden" accept=".qasm"
+                                onchange="importQasm(this)">
                             <span id="ctx-opt-level">Opt Level: 0</span>
                         </div>
                     </div>

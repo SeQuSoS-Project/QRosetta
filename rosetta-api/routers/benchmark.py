@@ -35,7 +35,7 @@ router = APIRouter()
 
 
 # --- CORE LOGIC FUNCTIONS ---
-async def run_single_circuit_comparison(qasm_string: str, optimization_level: int = 0, timeout_seconds: int = 60):
+async def run_single_circuit_comparison(qasm_string: str, optimization_level: int = 0, timeout_seconds: int = 60, target_simulators: list = None):
     logger.info(f"Processing circuit...")
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_string)
@@ -51,8 +51,14 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
         return { "input_qasm": qasm_string, "error": str(e) }
 
     gc.collect() # Clean up before dispatch
+    
+    if target_simulators:
+        filtered_urls = {k: v for k, v in STATEVECTOR_RUNNER_URLS.items() if k.replace('pytket-', '').replace('-runner', '') in target_simulators}
+    else:
+        filtered_urls = STATEVECTOR_RUNNER_URLS
+        
     aggregated_results = await dispatch_to_runners(
-        runner_urls=STATEVECTOR_RUNNER_URLS,
+        runner_urls=filtered_urls,
         runner_payload=runner_payload,
         timeout_seconds=timeout_seconds
     )
@@ -98,7 +104,7 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
     }
 
 
-async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimization_level: int = 0, timeout_seconds: int = 60):
+async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimization_level: int = 0, timeout_seconds: int = 60, target_simulators: list = None):
     """
     (REFACTO RED - Counts)
     Dispatches TWO types of payloads:
@@ -141,8 +147,16 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
 
     # --- Dispatch both sets of jobs in parallel ---
     gc.collect() # Clean up before dispatch
-    sampled_task = dispatch_to_runners(SAMPLED_SV_URLS, sampled_payload, timeout_seconds)
-    native_task = dispatch_to_runners(NATIVE_SAMPLING_URLS, native_payload, timeout_seconds)
+    
+    if target_simulators:
+        filtered_sampled = {k: v for k, v in SAMPLED_SV_URLS.items() if k.replace('pytket-', '').replace('-runner', '') in target_simulators}
+        filtered_native = {k: v for k, v in NATIVE_SAMPLING_URLS.items() if k.replace('pytket-', '').replace('-runner', '') in target_simulators}
+    else:
+        filtered_sampled = SAMPLED_SV_URLS
+        filtered_native = NATIVE_SAMPLING_URLS
+        
+    sampled_task = dispatch_to_runners(filtered_sampled, sampled_payload, timeout_seconds)
+    native_task = dispatch_to_runners(filtered_native, native_payload, timeout_seconds)
 
     results_sampled, results_native = await asyncio.gather(sampled_task, native_task)
 
@@ -194,7 +208,7 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
 async def compare_circuits_endpoint(request: Request, payload: QasmPayload):
     validate_request(payload.qasm_string, mode="statevector")
     timeout = max(1, min(payload.timeout_seconds, 300))
-    return await run_single_circuit_comparison(payload.qasm_string, payload.optimization_level, timeout)
+    return await run_single_circuit_comparison(payload.qasm_string, payload.optimization_level, timeout, payload.target_simulators)
 
 @router.post("/compare_measured")
 @limiter.limit("10/minute")
@@ -204,7 +218,8 @@ async def compare_measured_circuits_endpoint(request: Request, payload: Measured
     return await run_single_circuit_measurement(payload.qasm_string, 
                                                 payload.n_shots,
                                                 payload.optimization_level,
-                                                timeout)
+                                                timeout,
+                                                payload.target_simulators)
 
 @router.post("/run_batch_suite")
 @limiter.limit("10/minute")
@@ -235,9 +250,9 @@ async def run_batch_suite_endpoint(request: Request, payload: BatchPayload):
             report = None
             timeout = max(1, min(payload.timeout_seconds, 300))
             if payload.mode == 'statevector':
-                report = await run_single_circuit_comparison(qasm_string, payload.optimization_level, timeout)
+                report = await run_single_circuit_comparison(qasm_string, payload.optimization_level, timeout, payload.target_simulators)
             elif payload.mode == 'measured':
-                report = await run_single_circuit_measurement(qasm_string, payload.n_shots, payload.optimization_level, timeout)
+                report = await run_single_circuit_measurement(qasm_string, payload.n_shots, payload.optimization_level, timeout, payload.target_simulators)
             else:
                 raise ValueError(f"Unknown mode: {payload.mode}")
             
