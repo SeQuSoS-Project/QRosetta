@@ -16,6 +16,9 @@ RUN pip install /tmp/shared-src
 # Copy application code
 COPY rosetta-api/ .
 
+# Create the data directory for SQLite persistence
+RUN mkdir -p /home/appuser/app/data
+
 # Change ownership and switch to non-root user
 RUN chown -R appuser:appuser /home/appuser/app && \
     chgrp -R 0 /home/appuser && \

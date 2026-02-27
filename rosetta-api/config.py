@@ -17,7 +17,12 @@ class Settings(BaseSettings):
     RUNNER_TIMEOUT_SEC: int = 60
 
     # Storage Configuration
-    STORAGE_MODE: str = "local"  # Options: 'local', 'memory'
+    STORAGE_MODE: str = "local"  # Options: 'local', 's3'
+    S3_ENDPOINT_URL: str = "https://s3.amazonaws.com"
+    S3_ACCESS_KEY: str = "minioadmin"
+    S3_SECRET_KEY: str = "minioadmin"
+    S3_BUCKET_NAME: str = "qrosetta-runs"
+    S3_REGION: str = "us-east-1"
 
     # Safeguards
     MAX_QUBITS_STATEVECTOR: int = 18

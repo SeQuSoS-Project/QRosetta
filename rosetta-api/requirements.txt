@@ -11,3 +11,10 @@ gunicorn==23.0.0
 psutil==6.0.0
 pydantic-settings
 cachetools==5.5.0
+sqlalchemy
+psycopg2-binary
+bcrypt
+python-jose
+python-multipart
+boto3
+botocore
