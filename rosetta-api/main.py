@@ -1,7 +1,9 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
-from routers import frontend, generation, benchmark
+from routers import frontend, generation, benchmark, auth, history
+import db_models as models
+from database import engine
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import JSONResponse
@@ -12,6 +14,7 @@ import os
 
 app = FastAPI(title="Quantum Rosetta API")
 
+models.Base.metadata.create_all(bind=engine)
 # --- 1. Rate Limiting Setup ---
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -53,3 +56,5 @@ app.mount("/js", StaticFiles(directory="static/js"), name="js")
 app.include_router(frontend.router)
 app.include_router(generation.router)
 app.include_router(benchmark.router)
+app.include_router(auth.router)
+app.include_router(history.router)

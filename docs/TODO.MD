@@ -43,7 +43,7 @@ This safely creates a dedicated, temporary file object in the browser's memory a
 
 implement folder selection for export qasm
 
-CHECK: HOW FEASIBLE IT IS TO MOVE TO LUMI from RAHTI!
-Lumi for runners, Rahti for API and PVC database, Allas for storage, integrate HAKA login(?) or OpenID Connect(?), slurm jobs for runners.
+CHECK: KEEPING BOTH RAHTI AND LUMI
+Lumi for runners, Rahti for API and PVC database and simulations of lower qubit counts, Allas for storage, integrate HAKA login(?) or OpenID Connect(?), slurm jobs for runners.
 
 CHECK: if GCR can serve multiple versions of the website

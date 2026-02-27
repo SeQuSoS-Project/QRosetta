@@ -169,7 +169,7 @@ async function generateAndVisualize() {
     try {
         const response = await fetch(`${BASE_URL}/visualize/quirk`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: typeof getAuthHeaders === 'function' ? getAuthHeaders({ 'Content-Type': 'application/json' }) : { 'Content-Type': 'application/json' },
             body: JSON.stringify({ qasm_string: qasmText })
         });
 

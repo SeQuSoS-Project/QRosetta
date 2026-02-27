@@ -27,6 +27,8 @@ services:
     container_name: rosetta-api
     environment:
       - RUNNER_TIMEOUT_SEC=${RUNNER_TIMEOUT_SEC:-60}
+    volumes:
+      - rosetta_db_data:/home/appuser/app/data
     networks:
       - isolated_net
     healthcheck:
@@ -153,3 +155,7 @@ networks:
     driver: bridge
   isolated_net:
     internal: true
+
+# --- VOLUMES ---
+volumes:
+  rosetta_db_data:
