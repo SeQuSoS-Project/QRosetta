@@ -47,3 +47,31 @@ CHECK: KEEPING BOTH RAHTI AND LUMI
 Lumi for runners, Rahti for API and PVC database and simulations of lower qubit counts, Allas for storage, integrate HAKA login(?) or OpenID Connect(?), slurm jobs for runners.
 
 CHECK: if GCR can serve multiple versions of the website
+
+3-3-20206
+✅ What We Have Done (Phases 1, 2, & 3 Complete)
+
+    Authentication & Security: Full JWT login/registration system and a "Delete Account" feature are implemented.
+
+    Data Persistence: The Hybrid Storage system (S3 + Local) is active. You can save, view, rename, and delete historical runs.
+
+    Asynchronous Engine: The benchmark.py router has been refactored to use ACTIVE_JOBS and BackgroundTasks. The synchronous await calls were replaced with job IDs.
+
+    Polling UI: The frontend app.js now has pollJobStatus logic to ping the server instead of waiting.
+
+    Routing Fixes: The nginx.conf correctly includes the jobs endpoint in its routing whitelist.
+
+⏸️ What Is Next (The "LUMI Bridge" - Paused)
+
+    SSH Tunneling: Implementing the paramiko client to securely connect to lumi.csc.fi.
+
+    Slurm Orchestration: Writing the Python logic to generate and submit #SBATCH scripts to the supercomputer queue.
+
+    Apptainer Conversion: Creating definition files (.def) to convert your Docker images into the High-Performance Computing (HPC) compatible .sif format.
+
+
+
+DEPLOY USER TO ALLAS/PUHTI/POUTA
+
+
+What to do what running circuits without login in

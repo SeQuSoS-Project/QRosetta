@@ -109,8 +109,17 @@
 
                 <!-- === CONFIG PANEL === -->
                 <div id="config-panel" class="hidden p-4 border rounded-lg bg-indigo-50 border-indigo-200">
-                    <div class="flex justify-between items-center mb-3">
-                        <h2 class="text-lg font-semibold text-indigo-900">Runner Configuration</h2>
+                    <div class="flex flex-col mb-4 bg-white p-3 rounded shadow-sm border border-indigo-100">
+                        <label class="block text-sm font-medium text-indigo-900 mb-1">Execution Environment</label>
+                        <select id="execution-target-select"
+                            class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
+                            <option value="rahti">Rahti (Local Cloud)</option>
+                            <option value="lumi" disabled>LUMI (HPC) - Pending Phase 4</option>
+                        </select>
+                    </div>
+
+                    <div class="flex justify-between items-center mb-3 pt-2 border-t border-indigo-100">
+                        <h2 class="text-sm font-semibold text-indigo-900">Runner Optimization Levels</h2>
                     </div>
                     <div id="config-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <!-- Populated by JS -->

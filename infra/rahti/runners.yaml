@@ -13,6 +13,8 @@ items:
     selector:
       matchLabels:
         app: pytket-qiskit-runner
+    strategy:
+      type: Recreate
     template:
       metadata:
         labels:

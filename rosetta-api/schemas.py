@@ -8,6 +8,7 @@ class QasmPayload(BaseModel):
     runner_config: Dict[str, int] = {}
     timeout_seconds: int = 60
     target_simulators: List[str] = Field(default_factory=list)
+    execution_target: str = "rahti"
 
 class MeasuredQasmPayload(BaseModel):
     qasm_string: str
@@ -16,6 +17,7 @@ class MeasuredQasmPayload(BaseModel):
     runner_config: Dict[str, int] = {}
     timeout_seconds: int = 60
     target_simulators: List[str] = Field(default_factory=list)
+    execution_target: str = "rahti"
 
 class MeasuredBenchmarkPayload(BaseModel):
     n_shots: int = 1024
@@ -37,11 +39,19 @@ class BatchPayload(BaseModel):
     runner_config: Dict[str, int] = {}
     timeout_seconds: int = 60
     target_simulators: List[str] = Field(default_factory=list)
+    execution_target: str = "rahti"
 
 # --- NEW OUTPUT MODELS ---
 
 class VisualizerResponse(BaseModel):
     url: str
+
+class JobStatusResponse(BaseModel):
+    job_id: str
+    status: str
+    target: str
+    results: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
 
 class RunnerPerformanceMetrics(BaseModel):
     simulator: str
