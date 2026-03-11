@@ -70,6 +70,11 @@ def save_run(
         return new_run
     except Exception as e:
         db.rollback()
+        import traceback
+        import sys
+        print("=== ERROR SAVING RUN ===", file=sys.stderr)
+        traceback.print_exc()
+        print("========================", file=sys.stderr)
         raise HTTPException(status_code=500, detail=f"Failed to save run history: {str(e)}")
 
 @router.get("/runs", response_model=List[schemas.RunHistoryResponse])

@@ -12,6 +12,8 @@ items:
     selector:
       matchLabels:
         app: rosetta-api
+    strategy:
+      type: Recreate
     template:
       metadata:
         labels:
@@ -21,6 +23,8 @@ items:
         - name: api
           image: image-registry.apps.2.rahti.csc.fi/qrosetta/rosetta-api:latest
           imagePullPolicy: Always
+          ports:
+          - containerPort: 8000
           env:
           - name: OMP_NUM_THREADS
             value: "1"
@@ -30,13 +34,36 @@ items:
             value: "1"
           - name: NUMEXPR_NUM_THREADS
             value: "1"
-          ports:
-          - containerPort: 8000
-          env:
           - name: RUNNER_TIMEOUT_SEC
             value: "60"
           - name: FRONTEND_URL
             value: "https://your-frontend-project.web.app,https://your-frontend-project.firebaseapp.com" # Placeholder for future Frontend Cloud Run/Storage domain
+          - name: DATABASE_URL
+            valueFrom:
+              secretKeyRef:
+                name: rosetta-secrets
+                key: DATABASE_URL
+          - name: STORAGE_MODE
+            value: "s3"
+          - name: S3_ENDPOINT_URL
+            value: "https://a3s.fi"
+          - name: S3_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                name: rosetta-secrets
+                key: S3_ACCESS_KEY
+          - name: S3_SECRET_KEY
+            valueFrom:
+              secretKeyRef:
+                name: rosetta-secrets
+                key: S3_SECRET_KEY
+          - name: S3_BUCKET_NAME
+            valueFrom:
+              secretKeyRef:
+                name: rosetta-secrets
+                key: S3_BUCKET_NAME
+          - name: S3_REGION
+            value: "us-east-1"
           resources:
             limits:
               cpu: "0.5"

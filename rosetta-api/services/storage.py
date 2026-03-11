@@ -9,6 +9,8 @@ from config import settings
 MOCK_S3_DIR = os.getenv("S3_LOCAL_DIR", "./data/s3_storage_mock")
 os.makedirs(MOCK_S3_DIR, exist_ok=True)
 
+from botocore.config import Config
+
 s3_client = None
 if settings.STORAGE_MODE == "s3":
     s3_client = boto3.client(
@@ -16,7 +18,8 @@ if settings.STORAGE_MODE == "s3":
         endpoint_url=settings.S3_ENDPOINT_URL,
         aws_access_key_id=settings.S3_ACCESS_KEY,
         aws_secret_access_key=settings.S3_SECRET_KEY,
-        region_name=settings.S3_REGION
+        region_name=settings.S3_REGION,
+        config=Config(signature_version='s3v4')
     )
 
 def _remove_statevectors(data: Any) -> Any:
@@ -44,10 +47,12 @@ def save_run_report(user_id: int, run_id: str, report_data: dict) -> str:
                 s3_client.create_bucket(Bucket=settings.S3_BUCKET_NAME)
         
         json_bytes = json.dumps(clean_data).encode('utf-8')
+        
         s3_client.put_object(
             Bucket=settings.S3_BUCKET_NAME,
             Key=object_key,
             Body=json_bytes,
+            ContentLength=len(json_bytes),
             ContentType="application/json"
         )
         return object_key

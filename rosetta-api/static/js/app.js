@@ -355,6 +355,37 @@ function clearBatch() {
     renderBatchQueue();
 }
 
+async function pollJobStatus(jobId) {
+    let startTime = Date.now();
+    return new Promise((resolve, reject) => {
+        const checkStatus = async () => {
+            try {
+                const res = await fetch(`${BASE_URL}/jobs/${jobId}`, {
+                    headers: getAuthHeaders()
+                });
+                if (!res.ok) {
+                    throw new Error(`Failed to fetch job status: ${res.status}`);
+                }
+                const data = await res.json();
+
+                if (data.status === "completed") {
+                    resolve(data.results);
+                } else if (data.status === "failed") {
+                    reject(new Error(data.error || "Job failed on backend"));
+                } else {
+                    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                    const targetName = data.target === "lumi" ? "LUMI (HPC)" : "Rahti";
+                    setLoading(true, `Processing on ${targetName}... (${elapsed}s)`);
+                    setTimeout(checkStatus, 3000);
+                }
+            } catch (err) {
+                reject(err);
+            }
+        };
+        setTimeout(checkStatus, 1500); // initial small delay
+    });
+}
+
 async function runBatchQueue() {
     clearHistoryState();
     if (isProcessing) return;
@@ -366,8 +397,9 @@ async function runBatchQueue() {
     const timeout = parseInt(document.getElementById('timeout-input')?.value || 60);
     const runNameInput = document.getElementById('batch-run-name')?.value.trim();
     currentRunnerConfig = getRunnerConfig();
-
     const targetSims = getTargetSimulators();
+    const executionTarget = document.getElementById('execution-target-select')?.value || 'rahti';
+
     if (targetSims.length === 0) {
         alert("Please select at least one simulator from the Config Panel to run.");
         return;
@@ -380,7 +412,8 @@ async function runBatchQueue() {
         optimization_level: globalOpt,
         timeout_seconds: timeout,
         runner_config: currentRunnerConfig,
-        target_simulators: targetSims
+        target_simulators: targetSims,
+        execution_target: executionTarget
     };
 
     setLoading(true, `Running Batch of ${batchQueue.length} Circuits...`);
@@ -400,14 +433,21 @@ async function runBatchQueue() {
             throw new Error(`HTTP error! Status: ${res.status}. Details: ${errorText}`);
         }
 
-        const data = await res.json();
-        currentSuiteData = data;
+        const jobData = await res.json();
+
+        if (jobData.status === "failed") {
+            throw new Error(jobData.error);
+        }
+
+        const results = await pollJobStatus(jobData.job_id);
+
+        currentSuiteData = results;
         currentSuiteTitle = "Playlist Batch Report";
-        renderSuiteSummary(data, currentSuiteTitle);
+        renderSuiteSummary(results, currentSuiteTitle);
 
         // Save to History using the newly integrated API
-        if (runNameInput) data.run_name = runNameInput;
-        await saveRunToHistory(data);
+        if (runNameInput) results.run_name = runNameInput;
+        await saveRunToHistory(results);
 
     } catch (e) {
         console.error(e);
@@ -688,6 +728,8 @@ async function runComparison(type, shots) {
 
     const endpoint = type === 'statevector' ? '/compare' : '/compare_measured';
     const targetSims = getTargetSimulators();
+    const executionTarget = document.getElementById('execution-target-select')?.value || 'rahti';
+
     if (targetSims.length === 0) {
         alert("Please select at least one simulator from the Config Panel to run.");
         return;
@@ -698,7 +740,8 @@ async function runComparison(type, shots) {
         optimization_level: globalOpt,
         timeout_seconds: timeout,
         runner_config: currentRunnerConfig,
-        target_simulators: targetSims
+        target_simulators: targetSims,
+        execution_target: executionTarget
     };
 
     if (type === 'measured') {
@@ -723,13 +766,20 @@ async function runComparison(type, shots) {
             throw new Error(`HTTP error! Status: ${res.status} ${res.statusText}. Details: ${errorText}`);
         }
 
-        const data = await res.json();
-        currentSuiteData = data; // FIX: Set global data for single runs
-        renderDetailReport(data, title, currentRunnerConfig);
+        const jobData = await res.json();
+
+        if (jobData.status === "failed") {
+            throw new Error(jobData.error);
+        }
+
+        const results = await pollJobStatus(jobData.job_id);
+
+        currentSuiteData = results; // FIX: Set global data for single runs
+        renderDetailReport(results, title, currentRunnerConfig);
 
         // Save to History using the newly integrated API
-        if (runNameInput) data.run_name = runNameInput;
-        await saveRunToHistory(data);
+        if (runNameInput) results.run_name = runNameInput;
+        await saveRunToHistory(results);
     } catch (e) {
         console.error(e);
         renderDetailReport({ error: e.message }, "Error");

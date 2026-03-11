@@ -33,3 +33,7 @@ BUGS.md
 TODO
 design_guidelines.txt
 app.py
+
+# Offline Data (Local testing)
+rosetta-api/data/qa_rosetta.db
+rosetta-api/data/s3_storage_mock/
