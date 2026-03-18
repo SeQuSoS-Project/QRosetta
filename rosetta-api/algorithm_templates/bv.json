@@ -1,0 +1,9 @@
+{
+  "id": "bv",
+  "name": "Bernstein-Vazirani",
+  "min_qubits": 2,
+  "max_qubits": 20,
+  "default_qubits": 4,
+  "description": "BV algorithm with 'all-ones' secret string.",
+  "code": "if n_qubits < 2:\n    raise ValueError(\"BV requires at least 2 qubits.\")\n\ncirc = Circuit(n_qubits)\ntarget = n_qubits - 1\n\nfor i in range(target):\n    circ.H(i)\n\ncirc.X(target)\ncirc.H(target)\ncirc.add_barrier(range(n_qubits))\n\nfor i in range(target):\n    circ.CX(i, target)\n    \ncirc.add_barrier(range(n_qubits))\n    \nfor i in range(target):\n    circ.H(i)\n    \nqasm = circuit_to_qasm_str(circ)"
+}
