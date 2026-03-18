@@ -16,6 +16,7 @@ from services.dispatcher import (
 from schemas import GenerateCircuitPayload, BatchPayload
 from routers.generation import generate_circuit_endpoint
 import analysis as comparator
+from services.aggregator import compile_comparison_reports, compile_measurement_reports
 from qrosetta_commons.helpers import get_logger
 
 logger = get_logger("rosetta-job-manager")
@@ -51,27 +52,7 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
         timeout_seconds=timeout_seconds
     )
 
-    loop = asyncio.get_event_loop()
-
-    gc.collect() # Clean up before heavy reporting
-    logger.info("Generating divergence report...")
-    divergence_report_task = loop.run_in_executor(
-        None, comparator.create_divergence_report, aggregated_results
-    )
-    
-    logger.info("Generating performance report...")
-    performance_report_task = loop.run_in_executor(
-        None, comparator.create_performance_report, aggregated_results
-    )
-
-    logger.info("Generating resource report...")
-    resource_report_task = loop.run_in_executor(
-        None, comparator.create_resource_report, aggregated_results
-    )
-
-    divergence_report, performance_report, resource_report = await asyncio.gather(
-        divergence_report_task, performance_report_task, resource_report_task
-    )
+    divergence_report, performance_report, resource_report = await compile_comparison_reports(aggregated_results)
 
     # --- Cache full results to disk ---
     full_report_data = [res.copy() for res in aggregated_results]
@@ -141,26 +122,7 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
     aggregated_results = results_native + results_sampled
 
     try:
-        loop = asyncio.get_event_loop()
-        gc.collect()
-        logger.info("Generating counts divergence report...")
-        divergence_report_task = loop.run_in_executor(
-            None, comparator.create_counts_report, aggregated_results, n_shots
-        )
-        
-        logger.info("Generating performance report...")
-        performance_report_task = loop.run_in_executor(
-            None, comparator.create_performance_report, aggregated_results
-        )
-        
-        logger.info("Generating resource report...")
-        resource_report_task = loop.run_in_executor(
-            None, comparator.create_resource_report, aggregated_results
-        )
-
-        divergence_report, performance_report, resource_report = await asyncio.gather(
-            divergence_report_task, performance_report_task, resource_report_task
-        )
+        divergence_report, performance_report, resource_report = await compile_measurement_reports(aggregated_results, n_shots)
         
     except Exception as e:
         return {
