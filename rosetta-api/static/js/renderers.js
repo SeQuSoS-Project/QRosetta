@@ -1,3 +1,11 @@
+// =============================================================================
+// renderers.js — Core Rendering Helpers & Panel Builders
+// Responsibility: Constants, helper utilities (tooltip, tabs, optBadge),
+//                 and the three main panel renderers:
+//                   renderSuiteSummary, renderSummaryPanel, renderDetailReport
+// Uses HTML <template> cloning — NO innerHTML string concatenation.
+// =============================================================================
+
 // --- CONSTANTS & DEFINITIONS ---
 
 const METRIC_DEFINITIONS = {
@@ -40,6 +48,38 @@ const STATUS_STYLES = {
     }
 };
 
+// --- PRIVATE TEMPLATE UTILITY ---
+
+/**
+ * Clones a <template> by ID and returns the live DocumentFragment.
+ * Throws a descriptive error if the template is missing (helps catch typos).
+ */
+function _cloneTemplate(id) {
+    const tpl = document.getElementById(id);
+    if (!tpl) throw new Error(`Missing <template id="${id}">`);
+    return tpl.content.cloneNode(true);
+}
+
+/**
+ * Walk the cloned fragment and replace placeholder class tokens (tpl-dot-*)
+ * with the real Tailwind classes from STATUS_STYLES.
+ * This is called once after cloning any legend template.
+ */
+function _applyLegendDots(fragment) {
+    const dotMap = {
+        'tpl-dot-success': STATUS_STYLES.success.legendDot,
+        'tpl-dot-divergence': STATUS_STYLES.divergence.legendDot,
+        'tpl-dot-offline': STATUS_STYLES.offline.legendDot,
+        'tpl-dot-anomaly': STATUS_STYLES.anomaly.legendDot,
+    };
+    for (const [placeholder, classes] of Object.entries(dotMap)) {
+        fragment.querySelectorAll(`.${placeholder}`).forEach(el => {
+            el.classList.remove(placeholder);
+            classes.split(' ').forEach(c => el.classList.add(c));
+        });
+    }
+}
+
 // --- HELPER FUNCTIONS ---
 
 function isConnectionError(err) {
@@ -48,13 +88,22 @@ function isConnectionError(err) {
     return msg.includes("failed to fetch") || msg.includes("load resource") || msg.includes("service unavailable") || msg.includes("connection refused");
 }
 
+/**
+ * Returns a <span> Element with a tooltip (title attribute) wrapping label.
+ * Falls back to a plain Text node when no definition exists.
+ */
 function renderTooltip(key, label) {
     const def = METRIC_DEFINITIONS[key];
     if (def) {
         const plainText = def.replace(/<b>/g, '').replace(/<\/b>/g, '');
-        return `<span style="cursor: help; text-decoration: underline dotted;" title="${plainText}">${label}</span>`;
+        const span = document.createElement('span');
+        span.style.cursor = 'help';
+        span.style.textDecoration = 'underline dotted';
+        span.title = plainText;
+        span.textContent = label;
+        return span;
     }
-    return label;
+    return document.createTextNode(label);
 }
 
 function clearReport() {
@@ -102,13 +151,37 @@ function renderTabs(tabList) {
     });
 }
 
+/**
+ * Returns a DOM Element for the optimization badge, or null if optLevel === 0.
+ * NOTE: callers receive an Element (not a string) and must use appendChild.
+ */
 function getOptBadge(simulator, config) {
     const optLevel = config[simulator] !== undefined ? config[simulator] : 0;
     if (optLevel > 0) {
-        return `<span class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800" title="Optimization Level ${optLevel}">L${optLevel}</span>`;
+        const frag = _cloneTemplate('tpl-opt-badge');
+        const span = frag.querySelector('span');
+        span.textContent = `L${optLevel}`;
+        span.title = `Optimization Level ${optLevel}`;
+        return span;
     }
-    return '';
+    return null;
 }
+
+// --- PRIVATE STATUS BADGE BUILDER ---
+
+/**
+ * Clones tpl-status-badge and applies the correct style + label.
+ * Returns a live <span> Element.
+ */
+function _makeStatusBadge(styleKey, label) {
+    const frag = _cloneTemplate('tpl-status-badge');
+    const span = frag.querySelector('span');
+    STATUS_STYLES[styleKey].badge.split(' ').forEach(c => span.classList.add(c));
+    span.textContent = label;
+    return span;
+}
+
+// --- MAIN PANEL RENDERERS ---
 
 function renderDetailReport(data, title, config = getState().currentRunnerConfig) {
     renderTabs(['summary', 'performance', 'resources', 'divergence', 'raw']);
@@ -139,100 +212,160 @@ function renderSuiteSummary(data, title) {
     clearReport();
     renderTabs(['suite-summary', 'raw']);
     jsonOutput.textContent = JSON.stringify(data, null, 2);
-    let html = `<h2 class="text-xl font-semibold text-gray-900 mb-4">${title}</h2>`;
 
-    // Unified Legend
-    html += `<div class="flex justify-start items-center space-x-4 text-xs text-gray-600 mb-4 p-2 bg-gray-50 rounded-lg border">
-                <span class="font-bold">Legend:</span>
-                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full ${STATUS_STYLES.success.legendDot} mr-1.5"></span>Success</span>
-                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full ${STATUS_STYLES.divergence.legendDot} mr-1.5"></span>Divergence</span>
-                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full ${STATUS_STYLES.offline.legendDot} mr-1.5"></span>Offline</span>
-                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full ${STATUS_STYLES.anomaly.legendDot} mr-1.5"></span>Anomaly</span>
-            </div>`;
+    const panel = panelElements['suite-summary'];
+    if (!panel) return;
+    panel.innerHTML = '';
+
+    // Title
+    const h2 = document.createElement('h2');
+    h2.className = 'text-xl font-semibold text-gray-900 mb-4';
+    h2.textContent = title;
+    panel.appendChild(h2);
+
+    // Legend
+    const legendFrag = _cloneTemplate('tpl-legend-suite');
+    _applyLegendDots(legendFrag);
+    panel.appendChild(legendFrag);
 
     if (data.error) {
-        html += `<div class="p-4 bg-red-50 text-red-700 rounded border border-red-200">API Error: ${data.error}</div>`;
+        // API error block
+        const errFrag = _cloneTemplate('tpl-suite-api-error');
+        const errDiv = errFrag.querySelector('.tpl-error-text');
+        errDiv.classList.remove('tpl-error-text');
+        errDiv.textContent = `API Error: ${data.error}`;
+        panel.appendChild(errFrag);
     } else {
         const summary = data.benchmark_summary || [];
         const errors = summary.filter(r => r.error).length;
-        html += `<div class="mb-4 p-4 bg-white border rounded shadow-sm">Processed <b>${summary.length}</b> tasks with <b>${errors}</b> errors.</div>`;
-        html += `<div class="overflow-x-auto border rounded-lg"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fastest</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lightest</th>
-                    <th></th>
-                </tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
+
+        // Stats bar
+        const statsFrag = _cloneTemplate('tpl-suite-stats-bar');
+        statsFrag.querySelector('.tpl-count').textContent = summary.length;
+        statsFrag.querySelector('.tpl-errors').textContent = errors;
+        panel.appendChild(statsFrag);
+
+        // Table
+        const tableFrag = _cloneTemplate('tpl-suite-table-wrapper');
+        const tbody = tableFrag.querySelector('.tpl-tbody');
+        tbody.classList.remove('tpl-tbody');
+
         summary.forEach((item, idx) => {
             const fname = item.task_name || (item.benchmark_file ? item.benchmark_file.replace('benchmarks/', '') : 'Unknown');
+            const rowFrag = _cloneTemplate('tpl-suite-summary-row');
 
-            let status = `<span class="px-2 py-1 text-xs rounded border ${STATUS_STYLES.success.badge}">Success</span>`;
+            rowFrag.querySelector('.tpl-task-name').textContent = fname;
+
+            // Status badge
+            const statusCell = rowFrag.querySelector('.tpl-status');
+            statusCell.classList.remove('tpl-status');
+            let badge;
             if (item.error) {
-                if (isConnectionError(item.error)) {
-                    status = `<span class="px-2 py-1 text-xs rounded border ${STATUS_STYLES.offline.badge}">Offline</span>`;
-                } else {
-                    status = `<span class="px-2 py-1 text-xs rounded border ${STATUS_STYLES.anomaly.badge}">Anomaly</span>`;
-                }
+                badge = isConnectionError(item.error)
+                    ? _makeStatusBadge('offline', 'Offline')
+                    : _makeStatusBadge('anomaly', 'Anomaly');
+            } else if (item.divergence_report && item.divergence_report.divergences_found.length > 0) {
+                badge = _makeStatusBadge('divergence', 'Divergence');
+            } else {
+                badge = _makeStatusBadge('success', 'Success');
             }
-            else if (item.divergence_report && item.divergence_report.divergences_found.length > 0) {
-                status = `<span class="px-2 py-1 text-xs rounded border ${STATUS_STYLES.divergence.badge}">Divergence</span>`;
-            }
+            statusCell.appendChild(badge);
 
-            const fast = item.performance_report?.ranking[0]?.simulator || '-';
-            const light = item.resource_report?.ranking[0]?.simulator || '-';
+            rowFrag.querySelector('.tpl-fastest').textContent = item.performance_report?.ranking[0]?.simulator || '-';
+            rowFrag.querySelector('.tpl-lightest').textContent = item.resource_report?.ranking[0]?.simulator || '-';
 
-            html += `<tr>
-                        <td class="px-4 py-3 text-sm font-medium text-gray-900">${fname}</td>
-                        <td class="px-4 py-3">${status}</td>
-                        <td class="px-4 py-3 text-sm text-gray-500">${fast}</td>
-                        <td class="px-4 py-3 text-sm text-gray-500">${light}</td>
-                        <td class="px-4 py-3 text-right"><button onclick="viewDetail(${idx})" class="text-blue-600 hover:text-blue-900 text-sm font-medium">Details</button></td>
-                    </tr>`;
+            const detailsBtn = rowFrag.querySelector('.tpl-details-btn');
+            detailsBtn.classList.remove('tpl-details-btn');
+            detailsBtn.addEventListener('click', () => viewDetail(idx));
+
+            tbody.appendChild(rowFrag);
         });
-        html += `</tbody></table></div>`;
+
+        panel.appendChild(tableFrag);
     }
 
-    if (panelElements['suite-summary']) {
-        panelElements['suite-summary'].innerHTML = html;
-    }
     showTab('suite-summary');
 }
 
 function renderSummaryPanel(data, title) {
-    let html = `<h2 class="text-xl font-semibold text-gray-900 mb-4">${title}</h2>`;
-    // Unified Legend
-    html += `<div class="flex justify-start items-center space-x-4 text-xs text-gray-600 mb-4 p-2 bg-gray-50 rounded-lg border">
-                <span class="font-bold">Legend:</span>
-                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full ${STATUS_STYLES.success.legendDot} mr-1.5"></span>Success</span>
-                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full ${STATUS_STYLES.divergence.legendDot} mr-1.5"></span>Divergence</span>
-                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full ${STATUS_STYLES.offline.legendDot} mr-1.5"></span>Offline</span>
-                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full ${STATUS_STYLES.anomaly.legendDot} mr-1.5"></span>Anomaly</span>
-            </div>`;
+    const panel = panelElements.summary;
+    if (!panel) return;
+    panel.innerHTML = '';
+
+    // Title
+    const h2 = document.createElement('h2');
+    h2.className = 'text-xl font-semibold text-gray-900 mb-4';
+    h2.textContent = title;
+    panel.appendChild(h2);
+
+    // Legend
+    const legendFrag = _cloneTemplate('tpl-legend-suite');
+    _applyLegendDots(legendFrag);
+    panel.appendChild(legendFrag);
 
     if (data.error) {
-        html += `<div class="p-4 bg-red-50 text-red-700 border border-red-200 rounded"><h3 class="font-bold">API Error</h3><pre class="mt-2 text-xs">${data.error}</pre></div>`;
-    } else {
-        const allErrors = data.raw_results ? data.raw_results.filter(r => r.error) : [];
-        const offlineErrors = allErrors.filter(e => isConnectionError(e.error));
-        const criticalErrors = allErrors.filter(e => !isConnectionError(e.error));
-
-        const divergences = data.divergence_report ? data.divergence_report.divergences_found : [];
-        if (offlineErrors.length > 0) {
-            html += `<div class="p-4 bg-gray-50 text-gray-700 border border-gray-200 rounded mb-4"><h3 class="font-bold">Offline Runners (${offlineErrors.length})</h3><ul class="list-disc ml-5 mt-2 text-sm text-gray-600">${offlineErrors.map(e => `<li><b>${e.simulator}</b>: service unavailable</li>`).join('')}</ul></div>`;
-        }
-
-        if (criticalErrors.length > 0) {
-            html += `<div class="p-4 bg-red-50 text-red-700 border border-red-200 rounded mb-4"><h3 class="font-bold">Critical Errors (${criticalErrors.length})</h3><ul class="list-disc ml-5 mt-2 text-sm">${criticalErrors.map(e => `<li><b>${e.simulator}</b>: ${e.error}</li>`).join('')}</ul></div>`;
-        } else if (divergences.length > 0) {
-            html += `<div class="p-4 bg-yellow-50 text-yellow-800 border border-yellow-200 rounded"><h3 class="font-bold">Divergences Found (${divergences.length})</h3><ul class="list-disc ml-5 mt-2 text-sm">${divergences.map(d => `<li>${d.type} between ${d.simulators.join(' & ')}</li>`).join('')}</ul></div>`;
-        } else {
-            const msg = data.n_shots ? "All measurement distributions are statistically identical." : "All statevectors are identical (1.0 Fidelity).";
-            html += `<div class="p-4 bg-green-50 text-green-800 border border-green-200 rounded flex items-center"><svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>${msg}</div>`;
-        }
+        const errFrag = _cloneTemplate('tpl-summary-api-error');
+        errFrag.querySelector('.tpl-error-text').textContent = data.error;
+        panel.appendChild(errFrag);
+        return;
     }
-    if (panelElements.summary) {
-        panelElements.summary.innerHTML = html;
+
+    const allErrors = data.raw_results ? data.raw_results.filter(r => r.error) : [];
+    const offlineErrors = allErrors.filter(e => isConnectionError(e.error));
+    const criticalErrors = allErrors.filter(e => !isConnectionError(e.error));
+    const divergences = data.divergence_report ? data.divergence_report.divergences_found : [];
+
+    if (offlineErrors.length > 0) {
+        const frag = _cloneTemplate('tpl-summary-offline-block');
+        frag.querySelector('.tpl-heading').textContent = `Offline Runners (${offlineErrors.length})`;
+        const list = frag.querySelector('.tpl-list');
+        list.classList.remove('tpl-list');
+        offlineErrors.forEach(e => {
+            const liFrag = _cloneTemplate('tpl-summary-list-item');
+            const li = liFrag.querySelector('li');
+            const b = document.createElement('b');
+            b.textContent = e.simulator;
+            li.appendChild(b);
+            li.appendChild(document.createTextNode(': service unavailable'));
+            list.appendChild(liFrag);
+        });
+        panel.appendChild(frag);
+    }
+
+    if (criticalErrors.length > 0) {
+        const frag = _cloneTemplate('tpl-summary-critical-block');
+        frag.querySelector('.tpl-heading').textContent = `Critical Errors (${criticalErrors.length})`;
+        const list = frag.querySelector('.tpl-list');
+        list.classList.remove('tpl-list');
+        criticalErrors.forEach(e => {
+            const liFrag = _cloneTemplate('tpl-summary-list-item');
+            const li = liFrag.querySelector('li');
+            const b = document.createElement('b');
+            b.textContent = e.simulator;
+            li.appendChild(b);
+            li.appendChild(document.createTextNode(`: ${e.error}`));
+            list.appendChild(liFrag);
+        });
+        panel.appendChild(frag);
+    } else if (divergences.length > 0) {
+        const frag = _cloneTemplate('tpl-summary-divergence-block');
+        frag.querySelector('.tpl-heading').textContent = `Divergences Found (${divergences.length})`;
+        const list = frag.querySelector('.tpl-list');
+        list.classList.remove('tpl-list');
+        divergences.forEach(d => {
+            const liFrag = _cloneTemplate('tpl-summary-list-item');
+            liFrag.querySelector('li').textContent = `${d.type} between ${d.simulators.join(' & ')}`;
+            list.appendChild(liFrag);
+        });
+        panel.appendChild(frag);
+    } else {
+        const frag = _cloneTemplate('tpl-summary-success-banner');
+        const msg = data.n_shots
+            ? "All measurement distributions are statistically identical."
+            : "All statevectors are identical (1.0 Fidelity).";
+        frag.querySelector('.tpl-msg').textContent = msg;
+        panel.appendChild(frag);
     }
 }
 
-// renderRankingTable, renderDivergenceTables, and viewDetail moved to tables_renderer.js
+// renderRankingTable, renderDivergenceTables, and viewDetail are in tables_renderer.js

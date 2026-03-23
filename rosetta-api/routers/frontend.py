@@ -8,7 +8,10 @@ router = APIRouter()
 @router.get("/")
 async def read_index():
     """Serves the main HTML page."""
-    return FileResponse('static/index.html')
+    return FileResponse(
+        'static/index.html',
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"}
+    )
 
 @router.get("/download_latest_report")
 def download_latest_report():

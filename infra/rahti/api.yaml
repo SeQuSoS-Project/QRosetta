@@ -37,7 +37,7 @@ items:
           - name: RUNNER_TIMEOUT_SEC
             value: "60"
           - name: FRONTEND_URL
-            value: "https://your-frontend-project.web.app,https://your-frontend-project.firebaseapp.com" # Placeholder for future Frontend Cloud Run/Storage domain
+            value: "https://rosetta-frontend-652754634999.us-central1.run.app,http://localhost:3000,http://localhost:8080"
           - name: DATABASE_URL
             valueFrom:
               secretKeyRef:
