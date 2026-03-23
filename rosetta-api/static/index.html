@@ -500,18 +500,278 @@
     </div>
 
 
-    <script src="js/state.js"></script>
-    <script src="js/utils.js"></script>
-    <script src="js/renderers.js"></script>
-    <script src="js/tables_renderer.js"></script>
+    <!-- ============================================================ -->
+    <!-- HTML TEMPLATES — Cloned by renderers.js / tables_renderer.js -->
+    <!-- ============================================================ -->
+
+    <!-- Optimization level badge (used in getOptBadge) -->
+    <template id="tpl-opt-badge">
+        <span class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"></span>
+    </template>
+
+    <!-- Legend bar: success / offline / anomaly (ranking tables) -->
+    <template id="tpl-legend-ranking">
+        <div class="flex justify-start items-center space-x-4 text-xs text-gray-600 mb-4 p-2 bg-gray-50 rounded-lg border">
+            <span class="font-bold">Legend:</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-success"></span>Success</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-offline"></span>Offline</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-anomaly"></span>Anomaly</span>
+        </div>
+    </template>
+
+    <!-- Legend bar: success / divergence / offline / anomaly (suite + summary panels) -->
+    <template id="tpl-legend-suite">
+        <div class="flex justify-start items-center space-x-4 text-xs text-gray-600 mb-4 p-2 bg-gray-50 rounded-lg border">
+            <span class="font-bold">Legend:</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-success"></span>Success</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-divergence"></span>Divergence</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-offline"></span>Offline</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-anomaly"></span>Anomaly</span>
+        </div>
+    </template>
+
+    <!-- Legend bar: perfect-match / divergence / offline / anomaly / N/A self (divergence matrices) -->
+    <template id="tpl-legend-divergence">
+        <div class="flex justify-start items-center space-x-4 text-xs text-gray-600 mb-4 p-2 bg-gray-50 rounded-lg border">
+            <span class="font-bold">Legend:</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-success"></span>Perfect Match</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-divergence"></span>Divergence</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-offline"></span>Offline</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-anomaly"></span>Anomaly</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-white border border-dashed border-gray-300 mr-1.5"></span>N/A (Self)</span>
+        </div>
+    </template>
+
+    <!-- Ranking table: section heading -->
+    <template id="tpl-ranking-section-header">
+        <h3 class="font-semibold text-gray-900 mt-4 mb-2"></h3>
+    </template>
+
+    <!-- Ranking table: memory columns header -->
+    <template id="tpl-ranking-header-memory">
+        <div class="overflow-x-auto border rounded-lg">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rank</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Simulator</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tpl-th-mem-delta">Mem Delta (MiB)</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tpl-th-proc-peak">Process Peak (MiB)</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200 tpl-tbody"></tbody>
+            </table>
+        </div>
+    </template>
+
+    <!-- Ranking table: time columns header -->
+    <template id="tpl-ranking-header-time">
+        <div class="overflow-x-auto border rounded-lg">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rank</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Simulator</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tpl-th-compilation">Compilation (s)</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tpl-th-simulation">Simulation (s)</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tpl-th-total">Total (s)</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200 tpl-tbody"></tbody>
+            </table>
+        </div>
+    </template>
+
+    <!-- Ranking table: generic metric header -->
+    <template id="tpl-ranking-header-generic">
+        <div class="overflow-x-auto border rounded-lg">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rank</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Simulator</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tpl-th-value">Value</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200 tpl-tbody"></tbody>
+            </table>
+        </div>
+    </template>
+
+    <!-- Ranking table row: 4-col memory (rank / simulator / mem-delta / proc-peak) -->
+    <template id="tpl-ranking-row-memory">
+        <tr>
+            <td class="px-4 py-3 text-sm text-gray-500 tpl-rank"></td>
+            <td class="px-4 py-3 text-sm font-medium text-gray-900 tpl-simulator"></td>
+            <td class="px-4 py-3 text-sm text-gray-500 font-mono tpl-mem-delta"></td>
+            <td class="px-4 py-3 text-sm text-gray-500 font-mono tpl-proc-peak"></td>
+        </tr>
+    </template>
+
+    <!-- Ranking table row: 5-col time (rank / simulator / comp / sim / total) -->
+    <template id="tpl-ranking-row-time">
+        <tr>
+            <td class="px-4 py-3 text-sm text-gray-500 tpl-rank"></td>
+            <td class="px-4 py-3 text-sm font-medium text-gray-900 tpl-simulator"></td>
+            <td class="px-4 py-3 text-sm text-gray-500 font-mono tpl-comp"></td>
+            <td class="px-4 py-3 text-sm text-gray-500 font-mono tpl-sim"></td>
+            <td class="px-4 py-3 text-sm text-gray-900 font-mono font-medium tpl-total"></td>
+        </tr>
+    </template>
+
+    <!-- Ranking table row: 3-col generic (rank / simulator / value) -->
+    <template id="tpl-ranking-row-generic">
+        <tr>
+            <td class="px-4 py-3 text-sm text-gray-500 tpl-rank"></td>
+            <td class="px-4 py-3 text-sm font-medium text-gray-900 tpl-simulator"></td>
+            <td class="px-4 py-3 text-sm text-gray-500 font-mono tpl-value"></td>
+        </tr>
+    </template>
+
+    <!-- Suite summary: "Processed N tasks…" stats bar -->
+    <template id="tpl-suite-stats-bar">
+        <div class="mb-4 p-4 bg-white border rounded shadow-sm">
+            Processed <b class="tpl-count"></b> tasks with <b class="tpl-errors"></b> errors.
+        </div>
+    </template>
+
+    <!-- Suite summary: table wrapper (header only; tbody populated dynamically) -->
+    <template id="tpl-suite-table-wrapper">
+        <div class="overflow-x-auto border rounded-lg">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fastest</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lightest</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200 tpl-tbody"></tbody>
+            </table>
+        </div>
+    </template>
+
+    <!-- Suite summary: one table row per benchmark task -->
+    <template id="tpl-suite-summary-row">
+        <tr>
+            <td class="px-4 py-3 text-sm font-medium text-gray-900 tpl-task-name"></td>
+            <td class="px-4 py-3 tpl-status"></td>
+            <td class="px-4 py-3 text-sm text-gray-500 tpl-fastest"></td>
+            <td class="px-4 py-3 text-sm text-gray-500 tpl-lightest"></td>
+            <td class="px-4 py-3 text-right">
+                <button class="text-blue-600 hover:text-blue-900 text-sm font-medium tpl-details-btn">Details</button>
+            </td>
+        </tr>
+    </template>
+
+    <!-- Status badge span (class set dynamically) -->
+    <template id="tpl-status-badge">
+        <span class="px-2 py-1 text-xs rounded border"></span>
+    </template>
+
+    <!-- Summary panel: API error block -->
+    <template id="tpl-summary-api-error">
+        <div class="p-4 bg-red-50 text-red-700 border border-red-200 rounded">
+            <h3 class="font-bold">API Error</h3>
+            <pre class="mt-2 text-xs tpl-error-text"></pre>
+        </div>
+    </template>
+
+    <!-- Suite view: API error block (inline, not in panel) -->
+    <template id="tpl-suite-api-error">
+        <div class="p-4 bg-red-50 text-red-700 rounded border border-red-200 tpl-error-text"></div>
+    </template>
+
+    <!-- Summary panel: offline runners block -->
+    <template id="tpl-summary-offline-block">
+        <div class="p-4 bg-gray-50 text-gray-700 border border-gray-200 rounded mb-4">
+            <h3 class="font-bold tpl-heading">Offline Runners (0)</h3>
+            <ul class="list-disc ml-5 mt-2 text-sm text-gray-600 tpl-list"></ul>
+        </div>
+    </template>
+
+    <!-- Summary panel: critical errors block -->
+    <template id="tpl-summary-critical-block">
+        <div class="p-4 bg-red-50 text-red-700 border border-red-200 rounded mb-4">
+            <h3 class="font-bold tpl-heading">Critical Errors (0)</h3>
+            <ul class="list-disc ml-5 mt-2 text-sm tpl-list"></ul>
+        </div>
+    </template>
+
+    <!-- Summary panel: divergences found block -->
+    <template id="tpl-summary-divergence-block">
+        <div class="p-4 bg-yellow-50 text-yellow-800 border border-yellow-200 rounded">
+            <h3 class="font-bold tpl-heading">Divergences Found (0)</h3>
+            <ul class="list-disc ml-5 mt-2 text-sm tpl-list"></ul>
+        </div>
+    </template>
+
+    <!-- Summary panel: list item for offline/critical/divergence entries -->
+    <template id="tpl-summary-list-item">
+        <li></li>
+    </template>
+
+    <!-- Summary panel: success banner -->
+    <template id="tpl-summary-success-banner">
+        <div class="p-4 bg-green-50 text-green-800 border border-green-200 rounded flex items-center">
+            <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+            </svg>
+            <span class="tpl-msg"></span>
+        </div>
+    </template>
+
+    <!-- Divergence matrix: per-key section container (h3 + table wrapper) -->
+    <template id="tpl-div-matrix-section">
+        <div>
+            <h3 class="font-semibold text-gray-900 mt-4 mb-2 tpl-title"></h3>
+            <div class="overflow-x-auto">
+                <table class="matrix-table border-collapse border border-gray-300">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="border p-2"></th>
+                            <!-- column headers appended dynamically -->
+                        </tr>
+                    </thead>
+                    <tbody class="tpl-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </template>
+
+    <!-- Divergence matrix: column header <th> -->
+    <template id="tpl-div-matrix-header-cell">
+        <th class="sim-header border p-2 text-xs text-gray-500"></th>
+    </template>
+
+    <!-- Divergence matrix: row header <th> -->
+    <template id="tpl-div-matrix-row-header">
+        <th class="border p-2 text-xs text-left text-gray-500"></th>
+    </template>
+
+    <!-- Divergence matrix: data cell <td> -->
+    <template id="tpl-div-matrix-cell">
+        <td class="border p-2 text-xs text-center font-mono"></td>
+    </template>
+
+    <!-- ============================================================ -->
+    <!-- END TEMPLATES                                                 -->
+    <!-- ============================================================ -->
+
+    <script src="js/state.js?v=1.0.2"></script>
+    <script src="js/utils.js?v=1.0.2"></script>
+    <script src="js/renderers.js?v=1.0.2"></script>
+    <script src="js/tables_renderer.js?v=1.0.2"></script>
     <!-- Domain modules (depend on utils/renderers globals) -->
-    <script src="js/api.js"></script>
-    <script src="js/config.js"></script>
-    <script src="js/batch.js"></script>
-    <script src="js/auth.js"></script>
-    <script src="js/history.js"></script>
+    <script src="js/api.js?v=1.0.2"></script>
+    <script src="js/config.js?v=1.0.2"></script>
+    <script src="js/batch.js?v=1.0.2"></script>
+    <script src="js/auth.js?v=1.0.2"></script>
+    <script src="js/history.js?v=1.0.2"></script>
     <!-- Controller: depends on all above -->
-    <script src="js/app.js"></script>
+    <script src="js/app.js?v=1.0.2"></script>
 
 </body>
 

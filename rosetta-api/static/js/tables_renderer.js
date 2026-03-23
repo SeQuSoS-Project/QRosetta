@@ -4,24 +4,55 @@
 //                 divergence matrix tables. These are complex DOM-heavy
 //                 functions split from renderers.js to comply with the 300-line
 //                 god-file rule (design_guidelines.txt §7.2).
-// Depends on: STATUS_STYLES, renderTooltip, getOptBadge (renderers.js),
-//             isConnectionError (utils.js), getState().currentSuiteData, getState().currentRunnerConfig,
-//             panelElements, backButtonContainer (app.js globals),
+// Depends on: STATUS_STYLES, renderTooltip, getOptBadge, _cloneTemplate,
+//             _applyLegendDots (renderers.js),
+//             isConnectionError (utils.js), getState().currentSuiteData,
+//             getState().currentRunnerConfig, panelElements, backButtonContainer (app.js globals),
 //             clearReport, renderDetailReport (renderers.js)
+// Uses HTML <template> cloning — NO innerHTML string concatenation.
 // =============================================================================
+
+// --- PRIVATE HELPERS ---
+
+/**
+ * Creates a status-coloured <span> for a cell value (e.g. "Offline", "Anomaly")
+ * using recognised STATUS_STYLES cell class keys.
+ */
+function _makeStatusCell(styleKey, text) {
+    const span = document.createElement('span');
+    STATUS_STYLES[styleKey].cell.split(' ').forEach(c => span.classList.add(c));
+    span.textContent = text;
+    return span;
+}
+
+/**
+ * Populates the Simulator <td> with the simulator name text node
+ * plus the optional optimisation badge Element from getOptBadge().
+ */
+function _fillSimulatorCell(td, simulatorName, config) {
+    td.classList.remove('tpl-simulator');
+    td.appendChild(document.createTextNode(simulatorName));
+    const badge = getOptBadge(simulatorName, config);
+    if (badge) td.appendChild(badge);
+}
+
+// --- PUBLIC RENDERERS ---
 
 function renderRankingTable(report, key, unit, panel, config = {}) {
     if (!panel) return;
-    let html = `<h3 class="font-semibold text-gray-900 mt-4 mb-2">${report.summary}</h3>`;
+    panel.innerHTML = '';
 
-    // Unified Legend
-    html += `<div class="flex justify-start items-center space-x-4 text-xs text-gray-600 mb-4 p-2 bg-gray-50 rounded-lg border">
-                <span class="font-bold">Legend:</span>
-                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full ${STATUS_STYLES.success.legendDot} mr-1.5"></span>Success</span>
-                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full ${STATUS_STYLES.offline.legendDot} mr-1.5"></span>Offline</span>
-                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full ${STATUS_STYLES.anomaly.legendDot} mr-1.5"></span>Anomaly</span>
-            </div>`;
+    // Section heading
+    const hFrag = _cloneTemplate('tpl-ranking-section-header');
+    hFrag.querySelector('h3').textContent = report.summary;
+    panel.appendChild(hFrag);
 
+    // Legend
+    const legendFrag = _cloneTemplate('tpl-legend-ranking');
+    _applyLegendDots(legendFrag);
+    panel.appendChild(legendFrag);
+
+    // Collect offline simulators
     const offlineSims = new Set();
     if (getState().currentSuiteData && getState().currentSuiteData.raw_results) {
         getState().currentSuiteData.raw_results.forEach(r => {
@@ -30,96 +61,161 @@ function renderRankingTable(report, key, unit, panel, config = {}) {
     }
 
     if (key === 'memory_usage_mb') {
+        // Sort: successful first, ordered by process_peak_mb ascending
         report.ranking.sort((a, b) => {
             if (a.status !== 'success') return 1;
             if (b.status !== 'success') return -1;
             return (a.process_peak_mb || 0) - (b.process_peak_mb || 0);
         });
-        html += `<div class="overflow-x-auto border rounded-lg"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rank</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Simulator</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">${renderTooltip('mem_delta', 'Mem Delta (MiB)')}</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">${renderTooltip('proc_peak', 'Process Peak (MiB)')}</th>
-                </tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
+
+        // Table wrapper with memory columns
+        const tblFrag = _cloneTemplate('tpl-ranking-header-memory');
+
+        // Apply tooltip to column headers
+        const thMemDelta = tblFrag.querySelector('.tpl-th-mem-delta');
+        thMemDelta.classList.remove('tpl-th-mem-delta');
+        thMemDelta.innerHTML = '';
+        thMemDelta.appendChild(renderTooltip('mem_delta', 'Mem Delta (MiB)'));
+
+        const thProcPeak = tblFrag.querySelector('.tpl-th-proc-peak');
+        thProcPeak.classList.remove('tpl-th-proc-peak');
+        thProcPeak.innerHTML = '';
+        thProcPeak.appendChild(renderTooltip('proc_peak', 'Process Peak (MiB)'));
+
+        const tbody = tblFrag.querySelector('.tpl-tbody');
+        tbody.classList.remove('tpl-tbody');
+
         report.ranking.forEach((r, i) => {
-            let mem_delta_display = `<span class="text-red-600">Anomaly</span>`;
-            let proc_peak_display = `<span class="text-red-600">Anomaly</span>`;
+            const rowFrag = _cloneTemplate('tpl-ranking-row-memory');
+
+            rowFrag.querySelector('.tpl-rank').textContent = i + 1;
+            _fillSimulatorCell(rowFrag.querySelector('.tpl-simulator'), r.simulator, config);
+
+            const memDeltaTd = rowFrag.querySelector('.tpl-mem-delta');
+            memDeltaTd.classList.remove('tpl-mem-delta');
+            const procPeakTd = rowFrag.querySelector('.tpl-proc-peak');
+            procPeakTd.classList.remove('tpl-proc-peak');
 
             if (r.status === 'success') {
-                mem_delta_display = r.memory_usage_mb != null ? r.memory_usage_mb.toFixed(4) : mem_delta_display;
-                proc_peak_display = r.process_peak_mb != null ? r.process_peak_mb.toFixed(1) : proc_peak_display;
+                memDeltaTd.textContent = r.memory_usage_mb != null ? r.memory_usage_mb.toFixed(4) : '';
+                procPeakTd.textContent = r.process_peak_mb != null ? r.process_peak_mb.toFixed(1) : '';
             } else if (offlineSims.has(r.simulator)) {
-                mem_delta_display = `<span class="${STATUS_STYLES.offline.cell}">Offline</span>`;
-                proc_peak_display = `<span class="${STATUS_STYLES.offline.cell}">Offline</span>`;
+                memDeltaTd.appendChild(_makeStatusCell('offline', 'Offline'));
+                procPeakTd.appendChild(_makeStatusCell('offline', 'Offline'));
+            } else {
+                memDeltaTd.appendChild(_makeStatusCell('anomaly', 'Anomaly'));
+                procPeakTd.appendChild(_makeStatusCell('anomaly', 'Anomaly'));
             }
 
-            html += `<tr>
-                        <td class="px-4 py-3 text-sm text-gray-500">${i + 1}</td>
-                        <td class="px-4 py-3 text-sm font-medium text-gray-900">${r.simulator}${getOptBadge(r.simulator, config)}</td>
-                        <td class="px-4 py-3 text-sm text-gray-500 font-mono">${mem_delta_display}</td>
-                        <td class="px-4 py-3 text-sm text-gray-500 font-mono">${proc_peak_display}</td>
-                    </tr>`;
+            tbody.appendChild(rowFrag);
         });
-        html += `</tbody></table></div>`;
+
+        panel.appendChild(tblFrag);
 
     } else if (key === 'execution_time_sec') {
-        html += `<div class="overflow-x-auto border rounded-lg"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rank</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Simulator</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">${renderTooltip('compilation', 'Compilation (s)')}</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">${renderTooltip('simulation', 'Simulation (s)')}</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">${renderTooltip('total_time', 'Total (s)')}</th>
-                </tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
+        // Table wrapper with time columns
+        const tblFrag = _cloneTemplate('tpl-ranking-header-time');
+
+        const thComp = tblFrag.querySelector('.tpl-th-compilation');
+        thComp.classList.remove('tpl-th-compilation');
+        thComp.innerHTML = '';
+        thComp.appendChild(renderTooltip('compilation', 'Compilation (s)'));
+
+        const thSim = tblFrag.querySelector('.tpl-th-simulation');
+        thSim.classList.remove('tpl-th-simulation');
+        thSim.innerHTML = '';
+        thSim.appendChild(renderTooltip('simulation', 'Simulation (s)'));
+
+        const thTotal = tblFrag.querySelector('.tpl-th-total');
+        thTotal.classList.remove('tpl-th-total');
+        thTotal.innerHTML = '';
+        thTotal.appendChild(renderTooltip('total_time', 'Total (s)'));
+
+        const tbody = tblFrag.querySelector('.tpl-tbody');
+        tbody.classList.remove('tpl-tbody');
+
         report.ranking.forEach((r, i) => {
-            let comp_display = `<span class="text-gray-400">-</span>`;
-            let sim_display = `<span class="text-gray-400">-</span>`;
-            let total_display = `<span class="text-gray-400">-</span>`;
+            const rowFrag = _cloneTemplate('tpl-ranking-row-time');
+
+            rowFrag.querySelector('.tpl-rank').textContent = i + 1;
+            _fillSimulatorCell(rowFrag.querySelector('.tpl-simulator'), r.simulator, config);
+
+            const compTd = rowFrag.querySelector('.tpl-comp');
+            compTd.classList.remove('tpl-comp');
+            const simTd = rowFrag.querySelector('.tpl-sim');
+            simTd.classList.remove('tpl-sim');
+            const totalTd = rowFrag.querySelector('.tpl-total');
+            totalTd.classList.remove('tpl-total');
 
             if (r.status === 'success') {
-                if (r.execution_time_sec != null) total_display = r.execution_time_sec.toFixed(6);
-                if (r.compilation_time_sec != null) comp_display = r.compilation_time_sec.toFixed(6);
-                if (r.simulation_time_sec != null) sim_display = r.simulation_time_sec.toFixed(6);
+                compTd.textContent = r.compilation_time_sec != null ? r.compilation_time_sec.toFixed(6) : '-';
+                simTd.textContent  = r.simulation_time_sec  != null ? r.simulation_time_sec.toFixed(6)  : '-';
+                totalTd.textContent = r.execution_time_sec  != null ? r.execution_time_sec.toFixed(6)   : '-';
             } else if (offlineSims.has(r.simulator)) {
-                total_display = `<span class="${STATUS_STYLES.offline.cell}">Offline</span>`;
+                compTd.appendChild(_makeStatusCell('offline', 'Offline'));
+                simTd.appendChild(_makeStatusCell('offline', 'Offline'));
+                totalTd.appendChild(_makeStatusCell('offline', 'Offline'));
             } else {
-                total_display = `<span class="text-red-600">Anomaly</span>`;
+                compTd.appendChild(document.createTextNode('-'));
+                simTd.appendChild(document.createTextNode('-'));
+                totalTd.appendChild(_makeStatusCell('anomaly', 'Anomaly'));
             }
 
-            html += `<tr>
-                        <td class="px-4 py-3 text-sm text-gray-500">${i + 1}</td>
-                        <td class="px-4 py-3 text-sm font-medium text-gray-900">${r.simulator}${getOptBadge(r.simulator, config)}</td>
-                        <td class="px-4 py-3 text-sm text-gray-500 font-mono">${comp_display}</td>
-                        <td class="px-4 py-3 text-sm text-gray-500 font-mono">${sim_display}</td>
-                        <td class="px-4 py-3 text-sm text-gray-900 font-mono font-medium">${total_display}</td>
-                    </tr>`;
+            tbody.appendChild(rowFrag);
         });
-        html += `</tbody></table></div>`;
+
+        panel.appendChild(tblFrag);
 
     } else {
-        // Fallback — Generic Table for any other metric
-        html += `<div class="overflow-x-auto border rounded-lg"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rank</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Simulator</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">${renderTooltip(key, 'Value')}</th>
-            </tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
+        // Generic fallback table
+        const tblFrag = _cloneTemplate('tpl-ranking-header-generic');
+
+        const thVal = tblFrag.querySelector('.tpl-th-value');
+        thVal.classList.remove('tpl-th-value');
+        thVal.innerHTML = '';
+        thVal.appendChild(renderTooltip(key, 'Value'));
+
+        const tbody = tblFrag.querySelector('.tpl-tbody');
+        tbody.classList.remove('tpl-tbody');
+
         report.ranking.forEach((r, i) => {
-            let val_display = `<span class="text-red-600">Anomaly</span>`;
+            const rowFrag = _cloneTemplate('tpl-ranking-row-generic');
+
+            rowFrag.querySelector('.tpl-rank').textContent = i + 1;
+            _fillSimulatorCell(rowFrag.querySelector('.tpl-simulator'), r.simulator, config);
+
+            const valTd = rowFrag.querySelector('.tpl-value');
+            valTd.classList.remove('tpl-value');
+
             if (r.status === 'success' && r[key] !== null) {
-                val_display = `${r[key].toFixed(6)} ${unit}`;
+                valTd.textContent = `${r[key].toFixed(6)} ${unit}`;
             } else if (offlineSims.has(r.simulator)) {
-                val_display = `<span class="${STATUS_STYLES.offline.cell}">Offline</span>`;
+                valTd.appendChild(_makeStatusCell('offline', 'Offline'));
+            } else {
+                valTd.appendChild(_makeStatusCell('anomaly', 'Anomaly'));
             }
-            html += `<tr><td class="px-4 py-3 text-sm text-gray-500">${i + 1}</td><td class="px-4 py-3 text-sm font-medium text-gray-900">${r.simulator}${getOptBadge(r.simulator, config)}</td><td class="px-4 py-3 text-sm text-gray-500 font-mono">${val_display}</td></tr>`;
+
+            tbody.appendChild(rowFrag);
         });
-        html += `</tbody></table></div>`;
+
+        panel.appendChild(tblFrag);
     }
-    panel.innerHTML = html;
 }
 
 function renderDivergenceTables(report, panel, config = {}) {
     if (!panel) return;
-    let html = `<div class="space-y-8">`;
-    let found = false;
+    panel.innerHTML = '';
+
+    // Outer wrapper div
+    const outerDiv = document.createElement('div');
+    outerDiv.className = 'space-y-8';
+
+    // Legend
+    const legendFrag = _cloneTemplate('tpl-legend-divergence');
+    _applyLegendDots(legendFrag);
+    outerDiv.appendChild(legendFrag);
+
+    // Collect offline simulators
     const offlineSims = new Set();
     if (getState().currentSuiteData && getState().currentSuiteData.raw_results) {
         getState().currentSuiteData.raw_results.forEach(r => {
@@ -127,29 +223,59 @@ function renderDivergenceTables(report, panel, config = {}) {
         });
     }
 
-    // Unified Legend
-    html += `<div class="flex justify-start items-center space-x-4 text-xs text-gray-600 mb-4 p-2 bg-gray-50 rounded-lg border">
-                <span class="font-bold">Legend:</span>
-                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full ${STATUS_STYLES.success.legendDot} mr-1.5"></span>Perfect Match</span>
-                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full ${STATUS_STYLES.divergence.legendDot} mr-1.5"></span>Divergence</span>
-                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full ${STATUS_STYLES.offline.legendDot} mr-1.5"></span>Offline</span>
-                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full ${STATUS_STYLES.anomaly.legendDot} mr-1.5"></span>Anomaly</span>
-                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-white border border-dashed border-gray-300 mr-1.5"></span>N/A (Self)</span>
-            </div>`;
+    let found = false;
 
     const renderMat = (key, title) => {
         if (!report[key]) return;
         found = true;
-        html += `<div><h3 class="font-semibold text-gray-900 mt-4 mb-2">${renderTooltip(key, title)}</h3><div class="overflow-x-auto"><table class="matrix-table border-collapse border border-gray-300"><thead class="bg-gray-50"><tr><th class="border p-2"></th>${report.simulators.map(s => `<th class="sim-header border p-2 text-xs text-gray-500">${s}${getOptBadge(s, config)}</th>`).join('')}</tr></thead><tbody>`;
-        report.simulators.forEach((s1, i) => {
-            html += `<tr><th class="border p-2 text-xs text-left text-gray-500">${s1}${getOptBadge(s1, config)}</th>`;
-            report[key][i].forEach((val, j) => {
-                let bg = STATUS_STYLES.divergence.cell;
-                let txt = val.toFixed(4);
 
-                if (offlineSims.has(s1) || offlineSims.has(report.simulators[j])) {
-                    txt = "OFF";
-                    bg = STATUS_STYLES.offline.cell;
+        const secFrag = _cloneTemplate('tpl-div-matrix-section');
+
+        // Title cell — supports tooltip
+        const h3 = secFrag.querySelector('.tpl-title');
+        h3.classList.remove('tpl-title');
+        h3.appendChild(renderTooltip(key, title));
+
+        // Column headers row
+        const theadRow = secFrag.querySelector('thead tr');
+        report.simulators.forEach(s => {
+            const thFrag = _cloneTemplate('tpl-div-matrix-header-cell');
+            const th = thFrag.querySelector('th');
+            th.appendChild(document.createTextNode(s));
+            const badge = getOptBadge(s, config);
+            if (badge) th.appendChild(badge);
+            theadRow.appendChild(thFrag);
+        });
+
+        // Body rows
+        const tbody = secFrag.querySelector('.tpl-tbody');
+        tbody.classList.remove('tpl-tbody');
+
+        report.simulators.forEach((s1, i) => {
+            const tr = document.createElement('tr');
+
+            // Row header
+            const rhFrag = _cloneTemplate('tpl-div-matrix-row-header');
+            const rowTh = rhFrag.querySelector('th');
+            rowTh.appendChild(document.createTextNode(s1));
+            const rBadge = getOptBadge(s1, config);
+            if (rBadge) rowTh.appendChild(rBadge);
+            tr.appendChild(rhFrag);
+
+            // Data cells
+            report[key][i].forEach((val, j) => {
+                const cellFrag = _cloneTemplate('tpl-div-matrix-cell');
+                const td = cellFrag.querySelector('td');
+
+                let cellText = val.toFixed(4);
+                let bgClasses = STATUS_STYLES.divergence.cell;
+
+                if (i === j) {
+                    bgClasses = STATUS_STYLES.neutral.cell;
+                    cellText = '-';
+                } else if (offlineSims.has(s1) || offlineSims.has(report.simulators[j])) {
+                    cellText = 'OFF';
+                    bgClasses = STATUS_STYLES.offline.cell;
                 } else {
                     const epsilon = 1e-9;
                     let isPerfectMatch = false;
@@ -158,27 +284,27 @@ function renderDivergenceTables(report, panel, config = {}) {
                     if ((key.includes('js_divergence') || key.includes('hellinger')) && Math.abs(val) < epsilon) isPerfectMatch = true;
 
                     if (isPerfectMatch) {
-                        bg = STATUS_STYLES.success.cell;
+                        bgClasses = STATUS_STYLES.success.cell;
                         if (key.includes('js_divergence') || key.includes('hellinger') || (key.includes('phase') && Math.abs(val) < epsilon)) {
-                            txt = "0.000";
+                            cellText = '0.000';
                         } else {
-                            txt = "1.000";
+                            cellText = '1.000';
                         }
                     } else if (val === -1.0) {
-                        txt = "ERR";
-                        bg = STATUS_STYLES.anomaly.cell;
+                        cellText = 'ERR';
+                        bgClasses = STATUS_STYLES.anomaly.cell;
                     }
                 }
 
-                if (i === j) {
-                    bg = STATUS_STYLES.neutral.cell;
-                    txt = "-";
-                }
-                html += `<td class="border p-2 text-xs text-center font-mono ${bg}">${txt}</td>`;
+                bgClasses.split(' ').forEach(c => td.classList.add(c));
+                td.textContent = cellText;
+                tr.appendChild(cellFrag);
             });
-            html += `</tr>`;
+
+            tbody.appendChild(tr);
         });
-        html += `</tbody></table></div></div>`;
+
+        outerDiv.appendChild(secFrag);
     };
 
     renderMat('fidelity_matrix', 'Fidelity Matrix');
@@ -186,9 +312,14 @@ function renderDivergenceTables(report, panel, config = {}) {
     renderMat('statistical_distance_matrix (js_divergence)', 'JS Divergence Matrix');
     renderMat('hellinger_distance_matrix', 'Hellinger Distance Matrix (Geometric)');
 
-    if (!found) html += `<p class="text-gray-500 mt-4">No matrices available.</p>`;
-    html += `</div>`;
-    panel.innerHTML = html;
+    if (!found) {
+        const p = document.createElement('p');
+        p.className = 'text-gray-500 mt-4';
+        p.textContent = 'No matrices available.';
+        outerDiv.appendChild(p);
+    }
+
+    panel.appendChild(outerDiv);
 }
 
 function viewDetail(index) {
