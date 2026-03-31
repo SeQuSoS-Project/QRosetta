@@ -37,3 +37,26 @@ app.py
 # Offline Data (Local testing)
 rosetta-api/data/qa_rosetta.db
 rosetta-api/data/s3_storage_mock/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Type Checking
+.mypy_cache/
+
+# Jupyter Notebooks (Common in Quantum simulation)
+.ipynb_checkpoints/
+
+# IDE & Editor extras
+.idea/
+*.swp
+*~
+
+# AI Assistant Files & Memory
+.claude/
+memory/
+.cursorrules
+.gemini/
