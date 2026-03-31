@@ -8,7 +8,7 @@
 const OPT_CAPS = {
     "default": 3,
     "qulacs": 2, "braket": 2, "quest": 2, "projectq": 2, "cirq": 2, "qsim-cirq": 2, "pyquil": 2, // Pytket caps
-    "qibo": 0, "myqlm": 0, // Own QASM parsers, pytket optimization not applicable
+    "qibo": 0, "myqlm": 0, "qrisp": 0, // Own QASM parsers, pytket optimization not applicable
     "pennylane-lightning": 3, "pennylane-default": 3, "qiskit": 3
 };
 
@@ -66,6 +66,7 @@ function renderConfigPanel() {
         { id: "cirq", name: "Cirq (Google)" },
         { id: "qsim-cirq", name: "qsim (Google)" },
         { id: "qibo", name: "Qibo" },
+        { id: "qrisp", name: "Qrisp" },
         { id: "myqlm", name: "myQLM (Eviden)" },
         { id: "pyquil", name: "PyQuil (Rigetti)" },
         { id: "projectq", name: "ProjectQ" },

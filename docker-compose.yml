@@ -162,6 +162,19 @@ services:
           cpus: "0.5"
           memory: "512M"
 
+  qrisp_runner:
+    build:
+      context: .
+      dockerfile: ./qrisp-runner/Dockerfile
+    container_name: qrisp-runner
+    networks:
+      - isolated_net
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "512M"
+
   myqlm_runner:
     build:
       context: .

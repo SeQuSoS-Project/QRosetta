@@ -1,3 +1,11 @@
+As of 31-3-20206:
+1. The first simulation after loading up the projects internally gives bad results. It should be discarded
+
+
+
+
+------------------------
+
 1. DONE: REMOVE legacy file suit.
 2. DONE: Add download option for all RAW JSON
 3. DONE: In the dropdown, add custom circuit option!
@@ -75,3 +83,4 @@ DEPLOY USER TO ALLAS/PUHTI/POUTA
 
 
 What to do what running circuits without login in
+
