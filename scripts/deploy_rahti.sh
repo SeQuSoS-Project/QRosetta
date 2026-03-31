@@ -34,6 +34,7 @@ SERVICES=(
     "pennylane-default-runner"
     "qsim-cirq-runner"
     "pyquil-runner"
+    "myqlm-runner"
 )
 
 echo "--- 1. Building and Pushing Images ---"

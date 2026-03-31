@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     PENNYLANE_LIGHTNING_RUNNER_URL: str = "http://pennylane-lightning-runner:8000"
     PENNYLANE_DEFAULT_RUNNER_URL: str = "http://pennylane-default-runner:8000"
     QSIM_CIRQ_RUNNER_URL: str = "http://qsim-cirq-runner:8000"
+    MYQLM_RUNNER_URL: str = "http://myqlm-runner:8000"
     PYQUIL_RUNNER_URL: str = "http://pyquil-runner:8000"
 
     # Timeouts
@@ -73,6 +74,10 @@ class Settings(BaseSettings):
             },
             "qsim-cirq": {
                 "base_url": self.QSIM_CIRQ_RUNNER_URL,
+                "capabilities": ["statevector", "measured_native"]
+            },
+            "myqlm": {
+                "base_url": self.MYQLM_RUNNER_URL,
                 "capabilities": ["statevector", "measured_native"]
             },
             "pyquil": {
