@@ -149,6 +149,19 @@ services:
           cpus: "0.5"
           memory: "512M"
 
+  pyquil_runner:
+    build:
+      context: .
+      dockerfile: ./pyquil-runner/Dockerfile
+    container_name: pyquil-runner
+    networks:
+      - isolated_net
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "512M"
+
   qsim_cirq_runner:
     build:
       context: .

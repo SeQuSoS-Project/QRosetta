@@ -7,7 +7,7 @@
 
 const OPT_CAPS = {
     "default": 3,
-    "qulacs": 2, "braket": 2, "quest": 2, "projectq": 2, "cirq": 2, "qsim-cirq": 2, // Pytket caps
+    "qulacs": 2, "braket": 2, "quest": 2, "projectq": 2, "cirq": 2, "qsim-cirq": 2, "pyquil": 2, // Pytket caps
     "pennylane-lightning": 3, "pennylane-default": 3, "qiskit": 3
 };
 
@@ -64,6 +64,7 @@ function renderConfigPanel() {
         { id: "quest", name: "QuEST" },
         { id: "cirq", name: "Cirq (Google)" },
         { id: "qsim-cirq", name: "qsim (Google)" },
+        { id: "pyquil", name: "PyQuil (Rigetti)" },
         { id: "projectq", name: "ProjectQ" },
         { id: "pennylane-lightning", name: "PL Lightning" },
         { id: "pennylane-default", name: "PL Default" }
