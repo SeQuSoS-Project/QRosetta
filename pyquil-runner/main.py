@@ -1,0 +1,154 @@
+from fastapi import FastAPI
+from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
+from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector
+import numpy as np
+import pytket.qasm
+from pytket.passes import RemoveBarriers
+from pytket.extensions.pyquil import tk_to_pyquil
+from pyquil import Program
+from pyquil.quilbase import Gate
+from pyquil.simulation import NumpyWavefunctionSimulator
+import time
+import gc
+
+logger = get_logger("pyquil-runner")
+
+app = FastAPI(title="PyQuil Runner")
+
+
+def _to_quil_program(qasm_str: str):
+    """Parse QASM via pytket and convert to a Quil Program."""
+    tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_str)
+    RemoveBarriers().apply(tk_circ)
+    return tk_to_pyquil(tk_circ), tk_circ.n_qubits
+
+
+def _gates_only(prog: Program) -> Program:
+    """Return a Program with only Gate instructions — strips MEASURE, DECLARE, HALT, etc."""
+    clean = Program()
+    for inst in prog.instructions:
+        if isinstance(inst, Gate):
+            clean += inst
+    return clean
+
+
+def _simulate_statevector(gate_prog: Program, n_qubits: int) -> np.ndarray:
+    """Apply gate instructions sequentially to |0> and return the statevector."""
+    sim = NumpyWavefunctionSimulator(n_qubits=n_qubits)
+    for inst in gate_prog.instructions:
+        if isinstance(inst, Gate):
+            sim.do_gate(inst)
+    return np.array(sim.wf).flatten()
+
+
+@app.post("/run")
+async def run_circuit(payload: CircuitPayload):
+    logger.info("Received circuit data for PyQuil simulation.")
+    try:
+        # --- COMPILATION ---
+        t0 = time.perf_counter()
+        prog, n_qubits = _to_quil_program(payload.circuit_data)
+        gate_prog = _gates_only(prog)
+        t1 = time.perf_counter()
+        compilation_time = t1 - t0
+
+        # --- WARM-UP ---
+        _simulate_statevector(gate_prog, n_qubits)
+
+        with MemoryMonitor(interval=0.01) as monitor:
+            gc.collect()
+
+            # --- SIMULATION ---
+            t2 = time.perf_counter()
+            statevector = _simulate_statevector(gate_prog, n_qubits)
+            t3 = time.perf_counter()
+            simulation_time = t3 - t2
+
+        memory_usage_mb = monitor.get_peak_usage_mb()
+        process_peak_mb = monitor.get_process_peak_mb()
+        execution_time = compilation_time + simulation_time
+
+        statevector_str = encode_statevector(statevector)
+        logger.info(
+            f"PyQuil simulation successful in {execution_time:.4f}s "
+            f"(Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s)."
+        )
+
+        return {
+            "simulator": "pyquil",
+            "statevector": statevector_str,
+            "execution_time_sec": execution_time,
+            "compilation_time_sec": compilation_time,
+            "simulation_time_sec": simulation_time,
+            "memory_usage_mb": memory_usage_mb,
+            "process_peak_mb": process_peak_mb
+        }
+    except Exception as e:
+        logger.error(f"Error during PyQuil simulation: {str(e)}")
+        return {
+            "simulator": "pyquil",
+            "error": str(e),
+            "execution_time_sec": 0.0,
+            "memory_usage_mb": 0.0,
+            "process_peak_mb": 0.0
+        }
+
+
+@app.post("/run_measured")
+async def run_measured_circuit(payload: MeasuredCircuitPayload):
+    logger.info("Received measured circuit data for PyQuil simulation.")
+    try:
+        # --- COMPILATION ---
+        t0 = time.perf_counter()
+        prog, n_qubits = _to_quil_program(payload.circuit_data)
+        gate_prog = _gates_only(prog)
+        t1 = time.perf_counter()
+        compilation_time = t1 - t0
+
+        # --- WARM-UP ---
+        _simulate_statevector(gate_prog, n_qubits)
+
+        with MemoryMonitor(interval=0.01) as monitor:
+            gc.collect()
+
+            # --- SIMULATION ---
+            t2 = time.perf_counter()
+            statevector = _simulate_statevector(gate_prog, n_qubits)
+            probs = np.abs(statevector) ** 2
+            probs /= probs.sum()
+            indices = np.random.choice(len(probs), size=payload.n_shots, p=probs)
+            t3 = time.perf_counter()
+            simulation_time = t3 - t2
+
+        memory_usage_mb = monitor.get_peak_usage_mb()
+        process_peak_mb = monitor.get_process_peak_mb()
+        execution_time = compilation_time + simulation_time
+
+        counts_dict = {}
+        for idx in indices:
+            bitstring = format(idx, f"0{n_qubits}b")
+            counts_dict[bitstring] = counts_dict.get(bitstring, 0) + 1
+
+        logger.info(
+            f"PyQuil measurement simulation successful in {execution_time:.4f}s "
+            f"(Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s)."
+        )
+
+        return {
+            "simulator": "pyquil",
+            "counts": counts_dict,
+            "execution_time_sec": execution_time,
+            "compilation_time_sec": compilation_time,
+            "simulation_time_sec": simulation_time,
+            "memory_usage_mb": memory_usage_mb,
+            "process_peak_mb": process_peak_mb
+        }
+    except Exception as e:
+        logger.error(f"Error during PyQuil measurement simulation: {str(e)}")
+        return {
+            "simulator": "pyquil",
+            "error": str(e),
+            "execution_time_sec": 0.0,
+            "memory_usage_mb": 0.0,
+            "process_peak_mb": 0.0
+        }

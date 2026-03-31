@@ -21,6 +21,8 @@ RUNNERS=(
   "quest_runner"
   "pennylane_runner"
   "pennylane_default_runner"
+  "qsim_cirq_runner"
+  "pyquil_runner"
 )
 
 echo ">>> Starting Graceful Build..."

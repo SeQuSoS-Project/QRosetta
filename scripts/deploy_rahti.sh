@@ -32,6 +32,8 @@ SERVICES=(
     "pytket-quest-runner"
     "pennylane-lightning-runner"
     "pennylane-default-runner"
+    "qsim-cirq-runner"
+    "pyquil-runner"
 )
 
 echo "--- 1. Building and Pushing Images ---"
