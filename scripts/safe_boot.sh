@@ -24,6 +24,7 @@ RUNNERS=(
   "qsim_cirq_runner"
   "pyquil_runner"
   "myqlm_runner"
+  "qibo_runner"
 )
 
 echo ">>> Starting Graceful Build..."

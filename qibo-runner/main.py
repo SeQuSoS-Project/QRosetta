@@ -5,52 +5,41 @@ import numpy as np
 import time
 import gc
 
-from qat.interop.openqasm import OqasmParser
-from qat.qpus import PyLinalg
+from qibo.models import Circuit
+from qibo import gates, set_backend
 
-logger = get_logger("myqlm-runner")
+set_backend("numpy")
 
-app = FastAPI(title="myQLM Runner")
+logger = get_logger("qibo-runner")
 
-_qpu = PyLinalg()
-
-
-def _compile_circuit(qasm_str: str):
-    """Parse QASM 2.0 into a myQLM Circuit. Fresh parser per call — OqasmParser is stateful."""
-    return OqasmParser().compile(qasm_str)
+app = FastAPI(title="Qibo Runner")
 
 
-def _get_statevector(circuit) -> np.ndarray:
-    """Run PyLinalg with nbshots=0 and return the statevector."""
-    n_qubits = circuit.nbqbits
-    job = circuit.to_job(job_type="SAMPLE", nbshots=0)
-    result = _qpu.submit(job)
-    sv = np.zeros(2 ** n_qubits, dtype=complex)
-    for sample in result:
-        if sample.amplitude is not None:
-            sv[sample.state.int] = sample.amplitude
-    return sv
+def _parse(qasm_str: str) -> Circuit:
+    """Parse QASM 2.0 into a Qibo Circuit."""
+    return Circuit.from_qasm(qasm_str)
 
 
 @app.post("/run")
 async def run_circuit(payload: CircuitPayload):
-    logger.info("Received circuit data for myQLM simulation.")
+    logger.info("Received circuit data for Qibo simulation.")
     try:
         # --- COMPILATION ---
         t0 = time.perf_counter()
-        circuit = _compile_circuit(payload.circuit_data)
+        circuit = _parse(payload.circuit_data)
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
         # --- WARM-UP ---
-        _get_statevector(circuit)
+        circuit()
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
             # --- SIMULATION ---
             t2 = time.perf_counter()
-            statevector = _get_statevector(circuit)
+            result = circuit()
+            statevector = np.array(result.state())
             t3 = time.perf_counter()
             simulation_time = t3 - t2
 
@@ -60,12 +49,12 @@ async def run_circuit(payload: CircuitPayload):
 
         statevector_str = encode_statevector(statevector)
         logger.info(
-            f"myQLM simulation successful in {execution_time:.4f}s "
+            f"Qibo simulation successful in {execution_time:.4f}s "
             f"(Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s)."
         )
 
         return {
-            "simulator": "myqlm",
+            "simulator": "qibo",
             "statevector": statevector_str,
             "execution_time_sec": execution_time,
             "compilation_time_sec": compilation_time,
@@ -74,9 +63,9 @@ async def run_circuit(payload: CircuitPayload):
             "process_peak_mb": process_peak_mb
         }
     except Exception as e:
-        logger.error(f"Error during myQLM simulation: {str(e)}")
+        logger.error(f"Error during Qibo simulation: {str(e)}")
         return {
-            "simulator": "myqlm",
+            "simulator": "qibo",
             "error": str(e),
             "execution_time_sec": 0.0,
             "memory_usage_mb": 0.0,
@@ -86,27 +75,27 @@ async def run_circuit(payload: CircuitPayload):
 
 @app.post("/run_measured")
 async def run_measured_circuit(payload: MeasuredCircuitPayload):
-    logger.info("Received measured circuit data for myQLM simulation.")
+    logger.info("Received measured circuit data for Qibo simulation.")
     try:
         # --- COMPILATION ---
         t0 = time.perf_counter()
-        circuit = _compile_circuit(payload.circuit_data)
-        n_qubits = circuit.nbqbits
+        circuit = _parse(payload.circuit_data)
+        # Ensure all qubits are measured (add terminal measurement if absent)
+        if not circuit.measurements:
+            circuit.add(gates.M(*range(circuit.nqubits)))
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
-        # nbshots=0 rejects circuits with measurement gates, so sample natively.
-        job = circuit.to_job(job_type="SAMPLE", nbshots=payload.n_shots)
-
         # --- WARM-UP ---
-        _qpu.submit(job)
+        circuit(nshots=payload.n_shots)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
             # --- SIMULATION ---
             t2 = time.perf_counter()
-            result = _qpu.submit(job)
+            result = circuit(nshots=payload.n_shots)
+            counts_dict = dict(result.frequencies())
             t3 = time.perf_counter()
             simulation_time = t3 - t2
 
@@ -114,25 +103,13 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         process_peak_mb = monitor.get_process_peak_mb()
         execution_time = compilation_time + simulation_time
 
-        # PyLinalg returns probabilities, not raw counts — reconstruct and normalise.
-        counts_dict = {
-            format(sample.state.int, f"0{n_qubits}b"): round(sample.probability * payload.n_shots)
-            for sample in result
-            if round(sample.probability * payload.n_shots) > 0
-        }
-        # Correct rounding drift so total equals exactly n_shots.
-        diff = payload.n_shots - sum(counts_dict.values())
-        if diff != 0 and counts_dict:
-            top = max(counts_dict, key=counts_dict.get)
-            counts_dict[top] += diff
-
         logger.info(
-            f"myQLM measurement simulation successful in {execution_time:.4f}s "
+            f"Qibo measurement simulation successful in {execution_time:.4f}s "
             f"(Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s)."
         )
 
         return {
-            "simulator": "myqlm",
+            "simulator": "qibo",
             "counts": counts_dict,
             "execution_time_sec": execution_time,
             "compilation_time_sec": compilation_time,
@@ -141,9 +118,9 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "process_peak_mb": process_peak_mb
         }
     except Exception as e:
-        logger.error(f"Error during myQLM measurement simulation: {str(e)}")
+        logger.error(f"Error during Qibo measurement simulation: {str(e)}")
         return {
-            "simulator": "myqlm",
+            "simulator": "qibo",
             "error": str(e),
             "execution_time_sec": 0.0,
             "memory_usage_mb": 0.0,

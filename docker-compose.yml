@@ -149,6 +149,19 @@ services:
           cpus: "0.5"
           memory: "512M"
 
+  qibo_runner:
+    build:
+      context: .
+      dockerfile: ./qibo-runner/Dockerfile
+    container_name: qibo-runner
+    networks:
+      - isolated_net
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "512M"
+
   myqlm_runner:
     build:
       context: .
