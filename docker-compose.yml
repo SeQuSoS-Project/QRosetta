@@ -149,6 +149,19 @@ services:
           cpus: "0.5"
           memory: "512M"
 
+  qsim_cirq_runner:
+    build:
+      context: .
+      dockerfile: ./qsim-cirq-runner/Dockerfile
+    container_name: qsim-cirq-runner
+    networks:
+      - isolated_net
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "512M"
+
 # --- NETWORK DEFINITIONS ---
 networks:
   public_net:
