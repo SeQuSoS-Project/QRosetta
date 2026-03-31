@@ -398,3 +398,45 @@ items:
     - port: 8000
       targetPort: 8000
       protocol: TCP
+
+# --- 13. Qrisp Runner ---
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: qrisp-runner
+    labels:
+      app: qrisp-runner
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: qrisp-runner
+    template:
+      metadata:
+        labels:
+          app: qrisp-runner
+      spec:
+        containers:
+        - name: runner
+          image: image-registry.apps.2.rahti.csc.fi/qrosetta/qrisp-runner:latest
+          ports:
+          - containerPort: 8000
+          resources:
+            limits:
+              cpu: "0.5"
+              memory: "512Mi"
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: qrisp-runner
+  spec:
+    type: ClusterIP
+    selector:
+      app: qrisp-runner
+    ports:
+    - port: 8000
+      targetPort: 8000
+      protocol: TCP

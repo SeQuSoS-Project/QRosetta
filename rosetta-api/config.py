@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     PENNYLANE_DEFAULT_RUNNER_URL: str = "http://pennylane-default-runner:8000"
     QSIM_CIRQ_RUNNER_URL: str = "http://qsim-cirq-runner:8000"
     QIBO_RUNNER_URL: str = "http://qibo-runner:8000"
+    QRISP_RUNNER_URL: str = "http://qrisp-runner:8000"
     MYQLM_RUNNER_URL: str = "http://myqlm-runner:8000"
     PYQUIL_RUNNER_URL: str = "http://pyquil-runner:8000"
 
@@ -79,6 +80,10 @@ class Settings(BaseSettings):
             },
             "qibo": {
                 "base_url": self.QIBO_RUNNER_URL,
+                "capabilities": ["statevector", "measured_native"]
+            },
+            "qrisp": {
+                "base_url": self.QRISP_RUNNER_URL,
                 "capabilities": ["statevector", "measured_native"]
             },
             "myqlm": {

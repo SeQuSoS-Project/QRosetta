@@ -36,6 +36,7 @@ SERVICES=(
     "pyquil-runner"
     "myqlm-runner"
     "qibo-runner"
+    "qrisp-runner"
 )
 
 echo "--- 1. Building and Pushing Images ---"
