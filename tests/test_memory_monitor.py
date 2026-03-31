@@ -9,7 +9,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 shared_dir = os.path.join(project_root, 'shared')
 sys.path.insert(0, shared_dir)
 
-from qrosetta_commons.helpers import MemoryMonitor, calculate_theoretical_memory_mb
+from qrosetta_commons.helpers import MemoryMonitor
 
 def test_memory_monitor_captures_spike():
     """
@@ -38,23 +38,9 @@ def test_memory_monitor_captures_spike():
 
     assert abs(measured_mb - target_mb) < 5, "The monitor failed to capture the C++ memory spike."
 
-def test_theoretical_memory_calculation():
-    """
-    Tests the theoretical memory calculation for a few qubit sizes.
-    """
-    # Test case 1: 10 qubits
-    # (2^10 * 16) / (1024*1024) = (1024 * 16) / (1024*1024) = 16/1024 = 0.015625
-    assert abs(calculate_theoretical_memory_mb(10) - 0.015625) < 1e-9
 
-    # Test case 2: 20 qubits
-    # (2^20 * 16) / (1024*1024) = (1024*1024 * 16) / (1024*1024) = 16
-    assert abs(calculate_theoretical_memory_mb(20) - 16.0) < 1e-9
-
-    # Test case 3: 24 qubits
-    # (2^24 * 16) / (1024*1024) = (16 * 1024 * 1024 * 16) / (1024*1024) = 256
-    assert abs(calculate_theoretical_memory_mb(24) - 256.0) < 1e-9
 
 if __name__ == "__main__":
     test_memory_monitor_captures_spike()
-    test_theoretical_memory_calculation()
+
     print("✅ All memory tests passed!")

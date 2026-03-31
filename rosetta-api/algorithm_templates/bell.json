@@ -1,0 +1,9 @@
+{
+  "id": "bell",
+  "name": "Bell State (Simple)",
+  "min_qubits": 2,
+  "max_qubits": 2,
+  "default_qubits": 2,
+  "description": "Maximally entangled state on 2 qubits.",
+  "code": "if n_qubits < 2:\n    raise ValueError(\"Bell state requires at least 2 qubits.\")\n\ncirc = Circuit(n_qubits)\ncirc.H(0)\ncirc.CX(0, 1)\n\nqasm = circuit_to_qasm_str(circ)"
+}

@@ -1,0 +1,442 @@
+apiVersion: v1
+kind: List
+items:
+# --- 1. Qiskit Runner ---
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: pytket-qiskit-runner
+    labels:
+      app: pytket-qiskit-runner
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: pytket-qiskit-runner
+    strategy:
+      type: Recreate
+    template:
+      metadata:
+        labels:
+          app: pytket-qiskit-runner
+      spec:
+        containers:
+        - name: runner
+          image: image-registry.apps.2.rahti.csc.fi/qrosetta/pytket-qiskit-runner:latest
+          imagePullPolicy: Always
+          env:
+          - name: OMP_NUM_THREADS
+            value: "1"
+          - name: MKL_NUM_THREADS
+            value: "1"
+          - name: OPENBLAS_NUM_THREADS
+            value: "1"
+          - name: NUMEXPR_NUM_THREADS
+            value: "1"
+          ports:
+          - containerPort: 8000
+          resources:
+            limits:
+              cpu: "0.25"
+              memory: "512Mi"
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: pytket-qiskit-runner
+  spec:
+    type: ClusterIP
+    selector:
+      app: pytket-qiskit-runner
+    ports:
+    - port: 8000
+      targetPort: 8000
+      protocol: TCP
+
+# --- 2. Cirq Runner ---
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: pytket-cirq-runner
+    labels:
+      app: pytket-cirq-runner
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: pytket-cirq-runner
+    template:
+      metadata:
+        labels:
+          app: pytket-cirq-runner
+      spec:
+        containers:
+        - name: runner
+          image: image-registry.apps.2.rahti.csc.fi/qrosetta/pytket-cirq-runner:latest
+          imagePullPolicy: Always
+          env:
+          - name: OMP_NUM_THREADS
+            value: "1"
+          - name: MKL_NUM_THREADS
+            value: "1"
+          - name: OPENBLAS_NUM_THREADS
+            value: "1"
+          - name: NUMEXPR_NUM_THREADS
+            value: "1"
+          ports:
+          - containerPort: 8000
+          resources:
+            limits:
+              cpu: "0.25"
+              memory: "512Mi"
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: pytket-cirq-runner
+  spec:
+    type: ClusterIP
+    selector:
+      app: pytket-cirq-runner
+    ports:
+    - port: 8000
+      targetPort: 8000
+      protocol: TCP
+
+# --- 3. Qulacs Runner ---
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: pytket-qulacs-runner
+    labels:
+      app: pytket-qulacs-runner
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: pytket-qulacs-runner
+    template:
+      metadata:
+        labels:
+          app: pytket-qulacs-runner
+      spec:
+        containers:
+        - name: runner
+          image: image-registry.apps.2.rahti.csc.fi/qrosetta/pytket-qulacs-runner:latest
+          imagePullPolicy: Always
+          env:
+          - name: OMP_NUM_THREADS
+            value: "1"
+          - name: MKL_NUM_THREADS
+            value: "1"
+          - name: OPENBLAS_NUM_THREADS
+            value: "1"
+          - name: NUMEXPR_NUM_THREADS
+            value: "1"
+          ports:
+          - containerPort: 8000
+          resources:
+            limits:
+              cpu: "0.25"
+              memory: "512Mi"
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: pytket-qulacs-runner
+  spec:
+    type: ClusterIP
+    selector:
+      app: pytket-qulacs-runner
+    ports:
+    - port: 8000
+      targetPort: 8000
+      protocol: TCP
+
+# --- 4. Braket Runner ---
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: pytket-braket-runner
+    labels:
+      app: pytket-braket-runner
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: pytket-braket-runner
+    template:
+      metadata:
+        labels:
+          app: pytket-braket-runner
+      spec:
+        containers:
+        - name: runner
+          image: image-registry.apps.2.rahti.csc.fi/qrosetta/pytket-braket-runner:latest
+          imagePullPolicy: Always
+          env:
+          - name: OMP_NUM_THREADS
+            value: "1"
+          - name: MKL_NUM_THREADS
+            value: "1"
+          - name: OPENBLAS_NUM_THREADS
+            value: "1"
+          - name: NUMEXPR_NUM_THREADS
+            value: "1"
+          ports:
+          - containerPort: 8000
+          resources:
+            limits:
+              cpu: "0.25"
+              memory: "512Mi"
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: pytket-braket-runner
+  spec:
+    type: ClusterIP
+    selector:
+      app: pytket-braket-runner
+    ports:
+    - port: 8000
+      targetPort: 8000
+      protocol: TCP
+
+# --- 5. ProjectQ Runner ---
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: pytket-projectq-runner
+    labels:
+      app: pytket-projectq-runner
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: pytket-projectq-runner
+    template:
+      metadata:
+        labels:
+          app: pytket-projectq-runner
+      spec:
+        containers:
+        - name: runner
+          image: image-registry.apps.2.rahti.csc.fi/qrosetta/pytket-projectq-runner:latest
+          imagePullPolicy: Always
+          env:
+          - name: OMP_NUM_THREADS
+            value: "1"
+          - name: MKL_NUM_THREADS
+            value: "1"
+          - name: OPENBLAS_NUM_THREADS
+            value: "1"
+          - name: NUMEXPR_NUM_THREADS
+            value: "1"
+          ports:
+          - containerPort: 8000
+          resources:
+            limits:
+              cpu: "0.25"
+              memory: "512Mi"
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: pytket-projectq-runner
+  spec:
+    type: ClusterIP
+    selector:
+      app: pytket-projectq-runner
+    ports:
+    - port: 8000
+      targetPort: 8000
+      protocol: TCP
+
+# --- 6. QuEST Runner ---
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: pytket-quest-runner
+    labels:
+      app: pytket-quest-runner
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: pytket-quest-runner
+    template:
+      metadata:
+        labels:
+          app: pytket-quest-runner
+      spec:
+        containers:
+        - name: runner
+          image: image-registry.apps.2.rahti.csc.fi/qrosetta/pytket-quest-runner:latest
+          imagePullPolicy: Always
+          env:
+          - name: OMP_NUM_THREADS
+            value: "1"
+          - name: MKL_NUM_THREADS
+            value: "1"
+          - name: OPENBLAS_NUM_THREADS
+            value: "1"
+          - name: NUMEXPR_NUM_THREADS
+            value: "1"
+          ports:
+          - containerPort: 8000
+          resources:
+            limits:
+              cpu: "0.25"
+              memory: "512Mi"
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: pytket-quest-runner
+  spec:
+    type: ClusterIP
+    selector:
+      app: pytket-quest-runner
+    ports:
+    - port: 8000
+      targetPort: 8000
+      protocol: TCP
+
+# --- 7. PennyLane Lightning Runner ---
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: pennylane-lightning-runner
+    labels:
+      app: pennylane-lightning-runner
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: pennylane-lightning-runner
+    template:
+      metadata:
+        labels:
+          app: pennylane-lightning-runner
+      spec:
+        containers:
+        - name: runner
+          image: image-registry.apps.2.rahti.csc.fi/qrosetta/pennylane-lightning-runner:latest
+          ports:
+          - containerPort: 8000
+          resources:
+            limits:
+              cpu: "0.5"
+              memory: "512Mi"
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: pennylane-lightning-runner
+  spec:
+    type: ClusterIP
+    selector:
+      app: pennylane-lightning-runner
+    ports:
+    - port: 8000
+      targetPort: 8000
+      protocol: TCP
+
+# --- 8. PennyLane Default Runner ---
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: pennylane-default-runner
+    labels:
+      app: pennylane-default-runner
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: pennylane-default-runner
+    template:
+      metadata:
+        labels:
+          app: pennylane-default-runner
+      spec:
+        containers:
+        - name: runner
+          image: image-registry.apps.2.rahti.csc.fi/qrosetta/pennylane-default-runner:latest
+          ports:
+          - containerPort: 8000
+          resources:
+            limits:
+              cpu: "0.5"
+              memory: "512Mi"
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: pennylane-default-runner
+  spec:
+    type: ClusterIP
+    selector:
+      app: pennylane-default-runner
+    ports:
+    - port: 8000
+      targetPort: 8000
+      protocol: TCP
+
+# --- 13. Qrisp Runner ---
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: qrisp-runner
+    labels:
+      app: qrisp-runner
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: qrisp-runner
+    template:
+      metadata:
+        labels:
+          app: qrisp-runner
+      spec:
+        containers:
+        - name: runner
+          image: image-registry.apps.2.rahti.csc.fi/qrosetta/qrisp-runner:latest
+          ports:
+          - containerPort: 8000
+          resources:
+            limits:
+              cpu: "0.5"
+              memory: "512Mi"
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: qrisp-runner
+  spec:
+    type: ClusterIP
+    selector:
+      app: qrisp-runner
+    ports:
+    - port: 8000
+      targetPort: 8000
+      protocol: TCP

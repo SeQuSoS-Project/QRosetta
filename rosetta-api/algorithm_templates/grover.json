@@ -1,0 +1,9 @@
+{
+  "id": "grover",
+  "name": "Grover Search (Oracle)",
+  "min_qubits": 2,
+  "max_qubits": 14,
+  "default_qubits": 3,
+  "description": "Grover's algorithm with a dummy oracle (limited to 14 qubits for browser safety due to depth).",
+  "code": "if n_qubits < 2:\n    raise ValueError(\"Grover search requires at least 2 qubits.\")\n\ncirc = Circuit(n_qubits)\n\nfor i in range(n_qubits):\n    circ.H(i)\n    \nfor i in range(n_qubits):\n    circ.X(i)\n\ncontrols = list(range(n_qubits - 1))\ncirc.H(n_qubits - 1)\ncirc.add_gate(OpType.CnX, controls + [n_qubits - 1])\ncirc.H(n_qubits - 1)\n\nfor i in range(n_qubits):\n    circ.X(i)\n    \nfor i in range(n_qubits):\n    circ.H(i)\n    circ.X(i)\n    \ncirc.H(n_qubits - 1)\ncirc.add_gate(OpType.CnX, controls + [n_qubits - 1])\ncirc.H(n_qubits - 1)\n\nfor i in range(n_qubits):\n    circ.X(i)\n    circ.H(i)\n\nTransform.CnXPairwiseDecomposition().apply(circ)\nTransform.DecomposeCCX().apply(circ)\n\nqasm = circuit_to_qasm_str(circ)"
+}

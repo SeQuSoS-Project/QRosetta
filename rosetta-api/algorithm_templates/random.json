@@ -1,0 +1,9 @@
+{
+  "id": "random",
+  "name": "Random Circuit",
+  "min_qubits": 2,
+  "max_qubits": 20,
+  "default_qubits": 5,
+  "description": "Random gates to defeat compiler optimizations.",
+  "code": "if n_qubits < 2:\n    raise ValueError(\"Random circuit requires at least 2 qubits.\")\n\ncirc = Circuit(n_qubits)\ndepth = n_qubits\n\nfor _ in range(depth):\n    q = random.randint(0, n_qubits - 1)\n    circ.Rz(0.5, q)\n    \n    q1 = random.randint(0, n_qubits - 1)\n    q2 = random.randint(0, n_qubits - 1)\n    while q1 == q2:\n        q2 = random.randint(0, n_qubits - 1)\n        \n    circ.CX(q1, q2)\n    \nqasm = circuit_to_qasm_str(circ)"
+}
