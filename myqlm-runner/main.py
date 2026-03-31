@@ -12,13 +12,12 @@ logger = get_logger("myqlm-runner")
 
 app = FastAPI(title="myQLM Runner")
 
-_parser = OqasmParser()
 _qpu = PyLinalg()
 
 
 def _compile_circuit(qasm_str: str):
-    """Parse QASM 2.0 into a myQLM Circuit via OqasmParser.compile()."""
-    return _parser.compile(qasm_str)
+    """Parse QASM 2.0 into a myQLM Circuit. Fresh parser per call — OqasmParser is stateful."""
+    return OqasmParser().compile(qasm_str)
 
 
 def _get_statevector(circuit) -> np.ndarray:
@@ -96,18 +95,18 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
+        # nbshots=0 rejects circuits with measurement gates, so sample natively.
+        job = circuit.to_job(job_type="SAMPLE", nbshots=payload.n_shots)
+
         # --- WARM-UP ---
-        _get_statevector(circuit)
+        _qpu.submit(job)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
             # --- SIMULATION ---
             t2 = time.perf_counter()
-            statevector = _get_statevector(circuit)
-            probs = np.abs(statevector) ** 2
-            probs /= probs.sum()
-            indices = np.random.choice(len(probs), size=payload.n_shots, p=probs)
+            result = _qpu.submit(job)
             t3 = time.perf_counter()
             simulation_time = t3 - t2
 
@@ -115,10 +114,17 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         process_peak_mb = monitor.get_process_peak_mb()
         execution_time = compilation_time + simulation_time
 
-        counts_dict = {}
-        for idx in indices:
-            bitstring = format(idx, f"0{n_qubits}b")
-            counts_dict[bitstring] = counts_dict.get(bitstring, 0) + 1
+        # PyLinalg returns probabilities, not raw counts — reconstruct and normalise.
+        counts_dict = {
+            format(sample.state.int, f"0{n_qubits}b"): round(sample.probability * payload.n_shots)
+            for sample in result
+            if round(sample.probability * payload.n_shots) > 0
+        }
+        # Correct rounding drift so total equals exactly n_shots.
+        diff = payload.n_shots - sum(counts_dict.values())
+        if diff != 0 and counts_dict:
+            top = max(counts_dict, key=counts_dict.get)
+            counts_dict[top] += diff
 
         logger.info(
             f"myQLM measurement simulation successful in {execution_time:.4f}s "

@@ -35,6 +35,7 @@ SERVICES=(
     "qsim-cirq-runner"
     "pyquil-runner"
     "myqlm-runner"
+    "qibo-runner"
 )
 
 echo "--- 1. Building and Pushing Images ---"
