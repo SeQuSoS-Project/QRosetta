@@ -1,0 +1,9 @@
+{
+  "id": "qft",
+  "name": "Quantum Fourier Transform",
+  "min_qubits": 1,
+  "max_qubits": 20,
+  "default_qubits": 3,
+  "description": "Standard QFT circuit (without inverse).",
+  "code": "if n_qubits < 1:\n    raise ValueError(\"QFT requires at least 1 qubit.\")\n\ncirc = Circuit(n_qubits)\n\nfor i in range(n_qubits):\n    circ.H(i)\n    for j in range(i + 1, n_qubits):\n        # Angle is in half-turns (1 = pi, 0.5 = pi/2)\n        angle = 1 / (2**(j - i))\n        circ.CU1(angle, j, i)\n    circ.add_barrier(range(n_qubits))\n        \nfor i in range(n_qubits // 2):\n    circ.SWAP(i, n_qubits - 1 - i)\n    \nqasm = circuit_to_qasm_str(circ)"
+}

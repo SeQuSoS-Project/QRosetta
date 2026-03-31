@@ -7,6 +7,8 @@ import os
 import logging
 import sys
 
+import base64
+
 def get_logger(service_name: str) -> logging.Logger:
     """
     Configures a structured logger that outputs to stdout.
@@ -30,12 +32,26 @@ def get_logger(service_name: str) -> logging.Logger:
     
     return logger
 
-def calculate_theoretical_memory_mb(num_qubits):
+def encode_statevector(statevector: np.ndarray) -> str:
     """
-    Calculates the theoretical memory required to store a statevector in MB.
-    Formula: (2^num_qubits * 16) / (1024 * 1024), where 16 bytes are for complex128.
+    Serializes a NumPy array (complex128) to a Base64 string.
     """
-    return (2**num_qubits * 16) / (1024 * 1024)
+    # Ensure it's complex128
+    if statevector.dtype != np.complex128:
+        statevector = statevector.astype(np.complex128)
+    return base64.b64encode(statevector.tobytes()).decode('utf-8')
+
+def decode_statevector(encoded_str: str) -> np.ndarray:
+    """
+    Deserializes a Base64 string back to a NumPy array (complex128).
+    """
+    try:
+        bytes_data = base64.b64decode(encoded_str)
+        return np.frombuffer(bytes_data, dtype=np.complex128)
+    except Exception as e:
+        # Fallback for legacy list-of-strings format if needed, or just re-raise
+        raise ValueError(f"Failed to decode statevector: {e}")
+
 
 def _sample_from_statevector(statevector, n_shots, n_qubits):
     """
@@ -106,3 +122,27 @@ class MemoryMonitor:
     def get_process_peak_mb(self):
         # Absolute peak RSS memory usage of the process
         return self.peak_memory / (1024 * 1024)
+
+def get_num_qubits_from_qasm(qasm_string: str) -> int:
+    """
+    Parses QASM string to find the size of the 'qreg'.
+    Returns 0 if not found (or raises error if strict).
+    """
+    for line in qasm_string.split('\n'):
+        if line.strip().startswith("qreg"):
+            try:
+                # Format: qreg q[5];
+                return int(line.split('[')[1].split(']')[0])
+            except Exception:
+                pass
+    return 0
+
+def check_qubits_limit(qasm_string: str, max_qubits: int = 24):
+    """
+    Raises ValueError if the circuit has more qubits than allowed.
+    24 qubits ~ 268 MB statevector (complex128).
+    25 qubits ~ 536 MB statevector (likely OOM on 512MB container).
+    """
+    n_qubits = get_num_qubits_from_qasm(qasm_string)
+    if n_qubits > max_qubits:
+        raise ValueError(f"Circuit has {n_qubits} qubits, which exceeds the limit of {max_qubits} for this runner.")

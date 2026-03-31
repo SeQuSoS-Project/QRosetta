@@ -1,11 +1,13 @@
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
 import pytket.qasm
+import numpy as np
 from pytket.extensions.qiskit import tk_to_qiskit
 from qiskit_aer import AerSimulator
 from qiskit.circuit import QuantumCircuit
 import time
-from qrosetta_commons.helpers import MemoryMonitor, calculate_theoretical_memory_mb, get_logger
+import gc
+from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector
 
 logger = get_logger("pytket-qiskit-runner")
 
@@ -15,34 +17,45 @@ app = FastAPI(title="Qiskit Runner")
 async def run_circuit(payload: CircuitPayload):
     logger.info(f"Received circuit data for Qiskit simulation.")
     try:
+        # --- COMPILATION ---
+        t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
         qiskit_circ = tk_to_qiskit(tk_circ)
         qiskit_circ.save_statevector()
         backend = AerSimulator(precision="double")
+        t1 = time.perf_counter()
+        compilation_time = t1 - t0
         
-        with MemoryMonitor(interval=0.001) as monitor:
-            start_time = time.perf_counter()
+        # --- WARM-UP ---
+        _ = backend.run(qiskit_circ, optimization_level=0)
+
+        with MemoryMonitor(interval=0.01) as monitor:
+            gc.collect()
             
-            job = backend.run(qiskit_circ, optimization_level=0)
+            # --- SIMULATION ---
+            # --- SIMULATION ---
+            t2 = time.perf_counter()
+            job = backend.run(qiskit_circ, optimization_level=payload.optimization_level)
             result = job.result()
             statevector = result.get_statevector()
+            t3 = time.perf_counter()
+            simulation_time = t3 - t2
             
-            end_time = time.perf_counter()
-
         memory_usage_mb = monitor.get_peak_usage_mb()
         process_peak_mb = monitor.get_process_peak_mb()
-        theoretical_mb = calculate_theoretical_memory_mb(tk_circ.n_qubits)
-        execution_time = end_time - start_time
+
+        execution_time = compilation_time + simulation_time
         
-        statevector_str = [str(c) for c in statevector]
-        logger.info(f"Qiskit simulation successful in {execution_time:.4f}s.")
+        statevector_str = encode_statevector(np.array(statevector))
+        logger.info(f"Qiskit simulation successful in {execution_time:.4f}s (Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s).")
         
         return {
             "simulator": "qiskit",
             "statevector": statevector_str,
             "execution_time_sec": execution_time,
+            "compilation_time_sec": compilation_time,
+            "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
-            "theoretical_memory_mb": theoretical_mb,
             "process_peak_mb": process_peak_mb
         }
     except Exception as e:
@@ -52,7 +65,6 @@ async def run_circuit(payload: CircuitPayload):
             "error": str(e),
             "execution_time_sec": 0.0,
             "memory_usage_mb": 0.0,
-            "theoretical_memory_mb": 0.0,
             "process_peak_mb": 0.0
         }
 
@@ -60,25 +72,35 @@ async def run_circuit(payload: CircuitPayload):
 async def run_measured_circuit(payload: MeasuredCircuitPayload):
     logger.info(f"Received measured circuit data for Qiskit simulation.")
     try:
+        # --- COMPILATION ---
+        t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
         qiskit_circ = tk_to_qiskit(tk_circ)
         backend = AerSimulator(precision="double")
+        t1 = time.perf_counter()
+        compilation_time = t1 - t0
 
-        with MemoryMonitor(interval=0.001) as monitor:
-            start_time = time.perf_counter()
+        # --- WARM-UP ---
+        _ = backend.run(qiskit_circ, optimization_level=0, shots=payload.n_shots)
+
+        with MemoryMonitor(interval=0.01) as monitor:
+            gc.collect()
             
+            # --- SIMULATION ---
+            # --- SIMULATION ---
+            t2 = time.perf_counter()
             job = backend.run(qiskit_circ, 
-                              optimization_level=0, 
+                              optimization_level=payload.optimization_level, 
                               shots=payload.n_shots)
             result = job.result()
             counts = result.get_counts()
+            t3 = time.perf_counter()
+            simulation_time = t3 - t2
             
-            end_time = time.perf_counter()
-
         memory_usage_mb = monitor.get_peak_usage_mb()
         process_peak_mb = monitor.get_process_peak_mb()
-        theoretical_mb = calculate_theoretical_memory_mb(tk_circ.n_qubits)
-        execution_time = end_time - start_time
+
+        execution_time = compilation_time + simulation_time
         
         num_clbits = qiskit_circ.num_clbits
         counts_dict = {}
@@ -92,14 +114,15 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         else:
             counts_dict = counts
 
-        logger.info(f"Qiskit measurement simulation successful in {execution_time:.4f}s.")
+        logger.info(f"Qiskit measurement simulation successful in {execution_time:.4f}s (Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s).")
         
         return {
             "simulator": "qiskit",
             "counts": counts_dict,
             "execution_time_sec": execution_time,
+            "compilation_time_sec": compilation_time,
+            "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
-            "theoretical_memory_mb": theoretical_mb,
             "process_peak_mb": process_peak_mb
         }
     except Exception as e:
@@ -109,6 +132,5 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "error": str(e),
             "execution_time_sec": 0.0,
             "memory_usage_mb": 0.0,
-            "theoretical_memory_mb": 0.0,
             "process_peak_mb": 0.0
         }

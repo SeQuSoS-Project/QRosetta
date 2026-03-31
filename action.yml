@@ -1,0 +1,87 @@
+# name: 'Quantum Rosetta Gatekeeper'
+# description: 'Runs a regression test on quantum simulators.'
+# inputs:
+#   algorithm:
+#     description: 'Algorithm to benchmark (e.g., ghz, qft)'
+#     required: true
+#     default: 'ghz'
+#   qubits:
+#     description: 'Number of qubits'
+#     required: true
+#     default: '5'
+#   shots:
+#     description: 'Number of shots (for measured mode)'
+#     required: false
+#     default: '1024'
+
+# runs:
+#   using: "composite"
+#   steps:
+#     - name: Spin up Quantum Rosetta Swarm
+#       shell: bash
+#       # We use -f docker-compose.yml explicitly.
+#       # --build is required because you are building from local source[cite: 50].
+#       run: |
+#         echo "🚀 Building and starting containers..."
+#         docker compose -f ${{ github.action_path }}/docker-compose.yml up -d --build
+
+#     - name: Wait for API Health
+#       shell: bash
+#       # We poll localhost:80 (Nginx) until it returns 200 OK
+#       run: |
+#         echo "Waiting for Rosetta API to come online..."
+#         timeout 120s bash -c 'until curl -s -f -o /dev/null "http://localhost:80/algorithms"; do sleep 5; done'
+#         echo "API is online!"
+
+#     - name: Execute Benchmark Suite
+#       shell: bash
+#       # We hit the /run_batch_suite endpoint 
+#       run: |
+#         echo "Running Benchmark: ${{ inputs.algorithm }} (${{ inputs.qubits }} qubits)..."
+        
+#         # Construct the JSON payload for your BatchPayload model [cite: 195]
+#         PAYLOAD=$(cat <<EOF
+#         {
+#           "tasks": [{"algorithm": "${{ inputs.algorithm }}", "qubits": ${{ inputs.qubits }}}],
+#           "n_shots": ${{ inputs.shots }},
+#           "mode": "statevector"
+#         }
+#         EOF
+#         )
+
+#         # Send request and save output to results.json
+#         curl -X POST "http://localhost:80/run_batch_suite" \
+#              -H "Content-Type: application/json" \
+#              -d "$PAYLOAD" \
+#              -s \
+#              -o results.json
+
+#         echo "Raw Results:"
+#         cat results.json | jq .
+
+#     - name: Analyze Results (Pass/Fail)
+#       shell: bash
+#       # We use jq to parse your 'benchmark_summary' [cite: 217] and check for 'error' keys.
+#       run: |
+#         # Check if the API returned a top-level error
+#         if jq -e '.error' results.json > /dev/null; then
+#           echo "API Error: $(jq -r '.error' results.json)"
+#           exit 1
+#         fi
+
+#         # Count how many tasks had errors in the summary 
+#         ERROR_COUNT=$(jq '[.benchmark_summary[] | select(.error != null)] | length' results.json)
+        
+#         if [ "$ERROR_COUNT" -gt "0" ]; then
+#           echo "Test Failed: $ERROR_COUNT runner(s) encountered errors."
+#           # Print the specific errors
+#           jq '.benchmark_summary[] | select(.error != null) | {task: .task_name, error: .error}' results.json
+#           exit 1
+#         else
+#           echo "All benchmarks passed successfully."
+#         fi
+
+#     - name: Teardown
+#       if: always()
+#       shell: bash
+#       run: docker compose -f ${{ github.action_path }}/docker-compose.yml down
