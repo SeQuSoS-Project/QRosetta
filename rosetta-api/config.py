@@ -45,69 +45,85 @@ class Settings(BaseSettings):
             # Category 1: Native Samplers (work with our modified QASM)
             "qiskit": {
                 "base_url": self.PYTKET_QISKIT_RUNNER_URL,
-                "capabilities": ["statevector", "measured_native"]
+                "capabilities": ["statevector", "measured_native"],
+                "enabled": True
             },
             "cirq":   {
                 "base_url": self.PYTKET_CIRQ_RUNNER_URL,
-                "capabilities": ["statevector", "measured_native"]
+                "capabilities": ["statevector", "measured_native"],
+                "enabled": True
             },
             "qulacs": {
                 "base_url": self.PYTKET_QULACS_RUNNER_URL,
-                "capabilities": ["statevector", "measured_native"]
+                "capabilities": ["statevector", "measured_native"],
+                "enabled": True
             },
             "braket": {
                 "base_url": self.PYTKET_BRAKET_RUNNER_URL,
-                "capabilities": ["statevector", "measured_native"]
+                "capabilities": ["statevector", "measured_native"],
+                "enabled": False  # Consistent errors — set True to re-enable
             },
-            
+
             # Category 2: Statevector Samplers (need original QASM)
             "projectq": {
                 "base_url": self.PYTKET_PROJECTQ_RUNNER_URL,
-                "capabilities": ["statevector", "measured_sampled"]
+                "capabilities": ["statevector", "measured_sampled"],
+                "enabled": False  # Consistent errors — set True to re-enable
             },
             "quest":  {
                 "base_url": self.PYTKET_QUEST_RUNNER_URL,
-                "capabilities": ["statevector", "measured_sampled"]
+                "capabilities": ["statevector", "measured_sampled"],
+                "enabled": True
             },
             "pennylane-lightning":  {
                 "base_url": self.PENNYLANE_LIGHTNING_RUNNER_URL,
-                "capabilities": ["statevector", "measured_sampled"]
+                "capabilities": ["statevector", "measured_sampled"],
+                "enabled": True
             },
             "pennylane-default":  {
                 "base_url": self.PENNYLANE_DEFAULT_RUNNER_URL,
-                "capabilities": ["statevector", "measured_sampled"]
+                "capabilities": ["statevector", "measured_sampled"],
+                "enabled": True
             },
             "qsim-cirq": {
                 "base_url": self.QSIM_CIRQ_RUNNER_URL,
-                "capabilities": ["statevector", "measured_native"]
+                "capabilities": ["statevector", "measured_native"],
+                "enabled": True
             },
             "qibo": {
                 "base_url": self.QIBO_RUNNER_URL,
-                "capabilities": ["statevector", "measured_native"]
+                "capabilities": ["statevector", "measured_native"],
+                "enabled": True
             },
             "qrisp": {
                 "base_url": self.QRISP_RUNNER_URL,
-                "capabilities": ["statevector", "measured_native"]
+                "capabilities": ["statevector", "measured_native"],
+                "enabled": True
             },
             "myqlm": {
                 "base_url": self.MYQLM_RUNNER_URL,
-                "capabilities": ["statevector", "measured_native"]
+                "capabilities": ["statevector", "measured_native"],
+                "enabled": True
             },
             "pyquil": {
                 "base_url": self.PYQUIL_RUNNER_URL,
-                "capabilities": ["statevector", "measured_native"]
+                "capabilities": ["statevector", "measured_native"],
+                "enabled": True
             },
             "torchquantum": {
                 "base_url": self.TORCHQUANTUM_RUNNER_URL,
-                "capabilities": ["statevector", "measured_sampled"]
+                "capabilities": ["statevector", "measured_sampled"],
+                "enabled": True
             },
             "quimb": {
                 "base_url": self.QUIMB_RUNNER_URL,
-                "capabilities": ["statevector", "measured_native"]
+                "capabilities": ["statevector", "measured_native"],
+                "enabled": True
             },
             "cuquantum": {
                 "base_url": self.CUQUANTUM_RUNNER_URL,
-                "capabilities": ["statevector", "measured_native"]
+                "capabilities": ["statevector", "measured_native"],
+                "enabled": True
             }
         }
 

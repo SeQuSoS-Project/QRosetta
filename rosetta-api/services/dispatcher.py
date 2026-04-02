@@ -10,18 +10,18 @@ RUNNER_SERVICES = settings.get_runner_services()
 
 # --- DYNAMIC URL BUILDERS (2 Groups) ---
 STATEVECTOR_RUNNER_URLS = {
-    name: f"{config['base_url']}/run" for name, config in RUNNER_SERVICES.items() 
-    if "statevector" in config["capabilities"]
+    name: f"{config['base_url']}/run" for name, config in RUNNER_SERVICES.items()
+    if "statevector" in config["capabilities"] and config.get("enabled", True)
 }
 # Group 1: Native samplers that get MODIFIED QASM
 NATIVE_SAMPLING_URLS = {
     name: f"{config['base_url']}/run_measured" for name, config in RUNNER_SERVICES.items()
-    if "measured_native" in config["capabilities"]
+    if "measured_native" in config["capabilities"] and config.get("enabled", True)
 }
 # Group 2: Statevector samplers that get ORIGINAL QASM
 SAMPLED_SV_URLS = {
     name: f"{config['base_url']}/run_measured" for name, config in RUNNER_SERVICES.items()
-    if "measured_sampled" in config["capabilities"]
+    if "measured_sampled" in config["capabilities"] and config.get("enabled", True)
 }
 
 

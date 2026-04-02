@@ -49,7 +49,7 @@ for SERVICE in "${SERVICES[@]}"; do
     if [ "$SERVICE" = "rosetta-api" ]; then
         DOCKERFILE="./rosetta-api/Dockerfile"
     else
-        DOCKERFILE="./$SERVICE/Dockerfile"
+        DOCKERFILE="./runners/$SERVICE/Dockerfile"
     fi
     
     echo ">> Building $SERVICE from $DOCKERFILE..."

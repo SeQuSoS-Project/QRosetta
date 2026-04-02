@@ -48,7 +48,7 @@ services:
   qiskit_runner:
     build:
       context: .
-      dockerfile: ./pytket-qiskit-runner/Dockerfile
+      dockerfile: ./runners/pytket-qiskit-runner/Dockerfile
     container_name: pytket-qiskit-runner
     networks:
       - isolated_net
@@ -61,7 +61,7 @@ services:
   cirq_runner:
     build:
       context: .
-      dockerfile: ./pytket-cirq-runner/Dockerfile
+      dockerfile: ./runners/pytket-cirq-runner/Dockerfile
     container_name: pytket-cirq-runner
     networks:
       - isolated_net
@@ -74,7 +74,7 @@ services:
   qulacs_runner:
     build:
       context: .
-      dockerfile: ./pytket-qulacs-runner/Dockerfile
+      dockerfile: ./runners/pytket-qulacs-runner/Dockerfile
     container_name: pytket-qulacs-runner
     networks:
       - isolated_net
@@ -87,7 +87,7 @@ services:
   braket_runner:
     build:
       context: .
-      dockerfile: ./pytket-braket-runner/Dockerfile
+      dockerfile: ./runners/pytket-braket-runner/Dockerfile
     container_name: pytket-braket-runner
     networks:
       - isolated_net
@@ -100,7 +100,7 @@ services:
   projectq_runner:
     build:
       context: .
-      dockerfile: ./pytket-projectq-runner/Dockerfile
+      dockerfile: ./runners/pytket-projectq-runner/Dockerfile
     container_name: pytket-projectq-runner
     networks:
       - isolated_net
@@ -113,7 +113,7 @@ services:
   quest_runner:
     build:
       context: .
-      dockerfile: ./pytket-quest-runner/Dockerfile
+      dockerfile: ./runners/pytket-quest-runner/Dockerfile
     container_name: pytket-quest-runner
     networks:
       - isolated_net
@@ -126,7 +126,7 @@ services:
   pennylane_runner:
     build:
       context: .
-      dockerfile: ./pennylane-lightning-runner/Dockerfile
+      dockerfile: ./runners/pennylane-lightning-runner/Dockerfile
     container_name: pennylane-lightning-runner
     networks:
       - isolated_net
@@ -139,7 +139,7 @@ services:
   pennylane_default_runner:
     build:
       context: .
-      dockerfile: ./pennylane-default-runner/Dockerfile
+      dockerfile: ./runners/pennylane-default-runner/Dockerfile
     container_name: pennylane-default-runner
     networks:
       - isolated_net
@@ -152,7 +152,7 @@ services:
   qibo_runner:
     build:
       context: .
-      dockerfile: ./qibo-runner/Dockerfile
+      dockerfile: ./runners/qibo-runner/Dockerfile
     container_name: qibo-runner
     networks:
       - isolated_net
@@ -165,7 +165,7 @@ services:
   qrisp_runner:
     build:
       context: .
-      dockerfile: ./qrisp-runner/Dockerfile
+      dockerfile: ./runners/qrisp-runner/Dockerfile
     container_name: qrisp-runner
     networks:
       - isolated_net
@@ -178,7 +178,7 @@ services:
   myqlm_runner:
     build:
       context: .
-      dockerfile: ./myqlm-runner/Dockerfile
+      dockerfile: ./runners/myqlm-runner/Dockerfile
     container_name: myqlm-runner
     networks:
       - isolated_net
@@ -191,7 +191,7 @@ services:
   pyquil_runner:
     build:
       context: .
-      dockerfile: ./pyquil-runner/Dockerfile
+      dockerfile: ./runners/pyquil-runner/Dockerfile
     container_name: pyquil-runner
     networks:
       - isolated_net
@@ -204,7 +204,7 @@ services:
   qsim_cirq_runner:
     build:
       context: .
-      dockerfile: ./qsim-cirq-runner/Dockerfile
+      dockerfile: ./runners/qsim-cirq-runner/Dockerfile
     container_name: qsim-cirq-runner
     networks:
       - isolated_net
@@ -217,7 +217,7 @@ services:
   torch_quantum_runner:
     build:
       context: .
-      dockerfile: ./torch-quantum-runner/Dockerfile
+      dockerfile: ./runners/torch-quantum-runner/Dockerfile
     container_name: torch-quantum-runner
     networks:
       - isolated_net
@@ -230,7 +230,7 @@ services:
   quimb_runner:
     build:
       context: .
-      dockerfile: ./quimb-runner/Dockerfile
+      dockerfile: ./runners/quimb-runner/Dockerfile
     container_name: quimb-runner
     networks:
       - isolated_net
@@ -243,7 +243,7 @@ services:
   cuquantum_runner:
     build:
       context: .
-      dockerfile: ./cuquantum-runner/Dockerfile
+      dockerfile: ./runners/cuquantum-runner/Dockerfile
     container_name: cuquantum-runner
     networks:
       - isolated_net
