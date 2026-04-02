@@ -214,6 +214,45 @@ services:
           cpus: "0.5"
           memory: "512M"
 
+  torch_quantum_runner:
+    build:
+      context: .
+      dockerfile: ./torch-quantum-runner/Dockerfile
+    container_name: torch-quantum-runner
+    networks:
+      - isolated_net
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "1G"
+
+  quimb_runner:
+    build:
+      context: .
+      dockerfile: ./quimb-runner/Dockerfile
+    container_name: quimb-runner
+    networks:
+      - isolated_net
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "512M"
+
+  cuquantum_runner:
+    build:
+      context: .
+      dockerfile: ./cuquantum-runner/Dockerfile
+    container_name: cuquantum-runner
+    networks:
+      - isolated_net
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "512M"
+
 # --- NETWORK DEFINITIONS ---
 networks:
   public_net:
