@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     QRISP_RUNNER_URL: str = "http://qrisp-runner:8000"
     MYQLM_RUNNER_URL: str = "http://myqlm-runner:8000"
     PYQUIL_RUNNER_URL: str = "http://pyquil-runner:8000"
+    TORCHQUANTUM_RUNNER_URL: str = "http://torch-quantum-runner:8000"
+    QUIMB_RUNNER_URL: str = "http://quimb-runner:8000"
+    CUQUANTUM_RUNNER_URL: str = "http://cuquantum-runner:8000"
 
     # Timeouts
     RUNNER_TIMEOUT_SEC: int = 60
@@ -92,6 +95,18 @@ class Settings(BaseSettings):
             },
             "pyquil": {
                 "base_url": self.PYQUIL_RUNNER_URL,
+                "capabilities": ["statevector", "measured_native"]
+            },
+            "torchquantum": {
+                "base_url": self.TORCHQUANTUM_RUNNER_URL,
+                "capabilities": ["statevector", "measured_sampled"]
+            },
+            "quimb": {
+                "base_url": self.QUIMB_RUNNER_URL,
+                "capabilities": ["statevector", "measured_native"]
+            },
+            "cuquantum": {
+                "base_url": self.CUQUANTUM_RUNNER_URL,
                 "capabilities": ["statevector", "measured_native"]
             }
         }

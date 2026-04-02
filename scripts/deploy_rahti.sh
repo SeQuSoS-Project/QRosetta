@@ -37,6 +37,9 @@ SERVICES=(
     "myqlm-runner"
     "qibo-runner"
     "qrisp-runner"
+    "torch-quantum-runner"
+    "quimb-runner"
+    "cuquantum-runner"
 )
 
 echo "--- 1. Building and Pushing Images ---"
