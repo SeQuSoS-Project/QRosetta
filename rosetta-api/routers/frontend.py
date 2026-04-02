@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from fastapi.responses import FileResponse, JSONResponse
 import os
 from services.report_manager import get_latest_report_path
+from config import settings
 
 router = APIRouter()
 
@@ -12,6 +13,15 @@ async def read_index():
         'static/index.html',
         headers={"Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"}
     )
+
+@router.get("/runners")
+async def get_runners():
+    """Returns the enabled/disabled status of every runner. Single source of truth: config.py."""
+    return JSONResponse(content=[
+        {"id": name, "enabled": config.get("enabled", True)}
+        for name, config in settings.get_runner_services().items()
+    ])
+
 
 @router.get("/download_latest_report")
 def download_latest_report():

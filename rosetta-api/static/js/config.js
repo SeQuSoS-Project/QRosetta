@@ -104,10 +104,28 @@ function renderConfigPanel() {
     });
 }
 
+async function applyRunnerAvailability() {
+    try {
+        const resp = await fetch('/runners');
+        if (!resp.ok) return;
+        const runners = await resp.json();
+        runners.forEach(({ id, enabled }) => {
+            if (enabled) return;
+            const cb = document.querySelector(`.sim-checkbox[data-sim="${id}"]`);
+            if (!cb) return;
+            cb.checked = false;
+            cb.disabled = true;
+            const label = cb.closest('label');
+            if (label) label.classList.add('opacity-40', 'cursor-not-allowed', 'line-through', 'text-red-400');
+        });
+    } catch (_) {}
+}
+
 function toggleConfigPanel() {
     const panel = document.getElementById('config-panel');
     if (panel.classList.contains('hidden')) {
         renderConfigPanel();
+        applyRunnerAvailability();
         panel.classList.remove('hidden');
     } else {
         panel.classList.add('hidden');
