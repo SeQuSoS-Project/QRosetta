@@ -56,16 +56,22 @@ def create_resource_report(results_list: list) -> dict:
                 "simulator": sim_name,
                 "status": "success",
                 "memory_usage_mb": res.get('memory_usage_mb'),
-                "process_peak_mb": res.get('process_peak_mb')
+                "process_peak_mb": res.get('process_peak_mb'),
+                "theoretical_statevector_mb": res.get('theoretical_statevector_mb')
             })
-    
+
     # Sort the list by memory usage (lowest first)
     sorted_data = sorted(
-        resource_data, 
+        resource_data,
         key=lambda x: (x['memory_usage_mb'] is None, x['memory_usage_mb'])
     )
-    
+
     return {
-        "summary": "Memory usage delta in MiB (lowest first).",
+        "summary": (
+            "Memory usage delta in MiB (lowest first). "
+            "memory_usage_mb = RSS delta (MemoryMonitor, 10ms polling — may undercount "
+            "short-lived C++ allocations). theoretical_statevector_mb = 2^N × 16 bytes "
+            "(complex128 lower bound; None for tensor-network simulators)."
+        ),
         "ranking": sorted_data
     }

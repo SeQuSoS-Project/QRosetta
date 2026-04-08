@@ -6,7 +6,7 @@ from pytket.passes import RemoveBarriers
 from pytket.transform import Transform
 from collections import Counter
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, get_logger, encode_statevector
+from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb
 import time
 import gc
 
@@ -39,38 +39,39 @@ async def run_circuit(payload: CircuitPayload):
         # --- COMPILATION ---
         t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        n_qubits = tk_circ.n_qubits
         RemoveBarriers().apply(tk_circ)
         # Rebase to standard TK1/CX gateset (decomposes SWAPs automatically)
         Transform.RebaseToTket().apply(tk_circ)
-        
+
         backend = ProjectQBackend()
         opt_level = min(payload.optimization_level, 2)
         compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=opt_level)
         t1 = time.perf_counter()
         compilation_time = t1 - t0
-        
+
         # --- WARM-UP ---
         h_warm = backend.process_circuit(compiled_circ)
         _ = backend.get_result(h_warm).get_state()
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
-            
+
             # --- SIMULATION ---
             t2 = time.perf_counter()
             handle = backend.process_circuit(compiled_circ)
             statevector = backend.get_result(handle).get_state()
             t3 = time.perf_counter()
             simulation_time = t3 - t2
-        
+
         memory_usage_mb = monitor.get_peak_usage_mb()
         process_peak_mb = monitor.get_process_peak_mb()
-        
+
         execution_time = compilation_time + simulation_time
 
         statevector_str = encode_statevector(np.array(statevector))
         logger.info(f"ProjectQ simulation successful in {execution_time:.4f}s (Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s).")
-        
+
         return {
             "simulator": "projectq",
             "statevector": statevector_str,
@@ -78,7 +79,9 @@ async def run_circuit(payload: CircuitPayload):
             "compilation_time_sec": compilation_time,
             "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
-            "process_peak_mb": process_peak_mb
+            "process_peak_mb": process_peak_mb,
+            "qubit_ordering": "lsb",
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
         }
     except Exception as e:
         logger.error(f"Error during ProjectQ simulation: {str(e)}")
@@ -140,7 +143,9 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "compilation_time_sec": compilation_time,
             "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
-            "process_peak_mb": process_peak_mb
+            "process_peak_mb": process_peak_mb,
+            "qubit_ordering": "lsb",
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
         }
     except Exception as e:
         logger.error(f"Error during ProjectQ measurement simulation: {str(e)}")

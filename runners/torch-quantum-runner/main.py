@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector
+from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb
 import numpy as np
 import time
 import gc
@@ -14,7 +14,7 @@ try:
     import torch
     import torchquantum as tq
     from torchquantum.plugin import qiskit2tq
-    from qiskit import QuantumCircuit as QiskitCircuit
+    from qiskit import QuantumCircuit as QiskitCircuit, transpile as qiskit_transpile
     TORCHQUANTUM_AVAILABLE = True
     logger.info("TorchQuantum and Qiskit loaded successfully.")
 except ImportError as e:
@@ -22,12 +22,30 @@ except ImportError as e:
     logger.warning(f"TorchQuantum import failed: {e}. Runner will return errors for all requests.")
 
 
-def _compile(qasm_str: str):
+# Gates that qiskit2tq can reliably convert to TorchQuantum ops.
+_TQ_BASIS_GATES = [
+    'h', 'x', 'y', 'z', 's', 't', 'sdg', 'tdg',
+    'cx', 'cz', 'swap', 'ccx',
+    'rx', 'ry', 'rz', 'u1', 'u2', 'u3',
+]
+
+
+def _compile(qasm_str: str, optimization_level: int = 0):
     """Parse QASM 2.0 with Qiskit and convert to a TorchQuantum module.
+
+    Level 0: no optimization
+    Level 1: Qiskit transpiler level 1 (single-qubit gate consolidation, basic cancellation)
+    Level 2: Qiskit transpiler level 2 (unitary synthesis + gate cancellation)
 
     Returns (tq_module, n_qubits).
     """
     qc = QiskitCircuit.from_qasm_str(qasm_str)
+    if optimization_level > 0:
+        qc = qiskit_transpile(
+            qc,
+            optimization_level=min(optimization_level, 2),
+            basis_gates=_TQ_BASIS_GATES,
+        )
     # Strip measurements so we can run statevector simulation
     qc.remove_final_measurements(inplace=True)
     n_qubits = qc.num_qubits
@@ -59,7 +77,7 @@ async def run_circuit(payload: CircuitPayload):
     try:
         # --- COMPILATION ---
         t0 = time.perf_counter()
-        tq_module, n_qubits = _compile(payload.circuit_data)
+        tq_module, n_qubits = _compile(payload.circuit_data, payload.optimization_level)
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
@@ -92,6 +110,8 @@ async def run_circuit(payload: CircuitPayload):
             "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
+            "qubit_ordering": "lsb",
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
         }
     except Exception as e:
         logger.error(f"Error during TorchQuantum simulation: {str(e)}\n{traceback.format_exc()}")
@@ -118,7 +138,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
     try:
         # --- COMPILATION ---
         t0 = time.perf_counter()
-        tq_module, n_qubits = _compile(payload.circuit_data)
+        tq_module, n_qubits = _compile(payload.circuit_data, payload.optimization_level)
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
@@ -167,6 +187,8 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
+            "qubit_ordering": "lsb",
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
         }
     except Exception as e:
         logger.error(f"Error during TorchQuantum measurement simulation: {str(e)}\n{traceback.format_exc()}")

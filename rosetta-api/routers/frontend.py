@@ -16,11 +16,20 @@ async def read_index():
 
 @router.get("/runners")
 async def get_runners():
-    """Returns the enabled/disabled status of every runner. Single source of truth: config.py."""
-    return JSONResponse(content=[
-        {"id": name, "enabled": config.get("enabled", True)}
-        for name, config in settings.get_runner_services().items()
-    ])
+    """Returns enabled status, max optimization level, and per-level descriptions for every runner.
+    Single source of truth: config.py."""
+    result = []
+    for name, config in settings.get_runner_services().items():
+        opt_levels = config.get("optimization_levels", {})
+        # JSON keys must be strings; convert integer keys here
+        opt_levels_str = {str(k): v for k, v in opt_levels.items()}
+        result.append({
+            "id": name,
+            "enabled": config.get("enabled", True),
+            "max_level": max(opt_levels.keys()) if opt_levels else 0,
+            "optimization_levels": opt_levels_str,
+        })
+    return JSONResponse(content=result)
 
 
 @router.get("/download_latest_report")

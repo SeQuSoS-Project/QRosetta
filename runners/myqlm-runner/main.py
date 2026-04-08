@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector
+from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb
 import numpy as np
 import time
 import gc
@@ -15,8 +15,17 @@ app = FastAPI(title="myQLM Runner")
 _qpu = PyLinalg()
 
 
-def _compile_circuit(qasm_str: str):
-    """Parse QASM 2.0 into a myQLM Circuit. Fresh parser per call — OqasmParser is stateful."""
+def _compile_circuit(qasm_str: str, optimization_level: int = 0):
+    """Parse QASM 2.0 into a myQLM Circuit. Fresh parser per call — OqasmParser is stateful.
+
+    myQLM's PyLinalg QPU does not expose configurable circuit-level optimization
+    passes through its standard API. All optimization levels run identically.
+    """
+    if optimization_level > 0:
+        logger.info(
+            f"myQLM: optimization_level={optimization_level} requested "
+            "but not supported by PyLinalg; running at level 0."
+        )
     return OqasmParser().compile(qasm_str)
 
 
@@ -38,7 +47,7 @@ async def run_circuit(payload: CircuitPayload):
     try:
         # --- COMPILATION ---
         t0 = time.perf_counter()
-        circuit = _compile_circuit(payload.circuit_data)
+        circuit = _compile_circuit(payload.circuit_data, payload.optimization_level)
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
@@ -64,6 +73,7 @@ async def run_circuit(payload: CircuitPayload):
             f"(Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s)."
         )
 
+        n_qubits = circuit.nbqbits
         return {
             "simulator": "myqlm",
             "statevector": statevector_str,
@@ -71,7 +81,9 @@ async def run_circuit(payload: CircuitPayload):
             "compilation_time_sec": compilation_time,
             "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
-            "process_peak_mb": process_peak_mb
+            "process_peak_mb": process_peak_mb,
+            "qubit_ordering": "msb",
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
         }
     except Exception as e:
         logger.error(f"Error during myQLM simulation: {str(e)}")
@@ -90,7 +102,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
     try:
         # --- COMPILATION ---
         t0 = time.perf_counter()
-        circuit = _compile_circuit(payload.circuit_data)
+        circuit = _compile_circuit(payload.circuit_data, payload.optimization_level)
         n_qubits = circuit.nbqbits
         t1 = time.perf_counter()
         compilation_time = t1 - t0
@@ -138,7 +150,10 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "compilation_time_sec": compilation_time,
             "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
-            "process_peak_mb": process_peak_mb
+            "process_peak_mb": process_peak_mb,
+            "qubit_ordering": "msb",
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
+            "sampling_method": "probability_rounding"
         }
     except Exception as e:
         logger.error(f"Error during myQLM measurement simulation: {str(e)}")

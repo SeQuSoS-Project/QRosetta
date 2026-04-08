@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector
+from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb
 import numpy as np
 import time
 import gc
@@ -11,7 +11,7 @@ logger = get_logger("cuquantum-runner")
 app = FastAPI(title="cuQuantum Runner")
 
 try:
-    from qiskit import QuantumCircuit
+    from qiskit import QuantumCircuit, transpile as qiskit_transpile
     from qiskit_aer import AerSimulator, AerError
     AERSIM_AVAILABLE = True
     logger.info("qiskit-aer loaded successfully.")
@@ -47,9 +47,18 @@ def _run_safe(sim, qc, **kwargs):
         raise
 
 
-def _compile(qasm_str: str):
-    """Parse QASM 2.0 into a Qiskit QuantumCircuit."""
-    return QuantumCircuit.from_qasm_str(qasm_str)
+def _compile(qasm_str: str, optimization_level: int = 0):
+    """Parse QASM 2.0 into a Qiskit QuantumCircuit and apply Qiskit transpiler passes.
+
+    Level 0: no optimization
+    Level 1: basic gate cancellation and 1Q consolidation
+    Level 2: unitary synthesis + gate cancellation
+    Level 3: heavy optimization (slowest compile, fewest gates)
+    """
+    qc = QuantumCircuit.from_qasm_str(qasm_str)
+    if optimization_level > 0:
+        qc = qiskit_transpile(qc, optimization_level=min(optimization_level, 3))
+    return qc
 
 
 @app.post("/run")
@@ -61,7 +70,7 @@ async def run_circuit(payload: CircuitPayload):
     try:
         # --- COMPILATION ---
         t0 = time.perf_counter()
-        qc = _compile(payload.circuit_data)
+        qc = _compile(payload.circuit_data, payload.optimization_level)
         qc.remove_final_measurements(inplace=True)
         qc.save_statevector()
         sim = AerSimulator(method='statevector', device='GPU') if _GPU_AVAILABLE else AerSimulator(method='statevector')
@@ -96,6 +105,8 @@ async def run_circuit(payload: CircuitPayload):
             "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
+            "qubit_ordering": "lsb",
+            "theoretical_statevector_mb": theoretical_statevector_mb(qc.num_qubits)
         }
     except Exception as e:
         logger.error(f"Error: {str(e)}\n{traceback.format_exc()}")
@@ -112,7 +123,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
     try:
         # --- COMPILATION ---
         t0 = time.perf_counter()
-        qc = _compile(payload.circuit_data)
+        qc = _compile(payload.circuit_data, payload.optimization_level)
         sim = AerSimulator(method='statevector', device='GPU') if _GPU_AVAILABLE else AerSimulator(method='statevector')
         t1 = time.perf_counter()
         compilation_time = t1 - t0
@@ -145,6 +156,8 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
+            "qubit_ordering": "lsb",
+            "theoretical_statevector_mb": theoretical_statevector_mb(qc.num_qubits)
         }
     except Exception as e:
         logger.error(f"Error: {str(e)}\n{traceback.format_exc()}")

@@ -123,6 +123,17 @@ class MemoryMonitor:
         # Absolute peak RSS memory usage of the process
         return self.peak_memory / (1024 * 1024)
 
+def theoretical_statevector_mb(n_qubits: int) -> float:
+    """
+    Minimum memory to store a full statevector for n_qubits in complex128.
+    = 2^N amplitudes × 16 bytes each.
+    This is a lower-bound reference; actual runtime usage is always higher
+    due to working buffers, compilation state, and intermediate tensors.
+    Not meaningful for tensor-network simulators (report None for those).
+    """
+    return (2 ** n_qubits * 16) / (1024 ** 2)
+
+
 def get_num_qubits_from_qasm(qasm_string: str) -> int:
     """
     Parses QASM string to find the size of the 'qreg'.
