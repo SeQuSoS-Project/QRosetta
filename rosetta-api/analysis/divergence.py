@@ -26,11 +26,30 @@ def create_divergence_report(results_list):
     Optimized for memory: Parses statevectors ONLY when needed and compares sequentially.
     """
     import gc
-    
+
+    # --- 0. Qubit ordering consistency check ---
+    # Warn if results mix LSB and MSB conventions — fidelity comparisons between
+    # simulators with different orderings are mathematically meaningless.
+    ordering_map = {}
+    for res in results_list:
+        if "error" not in res and "qubit_ordering" in res:
+            ordering_map[res.get("simulator", "unknown")] = res["qubit_ordering"]
+    lsb_sims = [s for s, o in ordering_map.items() if o == "lsb"]
+    msb_sims = [s for s, o in ordering_map.items() if o == "msb"]
+    qubit_ordering_warning = None
+    if lsb_sims and msb_sims:
+        qubit_ordering_warning = (
+            f"Mixed qubit-ordering conventions detected. "
+            f"LSB (qubit-0 = bit-0): {lsb_sims}. "
+            f"MSB (qubit-0 = most-significant): {msb_sims}. "
+            "Fidelity comparisons across groups may be misleading."
+        )
+        logger.warning(qubit_ordering_warning)
+
     # --- 1. Filter & Setup ---
     # Only keep valid results
     valid_results = [res for res in results_list if "error" not in res and "statevector" in res]
-    simulators = [res.get('simulator', 'unknown') for res in results_list] # All simulators (for the matrix headers)
+    simulators = [res.get('simulator', 'unknown') for res in results_list]  # All simulators (for the matrix headers)
     
     # Map simulator name to its result index in valid_results (if it exists)
     sim_to_valid_idx = {}
@@ -160,9 +179,10 @@ def create_divergence_report(results_list):
         "simulators": simulators,
         "fidelity_matrix": fidelity_matrix.tolist(),
         "relative_phase_matrix": phase_matrix.tolist(),
-        "divergences_found": divergences_found
+        "divergences_found": divergences_found,
+        "qubit_ordering_warning": qubit_ordering_warning
     }
-    
+
     return report
 
 def _normalize_counts(counts, n_shots):

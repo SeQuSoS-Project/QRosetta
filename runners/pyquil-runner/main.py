@@ -1,9 +1,10 @@
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector
+from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb
 import numpy as np
 import pytket.qasm
-from pytket.passes import RemoveBarriers
+from pytket.passes import RemoveBarriers, PeepholeOptimise2Q, FullPeepholeOptimise
+from pytket.transform import Transform
 from pytket.extensions.pyquil import tk_to_pyquil
 from pyquil import Program
 from pyquil.quilbase import Gate
@@ -16,10 +17,22 @@ logger = get_logger("pyquil-runner")
 app = FastAPI(title="PyQuil Runner")
 
 
-def _to_quil_program(qasm_str: str):
-    """Parse QASM via pytket and convert to a Quil Program."""
+def _to_quil_program(qasm_str: str, optimization_level: int = 0):
+    """Parse QASM via pytket and convert to a Quil Program.
+
+    Level 0: barrier removal only
+    Level 1: + PeepholeOptimise2Q (cancel redundant 2Q gates, merge 1Q sequences)
+    Level 2: + FullPeepholeOptimise (full 1Q merging + KAK-based 2Q reduction)
+    """
     tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_str)
     RemoveBarriers().apply(tk_circ)
+    if optimization_level >= 2:
+        FullPeepholeOptimise().apply(tk_circ)
+    elif optimization_level == 1:
+        PeepholeOptimise2Q().apply(tk_circ)
+    # Rebase to Rz/Rx after any optimization — peephole passes can produce TK1
+    # gates that tk_to_pyquil cannot convert.
+    Transform.RebaseToRzRx().apply(tk_circ)
     return tk_to_pyquil(tk_circ), tk_circ.n_qubits
 
 
@@ -47,7 +60,7 @@ async def run_circuit(payload: CircuitPayload):
     try:
         # --- COMPILATION ---
         t0 = time.perf_counter()
-        prog, n_qubits = _to_quil_program(payload.circuit_data)
+        prog, n_qubits = _to_quil_program(payload.circuit_data, payload.optimization_level)
         gate_prog = _gates_only(prog)
         t1 = time.perf_counter()
         compilation_time = t1 - t0
@@ -81,7 +94,9 @@ async def run_circuit(payload: CircuitPayload):
             "compilation_time_sec": compilation_time,
             "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
-            "process_peak_mb": process_peak_mb
+            "process_peak_mb": process_peak_mb,
+            "qubit_ordering": "lsb",
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
         }
     except Exception as e:
         logger.error(f"Error during PyQuil simulation: {str(e)}")
@@ -100,7 +115,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
     try:
         # --- COMPILATION ---
         t0 = time.perf_counter()
-        prog, n_qubits = _to_quil_program(payload.circuit_data)
+        prog, n_qubits = _to_quil_program(payload.circuit_data, payload.optimization_level)
         gate_prog = _gates_only(prog)
         t1 = time.perf_counter()
         compilation_time = t1 - t0
@@ -141,7 +156,9 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "compilation_time_sec": compilation_time,
             "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
-            "process_peak_mb": process_peak_mb
+            "process_peak_mb": process_peak_mb,
+            "qubit_ordering": "lsb",
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
         }
     except Exception as e:
         logger.error(f"Error during PyQuil measurement simulation: {str(e)}")

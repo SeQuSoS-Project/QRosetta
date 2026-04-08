@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector
+from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb
 import numpy as np
 import pytket.qasm
 from pytket.extensions.cirq import tk_to_cirq  
@@ -22,14 +22,15 @@ async def run_circuit(payload: CircuitPayload):
         # --- COMPILATION ---
         t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        n_qubits = tk_circ.n_qubits
         RemoveBarriers().apply(tk_circ)
-        
+
         # --- COMPATIBILITY LAYER ---
         # Convert generic gates (TK1, U3) into Rx and Rz rotations.
         # Cirq's converter natively understands these specific gates.
         Transform.RebaseToRzRx().apply(tk_circ)
         # ---------------------------
-        
+
         cirq_circ = tk_to_cirq(tk_circ)
         simulator = cirq.Simulator(dtype=np.complex128)
         t1 = time.perf_counter()
@@ -63,7 +64,9 @@ async def run_circuit(payload: CircuitPayload):
             "compilation_time_sec": compilation_time,
             "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
-            "process_peak_mb": process_peak_mb
+            "process_peak_mb": process_peak_mb,
+            "qubit_ordering": "msb",
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
         }
     except Exception as e:
         logger.error(f"Error during Cirq simulation: {str(e)}")
@@ -82,12 +85,13 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         # --- COMPILATION ---
         t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload.circuit_data)
+        n_qubits = tk_circ.n_qubits
         RemoveBarriers().apply(tk_circ)
-        
+
         # --- COMPATIBILITY LAYER ---
         Transform.RebaseToRzRx().apply(tk_circ)
         # ---------------------------
-        
+
         backend = CirqStateSampleBackend()
         opt_level = min(payload.optimization_level, 2)
         compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=opt_level)
@@ -123,7 +127,9 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "compilation_time_sec": compilation_time,
             "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
-            "process_peak_mb": process_peak_mb
+            "process_peak_mb": process_peak_mb,
+            "qubit_ordering": "msb",
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
         }
     except Exception as e:
         logger.error(f"Error during Cirq measurement simulation: {str(e)}")

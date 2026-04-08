@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector
+from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb
 import numpy as np
 import pytket.qasm
 from pytket.extensions.cirq import tk_to_cirq
@@ -21,12 +21,29 @@ logger = get_logger("qsim-cirq-runner")
 app = FastAPI(title="qsim-Cirq Runner")
 
 
-def _to_cirq_circuit(qasm_str: str) -> cirq.Circuit:
-    """Parse QASM string via pytket and convert to a Cirq circuit."""
+def _to_cirq_circuit(qasm_str: str, optimization_level: int = 0) -> cirq.Circuit:
+    """Parse QASM string via pytket, convert to Cirq, then apply Cirq-native optimizations.
+
+    Level 0: no optimization
+    Level 1: basic cleanup (drop empty moments, align)
+    Level 2: full reduction (eject Z/phased-Paulis, merge single-qubit gates)
+    """
     tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_str)
     RemoveBarriers().apply(tk_circ)
     Transform.RebaseToRzRx().apply(tk_circ)
-    return tk_to_cirq(tk_circ)
+    circ = tk_to_cirq(tk_circ)
+
+    if optimization_level >= 1:
+        circ = cirq.drop_empty_moments(circ)
+        circ = cirq.align_left(circ)
+
+    if optimization_level >= 2:
+        circ = cirq.eject_z(circ)
+        circ = cirq.eject_phased_paulis(circ)
+        circ = cirq.merge_single_qubit_gates_to_phxz(circ)
+        circ = cirq.drop_empty_moments(circ)
+
+    return circ
 
 
 def _strip_measurements(circ: cirq.Circuit) -> cirq.Circuit:
@@ -52,7 +69,7 @@ async def run_circuit(payload: CircuitPayload):
     try:
         # --- COMPILATION ---
         t0 = time.perf_counter()
-        cirq_circ = _to_cirq_circuit(payload.circuit_data)
+        cirq_circ = _to_cirq_circuit(payload.circuit_data, payload.optimization_level)
         cirq_circ_no_meas = _strip_measurements(cirq_circ)
         simulator = qsimcirq.QSimSimulator()
         t1 = time.perf_counter()
@@ -81,6 +98,7 @@ async def run_circuit(payload: CircuitPayload):
             f"(Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s)."
         )
 
+        n_qubits = len(cirq_circ_no_meas.all_qubits())
         return {
             "simulator": "qsim-cirq",
             "statevector": statevector_str,
@@ -88,7 +106,9 @@ async def run_circuit(payload: CircuitPayload):
             "compilation_time_sec": compilation_time,
             "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
-            "process_peak_mb": process_peak_mb
+            "process_peak_mb": process_peak_mb,
+            "qubit_ordering": "msb",
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
         }
     except Exception as e:
         logger.error(f"Error during qsim-Cirq simulation: {str(e)}")
@@ -116,7 +136,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
     try:
         # --- COMPILATION ---
         t0 = time.perf_counter()
-        cirq_circ = _to_cirq_circuit(payload.circuit_data)
+        cirq_circ = _to_cirq_circuit(payload.circuit_data, payload.optimization_level)
         # Strip any existing measurements and add a clean terminal measurement
         # on all qubits so qsim's run() interface can sample deterministically.
         all_qubits = sorted(cirq_circ.all_qubits())
@@ -155,6 +175,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             f"(Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s)."
         )
 
+        n_qubits = len(all_qubits)
         return {
             "simulator": "qsim-cirq",
             "counts": counts_dict,
@@ -162,7 +183,9 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "compilation_time_sec": compilation_time,
             "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
-            "process_peak_mb": process_peak_mb
+            "process_peak_mb": process_peak_mb,
+            "qubit_ordering": "msb",
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
         }
     except Exception as e:
         logger.error(f"Error during qsim-Cirq measurement simulation: {str(e)}")

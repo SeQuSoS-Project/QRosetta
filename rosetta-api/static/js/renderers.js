@@ -161,7 +161,12 @@ function getOptBadge(simulator, config) {
         const frag = _cloneTemplate('tpl-opt-badge');
         const span = frag.querySelector('span');
         span.textContent = `L${optLevel}`;
-        span.title = `Optimization Level ${optLevel}`;
+        // Look up description from runner opt info populated by config.js on panel open
+        const runnerInfo = typeof getRunnerOptInfo === 'function' ? getRunnerOptInfo(simulator) : {};
+        const desc = runnerInfo.optimization_levels?.[String(optLevel)];
+        span.title = desc
+            ? `Optimization Level ${optLevel}: ${desc}`
+            : `Optimization Level ${optLevel}`;
         return span;
     }
     return null;

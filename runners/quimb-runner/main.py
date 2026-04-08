@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector
+from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, get_num_qubits_from_qasm
 import numpy as np
 import time
 import gc
@@ -30,8 +30,18 @@ def _preprocess_qasm(qasm_str: str) -> str:
     return '\n'.join(cleaned)
 
 
-def _compile(qasm_str: str):
-    """Parse cleaned QASM 2.0 into a quimb Circuit."""
+def _compile(qasm_str: str, optimization_level: int = 0):
+    """Parse cleaned QASM 2.0 into a quimb Circuit.
+
+    Quimb represents circuits as tensor networks; optimization is an internal
+    contraction path problem, not a circuit-level gate pass. No user-configurable
+    circuit optimization is available through the standard quimb API.
+    """
+    if optimization_level > 0:
+        logger.info(
+            f"Quimb: optimization_level={optimization_level} requested "
+            "but not applicable to tensor-network simulation; using default contraction."
+        )
     return qtn.Circuit.from_openqasm2_str(_preprocess_qasm(qasm_str))
 
 
@@ -55,7 +65,7 @@ async def run_circuit(payload: CircuitPayload):
     try:
         # --- COMPILATION ---
         t0 = time.perf_counter()
-        circ = _compile(payload.circuit_data)
+        circ = _compile(payload.circuit_data, payload.optimization_level)
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
@@ -88,6 +98,8 @@ async def run_circuit(payload: CircuitPayload):
             "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
+            "qubit_ordering": "msb",
+            "theoretical_statevector_mb": None
         }
     except Exception as e:
         logger.error(f"Error during Quimb simulation: {str(e)}\n{traceback.format_exc()}")
@@ -114,7 +126,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
     try:
         # --- COMPILATION ---
         t0 = time.perf_counter()
-        circ = _compile(payload.circuit_data)
+        circ = _compile(payload.circuit_data, payload.optimization_level)
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
@@ -147,6 +159,8 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
+            "qubit_ordering": "msb",
+            "theoretical_statevector_mb": None
         }
     except Exception as e:
         logger.error(f"Error during Quimb measurement simulation: {str(e)}\n{traceback.format_exc()}")

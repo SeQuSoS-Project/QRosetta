@@ -72,13 +72,20 @@ async def dispatch_to_runners(runner_urls: dict, runner_payload: dict, timeout_s
     async with httpx.AsyncClient(timeout=timeout_float) as client:
         tasks = []
         for sim_name, url in runner_urls.items():
-            # Determine specific opt level
+            # Determine specific opt level (per-runner override takes precedence over global)
             p_level = runner_overrides.get(sim_name, global_opt)
-            
+
+            # Clamp to this runner's actual maximum supported level so we never
+            # send a level the runner doesn't implement.
+            runner_info = RUNNER_SERVICES.get(sim_name, {})
+            opt_levels_dict = runner_info.get("optimization_levels", {})
+            if opt_levels_dict:
+                p_level = min(p_level, max(opt_levels_dict.keys()))
+
             # Create a localized payload
             local_payload = runner_payload.copy()
             local_payload["optimization_level"] = p_level
-            
+
             logger.info(f"Dispatching job to {sim_name} (Level: {p_level})...")
             
             # Schedule the safe request
