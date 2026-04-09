@@ -5,6 +5,14 @@ import numpy as np
 import time
 import gc
 import traceback
+import warnings
+
+# cotengra emits UserWarnings about missing optional optimizers (kahypar, optuna, etc.)
+# These are non-critical — suppress them to keep logs clean.
+warnings.filterwarnings("ignore", message=".*kahypar.*", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*optuna.*", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*cmaes.*", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*nevergrad.*", category=UserWarning)
 
 logger = get_logger("quimb-runner")
 
@@ -154,6 +162,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         return {
             "simulator": "quimb",
             "counts": counts,
+            "sampling_method": "tn_sample",
             "execution_time_sec": execution_time,
             "compilation_time_sec": compilation_time,
             "simulation_time_sec": simulation_time,

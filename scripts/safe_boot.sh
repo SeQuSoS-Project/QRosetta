@@ -26,6 +26,9 @@ RUNNERS=(
   "myqlm_runner"
   "qibo_runner"
   "qrisp_runner"
+  "torch_quantum_runner"
+  "quimb_runner"
+  "cuquantum_runner"
 )
 
 echo ">>> Starting Graceful Build..."

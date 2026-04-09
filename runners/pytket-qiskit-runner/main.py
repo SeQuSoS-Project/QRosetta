@@ -124,6 +124,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         return {
             "simulator": "qiskit",
             "counts": counts_dict,
+            "sampling_method": "native",
             "execution_time_sec": execution_time,
             "compilation_time_sec": compilation_time,
             "simulation_time_sec": simulation_time,

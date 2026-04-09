@@ -144,19 +144,25 @@ def create_divergence_report(results_list):
                 phase_matrix[j, i] = -relative_phase
                 
                 # Divergence Reports
+                is_cross_group = (lsb_sims and msb_sims and 
+                                 ((sim_i_name in lsb_sims and sim_j_name in msb_sims) or 
+                                  (sim_i_name in msb_sims and sim_j_name in lsb_sims)))
+                
                 if fidelity < (1.0 - fidelity_tolerance):
                     divergences_found.append({
                         "type": "Fidelity",
                         "simulators": [sim_i_name, sim_j_name],
                         "fidelity": float(fidelity),
-                        "relative_phase": float(relative_phase)
+                        "relative_phase": float(relative_phase),
+                        "is_cross_group": is_cross_group
                     })
                 elif relative_phase != 0.0:
                     divergences_found.append({
                         "type": "Phase",
                         "simulators": [sim_i_name, sim_j_name],
                         "fidelity": 1.0,
-                        "relative_phase": float(relative_phase)
+                        "relative_phase": float(relative_phase),
+                        "is_cross_group": is_cross_group
                     })
                 
                 # Free J immediately
@@ -173,14 +179,13 @@ def create_divergence_report(results_list):
         del sv_i_norm
         gc.collect() # Aggressive GC
 
-    # --- 4. Final Report Assembly ---
-    
     report = {
         "simulators": simulators,
         "fidelity_matrix": fidelity_matrix.tolist(),
         "relative_phase_matrix": phase_matrix.tolist(),
         "divergences_found": divergences_found,
-        "qubit_ordering_warning": qubit_ordering_warning
+        "qubit_ordering_warning": qubit_ordering_warning,
+        "ordering_map": ordering_map
     }
 
     return report
@@ -268,12 +273,20 @@ def create_counts_report(results_list, n_shots):
                 hellinger_matrix[j, i] = h_dist
                 
                 # Check thresholds
+                is_cross_group = False 
+                # Re-calculate split if needed or just pass it in
+                lsb_sims = [res.get('simulator') for res in results_list if res.get('qubit_ordering') == 'lsb']
+                msb_sims = [res.get('simulator') for res in results_list if res.get('qubit_ordering') == 'msb']
+                if (sim_i in lsb_sims and sim_j in msb_sims) or (sim_i in msb_sims and sim_j in lsb_sims):
+                    is_cross_group = True
+
                 if js_div > js_threshold or h_dist > hellinger_threshold:
                     divergences_found.append({
                         "type": "Distribution Divergence",
                         "simulators": [sim_i, sim_j],
                         "js_divergence": js_div,
-                        "hellinger_distance": h_dist
+                        "hellinger_distance": h_dist,
+                        "is_cross_group": is_cross_group
                     })
             else:
                 js_matrix[i, j] = -1.0 
@@ -281,10 +294,12 @@ def create_counts_report(results_list, n_shots):
                 hellinger_matrix[i, j] = -1.0 
                 hellinger_matrix[j, i] = -1.0
                 
+    ordering_map = {res.get('simulator'): res.get('qubit_ordering') for res in results_list if "qubit_ordering" in res}
     return {
         "simulators": simulators,
         "statistical_distance_matrix (js_divergence)": js_matrix.tolist(),
         "hellinger_distance_matrix": hellinger_matrix.tolist(),
         "divergences_found": divergences_found,
-        "all_outcomes_observed": all_bitstrings
+        "all_outcomes_observed": all_bitstrings,
+        "ordering_map": ordering_map
     }
