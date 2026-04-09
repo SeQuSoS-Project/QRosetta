@@ -32,6 +32,38 @@ function _makeStatusCell(styleKey, text) {
 function _fillSimulatorCell(td, simulatorName, config) {
     td.classList.remove('tpl-simulator');
     td.appendChild(document.createTextNode(simulatorName));
+    
+    const suiteData = getState()?.currentSuiteData;
+    let rawItem = null;
+    if (suiteData && suiteData.raw_results) {
+        rawItem = suiteData.raw_results.find(r => r.simulator === simulatorName);
+    }
+    
+    if (rawItem && rawItem.qubit_ordering) {
+        const span = document.createElement('span');
+        span.className = 'ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600 border border-gray-200';
+        span.textContent = rawItem.qubit_ordering.toUpperCase();
+        span.title = 'Qubit Ordering';
+        td.appendChild(span);
+    }
+    
+    if (rawItem && rawItem.sampling_method) {
+        const smMap = {
+            'native': { label: 'Native', color: 'bg-green-100 text-green-700 border-green-200', title: 'Native: Simulation backend sampled shots directly.' },
+            'sv_sample': { label: 'SV-Sample', color: 'bg-blue-100 text-blue-700 border-blue-200', title: 'SV-Sample: Counts derived from statevector via multinomial sampling.' },
+            'tn_sample': { label: 'TN-Sample', color: 'bg-orange-100 text-orange-700 border-orange-200', title: 'TN-Sample: Counts sampled from tensor-network amplitudes.' },
+            'probability_rounding': { label: 'Prob-Round', color: 'bg-purple-100 text-purple-700 border-purple-200', title: 'Prob-Round: Probabilities rounded to nearest shot integers.' }
+        };
+        const cfg = smMap[rawItem.sampling_method];
+        if (cfg) {
+            const span = document.createElement('span');
+            span.className = `ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${cfg.color}`;
+            span.textContent = cfg.label;
+            span.title = `Sampling Method: ${cfg.title}`;
+            td.appendChild(span);
+        }
+    }
+
     const badge = getOptBadge(simulatorName, config);
     if (badge) td.appendChild(badge);
 }
@@ -44,7 +76,7 @@ function renderRankingTable(report, key, unit, panel, config = {}) {
 
     // Section heading
     const hFrag = _cloneTemplate('tpl-ranking-section-header');
-    hFrag.querySelector('h3').textContent = report.summary;
+    hFrag.querySelector('.tpl-summary-text').textContent = report.summary;
     panel.appendChild(hFrag);
 
     // Legend
@@ -82,6 +114,13 @@ function renderRankingTable(report, key, unit, panel, config = {}) {
         thProcPeak.innerHTML = '';
         thProcPeak.appendChild(renderTooltip('proc_peak', 'Process Peak (MiB)'));
 
+        const thTheoretical = tblFrag.querySelector('.tpl-th-theoretical');
+        if (thTheoretical) {
+            thTheoretical.classList.remove('tpl-th-theoretical');
+            thTheoretical.innerHTML = '';
+            thTheoretical.appendChild(renderTooltip('theoretical_sv', 'Theoretical SV (MiB)'));
+        }
+
         const tbody = tblFrag.querySelector('.tpl-tbody');
         tbody.classList.remove('tpl-tbody');
 
@@ -95,16 +134,23 @@ function renderRankingTable(report, key, unit, panel, config = {}) {
             memDeltaTd.classList.remove('tpl-mem-delta');
             const procPeakTd = rowFrag.querySelector('.tpl-proc-peak');
             procPeakTd.classList.remove('tpl-proc-peak');
+            const theoreticalTd = rowFrag.querySelector('.tpl-theoretical');
+            if (theoreticalTd) theoreticalTd.classList.remove('.tpl-theoretical');
 
             if (r.status === 'success') {
                 memDeltaTd.textContent = r.memory_usage_mb != null ? r.memory_usage_mb.toFixed(4) : '';
                 procPeakTd.textContent = r.process_peak_mb != null ? r.process_peak_mb.toFixed(1) : '';
+                if (theoreticalTd) {
+                    theoreticalTd.textContent = r.theoretical_statevector_mb != null ? r.theoretical_statevector_mb.toFixed(4) : (r.theoretical_statevector_mb === null ? 'N/A' : '');
+                }
             } else if (offlineSims.has(r.simulator)) {
                 memDeltaTd.appendChild(_makeStatusCell('offline', 'Offline'));
                 procPeakTd.appendChild(_makeStatusCell('offline', 'Offline'));
+                if (theoreticalTd) theoreticalTd.appendChild(_makeStatusCell('offline', 'Offline'));
             } else {
                 memDeltaTd.appendChild(_makeStatusCell('anomaly', 'Anomaly'));
                 procPeakTd.appendChild(_makeStatusCell('anomaly', 'Anomaly'));
+                if (theoreticalTd) theoreticalTd.appendChild(_makeStatusCell('anomaly', 'Anomaly'));
             }
 
             tbody.appendChild(rowFrag);

@@ -67,11 +67,6 @@ def create_resource_report(results_list: list) -> dict:
     )
 
     return {
-        "summary": (
-            "Memory usage delta in MiB (lowest first). "
-            "memory_usage_mb = RSS delta (MemoryMonitor, 10ms polling — may undercount "
-            "short-lived C++ allocations). theoretical_statevector_mb = 2^N × 16 bytes "
-            "(complex128 lower bound; None for tensor-network simulators)."
-        ),
+        "summary": "Memory usage delta in MiB (lowest first).",
         "ranking": sorted_data
     }

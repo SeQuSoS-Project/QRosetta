@@ -11,6 +11,17 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from security import limiter
 import os
+import logging
+
+# --- Suppress noisy GET /algorithms health-check ticks from uvicorn access log ---
+class _SuppressAlgorithmsFilter(logging.Filter):
+    """Drop GET /algorithms access log entries — they are frontend keepalive polls."""
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return not ('GET /algorithms' in msg and '" 200' in msg)
+
+logging.getLogger("uvicorn.access").addFilter(_SuppressAlgorithmsFilter())
+# ---------------------------------------------------------------------------------
 
 app = FastAPI(title="Quantum Rosetta API")
 

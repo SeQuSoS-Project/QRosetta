@@ -12,8 +12,9 @@ const METRIC_DEFINITIONS = {
     "compilation": "<b>Compilation Time:</b> Time taken to parse QASM, apply transforms (e.g. Rebase), and convert to the backend's native format.",
     "simulation": "<b>Simulation Time:</b> Time taken for the backend to execute the circuit (matrix multiplication) and retrieve results.",
     "total_time": "<b>Total Execution Time:</b> Sum of Compilation and Simulation. Represents end-to-end latency.",
-    "mem_delta": "<b>Memory Delta:</b> RAM added to the process during execution (End RSS - Start RSS). Isolates circuit cost from container overhead.",
+    "mem_delta": "<b>Memory Delta:</b> RAM added to the process during execution (End RSS - Start RSS). Uses MemoryMonitor with 10ms polling — may undercount short-lived C++ allocations.",
     "proc_peak": "<b>Process Peak:</b> The absolute maximum RAM reached by the container. Hitting the limit (512MB) causes crashes.",
+    "theoretical_sv": "<b>Theoretical SV:</b> The absolute minimum memory required to store the full statevector (2^N × 16 bytes for complex128). Tensor-network simulators (e.g. Quimb) natively use less and map to 'None'.",
     "fidelity_matrix": "<b>Fidelity Matrix:</b> Pairwise comparison of state overlap. 1.0 = Identical states.",
     "relative_phase_matrix": "<b>Relative Phase Matrix:</b> Comparison of global phase differences. Non-zero means states differ by a constant phase factor.",
     "statistical_distance_matrix (js_divergence)": "<b>JS Divergence:</b> Jensen-Shannon divergence between probability distributions. 0.0 = Identical.",
@@ -353,16 +354,99 @@ function renderSummaryPanel(data, title) {
         });
         panel.appendChild(frag);
     } else if (divergences.length > 0) {
-        const frag = _cloneTemplate('tpl-summary-divergence-block');
-        frag.querySelector('.tpl-heading').textContent = `Divergences Found (${divergences.length})`;
-        const list = frag.querySelector('.tpl-list');
-        list.classList.remove('tpl-list');
-        divergences.forEach(d => {
+        const crossGroup = divergences.filter(d => d.is_cross_group);
+        const withinGroup = divergences.filter(d => !d.is_cross_group);
+
+        if (crossGroup.length > 0) {
+            const frag = _cloneTemplate('tpl-summary-divergence-block');
+            const heading = frag.querySelector('.tpl-heading');
+            heading.textContent = `Qubit Ordering Divergences (${crossGroup.length})`;
+            heading.parentElement.classList.remove('bg-red-50', 'text-red-700', 'border-red-200');
+            heading.parentElement.classList.add('bg-yellow-50', 'text-yellow-700', 'border-yellow-200');
+            
+            const list = frag.querySelector('.tpl-list');
+            list.classList.remove('tpl-list');
             const liFrag = _cloneTemplate('tpl-summary-list-item');
-            liFrag.querySelector('li').textContent = `${d.type} between ${d.simulators.join(' & ')}`;
+            const li = liFrag.querySelector('li');
+            li.innerHTML = `Detected <b>${crossGroup.length}</b> pairwise divergences caused by mixed LSB vs MSB ordering conventions. These are expected and mathematically explained.`;
+            
+            // Add collapsible details
+            const details = document.createElement('details');
+            details.className = 'mt-2 text-xs text-yellow-800 cursor-pointer';
+            const summary = document.createElement('summary');
+            summary.className = 'font-semibold hover:text-yellow-600 outline-none py-1';
+            summary.textContent = 'View Affected Simulators (Grouped)';
+            details.appendChild(summary);
+            
+            const pairsList = document.createElement('ul');
+            pairsList.className = 'list-none ml-2 mt-1 space-y-2 opacity-90';
+            
+            const processed = new Set();
+            crossGroup.forEach(d => {
+                const [s1, s2] = d.simulators;
+                if (!processed.has(s1)) {
+                    const partners = crossGroup
+                        .filter(dx => dx.simulators.includes(s1))
+                        .map(dx => ({
+                            name: dx.simulators.find(sx => sx !== s1),
+                            type: dx.type,
+                            fidelity: dx.fidelity,
+                            js: dx.js_divergence
+                        }));
+                    
+                    const subDetails = document.createElement('details');
+                    subDetails.className = 'text-xs text-yellow-700';
+                    
+                    const subSummary = document.createElement('summary');
+                    subSummary.className = 'font-bold cursor-pointer hover:text-yellow-900 outline-none';
+                    subSummary.innerHTML = `${s1} <span class="font-normal opacity-60">&times; ${partners.length} partners</span>`;
+                    subDetails.appendChild(subSummary);
+                    
+                    const subUl = document.createElement('ul');
+                    subUl.className = 'list-disc ml-4 mt-1 space-y-0.5 opacity-80';
+                    partners.forEach(p => {
+                        const liPartner = document.createElement('li');
+                        let info = "";
+                        if (p.fidelity !== undefined) info = ` (Fidelity: ${p.fidelity.toFixed(4)})`;
+                        if (p.js !== undefined) info = ` (JS Div: ${p.js.toFixed(4)})`;
+                        liPartner.innerHTML = `vs <b>${p.name}</b>${info}`;
+                        subUl.appendChild(liPartner);
+                    });
+                    subDetails.appendChild(subUl);
+                    
+                    const pLi = document.createElement('li');
+                    pLi.appendChild(subDetails);
+                    pairsList.appendChild(pLi);
+                    
+                    processed.add(s1);
+                    // Add partners to processed to avoid duplicate reversed blocks 
+                    // (e.g. if we show qiskit vs cirq, don't show cirq vs qiskit later)
+                    partners.forEach(p => processed.add(p.name));
+                }
+            });
+            
+            details.appendChild(pairsList);
+            li.appendChild(details);
             list.appendChild(liFrag);
-        });
-        panel.appendChild(frag);
+            panel.appendChild(frag);
+        }
+
+        if (withinGroup.length > 0) {
+            const frag = _cloneTemplate('tpl-summary-divergence-block');
+            frag.querySelector('.tpl-heading').textContent = `True Numerical Divergences (${withinGroup.length})`;
+            const list = frag.querySelector('.tpl-list');
+            list.classList.remove('tpl-list');
+            withinGroup.forEach(d => {
+                const liFrag = _cloneTemplate('tpl-summary-list-item');
+                let info = "";
+                if (d.fidelity !== undefined) info = ` (Fidelity: ${d.fidelity.toFixed(4)})`;
+                if (d.js_divergence !== undefined) info = ` (JS Div: ${d.js_divergence.toFixed(4)})`;
+                
+                liFrag.querySelector('li').innerHTML = `<b>${d.simulators.join(' & ')}</b>: ${d.type}${info}`;
+                list.appendChild(liFrag);
+            });
+            panel.appendChild(frag);
+        }
     } else {
         const frag = _cloneTemplate('tpl-summary-success-banner');
         const msg = data.n_shots

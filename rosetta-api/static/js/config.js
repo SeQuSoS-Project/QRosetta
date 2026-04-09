@@ -169,20 +169,20 @@ function getRunnerConfig() {
 }
 
 function toggleAllSimulators() {
-    const checkboxes = document.querySelectorAll('.sim-checkbox');
-    // If all are checked, uncheck all. Otherwise (some or none checked), check all.
+    const checkboxes = document.querySelectorAll('.sim-checkbox:not(:disabled)');
+    // If all enabled are checked, uncheck all. Otherwise (some or none checked), check all enabled.
     const allChecked = Array.from(checkboxes).every(cb => cb.checked);
     checkboxes.forEach(cb => cb.checked = !allChecked);
 }
 
 function getTargetSimulators() {
-    const checkboxes = document.querySelectorAll('.sim-checkbox');
+    const checkboxes = document.querySelectorAll('.sim-checkbox:not(:disabled)');
     if (checkboxes.length === 0) {
         return ['pennylane-default', 'qiskit', 'cirq', 'qulacs'];
     }
 
     const checked = [];
-    document.querySelectorAll('.sim-checkbox:checked').forEach(cb => {
+    document.querySelectorAll('.sim-checkbox:checked:not(:disabled)').forEach(cb => {
         checked.push(cb.getAttribute('data-sim'));
     });
     return checked;

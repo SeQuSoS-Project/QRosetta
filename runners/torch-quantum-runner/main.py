@@ -23,29 +23,35 @@ except ImportError as e:
 
 
 # Gates that qiskit2tq can reliably convert to TorchQuantum ops.
+# NOTE: 'u1' and 'cu1' are intentionally excluded — TorchQuantum's cu1
+# implementation references an undefined `mat_dict` at runtime. Replacing
+# with 'p' causes Qiskit to decompose cu1 → cx + rz which TQ handles.
 _TQ_BASIS_GATES = [
     'h', 'x', 'y', 'z', 's', 't', 'sdg', 'tdg',
     'cx', 'cz', 'swap', 'ccx',
-    'rx', 'ry', 'rz', 'u1', 'u2', 'u3',
+    'rx', 'ry', 'rz', 'p', 'u2', 'u3',
 ]
 
 
 def _compile(qasm_str: str, optimization_level: int = 0):
     """Parse QASM 2.0 with Qiskit and convert to a TorchQuantum module.
 
-    Level 0: no optimization
+    Level 0: no optimization (but still decomposes to safe basis gates)
     Level 1: Qiskit transpiler level 1 (single-qubit gate consolidation, basic cancellation)
     Level 2: Qiskit transpiler level 2 (unitary synthesis + gate cancellation)
+
+    We always transpile with _TQ_BASIS_GATES regardless of opt level to ensure
+    gates like cu1/u1 are decomposed into gates TorchQuantum can handle.
 
     Returns (tq_module, n_qubits).
     """
     qc = QiskitCircuit.from_qasm_str(qasm_str)
-    if optimization_level > 0:
-        qc = qiskit_transpile(
-            qc,
-            optimization_level=min(optimization_level, 2),
-            basis_gates=_TQ_BASIS_GATES,
-        )
+    # Always decompose to the safe TQ basis, applying requested opt level on top.
+    qc = qiskit_transpile(
+        qc,
+        optimization_level=min(max(optimization_level, 0), 2),
+        basis_gates=_TQ_BASIS_GATES,
+    )
     # Strip measurements so we can run statevector simulation
     qc.remove_final_measurements(inplace=True)
     n_qubits = qc.num_qubits
@@ -182,6 +188,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         return {
             "simulator": "torchquantum",
             "counts": counts,
+            "sampling_method": "sv_sample",
             "execution_time_sec": execution_time,
             "compilation_time_sec": compilation_time,
             "simulation_time_sec": simulation_time,
