@@ -53,7 +53,13 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
         runner_statuses=runner_statuses,
     )
 
-    divergence_report, performance_report, resource_report = await compile_comparison_reports(aggregated_results)
+    try:
+        divergence_report, performance_report, resource_report = await compile_comparison_reports(aggregated_results)
+    except Exception as e:
+        logger.warning(f"Analysis failed (returning raw results only): {e}")
+        divergence_report = {"error": f"Analysis failed: {e}"}
+        performance_report = {}
+        resource_report = {}
 
     # --- Cache full results to disk ---
     full_report_data = [res.copy() for res in aggregated_results]

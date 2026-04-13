@@ -1,6 +1,15 @@
+As of 13-4-2026:
+OPEN BUG — K8s S3 Polling: 1-2 random runners timeout per run despite pods completing
+successfully and uploading results to S3. Thread-safety fixes (shared K8s config, shared
+S3 client, broadened exception handling) did NOT resolve the issue. Root cause is likely
+transient S3/Allas read failures or connection drops during the polling window. Pods
+complete, data exists in S3, but the API polling loop misses it for 1-2 runners.
+Workaround: post-gather S3 recovery sweep (check S3 for timed-out runners after main
+dispatch completes).
+
 As of 31-3-20206:
 1. The first simulation after loading up the projects internally gives bad results. It should be discarded
-
+(FIX THIS ON 14 APRIL. Since each run spawns new pod, does that mean every run gives bad result?)
 
 
 
