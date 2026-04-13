@@ -52,6 +52,7 @@ class JobStatusResponse(BaseModel):
     target: str
     results: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+    runner_statuses: Optional[Dict[str, str]] = None
 
 class RunnerPerformanceMetrics(BaseModel):
     simulator: str

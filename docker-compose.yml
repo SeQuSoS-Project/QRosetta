@@ -45,7 +45,7 @@ services:
 
   # --- Services 3-10: The Runners ( The Hands ) ---
 
-  qiskit_runner:
+  pytket_qiskit_runner:
     build:
       context: .
       dockerfile: ./runners/pytket-qiskit-runner/Dockerfile
@@ -58,7 +58,7 @@ services:
           cpus: "0.5"
           memory: "512M"
 
-  cirq_runner:
+  pytket_cirq_runner:
     build:
       context: .
       dockerfile: ./runners/pytket-cirq-runner/Dockerfile
@@ -71,7 +71,7 @@ services:
           cpus: "0.5"
           memory: "512M"
 
-  qulacs_runner:
+  pytket_qulacs_runner:
     build:
       context: .
       dockerfile: ./runners/pytket-qulacs-runner/Dockerfile
@@ -84,7 +84,7 @@ services:
           cpus: "0.5"
           memory: "512M"
 
-  braket_runner:
+  pytket_braket_runner:
     build:
       context: .
       dockerfile: ./runners/pytket-braket-runner/Dockerfile
@@ -97,7 +97,7 @@ services:
           cpus: "0.5"
           memory: "512M"
 
-  projectq_runner:
+  pytket_projectq_runner:
     build:
       context: .
       dockerfile: ./runners/pytket-projectq-runner/Dockerfile
@@ -110,7 +110,7 @@ services:
           cpus: "0.5"
           memory: "512M"
 
-  quest_runner:
+  pytket_quest_runner:
     build:
       context: .
       dockerfile: ./runners/pytket-quest-runner/Dockerfile
@@ -123,7 +123,7 @@ services:
           cpus: "0.5"
           memory: "512M"
 
-  pennylane_runner:
+  pennylane_lightning_runner:
     build:
       context: .
       dockerfile: ./runners/pennylane-lightning-runner/Dockerfile

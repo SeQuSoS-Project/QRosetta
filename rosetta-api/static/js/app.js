@@ -187,7 +187,7 @@ async function runComparison(type, shots) {
     if (!qasm) { alert("Please enter QASM code."); return; }
 
     const globalOpt = parseInt(document.getElementById('opt-global')?.value || 0);
-    const timeout = parseInt(document.getElementById('timeout-input')?.value || 60);
+    const timeout = parseInt(document.getElementById('timeout-input')?.value || 300);
     const runNameInput = document.getElementById('single-run-name')?.value.trim();
     dispatch('SET_RUNNER_CONFIG', getRunnerConfig());
 
@@ -261,7 +261,7 @@ async function runBatchQueue() {
     const mode = document.querySelector('input[name="mode-batch"]:checked').value;
     const shots = parseInt(document.getElementById('shots-batch').value) || 1024;
     const globalOpt = parseInt(document.getElementById('opt-global')?.value || 0);
-    const timeout = parseInt(document.getElementById('timeout-input')?.value || 60);
+    const timeout = parseInt(document.getElementById('timeout-input')?.value || 300);
     const runNameInput = document.getElementById('batch-run-name')?.value.trim();
     dispatch('SET_RUNNER_CONFIG', getRunnerConfig());
     const targetSims = getTargetSimulators();

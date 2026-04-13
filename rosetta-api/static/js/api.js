@@ -18,7 +18,6 @@ function getAuthHeaders(extraHeaders = {}) {
 }
 
 async function pollJobStatus(jobId) {
-    let startTime = Date.now();
     return new Promise((resolve, reject) => {
         const checkStatus = async () => {
             try {
@@ -30,14 +29,17 @@ async function pollJobStatus(jobId) {
                 }
                 const data = await res.json();
 
+                if (data.runner_statuses) {
+                    updateRunnerStatuses(data.runner_statuses);
+                }
+
                 if (data.status === "completed") {
                     resolve(data.results);
                 } else if (data.status === "failed") {
                     reject(new Error(data.error || "Job failed on backend"));
                 } else {
-                    const elapsed = Math.floor((Date.now() - startTime) / 1000);
                     const targetName = data.target === "lumi" ? "LUMI (HPC)" : "Rahti";
-                    setLoading(true, `Processing on ${targetName}... (${elapsed}s)`);
+                    setLoading(true, `Running on ${targetName}...`);
                     setTimeout(checkStatus, 3000);
                 }
             } catch (err) {

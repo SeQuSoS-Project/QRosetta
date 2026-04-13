@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: List
+items:
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: Role
+  metadata:
+    name: job-manager
+  rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "delete", "patch"]
+
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: RoleBinding
+  metadata:
+    name: job-manager-binding
+  subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: qrosetta
+  roleRef:
+    kind: Role
+    name: job-manager
+    apiGroup: rbac.authorization.k8s.io

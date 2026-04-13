@@ -10,3 +10,6 @@ qiskit==0.45.3
 qiskit-aer==0.13.3
 qiskit-ibm-runtime==0.20.0
 pylatexenc==2.10
+
+boto3<1.36.0
+botocore<1.36.0

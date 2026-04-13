@@ -1,3 +1,8 @@
+import argparse
+import json
+import os
+import sys
+import boto3
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
 from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, get_logger, encode_statevector, check_qubits_limit, get_num_qubits_from_qasm, theoretical_statevector_mb
@@ -10,20 +15,20 @@ import gc
 app = FastAPI(title="Pennylane Default Runner")
 logger = get_logger("pennylane-default-runner")
 
-@app.post("/run")
-def run_circuit(payload: CircuitPayload):
+
+def process_run(payload: dict) -> dict:
     logger.info("Received statevector circuit data for Pennylane-Default simulation.")
     try:
-        check_qubits_limit(payload.circuit_data, 24)
-        
+        check_qubits_limit(payload["circuit_data"], 24)
+
         # --- COMPILATION (includes first JIT trace) ---
         t0 = time.perf_counter()
-        qasm_op = qml.from_qasm(payload.circuit_data)
-        num_qubits = get_num_qubits_from_qasm(payload.circuit_data)
+        qasm_op = qml.from_qasm(payload["circuit_data"])
+        num_qubits = get_num_qubits_from_qasm(payload["circuit_data"])
         dev = qml.device("default.qubit", wires=num_qubits, shots=None)
 
         # Optimization Pipeline
-        level = payload.optimization_level
+        level = payload.get("optimization_level", 0)
         passes = []
         if level == 1:
             passes = [qml.transforms.cancel_inverses]
@@ -86,20 +91,19 @@ def run_circuit(payload: CircuitPayload):
         }
 
 
-@app.post("/run_measured")
-def run_measured_circuit(payload: MeasuredCircuitPayload):
+def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for Pennylane-Default (manual sampling).")
     try:
-        check_qubits_limit(payload.circuit_data, 24)
+        check_qubits_limit(payload["circuit_data"], 24)
 
         # --- COMPILATION (includes first JIT trace) ---
         t0 = time.perf_counter()
-        qasm_op = qml.from_qasm(payload.circuit_data)
-        num_qubits = get_num_qubits_from_qasm(payload.circuit_data)
+        qasm_op = qml.from_qasm(payload["circuit_data"])
+        num_qubits = get_num_qubits_from_qasm(payload["circuit_data"])
         dev = qml.device("default.qubit", wires=num_qubits, shots=None)
 
         # Optimization Pipeline
-        level = payload.optimization_level
+        level = payload.get("optimization_level", 0)
         passes = []
         if level == 1:
             passes = [qml.transforms.cancel_inverses]
@@ -128,7 +132,7 @@ def run_measured_circuit(payload: MeasuredCircuitPayload):
             # --- SIMULATION ---
             t2 = time.perf_counter()
             statevector = statevector_circuit()
-            counts_dict = _sample_from_statevector(statevector, payload.n_shots, num_qubits)
+            counts_dict = _sample_from_statevector(statevector, payload.get("n_shots", 1024), num_qubits)
             t3 = time.perf_counter()
             simulation_time = t3 - t2
 
@@ -160,3 +164,52 @@ def run_measured_circuit(payload: MeasuredCircuitPayload):
             "memory_usage_mb": 0.0,
             "process_peak_mb": 0.0
         }
+
+
+@app.post("/run")
+def run_circuit(payload: CircuitPayload):
+    return process_run(payload.model_dump())
+
+
+@app.post("/run_measured")
+def run_measured_circuit(payload: MeasuredCircuitPayload):
+    return process_run_measured(payload.model_dump())
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        parser = argparse.ArgumentParser(description="Pennylane-Default runner CLI")
+        parser.add_argument("--endpoint", choices=["run", "run_measured"], required=True,
+                            help="Which endpoint to invoke")
+        parser.add_argument("--payload", default=None, help="JSON payload string")
+        parser.add_argument("--s3-job-id", default=None,
+                            help="S3 job ID: download payload from jobs/pending/<id>.json, upload result to jobs/completed/<id>.json")
+        args = parser.parse_args()
+
+        if args.s3_job_id:
+            s3 = boto3.client(
+                "s3",
+                endpoint_url=os.getenv("S3_ENDPOINT_URL"),
+                aws_access_key_id=os.getenv("S3_ACCESS_KEY"),
+                aws_secret_access_key=os.getenv("S3_SECRET_KEY"),
+                region_name=os.getenv("S3_REGION", "us-east-1"),
+            )
+            bucket = os.getenv("S3_BUCKET_NAME")
+            obj = s3.get_object(Bucket=bucket, Key=f"jobs/pending/{args.s3_job_id}.json")
+            payload_dict = json.loads(obj["Body"].read())
+
+            result = process_run(payload_dict) if args.endpoint == "run" else process_run_measured(payload_dict)
+
+            result_bytes = json.dumps(result).encode()
+            s3.put_object(Bucket=bucket, Key=f"jobs/completed/{args.s3_job_id}.json",
+                          Body=result_bytes, ContentLength=len(result_bytes))
+            print(f"Job {args.s3_job_id} completed and uploaded to S3.")
+        else:
+            if args.payload is None:
+                parser.error("--payload is required when --s3-job-id is not provided")
+            payload_dict = json.loads(args.payload)
+            result = process_run(payload_dict) if args.endpoint == "run" else process_run_measured(payload_dict)
+            print(json.dumps(result))
+    else:
+        import uvicorn
+        uvicorn.run(app, host="0.0.0.0", port=8000)

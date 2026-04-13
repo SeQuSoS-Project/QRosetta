@@ -1,3 +1,8 @@
+import argparse
+import json
+import os
+import sys
+import boto3
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
 from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb
@@ -61,8 +66,7 @@ def _compile(qasm_str: str, optimization_level: int = 0):
     return qc
 
 
-@app.post("/run")
-async def run_circuit(payload: CircuitPayload):
+def process_run(payload: dict) -> dict:
     logger.info(f"Received statevector request (GPU={_GPU_AVAILABLE}).")
     if not AERSIM_AVAILABLE:
         return {"simulator": "cuquantum", "error": "qiskit-aer not installed.",
@@ -70,7 +74,7 @@ async def run_circuit(payload: CircuitPayload):
     try:
         # --- COMPILATION ---
         t0 = time.perf_counter()
-        qc = _compile(payload.circuit_data, payload.optimization_level)
+        qc = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
         qc.remove_final_measurements(inplace=True)
         qc.save_statevector()
         sim = AerSimulator(method='statevector', device='GPU') if _GPU_AVAILABLE else AerSimulator(method='statevector')
@@ -114,8 +118,7 @@ async def run_circuit(payload: CircuitPayload):
                 "execution_time_sec": 0.0, "memory_usage_mb": 0.0, "process_peak_mb": 0.0}
 
 
-@app.post("/run_measured")
-async def run_measured_circuit(payload: MeasuredCircuitPayload):
+def process_run_measured(payload: dict) -> dict:
     logger.info(f"Received measurement request (GPU={_GPU_AVAILABLE}).")
     if not AERSIM_AVAILABLE:
         return {"simulator": "cuquantum", "error": "qiskit-aer not installed.",
@@ -123,10 +126,12 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
     try:
         # --- COMPILATION ---
         t0 = time.perf_counter()
-        qc = _compile(payload.circuit_data, payload.optimization_level)
+        qc = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
         sim = AerSimulator(method='statevector', device='GPU') if _GPU_AVAILABLE else AerSimulator(method='statevector')
         t1 = time.perf_counter()
         compilation_time = t1 - t0
+
+        n_shots = payload.get("n_shots", 1024)
 
         # --- WARM-UP ---
         _run_safe(sim, qc, shots=10)
@@ -135,7 +140,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             gc.collect()
             # --- SIMULATION ---
             t2 = time.perf_counter()
-            result = _run_safe(sim, qc, shots=payload.n_shots)
+            result = _run_safe(sim, qc, shots=n_shots)
             counts = dict(result.get_counts())
             t3 = time.perf_counter()
             simulation_time = t3 - t2
@@ -166,4 +171,53 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
                 "execution_time_sec": 0.0, "memory_usage_mb": 0.0, "process_peak_mb": 0.0}
 
 
+@app.post("/run")
+async def run_circuit(payload: CircuitPayload):
+    return process_run(payload.model_dump())
+
+
+@app.post("/run_measured")
+async def run_measured_circuit(payload: MeasuredCircuitPayload):
+    return process_run_measured(payload.model_dump())
+
+
 logger.info("cuQuantum runner API instantiated and ready to receive traffic.")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        parser = argparse.ArgumentParser(description="cuQuantum runner CLI")
+        parser.add_argument("--endpoint", choices=["run", "run_measured"], required=True,
+                            help="Which endpoint to invoke")
+        parser.add_argument("--payload", default=None, help="JSON payload string")
+        parser.add_argument("--s3-job-id", default=None,
+                            help="S3 job ID: download payload from jobs/pending/<id>.json, upload result to jobs/completed/<id>.json")
+        args = parser.parse_args()
+
+        if args.s3_job_id:
+            s3 = boto3.client(
+                "s3",
+                endpoint_url=os.getenv("S3_ENDPOINT_URL"),
+                aws_access_key_id=os.getenv("S3_ACCESS_KEY"),
+                aws_secret_access_key=os.getenv("S3_SECRET_KEY"),
+                region_name=os.getenv("S3_REGION", "us-east-1"),
+            )
+            bucket = os.getenv("S3_BUCKET_NAME")
+            obj = s3.get_object(Bucket=bucket, Key=f"jobs/pending/{args.s3_job_id}.json")
+            payload_dict = json.loads(obj["Body"].read())
+
+            result = process_run(payload_dict) if args.endpoint == "run" else process_run_measured(payload_dict)
+
+            result_bytes = json.dumps(result).encode()
+            s3.put_object(Bucket=bucket, Key=f"jobs/completed/{args.s3_job_id}.json",
+                          Body=result_bytes, ContentLength=len(result_bytes))
+            print(f"Job {args.s3_job_id} completed and uploaded to S3.")
+        else:
+            if args.payload is None:
+                parser.error("--payload is required when --s3-job-id is not provided")
+            payload_dict = json.loads(args.payload)
+            result = process_run(payload_dict) if args.endpoint == "run" else process_run_measured(payload_dict)
+            print(json.dumps(result))
+    else:
+        import uvicorn
+        uvicorn.run(app, host="0.0.0.0", port=8000)
