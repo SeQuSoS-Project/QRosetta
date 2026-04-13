@@ -11,6 +11,8 @@ function isConnectionError(errorMsg) {
         msg.includes("failed to decode json");
 }
 
+let _loaderElapsedTimer = null;
+
 function setLoading(isLoading, message = "Processing...") {
     const loader = document.getElementById('loader');
     const loaderText = document.getElementById('loader-text');
@@ -20,11 +22,116 @@ function setLoading(isLoading, message = "Processing...") {
         loader.classList.remove('hidden');
         loader.classList.add('flex');
         allButtons.forEach(btn => { if (btn) btn.disabled = true });
+        if (!_loaderElapsedTimer) {
+            const startTime = Date.now();
+            const elapsedEl = document.getElementById('loader-elapsed');
+            if (elapsedEl) elapsedEl.textContent = '0s elapsed';
+            _loaderElapsedTimer = setInterval(() => {
+                const el = document.getElementById('loader-elapsed');
+                if (el) el.textContent = `${Math.floor((Date.now() - startTime) / 1000)}s elapsed`;
+            }, 1000);
+        }
     } else {
         loader.classList.add('hidden');
         loader.classList.remove('flex');
         allButtons.forEach(btn => { if (btn) btn.disabled = false });
+        if (_loaderElapsedTimer) {
+            clearInterval(_loaderElapsedTimer);
+            _loaderElapsedTimer = null;
+        }
+        _stopRunnerCardTimer();
+        const grid = document.getElementById('runner-status-grid');
+        if (grid) grid.innerHTML = '';
+        const elapsedEl = document.getElementById('loader-elapsed');
+        if (elapsedEl) elapsedEl.textContent = '0s elapsed';
     }
+}
+
+const _STATUS_CFG = {
+    queued:   { color: 'bg-gray-300',    text: 'text-gray-400',   label: 'QUEUED',    pulse: false, terminal: false },
+    spawning: { color: 'bg-amber-400',   text: 'text-amber-600',  label: 'SPAWNING',  pulse: true,  terminal: false },
+    running:  { color: 'bg-blue-500',    text: 'text-blue-600',   label: 'RUNNING',   pulse: true,  terminal: false },
+    done:     { color: 'bg-green-500',   text: 'text-green-700',  label: 'DONE',      pulse: false, terminal: true  },
+    error:    { color: 'bg-red-500',     text: 'text-red-600',    label: 'ERROR',     pulse: false, terminal: true  },
+    timeout:  { color: 'bg-orange-400',  text: 'text-orange-500', label: 'TIMEOUT',   pulse: false, terminal: true  },
+};
+
+const _RUNNER_NAMES = {
+    "qiskit": "Qiskit", "cirq": "Cirq", "qulacs": "Qulacs", "braket": "Braket",
+    "projectq": "ProjectQ", "quest": "QuEST", "pennylane-lightning": "PL Lightning",
+    "pennylane-default": "PL Default", "qsim-cirq": "qsim-Cirq", "qibo": "Qibo",
+    "qrisp": "Qrisp", "myqlm": "myQLM", "pyquil": "PyQuil",
+    "torchquantum": "TorchQuantum", "quimb": "Quimb", "cuquantum": "cuQuantum",
+};
+
+// Per-runner phase tracking: { simId: { status, since, frozenElapsed } }
+let _runnerPhases = {};
+let _runnerCardTimer = null;
+
+function _startRunnerCardTimer() {
+    if (_runnerCardTimer) return;
+    _runnerCardTimer = setInterval(() => {
+        const now = Date.now();
+        for (const [simId, phase] of Object.entries(_runnerPhases)) {
+            if (phase.terminal) continue;
+            const elapsed = Math.floor((now - phase.since) / 1000);
+            const el = document.getElementById(`rsc-elapsed-${simId}`);
+            if (el) el.textContent = `${elapsed}s`;
+        }
+    }, 1000);
+}
+
+function _stopRunnerCardTimer() {
+    if (_runnerCardTimer) { clearInterval(_runnerCardTimer); _runnerCardTimer = null; }
+    _runnerPhases = {};
+}
+
+function updateRunnerStatuses(statuses) {
+    if (!statuses || typeof statuses !== 'object') return;
+    const grid = document.getElementById('runner-status-grid');
+    if (!grid) return;
+
+    const now = Date.now();
+
+    for (const [simId, status] of Object.entries(statuses)) {
+        const cfg = _STATUS_CFG[status] || _STATUS_CFG['queued'];
+        const name = _RUNNER_NAMES[simId] || simId;
+
+        // Track phase transitions to reset per-runner timer
+        const prev = _runnerPhases[simId];
+        if (!prev || prev.status !== status) {
+            const frozenElapsed = prev && prev.terminal ? prev.frozenElapsed
+                : prev ? Math.floor((now - prev.since) / 1000) : 0;
+            _runnerPhases[simId] = {
+                status,
+                since: now,
+                terminal: cfg.terminal,
+                frozenElapsed: cfg.terminal ? frozenElapsed : 0,
+            };
+        }
+
+        let card = document.getElementById(`rsc-${simId}`);
+        if (!card) {
+            card = document.createElement('div');
+            card.id = `rsc-${simId}`;
+            card.className = 'flex items-center gap-2 p-2 rounded border border-gray-100 bg-gray-50 font-mono text-xs';
+            grid.appendChild(card);
+        }
+
+        const phase = _runnerPhases[simId];
+        const elapsedDisplay = cfg.terminal
+            ? `${phase.frozenElapsed}s`
+            : `<span id="rsc-elapsed-${simId}">0s</span>`;
+
+        card.innerHTML = `
+            <span class="w-2 h-2 rounded-full flex-shrink-0 ${cfg.color}${cfg.pulse ? ' animate-pulse' : ''}"></span>
+            <span class="flex-1 text-gray-700 truncate">${name}</span>
+            <span class="font-semibold tracking-widest text-[10px] ${cfg.text} mr-1">${cfg.label}</span>
+            <span class="text-gray-400 text-[10px] w-7 text-right">${elapsedDisplay}</span>
+        `;
+    }
+
+    _startRunnerCardTimer();
 }
 
 function copyRawJson(btn) {

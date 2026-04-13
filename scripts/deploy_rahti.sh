@@ -62,9 +62,7 @@ done
 echo ""
 echo "--- 2. Manifest Injection ---"
 echo "Dynamically injecting namespace '$RAHTI_NAMESPACE' into Kubernetes manifests..."
-# Temporarily replace placeholders inside the YAML files
-sed -i "s/<your-namespace>/$RAHTI_NAMESPACE/g" infra/rahti/api.yaml
-sed -i "s/<your-namespace>/$RAHTI_NAMESPACE/g" infra/rahti/runners.yaml
+sed -i "s/<YOUR_NAMESPACE>/$RAHTI_NAMESPACE/g" infra/rahti/rbac.yaml
 
 echo ""
 echo "--- 3. Deploying to OpenShift ($RAHTI_NAMESPACE) ---"
@@ -74,8 +72,9 @@ oc create secret generic rosetta-secrets \
     --from-literal=S3_SECRET_KEY="297f055f8fc7472a91aa4b1b988afc78" \
     --from-literal=S3_BUCKET_NAME="project_2017360" \
     --dry-run=client -o yaml | oc apply -f -
-oc apply -f infra/rahti/runners.yaml
+oc apply -f infra/rahti/rbac.yaml
 oc apply -f infra/rahti/api.yaml
+# infra/rahti/runners.yaml is intentionally empty — runners are spawned as K8s Jobs by the API.
 
 echo "========================================"
 echo "Deployment initiated successfully!"

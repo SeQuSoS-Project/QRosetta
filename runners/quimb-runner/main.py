@@ -1,3 +1,8 @@
+import argparse
+import json
+import os
+import sys
+import boto3
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
 from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, get_num_qubits_from_qasm
@@ -59,8 +64,7 @@ def _run_sv(circ) -> np.ndarray:
     return np.asarray(sv).flatten()
 
 
-@app.post("/run")
-async def run_circuit(payload: CircuitPayload):
+def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for Quimb statevector simulation.")
     if not QUIMB_AVAILABLE:
         return {
@@ -73,7 +77,7 @@ async def run_circuit(payload: CircuitPayload):
     try:
         # --- COMPILATION ---
         t0 = time.perf_counter()
-        circ = _compile(payload.circuit_data, payload.optimization_level)
+        circ = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
@@ -120,8 +124,7 @@ async def run_circuit(payload: CircuitPayload):
         }
 
 
-@app.post("/run_measured")
-async def run_measured_circuit(payload: MeasuredCircuitPayload):
+def process_run_measured(payload: dict) -> dict:
     logger.info("Received circuit data for Quimb measurement simulation.")
     if not QUIMB_AVAILABLE:
         return {
@@ -134,9 +137,11 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
     try:
         # --- COMPILATION ---
         t0 = time.perf_counter()
-        circ = _compile(payload.circuit_data, payload.optimization_level)
+        circ = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
         t1 = time.perf_counter()
         compilation_time = t1 - t0
+
+        n_shots = payload.get("n_shots", 1024)
 
         # --- WARM-UP (excluded from reported timing) ---
         dict(circ.simulate_counts(C=10))
@@ -145,7 +150,7 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
             gc.collect()
             # --- SIMULATION ---
             t2 = time.perf_counter()
-            counts_counter = circ.simulate_counts(C=payload.n_shots)
+            counts_counter = circ.simulate_counts(C=n_shots)
             counts = dict(counts_counter)
             t3 = time.perf_counter()
             simulation_time = t3 - t2
@@ -182,4 +187,53 @@ async def run_measured_circuit(payload: MeasuredCircuitPayload):
         }
 
 
+@app.post("/run")
+async def run_circuit(payload: CircuitPayload):
+    return process_run(payload.model_dump())
+
+
+@app.post("/run_measured")
+async def run_measured_circuit(payload: MeasuredCircuitPayload):
+    return process_run_measured(payload.model_dump())
+
+
 logger.info("Quimb runner API instantiated and ready to receive traffic.")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        parser = argparse.ArgumentParser(description="Quimb runner CLI")
+        parser.add_argument("--endpoint", choices=["run", "run_measured"], required=True,
+                            help="Which endpoint to invoke")
+        parser.add_argument("--payload", default=None, help="JSON payload string")
+        parser.add_argument("--s3-job-id", default=None,
+                            help="S3 job ID: download payload from jobs/pending/<id>.json, upload result to jobs/completed/<id>.json")
+        args = parser.parse_args()
+
+        if args.s3_job_id:
+            s3 = boto3.client(
+                "s3",
+                endpoint_url=os.getenv("S3_ENDPOINT_URL"),
+                aws_access_key_id=os.getenv("S3_ACCESS_KEY"),
+                aws_secret_access_key=os.getenv("S3_SECRET_KEY"),
+                region_name=os.getenv("S3_REGION", "us-east-1"),
+            )
+            bucket = os.getenv("S3_BUCKET_NAME")
+            obj = s3.get_object(Bucket=bucket, Key=f"jobs/pending/{args.s3_job_id}.json")
+            payload_dict = json.loads(obj["Body"].read())
+
+            result = process_run(payload_dict) if args.endpoint == "run" else process_run_measured(payload_dict)
+
+            result_bytes = json.dumps(result).encode()
+            s3.put_object(Bucket=bucket, Key=f"jobs/completed/{args.s3_job_id}.json",
+                          Body=result_bytes, ContentLength=len(result_bytes))
+            print(f"Job {args.s3_job_id} completed and uploaded to S3.")
+        else:
+            if args.payload is None:
+                parser.error("--payload is required when --s3-job-id is not provided")
+            payload_dict = json.loads(args.payload)
+            result = process_run(payload_dict) if args.endpoint == "run" else process_run_measured(payload_dict)
+            print(json.dumps(result))
+    else:
+        import uvicorn
+        uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -5,3 +5,6 @@ myqlm==1.13.1
 myqlm-interop==2.1.0
 numpy==2.2.6
 gunicorn==23.0.0
+
+boto3<1.36.0
+botocore<1.36.0

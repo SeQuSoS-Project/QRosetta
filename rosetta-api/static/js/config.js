@@ -89,7 +89,7 @@ function renderConfigPanel(runners) {
             <span class="text-gray-300">|</span>
             <div class="flex items-center space-x-1">
                 <label for="timeout-input" class="text-xs text-gray-500">Timeout (s):</label>
-                <input type="number" id="timeout-input" min="1" max="300" value="60"
+                <input type="number" id="timeout-input" min="1" max="300" value="300"
                        onchange="if(this.value < 1) this.value=1; if(this.value > 300) this.value=300;"
                        class="w-16 text-xs border-gray-300 rounded p-1 focus:ring-indigo-500 focus:border-indigo-500 text-right">
             </div>
@@ -146,7 +146,7 @@ async function toggleConfigPanel() {
     if (panel.classList.contains('hidden')) {
         let runners = [];
         try {
-            const resp = await fetch('/runners');
+            const resp = await fetch(`${BASE_URL}/runners`);
             if (resp.ok) runners = await resp.json();
         } catch (_) {}
         renderConfigPanel(runners);

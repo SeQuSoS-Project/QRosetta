@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quantum Rosetta (Part of SeQuSoS Project)</title>
+    <title>Quantum Rosetta</title>
     <!-- --- CDN FIX: Corrected URL --- -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- --- END FIX --- -->
@@ -36,7 +36,6 @@
                 <div class="flex h-16 items-center justify-between">
                     <div class="flex items-center">
                         <span class="ml-3 text-3xl font-extrabold text-indigo-600">Quantum Rosetta</span>
-                        <span class="ml-3 text-2xl font-bold text-gray-900">(Part of SeQuSoS Project)</span>
                     </div>
                     <div class="flex items-center space-x-4">
                         <div id="system-status"
@@ -267,12 +266,17 @@
             <div class="w-full md:w-1/2 p-4 sm:p-6 lg:p-8 flex flex-col overflow-y-auto bg-gray-50">
                 <div class="flex-1 flex flex-col rounded-lg min-h-0 relative bg-white border border-gray-200 shadow-sm">
                     <div id="loader"
-                        class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white bg-opacity-90 rounded-lg hidden transition-opacity duration-300">
-                        <div
-                            class="animate-spin h-12 w-12 rounded-full border-4 border-gray-200 border-t-indigo-600 mb-4">
+                        class="absolute inset-0 z-10 flex-col bg-white bg-opacity-97 rounded-lg hidden overflow-y-auto transition-opacity duration-300">
+                        <div class="p-5 flex flex-col h-full min-h-0">
+                            <div class="border-b border-indigo-100 pb-3 mb-4 flex-shrink-0">
+                                <p class="font-mono text-xs text-indigo-300 tracking-widest uppercase">quantum rosetta · compute</p>
+                                <h2 id="loader-text" class="font-mono font-bold text-indigo-800 text-sm tracking-wide mt-1">Processing...</h2>
+                            </div>
+                            <div id="runner-status-grid" class="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2 content-start overflow-y-auto"></div>
+                            <div class="mt-4 pt-3 border-t border-indigo-100 flex-shrink-0 text-center">
+                                <span id="loader-elapsed" class="font-mono text-xs text-indigo-300">0s elapsed</span>
+                            </div>
                         </div>
-                        <p id="loader-text" class="text-indigo-800 font-semibold text-sm animate-pulse">Processing...
-                        </p>
                     </div>
 
                     <div id="back-button-container" class="hidden p-4 border-b border-gray-200">

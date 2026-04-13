@@ -7,3 +7,6 @@ qiskit==1.2.4
 qiskit-aer==0.15.1
 numpy==1.26.4
 gunicorn==23.0.0
+
+boto3<1.36.0
+botocore<1.36.0

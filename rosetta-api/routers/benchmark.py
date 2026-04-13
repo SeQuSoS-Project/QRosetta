@@ -26,7 +26,8 @@ async def get_job_status(job_id: str):
         "status": job_data["status"],
         "target": job_data["target"],
         "results": job_data.get("results"),
-        "error": job_data.get("error")
+        "error": job_data.get("error"),
+        "runner_statuses": job_data.get("runner_statuses"),
     }
 
 @router.post("/compare", response_model=JobStatusResponse)

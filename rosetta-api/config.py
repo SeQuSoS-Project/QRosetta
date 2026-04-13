@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     CUQUANTUM_RUNNER_URL: str = "http://cuquantum-runner:8000"
 
     # Timeouts
-    RUNNER_TIMEOUT_SEC: int = 60
+    RUNNER_TIMEOUT_SEC: int = 300
 
     # Storage Configuration
     STORAGE_MODE: str = os.getenv("STORAGE_MODE", "local")  # Options: 'local', 's3'
