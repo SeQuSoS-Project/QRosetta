@@ -9,6 +9,9 @@ items:
   - apiGroups: ["batch"]
     resources: ["jobs"]
     verbs: ["get", "list", "watch", "create", "delete", "patch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
 
 - apiVersion: rbac.authorization.k8s.io/v1
   kind: RoleBinding

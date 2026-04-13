@@ -99,7 +99,9 @@ function updateRunnerStatuses(statuses) {
 
         // Track phase transitions to reset per-runner timer
         const prev = _runnerPhases[simId];
-        if (!prev || prev.status !== status) {
+        const statusChanged = !prev || prev.status !== status;
+
+        if (statusChanged) {
             const frozenElapsed = prev && prev.terminal ? prev.frozenElapsed
                 : prev ? Math.floor((now - prev.since) / 1000) : 0;
             _runnerPhases[simId] = {
@@ -111,24 +113,29 @@ function updateRunnerStatuses(statuses) {
         }
 
         let card = document.getElementById(`rsc-${simId}`);
-        if (!card) {
-            card = document.createElement('div');
-            card.id = `rsc-${simId}`;
-            card.className = 'flex items-center gap-2 p-2 rounded border border-gray-100 bg-gray-50 font-mono text-xs';
-            grid.appendChild(card);
+
+        // Only rebuild card HTML on first appearance or status change —
+        // rebuilding on every poll resets the elapsed span to "0s" mid-count.
+        if (!card || statusChanged) {
+            if (!card) {
+                card = document.createElement('div');
+                card.id = `rsc-${simId}`;
+                card.className = 'flex items-center gap-2 p-2 rounded border border-gray-100 bg-gray-50 font-mono text-xs';
+                grid.appendChild(card);
+            }
+
+            const phase = _runnerPhases[simId];
+            const elapsedDisplay = cfg.terminal
+                ? `${phase.frozenElapsed}s`
+                : `<span id="rsc-elapsed-${simId}">0s</span>`;
+
+            card.innerHTML = `
+                <span class="w-2 h-2 rounded-full flex-shrink-0 ${cfg.color}${cfg.pulse ? ' animate-pulse' : ''}"></span>
+                <span class="flex-1 text-gray-700 truncate">${name}</span>
+                <span class="font-semibold tracking-widest text-[10px] ${cfg.text} mr-1">${cfg.label}</span>
+                <span class="text-gray-400 text-[10px] w-7 text-right">${elapsedDisplay}</span>
+            `;
         }
-
-        const phase = _runnerPhases[simId];
-        const elapsedDisplay = cfg.terminal
-            ? `${phase.frozenElapsed}s`
-            : `<span id="rsc-elapsed-${simId}">0s</span>`;
-
-        card.innerHTML = `
-            <span class="w-2 h-2 rounded-full flex-shrink-0 ${cfg.color}${cfg.pulse ? ' animate-pulse' : ''}"></span>
-            <span class="flex-1 text-gray-700 truncate">${name}</span>
-            <span class="font-semibold tracking-widest text-[10px] ${cfg.text} mr-1">${cfg.label}</span>
-            <span class="text-gray-400 text-[10px] w-7 text-right">${elapsedDisplay}</span>
-        `;
     }
 
     _startRunnerCardTimer();
