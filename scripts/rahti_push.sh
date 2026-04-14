@@ -10,6 +10,7 @@ cd "$(dirname "$0")/.." || exit 1
 
 NAMESPACE=${1:-"qrosetta"}
 REGISTRY="image-registry.apps.2.rahti.csc.fi/$NAMESPACE"
+IMAGE_TAG=$(git rev-parse --short HEAD)
 shift || true   # remaining args are optional service subset
 
 # Maps registry image name -> docker compose service name (used for docker tag)
@@ -41,9 +42,10 @@ else
 fi
 
 echo "========================================"
-echo "Registry : $REGISTRY"
-echo "Namespace: $NAMESPACE"
-echo "Services : ${TARGETS[*]}"
+echo "Registry  : $REGISTRY"
+echo "Namespace : $NAMESPACE"
+echo "Image Tag : $IMAGE_TAG"
+echo "Services  : ${TARGETS[*]}"
 echo "========================================"
 
 set -e
@@ -56,11 +58,14 @@ for NAME in "${TARGETS[@]}"; do
         continue
     fi
     LOCAL_IMAGE="qsimulators-${COMPOSE_SERVICE}"
-    REMOTE_TAG="$REGISTRY/$NAME:latest"
-    echo ">> Tagging $LOCAL_IMAGE → $REMOTE_TAG"
-    docker tag "$LOCAL_IMAGE" "$REMOTE_TAG"
-    echo ">> Pushing $REMOTE_TAG"
-    docker push "$REMOTE_TAG"
+    VERSIONED_TAG="$REGISTRY/$NAME:$IMAGE_TAG"
+    LATEST_TAG="$REGISTRY/$NAME:latest"
+    echo ">> Tagging $LOCAL_IMAGE → $VERSIONED_TAG"
+    docker tag "$LOCAL_IMAGE" "$VERSIONED_TAG"
+    docker tag "$LOCAL_IMAGE" "$LATEST_TAG"
+    echo ">> Pushing $VERSIONED_TAG"
+    docker push "$VERSIONED_TAG"
+    docker push "$LATEST_TAG"
     echo ""
 done
 
@@ -70,9 +75,9 @@ sed -i "s/<YOUR_NAMESPACE>/$NAMESPACE/g" infra/rahti/rbac.yaml 2>/dev/null || tr
 oc apply -f infra/rahti/rbac.yaml -n "$NAMESPACE"
 oc apply -f infra/rahti/api.yaml  -n "$NAMESPACE"
 
-# 3. Restart the API pod so it picks up the new image
-echo "--- Restarting rosetta-api ---"
-oc rollout restart deployment/rosetta-api -n "$NAMESPACE"
+# 3. Set image tag and restart the API pod
+echo "--- Setting IMAGE_TAG=$IMAGE_TAG and restarting rosetta-api ---"
+oc set env deployment/rosetta-api IMAGE_TAG="$IMAGE_TAG" -n "$NAMESPACE"
 oc rollout status  deployment/rosetta-api -n "$NAMESPACE" --timeout=120s
 
 echo "========================================"

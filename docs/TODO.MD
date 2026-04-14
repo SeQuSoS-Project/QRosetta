@@ -7,9 +7,6 @@ complete, data exists in S3, but the API polling loop misses it for 1-2 runners.
 Workaround: post-gather S3 recovery sweep (check S3 for timed-out runners after main
 dispatch completes).
 
-As of 31-3-20206:
-1. The first simulation after loading up the projects internally gives bad results. It should be discarded
-(FIX THIS ON 14 APRIL. Since each run spawns new pod, does that mean every run gives bad result?)
 
 
 
