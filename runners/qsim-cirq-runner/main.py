@@ -250,8 +250,12 @@ if __name__ == "__main__":
             )
             bucket = os.getenv("S3_BUCKET_NAME")
 
-            obj = s3.get_object(Bucket=bucket, Key=f"jobs/pending/{args.s3_job_id}.json")
-            payload_dict = json.loads(obj["Body"].read())
+            payload_env = os.getenv("QROSETTA_PAYLOAD")
+            if payload_env:
+                payload_dict = json.loads(payload_env)
+            else:
+                obj = s3.get_object(Bucket=bucket, Key=f"jobs/pending/{args.s3_job_id}.json")
+                payload_dict = json.loads(obj["Body"].read())
 
             if args.endpoint == "run":
                 result = process_run(payload_dict)

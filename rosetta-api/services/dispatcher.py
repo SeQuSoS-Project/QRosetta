@@ -13,6 +13,7 @@ from config import settings
 from qrosetta_commons.helpers import get_logger
 
 EXECUTION_MODE = os.environ.get("EXECUTION_MODE", "local")
+IMAGE_TAG = os.environ.get("IMAGE_TAG", "latest")
 
 logger = get_logger("rosetta-api")
 
@@ -105,35 +106,45 @@ async def _dispatch_http_local(runner_urls: dict, runner_payload: dict, timeout_
     return list(results)
 
 
-def _run_k8s_job_for_simulator(sim_name: str, url: str, local_payload: dict, timeout_seconds: int, s3, batch_api, core_api, namespace: str, status_callback=None) -> dict:
-    """Sync: upload payload to S3, spawn a K8s Job, poll for the result. Runs in a thread.
+S3_FETCH_ATTEMPTS = 6
+S3_FETCH_BASE_DELAY_SEC = 2
+RBAC_FALLBACK_POLL_SEC = 5
 
-    Receives shared s3 client and pre-configured K8s API objects from the
-    caller — these are created ONCE before threads start, avoiding race
-    conditions on k8s_config globals and connection-pool proliferation.
-    """
-    # --- Parse URL ---
-    # e.g. "http://qsim-cirq-runner:8000/run_measured" -> hostname="qsim-cirq-runner", endpoint_type="run_measured"
+
+def _fetch_s3_result(s3, bucket, completed_key, sim_name, status_callback):
+    """Fetch result from S3 with exponential backoff. Called after K8s confirms completion."""
+    for attempt in range(S3_FETCH_ATTEMPTS):
+        if attempt > 0:
+            time.sleep(min(S3_FETCH_BASE_DELAY_SEC * (2 ** (attempt - 1)), 16))
+        try:
+            obj = s3.get_object(Bucket=bucket, Key=completed_key)
+            result = json.loads(obj["Body"].read())
+            s3.delete_object(Bucket=bucket, Key=completed_key)
+            logger.info(f"[K8s] Fetched S3 result for {sim_name} (attempt {attempt + 1})")
+            if status_callback:
+                status_callback("error" if "error" in result else "done")
+            return result
+        except ClientError as e:
+            if e.response["Error"]["Code"] not in ("NoSuchKey", "404"):
+                logger.warning(f"[K8s] S3 fetch error for {sim_name}: {e}")
+        except (BotoCoreError, Exception) as e:
+            logger.warning(f"[K8s] S3 transient error for {sim_name}: {type(e).__name__}: {e}")
+    return None
+
+
+def _run_k8s_job_for_simulator(sim_name: str, url: str, local_payload: dict, timeout_seconds: int, s3, batch_api, core_api, namespace: str, status_callback=None) -> dict:
+    """Sync: spawn a K8s Job with payload as env var, wait for K8s completion, fetch result from S3."""
     endpoint_type = url.rstrip("/").split("/")[-1]
     hostname = url.split("//")[1].split(":")[0]
 
     job_id = uuid.uuid4().hex
-    pending_key = f"jobs/pending/{job_id}.json"
     completed_key = f"jobs/completed/{job_id}.json"
     bucket = settings.S3_BUCKET_NAME
 
-    # --- S3 Payload Drop ---
-    payload_bytes = json.dumps(local_payload).encode()
-    s3.put_object(
-        Bucket=bucket,
-        Key=pending_key,
-        Body=payload_bytes,
-        ContentLength=len(payload_bytes),
-    )
-    logger.info(f"[K8s] Uploaded payload for {sim_name} → s3://{bucket}/{pending_key}")
+    payload_json = json.dumps(local_payload)
+    logger.info(f"[K8s] Preparing job for {sim_name} (payload: {len(payload_json)} bytes, job_id={job_id})")
 
-    # --- K8s Job Spawn ---
-    image = f"image-registry.apps.2.rahti.csc.fi/qrosetta/{hostname}:latest"
+    image = f"image-registry.apps.2.rahti.csc.fi/qrosetta/{hostname}:{IMAGE_TAG}"
 
     env_vars = [
         k8s_client.V1EnvVar(name="S3_ENDPOINT_URL",  value=os.environ.get("S3_ENDPOINT_URL", "")),
@@ -141,17 +152,13 @@ def _run_k8s_job_for_simulator(sim_name: str, url: str, local_payload: dict, tim
         k8s_client.V1EnvVar(name="S3_SECRET_KEY",    value=os.environ.get("S3_SECRET_KEY", "")),
         k8s_client.V1EnvVar(name="S3_BUCKET_NAME",   value=os.environ.get("S3_BUCKET_NAME", "")),
         k8s_client.V1EnvVar(name="S3_REGION",        value=os.environ.get("S3_REGION", "us-east-1")),
-        # Pin all math-library thread counts to 1 so pods don't steal CPU from
-        # each other when multiple jobs run concurrently — matches the local
-        # docker-compose benchmarking environment.
+        k8s_client.V1EnvVar(name="QROSETTA_PAYLOAD", value=payload_json),
         k8s_client.V1EnvVar(name="OMP_NUM_THREADS",      value="1"),
         k8s_client.V1EnvVar(name="MKL_NUM_THREADS",      value="1"),
         k8s_client.V1EnvVar(name="OPENBLAS_NUM_THREADS", value="1"),
         k8s_client.V1EnvVar(name="NUMEXPR_NUM_THREADS",  value="1"),
     ]
 
-    # Mirror the docker-compose resource caps so every runner job gets a
-    # predictable slice of the cluster, regardless of how many are queued.
     resources = k8s_client.V1ResourceRequirements(
         requests={"cpu": "500m", "memory": "512Mi"},
         limits={"cpu": "1",     "memory": "1Gi"},
@@ -163,6 +170,7 @@ def _run_k8s_job_for_simulator(sim_name: str, url: str, local_payload: dict, tim
         kind="Job",
         metadata=k8s_client.V1ObjectMeta(name=job_name),
         spec=k8s_client.V1JobSpec(
+            backoff_limit=0,
             ttl_seconds_after_finished=300,
             template=k8s_client.V1PodTemplateSpec(
                 spec=k8s_client.V1PodSpec(
@@ -190,27 +198,17 @@ def _run_k8s_job_for_simulator(sim_name: str, url: str, local_payload: dict, tim
     if status_callback:
         status_callback("spawning")
 
-    # --- S3 + Pod Status Polling Loop ---
     deadline = time.time() + timeout_seconds
     loop_start = time.time()
     pod_is_running = False
-    pod_succeeded = False        # True once K8s phase == Succeeded
-    pod_check_ok = None          # None=unknown, True=RBAC ok, False=RBAC denied
-    s3_grace_ticks = 0           # S3 polls after pod Succeeded with no result yet
-    S3_GRACE_TICKS_MAX = 10      # ~20 s of Allas propagation grace window
-    # Caps for situations where pod status is unavailable (RBAC denied):
-    # After NO_POD_SECS with no pod visible and no S3 result, give up.
-    NO_POD_SECS = 120
-    poll_tick = 0
+    pod_check_ok = None
+    terminal_state = None
 
     while time.time() < deadline:
-        time.sleep(2)
-        poll_tick += 1
         elapsed = time.time() - loop_start
 
-        # Check pod phase every 4s until terminal (keep checking even after Running
-        # so we can catch Succeeded/Failed without waiting for the full timeout).
-        if poll_tick % 2 == 0 and not pod_succeeded:
+        if pod_check_ok is not False:
+            time.sleep(2)
             try:
                 pods = core_api.list_namespaced_pod(
                     namespace=namespace,
@@ -225,107 +223,67 @@ def _run_k8s_job_for_simulator(sim_name: str, url: str, local_payload: dict, tim
                             status_callback("running")
                         logger.info(f"[K8s] Pod for {sim_name} is Running (job_id={job_id})")
                     elif phase == "Succeeded":
-                        pod_succeeded = True
-                        if not pod_is_running:
-                            pod_is_running = True
-                            if status_callback:
-                                status_callback("running")
-                        logger.info(f"[K8s] Pod for {sim_name} Succeeded — waiting for S3 result (job_id={job_id})")
+                        if not pod_is_running and status_callback:
+                            status_callback("running")
+                        logger.info(f"[K8s] Pod for {sim_name} Succeeded (job_id={job_id})")
+                        terminal_state = "succeeded"
+                        break
                     elif phase == "Failed":
                         logger.error(f"[K8s] Pod for {sim_name} Failed (job_id={job_id})")
-                        if status_callback:
-                            status_callback("error")
-                        try:
-                            s3.delete_object(Bucket=bucket, Key=pending_key)
-                        except Exception:
-                            pass
-                        return {
-                            "simulator": sim_name,
-                            "error": "Runner pod failed (non-zero exit). Check container logs in Rahti for details.",
-                            "execution_time_sec": 0.0,
-                            "memory_usage_mb": 0.0,
-                        }
-                elif pod_check_ok and elapsed > NO_POD_SECS and not pod_is_running:
-                    # Pod listing works (RBAC ok) but no pod has appeared — the
-                    # job may have been evicted or never scheduled.
-                    logger.error(f"[K8s] No pod found for {sim_name} after {elapsed:.0f}s (job_id={job_id})")
-                    if status_callback:
-                        status_callback("error")
-                    return {
-                        "simulator": sim_name,
-                        "error": f"No runner pod appeared after {NO_POD_SECS}s. The job may have been evicted or failed to schedule.",
-                        "execution_time_sec": 0.0,
-                        "memory_usage_mb": 0.0,
-                    }
+                        terminal_state = "failed"
+                        break
             except Exception as e:
                 if pod_check_ok is None:
                     pod_check_ok = False
                     logger.warning(f"[K8s] Pod listing unavailable for {sim_name} (RBAC?): {e}")
-
-        # Check S3 for completed result
-        try:
-            obj = s3.get_object(Bucket=bucket, Key=completed_key)
-            result = json.loads(obj["Body"].read())
-            s3.delete_object(Bucket=bucket, Key=pending_key)
-            s3.delete_object(Bucket=bucket, Key=completed_key)
-            logger.info(f"[K8s] Job for {sim_name} completed (job_id={job_id})")
-            if status_callback:
-                status_callback("error" if "error" in result else "done")
-            return result
-        except ClientError as e:
-            if e.response["Error"]["Code"] in ("NoSuchKey", "404"):
-                if pod_succeeded:
-                    # Pod Succeeded but Allas hasn't propagated the result yet —
-                    # count down a short grace window before giving up.
-                    s3_grace_ticks += 1
-                    if s3_grace_ticks >= S3_GRACE_TICKS_MAX:
-                        logger.error(f"[K8s] Pod for {sim_name} Succeeded but S3 result never appeared after {s3_grace_ticks} retries (job_id={job_id})")
-                        if status_callback:
-                            status_callback("error")
-                        return {
-                            "simulator": sim_name,
-                            "error": "Runner pod completed but S3 result was not found. The pod may have crashed during the S3 upload.",
-                            "execution_time_sec": 0.0,
-                            "memory_usage_mb": 0.0,
-                            "_s3_recovery_key": completed_key,
-                        }
-                elif pod_check_ok is False and elapsed > NO_POD_SECS:
-                    # RBAC denied pod listing AND no S3 result after the cap —
-                    # bail out rather than block until the full 300 s timeout.
-                    logger.error(f"[K8s] {sim_name}: no S3 result after {elapsed:.0f}s and pod listing unavailable (job_id={job_id})")
-                    if status_callback:
-                        status_callback("error")
-                    return {
-                        "simulator": sim_name,
-                        "error": f"No result after {NO_POD_SECS}s. Pod listing was unavailable (check RBAC); the runner may not have started.",
-                        "execution_time_sec": 0.0,
-                        "memory_usage_mb": 0.0,
-                        "_s3_recovery_key": completed_key,
-                    }
+        else:
+            time.sleep(RBAC_FALLBACK_POLL_SEC)
+            try:
+                obj = s3.get_object(Bucket=bucket, Key=completed_key)
+                result = json.loads(obj["Body"].read())
+                s3.delete_object(Bucket=bucket, Key=completed_key)
+                logger.info(f"[K8s] Job for {sim_name} completed via RBAC fallback (job_id={job_id})")
+                if status_callback:
+                    status_callback("error" if "error" in result else "done")
+                return result
+            except ClientError as e:
+                if e.response["Error"]["Code"] in ("NoSuchKey", "404"):
+                    continue
                 continue
-            logger.warning(f"[K8s] S3 poll error for {sim_name} (job_id={job_id}): {e}")
-            continue
-        except (BotoCoreError, Exception) as e:
-            # Catch transient network errors (EndpointConnectionError,
-            # ConnectionClosedError, ReadTimeoutError) that do NOT inherit
-            # from ClientError.  Log and retry on next poll tick.
-            logger.warning(f"[K8s] S3 transient error for {sim_name} (job_id={job_id}): {type(e).__name__}: {e}")
-            continue
+            except (BotoCoreError, Exception):
+                continue
 
-    # --- Timeout ---
-    logger.error(f"[K8s] Job for {sim_name} timed out after {timeout_seconds}s (job_id={job_id})")
-    try:
-        s3.delete_object(Bucket=bucket, Key=pending_key)
-    except Exception:
-        pass
+    if terminal_state == "failed":
+        if status_callback:
+            status_callback("error")
+        return {
+            "simulator": sim_name,
+            "error": "Runner pod failed (non-zero exit). Check container logs in Rahti.",
+            "execution_time_sec": 0.0,
+            "memory_usage_mb": 0.0,
+        }
+
+    if terminal_state == "succeeded":
+        logger.info(f"[K8s] Fetching S3 result for {sim_name} (job_id={job_id})")
+    else:
+        logger.warning(f"[K8s] Phase 1 timed out for {sim_name} — attempting S3 fetch (job_id={job_id})")
+
+    result = _fetch_s3_result(s3, bucket, completed_key, sim_name, status_callback)
+    if result:
+        return result
+
     if status_callback:
-        status_callback("timeout")
+        status_callback("timeout" if terminal_state is None else "error")
+    error_msg = (
+        f"TIMEOUT ({timeout_seconds}s): K8s job did not complete in time."
+        if terminal_state is None
+        else "Runner pod completed but S3 result was not found."
+    )
     return {
         "simulator": sim_name,
-        "error": f"TIMEOUT ({timeout_seconds}s): K8s job did not complete in time.",
+        "error": error_msg,
         "execution_time_sec": 0.0,
         "memory_usage_mb": 0.0,
-        "_s3_recovery_key": completed_key,
     }
 
 
@@ -406,41 +364,7 @@ async def _dispatch_kubernetes_jobs(runner_urls: dict, runner_payload: dict, tim
     finally:
         executor.shutdown(wait=False)
 
-    # --- S3 Recovery Sweep ---
-    # Pods complete and upload to S3, but the polling loop sometimes misses
-    # 1-2 results due to transient Allas hiccups.  Before returning, do one
-    # last check for any runner that failed/timed-out but left a recovery key.
-    # This is cheap (1 S3 GET per failed runner) and rescues real data.
-    bucket = settings.S3_BUCKET_NAME
-    recovered = 0
-    final_results = list(results)
-    for i, result in enumerate(final_results):
-        recovery_key = result.get("_s3_recovery_key")
-        if not recovery_key or "error" not in result:
-            continue
-        sim_name = result.get("simulator", "unknown")
-        logger.info(f"[K8s] Recovery sweep: checking S3 for {sim_name} (key={recovery_key})")
-        try:
-            obj = s3.get_object(Bucket=bucket, Key=recovery_key)
-            recovered_result = json.loads(obj["Body"].read())
-            s3.delete_object(Bucket=bucket, Key=recovery_key)
-            logger.info(f"[K8s] Recovery sweep: RESCUED result for {sim_name}")
-            if runner_statuses is not None:
-                runner_statuses[sim_name] = "error" if "error" in recovered_result else "done"
-            final_results[i] = recovered_result
-            recovered += 1
-        except Exception:
-            # Still not there — genuine failure, keep original error result.
-            pass
-
-    if recovered:
-        logger.info(f"[K8s] Recovery sweep rescued {recovered} runner(s)")
-
-    # Strip internal recovery keys from final output
-    for result in final_results:
-        result.pop("_s3_recovery_key", None)
-
-    return final_results
+    return list(results)
 
 
 async def dispatch_to_runners(runner_urls: dict, runner_payload: dict, timeout_seconds: int = settings.RUNNER_TIMEOUT_SEC, runner_statuses: dict = None) -> list:
