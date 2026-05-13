@@ -9,6 +9,6 @@ oc delete pods -l app=rosetta-api -n qrosetta
 
 
 ## LOGINS OC AND DOCKER:
-oc login --token=sha256~VZ5pqA2bYzaNX9nh7n5eM87-1oC2NBfROmYYsUN_2p0 --server=https://api.2.rahti.csc.fi:6443
-docker login -u $(oc whoami) -p sha256~VZ5pqA2bYzaNX9nh7n5eM87-1oC2NBfROmYYsUN_2p0 image-registry.apps.2.rahti.csc.fi
+get from rahti
+docker login -u $(oc whoami) -p $(oc whoami -t) image-registry.apps.2.rahti.csc.fi
 
