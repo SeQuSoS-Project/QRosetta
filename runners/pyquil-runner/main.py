@@ -1,3 +1,5 @@
+# Execution script for the quantum simulator runner.
+
 import argparse
 import json
 import os
@@ -21,7 +23,6 @@ logger = get_logger("pyquil-runner")
 
 app = FastAPI(title="PyQuil Runner")
 
-
 def _to_quil_program(qasm_str: str, optimization_level: int = 0):
     """Parse QASM via pytket and convert to a Quil Program.
 
@@ -35,11 +36,9 @@ def _to_quil_program(qasm_str: str, optimization_level: int = 0):
         FullPeepholeOptimise().apply(tk_circ)
     elif optimization_level == 1:
         PeepholeOptimise2Q().apply(tk_circ)
-    # Rebase to Rz/Rx after any optimization — peephole passes can produce TK1
-    # gates that tk_to_pyquil cannot convert.
+
     Transform.RebaseToRzRx().apply(tk_circ)
     return tk_to_pyquil(tk_circ), tk_circ.n_qubits
-
 
 def _gates_only(prog: Program) -> Program:
     """Return a Program with only Gate instructions — strips MEASURE, DECLARE, HALT, etc."""
@@ -49,7 +48,6 @@ def _gates_only(prog: Program) -> Program:
             clean += inst
     return clean
 
-
 def _simulate_statevector(gate_prog: Program, n_qubits: int) -> np.ndarray:
     """Apply gate instructions sequentially to |0> and return the statevector."""
     sim = NumpyWavefunctionSimulator(n_qubits=n_qubits)
@@ -58,25 +56,22 @@ def _simulate_statevector(gate_prog: Program, n_qubits: int) -> np.ndarray:
             sim.do_gate(inst)
     return np.array(sim.wf).flatten()
 
-
 def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for PyQuil simulation.")
     try:
         check_qubits_limit(payload["circuit_data"], 24)
-        # --- COMPILATION ---
+
         t0 = time.perf_counter()
         prog, n_qubits = _to_quil_program(payload["circuit_data"], payload.get("optimization_level", 0))
         gate_prog = _gates_only(prog)
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
-        # --- WARM-UP ---
         _simulate_statevector(gate_prog, n_qubits)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
-            # --- SIMULATION ---
             t2 = time.perf_counter()
             statevector = _simulate_statevector(gate_prog, n_qubits)
             t3 = time.perf_counter()
@@ -113,25 +108,22 @@ def process_run(payload: dict) -> dict:
             "process_peak_mb": 0.0
         }
 
-
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for PyQuil simulation.")
     try:
         check_qubits_limit(payload["circuit_data"], 24)
-        # --- COMPILATION ---
+
         t0 = time.perf_counter()
         prog, n_qubits = _to_quil_program(payload["circuit_data"], payload.get("optimization_level", 0))
         gate_prog = _gates_only(prog)
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
-        # --- WARM-UP ---
         _simulate_statevector(gate_prog, n_qubits)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
-            # --- SIMULATION ---
             t2 = time.perf_counter()
             statevector = _simulate_statevector(gate_prog, n_qubits)
             probs = np.abs(statevector) ** 2
@@ -176,16 +168,13 @@ def process_run_measured(payload: dict) -> dict:
             "process_peak_mb": 0.0
         }
 
-
 @app.post("/run")
 async def run_circuit(payload: CircuitPayload):
     return process_run(payload.model_dump())
 
-
 @app.post("/run_measured")
 async def run_measured_circuit(payload: MeasuredCircuitPayload):
     return process_run_measured(payload.model_dump())
-
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

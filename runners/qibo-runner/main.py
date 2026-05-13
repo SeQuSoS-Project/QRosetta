@@ -1,3 +1,5 @@
+# Execution script for the quantum simulator runner.
+
 import argparse
 import json
 import os
@@ -19,7 +21,6 @@ logger = get_logger("qibo-runner")
 
 app = FastAPI(title="Qibo Runner")
 
-
 def _parse(qasm_str: str, optimization_level: int = 0) -> Circuit:
     """Parse QASM 2.0 into a Qibo Circuit and apply gate fusion.
 
@@ -34,24 +35,21 @@ def _parse(qasm_str: str, optimization_level: int = 0) -> Circuit:
         circuit = circuit.fuse(max_qubits=1)
     return circuit
 
-
 def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for Qibo simulation.")
     try:
         check_qubits_limit(payload["circuit_data"], 24)
-        # --- COMPILATION ---
+
         t0 = time.perf_counter()
         circuit = _parse(payload["circuit_data"], payload.get("optimization_level", 0))
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
-        # --- WARM-UP ---
         circuit()
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
-            # --- SIMULATION ---
             t2 = time.perf_counter()
             result = circuit()
             statevector = np.array(result.state())
@@ -89,15 +87,14 @@ def process_run(payload: dict) -> dict:
             "process_peak_mb": 0.0
         }
 
-
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for Qibo simulation.")
     try:
         check_qubits_limit(payload["circuit_data"], 24)
-        # --- COMPILATION ---
+
         t0 = time.perf_counter()
         circuit = _parse(payload["circuit_data"], payload.get("optimization_level", 0))
-        # Ensure all qubits are measured (add terminal measurement if absent)
+
         if not circuit.measurements:
             circuit.add(gates.M(*range(circuit.nqubits)))
         t1 = time.perf_counter()
@@ -105,13 +102,11 @@ def process_run_measured(payload: dict) -> dict:
 
         n_shots = payload.get("n_shots", 1024)
 
-        # --- WARM-UP ---
         circuit(nshots=n_shots)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
-            # --- SIMULATION ---
             t2 = time.perf_counter()
             result = circuit(nshots=n_shots)
             counts_dict = dict(result.frequencies())
@@ -149,16 +144,13 @@ def process_run_measured(payload: dict) -> dict:
             "process_peak_mb": 0.0
         }
 
-
 @app.post("/run")
 async def run_circuit(payload: CircuitPayload):
     return process_run(payload.model_dump())
 
-
 @app.post("/run_measured")
 async def run_measured_circuit(payload: MeasuredCircuitPayload):
     return process_run_measured(payload.model_dump())
-
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

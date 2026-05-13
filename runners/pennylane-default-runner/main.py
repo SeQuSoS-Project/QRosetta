@@ -1,3 +1,5 @@
+# Execution script for the quantum simulator runner.
+
 import argparse
 import json
 import os
@@ -15,19 +17,16 @@ import gc
 app = FastAPI(title="Pennylane Default Runner")
 logger = get_logger("pennylane-default-runner")
 
-
 def process_run(payload: dict) -> dict:
     logger.info("Received statevector circuit data for Pennylane-Default simulation.")
     try:
         check_qubits_limit(payload["circuit_data"], 24)
 
-        # --- COMPILATION (includes first JIT trace) ---
         t0 = time.perf_counter()
         qasm_op = qml.from_qasm(payload["circuit_data"])
         num_qubits = get_num_qubits_from_qasm(payload["circuit_data"])
         dev = qml.device("default.qubit", wires=num_qubits, shots=None)
 
-        # Optimization Pipeline
         level = payload.get("optimization_level", 0)
         passes = []
         if level == 1:
@@ -43,18 +42,15 @@ def process_run(payload: dict) -> dict:
             qasm_op()
             return qml.state()
 
-        # First call triggers actual JIT compilation — attributed to compile phase
         _ = statevector_circuit()
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
-        # --- WARM-UP (second call, circuit already JIT-compiled) ---
         _ = statevector_circuit()
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
-            # --- SIMULATION ---
             t2 = time.perf_counter()
             statevector = statevector_circuit()
             t3 = time.perf_counter()
@@ -90,19 +86,16 @@ def process_run(payload: dict) -> dict:
             "process_peak_mb": 0.0
         }
 
-
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for Pennylane-Default (manual sampling).")
     try:
         check_qubits_limit(payload["circuit_data"], 24)
 
-        # --- COMPILATION (includes first JIT trace) ---
         t0 = time.perf_counter()
         qasm_op = qml.from_qasm(payload["circuit_data"])
         num_qubits = get_num_qubits_from_qasm(payload["circuit_data"])
         dev = qml.device("default.qubit", wires=num_qubits, shots=None)
 
-        # Optimization Pipeline
         level = payload.get("optimization_level", 0)
         passes = []
         if level == 1:
@@ -118,18 +111,15 @@ def process_run_measured(payload: dict) -> dict:
             qasm_op()
             return qml.state()
 
-        # First call triggers actual JIT compilation — attributed to compile phase
         _ = statevector_circuit()
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
-        # --- WARM-UP (second call, circuit already JIT-compiled) ---
         _ = statevector_circuit()
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
-            # --- SIMULATION ---
             t2 = time.perf_counter()
             statevector = statevector_circuit()
             counts_dict = _sample_from_statevector(statevector, payload.get("n_shots", 1024), num_qubits)
@@ -165,16 +155,13 @@ def process_run_measured(payload: dict) -> dict:
             "process_peak_mb": 0.0
         }
 
-
 @app.post("/run")
 def run_circuit(payload: CircuitPayload):
     return process_run(payload.model_dump())
 
-
 @app.post("/run_measured")
 def run_measured_circuit(payload: MeasuredCircuitPayload):
     return process_run_measured(payload.model_dump())
-
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

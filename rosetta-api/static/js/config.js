@@ -1,17 +1,7 @@
-// =============================================================================
-// config.js — Config Panel & Runner Selection
-// Responsibility: Rendering the config panel, optimizer levels per runner,
-//                 target simulator selection, and the context bar.
-// Depends on: panelElements (app.js globals), getState().currentAlgoName (app.js)
-//
-// Runner opt data is fetched from /runners at panel-open time — config.py is
-// the single source of truth. OPT_CAPS is intentionally absent here.
-// =============================================================================
+// Frontend logic for config functionality.
 
-// Cache of runner info fetched from /runners: { id -> {max_level, optimization_levels, enabled} }
 let _runnerOptInfo = {};
 
-/** Returns the optimization_levels dict for a runner, or {} if unknown. */
 function getRunnerOptInfo(runnerId) {
     return _runnerOptInfo[runnerId] || { max_level: 0, optimization_levels: {} };
 }
@@ -51,17 +41,14 @@ function renderConfigPanel(runners) {
 
     grid.innerHTML = '';
 
-    // Cache runner opt info for use by renderers.js badge tooltips
     _runnerOptInfo = {};
     runners.forEach(r => { _runnerOptInfo[r.id] = r; });
 
-    // Toggle All Button
     const btnDiv = document.createElement('div');
     btnDiv.className = "col-span-1 sm:col-span-2 flex justify-end space-x-2 mb-2 border-b border-indigo-200 pb-2";
     btnDiv.innerHTML = `<button onclick="toggleAllSimulators()" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium bg-indigo-100 px-3 py-1 rounded border border-indigo-300 shadow-sm transition-colors duration-200">Toggle All</button>`;
     grid.appendChild(btnDiv);
 
-    // Global optimization selector
     const maxGlobal = Math.max(...runners.map(r => r.max_level ?? 0), 0);
     let globalOpts = '';
     const GLOBAL_LABELS = ['None', 'Light', 'Medium', 'Heavy'];
@@ -79,7 +66,6 @@ function renderConfigPanel(runners) {
     `;
     grid.appendChild(globalDiv);
 
-    // System Info
     const sysDiv = document.createElement('div');
     sysDiv.className = "col-span-1 sm:col-span-2 p-2 bg-gray-50 rounded border border-gray-200 mb-2 flex justify-between items-center text-xs";
     sysDiv.innerHTML = `
@@ -97,7 +83,6 @@ function renderConfigPanel(runners) {
     `;
     grid.appendChild(sysDiv);
 
-    // Per-runner rows — ordered by display name list, falling back to API order
     const orderedIds = Object.keys(RUNNER_DISPLAY_NAMES);
     const runnerMap = Object.fromEntries(runners.map(r => [r.id, r]));
     const orderedRunners = [
@@ -170,7 +155,7 @@ function getRunnerConfig() {
 
 function toggleAllSimulators() {
     const checkboxes = document.querySelectorAll('.sim-checkbox:not(:disabled)');
-    // If all enabled are checked, uncheck all. Otherwise (some or none checked), check all enabled.
+
     const allChecked = Array.from(checkboxes).every(cb => cb.checked);
     checkboxes.forEach(cb => cb.checked = !allChecked);
 }

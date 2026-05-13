@@ -1,3 +1,5 @@
+# HTTP-based dispatcher for quantum runners.
+
 import httpx
 import asyncio
 from config import settings
@@ -5,7 +7,6 @@ from qrosetta_commons.helpers import get_logger
 
 logger = get_logger("rosetta-api")
 _RUNNER_SERVICES = settings.get_runner_services()
-
 
 async def safe_request(client, url, payload, sim_name, timeout_s):
     try:
@@ -34,7 +35,6 @@ async def safe_request(client, url, payload, sim_name, timeout_s):
             "execution_time_sec": 0.0,
             "memory_usage_mb": 0.0
         }
-
 
 async def dispatch_http_local(runner_urls: dict, runner_payload: dict, timeout_seconds: int, runner_statuses: dict = None) -> list:
     global_opt = runner_payload.get("optimization_level", 0)

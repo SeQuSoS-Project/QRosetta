@@ -1,3 +1,5 @@
+# Execution script for the quantum simulator runner.
+
 import argparse
 import json
 import os
@@ -16,7 +18,6 @@ logger = get_logger("qrisp-runner")
 
 app = FastAPI(title="Qrisp Runner")
 
-
 def _parse(qasm_str: str, optimization_level: int = 0):
     """Parse QASM 2.0 into a Qrisp QuantumCircuit.
 
@@ -32,19 +33,17 @@ def _parse(qasm_str: str, optimization_level: int = 0):
         )
     return QuantumCircuit.from_qasm_str(qasm_str)
 
-
 def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for Qrisp simulation.")
     try:
         check_qubits_limit(payload["circuit_data"], 24)
-        # --- COMPILATION ---
+
         t0 = time.perf_counter()
         n_qubits = get_num_qubits_from_qasm(payload["circuit_data"])
         circuit = _parse(payload["circuit_data"], payload.get("optimization_level", 0))
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
-        # --- WARM-UP ---
         try:
             _ = circuit.qs.statevector('array')
         except AttributeError:
@@ -53,7 +52,6 @@ def process_run(payload: dict) -> dict:
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
-            # --- SIMULATION ---
             t2 = time.perf_counter()
             try:
                 statevector = circuit.qs.statevector('array')
@@ -95,12 +93,11 @@ def process_run(payload: dict) -> dict:
             "process_peak_mb": 0.0
         }
 
-
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for Qrisp simulation.")
     try:
         check_qubits_limit(payload["circuit_data"], 24)
-        # --- COMPILATION ---
+
         t0 = time.perf_counter()
         n_qubits = get_num_qubits_from_qasm(payload["circuit_data"])
         circuit = _parse(payload["circuit_data"], payload.get("optimization_level", 0))
@@ -109,7 +106,6 @@ def process_run_measured(payload: dict) -> dict:
 
         n_shots = payload.get("n_shots", 1024)
 
-        # --- WARM-UP ---
         try:
             _ = circuit.get_measurement(shots=10)
         except AttributeError:
@@ -118,7 +114,6 @@ def process_run_measured(payload: dict) -> dict:
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
-            # --- SIMULATION ---
             t2 = time.perf_counter()
             try:
                 counts_dict = circuit.get_measurement(shots=n_shots)
@@ -159,19 +154,15 @@ def process_run_measured(payload: dict) -> dict:
             "process_peak_mb": 0.0
         }
 
-
 @app.post("/run")
 async def run_circuit(payload: CircuitPayload):
     return process_run(payload.model_dump())
-
 
 @app.post("/run_measured")
 async def run_measured_circuit(payload: MeasuredCircuitPayload):
     return process_run_measured(payload.model_dump())
 
-
 logger.info("Qrisp runner API instantiated and ready to receive traffic.")
-
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

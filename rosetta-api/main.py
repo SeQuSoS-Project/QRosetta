@@ -1,3 +1,5 @@
+# FastAPI application entry point.
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -13,7 +15,6 @@ from services.security import limiter
 import os
 import logging
 
-# --- Suppress noisy GET /algorithms health-check ticks from uvicorn access log ---
 class _SuppressAlgorithmsFilter(logging.Filter):
     """Drop GET /algorithms access log entries — they are frontend keepalive polls."""
     def filter(self, record: logging.LogRecord) -> bool:
@@ -21,16 +22,14 @@ class _SuppressAlgorithmsFilter(logging.Filter):
         return not ('GET /algorithms' in msg and '" 200' in msg)
 
 logging.getLogger("uvicorn.access").addFilter(_SuppressAlgorithmsFilter())
-# ---------------------------------------------------------------------------------
 
 app = FastAPI(title="Quantum Rosetta API")
 
 models.Base.metadata.create_all(bind=engine)
-# --- 1. Rate Limiting Setup ---
+
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# --- 2. Security Middleware ---
 class LimitUploadSize(BaseHTTPMiddleware):
     def __init__(self, app, max_upload_size: int) -> None:
         super().__init__(app)
@@ -44,9 +43,8 @@ class LimitUploadSize(BaseHTTPMiddleware):
                     return JSONResponse(status_code=413, content={"detail": "Payload too large"})
         return await call_next(request)
 
-app.add_middleware(LimitUploadSize, max_upload_size=1048576) # 1MB limit
+app.add_middleware(LimitUploadSize, max_upload_size=1048576)
 
-# --- 3. CORS Middleware ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[

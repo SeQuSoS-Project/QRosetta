@@ -1,3 +1,5 @@
+# FastAPI router endpoints for benchmark.
+
 from fastapi import APIRouter, Request, BackgroundTasks
 from fastapi.responses import JSONResponse
 import uuid
@@ -20,7 +22,7 @@ router = APIRouter()
 async def get_job_status(job_id: str):
     if job_id not in ACTIVE_JOBS:
         return JSONResponse(status_code=404, content={"error": "Job not found"})
-    
+
     job_data = ACTIVE_JOBS[job_id]
     return {
         "job_id": job_id,
@@ -37,10 +39,10 @@ async def compare_circuits_endpoint(request: Request, payload: QasmPayload, back
     validate_request(payload.qasm_string, mode="statevector")
     timeout = max(1, min(payload.timeout_seconds, settings.RUNNER_TIMEOUT_SEC))
     job_id = str(uuid.uuid4())
-    
+
     ACTIVE_JOBS[job_id] = {"status": "pending", "target": payload.execution_target}
     background_tasks.add_task(worker_compare, job_id, payload.qasm_string, payload.optimization_level, timeout, payload.target_simulators, payload.execution_target)
-        
+
     return {"job_id": job_id, "status": ACTIVE_JOBS[job_id]["status"], "target": ACTIVE_JOBS[job_id]["target"]}
 
 @router.post("/compare_measured", response_model=JobStatusResponse)
@@ -49,18 +51,18 @@ async def compare_measured_circuits_endpoint(request: Request, payload: Measured
     validate_request(payload.qasm_string, mode="measured")
     timeout = max(1, min(payload.timeout_seconds, settings.RUNNER_TIMEOUT_SEC))
     job_id = str(uuid.uuid4())
-    
+
     ACTIVE_JOBS[job_id] = {"status": "pending", "target": payload.execution_target}
     background_tasks.add_task(worker_compare_measured, job_id, payload.qasm_string, payload.n_shots, payload.optimization_level, timeout, payload.target_simulators, payload.execution_target)
-        
+
     return {"job_id": job_id, "status": ACTIVE_JOBS[job_id]["status"], "target": ACTIVE_JOBS[job_id]["target"]}
 
 @router.post("/run_batch_suite", response_model=JobStatusResponse)
 @limiter.limit("10/minute")
 async def run_batch_suite_endpoint(request: Request, payload: BatchPayload, background_tasks: BackgroundTasks):
     job_id = str(uuid.uuid4())
-    
+
     ACTIVE_JOBS[job_id] = {"status": "pending", "target": payload.execution_target}
     background_tasks.add_task(worker_batch_suite, job_id, payload)
-        
+
     return {"job_id": job_id, "status": ACTIVE_JOBS[job_id]["status"], "target": ACTIVE_JOBS[job_id]["target"]}

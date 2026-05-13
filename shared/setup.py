@@ -1,3 +1,5 @@
+# Setup configuration for the shared qrosetta_commons library.
+
 from setuptools import setup, find_packages
 
 setup(

@@ -1,3 +1,5 @@
+# Manages quantum job lifecycle and status.
+
 import asyncio
 import gc
 import pytket.qasm
@@ -21,13 +23,12 @@ logger = get_logger("rosetta-job-manager")
 
 ACTIVE_JOBS = {}
 
-# --- CORE LOGIC FUNCTIONS ---
 async def run_single_circuit_comparison(qasm_string: str, optimization_level: int = 0, timeout_seconds: int = 60, target_simulators: list = None, runner_statuses: dict = None):
     logger.info(f"Processing circuit...")
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_string)
         logger.info(f"Successfully parsed QASM into {tk_circ.n_qubits} qubit circuit.")
-        # Remove barriers (Pass)
+
         RemoveBarriers().apply(tk_circ)
         modified_qasm_string = pytket.qasm.circuit_to_qasm_str(tk_circ)
         runner_payload = {
@@ -37,13 +38,13 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
     except Exception as e:
         return { "input_qasm": qasm_string, "error": str(e) }
 
-    gc.collect() # Clean up before dispatch
-    
+    gc.collect()
+
     if target_simulators:
         filtered_urls = {k: v for k, v in STATEVECTOR_RUNNER_URLS.items() if k in target_simulators}
     else:
         filtered_urls = STATEVECTOR_RUNNER_URLS
-        
+
     aggregated_results = await dispatch_to_runners(
         runner_urls=filtered_urls,
         runner_payload=runner_payload,
@@ -59,11 +60,9 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
         performance_report = {}
         resource_report = {}
 
-    # --- Cache full results to disk ---
     full_report_data = [res.copy() for res in aggregated_results]
     save_report_to_disk(full_report_data)
 
-    # --- Browser Safety Valve ---
     for result in aggregated_results:
         if "statevector" in result and isinstance(result["statevector"], list):
             if len(result["statevector"]) > 16384:
@@ -76,7 +75,6 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
         "resource_report": resource_report,
         "raw_results": aggregated_results
     }
-
 
 async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimization_level: int = 0, timeout_seconds: int = 60, target_simulators: list = None, runner_statuses: dict = None):
     logger.info(f"Processing measured circuit for {n_shots} shots...")
@@ -94,10 +92,10 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
         c_reg_name = "c"
         if c_reg_name not in [reg.name for reg in tk_circ.c_registers]:
             tk_circ.add_c_register(c_reg_name, n_qubits)
-        
+
         all_qubits = tk_circ.qubits
         c_register = tk_circ.get_c_register(c_reg_name)
-        
+
         for i in range(n_qubits):
             tk_circ.Measure(all_qubits[i], c_register[i])
 
@@ -111,14 +109,14 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
         return { "input_qasm": qasm_string, "error": str(e) }
 
     gc.collect()
-    
+
     if target_simulators:
         filtered_sampled = {k: v for k, v in SAMPLED_SV_URLS.items() if k in target_simulators}
         filtered_native = {k: v for k, v in NATIVE_SAMPLING_URLS.items() if k in target_simulators}
     else:
         filtered_sampled = SAMPLED_SV_URLS
         filtered_native = NATIVE_SAMPLING_URLS
-        
+
     sampled_task = dispatch_to_runners(filtered_sampled, sampled_payload, timeout_seconds, runner_statuses)
     native_task = dispatch_to_runners(filtered_native, native_payload, timeout_seconds, runner_statuses)
 
@@ -128,14 +126,14 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
 
     try:
         divergence_report, performance_report, resource_report = await compile_measurement_reports(aggregated_results, n_shots)
-        
+
     except Exception as e:
         return {
             "input_qasm": qasm_string, "n_shots": n_shots,
             "error": f"Error during comparison: {str(e)}",
             "raw_results": aggregated_results
         }
-    
+
     return {
         "input_qasm": qasm_string,
         "modified_qasm_for_native_runners": modified_qasm_string,
@@ -146,7 +144,6 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
         "raw_results": aggregated_results
     }
 
-# --- ASYNC WORKERS ---
 async def worker_compare(job_id: str, qasm_string: str, optimization_level: int, timeout: int, target_simulators: list, execution_target: str):
     runner_statuses = {}
     ACTIVE_JOBS[job_id]["status"] = "processing"
@@ -194,7 +191,7 @@ async def worker_batch_suite(job_id: str, payload: BatchPayload):
                 report = await run_single_circuit_measurement(qasm_string, payload.n_shots, payload.optimization_level, timeout, payload.target_simulators, runner_statuses)
             else:
                 raise ValueError(f"Unknown mode: {payload.mode}")
-            
+
             report["task_name"] = task_name
             benchmark_summary.append(report)
 
@@ -203,6 +200,6 @@ async def worker_batch_suite(job_id: str, payload: BatchPayload):
                 "task_name": task_name,
                 "error": f"Failed to process task: {str(e)}"
             })
-            
+
     logger.info(f"--- Batch Suite Complete ---")
     ACTIVE_JOBS[job_id] = {"status": "completed", "target": payload.execution_target, "results": {"benchmark_summary": benchmark_summary}, "runner_statuses": runner_statuses}

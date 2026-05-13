@@ -1,6 +1,7 @@
+# Pydantic schemas for request/response validation.
+
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
-
 
 class QasmPayload(BaseModel):
     qasm_string: str
@@ -9,7 +10,6 @@ class QasmPayload(BaseModel):
     timeout_seconds: int = 60
     target_simulators: List[str] = Field(default_factory=list)
     execution_target: str = "rahti"
-
 
 class MeasuredQasmPayload(BaseModel):
     qasm_string: str
@@ -20,36 +20,30 @@ class MeasuredQasmPayload(BaseModel):
     target_simulators: List[str] = Field(default_factory=list)
     execution_target: str = "rahti"
 
-
 class MeasuredBenchmarkPayload(BaseModel):
     n_shots: int = 1024
-
 
 class GenerateCircuitPayload(BaseModel):
     algorithm: str
     qubits: int
-
 
 class BenchmarkTask(BaseModel):
     algorithm: str
     qubits: int
     qasm_string: Optional[str] = None
 
-
 class BatchPayload(BaseModel):
     tasks: List[BenchmarkTask]
     n_shots: int = 1024
-    mode: str  # 'statevector' or 'measured'
+    mode: str
     optimization_level: int = 0
     runner_config: Dict[str, int] = {}
     timeout_seconds: int = 60
     target_simulators: List[str] = Field(default_factory=list)
     execution_target: str = "rahti"
 
-
 class VisualizerResponse(BaseModel):
     url: str
-
 
 class JobStatusResponse(BaseModel):
     job_id: str
@@ -59,7 +53,6 @@ class JobStatusResponse(BaseModel):
     error: Optional[str] = None
     runner_statuses: Optional[Dict[str, str]] = None
 
-
 class RunnerPerformanceMetrics(BaseModel):
     simulator: str
     execution_time_sec: float
@@ -68,7 +61,6 @@ class RunnerPerformanceMetrics(BaseModel):
     memory_usage_mb: Optional[float] = 0.0
     process_peak_mb: Optional[float] = 0.0
     error: Optional[str] = None
-
 
 class ComparisonResult(BaseModel):
     input_qasm: str

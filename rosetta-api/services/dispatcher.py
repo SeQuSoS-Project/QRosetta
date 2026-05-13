@@ -1,3 +1,5 @@
+# Dispatches jobs to external quantum runners.
+
 import os
 from config import settings
 from qrosetta_commons.helpers import get_logger
@@ -21,7 +23,6 @@ SAMPLED_SV_URLS = {
     name: f"{config['base_url']}/run_measured" for name, config in RUNNER_SERVICES.items()
     if "measured_sampled" in config["capabilities"] and config.get("enabled", True)
 }
-
 
 async def dispatch_to_runners(runner_urls: dict, runner_payload: dict, timeout_seconds: int = settings.RUNNER_TIMEOUT_SEC, runner_statuses: dict = None) -> list:
     if EXECUTION_MODE == "kubernetes":

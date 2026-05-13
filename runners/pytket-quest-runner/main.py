@@ -1,3 +1,5 @@
+# Execution script for the quantum simulator runner.
+
 import argparse
 import json
 import os
@@ -16,12 +18,11 @@ import gc
 app = FastAPI(title="QuEST Runner")
 logger = get_logger("pytket-quest-runner")
 
-
 def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for QuEST simulation.")
     try:
         check_qubits_limit(payload["circuit_data"], 24)
-        # --- COMPILATION ---
+
         t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload["circuit_data"])
         n_qubits = tk_circ.n_qubits
@@ -31,13 +32,11 @@ def process_run(payload: dict) -> dict:
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
-        # --- WARM-UP ---
         _ = backend.process_circuit(compiled_circ)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
-            # --- SIMULATION ---
             t2 = time.perf_counter()
             handle = backend.process_circuit(compiled_circ)
             statevector = backend.get_result(handle).get_state()
@@ -73,12 +72,11 @@ def process_run(payload: dict) -> dict:
             "process_peak_mb": 0.0
         }
 
-
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for QuEST (manual sampling).")
     try:
         check_qubits_limit(payload["circuit_data"], 24)
-        # --- COMPILATION ---
+
         t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload["circuit_data"])
         n_qubits = tk_circ.n_qubits
@@ -89,18 +87,15 @@ def process_run_measured(payload: dict) -> dict:
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
-        # --- WARM-UP ---
         _ = backend.process_circuit(compiled_circ)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
-            # --- SIMULATION ---
             t2 = time.perf_counter()
             handle = backend.process_circuit(compiled_circ)
             statevector = backend.get_result(handle).get_state()
 
-            # --- BENCHMARKING FIX: Sampling is now timed ---
             counts_dict = _sample_from_statevector(statevector, payload.get("n_shots", 1024), n_qubits)
             t3 = time.perf_counter()
             simulation_time = t3 - t2
@@ -134,16 +129,13 @@ def process_run_measured(payload: dict) -> dict:
             "process_peak_mb": 0.0
         }
 
-
 @app.post("/run")
 async def run_circuit(payload: CircuitPayload):
     return process_run(payload.model_dump())
 
-
 @app.post("/run_measured")
 async def run_measured_circuit(payload: MeasuredCircuitPayload):
     return process_run_measured(payload.model_dump())
-
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

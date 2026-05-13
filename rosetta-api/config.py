@@ -1,14 +1,15 @@
+# Application configuration and environment variables.
+
 import os
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    # Category 1: Native Samplers
+
     PYTKET_QISKIT_RUNNER_URL: str = "http://pytket-qiskit-runner:8000"
     PYTKET_CIRQ_RUNNER_URL: str = "http://pytket-cirq-runner:8000"
     PYTKET_QULACS_RUNNER_URL: str = "http://pytket-qulacs-runner:8000"
     PYTKET_BRAKET_RUNNER_URL: str = "http://pytket-braket-runner:8000"
 
-    # Category 2: Statevector Samplers
     PYTKET_PROJECTQ_RUNNER_URL: str = "http://pytket-projectq-runner:8000"
     PYTKET_QUEST_RUNNER_URL: str = "http://pytket-quest-runner:8000"
     PENNYLANE_LIGHTNING_RUNNER_URL: str = "http://pennylane-lightning-runner:8000"
@@ -22,30 +23,27 @@ class Settings(BaseSettings):
     QUIMB_RUNNER_URL: str = "http://quimb-runner:8000"
     CUQUANTUM_RUNNER_URL: str = "http://cuquantum-runner:8000"
 
-    # Timeouts
     RUNNER_TIMEOUT_SEC: int = 300
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
-    # Storage Configuration
-    STORAGE_MODE: str = os.getenv("STORAGE_MODE", "local")  # Options: 'local', 's3'
+    STORAGE_MODE: str = os.getenv("STORAGE_MODE", "local")
     S3_ENDPOINT_URL: str = os.getenv("S3_ENDPOINT_URL", "https://s3.amazonaws.com")
     S3_ACCESS_KEY: str = os.getenv("S3_ACCESS_KEY", "minioadmin")
     S3_SECRET_KEY: str = os.getenv("S3_SECRET_KEY", "minioadmin")
     S3_BUCKET_NAME: str = os.getenv("S3_BUCKET_NAME", "qrosetta-runs")
     S3_REGION: str = os.getenv("S3_REGION", "us-east-1")
 
-    # Safeguards
     MAX_QUBITS_STATEVECTOR: int = 18
     MAX_QUBITS_MEASURED: int = 24
-    MAX_QASM_SIZE: int = 1_000_000   # bytes (1MB)
-    MAX_QASM_GATES: int = 10_000     # semicolon count used as gate-count proxy
+    MAX_QASM_SIZE: int = 1_000_000
+    MAX_QASM_GATES: int = 10_000
 
     class Config:
         env_file = ".env"
 
     def get_runner_services(self):
         return {
-            # Category 1: Native Samplers (work with our modified QASM)
+
             "qiskit": {
                 "base_url": self.PYTKET_QISKIT_RUNNER_URL,
                 "capabilities": ["statevector", "measured_native"],
@@ -80,7 +78,7 @@ class Settings(BaseSettings):
             "braket": {
                 "base_url": self.PYTKET_BRAKET_RUNNER_URL,
                 "capabilities": ["statevector", "measured_native"],
-                "enabled": False,  # Consistent errors — set True to re-enable
+                "enabled": False,
                 "optimization_levels": {
                     0: "No optimization",
                     1: "Pytket light: fast peephole rewrites, remove redundant gates",
@@ -88,11 +86,10 @@ class Settings(BaseSettings):
                 }
             },
 
-            # Category 2: Statevector Samplers (need original QASM)
             "projectq": {
                 "base_url": self.PYTKET_PROJECTQ_RUNNER_URL,
                 "capabilities": ["statevector", "measured_sampled"],
-                "enabled": False,  # Consistent errors — set True to re-enable
+                "enabled": False,
                 "optimization_levels": {
                     0: "No optimization",
                     1: "Pytket light: fast peephole rewrites, remove redundant gates",

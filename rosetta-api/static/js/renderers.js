@@ -1,12 +1,4 @@
-// =============================================================================
-// renderers.js — Core Rendering Helpers & Panel Builders
-// Responsibility: Constants, helper utilities (tooltip, tabs, optBadge),
-//                 and the three main panel renderers:
-//                   renderSuiteSummary, renderSummaryPanel, renderDetailReport
-// Uses HTML <template> cloning — NO innerHTML string concatenation.
-// =============================================================================
-
-// --- CONSTANTS & DEFINITIONS ---
+// Frontend logic for renderers functionality.
 
 const METRIC_DEFINITIONS = {
     "compilation": "<b>Compilation Time:</b> Time taken to parse QASM, apply transforms (e.g. Rebase), and convert to the backend's native format.",
@@ -49,23 +41,12 @@ const STATUS_STYLES = {
     }
 };
 
-// --- PRIVATE TEMPLATE UTILITY ---
-
-/**
- * Clones a <template> by ID and returns the live DocumentFragment.
- * Throws a descriptive error if the template is missing (helps catch typos).
- */
 function _cloneTemplate(id) {
     const tpl = document.getElementById(id);
     if (!tpl) throw new Error(`Missing <template id="${id}">`);
     return tpl.content.cloneNode(true);
 }
 
-/**
- * Walk the cloned fragment and replace placeholder class tokens (tpl-dot-*)
- * with the real Tailwind classes from STATUS_STYLES.
- * This is called once after cloning any legend template.
- */
 function _applyLegendDots(fragment) {
     const dotMap = {
         'tpl-dot-success': STATUS_STYLES.success.legendDot,
@@ -81,18 +62,12 @@ function _applyLegendDots(fragment) {
     }
 }
 
-// --- HELPER FUNCTIONS ---
-
 function isConnectionError(err) {
     if (!err) return false;
     const msg = err.toLowerCase();
     return msg.includes("failed to fetch") || msg.includes("load resource") || msg.includes("service unavailable") || msg.includes("connection refused");
 }
 
-/**
- * Returns a <span> Element with a tooltip (title attribute) wrapping label.
- * Falls back to a plain Text node when no definition exists.
- */
 function renderTooltip(key, label) {
     const def = METRIC_DEFINITIONS[key];
     if (def) {
@@ -152,17 +127,13 @@ function renderTabs(tabList) {
     });
 }
 
-/**
- * Returns a DOM Element for the optimization badge, or null if optLevel === 0.
- * NOTE: callers receive an Element (not a string) and must use appendChild.
- */
 function getOptBadge(simulator, config) {
     const optLevel = config[simulator] !== undefined ? config[simulator] : 0;
     if (optLevel > 0) {
         const frag = _cloneTemplate('tpl-opt-badge');
         const span = frag.querySelector('span');
         span.textContent = `L${optLevel}`;
-        // Look up description from runner opt info populated by config.js on panel open
+
         const runnerInfo = typeof getRunnerOptInfo === 'function' ? getRunnerOptInfo(simulator) : {};
         const desc = runnerInfo.optimization_levels?.[String(optLevel)];
         span.title = desc
@@ -173,12 +144,6 @@ function getOptBadge(simulator, config) {
     return null;
 }
 
-// --- PRIVATE STATUS BADGE BUILDER ---
-
-/**
- * Clones tpl-status-badge and applies the correct style + label.
- * Returns a live <span> Element.
- */
 function _makeStatusBadge(styleKey, label) {
     const frag = _cloneTemplate('tpl-status-badge');
     const span = frag.querySelector('span');
@@ -186,8 +151,6 @@ function _makeStatusBadge(styleKey, label) {
     span.textContent = label;
     return span;
 }
-
-// --- MAIN PANEL RENDERERS ---
 
 function renderDetailReport(data, title, config = getState().currentRunnerConfig) {
     renderTabs(['summary', 'performance', 'resources', 'divergence', 'raw']);
@@ -223,19 +186,17 @@ function renderSuiteSummary(data, title) {
     if (!panel) return;
     panel.innerHTML = '';
 
-    // Title
     const h2 = document.createElement('h2');
     h2.className = 'text-xl font-semibold text-gray-900 mb-4';
     h2.textContent = title;
     panel.appendChild(h2);
 
-    // Legend
     const legendFrag = _cloneTemplate('tpl-legend-suite');
     _applyLegendDots(legendFrag);
     panel.appendChild(legendFrag);
 
     if (data.error) {
-        // API error block
+
         const errFrag = _cloneTemplate('tpl-suite-api-error');
         const errDiv = errFrag.querySelector('.tpl-error-text');
         errDiv.classList.remove('tpl-error-text');
@@ -245,13 +206,11 @@ function renderSuiteSummary(data, title) {
         const summary = data.benchmark_summary || [];
         const errors = summary.filter(r => r.error).length;
 
-        // Stats bar
         const statsFrag = _cloneTemplate('tpl-suite-stats-bar');
         statsFrag.querySelector('.tpl-count').textContent = summary.length;
         statsFrag.querySelector('.tpl-errors').textContent = errors;
         panel.appendChild(statsFrag);
 
-        // Table
         const tableFrag = _cloneTemplate('tpl-suite-table-wrapper');
         const tbody = tableFrag.querySelector('.tpl-tbody');
         tbody.classList.remove('tpl-tbody');
@@ -262,7 +221,6 @@ function renderSuiteSummary(data, title) {
 
             rowFrag.querySelector('.tpl-task-name').textContent = fname;
 
-            // Status badge
             const statusCell = rowFrag.querySelector('.tpl-status');
             statusCell.classList.remove('tpl-status');
             let badge;
@@ -298,13 +256,11 @@ function renderSummaryPanel(data, title) {
     if (!panel) return;
     panel.innerHTML = '';
 
-    // Title
     const h2 = document.createElement('h2');
     h2.className = 'text-xl font-semibold text-gray-900 mb-4';
     h2.textContent = title;
     panel.appendChild(h2);
 
-    // Legend
     const legendFrag = _cloneTemplate('tpl-legend-suite');
     _applyLegendDots(legendFrag);
     panel.appendChild(legendFrag);
@@ -363,24 +319,23 @@ function renderSummaryPanel(data, title) {
             heading.textContent = `Qubit Ordering Divergences (${crossGroup.length})`;
             heading.parentElement.classList.remove('bg-red-50', 'text-red-700', 'border-red-200');
             heading.parentElement.classList.add('bg-yellow-50', 'text-yellow-700', 'border-yellow-200');
-            
+
             const list = frag.querySelector('.tpl-list');
             list.classList.remove('tpl-list');
             const liFrag = _cloneTemplate('tpl-summary-list-item');
             const li = liFrag.querySelector('li');
             li.innerHTML = `Detected <b>${crossGroup.length}</b> pairwise divergences caused by mixed LSB vs MSB ordering conventions. These are expected and mathematically explained.`;
-            
-            // Add collapsible details
+
             const details = document.createElement('details');
             details.className = 'mt-2 text-xs text-yellow-800 cursor-pointer';
             const summary = document.createElement('summary');
             summary.className = 'font-semibold hover:text-yellow-600 outline-none py-1';
             summary.textContent = 'View Affected Simulators (Grouped)';
             details.appendChild(summary);
-            
+
             const pairsList = document.createElement('ul');
             pairsList.className = 'list-none ml-2 mt-1 space-y-2 opacity-90';
-            
+
             const processed = new Set();
             crossGroup.forEach(d => {
                 const [s1, s2] = d.simulators;
@@ -393,15 +348,15 @@ function renderSummaryPanel(data, title) {
                             fidelity: dx.fidelity,
                             js: dx.js_divergence
                         }));
-                    
+
                     const subDetails = document.createElement('details');
                     subDetails.className = 'text-xs text-yellow-700';
-                    
+
                     const subSummary = document.createElement('summary');
                     subSummary.className = 'font-bold cursor-pointer hover:text-yellow-900 outline-none';
                     subSummary.innerHTML = `${s1} <span class="font-normal opacity-60">&times; ${partners.length} partners</span>`;
                     subDetails.appendChild(subSummary);
-                    
+
                     const subUl = document.createElement('ul');
                     subUl.className = 'list-disc ml-4 mt-1 space-y-0.5 opacity-80';
                     partners.forEach(p => {
@@ -413,18 +368,17 @@ function renderSummaryPanel(data, title) {
                         subUl.appendChild(liPartner);
                     });
                     subDetails.appendChild(subUl);
-                    
+
                     const pLi = document.createElement('li');
                     pLi.appendChild(subDetails);
                     pairsList.appendChild(pLi);
-                    
+
                     processed.add(s1);
-                    // Add partners to processed to avoid duplicate reversed blocks 
-                    // (e.g. if we show qiskit vs cirq, don't show cirq vs qiskit later)
+
                     partners.forEach(p => processed.add(p.name));
                 }
             });
-            
+
             details.appendChild(pairsList);
             li.appendChild(details);
             list.appendChild(liFrag);
@@ -441,7 +395,7 @@ function renderSummaryPanel(data, title) {
                 let info = "";
                 if (d.fidelity !== undefined) info = ` (Fidelity: ${d.fidelity.toFixed(4)})`;
                 if (d.js_divergence !== undefined) info = ` (JS Div: ${d.js_divergence.toFixed(4)})`;
-                
+
                 liFrag.querySelector('li').innerHTML = `<b>${d.simulators.join(' & ')}</b>: ${d.type}${info}`;
                 list.appendChild(liFrag);
             });
@@ -456,5 +410,3 @@ function renderSummaryPanel(data, title) {
         panel.appendChild(frag);
     }
 }
-
-// renderRankingTable, renderDivergenceTables, and viewDetail are in tables_renderer.js

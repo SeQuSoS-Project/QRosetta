@@ -1,12 +1,4 @@
-// =============================================================================
-// history.js — Run History Management
-// Responsibility: Saving runs, loading historical runs, managing the history
-//                 modal (view, rename, delete, download, select-all).
-// Depends on: BASE_URL, getAuthHeaders (api.js), setLoading (utils.js),
-//             getState().authToken, getState().currentSuiteData, getState().currentSuiteTitle (app.js globals),
-//             renderDetailReport, renderSuiteSummary (renderers.js),
-//             clearReport (renderers.js)
-// =============================================================================
+// Frontend logic for history functionality.
 
 async function saveRunToHistory(payload) {
     if (!getState().authToken) return;
@@ -43,7 +35,6 @@ async function openHistoryModal() {
             return;
         }
 
-        // Sort descending by created_at natively via JS
         runs.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
         list.innerHTML = '';
@@ -192,7 +183,7 @@ async function deleteSelectedHistory() {
             body: JSON.stringify({ run_ids: runIds })
         });
         if (!res.ok) throw new Error("Failed to delete runs");
-        openHistoryModal(); // Refresh modal content
+        openHistoryModal();
     } catch (e) {
         console.error(e);
         alert("Failed to delete runs.");
@@ -245,7 +236,6 @@ async function loadHistoricalRun(runId, runName, createdAt) {
         const data = await response.json();
         dispatch('SET_SUITE_DATA', data);
 
-        // Show context header notifying user they are in historical view
         const historyBanner = document.createElement('div');
         historyBanner.id = "history-active-banner";
         historyBanner.className = "p-3 bg-yellow-50 border-b border-yellow-200 text-yellow-800 text-sm flex justify-between items-center";
@@ -258,7 +248,6 @@ async function loadHistoricalRun(runId, runName, createdAt) {
             <button onclick="clearHistoryView()" class="text-yellow-600 hover:text-yellow-900 font-bold underline">Close Results & Return to Editor</button>
         `;
 
-        // Prepend banner to top of right panel UI
         const tabNav = document.getElementById('tab-nav');
         if (!document.getElementById('history-active-banner')) {
             tabNav.parentNode.insertBefore(historyBanner, tabNav);

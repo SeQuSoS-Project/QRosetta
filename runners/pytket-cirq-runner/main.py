@@ -1,3 +1,5 @@
+# Execution script for the quantum simulator runner.
+
 import argparse
 import json
 import os
@@ -18,13 +20,10 @@ import gc
 import warnings
 import logging
 
-# Suppress FutureWarning from google.api_core about Python 3.10 EOL (not actionable here).
 warnings.filterwarnings("ignore", category=FutureWarning, module="google.api_core")
 
-# pytket's tk_to_cirq emits a root-level WARNING when a circuit has a symbolic
-# global phase it cannot adjust. This is expected for our circuit inputs — suppress it.
 logging.getLogger("root").setLevel(logging.ERROR)
-# More targeted: silence only the specific message via a filter on the root logger.
+
 class _SuppressGlobalPhaseWarning(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         return "Global phase is dependent on a symbolic parameter" not in record.getMessage()
@@ -35,35 +34,28 @@ logger = get_logger("pytket-cirq-runner")
 
 app = FastAPI(title="Cirq Runner")
 
-
 def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for Cirq simulation.")
     try:
         check_qubits_limit(payload["circuit_data"], 24)
-        # --- COMPILATION ---
+
         t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload["circuit_data"])
         n_qubits = tk_circ.n_qubits
         RemoveBarriers().apply(tk_circ)
 
-        # --- COMPATIBILITY LAYER ---
-        # Convert generic gates (TK1, U3) into Rx and Rz rotations.
-        # Cirq's converter natively understands these specific gates.
         Transform.RebaseToRzRx().apply(tk_circ)
-        # ---------------------------
 
         cirq_circ = tk_to_cirq(tk_circ)
         simulator = cirq.Simulator(dtype=np.complex128)
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
-        # --- WARM-UP ---
         _ = simulator.simulate(cirq_circ)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
-            # --- SIMULATION ---
             t2 = time.perf_counter()
             result = simulator.simulate(cirq_circ)
             statevector = result.final_state_vector
@@ -99,20 +91,17 @@ def process_run(payload: dict) -> dict:
             "process_peak_mb": 0.0
         }
 
-
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for Cirq simulation.")
     try:
         check_qubits_limit(payload["circuit_data"], 24)
-        # --- COMPILATION ---
+
         t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload["circuit_data"])
         n_qubits = tk_circ.n_qubits
         RemoveBarriers().apply(tk_circ)
 
-        # --- COMPATIBILITY LAYER ---
         Transform.RebaseToRzRx().apply(tk_circ)
-        # ---------------------------
 
         backend = CirqStateSampleBackend()
         opt_level = min(payload.get("optimization_level", 0), 2)
@@ -122,13 +111,11 @@ def process_run_measured(payload: dict) -> dict:
 
         n_shots = payload.get("n_shots", 1024)
 
-        # --- WARM-UP ---
         _ = backend.process_circuit(compiled_circ, n_shots=n_shots)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
-            # --- SIMULATION ---
             t2 = time.perf_counter()
             handle = backend.process_circuit(compiled_circ, n_shots=n_shots)
             counts = backend.get_result(handle).get_counts()
@@ -166,16 +153,13 @@ def process_run_measured(payload: dict) -> dict:
             "process_peak_mb": 0.0
         }
 
-
 @app.post("/run")
 async def run_circuit(payload: CircuitPayload):
     return process_run(payload.model_dump())
 
-
 @app.post("/run_measured")
 async def run_measured_circuit(payload: MeasuredCircuitPayload):
     return process_run_measured(payload.model_dump())
-
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

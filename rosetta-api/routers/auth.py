@@ -1,3 +1,5 @@
+# FastAPI router endpoints for auth.
+
 from datetime import timedelta
 from typing import Annotated
 
@@ -21,14 +23,14 @@ def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
     db_user = db.query(models.User).filter(models.User.email == user.email).first()
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
-    
+
     hashed_password = get_password_hash(user.password)
     new_user = models.User(
         email=user.email,
         hashed_password=hashed_password,
         auth_provider="local"
     )
-    
+
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
@@ -39,7 +41,7 @@ def login_for_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: Session = Depends(get_db)
 ):
-    # form_data.username is used to store the email since OAuth2 expects a 'username' field
+
     user = db.query(models.User).filter(models.User.email == form_data.username).first()
     if not user or not user.hashed_password:
         raise HTTPException(
@@ -53,7 +55,7 @@ def login_for_access_token(
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.email}, expires_delta=access_token_expires

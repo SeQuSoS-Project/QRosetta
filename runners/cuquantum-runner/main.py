@@ -1,3 +1,5 @@
+# Execution script for the quantum simulator runner.
+
 import argparse
 import json
 import os
@@ -24,7 +26,6 @@ except ImportError as e:
     AERSIM_AVAILABLE = False
     logger.warning(f"qiskit-aer import failed: {e}. Runner will return errors.")
 
-# Detect GPU once at startup by actually running a tiny circuit
 _GPU_AVAILABLE = False
 if AERSIM_AVAILABLE:
     try:
@@ -39,7 +40,6 @@ if AERSIM_AVAILABLE:
         _GPU_AVAILABLE = False
     logger.info(f"GPU/cuQuantum available: {_GPU_AVAILABLE}")
 
-
 def _run_safe(sim, qc, **kwargs):
     """Run a circuit, falling back to CPU if GPU execution fails."""
     try:
@@ -50,7 +50,6 @@ def _run_safe(sim, qc, **kwargs):
             cpu_sim = AerSimulator(method='statevector')
             return cpu_sim.run(qc, **kwargs).result()
         raise
-
 
 def _compile(qasm_str: str, optimization_level: int = 0):
     """Parse QASM 2.0 into a Qiskit QuantumCircuit and apply Qiskit transpiler passes.
@@ -65,7 +64,6 @@ def _compile(qasm_str: str, optimization_level: int = 0):
         qc = qiskit_transpile(qc, optimization_level=min(optimization_level, 3))
     return qc
 
-
 def process_run(payload: dict) -> dict:
     logger.info(f"Received statevector request (GPU={_GPU_AVAILABLE}).")
     if not AERSIM_AVAILABLE:
@@ -73,7 +71,7 @@ def process_run(payload: dict) -> dict:
                 "execution_time_sec": 0.0, "memory_usage_mb": 0.0, "process_peak_mb": 0.0}
     try:
         check_qubits_limit(payload["circuit_data"], 24)
-        # --- COMPILATION ---
+
         t0 = time.perf_counter()
         qc = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
         qc.remove_final_measurements(inplace=True)
@@ -82,12 +80,11 @@ def process_run(payload: dict) -> dict:
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
-        # --- WARM-UP ---
         _run_safe(sim, qc)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
-            # --- SIMULATION ---
+
             t2 = time.perf_counter()
             result = _run_safe(sim, qc)
             sv = np.asarray(result.get_statevector())
@@ -118,7 +115,6 @@ def process_run(payload: dict) -> dict:
         return {"simulator": "cuquantum", "error": str(e),
                 "execution_time_sec": 0.0, "memory_usage_mb": 0.0, "process_peak_mb": 0.0}
 
-
 def process_run_measured(payload: dict) -> dict:
     logger.info(f"Received measurement request (GPU={_GPU_AVAILABLE}).")
     if not AERSIM_AVAILABLE:
@@ -126,7 +122,7 @@ def process_run_measured(payload: dict) -> dict:
                 "execution_time_sec": 0.0, "memory_usage_mb": 0.0, "process_peak_mb": 0.0}
     try:
         check_qubits_limit(payload["circuit_data"], 24)
-        # --- COMPILATION ---
+
         t0 = time.perf_counter()
         qc = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
         sim = AerSimulator(method='statevector', device='GPU') if _GPU_AVAILABLE else AerSimulator(method='statevector')
@@ -135,12 +131,11 @@ def process_run_measured(payload: dict) -> dict:
 
         n_shots = payload.get("n_shots", 1024)
 
-        # --- WARM-UP ---
         _run_safe(sim, qc, shots=10)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
-            # --- SIMULATION ---
+
             t2 = time.perf_counter()
             result = _run_safe(sim, qc, shots=n_shots)
             counts = dict(result.get_counts())
@@ -172,19 +167,15 @@ def process_run_measured(payload: dict) -> dict:
         return {"simulator": "cuquantum", "error": str(e),
                 "execution_time_sec": 0.0, "memory_usage_mb": 0.0, "process_peak_mb": 0.0}
 
-
 @app.post("/run")
 async def run_circuit(payload: CircuitPayload):
     return process_run(payload.model_dump())
-
 
 @app.post("/run_measured")
 async def run_measured_circuit(payload: MeasuredCircuitPayload):
     return process_run_measured(payload.model_dump())
 
-
 logger.info("cuQuantum runner API instantiated and ready to receive traffic.")
-
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

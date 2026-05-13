@@ -1,3 +1,5 @@
+# Execution script for the quantum simulator runner.
+
 import argparse
 import json
 import os
@@ -19,12 +21,11 @@ logger = get_logger("pytket-qiskit-runner")
 
 app = FastAPI(title="Qiskit Runner")
 
-
 def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for Qiskit simulation.")
     try:
         check_qubits_limit(payload["circuit_data"], 24)
-        # --- COMPILATION (includes transpilation) ---
+
         t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload["circuit_data"])
         n_qubits = tk_circ.n_qubits
@@ -37,13 +38,11 @@ def process_run(payload: dict) -> dict:
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
-        # --- WARM-UP ---
         _ = backend.run(qiskit_circ, optimization_level=0)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
-            # --- SIMULATION (circuit already transpiled — no re-compilation) ---
             t2 = time.perf_counter()
             job = backend.run(qiskit_circ, optimization_level=0)
             result = job.result()
@@ -80,12 +79,11 @@ def process_run(payload: dict) -> dict:
             "process_peak_mb": 0.0
         }
 
-
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for Qiskit simulation.")
     try:
         check_qubits_limit(payload["circuit_data"], 24)
-        # --- COMPILATION (includes transpilation) ---
+
         t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload["circuit_data"])
         n_qubits = tk_circ.n_qubits
@@ -99,13 +97,11 @@ def process_run_measured(payload: dict) -> dict:
 
         n_shots = payload.get("n_shots", 1024)
 
-        # --- WARM-UP ---
         _ = backend.run(qiskit_circ, optimization_level=0, shots=n_shots)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
-            # --- SIMULATION (circuit already transpiled — no re-compilation) ---
             t2 = time.perf_counter()
             job = backend.run(qiskit_circ, optimization_level=0, shots=n_shots)
             result = job.result()
@@ -154,16 +150,13 @@ def process_run_measured(payload: dict) -> dict:
             "process_peak_mb": 0.0
         }
 
-
 @app.post("/run")
 async def run_circuit(payload: CircuitPayload):
     return process_run(payload.model_dump())
 
-
 @app.post("/run_measured")
 async def run_measured_circuit(payload: MeasuredCircuitPayload):
     return process_run_measured(payload.model_dump())
-
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

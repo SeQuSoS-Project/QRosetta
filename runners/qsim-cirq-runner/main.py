@@ -1,3 +1,5 @@
+# Execution script for the quantum simulator runner.
+
 import argparse
 import json
 import os
@@ -25,7 +27,6 @@ logger = get_logger("qsim-cirq-runner")
 
 app = FastAPI(title="qsim-Cirq Runner")
 
-
 def _to_cirq_circuit(qasm_str: str, optimization_level: int = 0) -> cirq.Circuit:
     """Parse QASM string via pytket, convert to Cirq, then apply Cirq-native optimizations.
 
@@ -50,14 +51,12 @@ def _to_cirq_circuit(qasm_str: str, optimization_level: int = 0) -> cirq.Circuit
 
     return circ
 
-
 def _strip_measurements(circ: cirq.Circuit) -> cirq.Circuit:
     """Return a copy of the circuit with all measurement gates removed."""
     return cirq.Circuit(
         op for op in circ.all_operations()
         if not isinstance(op.gate, cirq.MeasurementGate)
     )
-
 
 def process_run(payload: dict) -> dict:
     if not QSIM_AVAILABLE:
@@ -75,7 +74,7 @@ def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for qsim-Cirq simulation.")
     try:
         check_qubits_limit(payload["circuit_data"], 24)
-        # --- COMPILATION ---
+
         t0 = time.perf_counter()
         cirq_circ = _to_cirq_circuit(circuit_data, optimization_level)
         cirq_circ_no_meas = _strip_measurements(cirq_circ)
@@ -83,13 +82,11 @@ def process_run(payload: dict) -> dict:
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
-        # --- WARM-UP ---
         _ = simulator.simulate(cirq_circ_no_meas)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
-            # --- SIMULATION ---
             t2 = time.perf_counter()
             result = simulator.simulate(cirq_circ_no_meas)
             statevector = result.final_state_vector
@@ -128,7 +125,6 @@ def process_run(payload: dict) -> dict:
             "process_peak_mb": 0.0
         }
 
-
 def process_run_measured(payload: dict) -> dict:
     if not QSIM_AVAILABLE:
         return {
@@ -146,11 +142,10 @@ def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for qsim-Cirq simulation.")
     try:
         check_qubits_limit(payload["circuit_data"], 24)
-        # --- COMPILATION ---
+
         t0 = time.perf_counter()
         cirq_circ = _to_cirq_circuit(circuit_data, optimization_level)
-        # Strip any existing measurements and add a clean terminal measurement
-        # on all qubits so qsim's run() interface can sample deterministically.
+
         all_qubits = sorted(cirq_circ.all_qubits())
         circ_with_meas = _strip_measurements(cirq_circ) + cirq.measure(
             *all_qubits, key="result"
@@ -159,13 +154,11 @@ def process_run_measured(payload: dict) -> dict:
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
-        # --- WARM-UP ---
         _ = simulator.run(circ_with_meas, repetitions=n_shots)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
-            # --- SIMULATION ---
             t2 = time.perf_counter()
             run_result = simulator.run(circ_with_meas, repetitions=n_shots)
             t3 = time.perf_counter()
@@ -175,7 +168,6 @@ def process_run_measured(payload: dict) -> dict:
         process_peak_mb = monitor.get_process_peak_mb()
         execution_time = compilation_time + simulation_time
 
-        # Convert measurement array (n_shots × n_qubits) → {bitstring: count}
         measurements = run_result.measurements["result"]
         counts_dict: dict = {}
         for shot in measurements:
@@ -210,16 +202,13 @@ def process_run_measured(payload: dict) -> dict:
             "process_peak_mb": 0.0
         }
 
-
 @app.post("/run")
 async def run_circuit(payload: CircuitPayload):
     return process_run(payload.model_dump())
 
-
 @app.post("/run_measured")
 async def run_measured_circuit(payload: MeasuredCircuitPayload):
     return process_run_measured(payload.model_dump())
-
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

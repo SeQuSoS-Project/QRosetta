@@ -1,4 +1,5 @@
-#!/usr/bin/env python3
+# Unit and integration tests.
+
 """
 Optimization level coverage test.
 
@@ -18,11 +19,8 @@ import httpx
 
 BASE_URL = "http://localhost"
 POLL_INTERVAL = 2.0
-JOB_TIMEOUT = 180  # seconds per job
+JOB_TIMEOUT = 180
 
-# 3-qubit GHZ state — no explicit measurements.
-# For statevector runs the pipeline sends this as-is; runners strip nothing.
-# For measured runs the job_manager inserts terminal measurements on all qubits.
 TEST_QASM = """\
 OPENQASM 2.0;
 include "qelib1.inc";
@@ -31,9 +29,6 @@ h q[0];
 cx q[0],q[1];
 cx q[1],q[2];
 """
-
-
-# ── helpers ──────────────────────────────────────────────────────────────────
 
 def decode_sv(encoded: str) -> np.ndarray | None:
     """Decode a base64 complex128 statevector string."""
@@ -45,12 +40,10 @@ def decode_sv(encoded: str) -> np.ndarray | None:
     except Exception:
         return None
 
-
 def submit(client: httpx.Client, endpoint: str, payload: dict) -> str:
     resp = client.post(f"{BASE_URL}/{endpoint}", json=payload, timeout=30)
     resp.raise_for_status()
     return resp.json()["job_id"]
-
 
 def poll(client: httpx.Client, job_id: str) -> dict | None:
     deadline = time.time() + JOB_TIMEOUT
@@ -63,16 +56,12 @@ def poll(client: httpx.Client, job_id: str) -> dict | None:
         time.sleep(POLL_INTERVAL)
     return None
 
-
-# ── main ─────────────────────────────────────────────────────────────────────
-
 def main():
     passed: list[tuple] = []
     failed: list[tuple] = []
 
     with httpx.Client(timeout=30) as client:
 
-        # ── discover runners ──────────────────────────────────────────────
         print("Fetching /runners …")
         try:
             resp = client.get(f"{BASE_URL}/runners")
@@ -88,10 +77,8 @@ def main():
 
         print(f"Enabled runners ({len(enabled_ids)}): {', '.join(enabled_ids)}\n")
 
-        # ── reference statevectors (level 0) ─────────────────────────────
         ref_sv: dict[str, np.ndarray] = {}
 
-        # ── statevector runs ─────────────────────────────────────────────
         for level in range(4):
             print(f"{'═'*62}")
             print(f"  STATEVECTOR  level={level}")
@@ -160,7 +147,6 @@ def main():
 
         print()
 
-        # ── measured runs ─────────────────────────────────────────────────
         for level in range(4):
             print(f"{'═'*62}")
             print(f"  MEASURED     level={level}  shots=256")
@@ -211,7 +197,6 @@ def main():
                 print(f"  pass  {rid:<26} [{tag}]  ({total} shots, {len(counts)} outcomes)")
                 passed.append((rid, tag))
 
-    # ── summary ───────────────────────────────────────────────────────────
     print(f"\n{'═'*62}")
     print(f"  {len(passed)} passed   {len(failed)} failed")
     print(f"{'═'*62}")
@@ -223,7 +208,6 @@ def main():
         sys.exit(1)
 
     print("\nAll runners passed all optimization levels.")
-
 
 if __name__ == "__main__":
     main()
