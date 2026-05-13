@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from qrosetta_commons.helpers import get_logger
-import library
+import services.circuit_library as library
 from schemas import GenerateCircuitPayload, QasmPayload, VisualizerResponse
 from services.validator import validate_request
 from services.quirk_converter import QuirkCompiler
 from config import settings
-from security import limiter
+from services.security import limiter
 
 logger = get_logger("rosetta-api")
 router = APIRouter()
@@ -42,6 +42,7 @@ async def generate_circuit_endpoint(request: Request, payload: GenerateCircuitPa
 
 @router.post("/visualize/quirk", response_model=VisualizerResponse)
 async def visualize_quirk(payload: QasmPayload):
+    validate_request(payload.qasm_string, mode="statevector")
     try:
         compiler = QuirkCompiler(payload.qasm_string)
         url = compiler.generate_url()

@@ -13,7 +13,7 @@ from qiskit.circuit import QuantumCircuit
 from qiskit import transpile as qiskit_transpile
 import time
 import gc
-from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb
+from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb, check_qubits_limit
 
 logger = get_logger("pytket-qiskit-runner")
 
@@ -23,6 +23,7 @@ app = FastAPI(title="Qiskit Runner")
 def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for Qiskit simulation.")
     try:
+        check_qubits_limit(payload["circuit_data"], 24)
         # --- COMPILATION (includes transpilation) ---
         t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload["circuit_data"])
@@ -83,6 +84,7 @@ def process_run(payload: dict) -> dict:
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for Qiskit simulation.")
     try:
+        check_qubits_limit(payload["circuit_data"], 24)
         # --- COMPILATION (includes transpilation) ---
         t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload["circuit_data"])

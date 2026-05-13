@@ -48,33 +48,81 @@ async function openHistoryModal() {
 
         list.innerHTML = '';
         runs.forEach(run => {
+            const runName = run.run_name || run.id.substring(0, 8);
             const dateStr = new Date(run.created_at).toLocaleString();
+
             const li = document.createElement('li');
             li.className = "py-4 flex items-center justify-between";
-            const runName = run.run_name || run.id.substring(0, 8);
-            li.innerHTML = `
-                <div class="flex items-center flex-1 min-w-0 pr-4">
-                    <input type="checkbox" class="history-checkbox mr-4 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded" value="${run.id}">
-                    <div class="flex flex-col flex-1 min-w-0">
-                        <div class="flex items-center">
-                            <span id="run-name-text-${run.id}" class="text-sm font-medium text-indigo-600 truncate mr-2">${runName}</span>
-                            <span class="text-xs text-gray-400 font-mono bg-gray-100 px-1 rounded border border-gray-200">${run.id.substring(0, 8)}</span>
-                            <input id="run-name-input-${run.id}" type="text" class="hidden text-sm border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 w-full max-w-xs px-2 py-1" value="${runName}">
-                            <button onclick="toggleEditRunName('${run.id}')" id="run-name-edit-btn-${run.id}" class="ml-2 text-xs text-gray-400 hover:text-gray-600">✏️</button>
-                            <button onclick="saveRunName('${run.id}')" id="run-name-save-btn-${run.id}" class="hidden ml-2 text-xs font-medium text-green-600 hover:text-green-800">Save</button>
-                            <button onclick="cancelEditRunName('${run.id}', '${runName}')" id="run-name-cancel-btn-${run.id}" class="hidden ml-2 text-xs font-medium text-red-600 hover:text-red-800">Cancel</button>
-                        </div>
-                        <span class="text-xs text-gray-500">${dateStr}</span>
-                    </div>
-                </div>
-                <button onclick="loadHistoricalRun('${run.id}', '${runName.replace(/'/g, "\\'")}', '${run.created_at}')" class="text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 rounded-md shadow-sm transition-colors whitespace-nowrap">
-                    View Results
-                </button>
-            `;
+
+            const leftDiv = document.createElement('div');
+            leftDiv.className = "flex items-center flex-1 min-w-0 pr-4";
+
+            const checkbox = document.createElement('input');
+            checkbox.type = "checkbox";
+            checkbox.className = "history-checkbox mr-4 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded";
+            checkbox.value = run.id;
+
+            const colDiv = document.createElement('div');
+            colDiv.className = "flex flex-col flex-1 min-w-0";
+
+            const rowDiv = document.createElement('div');
+            rowDiv.className = "flex items-center";
+
+            const nameSpan = document.createElement('span');
+            nameSpan.id = `run-name-text-${run.id}`;
+            nameSpan.className = "text-sm font-medium text-indigo-600 truncate mr-2";
+            nameSpan.textContent = runName;
+
+            const idSpan = document.createElement('span');
+            idSpan.className = "text-xs text-gray-400 font-mono bg-gray-100 px-1 rounded border border-gray-200";
+            idSpan.textContent = run.id.substring(0, 8);
+
+            const nameInput = document.createElement('input');
+            nameInput.type = "text";
+            nameInput.id = `run-name-input-${run.id}`;
+            nameInput.className = "hidden text-sm border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 w-full max-w-xs px-2 py-1";
+            nameInput.value = runName;
+
+            const editBtn = document.createElement('button');
+            editBtn.id = `run-name-edit-btn-${run.id}`;
+            editBtn.className = "ml-2 text-xs text-gray-400 hover:text-gray-600";
+            editBtn.textContent = "✏️";
+            editBtn.addEventListener('click', () => toggleEditRunName(run.id));
+
+            const saveBtn = document.createElement('button');
+            saveBtn.id = `run-name-save-btn-${run.id}`;
+            saveBtn.className = "hidden ml-2 text-xs font-medium text-green-600 hover:text-green-800";
+            saveBtn.textContent = "Save";
+            saveBtn.addEventListener('click', () => saveRunName(run.id));
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.id = `run-name-cancel-btn-${run.id}`;
+            cancelBtn.className = "hidden ml-2 text-xs font-medium text-red-600 hover:text-red-800";
+            cancelBtn.textContent = "Cancel";
+            cancelBtn.addEventListener('click', () => cancelEditRunName(run.id, nameInput.value));
+
+            const dateSpan = document.createElement('span');
+            dateSpan.className = "text-xs text-gray-500";
+            dateSpan.textContent = dateStr;
+
+            rowDiv.append(nameSpan, idSpan, nameInput, editBtn, saveBtn, cancelBtn);
+            colDiv.append(rowDiv, dateSpan);
+            leftDiv.append(checkbox, colDiv);
+
+            const viewBtn = document.createElement('button');
+            viewBtn.className = "text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 rounded-md shadow-sm transition-colors whitespace-nowrap";
+            viewBtn.textContent = "View Results";
+            viewBtn.addEventListener('click', () => loadHistoricalRun(run.id, runName, run.created_at));
+
+            li.append(leftDiv, viewBtn);
             list.appendChild(li);
         });
     } catch (e) {
-        list.innerHTML = `<li class="py-4 text-center text-sm text-red-500">Error: ${e.message}</li>`;
+        const li = document.createElement('li');
+        li.className = "py-4 text-center text-sm text-red-500";
+        li.textContent = `Error: ${e.message}`;
+        list.innerHTML = '';
+        list.appendChild(li);
     }
 }
 

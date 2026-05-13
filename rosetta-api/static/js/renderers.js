@@ -257,7 +257,7 @@ function renderSuiteSummary(data, title) {
         tbody.classList.remove('tpl-tbody');
 
         summary.forEach((item, idx) => {
-            const fname = item.task_name || (item.benchmark_file ? item.benchmark_file.replace('benchmarks/', '') : 'Unknown');
+            const fname = item.task_name || (item.benchmark_file ? item.benchmark_file.replace('circuits/', '') : 'Unknown');
             const rowFrag = _cloneTemplate('tpl-suite-summary-row');
 
             rowFrag.querySelector('.tpl-task-name').textContent = fname;

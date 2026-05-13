@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from fastapi.responses import FileResponse, JSONResponse
 import os
-from services.report_manager import get_latest_report_path
+from services.storage import get_latest_report_path
 from config import settings
 
 router = APIRouter()

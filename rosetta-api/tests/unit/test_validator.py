@@ -1,6 +1,7 @@
 import pytest
 from fastapi import HTTPException
 from services.validator import validate_request
+from config import settings
 
 def test_validate_request_valid_statevector(monkeypatch):
     import config
@@ -19,14 +20,14 @@ def test_validate_request_valid_measured(monkeypatch):
     validate_request(qasm, mode="measured")
 
 def test_validate_request_payload_too_large():
-    qasm = "A" * 1000001
+    qasm = "A" * (settings.MAX_QASM_SIZE + 1)
     with pytest.raises(HTTPException) as exc_info:
         validate_request(qasm)
     assert exc_info.value.status_code == 413
     assert exc_info.value.detail == "Payload too large"
 
 def test_validate_request_too_complex():
-    qasm = ";" * 10001
+    qasm = ";" * (settings.MAX_QASM_GATES + 1)
     with pytest.raises(HTTPException) as exc_info:
         validate_request(qasm)
     assert exc_info.value.status_code == 400

@@ -5,7 +5,7 @@ import sys
 import boto3
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb, get_num_qubits_from_qasm
+from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb, get_num_qubits_from_qasm, check_qubits_limit
 import numpy as np
 import time
 import gc
@@ -36,6 +36,7 @@ def _parse(qasm_str: str, optimization_level: int = 0):
 def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for Qrisp simulation.")
     try:
+        check_qubits_limit(payload["circuit_data"], 24)
         # --- COMPILATION ---
         t0 = time.perf_counter()
         n_qubits = get_num_qubits_from_qasm(payload["circuit_data"])
@@ -98,6 +99,7 @@ def process_run(payload: dict) -> dict:
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for Qrisp simulation.")
     try:
+        check_qubits_limit(payload["circuit_data"], 24)
         # --- COMPILATION ---
         t0 = time.perf_counter()
         n_qubits = get_num_qubits_from_qasm(payload["circuit_data"])

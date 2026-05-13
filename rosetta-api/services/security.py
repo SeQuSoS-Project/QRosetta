@@ -9,10 +9,18 @@ import os
 from datetime import datetime, timedelta, timezone
 import bcrypt
 from jose import jwt
+from config import settings
 
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-here-please-change-in-prod")
+_DEFAULT_SECRET = "your-secret-key-here-please-change-in-prod"
+SECRET_KEY = os.getenv("SECRET_KEY", _DEFAULT_SECRET)
+if SECRET_KEY == _DEFAULT_SECRET:
+    import logging as _logging
+    _logging.getLogger("rosetta-security").warning(
+        "SECRET_KEY is using the insecure default value. "
+        "Set the SECRET_KEY environment variable before deploying to production."
+    )
+
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 def verify_password(plain_password, hashed_password):
     return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
@@ -36,8 +44,8 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
 from sqlalchemy.orm import Session
-from database import get_db
-import db_models as models
+from db.database import get_db
+import db.models as models
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
 
@@ -58,4 +66,3 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if user is None:
         raise credentials_exception
     return user
-

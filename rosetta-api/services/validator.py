@@ -2,12 +2,10 @@ from fastapi import HTTPException
 from config import settings
 import re
 
-MAX_QASM_SIZE = 1000000
-
 def validate_request(qasm: str, mode: str = "statevector"):
-    if len(qasm) > MAX_QASM_SIZE:
+    if len(qasm) > settings.MAX_QASM_SIZE:
         raise HTTPException(status_code=413, detail="Payload too large")
-    if qasm.count(";") > 10000:
+    if qasm.count(";") > settings.MAX_QASM_GATES:
         raise HTTPException(status_code=400, detail="Circuit too complex")
 
     # Dynamic Qubit Validation

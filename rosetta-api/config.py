@@ -24,6 +24,7 @@ class Settings(BaseSettings):
 
     # Timeouts
     RUNNER_TIMEOUT_SEC: int = 300
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
     # Storage Configuration
     STORAGE_MODE: str = os.getenv("STORAGE_MODE", "local")  # Options: 'local', 's3'
@@ -36,6 +37,8 @@ class Settings(BaseSettings):
     # Safeguards
     MAX_QUBITS_STATEVECTOR: int = 18
     MAX_QUBITS_MEASURED: int = 24
+    MAX_QASM_SIZE: int = 1_000_000   # bytes (1MB)
+    MAX_QASM_GATES: int = 10_000     # semicolon count used as gate-count proxy
 
     class Config:
         env_file = ".env"

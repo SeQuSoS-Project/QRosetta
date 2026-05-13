@@ -5,7 +5,8 @@ import sys
 import boto3
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb
+from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb, check_qubits_limit
+import re
 import numpy as np
 import time
 import gc
@@ -20,6 +21,16 @@ app = FastAPI(title="myQLM Runner")
 _qpu = PyLinalg()
 
 
+def _preprocess_qasm(qasm_str: str) -> str:
+    """Substitute gates unsupported by myQLM's PyLinalg before parsing.
+
+    tdg: PyLinalg parses it as 'D-T' but has no matrix for it. rz(-pi/4) is
+    equivalent up to global phase, which is invariant under the JS-divergence
+    and fidelity metrics used for cross-simulator comparison.
+    """
+    return re.sub(r'\btdg\b', 'rz(-pi/4)', qasm_str)
+
+
 def _compile_circuit(qasm_str: str, optimization_level: int = 0):
     """Parse QASM 2.0 into a myQLM Circuit. Fresh parser per call — OqasmParser is stateful.
 
@@ -31,7 +42,7 @@ def _compile_circuit(qasm_str: str, optimization_level: int = 0):
             f"myQLM: optimization_level={optimization_level} requested "
             "but not supported by PyLinalg; running at level 0."
         )
-    return OqasmParser().compile(qasm_str)
+    return OqasmParser().compile(_preprocess_qasm(qasm_str))
 
 
 def _get_statevector(circuit) -> np.ndarray:
@@ -49,6 +60,7 @@ def _get_statevector(circuit) -> np.ndarray:
 def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for myQLM simulation.")
     try:
+        check_qubits_limit(payload["circuit_data"], 24)
         # --- COMPILATION ---
         t0 = time.perf_counter()
         circuit = _compile_circuit(payload["circuit_data"], payload.get("optimization_level", 0))
@@ -103,6 +115,7 @@ def process_run(payload: dict) -> dict:
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for myQLM simulation.")
     try:
+        check_qubits_limit(payload["circuit_data"], 24)
         # --- COMPILATION ---
         t0 = time.perf_counter()
         circuit = _compile_circuit(payload["circuit_data"], payload.get("optimization_level", 0))

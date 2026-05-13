@@ -5,7 +5,7 @@ import sys
 import boto3
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb
+from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb, check_qubits_limit
 import numpy as np
 import time
 import gc
@@ -31,8 +31,11 @@ except ImportError as e:
 # NOTE: 'u1' and 'cu1' are intentionally excluded — TorchQuantum's cu1
 # implementation references an undefined `mat_dict` at runtime. Replacing
 # with 'p' causes Qiskit to decompose cu1 → cx + rz which TQ handles.
+# NOTE: 'tdg' is intentionally excluded — qiskit2tq raises
+# "tdg conversion to tq is currently not supported". Omitting it from
+# basis_gates causes Qiskit to decompose tdg → rz + others before TQ sees it.
 _TQ_BASIS_GATES = [
-    'h', 'x', 'y', 'z', 's', 't', 'sdg', 'tdg',
+    'h', 'x', 'y', 'z', 's', 't', 'sdg',
     'cx', 'cz', 'swap', 'ccx',
     'rx', 'ry', 'rz', 'p', 'u2', 'u3',
 ]
@@ -85,6 +88,7 @@ def process_run(payload: dict) -> dict:
             "process_peak_mb": 0.0,
         }
     try:
+        check_qubits_limit(payload["circuit_data"], 24)
         # --- COMPILATION ---
         t0 = time.perf_counter()
         tq_module, n_qubits = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
@@ -145,6 +149,7 @@ def process_run_measured(payload: dict) -> dict:
             "process_peak_mb": 0.0,
         }
     try:
+        check_qubits_limit(payload["circuit_data"], 24)
         # --- COMPILATION ---
         t0 = time.perf_counter()
         tq_module, n_qubits = _compile(payload["circuit_data"], payload.get("optimization_level", 0))

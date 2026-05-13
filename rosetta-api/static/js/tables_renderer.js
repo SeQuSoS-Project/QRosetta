@@ -370,7 +370,7 @@ function renderDivergenceTables(report, panel, config = {}) {
 
 function viewDetail(index) {
     const item = getState().currentSuiteData.benchmark_summary[index];
-    const fname = item.task_name || (item.benchmark_file ? item.benchmark_file.replace('benchmarks/', '') : 'Unknown');
+    const fname = item.task_name || (item.benchmark_file ? item.benchmark_file.replace('circuits/', '') : 'Unknown');
 
     clearReport();
     backButtonContainer.classList.remove('hidden');

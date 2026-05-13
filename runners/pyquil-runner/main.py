@@ -5,7 +5,7 @@ import sys
 import boto3
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb
+from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb, check_qubits_limit
 import numpy as np
 import pytket.qasm
 from pytket.passes import RemoveBarriers, PeepholeOptimise2Q, FullPeepholeOptimise
@@ -62,6 +62,7 @@ def _simulate_statevector(gate_prog: Program, n_qubits: int) -> np.ndarray:
 def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for PyQuil simulation.")
     try:
+        check_qubits_limit(payload["circuit_data"], 24)
         # --- COMPILATION ---
         t0 = time.perf_counter()
         prog, n_qubits = _to_quil_program(payload["circuit_data"], payload.get("optimization_level", 0))
@@ -116,6 +117,7 @@ def process_run(payload: dict) -> dict:
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for PyQuil simulation.")
     try:
+        check_qubits_limit(payload["circuit_data"], 24)
         # --- COMPILATION ---
         t0 = time.perf_counter()
         prog, n_qubits = _to_quil_program(payload["circuit_data"], payload.get("optimization_level", 0))

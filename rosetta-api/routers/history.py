@@ -3,11 +3,14 @@ from sqlalchemy.orm import Session
 from typing import List
 import uuid
 
-import db_models as models
+import db.models as models
 import schemas
-from database import get_db
-from security import get_current_user
+from db.database import get_db
+from services.security import get_current_user
 from services.storage import save_run_report, fetch_run_report, delete_run_reports
+from qrosetta_commons.helpers import get_logger
+
+logger = get_logger("rosetta-history")
 
 router = APIRouter(
     prefix="/history",
@@ -70,12 +73,8 @@ def save_run(
         return new_run
     except Exception as e:
         db.rollback()
-        import traceback
-        import sys
-        print("=== ERROR SAVING RUN ===", file=sys.stderr)
-        traceback.print_exc()
-        print("========================", file=sys.stderr)
-        raise HTTPException(status_code=500, detail=f"Failed to save run history: {str(e)}")
+        logger.error("Failed to save run history", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to save run history")
 
 @router.get("/runs", response_model=List[schemas.RunHistoryResponse])
 def get_run_histories(
@@ -102,8 +101,9 @@ def get_run_history_details(
     try:
         report_data = fetch_run_report(run_record.s3_object_key)
         return report_data
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.error(f"Failed to fetch run report for run_id={run_id}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch run history details")
 
 @router.patch("/runs/{run_id}", response_model=schemas.RunHistoryResponse)
 def update_run_name(
@@ -143,8 +143,9 @@ def batch_delete_runs(
     
     try:
         delete_run_reports(s3_keys_to_delete)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.error("Failed to delete run reports from storage", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to delete run reports")
         
     for run in run_records:
         db.delete(run)
