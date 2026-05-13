@@ -31,7 +31,7 @@ except ImportError as e:
 _TQ_BASIS_GATES = [
     'h', 'x', 'y', 'z', 's', 't', 'sdg',
     'cx', 'cz', 'swap', 'ccx',
-    'rx', 'ry', 'rz', 'p', 'u2', 'u3',
+    'rx', 'ry', 'rz', 'u2', 'u3',
 ]
 
 def _compile(qasm_str: str, optimization_level: int = 0):
