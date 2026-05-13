@@ -1,11 +1,4 @@
-// =============================================================================
-// batch.js — Playlist & Batch Queue Management
-// Responsibility: getState().batchQueue state, adding/removing items, presets,
-//                 and the auto-generator modal.
-// Depends on: BASE_URL, getAuthHeaders (api.js), setLoading (utils.js),
-//             qasmInput, getState().isProcessing, getState().batchQueue, playlistSection,
-//             queueList, queueCount (app.js globals)
-// =============================================================================
+// Frontend logic for batch functionality.
 
 const PRESETS = {
     "sanity": [
@@ -68,7 +61,6 @@ function addToBatch() {
     const algoId = document.getElementById('algo-select').value;
     const qubits = parseInt(document.getElementById('algo-qubits').value);
 
-    // Explicitly grab the custom name and QASM content right now
     const algoName = document.getElementById('ctx-algo-name').value || "Custom Circuit";
     const currentQasm = qasmInput.value.trim();
 
@@ -134,14 +126,14 @@ async function viewBatchItem(index) {
             sel.value = item.algorithm;
             document.getElementById('algo-qubits').value = item.qubits;
         }
-        // Update Context
+
         document.getElementById('ctx-algo-name').value = item.name;
         dispatch('SET_CURRENT_ALGO_NAME', item.name);
         updateContextBar();
         return;
     }
 
-    qasmInput.value = "// Loading preview from playlist...";
+    qasmInput.value = "
 
     try {
         dispatch('SET_PROCESSING', true);
@@ -159,15 +151,15 @@ async function viewBatchItem(index) {
                 sel.value = item.algorithm;
                 document.getElementById('algo-qubits').value = item.qubits;
             }
-            // Update Context
+
             document.getElementById('ctx-algo-name').value = item.name + ` (${item.qubits}q)`;
             dispatch('SET_CURRENT_ALGO_NAME', item.name + ` (${item.qubits}q)`);
             updateContextBar();
         } else {
-            qasmInput.value = "// Error loading preview: " + data.error;
+            qasmInput.value = "
         }
     } catch (e) {
-        qasmInput.value = "// Error: " + e.message;
+        qasmInput.value = "
     } finally {
         setLoading(false);
         dispatch('SET_PROCESSING', false);
@@ -183,8 +175,6 @@ function clearBatch() {
     dispatch('SET_BATCH_QUEUE', []);
     renderBatchQueue();
 }
-
-// --- AUTO-GENERATOR MODAL LOGIC ---
 
 function openGeneratorModal() {
     const list = document.getElementById('gen-algo-list');
@@ -227,7 +217,6 @@ async function runAutoGeneration() {
             if (safeMin <= safeMax) {
                 const q = Math.floor(Math.random() * (safeMax - safeMin + 1)) + safeMin;
 
-                // Fetch literal QASM string from the backend for the generated task
                 let qasmText = null;
                 const response = await fetch(`${BASE_URL}/generate_circuit`, {
                     method: 'POST',

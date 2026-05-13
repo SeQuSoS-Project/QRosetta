@@ -1,3 +1,5 @@
+# Execution script for the quantum simulator runner.
+
 import argparse
 import json
 import os
@@ -26,20 +28,11 @@ except ImportError as e:
     TORCHQUANTUM_AVAILABLE = False
     logger.warning(f"TorchQuantum import failed: {e}. Runner will return errors for all requests.")
 
-
-# Gates that qiskit2tq can reliably convert to TorchQuantum ops.
-# NOTE: 'u1' and 'cu1' are intentionally excluded — TorchQuantum's cu1
-# implementation references an undefined `mat_dict` at runtime. Replacing
-# with 'p' causes Qiskit to decompose cu1 → cx + rz which TQ handles.
-# NOTE: 'tdg' is intentionally excluded — qiskit2tq raises
-# "tdg conversion to tq is currently not supported". Omitting it from
-# basis_gates causes Qiskit to decompose tdg → rz + others before TQ sees it.
 _TQ_BASIS_GATES = [
     'h', 'x', 'y', 'z', 's', 't', 'sdg',
     'cx', 'cz', 'swap', 'ccx',
     'rx', 'ry', 'rz', 'p', 'u2', 'u3',
 ]
-
 
 def _compile(qasm_str: str, optimization_level: int = 0):
     """Parse QASM 2.0 with Qiskit and convert to a TorchQuantum module.
@@ -54,28 +47,26 @@ def _compile(qasm_str: str, optimization_level: int = 0):
     Returns (tq_module, n_qubits).
     """
     qc = QiskitCircuit.from_qasm_str(qasm_str)
-    # Always decompose to the safe TQ basis, applying requested opt level on top.
+
     qc = qiskit_transpile(
         qc,
         optimization_level=min(max(optimization_level, 0), 2),
         basis_gates=_TQ_BASIS_GATES,
     )
-    # Strip measurements so we can run statevector simulation
+
     qc.remove_final_measurements(inplace=True)
     n_qubits = qc.num_qubits
     tq_module = qiskit2tq(qc)
     return tq_module, n_qubits
-
 
 def _run_sv(tq_module, n_qubits: int) -> np.ndarray:
     """Execute the TorchQuantum module and return a numpy complex statevector."""
     qdev = tq.QuantumDevice(n_wires=n_qubits, bsz=1, device="cpu")
     with torch.no_grad():
         tq_module(qdev)
-    # get_states_1d() → shape (bsz, 2^n)
+
     sv = qdev.get_states_1d().detach().cpu().numpy()[0]
     return sv
-
 
 def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for TorchQuantum statevector simulation.")
@@ -89,18 +80,17 @@ def process_run(payload: dict) -> dict:
         }
     try:
         check_qubits_limit(payload["circuit_data"], 24)
-        # --- COMPILATION ---
+
         t0 = time.perf_counter()
         tq_module, n_qubits = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
-        # --- WARM-UP (excluded from reported timing) ---
         _run_sv(tq_module, n_qubits)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
-            # --- SIMULATION ---
+
             t2 = time.perf_counter()
             sv = _run_sv(tq_module, n_qubits)
             t3 = time.perf_counter()
@@ -137,7 +127,6 @@ def process_run(payload: dict) -> dict:
             "process_peak_mb": 0.0,
         }
 
-
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received circuit data for TorchQuantum measurement simulation.")
     if not TORCHQUANTUM_AVAILABLE:
@@ -150,7 +139,7 @@ def process_run_measured(payload: dict) -> dict:
         }
     try:
         check_qubits_limit(payload["circuit_data"], 24)
-        # --- COMPILATION ---
+
         t0 = time.perf_counter()
         tq_module, n_qubits = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
         t1 = time.perf_counter()
@@ -158,18 +147,16 @@ def process_run_measured(payload: dict) -> dict:
 
         n_shots = payload.get("n_shots", 1024)
 
-        # --- WARM-UP (excluded from reported timing) ---
         _run_sv(tq_module, n_qubits)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
-            # --- SIMULATION + SAMPLING ---
+
             t2 = time.perf_counter()
             sv = _run_sv(tq_module, n_qubits)
 
-            # Derive counts by sampling from the probability distribution
             probs = torch.tensor(np.abs(sv) ** 2, dtype=torch.float64)
-            # Guard against tiny negative rounding errors
+
             probs = torch.clamp(probs, min=0.0)
             probs = probs / probs.sum()
 
@@ -217,19 +204,15 @@ def process_run_measured(payload: dict) -> dict:
             "process_peak_mb": 0.0,
         }
 
-
 @app.post("/run")
 async def run_circuit(payload: CircuitPayload):
     return process_run(payload.model_dump())
-
 
 @app.post("/run_measured")
 async def run_measured_circuit(payload: MeasuredCircuitPayload):
     return process_run_measured(payload.model_dump())
 
-
 logger.info("TorchQuantum runner API instantiated and ready to receive traffic.")
-
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

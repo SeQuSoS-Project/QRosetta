@@ -1,3 +1,5 @@
+# FastAPI router endpoints for generation.
+
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from qrosetta_commons.helpers import get_logger

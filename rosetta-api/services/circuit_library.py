@@ -1,3 +1,5 @@
+# Pre-defined quantum algorithm templates.
+
 import json
 import os
 import random
@@ -9,13 +11,8 @@ from qrosetta_commons.helpers import get_logger
 
 logger = get_logger("rosetta-circuit-library")
 
-# Cache for loaded algorithms mapping id to metadata/code
 _ALGORITHMS_CACHE: Dict[str, Any] = {}
 
-# Isolated globals for exec() — uses real __builtins__ so injected pytket
-# functions (Circuit, circuit_to_qasm_str, etc.) can call __import__ internally,
-# but template code cannot access any module-level name from this file
-# (os, json, _ALGORITHMS_CACHE, logger, etc.) because they are not in this dict.
 _EXEC_GLOBALS: Dict[str, Any] = {"__builtins__": __builtins__}
 
 def load_algorithms() -> Dict[str, Any]:
@@ -24,7 +21,6 @@ def load_algorithms() -> Dict[str, Any]:
     if _ALGORITHMS_CACHE:
         return _ALGORITHMS_CACHE
 
-    # services/ is one level below rosetta-api/, so step up to find algorithm_templates/
     algorithms_dir = os.path.join(os.path.dirname(__file__), "..", "algorithm_templates")
     loaded = {}
 
@@ -54,8 +50,6 @@ def generate_circuit(algorithm_id: str, n_qubits: int) -> str:
 
     algo_data = algorithms[algorithm_id]
 
-    # We provide the necessary local variables for the exec context
-    # to mimic the old static functions.
     local_context = {
         "n_qubits": n_qubits,
         "Circuit": Circuit,

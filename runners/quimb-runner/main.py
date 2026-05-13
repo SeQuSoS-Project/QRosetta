@@ -1,3 +1,5 @@
+# Execution script for the quantum simulator runner.
+
 import argparse
 import json
 import os
@@ -12,8 +14,6 @@ import gc
 import traceback
 import warnings
 
-# cotengra emits UserWarnings about missing optional optimizers (kahypar, optuna, etc.)
-# These are non-critical — suppress them to keep logs clean.
 warnings.filterwarnings("ignore", message=".*kahypar.*", category=UserWarning)
 warnings.filterwarnings("ignore", message=".*optuna.*", category=UserWarning)
 warnings.filterwarnings("ignore", message=".*cmaes.*", category=UserWarning)
@@ -31,7 +31,6 @@ except ImportError as e:
     QUIMB_AVAILABLE = False
     logger.warning(f"Quimb import failed: {e}. Runner will return errors for all requests.")
 
-
 def _preprocess_qasm(qasm_str: str) -> str:
     """Strip barrier and measure/creg lines — quimb's parser does not support them."""
     cleaned = []
@@ -41,7 +40,6 @@ def _preprocess_qasm(qasm_str: str) -> str:
             continue
         cleaned.append(line)
     return '\n'.join(cleaned)
-
 
 def _compile(qasm_str: str, optimization_level: int = 0):
     """Parse cleaned QASM 2.0 into a quimb Circuit.
@@ -57,12 +55,10 @@ def _compile(qasm_str: str, optimization_level: int = 0):
         )
     return qtn.Circuit.from_openqasm2_str(_preprocess_qasm(qasm_str))
 
-
 def _run_sv(circ) -> np.ndarray:
     """Contract the tensor network and return the statevector as a numpy array."""
     sv = circ.to_dense()
     return np.asarray(sv).flatten()
-
 
 def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for Quimb statevector simulation.")
@@ -76,18 +72,17 @@ def process_run(payload: dict) -> dict:
         }
     try:
         check_qubits_limit(payload["circuit_data"], 24)
-        # --- COMPILATION ---
+
         t0 = time.perf_counter()
         circ = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
-        # --- WARM-UP (excluded from reported timing) ---
         _run_sv(circ)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
-            # --- SIMULATION ---
+
             t2 = time.perf_counter()
             sv = _run_sv(circ)
             t3 = time.perf_counter()
@@ -124,7 +119,6 @@ def process_run(payload: dict) -> dict:
             "process_peak_mb": 0.0,
         }
 
-
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received circuit data for Quimb measurement simulation.")
     if not QUIMB_AVAILABLE:
@@ -137,7 +131,7 @@ def process_run_measured(payload: dict) -> dict:
         }
     try:
         check_qubits_limit(payload["circuit_data"], 24)
-        # --- COMPILATION ---
+
         t0 = time.perf_counter()
         circ = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
         t1 = time.perf_counter()
@@ -145,12 +139,11 @@ def process_run_measured(payload: dict) -> dict:
 
         n_shots = payload.get("n_shots", 1024)
 
-        # --- WARM-UP (excluded from reported timing) ---
         dict(circ.simulate_counts(C=10))
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
-            # --- SIMULATION ---
+
             t2 = time.perf_counter()
             counts_counter = circ.simulate_counts(C=n_shots)
             counts = dict(counts_counter)
@@ -188,19 +181,15 @@ def process_run_measured(payload: dict) -> dict:
             "process_peak_mb": 0.0,
         }
 
-
 @app.post("/run")
 async def run_circuit(payload: CircuitPayload):
     return process_run(payload.model_dump())
-
 
 @app.post("/run_measured")
 async def run_measured_circuit(payload: MeasuredCircuitPayload):
     return process_run_measured(payload.model_dump())
 
-
 logger.info("Quimb runner API instantiated and ready to receive traffic.")
-
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

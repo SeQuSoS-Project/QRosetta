@@ -1,8 +1,9 @@
+# Database connection and session management.
+
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-# Fallback to sqlite for local dev if DATABASE_URL not set
 default_db_path = "./data/qa_rosetta.db"
 os.makedirs(os.path.dirname(default_db_path), exist_ok=True)
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{default_db_path}")

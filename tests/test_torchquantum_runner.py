@@ -1,3 +1,5 @@
+# Unit and integration tests.
+
 """
 Local smoke test for the TorchQuantum runner.
 
@@ -9,7 +11,6 @@ import time
 
 BASE_URL = "http://localhost"
 
-
 def _poll_job(job_id: str, timeout: int = 180) -> dict:
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -20,7 +21,6 @@ def _poll_job(job_id: str, timeout: int = 180) -> dict:
             return data.get("results", {})
         time.sleep(1)
     raise TimeoutError(f"Job {job_id} did not complete within {timeout}s")
-
 
 def test_statevector():
     print("--- Test 1: /run (statevector) ---")
@@ -47,7 +47,6 @@ def test_statevector():
     print(f"  simulation_time_sec : {tq_result.get('simulation_time_sec'):.4f}s")
     print(f"  memory_usage_mb     : {tq_result.get('memory_usage_mb'):.2f} MB")
     print("  PASSED")
-
 
 def test_measured():
     print("--- Test 2: /run_measured (counts) ---")
@@ -78,7 +77,6 @@ def test_measured():
     print(f"  counts             : {counts}")
     print(f"  execution_time_sec : {tq_result.get('execution_time_sec'):.4f}s")
     print("  PASSED")
-
 
 if __name__ == "__main__":
     try:

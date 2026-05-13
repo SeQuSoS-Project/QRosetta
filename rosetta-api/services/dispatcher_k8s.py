@@ -1,3 +1,5 @@
+# Kubernetes-based dispatcher for quantum runners.
+
 import os
 import json
 import time
@@ -19,7 +21,6 @@ S3_FETCH_ATTEMPTS = 6
 S3_FETCH_BASE_DELAY_SEC = 2
 RBAC_FALLBACK_POLL_SEC = 5
 
-
 def _fetch_s3_result(s3, bucket, completed_key, sim_name, status_callback):
     for attempt in range(S3_FETCH_ATTEMPTS):
         if attempt > 0:
@@ -39,7 +40,6 @@ def _fetch_s3_result(s3, bucket, completed_key, sim_name, status_callback):
             logger.warning(f"[K8s] S3 transient error for {sim_name}: {type(e).__name__}: {e}")
     return None
 
-
 def _build_job_spec(sim_name: str, hostname: str, job_id: str, endpoint_type: str, payload_json: str) -> k8s_client.V1Job:
     """Constructs the Kubernetes Job manifest for a single runner pod."""
     image = f"image-registry.apps.2.rahti.csc.fi/qrosetta/{hostname}:{IMAGE_TAG}"
@@ -56,7 +56,7 @@ def _build_job_spec(sim_name: str, hostname: str, job_id: str, endpoint_type: st
         )
 
     env_vars = [
-        # Non-sensitive config — safe as plain values
+
         k8s_client.V1EnvVar(name="S3_ENDPOINT_URL",     value=os.environ.get("S3_ENDPOINT_URL", "")),
         k8s_client.V1EnvVar(name="S3_REGION",            value=os.environ.get("S3_REGION", "us-east-1")),
         k8s_client.V1EnvVar(name="QROSETTA_PAYLOAD",     value=payload_json),
@@ -64,7 +64,7 @@ def _build_job_spec(sim_name: str, hostname: str, job_id: str, endpoint_type: st
         k8s_client.V1EnvVar(name="MKL_NUM_THREADS",      value="1"),
         k8s_client.V1EnvVar(name="OPENBLAS_NUM_THREADS", value="1"),
         k8s_client.V1EnvVar(name="NUMEXPR_NUM_THREADS",  value="1"),
-        # Credentials — referenced from rosetta-secrets, never written into the job spec
+
         _secret_ref("S3_ACCESS_KEY"),
         _secret_ref("S3_SECRET_KEY"),
         _secret_ref("S3_BUCKET_NAME"),
@@ -103,14 +103,13 @@ def _build_job_spec(sim_name: str, hostname: str, job_id: str, endpoint_type: st
         ),
     )
 
-
 def _poll_pod_phase(core_api, namespace: str, job_name: str, sim_name: str, job_id: str,
                     s3, bucket: str, completed_key: str, deadline: float, status_callback) -> str | None:
     """Phase 1: poll pod status until Succeeded/Failed/timeout.
     Falls back to polling S3 directly if pod listing is unavailable (RBAC).
     Returns 'succeeded', 'failed', or None (timeout/RBAC-fallback-resolved)."""
     pod_is_running = False
-    pod_check_ok = None  # None=unknown, True=works, False=RBAC blocked
+    pod_check_ok = None
 
     while time.time() < deadline:
         if pod_check_ok is not False:
@@ -141,7 +140,7 @@ def _poll_pod_phase(core_api, namespace: str, job_name: str, sim_name: str, job_
                     pod_check_ok = False
                     logger.warning(f"[K8s] Pod listing unavailable for {sim_name} (RBAC?): {e}")
         else:
-            # RBAC fallback: poll S3 directly instead of pod status
+
             time.sleep(RBAC_FALLBACK_POLL_SEC)
             try:
                 obj = s3.get_object(Bucket=bucket, Key=completed_key)
@@ -150,7 +149,7 @@ def _poll_pod_phase(core_api, namespace: str, job_name: str, sim_name: str, job_
                 logger.info(f"[K8s] Job for {sim_name} completed via RBAC fallback (job_id={job_id})")
                 if status_callback:
                     status_callback("error" if "error" in result else "done")
-                return result  # return the result dict directly to short-circuit
+                return result
             except ClientError as e:
                 if e.response["Error"]["Code"] in ("NoSuchKey", "404"):
                     continue
@@ -158,8 +157,7 @@ def _poll_pod_phase(core_api, namespace: str, job_name: str, sim_name: str, job_
             except (BotoCoreError, Exception):
                 continue
 
-    return None  # timed out
-
+    return None
 
 def _run_k8s_job_for_simulator(sim_name: str, url: str, local_payload: dict, timeout_seconds: int, s3, batch_api, core_api, namespace: str, status_callback=None) -> dict:
     """Orchestrates job creation, pod polling, and S3 result fetch for one simulator."""
@@ -181,14 +179,12 @@ def _run_k8s_job_for_simulator(sim_name: str, url: str, local_payload: dict, tim
     if status_callback:
         status_callback("spawning")
 
-    # Phase 1: poll pod status (or RBAC fallback)
     deadline = time.time() + timeout_seconds
     terminal_state = _poll_pod_phase(
         core_api, namespace, job_name, sim_name, job_id,
         s3, bucket, completed_key, deadline, status_callback
     )
 
-    # RBAC fallback returned a result dict directly
     if isinstance(terminal_state, dict):
         return terminal_state
 
@@ -207,7 +203,6 @@ def _run_k8s_job_for_simulator(sim_name: str, url: str, local_payload: dict, tim
     else:
         logger.warning(f"[K8s] Phase 1 timed out for {sim_name} — attempting S3 fetch (job_id={job_id})")
 
-    # Phase 2: fetch result from S3 with exponential backoff
     result = _fetch_s3_result(s3, bucket, completed_key, sim_name, status_callback)
     if result:
         return result
@@ -225,7 +220,6 @@ def _run_k8s_job_for_simulator(sim_name: str, url: str, local_payload: dict, tim
         "execution_time_sec": 0.0,
         "memory_usage_mb": 0.0,
     }
-
 
 async def dispatch_kubernetes_jobs(runner_urls: dict, runner_payload: dict, timeout_seconds: int, runner_statuses: dict = None) -> list:
     global_opt = runner_payload.get("optimization_level", 0)

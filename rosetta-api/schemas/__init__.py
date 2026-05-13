@@ -1,3 +1,5 @@
+# Pydantic schemas for request/response validation.
+
 from schemas.benchmark import (
     QasmPayload,
     MeasuredQasmPayload,
@@ -25,14 +27,14 @@ from schemas.history import (
 )
 
 __all__ = [
-    # benchmark
+
     "QasmPayload", "MeasuredQasmPayload", "MeasuredBenchmarkPayload",
     "GenerateCircuitPayload", "BenchmarkTask", "BatchPayload",
     "VisualizerResponse", "JobStatusResponse", "RunnerPerformanceMetrics",
     "ComparisonResult",
-    # auth
+
     "UserCreate", "UserResponse", "Token",
-    # history
+
     "SavedCircuitCreate", "SavedCircuitResponse", "RunHistoryCreate",
     "RunHistoryResponse", "RunHistoryUpdate", "RunHistoryBatchDelete",
 ]

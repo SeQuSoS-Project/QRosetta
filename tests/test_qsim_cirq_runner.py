@@ -1,3 +1,5 @@
+# Unit and integration tests.
+
 """
 Local smoke test for the qsim-cirq runner.
 
@@ -9,7 +11,6 @@ import json
 
 BASE_URL = "http://localhost"
 
-# 2-qubit Bell state circuit (no measurements — for statevector endpoint)
 BELL_QASM_SV = """\
 OPENQASM 2.0;
 include "qelib1.inc";
@@ -18,7 +19,6 @@ h q[0];
 cx q[0],q[1];
 """
 
-# Same circuit with measurements — for run_measured endpoint
 BELL_QASM_MEAS = """\
 OPENQASM 2.0;
 include "qelib1.inc";
@@ -28,7 +28,6 @@ h q[0];
 cx q[0],q[1];
 measure q -> c;
 """
-
 
 def _poll_job(job_id: str, timeout: int = 120) -> dict:
     import time
@@ -41,7 +40,6 @@ def _poll_job(job_id: str, timeout: int = 120) -> dict:
             return data.get("results", {})
         time.sleep(1)
     raise TimeoutError(f"Job {job_id} did not complete within {timeout}s")
-
 
 def test_statevector():
     print("--- Test 1: /run (statevector) ---")
@@ -64,14 +62,12 @@ def test_statevector():
         None
     )
     assert qsim_result is not None, "No result for qsim-cirq in raw_results"
-    assert "error" not in qsim_result or qsim_result.get("error") is None, \
-        f"qsim-cirq runner error: {qsim_result.get('error')}"
+    assert "error" not in qsim_result or qsim_result.get("error") is None,        f"qsim-cirq runner error: {qsim_result.get('error')}"
     print(f"  execution_time_sec : {qsim_result.get('execution_time_sec'):.4f}s")
     print(f"  compilation_time_sec: {qsim_result.get('compilation_time_sec'):.4f}s")
     print(f"  simulation_time_sec : {qsim_result.get('simulation_time_sec'):.4f}s")
     print(f"  memory_usage_mb     : {qsim_result.get('memory_usage_mb'):.2f} MB")
     print("  PASSED")
-
 
 def test_measured():
     print("--- Test 2: /run_measured (counts) ---")
@@ -94,18 +90,16 @@ def test_measured():
         None
     )
     assert qsim_result is not None, "No result for qsim-cirq in raw_results"
-    assert "error" not in qsim_result or qsim_result.get("error") is None, \
-        f"qsim-cirq runner error: {qsim_result.get('error')}"
+    assert "error" not in qsim_result or qsim_result.get("error") is None,        f"qsim-cirq runner error: {qsim_result.get('error')}"
     counts = qsim_result.get("counts", {})
     total_shots = sum(counts.values())
     assert total_shots == 1024, f"Expected 1024 total shots, got {total_shots}"
-    # Bell state should only produce "00" and "11"
+
     unexpected = [k for k in counts if k not in ("00", "11")]
     assert not unexpected, f"Unexpected bitstrings in Bell counts: {unexpected}"
     print(f"  counts: {counts}")
     print(f"  execution_time_sec : {qsim_result.get('execution_time_sec'):.4f}s")
     print("  PASSED")
-
 
 if __name__ == "__main__":
     try:

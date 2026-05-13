@@ -1,3 +1,5 @@
+# FastAPI router endpoints for frontend.
+
 from fastapi import APIRouter
 from fastapi.responses import FileResponse, JSONResponse
 import os
@@ -21,7 +23,7 @@ async def get_runners():
     result = []
     for name, config in settings.get_runner_services().items():
         opt_levels = config.get("optimization_levels", {})
-        # JSON keys must be strings; convert integer keys here
+
         opt_levels_str = {str(k): v for k, v in opt_levels.items()}
         result.append({
             "id": name,
@@ -30,7 +32,6 @@ async def get_runners():
             "optimization_levels": opt_levels_str,
         })
     return JSONResponse(content=result)
-
 
 @router.get("/download_latest_report")
 def download_latest_report():

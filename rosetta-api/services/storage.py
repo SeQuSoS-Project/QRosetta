@@ -1,3 +1,5 @@
+# Manages S3 storage for heavy artifacts.
+
 import os
 import json
 import boto3
@@ -9,7 +11,6 @@ from qrosetta_commons.helpers import get_logger
 
 logger = get_logger("rosetta-storage")
 
-# --- Ephemeral report cache (latest full run, in-memory) ---
 _REPORTS_DIR = "export/reports"
 os.makedirs(_REPORTS_DIR, exist_ok=True)
 _RESULT_CACHE = cachetools.TTLCache(maxsize=10, ttl=3600)
@@ -28,7 +29,6 @@ def save_report_to_disk(data: list):
 def get_latest_report_path() -> str:
     return os.path.join(_REPORTS_DIR, "latest_full_report.json")
 
-# Mock S3 Storage for local container environments
 MOCK_S3_DIR = os.getenv("S3_LOCAL_DIR", "./data/s3_storage_mock")
 os.makedirs(MOCK_S3_DIR, exist_ok=True)
 
@@ -60,7 +60,7 @@ def save_run_report(user_id: int, run_id: str, report_data: dict) -> str:
     """
     clean_data = _remove_statevectors(report_data)
     object_key = f"users/{user_id}/runs/{run_id}.json"
-    
+
     if settings.STORAGE_MODE == "s3":
         try:
             s3_client.head_bucket(Bucket=settings.S3_BUCKET_NAME)
@@ -68,9 +68,9 @@ def save_run_report(user_id: int, run_id: str, report_data: dict) -> str:
             error_code = e.response.get('Error', {}).get('Code')
             if error_code == '404':
                 s3_client.create_bucket(Bucket=settings.S3_BUCKET_NAME)
-        
+
         json_bytes = json.dumps(clean_data).encode('utf-8')
-        
+
         s3_client.put_object(
             Bucket=settings.S3_BUCKET_NAME,
             Key=object_key,
@@ -81,13 +81,12 @@ def save_run_report(user_id: int, run_id: str, report_data: dict) -> str:
         return object_key
     else:
         full_path = os.path.join(MOCK_S3_DIR, object_key)
-        
-        # Ensure nested directories exist
+
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
-        
+
         with open(full_path, "w", encoding="utf-8") as f:
             json.dump(clean_data, f)
-            
+
         return object_key
 
 def fetch_run_report(s3_object_key: str) -> dict:
@@ -103,10 +102,10 @@ def fetch_run_report(s3_object_key: str) -> dict:
             raise RuntimeError(f"Failed to fetch run report from S3: {e}")
     else:
         full_path = os.path.join(MOCK_S3_DIR, s3_object_key)
-        
+
         if not os.path.exists(full_path):
             raise RuntimeError(f"Failed to fetch run report: File not found at {full_path}")
-            
+
         with open(full_path, "r", encoding="utf-8") as f:
             return json.load(f)
 
@@ -116,7 +115,7 @@ def delete_run_reports(s3_object_keys: List[str]):
     """
     if not s3_object_keys:
         return
-        
+
     if settings.STORAGE_MODE == "s3":
         objects_to_delete = [{'Key': key} for key in s3_object_keys]
         try:

@@ -1,8 +1,4 @@
-// =============================================================================
-// state.js — Centralized State Manager
-// Responsibility: Holds all global frontend variables, restricts direct
-//                 mutation, and exposes a strict dispatch/getState pattern.
-// =============================================================================
+// Frontend logic for state functionality.
 
 const Store = {
     state: {
@@ -10,16 +6,15 @@ const Store = {
         isProcessing: false,
         currentSuiteData: null,
         currentSuiteTitle: '',
-        batchQueue: [], // Playlist
-        allAlgorithms: [], // Metadata
+        batchQueue: [],
+        allAlgorithms: [],
         currentOptLevel: 0,
         currentAlgoName: "Custom",
         currentRunnerConfig: {}
     },
-    
-    // Dispatch an action to modify the state safely
+
     dispatch(action, payload) {
-        // console.log(`[State] Dispatch: ${action}`, payload);
+
         switch (action) {
             case 'SET_AUTH_TOKEN':
                 this.state.authToken = payload;
@@ -58,12 +53,10 @@ const Store = {
         }
     },
 
-    // Read-only getter for the entire state
     getState() {
         return this.state;
     }
 };
 
-// Expose these globally for other files
 window.dispatch = (action, payload) => Store.dispatch(action, payload);
 window.getState = () => Store.getState();

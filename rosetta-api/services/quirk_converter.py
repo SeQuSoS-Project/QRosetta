@@ -1,3 +1,5 @@
+# Converts Quirk URLs to QASM formats.
+
 import json
 import re
 import urllib.parse
@@ -20,47 +22,41 @@ class QuirkCompiler:
     def _add_gate(self, gate_type: str, targets: list[int], controls: list[int] = None):
         if controls is None:
             controls = []
-            
+
         all_involved = targets + controls
-        
-        # Find the max depth among involved qubits
+
         max_depth = 0
         for q in all_involved:
             max_depth = max(max_depth, self.depth_trackers[q])
-            
-        # Ensure we have enough columns
+
         while len(self.columns) <= max_depth:
             self.columns.append([1] * self.num_qubits)
-            
-        # Place the gate and controls
+
         for t in targets:
             self.columns[max_depth][t] = gate_type
         for c in controls:
             self.columns[max_depth][c] = "•"
-            
-        # Update depth trackers
+
         new_depth = max_depth + 1
         for q in all_involved:
             self.depth_trackers[q] = new_depth
 
     def compile(self):
         self._parse_qreg()
-        
+
         lines = self.qasm_string.split(';')
         for line in lines:
             line = line.strip()
             if not line or line.startswith('//') or line.startswith('OPENQASM') or line.startswith('include') or line.startswith('qreg') or line.startswith('creg') or line.startswith('measure'):
                 continue
-                
-            # Parse simple 1-qubit gates
+
             match_1q = re.match(r"(h|x|y|z)\s+[a-zA-Z0-9_]+\[(\d+)\]", line)
             if match_1q:
                 gate = match_1q.group(1).upper()
                 target = int(match_1q.group(2))
                 self._add_gate(gate, [target])
                 continue
-                
-            # Parse cx gate
+
             match_cx = re.match(r"cx\s+[a-zA-Z0-9_]+\[(\d+)\],\s*[a-zA-Z0-9_]+\[(\d+)\]", line)
             if match_cx:
                 control = int(match_cx.group(1))

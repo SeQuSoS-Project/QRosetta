@@ -1,3 +1,5 @@
+# Execution script for the quantum simulator runner.
+
 import argparse
 import json
 import os
@@ -20,7 +22,6 @@ app = FastAPI(title="myQLM Runner")
 
 _qpu = PyLinalg()
 
-
 def _preprocess_qasm(qasm_str: str) -> str:
     """Substitute gates unsupported by myQLM's PyLinalg before parsing.
 
@@ -29,7 +30,6 @@ def _preprocess_qasm(qasm_str: str) -> str:
     and fidelity metrics used for cross-simulator comparison.
     """
     return re.sub(r'\btdg\b', 'rz(-pi/4)', qasm_str)
-
 
 def _compile_circuit(qasm_str: str, optimization_level: int = 0):
     """Parse QASM 2.0 into a myQLM Circuit. Fresh parser per call — OqasmParser is stateful.
@@ -44,7 +44,6 @@ def _compile_circuit(qasm_str: str, optimization_level: int = 0):
         )
     return OqasmParser().compile(_preprocess_qasm(qasm_str))
 
-
 def _get_statevector(circuit) -> np.ndarray:
     """Run PyLinalg with nbshots=0 and return the statevector."""
     n_qubits = circuit.nbqbits
@@ -56,24 +55,21 @@ def _get_statevector(circuit) -> np.ndarray:
             sv[sample.state.int] = sample.amplitude
     return sv
 
-
 def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for myQLM simulation.")
     try:
         check_qubits_limit(payload["circuit_data"], 24)
-        # --- COMPILATION ---
+
         t0 = time.perf_counter()
         circuit = _compile_circuit(payload["circuit_data"], payload.get("optimization_level", 0))
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
-        # --- WARM-UP ---
         _get_statevector(circuit)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
-            # --- SIMULATION ---
             t2 = time.perf_counter()
             statevector = _get_statevector(circuit)
             t3 = time.perf_counter()
@@ -111,12 +107,11 @@ def process_run(payload: dict) -> dict:
             "process_peak_mb": 0.0
         }
 
-
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for myQLM simulation.")
     try:
         check_qubits_limit(payload["circuit_data"], 24)
-        # --- COMPILATION ---
+
         t0 = time.perf_counter()
         circuit = _compile_circuit(payload["circuit_data"], payload.get("optimization_level", 0))
         n_qubits = circuit.nbqbits
@@ -125,16 +120,13 @@ def process_run_measured(payload: dict) -> dict:
 
         n_shots = payload.get("n_shots", 1024)
 
-        # nbshots=0 rejects circuits with measurement gates, so sample natively.
         job = circuit.to_job(job_type="SAMPLE", nbshots=n_shots)
 
-        # --- WARM-UP ---
         _qpu.submit(job)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
-            # --- SIMULATION ---
             t2 = time.perf_counter()
             result = _qpu.submit(job)
             t3 = time.perf_counter()
@@ -144,13 +136,12 @@ def process_run_measured(payload: dict) -> dict:
         process_peak_mb = monitor.get_process_peak_mb()
         execution_time = compilation_time + simulation_time
 
-        # PyLinalg returns probabilities, not raw counts — reconstruct and normalise.
         counts_dict = {
             format(sample.state.int, f"0{n_qubits}b"): round(sample.probability * n_shots)
             for sample in result
             if round(sample.probability * n_shots) > 0
         }
-        # Correct rounding drift so total equals exactly n_shots.
+
         diff = n_shots - sum(counts_dict.values())
         if diff != 0 and counts_dict:
             top = max(counts_dict, key=counts_dict.get)
@@ -183,16 +174,13 @@ def process_run_measured(payload: dict) -> dict:
             "process_peak_mb": 0.0
         }
 
-
 @app.post("/run")
 async def run_circuit(payload: CircuitPayload):
     return process_run(payload.model_dump())
 
-
 @app.post("/run_measured")
 async def run_measured_circuit(payload: MeasuredCircuitPayload):
     return process_run_measured(payload.model_dump())
-
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

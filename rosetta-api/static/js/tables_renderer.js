@@ -1,23 +1,5 @@
-// =============================================================================
-// tables_renderer.js — Tabular Data Rendering
-// Responsibility: Rendering ranking tables (performance/resource) and the
-//                 divergence matrix tables. These are complex DOM-heavy
-//                 functions split from renderers.js to comply with the 300-line
-//                 god-file rule (design_guidelines.txt §7.2).
-// Depends on: STATUS_STYLES, renderTooltip, getOptBadge, _cloneTemplate,
-//             _applyLegendDots (renderers.js),
-//             isConnectionError (utils.js), getState().currentSuiteData,
-//             getState().currentRunnerConfig, panelElements, backButtonContainer (app.js globals),
-//             clearReport, renderDetailReport (renderers.js)
-// Uses HTML <template> cloning — NO innerHTML string concatenation.
-// =============================================================================
+// Frontend logic for tables_renderer functionality.
 
-// --- PRIVATE HELPERS ---
-
-/**
- * Creates a status-coloured <span> for a cell value (e.g. "Offline", "Anomaly")
- * using recognised STATUS_STYLES cell class keys.
- */
 function _makeStatusCell(styleKey, text) {
     const span = document.createElement('span');
     STATUS_STYLES[styleKey].cell.split(' ').forEach(c => span.classList.add(c));
@@ -25,20 +7,16 @@ function _makeStatusCell(styleKey, text) {
     return span;
 }
 
-/**
- * Populates the Simulator <td> with the simulator name text node
- * plus the optional optimisation badge Element from getOptBadge().
- */
 function _fillSimulatorCell(td, simulatorName, config) {
     td.classList.remove('tpl-simulator');
     td.appendChild(document.createTextNode(simulatorName));
-    
+
     const suiteData = getState()?.currentSuiteData;
     let rawItem = null;
     if (suiteData && suiteData.raw_results) {
         rawItem = suiteData.raw_results.find(r => r.simulator === simulatorName);
     }
-    
+
     if (rawItem && rawItem.qubit_ordering) {
         const span = document.createElement('span');
         span.className = 'ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600 border border-gray-200';
@@ -46,7 +24,7 @@ function _fillSimulatorCell(td, simulatorName, config) {
         span.title = 'Qubit Ordering';
         td.appendChild(span);
     }
-    
+
     if (rawItem && rawItem.sampling_method) {
         const smMap = {
             'native': { label: 'Native', color: 'bg-green-100 text-green-700 border-green-200', title: 'Native: Simulation backend sampled shots directly.' },
@@ -68,23 +46,18 @@ function _fillSimulatorCell(td, simulatorName, config) {
     if (badge) td.appendChild(badge);
 }
 
-// --- PUBLIC RENDERERS ---
-
 function renderRankingTable(report, key, unit, panel, config = {}) {
     if (!panel) return;
     panel.innerHTML = '';
 
-    // Section heading
     const hFrag = _cloneTemplate('tpl-ranking-section-header');
     hFrag.querySelector('.tpl-summary-text').textContent = report.summary;
     panel.appendChild(hFrag);
 
-    // Legend
     const legendFrag = _cloneTemplate('tpl-legend-ranking');
     _applyLegendDots(legendFrag);
     panel.appendChild(legendFrag);
 
-    // Collect offline simulators
     const offlineSims = new Set();
     if (getState().currentSuiteData && getState().currentSuiteData.raw_results) {
         getState().currentSuiteData.raw_results.forEach(r => {
@@ -93,17 +66,15 @@ function renderRankingTable(report, key, unit, panel, config = {}) {
     }
 
     if (key === 'memory_usage_mb') {
-        // Sort: successful first, ordered by process_peak_mb ascending
+
         report.ranking.sort((a, b) => {
             if (a.status !== 'success') return 1;
             if (b.status !== 'success') return -1;
             return (a.process_peak_mb || 0) - (b.process_peak_mb || 0);
         });
 
-        // Table wrapper with memory columns
         const tblFrag = _cloneTemplate('tpl-ranking-header-memory');
 
-        // Apply tooltip to column headers
         const thMemDelta = tblFrag.querySelector('.tpl-th-mem-delta');
         thMemDelta.classList.remove('tpl-th-mem-delta');
         thMemDelta.innerHTML = '';
@@ -159,7 +130,7 @@ function renderRankingTable(report, key, unit, panel, config = {}) {
         panel.appendChild(tblFrag);
 
     } else if (key === 'execution_time_sec') {
-        // Table wrapper with time columns
+
         const tblFrag = _cloneTemplate('tpl-ranking-header-time');
 
         const thComp = tblFrag.querySelector('.tpl-th-compilation');
@@ -213,7 +184,7 @@ function renderRankingTable(report, key, unit, panel, config = {}) {
         panel.appendChild(tblFrag);
 
     } else {
-        // Generic fallback table
+
         const tblFrag = _cloneTemplate('tpl-ranking-header-generic');
 
         const thVal = tblFrag.querySelector('.tpl-th-value');
@@ -252,16 +223,13 @@ function renderDivergenceTables(report, panel, config = {}) {
     if (!panel) return;
     panel.innerHTML = '';
 
-    // Outer wrapper div
     const outerDiv = document.createElement('div');
     outerDiv.className = 'space-y-8';
 
-    // Legend
     const legendFrag = _cloneTemplate('tpl-legend-divergence');
     _applyLegendDots(legendFrag);
     outerDiv.appendChild(legendFrag);
 
-    // Collect offline simulators
     const offlineSims = new Set();
     if (getState().currentSuiteData && getState().currentSuiteData.raw_results) {
         getState().currentSuiteData.raw_results.forEach(r => {
@@ -277,12 +245,10 @@ function renderDivergenceTables(report, panel, config = {}) {
 
         const secFrag = _cloneTemplate('tpl-div-matrix-section');
 
-        // Title cell — supports tooltip
         const h3 = secFrag.querySelector('.tpl-title');
         h3.classList.remove('tpl-title');
         h3.appendChild(renderTooltip(key, title));
 
-        // Column headers row
         const theadRow = secFrag.querySelector('thead tr');
         report.simulators.forEach(s => {
             const thFrag = _cloneTemplate('tpl-div-matrix-header-cell');
@@ -293,14 +259,12 @@ function renderDivergenceTables(report, panel, config = {}) {
             theadRow.appendChild(thFrag);
         });
 
-        // Body rows
         const tbody = secFrag.querySelector('.tpl-tbody');
         tbody.classList.remove('tpl-tbody');
 
         report.simulators.forEach((s1, i) => {
             const tr = document.createElement('tr');
 
-            // Row header
             const rhFrag = _cloneTemplate('tpl-div-matrix-row-header');
             const rowTh = rhFrag.querySelector('th');
             rowTh.appendChild(document.createTextNode(s1));
@@ -308,7 +272,6 @@ function renderDivergenceTables(report, panel, config = {}) {
             if (rBadge) rowTh.appendChild(rBadge);
             tr.appendChild(rhFrag);
 
-            // Data cells
             report[key][i].forEach((val, j) => {
                 const cellFrag = _cloneTemplate('tpl-div-matrix-cell');
                 const td = cellFrag.querySelector('td');

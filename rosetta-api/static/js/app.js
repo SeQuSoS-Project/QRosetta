@@ -1,19 +1,12 @@
-// =============================================================================
-// app.js — Application Controller (The Bootstrap)
-// Responsibility: Global state, DOM references, window.onload initialization,
-//                 circuit generation, run mode toggles, and core run dispatching.
-// Depends on: api.js, config.js, batch.js, auth.js, history.js, utils.js, renderers.js
-// =============================================================================
+// Frontend logic for app functionality.
 
-// --- FIX: Declare DOM elements here, define them in window.onload ---
 let qasmInput, loader, tabNav, welcomeMessage, backButtonContainer, jsonOutput;
 let playlistSection, queueList, queueCount;
 let panelElements = {};
 let allButtons = [];
 
-// --- INIT ---
 window.onload = async () => {
-    // --- FIX: Define all DOM elements inside onload ---
+
     qasmInput = document.getElementById('qasm-input');
     loader = document.getElementById('loader');
     tabNav = document.getElementById('tab-nav');
@@ -62,7 +55,6 @@ window.onload = async () => {
         select.addEventListener('change', updateQubitConstraints);
         updateQubitConstraints();
 
-        // Context Bar Init
         qasmInput.addEventListener('input', () => {
             dispatch('SET_CURRENT_ALGO_NAME', "Custom / Modified");
             updateContextBar();
@@ -75,17 +67,15 @@ window.onload = async () => {
         welcomeMessage.classList.remove('text-gray-500');
     }
 
-    // Set initial UI states for both blocks
     toggleSingleMode();
     toggleBatchMode();
-    // Only generate circuit if algorithms loaded
+
     if (getState().allAlgorithms.length > 0) {
         generateCircuit();
     }
     renderBatchQueue();
 };
 
-// --- METADATA UI LOGIC ---
 function getDynamicMaxQubits() {
     const mode = document.querySelector('input[name="mode-single"]:checked')?.value || 'statevector';
     return mode === 'statevector' ? 18 : 24;
@@ -109,7 +99,6 @@ function updateQubitConstraints() {
     }
 }
 
-// --- CIRCUIT GENERATION ---
 async function generateCircuit() {
     if (getState().isProcessing) return;
     const algoId = document.getElementById('algo-select').value;
@@ -131,7 +120,7 @@ async function generateCircuit() {
         const data = await response.json();
         if (response.ok) {
             qasmInput.value = data.qasm;
-            // Update Context
+
             const selectElement = document.getElementById('algo-select');
             dispatch('SET_CURRENT_ALGO_NAME', selectElement.options[selectElement.selectedIndex].text + ` (${qubits}q)`);
             updateContextBar();
@@ -147,7 +136,6 @@ async function generateCircuit() {
     }
 }
 
-// --- UI MODE TOGGLES ---
 function toggleSingleMode() {
     const mode = document.querySelector('input[name="mode-single"]:checked').value;
     const shotsContainer = document.getElementById('shots-container-single');
@@ -179,7 +167,6 @@ function handleRun() {
     runComparison(mode, shots);
 }
 
-// --- CORE RUN LOGIC ---
 async function runComparison(type, shots) {
     clearHistoryState();
     if (getState().isProcessing) return;
@@ -241,7 +228,6 @@ async function runComparison(type, shots) {
         dispatch('SET_SUITE_DATA', results);
         renderDetailReport(results, title, getState().currentRunnerConfig);
 
-        // Save to History
         if (runNameInput) results.run_name = runNameInput;
         await saveRunToHistory(results);
     } catch (e) {
@@ -311,7 +297,6 @@ async function runBatchQueue() {
         dispatch('SET_SUITE_TITLE', "Playlist Batch Report");
         renderSuiteSummary(results, getState().currentSuiteTitle);
 
-        // Save to History
         if (runNameInput) results.run_name = runNameInput;
         await saveRunToHistory(results);
 

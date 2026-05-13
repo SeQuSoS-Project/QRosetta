@@ -1,4 +1,5 @@
-// --- HELPER FUNCTIONS ---
+// Frontend logic for utils functionality.
+
 function isConnectionError(errorMsg) {
     if (!errorMsg) return false;
     const msg = errorMsg.toLowerCase();
@@ -64,7 +65,6 @@ const _RUNNER_NAMES = {
     "torchquantum": "TorchQuantum", "quimb": "Quimb", "cuquantum": "cuQuantum",
 };
 
-// Per-runner phase tracking: { simId: { status, since, frozenElapsed } }
 let _runnerPhases = {};
 let _runnerCardTimer = null;
 
@@ -97,7 +97,6 @@ function updateRunnerStatuses(statuses) {
         const cfg = _STATUS_CFG[status] || _STATUS_CFG['queued'];
         const name = _RUNNER_NAMES[simId] || simId;
 
-        // Track phase transitions to reset per-runner timer
         const prev = _runnerPhases[simId];
         const statusChanged = !prev || prev.status !== status;
 
@@ -114,8 +113,6 @@ function updateRunnerStatuses(statuses) {
 
         let card = document.getElementById(`rsc-${simId}`);
 
-        // Only rebuild card HTML on first appearance or status change —
-        // rebuilding on every poll resets the elapsed span to "0s" mid-count.
         if (!card || statusChanged) {
             if (!card) {
                 card = document.createElement('div');
@@ -151,7 +148,7 @@ function copyRawJson(btn) {
 }
 
 function downloadFullReport() {
-    // --- FIX: Use BASE_URL for fetch ---
+
     window.location.href = `${BASE_URL}/download_latest_report`;
 }
 
