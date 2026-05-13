@@ -1,21 +1,19 @@
 import asyncio
 import gc
-import json
-from fastapi import Request
-from fastapi.responses import JSONResponse
 import pytket.qasm
 from pytket.passes import RemoveBarriers
 from services.validator import validate_request
-from services.report_manager import save_report_to_disk
+from services.storage import save_report_to_disk
 from services.dispatcher import (
     STATEVECTOR_RUNNER_URLS,
     NATIVE_SAMPLING_URLS,
     SAMPLED_SV_URLS,
     dispatch_to_runners
 )
-from schemas import GenerateCircuitPayload, BatchPayload
-from routers.generation import generate_circuit_endpoint
-import analysis as comparator
+import services.circuit_library as circuit_library
+from schemas import BatchPayload
+from config import settings
+import services.analysis as comparator
 from services.aggregator import compile_comparison_reports, compile_measurement_reports
 from qrosetta_commons.helpers import get_logger
 
@@ -169,7 +167,7 @@ async def worker_compare_measured(job_id: str, qasm_string: str, n_shots: int, o
     except Exception as e:
         ACTIVE_JOBS[job_id] = {"status": "failed", "target": execution_target, "error": str(e), "runner_statuses": runner_statuses}
 
-async def worker_batch_suite(job_id: str, request: Request, payload: BatchPayload):
+async def worker_batch_suite(job_id: str, payload: BatchPayload):
     runner_statuses = {}
     ACTIVE_JOBS[job_id]["status"] = "processing"
     ACTIVE_JOBS[job_id]["runner_statuses"] = runner_statuses
@@ -183,18 +181,13 @@ async def worker_batch_suite(job_id: str, request: Request, payload: BatchPayloa
             if task.qasm_string:
                 qasm_string = task.qasm_string
             else:
-                qasm_payload = GenerateCircuitPayload(algorithm=task.algorithm, qubits=task.qubits)
-                qasm_response = await generate_circuit_endpoint(request, qasm_payload)
-
-                if isinstance(qasm_response, JSONResponse):
-                    error_content = json.loads(qasm_response.body)
-                    raise Exception(f"Circuit generation failed: {error_content.get('error', 'Unknown error')}")
-
-                qasm_string = qasm_response["qasm"]
+                if task.qubits > settings.MAX_QUBITS_MEASURED:
+                    raise ValueError(f"Qubit count {task.qubits} exceeds limit of {settings.MAX_QUBITS_MEASURED}")
+                qasm_string = circuit_library.generate_circuit(task.algorithm, task.qubits)
 
             validate_request(qasm_string, mode=payload.mode)
             report = None
-            timeout = max(1, min(payload.timeout_seconds, 300))
+            timeout = max(1, min(payload.timeout_seconds, settings.RUNNER_TIMEOUT_SEC))
             if payload.mode == 'statevector':
                 report = await run_single_circuit_comparison(qasm_string, payload.optimization_level, timeout, payload.target_simulators, runner_statuses)
             elif payload.mode == 'measured':

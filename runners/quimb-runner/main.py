@@ -5,7 +5,7 @@ import sys
 import boto3
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, get_num_qubits_from_qasm
+from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, get_num_qubits_from_qasm, check_qubits_limit
 import numpy as np
 import time
 import gc
@@ -75,6 +75,7 @@ def process_run(payload: dict) -> dict:
             "process_peak_mb": 0.0,
         }
     try:
+        check_qubits_limit(payload["circuit_data"], 24)
         # --- COMPILATION ---
         t0 = time.perf_counter()
         circ = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
@@ -135,6 +136,7 @@ def process_run_measured(payload: dict) -> dict:
             "process_peak_mb": 0.0,
         }
     try:
+        check_qubits_limit(payload["circuit_data"], 24)
         # --- COMPILATION ---
         t0 = time.perf_counter()
         circ = _compile(payload["circuit_data"], payload.get("optimization_level", 0))

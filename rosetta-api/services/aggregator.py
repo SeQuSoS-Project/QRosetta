@@ -1,6 +1,6 @@
 import asyncio
 import gc
-import analysis as comparator
+import services.analysis as comparator
 from qrosetta_commons.helpers import get_logger
 
 logger = get_logger("rosetta-aggregator")

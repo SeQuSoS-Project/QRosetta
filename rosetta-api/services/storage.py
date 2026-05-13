@@ -1,9 +1,32 @@
 import os
 import json
 import boto3
+import cachetools
 from botocore.exceptions import ClientError
 from typing import Dict, Any, List
 from config import settings
+from qrosetta_commons.helpers import get_logger
+
+logger = get_logger("rosetta-storage")
+
+# --- Ephemeral report cache (latest full run, in-memory) ---
+_REPORTS_DIR = "export/reports"
+os.makedirs(_REPORTS_DIR, exist_ok=True)
+_RESULT_CACHE = cachetools.TTLCache(maxsize=10, ttl=3600)
+
+def save_report_to_disk(data: list):
+    _RESULT_CACHE["latest_full_report"] = data
+    if settings.STORAGE_MODE == "memory":
+        logger.info("STORAGE_MODE=memory: Skipping saving report to disk.")
+        return
+    try:
+        with open(os.path.join(_REPORTS_DIR, "latest_full_report.json"), "w") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        logger.error(f"Failed to write report to disk: {e}")
+
+def get_latest_report_path() -> str:
+    return os.path.join(_REPORTS_DIR, "latest_full_report.json")
 
 # Mock S3 Storage for local container environments
 MOCK_S3_DIR = os.getenv("S3_LOCAL_DIR", "./data/s3_storage_mock")

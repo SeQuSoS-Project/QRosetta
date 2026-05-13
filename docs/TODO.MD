@@ -1,11 +1,47 @@
-As of 13-4-2026:
-OPEN BUG — K8s S3 Polling: 1-2 random runners timeout per run despite pods completing
-successfully and uploading results to S3. Thread-safety fixes (shared K8s config, shared
-S3 client, broadened exception handling) did NOT resolve the issue. Root cause is likely
-transient S3/Allas read failures or connection drops during the polling window. Pods
-complete, data exists in S3, but the API polling loop misses it for 1-2 runners.
-Workaround: post-gather S3 recovery sweep (check S3 for timed-out runners after main
-dispatch completes).
+As of 28-4-2026:
+Missing Import or lazy import for vqe (fixing), qft, random,
+
+As of 14-4-2026:
+
+=== K8s DISPATCHER REWORK — SESSION SUMMARY ===
+
+ORIGINAL BUG: 1-2 random runners timeout per run despite pods completing successfully
+and uploading results to S3 (Allas). Post-gather S3 recovery sweep was the old workaround.
+
+WHAT WE CHANGED (all working and deployed):
+- Payload delivery: eliminated S3 pending key entirely. Payload now sent via QROSETTA_PAYLOAD
+  env var in the K8s Job spec. All 16 runner main.py files updated with env var read +
+  S3 fallback for backward compat (local docker mode). Fixes cascading NoSuchKey crashes
+  caused by Allas eventual consistency + backoffLimit=6 retries.
+- Dispatch architecture: Phase 1 = poll K8s pod status only (no S3 calls during wait).
+  Phase 2 = after pod Succeeded/timeout, fetch S3 result with exponential backoff (6
+  attempts, up to 46s). RBAC fallback: if pod listing fails, poll S3 directly.
+- K8s Job spec: backoffLimit=0 (no retries on crash), ttlSecondsAfterFinished=300.
+- Image tagging: git hash tags (IMAGE_TAG=c22ed2e) instead of :latest only. rahti_push.sh
+  pushes both :hash and :latest, sets IMAGE_TAG env var on the API deployment.
+  imagePullPolicy: IfNotPresent — no re-download on every pod spawn.
+- ThreadPoolExecutor sized to len(runner_urls) so all K8s jobs are created and polled
+  concurrently, not in batches.
+
+WHAT DID NOT WORK:
+- Lowering pod CPU requests to 100m (from 500m) to allow all 14 pods to schedule
+  simultaneously. Caused catastrophic failure — no pods spawned at all. Likely Rahti
+  LimitRange or quota policy rejected the request/limit ratio. REVERTED.
+
+CURRENT STATE:
+- The original 1-2 timeout bug is believed fixed (env var payload + Phase 1/2 architecture).
+- Pods still schedule in batches of ~3-4 due to 4 CPU quota (500m requests per pod +
+  1 CPU limits). Causes a visible delay but runners do complete eventually.
+- Deployment is live and working.
+
+OPEN — TO INVESTIGATE NEXT SESSION:
+- Why did 100m requests cause total pod spawn failure? Check Rahti LimitRange:
+    oc get limitrange -n qrosetta -o yaml
+  If LimitRange enforces a max request/limit ratio, we need to find the allowed floor.
+- The real fix for slow scheduling is either: (a) request a quota increase from CSC,
+  (b) find the minimum CPU request Rahti allows, or (c) accept batch scheduling as-is.
+- Verify with a full run that the 1-2 timeout bug is fully resolved.
+- Commit all current changes (dispatcher.py, 16 runner main.py files, rahti_push.sh).
 
 
 

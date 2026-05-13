@@ -4,7 +4,8 @@ import uuid
 from qrosetta_commons.helpers import get_logger
 from services.validator import validate_request
 from schemas import QasmPayload, MeasuredQasmPayload, BatchPayload, JobStatusResponse
-from security import limiter
+from services.security import limiter
+from config import settings
 from services.job_manager import (
     ACTIVE_JOBS,
     worker_compare,
@@ -34,7 +35,7 @@ async def get_job_status(job_id: str):
 @limiter.limit("10/minute")
 async def compare_circuits_endpoint(request: Request, payload: QasmPayload, background_tasks: BackgroundTasks):
     validate_request(payload.qasm_string, mode="statevector")
-    timeout = max(1, min(payload.timeout_seconds, 300))
+    timeout = max(1, min(payload.timeout_seconds, settings.RUNNER_TIMEOUT_SEC))
     job_id = str(uuid.uuid4())
     
     ACTIVE_JOBS[job_id] = {"status": "pending", "target": payload.execution_target}
@@ -46,7 +47,7 @@ async def compare_circuits_endpoint(request: Request, payload: QasmPayload, back
 @limiter.limit("10/minute")
 async def compare_measured_circuits_endpoint(request: Request, payload: MeasuredQasmPayload, background_tasks: BackgroundTasks):
     validate_request(payload.qasm_string, mode="measured")
-    timeout = max(1, min(payload.timeout_seconds, 300))
+    timeout = max(1, min(payload.timeout_seconds, settings.RUNNER_TIMEOUT_SEC))
     job_id = str(uuid.uuid4())
     
     ACTIVE_JOBS[job_id] = {"status": "pending", "target": payload.execution_target}
@@ -60,6 +61,6 @@ async def run_batch_suite_endpoint(request: Request, payload: BatchPayload, back
     job_id = str(uuid.uuid4())
     
     ACTIVE_JOBS[job_id] = {"status": "pending", "target": payload.execution_target}
-    background_tasks.add_task(worker_batch_suite, job_id, request, payload)
+    background_tasks.add_task(worker_batch_suite, job_id, payload)
         
     return {"job_id": job_id, "status": ACTIVE_JOBS[job_id]["status"], "target": ACTIVE_JOBS[job_id]["target"]}

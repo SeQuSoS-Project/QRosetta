@@ -22,7 +22,7 @@ items:
         containers:
         - name: api
           image: image-registry.apps.2.rahti.csc.fi/qrosetta/rosetta-api:latest
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           ports:
           - containerPort: 8000
           env:

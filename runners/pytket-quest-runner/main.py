@@ -9,7 +9,7 @@ import pytket.qasm
 from pytket.extensions.quest import QuESTBackend
 from collections import Counter
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb
+from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb, check_qubits_limit
 import time
 import gc
 
@@ -20,6 +20,7 @@ logger = get_logger("pytket-quest-runner")
 def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for QuEST simulation.")
     try:
+        check_qubits_limit(payload["circuit_data"], 24)
         # --- COMPILATION ---
         t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload["circuit_data"])
@@ -76,6 +77,7 @@ def process_run(payload: dict) -> dict:
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for QuEST (manual sampling).")
     try:
+        check_qubits_limit(payload["circuit_data"], 24)
         # --- COMPILATION ---
         t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload["circuit_data"])

@@ -6,7 +6,7 @@
 
 let BASE_URL = '';
 if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-    BASE_URL = 'https://rosetta-api-route-qrosetta.2.rahtiapp.fi';
+    BASE_URL = window.location.origin;
 }
 
 function getAuthHeaders(extraHeaders = {}) {

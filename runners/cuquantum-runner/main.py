@@ -5,7 +5,7 @@ import sys
 import boto3
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb
+from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb, check_qubits_limit
 import numpy as np
 import time
 import gc
@@ -72,6 +72,7 @@ def process_run(payload: dict) -> dict:
         return {"simulator": "cuquantum", "error": "qiskit-aer not installed.",
                 "execution_time_sec": 0.0, "memory_usage_mb": 0.0, "process_peak_mb": 0.0}
     try:
+        check_qubits_limit(payload["circuit_data"], 24)
         # --- COMPILATION ---
         t0 = time.perf_counter()
         qc = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
@@ -124,6 +125,7 @@ def process_run_measured(payload: dict) -> dict:
         return {"simulator": "cuquantum", "error": "qiskit-aer not installed.",
                 "execution_time_sec": 0.0, "memory_usage_mb": 0.0, "process_peak_mb": 0.0}
     try:
+        check_qubits_limit(payload["circuit_data"], 24)
         # --- COMPILATION ---
         t0 = time.perf_counter()
         qc = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
