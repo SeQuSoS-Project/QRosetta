@@ -5,7 +5,7 @@ const METRIC_DEFINITIONS = {
     "simulation": "<b>Simulation Time:</b> Time taken for the backend to execute the circuit (matrix multiplication) and retrieve results.",
     "total_time": "<b>Total Execution Time:</b> Sum of Compilation and Simulation. Represents end-to-end latency.",
     "mem_delta": "<b>Memory Delta:</b> RAM added to the process during execution (End RSS - Start RSS). Uses MemoryMonitor with 10ms polling — may undercount short-lived C++ allocations.",
-    "proc_peak": "<b>Process Peak:</b> The absolute maximum RAM reached by the container. Hitting the limit (512MB) causes crashes.",
+    "proc_peak": "<b>Process Peak:</b> The absolute maximum RAM reached by the container. Hitting the limit (512 MiB local / 1 GiB K8s) causes an OOMKill.",
     "theoretical_sv": "<b>Theoretical SV:</b> The absolute minimum memory required to store the full statevector (2^N × 16 bytes for complex128). Tensor-network simulators (e.g. Quimb) natively use less and map to 'None'.",
     "fidelity_matrix": "<b>Fidelity Matrix:</b> Pairwise comparison of state overlap. 1.0 = Identical states.",
     "relative_phase_matrix": "<b>Relative Phase Matrix:</b> Comparison of global phase differences. Non-zero means states differ by a constant phase factor.",

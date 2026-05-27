@@ -37,11 +37,13 @@ window.onload = async () => {
     verifySession();
 
     try {
-        const response = await fetch(`${BASE_URL}/algorithms`, {
-            headers: getAuthHeaders()
-        });
-        if (!response.ok) throw new Error('Failed to fetch algorithms');
-        dispatch('SET_ALGORITHMS', await response.json());
+        const [algorithmsResponse, configResponse] = await Promise.all([
+            fetch(`${BASE_URL}/algorithms`, { headers: getAuthHeaders() }),
+            fetch(`${BASE_URL}/config`),
+        ]);
+        if (!algorithmsResponse.ok) throw new Error('Failed to fetch algorithms');
+        dispatch('SET_ALGORITHMS', await algorithmsResponse.json());
+        if (configResponse.ok) dispatch('SET_CONFIG_LIMITS', await configResponse.json());
 
         const select = document.getElementById('algo-select');
         select.innerHTML = '';
@@ -78,7 +80,7 @@ window.onload = async () => {
 
 function getDynamicMaxQubits() {
     const mode = document.querySelector('input[name="mode-single"]:checked')?.value || 'statevector';
-    return mode === 'statevector' ? 18 : 24;
+    return mode === 'statevector' ? getState().maxQubitsStatevector : getState().maxQubitsMeasured;
 }
 
 function updateQubitConstraints() {
@@ -180,7 +182,7 @@ async function runComparison(type, shots) {
 
     const endpoint = type === 'statevector' ? '/compare' : '/compare_measured';
     const targetSims = getTargetSimulators();
-    const executionTarget = document.getElementById('execution-target-select')?.value || 'rahti';
+    const executionTarget = document.getElementById('execution-target-select')?.value || 'kubernetes';
 
     if (targetSims.length === 0) {
         alert("Please select at least one simulator from the Config Panel to run.");
@@ -225,11 +227,13 @@ async function runComparison(type, shots) {
 
         const results = await pollJobStatus(jobData.job_id);
 
+        dispatch('SET_JOB_ID', jobData.job_id);
         dispatch('SET_SUITE_DATA', results);
         renderDetailReport(results, title, getState().currentRunnerConfig);
 
         if (runNameInput) results.run_name = runNameInput;
-        await saveRunToHistory(results);
+        const historyRunId = await saveRunToHistory(results);
+        dispatch('SET_HISTORY_RUN_ID', historyRunId);
     } catch (e) {
         console.error(e);
         renderDetailReport({ error: e.message }, "Error");
@@ -251,7 +255,7 @@ async function runBatchQueue() {
     const runNameInput = document.getElementById('batch-run-name')?.value.trim();
     dispatch('SET_RUNNER_CONFIG', getRunnerConfig());
     const targetSims = getTargetSimulators();
-    const executionTarget = document.getElementById('execution-target-select')?.value || 'rahti';
+    const executionTarget = document.getElementById('execution-target-select')?.value || 'kubernetes';
 
     if (targetSims.length === 0) {
         alert("Please select at least one simulator from the Config Panel to run.");
@@ -293,12 +297,14 @@ async function runBatchQueue() {
 
         const results = await pollJobStatus(jobData.job_id);
 
+        dispatch('SET_JOB_ID', jobData.job_id);
         dispatch('SET_SUITE_DATA', results);
         dispatch('SET_SUITE_TITLE', "Playlist Batch Report");
         renderSuiteSummary(results, getState().currentSuiteTitle);
 
         if (runNameInput) results.run_name = runNameInput;
-        await saveRunToHistory(results);
+        const historyRunId = await saveRunToHistory(results);
+        dispatch('SET_HISTORY_RUN_ID', historyRunId);
 
     } catch (e) {
         console.error(e);

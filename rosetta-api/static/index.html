@@ -112,7 +112,7 @@
                         <label class="block text-sm font-medium text-indigo-900 mb-1">Execution Environment</label>
                         <select id="execution-target-select"
                             class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
-                            <option value="rahti">Rahti (Local Cloud)</option>
+                            <option value="kubernetes">Kubernetes Cluster</option>
                             <option value="lumi" disabled>LUMI (HPC) - Pending Phase 4</option>
                         </select>
                     </div>
@@ -224,6 +224,7 @@
                                 class="text-purple-600 hover:text-purple-800 font-medium ml-2">📊 Visualize</button>
                             <input type="file" id="qasm-upload" class="hidden" accept=".qasm"
                                 onchange="importQasm(this)">
+                            <span id="ctx-circuit-stats" class="text-gray-500"></span>
                             <span id="ctx-opt-level">Opt Level: 0</span>
                         </div>
                     </div>
@@ -326,9 +327,25 @@
                                 <button onclick="downloadRawJson()"
                                     class="bg-green-600 hover:bg-green-700 text-white text-xs font-medium py-1 px-3 rounded-md transition-all">Download
                                     RAW JSON</button>
+                                <button id="btn-export-rocrate" onclick="exportRoCrate()"
+                                    class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium py-1 px-3 rounded-md transition-all">📦
+                                    Export RO-Crate</button>
                                 <button id="copy-btn" onclick="copyRawJson(this)"
                                     class="bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-medium py-1 px-3 rounded-md transition-all">Copy
                                     View</button>
+                            </div>
+                            <!-- RO-Crate Export Options -->
+                            <div class="absolute top-24 right-4 z-10 bg-white border border-gray-200 rounded-lg shadow-sm p-3 space-y-2" style="width: 260px;">
+                                <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Export Options</p>
+                                <label class="flex items-center space-x-2 text-xs text-gray-700 cursor-pointer">
+                                    <input type="checkbox" id="export-include-sv"
+                                        class="h-3.5 w-3.5 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded">
+                                    <span>Include raw statevectors</span>
+                                </label>
+                                <input type="text" id="export-author-name" placeholder="Author name (optional)"
+                                    class="block w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                                <input type="text" id="export-author-affiliation" placeholder="Affiliation (optional)"
+                                    class="block w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500">
                             </div>
                             <pre id="json-output"
                                 class="flex-1 p-4 pt-10 overflow-auto text-xs text-gray-700 whitespace-pre-wrap break-words bg-gray-50 rounded-b-lg"></pre>
@@ -774,18 +791,18 @@
     <!-- END TEMPLATES                                                 -->
     <!-- ============================================================ -->
 
-    <script src="js/state.js?v=1.0.2"></script>
-    <script src="js/utils.js?v=1.0.2"></script>
-    <script src="js/renderers.js?v=1.0.2"></script>
-    <script src="js/tables_renderer.js?v=1.0.2"></script>
+    <script src="js/state.js?v=1.0.3"></script>
+    <script src="js/utils.js?v=1.0.3"></script>
+    <script src="js/renderers.js?v=1.0.3"></script>
+    <script src="js/tables_renderer.js?v=1.0.3"></script>
     <!-- Domain modules (depend on utils/renderers globals) -->
-    <script src="js/api.js?v=1.0.2"></script>
-    <script src="js/config.js?v=1.0.2"></script>
-    <script src="js/batch.js?v=1.0.2"></script>
-    <script src="js/auth.js?v=1.0.2"></script>
-    <script src="js/history.js?v=1.0.2"></script>
+    <script src="js/api.js?v=1.0.3"></script>
+    <script src="js/config.js?v=1.0.3"></script>
+    <script src="js/batch.js?v=1.0.3"></script>
+    <script src="js/auth.js?v=1.0.3"></script>
+    <script src="js/history.js?v=1.0.3"></script>
     <!-- Controller: depends on all above -->
-    <script src="js/app.js?v=1.0.2"></script>
+    <script src="js/app.js?v=1.0.3"></script>
 
 </body>
 

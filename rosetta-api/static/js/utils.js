@@ -169,6 +169,89 @@ function downloadRawJson() {
     URL.revokeObjectURL(url);
 }
 
+function _stripStatevectors(data) {
+    if (Array.isArray(data)) {
+        return data.map(_stripStatevectors);
+    }
+    if (data && typeof data === 'object') {
+        const out = {};
+        for (const [k, v] of Object.entries(data)) {
+            if (k === 'statevector') continue;
+            out[k] = _stripStatevectors(v);
+        }
+        return out;
+    }
+    return data;
+}
+
+async function exportRoCrate() {
+    const results = getState().currentSuiteData;
+    if (!results) {
+        alert("No results to export. Run a comparison first.");
+        return;
+    }
+
+    const includeStatevectors = document.getElementById('export-include-sv')?.checked || false;
+    const authorName = document.getElementById('export-author-name')?.value.trim() || null;
+    const authorAffiliation = document.getElementById('export-author-affiliation')?.value.trim() || null;
+
+    // Strip statevectors client-side unless explicitly requested, so the request body
+    // stays well under the 1MB upload limit (statevector runs can be many MB otherwise).
+    const payloadResults = includeStatevectors ? results : _stripStatevectors(results);
+
+    const btn = document.getElementById('btn-export-rocrate');
+    let originalText = '';
+    if (btn) {
+        originalText = btn.innerHTML;
+        btn.innerHTML = `<span class="inline-block animate-spin mr-1 border-2 border-emerald-600 border-t-transparent rounded-full w-3 h-3"></span> Exporting`;
+        btn.disabled = true;
+    }
+
+    try {
+        const response = await fetch(`${BASE_URL}/export`, {
+            method: 'POST',
+            headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({
+                format: 'ro-crate',
+                include_statevectors: includeStatevectors,
+                author_name: authorName,
+                author_affiliation: authorAffiliation,
+                results: payloadResults,
+            })
+        });
+
+        if (!response.ok) {
+            if (response.status === 413) {
+                throw new Error("Results too large to export with statevectors. Uncheck 'include statevectors' and try again.");
+            }
+            const errData = await response.json().catch(() => ({ detail: response.statusText }));
+            throw new Error(errData.detail || errData.error || `HTTP ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        const disposition = response.headers.get('Content-Disposition') || '';
+        const filenameMatch = disposition.match(/filename="?(.+?)"?$/);
+        const filename = filenameMatch ? filenameMatch[1] : `rosetta-export.zip`;
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    } catch (err) {
+        console.error("RO-Crate export failed:", err);
+        alert("Export failed: " + err.message);
+    } finally {
+        if (btn) {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    }
+}
+
 function exportPlaylist() {
     if (batchQueue.length === 0) {
         alert("Playlist is empty.");

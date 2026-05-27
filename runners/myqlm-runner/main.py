@@ -7,7 +7,7 @@ import sys
 import boto3
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb, check_qubits_limit
+from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED
 import re
 import numpy as np
 import time
@@ -58,7 +58,7 @@ def _get_statevector(circuit) -> np.ndarray:
 def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for myQLM simulation.")
     try:
-        check_qubits_limit(payload["circuit_data"], 24)
+        check_qubits_limit(payload["circuit_data"], MAX_QUBITS_STATEVECTOR)
 
         t0 = time.perf_counter()
         circuit = _compile_circuit(payload["circuit_data"], payload.get("optimization_level", 0))
@@ -110,7 +110,7 @@ def process_run(payload: dict) -> dict:
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for myQLM simulation.")
     try:
-        check_qubits_limit(payload["circuit_data"], 24)
+        check_qubits_limit(payload["circuit_data"], MAX_QUBITS_MEASURED)
 
         t0 = time.perf_counter()
         circuit = _compile_circuit(payload["circuit_data"], payload.get("optimization_level", 0))

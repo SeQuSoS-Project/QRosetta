@@ -44,7 +44,7 @@ async function pollJobStatus(jobId) {
                     }
                 } else {
 
-                    const targetName = data.target === "lumi" ? "LUMI (HPC)" : "Rahti";
+                    const targetName = data.target === "lumi" ? "LUMI (HPC)" : "Kubernetes Cluster";
                     const loaderText = document.getElementById('loader-text');
                     if (loaderText) loaderText.textContent = `Running on ${targetName}...`;
                     setTimeout(checkStatus, 3000);

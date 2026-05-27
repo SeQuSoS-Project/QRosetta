@@ -71,7 +71,7 @@ function renderConfigPanel(runners) {
     sysDiv.innerHTML = `
         <span class="font-bold text-gray-500">⚡ System Limits:</span>
         <div class="space-x-2">
-            <span class="text-gray-600 font-mono">Memory: 512MB (Fixed)</span>
+            <span class="text-gray-600 font-mono">Memory: 512 MiB (local) / 1 GiB (K8s)</span>
             <span class="text-gray-300">|</span>
             <div class="flex items-center space-x-1">
                 <label for="timeout-input" class="text-xs text-gray-500">Timeout (s):</label>
@@ -173,9 +173,23 @@ function getTargetSimulators() {
     return checked;
 }
 
+function _parseQasmStats(qasm) {
+    let qubits = 0, gates = 0;
+    for (const line of qasm.split('\n')) {
+        const t = line.trim();
+        if (!t || t.startsWith('//')) continue;
+        const m = t.match(/^qreg\s+\w+\[(\d+)\]/);
+        if (m) { qubits += parseInt(m[1]); continue; }
+        if (t.startsWith('OPENQASM') || t.startsWith('include') || t.startsWith('creg')) continue;
+        if (t.endsWith(';')) gates++;
+    }
+    return { qubits, gates };
+}
+
 function updateContextBar() {
     const nameSpan = document.getElementById('ctx-algo-name');
     const optSpan = document.getElementById('ctx-opt-level');
+    const statsSpan = document.getElementById('ctx-circuit-stats');
     const globalSelect = document.getElementById('opt-global');
     const level = globalSelect ? globalSelect.value : 0;
 
@@ -187,4 +201,17 @@ function updateContextBar() {
         }
     }
     if (optSpan) optSpan.textContent = `Global Opt: ${level}`;
+
+    if (statsSpan) {
+        const qasmEl = document.getElementById('qasm-input');
+        const qasm = qasmEl ? qasmEl.value.trim() : '';
+        if (qasm) {
+            const { qubits, gates } = _parseQasmStats(qasm);
+            const maxQ = typeof getDynamicMaxQubits === 'function' ? getDynamicMaxQubits() : 24;
+            statsSpan.textContent = `${qubits}q / ${gates} gates`;
+            statsSpan.className = qubits > maxQ ? 'text-red-600 font-semibold' : 'text-gray-500';
+        } else {
+            statsSpan.textContent = '';
+        }
+    }
 }

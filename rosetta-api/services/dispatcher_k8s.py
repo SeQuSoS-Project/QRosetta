@@ -21,6 +21,16 @@ S3_FETCH_ATTEMPTS = 6
 S3_FETCH_BASE_DELAY_SEC = 2
 RBAC_FALLBACK_POLL_SEC = 5
 
+def _make_s3_client():
+    return boto3.client(
+        "s3",
+        endpoint_url=settings.S3_ENDPOINT_URL,
+        aws_access_key_id=settings.S3_ACCESS_KEY,
+        aws_secret_access_key=settings.S3_SECRET_KEY,
+        region_name=settings.S3_REGION,
+        config=BotoConfig(signature_version='s3v4'),
+    )
+
 def _fetch_s3_result(s3, bucket, completed_key, sim_name, status_callback):
     for attempt in range(S3_FETCH_ATTEMPTS):
         if attempt > 0:
@@ -42,7 +52,8 @@ def _fetch_s3_result(s3, bucket, completed_key, sim_name, status_callback):
 
 def _build_job_spec(sim_name: str, hostname: str, job_id: str, endpoint_type: str, payload_json: str) -> k8s_client.V1Job:
     """Constructs the Kubernetes Job manifest for a single runner pod."""
-    image = f"image-registry.apps.2.rahti.csc.fi/qrosetta/{hostname}:{IMAGE_TAG}"
+    registry = os.environ.get("K8S_IMAGE_REGISTRY", "docker.io/qrosetta")
+    image = f"{registry}/{hostname}:{IMAGE_TAG}"
 
     def _secret_ref(key: str) -> k8s_client.V1EnvVar:
         """Reference a value from the rosetta-secrets K8s Secret by key name."""
@@ -64,6 +75,10 @@ def _build_job_spec(sim_name: str, hostname: str, job_id: str, endpoint_type: st
         k8s_client.V1EnvVar(name="MKL_NUM_THREADS",      value="1"),
         k8s_client.V1EnvVar(name="OPENBLAS_NUM_THREADS", value="1"),
         k8s_client.V1EnvVar(name="NUMEXPR_NUM_THREADS",  value="1"),
+        # OpenShift runs containers with a random UID outside /etc/passwd, which causes
+        # some runtimes to reset HOME to /. Pytket writes its config to $HOME/.config on
+        # first import — explicitly pinning HOME prevents the PermissionError.
+        k8s_client.V1EnvVar(name="HOME",                 value="/home/appuser"),
 
         _secret_ref("S3_ACCESS_KEY"),
         _secret_ref("S3_SECRET_KEY"),
@@ -118,6 +133,7 @@ def _poll_pod_phase(core_api, namespace: str, job_name: str, sim_name: str, job_
                 pods = core_api.list_namespaced_pod(
                     namespace=namespace,
                     label_selector=f"job-name={job_name}",
+                    _request_timeout=10,
                 )
                 pod_check_ok = True
                 if pods.items:
@@ -159,67 +175,78 @@ def _poll_pod_phase(core_api, namespace: str, job_name: str, sim_name: str, job_
 
     return None
 
-def _run_k8s_job_for_simulator(sim_name: str, url: str, local_payload: dict, timeout_seconds: int, s3, batch_api, core_api, namespace: str, status_callback=None) -> dict:
-    """Orchestrates job creation, pod polling, and S3 result fetch for one simulator."""
-    endpoint_type = url.rstrip("/").split("/")[-1]
-    hostname = url.split("//")[1].split(":")[0]
+def _run_k8s_job_for_simulator(sim_name: str, url: str, local_payload: dict, timeout_seconds: int, namespace: str, status_callback=None) -> dict:
+    """Orchestrates job creation, pod polling, and S3 result fetch for one simulator.
+    Creates its own K8s ApiClient and S3 client so each of the 14+ concurrent threads
+    has an independent connection pool (default shared pool maxsize=4 causes pool-wait
+    deadlocks under full concurrency)."""
+    api_client = k8s_client.ApiClient()
+    batch_api = k8s_client.BatchV1Api(api_client=api_client)
+    core_api = k8s_client.CoreV1Api(api_client=api_client)
+    s3 = _make_s3_client()
 
-    job_id = uuid.uuid4().hex
-    completed_key = f"jobs/completed/{job_id}.json"
-    bucket = settings.S3_BUCKET_NAME
+    try:
+        endpoint_type = url.rstrip("/").split("/")[-1]
+        hostname = url.split("//")[1].split(":")[0]
 
-    payload_json = json.dumps(local_payload)
-    logger.info(f"[K8s] Preparing job for {sim_name} (payload: {len(payload_json)} bytes, job_id={job_id})")
+        job_id = uuid.uuid4().hex
+        completed_key = f"jobs/completed/{job_id}.json"
+        bucket = settings.S3_BUCKET_NAME
 
-    job = _build_job_spec(sim_name, hostname, job_id, endpoint_type, payload_json)
-    job_name = job.metadata.name
+        payload_json = json.dumps(local_payload)
+        logger.info(f"[K8s] Preparing job for {sim_name} (payload: {len(payload_json)} bytes, job_id={job_id})")
 
-    batch_api.create_namespaced_job(namespace=namespace, body=job)
-    logger.info(f"[K8s] Spawned job '{job_name}' for {sim_name} (job_id={job_id})")
-    if status_callback:
-        status_callback("spawning")
+        job = _build_job_spec(sim_name, hostname, job_id, endpoint_type, payload_json)
+        job_name = job.metadata.name
 
-    deadline = time.time() + timeout_seconds
-    terminal_state = _poll_pod_phase(
-        core_api, namespace, job_name, sim_name, job_id,
-        s3, bucket, completed_key, deadline, status_callback
-    )
-
-    if isinstance(terminal_state, dict):
-        return terminal_state
-
-    if terminal_state == "failed":
+        batch_api.create_namespaced_job(namespace=namespace, body=job, _request_timeout=30)
+        logger.info(f"[K8s] Spawned job '{job_name}' for {sim_name} (job_id={job_id})")
         if status_callback:
-            status_callback("error")
+            status_callback("spawning")
+
+        deadline = time.time() + timeout_seconds
+        terminal_state = _poll_pod_phase(
+            core_api, namespace, job_name, sim_name, job_id,
+            s3, bucket, completed_key, deadline, status_callback
+        )
+
+        if isinstance(terminal_state, dict):
+            return terminal_state
+
+        if terminal_state == "failed":
+            if status_callback:
+                status_callback("error")
+            return {
+                "simulator": sim_name,
+                "error": "Runner pod failed (non-zero exit). Check container logs in your Kubernetes cluster.",
+                "execution_time_sec": 0.0,
+                "memory_usage_mb": 0.0,
+            }
+
+        if terminal_state == "succeeded":
+            logger.info(f"[K8s] Fetching S3 result for {sim_name} (job_id={job_id})")
+        else:
+            logger.warning(f"[K8s] Phase 1 timed out for {sim_name} — attempting S3 fetch (job_id={job_id})")
+
+        result = _fetch_s3_result(s3, bucket, completed_key, sim_name, status_callback)
+        if result:
+            return result
+
+        if status_callback:
+            status_callback("timeout" if terminal_state is None else "error")
+        error_msg = (
+            f"TIMEOUT ({timeout_seconds}s): K8s job did not complete in time."
+            if terminal_state is None
+            else "Runner pod completed but S3 result was not found."
+        )
         return {
             "simulator": sim_name,
-            "error": "Runner pod failed (non-zero exit). Check container logs in Rahti.",
+            "error": error_msg,
             "execution_time_sec": 0.0,
             "memory_usage_mb": 0.0,
         }
-
-    if terminal_state == "succeeded":
-        logger.info(f"[K8s] Fetching S3 result for {sim_name} (job_id={job_id})")
-    else:
-        logger.warning(f"[K8s] Phase 1 timed out for {sim_name} — attempting S3 fetch (job_id={job_id})")
-
-    result = _fetch_s3_result(s3, bucket, completed_key, sim_name, status_callback)
-    if result:
-        return result
-
-    if status_callback:
-        status_callback("timeout" if terminal_state is None else "error")
-    error_msg = (
-        f"TIMEOUT ({timeout_seconds}s): K8s job did not complete in time."
-        if terminal_state is None
-        else "Runner pod completed but S3 result was not found."
-    )
-    return {
-        "simulator": sim_name,
-        "error": error_msg,
-        "execution_time_sec": 0.0,
-        "memory_usage_mb": 0.0,
-    }
+    finally:
+        api_client.close()
 
 async def dispatch_kubernetes_jobs(runner_urls: dict, runner_payload: dict, timeout_seconds: int, runner_statuses: dict = None) -> list:
     global_opt = runner_payload.get("optimization_level", 0)
@@ -232,18 +259,6 @@ async def dispatch_kubernetes_jobs(runner_urls: dict, runner_payload: dict, time
         k8s_config.load_kube_config()
 
     namespace = os.environ.get("NAMESPACE", "qrosetta")
-    batch_api = k8s_client.BatchV1Api()
-    core_api = k8s_client.CoreV1Api()
-
-    s3 = boto3.client(
-        "s3",
-        endpoint_url=settings.S3_ENDPOINT_URL,
-        aws_access_key_id=settings.S3_ACCESS_KEY,
-        aws_secret_access_key=settings.S3_SECRET_KEY,
-        region_name=settings.S3_REGION,
-        config=BotoConfig(signature_version='s3v4'),
-    )
-
     executor = ThreadPoolExecutor(max_workers=len(runner_urls))
 
     tasks = []
@@ -271,8 +286,7 @@ async def dispatch_kubernetes_jobs(runner_urls: dict, runner_payload: dict, time
             loop.run_in_executor(
                 executor, _run_k8s_job_for_simulator,
                 sim_name, url, local_payload, timeout_seconds,
-                s3, batch_api, core_api, namespace,
-                make_callback(sim_name),
+                namespace, make_callback(sim_name),
             )
         )
 

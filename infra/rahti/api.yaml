@@ -36,6 +36,8 @@ items:
             value: "1"
           - name: EXECUTION_MODE
             value: "kubernetes"
+          - name: K8S_IMAGE_REGISTRY
+            value: "image-registry.apps.2.rahti.csc.fi/qrosetta"
           - name: NAMESPACE
             valueFrom:
               fieldRef:

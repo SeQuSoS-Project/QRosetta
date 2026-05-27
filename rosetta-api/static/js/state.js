@@ -10,7 +10,11 @@ const Store = {
         allAlgorithms: [],
         currentOptLevel: 0,
         currentAlgoName: "Custom",
-        currentRunnerConfig: {}
+        currentRunnerConfig: {},
+        currentJobId: null,
+        currentHistoryRunId: null,
+        maxQubitsStatevector: 18,
+        maxQubitsMeasured: 24,
     },
 
     dispatch(action, payload) {
@@ -47,6 +51,16 @@ const Store = {
                 break;
             case 'SET_RUNNER_CONFIG':
                 this.state.currentRunnerConfig = payload;
+                break;
+            case 'SET_JOB_ID':
+                this.state.currentJobId = payload;
+                break;
+            case 'SET_HISTORY_RUN_ID':
+                this.state.currentHistoryRunId = payload;
+                break;
+            case 'SET_CONFIG_LIMITS':
+                this.state.maxQubitsStatevector = payload.max_qubits_statevector;
+                this.state.maxQubitsMeasured = payload.max_qubits_measured;
                 break;
             default:
                 console.warn(`[State] Unknown action: ${action}`);

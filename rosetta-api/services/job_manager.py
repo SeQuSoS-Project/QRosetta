@@ -2,6 +2,7 @@
 
 import asyncio
 import gc
+import time
 import pytket.qasm
 from pytket.passes import RemoveBarriers
 from services.validator import validate_request
@@ -23,7 +24,7 @@ logger = get_logger("rosetta-job-manager")
 
 ACTIVE_JOBS = {}
 
-async def run_single_circuit_comparison(qasm_string: str, optimization_level: int = 0, timeout_seconds: int = 60, target_simulators: list = None, runner_statuses: dict = None):
+async def run_single_circuit_comparison(qasm_string: str, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = 60, target_simulators: list = None, runner_statuses: dict = None):
     logger.info(f"Processing circuit...")
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_string)
@@ -33,7 +34,8 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
         modified_qasm_string = pytket.qasm.circuit_to_qasm_str(tk_circ)
         runner_payload = {
             "circuit_data": modified_qasm_string,
-            "optimization_level": optimization_level
+            "optimization_level": optimization_level,
+            "runner_config": runner_config or {},
         }
     except Exception as e:
         return { "input_qasm": qasm_string, "error": str(e) }
@@ -63,26 +65,29 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
     full_report_data = [res.copy() for res in aggregated_results]
     save_report_to_disk(full_report_data)
 
+    display_results = []
     for result in aggregated_results:
-        if "statevector" in result and isinstance(result["statevector"], list):
-            if len(result["statevector"]) > 16384:
-                result["statevector"] = "<Statevector too large for display. Analysis included in reports.>"
+        if "statevector" in result and isinstance(result["statevector"], list) and len(result["statevector"]) > 16384:
+            display_results.append({**result, "statevector": "<Statevector too large for display. Analysis included in reports.>"})
+        else:
+            display_results.append(result)
 
     return {
         "input_qasm": qasm_string,
         "divergence_report": divergence_report,
         "performance_report": performance_report,
         "resource_report": resource_report,
-        "raw_results": aggregated_results
+        "raw_results": display_results
     }
 
-async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimization_level: int = 0, timeout_seconds: int = 60, target_simulators: list = None, runner_statuses: dict = None):
+async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = 60, target_simulators: list = None, runner_statuses: dict = None):
     logger.info(f"Processing measured circuit for {n_shots} shots...")
 
     sampled_payload = {
         "circuit_data": qasm_string,
         "n_shots": n_shots,
-        "optimization_level": optimization_level
+        "optimization_level": optimization_level,
+        "runner_config": runner_config or {},
     }
 
     try:
@@ -103,7 +108,8 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
         native_payload = {
             "circuit_data": modified_qasm_string,
             "n_shots": n_shots,
-            "optimization_level": optimization_level
+            "optimization_level": optimization_level,
+            "runner_config": runner_config or {},
         }
     except Exception as e:
         return { "input_qasm": qasm_string, "error": str(e) }
@@ -123,6 +129,8 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
     results_sampled, results_native = await asyncio.gather(sampled_task, native_task)
 
     aggregated_results = results_native + results_sampled
+
+    save_report_to_disk(aggregated_results)
 
     try:
         divergence_report, performance_report, resource_report = await compile_measurement_reports(aggregated_results, n_shots)
@@ -144,25 +152,25 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
         "raw_results": aggregated_results
     }
 
-async def worker_compare(job_id: str, qasm_string: str, optimization_level: int, timeout: int, target_simulators: list, execution_target: str):
+async def worker_compare(job_id: str, qasm_string: str, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str):
     runner_statuses = {}
     ACTIVE_JOBS[job_id]["status"] = "processing"
     ACTIVE_JOBS[job_id]["runner_statuses"] = runner_statuses
     try:
-        report = await run_single_circuit_comparison(qasm_string, optimization_level, timeout, target_simulators, runner_statuses)
-        ACTIVE_JOBS[job_id] = {"status": "completed", "target": execution_target, "results": report, "runner_statuses": runner_statuses}
+        report = await run_single_circuit_comparison(qasm_string, optimization_level, runner_config, timeout, target_simulators, runner_statuses)
+        ACTIVE_JOBS[job_id] = {"status": "completed", "target": execution_target, "results": report, "runner_statuses": runner_statuses, "finished_at": time.time()}
     except Exception as e:
-        ACTIVE_JOBS[job_id] = {"status": "failed", "target": execution_target, "error": str(e), "runner_statuses": runner_statuses}
+        ACTIVE_JOBS[job_id] = {"status": "failed", "target": execution_target, "error": str(e), "runner_statuses": runner_statuses, "finished_at": time.time()}
 
-async def worker_compare_measured(job_id: str, qasm_string: str, n_shots: int, optimization_level: int, timeout: int, target_simulators: list, execution_target: str):
+async def worker_compare_measured(job_id: str, qasm_string: str, n_shots: int, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str):
     runner_statuses = {}
     ACTIVE_JOBS[job_id]["status"] = "processing"
     ACTIVE_JOBS[job_id]["runner_statuses"] = runner_statuses
     try:
-        report = await run_single_circuit_measurement(qasm_string, n_shots, optimization_level, timeout, target_simulators, runner_statuses)
-        ACTIVE_JOBS[job_id] = {"status": "completed", "target": execution_target, "results": report, "runner_statuses": runner_statuses}
+        report = await run_single_circuit_measurement(qasm_string, n_shots, optimization_level, runner_config, timeout, target_simulators, runner_statuses)
+        ACTIVE_JOBS[job_id] = {"status": "completed", "target": execution_target, "results": report, "runner_statuses": runner_statuses, "finished_at": time.time()}
     except Exception as e:
-        ACTIVE_JOBS[job_id] = {"status": "failed", "target": execution_target, "error": str(e), "runner_statuses": runner_statuses}
+        ACTIVE_JOBS[job_id] = {"status": "failed", "target": execution_target, "error": str(e), "runner_statuses": runner_statuses, "finished_at": time.time()}
 
 async def worker_batch_suite(job_id: str, payload: BatchPayload):
     runner_statuses = {}
@@ -186,9 +194,9 @@ async def worker_batch_suite(job_id: str, payload: BatchPayload):
             report = None
             timeout = max(1, min(payload.timeout_seconds, settings.RUNNER_TIMEOUT_SEC))
             if payload.mode == 'statevector':
-                report = await run_single_circuit_comparison(qasm_string, payload.optimization_level, timeout, payload.target_simulators, runner_statuses)
+                report = await run_single_circuit_comparison(qasm_string, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, runner_statuses)
             elif payload.mode == 'measured':
-                report = await run_single_circuit_measurement(qasm_string, payload.n_shots, payload.optimization_level, timeout, payload.target_simulators, runner_statuses)
+                report = await run_single_circuit_measurement(qasm_string, payload.n_shots, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, runner_statuses)
             else:
                 raise ValueError(f"Unknown mode: {payload.mode}")
 
@@ -202,4 +210,4 @@ async def worker_batch_suite(job_id: str, payload: BatchPayload):
             })
 
     logger.info(f"--- Batch Suite Complete ---")
-    ACTIVE_JOBS[job_id] = {"status": "completed", "target": payload.execution_target, "results": {"benchmark_summary": benchmark_summary}, "runner_statuses": runner_statuses}
+    ACTIVE_JOBS[job_id] = {"status": "completed", "target": payload.execution_target, "results": {"benchmark_summary": benchmark_summary}, "runner_statuses": runner_statuses, "finished_at": time.time()}

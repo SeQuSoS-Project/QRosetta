@@ -11,6 +11,8 @@ from schemas.benchmark import (
     JobStatusResponse,
     RunnerPerformanceMetrics,
     ComparisonResult,
+    ExportPayload,
+    ExportRequest,
 )
 from schemas.auth import (
     UserCreate,
@@ -31,7 +33,7 @@ __all__ = [
     "QasmPayload", "MeasuredQasmPayload", "MeasuredBenchmarkPayload",
     "GenerateCircuitPayload", "BenchmarkTask", "BatchPayload",
     "VisualizerResponse", "JobStatusResponse", "RunnerPerformanceMetrics",
-    "ComparisonResult",
+    "ComparisonResult", "ExportPayload", "ExportRequest",
 
     "UserCreate", "UserResponse", "Token",
 
