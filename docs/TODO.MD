@@ -1,3 +1,102 @@
+May 26 - 2026 - IDEAS
+Choose which runners run first
+Choose to run same runner many times with different opt levels - Self comparison!
+
+
+-----
+May 26 - 2026 
+ 
+ Critical Issues
+  
+  1. runner_config is silently dropped — per-runner optimization levels never apply
+
+  Where: routers/benchmark.py:44,56 → job_manager.py
+
+  worker_compare and worker_compare_measured are called without payload.runner_config. Even if it were passed, job_manager.py
+  builds runner_payload without it (e.g. line 34-37, lines 83-87). Both HTTP and K8s dispatchers correctly read runner_config from
+  the payload — but it's never put in. The entire per-runner optimization feature is silently broken end-to-end.
+
+  2. The RO-Crate export is architecturally unreliable
+
+  Where: routers/export.py, utils.js:173-225
+
+  The UI's "Export RO-Crate" button calls POST /export with the API's currentJobId, which looks up ACTIVE_JOBS — an in-memory dict.
+   On any server restart (which Rahti's Recreate strategy guarantees on every deploy), the job is gone and the user gets a 404. The
+   correct persistent export is POST /history/runs/{run_id}/export already implemented in history.py:156, but the UI never captures
+   the DB run_id returned by saveRunToHistory.
+
+  3. POST /export has no authentication
+
+  Where: routers/export.py:17
+
+  The endpoint has no get_current_user dependency. Anyone who can guess a UUID (job_id) can export another user's results. The
+  history export endpoint at /history/runs/{run_id}/export is correctly authenticated.
+
+  4. Statevector truncation corrupts ACTIVE_JOBS before export
+
+  Where: job_manager.py:67-69
+
+  Statevectors >16384 elements are replaced with a string in the aggregated_results list — which is the same object referenced by
+  ACTIVE_JOBS. The local/S3 save on line 64 happens before this mutation, so history exports are safe, but the /export endpoint
+  would serve the string sentinel instead of actual data when include_statevectors=True.
+
+  5. save_report_to_disk not called in the measurement path
+
+  Where: job_manager.py — run_single_circuit_comparison calls it (line 64), run_single_circuit_measurement does not
+
+  In STORAGE_MODE=local, measurement runs are never persisted to disk, so they can't be replayed or audited. Statevector runs are
+  saved; measurement runs aren't.
+
+  6. ACTIVE_JOBS grows unbounded
+
+  Where: job_manager.py:24, never cleared
+
+  In local long-running mode, every job (including full result payloads with base64-encoded statevectors) stays in memory forever.
+  A few dozen 18-qubit statevector runs would accumulate ~100MB+ in the dict.
+
+  ---
+  Easy, High-Value Additions
+
+  A. Fix runner_config propagation (30 min, highest ROI)
+
+  Pass payload.runner_config through the call chain: router → worker_compare/worker_compare_measured →
+  run_single_circuit_comparison/run_single_circuit_measurement → include it in the runner_payload dict. Both dispatchers already
+  handle it.
+
+  B. Fix export to use history run_id instead of job_id (1 hour)
+
+  In history.js:saveRunToHistory, capture the returned run_id from POST /history/runs. Store it in state. In
+  utils.js:exportRoCrate, call POST /history/runs/{run_id}/export instead. This makes exports persistent, authenticated, and
+  K8s-restart-proof — and eliminates the need for routers/export.py entirely.
+
+  C. ACTIVE_JOBS TTL cleanup (20 min)
+
+  A asyncio background task (started in main.py) that walks ACTIVE_JOBS every 10 minutes and removes completed/failed jobs older
+  than 30 minutes. Keeps memory bounded.
+
+  D. Add circuit pre-flight statistics to the UI (1 hour)
+
+  C. ACTIVE_JOBS TTL cleanup (20 min)
+
+  A asyncio background task (started in main.py) that walks ACTIVE_JOBS every 10 minutes and removes completed/failed jobs
+   older than 30 minutes. Keeps memory bounded.
+
+  D. Add circuit pre-flight statistics to the UI (1 hour)
+
+  Parse qubit count and gate count from the QASM in app.js before submit and display them in the context bar. The server
+  already enforces limits, but this lets users see "18q / 42 gates" before they run, which reduces wasted runs against the
+   limits.
+
+  E. Add save_report_to_disk to the measurement path (5 min)
+
+  One line after aggregated_results is compiled in run_single_circuit_measurement, matching what the statevector path
+  already does.
+
+  ---
+  Highest priority in order: A (runner_config is a broken feature users will rely on), then B+3 (security hole +
+  architectural fix), then C and E (correctness and reliability).]
+
+====
 As of 28-4-2026:
 Missing Import or lazy import for vqe (fixing), qft, random,
 

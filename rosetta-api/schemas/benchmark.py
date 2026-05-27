@@ -9,7 +9,7 @@ class QasmPayload(BaseModel):
     runner_config: Dict[str, int] = {}
     timeout_seconds: int = 60
     target_simulators: List[str] = Field(default_factory=list)
-    execution_target: str = "rahti"
+    execution_target: str = "kubernetes"
 
 class MeasuredQasmPayload(BaseModel):
     qasm_string: str
@@ -18,7 +18,7 @@ class MeasuredQasmPayload(BaseModel):
     runner_config: Dict[str, int] = {}
     timeout_seconds: int = 60
     target_simulators: List[str] = Field(default_factory=list)
-    execution_target: str = "rahti"
+    execution_target: str = "kubernetes"
 
 class MeasuredBenchmarkPayload(BaseModel):
     n_shots: int = 1024
@@ -40,7 +40,7 @@ class BatchPayload(BaseModel):
     runner_config: Dict[str, int] = {}
     timeout_seconds: int = 60
     target_simulators: List[str] = Field(default_factory=list)
-    execution_target: str = "rahti"
+    execution_target: str = "kubernetes"
 
 class VisualizerResponse(BaseModel):
     url: str
@@ -68,3 +68,12 @@ class ComparisonResult(BaseModel):
     performance_report: Dict[str, Any]
     resource_report: Dict[str, Any]
     raw_results: List[RunnerPerformanceMetrics]
+
+class ExportPayload(BaseModel):
+    format: str = "ro-crate"
+    include_statevectors: bool = False
+    author_name: Optional[str] = None
+    author_affiliation: Optional[str] = None
+
+class ExportRequest(ExportPayload):
+    results: Dict[str, Any]

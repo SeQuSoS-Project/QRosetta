@@ -7,7 +7,7 @@ import sys
 import boto3
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, get_logger, encode_statevector, check_qubits_limit, get_num_qubits_from_qasm, theoretical_statevector_mb
+from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, get_logger, encode_statevector, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED, get_num_qubits_from_qasm, theoretical_statevector_mb, strip_barriers_from_qasm
 import pennylane as qml
 import numpy as np
 import functools
@@ -20,10 +20,11 @@ logger = get_logger("pennylane-default-runner")
 def process_run(payload: dict) -> dict:
     logger.info("Received statevector circuit data for Pennylane-Default simulation.")
     try:
-        check_qubits_limit(payload["circuit_data"], 24)
+        check_qubits_limit(payload["circuit_data"], MAX_QUBITS_STATEVECTOR)
 
         t0 = time.perf_counter()
-        qasm_op = qml.from_qasm(payload["circuit_data"])
+        circuit_data = strip_barriers_from_qasm(payload["circuit_data"])
+        qasm_op = qml.from_qasm(circuit_data)
         num_qubits = get_num_qubits_from_qasm(payload["circuit_data"])
         dev = qml.device("default.qubit", wires=num_qubits, shots=None)
 
@@ -45,8 +46,6 @@ def process_run(payload: dict) -> dict:
         _ = statevector_circuit()
         t1 = time.perf_counter()
         compilation_time = t1 - t0
-
-        _ = statevector_circuit()
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
@@ -89,10 +88,11 @@ def process_run(payload: dict) -> dict:
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for Pennylane-Default (manual sampling).")
     try:
-        check_qubits_limit(payload["circuit_data"], 24)
+        check_qubits_limit(payload["circuit_data"], MAX_QUBITS_MEASURED)
 
         t0 = time.perf_counter()
-        qasm_op = qml.from_qasm(payload["circuit_data"])
+        circuit_data = strip_barriers_from_qasm(payload["circuit_data"])
+        qasm_op = qml.from_qasm(circuit_data)
         num_qubits = get_num_qubits_from_qasm(payload["circuit_data"])
         dev = qml.device("default.qubit", wires=num_qubits, shots=None)
 
@@ -114,8 +114,6 @@ def process_run_measured(payload: dict) -> dict:
         _ = statevector_circuit()
         t1 = time.perf_counter()
         compilation_time = t1 - t0
-
-        _ = statevector_circuit()
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()

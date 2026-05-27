@@ -33,6 +33,16 @@ async def get_runners():
         })
     return JSONResponse(content=result)
 
+@router.get("/config")
+async def get_config():
+    """Returns server-side circuit limits so the frontend never hardcodes them."""
+    return JSONResponse(content={
+        "max_qubits_statevector": settings.MAX_QUBITS_STATEVECTOR,
+        "max_qubits_measured": settings.MAX_QUBITS_MEASURED,
+        "max_qasm_size": settings.MAX_QASM_SIZE,
+        "max_qasm_gates": settings.MAX_QASM_GATES,
+    })
+
 @router.get("/download_latest_report")
 def download_latest_report():
     report_path = get_latest_report_path()

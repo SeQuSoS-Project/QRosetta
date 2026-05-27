@@ -10,7 +10,11 @@ import schemas
 from db.database import get_db
 from services.security import get_current_user
 from services.storage import save_run_report, fetch_run_report, delete_run_reports
+from services.exporter import ExportContext, build_ro_crate
+from config import settings
 from qrosetta_commons.helpers import get_logger
+from fastapi.responses import StreamingResponse
+import io
 
 logger = get_logger("rosetta-history")
 
@@ -148,3 +152,54 @@ def batch_delete_runs(
         db.delete(run)
     db.commit()
     return {"detail": f"Successfully deleted {len(run_records)} runs"}
+
+@router.post("/runs/{run_id}/export")
+def export_run_as_ro_crate(
+    run_id: str,
+    payload: schemas.ExportPayload,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """Export a saved run history as a FAIR-compliant RO-Crate ZIP bundle."""
+    run_record = db.query(models.RunHistory).filter(
+        models.RunHistory.id == run_id,
+        models.RunHistory.user_id == current_user.id
+    ).first()
+
+    if not run_record:
+        raise HTTPException(status_code=404, detail="Run history not found")
+
+    try:
+        report_data = fetch_run_report(run_record.s3_object_key)
+    except Exception:
+        logger.error(f"Failed to fetch run report for export, run_id={run_id}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch run history for export")
+
+    mode = "measured" if "n_shots" in report_data else "statevector"
+    qasm_string = report_data.get("input_qasm", report_data.get("qasm_string", ""))
+
+    ctx = ExportContext(
+        qasm_string=qasm_string,
+        results=report_data,
+        mode=mode,
+        runner_services=settings.get_runner_services(),
+        include_statevectors=payload.include_statevectors,
+        author_name=payload.author_name,
+        author_affiliation=payload.author_affiliation,
+    )
+
+    try:
+        zip_bytes = build_ro_crate(ctx)
+    except Exception as e:
+        logger.error(f"RO-Crate export failed for run_id={run_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Export failed")
+
+    ts_slug = ctx.timestamp.replace(":", "-").replace("+", "p")
+    filename = f"rosetta-export-{ts_slug}.zip"
+
+    return StreamingResponse(
+        io.BytesIO(zip_bytes),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+

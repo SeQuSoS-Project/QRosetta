@@ -11,6 +11,9 @@ import sys
 
 import base64
 
+MAX_QUBITS_STATEVECTOR = int(os.getenv("MAX_QUBITS_STATEVECTOR", "18"))
+MAX_QUBITS_MEASURED = int(os.getenv("MAX_QUBITS_MEASURED", "24"))
+
 def get_logger(service_name: str) -> logging.Logger:
     """
     Configures a structured logger that outputs to stdout.
@@ -143,11 +146,21 @@ def get_num_qubits_from_qasm(qasm_string: str) -> int:
                 pass
     return 0
 
+def strip_barriers_from_qasm(qasm_string: str) -> str:
+    """Remove barrier instructions from QASM before simulation.
+    Barriers are visual hints only — they don't affect the statevector.
+    Some C++ backends (lightning.qubit) raise errors on qml.Barrier at larger wire counts."""
+    return '\n'.join(
+        line for line in qasm_string.split('\n')
+        if not line.strip().startswith('barrier')
+    )
+
 def check_qubits_limit(qasm_string: str, max_qubits: int = 24):
     """
     Raises ValueError if the circuit has more qubits than allowed.
     24 qubits ~ 268 MB statevector (complex128).
-    25 qubits ~ 536 MB statevector (likely OOM on 512MB container).
+    25 qubits ~ 536 MB statevector (OOM on 512 MiB local container,
+    fits within 1 GiB K8s runner pod).
     """
     n_qubits = get_num_qubits_from_qasm(qasm_string)
     if n_qubits > max_qubits:

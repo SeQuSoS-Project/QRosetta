@@ -69,7 +69,7 @@ This project has undergone a rigorous **Hardening Sprint** to ensure stability a
 * **Startup Coordination:** Nginx waits for the API to pass a healthcheck before accepting traffic, preventing "502 Bad Gateway" errors on boot.
 * **Observability:** Implemented **Structured Logging** across all services. Logs are standardized, timestamped, and categorized (INFO/ERROR) in stdout.
 * **Non-Root Execution:** All containers run as an unprivileged user (`appuser`) to prevent container breakout attacks.
-* **Resource Limits:** Every service is capped at **0.5 CPUs** and **512MB RAM** to prevent "Logic Bomb" circuits from crashing the host.
+* **Resource Limits:** Every service is capped at **0.5 CPUs** and **512 MiB RAM** (Docker Compose) to prevent "Logic Bomb" circuits from crashing the host. On Kubernetes (Rahti), runner Jobs are allocated up to **1 GiB** (256 MiB request, 1 GiB limit).
 * **Pinned Dependencies:** All `requirements.txt` files use strict version pinning (e.g., `pennylane==0.39.0`, `autoray==0.6.12`) to prevent dependency drift.
 * **Event Loop Optimization:** Heavy mathematical operations are offloaded to thread executors to keep the API responsive.
 

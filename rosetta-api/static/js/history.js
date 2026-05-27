@@ -1,15 +1,19 @@
 // Frontend logic for history functionality.
 
 async function saveRunToHistory(payload) {
-    if (!getState().authToken) return;
+    if (!getState().authToken) return null;
     try {
-        await fetch(`${BASE_URL}/history/runs`, {
+        const res = await fetch(`${BASE_URL}/history/runs`, {
             method: 'POST',
             headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify(payload)
         });
+        if (!res.ok) return null;
+        const data = await res.json();
+        return data.id || null;
     } catch (e) {
         console.error("Failed to save run to history:", e);
+        return null;
     }
 }
 
@@ -122,6 +126,7 @@ function clearHistoryState() {
     if (banner) {
         banner.remove();
     }
+    dispatch('SET_HISTORY_RUN_ID', null);
 }
 
 function toggleSelectAllHistory() {
@@ -235,6 +240,7 @@ async function loadHistoricalRun(runId, runName, createdAt) {
 
         const data = await response.json();
         dispatch('SET_SUITE_DATA', data);
+        dispatch('SET_HISTORY_RUN_ID', runId);
 
         const historyBanner = document.createElement('div');
         historyBanner.id = "history-active-banner";

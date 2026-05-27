@@ -7,7 +7,7 @@ import sys
 import boto3
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb, check_qubits_limit
+from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED
 import numpy as np
 import pytket.qasm
 from pytket.extensions.braket import BraketBackend
@@ -22,7 +22,7 @@ app = FastAPI(title="Braket Runner")
 def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for Braket simulation.")
     try:
-        check_qubits_limit(payload["circuit_data"], 24)
+        check_qubits_limit(payload["circuit_data"], MAX_QUBITS_STATEVECTOR)
 
         t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload["circuit_data"])
@@ -82,7 +82,7 @@ def process_run(payload: dict) -> dict:
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for Braket simulation.")
     try:
-        check_qubits_limit(payload["circuit_data"], 24)
+        check_qubits_limit(payload["circuit_data"], MAX_QUBITS_MEASURED)
 
         t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload["circuit_data"])
