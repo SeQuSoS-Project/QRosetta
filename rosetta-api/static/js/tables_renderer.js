@@ -7,9 +7,14 @@ function _makeStatusCell(styleKey, text) {
     return span;
 }
 
+function _displayRunnerName(key) {
+    const nameMap = typeof RUNNER_DISPLAY_NAMES !== 'undefined' ? RUNNER_DISPLAY_NAMES : null;
+    return typeof formatRunnerLabel === 'function' ? formatRunnerLabel(key, nameMap) : key;
+}
+
 function _fillSimulatorCell(td, simulatorName, config) {
     td.classList.remove('tpl-simulator');
-    td.appendChild(document.createTextNode(simulatorName));
+    td.appendChild(document.createTextNode(_displayRunnerName(simulatorName)));
 
     const suiteData = getState()?.currentSuiteData;
     let rawItem = null;
@@ -253,7 +258,7 @@ function renderDivergenceTables(report, panel, config = {}) {
         report.simulators.forEach(s => {
             const thFrag = _cloneTemplate('tpl-div-matrix-header-cell');
             const th = thFrag.querySelector('th');
-            th.appendChild(document.createTextNode(s));
+            th.appendChild(document.createTextNode(_displayRunnerName(s)));
             const badge = getOptBadge(s, config);
             if (badge) th.appendChild(badge);
             theadRow.appendChild(thFrag);
@@ -267,7 +272,7 @@ function renderDivergenceTables(report, panel, config = {}) {
 
             const rhFrag = _cloneTemplate('tpl-div-matrix-row-header');
             const rowTh = rhFrag.querySelector('th');
-            rowTh.appendChild(document.createTextNode(s1));
+            rowTh.appendChild(document.createTextNode(_displayRunnerName(s1)));
             const rBadge = getOptBadge(s1, config);
             if (rBadge) rowTh.appendChild(rBadge);
             tr.appendChild(rhFrag);

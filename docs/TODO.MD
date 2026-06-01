@@ -1,3 +1,10 @@
+May 27 2026
+
+HTTP error! Status: 422 . Details: {"detail":[{"type":"int_type","loc":["body","runner_config","qiskit"],"msg":"Input should be a valid integer","input":[0,0,0,0]}]} 
+
+Ran 4 qiskits
+
+----------------
 May 26 - 2026 - IDEAS
 Choose which runners run first
 Choose to run same runner many times with different opt levels - Self comparison!

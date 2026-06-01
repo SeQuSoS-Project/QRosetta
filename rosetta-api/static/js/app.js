@@ -189,11 +189,14 @@ async function runComparison(type, shots) {
         return;
     }
 
+    if (!checkRunCountLimits(getState().currentRunnerConfig)) return;
+
     const payload = {
         qasm_string: qasm,
         optimization_level: globalOpt,
         timeout_seconds: timeout,
         runner_config: getState().currentRunnerConfig,
+        runner_phases: getRunnerPhases(),
         target_simulators: targetSims,
         execution_target: executionTarget
     };
@@ -262,6 +265,8 @@ async function runBatchQueue() {
         return;
     }
 
+    if (!checkRunCountLimits(getState().currentRunnerConfig)) return;
+
     const payload = {
         tasks: getState().batchQueue,
         mode: mode,
@@ -269,6 +274,7 @@ async function runBatchQueue() {
         optimization_level: globalOpt,
         timeout_seconds: timeout,
         runner_config: getState().currentRunnerConfig,
+        runner_phases: getRunnerPhases(),
         target_simulators: targetSims,
         execution_target: executionTarget
     };

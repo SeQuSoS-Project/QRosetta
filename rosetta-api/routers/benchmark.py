@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request, BackgroundTasks
 from fastapi.responses import JSONResponse
 import uuid
 from qrosetta_commons.helpers import get_logger
-from services.validator import validate_request
+from services.validator import validate_request, validate_runner_config
 from schemas import QasmPayload, MeasuredQasmPayload, BatchPayload, JobStatusResponse
 from services.security import limiter
 from config import settings
@@ -37,11 +37,12 @@ async def get_job_status(job_id: str):
 @limiter.limit("10/minute")
 async def compare_circuits_endpoint(request: Request, payload: QasmPayload, background_tasks: BackgroundTasks):
     validate_request(payload.qasm_string, mode="statevector")
+    validate_runner_config(payload.runner_config)
     timeout = max(1, min(payload.timeout_seconds, settings.RUNNER_TIMEOUT_SEC))
     job_id = str(uuid.uuid4())
 
     ACTIVE_JOBS[job_id] = {"status": "pending", "target": payload.execution_target}
-    background_tasks.add_task(worker_compare, job_id, payload.qasm_string, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, payload.execution_target)
+    background_tasks.add_task(worker_compare, job_id, payload.qasm_string, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, payload.execution_target, payload.runner_phases)
 
     return {"job_id": job_id, "status": ACTIVE_JOBS[job_id]["status"], "target": ACTIVE_JOBS[job_id]["target"]}
 
@@ -49,17 +50,19 @@ async def compare_circuits_endpoint(request: Request, payload: QasmPayload, back
 @limiter.limit("10/minute")
 async def compare_measured_circuits_endpoint(request: Request, payload: MeasuredQasmPayload, background_tasks: BackgroundTasks):
     validate_request(payload.qasm_string, mode="measured")
+    validate_runner_config(payload.runner_config)
     timeout = max(1, min(payload.timeout_seconds, settings.RUNNER_TIMEOUT_SEC))
     job_id = str(uuid.uuid4())
 
     ACTIVE_JOBS[job_id] = {"status": "pending", "target": payload.execution_target}
-    background_tasks.add_task(worker_compare_measured, job_id, payload.qasm_string, payload.n_shots, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, payload.execution_target)
+    background_tasks.add_task(worker_compare_measured, job_id, payload.qasm_string, payload.n_shots, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, payload.execution_target, payload.runner_phases)
 
     return {"job_id": job_id, "status": ACTIVE_JOBS[job_id]["status"], "target": ACTIVE_JOBS[job_id]["target"]}
 
 @router.post("/run_batch_suite", response_model=JobStatusResponse)
 @limiter.limit("10/minute")
 async def run_batch_suite_endpoint(request: Request, payload: BatchPayload, background_tasks: BackgroundTasks):
+    validate_runner_config(payload.runner_config)
     job_id = str(uuid.uuid4())
 
     ACTIVE_JOBS[job_id] = {"status": "pending", "target": payload.execution_target}

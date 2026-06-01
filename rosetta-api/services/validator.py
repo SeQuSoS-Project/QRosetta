@@ -4,6 +4,28 @@ from fastapi import HTTPException
 from config import settings
 import re
 
+def validate_runner_config(runner_config: dict):
+    """Bound multi-run fan-out. runner_config[name] may be an int (one run) or a
+    list of opt levels (one run each). Without a cap, a crafted request could spawn
+    unbounded runner jobs (httpx tasks locally, K8s pods on Rahti) and explode the
+    O(n^2) divergence analysis. Enforced server-side regardless of the UI."""
+    if not runner_config:
+        return
+    total = 0
+    for name, val in runner_config.items():
+        count = len(val) if isinstance(val, list) else 1
+        if count > settings.MAX_RUNS_PER_RUNNER:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Runner '{name}' requested {count} runs, exceeding the per-runner limit of {settings.MAX_RUNS_PER_RUNNER}."
+            )
+        total += count
+    if total > settings.MAX_TOTAL_RUNS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Requested {total} total runs across all simulators, exceeding the limit of {settings.MAX_TOTAL_RUNS}. Reduce the run counts in multi-run mode."
+        )
+
 def validate_request(qasm: str, mode: str = "statevector"):
     if len(qasm) > settings.MAX_QASM_SIZE:
         raise HTTPException(status_code=413, detail="Payload too large")

@@ -14,7 +14,6 @@ from config import settings
 from qrosetta_commons.helpers import get_logger
 
 logger = get_logger("rosetta-api")
-_RUNNER_SERVICES = settings.get_runner_services()
 
 IMAGE_TAG = os.environ.get("IMAGE_TAG", "latest")
 S3_FETCH_ATTEMPTS = 6
@@ -175,7 +174,16 @@ def _poll_pod_phase(core_api, namespace: str, job_name: str, sim_name: str, job_
 
     return None
 
-def _run_k8s_job_for_simulator(sim_name: str, url: str, local_payload: dict, timeout_seconds: int, namespace: str, status_callback=None) -> dict:
+def _run_k8s_job_for_simulator(sim_name: str, url: str, result_key: str, local_payload: dict, timeout_seconds: int, namespace: str, status_callback=None) -> dict:
+    """Runs one job and stamps the result with result_key. sim_name is the canonical
+    runner id used for K8s/image naming; result_key may be a self-comparison virtual
+    key (e.g. 'qiskit~opt1~run2') that must be reflected in the result simulator field."""
+    result = _run_k8s_job_inner(sim_name, url, local_payload, timeout_seconds, namespace, status_callback)
+    if isinstance(result, dict):
+        result["simulator"] = result_key
+    return result
+
+def _run_k8s_job_inner(sim_name: str, url: str, local_payload: dict, timeout_seconds: int, namespace: str, status_callback=None) -> dict:
     """Orchestrates job creation, pod polling, and S3 result fetch for one simulator.
     Creates its own K8s ApiClient and S3 client so each of the 14+ concurrent threads
     has an independent connection pool (default shared pool maxsize=4 causes pool-wait
@@ -249,8 +257,10 @@ def _run_k8s_job_for_simulator(sim_name: str, url: str, local_payload: dict, tim
         api_client.close()
 
 async def dispatch_kubernetes_jobs(runner_urls: dict, runner_payload: dict, timeout_seconds: int, runner_statuses: dict = None) -> list:
-    global_opt = runner_payload.get("optimization_level", 0)
-    runner_overrides = runner_payload.get("runner_config", {})
+    from services.dispatcher import expand_runner_jobs, group_specs_by_phase, build_runner_payload
+
+    specs = expand_runner_jobs(runner_urls, runner_payload)
+    phase_groups = group_specs_by_phase(specs)
     loop = asyncio.get_event_loop()
 
     try:
@@ -259,40 +269,34 @@ async def dispatch_kubernetes_jobs(runner_urls: dict, runner_payload: dict, time
         k8s_config.load_kube_config()
 
     namespace = os.environ.get("NAMESPACE", "qrosetta")
-    executor = ThreadPoolExecutor(max_workers=len(runner_urls))
 
-    tasks = []
-    for sim_name, url in runner_urls.items():
-        if runner_statuses is not None:
-            runner_statuses[sim_name] = "queued"
+    def make_callback(key):
+        def cb(status):
+            if runner_statuses is not None:
+                runner_statuses[key] = status
+        return cb
 
-        p_level = runner_overrides.get(sim_name, global_opt)
-        runner_info = _RUNNER_SERVICES.get(sim_name, {})
-        opt_levels_dict = runner_info.get("optimization_levels", {})
-        if opt_levels_dict:
-            p_level = min(p_level, max(opt_levels_dict.keys()))
+    if runner_statuses is not None:
+        for spec in specs:
+            runner_statuses[spec["key"]] = "queued"
 
-        local_payload = runner_payload.copy()
-        local_payload["optimization_level"] = p_level
-
-        def make_callback(name):
-            def cb(status):
-                if runner_statuses is not None:
-                    runner_statuses[name] = status
-            return cb
-
-        logger.info(f"[K8s] Scheduling job for {sim_name} (Level: {p_level})...")
-        tasks.append(
-            loop.run_in_executor(
-                executor, _run_k8s_job_for_simulator,
-                sim_name, url, local_payload, timeout_seconds,
-                namespace, make_callback(sim_name),
+    results = []
+    for group in phase_groups:
+        executor = ThreadPoolExecutor(max_workers=max(1, len(group)))
+        tasks = []
+        for spec in group:
+            local_payload = build_runner_payload(runner_payload, spec["opt_level"])
+            logger.info(f"[K8s] Scheduling job for {spec['key']} (Level: {spec['opt_level']}, Phase: {spec['phase']})...")
+            tasks.append(
+                loop.run_in_executor(
+                    executor, _run_k8s_job_for_simulator,
+                    spec["sim_name"], spec["url"], spec["key"], local_payload,
+                    timeout_seconds, namespace, make_callback(spec["key"]),
+                )
             )
-        )
+        try:
+            results.extend(await asyncio.gather(*tasks))
+        finally:
+            executor.shutdown(wait=False)
 
-    try:
-        results = await asyncio.gather(*tasks)
-    finally:
-        executor.shutdown(wait=False)
-
-    return list(results)
+    return results

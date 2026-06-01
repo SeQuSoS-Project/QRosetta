@@ -1,12 +1,17 @@
 # Pydantic schemas for request/response validation.
 
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 
+# runner_config values: int = single run at that opt level (default mode);
+# list = self-comparison, one run per element (repeats allowed → same level N times).
+# runner_phases: maps runner → phase number. Runners sharing a phase run concurrently;
+# phases execute in ascending order. Absent/empty = all concurrent (default behavior).
 class QasmPayload(BaseModel):
     qasm_string: str
     optimization_level: int = 0
-    runner_config: Dict[str, int] = {}
+    runner_config: Dict[str, Union[int, List[int]]] = {}
+    runner_phases: Dict[str, int] = {}
     timeout_seconds: int = 60
     target_simulators: List[str] = Field(default_factory=list)
     execution_target: str = "kubernetes"
@@ -15,7 +20,8 @@ class MeasuredQasmPayload(BaseModel):
     qasm_string: str
     n_shots: int = 1024
     optimization_level: int = 0
-    runner_config: Dict[str, int] = {}
+    runner_config: Dict[str, Union[int, List[int]]] = {}
+    runner_phases: Dict[str, int] = {}
     timeout_seconds: int = 60
     target_simulators: List[str] = Field(default_factory=list)
     execution_target: str = "kubernetes"
@@ -37,7 +43,8 @@ class BatchPayload(BaseModel):
     n_shots: int = 1024
     mode: str
     optimization_level: int = 0
-    runner_config: Dict[str, int] = {}
+    runner_config: Dict[str, Union[int, List[int]]] = {}
+    runner_phases: Dict[str, int] = {}
     timeout_seconds: int = 60
     target_simulators: List[str] = Field(default_factory=list)
     execution_target: str = "kubernetes"
