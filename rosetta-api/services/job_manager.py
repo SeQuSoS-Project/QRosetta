@@ -24,7 +24,7 @@ logger = get_logger("rosetta-job-manager")
 
 ACTIVE_JOBS = {}
 
-async def run_single_circuit_comparison(qasm_string: str, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = 60, target_simulators: list = None, runner_statuses: dict = None):
+async def run_single_circuit_comparison(qasm_string: str, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = 60, target_simulators: list = None, runner_statuses: dict = None, runner_phases: dict = None):
     logger.info(f"Processing circuit...")
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_string)
@@ -36,6 +36,7 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
             "circuit_data": modified_qasm_string,
             "optimization_level": optimization_level,
             "runner_config": runner_config or {},
+            "runner_phases": runner_phases or {},
         }
     except Exception as e:
         return { "input_qasm": qasm_string, "error": str(e) }
@@ -80,7 +81,7 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
         "raw_results": display_results
     }
 
-async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = 60, target_simulators: list = None, runner_statuses: dict = None):
+async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = 60, target_simulators: list = None, runner_statuses: dict = None, runner_phases: dict = None):
     logger.info(f"Processing measured circuit for {n_shots} shots...")
 
     sampled_payload = {
@@ -88,6 +89,7 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
         "n_shots": n_shots,
         "optimization_level": optimization_level,
         "runner_config": runner_config or {},
+        "runner_phases": runner_phases or {},
     }
 
     try:
@@ -110,6 +112,7 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
             "n_shots": n_shots,
             "optimization_level": optimization_level,
             "runner_config": runner_config or {},
+            "runner_phases": runner_phases or {},
         }
     except Exception as e:
         return { "input_qasm": qasm_string, "error": str(e) }
@@ -152,22 +155,22 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
         "raw_results": aggregated_results
     }
 
-async def worker_compare(job_id: str, qasm_string: str, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str):
+async def worker_compare(job_id: str, qasm_string: str, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str, runner_phases: dict = None):
     runner_statuses = {}
     ACTIVE_JOBS[job_id]["status"] = "processing"
     ACTIVE_JOBS[job_id]["runner_statuses"] = runner_statuses
     try:
-        report = await run_single_circuit_comparison(qasm_string, optimization_level, runner_config, timeout, target_simulators, runner_statuses)
+        report = await run_single_circuit_comparison(qasm_string, optimization_level, runner_config, timeout, target_simulators, runner_statuses, runner_phases)
         ACTIVE_JOBS[job_id] = {"status": "completed", "target": execution_target, "results": report, "runner_statuses": runner_statuses, "finished_at": time.time()}
     except Exception as e:
         ACTIVE_JOBS[job_id] = {"status": "failed", "target": execution_target, "error": str(e), "runner_statuses": runner_statuses, "finished_at": time.time()}
 
-async def worker_compare_measured(job_id: str, qasm_string: str, n_shots: int, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str):
+async def worker_compare_measured(job_id: str, qasm_string: str, n_shots: int, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str, runner_phases: dict = None):
     runner_statuses = {}
     ACTIVE_JOBS[job_id]["status"] = "processing"
     ACTIVE_JOBS[job_id]["runner_statuses"] = runner_statuses
     try:
-        report = await run_single_circuit_measurement(qasm_string, n_shots, optimization_level, runner_config, timeout, target_simulators, runner_statuses)
+        report = await run_single_circuit_measurement(qasm_string, n_shots, optimization_level, runner_config, timeout, target_simulators, runner_statuses, runner_phases)
         ACTIVE_JOBS[job_id] = {"status": "completed", "target": execution_target, "results": report, "runner_statuses": runner_statuses, "finished_at": time.time()}
     except Exception as e:
         ACTIVE_JOBS[job_id] = {"status": "failed", "target": execution_target, "error": str(e), "runner_statuses": runner_statuses, "finished_at": time.time()}
@@ -194,9 +197,9 @@ async def worker_batch_suite(job_id: str, payload: BatchPayload):
             report = None
             timeout = max(1, min(payload.timeout_seconds, settings.RUNNER_TIMEOUT_SEC))
             if payload.mode == 'statevector':
-                report = await run_single_circuit_comparison(qasm_string, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, runner_statuses)
+                report = await run_single_circuit_comparison(qasm_string, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, runner_statuses, payload.runner_phases)
             elif payload.mode == 'measured':
-                report = await run_single_circuit_measurement(qasm_string, payload.n_shots, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, runner_statuses)
+                report = await run_single_circuit_measurement(qasm_string, payload.n_shots, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, runner_statuses, payload.runner_phases)
             else:
                 raise ValueError(f"Unknown mode: {payload.mode}")
 

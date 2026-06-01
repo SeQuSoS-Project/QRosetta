@@ -128,13 +128,24 @@ function renderTabs(tabList) {
 }
 
 function getOptBadge(simulator, config) {
-    const optLevel = config[simulator] !== undefined ? config[simulator] : 0;
+    const parsed = typeof parseRunnerKey === 'function' ? parseRunnerKey(simulator) : { simId: simulator, isMulti: false };
+
+    let optLevel;
+    if (parsed.isMulti) {
+        // Self-comparison key carries its own opt level — config has no entry for it.
+        optLevel = parsed.optLevel;
+    } else {
+        let cv = config[simulator];
+        if (Array.isArray(cv)) cv = cv.length ? cv[0] : 0;   // single-job multi-run entry
+        optLevel = cv !== undefined ? cv : 0;
+    }
+
     if (optLevel > 0) {
         const frag = _cloneTemplate('tpl-opt-badge');
         const span = frag.querySelector('span');
         span.textContent = `L${optLevel}`;
 
-        const runnerInfo = typeof getRunnerOptInfo === 'function' ? getRunnerOptInfo(simulator) : {};
+        const runnerInfo = typeof getRunnerOptInfo === 'function' ? getRunnerOptInfo(parsed.simId) : {};
         const desc = runnerInfo.optimization_levels?.[String(optLevel)];
         span.title = desc
             ? `Optimization Level ${optLevel}: ${desc}`

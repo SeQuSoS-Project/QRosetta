@@ -1,5 +1,21 @@
 // Frontend logic for utils functionality.
 
+// Self-comparison virtual keys look like "<simId>~opt<L>~run<N>". A plain canonical
+// id (e.g. "qiskit", "pennylane-default") parses as a single, non-multi run.
+function parseRunnerKey(key) {
+    const m = /^(.+)~opt(\d+)~run(\d+)$/.exec(key || '');
+    if (m) {
+        return { simId: m[1], optLevel: parseInt(m[2]), runIndex: parseInt(m[3]), isMulti: true };
+    }
+    return { simId: key, optLevel: null, runIndex: null, isMulti: false };
+}
+
+function formatRunnerLabel(key, nameMap) {
+    const { simId, optLevel, runIndex, isMulti } = parseRunnerKey(key);
+    const base = (nameMap && nameMap[simId]) || simId;
+    return isMulti ? `${base} · L${optLevel} #${runIndex}` : base;
+}
+
 function isConnectionError(errorMsg) {
     if (!errorMsg) return false;
     const msg = errorMsg.toLowerCase();
@@ -95,7 +111,7 @@ function updateRunnerStatuses(statuses) {
 
     for (const [simId, status] of Object.entries(statuses)) {
         const cfg = _STATUS_CFG[status] || _STATUS_CFG['queued'];
-        const name = _RUNNER_NAMES[simId] || simId;
+        const name = formatRunnerLabel(simId, _RUNNER_NAMES);
 
         const prev = _runnerPhases[simId];
         const statusChanged = !prev || prev.status !== status;

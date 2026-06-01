@@ -15,6 +15,8 @@ const Store = {
         currentHistoryRunId: null,
         maxQubitsStatevector: 18,
         maxQubitsMeasured: 24,
+        maxRunsPerRunner: 16,
+        maxTotalRuns: 48,
     },
 
     dispatch(action, payload) {
@@ -61,6 +63,8 @@ const Store = {
             case 'SET_CONFIG_LIMITS':
                 this.state.maxQubitsStatevector = payload.max_qubits_statevector;
                 this.state.maxQubitsMeasured = payload.max_qubits_measured;
+                if (payload.max_runs_per_runner !== undefined) this.state.maxRunsPerRunner = payload.max_runs_per_runner;
+                if (payload.max_total_runs !== undefined) this.state.maxTotalRuns = payload.max_total_runs;
                 break;
             default:
                 console.warn(`[State] Unknown action: ${action}`);

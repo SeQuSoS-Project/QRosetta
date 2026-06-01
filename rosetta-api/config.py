@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     MAX_QASM_SIZE: int = 1_000_000
     MAX_QASM_GATES: int = 10_000
 
+    # Multi-run (self-comparison) fan-out caps. One request expands to one job per
+    # configured run; without these a crafted request could spawn unbounded httpx
+    # calls (local) or K8s Job pods (Rahti) and blow up the O(n^2) divergence analysis.
+    MAX_RUNS_PER_RUNNER: int = 16
+    MAX_TOTAL_RUNS: int = 48
+
     class Config:
         env_file = ".env"
 

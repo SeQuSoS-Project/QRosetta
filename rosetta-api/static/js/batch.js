@@ -133,7 +133,7 @@ async function viewBatchItem(index) {
         return;
     }
 
-    qasmInput.value = "
+    qasmInput.value = "";
 
     try {
         dispatch('SET_PROCESSING', true);
@@ -156,10 +156,10 @@ async function viewBatchItem(index) {
             dispatch('SET_CURRENT_ALGO_NAME', item.name + ` (${item.qubits}q)`);
             updateContextBar();
         } else {
-            qasmInput.value = "
+            qasmInput.value = "";
         }
     } catch (e) {
-        qasmInput.value = "
+        qasmInput.value = "";
     } finally {
         setLoading(false);
         dispatch('SET_PROCESSING', false);

@@ -13,6 +13,13 @@ from qrosetta_commons.helpers import get_logger
 logger = get_logger("rosetta-exporter")
 
 
+def _canonical_sim_id(simulator: str) -> str:
+    """Self-comparison results carry virtual keys like 'qiskit~opt1~run2' (built by the
+    dispatcher). Strip the '~opt~run' suffix back to the canonical runner id so provenance
+    lookups in runner_services resolve. Plain canonical ids pass through unchanged."""
+    return (simulator or "").split("~", 1)[0]
+
+
 class ExportFormat(str, Enum):
     """Supported export formats. Extensible for future additions (BagIt, DataCite, etc.)."""
     RO_CRATE = "ro-crate"
@@ -81,7 +88,7 @@ def _build_provenance(ctx: ExportContext) -> dict:
 
     runner_configs = {}
     for name in runners_used:
-        svc = ctx.runner_services.get(name, {})
+        svc = ctx.runner_services.get(_canonical_sim_id(name), {})
         runner_configs[name] = {
             "enabled": svc.get("enabled", False),
             "capabilities": svc.get("capabilities", []),
