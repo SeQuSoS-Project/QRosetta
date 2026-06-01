@@ -75,9 +75,16 @@ sed -i "s/<YOUR_NAMESPACE>/$NAMESPACE/g" infra/rahti/rbac.yaml 2>/dev/null || tr
 oc apply -f infra/rahti/rbac.yaml -n "$NAMESPACE"
 oc apply -f infra/rahti/api.yaml  -n "$NAMESPACE"
 
-# 3. Set image tag and restart the API pod
-echo "--- Setting IMAGE_TAG=$IMAGE_TAG and restarting rosetta-api ---"
-oc set env deployment/rosetta-api IMAGE_TAG="$IMAGE_TAG" -n "$NAMESPACE"
+# 3. Point the API deployment at the content-addressed hash tag and restart.
+#    api.yaml hardcodes rosetta-api:latest; with imagePullPolicy=IfNotPresent a node
+#    that already cached :latest will NOT pull a freshly pushed :latest, leaving the
+#    API on stale code. Setting the image to the immutable :$IMAGE_TAG tag (which the
+#    node has never cached) forces a real pull. This must run AFTER `oc apply` above,
+#    which re-pins the image back to :latest. IMAGE_TAG env is still needed so the
+#    dispatcher requests runner Job images by the same hash tag.
+echo "--- Setting rosetta-api image + IMAGE_TAG=$IMAGE_TAG and restarting ---"
+oc set env   deployment/rosetta-api IMAGE_TAG="$IMAGE_TAG" -n "$NAMESPACE"
+oc set image deployment/rosetta-api api="$REGISTRY/rosetta-api:$IMAGE_TAG" -n "$NAMESPACE"
 oc rollout status  deployment/rosetta-api -n "$NAMESPACE" --timeout=120s
 
 echo "========================================"
