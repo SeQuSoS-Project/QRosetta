@@ -29,6 +29,7 @@ services:
       - RUNNER_TIMEOUT_SEC=${RUNNER_TIMEOUT_SEC:-60}
     volumes:
       - rosetta_db_data:/home/appuser/app/data
+      - ./runners:/home/appuser/app/runners:ro
     networks:
       - isolated_net
     healthcheck:

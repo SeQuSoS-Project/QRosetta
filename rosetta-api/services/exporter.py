@@ -57,6 +57,85 @@ class ExportContext:
 #  Internal helpers
 # ---------------------------------------------------------------------------
 
+import os
+
+def _get_runner_version(runner_id: str) -> str:
+    """Attempt to read the primary dependency version from the runner's requirements.txt."""
+    runner_dir_map = {
+        "qiskit": "pytket-qiskit-runner",
+        "cirq": "pytket-cirq-runner",
+        "qulacs": "pytket-qulacs-runner",
+        "braket": "pytket-braket-runner",
+        "projectq": "pytket-projectq-runner",
+        "quest": "pytket-quest-runner",
+        "pennylane-lightning": "pennylane-lightning-runner",
+        "pennylane-default": "pennylane-default-runner",
+        "qsim-cirq": "qsim-cirq-runner",
+        "qibo": "qibo-runner",
+        "qrisp": "qrisp-runner",
+        "myqlm": "myqlm-runner",
+        "pyquil": "pyquil-runner",
+        "torchquantum": "torch-quantum-runner",
+        "quimb": "quimb-runner",
+        "cuquantum": "cuquantum-runner",
+    }
+    dir_name = runner_dir_map.get(runner_id)
+    if not dir_name:
+        return "unknown"
+        
+    base_paths = [
+        os.path.join(os.getcwd(), "runners", dir_name),
+        os.path.join(os.getcwd(), "..", "runners", dir_name),
+    ]
+    
+    versions = []
+    for base in base_paths:
+        req_path = os.path.join(base, "requirements.txt")
+        if os.path.exists(req_path):
+            try:
+                with open(req_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if "==" in line:
+                            pkg_name, pkg_version = line.split("==", 1)
+                            # Collect all quantum-related packages
+                            keywords = ["qiskit", "cirq", "qulacs", "pennylane", "qibo", "pytket", "cuquantum", "torch", "quimb", "myqlm", "qrisp", "pyquil"]
+                            if any(k in pkg_name.lower() for k in keywords):
+                                versions.append(f"{pkg_name.strip()} {pkg_version.strip()}")
+                    if not versions:
+                        f.seek(0)
+                        for line in f:
+                            if "==" in line:
+                                versions.append(line.strip().replace("==", " "))
+                                break
+            except Exception:
+                pass
+            break
+            
+    if versions:
+        return ", ".join(versions)
+    return "unknown"
+
+
+def _extract_runners_used(ctx: ExportContext) -> List[str]:
+    runners_used: List[str] = []
+    raw_results = ctx.results.get("raw_results", [])
+    if isinstance(raw_results, list):
+        for r in raw_results:
+            sim = r.get("simulator")
+            if sim and sim not in runners_used:
+                runners_used.append(sim)
+
+    benchmark_summary = ctx.results.get("benchmark_summary", [])
+    if isinstance(benchmark_summary, list):
+        for task_result in benchmark_summary:
+            for r in task_result.get("raw_results", []):
+                sim = r.get("simulator")
+                if sim and sim not in runners_used:
+                    runners_used.append(sim)
+    return runners_used
+
+
 def _strip_statevectors(data: Any) -> Any:
     """Recursively remove 'statevector' keys from nested dicts/lists."""
     if isinstance(data, dict):
@@ -68,23 +147,7 @@ def _strip_statevectors(data: Any) -> Any:
 
 def _build_provenance(ctx: ExportContext) -> dict:
     """Build a provenance manifest capturing runner configurations and versions."""
-    runners_used: List[str] = []
-
-    raw_results = ctx.results.get("raw_results", [])
-    if isinstance(raw_results, list):
-        for r in raw_results:
-            sim = r.get("simulator")
-            if sim:
-                runners_used.append(sim)
-
-    # Also check batch results
-    benchmark_summary = ctx.results.get("benchmark_summary", [])
-    if isinstance(benchmark_summary, list):
-        for task_result in benchmark_summary:
-            for r in task_result.get("raw_results", []):
-                sim = r.get("simulator")
-                if sim and sim not in runners_used:
-                    runners_used.append(sim)
+    runners_used = _extract_runners_used(ctx)
 
     runner_configs = {}
     for name in runners_used:
@@ -178,6 +241,7 @@ def _build_ro_crate_metadata(ctx: ExportContext, dir_name: str) -> dict:
         "name": "circuit.qasm",
         "description": "Input OpenQASM 2.0 circuit used for this benchmark run.",
         "encodingFormat": "text/x-qasm",
+        "programmingLanguage": {"@id": "#openqasm2"},
     })
 
     results_desc = (
@@ -209,11 +273,17 @@ def _build_ro_crate_metadata(ctx: ExportContext, dir_name: str) -> dict:
     })
 
     # --- 4. CreateAction (records the execution) ---
+    runners_used = _extract_runners_used(ctx)
+    instruments = [{"@id": "#quantum-rosetta"}]
+    for runner in runners_used:
+        runner_id = _canonical_sim_id(runner)
+        instruments.append({"@id": f"#{runner_id}"})
+
     graph.append({
         "@id": "#benchmark-run",
         "@type": "CreateAction",
         "name": "Quantum Rosetta benchmark execution",
-        "instrument": {"@id": "#quantum-rosetta"},
+        "instrument": instruments,
         "object": {"@id": "circuit.qasm"},
         "result": {"@id": "results.json"},
         "endTime": ctx.timestamp,
@@ -223,12 +293,33 @@ def _build_ro_crate_metadata(ctx: ExportContext, dir_name: str) -> dict:
         "@id": "#quantum-rosetta",
         "@type": "SoftwareApplication",
         "name": "Quantum Rosetta",
+        "softwareVersion": "1.0.0",
         "description": (
             "Microservices platform for cross-simulator quantum circuit benchmarking "
             "using OpenQASM 2.0 as the canonical input format."
         ),
         "url": "https://github.com/SeQuSoS-Project/qrosetta",
     })
+
+    # Add ComputerLanguage entity for OpenQASM 2.0
+    graph.append({
+        "@id": "#openqasm2",
+        "@type": "ComputerLanguage",
+        "name": "OpenQASM 2.0",
+        "url": "https://arxiv.org/abs/1707.03429",
+    })
+
+    # Add SoftwareApplication entities for each runner
+    for runner in runners_used:
+        runner_id = _canonical_sim_id(runner)
+        version = _get_runner_version(runner_id)
+        graph.append({
+            "@id": f"#{runner_id}",
+            "@type": "SoftwareApplication",
+            "name": f"{runner_id} Simulator Adapter",
+            "softwareVersion": version,
+            "description": f"Quantum execution environment provided by the {runner_id} backend adapter.",
+        })
 
     return {
         "@context": "https://w3id.org/ro/crate/1.1/context",
