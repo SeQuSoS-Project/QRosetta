@@ -6,7 +6,7 @@ from qrosetta_commons.helpers import get_logger
 from services.dispatcher_http import dispatch_http_local
 from services.dispatcher_k8s import dispatch_kubernetes_jobs
 
-EXECUTION_MODE = os.environ.get("EXECUTION_MODE", "local")
+EXECUTION_MODE = settings.EXECUTION_MODE
 logger = get_logger("rosetta-api")
 
 RUNNER_SERVICES = settings.get_runner_services()

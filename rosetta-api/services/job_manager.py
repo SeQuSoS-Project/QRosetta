@@ -24,19 +24,23 @@ logger = get_logger("rosetta-job-manager")
 
 ACTIVE_JOBS = {}
 
-async def run_single_circuit_comparison(qasm_string: str, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = 60, target_simulators: list = None, runner_statuses: dict = None, runner_phases: dict = None):
+async def run_single_circuit_comparison(qasm_string: str, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = 60, target_simulators: list = None, runner_statuses: dict = None, runner_phases: dict = None, apply_preprocessing: bool = True):
     logger.info(f"Processing circuit...")
     try:
-        tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_string)
-        logger.info(f"Successfully parsed QASM into {tk_circ.n_qubits} qubit circuit.")
-
-        RemoveBarriers().apply(tk_circ)
-        modified_qasm_string = pytket.qasm.circuit_to_qasm_str(tk_circ)
+        if apply_preprocessing:
+            tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_string)
+            logger.info(f"Successfully parsed QASM into {tk_circ.n_qubits} qubit circuit.")
+            RemoveBarriers().apply(tk_circ)
+            modified_qasm_string = pytket.qasm.circuit_to_qasm_str(tk_circ)
+        else:
+            modified_qasm_string = qasm_string
+            
         runner_payload = {
             "circuit_data": modified_qasm_string,
             "optimization_level": optimization_level,
             "runner_config": runner_config or {},
             "runner_phases": runner_phases or {},
+            "apply_preprocessing": apply_preprocessing,
         }
     except Exception as e:
         return { "input_qasm": qasm_string, "error": str(e) }
@@ -81,7 +85,7 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
         "raw_results": display_results
     }
 
-async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = 60, target_simulators: list = None, runner_statuses: dict = None, runner_phases: dict = None):
+async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = 60, target_simulators: list = None, runner_statuses: dict = None, runner_phases: dict = None, apply_preprocessing: bool = True):
     logger.info(f"Processing measured circuit for {n_shots} shots...")
 
     sampled_payload = {
@@ -90,11 +94,13 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
         "optimization_level": optimization_level,
         "runner_config": runner_config or {},
         "runner_phases": runner_phases or {},
+        "apply_preprocessing": apply_preprocessing,
     }
 
     try:
         tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_string)
-        RemoveBarriers().apply(tk_circ)
+        if apply_preprocessing:
+            RemoveBarriers().apply(tk_circ)
         n_qubits = tk_circ.n_qubits
         c_reg_name = "c"
         if c_reg_name not in [reg.name for reg in tk_circ.c_registers]:
@@ -113,6 +119,7 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
             "optimization_level": optimization_level,
             "runner_config": runner_config or {},
             "runner_phases": runner_phases or {},
+            "apply_preprocessing": apply_preprocessing,
         }
     except Exception as e:
         return { "input_qasm": qasm_string, "error": str(e) }
@@ -155,22 +162,22 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
         "raw_results": aggregated_results
     }
 
-async def worker_compare(job_id: str, qasm_string: str, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str, runner_phases: dict = None):
+async def worker_compare(job_id: str, qasm_string: str, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str, runner_phases: dict = None, apply_preprocessing: bool = True):
     runner_statuses = {}
     ACTIVE_JOBS[job_id]["status"] = "processing"
     ACTIVE_JOBS[job_id]["runner_statuses"] = runner_statuses
     try:
-        report = await run_single_circuit_comparison(qasm_string, optimization_level, runner_config, timeout, target_simulators, runner_statuses, runner_phases)
+        report = await run_single_circuit_comparison(qasm_string, optimization_level, runner_config, timeout, target_simulators, runner_statuses, runner_phases, apply_preprocessing)
         ACTIVE_JOBS[job_id] = {"status": "completed", "target": execution_target, "results": report, "runner_statuses": runner_statuses, "finished_at": time.time()}
     except Exception as e:
         ACTIVE_JOBS[job_id] = {"status": "failed", "target": execution_target, "error": str(e), "runner_statuses": runner_statuses, "finished_at": time.time()}
 
-async def worker_compare_measured(job_id: str, qasm_string: str, n_shots: int, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str, runner_phases: dict = None):
+async def worker_compare_measured(job_id: str, qasm_string: str, n_shots: int, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str, runner_phases: dict = None, apply_preprocessing: bool = True):
     runner_statuses = {}
     ACTIVE_JOBS[job_id]["status"] = "processing"
     ACTIVE_JOBS[job_id]["runner_statuses"] = runner_statuses
     try:
-        report = await run_single_circuit_measurement(qasm_string, n_shots, optimization_level, runner_config, timeout, target_simulators, runner_statuses, runner_phases)
+        report = await run_single_circuit_measurement(qasm_string, n_shots, optimization_level, runner_config, timeout, target_simulators, runner_statuses, runner_phases, apply_preprocessing)
         ACTIVE_JOBS[job_id] = {"status": "completed", "target": execution_target, "results": report, "runner_statuses": runner_statuses, "finished_at": time.time()}
     except Exception as e:
         ACTIVE_JOBS[job_id] = {"status": "failed", "target": execution_target, "error": str(e), "runner_statuses": runner_statuses, "finished_at": time.time()}
@@ -193,13 +200,13 @@ async def worker_batch_suite(job_id: str, payload: BatchPayload):
                     raise ValueError(f"Qubit count {task.qubits} exceeds limit of {settings.MAX_QUBITS_MEASURED}")
                 qasm_string = circuit_library.generate_circuit(task.algorithm, task.qubits)
 
-            validate_request(qasm_string, mode=payload.mode)
+            validate_request(qasm_string, mode=payload.mode, bypass_limits=payload.bypass_limits)
             report = None
             timeout = max(1, min(payload.timeout_seconds, settings.RUNNER_TIMEOUT_SEC))
             if payload.mode == 'statevector':
-                report = await run_single_circuit_comparison(qasm_string, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, runner_statuses, payload.runner_phases)
+                report = await run_single_circuit_comparison(qasm_string, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, runner_statuses, payload.runner_phases, payload.apply_preprocessing)
             elif payload.mode == 'measured':
-                report = await run_single_circuit_measurement(qasm_string, payload.n_shots, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, runner_statuses, payload.runner_phases)
+                report = await run_single_circuit_measurement(qasm_string, payload.n_shots, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, runner_statuses, payload.runner_phases, payload.apply_preprocessing)
             else:
                 raise ValueError(f"Unknown mode: {payload.mode}")
 

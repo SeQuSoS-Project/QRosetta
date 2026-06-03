@@ -62,3 +62,37 @@ async function pollJobStatus(jobId) {
         setTimeout(checkStatus, 1500);
     });
 }
+
+async function fetchMQTBench(algorithm, qubits) {
+    const res = await fetch(`${BASE_URL}/benchmarks/mqt?algorithm=${encodeURIComponent(algorithm)}&qubits=${encodeURIComponent(qubits)}`, {
+        headers: getAuthHeaders()
+    });
+    if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to fetch MQT Bench: ${res.status}`);
+    }
+    return await res.json();
+}
+
+async function fetchQASMBench(circuit) {
+    const res = await fetch(`${BASE_URL}/benchmarks/qasmbench?circuit=${encodeURIComponent(circuit)}`, {
+        headers: getAuthHeaders()
+    });
+    if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to fetch QASMBench: ${res.status}`);
+    }
+    return await res.json();
+}
+
+async function fetchMQTList() {
+    const res = await fetch(`${BASE_URL}/benchmarks/mqt/list`, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error(`Failed to fetch MQT list: ${res.status}`);
+    return await res.json();
+}
+
+async function fetchQASMBenchList() {
+    const res = await fetch(`${BASE_URL}/benchmarks/qasmbench/list`, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error(`Failed to fetch QASMBench list: ${res.status}`);
+    return await res.json();
+}

@@ -21,7 +21,7 @@ logger = get_logger("qibo-runner")
 
 app = FastAPI(title="Qibo Runner")
 
-def _parse(qasm_str: str, optimization_level: int = 0) -> Circuit:
+def _parse(qasm_str: str, optimization_level: int = 0) -> tuple[Circuit, list[str]]:
     """Parse QASM 2.0 into a Qibo Circuit and apply gate fusion.
 
     Level 0: no optimization
@@ -29,11 +29,14 @@ def _parse(qasm_str: str, optimization_level: int = 0) -> Circuit:
     Level 2: fuse up to 2-qubit blocks (max_qubits=2)
     """
     circuit = Circuit.from_qasm(qasm_str)
+    preprocessing_applied = []
     if optimization_level >= 2:
         circuit = circuit.fuse(max_qubits=2)
+        preprocessing_applied.append("qibo.Circuit.fuse(max_qubits=2): Fuses consecutive gate sequences acting on up to 2 qubits into single unitary blocks, reducing gate count at the cost of larger per-block matrices.")
     elif optimization_level == 1:
         circuit = circuit.fuse(max_qubits=1)
-    return circuit
+        preprocessing_applied.append("qibo.Circuit.fuse(max_qubits=1): Fuses consecutive single-qubit gate runs into single unitary blocks, reducing sequential gate overhead.")
+    return circuit, preprocessing_applied
 
 def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for Qibo simulation.")
@@ -41,7 +44,8 @@ def process_run(payload: dict) -> dict:
         check_qubits_limit(payload["circuit_data"], MAX_QUBITS_STATEVECTOR)
 
         t0 = time.perf_counter()
-        circuit = _parse(payload["circuit_data"], payload.get("optimization_level", 0))
+        circuit, preprocessing_applied = _parse(payload["circuit_data"], payload.get("optimization_level", 0))
+        transpiled_qasm = payload["circuit_data"]
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
@@ -75,7 +79,9 @@ def process_run(payload: dict) -> dict:
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "msb",
-            "theoretical_statevector_mb": theoretical_statevector_mb(circuit.nqubits)
+            "theoretical_statevector_mb": theoretical_statevector_mb(circuit.nqubits),
+            "preprocessing_applied": preprocessing_applied,
+            "transpiled_qasm": transpiled_qasm
         }
     except Exception as e:
         logger.error(f"Error during Qibo simulation: {str(e)}")
@@ -93,7 +99,8 @@ def process_run_measured(payload: dict) -> dict:
         check_qubits_limit(payload["circuit_data"], MAX_QUBITS_MEASURED)
 
         t0 = time.perf_counter()
-        circuit = _parse(payload["circuit_data"], payload.get("optimization_level", 0))
+        circuit, preprocessing_applied = _parse(payload["circuit_data"], payload.get("optimization_level", 0))
+        transpiled_qasm = payload["circuit_data"]
 
         if not circuit.measurements:
             circuit.add(gates.M(*range(circuit.nqubits)))
@@ -132,7 +139,9 @@ def process_run_measured(payload: dict) -> dict:
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "msb",
-            "theoretical_statevector_mb": theoretical_statevector_mb(circuit.nqubits)
+            "theoretical_statevector_mb": theoretical_statevector_mb(circuit.nqubits),
+            "preprocessing_applied": preprocessing_applied,
+            "transpiled_qasm": transpiled_qasm
         }
     except Exception as e:
         logger.error(f"Error during Qibo measurement simulation: {str(e)}")

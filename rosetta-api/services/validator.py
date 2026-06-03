@@ -26,11 +26,14 @@ def validate_runner_config(runner_config: dict):
             detail=f"Requested {total} total runs across all simulators, exceeding the limit of {settings.MAX_TOTAL_RUNS}. Reduce the run counts in multi-run mode."
         )
 
-def validate_request(qasm: str, mode: str = "statevector"):
-    if len(qasm) > settings.MAX_QASM_SIZE:
-        raise HTTPException(status_code=413, detail="Payload too large")
-    if qasm.count(";") > settings.MAX_QASM_GATES:
-        raise HTTPException(status_code=400, detail="Circuit too complex")
+def validate_request(qasm: str, mode: str = "statevector", bypass_limits: bool = False):
+    if bypass_limits and settings.EXECUTION_MODE == "local":
+        pass  # Skip gate limits for massive local runs
+    else:
+        if len(qasm) > settings.MAX_QASM_SIZE:
+            raise HTTPException(status_code=413, detail="Payload too large")
+        if qasm.count(";") > settings.MAX_QASM_GATES:
+            raise HTTPException(status_code=400, detail="Circuit too complex")
 
     max_qubits = settings.MAX_QUBITS_STATEVECTOR if mode == "statevector" else settings.MAX_QUBITS_MEASURED
 

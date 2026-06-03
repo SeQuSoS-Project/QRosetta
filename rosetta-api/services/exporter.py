@@ -1,5 +1,6 @@
 # FAIR Data Export engine — builds RO-Crate 1.1 ZIP bundles.
 
+import copy
 import io
 import json
 import zipfile
@@ -152,12 +153,33 @@ def _build_provenance(ctx: ExportContext) -> dict:
     runner_configs = {}
     for name in runners_used:
         svc = ctx.runner_services.get(_canonical_sim_id(name), {})
+        # Extract preprocessing_applied from results
+        preprocessing_applied = []
+        raw_results = ctx.results.get("raw_results", [])
+        if isinstance(raw_results, list):
+            for r in raw_results:
+                if r.get("simulator") == name:
+                    preprocessing_applied = r.get("preprocessing_applied", [])
+                    break
+        
+        if not preprocessing_applied:
+            benchmark_summary = ctx.results.get("benchmark_summary", [])
+            if isinstance(benchmark_summary, list):
+                for task_result in benchmark_summary:
+                    for r in task_result.get("raw_results", []):
+                        if r.get("simulator") == name:
+                            pp = r.get("preprocessing_applied", [])
+                            if pp:
+                                preprocessing_applied = pp
+                            break
+                            
         runner_configs[name] = {
             "enabled": svc.get("enabled", False),
             "capabilities": svc.get("capabilities", []),
             "optimization_levels": {
                 str(k): v for k, v in svc.get("optimization_levels", {}).items()
             },
+            "preprocessing_applied": preprocessing_applied
         }
 
     provenance = {
@@ -272,6 +294,36 @@ def _build_ro_crate_metadata(ctx: ExportContext, dir_name: str) -> dict:
         "encodingFormat": "application/json",
     })
 
+    # Check if there are transpiled circuits available in results
+    transpiled_circuits = []
+    raw_results = ctx.results.get("raw_results", [])
+    if isinstance(raw_results, list):
+        for r in raw_results:
+            tq = r.get("transpiled_qasm")
+            if tq:
+                transpiled_circuits.append(r.get("simulator"))
+                
+    if not transpiled_circuits:
+        benchmark_summary = ctx.results.get("benchmark_summary", [])
+        if isinstance(benchmark_summary, list):
+            for task_result in benchmark_summary:
+                for r in task_result.get("raw_results", []):
+                    tq = r.get("transpiled_qasm")
+                    if tq and r.get("simulator") not in transpiled_circuits:
+                        transpiled_circuits.append(r.get("simulator"))
+
+    # Add transpiled circuit entities
+    for sim in transpiled_circuits:
+        graph.append({
+            "@id": f"transpiled_circuits/{sim}.qasm",
+            "@type": "File",
+            "name": f"{sim}.qasm",
+            "description": f"The exact transpiled and preprocessed QASM 2.0 code that was executed by the {sim} backend adapter.",
+            "encodingFormat": "text/x-qasm",
+            "programmingLanguage": {"@id": "#openqasm2"},
+        })
+        root_entity["hasPart"].append({"@id": f"transpiled_circuits/{sim}.qasm"})
+
     # --- 4. CreateAction (records the execution) ---
     runners_used = _extract_runners_used(ctx)
     instruments = [{"@id": "#quantum-rosetta"}]
@@ -340,9 +392,14 @@ def build_ro_crate(ctx: ExportContext) -> bytes:
     ts_slug = ctx.timestamp.replace(":", "-").replace("+", "p")
     dir_name = f"rosetta-export-{ts_slug}"
 
-    # Prepare results — conditionally strip statevectors
+    # Prepare results — conditionally strip statevectors. results_data must be a
+    # distinct object from ctx.results: below we pop transpiled_qasm out of it (to
+    # keep results.json small) but still read transpiled_qasm from ctx.results when
+    # writing the transpiled_circuits/ files. _strip_statevectors already returns a
+    # fresh structure; deepcopy the keep-statevectors branch so the pop can't erase
+    # the transpiled circuits before they are written.
     if ctx.include_statevectors:
-        results_data = ctx.results
+        results_data = copy.deepcopy(ctx.results)
     else:
         results_data = _strip_statevectors(ctx.results)
 
@@ -359,6 +416,18 @@ def build_ro_crate(ctx: ExportContext) -> bytes:
             f"{dir_name}/circuit.qasm",
             ctx.qasm_string,
         )
+        # Strip transpiled_qasm from results_data to save space, since we dump them separately
+        if isinstance(results_data.get("raw_results"), list):
+            for r in results_data["raw_results"]:
+                r.pop("transpiled_qasm", None)
+        
+        benchmark_summary = results_data.get("benchmark_summary", [])
+        if isinstance(benchmark_summary, list):
+            for task_result in benchmark_summary:
+                if isinstance(task_result.get("raw_results"), list):
+                    for r in task_result["raw_results"]:
+                        r.pop("transpiled_qasm", None)
+
         zf.writestr(
             f"{dir_name}/results.json",
             json.dumps(results_data, indent=2, ensure_ascii=False),
@@ -367,6 +436,27 @@ def build_ro_crate(ctx: ExportContext) -> bytes:
             f"{dir_name}/provenance.json",
             json.dumps(provenance_data, indent=2, ensure_ascii=False),
         )
+
+        # Write transpiled circuits
+        raw_results = ctx.results.get("raw_results", [])
+        if isinstance(raw_results, list):
+            for r in raw_results:
+                tq = r.get("transpiled_qasm")
+                sim = r.get("simulator")
+                if tq and sim:
+                    zf.writestr(f"{dir_name}/transpiled_circuits/{sim}.qasm", tq)
+                    
+        benchmark_summary = ctx.results.get("benchmark_summary", [])
+        if isinstance(benchmark_summary, list):
+            for task_result in benchmark_summary:
+                for r in task_result.get("raw_results", []):
+                    tq = r.get("transpiled_qasm")
+                    sim = r.get("simulator")
+                    if tq and sim:
+                        try:
+                            zf.getinfo(f"{dir_name}/transpiled_circuits/{sim}.qasm")
+                        except KeyError:
+                            zf.writestr(f"{dir_name}/transpiled_circuits/{sim}.qasm", tq)
 
     logger.info(f"Built RO-Crate ZIP: {dir_name} ({buf.tell()} bytes)")
     return buf.getvalue()

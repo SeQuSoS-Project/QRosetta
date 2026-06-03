@@ -11,7 +11,8 @@ from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevect
 import numpy as np
 import pytket.qasm
 from pytket.extensions.cirq import tk_to_cirq
-from pytket.passes import RemoveBarriers
+from pytket.passes import RemoveBarriers, auto_rebase_pass
+from pytket.circuit import OpType
 from pytket.transform import Transform
 import cirq
 import time
@@ -27,16 +28,23 @@ logger = get_logger("qsim-cirq-runner")
 
 app = FastAPI(title="qsim-Cirq Runner")
 
-def _to_cirq_circuit(qasm_str: str, optimization_level: int = 0) -> cirq.Circuit:
+def _to_cirq_circuit(qasm_str: str, optimization_level: int = 0, apply_preprocessing: bool = True) -> tuple[cirq.Circuit, list[str], "pytket.circuit.Circuit"]:
     """Parse QASM string via pytket, convert to Cirq, then apply Cirq-native optimizations.
 
-    Level 0: no optimization
-    Level 1: basic cleanup (drop empty moments, align)
-    Level 2: full reduction (eject Z/phased-Paulis, merge single-qubit gates)
+    Returns the pytket Circuit (not its QASM string) so the caller can serialize it
+    for provenance outside the timed compilation window.
     """
     tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_str)
-    RemoveBarriers().apply(tk_circ)
-    Transform.RebaseToRzRx().apply(tk_circ)
+
+    preprocessing_applied = []
+    if apply_preprocessing:
+        RemoveBarriers().apply(tk_circ)
+        preprocessing_applied.append("pytket.passes.RemoveBarriers(): Removes barrier instructions from the circuit to prevent parsing failures in the backend adapter.")
+        auto_rebase_pass({OpType.CX, OpType.Rz, OpType.Rx}).apply(tk_circ)
+        preprocessing_applied.append("pytket.passes.auto_rebase_pass({CX, Rz, Rx}): Universally decomposes complex multi-qubit and single-qubit gates (like CU3, CRX) into a standard CX/Rz/Rx basis to prevent parsing failures in the backend.")
+    else:
+        Transform.RebaseToRzRx().apply(tk_circ)
+
     circ = tk_to_cirq(tk_circ)
 
     if optimization_level >= 1:
@@ -49,7 +57,7 @@ def _to_cirq_circuit(qasm_str: str, optimization_level: int = 0) -> cirq.Circuit
         circ = cirq.merge_single_qubit_gates_to_phxz(circ)
         circ = cirq.drop_empty_moments(circ)
 
-    return circ
+    return circ, preprocessing_applied, tk_circ
 
 def _strip_measurements(circ: cirq.Circuit) -> cirq.Circuit:
     """Return a copy of the circuit with all measurement gates removed."""
@@ -76,11 +84,14 @@ def process_run(payload: dict) -> dict:
         check_qubits_limit(payload["circuit_data"], MAX_QUBITS_STATEVECTOR)
 
         t0 = time.perf_counter()
-        cirq_circ = _to_cirq_circuit(circuit_data, optimization_level)
+        cirq_circ, preprocessing_applied, tk_export = _to_cirq_circuit(circuit_data, optimization_level, payload.get("apply_preprocessing", True))
         cirq_circ_no_meas = _strip_measurements(cirq_circ)
         simulator = qsimcirq.QSimSimulator()
         t1 = time.perf_counter()
         compilation_time = t1 - t0
+
+        # Provenance only — serialized after t1 so it does not inflate compilation_time.
+        transpiled_qasm = pytket.qasm.circuit_to_qasm_str(tk_export)
 
         _ = simulator.simulate(cirq_circ_no_meas)
 
@@ -113,7 +124,9 @@ def process_run(payload: dict) -> dict:
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "msb",
-            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
+            "preprocessing_applied": preprocessing_applied,
+            "transpiled_qasm": transpiled_qasm
         }
     except Exception as e:
         logger.error(f"Error during qsim-Cirq simulation: {str(e)}")
@@ -144,7 +157,7 @@ def process_run_measured(payload: dict) -> dict:
         check_qubits_limit(payload["circuit_data"], MAX_QUBITS_MEASURED)
 
         t0 = time.perf_counter()
-        cirq_circ = _to_cirq_circuit(circuit_data, optimization_level)
+        cirq_circ, preprocessing_applied, tk_export = _to_cirq_circuit(circuit_data, optimization_level, payload.get("apply_preprocessing", True))
 
         all_qubits = sorted(cirq_circ.all_qubits())
         circ_with_meas = _strip_measurements(cirq_circ) + cirq.measure(
@@ -153,6 +166,9 @@ def process_run_measured(payload: dict) -> dict:
         simulator = qsimcirq.QSimSimulator()
         t1 = time.perf_counter()
         compilation_time = t1 - t0
+
+        # Provenance only — serialized after t1 so it does not inflate compilation_time.
+        transpiled_qasm = pytket.qasm.circuit_to_qasm_str(tk_export)
 
         _ = simulator.run(circ_with_meas, repetitions=n_shots)
 
@@ -190,7 +206,9 @@ def process_run_measured(payload: dict) -> dict:
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "msb",
-            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
+            "preprocessing_applied": preprocessing_applied,
+            "transpiled_qasm": transpiled_qasm
         }
     except Exception as e:
         logger.error(f"Error during qsim-Cirq measurement simulation: {str(e)}")

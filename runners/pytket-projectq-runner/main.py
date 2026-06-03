@@ -45,7 +45,12 @@ def process_run(payload: dict) -> dict:
         t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload["circuit_data"])
         n_qubits = tk_circ.n_qubits
-        RemoveBarriers().apply(tk_circ)
+        preprocessing_applied = []
+        if payload.get("apply_preprocessing", True):
+            RemoveBarriers().apply(tk_circ)
+            preprocessing_applied.append("pytket.passes.RemoveBarriers(): Removes barrier instructions from the circuit to prevent parsing failures in the backend adapter.")
+
+        transpiled_qasm = pytket.qasm.circuit_to_qasm_str(tk_circ)
 
         Transform.RebaseToTket().apply(tk_circ)
 
@@ -84,7 +89,9 @@ def process_run(payload: dict) -> dict:
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "lsb",
-            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
+            "preprocessing_applied": preprocessing_applied,
+            "transpiled_qasm": transpiled_qasm
         }
     except Exception as e:
         logger.error(f"Error during ProjectQ simulation: {str(e)}")
@@ -105,7 +112,12 @@ def process_run_measured(payload: dict) -> dict:
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload["circuit_data"])
         n_qubits = tk_circ.n_qubits
 
-        RemoveBarriers().apply(tk_circ)
+        preprocessing_applied = []
+        if payload.get("apply_preprocessing", True):
+            RemoveBarriers().apply(tk_circ)
+            preprocessing_applied.append("pytket.passes.RemoveBarriers(): Removes barrier instructions from the circuit to prevent parsing failures in the backend adapter.")
+
+        transpiled_qasm = pytket.qasm.circuit_to_qasm_str(tk_circ)
 
         Transform.RebaseToTket().apply(tk_circ)
 
@@ -145,7 +157,9 @@ def process_run_measured(payload: dict) -> dict:
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "lsb",
-            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
+            "preprocessing_applied": preprocessing_applied,
+            "transpiled_qasm": transpiled_qasm
         }
     except Exception as e:
         logger.error(f"Error during ProjectQ measurement simulation: {str(e)}")

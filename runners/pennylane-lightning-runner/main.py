@@ -24,18 +24,26 @@ def process_run(payload: dict) -> dict:
 
         t0 = time.perf_counter()
         circuit_data = strip_barriers_from_qasm(payload["circuit_data"])
+        transpiled_qasm = circuit_data
         qasm_op = qml.from_qasm(circuit_data)
         num_qubits = get_num_qubits_from_qasm(payload["circuit_data"])
         dev = qml.device("lightning.qubit", wires=num_qubits, shots=None)
 
         level = payload.get("optimization_level", 0)
         passes = []
+        preprocessing_applied = ["qrosetta_commons.helpers.strip_barriers_from_qasm(): Strips barrier instructions from the QASM string, as PennyLane's QASM parser does not support them."]
         if level == 1:
             passes = [qml.transforms.cancel_inverses]
+            preprocessing_applied.append("qml.transforms.cancel_inverses: Cancels adjacent inverse gate pairs (e.g. H·H, X·X) to reduce gate count.")
         elif level == 2:
             passes = [qml.transforms.cancel_inverses, qml.transforms.merge_rotations]
+            preprocessing_applied.append("qml.transforms.cancel_inverses: Cancels adjacent inverse gate pairs (e.g. H·H, X·X) to reduce gate count.")
+            preprocessing_applied.append("qml.transforms.merge_rotations: Merges consecutive rotation gates on the same qubit/axis into a single rotation.")
         elif level >= 3:
             passes = [qml.transforms.commute_controlled, qml.transforms.cancel_inverses, qml.transforms.merge_rotations]
+            preprocessing_applied.append("qml.transforms.commute_controlled: Pushes single-qubit gates through controlled gates to enable further cancellations.")
+            preprocessing_applied.append("qml.transforms.cancel_inverses: Cancels adjacent inverse gate pairs (e.g. H·H, X·X) to reduce gate count.")
+            preprocessing_applied.append("qml.transforms.merge_rotations: Merges consecutive rotation gates on the same qubit/axis into a single rotation.")
 
         @functools.partial(qml.compile, pipeline=passes)
         @qml.qnode(dev)
@@ -73,7 +81,9 @@ def process_run(payload: dict) -> dict:
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "msb",
-            "theoretical_statevector_mb": theoretical_statevector_mb(num_qubits)
+            "theoretical_statevector_mb": theoretical_statevector_mb(num_qubits),
+            "preprocessing_applied": preprocessing_applied,
+            "transpiled_qasm": transpiled_qasm
         }
     except Exception as e:
         logger.error(f"Error during Pennylane-Lightning statevector simulation: {str(e)}")
@@ -92,18 +102,26 @@ def process_run_measured(payload: dict) -> dict:
 
         t0 = time.perf_counter()
         circuit_data = strip_barriers_from_qasm(payload["circuit_data"])
+        transpiled_qasm = circuit_data
         qasm_op = qml.from_qasm(circuit_data)
         num_qubits = get_num_qubits_from_qasm(payload["circuit_data"])
         dev = qml.device("lightning.qubit", wires=num_qubits, shots=None)
 
         level = payload.get("optimization_level", 0)
         passes = []
+        preprocessing_applied = ["qrosetta_commons.helpers.strip_barriers_from_qasm(): Strips barrier instructions from the QASM string, as PennyLane's QASM parser does not support them."]
         if level == 1:
             passes = [qml.transforms.cancel_inverses]
+            preprocessing_applied.append("qml.transforms.cancel_inverses: Cancels adjacent inverse gate pairs (e.g. H·H, X·X) to reduce gate count.")
         elif level == 2:
             passes = [qml.transforms.cancel_inverses, qml.transforms.merge_rotations]
+            preprocessing_applied.append("qml.transforms.cancel_inverses: Cancels adjacent inverse gate pairs (e.g. H·H, X·X) to reduce gate count.")
+            preprocessing_applied.append("qml.transforms.merge_rotations: Merges consecutive rotation gates on the same qubit/axis into a single rotation.")
         elif level >= 3:
             passes = [qml.transforms.commute_controlled, qml.transforms.cancel_inverses, qml.transforms.merge_rotations]
+            preprocessing_applied.append("qml.transforms.commute_controlled: Pushes single-qubit gates through controlled gates to enable further cancellations.")
+            preprocessing_applied.append("qml.transforms.cancel_inverses: Cancels adjacent inverse gate pairs (e.g. H·H, X·X) to reduce gate count.")
+            preprocessing_applied.append("qml.transforms.merge_rotations: Merges consecutive rotation gates on the same qubit/axis into a single rotation.")
 
         @functools.partial(qml.compile, pipeline=passes)
         @qml.qnode(dev)
@@ -141,7 +159,9 @@ def process_run_measured(payload: dict) -> dict:
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "msb",
-            "theoretical_statevector_mb": theoretical_statevector_mb(num_qubits)
+            "theoretical_statevector_mb": theoretical_statevector_mb(num_qubits),
+            "preprocessing_applied": preprocessing_applied,
+            "transpiled_qasm": transpiled_qasm
         }
     except Exception as e:
         logger.error(f"Error during Pennylane-Lightning measurement simulation: {str(e)}")

@@ -13,6 +13,7 @@ from pytket.extensions.qiskit import tk_to_qiskit
 from qiskit_aer import AerSimulator
 from qiskit.circuit import QuantumCircuit
 from qiskit import transpile as qiskit_transpile
+from qiskit import qasm2
 import time
 import gc
 from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED
@@ -30,9 +31,14 @@ def process_run(payload: dict) -> dict:
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload["circuit_data"])
         n_qubits = tk_circ.n_qubits
         qiskit_circ = tk_to_qiskit(tk_circ)
+        
+        preprocessing_applied = []
         opt_level = payload.get("optimization_level", 0)
         if opt_level > 0:
             qiskit_circ = qiskit_transpile(qiskit_circ, optimization_level=min(opt_level, 3))
+            preprocessing_applied.append(f"qiskit.compiler.transpile(level={min(opt_level, 3)}): Native Qiskit transpilation pass applied to optimize the circuit structure for the Aer backend.")
+        
+        transpiled_qasm = qasm2.dumps(qiskit_circ)
         qiskit_circ.save_statevector()
         backend = AerSimulator(precision="double")
         t1 = time.perf_counter()
@@ -67,7 +73,9 @@ def process_run(payload: dict) -> dict:
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "lsb",
-            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
+            "preprocessing_applied": preprocessing_applied,
+            "transpiled_qasm": transpiled_qasm
         }
     except Exception as e:
         logger.error(f"Error during Qiskit simulation: {str(e)}")
@@ -88,9 +96,14 @@ def process_run_measured(payload: dict) -> dict:
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload["circuit_data"])
         n_qubits = tk_circ.n_qubits
         qiskit_circ = tk_to_qiskit(tk_circ)
+        
+        preprocessing_applied = []
         opt_level = payload.get("optimization_level", 0)
         if opt_level > 0:
             qiskit_circ = qiskit_transpile(qiskit_circ, optimization_level=min(opt_level, 3))
+            preprocessing_applied.append(f"qiskit.compiler.transpile(level={min(opt_level, 3)}): Native Qiskit transpilation pass applied to optimize the circuit structure for the Aer backend.")
+            
+        transpiled_qasm = qasm2.dumps(qiskit_circ)
         backend = AerSimulator(precision="double")
         t1 = time.perf_counter()
         compilation_time = t1 - t0
@@ -138,7 +151,9 @@ def process_run_measured(payload: dict) -> dict:
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "lsb",
-            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
+            "preprocessing_applied": preprocessing_applied,
+            "transpiled_qasm": transpiled_qasm
         }
     except Exception as e:
         logger.error(f"Error during Qiskit measurement simulation: {str(e)}")
