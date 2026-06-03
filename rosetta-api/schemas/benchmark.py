@@ -15,6 +15,8 @@ class QasmPayload(BaseModel):
     timeout_seconds: int = 60
     target_simulators: List[str] = Field(default_factory=list)
     execution_target: str = "kubernetes"
+    bypass_limits: bool = False
+    apply_preprocessing: bool = True
 
 class MeasuredQasmPayload(BaseModel):
     qasm_string: str
@@ -25,6 +27,8 @@ class MeasuredQasmPayload(BaseModel):
     timeout_seconds: int = 60
     target_simulators: List[str] = Field(default_factory=list)
     execution_target: str = "kubernetes"
+    bypass_limits: bool = False
+    apply_preprocessing: bool = True
 
 class MeasuredBenchmarkPayload(BaseModel):
     n_shots: int = 1024
@@ -48,6 +52,8 @@ class BatchPayload(BaseModel):
     timeout_seconds: int = 60
     target_simulators: List[str] = Field(default_factory=list)
     execution_target: str = "kubernetes"
+    bypass_limits: bool = False
+    apply_preprocessing: bool = True
 
 class VisualizerResponse(BaseModel):
     url: str
@@ -68,6 +74,8 @@ class RunnerPerformanceMetrics(BaseModel):
     memory_usage_mb: Optional[float] = 0.0
     process_peak_mb: Optional[float] = 0.0
     error: Optional[str] = None
+    preprocessing_applied: Optional[List[str]] = None
+    transpiled_qasm: Optional[str] = None
 
 class ComparisonResult(BaseModel):
     input_qasm: str

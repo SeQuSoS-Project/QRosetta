@@ -85,7 +85,7 @@
                                 class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                         </div>
 
-                        <div class="grid grid-cols-4 gap-2">
+                        <div class="grid grid-cols-5 gap-2">
                             <button onclick="generateCircuit()"
                                 class="col-span-1 flex justify-center py-2 px-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none">
                                 Load
@@ -97,6 +97,10 @@
                             <button onclick="togglePlaylist()"
                                 class="col-span-1 flex justify-center py-2 px-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none">
                                 Manage
+                            </button>
+                            <button onclick="toggleBenchPanel()"
+                                class="col-span-1 flex justify-center py-2 px-2 border border-emerald-300 rounded-md shadow-sm text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 focus:outline-none">
+                                Bench
                             </button>
                             <button onclick="toggleConfigPanel()"
                                 class="col-span-1 flex justify-center py-2 px-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none">
@@ -116,6 +120,19 @@
                             <option value="lumi" disabled>LUMI (HPC) - Pending Phase 4</option>
                         </select>
                     </div>
+                    <div id="bypass-limits-container" class="flex flex-col mb-4 bg-white p-3 rounded shadow-sm border border-indigo-100">
+                        <label class="flex items-center space-x-2">
+                            <input type="checkbox" id="bypass-limits-checkbox" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
+                            <span class="text-sm font-medium text-indigo-900">Bypass API Safety Limits</span>
+                        </label>
+                        <span class="text-xs text-gray-500 mt-1">Local mode only — skips API gate/size guards. Runner qubit caps still apply.</span>
+                    </div>
+                    <div class="flex flex-col mb-4 bg-white p-3 rounded shadow-sm border border-indigo-100">
+                        <label class="flex items-center space-x-2">
+                            <input type="checkbox" id="apply-preprocessing-checkbox" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded" checked>
+                            <span class="text-sm font-medium text-indigo-900">Apply SDK Preprocessing Workarounds</span>
+                        </label>
+                    </div>
                     <div class="flex flex-col mb-4 bg-white p-3 rounded shadow-sm border border-indigo-100">
                         <label class="block text-sm font-medium text-indigo-900 mb-1">Timeout (seconds)</label>
                         <input type="number" id="timeout-input" value="300" min="30" max="300"
@@ -127,6 +144,63 @@
                     </div>
                     <div id="config-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- === BLOCK 1.5: BENCHMARKS === -->
+                <div id="benchmarks-panel" class="hidden p-4 border rounded-lg bg-emerald-50 border-emerald-200">
+                    <h2 class="text-lg font-semibold text-emerald-900 mb-3">Bench</h2>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-sm font-medium text-emerald-800">Suite</label>
+                            <div class="mt-1 flex space-x-4">
+                                <label class="flex items-center">
+                                    <input type="radio" name="bench-suite" value="mqt" checked onchange="toggleBenchSuite()">
+                                    <span class="ml-2 text-sm text-emerald-900">MQT Bench</span>
+                                </label>
+                                <label class="flex items-center">
+                                    <input type="radio" name="bench-suite" value="qasmbench" onchange="toggleBenchSuite()">
+                                    <span class="ml-2 text-sm text-emerald-900">QASMBench</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- MQT Bench Options -->
+                        <div id="bench-mqt-options" class="space-y-3">
+                            <div>
+                                <label for="bench-mqt-algo" class="block text-sm font-medium text-emerald-800">Algorithm</label>
+                                <select id="bench-mqt-algo" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-emerald-300 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm rounded-md">
+                                    <!-- Populated dynamically from /benchmarks/mqt/list -->
+                                </select>
+                            </div>
+                            <div>
+                                <label for="bench-mqt-qubits" class="block text-sm font-medium text-emerald-800">Qubits</label>
+                                <input type="number" id="bench-mqt-qubits" value="4" min="2" max="24"
+                                    class="mt-1 block w-full border border-emerald-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm">
+                            </div>
+                        </div>
+
+                        <!-- QASMBench Options -->
+                        <div id="bench-qasmbench-options" class="hidden space-y-3">
+                            <div>
+                                <label for="bench-qasmbench-circuit" class="block text-sm font-medium text-emerald-800">Circuit</label>
+                                <select id="bench-qasmbench-circuit" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-emerald-300 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm rounded-md">
+                                    <!-- Populated dynamically from /benchmarks/qasmbench/list -->
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2 mt-2">
+                            <button onclick="loadBenchmark()"
+                                class="col-span-1 flex justify-center py-2 px-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none">
+                                Load to Editor
+                            </button>
+                            <button onclick="addBenchmarkToBatch()"
+                                class="col-span-1 flex justify-center py-2 px-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-emerald-700 bg-emerald-100 hover:bg-emerald-200 focus:outline-none">
+                                + Add to Batch
+                            </button>
+                        </div>
+                        <div id="bench-error" class="hidden text-xs text-red-600 mt-2"></div>
                     </div>
                 </div>
 

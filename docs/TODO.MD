@@ -1,3 +1,14 @@
+June 3
+Add acknowledgements for the benchmarks, citations and links where appropriate without ruining the UI look
+
+
+June 2
+For each runner, whatever code preprocessing is being done to the circuit that is sent, we need to RECORD it for the ROCrate. Also the FLOW of how they are executed in EACH runner.
+SAME for MQTBench
+
+ADD A STOP RUN BUTTON
+Resolve: rosetta-api                 | SECRET_KEY is using the insecure default value. Set the SECRET_KEY environment variable before deploying to production.
+
 May 27 2026
 
 HTTP error! Status: 422 . Details: {"detail":[{"type":"int_type","loc":["body","runner_config","qiskit"],"msg":"Input should be a valid integer","input":[0,0,0,0]}]} 

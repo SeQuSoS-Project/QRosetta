@@ -75,6 +75,7 @@ def process_run(payload: dict) -> dict:
 
         t0 = time.perf_counter()
         circ = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
+        transpiled_qasm = _preprocess_qasm(payload["circuit_data"])
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
@@ -107,7 +108,9 @@ def process_run(payload: dict) -> dict:
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "msb",
-            "theoretical_statevector_mb": None
+            "theoretical_statevector_mb": None,
+            "preprocessing_applied": ["_preprocess_qasm(): Strips 'barrier', 'measure', and 'creg' statements from the QASM source, as quimb's tensor-network QASM parser does not support these instructions."],
+            "transpiled_qasm": transpiled_qasm
         }
     except Exception as e:
         logger.error(f"Error during Quimb simulation: {str(e)}\n{traceback.format_exc()}")
@@ -134,6 +137,7 @@ def process_run_measured(payload: dict) -> dict:
 
         t0 = time.perf_counter()
         circ = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
+        transpiled_qasm = _preprocess_qasm(payload["circuit_data"])
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
@@ -169,7 +173,9 @@ def process_run_measured(payload: dict) -> dict:
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "msb",
-            "theoretical_statevector_mb": None
+            "theoretical_statevector_mb": None,
+            "preprocessing_applied": ["_preprocess_qasm(): Strips 'barrier', 'measure', and 'creg' statements from the QASM source, as quimb's tensor-network QASM parser does not support these instructions."],
+            "transpiled_qasm": transpiled_qasm
         }
     except Exception as e:
         logger.error(f"Error during Quimb measurement simulation: {str(e)}\n{traceback.format_exc()}")

@@ -19,6 +19,7 @@ app = FastAPI(title="cuQuantum Runner")
 
 try:
     from qiskit import QuantumCircuit, transpile as qiskit_transpile
+    from qiskit import qasm2
     from qiskit_aer import AerSimulator, AerError
     AERSIM_AVAILABLE = True
     logger.info("qiskit-aer loaded successfully.")
@@ -59,10 +60,12 @@ def _compile(qasm_str: str, optimization_level: int = 0):
     Level 2: unitary synthesis + gate cancellation
     Level 3: heavy optimization (slowest compile, fewest gates)
     """
+    preprocessing_applied = []
     qc = QuantumCircuit.from_qasm_str(qasm_str)
     if optimization_level > 0:
         qc = qiskit_transpile(qc, optimization_level=min(optimization_level, 3))
-    return qc
+        preprocessing_applied.append(f"qiskit.compiler.transpile(level={min(optimization_level, 3)}): Native Qiskit transpilation pass applied to decompose and optimize the circuit for the Aer backend.")
+    return qc, preprocessing_applied
 
 def process_run(payload: dict) -> dict:
     logger.info(f"Received statevector request (GPU={_GPU_AVAILABLE}).")
@@ -73,7 +76,8 @@ def process_run(payload: dict) -> dict:
         check_qubits_limit(payload["circuit_data"], MAX_QUBITS_STATEVECTOR)
 
         t0 = time.perf_counter()
-        qc = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
+        qc, preprocessing_applied = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
+        transpiled_qasm = qasm2.dumps(qc)
         qc.remove_final_measurements(inplace=True)
         qc.save_statevector()
         sim = AerSimulator(method='statevector', device='GPU') if _GPU_AVAILABLE else AerSimulator(method='statevector')
@@ -108,7 +112,9 @@ def process_run(payload: dict) -> dict:
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "lsb",
-            "theoretical_statevector_mb": theoretical_statevector_mb(qc.num_qubits)
+            "theoretical_statevector_mb": theoretical_statevector_mb(qc.num_qubits),
+            "preprocessing_applied": preprocessing_applied,
+            "transpiled_qasm": transpiled_qasm
         }
     except Exception as e:
         logger.error(f"Error: {str(e)}\n{traceback.format_exc()}")
@@ -124,7 +130,8 @@ def process_run_measured(payload: dict) -> dict:
         check_qubits_limit(payload["circuit_data"], MAX_QUBITS_MEASURED)
 
         t0 = time.perf_counter()
-        qc = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
+        qc, preprocessing_applied = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
+        transpiled_qasm = qasm2.dumps(qc)
         sim = AerSimulator(method='statevector', device='GPU') if _GPU_AVAILABLE else AerSimulator(method='statevector')
         t1 = time.perf_counter()
         compilation_time = t1 - t0
@@ -160,7 +167,9 @@ def process_run_measured(payload: dict) -> dict:
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "lsb",
-            "theoretical_statevector_mb": theoretical_statevector_mb(qc.num_qubits)
+            "theoretical_statevector_mb": theoretical_statevector_mb(qc.num_qubits),
+            "preprocessing_applied": preprocessing_applied,
+            "transpiled_qasm": transpiled_qasm
         }
     except Exception as e:
         logger.error(f"Error: {str(e)}\n{traceback.format_exc()}")

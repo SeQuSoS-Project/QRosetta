@@ -4,6 +4,7 @@ import os
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
+    EXECUTION_MODE: str = os.getenv("EXECUTION_MODE", "local")
 
     PYTKET_QISKIT_RUNNER_URL: str = "http://pytket-qiskit-runner:8000"
     PYTKET_CIRQ_RUNNER_URL: str = "http://pytket-cirq-runner:8000"

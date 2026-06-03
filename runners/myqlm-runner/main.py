@@ -12,6 +12,9 @@ import re
 import numpy as np
 import time
 import gc
+import pytket.qasm
+from pytket.passes import auto_rebase_pass
+from pytket.circuit import OpType
 
 from qat.interop.openqasm import OqasmParser
 from qat.qpus import PyLinalg
@@ -22,16 +25,29 @@ app = FastAPI(title="myQLM Runner")
 
 _qpu = PyLinalg()
 
-def _preprocess_qasm(qasm_str: str) -> str:
+def _preprocess_qasm(qasm_str: str, apply_preprocessing: bool) -> tuple[str, list[str]]:
     """Substitute gates unsupported by myQLM's PyLinalg before parsing.
 
-    tdg: PyLinalg parses it as 'D-T' but has no matrix for it. rz(-pi/4) is
-    equivalent up to global phase, which is invariant under the JS-divergence
-    and fidelity metrics used for cross-simulator comparison.
+    If apply_preprocessing is True, use pytket to universally decompose 
+    complex gates into CX, Rz, Rx since myQLM rejects multi-controlled gates 
+    like CU3 and CRX.
     """
-    return re.sub(r'\btdg\b', 'rz(-pi/4)', qasm_str)
+    preprocessing_applied = []
+    transpiled_qasm = qasm_str
+    
+    if apply_preprocessing:
+        tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_str)
+        auto_rebase_pass({OpType.CX, OpType.Rz, OpType.Rx}).apply(tk_circ)
+        transpiled_qasm = pytket.qasm.circuit_to_qasm_str(tk_circ)
+        preprocessing_applied.append("pytket.passes.auto_rebase_pass({CX, Rz, Rx}): Universally decomposes complex multi-qubit and single-qubit gates (like CU3, CRX) into a standard CX/Rz/Rx basis to prevent OqasmParser from rejecting unsupported gates.")
+    else:
+        # Fallback to string regex for basic tdg substitution when transpilation is disabled
+        transpiled_qasm = re.sub(r'\btdg\b', 'rz(-pi/4)', qasm_str)
+        preprocessing_applied.append("Regex substitution: Replaced 'tdg' with 'rz(-pi/4)' because myQLM's PyLinalg lacks a native TDG matrix but preserves the equivalent transformation.")
+        
+    return transpiled_qasm, preprocessing_applied
 
-def _compile_circuit(qasm_str: str, optimization_level: int = 0):
+def _compile_circuit(transpiled_qasm: str, optimization_level: int = 0):
     """Parse QASM 2.0 into a myQLM Circuit. Fresh parser per call — OqasmParser is stateful.
 
     myQLM's PyLinalg QPU does not expose configurable circuit-level optimization
@@ -42,7 +58,7 @@ def _compile_circuit(qasm_str: str, optimization_level: int = 0):
             f"myQLM: optimization_level={optimization_level} requested "
             "but not supported by PyLinalg; running at level 0."
         )
-    return OqasmParser().compile(_preprocess_qasm(qasm_str))
+    return OqasmParser().compile(transpiled_qasm)
 
 def _get_statevector(circuit) -> np.ndarray:
     """Run PyLinalg with nbshots=0 and return the statevector."""
@@ -61,7 +77,8 @@ def process_run(payload: dict) -> dict:
         check_qubits_limit(payload["circuit_data"], MAX_QUBITS_STATEVECTOR)
 
         t0 = time.perf_counter()
-        circuit = _compile_circuit(payload["circuit_data"], payload.get("optimization_level", 0))
+        transpiled_qasm, preprocessing_applied = _preprocess_qasm(payload["circuit_data"], payload.get("apply_preprocessing", True))
+        circuit = _compile_circuit(transpiled_qasm, payload.get("optimization_level", 0))
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
@@ -95,7 +112,9 @@ def process_run(payload: dict) -> dict:
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "msb",
-            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
+            "preprocessing_applied": preprocessing_applied,
+            "transpiled_qasm": transpiled_qasm
         }
     except Exception as e:
         logger.error(f"Error during myQLM simulation: {str(e)}")
@@ -113,7 +132,8 @@ def process_run_measured(payload: dict) -> dict:
         check_qubits_limit(payload["circuit_data"], MAX_QUBITS_MEASURED)
 
         t0 = time.perf_counter()
-        circuit = _compile_circuit(payload["circuit_data"], payload.get("optimization_level", 0))
+        transpiled_qasm, preprocessing_applied = _preprocess_qasm(payload["circuit_data"], payload.get("apply_preprocessing", True))
+        circuit = _compile_circuit(transpiled_qasm, payload.get("optimization_level", 0))
         n_qubits = circuit.nbqbits
         t1 = time.perf_counter()
         compilation_time = t1 - t0
@@ -162,7 +182,9 @@ def process_run_measured(payload: dict) -> dict:
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "msb",
             "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
-            "sampling_method": "probability_rounding"
+            "sampling_method": "probability_rounding",
+            "preprocessing_applied": preprocessing_applied,
+            "transpiled_qasm": transpiled_qasm
         }
     except Exception as e:
         logger.error(f"Error during myQLM measurement simulation: {str(e)}")

@@ -81,7 +81,9 @@ def process_run(payload: dict) -> dict:
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "lsb",
-            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
+            "preprocessing_applied": [],
+            "transpiled_qasm": payload["circuit_data"]
         }
     except Exception as e:
         logger.error(f"Error during Qrisp simulation: {str(e)}\n{traceback.format_exc()}")
@@ -142,7 +144,9 @@ def process_run_measured(payload: dict) -> dict:
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "lsb",
-            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
+            "preprocessing_applied": [],
+            "transpiled_qasm": payload["circuit_data"]
         }
     except Exception as e:
         logger.error(f"Error during Qrisp measurement simulation: {str(e)}\n{traceback.format_exc()}")

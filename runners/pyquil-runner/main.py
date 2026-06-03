@@ -10,7 +10,8 @@ from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
 from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED
 import numpy as np
 import pytket.qasm
-from pytket.passes import RemoveBarriers, PeepholeOptimise2Q, FullPeepholeOptimise
+from pytket.passes import RemoveBarriers, PeepholeOptimise2Q, FullPeepholeOptimise, auto_rebase_pass
+from pytket.circuit import OpType
 from pytket.transform import Transform
 from pytket.extensions.pyquil import tk_to_pyquil
 from pyquil import Program
@@ -23,22 +24,29 @@ logger = get_logger("pyquil-runner")
 
 app = FastAPI(title="PyQuil Runner")
 
-def _to_quil_program(qasm_str: str, optimization_level: int = 0):
-    """Parse QASM via pytket and convert to a Quil Program.
-
-    Level 0: barrier removal only
-    Level 1: + PeepholeOptimise2Q (cancel redundant 2Q gates, merge 1Q sequences)
-    Level 2: + FullPeepholeOptimise (full 1Q merging + KAK-based 2Q reduction)
-    """
+def _to_quil_program(qasm_str: str, optimization_level: int = 0, apply_preprocessing: bool = True):
+    """Parse QASM via pytket and convert to a Quil Program."""
     tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_str)
-    RemoveBarriers().apply(tk_circ)
+
+    preprocessing_applied = []
+    if apply_preprocessing:
+        RemoveBarriers().apply(tk_circ)
+        preprocessing_applied.append("pytket.passes.RemoveBarriers(): Removes barrier instructions from the circuit to prevent parsing failures in the backend adapter.")
+        
     if optimization_level >= 2:
         FullPeepholeOptimise().apply(tk_circ)
     elif optimization_level == 1:
         PeepholeOptimise2Q().apply(tk_circ)
 
-    Transform.RebaseToRzRx().apply(tk_circ)
-    return tk_to_pyquil(tk_circ), tk_circ.n_qubits
+    if apply_preprocessing:
+        auto_rebase_pass({OpType.CX, OpType.Rz, OpType.Rx}).apply(tk_circ)
+        preprocessing_applied.append("pytket.passes.auto_rebase_pass({CX, Rz, Rx}): Universally decomposes complex multi-qubit and single-qubit gates (like CU3, CRX) into a standard CX/Rz/Rx basis to prevent parsing failures in the backend.")
+    else:
+        Transform.RebaseToRzRx().apply(tk_circ)
+        
+    # Return the pytket Circuit (not its QASM string) so the caller can serialize it
+    # for provenance outside the timed compilation window.
+    return tk_to_pyquil(tk_circ), tk_circ.n_qubits, preprocessing_applied, tk_circ
 
 def _gates_only(prog: Program) -> Program:
     """Return a Program with only Gate instructions — strips MEASURE, DECLARE, HALT, etc."""
@@ -62,10 +70,13 @@ def process_run(payload: dict) -> dict:
         check_qubits_limit(payload["circuit_data"], MAX_QUBITS_STATEVECTOR)
 
         t0 = time.perf_counter()
-        prog, n_qubits = _to_quil_program(payload["circuit_data"], payload.get("optimization_level", 0))
+        prog, n_qubits, preprocessing_applied, tk_export = _to_quil_program(payload["circuit_data"], payload.get("optimization_level", 0), payload.get("apply_preprocessing", True))
         gate_prog = _gates_only(prog)
         t1 = time.perf_counter()
         compilation_time = t1 - t0
+
+        # Provenance only — serialized after t1 so it does not inflate compilation_time.
+        transpiled_qasm = pytket.qasm.circuit_to_qasm_str(tk_export)
 
         _simulate_statevector(gate_prog, n_qubits)
 
@@ -96,7 +107,9 @@ def process_run(payload: dict) -> dict:
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "lsb",
-            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
+            "preprocessing_applied": preprocessing_applied,
+            "transpiled_qasm": transpiled_qasm
         }
     except Exception as e:
         logger.error(f"Error during PyQuil simulation: {str(e)}")
@@ -114,10 +127,13 @@ def process_run_measured(payload: dict) -> dict:
         check_qubits_limit(payload["circuit_data"], MAX_QUBITS_MEASURED)
 
         t0 = time.perf_counter()
-        prog, n_qubits = _to_quil_program(payload["circuit_data"], payload.get("optimization_level", 0))
+        prog, n_qubits, preprocessing_applied, tk_export = _to_quil_program(payload["circuit_data"], payload.get("optimization_level", 0), payload.get("apply_preprocessing", True))
         gate_prog = _gates_only(prog)
         t1 = time.perf_counter()
         compilation_time = t1 - t0
+
+        # Provenance only — serialized after t1 so it does not inflate compilation_time.
+        transpiled_qasm = pytket.qasm.circuit_to_qasm_str(tk_export)
 
         _simulate_statevector(gate_prog, n_qubits)
 
@@ -156,7 +172,9 @@ def process_run_measured(payload: dict) -> dict:
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "lsb",
-            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
+            "preprocessing_applied": preprocessing_applied,
+            "transpiled_qasm": transpiled_qasm
         }
     except Exception as e:
         logger.error(f"Error during PyQuil measurement simulation: {str(e)}")

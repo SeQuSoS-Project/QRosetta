@@ -61,3 +61,7 @@ htmlcov/
 memory/
 .cursorrules
 .gemini/
+
+# Local integration smoke scripts (hit localhost, not part of the test suite)
+/test_pytket.py
+/test_runners.py

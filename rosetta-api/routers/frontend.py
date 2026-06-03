@@ -43,6 +43,7 @@ async def get_config():
         "max_qasm_gates": settings.MAX_QASM_GATES,
         "max_runs_per_runner": settings.MAX_RUNS_PER_RUNNER,
         "max_total_runs": settings.MAX_TOTAL_RUNS,
+        "execution_mode": settings.EXECUTION_MODE,
     })
 
 @router.get("/download_latest_report")

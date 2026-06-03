@@ -22,6 +22,7 @@ try:
     import torchquantum as tq
     from torchquantum.plugin import qiskit2tq
     from qiskit import QuantumCircuit as QiskitCircuit, transpile as qiskit_transpile
+    from qiskit import qasm2
     TORCHQUANTUM_AVAILABLE = True
     logger.info("TorchQuantum and Qiskit loaded successfully.")
 except ImportError as e:
@@ -48,16 +49,19 @@ def _compile(qasm_str: str, optimization_level: int = 0):
     """
     qc = QiskitCircuit.from_qasm_str(qasm_str)
 
+    preprocessing_applied = []
     qc = qiskit_transpile(
         qc,
         optimization_level=min(max(optimization_level, 0), 2),
         basis_gates=_TQ_BASIS_GATES,
     )
+    preprocessing_applied.append(f"qiskit.compiler.transpile(level={min(max(optimization_level, 0), 2)}, basis_gates={_TQ_BASIS_GATES}): Native Qiskit transpilation pass applied to ensure all complex gates are decomposed into a safe basis set supported by TorchQuantum.")
 
+    transpiled_qasm = qasm2.dumps(qc)
     qc.remove_final_measurements(inplace=True)
     n_qubits = qc.num_qubits
     tq_module = qiskit2tq(qc)
-    return tq_module, n_qubits
+    return tq_module, n_qubits, preprocessing_applied, transpiled_qasm
 
 def _run_sv(tq_module, n_qubits: int) -> np.ndarray:
     """Execute the TorchQuantum module and return a numpy complex statevector."""
@@ -82,7 +86,7 @@ def process_run(payload: dict) -> dict:
         check_qubits_limit(payload["circuit_data"], MAX_QUBITS_STATEVECTOR)
 
         t0 = time.perf_counter()
-        tq_module, n_qubits = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
+        tq_module, n_qubits, preprocessing_applied, transpiled_qasm = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
@@ -115,7 +119,9 @@ def process_run(payload: dict) -> dict:
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "lsb",
-            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
+            "preprocessing_applied": preprocessing_applied,
+            "transpiled_qasm": transpiled_qasm
         }
     except Exception as e:
         logger.error(f"Error during TorchQuantum simulation: {str(e)}\n{traceback.format_exc()}")
@@ -141,7 +147,7 @@ def process_run_measured(payload: dict) -> dict:
         check_qubits_limit(payload["circuit_data"], MAX_QUBITS_MEASURED)
 
         t0 = time.perf_counter()
-        tq_module, n_qubits = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
+        tq_module, n_qubits, preprocessing_applied, transpiled_qasm = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
@@ -192,7 +198,9 @@ def process_run_measured(payload: dict) -> dict:
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "lsb",
-            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
+            "preprocessing_applied": preprocessing_applied,
+            "transpiled_qasm": transpiled_qasm
         }
     except Exception as e:
         logger.error(f"Error during TorchQuantum measurement simulation: {str(e)}\n{traceback.format_exc()}")

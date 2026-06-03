@@ -11,6 +11,7 @@ from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevect
 import numpy as np
 import pytket.qasm
 from pytket.extensions.qulacs import QulacsBackend
+from pytket.passes import RemoveBarriers
 import time
 import gc
 
@@ -26,11 +27,21 @@ def process_run(payload: dict) -> dict:
         t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload["circuit_data"])
         n_qubits = tk_circ.n_qubits
+        preprocessing_applied = []
+        if payload.get("apply_preprocessing", True):
+            RemoveBarriers().apply(tk_circ)
+            preprocessing_applied.append("pytket.passes.RemoveBarriers(): Removes barrier instructions from the circuit to prevent parsing failures in the Qulacs backend adapter.")
+
         backend = QulacsBackend()
         opt_level = min(payload.get("optimization_level", 0), 2)
         compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=opt_level)
+        if opt_level > 0:
+            preprocessing_applied.append(f"pytket QulacsBackend.get_compiled_circuit(level={opt_level}): pytket's native compilation pass for the Qulacs backend, decomposing gates into the backend's supported gate set.")
         t1 = time.perf_counter()
         compilation_time = t1 - t0
+
+        # Provenance only — serialized after t1 so it does not inflate compilation_time.
+        transpiled_qasm = pytket.qasm.circuit_to_qasm_str(tk_circ)
 
         _ = backend.process_circuit(compiled_circ)
 
@@ -61,7 +72,9 @@ def process_run(payload: dict) -> dict:
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "lsb",
-            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
+            "preprocessing_applied": preprocessing_applied,
+            "transpiled_qasm": transpiled_qasm
         }
     except Exception as e:
         logger.error(f"Error during Qulacs simulation: {str(e)}")
@@ -80,11 +93,22 @@ def process_run_measured(payload: dict) -> dict:
 
         t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload["circuit_data"])
+        n_qubits = tk_circ.n_qubits
+        preprocessing_applied = []
+        if payload.get("apply_preprocessing", True):
+            RemoveBarriers().apply(tk_circ)
+            preprocessing_applied.append("pytket.passes.RemoveBarriers(): Removes barrier instructions from the circuit to prevent parsing failures in the Qulacs backend adapter.")
+
         backend = QulacsBackend()
         opt_level = min(payload.get("optimization_level", 0), 2)
         compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=opt_level)
+        if opt_level > 0:
+            preprocessing_applied.append(f"pytket QulacsBackend.get_compiled_circuit(level={opt_level}): pytket's native compilation pass for the Qulacs backend, decomposing gates into the backend's supported gate set.")
         t1 = time.perf_counter()
         compilation_time = t1 - t0
+
+        # Provenance only — serialized after t1 so it does not inflate compilation_time.
+        transpiled_qasm = pytket.qasm.circuit_to_qasm_str(tk_circ)
 
         n_shots = payload.get("n_shots", 1024)
 
@@ -108,7 +132,7 @@ def process_run_measured(payload: dict) -> dict:
 
         logger.info(f"Qulacs measurement simulation successful in {execution_time:.4f}s (Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s).")
 
-        n_qubits = tk_circ.n_qubits
+
         return {
             "simulator": "qulacs",
             "counts": counts_dict,
@@ -119,7 +143,9 @@ def process_run_measured(payload: dict) -> dict:
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "lsb",
-            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
+            "preprocessing_applied": preprocessing_applied,
+            "transpiled_qasm": transpiled_qasm
         }
     except Exception as e:
         logger.error(f"Error during Qulacs measurement simulation: {str(e)}")

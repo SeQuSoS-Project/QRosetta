@@ -12,6 +12,7 @@ from pytket.extensions.quest import QuESTBackend
 from collections import Counter
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
 from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED
+from pytket.passes import RemoveBarriers
 import time
 import gc
 
@@ -26,11 +27,21 @@ def process_run(payload: dict) -> dict:
         t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload["circuit_data"])
         n_qubits = tk_circ.n_qubits
+        preprocessing_applied = []
+        if payload.get("apply_preprocessing", True):
+            RemoveBarriers().apply(tk_circ)
+            preprocessing_applied.append("pytket.passes.RemoveBarriers(): Removes barrier instructions from the circuit to prevent parsing failures in the QuEST backend adapter.")
+
         backend = QuESTBackend()
         opt_level = min(payload.get("optimization_level", 0), 2)
         compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=opt_level)
+        if opt_level > 0:
+            preprocessing_applied.append(f"pytket QuESTBackend.get_compiled_circuit(level={opt_level}): pytket's native compilation pass for the QuEST backend, decomposing gates into the backend's supported gate set.")
         t1 = time.perf_counter()
         compilation_time = t1 - t0
+
+        # Provenance only — serialized after t1 so it does not inflate compilation_time.
+        transpiled_qasm = pytket.qasm.circuit_to_qasm_str(tk_circ)
 
         _ = backend.process_circuit(compiled_circ)
 
@@ -60,7 +71,9 @@ def process_run(payload: dict) -> dict:
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "lsb",
-            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
+            "preprocessing_applied": preprocessing_applied,
+            "transpiled_qasm": transpiled_qasm
         }
     except Exception as e:
         logger.error(f"Error during QuEST simulation: {str(e)}")
@@ -80,12 +93,21 @@ def process_run_measured(payload: dict) -> dict:
         t0 = time.perf_counter()
         tk_circ = pytket.qasm.circuit_from_qasm_str(payload["circuit_data"])
         n_qubits = tk_circ.n_qubits
+        preprocessing_applied = []
+        if payload.get("apply_preprocessing", True):
+            RemoveBarriers().apply(tk_circ)
+            preprocessing_applied.append("pytket.passes.RemoveBarriers(): Removes barrier instructions from the circuit to prevent parsing failures in the QuEST backend adapter.")
 
         backend = QuESTBackend()
         opt_level = min(payload.get("optimization_level", 0), 2)
         compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=opt_level)
+        if opt_level > 0:
+            preprocessing_applied.append(f"pytket QuESTBackend.get_compiled_circuit(level={opt_level}): pytket's native compilation pass for the QuEST backend, decomposing gates into the backend's supported gate set.")
         t1 = time.perf_counter()
         compilation_time = t1 - t0
+
+        # Provenance only — serialized after t1 so it does not inflate compilation_time.
+        transpiled_qasm = pytket.qasm.circuit_to_qasm_str(tk_circ)
 
         _ = backend.process_circuit(compiled_circ)
 
@@ -117,7 +139,9 @@ def process_run_measured(payload: dict) -> dict:
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "lsb",
-            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits)
+            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
+            "preprocessing_applied": preprocessing_applied,
+            "transpiled_qasm": transpiled_qasm
         }
     except Exception as e:
         logger.error(f"Error during QuEST measurement simulation: {str(e)}")
