@@ -149,7 +149,7 @@
                     <div class="flex flex-col mb-3 bg-white p-3 rounded shadow-sm border border-indigo-100">
                         <label class="flex items-center space-x-2">
                             <input type="checkbox" id="apply-preprocessing-checkbox" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded" checked>
-                            <span class="text-sm font-medium text-indigo-900">Apply SDK Preprocessing Workarounds</span>
+                            <span class="text-sm font-medium text-indigo-900">Apply SDK Preprocessing</span>
                         </label>
                     </div>
                     <div id="bypass-limits-container" class="flex flex-col mb-4 bg-white p-3 rounded shadow-sm border border-indigo-100">
@@ -443,7 +443,7 @@
                                 <button id="download-btn" onclick="downloadFullReport()"
                                     class="hidden bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium py-1 px-3 rounded-md transition-all">Download Full JSON</button>
                                 <button onclick="downloadRawJson()"
-                                    class="bg-green-600 hover:bg-green-700 text-white text-xs font-medium py-1 px-3 rounded-md transition-all">Download RAW JSON</button>
+                                    class="bg-green-600 hover:bg-green-700 text-white text-xs font-medium py-1 px-3 rounded-md transition-all">Download Full JSON</button>
                                 <button id="btn-export-rocrate" onclick="exportRoCrate()"
                                     class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium py-1 px-3 rounded-md transition-all">📦 Export RO-Crate</button>
                                 <button id="copy-btn" onclick="copyRawJson(this)"
@@ -457,9 +457,9 @@
                                         class="h-3.5 w-3.5 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded">
                                     <span>Include raw statevectors</span>
                                 </label>
-                                <input type="text" id="export-author-name" placeholder="Author name (optional)"
+                                <input type="text" id="export-author-name" placeholder="Author name (optional)" autocomplete="new-password"
                                     class="border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 flex-1 min-w-[140px]">
-                                <input type="text" id="export-author-affiliation" placeholder="Affiliation (optional)"
+                                <input type="text" id="export-author-affiliation" placeholder="Affiliation (optional)" autocomplete="new-password"
                                     class="border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 flex-1 min-w-[140px]">
                             </div>
                             <pre id="json-output"

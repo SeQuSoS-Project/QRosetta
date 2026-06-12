@@ -95,7 +95,7 @@ function getDynamicMaxQubits() {
     return mode === 'statevector' ? getState().maxQubitsStatevector : getState().maxQubitsMeasured;
 }
 
-function updateQubitConstraints() {
+function updateQubitConstraints(e) {
     const algoId = document.getElementById('algo-select').value;
     const selectedAlgo = getState().allAlgorithms.find(a => a.id === algoId);
     const input = document.getElementById('algo-qubits');
@@ -103,7 +103,17 @@ function updateQubitConstraints() {
     if (selectedAlgo) {
         if (selectedAlgo.min_qubits !== undefined) input.min = selectedAlgo.min_qubits;
         input.max = Math.min(selectedAlgo.max_qubits || 24, getDynamicMaxQubits());
-        if (selectedAlgo.default_qubits !== undefined) input.value = selectedAlgo.default_qubits;
+        
+        const isAlgoChange = e && e.type === 'change';
+        if (isAlgoChange || !input.value) {
+            if (selectedAlgo.default_qubits !== undefined) input.value = selectedAlgo.default_qubits;
+        } else {
+            let val = parseInt(input.value);
+            if (!isNaN(val)) {
+                if (val > input.max) input.value = input.max;
+                if (val < input.min) input.value = input.min;
+            }
+        }
 
         if (selectedAlgo.min_qubits === selectedAlgo.max_qubits) {
             input.disabled = true;

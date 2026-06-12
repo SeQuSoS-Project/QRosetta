@@ -94,6 +94,13 @@ function clearReport() {
         if (panel) panel.classList.add('hidden');
     });
     if (jsonOutput) jsonOutput.textContent = '';
+
+    const authorNameInput = document.getElementById('export-author-name');
+    const authorAffiliationInput = document.getElementById('export-author-affiliation');
+    const includeSvCheckbox = document.getElementById('export-include-sv');
+    if (authorNameInput) authorNameInput.value = '';
+    if (authorAffiliationInput) authorAffiliationInput.value = '';
+    if (includeSvCheckbox) includeSvCheckbox.checked = false;
 }
 
 function showTab(tabName) {
@@ -120,7 +127,7 @@ function renderTabs(tabList) {
         const button = document.createElement('button');
         button.className = 'ml-4 px-3 py-3 font-medium text-sm border-b-2 border-transparent text-gray-500 hover:text-gray-700';
         button.textContent = tabName.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase());
-        if (tabName === 'raw') button.textContent = "Raw JSON";
+        if (tabName === 'raw') button.textContent = "Exports";
         button.dataset.tab = tabName;
         button.onclick = () => showTab(tabName);
         tabNav.appendChild(button);
