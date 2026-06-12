@@ -1,9 +1,18 @@
 #!/bin/bash
 set -e # Exit immediately if a command fails
 
-PROJECT_ID="qrosetta"
-REGION="us-central1"
-REPO="us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy"
+cd "$(dirname "$0")/.." || exit 1
+
+if [ -f .env ]; then
+    echo ">> Loading variables from .env file..."
+    export $(cat .env | grep -v '^#' | xargs)
+else
+    echo ">> WARNING: .env file not found. Falling back to system environment variables."
+fi
+
+PROJECT_ID="${GCP_PROJECT_ID}"
+REGION="${GCP_REGION}"
+REPO="${REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy"
 
 # Cloud-Specific Safeguards
 CLOUD_TIMEOUT="300s"

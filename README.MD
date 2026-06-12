@@ -50,13 +50,20 @@ This project is configured for **production deployment** by default (no volume m
     cd qrosetta
     ```
 
-2.  **Build and Run**
+2.  **Configure Environment**
+    Create a local `.env` file from the example template and fill in your credentials (required for both local deployment and cloud deployment scripts):
+    ```bash
+    cp .env.example .env
+    ```
+    *Note: Ensure you edit the `.env` file with your actual database and cloud credentials.*
+
+3.  **Build and Run (Local)**
     ```bash
     docker compose up --build
     ```
     *Note: The first build may take time as it compiles dependencies for 9 separate containers.*
 
-3.  **Access the Interface**
+4.  **Access the Interface**
     * **Web UI:** [http://localhost](http://localhost) (Served via Nginx on Port 80)
     * **API Docs:** [http://localhost/docs](http://localhost/docs)
 
