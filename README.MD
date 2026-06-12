@@ -58,12 +58,27 @@ This project is configured for **production deployment** by default (no volume m
     *Note: Ensure you edit the `.env` file with your actual database and cloud credentials.*
 
 3.  **Build and Run (Local)**
+    The recommended way to deploy the stack locally with graceful failure handling is using the provided boot script:
+    ```bash
+    ./scripts/safe_boot.sh
+    ```
+    *Alternatively, you can manually use Docker Compose:*
     ```bash
     docker compose up --build
     ```
-    *Note: The first build may take time as it compiles dependencies for 9 separate containers.*
+    *Note: The first build may take time as it compiles dependencies for 16 separate containers.*
 
-4.  **Access the Interface**
+4.  **Deploy to Cloud (GCP)**
+    To deploy the backend API and Runners to Google Cloud Run:
+    ```bash
+    ./scripts/deploy.sh
+    ```
+    To deploy the static frontend:
+    ```bash
+    ./scripts/deploy_frontend.sh
+    ```
+
+5.  **Access the Interface**
     * **Web UI:** [http://localhost](http://localhost) (Served via Nginx on Port 80)
     * **API Docs:** [http://localhost/docs](http://localhost/docs)
 
