@@ -8,6 +8,13 @@ echo ""
 
 cd "$(dirname "$0")/.." || exit 1
 
+if [ -f .env ]; then
+    echo ">> Loading variables from .env file..."
+    export $(cat .env | grep -v '^#' | xargs)
+else
+    echo ">> WARNING: .env file not found. Falling back to system environment variables."
+fi
+
 # Configuration Variables
 RAHTI_NAMESPACE=${1:-"qrosetta"}
 REGISTRY="image-registry.apps.2.rahti.csc.fi/$RAHTI_NAMESPACE"
@@ -67,10 +74,10 @@ sed -i "s/<YOUR_NAMESPACE>/$RAHTI_NAMESPACE/g" infra/rahti/rbac.yaml
 echo ""
 echo "--- 3. Deploying to OpenShift ($RAHTI_NAMESPACE) ---"
 oc create secret generic rosetta-secrets \
-    --from-literal=DATABASE_URL="postgresql://qrosetta_admin:***REMOVED***@86.50.21.2:5432/qrosetta" \
-    --from-literal=S3_ACCESS_KEY="***REMOVED***" \
-    --from-literal=S3_SECRET_KEY="***REMOVED***" \
-    --from-literal=S3_BUCKET_NAME="project_2017360" \
+    --from-literal=DATABASE_URL="${DATABASE_URL}" \
+    --from-literal=S3_ACCESS_KEY="${S3_ACCESS_KEY}" \
+    --from-literal=S3_SECRET_KEY="${S3_SECRET_KEY}" \
+    --from-literal=S3_BUCKET_NAME="${S3_BUCKET_NAME}" \
     --dry-run=client -o yaml | oc apply -f -
 oc apply -f infra/rahti/rbac.yaml
 oc apply -f infra/rahti/api.yaml
