@@ -172,16 +172,17 @@ function clearBatch() {
 
 function openGeneratorModal() {
     const list = document.getElementById('gen-algo-list');
-    list.innerHTML = '';
-    getState().allAlgorithms.forEach(algo => {
-        const div = document.createElement('div');
-        div.className = "flex items-center";
-        div.innerHTML = `
-                    <input type="checkbox" value="${algo.id}" checked class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
-                    <label class="ml-2 block text-gray-900">${algo.name}</label>
-                `;
-        list.appendChild(div);
-    });
+    if (list && list.children.length === 0) {
+        getState().allAlgorithms.forEach(algo => {
+            const div = document.createElement('div');
+            div.className = "flex items-center";
+            div.innerHTML = `
+                        <input type="checkbox" value="${algo.id}" checked class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                        <label class="ml-2 block text-gray-900">${algo.name}</label>
+                    `;
+            list.appendChild(div);
+        });
+    }
     document.getElementById('gen-modal').classList.remove('hidden');
 }
 

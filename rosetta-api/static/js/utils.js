@@ -230,7 +230,25 @@ async function exportRoCrate() {
 
     // Strip statevectors client-side unless explicitly requested, so the request body
     // stays well under the 1MB upload limit (statevector runs can be many MB otherwise).
-    const payloadResults = includeStatevectors ? results : _stripStatevectors(results);
+    let payloadResults = includeStatevectors ? results : _stripStatevectors(results);
+    let finalIncludeSv = includeStatevectors;
+
+    const tempBody = JSON.stringify({
+        format: 'ro-crate',
+        include_statevectors: includeStatevectors,
+        author_name: authorName,
+        author_affiliation: authorAffiliation,
+        results: payloadResults,
+    });
+
+    if (includeStatevectors && tempBody.length > 1000000) {
+        alert("Statevector exceeds the 1MB upload limit. The RO-Crate will be downloaded without it, but your complete statevector will be downloaded simultaneously as a separate JSON file directly from your browser.");
+        payloadResults = _stripStatevectors(results);
+        finalIncludeSv = false;
+        
+        // Trigger local download of full json asynchronously so it doesn't block
+        setTimeout(() => downloadFullReport(), 500);
+    }
 
     const btn = document.getElementById('btn-export-rocrate');
     let originalText = '';
@@ -246,7 +264,7 @@ async function exportRoCrate() {
             headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({
                 format: 'ro-crate',
-                include_statevectors: includeStatevectors,
+                include_statevectors: finalIncludeSv,
                 author_name: authorName,
                 author_affiliation: authorAffiliation,
                 results: payloadResults,

@@ -213,12 +213,15 @@ function setOrderingSequential() {
 
 async function toggleConfigPanel() {
     if (isDrawerOpen('config-panel')) { closeDrawers(); return; }
-    let runners = [];
-    try {
-        const resp = await fetch(`${BASE_URL}/runners`);
-        if (resp.ok) runners = await resp.json();
-    } catch (_) {}
-    renderConfigPanel(runners);
+    const grid = document.getElementById('config-grid');
+    if (grid && grid.children.length === 0) {
+        let runners = [];
+        try {
+            const resp = await fetch(`${BASE_URL}/runners`);
+            if (resp.ok) runners = await resp.json();
+        } catch (_) {}
+        renderConfigPanel(runners);
+    }
     openDrawer('config-panel');
 }
 
