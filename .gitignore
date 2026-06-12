@@ -58,6 +58,7 @@ htmlcov/
 
 # AI Assistant Files & Memory
 .claude/
+CLAUDE.md
 memory/
 .cursorrules
 .gemini/
