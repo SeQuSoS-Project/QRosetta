@@ -118,6 +118,35 @@ def _get_runner_version(runner_id: str) -> str:
     return "unknown"
 
 
+def _iter_raw_results(ctx: ExportContext):
+    """Yield every per-runner raw result across single runs and batch summaries."""
+    raw_results = ctx.results.get("raw_results", [])
+    if isinstance(raw_results, list):
+        for r in raw_results:
+            if isinstance(r, dict):
+                yield r
+    benchmark_summary = ctx.results.get("benchmark_summary", [])
+    if isinstance(benchmark_summary, list):
+        for task_result in benchmark_summary:
+            for r in task_result.get("raw_results", []):
+                if isinstance(r, dict):
+                    yield r
+
+
+def _extract_sdk_versions(ctx: ExportContext, runner_name: str) -> dict:
+    """Return the executed SDK versions a runner reported in its result, if any.
+
+    This is the ground-truth version coordinate (importlib.metadata, captured inside
+    the runner at execution time). Falls back to {} when absent — e.g. reports
+    produced before runners emitted sdk_versions."""
+    for r in _iter_raw_results(ctx):
+        if r.get("simulator") == runner_name:
+            versions = r.get("sdk_versions")
+            if isinstance(versions, dict) and versions:
+                return versions
+    return {}
+
+
 def _extract_runners_used(ctx: ExportContext) -> List[str]:
     runners_used: List[str] = []
     raw_results = ctx.results.get("raw_results", [])
@@ -179,7 +208,8 @@ def _build_provenance(ctx: ExportContext) -> dict:
             "optimization_levels": {
                 str(k): v for k, v in svc.get("optimization_levels", {}).items()
             },
-            "preprocessing_applied": preprocessing_applied
+            "preprocessing_applied": preprocessing_applied,
+            "sdk_versions": _extract_sdk_versions(ctx, name),
         }
 
     provenance = {
@@ -361,17 +391,30 @@ def _build_ro_crate_metadata(ctx: ExportContext, dir_name: str) -> dict:
         "url": "https://arxiv.org/abs/1707.03429",
     })
 
-    # Add SoftwareApplication entities for each runner
+    # Add SoftwareApplication entities for each runner.
+    # Prefer the versions the runner actually executed under (reported in its result
+    # via importlib.metadata — ground truth). Fall back to the declared requirements.txt
+    # pin only for older reports that predate sdk_versions reporting.
     for runner in runners_used:
         runner_id = _canonical_sim_id(runner)
-        version = _get_runner_version(runner_id)
-        graph.append({
+        executed_versions = _extract_sdk_versions(ctx, runner)
+        if executed_versions:
+            version = ", ".join(f"{pkg} {ver}" for pkg, ver in sorted(executed_versions.items()))
+        else:
+            version = _get_runner_version(runner_id)
+        node = {
             "@id": f"#{runner_id}",
             "@type": "SoftwareApplication",
             "name": f"{runner_id} Simulator Adapter",
             "softwareVersion": version,
             "description": f"Quantum execution environment provided by the {runner_id} backend adapter.",
-        })
+        }
+        if executed_versions:
+            # Structured, machine-readable form of the executed stack for reproducibility.
+            node["softwareRequirements"] = [
+                f"{pkg}=={ver}" for pkg, ver in sorted(executed_versions.items())
+            ]
+        graph.append(node)
 
     return {
         "@context": "https://w3id.org/ro/crate/1.1/context",

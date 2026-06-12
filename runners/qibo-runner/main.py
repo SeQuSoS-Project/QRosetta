@@ -7,7 +7,7 @@ import sys
 import boto3
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED
+from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED, with_sdk_versions
 import numpy as np
 import time
 import gc
@@ -38,6 +38,7 @@ def _parse(qasm_str: str, optimization_level: int = 0) -> tuple[Circuit, list[st
         preprocessing_applied.append("qibo.Circuit.fuse(max_qubits=1): Fuses consecutive single-qubit gate runs into single unitary blocks, reducing sequential gate overhead.")
     return circuit, preprocessing_applied
 
+@with_sdk_versions
 def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for Qibo simulation.")
     try:
@@ -93,6 +94,7 @@ def process_run(payload: dict) -> dict:
             "process_peak_mb": 0.0
         }
 
+@with_sdk_versions
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for Qibo simulation.")
     try:

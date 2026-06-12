@@ -76,6 +76,13 @@ class RunnerPerformanceMetrics(BaseModel):
     error: Optional[str] = None
     preprocessing_applied: Optional[List[str]] = None
     transpiled_qasm: Optional[str] = None
+    # Effective optimization level this runner actually executed at (clamped to the
+    # runner's supported max, resolved from per-runner override or global). Stamped by
+    # the dispatcher so the UI/report reflect ground truth, not just the override map.
+    optimization_level: Optional[int] = None
+    # Executed SDK versions (importlib.metadata, ground truth) reported by the runner.
+    # {distribution_name: version}, e.g. {"qiskit": "2.4.1", "qiskit-aer": "0.17.2"}.
+    sdk_versions: Optional[Dict[str, str]] = None
 
 class ComparisonResult(BaseModel):
     input_qasm: str

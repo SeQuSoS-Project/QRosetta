@@ -7,7 +7,7 @@ import sys
 import boto3
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, get_logger, encode_statevector, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED, get_num_qubits_from_qasm, theoretical_statevector_mb, strip_barriers_from_qasm
+from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, get_logger, encode_statevector, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED, get_num_qubits_from_qasm, theoretical_statevector_mb, strip_barriers_from_qasm, with_sdk_versions
 import pennylane as qml
 import numpy as np
 import functools
@@ -17,6 +17,7 @@ import gc
 app = FastAPI(title="Pennylane Lightning Runner")
 logger = get_logger("pennylane-lightning-runner")
 
+@with_sdk_versions
 def process_run(payload: dict) -> dict:
     logger.info("Received statevector circuit data for Pennylane-Lightning simulation.")
     try:
@@ -95,6 +96,7 @@ def process_run(payload: dict) -> dict:
             "process_peak_mb": 0.0
         }
 
+@with_sdk_versions
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for Pennylane-Lightning (manual sampling).")
     try:

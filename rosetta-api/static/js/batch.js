@@ -28,7 +28,7 @@ async function applyPreset() {
 
         const selectedPreset = JSON.parse(JSON.stringify(PRESETS[val]));
 
-        setLoading(true, `Loading Preset: ${val}...`);
+        setLoading(true, `Loading Preset: ${val}...`, { overlay: false });
         try {
             for (let i = 0; i < selectedPreset.length; i++) {
                 const item = selectedPreset[i];
@@ -73,18 +73,12 @@ function addToBatch() {
     };
     dispatch('SET_BATCH_QUEUE', [...getState().batchQueue, newItem]);
     renderBatchQueue();
-
-    if (playlistSection.classList.contains('hidden')) {
-        playlistSection.classList.remove('hidden');
-    }
+    openDrawer('playlist-section');
 }
 
 function togglePlaylist() {
-    if (playlistSection.classList.contains('hidden')) {
-        playlistSection.classList.remove('hidden');
-    } else {
-        playlistSection.classList.add('hidden');
-    }
+    if (isDrawerOpen('playlist-section')) closeDrawers();
+    else openDrawer('playlist-section');
 }
 
 function renderBatchQueue() {
@@ -137,7 +131,7 @@ async function viewBatchItem(index) {
 
     try {
         dispatch('SET_PROCESSING', true);
-        setLoading(true, "Loading Preview...");
+        setLoading(true, "Loading Preview...", { overlay: false });
         const response = await fetch(`${BASE_URL}/generate_circuit`, {
             method: 'POST',
             headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
@@ -205,7 +199,7 @@ async function runAutoGeneration() {
     if (selectedAlgos.length === 0) { alert("Select at least one algorithm."); return; }
     if (minQ > maxQ) { alert("Min qubits cannot be greater than Max qubits."); return; }
 
-    setLoading(true, `Generating ${count} Circuits for Playlist...`);
+    setLoading(true, `Generating ${count} Circuits for Playlist...`, { overlay: false });
     try {
         for (let i = 0; i < count; i++) {
             const algoId = selectedAlgos[Math.floor(Math.random() * selectedAlgos.length)];

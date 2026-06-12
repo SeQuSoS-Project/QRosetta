@@ -44,7 +44,18 @@ async function pollJobStatus(jobId) {
                     }
                 } else {
 
-                    const targetName = data.target === "lumi" ? "LUMI (HPC)" : "Kubernetes Cluster";
+                    // In local mode the server dispatches over HTTP to Docker containers
+                    // regardless of the execution-target dropdown, so report that — never
+                    // imply a Kubernetes cluster when running locally.
+                    const executionMode = (typeof getState === 'function') ? getState().executionMode : 'kubernetes';
+                    let targetName;
+                    if (executionMode === 'local') {
+                        targetName = "local containers";
+                    } else if (data.target === "lumi") {
+                        targetName = "LUMI (HPC)";
+                    } else {
+                        targetName = "Kubernetes Cluster";
+                    }
                     const loaderText = document.getElementById('loader-text');
                     if (loaderText) loaderText.textContent = `Running on ${targetName}...`;
                     setTimeout(checkStatus, 3000);

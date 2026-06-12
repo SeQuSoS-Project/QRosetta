@@ -47,6 +47,10 @@ async def dispatch_http_local(runner_urls: dict, runner_payload: dict, timeout_s
             runner_statuses[key] = "running"
         result = await safe_request(client, spec["url"], local_payload, key, timeout_seconds)
         result["simulator"] = key
+        # Record the effective (clamped, global-or-override-resolved) opt level this
+        # runner actually ran at, so the UI/report show ground truth rather than only
+        # the per-runner override map.
+        result["optimization_level"] = spec["opt_level"]
         if runner_statuses is not None:
             runner_statuses[key] = "error" if "error" in result else "done"
         return result

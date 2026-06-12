@@ -1,3 +1,20 @@
+June 10
+
+Suppose i select a bunch of parameters in config panel like simulators. If i close the sliding window and open it again, they get reset to default. Same with other panels, probably.
+
+If the stavevector is too big (like QFT 16 qubit) the browser cannot download it. How do we handle this?
+Export failed: Results too large to export with statevectors. Uncheck 'include statevectors' and try again.
+
+Also, if we switch between measured and statevector mode, the qubit count in the generate circuit field goes back to perhaps default
+
+RO-Crate export failed: Error: Results too large to export with statevectors. Uncheck 'include statevectors' and try again.
+    exportRoCrate https://rosetta-frontend-652754634999.us-central1.run.app/js/utils.js?v=1.0.9:258
+    onclick https://rosetta-frontend-652754634999.us-central1.run.app/:1
+
+In the RAW Json tab, we should rename it. Also in the Author Field, Affiliation, and the checkbox for downloading the statevector seems to be persistent across runs. Also the Author field for some reason copied in something i had inside my clipboard.
+
+Do not use the word "workaround" as it sounds... hacky. Just remove it.
+
 June 3
 Add acknowledgements for the benchmarks, citations and links where appropriate without ruining the UI look
 
@@ -32,7 +49,7 @@ May 26 - 2026
 
   worker_compare and worker_compare_measured are called without payload.runner_config. Even if it were passed, job_manager.py
   builds runner_payload without it (e.g. line 34-37, lines 83-87). Both HTTP and K8s dispatchers correctly read runner_config from
-  the payload — but it's never put in. The entire per-runner optimization feature is silently broken end-to-end.
+  the payload — but it's never poc login --token=sha256~Yj6pHl4hYsQUVcY6EQ3r2Mfmzn9kOYU9nTRrvaSv748 --server=https://api.2.rahti.csc.fi:6443ut in. The entire per-runner optimization feature is silently broken end-to-end.
 
   2. The RO-Crate export is architecturally unreliable
 

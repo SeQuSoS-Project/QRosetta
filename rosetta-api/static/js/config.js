@@ -50,12 +50,12 @@ function renderConfigPanel(runners) {
     runners.forEach(r => { _runnerOptInfo[r.id] = r; });
 
     const btnDiv = document.createElement('div');
-    btnDiv.className = "col-span-1 sm:col-span-2 flex justify-end space-x-2 mb-2 border-b border-indigo-200 pb-2";
+    btnDiv.className = "col-span-1 flex justify-end space-x-2 mb-2 border-b border-indigo-200 pb-2";
     btnDiv.innerHTML = `<button onclick="toggleAllSimulators()" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium bg-indigo-100 px-3 py-1 rounded border border-indigo-300 shadow-sm transition-colors duration-200">Toggle All</button>`;
     grid.appendChild(btnDiv);
 
     const modesDiv = document.createElement('div');
-    modesDiv.className = "col-span-1 sm:col-span-2 p-2 bg-white rounded border border-indigo-200 mb-2 space-y-2";
+    modesDiv.className = "col-span-1 p-2 bg-white rounded border border-indigo-200 mb-2 space-y-2";
     modesDiv.innerHTML = `
         <label class="flex items-center space-x-2 cursor-pointer">
             <input type="checkbox" id="multirun-toggle" onchange="toggleMultiRunMode(this)" ${_multiRunEnabled ? 'checked' : ''}
@@ -86,7 +86,7 @@ function renderConfigPanel(runners) {
         globalOpts += `<option value="${i}">${i} — ${GLOBAL_LABELS[i] ?? i}</option>`;
     }
     const globalDiv = document.createElement('div');
-    globalDiv.className = "col-span-1 sm:col-span-2 p-2 bg-indigo-100 rounded border border-indigo-200 mb-2";
+    globalDiv.className = "col-span-1 p-2 bg-indigo-100 rounded border border-indigo-200 mb-2";
     globalDiv.innerHTML = `
         <label class="block text-xs font-bold text-indigo-800 uppercase mb-1">Global Optimization Level</label>
         <select id="opt-global" onchange="updateContextBar()" class="block w-full text-xs border-indigo-300 rounded p-1 focus:ring-indigo-500 focus:border-indigo-500">
@@ -97,19 +97,10 @@ function renderConfigPanel(runners) {
     grid.appendChild(globalDiv);
 
     const sysDiv = document.createElement('div');
-    sysDiv.className = "col-span-1 sm:col-span-2 p-2 bg-gray-50 rounded border border-gray-200 mb-2 flex justify-between items-center text-xs";
+    sysDiv.className = "col-span-1 p-2 bg-gray-50 rounded border border-gray-200 mb-2 flex justify-between items-center text-xs";
     sysDiv.innerHTML = `
         <span class="font-bold text-gray-500">⚡ System Limits:</span>
-        <div class="space-x-2">
-            <span class="text-gray-600 font-mono">Memory: 512 MiB (local) / 1 GiB (K8s)</span>
-            <span class="text-gray-300">|</span>
-            <div class="flex items-center space-x-1">
-                <label for="timeout-input" class="text-xs text-gray-500">Timeout (s):</label>
-                <input type="number" id="timeout-input" min="1" max="300" value="300"
-                       onchange="if(this.value < 1) this.value=1; if(this.value > 300) this.value=300;"
-                       class="w-16 text-xs border-gray-300 rounded p-1 focus:ring-indigo-500 focus:border-indigo-500 text-right">
-            </div>
-        </div>
+        <span class="text-gray-600 font-mono">Memory: 512 MiB (local) / 1 GiB (K8s)</span>
     `;
     grid.appendChild(sysDiv);
 
@@ -221,18 +212,26 @@ function setOrderingSequential() {
 }
 
 async function toggleConfigPanel() {
-    const panel = document.getElementById('config-panel');
-    if (panel.classList.contains('hidden')) {
-        let runners = [];
-        try {
-            const resp = await fetch(`${BASE_URL}/runners`);
-            if (resp.ok) runners = await resp.json();
-        } catch (_) {}
-        renderConfigPanel(runners);
-        panel.classList.remove('hidden');
-    } else {
-        panel.classList.add('hidden');
-    }
+    if (isDrawerOpen('config-panel')) { closeDrawers(); return; }
+    let runners = [];
+    try {
+        const resp = await fetch(`${BASE_URL}/runners`);
+        if (resp.ok) runners = await resp.json();
+    } catch (_) {}
+    renderConfigPanel(runners);
+    openDrawer('config-panel');
+}
+
+// Bulk-set every runner's optimization level (clamped to each runner's available
+// options) from the "Set all to" control in the Config drawer.
+function setAllOptLevels(level) {
+    document.querySelectorAll('#config-grid select').forEach(sel => {
+        const opt = Array.from(sel.options).find(o => parseInt(o.value, 10) === level);
+        if (opt) {
+            sel.value = String(level);
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    });
 }
 
 function getRunnerConfig() {

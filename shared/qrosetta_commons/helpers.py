@@ -8,6 +8,8 @@ import threading
 import os
 import logging
 import sys
+import functools
+import importlib.metadata
 
 import base64
 
@@ -165,3 +167,58 @@ def check_qubits_limit(qasm_string: str, max_qubits: int = 24):
     n_qubits = get_num_qubits_from_qasm(qasm_string)
     if n_qubits > max_qubits:
         raise ValueError(f"Circuit has {n_qubits} qubits, which exceeds the limit of {max_qubits} for this runner.")
+
+
+# Distribution-name substrings that identify the quantum SDK packages worth recording
+# for provenance. A runner's image is isolated and only contains its own stack, so
+# scanning installed distributions for these yields exactly that runner's quantum
+# dependencies (e.g. pytket + pytket-qiskit + qiskit + qiskit-aer for the qiskit runner).
+_SDK_VERSION_KEYWORDS = (
+    "qiskit", "cirq", "qulacs", "pennylane", "qibo", "pytket", "cuquantum",
+    "custatevec", "torch", "quimb", "myqlm", "qat", "qrisp", "pyquil",
+    "braket", "projectq",
+)
+
+_sdk_versions_cache = None
+
+def get_sdk_versions() -> dict:
+    """Return {distribution_name: version} for the quantum SDK packages installed in
+    this process, read from importlib.metadata at runtime.
+
+    This is ground truth — the exact versions that executed the circuit — not a
+    declared pin scraped from a requirements.txt. It is the version coordinate the
+    cross-simulator compatibility matrix and RO-Crate provenance attribute outcomes to.
+    Versions are fixed for a process's lifetime, so the scan is cached after first call.
+    """
+    global _sdk_versions_cache
+    if _sdk_versions_cache is not None:
+        return dict(_sdk_versions_cache)
+    versions = {}
+    try:
+        for dist in importlib.metadata.distributions():
+            try:
+                name = dist.metadata["Name"]
+            except Exception:
+                name = None
+            if name and any(k in name.lower() for k in _SDK_VERSION_KEYWORDS):
+                versions[name] = dist.version
+    except Exception:
+        pass
+    _sdk_versions_cache = versions
+    return dict(versions)
+
+def with_sdk_versions(func):
+    """Decorator for a runner's process_run / process_run_measured.
+
+    Attaches the executed SDK versions (get_sdk_versions) to the returned result dict
+    under 'sdk_versions'. Wrapping the function rather than each return statement means
+    both the success and the error paths carry the version — and the error path is the
+    one the compatibility matrix cares about most (which version rejected which gate).
+    """
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        result = func(*args, **kwargs)
+        if isinstance(result, dict) and "sdk_versions" not in result:
+            result["sdk_versions"] = get_sdk_versions()
+        return result
+    return wrapper

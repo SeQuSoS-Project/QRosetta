@@ -16,12 +16,13 @@ from qiskit import transpile as qiskit_transpile
 from qiskit import qasm2
 import time
 import gc
-from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED
+from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED, with_sdk_versions
 
 logger = get_logger("pytket-qiskit-runner")
 
 app = FastAPI(title="Qiskit Runner")
 
+@with_sdk_versions
 def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for Qiskit simulation.")
     try:
@@ -87,6 +88,7 @@ def process_run(payload: dict) -> dict:
             "process_peak_mb": 0.0
         }
 
+@with_sdk_versions
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for Qiskit simulation.")
     try:

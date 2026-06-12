@@ -269,3 +269,55 @@ class TestBuildRoCrate:
         prov = json.loads(zf.read(prov_path))
 
         assert prov["suite_source"] == "MQT Bench"
+
+
+class TestExecutedSdkVersions:
+    """Runners report the SDK versions they actually executed under (importlib.metadata).
+    The exporter must surface these as ground truth, falling back to the requirements
+    scrape only when absent (older reports)."""
+
+    def _results_with_versions(self):
+        results = json.loads(json.dumps(SAMPLE_RESULTS_SV))
+        for r in results["raw_results"]:
+            if r["simulator"] == "qiskit":
+                r["sdk_versions"] = {"qiskit": "2.4.1", "qiskit-aer": "0.17.2"}
+        return results
+
+    def test_software_application_uses_executed_versions(self):
+        ctx = _make_ctx(results=self._results_with_versions())
+        zip_bytes = build_ro_crate(ctx)
+        zf = zipfile.ZipFile(io.BytesIO(zip_bytes), "r")
+
+        meta_path = [n for n in zf.namelist() if n.endswith("ro-crate-metadata.json")][0]
+        meta = json.loads(zf.read(meta_path))
+
+        qiskit_app = next((e for e in meta["@graph"] if e.get("@id") == "#qiskit"), None)
+        assert qiskit_app is not None
+        assert "qiskit 2.4.1" in qiskit_app["softwareVersion"]
+        assert "qiskit-aer 0.17.2" in qiskit_app["softwareVersion"]
+        # Structured, machine-readable pins for reproducibility.
+        assert "qiskit==2.4.1" in qiskit_app["softwareRequirements"]
+
+    def test_provenance_records_executed_versions(self):
+        ctx = _make_ctx(results=self._results_with_versions())
+        zip_bytes = build_ro_crate(ctx)
+        zf = zipfile.ZipFile(io.BytesIO(zip_bytes), "r")
+
+        prov_path = [n for n in zf.namelist() if n.endswith("provenance.json")][0]
+        prov = json.loads(zf.read(prov_path))
+
+        assert prov["runner_configurations"]["qiskit"]["sdk_versions"] == {
+            "qiskit": "2.4.1",
+            "qiskit-aer": "0.17.2",
+        }
+
+    def test_falls_back_when_no_executed_versions(self):
+        """Reports predating sdk_versions reporting must still export without crashing."""
+        ctx = _make_ctx()  # SAMPLE_RESULTS_SV has no sdk_versions
+        zip_bytes = build_ro_crate(ctx)
+        zf = zipfile.ZipFile(io.BytesIO(zip_bytes), "r")
+
+        prov_path = [n for n in zf.namelist() if n.endswith("provenance.json")][0]
+        prov = json.loads(zf.read(prov_path))
+
+        assert prov["runner_configurations"]["qiskit"]["sdk_versions"] == {}
