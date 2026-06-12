@@ -17,6 +17,7 @@ const Store = {
         maxQubitsMeasured: 24,
         maxRunsPerRunner: 16,
         maxTotalRuns: 48,
+        executionMode: 'kubernetes',
     },
 
     dispatch(action, payload) {
@@ -65,6 +66,7 @@ const Store = {
                 this.state.maxQubitsMeasured = payload.max_qubits_measured;
                 if (payload.max_runs_per_runner !== undefined) this.state.maxRunsPerRunner = payload.max_runs_per_runner;
                 if (payload.max_total_runs !== undefined) this.state.maxTotalRuns = payload.max_total_runs;
+                if (payload.execution_mode !== undefined) this.state.executionMode = payload.execution_mode;
                 break;
             default:
                 console.warn(`[State] Unknown action: ${action}`);

@@ -7,7 +7,7 @@ import sys
 import boto3
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED
+from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED, with_sdk_versions
 import numpy as np
 import time
 import gc
@@ -72,6 +72,7 @@ def _run_sv(tq_module, n_qubits: int) -> np.ndarray:
     sv = qdev.get_states_1d().detach().cpu().numpy()[0]
     return sv
 
+@with_sdk_versions
 def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for TorchQuantum statevector simulation.")
     if not TORCHQUANTUM_AVAILABLE:
@@ -133,6 +134,7 @@ def process_run(payload: dict) -> dict:
             "process_peak_mb": 0.0,
         }
 
+@with_sdk_versions
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received circuit data for TorchQuantum measurement simulation.")
     if not TORCHQUANTUM_AVAILABLE:

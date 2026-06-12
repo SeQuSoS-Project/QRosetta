@@ -124,7 +124,7 @@ async function generateCircuit() {
     }
 
     dispatch('SET_PROCESSING', true);
-    setLoading(true, "Generating Circuit...");
+    setLoading(true, "Generating Circuit...", { overlay: false });
     try {
         const response = await fetch(`${BASE_URL}/generate_circuit`, {
             method: 'POST',
@@ -413,12 +413,12 @@ async function fetchBenchmarkQasm() {
         if (suite === 'mqt') {
             const algo = document.getElementById('bench-mqt-algo').value;
             const qubits = document.getElementById('bench-mqt-qubits').value;
-            setLoading(true, "Fetching MQT Bench...");
+            setLoading(true, "Fetching MQT Bench...", { overlay: false });
             data = await fetchMQTBench(algo, qubits);
             title = `MQT Bench: ${document.getElementById('bench-mqt-algo').options[document.getElementById('bench-mqt-algo').selectedIndex].text} (${qubits}q)`;
         } else {
             const circuit = document.getElementById('bench-qasmbench-circuit').value;
-            setLoading(true, "Fetching QASMBench...");
+            setLoading(true, "Fetching QASMBench...", { overlay: false });
             data = await fetchQASMBench(circuit);
             title = `QASMBench: ${document.getElementById('bench-qasmbench-circuit').options[document.getElementById('bench-qasmbench-circuit').selectedIndex].text}`;
         }
@@ -440,6 +440,7 @@ async function loadBenchmark() {
         qasmInput.value = result.qasm;
         dispatch('SET_CURRENT_ALGO_NAME', result.title);
         updateContextBar();
+        closeDrawers();
     }
 }
 
@@ -449,17 +450,43 @@ async function addBenchmarkToBatch() {
     if (result && result.qasm) {
         dispatch('SET_BATCH_QUEUE', [...getState().batchQueue, { name: result.title, qasm: result.qasm }]);
         renderBatchQueue();
-        if (playlistSection.classList.contains('hidden')) {
-            togglePlaylist();
-        }
+        openDrawer('playlist-section');
     }
 }
 
+// --- Slide-over drawer controller (Config / Bench / Batch) ---
+// Panels are fixed off-canvas (translate-x-full) and slide in when opened. Only one
+// is open at a time; a shared backdrop dims the page and closes on click / Escape.
+const DRAWER_IDS = ['config-panel', 'benchmarks-panel', 'playlist-section'];
+
+function openDrawer(panelId) {
+    DRAWER_IDS.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('translate-x-full', id !== panelId);
+    });
+    const backdrop = document.getElementById('drawer-backdrop');
+    if (backdrop) backdrop.classList.remove('hidden');
+}
+
+function closeDrawers() {
+    DRAWER_IDS.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('translate-x-full');
+    });
+    const backdrop = document.getElementById('drawer-backdrop');
+    if (backdrop) backdrop.classList.add('hidden');
+}
+
+function isDrawerOpen(panelId) {
+    const el = document.getElementById(panelId);
+    return !!el && !el.classList.contains('translate-x-full');
+}
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeDrawers();
+});
+
 function toggleBenchPanel() {
-    const benchPanel = document.getElementById('benchmarks-panel');
-    if (benchPanel.classList.contains('hidden')) {
-        benchPanel.classList.remove('hidden');
-    } else {
-        benchPanel.classList.add('hidden');
-    }
+    if (isDrawerOpen('benchmarks-panel')) closeDrawers();
+    else openDrawer('benchmarks-panel');
 }

@@ -30,27 +30,44 @@ function isConnectionError(errorMsg) {
 
 let _loaderElapsedTimer = null;
 
-function setLoading(isLoading, message = "Processing...") {
+// options.overlay (default true): when true, show the full results-panel processing
+// overlay (used by actual benchmark runs). When false, show only a small busy toast so
+// circuit-prep actions (generate / preset / auto-gen / benchmark fetch) don't blank out
+// any result already displayed on the right.
+function setLoading(isLoading, message = "Processing...", options = {}) {
+    const overlay = options.overlay !== false;
     const loader = document.getElementById('loader');
     const loaderText = document.getElementById('loader-text');
+    const busyToast = document.getElementById('busy-toast');
+    const busyToastText = document.getElementById('busy-toast-text');
 
     if (isLoading) {
-        if (loaderText) loaderText.textContent = message;
-        loader.classList.remove('hidden');
-        loader.classList.add('flex');
-        allButtons.forEach(btn => { if (btn) btn.disabled = true });
-        if (!_loaderElapsedTimer) {
-            const startTime = Date.now();
-            const elapsedEl = document.getElementById('loader-elapsed');
-            if (elapsedEl) elapsedEl.textContent = '0s elapsed';
-            _loaderElapsedTimer = setInterval(() => {
-                const el = document.getElementById('loader-elapsed');
-                if (el) el.textContent = `${Math.floor((Date.now() - startTime) / 1000)}s elapsed`;
-            }, 1000);
+        if (overlay) {
+            if (loaderText) loaderText.textContent = message;
+            loader.classList.remove('hidden');
+            loader.classList.add('flex');
+            if (!_loaderElapsedTimer) {
+                const startTime = Date.now();
+                const elapsedEl = document.getElementById('loader-elapsed');
+                if (elapsedEl) elapsedEl.textContent = '0s elapsed';
+                _loaderElapsedTimer = setInterval(() => {
+                    const el = document.getElementById('loader-elapsed');
+                    if (el) el.textContent = `${Math.floor((Date.now() - startTime) / 1000)}s elapsed`;
+                }, 1000);
+            }
+        } else if (busyToast) {
+            if (busyToastText) busyToastText.textContent = message;
+            busyToast.classList.remove('hidden');
+            busyToast.classList.add('flex');
         }
+        allButtons.forEach(btn => { if (btn) btn.disabled = true });
     } else {
         loader.classList.add('hidden');
         loader.classList.remove('flex');
+        if (busyToast) {
+            busyToast.classList.add('hidden');
+            busyToast.classList.remove('flex');
+        }
         allButtons.forEach(btn => { if (btn) btn.disabled = false });
         if (_loaderElapsedTimer) {
             clearInterval(_loaderElapsedTimer);

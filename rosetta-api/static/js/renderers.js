@@ -127,6 +127,28 @@ function renderTabs(tabList) {
     });
 }
 
+function _effectiveOptMap(data, fallbackConfig = {}) {
+    // Ground-truth effective optimization level per runner, as actually executed.
+    // The dispatcher stamps result.optimization_level (clamped, global-or-override
+    // resolved), so this reflects what ran — including global-level runs that have no
+    // entry in the per-runner override map. Falls back to the override map only for
+    // older reports (e.g. saved history) that predate optimization_level stamping.
+    const map = { ...fallbackConfig };
+    const collect = (arr) => {
+        if (!Array.isArray(arr)) return;
+        for (const r of arr) {
+            if (r && r.simulator !== undefined && r.optimization_level !== undefined && r.optimization_level !== null) {
+                map[r.simulator] = r.optimization_level;
+            }
+        }
+    };
+    collect(data?.raw_results);
+    if (Array.isArray(data?.benchmark_summary)) {
+        for (const task of data.benchmark_summary) collect(task?.raw_results);
+    }
+    return map;
+}
+
 function getOptBadge(simulator, config) {
     const parsed = typeof parseRunnerKey === 'function' ? parseRunnerKey(simulator) : { simId: simulator, isMulti: false };
 
@@ -180,9 +202,10 @@ function renderDetailReport(data, title, config = getState().currentRunnerConfig
 
     renderSummaryPanel(data, title);
     if (!data.error) {
-        if (data.performance_report) renderRankingTable(data.performance_report, 'execution_time_sec', 's', panelElements.performance, config);
-        if (data.resource_report) renderRankingTable(data.resource_report, 'memory_usage_mb', 'MiB', panelElements.resources, config);
-        if (data.divergence_report) renderDivergenceTables(data.divergence_report, panelElements.divergence, config);
+        const optMap = _effectiveOptMap(data, config);
+        if (data.performance_report) renderRankingTable(data.performance_report, 'execution_time_sec', 's', panelElements.performance, optMap);
+        if (data.resource_report) renderRankingTable(data.resource_report, 'memory_usage_mb', 'MiB', panelElements.resources, optMap);
+        if (data.divergence_report) renderDivergenceTables(data.divergence_report, panelElements.divergence, optMap);
     }
 
     showTab('summary');

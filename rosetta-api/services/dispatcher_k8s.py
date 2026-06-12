@@ -174,13 +174,15 @@ def _poll_pod_phase(core_api, namespace: str, job_name: str, sim_name: str, job_
 
     return None
 
-def _run_k8s_job_for_simulator(sim_name: str, url: str, result_key: str, local_payload: dict, timeout_seconds: int, namespace: str, status_callback=None) -> dict:
+def _run_k8s_job_for_simulator(sim_name: str, url: str, result_key: str, opt_level: int, local_payload: dict, timeout_seconds: int, namespace: str, status_callback=None) -> dict:
     """Runs one job and stamps the result with result_key. sim_name is the canonical
     runner id used for K8s/image naming; result_key may be a self-comparison virtual
-    key (e.g. 'qiskit~opt1~run2') that must be reflected in the result simulator field."""
+    key (e.g. 'qiskit~opt1~run2') that must be reflected in the result simulator field.
+    opt_level is the effective (clamped, resolved) optimization level this run used."""
     result = _run_k8s_job_inner(sim_name, url, local_payload, timeout_seconds, namespace, status_callback)
     if isinstance(result, dict):
         result["simulator"] = result_key
+        result["optimization_level"] = opt_level
     return result
 
 def _run_k8s_job_inner(sim_name: str, url: str, local_payload: dict, timeout_seconds: int, namespace: str, status_callback=None) -> dict:
@@ -290,7 +292,7 @@ async def dispatch_kubernetes_jobs(runner_urls: dict, runner_payload: dict, time
             tasks.append(
                 loop.run_in_executor(
                     executor, _run_k8s_job_for_simulator,
-                    spec["sim_name"], spec["url"], spec["key"], local_payload,
+                    spec["sim_name"], spec["url"], spec["key"], spec["opt_level"], local_payload,
                     timeout_seconds, namespace, make_callback(spec["key"]),
                 )
             )

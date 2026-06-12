@@ -7,7 +7,7 @@ import sys
 import boto3
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, get_num_qubits_from_qasm, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED
+from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, get_num_qubits_from_qasm, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED, with_sdk_versions
 import numpy as np
 import time
 import gc
@@ -60,6 +60,7 @@ def _run_sv(circ) -> np.ndarray:
     sv = circ.to_dense()
     return np.asarray(sv).flatten()
 
+@with_sdk_versions
 def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for Quimb statevector simulation.")
     if not QUIMB_AVAILABLE:
@@ -122,6 +123,7 @@ def process_run(payload: dict) -> dict:
             "process_peak_mb": 0.0,
         }
 
+@with_sdk_versions
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received circuit data for Quimb measurement simulation.")
     if not QUIMB_AVAILABLE:

@@ -7,7 +7,7 @@ import sys
 import boto3
 from fastapi import FastAPI
 from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
-from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED
+from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED, with_sdk_versions
 import numpy as np
 import time
 import gc
@@ -67,6 +67,7 @@ def _compile(qasm_str: str, optimization_level: int = 0):
         preprocessing_applied.append(f"qiskit.compiler.transpile(level={min(optimization_level, 3)}): Native Qiskit transpilation pass applied to decompose and optimize the circuit for the Aer backend.")
     return qc, preprocessing_applied
 
+@with_sdk_versions
 def process_run(payload: dict) -> dict:
     logger.info(f"Received statevector request (GPU={_GPU_AVAILABLE}).")
     if not AERSIM_AVAILABLE:
@@ -121,6 +122,7 @@ def process_run(payload: dict) -> dict:
         return {"simulator": "cuquantum", "error": str(e),
                 "execution_time_sec": 0.0, "memory_usage_mb": 0.0, "process_peak_mb": 0.0}
 
+@with_sdk_versions
 def process_run_measured(payload: dict) -> dict:
     logger.info(f"Received measurement request (GPU={_GPU_AVAILABLE}).")
     if not AERSIM_AVAILABLE:
