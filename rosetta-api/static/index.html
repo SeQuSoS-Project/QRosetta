@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quantum Rosetta (Part of SeQuSoS Project)</title>
+    <title>Quantum Rosetta</title>
     <!-- --- CDN FIX: Corrected URL --- -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- --- END FIX --- -->
@@ -30,13 +30,18 @@
 </head>
 
 <body class="h-full font-sans text-gray-900">
+    <!-- Lightweight busy toast for circuit-prep actions (does not cover the results panel) -->
+    <div id="busy-toast"
+        class="hidden fixed top-4 left-1/2 -translate-x-1/2 z-[60] items-center gap-2 bg-gray-900/90 text-white text-sm px-4 py-2 rounded-full shadow-lg">
+        <span class="inline-block h-3 w-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+        <span id="busy-toast-text">Working…</span>
+    </div>
     <div class="flex flex-col h-screen">
         <header class="bg-white border-b border-gray-200 shadow-sm">
             <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                 <div class="flex h-16 items-center justify-between">
                     <div class="flex items-center">
                         <span class="ml-3 text-3xl font-extrabold text-indigo-600">Quantum Rosetta</span>
-                        <span class="ml-3 text-2xl font-bold text-gray-900">(Part of SeQuSoS Project)</span>
                     </div>
                     <div class="flex items-center space-x-4">
                         <div id="system-status"
@@ -86,7 +91,7 @@
                                 class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                         </div>
 
-                        <div class="grid grid-cols-4 gap-2">
+                        <div class="grid grid-cols-5 gap-2">
                             <button onclick="generateCircuit()"
                                 class="col-span-1 flex justify-center py-2 px-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none">
                                 Load
@@ -96,43 +101,160 @@
                                 + Add
                             </button>
                             <button onclick="togglePlaylist()"
-                                class="col-span-1 flex justify-center py-2 px-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none">
-                                Manage
+                                class="col-span-1 flex justify-center py-2 px-2 border border-yellow-300 rounded-md shadow-sm text-sm font-medium text-yellow-700 bg-yellow-50 hover:bg-yellow-100 focus:outline-none">
+                                Batch
+                            </button>
+                            <button onclick="toggleBenchPanel()"
+                                class="col-span-1 flex justify-center py-2 px-2 border border-emerald-300 rounded-md shadow-sm text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 focus:outline-none">
+                                Bench
                             </button>
                             <button onclick="toggleConfigPanel()"
-                                class="col-span-1 flex justify-center py-2 px-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none">
+                                class="col-span-1 flex justify-center py-2 px-2 border border-indigo-300 rounded-md shadow-sm text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 focus:outline-none">
                                 Config
                             </button>
                         </div>
                     </div>
                 </div>
 
-                <!-- === CONFIG PANEL === -->
-                <div id="config-panel" class="hidden p-4 border rounded-lg bg-indigo-50 border-indigo-200">
-                    <div class="flex flex-col mb-4 bg-white p-3 rounded shadow-sm border border-indigo-100">
+                <!-- Shared backdrop for all slide-over drawers -->
+                <div id="drawer-backdrop" class="hidden fixed inset-0 bg-black/40 z-40 !mt-0" onclick="closeDrawers()"></div>
+
+                <!-- === CONFIG DRAWER === -->
+                <div id="config-panel"
+                    class="translate-x-full fixed top-0 right-0 z-50 h-full w-full sm:max-w-md !mt-0 bg-indigo-50 shadow-2xl overflow-y-auto transform transition-transform duration-300 ease-in-out p-4">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-lg font-semibold text-indigo-900">Configuration</h2>
+                        <button onclick="closeDrawers()" aria-label="Close"
+                            class="text-indigo-400 hover:text-indigo-700 text-2xl leading-none">&times;</button>
+                    </div>
+
+                    <!-- Group: Execution -->
+                    <h3 class="text-xs font-semibold uppercase tracking-wide text-indigo-700 mb-2">Execution</h3>
+                    <div class="flex flex-col mb-3 bg-white p-3 rounded shadow-sm border border-indigo-100">
                         <label class="block text-sm font-medium text-indigo-900 mb-1">Execution Environment</label>
                         <select id="execution-target-select"
                             class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
-                            <option value="rahti">Rahti (Local Cloud)</option>
+                            <option value="kubernetes">Kubernetes Cluster</option>
                             <option value="lumi" disabled>LUMI (HPC) - Pending Phase 4</option>
                         </select>
                     </div>
-
-                    <div class="flex justify-between items-center mb-3 pt-2 border-t border-indigo-100">
-                        <h2 class="text-sm font-semibold text-indigo-900">Runner Optimization Levels</h2>
+                    <div class="flex flex-col mb-4 bg-white p-3 rounded shadow-sm border border-indigo-100">
+                        <label class="block text-sm font-medium text-indigo-900 mb-1">Timeout (seconds)</label>
+                        <input type="number" id="timeout-input" value="300" min="30" max="300"
+                            class="block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
                     </div>
-                    <div id="config-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <!-- Populated by JS -->
+
+                    <!-- Group: Circuit Preprocessing -->
+                    <h3 class="text-xs font-semibold uppercase tracking-wide text-indigo-700 mb-2">Circuit Preprocessing</h3>
+                    <div class="flex flex-col mb-3 bg-white p-3 rounded shadow-sm border border-indigo-100">
+                        <label class="flex items-center space-x-2">
+                            <input type="checkbox" id="apply-preprocessing-checkbox" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded" checked>
+                            <span class="text-sm font-medium text-indigo-900">Apply SDK Preprocessing</span>
+                        </label>
+                    </div>
+                    <div id="bypass-limits-container" class="flex flex-col mb-4 bg-white p-3 rounded shadow-sm border border-indigo-100">
+                        <label class="flex items-center space-x-2">
+                            <input type="checkbox" id="bypass-limits-checkbox" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
+                            <span class="text-sm font-medium text-indigo-900">Bypass API Safety Limits</span>
+                        </label>
+                        <span class="text-xs text-gray-500 mt-1">Local mode only — skips API gate/size guards. Runner qubit caps still apply.</span>
+                    </div>
+
+                    <!-- Group: Optimization Levels (collapsed by default — changed least often) -->
+                    <details class="bg-white rounded shadow-sm border border-indigo-100 p-3">
+                        <summary class="cursor-pointer select-none text-xs font-semibold uppercase tracking-wide text-indigo-700">
+                            Runner Optimization Levels
+                        </summary>
+                        <div class="flex items-center gap-2 mt-3 mb-3">
+                            <label class="text-xs text-indigo-900">Set all to</label>
+                            <select id="opt-set-all" class="text-xs border-indigo-300 rounded p-1">
+                                <option value="0">0</option>
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                            </select>
+                            <button onclick="setAllOptLevels(parseInt(document.getElementById('opt-set-all').value, 10))"
+                                class="text-xs bg-indigo-100 text-indigo-700 hover:bg-indigo-200 rounded px-2 py-1">Apply</button>
+                        </div>
+                        <div id="config-grid" class="grid grid-cols-1 gap-3">
+                            <!-- Populated by JS -->
+                        </div>
+                    </details>
+                </div>
+
+                <!-- === BENCHMARKS DRAWER === -->
+                <div id="benchmarks-panel"
+                    class="translate-x-full fixed top-0 right-0 z-50 h-full w-full sm:max-w-md !mt-0 bg-emerald-50 shadow-2xl overflow-y-auto transform transition-transform duration-300 ease-in-out p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-lg font-semibold text-emerald-900">Benchmarks</h2>
+                        <button onclick="closeDrawers()" aria-label="Close"
+                            class="text-emerald-400 hover:text-emerald-700 text-2xl leading-none">&times;</button>
+                    </div>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-sm font-medium text-emerald-800">Suite</label>
+                            <div class="mt-1 flex space-x-4">
+                                <label class="flex items-center">
+                                    <input type="radio" name="bench-suite" value="mqt" checked onchange="toggleBenchSuite()">
+                                    <span class="ml-2 text-sm text-emerald-900">MQT Bench</span>
+                                </label>
+                                <label class="flex items-center">
+                                    <input type="radio" name="bench-suite" value="qasmbench" onchange="toggleBenchSuite()">
+                                    <span class="ml-2 text-sm text-emerald-900">QASMBench</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- MQT Bench Options -->
+                        <div id="bench-mqt-options" class="space-y-3">
+                            <div>
+                                <label for="bench-mqt-algo" class="block text-sm font-medium text-emerald-800">Algorithm</label>
+                                <select id="bench-mqt-algo" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-emerald-300 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm rounded-md">
+                                    <!-- Populated dynamically from /benchmarks/mqt/list -->
+                                </select>
+                            </div>
+                            <div>
+                                <label for="bench-mqt-qubits" class="block text-sm font-medium text-emerald-800">Qubits</label>
+                                <input type="number" id="bench-mqt-qubits" value="4" min="2" max="24"
+                                    class="mt-1 block w-full border border-emerald-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm">
+                            </div>
+                        </div>
+
+                        <!-- QASMBench Options -->
+                        <div id="bench-qasmbench-options" class="hidden space-y-3">
+                            <div>
+                                <label for="bench-qasmbench-circuit" class="block text-sm font-medium text-emerald-800">Circuit</label>
+                                <select id="bench-qasmbench-circuit" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-emerald-300 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm rounded-md">
+                                    <!-- Populated dynamically from /benchmarks/qasmbench/list -->
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2 mt-2">
+                            <button onclick="loadBenchmark()"
+                                class="col-span-1 flex justify-center py-2 px-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none">
+                                Load to Editor
+                            </button>
+                            <button onclick="addBenchmarkToBatch()"
+                                class="col-span-1 flex justify-center py-2 px-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-emerald-700 bg-emerald-100 hover:bg-emerald-200 focus:outline-none">
+                                + Add to Batch
+                            </button>
+                        </div>
+                        <div id="bench-error" class="hidden text-xs text-red-600 mt-2"></div>
                     </div>
                 </div>
 
-                <!-- === BLOCK 2: PLAYLIST (BATCH RUN) === -->
-                <div id="playlist-section" class="hidden p-4 border rounded-lg bg-yellow-50 border-yellow-200">
+                <!-- === BATCH DRAWER === -->
+                <div id="playlist-section"
+                    class="translate-x-full fixed top-0 right-0 z-50 h-full w-full sm:max-w-md !mt-0 bg-yellow-50 shadow-2xl overflow-y-auto transform transition-transform duration-300 ease-in-out p-4">
                     <div class="flex justify-between items-center mb-3">
-                        <h2 class="text-lg font-semibold text-yellow-900">Playlist (Batch Run) (<span
-                                id="queue-count">0</span>)</h2>
-                        <button onclick="clearBatch()"
-                            class="text-xs text-red-600 hover:text-red-800 font-medium">Clear</button>
+                        <h2 class="text-lg font-semibold text-yellow-900">Batch (<span id="queue-count">0</span>)</h2>
+                        <div class="flex items-center gap-3">
+                            <button onclick="clearBatch()"
+                                class="text-xs text-red-600 hover:text-red-800 font-medium">Clear</button>
+                            <button onclick="closeDrawers()" aria-label="Close"
+                                class="text-yellow-500 hover:text-yellow-700 text-2xl leading-none">&times;</button>
+                        </div>
                     </div>
 
                     <!-- Playlist Management -->
@@ -220,6 +342,7 @@
                                 class="text-purple-600 hover:text-purple-800 font-medium ml-2">📊 Visualize</button>
                             <input type="file" id="qasm-upload" class="hidden" accept=".qasm"
                                 onchange="importQasm(this)">
+                            <span id="ctx-circuit-stats" class="text-gray-500"></span>
                             <span id="ctx-opt-level">Opt Level: 0</span>
                         </div>
                     </div>
@@ -265,25 +388,30 @@
 
             <!-- === RIGHT PANEL (RESULTS) === -->
             <div class="w-full md:w-1/2 p-4 sm:p-6 lg:p-8 flex flex-col overflow-y-auto bg-gray-50">
-                <div class="flex-1 flex flex-col rounded-lg min-h-0 relative bg-white border border-gray-200 shadow-sm">
+                <div class="flex-1 flex flex-col rounded-lg min-h-0 min-w-0 relative bg-white border border-gray-200 shadow-sm overflow-hidden">
                     <div id="loader"
-                        class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white bg-opacity-90 rounded-lg hidden transition-opacity duration-300">
-                        <div
-                            class="animate-spin h-12 w-12 rounded-full border-4 border-gray-200 border-t-indigo-600 mb-4">
+                        class="absolute inset-0 z-10 flex-col bg-white bg-opacity-97 rounded-lg hidden overflow-y-auto transition-opacity duration-300">
+                        <div class="p-5 flex flex-col h-full min-h-0">
+                            <div class="border-b border-indigo-100 pb-3 mb-4 flex-shrink-0">
+                                <p class="font-mono text-xs text-indigo-300 tracking-widest uppercase">quantum rosetta · compute</p>
+                                <h2 id="loader-text" class="font-mono font-bold text-indigo-800 text-sm tracking-wide mt-1">Processing...</h2>
+                            </div>
+                            <div id="runner-status-grid" class="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2 content-start overflow-y-auto"></div>
+                            <div class="mt-4 pt-3 border-t border-indigo-100 flex-shrink-0 text-center">
+                                <span id="loader-elapsed" class="font-mono text-xs text-indigo-300">0s elapsed</span>
+                            </div>
                         </div>
-                        <p id="loader-text" class="text-indigo-800 font-semibold text-sm animate-pulse">Processing...
-                        </p>
                     </div>
 
                     <div id="back-button-container" class="hidden p-4 border-b border-gray-200">
-                        <button onclick="renderSuiteSummary(currentSuiteData, currentSuiteTitle)"
+                        <button onclick="renderSuiteSummary(getState().currentSuiteData, getState().currentSuiteTitle)"
                             class="text-sm font-medium text-blue-600 hover:text-blue-500">&larr; Back to Suite
                             Summary</button>
                     </div>
 
-                    <nav class="flex border-b border-gray-200" id="tab-nav"></nav>
+                    <nav class="flex flex-wrap border-b border-gray-200 flex-shrink-0" id="tab-nav"></nav>
 
-                    <div class="flex-1 overflow-y-auto" id="tab-content">
+                    <div class="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden" id="tab-content">
                         <div id="welcome-message" class="p-4 text-gray-500 block">Select an algorithm on the left to
                             begin.</div>
 
@@ -305,29 +433,51 @@
                             </div>
                         </div>
 
-                        <div id="raw-panel" class="p-0 hidden relative flex flex-col h-full">
+                        <div id="raw-panel" class="p-0 hidden flex flex-col h-full min-h-0 min-w-0">
                             <div id="truncation-warning"
                                 class="hidden p-2 bg-yellow-100 text-yellow-800 text-xs border-b border-yellow-200">
                                 ⚠️ Data Truncated: Large statevectors hidden. Download full report to view.
                             </div>
-                            <div class="absolute top-14 right-4 z-10 flex items-center space-x-2">
+                            <!-- Action toolbar (normal flow; wraps on narrow widths / zoom) -->
+                            <div class="flex flex-wrap items-center gap-2 p-2 border-b border-gray-200 bg-gray-50 flex-shrink-0">
                                 <button id="download-btn" onclick="downloadFullReport()"
-                                    class="hidden bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium py-1 px-3 rounded-md transition-all">Download
-                                    Full JSON</button>
+                                    class="hidden bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium py-1 px-3 rounded-md transition-all">Download Full JSON</button>
                                 <button onclick="downloadRawJson()"
-                                    class="bg-green-600 hover:bg-green-700 text-white text-xs font-medium py-1 px-3 rounded-md transition-all">Download
-                                    RAW JSON</button>
+                                    class="bg-green-600 hover:bg-green-700 text-white text-xs font-medium py-1 px-3 rounded-md transition-all">Download Full JSON</button>
+                                <button id="btn-export-rocrate" onclick="exportRoCrate()"
+                                    class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium py-1 px-3 rounded-md transition-all">📦 Export RO-Crate</button>
                                 <button id="copy-btn" onclick="copyRawJson(this)"
-                                    class="bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-medium py-1 px-3 rounded-md transition-all">Copy
-                                    View</button>
+                                    class="bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-medium py-1 px-3 rounded-md transition-all">Copy View</button>
+                            </div>
+                            <!-- RO-Crate export options (normal flow; wraps) -->
+                            <div class="flex flex-wrap items-center gap-x-4 gap-y-2 p-2 border-b border-gray-200 bg-white text-xs text-gray-700 flex-shrink-0">
+                                <span class="font-semibold text-gray-500 uppercase tracking-wider">Export Options</span>
+                                <label class="flex items-center space-x-2 cursor-pointer">
+                                    <input type="checkbox" id="export-include-sv"
+                                        class="h-3.5 w-3.5 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded">
+                                    <span>Include raw statevectors</span>
+                                </label>
+                                <input type="text" id="export-author-name" placeholder="Author name (optional)" autocomplete="new-password"
+                                    class="border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 flex-1 min-w-[140px]">
+                                <input type="text" id="export-author-affiliation" placeholder="Affiliation (optional)" autocomplete="new-password"
+                                    class="border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 flex-1 min-w-[140px]">
                             </div>
                             <pre id="json-output"
-                                class="flex-1 p-4 pt-10 overflow-auto text-xs text-gray-700 whitespace-pre-wrap break-words bg-gray-50 rounded-b-lg"></pre>
+                                class="flex-1 min-h-0 p-4 overflow-auto text-xs text-gray-700 whitespace-pre-wrap break-words bg-gray-50 rounded-b-lg"></pre>
                         </div>
                     </div>
                 </div>
             </div>
         </main>
+        <footer class="bg-white border-t border-gray-200 py-2 px-4 text-center">
+            <p class="text-xs text-gray-500">
+                &copy; QPA/QIC Research Group, University of Jyväskylä. SeQuSoS Project. All Rights Reserved.
+                &mdash;
+                <a href="https://github.com/SeQuSoS-Project/qrosetta/tree/paper2feature"
+                   target="_blank" rel="noopener noreferrer"
+                   class="text-indigo-500 hover:text-indigo-700 underline">GitHub</a>
+            </p>
+        </footer>
     </div>
 
     <div id="gen-modal" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-labelledby="modal-title" role="dialog"
@@ -544,7 +694,10 @@
 
     <!-- Ranking table: section heading -->
     <template id="tpl-ranking-section-header">
-        <h3 class="font-semibold text-gray-900 mt-4 mb-2"></h3>
+        <div class="mb-4 p-4 bg-blue-50 border-l-4 border-blue-500 rounded text-sm text-blue-700 font-medium">
+            <svg class="w-5 h-5 inline mr-1 -mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <span class="tpl-summary-text"></span>
+        </div>
     </template>
 
     <!-- Ranking table: memory columns header -->
@@ -557,6 +710,7 @@
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Simulator</th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tpl-th-mem-delta">Mem Delta (MiB)</th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tpl-th-proc-peak">Process Peak (MiB)</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tpl-th-theoretical">Theoretical SV (MiB)</th>
                     </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200 tpl-tbody"></tbody>
@@ -598,13 +752,14 @@
         </div>
     </template>
 
-    <!-- Ranking table row: 4-col memory (rank / simulator / mem-delta / proc-peak) -->
+    <!-- Ranking table row: 4-col memory (rank / simulator / mem-delta / proc-peak / theoretical) -->
     <template id="tpl-ranking-row-memory">
         <tr>
             <td class="px-4 py-3 text-sm text-gray-500 tpl-rank"></td>
             <td class="px-4 py-3 text-sm font-medium text-gray-900 tpl-simulator"></td>
             <td class="px-4 py-3 text-sm text-gray-500 font-mono tpl-mem-delta"></td>
             <td class="px-4 py-3 text-sm text-gray-500 font-mono tpl-proc-peak"></td>
+            <td class="px-4 py-3 text-sm text-gray-500 font-mono tpl-theoretical"></td>
         </tr>
     </template>
 
@@ -760,18 +915,18 @@
     <!-- END TEMPLATES                                                 -->
     <!-- ============================================================ -->
 
-    <script src="js/state.js?v=1.0.2"></script>
-    <script src="js/utils.js?v=1.0.2"></script>
-    <script src="js/renderers.js?v=1.0.2"></script>
-    <script src="js/tables_renderer.js?v=1.0.2"></script>
+    <script src="js/state.js?v=1.0.9"></script>
+    <script src="js/utils.js?v=1.0.9"></script>
+    <script src="js/renderers.js?v=1.0.9"></script>
+    <script src="js/tables_renderer.js?v=1.0.9"></script>
     <!-- Domain modules (depend on utils/renderers globals) -->
-    <script src="js/api.js?v=1.0.2"></script>
-    <script src="js/config.js?v=1.0.2"></script>
-    <script src="js/batch.js?v=1.0.2"></script>
-    <script src="js/auth.js?v=1.0.2"></script>
-    <script src="js/history.js?v=1.0.2"></script>
+    <script src="js/api.js?v=1.0.9"></script>
+    <script src="js/config.js?v=1.0.9"></script>
+    <script src="js/batch.js?v=1.0.9"></script>
+    <script src="js/auth.js?v=1.0.9"></script>
+    <script src="js/history.js?v=1.0.9"></script>
     <!-- Controller: depends on all above -->
-    <script src="js/app.js?v=1.0.2"></script>
+    <script src="js/app.js?v=1.0.9"></script>
 
 </body>
 

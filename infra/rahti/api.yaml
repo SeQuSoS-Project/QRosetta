@@ -22,7 +22,7 @@ items:
         containers:
         - name: api
           image: image-registry.apps.2.rahti.csc.fi/qrosetta/rosetta-api:latest
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           ports:
           - containerPort: 8000
           env:
@@ -34,8 +34,16 @@ items:
             value: "1"
           - name: NUMEXPR_NUM_THREADS
             value: "1"
+          - name: EXECUTION_MODE
+            value: "kubernetes"
+          - name: K8S_IMAGE_REGISTRY
+            value: "image-registry.apps.2.rahti.csc.fi/qrosetta"
+          - name: NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
           - name: RUNNER_TIMEOUT_SEC
-            value: "60"
+            value: "300"
           - name: FRONTEND_URL
             value: "https://rosetta-frontend-652754634999.us-central1.run.app,http://localhost:3000,http://localhost:8080"
           - name: DATABASE_URL

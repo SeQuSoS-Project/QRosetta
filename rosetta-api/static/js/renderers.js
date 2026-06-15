@@ -1,19 +1,12 @@
-// =============================================================================
-// renderers.js — Core Rendering Helpers & Panel Builders
-// Responsibility: Constants, helper utilities (tooltip, tabs, optBadge),
-//                 and the three main panel renderers:
-//                   renderSuiteSummary, renderSummaryPanel, renderDetailReport
-// Uses HTML <template> cloning — NO innerHTML string concatenation.
-// =============================================================================
-
-// --- CONSTANTS & DEFINITIONS ---
+// Frontend logic for renderers functionality.
 
 const METRIC_DEFINITIONS = {
     "compilation": "<b>Compilation Time:</b> Time taken to parse QASM, apply transforms (e.g. Rebase), and convert to the backend's native format.",
     "simulation": "<b>Simulation Time:</b> Time taken for the backend to execute the circuit (matrix multiplication) and retrieve results.",
     "total_time": "<b>Total Execution Time:</b> Sum of Compilation and Simulation. Represents end-to-end latency.",
-    "mem_delta": "<b>Memory Delta:</b> RAM added to the process during execution (End RSS - Start RSS). Isolates circuit cost from container overhead.",
-    "proc_peak": "<b>Process Peak:</b> The absolute maximum RAM reached by the container. Hitting the limit (512MB) causes crashes.",
+    "mem_delta": "<b>Memory Delta:</b> RAM added to the process during execution (End RSS - Start RSS). Uses MemoryMonitor with 10ms polling — may undercount short-lived C++ allocations.",
+    "proc_peak": "<b>Process Peak:</b> The absolute maximum RAM reached by the container. Hitting the limit (512 MiB local / 1 GiB K8s) causes an OOMKill.",
+    "theoretical_sv": "<b>Theoretical SV:</b> The absolute minimum memory required to store the full statevector (2^N × 16 bytes for complex128). Tensor-network simulators (e.g. Quimb) natively use less and map to 'None'.",
     "fidelity_matrix": "<b>Fidelity Matrix:</b> Pairwise comparison of state overlap. 1.0 = Identical states.",
     "relative_phase_matrix": "<b>Relative Phase Matrix:</b> Comparison of global phase differences. Non-zero means states differ by a constant phase factor.",
     "statistical_distance_matrix (js_divergence)": "<b>JS Divergence:</b> Jensen-Shannon divergence between probability distributions. 0.0 = Identical.",
@@ -48,23 +41,12 @@ const STATUS_STYLES = {
     }
 };
 
-// --- PRIVATE TEMPLATE UTILITY ---
-
-/**
- * Clones a <template> by ID and returns the live DocumentFragment.
- * Throws a descriptive error if the template is missing (helps catch typos).
- */
 function _cloneTemplate(id) {
     const tpl = document.getElementById(id);
     if (!tpl) throw new Error(`Missing <template id="${id}">`);
     return tpl.content.cloneNode(true);
 }
 
-/**
- * Walk the cloned fragment and replace placeholder class tokens (tpl-dot-*)
- * with the real Tailwind classes from STATUS_STYLES.
- * This is called once after cloning any legend template.
- */
 function _applyLegendDots(fragment) {
     const dotMap = {
         'tpl-dot-success': STATUS_STYLES.success.legendDot,
@@ -80,18 +62,12 @@ function _applyLegendDots(fragment) {
     }
 }
 
-// --- HELPER FUNCTIONS ---
-
 function isConnectionError(err) {
     if (!err) return false;
     const msg = err.toLowerCase();
     return msg.includes("failed to fetch") || msg.includes("load resource") || msg.includes("service unavailable") || msg.includes("connection refused");
 }
 
-/**
- * Returns a <span> Element with a tooltip (title attribute) wrapping label.
- * Falls back to a plain Text node when no definition exists.
- */
 function renderTooltip(key, label) {
     const def = METRIC_DEFINITIONS[key];
     if (def) {
@@ -118,6 +94,13 @@ function clearReport() {
         if (panel) panel.classList.add('hidden');
     });
     if (jsonOutput) jsonOutput.textContent = '';
+
+    const authorNameInput = document.getElementById('export-author-name');
+    const authorAffiliationInput = document.getElementById('export-author-affiliation');
+    const includeSvCheckbox = document.getElementById('export-include-sv');
+    if (authorNameInput) authorNameInput.value = '';
+    if (authorAffiliationInput) authorAffiliationInput.value = '';
+    if (includeSvCheckbox) includeSvCheckbox.checked = false;
 }
 
 function showTab(tabName) {
@@ -144,35 +127,63 @@ function renderTabs(tabList) {
         const button = document.createElement('button');
         button.className = 'ml-4 px-3 py-3 font-medium text-sm border-b-2 border-transparent text-gray-500 hover:text-gray-700';
         button.textContent = tabName.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase());
-        if (tabName === 'raw') button.textContent = "Raw JSON";
+        if (tabName === 'raw') button.textContent = "Exports";
         button.dataset.tab = tabName;
         button.onclick = () => showTab(tabName);
         tabNav.appendChild(button);
     });
 }
 
-/**
- * Returns a DOM Element for the optimization badge, or null if optLevel === 0.
- * NOTE: callers receive an Element (not a string) and must use appendChild.
- */
+function _effectiveOptMap(data, fallbackConfig = {}) {
+    // Ground-truth effective optimization level per runner, as actually executed.
+    // The dispatcher stamps result.optimization_level (clamped, global-or-override
+    // resolved), so this reflects what ran — including global-level runs that have no
+    // entry in the per-runner override map. Falls back to the override map only for
+    // older reports (e.g. saved history) that predate optimization_level stamping.
+    const map = { ...fallbackConfig };
+    const collect = (arr) => {
+        if (!Array.isArray(arr)) return;
+        for (const r of arr) {
+            if (r && r.simulator !== undefined && r.optimization_level !== undefined && r.optimization_level !== null) {
+                map[r.simulator] = r.optimization_level;
+            }
+        }
+    };
+    collect(data?.raw_results);
+    if (Array.isArray(data?.benchmark_summary)) {
+        for (const task of data.benchmark_summary) collect(task?.raw_results);
+    }
+    return map;
+}
+
 function getOptBadge(simulator, config) {
-    const optLevel = config[simulator] !== undefined ? config[simulator] : 0;
+    const parsed = typeof parseRunnerKey === 'function' ? parseRunnerKey(simulator) : { simId: simulator, isMulti: false };
+
+    let optLevel;
+    if (parsed.isMulti) {
+        // Self-comparison key carries its own opt level — config has no entry for it.
+        optLevel = parsed.optLevel;
+    } else {
+        let cv = config[simulator];
+        if (Array.isArray(cv)) cv = cv.length ? cv[0] : 0;   // single-job multi-run entry
+        optLevel = cv !== undefined ? cv : 0;
+    }
+
     if (optLevel > 0) {
         const frag = _cloneTemplate('tpl-opt-badge');
         const span = frag.querySelector('span');
         span.textContent = `L${optLevel}`;
-        span.title = `Optimization Level ${optLevel}`;
+
+        const runnerInfo = typeof getRunnerOptInfo === 'function' ? getRunnerOptInfo(parsed.simId) : {};
+        const desc = runnerInfo.optimization_levels?.[String(optLevel)];
+        span.title = desc
+            ? `Optimization Level ${optLevel}: ${desc}`
+            : `Optimization Level ${optLevel}`;
         return span;
     }
     return null;
 }
 
-// --- PRIVATE STATUS BADGE BUILDER ---
-
-/**
- * Clones tpl-status-badge and applies the correct style + label.
- * Returns a live <span> Element.
- */
 function _makeStatusBadge(styleKey, label) {
     const frag = _cloneTemplate('tpl-status-badge');
     const span = frag.querySelector('span');
@@ -180,8 +191,6 @@ function _makeStatusBadge(styleKey, label) {
     span.textContent = label;
     return span;
 }
-
-// --- MAIN PANEL RENDERERS ---
 
 function renderDetailReport(data, title, config = getState().currentRunnerConfig) {
     renderTabs(['summary', 'performance', 'resources', 'divergence', 'raw']);
@@ -200,9 +209,10 @@ function renderDetailReport(data, title, config = getState().currentRunnerConfig
 
     renderSummaryPanel(data, title);
     if (!data.error) {
-        if (data.performance_report) renderRankingTable(data.performance_report, 'execution_time_sec', 's', panelElements.performance, config);
-        if (data.resource_report) renderRankingTable(data.resource_report, 'memory_usage_mb', 'MiB', panelElements.resources, config);
-        if (data.divergence_report) renderDivergenceTables(data.divergence_report, panelElements.divergence, config);
+        const optMap = _effectiveOptMap(data, config);
+        if (data.performance_report) renderRankingTable(data.performance_report, 'execution_time_sec', 's', panelElements.performance, optMap);
+        if (data.resource_report) renderRankingTable(data.resource_report, 'memory_usage_mb', 'MiB', panelElements.resources, optMap);
+        if (data.divergence_report) renderDivergenceTables(data.divergence_report, panelElements.divergence, optMap);
     }
 
     showTab('summary');
@@ -217,19 +227,17 @@ function renderSuiteSummary(data, title) {
     if (!panel) return;
     panel.innerHTML = '';
 
-    // Title
     const h2 = document.createElement('h2');
     h2.className = 'text-xl font-semibold text-gray-900 mb-4';
     h2.textContent = title;
     panel.appendChild(h2);
 
-    // Legend
     const legendFrag = _cloneTemplate('tpl-legend-suite');
     _applyLegendDots(legendFrag);
     panel.appendChild(legendFrag);
 
     if (data.error) {
-        // API error block
+
         const errFrag = _cloneTemplate('tpl-suite-api-error');
         const errDiv = errFrag.querySelector('.tpl-error-text');
         errDiv.classList.remove('tpl-error-text');
@@ -239,24 +247,21 @@ function renderSuiteSummary(data, title) {
         const summary = data.benchmark_summary || [];
         const errors = summary.filter(r => r.error).length;
 
-        // Stats bar
         const statsFrag = _cloneTemplate('tpl-suite-stats-bar');
         statsFrag.querySelector('.tpl-count').textContent = summary.length;
         statsFrag.querySelector('.tpl-errors').textContent = errors;
         panel.appendChild(statsFrag);
 
-        // Table
         const tableFrag = _cloneTemplate('tpl-suite-table-wrapper');
         const tbody = tableFrag.querySelector('.tpl-tbody');
         tbody.classList.remove('tpl-tbody');
 
         summary.forEach((item, idx) => {
-            const fname = item.task_name || (item.benchmark_file ? item.benchmark_file.replace('benchmarks/', '') : 'Unknown');
+            const fname = item.task_name || (item.benchmark_file ? item.benchmark_file.replace('circuits/', '') : 'Unknown');
             const rowFrag = _cloneTemplate('tpl-suite-summary-row');
 
             rowFrag.querySelector('.tpl-task-name').textContent = fname;
 
-            // Status badge
             const statusCell = rowFrag.querySelector('.tpl-status');
             statusCell.classList.remove('tpl-status');
             let badge;
@@ -292,13 +297,11 @@ function renderSummaryPanel(data, title) {
     if (!panel) return;
     panel.innerHTML = '';
 
-    // Title
     const h2 = document.createElement('h2');
     h2.className = 'text-xl font-semibold text-gray-900 mb-4';
     h2.textContent = title;
     panel.appendChild(h2);
 
-    // Legend
     const legendFrag = _cloneTemplate('tpl-legend-suite');
     _applyLegendDots(legendFrag);
     panel.appendChild(legendFrag);
@@ -348,16 +351,97 @@ function renderSummaryPanel(data, title) {
         });
         panel.appendChild(frag);
     } else if (divergences.length > 0) {
-        const frag = _cloneTemplate('tpl-summary-divergence-block');
-        frag.querySelector('.tpl-heading').textContent = `Divergences Found (${divergences.length})`;
-        const list = frag.querySelector('.tpl-list');
-        list.classList.remove('tpl-list');
-        divergences.forEach(d => {
+        const crossGroup = divergences.filter(d => d.is_cross_group);
+        const withinGroup = divergences.filter(d => !d.is_cross_group);
+
+        if (crossGroup.length > 0) {
+            const frag = _cloneTemplate('tpl-summary-divergence-block');
+            const heading = frag.querySelector('.tpl-heading');
+            heading.textContent = `Qubit Ordering Divergences (${crossGroup.length})`;
+            heading.parentElement.classList.remove('bg-red-50', 'text-red-700', 'border-red-200');
+            heading.parentElement.classList.add('bg-yellow-50', 'text-yellow-700', 'border-yellow-200');
+
+            const list = frag.querySelector('.tpl-list');
+            list.classList.remove('tpl-list');
             const liFrag = _cloneTemplate('tpl-summary-list-item');
-            liFrag.querySelector('li').textContent = `${d.type} between ${d.simulators.join(' & ')}`;
+            const li = liFrag.querySelector('li');
+            li.innerHTML = `Detected <b>${crossGroup.length}</b> pairwise divergences caused by mixed LSB vs MSB ordering conventions. These are expected and mathematically explained.`;
+
+            const details = document.createElement('details');
+            details.className = 'mt-2 text-xs text-yellow-800 cursor-pointer';
+            const summary = document.createElement('summary');
+            summary.className = 'font-semibold hover:text-yellow-600 outline-none py-1';
+            summary.textContent = 'View Affected Simulators (Grouped)';
+            details.appendChild(summary);
+
+            const pairsList = document.createElement('ul');
+            pairsList.className = 'list-none ml-2 mt-1 space-y-2 opacity-90';
+
+            const processed = new Set();
+            crossGroup.forEach(d => {
+                const [s1, s2] = d.simulators;
+                if (!processed.has(s1)) {
+                    const partners = crossGroup
+                        .filter(dx => dx.simulators.includes(s1))
+                        .map(dx => ({
+                            name: dx.simulators.find(sx => sx !== s1),
+                            type: dx.type,
+                            fidelity: dx.fidelity,
+                            js: dx.js_divergence
+                        }));
+
+                    const subDetails = document.createElement('details');
+                    subDetails.className = 'text-xs text-yellow-700';
+
+                    const subSummary = document.createElement('summary');
+                    subSummary.className = 'font-bold cursor-pointer hover:text-yellow-900 outline-none';
+                    subSummary.innerHTML = `${s1} <span class="font-normal opacity-60">&times; ${partners.length} partners</span>`;
+                    subDetails.appendChild(subSummary);
+
+                    const subUl = document.createElement('ul');
+                    subUl.className = 'list-disc ml-4 mt-1 space-y-0.5 opacity-80';
+                    partners.forEach(p => {
+                        const liPartner = document.createElement('li');
+                        let info = "";
+                        if (p.fidelity !== undefined) info = ` (Fidelity: ${p.fidelity.toFixed(4)})`;
+                        if (p.js !== undefined) info = ` (JS Div: ${p.js.toFixed(4)})`;
+                        liPartner.innerHTML = `vs <b>${p.name}</b>${info}`;
+                        subUl.appendChild(liPartner);
+                    });
+                    subDetails.appendChild(subUl);
+
+                    const pLi = document.createElement('li');
+                    pLi.appendChild(subDetails);
+                    pairsList.appendChild(pLi);
+
+                    processed.add(s1);
+
+                    partners.forEach(p => processed.add(p.name));
+                }
+            });
+
+            details.appendChild(pairsList);
+            li.appendChild(details);
             list.appendChild(liFrag);
-        });
-        panel.appendChild(frag);
+            panel.appendChild(frag);
+        }
+
+        if (withinGroup.length > 0) {
+            const frag = _cloneTemplate('tpl-summary-divergence-block');
+            frag.querySelector('.tpl-heading').textContent = `True Numerical Divergences (${withinGroup.length})`;
+            const list = frag.querySelector('.tpl-list');
+            list.classList.remove('tpl-list');
+            withinGroup.forEach(d => {
+                const liFrag = _cloneTemplate('tpl-summary-list-item');
+                let info = "";
+                if (d.fidelity !== undefined) info = ` (Fidelity: ${d.fidelity.toFixed(4)})`;
+                if (d.js_divergence !== undefined) info = ` (JS Div: ${d.js_divergence.toFixed(4)})`;
+
+                liFrag.querySelector('li').innerHTML = `<b>${d.simulators.join(' & ')}</b>: ${d.type}${info}`;
+                list.appendChild(liFrag);
+            });
+            panel.appendChild(frag);
+        }
     } else {
         const frag = _cloneTemplate('tpl-summary-success-banner');
         const msg = data.n_shots
@@ -367,5 +451,3 @@ function renderSummaryPanel(data, title) {
         panel.appendChild(frag);
     }
 }
-
-// renderRankingTable, renderDivergenceTables, and viewDetail are in tables_renderer.js

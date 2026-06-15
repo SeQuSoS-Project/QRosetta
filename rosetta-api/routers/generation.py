@@ -1,12 +1,15 @@
-from fastapi import APIRouter, Request
+# FastAPI router endpoints for generation.
+
+from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
 from qrosetta_commons.helpers import get_logger
-import library
+import services.circuit_library as library
+import services.benchmark_library as benchmark_library
 from schemas import GenerateCircuitPayload, QasmPayload, VisualizerResponse
 from services.validator import validate_request
 from services.quirk_converter import QuirkCompiler
 from config import settings
-from security import limiter
+from services.security import limiter
 
 logger = get_logger("rosetta-api")
 router = APIRouter()
@@ -42,6 +45,7 @@ async def generate_circuit_endpoint(request: Request, payload: GenerateCircuitPa
 
 @router.post("/visualize/quirk", response_model=VisualizerResponse)
 async def visualize_quirk(payload: QasmPayload):
+    validate_request(payload.qasm_string, mode="statevector")
     try:
         compiler = QuirkCompiler(payload.qasm_string)
         url = compiler.generate_url()
@@ -49,3 +53,38 @@ async def visualize_quirk(payload: QasmPayload):
     except Exception as e:
         logger.error(f"Failed to compile QASM for Visualizer: {str(e)}", exc_info=True)
         return JSONResponse(status_code=400, content={"error": f"Failed to generate Quirk URL: {str(e)}"})
+
+@router.get("/benchmarks/mqt/list")
+async def list_mqt_bench():
+    return benchmark_library.list_mqt()
+
+@router.get("/benchmarks/qasmbench/list")
+async def list_qasmbench():
+    return benchmark_library.list_qasmbench()
+
+@router.get("/benchmarks/mqt")
+@limiter.limit("10/minute")
+async def get_mqt_bench(request: Request, algorithm: str, qubits: int = 3):
+    if qubits > settings.MAX_QUBITS_MEASURED:
+        return JSONResponse(status_code=400, content={"error": f"Qubit count {qubits} exceeds limit of {settings.MAX_QUBITS_MEASURED}"})
+    try:
+        qasm = benchmark_library.get_mqt_benchmark(algorithm, qubits)
+        return {"qasm": qasm}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"MQT Bench Error: {str(e)}", exc_info=True)
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@router.get("/benchmarks/qasmbench")
+@limiter.limit("10/minute")
+async def get_qasmbench(request: Request, circuit: str):
+    try:
+        qasm = benchmark_library.get_qasmbench_circuit(circuit)
+        return {"qasm": qasm}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"QASMBench Error: {str(e)}", exc_info=True)
+        return JSONResponse(status_code=500, content={"error": str(e)})
+

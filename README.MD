@@ -50,13 +50,35 @@ This project is configured for **production deployment** by default (no volume m
     cd qrosetta
     ```
 
-2.  **Build and Run**
+2.  **Configure Environment**
+    Create a local `.env` file from the example template and fill in your credentials (required for both local deployment and cloud deployment scripts):
+    ```bash
+    cp .env.example .env
+    ```
+    *Note: Ensure you edit the `.env` file with your actual database and cloud credentials.*
+
+3.  **Build and Run (Local)**
+    The recommended way to deploy the stack locally with graceful failure handling is using the provided boot script:
+    ```bash
+    ./scripts/safe_boot.sh
+    ```
+    *Alternatively, you can manually use Docker Compose:*
     ```bash
     docker compose up --build
     ```
-    *Note: The first build may take time as it compiles dependencies for 9 separate containers.*
+    *Note: The first build may take time as it compiles dependencies for 16 separate containers.*
 
-3.  **Access the Interface**
+4.  **Deploy to Cloud (GCP)**
+    To deploy the backend API and Runners to Google Cloud Run:
+    ```bash
+    ./scripts/deploy.sh
+    ```
+    To deploy the static frontend:
+    ```bash
+    ./scripts/deploy_frontend.sh
+    ```
+
+5.  **Access the Interface**
     * **Web UI:** [http://localhost](http://localhost) (Served via Nginx on Port 80)
     * **API Docs:** [http://localhost/docs](http://localhost/docs)
 
@@ -69,7 +91,7 @@ This project has undergone a rigorous **Hardening Sprint** to ensure stability a
 * **Startup Coordination:** Nginx waits for the API to pass a healthcheck before accepting traffic, preventing "502 Bad Gateway" errors on boot.
 * **Observability:** Implemented **Structured Logging** across all services. Logs are standardized, timestamped, and categorized (INFO/ERROR) in stdout.
 * **Non-Root Execution:** All containers run as an unprivileged user (`appuser`) to prevent container breakout attacks.
-* **Resource Limits:** Every service is capped at **0.5 CPUs** and **512MB RAM** to prevent "Logic Bomb" circuits from crashing the host.
+* **Resource Limits:** Every service is capped at **0.5 CPUs** and **512 MiB RAM** (Docker Compose) to prevent "Logic Bomb" circuits from crashing the host. On Kubernetes (Rahti), runner Jobs are allocated up to **1 GiB** (256 MiB request, 1 GiB limit).
 * **Pinned Dependencies:** All `requirements.txt` files use strict version pinning (e.g., `pennylane==0.39.0`, `autoray==0.6.12`) to prevent dependency drift.
 * **Event Loop Optimization:** Heavy mathematical operations are offloaded to thread executors to keep the API responsive.
 

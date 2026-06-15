@@ -1,12 +1,8 @@
-// =============================================================================
-// api.js — Network Layer
-// Responsibility: BASE_URL detection, auth headers, and job polling.
-// Depends on: getState().authToken (global in app.js), setLoading (utils.js)
-// =============================================================================
+// Frontend logic for api functionality.
 
 let BASE_URL = '';
 if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-    BASE_URL = 'https://rosetta-api-route-qrosetta.2.rahtiapp.fi';
+    BASE_URL = window.location.origin;
 }
 
 function getAuthHeaders(extraHeaders = {}) {
@@ -18,8 +14,10 @@ function getAuthHeaders(extraHeaders = {}) {
 }
 
 async function pollJobStatus(jobId) {
-    let startTime = Date.now();
     return new Promise((resolve, reject) => {
+        let networkErrorCount = 0;
+        const MAX_NETWORK_ERRORS = 4;
+
         const checkStatus = async () => {
             try {
                 const res = await fetch(`${BASE_URL}/jobs/${jobId}`, {
@@ -29,21 +27,83 @@ async function pollJobStatus(jobId) {
                     throw new Error(`Failed to fetch job status: ${res.status}`);
                 }
                 const data = await res.json();
+                networkErrorCount = 0;
+
+                if (data.runner_statuses) {
+                    updateRunnerStatuses(data.runner_statuses);
+                }
 
                 if (data.status === "completed") {
                     resolve(data.results);
                 } else if (data.status === "failed") {
-                    reject(new Error(data.error || "Job failed on backend"));
+
+                    if (data.results) {
+                        resolve(data.results);
+                    } else {
+                        reject(new Error(data.error || "Job failed on backend"));
+                    }
                 } else {
-                    const elapsed = Math.floor((Date.now() - startTime) / 1000);
-                    const targetName = data.target === "lumi" ? "LUMI (HPC)" : "Rahti";
-                    setLoading(true, `Processing on ${targetName}... (${elapsed}s)`);
+
+                    // In local mode the server dispatches over HTTP to Docker containers
+                    // regardless of the execution-target dropdown, so report that — never
+                    // imply a Kubernetes cluster when running locally.
+                    const executionMode = (typeof getState === 'function') ? getState().executionMode : 'kubernetes';
+                    let targetName;
+                    if (executionMode === 'local') {
+                        targetName = "local containers";
+                    } else if (data.target === "lumi") {
+                        targetName = "LUMI (HPC)";
+                    } else {
+                        targetName = "Kubernetes Cluster";
+                    }
+                    const loaderText = document.getElementById('loader-text');
+                    if (loaderText) loaderText.textContent = `Running on ${targetName}...`;
                     setTimeout(checkStatus, 3000);
                 }
             } catch (err) {
-                reject(err);
+                networkErrorCount++;
+                if (networkErrorCount <= MAX_NETWORK_ERRORS) {
+                    console.warn(`[poll] Network error for job ${jobId} (attempt ${networkErrorCount}/${MAX_NETWORK_ERRORS}):`, err.message);
+                    setTimeout(checkStatus, 3000);
+                } else {
+                    reject(err);
+                }
             }
         };
-        setTimeout(checkStatus, 1500); // initial small delay
+        setTimeout(checkStatus, 1500);
     });
+}
+
+async function fetchMQTBench(algorithm, qubits) {
+    const res = await fetch(`${BASE_URL}/benchmarks/mqt?algorithm=${encodeURIComponent(algorithm)}&qubits=${encodeURIComponent(qubits)}`, {
+        headers: getAuthHeaders()
+    });
+    if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to fetch MQT Bench: ${res.status}`);
+    }
+    return await res.json();
+}
+
+async function fetchQASMBench(circuit) {
+    const res = await fetch(`${BASE_URL}/benchmarks/qasmbench?circuit=${encodeURIComponent(circuit)}`, {
+        headers: getAuthHeaders()
+    });
+    if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to fetch QASMBench: ${res.status}`);
+    }
+    return await res.json();
+}
+
+async function fetchMQTList() {
+    const res = await fetch(`${BASE_URL}/benchmarks/mqt/list`, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error(`Failed to fetch MQT list: ${res.status}`);
+    return await res.json();
+}
+
+async function fetchQASMBenchList() {
+    const res = await fetch(`${BASE_URL}/benchmarks/qasmbench/list`, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error(`Failed to fetch QASMBench list: ${res.status}`);
+    return await res.json();
 }

@@ -1,19 +1,12 @@
-// =============================================================================
-// app.js — Application Controller (The Bootstrap)
-// Responsibility: Global state, DOM references, window.onload initialization,
-//                 circuit generation, run mode toggles, and core run dispatching.
-// Depends on: api.js, config.js, batch.js, auth.js, history.js, utils.js, renderers.js
-// =============================================================================
+// Frontend logic for app functionality.
 
-// --- FIX: Declare DOM elements here, define them in window.onload ---
 let qasmInput, loader, tabNav, welcomeMessage, backButtonContainer, jsonOutput;
 let playlistSection, queueList, queueCount;
 let panelElements = {};
 let allButtons = [];
 
-// --- INIT ---
 window.onload = async () => {
-    // --- FIX: Define all DOM elements inside onload ---
+
     qasmInput = document.getElementById('qasm-input');
     loader = document.getElementById('loader');
     tabNav = document.getElementById('tab-nav');
@@ -44,11 +37,24 @@ window.onload = async () => {
     verifySession();
 
     try {
-        const response = await fetch(`${BASE_URL}/algorithms`, {
-            headers: getAuthHeaders()
-        });
-        if (!response.ok) throw new Error('Failed to fetch algorithms');
-        dispatch('SET_ALGORITHMS', await response.json());
+        const [algorithmsResponse, configResponse] = await Promise.all([
+            fetch(`${BASE_URL}/algorithms`, { headers: getAuthHeaders() }),
+            fetch(`${BASE_URL}/config`),
+        ]);
+        if (!algorithmsResponse.ok) throw new Error('Failed to fetch algorithms');
+        dispatch('SET_ALGORITHMS', await algorithmsResponse.json());
+        if (configResponse.ok) {
+            const config = await configResponse.json();
+            dispatch('SET_CONFIG_LIMITS', config);
+            // "Bypass API Safety Limits" is honoured by the API only in local mode;
+            // hide it elsewhere so it cannot imply an effect it does not have.
+            if (config.execution_mode !== 'local') {
+                const bypassContainer = document.getElementById('bypass-limits-container');
+                if (bypassContainer) bypassContainer.classList.add('hidden');
+                const bypassCheckbox = document.getElementById('bypass-limits-checkbox');
+                if (bypassCheckbox) bypassCheckbox.checked = false;
+            }
+        }
 
         const select = document.getElementById('algo-select');
         select.innerHTML = '';
@@ -62,7 +68,6 @@ window.onload = async () => {
         select.addEventListener('change', updateQubitConstraints);
         updateQubitConstraints();
 
-        // Context Bar Init
         qasmInput.addEventListener('input', () => {
             dispatch('SET_CURRENT_ALGO_NAME', "Custom / Modified");
             updateContextBar();
@@ -75,23 +80,22 @@ window.onload = async () => {
         welcomeMessage.classList.remove('text-gray-500');
     }
 
-    // Set initial UI states for both blocks
     toggleSingleMode();
     toggleBatchMode();
-    // Only generate circuit if algorithms loaded
+    populateBenchmarkSelectors();
+
     if (getState().allAlgorithms.length > 0) {
         generateCircuit();
     }
     renderBatchQueue();
 };
 
-// --- METADATA UI LOGIC ---
 function getDynamicMaxQubits() {
     const mode = document.querySelector('input[name="mode-single"]:checked')?.value || 'statevector';
-    return mode === 'statevector' ? 18 : 24;
+    return mode === 'statevector' ? getState().maxQubitsStatevector : getState().maxQubitsMeasured;
 }
 
-function updateQubitConstraints() {
+function updateQubitConstraints(e) {
     const algoId = document.getElementById('algo-select').value;
     const selectedAlgo = getState().allAlgorithms.find(a => a.id === algoId);
     const input = document.getElementById('algo-qubits');
@@ -99,7 +103,17 @@ function updateQubitConstraints() {
     if (selectedAlgo) {
         if (selectedAlgo.min_qubits !== undefined) input.min = selectedAlgo.min_qubits;
         input.max = Math.min(selectedAlgo.max_qubits || 24, getDynamicMaxQubits());
-        if (selectedAlgo.default_qubits !== undefined) input.value = selectedAlgo.default_qubits;
+        
+        const isAlgoChange = e && e.type === 'change';
+        if (isAlgoChange || !input.value) {
+            if (selectedAlgo.default_qubits !== undefined) input.value = selectedAlgo.default_qubits;
+        } else {
+            let val = parseInt(input.value);
+            if (!isNaN(val)) {
+                if (val > input.max) input.value = input.max;
+                if (val < input.min) input.value = input.min;
+            }
+        }
 
         if (selectedAlgo.min_qubits === selectedAlgo.max_qubits) {
             input.disabled = true;
@@ -109,7 +123,6 @@ function updateQubitConstraints() {
     }
 }
 
-// --- CIRCUIT GENERATION ---
 async function generateCircuit() {
     if (getState().isProcessing) return;
     const algoId = document.getElementById('algo-select').value;
@@ -121,7 +134,7 @@ async function generateCircuit() {
     }
 
     dispatch('SET_PROCESSING', true);
-    setLoading(true, "Generating Circuit...");
+    setLoading(true, "Generating Circuit...", { overlay: false });
     try {
         const response = await fetch(`${BASE_URL}/generate_circuit`, {
             method: 'POST',
@@ -131,7 +144,7 @@ async function generateCircuit() {
         const data = await response.json();
         if (response.ok) {
             qasmInput.value = data.qasm;
-            // Update Context
+
             const selectElement = document.getElementById('algo-select');
             dispatch('SET_CURRENT_ALGO_NAME', selectElement.options[selectElement.selectedIndex].text + ` (${qubits}q)`);
             updateContextBar();
@@ -147,7 +160,6 @@ async function generateCircuit() {
     }
 }
 
-// --- UI MODE TOGGLES ---
 function toggleSingleMode() {
     const mode = document.querySelector('input[name="mode-single"]:checked').value;
     const shotsContainer = document.getElementById('shots-container-single');
@@ -179,7 +191,6 @@ function handleRun() {
     runComparison(mode, shots);
 }
 
-// --- CORE RUN LOGIC ---
 async function runComparison(type, shots) {
     clearHistoryState();
     if (getState().isProcessing) return;
@@ -187,26 +198,33 @@ async function runComparison(type, shots) {
     if (!qasm) { alert("Please enter QASM code."); return; }
 
     const globalOpt = parseInt(document.getElementById('opt-global')?.value || 0);
-    const timeout = parseInt(document.getElementById('timeout-input')?.value || 60);
+    const timeout = parseInt(document.getElementById('timeout-input')?.value || 300);
     const runNameInput = document.getElementById('single-run-name')?.value.trim();
     dispatch('SET_RUNNER_CONFIG', getRunnerConfig());
 
     const endpoint = type === 'statevector' ? '/compare' : '/compare_measured';
     const targetSims = getTargetSimulators();
-    const executionTarget = document.getElementById('execution-target-select')?.value || 'rahti';
+    const executionTarget = document.getElementById('execution-target-select')?.value || 'kubernetes';
+    const bypassLimits = document.getElementById('bypass-limits-checkbox')?.checked || false;
+    const applyPreprocessing = document.getElementById('apply-preprocessing-checkbox')?.checked ?? true;
 
     if (targetSims.length === 0) {
         alert("Please select at least one simulator from the Config Panel to run.");
         return;
     }
 
+    if (!checkRunCountLimits(getState().currentRunnerConfig)) return;
+
     const payload = {
         qasm_string: qasm,
         optimization_level: globalOpt,
         timeout_seconds: timeout,
         runner_config: getState().currentRunnerConfig,
+        runner_phases: getRunnerPhases(),
         target_simulators: targetSims,
-        execution_target: executionTarget
+        execution_target: executionTarget,
+        bypass_limits: bypassLimits,
+        apply_preprocessing: applyPreprocessing
     };
 
     if (type === 'measured') {
@@ -238,12 +256,13 @@ async function runComparison(type, shots) {
 
         const results = await pollJobStatus(jobData.job_id);
 
+        dispatch('SET_JOB_ID', jobData.job_id);
         dispatch('SET_SUITE_DATA', results);
         renderDetailReport(results, title, getState().currentRunnerConfig);
 
-        // Save to History
         if (runNameInput) results.run_name = runNameInput;
-        await saveRunToHistory(results);
+        const historyRunId = await saveRunToHistory(results);
+        dispatch('SET_HISTORY_RUN_ID', historyRunId);
     } catch (e) {
         console.error(e);
         renderDetailReport({ error: e.message }, "Error");
@@ -261,16 +280,20 @@ async function runBatchQueue() {
     const mode = document.querySelector('input[name="mode-batch"]:checked').value;
     const shots = parseInt(document.getElementById('shots-batch').value) || 1024;
     const globalOpt = parseInt(document.getElementById('opt-global')?.value || 0);
-    const timeout = parseInt(document.getElementById('timeout-input')?.value || 60);
+    const timeout = parseInt(document.getElementById('timeout-input')?.value || 300);
     const runNameInput = document.getElementById('batch-run-name')?.value.trim();
     dispatch('SET_RUNNER_CONFIG', getRunnerConfig());
     const targetSims = getTargetSimulators();
-    const executionTarget = document.getElementById('execution-target-select')?.value || 'rahti';
+    const executionTarget = document.getElementById('execution-target-select')?.value || 'kubernetes';
+    const bypassLimits = document.getElementById('bypass-limits-checkbox')?.checked || false;
+    const applyPreprocessing = document.getElementById('apply-preprocessing-checkbox')?.checked ?? true;
 
     if (targetSims.length === 0) {
         alert("Please select at least one simulator from the Config Panel to run.");
         return;
     }
+
+    if (!checkRunCountLimits(getState().currentRunnerConfig)) return;
 
     const payload = {
         tasks: getState().batchQueue,
@@ -279,8 +302,11 @@ async function runBatchQueue() {
         optimization_level: globalOpt,
         timeout_seconds: timeout,
         runner_config: getState().currentRunnerConfig,
+        runner_phases: getRunnerPhases(),
         target_simulators: targetSims,
-        execution_target: executionTarget
+        execution_target: executionTarget,
+        bypass_limits: bypassLimits,
+        apply_preprocessing: applyPreprocessing
     };
 
     setLoading(true, `Running Batch of ${getState().batchQueue.length} Circuits...`);
@@ -307,13 +333,14 @@ async function runBatchQueue() {
 
         const results = await pollJobStatus(jobData.job_id);
 
+        dispatch('SET_JOB_ID', jobData.job_id);
         dispatch('SET_SUITE_DATA', results);
         dispatch('SET_SUITE_TITLE', "Playlist Batch Report");
         renderSuiteSummary(results, getState().currentSuiteTitle);
 
-        // Save to History
         if (runNameInput) results.run_name = runNameInput;
-        await saveRunToHistory(results);
+        const historyRunId = await saveRunToHistory(results);
+        dispatch('SET_HISTORY_RUN_ID', historyRunId);
 
     } catch (e) {
         console.error(e);
@@ -322,4 +349,154 @@ async function runBatchQueue() {
         setLoading(false);
         dispatch('SET_PROCESSING', false);
     }
+}
+
+let _mqtSizes = {};
+
+async function populateBenchmarkSelectors() {
+    try {
+        const [mqt, qasm] = await Promise.all([fetchMQTList(), fetchQASMBenchList()]);
+        _mqtSizes = mqt || {};
+
+        const mqtSel = document.getElementById('bench-mqt-algo');
+        if (mqtSel) {
+            mqtSel.innerHTML = '';
+            Object.keys(_mqtSizes).forEach(algo => {
+                const o = document.createElement('option');
+                o.value = algo;
+                o.textContent = algo;
+                mqtSel.appendChild(o);
+            });
+            mqtSel.addEventListener('change', updateMqtQubitRange);
+            updateMqtQubitRange();
+        }
+
+        const qSel = document.getElementById('bench-qasmbench-circuit');
+        if (qSel) {
+            qSel.innerHTML = '';
+            (qasm || []).forEach(name => {
+                const o = document.createElement('option');
+                o.value = name;
+                o.textContent = name;
+                qSel.appendChild(o);
+            });
+        }
+    } catch (error) {
+        console.error('Failed to load benchmark lists:', error);
+    }
+}
+
+function updateMqtQubitRange() {
+    const algo = document.getElementById('bench-mqt-algo')?.value;
+    const sizes = _mqtSizes[algo] || [];
+    const input = document.getElementById('bench-mqt-qubits');
+    if (!input || sizes.length === 0) return;
+    input.min = sizes[0];
+    input.max = sizes[sizes.length - 1];
+    const v = parseInt(input.value);
+    if (!(v >= sizes[0] && v <= sizes[sizes.length - 1])) input.value = sizes[0];
+}
+
+function toggleBenchSuite() {
+    const suite = document.querySelector('input[name="bench-suite"]:checked').value;
+    const mqtOptions = document.getElementById('bench-mqt-options');
+    const qasmbenchOptions = document.getElementById('bench-qasmbench-options');
+    
+    if (suite === 'mqt') {
+        mqtOptions.classList.remove('hidden');
+        qasmbenchOptions.classList.add('hidden');
+    } else {
+        mqtOptions.classList.add('hidden');
+        qasmbenchOptions.classList.remove('hidden');
+    }
+}
+
+async function fetchBenchmarkQasm() {
+    const suite = document.querySelector('input[name="bench-suite"]:checked').value;
+    const errorDiv = document.getElementById('bench-error');
+    errorDiv.classList.add('hidden');
+    
+    try {
+        let data;
+        let title = "";
+        
+        if (suite === 'mqt') {
+            const algo = document.getElementById('bench-mqt-algo').value;
+            const qubits = document.getElementById('bench-mqt-qubits').value;
+            setLoading(true, "Fetching MQT Bench...", { overlay: false });
+            data = await fetchMQTBench(algo, qubits);
+            title = `MQT Bench: ${document.getElementById('bench-mqt-algo').options[document.getElementById('bench-mqt-algo').selectedIndex].text} (${qubits}q)`;
+        } else {
+            const circuit = document.getElementById('bench-qasmbench-circuit').value;
+            setLoading(true, "Fetching QASMBench...", { overlay: false });
+            data = await fetchQASMBench(circuit);
+            title = `QASMBench: ${document.getElementById('bench-qasmbench-circuit').options[document.getElementById('bench-qasmbench-circuit').selectedIndex].text}`;
+        }
+        
+        return { qasm: data.qasm, title: title };
+    } catch (error) {
+        errorDiv.textContent = error.message;
+        errorDiv.classList.remove('hidden');
+        return null;
+    } finally {
+        setLoading(false);
+    }
+}
+
+async function loadBenchmark() {
+    if (getState().isProcessing) return;
+    const result = await fetchBenchmarkQasm();
+    if (result && result.qasm) {
+        qasmInput.value = result.qasm;
+        dispatch('SET_CURRENT_ALGO_NAME', result.title);
+        updateContextBar();
+        closeDrawers();
+    }
+}
+
+async function addBenchmarkToBatch() {
+    if (getState().isProcessing) return;
+    const result = await fetchBenchmarkQasm();
+    if (result && result.qasm) {
+        dispatch('SET_BATCH_QUEUE', [...getState().batchQueue, { name: result.title, qasm: result.qasm }]);
+        renderBatchQueue();
+        openDrawer('playlist-section');
+    }
+}
+
+// --- Slide-over drawer controller (Config / Bench / Batch) ---
+// Panels are fixed off-canvas (translate-x-full) and slide in when opened. Only one
+// is open at a time; a shared backdrop dims the page and closes on click / Escape.
+const DRAWER_IDS = ['config-panel', 'benchmarks-panel', 'playlist-section'];
+
+function openDrawer(panelId) {
+    DRAWER_IDS.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('translate-x-full', id !== panelId);
+    });
+    const backdrop = document.getElementById('drawer-backdrop');
+    if (backdrop) backdrop.classList.remove('hidden');
+}
+
+function closeDrawers() {
+    DRAWER_IDS.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('translate-x-full');
+    });
+    const backdrop = document.getElementById('drawer-backdrop');
+    if (backdrop) backdrop.classList.add('hidden');
+}
+
+function isDrawerOpen(panelId) {
+    const el = document.getElementById(panelId);
+    return !!el && !el.classList.contains('translate-x-full');
+}
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeDrawers();
+});
+
+function toggleBenchPanel() {
+    if (isDrawerOpen('benchmarks-panel')) closeDrawers();
+    else openDrawer('benchmarks-panel');
 }
