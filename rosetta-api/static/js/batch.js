@@ -1,11 +1,4 @@
-// =============================================================================
-// batch.js — Playlist & Batch Queue Management
-// Responsibility: getState().batchQueue state, adding/removing items, presets,
-//                 and the auto-generator modal.
-// Depends on: BASE_URL, getAuthHeaders (api.js), setLoading (utils.js),
-//             qasmInput, getState().isProcessing, getState().batchQueue, playlistSection,
-//             queueList, queueCount (app.js globals)
-// =============================================================================
+// Frontend logic for batch functionality.
 
 const PRESETS = {
     "sanity": [
@@ -35,7 +28,7 @@ async function applyPreset() {
 
         const selectedPreset = JSON.parse(JSON.stringify(PRESETS[val]));
 
-        setLoading(true, `Loading Preset: ${val}...`);
+        setLoading(true, `Loading Preset: ${val}...`, { overlay: false });
         try {
             for (let i = 0; i < selectedPreset.length; i++) {
                 const item = selectedPreset[i];
@@ -68,7 +61,6 @@ function addToBatch() {
     const algoId = document.getElementById('algo-select').value;
     const qubits = parseInt(document.getElementById('algo-qubits').value);
 
-    // Explicitly grab the custom name and QASM content right now
     const algoName = document.getElementById('ctx-algo-name').value || "Custom Circuit";
     const currentQasm = qasmInput.value.trim();
 
@@ -81,18 +73,12 @@ function addToBatch() {
     };
     dispatch('SET_BATCH_QUEUE', [...getState().batchQueue, newItem]);
     renderBatchQueue();
-
-    if (playlistSection.classList.contains('hidden')) {
-        playlistSection.classList.remove('hidden');
-    }
+    openDrawer('playlist-section');
 }
 
 function togglePlaylist() {
-    if (playlistSection.classList.contains('hidden')) {
-        playlistSection.classList.remove('hidden');
-    } else {
-        playlistSection.classList.add('hidden');
-    }
+    if (isDrawerOpen('playlist-section')) closeDrawers();
+    else openDrawer('playlist-section');
 }
 
 function renderBatchQueue() {
@@ -134,18 +120,18 @@ async function viewBatchItem(index) {
             sel.value = item.algorithm;
             document.getElementById('algo-qubits').value = item.qubits;
         }
-        // Update Context
+
         document.getElementById('ctx-algo-name').value = item.name;
         dispatch('SET_CURRENT_ALGO_NAME', item.name);
         updateContextBar();
         return;
     }
 
-    qasmInput.value = "// Loading preview from playlist...";
+    qasmInput.value = "";
 
     try {
         dispatch('SET_PROCESSING', true);
-        setLoading(true, "Loading Preview...");
+        setLoading(true, "Loading Preview...", { overlay: false });
         const response = await fetch(`${BASE_URL}/generate_circuit`, {
             method: 'POST',
             headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
@@ -159,15 +145,15 @@ async function viewBatchItem(index) {
                 sel.value = item.algorithm;
                 document.getElementById('algo-qubits').value = item.qubits;
             }
-            // Update Context
+
             document.getElementById('ctx-algo-name').value = item.name + ` (${item.qubits}q)`;
             dispatch('SET_CURRENT_ALGO_NAME', item.name + ` (${item.qubits}q)`);
             updateContextBar();
         } else {
-            qasmInput.value = "// Error loading preview: " + data.error;
+            qasmInput.value = "";
         }
     } catch (e) {
-        qasmInput.value = "// Error: " + e.message;
+        qasmInput.value = "";
     } finally {
         setLoading(false);
         dispatch('SET_PROCESSING', false);
@@ -184,20 +170,19 @@ function clearBatch() {
     renderBatchQueue();
 }
 
-// --- AUTO-GENERATOR MODAL LOGIC ---
-
 function openGeneratorModal() {
     const list = document.getElementById('gen-algo-list');
-    list.innerHTML = '';
-    getState().allAlgorithms.forEach(algo => {
-        const div = document.createElement('div');
-        div.className = "flex items-center";
-        div.innerHTML = `
-                    <input type="checkbox" value="${algo.id}" checked class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
-                    <label class="ml-2 block text-gray-900">${algo.name}</label>
-                `;
-        list.appendChild(div);
-    });
+    if (list && list.children.length === 0) {
+        getState().allAlgorithms.forEach(algo => {
+            const div = document.createElement('div');
+            div.className = "flex items-center";
+            div.innerHTML = `
+                        <input type="checkbox" value="${algo.id}" checked class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                        <label class="ml-2 block text-gray-900">${algo.name}</label>
+                    `;
+            list.appendChild(div);
+        });
+    }
     document.getElementById('gen-modal').classList.remove('hidden');
 }
 
@@ -215,7 +200,7 @@ async function runAutoGeneration() {
     if (selectedAlgos.length === 0) { alert("Select at least one algorithm."); return; }
     if (minQ > maxQ) { alert("Min qubits cannot be greater than Max qubits."); return; }
 
-    setLoading(true, `Generating ${count} Circuits for Playlist...`);
+    setLoading(true, `Generating ${count} Circuits for Playlist...`, { overlay: false });
     try {
         for (let i = 0; i < count; i++) {
             const algoId = selectedAlgos[Math.floor(Math.random() * selectedAlgos.length)];
@@ -227,7 +212,6 @@ async function runAutoGeneration() {
             if (safeMin <= safeMax) {
                 const q = Math.floor(Math.random() * (safeMax - safeMin + 1)) + safeMin;
 
-                // Fetch literal QASM string from the backend for the generated task
                 let qasmText = null;
                 const response = await fetch(`${BASE_URL}/generate_circuit`, {
                     method: 'POST',

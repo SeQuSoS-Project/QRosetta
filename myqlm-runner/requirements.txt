@@ -1,7 +1,0 @@
-fastapi==0.115.0
-uvicorn[standard]==0.30.0
-psutil==6.0.0
-myqlm==1.13.1
-myqlm-interop==2.1.0
-numpy==2.2.6
-gunicorn==23.0.0

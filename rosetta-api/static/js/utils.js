@@ -1,4 +1,21 @@
-// --- HELPER FUNCTIONS ---
+// Frontend logic for utils functionality.
+
+// Self-comparison virtual keys look like "<simId>~opt<L>~run<N>". A plain canonical
+// id (e.g. "qiskit", "pennylane-default") parses as a single, non-multi run.
+function parseRunnerKey(key) {
+    const m = /^(.+)~opt(\d+)~run(\d+)$/.exec(key || '');
+    if (m) {
+        return { simId: m[1], optLevel: parseInt(m[2]), runIndex: parseInt(m[3]), isMulti: true };
+    }
+    return { simId: key, optLevel: null, runIndex: null, isMulti: false };
+}
+
+function formatRunnerLabel(key, nameMap) {
+    const { simId, optLevel, runIndex, isMulti } = parseRunnerKey(key);
+    const base = (nameMap && nameMap[simId]) || simId;
+    return isMulti ? `${base} · L${optLevel} #${runIndex}` : base;
+}
+
 function isConnectionError(errorMsg) {
     if (!errorMsg) return false;
     const msg = errorMsg.toLowerCase();
@@ -11,20 +28,147 @@ function isConnectionError(errorMsg) {
         msg.includes("failed to decode json");
 }
 
-function setLoading(isLoading, message = "Processing...") {
+let _loaderElapsedTimer = null;
+
+// options.overlay (default true): when true, show the full results-panel processing
+// overlay (used by actual benchmark runs). When false, show only a small busy toast so
+// circuit-prep actions (generate / preset / auto-gen / benchmark fetch) don't blank out
+// any result already displayed on the right.
+function setLoading(isLoading, message = "Processing...", options = {}) {
+    const overlay = options.overlay !== false;
     const loader = document.getElementById('loader');
     const loaderText = document.getElementById('loader-text');
+    const busyToast = document.getElementById('busy-toast');
+    const busyToastText = document.getElementById('busy-toast-text');
 
     if (isLoading) {
-        if (loaderText) loaderText.textContent = message;
-        loader.classList.remove('hidden');
-        loader.classList.add('flex');
+        if (overlay) {
+            if (loaderText) loaderText.textContent = message;
+            loader.classList.remove('hidden');
+            loader.classList.add('flex');
+            if (!_loaderElapsedTimer) {
+                const startTime = Date.now();
+                const elapsedEl = document.getElementById('loader-elapsed');
+                if (elapsedEl) elapsedEl.textContent = '0s elapsed';
+                _loaderElapsedTimer = setInterval(() => {
+                    const el = document.getElementById('loader-elapsed');
+                    if (el) el.textContent = `${Math.floor((Date.now() - startTime) / 1000)}s elapsed`;
+                }, 1000);
+            }
+        } else if (busyToast) {
+            if (busyToastText) busyToastText.textContent = message;
+            busyToast.classList.remove('hidden');
+            busyToast.classList.add('flex');
+        }
         allButtons.forEach(btn => { if (btn) btn.disabled = true });
     } else {
         loader.classList.add('hidden');
         loader.classList.remove('flex');
+        if (busyToast) {
+            busyToast.classList.add('hidden');
+            busyToast.classList.remove('flex');
+        }
         allButtons.forEach(btn => { if (btn) btn.disabled = false });
+        if (_loaderElapsedTimer) {
+            clearInterval(_loaderElapsedTimer);
+            _loaderElapsedTimer = null;
+        }
+        _stopRunnerCardTimer();
+        const grid = document.getElementById('runner-status-grid');
+        if (grid) grid.innerHTML = '';
+        const elapsedEl = document.getElementById('loader-elapsed');
+        if (elapsedEl) elapsedEl.textContent = '0s elapsed';
     }
+}
+
+const _STATUS_CFG = {
+    queued:   { color: 'bg-gray-300',    text: 'text-gray-400',   label: 'QUEUED',    pulse: false, terminal: false },
+    spawning: { color: 'bg-amber-400',   text: 'text-amber-600',  label: 'SPAWNING',  pulse: true,  terminal: false },
+    running:  { color: 'bg-blue-500',    text: 'text-blue-600',   label: 'RUNNING',   pulse: true,  terminal: false },
+    done:     { color: 'bg-green-500',   text: 'text-green-700',  label: 'DONE',      pulse: false, terminal: true  },
+    error:    { color: 'bg-red-500',     text: 'text-red-600',    label: 'ERROR',     pulse: false, terminal: true  },
+    timeout:  { color: 'bg-orange-400',  text: 'text-orange-500', label: 'TIMEOUT',   pulse: false, terminal: true  },
+};
+
+const _RUNNER_NAMES = {
+    "qiskit": "Qiskit", "cirq": "Cirq", "qulacs": "Qulacs", "braket": "Braket",
+    "projectq": "ProjectQ", "quest": "QuEST", "pennylane-lightning": "PL Lightning",
+    "pennylane-default": "PL Default", "qsim-cirq": "qsim-Cirq", "qibo": "Qibo",
+    "qrisp": "Qrisp", "myqlm": "myQLM", "pyquil": "PyQuil",
+    "torchquantum": "TorchQuantum", "quimb": "Quimb", "cuquantum": "cuQuantum",
+};
+
+let _runnerPhases = {};
+let _runnerCardTimer = null;
+
+function _startRunnerCardTimer() {
+    if (_runnerCardTimer) return;
+    _runnerCardTimer = setInterval(() => {
+        const now = Date.now();
+        for (const [simId, phase] of Object.entries(_runnerPhases)) {
+            if (phase.terminal) continue;
+            const elapsed = Math.floor((now - phase.since) / 1000);
+            const el = document.getElementById(`rsc-elapsed-${simId}`);
+            if (el) el.textContent = `${elapsed}s`;
+        }
+    }, 1000);
+}
+
+function _stopRunnerCardTimer() {
+    if (_runnerCardTimer) { clearInterval(_runnerCardTimer); _runnerCardTimer = null; }
+    _runnerPhases = {};
+}
+
+function updateRunnerStatuses(statuses) {
+    if (!statuses || typeof statuses !== 'object') return;
+    const grid = document.getElementById('runner-status-grid');
+    if (!grid) return;
+
+    const now = Date.now();
+
+    for (const [simId, status] of Object.entries(statuses)) {
+        const cfg = _STATUS_CFG[status] || _STATUS_CFG['queued'];
+        const name = formatRunnerLabel(simId, _RUNNER_NAMES);
+
+        const prev = _runnerPhases[simId];
+        const statusChanged = !prev || prev.status !== status;
+
+        if (statusChanged) {
+            const frozenElapsed = prev && prev.terminal ? prev.frozenElapsed
+                : prev ? Math.floor((now - prev.since) / 1000) : 0;
+            _runnerPhases[simId] = {
+                status,
+                since: now,
+                terminal: cfg.terminal,
+                frozenElapsed: cfg.terminal ? frozenElapsed : 0,
+            };
+        }
+
+        let card = document.getElementById(`rsc-${simId}`);
+
+        if (!card || statusChanged) {
+            if (!card) {
+                card = document.createElement('div');
+                card.id = `rsc-${simId}`;
+                card.className = 'flex items-center gap-2 p-2 rounded border border-gray-100 bg-gray-50 font-mono text-xs';
+                grid.appendChild(card);
+            }
+
+            const phase = _runnerPhases[simId];
+            const elapsedDisplay = cfg.terminal
+                ? `${phase.frozenElapsed}s`
+                : `<span id="rsc-elapsed-${simId}">0s</span>`;
+
+            card.innerHTML = `
+                <span class="w-2 h-2 rounded-full flex-shrink-0 ${cfg.color}${cfg.pulse ? ' animate-pulse' : ''}"></span>
+                <span class="flex-1 text-gray-700 truncate">${name}</span>
+                <span class="font-semibold tracking-widest text-[10px] ${cfg.text} mr-1">${cfg.label}</span>
+                <span class="text-gray-400 text-[10px] w-7 text-right">${elapsedDisplay}</span>
+            `;
+        }
+    }
+
+    _startRunnerCardTimer();
 }
 
 function copyRawJson(btn) {
@@ -37,7 +181,7 @@ function copyRawJson(btn) {
 }
 
 function downloadFullReport() {
-    // --- FIX: Use BASE_URL for fetch ---
+
     window.location.href = `${BASE_URL}/download_latest_report`;
 }
 
@@ -56,6 +200,107 @@ function downloadRawJson() {
     downloadAnchorNode.click();
     downloadAnchorNode.remove();
     URL.revokeObjectURL(url);
+}
+
+function _stripStatevectors(data) {
+    if (Array.isArray(data)) {
+        return data.map(_stripStatevectors);
+    }
+    if (data && typeof data === 'object') {
+        const out = {};
+        for (const [k, v] of Object.entries(data)) {
+            if (k === 'statevector') continue;
+            out[k] = _stripStatevectors(v);
+        }
+        return out;
+    }
+    return data;
+}
+
+async function exportRoCrate() {
+    const results = getState().currentSuiteData;
+    if (!results) {
+        alert("No results to export. Run a comparison first.");
+        return;
+    }
+
+    const includeStatevectors = document.getElementById('export-include-sv')?.checked || false;
+    const authorName = document.getElementById('export-author-name')?.value.trim() || null;
+    const authorAffiliation = document.getElementById('export-author-affiliation')?.value.trim() || null;
+
+    // Strip statevectors client-side unless explicitly requested, so the request body
+    // stays well under the 1MB upload limit (statevector runs can be many MB otherwise).
+    let payloadResults = includeStatevectors ? results : _stripStatevectors(results);
+    let finalIncludeSv = includeStatevectors;
+
+    const tempBody = JSON.stringify({
+        format: 'ro-crate',
+        include_statevectors: includeStatevectors,
+        author_name: authorName,
+        author_affiliation: authorAffiliation,
+        results: payloadResults,
+    });
+
+    if (includeStatevectors && tempBody.length > 1000000) {
+        alert("Statevector exceeds the 1MB upload limit. The RO-Crate will be downloaded without it, but your complete statevector will be downloaded simultaneously as a separate JSON file directly from your browser.");
+        payloadResults = _stripStatevectors(results);
+        finalIncludeSv = false;
+        
+        // Trigger local download of full json asynchronously so it doesn't block
+        setTimeout(() => downloadFullReport(), 500);
+    }
+
+    const btn = document.getElementById('btn-export-rocrate');
+    let originalText = '';
+    if (btn) {
+        originalText = btn.innerHTML;
+        btn.innerHTML = `<span class="inline-block animate-spin mr-1 border-2 border-emerald-600 border-t-transparent rounded-full w-3 h-3"></span> Exporting`;
+        btn.disabled = true;
+    }
+
+    try {
+        const response = await fetch(`${BASE_URL}/export`, {
+            method: 'POST',
+            headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({
+                format: 'ro-crate',
+                include_statevectors: finalIncludeSv,
+                author_name: authorName,
+                author_affiliation: authorAffiliation,
+                results: payloadResults,
+            })
+        });
+
+        if (!response.ok) {
+            if (response.status === 413) {
+                throw new Error("Results too large to export with statevectors. Uncheck 'include statevectors' and try again.");
+            }
+            const errData = await response.json().catch(() => ({ detail: response.statusText }));
+            throw new Error(errData.detail || errData.error || `HTTP ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        const disposition = response.headers.get('Content-Disposition') || '';
+        const filenameMatch = disposition.match(/filename="?(.+?)"?$/);
+        const filename = filenameMatch ? filenameMatch[1] : `rosetta-export.zip`;
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    } catch (err) {
+        console.error("RO-Crate export failed:", err);
+        alert("Export failed: " + err.message);
+    } finally {
+        if (btn) {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    }
 }
 
 function exportPlaylist() {

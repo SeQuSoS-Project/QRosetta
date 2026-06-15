@@ -16,6 +16,9 @@ RUN pip install /tmp/shared-src
 # Copy application code
 COPY rosetta-api/ .
 
+# Copy runners directory to allow exporter to extract version metadata
+COPY runners/ ./runners/
+
 # Create the data directory for SQLite persistence
 RUN mkdir -p /home/appuser/app/data
 

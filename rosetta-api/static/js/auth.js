@@ -1,10 +1,4 @@
-// =============================================================================
-// auth.js — Authentication Logic
-// Responsibility: Auth modal, login, register, logout, session verification,
-//                 account deletion, and auth UI state.
-// Depends on: BASE_URL, getAuthHeaders (api.js), setLoading (utils.js),
-//             getState().authToken (app.js global — read/write)
-// =============================================================================
+// Frontend logic for auth functionality.
 
 function openAuthModal() {
     document.getElementById('auth-modal').classList.remove('hidden');
@@ -68,7 +62,7 @@ async function handleLoginSubmit() {
 
     try {
         const formData = new URLSearchParams();
-        formData.append('username', email); // OAuth2 expects username
+        formData.append('username', email);
         formData.append('password', password);
 
         const res = await fetch(`${BASE_URL}/auth/token`, {
@@ -86,7 +80,7 @@ async function handleLoginSubmit() {
         }
 
         dispatch('SET_AUTH_TOKEN', data.access_token);
-        
+
         updateAuthUI();
         closeAuthModal();
 
@@ -126,7 +120,6 @@ async function handleRegisterSubmit() {
             throw new Error(data.detail || "Registration failed.");
         }
 
-        // Auto-login after successful registration
         toggleAuthMode('login');
         document.getElementById('login-email').value = email;
         document.getElementById('login-password').value = password;
@@ -142,7 +135,7 @@ async function handleRegisterSubmit() {
 
 function handleLogout() {
     dispatch('SET_AUTH_TOKEN', null);
-    
+
     updateAuthUI();
 }
 

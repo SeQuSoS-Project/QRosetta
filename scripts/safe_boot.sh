@@ -13,19 +13,22 @@ CORE_SERVICES=("nginx" "api")
 
 # Define the runner services (can fail without crashing the app)
 RUNNERS=(
-  "qiskit_runner"
-  "cirq_runner"
-  "qulacs_runner"
-  "braket_runner"
-  "projectq_runner"
-  "quest_runner"
-  "pennylane_runner"
+  "pytket_qiskit_runner"
+  "pytket_cirq_runner"
+  "pytket_qulacs_runner"
+  "pytket_braket_runner"
+  "pytket_projectq_runner"
+  "pytket_quest_runner"
+  "pennylane_lightning_runner"
   "pennylane_default_runner"
   "qsim_cirq_runner"
   "pyquil_runner"
   "myqlm_runner"
   "qibo_runner"
   "qrisp_runner"
+  "torch_quantum_runner"
+  "quimb_runner"
+  "cuquantum_runner"
 )
 
 echo ">>> Starting Graceful Build..."

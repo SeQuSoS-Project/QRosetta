@@ -1,8 +1,4 @@
-// =============================================================================
-// state.js — Centralized State Manager
-// Responsibility: Holds all global frontend variables, restricts direct
-//                 mutation, and exposes a strict dispatch/getState pattern.
-// =============================================================================
+// Frontend logic for state functionality.
 
 const Store = {
     state: {
@@ -10,16 +6,22 @@ const Store = {
         isProcessing: false,
         currentSuiteData: null,
         currentSuiteTitle: '',
-        batchQueue: [], // Playlist
-        allAlgorithms: [], // Metadata
+        batchQueue: [],
+        allAlgorithms: [],
         currentOptLevel: 0,
         currentAlgoName: "Custom",
-        currentRunnerConfig: {}
+        currentRunnerConfig: {},
+        currentJobId: null,
+        currentHistoryRunId: null,
+        maxQubitsStatevector: 18,
+        maxQubitsMeasured: 24,
+        maxRunsPerRunner: 16,
+        maxTotalRuns: 48,
+        executionMode: 'kubernetes',
     },
-    
-    // Dispatch an action to modify the state safely
+
     dispatch(action, payload) {
-        // console.log(`[State] Dispatch: ${action}`, payload);
+
         switch (action) {
             case 'SET_AUTH_TOKEN':
                 this.state.authToken = payload;
@@ -53,17 +55,28 @@ const Store = {
             case 'SET_RUNNER_CONFIG':
                 this.state.currentRunnerConfig = payload;
                 break;
+            case 'SET_JOB_ID':
+                this.state.currentJobId = payload;
+                break;
+            case 'SET_HISTORY_RUN_ID':
+                this.state.currentHistoryRunId = payload;
+                break;
+            case 'SET_CONFIG_LIMITS':
+                this.state.maxQubitsStatevector = payload.max_qubits_statevector;
+                this.state.maxQubitsMeasured = payload.max_qubits_measured;
+                if (payload.max_runs_per_runner !== undefined) this.state.maxRunsPerRunner = payload.max_runs_per_runner;
+                if (payload.max_total_runs !== undefined) this.state.maxTotalRuns = payload.max_total_runs;
+                if (payload.execution_mode !== undefined) this.state.executionMode = payload.execution_mode;
+                break;
             default:
                 console.warn(`[State] Unknown action: ${action}`);
         }
     },
 
-    // Read-only getter for the entire state
     getState() {
         return this.state;
     }
 };
 
-// Expose these globally for other files
 window.dispatch = (action, payload) => Store.dispatch(action, payload);
 window.getState = () => Store.getState();

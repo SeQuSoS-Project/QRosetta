@@ -1,0 +1,13 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+psutil==6.0.0
+pennylane==0.39.0
+pennylane-lightning==0.39.0
+pennylane-qiskit==0.39.0
+qiskit==1.2.4
+numpy==1.26.4
+autoray==0.6.12
+gunicorn==23.0.0
+
+boto3<1.36.0
+botocore<1.36.0
