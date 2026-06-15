@@ -380,7 +380,7 @@ def _build_ro_crate_metadata(ctx: ExportContext, dir_name: str) -> dict:
             "Microservices platform for cross-simulator quantum circuit benchmarking "
             "using OpenQASM 2.0 as the canonical input format."
         ),
-        "url": "https://github.com/SeQuSoS-Project/qrosetta",
+        "url": "https://github.com/SeQuSoS-Project/QRosetta",
     })
 
     # Add ComputerLanguage entity for OpenQASM 2.0
