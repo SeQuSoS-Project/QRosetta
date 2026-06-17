@@ -166,7 +166,7 @@ Majid Haghparast <<majid.m.haghparast@jyu.fi>>
 
 # Acknowledgement
 
-This work has been supported by the Business Finland through project \textit{SeQuSoS} (Grants No. 112/31/2024), and Research Council of Finland through project \textit{Profi 8 - qSIME} (Grants No. 365343).
+This work has been supported by the Business Finland through project SeQuSoS (Grants No. 112/31/2024), and Research Council of Finland through project Profi 8 - qSIME (Grants No. 365343).
 
 
 ## Contributing
