@@ -7,7 +7,7 @@
 
 QRosetta is free-to-use and to modify. However, you must add references [1] in case of any publication/production/execution/etc.
 
-[1] SoftwareX, Under Review
+[1] Sh. Sarker, Haghparast, M., Mikkonen, T. (2026). Quantum Rosetta: A Microservice Platform for Quantum Simulator Benchmarking and Verification. SoftwareX, Under Review.
 
 
 ## System Architecture
