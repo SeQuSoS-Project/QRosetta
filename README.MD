@@ -152,6 +152,18 @@ The system captures three key metrics for every run:
 └── tests/                      # Unit & Integration Tests
 ```
 
+
+# Contributors
+
+- Shaswato Sarker - *University of Jyvaskyla*
+- Majid Haghparast - *University of Jyvaskyla*
+- Tommi Mikkonen - *University of Jyvaskyla*
+
+# Contact
+
+Majid Haghparast <<majid.m.haghparast@jyu.fi>>
+
+
 ## Contributing
 
 1.  **Add a new Algorithm:** Update `rosetta-api/library.py` and register it in `rosetta-api/main.py`.
