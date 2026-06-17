@@ -2,6 +2,14 @@
 
 **Quantum Rosetta** is a production-grade microservices architecture designed to benchmark, validate, and analyze quantum circuit simulators. It acts as a translation layer and orchestration engine ("The Brain") that dispatches quantum tasks to isolated simulator containers ("The Hands") to measure fidelity, execution time, and memory efficiency.
 
+
+# How to Cite?
+
+QRosetta is free-to-use and to modify. However, you must add references [1] in case of any publication/production/execution/etc.
+
+[1] SoftwareX, Under Review
+
+
 ## System Architecture
 
 The system follows a strict **Microservices Architecture** orchestrated by Docker Compose.
