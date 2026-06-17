@@ -1,7 +1,7 @@
 # Quantum Rosetta
 
 **Quantum Rosetta** is a production-grade microservices architecture designed to benchmark, validate, and analyze quantum circuit simulators. It acts as a translation layer and orchestration engine ("The Brain") that dispatches quantum tasks to isolated simulator containers ("The Hands") to measure fidelity, execution time, and memory efficiency.
-
+QRosetta has been developed by the [Quantum Programming and Algorithms (QPA) Research Group](https://users.jyu.fi/~mhaghpyz/#qpa) at the [University of Jyvaskyla](https://www.jyu.fi/en) in Finland.
 
 # How to Cite?
 
@@ -162,6 +162,11 @@ The system captures three key metrics for every run:
 # Contact
 
 Majid Haghparast <<majid.m.haghparast@jyu.fi>>
+
+
+# Acknowledgement
+
+This work has been supported by the Business Finland through project \textit{SeQuSoS} (Grants No. 112/31/2024), and Research Council of Finland through project \textit{Profi 8 - qSIME} (Grants No. 365343).
 
 
 ## Contributing
