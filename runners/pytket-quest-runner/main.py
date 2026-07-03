@@ -134,7 +134,9 @@ def process_run_measured(payload: dict) -> dict:
         return {
             "simulator": "quest",
             "counts": counts_dict,
-            "sampling_method": "native",
+            # QuEST exposes the statevector but no native shot sampler here, so counts
+            # come from sampling that statevector (see _sample_from_statevector above).
+            "sampling_method": "sv_sample",
             "execution_time_sec": execution_time,
             "compilation_time_sec": compilation_time,
             "simulation_time_sec": simulation_time,

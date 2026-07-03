@@ -173,7 +173,10 @@ class Settings(BaseSettings):
             },
             "pyquil": {
                 "base_url": self.PYQUIL_RUNNER_URL,
-                "capabilities": ["statevector", "measured_native"],
+                # pyquil's NumpyWavefunctionSimulator has no native shot sampler; the
+                # runner samples the computed statevector (sampling_method="sv_sample"),
+                # so it is classified as sampled, not native.
+                "capabilities": ["statevector", "measured_sampled"],
                 "enabled": True,
                 "optimization_levels": {
                     0: "Barrier removal only",
