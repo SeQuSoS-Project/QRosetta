@@ -5,7 +5,10 @@ cd "$(dirname "$0")/.." || exit 1
 # --- 0. PRE-FLIGHT CHECK & CONFIGURATION ---
 echo ">>> [INIT] Starting safe boot..."
 
-export RUNNER_TIMEOUT_SEC=60
+# Per-runner execution cap (seconds). Kept in step with the UI max (300),
+# config.py default (300), and the Kubernetes manifest (300) so a timeout
+# chosen in the config panel is honoured locally instead of silently clamped.
+export RUNNER_TIMEOUT_SEC=300
 
 
 # Define the core services that MUST succeed
