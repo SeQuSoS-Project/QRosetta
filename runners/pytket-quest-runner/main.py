@@ -120,7 +120,7 @@ def process_run_measured(payload: dict) -> dict:
             handle = backend.process_circuit(compiled_circ)
             statevector = backend.get_result(handle).get_state()
 
-            counts_dict = _sample_from_statevector(statevector, payload.get("n_shots", 1024), n_qubits)
+            counts_dict = _sample_from_statevector(statevector, payload.get("n_shots", 1024), n_qubits, payload.get("seed"))
             t3 = time.perf_counter()
             simulation_time = t3 - t2
 

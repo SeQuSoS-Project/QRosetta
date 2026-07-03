@@ -168,8 +168,16 @@ def process_run_measured(payload: dict) -> dict:
             probs = torch.clamp(probs, min=0.0)
             probs = probs / probs.sum()
 
+            # Optional reproducible sampling via a local generator; seed=None
+            # leaves torch's default (non-deterministic) RNG, the prior behaviour.
+            _seed = payload.get("seed")
+            _gen = None
+            if _seed is not None:
+                _gen = torch.Generator()
+                _gen.manual_seed(int(_seed))
+
             sample_indices = torch.multinomial(
-                probs.float(), num_samples=n_shots, replacement=True
+                probs.float(), num_samples=n_shots, replacement=True, generator=_gen
             ).numpy()
 
             fmt = f"{{:0{n_qubits}b}}"

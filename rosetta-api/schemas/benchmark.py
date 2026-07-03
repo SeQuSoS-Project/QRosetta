@@ -29,6 +29,8 @@ class MeasuredQasmPayload(BaseModel):
     execution_target: str = "kubernetes"
     bypass_limits: bool = False
     apply_preprocessing: bool = True
+    # Optional RNG seed for reproducible sampling; None = non-deterministic.
+    seed: Optional[int] = None
 
 class MeasuredBenchmarkPayload(BaseModel):
     n_shots: int = 1024
@@ -54,6 +56,8 @@ class BatchPayload(BaseModel):
     execution_target: str = "kubernetes"
     bypass_limits: bool = False
     apply_preprocessing: bool = True
+    # Optional RNG seed for reproducible sampling (measured mode); None = non-deterministic.
+    seed: Optional[int] = None
 
 class VisualizerResponse(BaseModel):
     url: str

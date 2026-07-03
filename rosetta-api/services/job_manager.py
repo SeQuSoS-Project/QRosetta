@@ -85,7 +85,7 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
         "raw_results": display_results
     }
 
-async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = 60, target_simulators: list = None, runner_statuses: dict = None, runner_phases: dict = None, apply_preprocessing: bool = True):
+async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = 60, target_simulators: list = None, runner_statuses: dict = None, runner_phases: dict = None, apply_preprocessing: bool = True, seed: int = None):
     logger.info(f"Processing measured circuit for {n_shots} shots...")
 
     sampled_payload = {
@@ -95,6 +95,7 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
         "runner_config": runner_config or {},
         "runner_phases": runner_phases or {},
         "apply_preprocessing": apply_preprocessing,
+        "seed": seed,
     }
 
     try:
@@ -120,6 +121,7 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
             "runner_config": runner_config or {},
             "runner_phases": runner_phases or {},
             "apply_preprocessing": apply_preprocessing,
+            "seed": seed,
         }
     except Exception as e:
         return { "input_qasm": qasm_string, "error": str(e) }
@@ -172,12 +174,12 @@ async def worker_compare(job_id: str, qasm_string: str, optimization_level: int,
     except Exception as e:
         ACTIVE_JOBS[job_id] = {"status": "failed", "target": execution_target, "error": str(e), "runner_statuses": runner_statuses, "finished_at": time.time()}
 
-async def worker_compare_measured(job_id: str, qasm_string: str, n_shots: int, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str, runner_phases: dict = None, apply_preprocessing: bool = True):
+async def worker_compare_measured(job_id: str, qasm_string: str, n_shots: int, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str, runner_phases: dict = None, apply_preprocessing: bool = True, seed: int = None):
     runner_statuses = {}
     ACTIVE_JOBS[job_id]["status"] = "processing"
     ACTIVE_JOBS[job_id]["runner_statuses"] = runner_statuses
     try:
-        report = await run_single_circuit_measurement(qasm_string, n_shots, optimization_level, runner_config, timeout, target_simulators, runner_statuses, runner_phases, apply_preprocessing)
+        report = await run_single_circuit_measurement(qasm_string, n_shots, optimization_level, runner_config, timeout, target_simulators, runner_statuses, runner_phases, apply_preprocessing, seed)
         ACTIVE_JOBS[job_id] = {"status": "completed", "target": execution_target, "results": report, "runner_statuses": runner_statuses, "finished_at": time.time()}
     except Exception as e:
         ACTIVE_JOBS[job_id] = {"status": "failed", "target": execution_target, "error": str(e), "runner_statuses": runner_statuses, "finished_at": time.time()}
@@ -206,7 +208,7 @@ async def worker_batch_suite(job_id: str, payload: BatchPayload):
             if payload.mode == 'statevector':
                 report = await run_single_circuit_comparison(qasm_string, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, runner_statuses, payload.runner_phases, payload.apply_preprocessing)
             elif payload.mode == 'measured':
-                report = await run_single_circuit_measurement(qasm_string, payload.n_shots, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, runner_statuses, payload.runner_phases, payload.apply_preprocessing)
+                report = await run_single_circuit_measurement(qasm_string, payload.n_shots, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, runner_statuses, payload.runner_phases, payload.apply_preprocessing, payload.seed)
             else:
                 raise ValueError(f"Unknown mode: {payload.mode}")
 

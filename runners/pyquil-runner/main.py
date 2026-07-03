@@ -146,7 +146,8 @@ def process_run_measured(payload: dict) -> dict:
             statevector = _simulate_statevector(gate_prog, n_qubits)
             probs = np.abs(statevector) ** 2
             probs /= probs.sum()
-            indices = np.random.choice(len(probs), size=payload.get("n_shots", 1024), p=probs)
+            rng = np.random.default_rng(payload.get("seed"))
+            indices = rng.choice(len(probs), size=payload.get("n_shots", 1024), p=probs)
             t3 = time.perf_counter()
             simulation_time = t3 - t2
 

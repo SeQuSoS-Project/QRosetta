@@ -58,15 +58,19 @@ def decode_statevector(encoded_str: str) -> np.ndarray:
 
         raise ValueError(f"Failed to decode statevector: {e}")
 
-def _sample_from_statevector(statevector, n_shots, n_qubits):
+def _sample_from_statevector(statevector, n_shots, n_qubits, seed=None):
     """
     Manually samples from a statevector's probability distribution.
+
+    seed: optional int for reproducible sampling. None yields a fresh,
+    non-deterministic generator (the prior behaviour).
     """
 
     probabilities = np.abs(statevector)**2
 
-    samples = np.random.choice(
-        range(len(statevector)),
+    rng = np.random.default_rng(seed)
+    samples = rng.choice(
+        len(statevector),
         size=n_shots,
         p=probabilities
     )

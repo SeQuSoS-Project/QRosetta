@@ -55,7 +55,7 @@ async def compare_measured_circuits_endpoint(request: Request, payload: Measured
     job_id = str(uuid.uuid4())
 
     ACTIVE_JOBS[job_id] = {"status": "pending", "target": payload.execution_target}
-    background_tasks.add_task(worker_compare_measured, job_id, payload.qasm_string, payload.n_shots, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, payload.execution_target, payload.runner_phases, payload.apply_preprocessing)
+    background_tasks.add_task(worker_compare_measured, job_id, payload.qasm_string, payload.n_shots, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, payload.execution_target, payload.runner_phases, payload.apply_preprocessing, payload.seed)
 
     return {"job_id": job_id, "status": ACTIVE_JOBS[job_id]["status"], "target": ACTIVE_JOBS[job_id]["target"]}
 
