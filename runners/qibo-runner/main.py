@@ -116,6 +116,10 @@ def process_run_measured(payload: dict) -> dict:
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
+            # Qibo's numpy backend samples via numpy's global RNG; seeding it makes
+            # the run reproducible. seed=None leaves it non-deterministic (prior behaviour).
+            if payload.get("seed") is not None:
+                np.random.seed(payload["seed"])
             t2 = time.perf_counter()
             result = circuit(nshots=n_shots)
             counts_dict = dict(result.frequencies())

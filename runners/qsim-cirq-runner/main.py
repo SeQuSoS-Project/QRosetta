@@ -165,7 +165,8 @@ def process_run_measured(payload: dict) -> dict:
         circ_with_meas = _strip_measurements(cirq_circ) + cirq.measure(
             *all_qubits, key="result"
         )
-        simulator = qsimcirq.QSimSimulator()
+        # seed=None keeps qsim's default non-deterministic sampling.
+        simulator = qsimcirq.QSimSimulator(seed=payload.get("seed"))
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 

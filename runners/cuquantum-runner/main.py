@@ -146,7 +146,8 @@ def process_run_measured(payload: dict) -> dict:
             gc.collect()
 
             t2 = time.perf_counter()
-            result = _run_safe(sim, qc, shots=n_shots)
+            # seed_simulator=None keeps Aer's default non-deterministic sampling.
+            result = _run_safe(sim, qc, shots=n_shots, seed_simulator=payload.get("seed"))
             counts = dict(result.get_counts())
             t3 = time.perf_counter()
             simulation_time = t3 - t2

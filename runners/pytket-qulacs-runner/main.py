@@ -120,7 +120,8 @@ def process_run_measured(payload: dict) -> dict:
             gc.collect()
 
             t2 = time.perf_counter()
-            handle = backend.process_circuit(compiled_circ, n_shots=n_shots)
+            # seed=None keeps the backend's default non-deterministic sampling.
+            handle = backend.process_circuit(compiled_circ, n_shots=n_shots, seed=payload.get("seed"))
             counts = backend.get_result(handle).get_counts()
             t3 = time.perf_counter()
             simulation_time = t3 - t2

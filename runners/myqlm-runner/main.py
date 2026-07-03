@@ -149,6 +149,11 @@ def process_run_measured(payload: dict) -> dict:
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
+            # PyLinalg samples via numpy's global RNG (the QPU/job expose no seed);
+            # seeding it makes the run reproducible. seed=None leaves it
+            # non-deterministic (prior behaviour).
+            if payload.get("seed") is not None:
+                np.random.seed(payload["seed"])
             t2 = time.perf_counter()
             result = _qpu.submit(job)
             t3 = time.perf_counter()
@@ -158,6 +163,12 @@ def process_run_measured(payload: dict) -> dict:
         process_peak_mb = monitor.get_process_peak_mb()
         execution_time = compilation_time + simulation_time
 
+        # myQLM's SAMPLE job samples natively (finite-shot, hence real shot noise),
+        # but returns per-state *frequencies* rather than integer tallies. Counts are
+        # reconstructed as round(frequency * n_shots). NOTE: the residual from rounding
+        # is currently dumped entirely onto the largest bin below, which biases the
+        # mode; this reconstruction is flagged for a largest-remainder fix (see
+        # docs/rejection-analysis/action-plan.md).
         counts_dict = {
             format(sample.state.int, f"0{n_qubits}b"): round(sample.probability * n_shots)
             for sample in result
@@ -184,7 +195,9 @@ def process_run_measured(payload: dict) -> dict:
             "process_peak_mb": process_peak_mb,
             "qubit_ordering": "msb",
             "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
-            "sampling_method": "probability_rounding",
+            # Native PyLinalg sampling; counts reconstructed from reported frequencies
+            # (documented at the reconstruction site above).
+            "sampling_method": "native",
             "preprocessing_applied": preprocessing_applied,
             "transpiled_qasm": transpiled_qasm
         }

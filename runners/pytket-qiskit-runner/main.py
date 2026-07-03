@@ -118,7 +118,8 @@ def process_run_measured(payload: dict) -> dict:
             gc.collect()
 
             t2 = time.perf_counter()
-            job = backend.run(qiskit_circ, optimization_level=0, shots=n_shots)
+            # seed_simulator=None keeps Aer's default non-deterministic sampling.
+            job = backend.run(qiskit_circ, optimization_level=0, shots=n_shots, seed_simulator=payload.get("seed"))
             result = job.result()
             counts = result.get_counts()
             t3 = time.perf_counter()

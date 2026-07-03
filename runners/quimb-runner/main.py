@@ -151,7 +151,8 @@ def process_run_measured(payload: dict) -> dict:
             gc.collect()
 
             t2 = time.perf_counter()
-            counts_counter = circ.simulate_counts(C=n_shots)
+            # seed=None keeps quimb's default non-deterministic sampling.
+            counts_counter = circ.simulate_counts(C=n_shots, seed=payload.get("seed"))
             counts = dict(counts_counter)
             t3 = time.perf_counter()
             simulation_time = t3 - t2

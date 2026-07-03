@@ -126,6 +126,11 @@ def process_run_measured(payload: dict) -> dict:
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
+            # Qrisp's simulator samples via numpy's global RNG (run() exposes no seed
+            # argument); seeding it makes the run reproducible. seed=None leaves it
+            # non-deterministic (prior behaviour).
+            if payload.get("seed") is not None:
+                np.random.seed(payload["seed"])
             t2 = time.perf_counter()
             counts_dict = circuit.run(shots=n_shots)
             t3 = time.perf_counter()

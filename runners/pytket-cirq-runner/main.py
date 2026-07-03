@@ -137,6 +137,11 @@ def process_run_measured(payload: dict) -> dict:
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
+            # pytket's CirqBackend ignores a seed kwarg but samples via numpy's global
+            # RNG, so reproducibility is achieved by seeding numpy directly (verified).
+            # seed=None leaves it non-deterministic (prior behaviour).
+            if payload.get("seed") is not None:
+                np.random.seed(payload["seed"])
             t2 = time.perf_counter()
             handle = backend.process_circuit(compiled_circ, n_shots=n_shots)
             counts = backend.get_result(handle).get_counts()
