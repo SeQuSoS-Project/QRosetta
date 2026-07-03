@@ -45,21 +45,20 @@ def process_run(payload: dict) -> dict:
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
-        try:
-            _ = circuit.qs.statevector('array')
-        except AttributeError:
-            pass
+        # The statevector lives on the low-level QuantumCircuit itself via
+        # statevector_array(); Qrisp's QASM-imported QuantumCircuit has no `.qs`
+        # (QuantumSession) attribute, so the high-level qs.statevector() API is
+        # not available here. A warm-up call excludes JIT/import overhead from
+        # the timed run, matching the other native runners. Any failure is
+        # allowed to propagate to the outer handler and surface as an honest
+        # error rather than a fabricated fallback state.
+        _ = circuit.statevector_array()
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
             t2 = time.perf_counter()
-            try:
-                statevector = circuit.qs.statevector('array')
-            except AttributeError as ae:
-                logger.warning(f"AttributeError extracting Qrisp statevector: {ae}. Returning zero state.")
-                statevector = np.zeros(2**n_qubits, dtype=complex)
-                statevector[0] = 1.0
+            statevector = np.asarray(circuit.statevector_array(), dtype=complex)
             t3 = time.perf_counter()
             simulation_time = t3 - t2
 
@@ -81,7 +80,12 @@ def process_run(payload: dict) -> dict:
             "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
-            "qubit_ordering": "lsb",
+            # Qrisp's statevector_array() is big-endian: qubit 0 is the most
+            # significant bit of the amplitude index (verified: X on qubit 0
+            # populates index 2^(n-1)). This differs from the counts convention
+            # of run() below, which is little-endian; both are labelled to match
+            # their actual native output rather than forced to a single value.
+            "qubit_ordering": "msb",
             "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
             "preprocessing_applied": [],
             "transpiled_qasm": payload["circuit_data"]
@@ -110,20 +114,20 @@ def process_run_measured(payload: dict) -> dict:
 
         n_shots = payload.get("n_shots", 1024)
 
-        try:
-            _ = circuit.get_measurement(shots=10)
-        except AttributeError:
-            pass
+        # Native shot-based sampling runs through the low-level circuit's run()
+        # method (the high-level get_measurement() API belongs to QuantumVariable
+        # and is not available on a QASM-imported QuantumCircuit). This requires
+        # the circuit to carry measurement instructions, which measured-mode QASM
+        # does. A warm-up call excludes JIT/import overhead from the timed run;
+        # any failure propagates to the outer handler as an honest error rather
+        # than fabricated all-zero counts.
+        _ = circuit.run(shots=min(n_shots, 10))
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
             t2 = time.perf_counter()
-            try:
-                counts_dict = circuit.get_measurement(shots=n_shots)
-            except AttributeError as ae:
-                logger.warning(f"AttributeError executing get_measurement: {ae}. Falling back to default mock counts.")
-                counts_dict = {"0" * n_qubits: n_shots}
+            counts_dict = circuit.run(shots=n_shots)
             t3 = time.perf_counter()
             simulation_time = t3 - t2
 
@@ -145,6 +149,11 @@ def process_run_measured(payload: dict) -> dict:
             "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
+            # Qrisp's run() counts keys are little-endian: qubit 0 is the
+            # right-most character of the bitstring (verified: X on qubit 0
+            # yields '0...01'), matching the qiskit/Aer counts convention. Note
+            # this differs from the statevector endpoint's big-endian ordering
+            # above; each is labelled to reflect Qrisp's actual native output.
             "qubit_ordering": "lsb",
             "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
             "preprocessing_applied": [],
