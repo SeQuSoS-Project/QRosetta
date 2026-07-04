@@ -1,13 +1,24 @@
 # Tests for deterministic pairwise evidence records in divergence reports.
 
+import json
 import math
 
-from services.analysis.divergence import create_counts_report, create_divergence_report
+from services.analysis.divergence import (
+    _bh_adjust,
+    _shots_per_backend_for_target_power,
+    create_counts_report,
+    create_divergence_report,
+)
 
 
 def _record(report, sim_a, sim_b):
     pair = [sim_a, sim_b]
     return next(item for item in report["pairwise_agreement"] if item["simulators"] == pair)
+
+
+def _assert_strict_json(report):
+    """A report must never carry NaN/Inf; strict JSON serialization must succeed."""
+    json.dumps(report, allow_nan=False)
 
 
 def test_statevector_pairwise_evidence_preserves_matrices_and_labels_direct_agreement():
@@ -229,3 +240,198 @@ def test_counts_pairwise_evidence_records_not_comparable_pairs():
     assert evidence["agreement"] == "not_comparable"
     assert evidence["metrics"]["reason"] == "missing_counts"
     assert evidence["run_status"] == {"a": "completed", "b": "error"}
+
+
+# --- Edge-case hardening: degenerate/malformed inputs must be reported as
+# not_comparable with an explicit reason and must never leak NaN/Inf into the
+# report (which would produce invalid JSON or be coerced toward false agreement).
+
+
+def test_statevector_zero_norm_is_not_comparable_without_nan_leak():
+    report = create_divergence_report([
+        {"simulator": "a", "statevector": ["0", "0"], "qubit_ordering": "lsb"},
+        {"simulator": "b", "statevector": ["1", "0"], "qubit_ordering": "lsb"},
+    ])
+
+    evidence = _record(report, "a", "b")
+    assert evidence["agreement"] == "not_comparable"
+    assert evidence["metrics"]["reason"] == "zero_norm_statevector"
+    _assert_strict_json(report)
+
+
+def test_statevector_nonfinite_is_not_comparable_without_nan_leak():
+    report = create_divergence_report([
+        {"simulator": "a", "statevector": ["nan", "0"], "qubit_ordering": "lsb"},
+        {"simulator": "b", "statevector": ["1", "0"], "qubit_ordering": "lsb"},
+    ])
+
+    evidence = _record(report, "a", "b")
+    assert evidence["agreement"] == "not_comparable"
+    assert evidence["metrics"]["reason"] == "nonfinite_statevector"
+    _assert_strict_json(report)
+
+
+def test_statevector_empty_is_not_comparable():
+    report = create_divergence_report([
+        {"simulator": "a", "statevector": [], "qubit_ordering": "lsb"},
+        {"simulator": "b", "statevector": ["1", "0"], "qubit_ordering": "lsb"},
+    ])
+
+    evidence = _record(report, "a", "b")
+    assert evidence["agreement"] == "not_comparable"
+    assert evidence["metrics"]["reason"] == "empty_statevector"
+    _assert_strict_json(report)
+
+
+def test_counts_empty_is_not_comparable():
+    report = create_counts_report([
+        {"simulator": "a", "counts": {}, "qubit_ordering": "lsb"},
+        {"simulator": "b", "counts": {"01": 128}, "qubit_ordering": "lsb"},
+    ], n_shots=128)
+
+    evidence = _record(report, "a", "b")
+    assert evidence["agreement"] == "not_comparable"
+    assert evidence["metrics"]["reason"] == "empty_counts"
+    assert evidence["metrics"]["details"] == {"a": "empty_counts"}
+    _assert_strict_json(report)
+
+
+def test_counts_negative_is_not_comparable_without_inf_leak():
+    report = create_counts_report([
+        {"simulator": "a", "counts": {"01": -5, "00": 133}, "qubit_ordering": "lsb"},
+        {"simulator": "b", "counts": {"01": 128}, "qubit_ordering": "lsb"},
+    ], n_shots=128)
+
+    evidence = _record(report, "a", "b")
+    assert evidence["agreement"] == "not_comparable"
+    assert evidence["metrics"]["reason"] == "negative_counts"
+    _assert_strict_json(report)
+
+
+def test_counts_nonstring_key_is_not_comparable():
+    report = create_counts_report([
+        {"simulator": "a", "counts": {1: 128}, "qubit_ordering": "lsb"},
+        {"simulator": "b", "counts": {"01": 128}, "qubit_ordering": "lsb"},
+    ], n_shots=128)
+
+    evidence = _record(report, "a", "b")
+    assert evidence["agreement"] == "not_comparable"
+    assert evidence["metrics"]["reason"] == "invalid_bitstring_key"
+    _assert_strict_json(report)
+
+
+def test_counts_permutation_reports_inconsistent_bitstring_lengths():
+    # Same-shot valid counts but different key widths: exhaustive permutation
+    # cannot be attempted; this must be disclosed, not silently skipped.
+    report = create_counts_report([
+        {"simulator": "a", "counts": {"01": 128}, "qubit_ordering": "lsb"},
+        {"simulator": "b", "counts": {"010": 128}, "qubit_ordering": "lsb"},
+    ], n_shots=128)
+
+    evidence = _record(report, "a", "b")
+    permutation = evidence["metrics"]["qubit_permutation"]
+    assert permutation["attempted"] is False
+    assert permutation["reason"] == "inconsistent_bitstring_lengths"
+    _assert_strict_json(report)
+
+
+# --- Shot-noise-aware statistical agreement test (additive evidence). The descriptive
+# JS/Hellinger `agreement` label is never overridden by the statistical verdict.
+
+
+def test_bh_adjust_matches_hand_computed():
+    # BH step-up on evenly spaced p-values collapses to the largest step.
+    adjusted = _bh_adjust([0.01, 0.02, 0.03, 0.04, 0.05])
+    assert all(math.isclose(a, 0.05) for a in adjusted)
+    # Monotone in input order preserved; empty input is safe.
+    assert _bh_adjust([]) == []
+
+
+def test_shots_for_target_power_reference_value():
+    # df=1, alpha=0.05, power=0.8, TV=0.05 -> ~1570 shots per backend (analytic).
+    assert _shots_per_backend_for_target_power(0.05, 0.8, 0.05) == 1570
+
+
+def test_statistical_test_consistent_for_identical_distributions():
+    report = create_counts_report([
+        {"simulator": "a", "counts": {"00": 500, "11": 500}, "qubit_ordering": "lsb"},
+        {"simulator": "b", "counts": {"00": 500, "11": 500}, "qubit_ordering": "lsb"},
+    ], n_shots=1000)
+
+    evidence = _record(report, "a", "b")
+    stat = evidence["metrics"]["statistical_test"]
+    assert stat["basis"] == "direct"
+    assert stat["verdict"] == "consistent"
+    assert stat["effect_size"]["total_variation"] == 0.0
+    assert stat["chi2"]["significant_bh"] is False
+    assert stat["g_test"]["significant_bh"] is False
+    # descriptive label is unaffected by the statistical verdict
+    assert evidence["agreement"] == "distance_within_threshold"
+    _assert_strict_json(report)
+
+
+def test_statistical_test_distinguishable_for_clearly_different_distributions():
+    report = create_counts_report([
+        {"simulator": "a", "counts": {"00": 900, "11": 100}, "qubit_ordering": "lsb"},
+        {"simulator": "b", "counts": {"00": 100, "11": 900}, "qubit_ordering": "lsb"},
+    ], n_shots=1000)
+
+    evidence = _record(report, "a", "b")
+    stat = evidence["metrics"]["statistical_test"]
+    assert stat["verdict"] == "distinguishable"
+    assert stat["chi2"]["significant_bh"] is True
+    assert stat["g_test"]["significant_bh"] is True
+    assert stat["effect_size"]["total_variation"] > 0.5
+    _assert_strict_json(report)
+
+
+def test_statistical_test_inconclusive_for_low_shots():
+    report = create_counts_report([
+        {"simulator": "a", "counts": {"00": 2, "11": 2, "01": 1}, "qubit_ordering": "lsb"},
+        {"simulator": "b", "counts": {"00": 3, "11": 1, "10": 1}, "qubit_ordering": "lsb"},
+    ], n_shots=5)
+
+    evidence = _record(report, "a", "b")
+    stat = evidence["metrics"]["statistical_test"]
+    assert stat["low_count_warning"] is True
+    assert stat["verdict"] == "inconclusive_low_shots"
+    _assert_strict_json(report)
+
+
+def test_statistical_test_uses_registered_transform_basis():
+    # A bit-order-only difference: the descriptive label explains it via bit reversal,
+    # and the statistical test must run on the reversed basis so its verdict is coherent.
+    report = create_counts_report([
+        {"simulator": "lsb_backend", "counts": {"001": 1000}, "qubit_ordering": "lsb"},
+        {"simulator": "msb_backend", "counts": {"100": 1000}, "qubit_ordering": "msb"},
+    ], n_shots=1000)
+
+    evidence = _record(report, "lsb_backend", "msb_backend")
+    assert evidence["agreement"] == "agree_after_bit_reversal"
+    stat = evidence["metrics"]["statistical_test"]
+    assert stat["basis"] == "bit_reversal"
+    assert stat["effect_size"]["total_variation"] == 0.0
+    assert stat["verdict"] == "consistent"
+    _assert_strict_json(report)
+
+
+def test_statistical_test_summary_and_fdr_across_family():
+    report = create_counts_report([
+        {"simulator": "a", "counts": {"00": 500, "11": 500}, "qubit_ordering": "lsb"},
+        {"simulator": "b", "counts": {"00": 500, "11": 500}, "qubit_ordering": "lsb"},
+        {"simulator": "c", "counts": {"00": 900, "11": 100}, "qubit_ordering": "lsb"},
+    ], n_shots=1000)
+
+    summary = report["statistical_test_summary"]
+    assert summary["family_size"] == 3  # C(3,2) comparable pairs
+    assert summary["alpha"] == 0.05
+    assert "benjamini_hochberg" in summary["correction"]
+    # Every comparable pair carries adjusted p-values after the family-wise pass.
+    for pair in report["pairwise_agreement"]:
+        stat = pair["metrics"]["statistical_test"]
+        assert stat["chi2"]["p_value_bh"] is not None
+        assert stat["chi2"]["p_value_bonferroni"] is not None
+        assert stat["verdict"] in {
+            "consistent", "distinguishable", "inconclusive_low_shots", "ambiguous",
+        }
+    _assert_strict_json(report)

@@ -13,6 +13,50 @@ from qrosetta_commons.helpers import get_logger
 
 logger = get_logger("rosetta-exporter")
 
+# Process Run Crate profile (Workflow Run RO-Crate family; Leo et al., PLOS ONE 2024).
+# Process Run Crate is the honest target: QRosetta orchestrates each backend via its own
+# microservice dispatcher, not a workflow-language file, so it describes tool executions
+# (one CreateAction each) without claiming a ComputationalWorkflow main entity — which
+# Workflow Run Crate would require. Version confirmed current at 0.5.
+PROCESS_RUN_CRATE_PROFILE = "https://w3id.org/ro/wfrun/process/0.5"
+_ACTION_STATUS_COMPLETED = "http://schema.org/CompletedActionStatus"
+_ACTION_STATUS_FAILED = "http://schema.org/FailedActionStatus"
+
+
+def _entity_ref_id(key: str) -> str:
+    """Sanitize a (possibly virtual '~opt~run') runner key into a safe @id fragment."""
+    return (key or "unknown").replace("~", "-").replace(" ", "_")
+
+
+_ARTIFACT_ENCODING = {
+    "svg": "image/svg+xml", "png": "image/png", "pdf": "application/pdf",
+    "csv": "text/csv", "latex": "application/x-latex", "html": "text/html",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+}
+
+
+def _artifact_encoding_format(path: str) -> str:
+    return _ARTIFACT_ENCODING.get(path.rsplit(".", 1)[-1], "application/octet-stream")
+
+
+def _generate_publication_artifacts(ctx: "ExportContext") -> Dict[str, bytes]:
+    """Generate opt-in publication figures/tables, or {} when not requested.
+
+    Lazy-imports the publication engine (and matplotlib) only when artifacts are
+    actually requested, so ordinary exports and API startup stay light.
+    """
+    sel = ctx.publication_artifacts
+    if not sel or not sel.get("categories"):
+        return {}
+    from services.publication import build_publication_artifacts  # lazy (pulls matplotlib)
+    return build_publication_artifacts(
+        ctx.results,
+        ctx.mode,
+        tuple(sel.get("categories", [])),
+        tuple(sel.get("figure_formats", ["svg"])),
+        tuple(sel.get("table_formats", ["csv"])),
+    )
+
 
 def _canonical_sim_id(simulator: str) -> str:
     """Self-comparison results carry virtual keys like 'qiskit~opt1~run2' (built by the
@@ -47,6 +91,10 @@ class ExportContext:
     # Optional author metadata — left blank by default for the user to fill in.
     author_name: Optional[str] = None
     author_affiliation: Optional[str] = None
+
+    # Opt-in publication artifacts: {"categories": [...], "figure_formats": [...],
+    # "table_formats": [...]}. None/empty categories => none generated (non-breaking).
+    publication_artifacts: Optional[Dict[str, Any]] = None
 
     # --- Future extension points (not used in v1) ---
     circuit_features: Optional[Dict[str, Any]] = None  # Feature 2: static circuit telemetry
@@ -147,6 +195,14 @@ def _extract_sdk_versions(ctx: ExportContext, runner_name: str) -> dict:
     return {}
 
 
+def _raw_result_for(ctx: ExportContext, runner_name: str) -> dict:
+    """Return the raw per-runner result dict for a given execution key, or {}."""
+    for r in _iter_raw_results(ctx):
+        if r.get("simulator") == runner_name:
+            return r
+    return {}
+
+
 def _extract_runners_used(ctx: ExportContext) -> List[str]:
     runners_used: List[str] = []
     raw_results = ctx.results.get("raw_results", [])
@@ -206,10 +262,12 @@ def _build_pairwise_agreement_summary(ctx: ExportContext) -> Optional[dict]:
         "by_mode": {},
         "by_agreement": {},
         "by_registered_transform": {},
+        "by_statistical_verdict": {},
         "description": (
             "Pairwise agreement evidence records are preserved in results.json. "
-            "This provenance summary counts labels and registered transforms only; "
-            "it does not replace the per-pair metrics and provenance records."
+            "This provenance summary counts labels, registered transforms, and (for "
+            "measured mode) shot-noise statistical verdicts only; it does not replace "
+            "the per-pair metrics and provenance records."
         ),
     }
     for record in records:
@@ -219,6 +277,14 @@ def _build_pairwise_agreement_summary(ctx: ExportContext) -> Optional[dict]:
         summary["by_mode"][mode] = summary["by_mode"].get(mode, 0) + 1
         _increment_nested_count(summary["by_agreement"], mode, agreement)
         _increment_nested_count(summary["by_registered_transform"], mode, transform)
+        verdict = ((record.get("metrics") or {}).get("statistical_test") or {}).get("verdict")
+        if verdict:
+            _increment_nested_count(summary["by_statistical_verdict"], mode, verdict)
+
+    # Measured mode only — drop the key entirely when no statistical verdicts exist
+    # (e.g. statevector exports) rather than emitting an empty object.
+    if not summary["by_statistical_verdict"]:
+        del summary["by_statistical_verdict"]
     return summary
 
 
@@ -293,9 +359,11 @@ def _build_provenance(ctx: ExportContext) -> dict:
     return provenance
 
 
-def _build_ro_crate_metadata(ctx: ExportContext, dir_name: str) -> dict:
+def _build_ro_crate_metadata(ctx: ExportContext, dir_name: str,
+                             artifact_paths: Optional[List[str]] = None) -> dict:
     """Build the RO-Crate 1.1 metadata descriptor (JSON-LD)."""
     graph: List[dict] = []
+    artifact_paths = artifact_paths or []
 
     # --- 1. Metadata descriptor entity (describes this file itself) ---
     graph.append({
@@ -309,13 +377,18 @@ def _build_ro_crate_metadata(ctx: ExportContext, dir_name: str) -> dict:
     root_entity: dict = {
         "@id": "./",
         "@type": "Dataset",
+        "conformsTo": [
+            {"@id": "https://w3id.org/ro/crate/1.1"},
+            {"@id": PROCESS_RUN_CRATE_PROFILE},
+        ],
         "name": f"Quantum Rosetta Benchmark Export — {ctx.timestamp}",
         "description": (
             "Reproducible quantum simulator benchmark results exported from "
             "Quantum Rosetta. Contains the input OpenQASM 2.0 circuit, "
             "cross-simulator analysis reports (including pairwise agreement evidence "
             "records when available), performance and resource reports, and full "
-            "computational provenance."
+            "computational provenance. Each backend execution is recorded as a "
+            "CreateAction per the Process Run Crate profile."
         ),
         "datePublished": ctx.timestamp,
         "license": {"@id": "https://creativecommons.org/licenses/by/4.0/"},
@@ -324,6 +397,7 @@ def _build_ro_crate_metadata(ctx: ExportContext, dir_name: str) -> dict:
             {"@id": "results.json"},
             {"@id": "provenance.json"},
         ],
+        "mentions": [],  # populated with the run + analysis CreateActions below
     }
 
     # Author — only included if the user provided it.
@@ -416,21 +490,12 @@ def _build_ro_crate_metadata(ctx: ExportContext, dir_name: str) -> dict:
         })
         root_entity["hasPart"].append({"@id": f"transpiled_circuits/{sim}.qasm"})
 
-    # --- 4. CreateAction (records the execution) ---
-    runners_used = _extract_runners_used(ctx)
-    instruments = [{"@id": "#quantum-rosetta"}]
-    for runner in runners_used:
-        runner_id = _canonical_sim_id(runner)
-        instruments.append({"@id": f"#{runner_id}"})
-
+    # --- 4. Profile + orchestrating engine + language ---
     graph.append({
-        "@id": "#benchmark-run",
-        "@type": "CreateAction",
-        "name": "Quantum Rosetta benchmark execution",
-        "instrument": instruments,
-        "object": {"@id": "circuit.qasm"},
-        "result": {"@id": "results.json"},
-        "endTime": ctx.timestamp,
+        "@id": PROCESS_RUN_CRATE_PROFILE,
+        "@type": "CreativeWork",
+        "name": "Process Run Crate",
+        "version": "0.5",
     })
 
     graph.append({
@@ -440,7 +505,8 @@ def _build_ro_crate_metadata(ctx: ExportContext, dir_name: str) -> dict:
         "softwareVersion": "1.0.0",
         "description": (
             "Microservices platform for cross-simulator quantum circuit benchmarking "
-            "using OpenQASM 2.0 as the canonical input format."
+            "using OpenQASM 2.0 as the canonical input format. Orchestrates each backend "
+            "execution and computes cross-simulator agreement evidence."
         ),
         "url": "https://github.com/SeQuSoS-Project/QRosetta",
     })
@@ -453,12 +519,133 @@ def _build_ro_crate_metadata(ctx: ExportContext, dir_name: str) -> dict:
         "url": "https://arxiv.org/abs/1707.03429",
     })
 
-    # Add SoftwareApplication entities for each runner.
+    # --- 5. Shared parameter entities (PropertyValue), referenced by run actions ---
+    n_shots = ctx.results.get("n_shots")
+    seed = ctx.results.get("seed")
+    shared_param_refs: List[dict] = []
+    if ctx.mode == "measured" and n_shots is not None:
+        graph.append({
+            "@id": "#param-n_shots",
+            "@type": "PropertyValue",
+            "name": "n_shots",
+            "value": n_shots,
+        })
+        shared_param_refs.append({"@id": "#param-n_shots"})
+    if seed is not None:
+        graph.append({
+            "@id": "#param-seed",
+            "@type": "PropertyValue",
+            "name": "seed",
+            "value": seed,
+            "description": "RNG seed for reproducible sampling.",
+        })
+        shared_param_refs.append({"@id": "#param-seed"})
+
+    # --- 6. Per-execution CreateActions (Process Run Crate core) ---
+    runners_used = _extract_runners_used(ctx)
+    run_action_refs: List[dict] = []
+    output_refs: List[dict] = []
+    for runner in runners_used:
+        runner_id = _canonical_sim_id(runner)
+        frag = _entity_ref_id(runner)
+        raw = _raw_result_for(ctx, runner)
+
+        # Per-runner optimization level as its own PropertyValue (may differ per backend).
+        obj_refs = [{"@id": "circuit.qasm"}] + list(shared_param_refs)
+        opt_level = raw.get("optimization_level")
+        if opt_level is not None:
+            opt_param_id = f"#param-optlevel-{frag}"
+            graph.append({
+                "@id": opt_param_id,
+                "@type": "PropertyValue",
+                "name": "optimization_level",
+                "value": opt_level,
+                "description": f"Effective optimization level executed by the {runner} adapter.",
+            })
+            obj_refs.append({"@id": opt_param_id})
+
+        # Contextual output entity: the runner's raw output lives inside results.json.
+        output_id = f"#output-{frag}"
+        graph.append({
+            "@id": output_id,
+            "@type": "CreativeWork",
+            "name": f"{runner} {ctx.mode} output",
+            "description": (
+                f"Raw {ctx.mode} output and per-runner metrics produced by {runner}; "
+                "values preserved in results.json under raw_results."
+            ),
+            "isPartOf": {"@id": "results.json"},
+        })
+        output_refs.append({"@id": output_id})
+
+        failed = bool(raw.get("error"))
+        action = {
+            "@id": f"#run-{frag}",
+            "@type": "CreateAction",
+            "name": f"Execution of the input circuit on {runner}",
+            "instrument": {"@id": f"#{runner_id}"},
+            "object": obj_refs,
+            "result": {"@id": output_id},
+            "endTime": ctx.timestamp,
+            "actionStatus": {
+                "@id": _ACTION_STATUS_FAILED if failed else _ACTION_STATUS_COMPLETED
+            },
+        }
+        if failed:
+            action["error"] = str(raw.get("error"))
+        graph.append(action)
+        run_action_refs.append({"@id": f"#run-{frag}"})
+
+    # --- 7. Publication artifact data entities (opt-in; derived analysis outputs) ---
+    artifact_refs: List[dict] = []
+    for path in artifact_paths:
+        kind = "figure" if path.startswith("figures/") else "table"
+        graph.append({
+            "@id": path,
+            "@type": "File",
+            "name": path.rsplit("/", 1)[-1],
+            "description": (
+                f"Publication-ready {kind} derived deterministically from the analysis "
+                "reports. Raw metrics vs transformed analysis evidence are distinguished "
+                "in the figure/table caption."
+            ),
+            "encodingFormat": _artifact_encoding_format(path),
+        })
+        artifact_refs.append({"@id": path})
+        root_entity["hasPart"].append({"@id": path})
+
+    # --- 8. Agreement-analysis CreateAction (QRosetta consumes outputs -> reports) ---
+    if output_refs:
+        analysis_results = [{"@id": "results.json"}] + artifact_refs
+        graph.append({
+            "@id": "#agreement-analysis",
+            "@type": "CreateAction",
+            "name": "Cross-simulator agreement analysis",
+            "description": (
+                "QRosetta comparator computed pairwise agreement evidence over the "
+                "registered-transform lattice and, for measured mode, the shot-noise "
+                "statistical test, from the backend outputs. Publication figures and "
+                "tables, when requested, are derived from these reports."
+            ),
+            "instrument": {"@id": "#quantum-rosetta"},
+            "object": output_refs,
+            "result": analysis_results if len(analysis_results) > 1 else {"@id": "results.json"},
+            "endTime": ctx.timestamp,
+        })
+        run_action_refs.append({"@id": "#agreement-analysis"})
+
+    root_entity["mentions"] = run_action_refs
+
+    # --- 9. SoftwareApplication entity per backend (deduplicated by canonical id) ---
     # Prefer the versions the runner actually executed under (reported in its result
     # via importlib.metadata — ground truth). Fall back to the declared requirements.txt
     # pin only for older reports that predate sdk_versions reporting.
+    seen_runner_ids = set()
     for runner in runners_used:
         runner_id = _canonical_sim_id(runner)
+        if runner_id in seen_runner_ids:
+            continue
+        seen_runner_ids.add(runner_id)
         executed_versions = _extract_sdk_versions(ctx, runner)
         if executed_versions:
             version = ", ".join(f"{pkg} {ver}" for pkg, ver in sorted(executed_versions.items()))
@@ -509,7 +696,10 @@ def build_ro_crate(ctx: ExportContext) -> bytes:
         results_data = _strip_statevectors(ctx.results)
 
     provenance_data = _build_provenance(ctx)
-    metadata = _build_ro_crate_metadata(ctx, dir_name)
+    # Opt-in publication artifacts (figures/tables). Generated before metadata so each
+    # file can be registered as an RO-Crate data entity.
+    publication_files = _generate_publication_artifacts(ctx)
+    metadata = _build_ro_crate_metadata(ctx, dir_name, sorted(publication_files))
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -517,6 +707,8 @@ def build_ro_crate(ctx: ExportContext) -> bytes:
             f"{dir_name}/ro-crate-metadata.json",
             json.dumps(metadata, indent=2, ensure_ascii=False),
         )
+        for rel_path, data in publication_files.items():
+            zf.writestr(f"{dir_name}/{rel_path}", data)
         zf.writestr(
             f"{dir_name}/circuit.qasm",
             ctx.qasm_string,

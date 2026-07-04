@@ -171,13 +171,49 @@ function updateRunnerStatuses(statuses) {
     _startRunnerCardTimer();
 }
 
-function copyRawJson(btn) {
-    const txt = jsonOutput.textContent;
-    navigator.clipboard.writeText(txt).then(() => {
-        const old = btn.textContent;
-        btn.textContent = "Copied!";
-        setTimeout(() => btn.textContent = old, 2000);
-    }).catch(err => console.error(err));
+// --- Reusable copy affordances -------------------------------------------------------
+const COPY_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>';
+
+function _flashCopied(btn) {
+    if (!btn) return;
+    const old = btn.innerHTML;
+    btn.innerHTML = '<span class="text-xs font-medium">✓ Copied</span>';
+    btn.disabled = true;
+    setTimeout(() => { btn.innerHTML = old; btn.disabled = false; }, 1500);
+}
+
+function copyText(text, btn) {
+    navigator.clipboard.writeText(text)
+        .then(() => _flashCopied(btn))
+        .catch(err => { console.error(err); alert('Copy failed.'); });
+}
+
+async function copyImageToClipboard(blob, btn) {
+    try {
+        await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+        _flashCopied(btn);
+    } catch (err) {
+        console.error(err);
+        alert('Copy image failed (your browser may block image clipboard). Use Download instead.');
+    }
+}
+
+// Build a small copy-icon button. `getText` may be a string or a () => string.
+function makeCopyIconButton(getText, title = 'Copy to clipboard') {
+    const btn = document.createElement('button');
+    btn.className = 'inline-flex items-center gap-1 text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-md px-2 py-1 transition-all';
+    btn.title = title;
+    btn.innerHTML = COPY_ICON_SVG;
+    btn.onclick = () => copyText(typeof getText === 'function' ? getText() : getText, btn);
+    return btn;
+}
+
+function copyRawJson(btn) { copyText(jsonOutput.textContent, btn); }
+
+// Copy the current input-circuit QASM from the editor.
+function copyCircuitQasm(btn) {
+    const el = document.getElementById('qasm-input');
+    if (el) copyText(el.value || '', btn);
 }
 
 function downloadFullReport() {
@@ -217,6 +253,28 @@ function _stripStatevectors(data) {
     return data;
 }
 
+function togglePublicationOptions() {
+    const enabled = document.getElementById('pub-enable')?.checked;
+    const opts = document.getElementById('pub-options');
+    if (opts) opts.classList.toggle('hidden', !enabled);
+}
+
+function _readPublicationSelection() {
+    // Returns null (omitted) unless the master checkbox is on and >=1 category selected.
+    if (!document.getElementById('pub-enable')?.checked) return null;
+    const vals = (sel) => Array.from(document.querySelectorAll(sel))
+        .filter(el => el.checked).map(el => el.value);
+    const categories = vals('.pub-category');
+    if (categories.length === 0) return null;
+    const figure_formats = vals('.pub-figfmt');
+    const table_formats = vals('.pub-tblfmt');
+    return {
+        categories,
+        figure_formats: figure_formats.length ? figure_formats : ['svg'],
+        table_formats: table_formats.length ? table_formats : ['csv'],
+    };
+}
+
 async function exportRoCrate() {
     const results = getState().currentSuiteData;
     if (!results) {
@@ -227,6 +285,7 @@ async function exportRoCrate() {
     const includeStatevectors = document.getElementById('export-include-sv')?.checked || false;
     const authorName = document.getElementById('export-author-name')?.value.trim() || null;
     const authorAffiliation = document.getElementById('export-author-affiliation')?.value.trim() || null;
+    const publicationArtifacts = _readPublicationSelection();
 
     // Strip statevectors client-side unless explicitly requested, so the request body
     // stays well under the 1MB upload limit (statevector runs can be many MB otherwise).
@@ -238,6 +297,7 @@ async function exportRoCrate() {
         include_statevectors: includeStatevectors,
         author_name: authorName,
         author_affiliation: authorAffiliation,
+        publication_artifacts: publicationArtifacts,
         results: payloadResults,
     });
 
@@ -267,6 +327,7 @@ async function exportRoCrate() {
                 include_statevectors: finalIncludeSv,
                 author_name: authorName,
                 author_affiliation: authorAffiliation,
+                publication_artifacts: publicationArtifacts,
                 results: payloadResults,
             })
         });

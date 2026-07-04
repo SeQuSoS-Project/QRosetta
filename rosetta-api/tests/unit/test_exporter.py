@@ -4,7 +4,23 @@ import json
 import zipfile
 import io
 import pytest
-from services.exporter import ExportContext, ExportFormat, build_ro_crate, _strip_statevectors
+from services.exporter import (
+    ExportContext,
+    ExportFormat,
+    build_ro_crate,
+    _strip_statevectors,
+    PROCESS_RUN_CRATE_PROFILE,
+)
+
+
+def _load_metadata(zip_bytes):
+    zf = zipfile.ZipFile(io.BytesIO(zip_bytes), "r")
+    meta_path = [n for n in zf.namelist() if n.endswith("ro-crate-metadata.json")][0]
+    return json.loads(zf.read(meta_path))
+
+
+def _by_id(meta):
+    return {e["@id"]: e for e in meta["@graph"]}
 
 
 # --- Fixtures ---
@@ -367,3 +383,201 @@ class TestExecutedSdkVersions:
         prov = json.loads(zf.read(prov_path))
 
         assert prov["runner_configurations"]["qiskit"]["sdk_versions"] == {}
+
+
+SAMPLE_RESULTS_MEASURED = {
+    "input_qasm": SAMPLE_QASM,
+    "n_shots": 128,
+    "seed": 12345,
+    "divergence_report": {
+        "simulators": ["qiskit", "qibo"],
+        "pairwise_agreement": [
+            {
+                "simulators": ["qiskit", "qibo"],
+                "mode": "measured",
+                "agreement": "agree_after_bit_reversal",
+                "registered_transform": "bit_reversal",
+                "metrics": {
+                    "js_divergence": 0.69,
+                    "statistical_test": {"basis": "bit_reversal", "verdict": "consistent"},
+                },
+                "provenance": {"qubit_ordering": {"qiskit": "lsb", "qibo": "msb"}},
+            }
+        ],
+        "statistical_test_summary": {"family_size": 1, "verdict_counts": {"consistent": 1}},
+    },
+    "raw_results": [
+        {"simulator": "qiskit", "counts": {"001": 128}, "optimization_level": 0,
+         "seed": 12345, "qubit_ordering": "lsb", "execution_time_sec": 0.09},
+        {"simulator": "qibo", "counts": {"100": 128}, "optimization_level": 0,
+         "seed": 12345, "qubit_ordering": "msb", "execution_time_sec": 0.05},
+    ],
+}
+
+
+def _measured_ctx(**overrides):
+    defaults = dict(
+        qasm_string=SAMPLE_QASM,
+        results=SAMPLE_RESULTS_MEASURED,
+        mode="measured",
+        runner_services={"qiskit": {"enabled": True}, "qibo": {"enabled": True}},
+    )
+    defaults.update(overrides)
+    return ExportContext(**defaults)
+
+
+class TestProcessRunCrateProfile:
+    """The crate conforms to the Process Run Crate profile: root conformsTo the profile,
+    and each backend execution is its own CreateAction with a single instrument."""
+
+    def test_root_conforms_to_rocrate_and_process_profile(self):
+        meta = _load_metadata(build_ro_crate(_measured_ctx()))
+        root = _by_id(meta)["./"]
+        conforms = {c["@id"] for c in root["conformsTo"]}
+        assert "https://w3id.org/ro/crate/1.1" in conforms
+        assert PROCESS_RUN_CRATE_PROFILE in conforms
+
+    def test_profile_entity_present(self):
+        meta = _load_metadata(build_ro_crate(_measured_ctx()))
+        profile = _by_id(meta).get(PROCESS_RUN_CRATE_PROFILE)
+        assert profile is not None
+        assert profile["@type"] == "CreativeWork"
+        assert profile["version"] == "0.5"
+
+    def test_one_create_action_per_execution_with_single_instrument(self):
+        meta = _load_metadata(build_ro_crate(_measured_ctx()))
+        byid = _by_id(meta)
+        for sim in ("qiskit", "qibo"):
+            action = byid.get(f"#run-{sim}")
+            assert action is not None
+            assert action["@type"] == "CreateAction"
+            # profile MUST: a single instrument identifying the executed tool
+            assert action["instrument"] == {"@id": f"#{sim}"}
+            assert action["result"] == {"@id": f"#output-{sim}"}
+            assert {"@id": "circuit.qasm"} in action["object"]
+
+    def test_parameters_recorded_as_property_values(self):
+        meta = _load_metadata(build_ro_crate(_measured_ctx()))
+        byid = _by_id(meta)
+        assert byid["#param-n_shots"]["value"] == 128
+        assert byid["#param-seed"]["value"] == 12345
+        run = byid["#run-qiskit"]
+        assert {"@id": "#param-n_shots"} in run["object"]
+        assert {"@id": "#param-seed"} in run["object"]
+
+    def test_agreement_analysis_action_consumes_outputs(self):
+        meta = _load_metadata(build_ro_crate(_measured_ctx()))
+        action = _by_id(meta)["#agreement-analysis"]
+        assert action["instrument"] == {"@id": "#quantum-rosetta"}
+        assert {"@id": "#output-qiskit"} in action["object"]
+        assert {"@id": "#output-qibo"} in action["object"]
+        assert action["result"] == {"@id": "results.json"}
+
+    def test_root_mentions_all_actions(self):
+        meta = _load_metadata(build_ro_crate(_measured_ctx()))
+        root = _by_id(meta)["./"]
+        mentioned = {m["@id"] for m in root["mentions"]}
+        assert mentioned == {"#run-qiskit", "#run-qibo", "#agreement-analysis"}
+
+    def test_failed_execution_recorded_as_failed_status(self):
+        results = json.loads(json.dumps(SAMPLE_RESULTS_MEASURED))
+        results["raw_results"][1] = {"simulator": "qibo", "error": "backend crashed"}
+        meta = _load_metadata(build_ro_crate(_measured_ctx(results=results)))
+        action = _by_id(meta)["#run-qibo"]
+        assert action["actionStatus"] == {"@id": "http://schema.org/FailedActionStatus"}
+        assert action["error"] == "backend crashed"
+
+    def test_no_duplicate_graph_ids(self):
+        meta = _load_metadata(build_ro_crate(_measured_ctx()))
+        ids = [e["@id"] for e in meta["@graph"]]
+        assert len(ids) == len(set(ids))
+
+    def test_software_application_deduplicated_for_virtual_keys(self):
+        # Self-comparison uses virtual '~opt~run' keys that share one canonical backend;
+        # each is its own execution action but a single SoftwareApplication entity.
+        results = json.loads(json.dumps(SAMPLE_RESULTS_MEASURED))
+        results["raw_results"] = [
+            {"simulator": "qiskit~opt0~run1", "counts": {"001": 128}, "optimization_level": 0},
+            {"simulator": "qiskit~opt1~run2", "counts": {"001": 128}, "optimization_level": 1},
+        ]
+        meta = _load_metadata(build_ro_crate(_measured_ctx(results=results)))
+        byid = _by_id(meta)
+        apps = [e for e in meta["@graph"]
+                if e.get("@type") == "SoftwareApplication" and e["@id"] == "#qiskit"]
+        assert len(apps) == 1  # deduplicated
+        # but two distinct execution actions, both instrumented by #qiskit
+        assert byid["#run-qiskit-opt0-run1"]["instrument"] == {"@id": "#qiskit"}
+        assert byid["#run-qiskit-opt1-run2"]["instrument"] == {"@id": "#qiskit"}
+
+    def test_provenance_summarizes_statistical_verdicts(self):
+        ctx = _measured_ctx()
+        zf = zipfile.ZipFile(io.BytesIO(build_ro_crate(ctx)), "r")
+        prov_path = [n for n in zf.namelist() if n.endswith("provenance.json")][0]
+        prov = json.loads(zf.read(prov_path))
+        summary = prov["pairwise_agreement_evidence"]
+        assert summary["by_statistical_verdict"] == {"measured": {"consistent": 1}}
+
+    def test_statevector_export_omits_statistical_verdict_key(self):
+        # Statevector exports have no statistical test; the key must be absent, not empty.
+        ctx = _make_ctx()
+        zf = zipfile.ZipFile(io.BytesIO(build_ro_crate(ctx)), "r")
+        prov_path = [n for n in zf.namelist() if n.endswith("provenance.json")][0]
+        prov = json.loads(zf.read(prov_path))
+        assert "by_statistical_verdict" not in prov["pairwise_agreement_evidence"]
+
+
+class TestPublicationArtifactsInCrate:
+    """Opt-in publication figures/tables bundle into the crate and are registered as
+    data entities; default (no selection) leaves the crate unchanged (non-breaking)."""
+
+    def _basenames(self, zf):
+        return [n.split("/", 1)[1] for n in zf.namelist()]
+
+    def test_artifacts_absent_by_default(self):
+        zf = zipfile.ZipFile(io.BytesIO(build_ro_crate(_measured_ctx())), "r")
+        names = self._basenames(zf)
+        assert not any(n.startswith(("figures/", "tables/")) for n in names)
+        # Core files unchanged.
+        assert "ro-crate-metadata.json" in names and "results.json" in names
+
+    def test_artifacts_bundled_and_registered_when_selected(self):
+        ctx = _measured_ctx(publication_artifacts={
+            "categories": ["agreement", "statistical"],
+            "figure_formats": ["svg"], "table_formats": ["csv", "latex"],
+        })
+        zf = zipfile.ZipFile(io.BytesIO(build_ro_crate(ctx)), "r")
+        names = self._basenames(zf)
+        # Files present in the ZIP.
+        assert "figures/agreement_distribution.svg" in names
+        assert "tables/agreement.csv" in names
+        assert "tables/agreement.latex" in names
+        assert "tables/statistical_test.csv" in names
+        # Registered as RO-Crate File entities in hasPart + as analysis results.
+        meta = _load_metadata(build_ro_crate(ctx))
+        byid = _by_id(meta)
+        fig = byid.get("figures/agreement_distribution.svg")
+        assert fig is not None and fig["@type"] == "File"
+        assert fig["encodingFormat"] == "image/svg+xml"
+        root_parts = {p["@id"] for p in byid["./"]["hasPart"]}
+        assert "figures/agreement_distribution.svg" in root_parts
+        analysis_results = {r["@id"] for r in byid["#agreement-analysis"]["result"]}
+        assert "results.json" in analysis_results
+        assert "tables/agreement.csv" in analysis_results
+
+    def test_crate_still_conforms_with_artifacts(self):
+        ctx = _measured_ctx(publication_artifacts={
+            "categories": ["agreement"], "figure_formats": ["svg"], "table_formats": ["csv"],
+        })
+        meta = _load_metadata(build_ro_crate(ctx))
+        conforms = {c["@id"] for c in _by_id(meta)["./"]["conformsTo"]}
+        assert "https://w3id.org/ro/crate/1.1" in conforms
+        assert PROCESS_RUN_CRATE_PROFILE in conforms
+        ids = [e["@id"] for e in meta["@graph"]]
+        assert len(ids) == len(set(ids))  # no duplicate @ids
+
+    def test_empty_categories_generate_nothing(self):
+        ctx = _measured_ctx(publication_artifacts={
+            "categories": [], "figure_formats": ["svg"], "table_formats": ["csv"],
+        })
+        names = self._basenames(zipfile.ZipFile(io.BytesIO(build_ro_crate(ctx)), "r"))
+        assert not any(n.startswith(("figures/", "tables/")) for n in names)

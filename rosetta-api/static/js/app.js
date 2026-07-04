@@ -23,6 +23,8 @@ window.onload = async () => {
         'performance': document.getElementById('performance-panel'),
         'resources': document.getElementById('resources-panel'),
         'divergence': document.getElementById('divergence-panel'),
+        'agreement': document.getElementById('agreement-panel'),
+        'artifacts': document.getElementById('artifacts-panel'),
         'raw': document.getElementById('raw-panel'),
         'suite-summary': document.getElementById('suite-summary-panel'),
         'visualizer': document.getElementById('visualizer-panel')

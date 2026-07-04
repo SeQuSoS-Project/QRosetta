@@ -95,11 +95,30 @@ class ComparisonResult(BaseModel):
     resource_report: Dict[str, Any]
     raw_results: List[RunnerPerformanceMetrics]
 
+class PublicationArtifactsSelection(BaseModel):
+    """Opt-in selection of publication-ready figures/tables to bundle into the RO-Crate.
+
+    Empty/absent `categories` => no artifacts generated (default, non-breaking).
+    `categories` subset of PUBLICATION_CATEGORIES; formats subset of the supported sets.
+    """
+    categories: List[str] = Field(default_factory=list)
+    figure_formats: List[str] = Field(default_factory=lambda: ["svg"])
+    table_formats: List[str] = Field(default_factory=lambda: ["csv"])
+
 class ExportPayload(BaseModel):
     format: str = "ro-crate"
     include_statevectors: bool = False
     author_name: Optional[str] = None
     author_affiliation: Optional[str] = None
+    publication_artifacts: Optional[PublicationArtifactsSelection] = None
 
 class ExportRequest(ExportPayload):
     results: Dict[str, Any]
+
+class PublicationRenderRequest(BaseModel):
+    """Render one publication figure on demand. `results` is the statevector-stripped
+    report the browser holds; `scale` sets raster dpi (BASE_DPI x scale)."""
+    results: Dict[str, Any]
+    artifact_id: str
+    format: str
+    scale: int = 1

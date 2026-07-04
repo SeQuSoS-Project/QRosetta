@@ -13,6 +13,8 @@ from schemas.benchmark import (
     ComparisonResult,
     ExportPayload,
     ExportRequest,
+    PublicationArtifactsSelection,
+    PublicationRenderRequest,
 )
 from schemas.auth import (
     UserCreate,
@@ -34,6 +36,7 @@ __all__ = [
     "GenerateCircuitPayload", "BenchmarkTask", "BatchPayload",
     "VisualizerResponse", "JobStatusResponse", "RunnerPerformanceMetrics",
     "ComparisonResult", "ExportPayload", "ExportRequest",
+    "PublicationArtifactsSelection", "PublicationRenderRequest",
 
     "UserCreate", "UserResponse", "Token",
 

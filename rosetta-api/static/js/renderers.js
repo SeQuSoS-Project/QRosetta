@@ -11,6 +11,8 @@ const METRIC_DEFINITIONS = {
     "relative_phase_matrix": "<b>Relative Phase Matrix:</b> Comparison of global phase differences. Non-zero means states differ by a constant phase factor.",
     "statistical_distance_matrix (js_divergence)": "<b>JS Divergence:</b> Jensen-Shannon divergence between probability distributions. 0.0 = Identical.",
     "hellinger_distance_matrix": "<b>Hellinger Distance:</b> Geometric distance between distributions. 0.0 = Identical.",
+    "pairwise_agreement": "<b>Explained-Cause Agreement:</b> Each backend pair is classified over a registered-transform lattice (direct → global phase → bit reversal → qubit permutation → residual). Every transform is reported with its numerical effect and provenance; raw outputs are never silently altered.",
+    "statistical_test": "<b>Shot-Noise Test:</b> Homogeneity test (chi-square + G-test) on measured counts, with effect size and power, computed on the same transform basis the label selected. Parallel evidence — it never overrides the descriptive label.",
     "execution_time_sec": "<b>Execution Time:</b> The total time taken for the simulation.",
     "memory_usage_mb": "<b>Memory Usage:</b> The memory consumed by the simulation."
 };
@@ -193,7 +195,7 @@ function _makeStatusBadge(styleKey, label) {
 }
 
 function renderDetailReport(data, title, config = getState().currentRunnerConfig) {
-    renderTabs(['summary', 'performance', 'resources', 'divergence', 'raw']);
+    renderTabs(['summary', 'performance', 'resources', 'divergence', 'agreement', 'artifacts', 'raw']);
     const jsonString = JSON.stringify(data, null, 2);
     jsonOutput.textContent = jsonString;
 
@@ -213,6 +215,8 @@ function renderDetailReport(data, title, config = getState().currentRunnerConfig
         if (data.performance_report) renderRankingTable(data.performance_report, 'execution_time_sec', 's', panelElements.performance, optMap);
         if (data.resource_report) renderRankingTable(data.resource_report, 'memory_usage_mb', 'MiB', panelElements.resources, optMap);
         if (data.divergence_report) renderDivergenceTables(data.divergence_report, panelElements.divergence, optMap);
+        if (data.divergence_report) renderAgreementPanel(data.divergence_report, panelElements.agreement, optMap);
+        renderArtifactsPanel(data, panelElements.artifacts);
     }
 
     showTab('summary');
