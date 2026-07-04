@@ -56,6 +56,29 @@ def test_statevector_pairwise_evidence_labels_global_phase_only_when_phase_nonze
     assert evidence["transform_effect"]["relative_phase_after_alignment_rad"] == 0.0
 
 
+def test_statevector_pairwise_evidence_labels_bit_reversal_for_one_hot_ordering_probe():
+    lsb_one_hot = ["0", "1", "0", "0", "0", "0", "0", "0"]
+    msb_one_hot = ["0", "0", "0", "0", "1", "0", "0", "0"]
+
+    report = create_divergence_report([
+        {"simulator": "lsb_backend", "statevector": lsb_one_hot, "qubit_ordering": "lsb"},
+        {"simulator": "msb_backend", "statevector": msb_one_hot, "qubit_ordering": "msb"},
+    ])
+
+    assert report["fidelity_matrix"][0][1] == 0.0
+    assert report["fidelity_matrix"][1][0] == 0.0
+
+    evidence = _record(report, "lsb_backend", "msb_backend")
+    assert evidence["agreement"] == "agree_after_bit_reversal"
+    assert evidence["registered_transform"] == "bit_reversal"
+    assert evidence["metrics"]["direct_fidelity"] == 0.0
+    assert evidence["metrics"]["bit_reversed_fidelity"] == 1.0
+    assert evidence["metrics"]["is_cross_group"] is True
+    assert evidence["transform_effect"]["fidelity_delta"] == 1.0
+    assert evidence["transform_effect"]["fidelity_after_transform"] == 1.0
+    assert evidence["transform_effect"]["relative_phase_after_transform_rad"] == 0.0
+
+
 def test_statevector_pairwise_evidence_labels_residual_when_current_registered_modes_do_not_explain():
     report = create_divergence_report([
         {"simulator": "a", "statevector": ["1", "0"], "qubit_ordering": "msb"},

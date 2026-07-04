@@ -29,6 +29,38 @@ def _json_float(value):
     return float(value)
 
 
+def _normalize_statevector(sv):
+    norm = np.linalg.norm(sv)
+    return sv / norm, norm
+
+
+def _statevector_inner_metrics(sv_i_norm, sv_j_norm, fidelity_tolerance, phase_tolerance):
+    inner_product = np.dot(np.conjugate(sv_i_norm), sv_j_norm)
+    fidelity = np.abs(inner_product)**2
+    relative_phase = np.angle(inner_product)
+
+    if np.isclose(fidelity, 1.0, atol=fidelity_tolerance):
+        fidelity = 1.0
+    if np.isclose(relative_phase, 0.0, atol=phase_tolerance):
+        relative_phase = 0.0
+
+    return fidelity, relative_phase
+
+
+def _bit_reversed_statevector(sv):
+    """Return a copy of sv with computational-basis index bits reversed."""
+    size = len(sv)
+    if size == 0 or size & (size - 1):
+        raise ValueError(f"statevector length {size} is not a power of two")
+
+    n_qubits = int(np.log2(size))
+    reversed_sv = np.empty_like(sv)
+    for index, amplitude in enumerate(sv):
+        reversed_index = int(format(index, f"0{n_qubits}b")[::-1], 2)
+        reversed_sv[reversed_index] = amplitude
+    return reversed_sv
+
+
 def _pair_provenance(res_i, res_j, mode):
     sim_i = res_i.get("simulator", "unknown")
     sim_j = res_j.get("simulator", "unknown")
@@ -83,11 +115,24 @@ def _statevector_not_comparable_record(res_i, res_j, reason, details=None):
     }
 
 
-def _classify_statevector_pair(res_i, res_j, fidelity, relative_phase, norm_i, norm_j, is_cross_group, fidelity_tolerance, phase_tolerance):
+def _classify_statevector_pair(
+    res_i,
+    res_j,
+    fidelity,
+    relative_phase,
+    bit_reversed_fidelity,
+    bit_reversed_relative_phase,
+    norm_i,
+    norm_j,
+    is_cross_group,
+    fidelity_tolerance,
+    phase_tolerance,
+):
     sim_i = res_i.get("simulator", "unknown")
     sim_j = res_j.get("simulator", "unknown")
     phase_agrees = np.isclose(relative_phase, 0.0, atol=phase_tolerance)
     fidelity_agrees = fidelity >= (1.0 - fidelity_tolerance)
+    bit_reversal_agrees = bit_reversed_fidelity >= (1.0 - fidelity_tolerance)
 
     if fidelity_agrees and phase_agrees:
         agreement = "agree_directly"
@@ -103,6 +148,14 @@ def _classify_statevector_pair(res_i, res_j, fidelity, relative_phase, norm_i, n
             "fidelity_delta": 0.0,
             "relative_phase_delta_rad": _json_float(-relative_phase),
             "relative_phase_after_alignment_rad": 0.0,
+        }
+    elif bit_reversal_agrees:
+        agreement = "agree_after_bit_reversal"
+        registered_transform = "bit_reversal"
+        transform_effect = {
+            "fidelity_delta": _json_float(bit_reversed_fidelity - fidelity),
+            "fidelity_after_transform": _json_float(bit_reversed_fidelity),
+            "relative_phase_after_transform_rad": _json_float(bit_reversed_relative_phase),
         }
     else:
         agreement = "residual_disagreement"
@@ -122,6 +175,8 @@ def _classify_statevector_pair(res_i, res_j, fidelity, relative_phase, norm_i, n
         "metrics": {
             "direct_fidelity": _json_float(fidelity),
             "direct_relative_phase_rad": _json_float(relative_phase),
+            "bit_reversed_fidelity": _json_float(bit_reversed_fidelity),
+            "bit_reversed_relative_phase_rad": _json_float(bit_reversed_relative_phase),
             "norms": {
                 sim_i: _json_float(norm_i),
                 sim_j: _json_float(norm_j),
@@ -249,7 +304,7 @@ def create_divergence_report(results_list):
         try:
             res_i = valid_results[sim_to_valid_idx[sim_i_name]]
             sv_i = parse_statevector(res_i["statevector"])
-            norm_i = np.linalg.norm(sv_i)
+            sv_i_norm, norm_i = _normalize_statevector(sv_i)
 
             if not np.isclose(norm_i, 1.0, atol=normalization_tolerance):
                  divergences_found.append({
@@ -257,8 +312,6 @@ def create_divergence_report(results_list):
                     "simulator": sim_i_name,
                     "norm": float(norm_i)
                 })
-
-            sv_i_norm = sv_i / norm_i
 
         except Exception as e:
             logger.error(f"Failed to load statevector for {sim_i_name}: {e}")
@@ -312,16 +365,20 @@ def create_divergence_report(results_list):
                     del sv_j
                     continue
 
-                norm_j = np.linalg.norm(sv_j)
-
-                sv_j_norm = sv_j / norm_j
-
-                inner_product = np.dot(np.conjugate(sv_i_norm), sv_j_norm)
-                fidelity = np.abs(inner_product)**2
-                relative_phase = np.angle(inner_product)
-
-                if np.isclose(fidelity, 1.0, atol=fidelity_tolerance): fidelity = 1.0
-                if np.isclose(relative_phase, 0.0, atol=phase_tolerance): relative_phase = 0.0
+                sv_j_norm, norm_j = _normalize_statevector(sv_j)
+                fidelity, relative_phase = _statevector_inner_metrics(
+                    sv_i_norm,
+                    sv_j_norm,
+                    fidelity_tolerance,
+                    phase_tolerance,
+                )
+                sv_j_bit_reversed_norm = _bit_reversed_statevector(sv_j_norm)
+                bit_reversed_fidelity, bit_reversed_relative_phase = _statevector_inner_metrics(
+                    sv_i_norm,
+                    sv_j_bit_reversed_norm,
+                    fidelity_tolerance,
+                    phase_tolerance,
+                )
 
                 fidelity_matrix[i, j] = fidelity
                 fidelity_matrix[j, i] = fidelity
@@ -338,6 +395,8 @@ def create_divergence_report(results_list):
                         res_j,
                         fidelity,
                         relative_phase,
+                        bit_reversed_fidelity,
+                        bit_reversed_relative_phase,
                         norm_i,
                         norm_j,
                         is_cross_group,
@@ -365,6 +424,7 @@ def create_divergence_report(results_list):
 
                 del sv_j
                 del sv_j_norm
+                del sv_j_bit_reversed_norm
 
             except Exception as e:
                 logger.error(f"Error comparing {sim_i_name} vs {sim_j_name}: {e}")
