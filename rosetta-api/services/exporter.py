@@ -166,6 +166,62 @@ def _extract_runners_used(ctx: ExportContext) -> List[str]:
     return runners_used
 
 
+def _iter_pairwise_agreement_records(ctx: ExportContext):
+    divergence_report = ctx.results.get("divergence_report")
+    if isinstance(divergence_report, dict):
+        pairwise = divergence_report.get("pairwise_agreement", [])
+        if isinstance(pairwise, list):
+            for record in pairwise:
+                if isinstance(record, dict):
+                    yield record
+
+    benchmark_summary = ctx.results.get("benchmark_summary", [])
+    if isinstance(benchmark_summary, list):
+        for task_result in benchmark_summary:
+            divergence_report = task_result.get("divergence_report")
+            if isinstance(divergence_report, dict):
+                pairwise = divergence_report.get("pairwise_agreement", [])
+                if isinstance(pairwise, list):
+                    for record in pairwise:
+                        if isinstance(record, dict):
+                            yield record
+
+
+def _increment_nested_count(target: dict, *keys: str) -> None:
+    current = target
+    for key in keys[:-1]:
+        current = current.setdefault(key, {})
+    leaf = keys[-1]
+    current[leaf] = current.get(leaf, 0) + 1
+
+
+def _build_pairwise_agreement_summary(ctx: ExportContext) -> Optional[dict]:
+    records = list(_iter_pairwise_agreement_records(ctx))
+    if not records:
+        return None
+
+    summary = {
+        "location": "results.json divergence_report.pairwise_agreement",
+        "record_count": len(records),
+        "by_mode": {},
+        "by_agreement": {},
+        "by_registered_transform": {},
+        "description": (
+            "Pairwise agreement evidence records are preserved in results.json. "
+            "This provenance summary counts labels and registered transforms only; "
+            "it does not replace the per-pair metrics and provenance records."
+        ),
+    }
+    for record in records:
+        mode = record.get("mode") or "unknown"
+        agreement = record.get("agreement") or "unknown"
+        transform = record.get("registered_transform") or "none"
+        summary["by_mode"][mode] = summary["by_mode"].get(mode, 0) + 1
+        _increment_nested_count(summary["by_agreement"], mode, agreement)
+        _increment_nested_count(summary["by_registered_transform"], mode, transform)
+    return summary
+
+
 def _strip_statevectors(data: Any) -> Any:
     """Recursively remove 'statevector' keys from nested dicts/lists."""
     if isinstance(data, dict):
@@ -222,6 +278,10 @@ def _build_provenance(ctx: ExportContext) -> dict:
         "runner_configurations": runner_configs,
     }
 
+    pairwise_summary = _build_pairwise_agreement_summary(ctx)
+    if pairwise_summary:
+        provenance["pairwise_agreement_evidence"] = pairwise_summary
+
     # Embed future extension metadata when available
     if ctx.suite_source:
         provenance["suite_source"] = ctx.suite_source
@@ -253,8 +313,9 @@ def _build_ro_crate_metadata(ctx: ExportContext, dir_name: str) -> dict:
         "description": (
             "Reproducible quantum simulator benchmark results exported from "
             "Quantum Rosetta. Contains the input OpenQASM 2.0 circuit, "
-            "cross-simulator analysis reports (divergence, performance, resource), "
-            "and full computational provenance."
+            "cross-simulator analysis reports (including pairwise agreement evidence "
+            "records when available), performance and resource reports, and full "
+            "computational provenance."
         ),
         "datePublished": ctx.timestamp,
         "license": {"@id": "https://creativecommons.org/licenses/by/4.0/"},
@@ -297,8 +358,9 @@ def _build_ro_crate_metadata(ctx: ExportContext, dir_name: str) -> dict:
     })
 
     results_desc = (
-        "Full benchmark analysis results including divergence, performance, "
-        "and resource reports across all dispatched simulators."
+        "Full benchmark analysis results including divergence, pairwise agreement "
+        "evidence records when available, performance, and resource reports across "
+        "all dispatched simulators."
     )
     if ctx.include_statevectors:
         results_desc += " Includes raw statevector data."

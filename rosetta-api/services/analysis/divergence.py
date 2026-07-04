@@ -1,10 +1,14 @@
 # Quantum state and performance analysis utilities.
 
+from itertools import permutations
+
 from qrosetta_commons.helpers import get_logger, decode_statevector
 import numpy as np
 from scipy.spatial.distance import jensenshannon
 
 logger = get_logger(__name__)
+
+MAX_EXHAUSTIVE_QUBIT_PERMUTATION_QUBITS = 6
 
 
 def parse_statevector(sv_data):
@@ -47,18 +51,70 @@ def _statevector_inner_metrics(sv_i_norm, sv_j_norm, fidelity_tolerance, phase_t
     return fidelity, relative_phase
 
 
-def _bit_reversed_statevector(sv):
-    """Return a copy of sv with computational-basis index bits reversed."""
+def _statevector_qubit_count(sv):
     size = len(sv)
     if size == 0 or size & (size - 1):
         raise ValueError(f"statevector length {size} is not a power of two")
+    return int(np.log2(size))
 
-    n_qubits = int(np.log2(size))
-    reversed_sv = np.empty_like(sv)
+
+def _permute_statevector(sv, permutation):
+    """Return sv with computational-basis bit positions permuted."""
+    n_qubits = _statevector_qubit_count(sv)
+    permuted_sv = np.empty_like(sv)
     for index, amplitude in enumerate(sv):
-        reversed_index = int(format(index, f"0{n_qubits}b")[::-1], 2)
-        reversed_sv[reversed_index] = amplitude
-    return reversed_sv
+        bits = format(index, f"0{n_qubits}b")
+        permuted_bits = "".join(bits[source] for source in permutation)
+        permuted_sv[int(permuted_bits, 2)] = amplitude
+    return permuted_sv
+
+
+def _bit_reversed_statevector(sv):
+    """Return a copy of sv with computational-basis index bits reversed."""
+    n_qubits = _statevector_qubit_count(sv)
+    return _permute_statevector(sv, tuple(reversed(range(n_qubits))))
+
+
+def _best_statevector_qubit_permutation_metrics(sv_i_norm, sv_j_norm, fidelity_tolerance, phase_tolerance):
+    n_qubits = _statevector_qubit_count(sv_j_norm)
+    if n_qubits > MAX_EXHAUSTIVE_QUBIT_PERMUTATION_QUBITS:
+        return {
+            "attempted": False,
+            "reason": "too_many_qubits",
+            "n_qubits": n_qubits,
+            "max_qubits": MAX_EXHAUSTIVE_QUBIT_PERMUTATION_QUBITS,
+            "permutation": None,
+            "fidelity": None,
+            "relative_phase": None,
+        }
+
+    identity = tuple(range(n_qubits))
+    bit_reversal = tuple(reversed(range(n_qubits)))
+    best = {
+        "attempted": True,
+        "reason": None,
+        "n_qubits": n_qubits,
+        "max_qubits": MAX_EXHAUSTIVE_QUBIT_PERMUTATION_QUBITS,
+        "permutation": None,
+        "fidelity": -1.0,
+        "relative_phase": 0.0,
+    }
+    for permutation in permutations(range(n_qubits)):
+        if permutation in (identity, bit_reversal):
+            continue
+        permuted = _permute_statevector(sv_j_norm, permutation)
+        fidelity, relative_phase = _statevector_inner_metrics(
+            sv_i_norm, permuted, fidelity_tolerance, phase_tolerance
+        )
+        if fidelity > best["fidelity"]:
+            best.update({
+                "permutation": list(permutation),
+                "fidelity": fidelity,
+                "relative_phase": relative_phase,
+            })
+    if best["permutation"] is None:
+        best.update({"fidelity": None, "relative_phase": None})
+    return best
 
 
 def _pair_provenance(res_i, res_j, mode):
@@ -122,6 +178,7 @@ def _classify_statevector_pair(
     relative_phase,
     bit_reversed_fidelity,
     bit_reversed_relative_phase,
+    qubit_permutation_metrics,
     norm_i,
     norm_j,
     is_cross_group,
@@ -133,6 +190,12 @@ def _classify_statevector_pair(
     phase_agrees = np.isclose(relative_phase, 0.0, atol=phase_tolerance)
     fidelity_agrees = fidelity >= (1.0 - fidelity_tolerance)
     bit_reversal_agrees = bit_reversed_fidelity >= (1.0 - fidelity_tolerance)
+    qubit_permutation_fidelity = qubit_permutation_metrics.get("fidelity")
+    qubit_permutation_agrees = (
+        qubit_permutation_metrics.get("attempted")
+        and qubit_permutation_fidelity is not None
+        and qubit_permutation_fidelity >= (1.0 - fidelity_tolerance)
+    )
 
     if fidelity_agrees and phase_agrees:
         agreement = "agree_directly"
@@ -157,6 +220,17 @@ def _classify_statevector_pair(
             "fidelity_after_transform": _json_float(bit_reversed_fidelity),
             "relative_phase_after_transform_rad": _json_float(bit_reversed_relative_phase),
         }
+    elif qubit_permutation_agrees:
+        agreement = "agree_after_qubit_permutation"
+        registered_transform = "qubit_permutation"
+        transform_effect = {
+            "permutation": qubit_permutation_metrics["permutation"],
+            "fidelity_delta": _json_float(qubit_permutation_fidelity - fidelity),
+            "fidelity_after_transform": _json_float(qubit_permutation_fidelity),
+            "relative_phase_after_transform_rad": _json_float(
+                qubit_permutation_metrics.get("relative_phase")
+            ),
+        }
     else:
         agreement = "residual_disagreement"
         registered_transform = None
@@ -177,6 +251,17 @@ def _classify_statevector_pair(
             "direct_relative_phase_rad": _json_float(relative_phase),
             "bit_reversed_fidelity": _json_float(bit_reversed_fidelity),
             "bit_reversed_relative_phase_rad": _json_float(bit_reversed_relative_phase),
+            "qubit_permutation": {
+                "attempted": bool(qubit_permutation_metrics.get("attempted")),
+                "reason": qubit_permutation_metrics.get("reason"),
+                "n_qubits": qubit_permutation_metrics.get("n_qubits"),
+                "max_qubits": qubit_permutation_metrics.get("max_qubits"),
+                "permutation": qubit_permutation_metrics.get("permutation"),
+                "fidelity": _json_float(qubit_permutation_metrics.get("fidelity")),
+                "relative_phase_rad": _json_float(
+                    qubit_permutation_metrics.get("relative_phase")
+                ),
+            },
             "norms": {
                 sim_i: _json_float(norm_i),
                 sim_j: _json_float(norm_j),
@@ -210,12 +295,69 @@ def _counts_not_comparable_record(res_i, res_j, reason, details=None):
     }
 
 
-def _classify_counts_pair(res_i, res_j, js_div, h_dist, is_cross_group, js_threshold, hellinger_threshold, n_shots):
+def _classify_counts_pair(
+    res_i,
+    res_j,
+    js_div,
+    h_dist,
+    bit_reversed_js_div,
+    bit_reversed_h_dist,
+    qubit_permutation_metrics,
+    is_cross_group,
+    js_threshold,
+    hellinger_threshold,
+    n_shots,
+):
     sim_i = res_i.get("simulator", "unknown")
     sim_j = res_j.get("simulator", "unknown")
-    agreement = "distance_within_threshold"
-    if js_div > js_threshold or h_dist > hellinger_threshold:
+    direct_agrees = js_div <= js_threshold and h_dist <= hellinger_threshold
+    bit_reversal_agrees = (
+        bit_reversed_js_div <= js_threshold
+        and bit_reversed_h_dist <= hellinger_threshold
+    )
+    qubit_permutation_js = qubit_permutation_metrics.get("js_divergence")
+    qubit_permutation_h = qubit_permutation_metrics.get("hellinger_distance")
+    qubit_permutation_agrees = (
+        qubit_permutation_metrics.get("attempted")
+        and qubit_permutation_js is not None
+        and qubit_permutation_h is not None
+        and qubit_permutation_js <= js_threshold
+        and qubit_permutation_h <= hellinger_threshold
+    )
+
+    if direct_agrees:
+        agreement = "distance_within_threshold"
+        registered_transform = "identity_threshold_check"
+        transform_effect = {
+            "js_divergence_delta": 0.0,
+            "hellinger_distance_delta": 0.0,
+        }
+    elif bit_reversal_agrees:
+        agreement = "agree_after_bit_reversal"
+        registered_transform = "bit_reversal"
+        transform_effect = {
+            "js_divergence_delta": _json_float(bit_reversed_js_div - js_div),
+            "hellinger_distance_delta": _json_float(bit_reversed_h_dist - h_dist),
+            "js_divergence_after_transform": _json_float(bit_reversed_js_div),
+            "hellinger_distance_after_transform": _json_float(bit_reversed_h_dist),
+        }
+    elif qubit_permutation_agrees:
+        agreement = "agree_after_qubit_permutation"
+        registered_transform = "qubit_permutation"
+        transform_effect = {
+            "permutation": qubit_permutation_metrics["permutation"],
+            "js_divergence_delta": _json_float(qubit_permutation_js - js_div),
+            "hellinger_distance_delta": _json_float(qubit_permutation_h - h_dist),
+            "js_divergence_after_transform": _json_float(qubit_permutation_js),
+            "hellinger_distance_after_transform": _json_float(qubit_permutation_h),
+        }
+    else:
         agreement = "distance_exceeds_threshold"
+        registered_transform = "identity_threshold_check"
+        transform_effect = {
+            "js_divergence_delta": 0.0,
+            "hellinger_distance_delta": 0.0,
+        }
 
     return {
         "simulators": [sim_i, sim_j],
@@ -225,14 +367,24 @@ def _classify_counts_pair(res_i, res_j, js_div, h_dist, is_cross_group, js_thres
             sim_j: _run_status(res_j),
         },
         "agreement": agreement,
-        "registered_transform": "identity_threshold_check",
-        "transform_effect": {
-            "js_divergence_delta": 0.0,
-            "hellinger_distance_delta": 0.0,
-        },
+        "registered_transform": registered_transform,
+        "transform_effect": transform_effect,
         "metrics": {
             "js_divergence": _json_float(js_div),
             "hellinger_distance": _json_float(h_dist),
+            "bit_reversed_js_divergence": _json_float(bit_reversed_js_div),
+            "bit_reversed_hellinger_distance": _json_float(bit_reversed_h_dist),
+            "qubit_permutation": {
+                "attempted": bool(qubit_permutation_metrics.get("attempted")),
+                "reason": qubit_permutation_metrics.get("reason"),
+                "n_qubits": qubit_permutation_metrics.get("n_qubits"),
+                "max_qubits": qubit_permutation_metrics.get("max_qubits"),
+                "permutation": qubit_permutation_metrics.get("permutation"),
+                "js_divergence": _json_float(qubit_permutation_metrics.get("js_divergence")),
+                "hellinger_distance": _json_float(
+                    qubit_permutation_metrics.get("hellinger_distance")
+                ),
+            },
             "js_threshold": js_threshold,
             "hellinger_threshold": hellinger_threshold,
             "n_shots": n_shots,
@@ -379,6 +531,12 @@ def create_divergence_report(results_list):
                     fidelity_tolerance,
                     phase_tolerance,
                 )
+                qubit_permutation_metrics = _best_statevector_qubit_permutation_metrics(
+                    sv_i_norm,
+                    sv_j_norm,
+                    fidelity_tolerance,
+                    phase_tolerance,
+                )
 
                 fidelity_matrix[i, j] = fidelity
                 fidelity_matrix[j, i] = fidelity
@@ -397,6 +555,7 @@ def create_divergence_report(results_list):
                         relative_phase,
                         bit_reversed_fidelity,
                         bit_reversed_relative_phase,
+                        qubit_permutation_metrics,
                         norm_i,
                         norm_j,
                         is_cross_group,
@@ -463,6 +622,107 @@ def _normalize_counts(counts, n_shots):
     return {k: v / n_shots for k, v in counts.items()}
 
 
+def _bit_reversed_counts(counts):
+    """Return counts with each bitstring key reversed, aggregating collisions."""
+    reversed_counts = {}
+    for bitstring, count in counts.items():
+        reversed_key = bitstring[::-1]
+        reversed_counts[reversed_key] = reversed_counts.get(reversed_key, 0) + count
+    return reversed_counts
+
+
+def _counts_bit_length(counts):
+    lengths = {len(bitstring) for bitstring in counts}
+    if len(lengths) != 1:
+        return None
+    return lengths.pop()
+
+
+def _permute_counts(counts, permutation):
+    permuted_counts = {}
+    for bitstring, count in counts.items():
+        permuted_key = "".join(bitstring[source] for source in permutation)
+        permuted_counts[permuted_key] = permuted_counts.get(permuted_key, 0) + count
+    return permuted_counts
+
+
+def _best_counts_qubit_permutation_metrics(counts_i, counts_j, n_shots, js_threshold, hellinger_threshold):
+    n_qubits_i = _counts_bit_length(counts_i)
+    n_qubits_j = _counts_bit_length(counts_j)
+    if n_qubits_i is None or n_qubits_j is None or n_qubits_i != n_qubits_j:
+        return {
+            "attempted": False,
+            "reason": "inconsistent_bitstring_lengths",
+            "n_qubits": None,
+            "max_qubits": MAX_EXHAUSTIVE_QUBIT_PERMUTATION_QUBITS,
+            "permutation": None,
+            "js_divergence": None,
+            "hellinger_distance": None,
+        }
+    if n_qubits_i > MAX_EXHAUSTIVE_QUBIT_PERMUTATION_QUBITS:
+        return {
+            "attempted": False,
+            "reason": "too_many_qubits",
+            "n_qubits": n_qubits_i,
+            "max_qubits": MAX_EXHAUSTIVE_QUBIT_PERMUTATION_QUBITS,
+            "permutation": None,
+            "js_divergence": None,
+            "hellinger_distance": None,
+        }
+
+    identity = tuple(range(n_qubits_i))
+    bit_reversal = tuple(reversed(range(n_qubits_i)))
+    best = {
+        "attempted": True,
+        "reason": None,
+        "n_qubits": n_qubits_i,
+        "max_qubits": MAX_EXHAUSTIVE_QUBIT_PERMUTATION_QUBITS,
+        "permutation": None,
+        "js_divergence": None,
+        "hellinger_distance": None,
+    }
+    best_score = float("inf")
+    for permutation in permutations(range(n_qubits_i)):
+        if permutation in (identity, bit_reversal):
+            continue
+        permuted_counts_j = _permute_counts(counts_j, permutation)
+        outcomes = sorted(set(counts_i.keys()) | set(permuted_counts_j.keys()))
+        pv_i = _counts_probability_vector(counts_i, outcomes, n_shots)
+        pv_j = _counts_probability_vector(permuted_counts_j, outcomes, n_shots)
+        js_div, h_dist = _counts_distance_metrics(pv_i, pv_j)
+        score = js_div + h_dist
+        if score < best_score:
+            best_score = score
+            best.update({
+                "permutation": list(permutation),
+                "js_divergence": js_div,
+                "hellinger_distance": h_dist,
+            })
+        if js_div <= js_threshold and h_dist <= hellinger_threshold:
+            break
+    return best
+
+
+def _counts_probability_vector(counts, outcomes, n_shots):
+    probabilities = np.zeros(len(outcomes))
+    normalized = _normalize_counts(counts, n_shots)
+    for index, bitstring in enumerate(outcomes):
+        probabilities[index] = normalized.get(bitstring, 0.0)
+    return probabilities
+
+
+def _counts_distance_metrics(pv_i, pv_j):
+    js_div = (jensenshannon(pv_i, pv_j))**2
+    if np.isnan(js_div):
+        js_div = 0.0
+
+    h_dist = calculate_hellinger_distance(pv_i, pv_j)
+    if np.isnan(h_dist):
+        h_dist = 0.0
+
+    return js_div, h_dist
+
+
 def calculate_hellinger_distance(p, q):
     """
     Calculates the Hellinger distance between two probability distributions.
@@ -484,19 +744,13 @@ def create_counts_report(results_list, n_shots):
             all_bitstrings.update(res["counts"].keys())
 
     all_bitstrings = sorted(list(all_bitstrings))
-    n_outcomes = len(all_bitstrings)
 
     prob_vectors = []
     for res in results_list:
         if "counts" in res:
-            prob_vec = np.zeros(n_outcomes)
-
-            norm_counts = _normalize_counts(res["counts"], n_shots)
-
-            for i, bitstring in enumerate(all_bitstrings):
-                prob_vec[i] = norm_counts.get(bitstring, 0.0)
-
-            prob_vectors.append(prob_vec)
+            prob_vectors.append(
+                _counts_probability_vector(res["counts"], all_bitstrings, n_shots)
+            )
         else:
             prob_vectors.append(None)
 
@@ -523,11 +777,28 @@ def create_counts_report(results_list, n_shots):
 
             if pv_i is not None and pv_j is not None:
 
-                js_div = (jensenshannon(pv_i, pv_j))**2
-                if np.isnan(js_div): js_div = 0.0
+                js_div, h_dist = _counts_distance_metrics(pv_i, pv_j)
 
-                h_dist = calculate_hellinger_distance(pv_i, pv_j)
-                if np.isnan(h_dist): h_dist = 0.0
+                bit_reversed_counts_j = _bit_reversed_counts(results_list[j]["counts"])
+                bit_reversed_outcomes = sorted(
+                    set(results_list[i]["counts"].keys()) | set(bit_reversed_counts_j.keys())
+                )
+                pv_i_for_bit_reversal = _counts_probability_vector(
+                    results_list[i]["counts"], bit_reversed_outcomes, n_shots
+                )
+                pv_j_bit_reversed = _counts_probability_vector(
+                    bit_reversed_counts_j, bit_reversed_outcomes, n_shots
+                )
+                bit_reversed_js_div, bit_reversed_h_dist = _counts_distance_metrics(
+                    pv_i_for_bit_reversal, pv_j_bit_reversed
+                )
+                qubit_permutation_metrics = _best_counts_qubit_permutation_metrics(
+                    results_list[i]["counts"],
+                    results_list[j]["counts"],
+                    n_shots,
+                    js_threshold,
+                    hellinger_threshold,
+                )
 
                 js_matrix[i, j] = js_div
                 js_matrix[j, i] = js_div
@@ -546,6 +817,9 @@ def create_counts_report(results_list, n_shots):
                         results_list[j],
                         js_div,
                         h_dist,
+                        bit_reversed_js_div,
+                        bit_reversed_h_dist,
+                        qubit_permutation_metrics,
                         is_cross_group,
                         js_threshold,
                         hellinger_threshold,

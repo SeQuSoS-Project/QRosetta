@@ -24,6 +24,14 @@ logger = get_logger("rosetta-job-manager")
 
 ACTIVE_JOBS = {}
 
+
+def _attach_request_seed(results: list, seed: int = None) -> list:
+    """Attach the measured request seed to every runner result for provenance."""
+    for result in results:
+        if isinstance(result, dict):
+            result.setdefault("seed", seed)
+    return results
+
 async def run_single_circuit_comparison(qasm_string: str, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = 60, target_simulators: list = None, runner_statuses: dict = None, runner_phases: dict = None, apply_preprocessing: bool = True):
     logger.info(f"Processing circuit...")
     try:
@@ -140,7 +148,7 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
 
     results_sampled, results_native = await asyncio.gather(sampled_task, native_task)
 
-    aggregated_results = results_native + results_sampled
+    aggregated_results = _attach_request_seed(results_native + results_sampled, seed)
 
     save_report_to_disk(aggregated_results)
 
@@ -149,7 +157,9 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
 
     except Exception as e:
         return {
-            "input_qasm": qasm_string, "n_shots": n_shots,
+            "input_qasm": qasm_string,
+            "n_shots": n_shots,
+            "seed": seed,
             "error": f"Error during comparison: {str(e)}",
             "raw_results": aggregated_results
         }
@@ -158,6 +168,7 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
         "input_qasm": qasm_string,
         "modified_qasm_for_native_runners": modified_qasm_string,
         "n_shots": n_shots,
+        "seed": seed,
         "divergence_report": divergence_report,
         "performance_report": performance_report,
         "resource_report": resource_report,

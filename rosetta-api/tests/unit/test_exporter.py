@@ -24,6 +24,23 @@ SAMPLE_RESULTS_SV = {
         "simulators": ["qiskit", "cirq"],
         "fidelity_matrix": [[1.0, 1.0], [1.0, 1.0]],
         "divergences_found": [],
+        "pairwise_agreement": [
+            {
+                "simulators": ["qiskit", "cirq"],
+                "mode": "statevector",
+                "agreement": "agree_after_bit_reversal",
+                "registered_transform": "bit_reversal",
+                "metrics": {
+                    "direct_fidelity": 0.0,
+                    "bit_reversed_fidelity": 1.0,
+                },
+                "provenance": {
+                    "qubit_ordering": {"qiskit": "lsb", "cirq": "msb"},
+                    "seed": {"qiskit": None, "cirq": None},
+                    "sdk_versions": {"qiskit": {}, "cirq": {}},
+                },
+            }
+        ],
     },
     "performance_report": {
         "summary": "Execution time in seconds (fastest first).",
@@ -269,6 +286,35 @@ class TestBuildRoCrate:
         prov = json.loads(zf.read(prov_path))
 
         assert prov["suite_source"] == "MQT Bench"
+
+
+    def test_results_preserve_pairwise_agreement_records(self):
+        ctx = _make_ctx(include_statevectors=False)
+        zip_bytes = build_ro_crate(ctx)
+        zf = zipfile.ZipFile(io.BytesIO(zip_bytes), "r")
+
+        results_path = [n for n in zf.namelist() if n.endswith("results.json")][0]
+        results = json.loads(zf.read(results_path))
+
+        pairwise = results["divergence_report"]["pairwise_agreement"]
+        assert pairwise[0]["agreement"] == "agree_after_bit_reversal"
+        assert pairwise[0]["registered_transform"] == "bit_reversal"
+        assert pairwise[0]["metrics"]["bit_reversed_fidelity"] == 1.0
+
+    def test_provenance_summarizes_pairwise_agreement_evidence(self):
+        ctx = _make_ctx()
+        zip_bytes = build_ro_crate(ctx)
+        zf = zipfile.ZipFile(io.BytesIO(zip_bytes), "r")
+
+        prov_path = [n for n in zf.namelist() if n.endswith("provenance.json")][0]
+        prov = json.loads(zf.read(prov_path))
+
+        summary = prov["pairwise_agreement_evidence"]
+        assert summary["record_count"] == 1
+        assert summary["by_mode"] == {"statevector": 1}
+        assert summary["by_agreement"] == {"statevector": {"agree_after_bit_reversal": 1}}
+        assert summary["by_registered_transform"] == {"statevector": {"bit_reversal": 1}}
+        assert "results.json" in summary["location"]
 
 
 class TestExecutedSdkVersions:
