@@ -5,8 +5,9 @@ RUN useradd -m appuser
 WORKDIR /home/appuser/app
 
 COPY runners/cuquantum-runner/requirements.txt .
+COPY runners/cuquantum-runner/requirements.lock .
 ENV PIP_DEFAULT_TIMEOUT=1000
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.lock
 
 # Copy shared models/helpers
 COPY shared /tmp/shared-src

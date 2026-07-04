@@ -16,16 +16,17 @@ WORKDIR /home/appuser/app
 
 # Copy requirements
 COPY runners/pytket-projectq-runner/requirements.txt .
+COPY runners/pytket-projectq-runner/requirements.lock .
 ENV PIP_DEFAULT_TIMEOUT=1000
 
 # --- FIX 2: Pre-install Build Tools ---
 # 'setuptools<70' prevents the 'dry_run' attribute error.
 # 'setuptools_scm' prevents the version '0.0.0' error.
-RUN pip install "setuptools<70" "setuptools_scm>=7" wheel pybind11
+RUN pip install --no-cache-dir "setuptools==69.5.1" "setuptools-scm==10.2.0" "wheel==0.45.1" "pybind11==3.0.4"
 
 # --- FIX 3: Disable Build Isolation ---
 # Forces pip to use the compatible tools we just installed above.
-RUN pip install --no-build-isolation --no-cache-dir -r requirements.txt
+RUN pip install --no-build-isolation --no-cache-dir -r requirements.lock
 
 # Copy shared library and install it
 COPY shared /tmp/shared-src

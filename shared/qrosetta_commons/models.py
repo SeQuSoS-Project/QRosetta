@@ -15,7 +15,7 @@ class MeasuredCircuitPayload(BaseModel):
     optimization_level: int = 0
     runner_config: Dict[str, int] = {}
     apply_preprocessing: bool = True
-    # Optional RNG seed for reproducible sampling. None = non-deterministic (the
-    # prior behaviour). Consumed by runners that sample from a computed statevector;
-    # native-sampler backends ignore it until per-SDK seeding lands (see T2.1).
+    # Optional RNG seed for reproducible sampling. None = non-deterministic.
+    # Active runners consume this through their native SDK RNG, numpy's global RNG,
+    # or the shared statevector sampler depending on the backend.
     seed: Optional[int] = None

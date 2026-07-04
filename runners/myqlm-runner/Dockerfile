@@ -4,8 +4,9 @@ RUN useradd -m appuser
 WORKDIR /home/appuser/app
 
 COPY runners/myqlm-runner/requirements.txt .
+COPY runners/myqlm-runner/requirements.lock .
 ENV PIP_DEFAULT_TIMEOUT=1000
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.lock
 
 COPY shared /tmp/shared-src
 RUN pip install /tmp/shared-src

@@ -71,7 +71,7 @@ def process_run(payload: dict) -> dict:
             "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
-            "qubit_ordering": "lsb",
+            "qubit_ordering": "msb",
             "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
             "preprocessing_applied": preprocessing_applied,
             "transpiled_qasm": transpiled_qasm
@@ -142,7 +142,7 @@ def process_run_measured(payload: dict) -> dict:
             "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
-            "qubit_ordering": "lsb",
+            "qubit_ordering": "msb",
             "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
             "preprocessing_applied": preprocessing_applied,
             "transpiled_qasm": transpiled_qasm

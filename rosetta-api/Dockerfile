@@ -6,8 +6,9 @@ WORKDIR /home/appuser/app
 
 # Copy requirements using the correct path relative to project root
 COPY rosetta-api/requirements.txt .
+COPY rosetta-api/requirements.lock .
 ENV PIP_DEFAULT_TIMEOUT=1000
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.lock
 
 # Copy shared library and install it (Crucial step for the Logger)
 COPY shared /tmp/shared-src

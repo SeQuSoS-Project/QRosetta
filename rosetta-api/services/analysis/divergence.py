@@ -6,21 +6,186 @@ from scipy.spatial.distance import jensenshannon
 
 logger = get_logger(__name__)
 
+
 def parse_statevector(sv_data):
     """Converts a statevector (Base64 string or list) into a numpy array."""
     if sv_data is None:
         return np.array([])
 
     if isinstance(sv_data, str):
-
         return decode_statevector(sv_data)
     elif isinstance(sv_data, list):
-
         if not sv_data:
             return np.array([])
         return np.array([complex(s) for s in sv_data])
     else:
         raise ValueError(f"Unknown statevector format: {type(sv_data)}")
+
+
+def _json_float(value):
+    """Convert numpy scalar values to JSON-safe floats."""
+    if value is None:
+        return None
+    return float(value)
+
+
+def _pair_provenance(res_i, res_j, mode):
+    sim_i = res_i.get("simulator", "unknown")
+    sim_j = res_j.get("simulator", "unknown")
+    provenance = {
+        "qubit_ordering": {
+            sim_i: res_i.get("qubit_ordering"),
+            sim_j: res_j.get("qubit_ordering"),
+        },
+        "seed": {
+            sim_i: res_i.get("seed"),
+            sim_j: res_j.get("seed"),
+        },
+        "sdk_versions": {
+            sim_i: res_i.get("sdk_versions", {}),
+            sim_j: res_j.get("sdk_versions", {}),
+        },
+        "preprocessing_applied": {
+            sim_i: res_i.get("preprocessing_applied", []),
+            sim_j: res_j.get("preprocessing_applied", []),
+        },
+    }
+    if mode == "measured":
+        provenance["sampling_method"] = {
+            sim_i: res_i.get("sampling_method"),
+            sim_j: res_j.get("sampling_method"),
+        }
+    return provenance
+
+
+def _run_status(res):
+    return "error" if "error" in res else "completed"
+
+
+def _statevector_not_comparable_record(res_i, res_j, reason, details=None):
+    sim_i = res_i.get("simulator", "unknown")
+    sim_j = res_j.get("simulator", "unknown")
+    return {
+        "simulators": [sim_i, sim_j],
+        "mode": "statevector",
+        "run_status": {
+            sim_i: _run_status(res_i),
+            sim_j: _run_status(res_j),
+        },
+        "agreement": "not_comparable",
+        "registered_transform": None,
+        "transform_effect": None,
+        "metrics": {
+            "reason": reason,
+            "details": details or {},
+        },
+        "provenance": _pair_provenance(res_i, res_j, "statevector"),
+    }
+
+
+def _classify_statevector_pair(res_i, res_j, fidelity, relative_phase, norm_i, norm_j, is_cross_group, fidelity_tolerance, phase_tolerance):
+    sim_i = res_i.get("simulator", "unknown")
+    sim_j = res_j.get("simulator", "unknown")
+    phase_agrees = np.isclose(relative_phase, 0.0, atol=phase_tolerance)
+    fidelity_agrees = fidelity >= (1.0 - fidelity_tolerance)
+
+    if fidelity_agrees and phase_agrees:
+        agreement = "agree_directly"
+        registered_transform = "identity"
+        transform_effect = {
+            "fidelity_delta": 0.0,
+            "relative_phase_delta_rad": 0.0,
+        }
+    elif fidelity_agrees:
+        agreement = "agree_up_to_global_phase"
+        registered_transform = "global_phase_alignment"
+        transform_effect = {
+            "fidelity_delta": 0.0,
+            "relative_phase_delta_rad": _json_float(-relative_phase),
+            "relative_phase_after_alignment_rad": 0.0,
+        }
+    else:
+        agreement = "residual_disagreement"
+        registered_transform = None
+        transform_effect = None
+
+    return {
+        "simulators": [sim_i, sim_j],
+        "mode": "statevector",
+        "run_status": {
+            sim_i: _run_status(res_i),
+            sim_j: _run_status(res_j),
+        },
+        "agreement": agreement,
+        "registered_transform": registered_transform,
+        "transform_effect": transform_effect,
+        "metrics": {
+            "direct_fidelity": _json_float(fidelity),
+            "direct_relative_phase_rad": _json_float(relative_phase),
+            "norms": {
+                sim_i: _json_float(norm_i),
+                sim_j: _json_float(norm_j),
+            },
+            "fidelity_tolerance": fidelity_tolerance,
+            "phase_tolerance": phase_tolerance,
+            "is_cross_group": bool(is_cross_group),
+        },
+        "provenance": _pair_provenance(res_i, res_j, "statevector"),
+    }
+
+
+def _counts_not_comparable_record(res_i, res_j, reason, details=None):
+    sim_i = res_i.get("simulator", "unknown")
+    sim_j = res_j.get("simulator", "unknown")
+    return {
+        "simulators": [sim_i, sim_j],
+        "mode": "measured",
+        "run_status": {
+            sim_i: _run_status(res_i),
+            sim_j: _run_status(res_j),
+        },
+        "agreement": "not_comparable",
+        "registered_transform": None,
+        "transform_effect": None,
+        "metrics": {
+            "reason": reason,
+            "details": details or {},
+        },
+        "provenance": _pair_provenance(res_i, res_j, "measured"),
+    }
+
+
+def _classify_counts_pair(res_i, res_j, js_div, h_dist, is_cross_group, js_threshold, hellinger_threshold, n_shots):
+    sim_i = res_i.get("simulator", "unknown")
+    sim_j = res_j.get("simulator", "unknown")
+    agreement = "distance_within_threshold"
+    if js_div > js_threshold or h_dist > hellinger_threshold:
+        agreement = "distance_exceeds_threshold"
+
+    return {
+        "simulators": [sim_i, sim_j],
+        "mode": "measured",
+        "run_status": {
+            sim_i: _run_status(res_i),
+            sim_j: _run_status(res_j),
+        },
+        "agreement": agreement,
+        "registered_transform": "identity_threshold_check",
+        "transform_effect": {
+            "js_divergence_delta": 0.0,
+            "hellinger_distance_delta": 0.0,
+        },
+        "metrics": {
+            "js_divergence": _json_float(js_div),
+            "hellinger_distance": _json_float(h_dist),
+            "js_threshold": js_threshold,
+            "hellinger_threshold": hellinger_threshold,
+            "n_shots": n_shots,
+            "is_cross_group": bool(is_cross_group),
+        },
+        "provenance": _pair_provenance(res_i, res_j, "measured"),
+    }
+
 
 def create_divergence_report(results_list):
     """
@@ -58,6 +223,7 @@ def create_divergence_report(results_list):
     phase_matrix = np.zeros((n_total, n_total))
 
     divergences_found = []
+    pairwise_agreement = []
 
     fidelity_tolerance = 1e-12
     phase_tolerance = 1e-12
@@ -67,8 +233,17 @@ def create_divergence_report(results_list):
 
     for i in range(n_total):
         sim_i_name = simulators[i]
+        res_i_raw = results_list[i]
 
         if sim_i_name not in sim_to_valid_idx:
+            for j in range(i + 1, n_total):
+                pairwise_agreement.append(
+                    _statevector_not_comparable_record(
+                        res_i_raw,
+                        results_list[j],
+                        "missing_statevector",
+                    )
+                )
             continue
 
         try:
@@ -87,12 +262,28 @@ def create_divergence_report(results_list):
 
         except Exception as e:
             logger.error(f"Failed to load statevector for {sim_i_name}: {e}")
+            for j in range(i + 1, n_total):
+                pairwise_agreement.append(
+                    _statevector_not_comparable_record(
+                        res_i_raw,
+                        results_list[j],
+                        "statevector_parse_error",
+                        {sim_i_name: str(e)},
+                    )
+                )
             continue
 
         for j in range(i + 1, n_total):
             sim_j_name = simulators[j]
 
             if sim_j_name not in sim_to_valid_idx:
+                pairwise_agreement.append(
+                    _statevector_not_comparable_record(
+                        res_i,
+                        results_list[j],
+                        "missing_statevector",
+                    )
+                )
                 continue
 
             try:
@@ -107,6 +298,17 @@ def create_divergence_report(results_list):
                         "simulators": [sim_i_name, sim_j_name],
                         "shapes": [sv_i.shape, sv_j.shape]
                     })
+                    pairwise_agreement.append(
+                        _statevector_not_comparable_record(
+                            res_i,
+                            res_j,
+                            "shape_mismatch",
+                            {
+                                sim_i_name: list(sv_i.shape),
+                                sim_j_name: list(sv_j.shape),
+                            },
+                        )
+                    )
                     del sv_j
                     continue
 
@@ -129,6 +331,20 @@ def create_divergence_report(results_list):
                 is_cross_group = (lsb_sims and msb_sims and
                                  ((sim_i_name in lsb_sims and sim_j_name in msb_sims) or
                                   (sim_i_name in msb_sims and sim_j_name in lsb_sims)))
+
+                pairwise_agreement.append(
+                    _classify_statevector_pair(
+                        res_i,
+                        res_j,
+                        fidelity,
+                        relative_phase,
+                        norm_i,
+                        norm_j,
+                        is_cross_group,
+                        fidelity_tolerance,
+                        phase_tolerance,
+                    )
+                )
 
                 if fidelity < (1.0 - fidelity_tolerance):
                     divergences_found.append({
@@ -154,6 +370,14 @@ def create_divergence_report(results_list):
                 logger.error(f"Error comparing {sim_i_name} vs {sim_j_name}: {e}")
                 fidelity_matrix[i, j] = -1.0
                 fidelity_matrix[j, i] = -1.0
+                pairwise_agreement.append(
+                    _statevector_not_comparable_record(
+                        res_i,
+                        results_list[j],
+                        "comparison_error",
+                        {"error": str(e)},
+                    )
+                )
 
         del sv_i
         del sv_i_norm
@@ -164,11 +388,13 @@ def create_divergence_report(results_list):
         "fidelity_matrix": fidelity_matrix.tolist(),
         "relative_phase_matrix": phase_matrix.tolist(),
         "divergences_found": divergences_found,
+        "pairwise_agreement": pairwise_agreement,
         "qubit_ordering_warning": qubit_ordering_warning,
         "ordering_map": ordering_map
     }
 
     return report
+
 
 def _normalize_counts(counts, n_shots):
     """Converts a {bitstring: count} dict to a {bitstring: prob} dict."""
@@ -176,11 +402,13 @@ def _normalize_counts(counts, n_shots):
         return {}
     return {k: v / n_shots for k, v in counts.items()}
 
+
 def calculate_hellinger_distance(p, q):
     """
     Calculates the Hellinger distance between two probability distributions.
     """
     return np.linalg.norm(np.sqrt(p) - np.sqrt(q)) / np.sqrt(2)
+
 
 def create_counts_report(results_list, n_shots):
     """
@@ -218,9 +446,13 @@ def create_counts_report(results_list, n_shots):
     hellinger_matrix = np.zeros((n, n))
 
     divergences_found = []
+    pairwise_agreement = []
 
     js_threshold = 0.01
     hellinger_threshold = 0.1
+
+    lsb_sims = [res.get('simulator') for res in results_list if res.get('qubit_ordering') == 'lsb']
+    msb_sims = [res.get('simulator') for res in results_list if res.get('qubit_ordering') == 'msb']
 
     for i in range(n):
         for j in range(i + 1, n):
@@ -245,10 +477,21 @@ def create_counts_report(results_list, n_shots):
 
                 is_cross_group = False
 
-                lsb_sims = [res.get('simulator') for res in results_list if res.get('qubit_ordering') == 'lsb']
-                msb_sims = [res.get('simulator') for res in results_list if res.get('qubit_ordering') == 'msb']
                 if (sim_i in lsb_sims and sim_j in msb_sims) or (sim_i in msb_sims and sim_j in lsb_sims):
                     is_cross_group = True
+
+                pairwise_agreement.append(
+                    _classify_counts_pair(
+                        results_list[i],
+                        results_list[j],
+                        js_div,
+                        h_dist,
+                        is_cross_group,
+                        js_threshold,
+                        hellinger_threshold,
+                        n_shots,
+                    )
+                )
 
                 if js_div > js_threshold or h_dist > hellinger_threshold:
                     divergences_found.append({
@@ -263,6 +506,13 @@ def create_counts_report(results_list, n_shots):
                 js_matrix[j, i] = -1.0
                 hellinger_matrix[i, j] = -1.0
                 hellinger_matrix[j, i] = -1.0
+                pairwise_agreement.append(
+                    _counts_not_comparable_record(
+                        results_list[i],
+                        results_list[j],
+                        "missing_counts",
+                    )
+                )
 
     ordering_map = {res.get('simulator'): res.get('qubit_ordering') for res in results_list if "qubit_ordering" in res}
     return {
@@ -270,6 +520,7 @@ def create_counts_report(results_list, n_shots):
         "statistical_distance_matrix (js_divergence)": js_matrix.tolist(),
         "hellinger_distance_matrix": hellinger_matrix.tolist(),
         "divergences_found": divergences_found,
+        "pairwise_agreement": pairwise_agreement,
         "all_outcomes_observed": all_bitstrings,
         "ordering_map": ordering_map
     }

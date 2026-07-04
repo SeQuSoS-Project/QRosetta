@@ -124,7 +124,7 @@ def process_run(payload: dict) -> dict:
             "simulation_time_sec": simulation_time,
             "memory_usage_mb": memory_usage_mb,
             "process_peak_mb": process_peak_mb,
-            "qubit_ordering": "msb",
+            "qubit_ordering": "lsb",
             "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
             "preprocessing_applied": preprocessing_applied,
             "transpiled_qasm": transpiled_qasm

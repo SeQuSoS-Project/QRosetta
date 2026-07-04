@@ -1,5 +1,5 @@
 fastapi==0.115.0
-slowapi  # unpinned: exact version fixed at image-rebuild lock (see docs/rejection-analysis/action-plan.md T1.2)
+slowapi==0.1.10
 uvicorn[standard]==0.30.0
 pytket==1.33.0
 requests==2.32.3
@@ -9,13 +9,13 @@ numpy==1.26.4
 pydantic==2.9.2
 gunicorn==23.0.0
 psutil==6.0.0
-pydantic-settings  # unpinned: exact version fixed at image-rebuild lock (see docs/rejection-analysis/action-plan.md T1.2)
+pydantic-settings==2.14.2
 cachetools==5.5.0
-sqlalchemy  # unpinned: exact version fixed at image-rebuild lock (see docs/rejection-analysis/action-plan.md T1.2)
-psycopg2-binary  # unpinned: exact version fixed at image-rebuild lock (see docs/rejection-analysis/action-plan.md T1.2)
-bcrypt  # unpinned: exact version fixed at image-rebuild lock (see docs/rejection-analysis/action-plan.md T1.2)
-python-jose  # unpinned: exact version fixed at image-rebuild lock (see docs/rejection-analysis/action-plan.md T1.2)
-python-multipart  # unpinned: exact version fixed at image-rebuild lock (see docs/rejection-analysis/action-plan.md T1.2)
+sqlalchemy==2.0.51
+psycopg2-binary==2.9.12
+bcrypt==5.0.0
+python-jose==3.5.0
+python-multipart==0.0.32
 boto3==1.35.99
 botocore==1.35.99
 kubernetes==29.0.0

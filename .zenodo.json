@@ -1,0 +1,36 @@
+{
+  "title": "Quantum Rosetta (QRosetta): A Reproducible Microservice Platform for Cross-Simulator Benchmarking and Agreement Analysis",
+  "upload_type": "software",
+  "description": "QRosetta is a microservice platform for running one OpenQASM 2.0 circuit across heterogeneous quantum simulator backends and comparing their resource use, endpoint semantics, raw outputs, and pairwise agreement under a common runner contract.",
+  "creators": [
+    {
+      "name": "Sarker, Shaswato",
+      "affiliation": "University of Jyvaskyla"
+    },
+    {
+      "name": "Haghparast, Majid",
+      "affiliation": "University of Jyvaskyla"
+    },
+    {
+      "name": "Mikkonen, Tommi",
+      "affiliation": "University of Jyvaskyla"
+    }
+  ],
+  "license": "Apache-2.0",
+  "access_right": "open",
+  "keywords": [
+    "quantum computing",
+    "quantum simulation",
+    "benchmarking",
+    "reproducibility",
+    "OpenQASM",
+    "microservices"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/SeQuSoS-Project/QRosetta",
+      "relation": "isSupplementTo",
+      "scheme": "url"
+    }
+  ]
+}

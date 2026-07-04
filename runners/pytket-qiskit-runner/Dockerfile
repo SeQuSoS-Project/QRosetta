@@ -6,8 +6,9 @@ WORKDIR /home/appuser/app
 
 # Copy requirements and install dependencies
 COPY runners/pytket-qiskit-runner/requirements.txt .
+COPY runners/pytket-qiskit-runner/requirements.lock .
 ENV PIP_DEFAULT_TIMEOUT=1000
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.lock
 
 # Copy shared library and install it
 COPY shared /tmp/shared-src

@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use QRosetta in academic work, please cite the software using this metadata."
+type: software
+title: "Quantum Rosetta (QRosetta): A Reproducible Microservice Platform for Cross-Simulator Benchmarking and Agreement Analysis"
+authors:
+  - family-names: Sarker
+    given-names: Shaswato
+    affiliation: "University of Jyvaskyla"
+  - family-names: Haghparast
+    given-names: Majid
+    affiliation: "University of Jyvaskyla"
+  - family-names: Mikkonen
+    given-names: Tommi
+    affiliation: "University of Jyvaskyla"
+abstract: >-
+  QRosetta is a microservice platform for running one OpenQASM 2.0 circuit across
+  heterogeneous quantum simulator backends and comparing their resource use,
+  endpoint semantics, raw outputs, and pairwise agreement under a common runner
+  contract.
+keywords:
+  - quantum computing
+  - quantum simulation
+  - benchmarking
+  - reproducibility
+  - OpenQASM
+  - microservices
+license: Apache-2.0
+repository-code: "https://github.com/SeQuSoS-Project/QRosetta"
