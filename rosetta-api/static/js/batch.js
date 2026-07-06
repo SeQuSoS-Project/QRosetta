@@ -127,6 +127,27 @@ async function viewBatchItem(index) {
         return;
     }
 
+    if (item.source === 'mqt' || item.source === 'qasmbench') {
+        qasmInput.value = "";
+        try {
+            dispatch('SET_PROCESSING', true);
+            setLoading(true, "Loading Preview...", { overlay: false });
+            const data = item.source === 'mqt'
+                ? await fetchMQTBench(item.algorithm, item.qubits)
+                : await fetchQASMBench(item.algorithm);
+            qasmInput.value = data.qasm || "";
+            document.getElementById('ctx-algo-name').value = item.name;
+            dispatch('SET_CURRENT_ALGO_NAME', item.name);
+            updateContextBar();
+        } catch (e) {
+            qasmInput.value = "";
+        } finally {
+            setLoading(false);
+            dispatch('SET_PROCESSING', false);
+        }
+        return;
+    }
+
     qasmInput.value = "";
 
     try {

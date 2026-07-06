@@ -419,10 +419,14 @@ def _classify_counts_pair(
     }
 
 
-def create_divergence_report(results_list):
+def create_divergence_report(results_list, thresholds=None):
     """
     Generates a full report including fidelity and phase.
     Optimized for memory: Parses statevectors ONLY when needed and compares sequentially.
+
+    thresholds: optional dict overriding the agreement tolerances. Recognized keys:
+    ``fidelity_tolerance`` and ``phase_tolerance`` (defaults = 1e-12, numerical-precision
+    tolerances for exact — shot-noise-free — statevectors). Absent/None keeps the defaults.
     """
     import gc
 
@@ -457,9 +461,10 @@ def create_divergence_report(results_list):
     divergences_found = []
     pairwise_agreement = []
 
-    fidelity_tolerance = 1e-12
-    phase_tolerance = 1e-12
-    normalization_tolerance = 1e-9
+    _t = thresholds or {}
+    fidelity_tolerance = _t.get("fidelity_tolerance", 1e-12)
+    phase_tolerance = _t.get("phase_tolerance", 1e-12)
+    normalization_tolerance = 1e-9  # numerical only; not user-facing
 
     logger.info("Starting sequential divergence comparison...")
 
@@ -1001,10 +1006,16 @@ def _apply_multiple_comparison_correction(stat_records, alpha=STAT_TEST_ALPHA):
     }
 
 
-def create_counts_report(results_list, n_shots):
+def create_counts_report(results_list, n_shots, thresholds=None):
     """
     Generates a full report on the statistical divergence
     between counts distributions using JS Divergence AND Hellinger Distance.
+
+    thresholds: optional dict overriding the descriptive distance thresholds. Recognized
+    keys: ``js_threshold`` (default 0.01) and ``hellinger_threshold`` (default 0.1). These
+    are HEURISTIC cut-offs, not literature-derived, and are shot-count dependent; the
+    shot-noise-aware statistical_test block is the rigorous verdict. Absent/None keeps the
+    defaults; the effective values are recorded per pair in the pairwise_agreement records.
     """
 
     simulators = [res.get('simulator', 'unknown') for res in results_list]
@@ -1042,8 +1053,9 @@ def create_counts_report(results_list, n_shots):
     pairwise_agreement = []
     stat_test_records = []
 
-    js_threshold = 0.01
-    hellinger_threshold = 0.1
+    _t = thresholds or {}
+    js_threshold = _t.get("js_threshold", 0.01)
+    hellinger_threshold = _t.get("hellinger_threshold", 0.1)
 
     lsb_sims = [res.get('simulator') for res in results_list if res.get('qubit_ordering') == 'lsb']
     msb_sims = [res.get('simulator') for res in results_list if res.get('qubit_ordering') == 'msb']

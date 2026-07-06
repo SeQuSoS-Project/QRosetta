@@ -26,10 +26,11 @@ function _artLatexEscape(s) {
 }
 function _artHtmlEscape(s) {
     return String(s).replace(/[&<>"']/g, c =>
-        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;' }[c]));
 }
+// Mirrors publication.basename_slug: each non-alphanumeric -> '-' (no run collapsing), trimmed.
 function _artSlug(s) {
-    return String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    return String(s).toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/^-+|-+$/g, '');
 }
 
 // ---- generic table renderers ---------------------------------------------------------
@@ -138,7 +139,7 @@ function _dataStatistical(div) {
                 pw.shots_per_backend_for_target_power ?? '—', st.verdict || '—'];
         }),
         title: 'Shot-noise statistical test',
-        caption: 'Chi-square + G-test p-values (raw + BH), effect size, and prospective power per pair. Parallel evidence; does not override the label.',
+        caption: 'Shot-noise-aware homogeneity tests (chi-square + G-test) with BH-corrected p-values, effect size, and prospective power. Parallel evidence; does not override the label.',
     };
 }
 function _dataMetadata(results, mode) {
@@ -167,8 +168,8 @@ function _txtGlossary(mode) {
         ['agree_after_bit_reversal', 'Match after reversing qubit/bit order (an endianness convention).'],
         ['agree_after_qubit_permutation', 'Match after a bounded qubit permutation (≤6 qubits).'],
         ['residual_disagreement', 'Statevector disagreement not explained by any registered transform.'],
-        ['distance_within_threshold', 'Measured distributions within the JS/Hellinger thresholds.'],
-        ['distance_exceeds_threshold', 'Measured distributions exceed thresholds after registered transforms.'],
+        ['distance_within_threshold', 'Measured distributions within the JS/Hellinger thresholds (heuristic, configurable; the shot-noise statistical test is the rigorous verdict).'],
+        ['distance_exceeds_threshold', 'Measured distributions exceed the (heuristic, configurable) thresholds after registered transforms; see the statistical test for significance.'],
         ['not_comparable', 'At least one side lacks usable output; the pair cannot be compared.'],
     ];
     const ver = [
@@ -213,15 +214,17 @@ function buildArtifactCatalog(results) {
             'One row per backend pair: explained-cause label, registered transform, key metric, and (measured) verdict. Analysis, not verification.');
     }
     const heat = mode === 'statevector'
-        ? [['fidelity_matrix', 'Statevector fidelity', 'fidelity']]
-        : [['statistical_distance_matrix (js_divergence)', 'Jensen–Shannon divergence', 'js_divergence'],
-           ['hellinger_distance_matrix', 'Hellinger distance', 'hellinger']];
+        ? [['fidelity_matrix', 'Raw statevector fidelity (no transform)', 'fidelity']]
+        : [['statistical_distance_matrix (js_divergence)', 'Raw Jensen–Shannon divergence', 'js_divergence'],
+           ['hellinger_distance_matrix', 'Raw Hellinger distance', 'hellinger']];
+    const multi = (div.simulators || []).length >= 2;  // heatmap/matrix needs a pair
     heat.forEach(([key, title, base]) => {
-        if (Array.isArray(div[key]) && div[key].length) {
-            image(`${base}_heatmap`, `${title} heatmap`, 'Divergence',
+        if (multi && Array.isArray(div[key]) && div[key].length) {
+            const short = title.split('(')[0].trim();
+            image(`${base}_heatmap`, `${short} heatmap`, 'Divergence',
                 `${title}: N×N heatmap; darker = larger value. −1/diagonal shown neutral.`);
             const mid = { fidelity: 'matrix_fidelity', js_divergence: 'matrix_js', hellinger: 'matrix_hellinger' }[base];
-            table(mid, `${title} matrix (table)`, 'Divergence', () => _dataMatrix(div, key, title),
+            table(mid, `${short} matrix (table)`, 'Divergence', () => _dataMatrix(div, key, title),
                 `${title} as a copyable N×N matrix table (raw metric).`);
         }
     });
@@ -239,7 +242,17 @@ function buildArtifactCatalog(results) {
                 'Chi-square + G-test p-values (raw + BH), effect size, power per pair.');
         }
         const rawCounts = {};
-        (results.raw_results || []).forEach(r => { if (r.counts) rawCounts[r.simulator] = r.counts; });
+        (results.raw_results || []).forEach(r => {
+            if (r.counts && Object.keys(r.counts).length) rawCounts[r.simulator] = r.counts;
+        });
+        // Total count figure: one compact outcome × backend heatmap over all backends with
+        // counts (mirrors publication.py counts_overview availability: >= 2 such backends).
+        if (Object.keys(rawCounts).length >= 2) {
+            image('counts_overview', 'Count overview (all backends)', 'Statistical',
+                'Clustered bar histogram of raw measured probabilities, one colour per backend over the top outcomes (Qiskit plot_histogram convention); low-probability outcomes are folded into "other" (disclosed in-figure).');
+            image('counts_overview_heatmap', 'Count overview heatmap (optional)', 'Statistical',
+                'Optional compact view: outcome × backend probability heatmap; a uniform row = agreement, a varying row = disagreement. Scales to many backends.');
+        }
         let n = 0;
         pairwise.forEach(rec => {
             const [a, b] = rec.simulators || [];
@@ -264,6 +277,63 @@ function buildArtifactCatalog(results) {
     blob('glossary', 'Taxonomy glossary', 'Reference', ['markdown', 'text'], () => _txtGlossary(mode),
         'Definitions of every agreement class' + (mode === 'measured' ? ' and statistical verdict' : '') + '.');
     return items;
+}
+
+// ---- backend subset transform --------------------------------------------------------
+// Filter a report down to a chosen set of backends so every figure/table in the tab can
+// be scoped to "which vs which". Pure (no mutation): slices the N×N matrices, filters the
+// pairwise records / raw results / rankings, and recomputes the shot-noise verdict counts.
+// Figures then POST the sliced (stripped) report, so the server builders need no changes.
+function _artBackends(results) {
+    const order = (results.divergence_report || {}).simulators || [];
+    const seen = new Set(order);
+    const extra = (results.raw_results || []).map(r => r.simulator)
+        .filter(s => s && !seen.has(s));
+    return order.concat(extra);
+}
+function _subsetResults(results, selected) {
+    const div = results.divergence_report || {};
+    const allSims = div.simulators || [];
+    const keepIdx = [];
+    allSims.forEach((s, i) => { if (selected.has(s)) keepIdx.push(i); });
+    const newDiv = Object.assign({}, div);
+    newDiv.simulators = keepIdx.map(i => allSims[i]);
+    // Slice any square N×N matrix indexed by `simulators` (fidelity/phase/js/hellinger),
+    // detected structurally so we don't depend on the exact key names.
+    Object.keys(div).forEach(k => {
+        const v = div[k];
+        if (Array.isArray(v) && v.length === allSims.length
+            && v.every(row => Array.isArray(row) && row.length === allSims.length)) {
+            newDiv[k] = keepIdx.map(i => keepIdx.map(j => v[i][j]));
+        }
+    });
+    if (Array.isArray(div.pairwise_agreement)) {
+        newDiv.pairwise_agreement = div.pairwise_agreement.filter(r => {
+            const s = r.simulators || [];
+            return s.length === 2 && selected.has(s[0]) && selected.has(s[1]);
+        });
+    }
+    const summary = div.statistical_test_summary;
+    if (summary && summary.verdict_counts) {
+        const vc = {};
+        (newDiv.pairwise_agreement || []).forEach(r => {
+            const v = ((r.metrics || {}).statistical_test || {}).verdict;
+            if (v) vc[v] = (vc[v] || 0) + 1;
+        });
+        newDiv.statistical_test_summary = Object.assign({}, summary, { verdict_counts: vc });
+    }
+    const out = Object.assign({}, results, { divergence_report: newDiv });
+    if (Array.isArray(results.raw_results)) {
+        out.raw_results = results.raw_results.filter(r => selected.has(r.simulator));
+    }
+    ['performance_report', 'resource_report'].forEach(rep => {
+        if (results[rep] && Array.isArray(results[rep].ranking)) {
+            out[rep] = Object.assign({}, results[rep], {
+                ranking: results[rep].ranking.filter(r => selected.has(r.simulator)),
+            });
+        }
+    });
+    return out;
 }
 
 // ---- figure rendering (server) -------------------------------------------------------
@@ -448,15 +518,20 @@ function renderArtifactsPanel(results, panel) {
     sub.textContent = 'Publication-ready figures and tables. Tables generate instantly in your browser; figures render on demand. Nothing is uploaded except a small (statevector-free) copy of this report for figure rendering.';
     panel.appendChild(sub);
 
-    const catalog = buildArtifactCatalog(results);
-    if (!catalog.length) {
+    if (!buildArtifactCatalog(results).length) {
         const empty = document.createElement('p');
         empty.className = 'text-sm text-gray-500 italic';
         empty.textContent = 'No artifacts available for this report.';
         panel.appendChild(empty);
         return;
     }
-    const stripped = (typeof _stripStatevectors === 'function') ? _stripStatevectors(results) : results;
+
+    // Backend selector — scope every figure/table to a chosen subset ("which vs which").
+    const allBackends = _artBackends(results);
+    const selected = new Set(allBackends);
+    if (allBackends.length > 1) {
+        panel.appendChild(_backendSelector(allBackends, selected, () => rebuild()));
+    }
 
     const layout = document.createElement('div');
     layout.className = 'flex flex-col md:flex-row gap-4';
@@ -464,36 +539,105 @@ function renderArtifactsPanel(results, panel) {
     left.className = 'md:w-64 flex-shrink-0 space-y-3 md:max-h-[70vh] md:overflow-y-auto';
     const right = document.createElement('div');
     right.className = 'flex-1 min-w-0 border border-gray-200 rounded-lg p-4 bg-white';
-    right.innerHTML = '<p class="text-sm text-gray-400">Select an artifact on the left.</p>';
     layout.append(left, right);
     panel.appendChild(layout);
 
-    // Group catalog.
-    const groups = {};
-    catalog.forEach(a => { (groups[a.group] = groups[a.group] || []).push(a); });
-    let activeBtn = null;
-    Object.entries(groups).forEach(([group, arts]) => {
-        const gl = document.createElement('div');
-        gl.className = 'text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1';
-        gl.textContent = group;
-        left.appendChild(gl);
-        arts.forEach(art => {
-            const b = document.createElement('button');
-            b.className = 'w-full text-left text-sm px-2 py-1.5 rounded hover:bg-gray-100 flex items-center gap-2';
-            const dot = document.createElement('span');
-            dot.className = 'text-[10px] px-1 rounded ' + (art.view === 'image'
-                ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600');
-            dot.textContent = art.view === 'image' ? 'IMG' : 'TXT';
-            const lbl = document.createElement('span');
-            lbl.className = 'truncate'; lbl.textContent = art.label;
-            b.append(dot, lbl);
-            b.onclick = () => {
-                if (activeBtn) activeBtn.classList.remove('bg-indigo-50', 'ring-1', 'ring-indigo-200');
-                activeBtn = b; b.classList.add('bg-indigo-50', 'ring-1', 'ring-indigo-200');
-                if (art.view === 'image') _renderImageViewer(right, art, stripped);
-                else _renderTextViewer(right, art);
-            };
-            left.appendChild(b);
+    // (Re)build the catalog + viewers for the currently-selected backend subset.
+    function rebuild() {
+        left.innerHTML = '';
+        right.innerHTML = '<p class="text-sm text-gray-400">Select an artifact on the left.</p>';
+        if (!selected.size) {
+            left.innerHTML = '<p class="text-sm text-gray-500 italic px-2">Select at least one backend.</p>';
+            return;
+        }
+        const full = selected.size === allBackends.length;
+        const active = full ? results : _subsetResults(results, selected);
+        const stripped = (typeof _stripStatevectors === 'function') ? _stripStatevectors(active) : active;
+        const catalog = buildArtifactCatalog(active);
+        if (!catalog.length) {
+            left.innerHTML = '<p class="text-sm text-gray-500 italic px-2">No artifacts for this selection.</p>';
+            return;
+        }
+        const groups = {};
+        catalog.forEach(a => { (groups[a.group] = groups[a.group] || []).push(a); });
+        let activeBtn = null;
+        Object.entries(groups).forEach(([group, arts]) => {
+            const gl = document.createElement('div');
+            gl.className = 'text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1';
+            gl.textContent = group;
+            left.appendChild(gl);
+            arts.forEach(art => {
+                const b = document.createElement('button');
+                b.className = 'w-full text-left text-sm px-2 py-1.5 rounded hover:bg-gray-100 flex items-center gap-2';
+                const dot = document.createElement('span');
+                dot.className = 'text-[10px] px-1 rounded ' + (art.view === 'image'
+                    ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600');
+                dot.textContent = art.view === 'image' ? 'IMG' : 'TXT';
+                const lbl = document.createElement('span');
+                lbl.className = 'truncate'; lbl.textContent = art.label;
+                b.append(dot, lbl);
+                b.onclick = () => {
+                    if (activeBtn) activeBtn.classList.remove('bg-indigo-50', 'ring-1', 'ring-indigo-200');
+                    activeBtn = b; b.classList.add('bg-indigo-50', 'ring-1', 'ring-indigo-200');
+                    if (art.view === 'image') _renderImageViewer(right, art, stripped);
+                    else _renderTextViewer(right, art);
+                };
+                left.appendChild(b);
+            });
         });
+    }
+    rebuild();
+}
+
+// Chip toggles for the backend subset + All/None shortcuts; `onChange` re-renders the tab.
+function _backendSelector(allBackends, selected, onChange) {
+    const wrap = document.createElement('div');
+    wrap.className = 'mb-4 p-3 border border-gray-200 rounded-lg bg-gray-50';
+    const head = document.createElement('div');
+    head.className = 'flex items-center gap-2 mb-2 flex-wrap';
+    const title = document.createElement('span');
+    title.className = 'text-xs font-semibold text-gray-600';
+    title.textContent = 'Backends';
+    const hint = document.createElement('span');
+    hint.className = 'text-[11px] text-gray-400';
+    hint.textContent = 'pick any subset — figures & tables scope to your selection (2 = one-vs-one)';
+    head.append(title, hint);
+
+    const chips = document.createElement('div');
+    chips.className = 'flex flex-wrap gap-1.5';
+    const paint = () => {
+        Array.from(chips.children).forEach(chip => {
+            const on = selected.has(chip.dataset.sim);
+            chip.className = 'px-2 py-0.5 rounded-full text-xs border transition-all ' + (on
+                ? 'bg-indigo-600 text-white border-indigo-600'
+                : 'bg-white text-gray-500 border-gray-300 hover:bg-gray-100');
+        });
+    };
+    allBackends.forEach(sim => {
+        const chip = document.createElement('button');
+        chip.dataset.sim = sim;
+        chip.textContent = sim;
+        chip.onclick = () => {
+            if (selected.has(sim)) selected.delete(sim); else selected.add(sim);
+            paint(); onChange();
+        };
+        chips.appendChild(chip);
     });
+
+    const actions = document.createElement('div');
+    actions.className = 'flex gap-2 mt-2';
+    const mk = (label, fn) => {
+        const b = document.createElement('button');
+        b.className = 'text-[11px] text-indigo-600 hover:text-indigo-800 hover:underline';
+        b.textContent = label;
+        b.onclick = () => { fn(); paint(); onChange(); };
+        return b;
+    };
+    actions.append(
+        mk('All', () => allBackends.forEach(s => selected.add(s))),
+        mk('None', () => selected.clear()),
+    );
+    wrap.append(head, chips, actions);
+    paint();
+    return wrap;
 }

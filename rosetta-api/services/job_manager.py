@@ -2,6 +2,7 @@
 
 import asyncio
 import gc
+import random
 import time
 import pytket.qasm
 from pytket.passes import RemoveBarriers
@@ -14,6 +15,7 @@ from services.dispatcher import (
     dispatch_to_runners
 )
 import services.circuit_library as circuit_library
+import services.benchmark_library as benchmark_library
 from schemas import BatchPayload
 from config import settings
 import services.analysis as comparator
@@ -24,6 +26,15 @@ logger = get_logger("rosetta-job-manager")
 
 ACTIVE_JOBS = {}
 
+# Reproducibility contract: a measured run is NEVER left un-seeded. If the caller supplies
+# no seed we generate one and record it in the report/provenance, so every run can be
+# replayed exactly. (Statevector mode is seedless/exact and needs none.)
+SEED_MAX = 2**31 - 1
+
+
+def _resolve_seed(seed):
+    return seed if seed is not None else random.randint(0, SEED_MAX)
+
 
 def _attach_request_seed(results: list, seed: int = None) -> list:
     """Attach the measured request seed to every runner result for provenance."""
@@ -32,7 +43,7 @@ def _attach_request_seed(results: list, seed: int = None) -> list:
             result.setdefault("seed", seed)
     return results
 
-async def run_single_circuit_comparison(qasm_string: str, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = 60, target_simulators: list = None, runner_statuses: dict = None, runner_phases: dict = None, apply_preprocessing: bool = True):
+async def run_single_circuit_comparison(qasm_string: str, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = 60, target_simulators: list = None, runner_statuses: dict = None, runner_phases: dict = None, apply_preprocessing: bool = True, thresholds: dict = None):
     logger.info(f"Processing circuit...")
     try:
         if apply_preprocessing:
@@ -68,7 +79,7 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
     )
 
     try:
-        divergence_report, performance_report, resource_report = await compile_comparison_reports(aggregated_results)
+        divergence_report, performance_report, resource_report = await compile_comparison_reports(aggregated_results, thresholds)
     except Exception as e:
         logger.warning(f"Analysis failed (returning raw results only): {e}")
         divergence_report = {"error": f"Analysis failed: {e}"}
@@ -93,8 +104,9 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
         "raw_results": display_results
     }
 
-async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = 60, target_simulators: list = None, runner_statuses: dict = None, runner_phases: dict = None, apply_preprocessing: bool = True, seed: int = None):
-    logger.info(f"Processing measured circuit for {n_shots} shots...")
+async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = 60, target_simulators: list = None, runner_statuses: dict = None, runner_phases: dict = None, apply_preprocessing: bool = True, seed: int = None, thresholds: dict = None):
+    seed = _resolve_seed(seed)  # never None — generated-and-recorded if the caller omitted it
+    logger.info(f"Processing measured circuit for {n_shots} shots (seed={seed})...")
 
     sampled_payload = {
         "circuit_data": qasm_string,
@@ -153,7 +165,7 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
     save_report_to_disk(aggregated_results)
 
     try:
-        divergence_report, performance_report, resource_report = await compile_measurement_reports(aggregated_results, n_shots)
+        divergence_report, performance_report, resource_report = await compile_measurement_reports(aggregated_results, n_shots, thresholds)
 
     except Exception as e:
         return {
@@ -175,39 +187,60 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
         "raw_results": aggregated_results
     }
 
-async def worker_compare(job_id: str, qasm_string: str, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str, runner_phases: dict = None, apply_preprocessing: bool = True):
+async def worker_compare(job_id: str, qasm_string: str, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str, runner_phases: dict = None, apply_preprocessing: bool = True, thresholds: dict = None):
     runner_statuses = {}
     ACTIVE_JOBS[job_id]["status"] = "processing"
     ACTIVE_JOBS[job_id]["runner_statuses"] = runner_statuses
     try:
-        report = await run_single_circuit_comparison(qasm_string, optimization_level, runner_config, timeout, target_simulators, runner_statuses, runner_phases, apply_preprocessing)
+        report = await run_single_circuit_comparison(qasm_string, optimization_level, runner_config, timeout, target_simulators, runner_statuses, runner_phases, apply_preprocessing, thresholds)
         ACTIVE_JOBS[job_id] = {"status": "completed", "target": execution_target, "results": report, "runner_statuses": runner_statuses, "finished_at": time.time()}
     except Exception as e:
         ACTIVE_JOBS[job_id] = {"status": "failed", "target": execution_target, "error": str(e), "runner_statuses": runner_statuses, "finished_at": time.time()}
 
-async def worker_compare_measured(job_id: str, qasm_string: str, n_shots: int, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str, runner_phases: dict = None, apply_preprocessing: bool = True, seed: int = None):
+async def worker_compare_measured(job_id: str, qasm_string: str, n_shots: int, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str, runner_phases: dict = None, apply_preprocessing: bool = True, seed: int = None, thresholds: dict = None):
     runner_statuses = {}
     ACTIVE_JOBS[job_id]["status"] = "processing"
     ACTIVE_JOBS[job_id]["runner_statuses"] = runner_statuses
     try:
-        report = await run_single_circuit_measurement(qasm_string, n_shots, optimization_level, runner_config, timeout, target_simulators, runner_statuses, runner_phases, apply_preprocessing, seed)
+        report = await run_single_circuit_measurement(qasm_string, n_shots, optimization_level, runner_config, timeout, target_simulators, runner_statuses, runner_phases, apply_preprocessing, seed, thresholds)
         ACTIVE_JOBS[job_id] = {"status": "completed", "target": execution_target, "results": report, "runner_statuses": runner_statuses, "finished_at": time.time()}
     except Exception as e:
         ACTIVE_JOBS[job_id] = {"status": "failed", "target": execution_target, "error": str(e), "runner_statuses": runner_statuses, "finished_at": time.time()}
 
-async def worker_batch_suite(job_id: str, payload: BatchPayload):
-    runner_statuses = {}
-    ACTIVE_JOBS[job_id]["status"] = "processing"
-    ACTIVE_JOBS[job_id]["runner_statuses"] = runner_statuses
-    logger.info(f"--- Starting Batch Suite ({payload.mode}) with {len(payload.tasks)} tasks ---")
+async def run_batch_tasks(payload: BatchPayload, runner_statuses: dict, progress: dict = None,
+                          batch_seed: int = None, task_offset: int = 0) -> tuple:
+    """Run every task in a BatchPayload sequentially and return (benchmark_summary, batch_seed).
+
+    The reusable core shared by ``worker_batch_suite`` and the experiment runner
+    (``services.experiment.worker_experiment``). Behavior is identical to the previous
+    inline loop; it is only factored out so multiple axes can reuse it.
+
+    * ``progress`` — when supplied, the live dict in ACTIVE_JOBS is mutated per task
+      ({total, completed, current_index, tasks:[{name,status}]}). ``task_offset`` lets a
+      caller running several batches into one cumulative progress index the right slot.
+    * ``batch_seed`` — one seed shared across every task (and, for the experiment runner,
+      across every axis); resolved here when None so a run is never left un-seeded.
+    """
     benchmark_summary = []
+    batch_thresholds = payload.thresholds.model_dump() if payload.thresholds else None
+    if batch_seed is None:
+        batch_seed = _resolve_seed(payload.seed)
 
-    for task in payload.tasks:
+    for idx, task in enumerate(payload.tasks):
+        gi = task_offset + idx
         task_name = f"{task.algorithm} ({task.qubits}q)"
         logger.info(f"--- Running task: {task_name} ---")
+        if progress is not None:
+            progress["current_index"] = gi
+            progress["tasks"][gi]["status"] = "running"
         try:
+            source = (task.source or "preset").lower()
             if task.qasm_string:
                 qasm_string = task.qasm_string
+            elif source == "mqt":
+                qasm_string = benchmark_library.get_mqt_benchmark(task.algorithm, task.qubits)
+            elif source == "qasmbench":
+                qasm_string = benchmark_library.get_qasmbench_circuit(task.algorithm)
             else:
                 if task.qubits > settings.MAX_QUBITS_MEASURED:
                     raise ValueError(f"Qubit count {task.qubits} exceeds limit of {settings.MAX_QUBITS_MEASURED}")
@@ -217,20 +250,50 @@ async def worker_batch_suite(job_id: str, payload: BatchPayload):
             report = None
             timeout = max(1, min(payload.timeout_seconds, settings.RUNNER_TIMEOUT_SEC))
             if payload.mode == 'statevector':
-                report = await run_single_circuit_comparison(qasm_string, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, runner_statuses, payload.runner_phases, payload.apply_preprocessing)
+                report = await run_single_circuit_comparison(qasm_string, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, runner_statuses, payload.runner_phases, payload.apply_preprocessing, batch_thresholds)
             elif payload.mode == 'measured':
-                report = await run_single_circuit_measurement(qasm_string, payload.n_shots, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, runner_statuses, payload.runner_phases, payload.apply_preprocessing, payload.seed)
+                report = await run_single_circuit_measurement(qasm_string, payload.n_shots, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, runner_statuses, payload.runner_phases, payload.apply_preprocessing, batch_seed, batch_thresholds)
             else:
                 raise ValueError(f"Unknown mode: {payload.mode}")
 
             report["task_name"] = task_name
             benchmark_summary.append(report)
+            if progress is not None:
+                progress["tasks"][gi]["status"] = "done"
 
         except Exception as e:
             benchmark_summary.append({
                 "task_name": task_name,
                 "error": f"Failed to process task: {str(e)}"
             })
+            if progress is not None:
+                progress["tasks"][gi]["status"] = "error"
 
+        if progress is not None:
+            progress["completed"] += 1
+
+    return benchmark_summary, batch_seed
+
+
+async def worker_batch_suite(job_id: str, payload: BatchPayload):
+    runner_statuses = {}
+    ACTIVE_JOBS[job_id]["status"] = "processing"
+    ACTIVE_JOBS[job_id]["runner_statuses"] = runner_statuses
+    logger.info(f"--- Starting Batch Suite ({payload.mode}) with {len(payload.tasks)} tasks ---")
+
+    # Live progress so the UI can show which circuit is running / done without waiting for
+    # the whole suite. Mutated in place; ACTIVE_JOBS holds the reference the poller reads.
+    progress = {
+        "total": len(payload.tasks),
+        "completed": 0,
+        "current_index": None,
+        "tasks": [{"name": f"{t.algorithm} ({t.qubits}q)", "status": "queued"}
+                  for t in payload.tasks],
+    }
+    ACTIVE_JOBS[job_id]["progress"] = progress
+
+    benchmark_summary, _ = await run_batch_tasks(payload, runner_statuses, progress)
+
+    progress["current_index"] = None
     logger.info(f"--- Batch Suite Complete ---")
-    ACTIVE_JOBS[job_id] = {"status": "completed", "target": payload.execution_target, "results": {"benchmark_summary": benchmark_summary}, "runner_statuses": runner_statuses, "finished_at": time.time()}
+    ACTIVE_JOBS[job_id] = {"status": "completed", "target": payload.execution_target, "results": {"benchmark_summary": benchmark_summary}, "runner_statuses": runner_statuses, "progress": progress, "finished_at": time.time()}

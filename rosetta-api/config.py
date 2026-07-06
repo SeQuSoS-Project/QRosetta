@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     CUQUANTUM_RUNNER_URL: str = "http://cuquantum-runner:8000"
 
     RUNNER_TIMEOUT_SEC: int = 300
+    # Fast connect timeout so an unreachable/backed-up runner fails quickly instead of
+    # tying up the full read budget on establishing a connection.
+    RUNNER_CONNECT_TIMEOUT_SEC: int = 10
+    # Extra headroom (seconds) added to the runner timeout when bounding a K8s Job's own
+    # runtime (activeDeadlineSeconds), so the cluster kills an over-running pod shortly
+    # after the API has given up, reclaiming compute.
+    RUNNER_DEADLINE_BUFFER_SEC: int = 15
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
     STORAGE_MODE: str = os.getenv("STORAGE_MODE", "local")

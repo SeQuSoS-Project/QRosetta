@@ -24,7 +24,8 @@ async def test_compile_comparison_reports(mock_comparator, mock_results):
     assert perf == {"performance": 1.0}
     assert res == {"resources": 100}
 
-    mock_comparator.create_divergence_report.assert_called_once_with(mock_results)
+    # thresholds defaults to None and is forwarded so create_divergence_report can honor overrides
+    mock_comparator.create_divergence_report.assert_called_once_with(mock_results, None)
     mock_comparator.create_performance_report.assert_called_once_with(mock_results)
     mock_comparator.create_resource_report.assert_called_once_with(mock_results)
 
@@ -42,6 +43,7 @@ async def test_compile_measurement_reports(mock_comparator, mock_results):
     assert perf == {"performance": 2.0}
     assert res == {"resources": 200}
 
-    mock_comparator.create_counts_report.assert_called_once_with(mock_results, 1000)
+    # thresholds defaults to None and is forwarded so create_counts_report can honor overrides
+    mock_comparator.create_counts_report.assert_called_once_with(mock_results, 1000, None)
     mock_comparator.create_performance_report.assert_called_once_with(mock_results)
     mock_comparator.create_resource_report.assert_called_once_with(mock_results)

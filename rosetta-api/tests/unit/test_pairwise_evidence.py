@@ -435,3 +435,32 @@ def test_statistical_test_summary_and_fdr_across_family():
             "consistent", "distinguishable", "inconclusive_low_shots", "ambiguous",
         }
     _assert_strict_json(report)
+
+
+def test_measured_thresholds_are_configurable_and_recorded():
+    """Custom js/Hellinger thresholds flow through, flip the label, and are recorded."""
+    rows = [
+        {"simulator": "a", "counts": {"00": 80, "01": 20}, "qubit_ordering": "lsb", "sampling_method": "native"},
+        {"simulator": "b", "counts": {"00": 20, "01": 80}, "qubit_ordering": "lsb", "sampling_method": "native"},
+    ]
+    default = _record(create_counts_report([dict(x) for x in rows], 100), "a", "b")
+    loose = _record(create_counts_report([dict(x) for x in rows], 100,
+                                         thresholds={"js_threshold": 0.9, "hellinger_threshold": 0.9}), "a", "b")
+    assert default["agreement"] == "distance_exceeds_threshold"
+    assert loose["agreement"] == "distance_within_threshold"
+    # effective values recorded in provenance
+    assert default["metrics"]["js_threshold"] == 0.01
+    assert loose["metrics"]["js_threshold"] == 0.9 and loose["metrics"]["hellinger_threshold"] == 0.9
+    _assert_strict_json(loose)
+
+
+def test_statevector_tolerance_is_configurable_and_recorded():
+    rows = [
+        {"simulator": "a", "statevector": [1.0, 0.0], "qubit_ordering": "lsb"},
+        {"simulator": "b", "statevector": [1.0, 0.0], "qubit_ordering": "lsb"},
+    ]
+    rep = create_divergence_report([dict(x) for x in rows], thresholds={"fidelity_tolerance": 1e-6})
+    assert _record(rep, "a", "b")["metrics"]["fidelity_tolerance"] == 1e-6
+    # default path unchanged
+    rep0 = create_divergence_report([dict(x) for x in rows])
+    assert _record(rep0, "a", "b")["metrics"]["fidelity_tolerance"] == 1e-12

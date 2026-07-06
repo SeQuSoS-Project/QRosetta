@@ -44,6 +44,7 @@ function setLoading(isLoading, message = "Processing...", options = {}) {
     if (isLoading) {
         if (overlay) {
             if (loaderText) loaderText.textContent = message;
+            if (typeof renderBatchProgress === 'function') renderBatchProgress(null);  // clear stale batch list
             loader.classList.remove('hidden');
             loader.classList.add('flex');
             if (!_loaderElapsedTimer) {
@@ -361,6 +362,87 @@ async function exportRoCrate() {
             btn.innerHTML = originalText;
             btn.disabled = false;
         }
+    }
+}
+
+// Batch-suite progress in the compute loader: a compact done/running/queued list so the
+// user can see which circuit is running and what has finished. Hidden for single runs.
+// Global sampling seed (measured mode). Empty field => null, and the backend generates a
+// seed and records it in the report, so no run is ever un-reproducible. Never sends null-as-0.
+function getSeed() {
+    const el = document.getElementById('seed-input');
+    if (!el) return null;
+    const raw = String(el.value).trim();
+    if (raw === '') return null;
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+function _escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+const _BATCH_STATUS_ICON = {
+    done: ['✓', 'text-emerald-600'],
+    running: ['▶', 'text-indigo-600 animate-pulse'],
+    error: ['✕', 'text-red-600'],
+    queued: ['◦', 'text-gray-400'],
+};
+function renderBatchProgress(progress) {
+    const host = document.getElementById('batch-progress');
+    if (!host) return;
+    if (!progress || !Array.isArray(progress.tasks) || !progress.tasks.length) {
+        host.classList.add('hidden');
+        host.innerHTML = '';
+        return;
+    }
+    host.classList.remove('hidden');
+    // The poller re-renders this every few seconds; keep the task list's scroll position so
+    // it doesn't jump back to the top on each update.
+    const prevScroll = document.getElementById('batch-progress-list')?.scrollTop || 0;
+    const rows = progress.tasks.map(t => {
+        const [icon, cls] = _BATCH_STATUS_ICON[t.status] || _BATCH_STATUS_ICON.queued;
+        return `<div class="flex items-center gap-2 text-xs">
+            <span class="font-mono ${cls} w-3 text-center">${icon}</span>
+            <span class="truncate text-gray-600">${_escapeHtml(t.name || '')}</span>
+        </div>`;
+    }).join('');
+    host.innerHTML = `
+        <div class="flex justify-between items-center text-[11px] font-mono text-indigo-400 mb-1">
+            <span class="uppercase tracking-widest">circuits</span>
+            <span>${progress.completed || 0}/${progress.total || progress.tasks.length}</span>
+        </div>
+        <div id="batch-progress-list" class="max-h-48 overflow-y-auto space-y-0.5 pr-1 border-l-2 border-indigo-100 pl-2">${rows}</div>`;
+    const list = document.getElementById('batch-progress-list');
+    if (list) list.scrollTop = prevScroll;
+}
+
+// Agreement thresholds from the config panel. Defaults match the backend; sent on every
+// run so the effective values are explicit in provenance. Returns undefined if the inputs
+// are absent (older cached HTML) so the backend falls back to its defaults.
+const _AGREEMENT_THRESHOLD_DEFAULTS = {
+    fidelity_tolerance: 1e-12, phase_tolerance: 1e-12,
+    js_threshold: 0.01, hellinger_threshold: 0.1,
+};
+function getAgreementThresholds() {
+    const ids = { fidelity_tolerance: 'th-fidelity', phase_tolerance: 'th-phase',
+                  js_threshold: 'th-js', hellinger_threshold: 'th-hellinger' };
+    const out = {};
+    let anyPresent = false;
+    for (const [key, id] of Object.entries(ids)) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        anyPresent = true;
+        const v = parseFloat(el.value);
+        out[key] = (Number.isFinite(v) && v >= 0) ? v : _AGREEMENT_THRESHOLD_DEFAULTS[key];
+    }
+    return anyPresent ? out : undefined;
+}
+function resetAgreementThresholds() {
+    const ids = { 'th-fidelity': '1e-12', 'th-phase': '1e-12', 'th-js': '0.01', 'th-hellinger': '0.1' };
+    for (const [id, val] of Object.entries(ids)) {
+        const el = document.getElementById(id);
+        if (el) el.value = val;
     }
 }
 

@@ -226,3 +226,162 @@ def with_sdk_versions(func):
             result["sdk_versions"] = get_sdk_versions()
         return result
     return wrapper
+
+
+# --- isolated, hard-timeout execution -------------------------------------------------
+# Runs a runner's process_run / process_run_measured in a spawned child process with a hard
+# wall-clock kill, off the async event loop. A CPU-bound simulation cannot be interrupted in
+# a thread, so a runaway or out-of-memory run is stopped by killing the process. spawn (not
+# fork) is used so the GPU runners initialise cleanly in the child.
+
+import asyncio as _asyncio
+import importlib as _importlib
+import multiprocessing as _multiprocessing
+import queue as _queue
+
+_SPAWN_CTX = _multiprocessing.get_context("spawn")
+
+DEFAULT_HARD_TIMEOUT_SEC = int(os.getenv("RUNNER_HARD_TIMEOUT_SEC", "300"))
+
+
+def _isolated_target(result_q, module_name, func_name, payload):
+    try:
+        module = _importlib.import_module(module_name)
+        result_q.put(("ok", getattr(module, func_name)(payload)))
+    except Exception as e:
+        result_q.put(("err", f"{type(e).__name__}: {e}"))
+
+
+def _isolated_error(message):
+    return {"error": message, "execution_time_sec": 0.0, "memory_usage_mb": 0.0}
+
+
+def _run_isolated_blocking(module_name, func_name, payload, timeout_s):
+    result_q = _SPAWN_CTX.Queue()
+    proc = _SPAWN_CTX.Process(
+        target=_isolated_target, args=(result_q, module_name, func_name, payload))
+    proc.start()
+
+    # Poll so a crashed child (e.g. OOM kill) is detected in ~0.2s rather than only at the
+    # deadline, while still enforcing the hard timeout. get() drains the pipe as the child
+    # writes, avoiding a large-result deadlock.
+    deadline = time.monotonic() + timeout_s
+    outcome = None
+    while True:
+        try:
+            outcome = result_q.get(timeout=0.2)
+            break
+        except _queue.Empty:
+            if not proc.is_alive() or time.monotonic() >= deadline:
+                break
+    result_q.close()
+
+    if outcome is None:
+        if proc.is_alive():
+            proc.terminate()
+            proc.join(5)
+            if proc.is_alive():
+                proc.kill()
+                proc.join()
+            return _isolated_error(
+                f"TIMEOUT ({timeout_s}s): the simulation exceeded the time budget and was "
+                f"terminated.")
+        return _isolated_error(
+            f"Runner subprocess exited (code {proc.exitcode}) without a result — most likely "
+            f"an out-of-memory kill.")
+
+    proc.join(5)
+    if proc.is_alive():
+        proc.terminate()
+    status, value = outcome
+    return value if status == "ok" else _isolated_error(value)
+
+
+async def run_isolated(func, payload, default_timeout=None):
+    """Await a runner function in a killable child process, without blocking the event loop.
+
+    The wall-clock budget comes from ``payload['hard_timeout_seconds']`` (set by the
+    dispatcher), falling back to ``default_timeout`` / RUNNER_HARD_TIMEOUT_SEC.
+    """
+    if default_timeout is None:
+        default_timeout = DEFAULT_HARD_TIMEOUT_SEC
+    timeout_s = payload.get("hard_timeout_seconds") or default_timeout
+    loop = _asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        None, _run_isolated_blocking, func.__module__, func.__name__, payload, int(timeout_s))
+
+
+# --- shared runner scaffolding --------------------------------------------------------
+# Every runner exposes the same HTTP surface and the same S3/local CLI. These two helpers
+# hold that boilerplate once so each runner file is just its imports + the SDK-specific
+# process_run / process_run_measured.
+
+def register_runner_endpoints(app, process_run, process_run_measured):
+    """Register the standard /run and /run_measured endpoints on a runner's FastAPI app.
+
+    Each runs the CPU-bound processor in a killable child process (run_isolated) so a runaway
+    or OOM simulation cannot hang the worker.
+    """
+    from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
+
+    @app.post("/run")
+    async def run_circuit(payload: CircuitPayload):
+        return await run_isolated(process_run, payload.model_dump())
+
+    @app.post("/run_measured")
+    async def run_measured_circuit(payload: MeasuredCircuitPayload):
+        return await run_isolated(process_run_measured, payload.model_dump())
+
+
+def run_cli_main(app, process_run, process_run_measured, cli_name):
+    """Runner entrypoint. With no CLI args, serves the FastAPI app; with ``--endpoint`` it
+    runs one job from an inline ``--payload`` or an S3 job id (the Kubernetes dispatch path).
+    Call under ``if __name__ == "__main__":``.
+    """
+    import sys
+    if len(sys.argv) <= 1:
+        import uvicorn
+        uvicorn.run(app, host="0.0.0.0", port=8000)
+        return
+
+    import argparse
+    import json
+    import os
+    parser = argparse.ArgumentParser(description=f"{cli_name} runner CLI")
+    parser.add_argument("--endpoint", choices=["run", "run_measured"], required=True,
+                        help="Which endpoint to invoke")
+    parser.add_argument("--payload", default=None, help="JSON payload string")
+    parser.add_argument("--s3-job-id", default=None,
+                        help="S3 job ID: download payload from jobs/pending/<id>.json, "
+                             "upload result to jobs/completed/<id>.json")
+    args = parser.parse_args()
+
+    def _process(payload_dict):
+        return process_run(payload_dict) if args.endpoint == "run" else process_run_measured(payload_dict)
+
+    if args.s3_job_id:
+        import boto3
+        s3 = boto3.client(
+            "s3",
+            endpoint_url=os.getenv("S3_ENDPOINT_URL"),
+            aws_access_key_id=os.getenv("S3_ACCESS_KEY"),
+            aws_secret_access_key=os.getenv("S3_SECRET_KEY"),
+            region_name=os.getenv("S3_REGION", "us-east-1"),
+        )
+        bucket = os.getenv("S3_BUCKET_NAME")
+        payload_env = os.getenv("QROSETTA_PAYLOAD")
+        if payload_env:
+            payload_dict = json.loads(payload_env)
+        else:
+            obj = s3.get_object(Bucket=bucket, Key=f"jobs/pending/{args.s3_job_id}.json")
+            payload_dict = json.loads(obj["Body"].read())
+
+        result = _process(payload_dict)
+        result_bytes = json.dumps(result).encode()
+        s3.put_object(Bucket=bucket, Key=f"jobs/completed/{args.s3_job_id}.json",
+                      Body=result_bytes, ContentLength=len(result_bytes))
+        print(f"Job {args.s3_job_id} completed and uploaded to S3.")
+    else:
+        if args.payload is None:
+            parser.error("--payload is required when --s3-job-id is not provided")
+        print(json.dumps(_process(json.loads(args.payload))))

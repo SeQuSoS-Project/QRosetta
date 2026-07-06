@@ -31,6 +31,15 @@ TAB_TABLE_FORMATS = ("latex", "csv", "html", "markdown", "xlsx")    # interactiv
 PUBLICATION_CATEGORIES = ("agreement", "heatmaps", "performance", "statistical")
 
 MAX_HISTOGRAM_PAIRS = 12
+# Cap distinct outcomes drawn in a count figure. Outcome space is 2**n, so an uncapped
+# figure grows without bound (unusable in a paper). Beyond this we keep the highest-
+# probability outcomes and fold the rest into a single "other" bucket. MIN_OUTCOME_PROB
+# drops outcomes that are pure shot noise (below this on every backend) into "other" too,
+# so a concentrated distribution renders as a few rows/bars rather than a wall of zeros.
+MAX_HISTOGRAM_OUTCOMES = 24   # pairwise grouped-bar histogram
+MAX_OVERVIEW_BARS = 12        # multi-backend clustered-bar histogram (default total)
+MAX_OVERVIEW_OUTCOMES = 20    # multi-backend outcome × backend heatmap (optional)
+MIN_OUTCOME_PROB = 0.01
 BASE_DPI = 150  # logical/screen dpi; raster dpi = BASE_DPI * scale
 
 MIME_TYPES = {
@@ -72,6 +81,10 @@ _AGREEMENT_ORDER = [
 ]
 _VERDICT_ORDER = ["consistent", "distinguishable", "inconclusive_low_shots", "ambiguous"]
 _SEQ_BLUE = ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"]
+# Distinct categorical hues for per-backend series in the clustered count histogram.
+_CATEGORICAL = ["#2a78d6", "#1baf7a", "#e0812a", "#8b5cf6", "#e34948", "#0d9488",
+                "#d6a400", "#d64f9e", "#6b7280", "#3b3f95", "#7a9e2f", "#c2410c",
+                "#0e7490", "#9d174d"]
 
 # Human-readable definitions reused by the glossary artifact + figure/table legends.
 _AGREEMENT_GLOSSARY = [
@@ -80,8 +93,10 @@ _AGREEMENT_GLOSSARY = [
     ("agree_after_bit_reversal", "Match after reversing qubit/bit order (an endianness convention)."),
     ("agree_after_qubit_permutation", "Match after a bounded qubit permutation (≤6 qubits)."),
     ("residual_disagreement", "Statevector disagreement not explained by any registered transform."),
-    ("distance_within_threshold", "Measured distributions within the JS/Hellinger thresholds."),
-    ("distance_exceeds_threshold", "Measured distributions exceed thresholds after registered transforms."),
+    ("distance_within_threshold", "Measured distributions within the JS/Hellinger thresholds "
+     "(heuristic, configurable; the shot-noise statistical test is the rigorous verdict)."),
+    ("distance_exceeds_threshold", "Measured distributions exceed the (heuristic, configurable) "
+     "thresholds after registered transforms; see the statistical test for significance."),
     ("not_comparable", "At least one side lacks usable output; the pair cannot be compared."),
 ]
 _VERDICT_GLOSSARY = [
@@ -96,6 +111,31 @@ def _blue_cmap():
     cmap = LinearSegmentedColormap.from_list("qrosetta_blue", _SEQ_BLUE)
     cmap.set_bad(_NEUTRAL_FILL)
     return cmap
+
+
+def _prob_cmap():
+    # White-anchored ramp: probability 0 reads as an empty (white) cell, so "this backend
+    # never produced this outcome" is visually blank rather than pale blue.
+    cmap = LinearSegmentedColormap.from_list("qrosetta_prob", ["#ffffff"] + _SEQ_BLUE)
+    cmap.set_bad(_NEUTRAL_FILL)
+    return cmap
+
+
+def _rank_outcomes(all_outcomes, max_prob, cap: int, min_prob: float = MIN_OUTCOME_PROB):
+    """Pick which outcomes to draw, folding the rest into an aggregated "other" bucket.
+
+    Keeps the highest-probability outcomes that clear ``min_prob`` on at least one backend,
+    capped at ``cap`` so the figure stays a publishable size. Returns ``(kept_sorted,
+    rest)`` where ``rest`` is the list of folded outcomes ([] when nothing is hidden).
+    ``max_prob(outcome) -> float`` gives the largest probability across the compared sides.
+    """
+    ranked = sorted(all_outcomes, key=max_prob, reverse=True)
+    signif = [o for o in ranked if max_prob(o) >= min_prob] or ranked[:1]
+    if len(signif) == len(all_outcomes) and len(signif) <= cap:
+        return sorted(signif), []          # everything significant and it all fits
+    kept = sorted(signif[:cap - 1])         # reserve one slot for the "other" bucket
+    kept_set = set(kept)
+    return kept, [o for o in all_outcomes if o not in kept_set]
 
 
 # --- Format helpers -------------------------------------------------------------------
@@ -328,22 +368,142 @@ def _fig_ranking_bar(ranking, value_keys, title, xlabel):
     ax.set_yticks(y); ax.set_yticklabels(sims, fontsize=8); ax.invert_yaxis()
     ax.set_xlabel(xlabel); ax.set_title(title)
     if len(value_keys) > 1:
-        ax.legend(fontsize=8, frameon=False)
+        # Legend below the axes so it never overlaps the stacked bars.
+        ax.legend(fontsize=8, frameon=False, loc="upper center",
+                  bbox_to_anchor=(0.5, -0.12), ncol=len(value_keys))
     return fig
 
 
 def _fig_count_histogram(counts_a, counts_b, a, b):
-    outcomes = sorted(set(counts_a) | set(counts_b))
     na, nb = sum(counts_a.values()), sum(counts_b.values())
-    pa = [counts_a.get(o, 0) / na if na else 0 for o in outcomes]
-    pb = [counts_b.get(o, 0) / nb if nb else 0 for o in outcomes]
-    x = np.arange(len(outcomes))
-    fig, ax = plt.subplots(figsize=(max(5.0, 0.5 * len(outcomes) + 2), 3.8))
+
+    def prob(counts, n, o):
+        return counts.get(o, 0) / n if n else 0
+
+    all_outcomes = sorted(set(counts_a) | set(counts_b))
+    kept, rest = _rank_outcomes(
+        all_outcomes, lambda o: max(prob(counts_a, na, o), prob(counts_b, nb, o)),
+        MAX_HISTOGRAM_OUTCOMES)
+    labels = list(kept)
+    pa = [prob(counts_a, na, o) for o in kept]
+    pb = [prob(counts_b, nb, o) for o in kept]
+    if rest:
+        # Fold sub-threshold / overflow outcomes into one aggregated "other" bar so the
+        # figure stays a publishable width instead of scaling with the 2**n outcome space.
+        labels.append(f"other (+{len(rest)})")
+        pa.append(sum(prob(counts_a, na, o) for o in rest))
+        pb.append(sum(prob(counts_b, nb, o) for o in rest))
+    truncated = bool(rest)
+
+    x = np.arange(len(labels))
+    width = min(12.0, max(5.0, 0.42 * len(labels) + 1.6))
+    fig, ax = plt.subplots(figsize=(width, 3.8))
     ax.bar(x - 0.2, pa, width=0.38, color="#2a78d6", label=str(a))
     ax.bar(x + 0.2, pb, width=0.38, color="#1baf7a", label=str(b))
-    ax.set_xticks(x); ax.set_xticklabels(outcomes, rotation=45, ha="right", fontsize=7)
-    ax.set_ylabel("probability"); ax.set_title(f"Measured distribution: {a} vs {b} (raw counts)")
-    ax.legend(fontsize=8, frameon=False)
+    ax.set_xticks(x); ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=7)
+    ax.set_ylabel("probability")
+    title = f"Measured distribution: {a} vs {b} (raw counts)"
+    if truncated:
+        title += (f"\n{len(kept)} of {len(all_outcomes)} outcomes shown "
+                  f"(p≥{MIN_OUTCOME_PROB:g} on either side); {len(rest)} folded into 'other'")
+    ax.set_title(title)
+    # Legend outside the axes so it never sits on top of the bars.
+    ax.legend(fontsize=8, frameon=False, loc="center left", bbox_to_anchor=(1.0, 0.5))
+    return fig
+
+
+def _counts_probabilities(counts_by_sim: Dict[str, dict], sims_order: List[str]):
+    """Shared setup for the total count figures: ordered backends with counts, a per-sim
+    probability accessor, and the sorted union of observed outcomes."""
+    sims = [s for s in sims_order if counts_by_sim.get(s)]
+    totals = {s: sum(counts_by_sim[s].values()) for s in sims}
+
+    def prob(s, o):
+        return counts_by_sim[s].get(o, 0) / totals[s] if totals[s] else 0.0
+
+    all_outcomes = sorted(set().union(*[set(counts_by_sim[s]) for s in sims])) if sims else []
+    return sims, prob, all_outcomes
+
+
+def _fig_counts_overview_bars(counts_by_sim: Dict[str, dict], sims_order: List[str]):
+    """Total measured-count figure (default): clustered bar histogram over the top-K outcomes.
+
+    The field-standard cross-backend comparison (cf. Qiskit ``plot_histogram`` with a list of
+    counts + ``number_to_keep``): one colour per backend, grouped by outcome, capped so it
+    never stretches with the 2**n outcome space. Raw counts only; no transform is applied.
+    """
+    sims, prob, all_outcomes = _counts_probabilities(counts_by_sim, sims_order)
+    kept, rest = _rank_outcomes(all_outcomes, lambda o: max((prob(s, o) for s in sims), default=0.0),
+                                MAX_OVERVIEW_BARS)
+    labels = list(kept)
+    series = {s: [prob(s, o) for o in kept] for s in sims}
+    if rest:
+        labels.append(f"other (+{len(rest)})")
+        for s in sims:
+            series[s].append(sum(prob(s, o) for o in rest))
+
+    K, M = len(labels), len(sims)
+    x = np.arange(K)
+    bar_w = 0.8 / max(M, 1)
+    width = min(13.0, max(5.5, 0.85 * K + 2.0))
+    fig, ax = plt.subplots(figsize=(width, 4.2))
+    for i, s in enumerate(sims):
+        offset = -0.4 + bar_w * (i + 0.5)
+        ax.bar(x + offset, series[s], width=bar_w * 0.95,
+               color=_CATEGORICAL[i % len(_CATEGORICAL)], label=str(s))
+    ax.set_xticks(x); ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=8)
+    ax.set_ylabel("probability")
+    title = f"Measured outcome probabilities across {M} backend(s) (raw counts)"
+    if rest:
+        title += (f"\ntop {len(kept)} of {len(all_outcomes)} outcomes "
+                  f"(p≥{MIN_OUTCOME_PROB:g} on any backend); rest folded into 'other'")
+    ax.set_title(title)
+    # Legend outside the axes so it never sits on top of the bars.
+    ax.legend(fontsize=8, frameon=False, loc="center left", bbox_to_anchor=(1.0, 0.5),
+              title="backend")
+    return fig
+
+
+def _fig_counts_overview_heatmap(counts_by_sim: Dict[str, dict], sims_order: List[str]):
+    """Optional total measured-count figure: outcome × backend probability heatmap.
+
+    Compact alternative to a wall of per-pair histograms — width scales with the number of
+    backends (bounded), height with the number of shown outcomes (capped). A row of uniform
+    colour = all backends agree on that outcome; a row that varies = disagreement. Raw
+    counts only; no transform is applied (bit-reversal etc. remain separate labelled modes).
+    """
+    sims, prob, all_outcomes = _counts_probabilities(counts_by_sim, sims_order)
+    kept, rest = _rank_outcomes(all_outcomes, lambda o: max((prob(s, o) for s in sims), default=0.0),
+                                MAX_OVERVIEW_OUTCOMES)
+    rows = list(kept)
+    matrix = [[prob(s, o) for s in sims] for o in kept]
+    if rest:
+        rows.append(f"other (+{len(rest)})")
+        matrix.append([sum(prob(s, o) for o in rest) for s in sims])
+
+    P = np.array(matrix, dtype=float) if matrix else np.zeros((1, max(1, len(sims))))
+    K, M = P.shape
+    width = min(11.0, max(4.2, 0.85 * M + 2.4))
+    height = min(10.0, max(2.6, 0.4 * K + 1.3))
+    fig, ax = plt.subplots(figsize=(width, height))
+    im = ax.imshow(P, cmap=_prob_cmap(), aspect="auto", vmin=0.0, vmax=max(P.max(), 1e-9))
+    ax.set_xticks(range(M)); ax.set_xticklabels(sims, rotation=45, ha="right", fontsize=8)
+    ax.set_yticks(range(K)); ax.set_yticklabels(rows, fontsize=8, fontfamily="monospace")
+    ax.set_xlabel("backend"); ax.set_ylabel("measured outcome")
+    if K * M <= 160:  # annotate only when the grid is small enough to stay legible
+        thr = P.max() * 0.6
+        for i in range(K):
+            for j in range(M):
+                v = P[i, j]
+                if v >= 0.005:
+                    ax.text(j, i, f"{v:.2f}", ha="center", va="center", fontsize=6.5,
+                            color="white" if v >= thr else _INK)
+    title = f"Measured outcome probabilities across {M} backend(s) (raw counts)"
+    if rest:
+        title += (f"\noutcomes with p≥{MIN_OUTCOME_PROB:g} on any backend shown; "
+                  f"{len(rest)} folded into 'other'")
+    ax.set_title(title, fontsize=11)
+    fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label="probability")
     return fig
 
 
@@ -505,8 +665,9 @@ def _iter_artifacts(results: dict, mode: str) -> List[dict]:
                        "One row per backend pair: explained-cause label, registered transform, key "
                        "metric, and (measured) statistical verdict. Analysis, not verification.")
 
+    multi = len(div.get("simulators", [])) >= 2  # a heatmap/matrix needs at least a pair
     for key, title, base in _heatmap_specs(mode):
-        if isinstance(div.get(key), list) and div.get(key):
+        if multi and isinstance(div.get(key), list) and div.get(key):
             fig_artifact(base, title.split("(")[0].strip() + " heatmap", "Divergence",
                          lambda k=key, t=title: _fig_heatmap(div, k, t),
                          f"{title}: N×N heatmap; darker = larger value. −1/diagonal shown neutral.")
@@ -544,7 +705,21 @@ def _iter_artifacts(results: dict, mode: str) -> List[dict]:
                            lambda: _tbl_statistical(div),
                            "Chi-square + G-test p-values (raw + BH), effect size, power per pair.")
         raw = {r.get("simulator"): r.get("counts") for r in results.get("raw_results", [])
-               if isinstance(r.get("counts"), dict)}
+               if isinstance(r.get("counts"), dict) and r.get("counts")}
+        # Total count figure: one compact outcome × backend heatmap over every backend that
+        # produced counts, so many backends do not require a wall of per-pair histograms.
+        if len(raw) >= 2:
+            order = div.get("simulators") or [r.get("simulator") for r in results.get("raw_results", [])]
+            sims_order = [s for s in order if s in raw]
+            fig_artifact("counts_overview", "Count overview (all backends)", "Statistical",
+                         lambda cbs=dict(raw), so=list(sims_order): _fig_counts_overview_bars(cbs, so),
+                         "Clustered bar histogram of raw measured probabilities, one colour per "
+                         "backend over the top outcomes (Qiskit plot_histogram convention); "
+                         "low-probability outcomes are folded into 'other' (disclosed in-figure).")
+            fig_artifact("counts_overview_heatmap", "Count overview heatmap (optional)", "Statistical",
+                         lambda cbs=dict(raw), so=list(sims_order): _fig_counts_overview_heatmap(cbs, so),
+                         "Optional compact view: outcome × backend probability heatmap; a uniform "
+                         "row = agreement, a varying row = disagreement. Scales to many backends.")
         for rec in records[:MAX_HISTOGRAM_PAIRS]:
             a, b = rec.get("simulators", [None, None])
             if raw.get(a) and raw.get(b):
@@ -596,7 +771,7 @@ _BUNDLE_FIGURES = {
     "agreement": ["agreement_distribution"],
     "heatmaps": ["fidelity_heatmap", "js_divergence_heatmap", "hellinger_heatmap"],
     "performance": ["performance_time", "resource_memory"],
-    "statistical": ["__histograms__"],  # all histogram_* ids
+    "statistical": ["counts_overview", "__histograms__"],  # total heatmap + all histogram_* ids
 }
 _BUNDLE_TABLES = {
     "agreement": ["agreement"],

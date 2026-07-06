@@ -85,11 +85,13 @@ window.onload = async () => {
     toggleSingleMode();
     toggleBatchMode();
     populateBenchmarkSelectors();
+    if (typeof bmLoadChecklist === 'function') bmLoadChecklist();
 
     if (getState().allAlgorithms.length > 0) {
         generateCircuit();
     }
     renderBatchQueue();
+    if (typeof initAutosave === 'function') initAutosave();
 };
 
 function getDynamicMaxQubits() {
@@ -226,11 +228,13 @@ async function runComparison(type, shots) {
         target_simulators: targetSims,
         execution_target: executionTarget,
         bypass_limits: bypassLimits,
-        apply_preprocessing: applyPreprocessing
+        apply_preprocessing: applyPreprocessing,
+        thresholds: getAgreementThresholds()
     };
 
     if (type === 'measured') {
         payload.n_shots = shots;
+        payload.seed = getSeed();  // null => backend generates and records a seed
     }
 
     const title = type === 'statevector' ? 'Editor Run (Statevector)' : `Editor Run (Measured, ${shots} shots)`;
@@ -265,6 +269,7 @@ async function runComparison(type, shots) {
         if (runNameInput) results.run_name = runNameInput;
         const historyRunId = await saveRunToHistory(results);
         dispatch('SET_HISTORY_RUN_ID', historyRunId);
+        if (typeof autosaveRun === 'function') autosaveRun(results, runNameInput || title);
     } catch (e) {
         console.error(e);
         renderDetailReport({ error: e.message }, "Error");
@@ -308,7 +313,9 @@ async function runBatchQueue() {
         target_simulators: targetSims,
         execution_target: executionTarget,
         bypass_limits: bypassLimits,
-        apply_preprocessing: applyPreprocessing
+        apply_preprocessing: applyPreprocessing,
+        thresholds: getAgreementThresholds(),
+        seed: getSeed()  // null => backend generates and records one global seed for the suite
     };
 
     setLoading(true, `Running Batch of ${getState().batchQueue.length} Circuits...`);
@@ -343,6 +350,7 @@ async function runBatchQueue() {
         if (runNameInput) results.run_name = runNameInput;
         const historyRunId = await saveRunToHistory(results);
         dispatch('SET_HISTORY_RUN_ID', historyRunId);
+        if (typeof autosaveRun === 'function') autosaveRun(results, runNameInput || 'batch');
 
     } catch (e) {
         console.error(e);
@@ -351,154 +359,4 @@ async function runBatchQueue() {
         setLoading(false);
         dispatch('SET_PROCESSING', false);
     }
-}
-
-let _mqtSizes = {};
-
-async function populateBenchmarkSelectors() {
-    try {
-        const [mqt, qasm] = await Promise.all([fetchMQTList(), fetchQASMBenchList()]);
-        _mqtSizes = mqt || {};
-
-        const mqtSel = document.getElementById('bench-mqt-algo');
-        if (mqtSel) {
-            mqtSel.innerHTML = '';
-            Object.keys(_mqtSizes).forEach(algo => {
-                const o = document.createElement('option');
-                o.value = algo;
-                o.textContent = algo;
-                mqtSel.appendChild(o);
-            });
-            mqtSel.addEventListener('change', updateMqtQubitRange);
-            updateMqtQubitRange();
-        }
-
-        const qSel = document.getElementById('bench-qasmbench-circuit');
-        if (qSel) {
-            qSel.innerHTML = '';
-            (qasm || []).forEach(name => {
-                const o = document.createElement('option');
-                o.value = name;
-                o.textContent = name;
-                qSel.appendChild(o);
-            });
-        }
-    } catch (error) {
-        console.error('Failed to load benchmark lists:', error);
-    }
-}
-
-function updateMqtQubitRange() {
-    const algo = document.getElementById('bench-mqt-algo')?.value;
-    const sizes = _mqtSizes[algo] || [];
-    const input = document.getElementById('bench-mqt-qubits');
-    if (!input || sizes.length === 0) return;
-    input.min = sizes[0];
-    input.max = sizes[sizes.length - 1];
-    const v = parseInt(input.value);
-    if (!(v >= sizes[0] && v <= sizes[sizes.length - 1])) input.value = sizes[0];
-}
-
-function toggleBenchSuite() {
-    const suite = document.querySelector('input[name="bench-suite"]:checked').value;
-    const mqtOptions = document.getElementById('bench-mqt-options');
-    const qasmbenchOptions = document.getElementById('bench-qasmbench-options');
-    
-    if (suite === 'mqt') {
-        mqtOptions.classList.remove('hidden');
-        qasmbenchOptions.classList.add('hidden');
-    } else {
-        mqtOptions.classList.add('hidden');
-        qasmbenchOptions.classList.remove('hidden');
-    }
-}
-
-async function fetchBenchmarkQasm() {
-    const suite = document.querySelector('input[name="bench-suite"]:checked').value;
-    const errorDiv = document.getElementById('bench-error');
-    errorDiv.classList.add('hidden');
-    
-    try {
-        let data;
-        let title = "";
-        
-        if (suite === 'mqt') {
-            const algo = document.getElementById('bench-mqt-algo').value;
-            const qubits = document.getElementById('bench-mqt-qubits').value;
-            setLoading(true, "Fetching MQT Bench...", { overlay: false });
-            data = await fetchMQTBench(algo, qubits);
-            title = `MQT Bench: ${document.getElementById('bench-mqt-algo').options[document.getElementById('bench-mqt-algo').selectedIndex].text} (${qubits}q)`;
-        } else {
-            const circuit = document.getElementById('bench-qasmbench-circuit').value;
-            setLoading(true, "Fetching QASMBench...", { overlay: false });
-            data = await fetchQASMBench(circuit);
-            title = `QASMBench: ${document.getElementById('bench-qasmbench-circuit').options[document.getElementById('bench-qasmbench-circuit').selectedIndex].text}`;
-        }
-        
-        return { qasm: data.qasm, title: title };
-    } catch (error) {
-        errorDiv.textContent = error.message;
-        errorDiv.classList.remove('hidden');
-        return null;
-    } finally {
-        setLoading(false);
-    }
-}
-
-async function loadBenchmark() {
-    if (getState().isProcessing) return;
-    const result = await fetchBenchmarkQasm();
-    if (result && result.qasm) {
-        qasmInput.value = result.qasm;
-        dispatch('SET_CURRENT_ALGO_NAME', result.title);
-        updateContextBar();
-        closeDrawers();
-    }
-}
-
-async function addBenchmarkToBatch() {
-    if (getState().isProcessing) return;
-    const result = await fetchBenchmarkQasm();
-    if (result && result.qasm) {
-        dispatch('SET_BATCH_QUEUE', [...getState().batchQueue, { name: result.title, qasm: result.qasm }]);
-        renderBatchQueue();
-        openDrawer('playlist-section');
-    }
-}
-
-// --- Slide-over drawer controller (Config / Bench / Batch) ---
-// Panels are fixed off-canvas (translate-x-full) and slide in when opened. Only one
-// is open at a time; a shared backdrop dims the page and closes on click / Escape.
-const DRAWER_IDS = ['config-panel', 'benchmarks-panel', 'playlist-section'];
-
-function openDrawer(panelId) {
-    DRAWER_IDS.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.classList.toggle('translate-x-full', id !== panelId);
-    });
-    const backdrop = document.getElementById('drawer-backdrop');
-    if (backdrop) backdrop.classList.remove('hidden');
-}
-
-function closeDrawers() {
-    DRAWER_IDS.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.classList.add('translate-x-full');
-    });
-    const backdrop = document.getElementById('drawer-backdrop');
-    if (backdrop) backdrop.classList.add('hidden');
-}
-
-function isDrawerOpen(panelId) {
-    const el = document.getElementById(panelId);
-    return !!el && !el.classList.contains('translate-x-full');
-}
-
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeDrawers();
-});
-
-function toggleBenchPanel() {
-    if (isDrawerOpen('benchmarks-panel')) closeDrawers();
-    else openDrawer('benchmarks-panel');
 }

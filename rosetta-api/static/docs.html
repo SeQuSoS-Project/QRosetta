@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QRosetta — Documentation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root { --accent: #4f46e5; }
+        html { scroll-padding-top: 5rem; }
+        .doc-prose h2 { font-size: 1.5rem; font-weight: 700; color: #1e1b4b; margin-top: 2.5rem; margin-bottom: .75rem; scroll-margin-top: 5rem; }
+        .doc-prose h3 { font-size: 1.1rem; font-weight: 600; color: #312e81; margin-top: 1.75rem; margin-bottom: .5rem; }
+        .doc-prose p, .doc-prose li { color: #374151; line-height: 1.7; }
+        .doc-prose p { margin-bottom: .9rem; }
+        .doc-prose ul { list-style: disc; padding-left: 1.25rem; margin-bottom: .9rem; }
+        .doc-prose ul li { margin-bottom: .35rem; }
+        .doc-prose code { background: #eef2ff; color: #3730a3; padding: .1rem .35rem; border-radius: .3rem; font-size: .85em; }
+        .doc-prose pre { background: #0b1020; color: #e5e7eb; padding: 1rem; border-radius: .6rem; overflow-x: auto; font-size: .82rem; margin-bottom: 1rem; }
+        .doc-prose pre code { background: none; color: inherit; padding: 0; }
+        .doc-prose table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; font-size: .9rem; }
+        .doc-prose th, .doc-prose td { border: 1px solid #e5e7eb; padding: .5rem .7rem; text-align: left; vertical-align: top; }
+        .doc-prose thead th { background: #eef2ff; color: #312e81; font-weight: 600; }
+        .toc-link.active { color: var(--accent); font-weight: 600; border-left-color: var(--accent); }
+        .callout { border-left: 4px solid; border-radius: .4rem; padding: .85rem 1rem; margin: 1.1rem 0; font-size: .92rem; }
+        .callout-integrity { background: #fffbeb; border-color: #d97706; color: #78350f; }
+        .callout-tip { background: #ecfdf5; border-color: #059669; color: #065f46; }
+        .callout-note { background: #eff6ff; border-color: #2563eb; color: #1e3a8a; }
+    </style>
+</head>
+
+<body class="bg-gray-50 text-gray-900 antialiased">
+    <!-- Top bar -->
+    <header class="fixed top-0 inset-x-0 z-40 bg-white/90 backdrop-blur border-b border-gray-200">
+        <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+            <a href="index.html" class="flex items-center gap-2 font-semibold text-indigo-900">
+                <span class="text-xl">⚛</span> QRosetta <span class="text-gray-400 font-normal text-sm">Docs</span>
+            </a>
+            <a href="index.html"
+                class="text-sm font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1.5 rounded-md border border-indigo-200 transition-colors">
+                ← Back to app
+            </a>
+        </div>
+    </header>
+
+    <div class="max-w-6xl mx-auto px-4 pt-24 pb-24 flex gap-10">
+        <!-- Sidebar TOC -->
+        <nav aria-label="Table of contents"
+            class="hidden lg:block w-56 flex-shrink-0 sticky top-24 self-start max-h-[calc(100vh-7rem)] overflow-y-auto">
+            <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">On this page</p>
+            <ul class="space-y-1 text-sm border-l border-gray-200">
+                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#what">What QRosetta is</a></li>
+                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#quickstart">Quickstart</a></li>
+                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#modes">Run modes</a></li>
+                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#taxonomy">Agreement taxonomy</a></li>
+                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#stat">Shot-noise test</a></li>
+                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#reproducibility">Reproducibility</a></li>
+                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#reading">Reading results</a></li>
+                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#limits">Honest limitations</a></li>
+                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#glossary">Glossary</a></li>
+                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#faq">FAQ</a></li>
+            </ul>
+        </nav>
+
+        <!-- Content -->
+        <main class="doc-prose min-w-0 flex-1 max-w-3xl">
+            <p class="text-sm text-indigo-600 font-medium">Documentation</p>
+            <h1 class="text-3xl font-bold text-indigo-950 mb-3">Understanding QRosetta</h1>
+            <p class="text-lg text-gray-600">
+                QRosetta runs <em>one</em> quantum circuit across many simulator backends under a common
+                contract and reports, transparently, where they agree and where they differ.
+            </p>
+
+            <section id="what">
+                <h2>What QRosetta is (and is not)</h2>
+                <p>
+                    You give QRosetta a single OpenQASM&nbsp;2.0 circuit. It dispatches that circuit to a
+                    fleet of quantum-simulator backends spanning major SDKs — including Qiskit (Aer), Cirq
+                    (and qsim), qibo, PennyLane (default and lightning), Qulacs, QuEST, quimb, myQLM, PyQuil,
+                    Qrisp, cuQuantum, and TorchQuantum, several of which are driven through pytket/TKET — each
+                    behind the same request/response contract. It then compares their outputs and classifies
+                    every pair of backends by
+                    <strong>whether they agree, and if not, what would explain the difference</strong>.
+                </p>
+                <div class="callout callout-integrity">
+                    <strong>Academic-integrity scope.</strong> QRosetta performs <em>agreement analysis</em>,
+                    not formal verification. It has no ground-truth oracle: it cannot tell you which backend
+                    is “correct,” only whether backends agree and which known convention (if any) explains a
+                    difference. Every transform it applies during analysis is reported with its numerical
+                    effect and provenance — QRosetta never silently reverses bit order, aligns phases, or
+                    otherwise “repairs” a backend’s output.
+                </div>
+            </section>
+
+            <section id="quickstart">
+                <h2>Quickstart</h2>
+                <ol class="list-decimal pl-5 space-y-1 mb-4 text-gray-700">
+                    <li>Enter an OpenQASM&nbsp;2.0 circuit, or generate a preset (GHZ, Bell, QFT, Grover,
+                        Bernstein–Vazirani, VQE, random) or pull one from a benchmark suite.</li>
+                    <li>Open the <strong>Config</strong> drawer to choose which backends to run, the timeout,
+                        optimization level, sampling seed, and (optionally) agreement thresholds.</li>
+                    <li>Pick a <strong>run mode</strong> — statevector or measured — and run.</li>
+                    <li>Read the report tabs: Summary, Performance, Resources, Divergence, Agreement,
+                        Artifacts, and Raw.</li>
+                </ol>
+                <div class="callout callout-tip">
+                    <strong>Tip.</strong> The <strong>Playlist</strong> lets you queue several circuits and run
+                    them as a batch; you can import/export a playlist as JSON for repeatable suites.
+                </div>
+            </section>
+
+            <section id="modes">
+                <h2>Run modes</h2>
+                <table>
+                    <thead><tr><th>Mode</th><th>What each backend returns</th><th>How QRosetta compares</th></tr></thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Statevector</strong></td>
+                            <td>The full output state amplitudes (exact; no sampling).</td>
+                            <td>Fidelity and relative phase between state pairs. Exact and deterministic — no seed needed.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Measured</strong></td>
+                            <td>A histogram of measurement outcomes over a chosen number of shots.</td>
+                            <td>Jensen–Shannon divergence and Hellinger distance between count distributions,
+                                plus a shot-noise-aware statistical test.</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p>
+                    Statevector runs are limited to smaller qubit counts than measured runs, because a full
+                    statevector grows as 2<sup>n</sup>. When a circuit exceeds a backend’s limits, that pair
+                    is reported as <em>not comparable</em> rather than guessed at.
+                </p>
+            </section>
+
+            <section id="taxonomy">
+                <h2>The explained-cause agreement taxonomy</h2>
+                <p>
+                    Two correct simulators can produce different-looking outputs for benign reasons — most
+                    commonly a different <em>qubit-ordering convention</em> (endianness) or an unobservable
+                    <em>global phase</em>. QRosetta’s core idea is to label each backend pair by the
+                    <strong>least</strong> transform that explains their difference, over a fixed, registered
+                    lattice, and to report that transform’s numerical effect explicitly.
+                </p>
+                <h3>Statevector labels</h3>
+                <table>
+                    <thead><tr><th>Label</th><th>Meaning</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>agree_directly</code></td><td>Outputs match directly, no transform needed.</td></tr>
+                        <tr><td><code>agree_up_to_global_phase</code></td><td>Match after removing an overall (unobservable) global phase.</td></tr>
+                        <tr><td><code>agree_after_bit_reversal</code></td><td>Match after reversing qubit/bit order (an endianness convention).</td></tr>
+                        <tr><td><code>agree_after_qubit_permutation</code></td><td>Match after a bounded qubit permutation (≤&nbsp;6 qubits).</td></tr>
+                        <tr><td><code>residual_disagreement</code></td><td>Disagreement <em>not</em> explained by any registered transform.</td></tr>
+                        <tr><td><code>not_comparable</code></td><td>At least one side lacks usable output; the pair cannot be compared.</td></tr>
+                    </tbody>
+                </table>
+                <h3>Measured labels</h3>
+                <table>
+                    <thead><tr><th>Label</th><th>Meaning</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>distance_within_threshold</code></td><td>Distributions within the JS/Hellinger thresholds.</td></tr>
+                        <tr><td><code>agree_after_bit_reversal</code></td><td>Match after reversing bit order.</td></tr>
+                        <tr><td><code>agree_after_qubit_permutation</code></td><td>Match after a bounded qubit permutation (≤&nbsp;6 qubits).</td></tr>
+                        <tr><td><code>distance_exceeds_threshold</code></td><td>Distributions still differ after every registered transform.</td></tr>
+                        <tr><td><code>not_comparable</code></td><td>At least one side lacks usable output.</td></tr>
+                    </tbody>
+                </table>
+                <div class="callout callout-note">
+                    <strong>Every transform is an explicit analysis mode.</strong> When a pair is labelled
+                    “after bit reversal,” the report also shows the raw metric and the post-transform metric,
+                    so you can see exactly what the transform changed. Transforms are never applied silently to
+                    the stored native outputs.
+                </div>
+            </section>
+
+            <section id="stat">
+                <h2>The shot-noise-aware statistical test</h2>
+                <p>
+                    In measured mode a fixed distance threshold is only a heuristic — with few shots, two
+                    <em>identical</em> distributions can still look far apart purely from sampling. Alongside
+                    the descriptive JS/Hellinger label, QRosetta therefore reports a shot-noise-aware test:
+                </p>
+                <ul>
+                    <li>A chi-square and a G-test of homogeneity between the two count distributions;</li>
+                    <li>Benjamini–Hochberg (FDR) correction across the family of pairwise comparisons;</li>
+                    <li>Effect size (total variation, Cramér’s V) and a prospective power estimate.</li>
+                </ul>
+                <p>
+                    This yields a verdict — <code>consistent</code>, <code>distinguishable</code>,
+                    <code>inconclusive_low_shots</code>, or <code>ambiguous</code> — that runs
+                    <strong>in parallel</strong> with the descriptive label and never overrides it. It answers
+                    “is this difference statistically significant?”, which a fixed threshold cannot.
+                </p>
+            </section>
+
+            <section id="reproducibility">
+                <h2>Reproducibility</h2>
+                <p>Every measured run is reproducible by construction:</p>
+                <ul>
+                    <li><strong>Seeds are never unrecorded.</strong> Set a sampling seed in the Config drawer
+                        for an exact replay, or leave it empty — QRosetta then generates a seed
+                        <em>and records it in the report</em>. No run is ever un-seeded. (Statevector mode is
+                        exact and needs no seed.)</li>
+                    <li><strong>Executed versions are captured.</strong> Each backend reports the exact SDK
+                        versions it ran, as ground truth, into the report’s provenance.</li>
+                    <li><strong>Exportable provenance.</strong> Reports can be exported as an RO-Crate that
+                        conforms to the Process Run Crate profile, packaging inputs, per-backend results,
+                        agreement evidence, and provenance as a FAIR, citable bundle.</li>
+                </ul>
+            </section>
+
+            <section id="reading">
+                <h2>Reading the results</h2>
+                <table>
+                    <thead><tr><th>Tab</th><th>What it shows</th></tr></thead>
+                    <tbody>
+                        <tr><td>Summary</td><td>A high-level overview of the run and which backends succeeded.</td></tr>
+                        <tr><td>Performance / Resources</td><td>Per-backend wall-clock timings and memory usage (raw, as measured by QRosetta).</td></tr>
+                        <tr><td>Divergence</td><td>The N×N fidelity / distance matrices across backends.</td></tr>
+                        <tr><td>Agreement</td><td>The explained-cause label per backend pair, with the underlying metrics, transforms, and provenance expandable per pair.</td></tr>
+                        <tr><td>Artifacts</td><td>Publication-ready figures and tables (SVG/PNG/PDF, LaTeX/CSV/HTML/Markdown/XLSX). A backend selector scopes every figure and table to any subset you choose.</td></tr>
+                        <tr><td>Raw</td><td>The complete underlying JSON report.</td></tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section id="limits">
+                <h2>Honest limitations</h2>
+                <p>QRosetta is deliberately explicit about what it does not claim:</p>
+                <ul>
+                    <li><strong>Agreement is not correctness.</strong> Backends agreeing does not prove they are
+                        all right; a backend differing does not prove it is wrong. There is no oracle.</li>
+                    <li><strong>Measured thresholds are heuristic.</strong> The default JS/Hellinger cut-offs
+                        are configurable and shot-count dependent; treat the statistical test as the rigorous
+                        companion.</li>
+                    <li><strong>Permutation search is bounded.</strong> Exhaustive qubit-permutation matching is
+                        capped (≤&nbsp;6 qubits); larger cases report the cap rather than guessing.</li>
+                    <li><strong>A “residual disagreement” is a starting point, not a verdict.</strong> It means
+                        no <em>registered</em> convention explained the difference — the cause still needs
+                        investigation (an unregistered convention, an environment limit, or a genuine defect in
+                        a backend or its adapter).</li>
+                </ul>
+            </section>
+
+            <section id="glossary">
+                <h2>Glossary</h2>
+                <h3>Agreement classes</h3>
+                <p>See the taxonomy tables above.</p>
+                <h3>Statistical verdicts (measured mode)</h3>
+                <table>
+                    <thead><tr><th>Verdict</th><th>Meaning</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>consistent</code></td><td>The shot-noise test finds no significant difference (after FDR correction).</td></tr>
+                        <tr><td><code>distinguishable</code></td><td>Both tests find a significant difference after FDR correction.</td></tr>
+                        <tr><td><code>inconclusive_low_shots</code></td><td>Expected counts too low for a reliable test.</td></tr>
+                        <tr><td><code>ambiguous</code></td><td>The chi-square and G-test disagree (rare).</td></tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section id="faq">
+                <h2>FAQ</h2>
+                <h3>Why would two correct simulators disagree?</h3>
+                <p>
+                    Most often because of a <em>convention</em>, not an error: different qubit-ordering
+                    (endianness) or an unobservable global phase. QRosetta’s taxonomy is designed to name
+                    exactly these causes so a benign convention difference isn’t mistaken for a defect.
+                </p>
+                <h3>Is a “distance exceeds threshold” pair a bug?</h3>
+                <p>
+                    Not necessarily. It means the difference survived every registered transform and (in
+                    measured mode) may be statistically significant. That warrants investigation — the cause
+                    could be an unregistered convention, a resource limit, or a genuine defect in a backend or
+                    in its adapter. QRosetta surfaces the evidence; the diagnosis is yours to make.
+                </p>
+                <h3>Does QRosetta modify a backend’s output?</h3>
+                <p>
+                    No. Native outputs are stored as returned. Bit-reversal, phase alignment, and permutation
+                    are <em>analysis modes</em> reported with their numerical effect — they are never written
+                    back over the native result.
+                </p>
+            </section>
+
+            <p class="mt-12 pt-6 border-t border-gray-200 text-sm text-gray-500">
+                QRosetta is a research tool for cross-simulator agreement analysis. It reports native outputs
+                faithfully and labels every transform explicitly. It is not a formal-verification system and
+                has no ground-truth oracle.
+            </p>
+        </main>
+    </div>
+
+    <script>
+        // Scrollspy: highlight the TOC entry for the section currently in view.
+        (function () {
+            var links = Array.prototype.slice.call(document.querySelectorAll('.toc-link'));
+            var sections = links.map(function (l) { return document.querySelector(l.getAttribute('href')); });
+            function onScroll() {
+                var y = window.scrollY + 90;
+                var idx = 0;
+                for (var i = 0; i < sections.length; i++) {
+                    if (sections[i] && sections[i].offsetTop <= y) idx = i;
+                }
+                links.forEach(function (l, i) { l.classList.toggle('active', i === idx); });
+            }
+            window.addEventListener('scroll', onScroll, { passive: true });
+            onScroll();
+        })();
+    </script>
+</body>
+
+</html>

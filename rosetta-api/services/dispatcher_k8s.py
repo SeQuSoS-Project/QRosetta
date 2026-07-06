@@ -49,7 +49,7 @@ def _fetch_s3_result(s3, bucket, completed_key, sim_name, status_callback):
             logger.warning(f"[K8s] S3 transient error for {sim_name}: {type(e).__name__}: {e}")
     return None
 
-def _build_job_spec(sim_name: str, hostname: str, job_id: str, endpoint_type: str, payload_json: str) -> k8s_client.V1Job:
+def _build_job_spec(sim_name: str, hostname: str, job_id: str, endpoint_type: str, payload_json: str, active_deadline_seconds: int = None) -> k8s_client.V1Job:
     """Constructs the Kubernetes Job manifest for a single runner pod."""
     registry = os.environ.get("K8S_IMAGE_REGISTRY", "docker.io/qrosetta")
     image = f"{registry}/{hostname}:{IMAGE_TAG}"
@@ -97,6 +97,9 @@ def _build_job_spec(sim_name: str, hostname: str, job_id: str, endpoint_type: st
         spec=k8s_client.V1JobSpec(
             backoff_limit=0,
             ttl_seconds_after_finished=300,
+            # Let Kubernetes kill a pod that runs past the deadline so an abandoned job does
+            # not keep burning cluster CPU after the API has stopped waiting for it.
+            active_deadline_seconds=active_deadline_seconds,
             template=k8s_client.V1PodTemplateSpec(
                 spec=k8s_client.V1PodSpec(
                     restart_policy="Never",
@@ -206,7 +209,9 @@ def _run_k8s_job_inner(sim_name: str, url: str, local_payload: dict, timeout_sec
         payload_json = json.dumps(local_payload)
         logger.info(f"[K8s] Preparing job for {sim_name} (payload: {len(payload_json)} bytes, job_id={job_id})")
 
-        job = _build_job_spec(sim_name, hostname, job_id, endpoint_type, payload_json)
+        active_deadline = timeout_seconds + settings.RUNNER_DEADLINE_BUFFER_SEC
+        job = _build_job_spec(sim_name, hostname, job_id, endpoint_type, payload_json,
+                              active_deadline_seconds=active_deadline)
         job_name = job.metadata.name
 
         batch_api.create_namespaced_job(namespace=namespace, body=job, _request_timeout=30)
@@ -241,6 +246,18 @@ def _run_k8s_job_inner(sim_name: str, url: str, local_payload: dict, timeout_sec
         result = _fetch_s3_result(s3, bucket, completed_key, sim_name, status_callback)
         if result:
             return result
+
+        # Nothing came back in time: proactively delete the Job so its pod stops immediately
+        # rather than running on until activeDeadlineSeconds. Best-effort — the deadline and
+        # ttl are the backstop.
+        if terminal_state is None:
+            try:
+                batch_api.delete_namespaced_job(
+                    name=job_name, namespace=namespace, propagation_policy="Background",
+                    _request_timeout=10)
+                logger.info(f"[K8s] Deleted timed-out job '{job_name}' for {sim_name}")
+            except Exception as e:
+                logger.warning(f"[K8s] Could not delete timed-out job '{job_name}': {e}")
 
         if status_callback:
             status_callback("timeout" if terminal_state is None else "error")

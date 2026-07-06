@@ -1,0 +1,214 @@
+{
+  "created_utc": "2026-07-05T09:20:56.564023+00:00",
+  "git_sha": "3ef4cf16c5657812b590c1fb74d4c11ccd7bf95b",
+  "qrosetta_api": "http://localhost",
+  "config": {
+    "base_url": "http://localhost",
+    "mode": "measured",
+    "n_shots": 2048,
+    "seed": 42,
+    "target_simulators": [],
+    "optimization_level": 0,
+    "timeout_seconds": 300,
+    "execution_target": "local",
+    "bypass_limits": false,
+    "preprocessing_modes": [
+      true
+    ],
+    "thresholds": null,
+    "circuits": [
+      {
+        "algorithm": "ghz",
+        "qubits": 3
+      },
+      {
+        "algorithm": "bell",
+        "qubits": 2
+      },
+      {
+        "algorithm": "qft",
+        "qubits": 3
+      },
+      {
+        "algorithm": "bv",
+        "qubits": 4
+      },
+      {
+        "algorithm": "grover",
+        "qubits": 3
+      },
+      {
+        "algorithm": "grover",
+        "qubits": 5
+      }
+    ]
+  },
+  "config_sha256": "e4f51738ec94f1f629663c008b95e24f5f9f1b8f19c763e5344cd9be52d2aab2",
+  "requested_seed": 42,
+  "effective_seeds_per_axis": {
+    "measured_preprocOn": 42
+  },
+  "circuits": [
+    {
+      "id": "000_ghz-3q",
+      "algorithm": "ghz",
+      "qubits": 3,
+      "qasm_sha256": "e53422b3e0bea94777752e2b1f13234fdf5ba4872e0cec1369a6b02a6eadbe59"
+    },
+    {
+      "id": "001_bell-2q",
+      "algorithm": "bell",
+      "qubits": 2,
+      "qasm_sha256": "44a410da0a955b7c17bbc2d8b6e78de50f9d4ac901a16718eb68a6eab74e6183"
+    },
+    {
+      "id": "002_qft-3q",
+      "algorithm": "qft",
+      "qubits": 3,
+      "qasm_sha256": "7fb38e0b77d7e76b62b9ae3b70cce08b90636205affc1a246f3e348fe8d5249d"
+    },
+    {
+      "id": "003_bv-4q",
+      "algorithm": "bv",
+      "qubits": 4,
+      "qasm_sha256": "b7ca3b3f9f0c64f972ccbd648c1ceab5ac553731e1ded5ce50e35bd9bcf1d1fd"
+    },
+    {
+      "id": "004_grover-3q",
+      "algorithm": "grover",
+      "qubits": 3,
+      "qasm_sha256": "0b2ab835d0e9e6864e81bdc16cab5dc8d8597c299873a783126f6ac2e101c8da"
+    },
+    {
+      "id": "005_grover-5q",
+      "algorithm": "grover",
+      "qubits": 5,
+      "qasm_sha256": "c91950686feaf7626a060c7a97e2dedd7aaf07f3c10fadd2d2896f5c10a54641"
+    }
+  ],
+  "executed_sdk_versions": {
+    "qiskit": {
+      "pytket-qiskit": "0.57.0",
+      "pytket": "1.33.0",
+      "qiskit": "1.2.4",
+      "qiskit-ibm-runtime": "0.33.2",
+      "qiskit-aer": "0.15.1"
+    },
+    "cirq": {
+      "cirq-aqt": "1.4.1",
+      "pyquil": "4.17.0",
+      "cirq": "1.4.1",
+      "pytket-cirq": "0.38.0",
+      "cirq-pasqal": "1.4.1",
+      "pytket": "1.33.0",
+      "cirq-core": "1.4.1",
+      "cirq-google": "1.4.1",
+      "cirq-web": "1.4.1",
+      "cirq-ionq": "1.4.1",
+      "cirq-rigetti": "1.4.1"
+    },
+    "qulacs": {
+      "pytket-qulacs": "0.38.0",
+      "pytket": "1.33.0",
+      "qulacs": "0.6.5"
+    },
+    "qsim-cirq": {
+      "cirq-aqt": "1.4.1",
+      "pyquil": "4.17.0",
+      "cirq": "1.4.1",
+      "pytket-cirq": "0.38.0",
+      "qsimcirq": "0.22.0",
+      "cirq-pasqal": "1.4.1",
+      "pytket": "1.33.0",
+      "cirq-core": "1.4.1",
+      "cirq-google": "1.4.1",
+      "cirq-web": "1.4.1",
+      "cirq-ionq": "1.4.1",
+      "cirq-rigetti": "1.4.1"
+    },
+    "qibo": {
+      "qibo": "0.3.1"
+    },
+    "qrisp": {
+      "qiskit": "0.45.3",
+      "qrisp": "0.5.2",
+      "qiskit-terra": "0.45.3"
+    },
+    "myqlm": {
+      "qat-synthopline": "0.6.0",
+      "qat-analog": "0.8.0",
+      "qat-linalg-util": "1.1.0",
+      "qat-hardware": "1.7.1",
+      "qat-fusion": "0.4.0",
+      "qat-lang": "3.4.0",
+      "qat-anapli": "0.3.0",
+      "pytket": "1.33.0",
+      "myqlm": "1.13.1",
+      "qat-devices": "0.6.0",
+      "qat-variational": "1.8.0",
+      "myqlm-contrib": "1.11.0",
+      "qat-quops": "1.6.0",
+      "myqlm-fermion": "1.4.0",
+      "myqlm-interop": "2.1.0",
+      "myqlm-clinalg": "0.5.0",
+      "qat-pbo": "1.7.0",
+      "myqlm-simulators": "1.11.0",
+      "qat-comm": "1.9.0",
+      "qat-core": "1.13.1",
+      "qat-nnize": "1.5.0"
+    },
+    "quimb": {
+      "quimb": "1.13.0"
+    },
+    "cuquantum": {
+      "qiskit": "2.4.2",
+      "qiskit-aer": "0.17.2"
+    },
+    "quest": {
+      "pytket-quest": "0.1.0",
+      "pytket": "1.34.0"
+    },
+    "pennylane-lightning": {
+      "qiskit-aer": "0.17.2",
+      "qiskit-ibm-provider": "0.11.0",
+      "qiskit-ibm-runtime": "0.29.0",
+      "PennyLane_Lightning": "0.39.0",
+      "qiskit": "1.2.4",
+      "PennyLane-qiskit": "0.39.0",
+      "PennyLane": "0.39.0"
+    },
+    "pennylane-default": {
+      "qiskit-aer": "0.17.2",
+      "qiskit-ibm-provider": "0.11.0",
+      "qiskit-ibm-runtime": "0.29.0",
+      "qiskit": "1.2.4",
+      "PennyLane-qiskit": "0.39.0",
+      "PennyLane": "0.39.0",
+      "PennyLane_Lightning": "0.40.0"
+    },
+    "pyquil": {
+      "pyquil": "4.17.0",
+      "pytket": "1.33.0",
+      "pytket-pyquil": "0.36.0"
+    },
+    "torchquantum": {
+      "qiskit": "0.45.3",
+      "qiskit-aer": "0.13.3",
+      "torchquantum": "0.1.8",
+      "torch": "2.2.2+cpu",
+      "torchvision": "0.17.2+cpu",
+      "qiskit-ibm-runtime": "0.20.0",
+      "torchpack": "0.3.1",
+      "qiskit-terra": "0.45.3",
+      "torchdiffeq": "0.2.5"
+    }
+  },
+  "outputs": {
+    "conformance_matrix": "conformance_matrix.csv",
+    "agreement_prevalence": "agreement_prevalence.csv",
+    "inputs": "inputs/",
+    "results": "results/",
+    "errors": "errors/"
+  },
+  "notes": "Container image digests are pinned in the runner Dockerfiles (@sha256, FIX-014); record the deployed digests here before a citable release. Error signatures are recorded but NOT auto-triaged: classify each into adapter / SDK / by-design / resource before treating it as a finding."
+}

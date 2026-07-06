@@ -1,12 +1,15 @@
 # Pydantic schemas for request/response validation.
 
 from schemas.benchmark import (
+    AgreementThresholds,
     QasmPayload,
     MeasuredQasmPayload,
     MeasuredBenchmarkPayload,
     GenerateCircuitPayload,
     BenchmarkTask,
     BatchPayload,
+    ExperimentCircuit,
+    ExperimentPayload,
     VisualizerResponse,
     JobStatusResponse,
     RunnerPerformanceMetrics,
@@ -32,8 +35,10 @@ from schemas.history import (
 
 __all__ = [
 
+    "AgreementThresholds",
     "QasmPayload", "MeasuredQasmPayload", "MeasuredBenchmarkPayload",
     "GenerateCircuitPayload", "BenchmarkTask", "BatchPayload",
+    "ExperimentCircuit", "ExperimentPayload",
     "VisualizerResponse", "JobStatusResponse", "RunnerPerformanceMetrics",
     "ComparisonResult", "ExportPayload", "ExportRequest",
     "PublicationArtifactsSelection", "PublicationRenderRequest",

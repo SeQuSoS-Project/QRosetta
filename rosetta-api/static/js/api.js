@@ -33,6 +33,10 @@ async function pollJobStatus(jobId) {
                     updateRunnerStatuses(data.runner_statuses);
                 }
 
+                if (typeof renderBatchProgress === 'function') {
+                    renderBatchProgress(data.progress);
+                }
+
                 if (data.status === "completed") {
                     resolve(data.results);
                 } else if (data.status === "failed") {

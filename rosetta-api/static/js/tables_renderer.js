@@ -380,12 +380,17 @@ function _kvGrid(rows) {
     grid.className = 'grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-0.5';
     rows.forEach(([k, v]) => {
         if (v === undefined) return;
+        // min-w-0 lets the grid cell shrink below its content width so long
+        // values wrap instead of overflowing the card (grid items default to
+        // min-width:auto). break-words breaks the long unspaced SDK-version
+        // JSON blobs so they stay inside the box.
         const row = document.createElement('div');
+        row.className = 'min-w-0';
         const kSpan = document.createElement('span');
         kSpan.className = 'text-gray-400';
         kSpan.textContent = `${k}: `;
         const vSpan = document.createElement('span');
-        vSpan.className = 'text-gray-800 font-mono';
+        vSpan.className = 'text-gray-800 font-mono break-words';
         vSpan.textContent = (v === null ? '—' : String(v));
         row.appendChild(kSpan);
         row.appendChild(vSpan);

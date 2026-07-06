@@ -1,0 +1,21 @@
+{
+  "base_url": "http://localhost",
+  "mode": "measured",
+  "n_shots": 2048,
+  "seed": 42,
+  "target_simulators": [],
+  "optimization_level": 0,
+  "timeout_seconds": 300,
+  "execution_target": "local",
+  "bypass_limits": false,
+  "preprocessing_modes": [true],
+  "thresholds": null,
+  "circuits": [
+    {"algorithm": "ghz", "qubits": 3},
+    {"algorithm": "bell", "qubits": 2},
+    {"algorithm": "qft", "qubits": 3},
+    {"algorithm": "bv", "qubits": 4},
+    {"algorithm": "grover", "qubits": 3},
+    {"algorithm": "grover", "qubits": 5}
+  ]
+}

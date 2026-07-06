@@ -7,17 +7,18 @@ from qrosetta_commons.helpers import get_logger
 
 logger = get_logger("rosetta-aggregator")
 
-async def compile_comparison_reports(aggregated_results: list):
+async def compile_comparison_reports(aggregated_results: list, thresholds: dict = None):
     """
     Takes aggregated statevector execution results, parses them, and fires off
-    the heavy comparison logic in a thread pool.
+    the heavy comparison logic in a thread pool. `thresholds` (optional) overrides the
+    agreement tolerances; None keeps the defaults.
     """
     loop = asyncio.get_event_loop()
 
     gc.collect()
     logger.info("Generating divergence report...")
     divergence_report_task = loop.run_in_executor(
-        None, comparator.create_divergence_report, aggregated_results
+        None, comparator.create_divergence_report, aggregated_results, thresholds
     )
 
     logger.info("Generating performance report...")
@@ -36,17 +37,18 @@ async def compile_comparison_reports(aggregated_results: list):
 
     return divergence_report, performance_report, resource_report
 
-async def compile_measurement_reports(aggregated_results: list, n_shots: int):
+async def compile_measurement_reports(aggregated_results: list, n_shots: int, thresholds: dict = None):
     """
     Takes aggregated measurement execution results, parses them, and fires off
-    the heavy counts comparison logic in a thread pool.
+    the heavy counts comparison logic in a thread pool. `thresholds` (optional) overrides
+    the descriptive JS/Hellinger cut-offs; None keeps the defaults.
     """
     loop = asyncio.get_event_loop()
 
     gc.collect()
     logger.info("Generating counts divergence report...")
     divergence_report_task = loop.run_in_executor(
-        None, comparator.create_counts_report, aggregated_results, n_shots
+        None, comparator.create_counts_report, aggregated_results, n_shots, thresholds
     )
 
     logger.info("Generating performance report...")
