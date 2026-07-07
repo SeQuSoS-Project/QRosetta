@@ -133,7 +133,7 @@ def test_latex_uses_booktabs_and_escapes_underscores():
     tex = arts["tables/agreement.latex"].decode()
     assert "\\toprule" in tex and "\\bottomrule" in tex and "booktabs" in tex
     assert "agree\\_after\\_bit\\_reversal" in tex  # underscore escaped
-    assert "Not a ground-truth verification" in tex  # provenance/raw-vs-transformed note
+    assert "registered-transform lattice" in tex  # caption present
 
 
 def test_agreement_table_content():

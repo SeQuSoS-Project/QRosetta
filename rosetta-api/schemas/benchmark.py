@@ -3,11 +3,11 @@
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional, Union
 
-# Agreement tolerances. Optional on every run payload; None keeps the documented defaults.
+# Agreement tolerances. Optional on every run payload; None keeps the defaults.
 # Statevector tolerances (fidelity/phase = 1e-12) are numerical-precision cut-offs for exact
-# statevectors. Measured cut-offs (js=0.01, hellinger=0.1) are HEURISTIC (not literature-
-# derived) and shot-count dependent — the shot-noise-aware statistical_test is the rigorous
-# verdict. The effective values are recorded per pair in the pairwise_agreement records.
+# statevectors. Measured cut-offs (js=0.01, hellinger=0.1) are heuristic and shot-count
+# dependent; the statistical_test block carries the shot-noise-aware verdict. The effective
+# values are recorded per pair in the pairwise_agreement records.
 class AgreementThresholds(BaseModel):
     fidelity_tolerance: float = 1e-12
     phase_tolerance: float = 1e-12

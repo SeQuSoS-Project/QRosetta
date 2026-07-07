@@ -189,10 +189,9 @@ def get_sdk_versions() -> dict:
     """Return {distribution_name: version} for the quantum SDK packages installed in
     this process, read from importlib.metadata at runtime.
 
-    This is ground truth — the exact versions that executed the circuit — not a
-    declared pin scraped from a requirements.txt. It is the version coordinate the
-    cross-simulator compatibility matrix and RO-Crate provenance attribute outcomes to.
-    Versions are fixed for a process's lifetime, so the scan is cached after first call.
+    These are the versions that executed the circuit, recorded in the report and the
+    RO-Crate provenance. Versions are fixed for a process's lifetime, so the scan is
+    cached after the first call.
     """
     global _sdk_versions_cache
     if _sdk_versions_cache is not None:
@@ -215,9 +214,7 @@ def with_sdk_versions(func):
     """Decorator for a runner's process_run / process_run_measured.
 
     Attaches the executed SDK versions (get_sdk_versions) to the returned result dict
-    under 'sdk_versions'. Wrapping the function rather than each return statement means
-    both the success and the error paths carry the version — and the error path is the
-    one the compatibility matrix cares about most (which version rejected which gate).
+    under 'sdk_versions' on both the success and error paths.
     """
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
@@ -312,9 +309,73 @@ async def run_isolated(func, payload, default_timeout=None):
 
 
 # --- shared runner scaffolding --------------------------------------------------------
-# Every runner exposes the same HTTP surface and the same S3/local CLI. These two helpers
-# hold that boilerplate once so each runner file is just its imports + the SDK-specific
-# process_run / process_run_measured.
+# Every runner exposes the same HTTP surface, the same S3/local CLI, and the same result
+# contract. These helpers hold that boilerplate once so each runner file is its imports plus
+# the SDK-specific compile/execute logic.
+
+_UNSET = object()
+
+
+def _base_result(*, simulator, compilation_time, simulation_time, monitor, qubit_ordering,
+                 n_qubits, theoretical_mb, preprocessing_applied, transpiled_qasm):
+    # theoretical_mb defaults to (2^n * 16) computed from n_qubits; pass it explicitly
+    # (e.g. None) for backends where a dense statevector size is not meaningful.
+    if theoretical_mb is _UNSET:
+        theoretical_mb = theoretical_statevector_mb(n_qubits)
+    return {
+        "simulator": simulator,
+        "execution_time_sec": compilation_time + simulation_time,
+        "compilation_time_sec": compilation_time,
+        "simulation_time_sec": simulation_time,
+        "memory_usage_mb": monitor.get_peak_usage_mb(),
+        "process_peak_mb": monitor.get_process_peak_mb(),
+        "qubit_ordering": qubit_ordering,
+        "theoretical_statevector_mb": theoretical_mb,
+        "preprocessing_applied": preprocessing_applied,
+        "transpiled_qasm": transpiled_qasm,
+    }
+
+
+def statevector_result(*, simulator, statevector, compilation_time, simulation_time, monitor,
+                       qubit_ordering, preprocessing_applied, transpiled_qasm,
+                       n_qubits=None, theoretical_mb=_UNSET):
+    """Assemble a runner's statevector result dict. ``statevector`` is the raw array-like
+    output; it is encoded to the Base64 wire format here."""
+    result = _base_result(
+        simulator=simulator, compilation_time=compilation_time, simulation_time=simulation_time,
+        monitor=monitor, qubit_ordering=qubit_ordering, n_qubits=n_qubits,
+        theoretical_mb=theoretical_mb, preprocessing_applied=preprocessing_applied,
+        transpiled_qasm=transpiled_qasm)
+    result["statevector"] = encode_statevector(np.asarray(statevector))
+    return result
+
+
+def counts_result(*, simulator, counts, sampling_method, compilation_time, simulation_time,
+                  monitor, qubit_ordering, preprocessing_applied, transpiled_qasm,
+                  n_qubits=None, theoretical_mb=_UNSET):
+    """Assemble a runner's measured (counts) result dict. ``sampling_method=None`` omits the
+    key (a runner that does not label its sampling method)."""
+    result = _base_result(
+        simulator=simulator, compilation_time=compilation_time, simulation_time=simulation_time,
+        monitor=monitor, qubit_ordering=qubit_ordering, n_qubits=n_qubits,
+        theoretical_mb=theoretical_mb, preprocessing_applied=preprocessing_applied,
+        transpiled_qasm=transpiled_qasm)
+    result["counts"] = counts
+    if sampling_method is not None:
+        result["sampling_method"] = sampling_method
+    return result
+
+
+def runner_error(simulator: str, exc) -> dict:
+    """Assemble a runner's error result dict from a caught exception."""
+    return {
+        "simulator": simulator,
+        "error": str(exc),
+        "execution_time_sec": 0.0,
+        "memory_usage_mb": 0.0,
+        "process_peak_mb": 0.0,
+    }
+
 
 def register_runner_endpoints(app, process_run, process_run_measured):
     """Register the standard /run and /run_measured endpoints on a runner's FastAPI app.

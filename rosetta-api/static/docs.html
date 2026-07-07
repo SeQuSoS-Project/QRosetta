@@ -83,12 +83,10 @@
                     <strong>whether they agree, and if not, what would explain the difference</strong>.
                 </p>
                 <div class="callout callout-integrity">
-                    <strong>Academic-integrity scope.</strong> QRosetta performs <em>agreement analysis</em>,
-                    not formal verification. It has no ground-truth oracle: it cannot tell you which backend
-                    is “correct,” only whether backends agree and which known convention (if any) explains a
-                    difference. Every transform it applies during analysis is reported with its numerical
-                    effect and provenance — QRosetta never silently reverses bit order, aligns phases, or
-                    otherwise “repairs” a backend’s output.
+                    <strong>Scope.</strong> QRosetta performs <em>agreement analysis</em>: it reports
+                    whether backends agree and which known convention (if any) explains a difference.
+                    Each transform applied during analysis is reported with its numerical effect and
+                    provenance in the per-pair records.
                 </div>
             </section>
 

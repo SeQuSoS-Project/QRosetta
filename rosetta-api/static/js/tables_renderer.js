@@ -111,7 +111,7 @@ function renderRankingTable(report, key, unit, panel, config = {}) {
             const procPeakTd = rowFrag.querySelector('.tpl-proc-peak');
             procPeakTd.classList.remove('tpl-proc-peak');
             const theoreticalTd = rowFrag.querySelector('.tpl-theoretical');
-            if (theoreticalTd) theoreticalTd.classList.remove('.tpl-theoretical');
+            if (theoreticalTd) theoreticalTd.classList.remove('tpl-theoretical');
 
             if (r.status === 'success') {
                 memDeltaTd.textContent = r.memory_usage_mb != null ? r.memory_usage_mb.toFixed(4) : '';
@@ -474,7 +474,7 @@ function _statisticalTestBlock(st) {
     ]));
     const model = document.createElement('div');
     model.className = 'text-[11px] text-gray-400 mt-1';
-    model.textContent = `Power model: ${pw.model}. Statistical verdict is parallel evidence and does not override the descriptive label.`;
+    model.textContent = `Power model: ${pw.model}. The statistical verdict is reported alongside the descriptive label.`;
     wrap.appendChild(model);
     return wrap;
 }
@@ -709,7 +709,7 @@ function _agreementPairTable(pairs) {
         const vslot = document.createElement('span');
         if (st && st.verdict) {
             vslot.appendChild(_chip(STATUS_STYLES[VERDICT_STYLE[st.verdict] || 'offline'].badge,
-                st.verdict, 'Shot-noise statistical verdict (parallel evidence)'));
+                st.verdict, 'Shot-noise statistical verdict'));
         }
         sum.appendChild(vslot);
         det.appendChild(sum);

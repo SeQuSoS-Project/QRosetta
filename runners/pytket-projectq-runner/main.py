@@ -1,10 +1,5 @@
 # Execution script for the quantum simulator runner.
 
-import argparse
-import json
-import os
-import sys
-import boto3
 from fastapi import FastAPI
 import numpy as np
 import pytket.qasm
@@ -12,9 +7,8 @@ from pytket.extensions.projectq import ProjectQBackend
 from pytket.passes import RemoveBarriers
 from pytket.transform import Transform
 from collections import Counter
-from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
 from qrosetta_commons.helpers import register_runner_endpoints, run_cli_main
-from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, get_logger, encode_statevector, theoretical_statevector_mb, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED, with_sdk_versions
+from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, get_logger, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED, with_sdk_versions, statevector_result, counts_result, runner_error
 import time
 import gc
 
@@ -74,36 +68,15 @@ def process_run(payload: dict) -> dict:
             t3 = time.perf_counter()
             simulation_time = t3 - t2
 
-        memory_usage_mb = monitor.get_peak_usage_mb()
-        process_peak_mb = monitor.get_process_peak_mb()
-
-        execution_time = compilation_time + simulation_time
-
-        statevector_str = encode_statevector(np.array(statevector))
-        logger.info(f"ProjectQ simulation successful in {execution_time:.4f}s (Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s).")
-
-        return {
-            "simulator": "projectq",
-            "statevector": statevector_str,
-            "execution_time_sec": execution_time,
-            "compilation_time_sec": compilation_time,
-            "simulation_time_sec": simulation_time,
-            "memory_usage_mb": memory_usage_mb,
-            "process_peak_mb": process_peak_mb,
-            "qubit_ordering": "lsb",
-            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
-            "preprocessing_applied": preprocessing_applied,
-            "transpiled_qasm": transpiled_qasm
-        }
+        logger.info(f"ProjectQ simulation successful (Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s).")
+        return statevector_result(
+            simulator="projectq", statevector=statevector, compilation_time=compilation_time,
+            simulation_time=simulation_time, monitor=monitor, qubit_ordering="lsb",
+            n_qubits=n_qubits, preprocessing_applied=preprocessing_applied,
+            transpiled_qasm=transpiled_qasm)
     except Exception as e:
         logger.error(f"Error during ProjectQ simulation: {str(e)}")
-        return {
-            "simulator": "projectq",
-            "error": str(e),
-            "execution_time_sec": 0.0,
-            "memory_usage_mb": 0.0,
-            "process_peak_mb": 0.0
-        }
+        return runner_error("projectq", e)
 
 @with_sdk_versions
 def process_run_measured(payload: dict) -> dict:
@@ -144,35 +117,16 @@ def process_run_measured(payload: dict) -> dict:
             t3 = time.perf_counter()
             simulation_time = t3 - t2
 
-        memory_usage_mb = monitor.get_peak_usage_mb()
-        process_peak_mb = monitor.get_process_peak_mb()
-
-        execution_time = compilation_time + simulation_time
-
-        logger.info(f"ProjectQ manual sampling successful in {execution_time:.4f}s (Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s).")
-
-        return {
-            "simulator": "projectq",
-            "counts": counts_dict,
-            "execution_time_sec": execution_time,
-            "compilation_time_sec": compilation_time,
-            "simulation_time_sec": simulation_time,
-            "memory_usage_mb": memory_usage_mb,
-            "process_peak_mb": process_peak_mb,
-            "qubit_ordering": "lsb",
-            "theoretical_statevector_mb": theoretical_statevector_mb(n_qubits),
-            "preprocessing_applied": preprocessing_applied,
-            "transpiled_qasm": transpiled_qasm
-        }
+        logger.info(f"ProjectQ manual sampling successful (Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s).")
+        # This runner does not label a sampling_method (sampling_method=None omits the key).
+        return counts_result(
+            simulator="projectq", counts=counts_dict, sampling_method=None,
+            compilation_time=compilation_time, simulation_time=simulation_time, monitor=monitor,
+            qubit_ordering="lsb", n_qubits=n_qubits, preprocessing_applied=preprocessing_applied,
+            transpiled_qasm=transpiled_qasm)
     except Exception as e:
         logger.error(f"Error during ProjectQ measurement simulation: {str(e)}")
-        return {
-            "simulator": "projectq",
-            "error": str(e),
-            "execution_time_sec": 0.0,
-            "memory_usage_mb": 0.0,
-            "process_peak_mb": 0.0
-        }
+        return runner_error("projectq", e)
 
 register_runner_endpoints(app, process_run, process_run_measured)
 

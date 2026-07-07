@@ -22,9 +22,11 @@ function isConnectionError(errorMsg) {
     return msg.includes("connection refused") ||
         msg.includes("name or service not known") ||
         msg.includes("failed to connect") ||
+        msg.includes("failed to fetch") ||
+        msg.includes("load resource") ||
         msg.includes("failed to get response") ||
         msg.includes("502 bad gateway") ||
-        msg.includes("503 service unavailable") ||
+        msg.includes("service unavailable") ||
         msg.includes("failed to decode json");
 }
 
@@ -447,11 +449,12 @@ function resetAgreementThresholds() {
 }
 
 function exportPlaylist() {
-    if (batchQueue.length === 0) {
+    const queue = getState().batchQueue;
+    if (queue.length === 0) {
         alert("Playlist is empty.");
         return;
     }
-    const blob = new Blob([JSON.stringify(batchQueue, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(queue, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const downloadAnchorNode = document.createElement('a');
     downloadAnchorNode.setAttribute("href", url);
@@ -470,7 +473,7 @@ function importPlaylist(inputElement) {
         try {
             const loaded = JSON.parse(e.target.result);
             if (Array.isArray(loaded)) {
-                batchQueue = loaded;
+                dispatch('SET_BATCH_QUEUE', loaded);
                 renderBatchQueue();
             } else {
                 alert("Invalid playlist file format. Expected a JSON array.");
@@ -495,7 +498,7 @@ function importQasm(inputElement) {
             fileName = fileName.substring(0, fileName.length - 5);
         }
         document.getElementById('ctx-algo-name').value = fileName;
-        currentAlgoName = fileName;
+        dispatch('SET_CURRENT_ALGO_NAME', fileName);
         inputElement.value = '';
     };
     reader.readAsText(file);
@@ -582,8 +585,9 @@ async function generateAndVisualize() {
 
 function closeVisualizer() {
     if (panelElements['visualizer']) panelElements['visualizer'].classList.add('hidden');
-    if (currentSuiteData) {
-        showTab(currentSuiteData.benchmark_summary ? 'suite-summary' : 'summary');
+    const suiteData = getState().currentSuiteData;
+    if (suiteData) {
+        showTab(suiteData.benchmark_summary ? 'suite-summary' : 'summary');
     } else {
         const welcome = document.getElementById('welcome-message');
         if (welcome) welcome.classList.remove('hidden');

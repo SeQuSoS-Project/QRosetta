@@ -11,8 +11,8 @@ const METRIC_DEFINITIONS = {
     "relative_phase_matrix": "<b>Relative Phase Matrix:</b> Comparison of global phase differences. Non-zero means states differ by a constant phase factor.",
     "statistical_distance_matrix (js_divergence)": "<b>JS Divergence:</b> Jensen-Shannon divergence between probability distributions. 0.0 = Identical.",
     "hellinger_distance_matrix": "<b>Hellinger Distance:</b> Geometric distance between distributions. 0.0 = Identical.",
-    "pairwise_agreement": "<b>Explained-Cause Agreement:</b> Each backend pair is classified over a registered-transform lattice (direct → global phase → bit reversal → qubit permutation → residual). Every transform is reported with its numerical effect and provenance; raw outputs are never silently altered.",
-    "statistical_test": "<b>Shot-Noise Test:</b> Homogeneity test (chi-square + G-test) on measured counts, with effect size and power, computed on the same transform basis the label selected. Parallel evidence — it never overrides the descriptive label.",
+    "pairwise_agreement": "<b>Explained-Cause Agreement:</b> Each backend pair is classified over a registered-transform lattice (direct → global phase → bit reversal → qubit permutation → residual). Each label reports the transform that explains the pair and its numerical effect, with full provenance.",
+    "statistical_test": "<b>Shot-Noise Test:</b> Homogeneity test (chi-square + G-test) on measured counts, with effect size and power, computed on the same transform basis the label selected. Reported alongside the descriptive label.",
     "execution_time_sec": "<b>Execution Time:</b> The total time taken for the simulation.",
     "memory_usage_mb": "<b>Memory Usage:</b> The memory consumed by the simulation."
 };
@@ -62,12 +62,6 @@ function _applyLegendDots(fragment) {
             classes.split(' ').forEach(c => el.classList.add(c));
         });
     }
-}
-
-function isConnectionError(err) {
-    if (!err) return false;
-    const msg = err.toLowerCase();
-    return msg.includes("failed to fetch") || msg.includes("load resource") || msg.includes("service unavailable") || msg.includes("connection refused");
 }
 
 function renderTooltip(key, label) {

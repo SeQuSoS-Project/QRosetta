@@ -19,12 +19,10 @@ def _runner_error(sim_name: str, message: str) -> dict:
 
 
 async def safe_request(client, url, payload, sim_name, timeout_s):
-    """Dispatch to one runner and classify failures HONESTLY.
+    """Dispatch to one runner and classify transport failures by cause and timing.
 
-    A dropped connection is reported as what it most likely is given how long it took —
-    a runner that dies near the deadline is a timeout/OOM, not asserted to be a specific
-    C++ crash. Accurate wording matters: a mislabelled timeout is a mis-triage waiting to
-    happen.
+    A connection dropped near the deadline is reported as a probable timeout/OOM;
+    an early drop is reported as a lost connection.
     """
     t0 = time.perf_counter()
     try:

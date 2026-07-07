@@ -108,7 +108,7 @@ def test_bundle_zip_is_valid_archive(monkeypatch):
         assert zf.testzip() is None
         names = set(zf.namelist())
         assert "manifest.json" in names and "README.txt" in names
-        assert "INTEGRITY GATE" in zf.read("README.txt").decode("utf-8")
+        assert "untriaged" in zf.read("README.txt").decode("utf-8")
 
 
 def test_resolution_error_recorded_not_fatal(monkeypatch):

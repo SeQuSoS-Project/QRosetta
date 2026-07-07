@@ -12,8 +12,7 @@ logger = get_logger(__name__)
 
 MAX_EXHAUSTIVE_QUBIT_PERMUTATION_QUBITS = 6
 
-# Shot-noise-aware statistical agreement test (additive evidence; never replaces the
-# descriptive JS/Hellinger labels). See FIX-016 and pairwise-evidence-schema.md.
+# Parameters for the pairwise shot-noise statistical test.
 STAT_TEST_ALPHA = 0.05          # significance level per pairwise test
 STAT_TEST_TARGET_POWER = 0.8    # target power for the shot-budget recommendation
 STAT_TEST_DELTA_TV = 0.05       # total-variation effect size the budget is sized to detect
@@ -848,11 +847,10 @@ def _statistical_agreement_test(
     """Shot-noise-aware homogeneity test between two count distributions.
 
     ``counts_j`` is already aligned to the registered transform named by ``basis`` (direct
-    counts, bit-reversed keys, or permuted keys), so the statistical verdict matches the
-    explained-cause label rather than testing a different basis. Returns descriptive
-    metrics plus raw chi-square and G-test p-values; family-wise correction and the final
-    verdict are filled in a second pass over all pairs. This is additive evidence and never
-    overrides the descriptive JS/Hellinger ``agreement`` label.
+    counts, bit-reversed keys, or permuted keys), so the statistical verdict is computed on
+    the same basis the explained-cause label selected. Returns descriptive metrics plus raw
+    chi-square and G-test p-values; family-wise correction and the final verdict are filled
+    in a second pass over all pairs.
     """
     outcomes = sorted(set(counts_i) | set(counts_j))
     row_i = np.array([float(counts_i.get(o, 0)) for o in outcomes])
@@ -1012,10 +1010,10 @@ def create_counts_report(results_list, n_shots, thresholds=None):
     between counts distributions using JS Divergence AND Hellinger Distance.
 
     thresholds: optional dict overriding the descriptive distance thresholds. Recognized
-    keys: ``js_threshold`` (default 0.01) and ``hellinger_threshold`` (default 0.1). These
-    are HEURISTIC cut-offs, not literature-derived, and are shot-count dependent; the
-    shot-noise-aware statistical_test block is the rigorous verdict. Absent/None keeps the
-    defaults; the effective values are recorded per pair in the pairwise_agreement records.
+    keys: ``js_threshold`` (default 0.01) and ``hellinger_threshold`` (default 0.1). Both
+    are heuristic, shot-count-dependent cut-offs; the statistical_test block carries the
+    shot-noise-aware verdict. Absent/None keeps the defaults; the effective values are
+    recorded per pair in the pairwise_agreement records.
     """
 
     simulators = [res.get('simulator', 'unknown') for res in results_list]
@@ -1117,9 +1115,8 @@ def create_counts_report(results_list, n_shots, thresholds=None):
                     n_shots,
                 )
 
-                # Additive shot-noise-aware statistical test, computed on the same
-                # registered-transform basis the descriptive label selected so the verdict
-                # is coherent with the explained cause. Never overrides `agreement`.
+                # Shot-noise statistical test, computed on the same registered-transform
+                # basis the descriptive label selected.
                 if record["agreement"] == "agree_after_bit_reversal":
                     basis = "bit_reversal"
                     counts_j_aligned = _bit_reversed_counts(results_list[j]["counts"])

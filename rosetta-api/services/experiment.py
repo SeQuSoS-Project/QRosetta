@@ -1,21 +1,9 @@
-"""In-app reproducible experiment runner (T3.5).
+"""In-app reproducible experiment runner.
 
-Promotes the standalone ``experiments/0-experiment`` harness into a server-side background
-job so a researcher can run a reproducible fleet sweep from the UI and download the frozen,
-citable artifact bundle — without cloning the repo.
-
-Design (decided with the user):
-  * Server-side orchestration; a single ``worker_experiment`` loops the preprocessing axes,
-    reusing the EXISTING batch core (``job_manager.run_batch_tasks``) so there is no second
-    execution path to keep in sync.
-  * The frozen bundle is assembled entirely from ``services.experiment_artifacts`` (the pure,
-    stdlib builders the CLI harness also uses) and streamed as an in-memory ZIP — nothing is
-    written to server disk (safe on ephemeral k8s/Rahti pods).
-  * Fully additive / opt-in: reuses BatchPayload + run_batch_tasks unchanged.
-
-Integrity: conformance (A) and prevalence (B) stay separate; errors ship ``untriaged``; the
-bundle README states plainly that neither errors nor prevalence counts are findings until a
-human triages them.
+``worker_experiment`` runs a fleet sweep over one or more preprocessing axes as a
+server-side background job, reusing the batch core (``job_manager.run_batch_tasks``),
+and assembles the frozen artifact bundle from ``services.experiment_artifacts`` as an
+in-memory ZIP (nothing is written to server disk).
 """
 from __future__ import annotations
 
@@ -35,21 +23,19 @@ from qrosetta_commons.helpers import get_logger
 
 logger = get_logger("rosetta-experiment")
 
-# Fan-out safety: one experiment = circuits x axes x fleet. Cap the circuit-axis units so a
-# crafted request cannot spawn an unbounded number of runner calls / K8s Job pods. Bypassed
-# only with the same explicit bypass_limits flag the rest of the API honors.
+# One experiment = circuits x axes x fleet. Caps the circuit-axis units so a request
+# cannot spawn an unbounded number of runner calls / K8s Job pods (bypass_limits skips it).
 MAX_EXPERIMENT_CELLS = 200
 
 
 def _server_git_sha() -> str:
-    """Best-effort provenance. The API image ships no .git, so this is an env slot filled at
-    build/deploy time; 'unknown' is reported honestly rather than guessed."""
+    """Git SHA injected at build/deploy time; the API image ships no .git, so this
+    reports 'unknown' when the env slot is unset."""
     return (os.getenv("QROSETTA_GIT_SHA") or os.getenv("GIT_SHA") or "unknown").strip() or "unknown"
 
 
 def _server_image_digests() -> dict:
-    """Deployed container image digests, if injected at deploy time (JSON env). Empty = fill
-    before a citable release (cf. FIX-014 / T2.5)."""
+    """Deployed container image digests, if injected at deploy time (JSON env)."""
     raw = os.getenv("QROSETTA_IMAGE_DIGESTS")
     if not raw:
         return {}
@@ -65,8 +51,8 @@ def resolve_circuits(payload: ExperimentPayload) -> tuple:
     """Resolve every configured circuit to a frozen QASM string.
 
     Returns (resolved, errors) where resolved = [{id, algorithm, qubits, qasm, source}] and
-    errors = [{id, name, error}] for circuits that could not be resolved. Resolution failures
-    are recorded, never silently dropped, and never abort the whole experiment.
+    errors = [{id, name, error}] for circuits that could not be resolved. Resolution
+    failures are recorded per circuit and do not abort the experiment.
     """
     resolved, errors = [], []
     for i, entry in enumerate(payload.circuits):
@@ -120,8 +106,8 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
                 f"circuit-axis runs exceeds the cap of {MAX_EXPERIMENT_CELLS}. Reduce the "
                 f"selection or set bypass_limits.")
 
-        # One seed shared across every circuit AND every axis (measured only; statevector is
-        # seedless/exact). Never left un-seeded when it matters.
+        # One seed shared across every circuit and axis (measured mode; statevector is
+        # exact and seedless).
         exp_seed = _resolve_seed(payload.seed) if payload.mode == "measured" else None
 
         # Cumulative progress across all axes, in the exact shape the batch UI already renders.

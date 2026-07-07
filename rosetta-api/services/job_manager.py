@@ -18,7 +18,6 @@ import services.circuit_library as circuit_library
 import services.benchmark_library as benchmark_library
 from schemas import BatchPayload
 from config import settings
-import services.analysis as comparator
 from services.aggregator import compile_comparison_reports, compile_measurement_reports
 from qrosetta_commons.helpers import get_logger
 
@@ -26,9 +25,8 @@ logger = get_logger("rosetta-job-manager")
 
 ACTIVE_JOBS = {}
 
-# Reproducibility contract: a measured run is NEVER left un-seeded. If the caller supplies
-# no seed we generate one and record it in the report/provenance, so every run can be
-# replayed exactly. (Statevector mode is seedless/exact and needs none.)
+# A measured run always carries a seed: if the caller supplies none, one is generated and
+# recorded in the report/provenance. Statevector mode is exact and needs none.
 SEED_MAX = 2**31 - 1
 
 
@@ -187,25 +185,26 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
         "raw_results": aggregated_results
     }
 
-async def worker_compare(job_id: str, qasm_string: str, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str, runner_phases: dict = None, apply_preprocessing: bool = True, thresholds: dict = None):
-    runner_statuses = {}
+async def _run_single_job(job_id: str, execution_target: str, runner_statuses: dict, run_coro):
+    """Drive one single-circuit job: mark it processing, await ``run_coro`` (the
+    already-built run_single_* coroutine), and record the terminal state in ACTIVE_JOBS."""
     ACTIVE_JOBS[job_id]["status"] = "processing"
     ACTIVE_JOBS[job_id]["runner_statuses"] = runner_statuses
     try:
-        report = await run_single_circuit_comparison(qasm_string, optimization_level, runner_config, timeout, target_simulators, runner_statuses, runner_phases, apply_preprocessing, thresholds)
+        report = await run_coro
         ACTIVE_JOBS[job_id] = {"status": "completed", "target": execution_target, "results": report, "runner_statuses": runner_statuses, "finished_at": time.time()}
     except Exception as e:
         ACTIVE_JOBS[job_id] = {"status": "failed", "target": execution_target, "error": str(e), "runner_statuses": runner_statuses, "finished_at": time.time()}
 
+async def worker_compare(job_id: str, qasm_string: str, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str, runner_phases: dict = None, apply_preprocessing: bool = True, thresholds: dict = None):
+    runner_statuses = {}
+    await _run_single_job(job_id, execution_target, runner_statuses,
+        run_single_circuit_comparison(qasm_string, optimization_level, runner_config, timeout, target_simulators, runner_statuses, runner_phases, apply_preprocessing, thresholds))
+
 async def worker_compare_measured(job_id: str, qasm_string: str, n_shots: int, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str, runner_phases: dict = None, apply_preprocessing: bool = True, seed: int = None, thresholds: dict = None):
     runner_statuses = {}
-    ACTIVE_JOBS[job_id]["status"] = "processing"
-    ACTIVE_JOBS[job_id]["runner_statuses"] = runner_statuses
-    try:
-        report = await run_single_circuit_measurement(qasm_string, n_shots, optimization_level, runner_config, timeout, target_simulators, runner_statuses, runner_phases, apply_preprocessing, seed, thresholds)
-        ACTIVE_JOBS[job_id] = {"status": "completed", "target": execution_target, "results": report, "runner_statuses": runner_statuses, "finished_at": time.time()}
-    except Exception as e:
-        ACTIVE_JOBS[job_id] = {"status": "failed", "target": execution_target, "error": str(e), "runner_statuses": runner_statuses, "finished_at": time.time()}
+    await _run_single_job(job_id, execution_target, runner_statuses,
+        run_single_circuit_measurement(qasm_string, n_shots, optimization_level, runner_config, timeout, target_simulators, runner_statuses, runner_phases, apply_preprocessing, seed, thresholds))
 
 async def run_batch_tasks(payload: BatchPayload, runner_statuses: dict, progress: dict = None,
                           batch_seed: int = None, task_offset: int = 0) -> tuple:

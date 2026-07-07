@@ -1,7 +1,7 @@
 # Application configuration and environment variables.
 
 import os
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     EXECUTION_MODE: str = os.getenv("EXECUTION_MODE", "local")
@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     MAX_QUBITS_MEASURED: int = 24
     MAX_QASM_SIZE: int = 1_000_000
     MAX_QASM_GATES: int = 10_000
+    MAX_UPLOAD_BYTES: int = 1_048_576
+
+    # Comma-separated CORS origins for deployment-specific frontends. localhost is always
+    # allowed for local development; deployments add their frontend origin via the env var.
+    CORS_ALLOW_ORIGINS: str = os.getenv("CORS_ALLOW_ORIGINS", "")
 
     # Multi-run (self-comparison) fan-out caps. One request expands to one job per
     # configured run; without these a crafted request could spawn unbounded httpx
@@ -52,8 +57,12 @@ class Settings(BaseSettings):
     MAX_RUNS_PER_RUNNER: int = 16
     MAX_TOTAL_RUNS: int = 48
 
-    class Config:
-        env_file = ".env"
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    def get_cors_origins(self) -> list:
+        origins = ["http://localhost", "http://127.0.0.1"]
+        origins += [o.strip() for o in self.CORS_ALLOW_ORIGINS.split(",") if o.strip()]
+        return origins
 
     def get_runner_services(self):
         return {

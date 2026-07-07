@@ -95,7 +95,7 @@ function _dataAgreement(div, mode) {
         return row;
     });
     return { headers, rows, title: 'Pairwise explained-cause agreement',
-        caption: 'Analysis over the registered-transform lattice; each label reports the transform whose numerical effect explains the pair. Not a ground-truth verification.' };
+        caption: 'Classification over the registered-transform lattice; each label reports the transform whose numerical effect explains the pair.' };
 }
 function _dataMatrix(div, key, title) {
     const labels = div.simulators || [];
@@ -139,7 +139,7 @@ function _dataStatistical(div) {
                 pw.shots_per_backend_for_target_power ?? '—', st.verdict || '—'];
         }),
         title: 'Shot-noise statistical test',
-        caption: 'Shot-noise-aware homogeneity tests (chi-square + G-test) with BH-corrected p-values, effect size, and prospective power. Parallel evidence; does not override the label.',
+        caption: 'Shot-noise-aware homogeneity tests (chi-square + G-test) with BH-corrected p-values, effect size, and prospective power, reported alongside the descriptive label.',
     };
 }
 function _dataMetadata(results, mode) {
@@ -181,10 +181,10 @@ function _txtGlossary(mode) {
     let out = ['# QRosetta agreement taxonomy — glossary', '', 'Agreement classes (registered-transform lattice):', ''];
     agr.forEach(([l, d]) => out.push(`- **${l}** — ${d}`));
     if (mode === 'measured') {
-        out.push('', 'Shot-noise statistical verdicts (parallel evidence; do not override the label):', '');
+        out.push('', 'Shot-noise statistical verdicts (reported alongside the descriptive label):', '');
         ver.forEach(([l, d]) => out.push(`- **${l}** — ${d}`));
     }
-    out.push('', 'Every registered transform is reported with its numerical effect and provenance; QRosetta never silently alters runner outputs, and agreement analysis is not ground-truth verification.');
+    out.push('', 'Each label names the registered transform that explains the pair and reports its numerical effect; the per-pair records carry full provenance.');
     return out.join('\n');
 }
 

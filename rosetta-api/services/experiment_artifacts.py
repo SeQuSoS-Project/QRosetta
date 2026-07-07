@@ -1,22 +1,15 @@
-"""Pure, dependency-free builders for the reproducible-experiment artifact bundle.
+"""Builders for the reproducible-experiment artifact bundle.
 
-This module is the SINGLE SOURCE OF TRUTH for how a fleet run is frozen into a citable
-artifact (conformance matrix + agreement prevalence + manifest + statevector stripping).
-It is imported by BOTH:
+Imported by both the in-app experiment runner (``services.experiment``) and the
+standalone CLI harness (``experiments/0-experiment/run_experiment.py``). Stdlib-only
+so the CLI can import it without the API's runtime dependencies.
 
-  * the in-app experiment runner (``services.experiment`` -> ``routers.experiment``), and
-  * the standalone CLI harness (``experiments/0-experiment/run_experiment.py``),
+Bundle outputs:
+  A) conformance matrix  — per (circuit x simulator) run status + error signature
+  B) agreement prevalence — agreement-class counts over the pairs that ran
 
-so the two can never drift. Keep it STDLIB-ONLY (no FastAPI / pytket / numpy imports) so the
-stdlib-only CLI can import it without pulling the API's runtime dependencies.
-
-Two honest, separated outputs — never conflated:
-  A) conformance matrix  — did each (circuit x simulator) cell RUN? (success/error/timeout)
-  B) agreement prevalence — of the pairs that ran, did they agree, and via which transform?
-
-An error is a *finding* only after a human triages it into (a) QRosetta adapter bug,
-(b) genuine SDK bug, (c) unsupported-by-design, or (d) resource/timeout. This module records
-the raw signature and marks it ``untriaged``; it NEVER auto-classifies.
+Error rows carry a raw signature with ``triage='untriaged'``; classification into
+adapter / SDK / by-design / resource happens during review.
 """
 from __future__ import annotations
 
@@ -25,35 +18,32 @@ import hashlib
 import io
 import json
 
-# Column orders for the two CSV outputs (kept here so both callers write identical headers).
+# Column orders for the two CSV outputs.
 CONFORMANCE_FIELDS = ["axis", "circuit", "simulator", "status", "error_signature", "triage"]
 PREVALENCE_FIELDS = ["axis", "agreement_class", "pair_count"]
 
-# Plain-text integrity notice shipped at the root of every bundle. This is load-bearing:
-# it is what keeps a downstream reader from mistaking the raw CSVs for findings.
+# Plain-text notice shipped at the root of every bundle.
 TRIAGE_README = (
     "QRosetta reproducible-experiment bundle\n"
     "=======================================\n\n"
-    "This folder freezes one fleet run so it can be replayed and cited. It is self-describing:\n"
-    "  inputs/                  - the EXACT OpenQASM executed (never 'regenerate later')\n"
+    "This folder freezes one fleet run so it can be replayed and cited:\n"
+    "  inputs/                  - the exact OpenQASM executed\n"
     "  results/<axis>/*.json    - per-circuit reports (statevectors stripped to a sha256 by\n"
-    "                             default; metrics, labels and provenance are kept in full)\n"
-    "  conformance_matrix.csv   - (A) did each circuit x simulator cell RUN? + error signature\n"
-    "  agreement_prevalence.csv - (B) of the pairs that ran, which agreement class + count\n"
-    "  errors/*.log             - per-simulator error signatures for quick triage\n"
+    "                             default; metrics, labels and provenance kept in full)\n"
+    "  conformance_matrix.csv   - per (circuit x simulator) run status + error signature\n"
+    "  agreement_prevalence.csv - agreement-class counts over the pairs that ran\n"
+    "  errors/*.log             - per-simulator error signatures\n"
     "  manifest.json            - config + git SHA + timestamp + effective seed + SDK versions\n\n"
-    "INTEGRITY GATE (read before quoting anything):\n"
-    "  * (A) and (B) are SEPARATE. A cell that failed to run is NOT a disagreement.\n"
-    "  * The error signatures and the prevalence counts are NOT findings on their own.\n"
-    "    Every error must be triaged by a human into exactly one of:\n"
-    "      (a) QRosetta adapter bug   (b) genuine SDK bug\n"
-    "      (c) unsupported-by-design  (d) resource / timeout\n"
-    "    before it is reported as a result. The 'triage' column starts as 'untriaged'.\n"
-    "  * Every agreement label already carries its transform and numerical effect in the\n"
-    "    per-pair records; no transform is ever silently applied.\n"
-    "  * The exhaustive qubit-permutation search is bounded (see MAX_EXHAUSTIVE_QUBIT_\n"
-    "    PERMUTATION_QUBITS); larger pairs report attempted=false, not a guess. Disclose this\n"
-    "    cap in any prevalence analysis.\n"
+    "Reading the CSVs:\n"
+    "  * The conformance matrix and the prevalence table are separate outputs: a cell\n"
+    "    that failed to run carries no agreement information.\n"
+    "  * Each error row records a raw signature with triage='untriaged'. Classify each\n"
+    "    error as adapter / SDK / by-design / resource and update the column before\n"
+    "    reporting it as a result.\n"
+    "  * Each agreement label carries its registered transform and numerical effect in\n"
+    "    the per-pair records under results/.\n"
+    "  * The exhaustive qubit-permutation search is bounded; larger pairs report\n"
+    "    attempted=false with a reason. Disclose this bound in any prevalence analysis.\n"
 )
 
 
@@ -92,7 +82,7 @@ def _runner_status(entry: dict) -> tuple:
 
 
 def build_conformance_rows(axis_label: str, summary: list) -> list:
-    """(A) One row per (circuit x simulator): did it run? + untriaged error signature."""
+    """One row per (circuit x simulator): run status + untriaged error signature."""
     rows = []
     for report in summary:
         circuit = report.get("task_name", "?")
@@ -110,7 +100,7 @@ def build_conformance_rows(axis_label: str, summary: list) -> list:
 
 
 def build_prevalence_rows(axis_label: str, summary: list) -> list:
-    """(B) Agreement-class counts over the pairs that ran successfully, per axis."""
+    """Agreement-class counts over the pairs that ran successfully, per axis."""
     counts: dict = {}
     for report in summary:
         for rec in (report.get("divergence_report") or {}).get("pairwise_agreement", []) or []:
@@ -154,11 +144,11 @@ def build_manifest(*, config: dict, git_sha: str, api_base: str, requested_seed,
                    image_digests: dict = None, extra_notes: str = "") -> dict:
     """Full-provenance manifest. ``circuits`` is [{id, algorithm, qubits, qasm}]."""
     notes = (
-        "Error signatures are recorded but NOT auto-triaged: classify each into adapter / SDK "
-        "/ by-design / resource before treating it as a finding. Container image digests are "
-        "pinned in the runner Dockerfiles (@sha256, FIX-014); record the deployed digests in "
-        "'image_digests' before a citable release. The exhaustive qubit-permutation search is "
-        "bounded (disclose the cap in any prevalence analysis)."
+        "Error signatures are recorded with triage='untriaged': classify each as adapter / "
+        "SDK / by-design / resource before reporting it as a result. Base images are pinned "
+        "in the runner Dockerfiles (@sha256); record the deployed digests in 'image_digests' "
+        "for a citable release. The exhaustive qubit-permutation search is bounded (disclose "
+        "the bound in any prevalence analysis)."
     )
     if extra_notes:
         notes = f"{notes} {extra_notes}"

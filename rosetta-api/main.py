@@ -13,10 +13,11 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from services.security import limiter
 from services.job_manager import ACTIVE_JOBS
+from config import settings
 from qrosetta_commons.helpers import get_logger
+from contextlib import asynccontextmanager
 import asyncio
 import time
-import os
 import logging
 
 logger = get_logger("rosetta-main")
@@ -30,10 +31,6 @@ class _SuppressAlgorithmsFilter(logging.Filter):
 
 logging.getLogger("uvicorn.access").addFilter(_SuppressAlgorithmsFilter())
 
-app = FastAPI(title="Quantum Rosetta API")
-
-models.Base.metadata.create_all(bind=engine)
-
 async def _cleanup_old_jobs():
     while True:
         await asyncio.sleep(600)  # run every 10 minutes
@@ -46,9 +43,15 @@ async def _cleanup_old_jobs():
         if expired:
             logger.info(f"Evicted {len(expired)} expired jobs from ACTIVE_JOBS")
 
-@app.on_event("startup")
-async def startup():
-    asyncio.create_task(_cleanup_old_jobs())
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    cleanup_task = asyncio.create_task(_cleanup_old_jobs())
+    yield
+    cleanup_task.cancel()
+
+app = FastAPI(title="Quantum Rosetta API", lifespan=lifespan)
+
+models.Base.metadata.create_all(bind=engine)
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -66,15 +69,11 @@ class LimitUploadSize(BaseHTTPMiddleware):
                     return JSONResponse(status_code=413, content={"detail": "Payload too large"})
         return await call_next(request)
 
-app.add_middleware(LimitUploadSize, max_upload_size=1048576)
+app.add_middleware(LimitUploadSize, max_upload_size=settings.MAX_UPLOAD_BYTES)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://rosetta-frontend-652754634999.us-central1.run.app",
-        "http://localhost",
-        "http://127.0.0.1"
-    ],
+    allow_origins=settings.get_cors_origins(),
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],

@@ -3,21 +3,22 @@
 import copy
 import io
 import json
+import os
 import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
+from config import settings
 from qrosetta_commons.helpers import get_logger
 
 logger = get_logger("rosetta-exporter")
 
 # Process Run Crate profile (Workflow Run RO-Crate family; Leo et al., PLOS ONE 2024).
-# Process Run Crate is the honest target: QRosetta orchestrates each backend via its own
-# microservice dispatcher, not a workflow-language file, so it describes tool executions
-# (one CreateAction each) without claiming a ComputationalWorkflow main entity — which
-# Workflow Run Crate would require. Version confirmed current at 0.5.
+# QRosetta orchestrates each backend via its dispatcher rather than a workflow-language
+# file, so the crate records one CreateAction per tool execution without a
+# ComputationalWorkflow main entity.
 PROCESS_RUN_CRATE_PROFILE = "https://w3id.org/ro/wfrun/process/0.5"
 _ACTION_STATUS_COMPLETED = "http://schema.org/CompletedActionStatus"
 _ACTION_STATUS_FAILED = "http://schema.org/FailedActionStatus"
@@ -106,32 +107,18 @@ class ExportContext:
 #  Internal helpers
 # ---------------------------------------------------------------------------
 
-import os
-
 def _get_runner_version(runner_id: str) -> str:
     """Attempt to read the primary dependency version from the runner's requirements.txt."""
-    runner_dir_map = {
-        "qiskit": "pytket-qiskit-runner",
-        "cirq": "pytket-cirq-runner",
-        "qulacs": "pytket-qulacs-runner",
-        "braket": "pytket-braket-runner",
-        "projectq": "pytket-projectq-runner",
-        "quest": "pytket-quest-runner",
-        "pennylane-lightning": "pennylane-lightning-runner",
-        "pennylane-default": "pennylane-default-runner",
-        "qsim-cirq": "qsim-cirq-runner",
-        "qibo": "qibo-runner",
-        "qrisp": "qrisp-runner",
-        "myqlm": "myqlm-runner",
-        "pyquil": "pyquil-runner",
-        "torchquantum": "torch-quantum-runner",
-        "quimb": "quimb-runner",
-        "cuquantum": "cuquantum-runner",
-    }
-    dir_name = runner_dir_map.get(runner_id)
+    svc = settings.get_runner_services().get(runner_id)
+    if not svc:
+        return "unknown"
+    # The runner's directory name is its service hostname, encoded in the registry
+    # base_url (http://<hostname>:8000). Deriving it here keeps config.py the single
+    # source for the runner-to-directory mapping.
+    dir_name = svc.get("base_url", "").split("://", 1)[-1].split(":", 1)[0].split("/", 1)[0]
     if not dir_name:
         return "unknown"
-        
+
     base_paths = [
         os.path.join(os.getcwd(), "runners", dir_name),
         os.path.join(os.getcwd(), "..", "runners", dir_name),
@@ -205,20 +192,10 @@ def _raw_result_for(ctx: ExportContext, runner_name: str) -> dict:
 
 def _extract_runners_used(ctx: ExportContext) -> List[str]:
     runners_used: List[str] = []
-    raw_results = ctx.results.get("raw_results", [])
-    if isinstance(raw_results, list):
-        for r in raw_results:
-            sim = r.get("simulator")
-            if sim and sim not in runners_used:
-                runners_used.append(sim)
-
-    benchmark_summary = ctx.results.get("benchmark_summary", [])
-    if isinstance(benchmark_summary, list):
-        for task_result in benchmark_summary:
-            for r in task_result.get("raw_results", []):
-                sim = r.get("simulator")
-                if sim and sim not in runners_used:
-                    runners_used.append(sim)
+    for r in _iter_raw_results(ctx):
+        sim = r.get("simulator")
+        if sim and sim not in runners_used:
+            runners_used.append(sim)
     return runners_used
 
 
@@ -264,10 +241,9 @@ def _build_pairwise_agreement_summary(ctx: ExportContext) -> Optional[dict]:
         "by_registered_transform": {},
         "by_statistical_verdict": {},
         "description": (
-            "Pairwise agreement evidence records are preserved in results.json. "
-            "This provenance summary counts labels, registered transforms, and (for "
-            "measured mode) shot-noise statistical verdicts only; it does not replace "
-            "the per-pair metrics and provenance records."
+            "Counts of agreement labels, registered transforms, and (for measured "
+            "mode) shot-noise statistical verdicts. The full per-pair metrics and "
+            "provenance records are preserved in results.json."
         ),
     }
     for record in records:
@@ -304,26 +280,8 @@ def _build_provenance(ctx: ExportContext) -> dict:
     runner_configs = {}
     for name in runners_used:
         svc = ctx.runner_services.get(_canonical_sim_id(name), {})
-        # Extract preprocessing_applied from results
-        preprocessing_applied = []
-        raw_results = ctx.results.get("raw_results", [])
-        if isinstance(raw_results, list):
-            for r in raw_results:
-                if r.get("simulator") == name:
-                    preprocessing_applied = r.get("preprocessing_applied", [])
-                    break
-        
-        if not preprocessing_applied:
-            benchmark_summary = ctx.results.get("benchmark_summary", [])
-            if isinstance(benchmark_summary, list):
-                for task_result in benchmark_summary:
-                    for r in task_result.get("raw_results", []):
-                        if r.get("simulator") == name:
-                            pp = r.get("preprocessing_applied", [])
-                            if pp:
-                                preprocessing_applied = pp
-                            break
-                            
+        preprocessing_applied = _raw_result_for(ctx, name).get("preprocessing_applied", [])
+
         runner_configs[name] = {
             "enabled": svc.get("enabled", False),
             "capabilities": svc.get("capabilities", []),
@@ -359,7 +317,7 @@ def _build_provenance(ctx: ExportContext) -> dict:
     return provenance
 
 
-def _build_ro_crate_metadata(ctx: ExportContext, dir_name: str,
+def _build_ro_crate_metadata(ctx: ExportContext,
                              artifact_paths: Optional[List[str]] = None) -> dict:
     """Build the RO-Crate 1.1 metadata descriptor (JSON-LD)."""
     graph: List[dict] = []
@@ -460,23 +418,12 @@ def _build_ro_crate_metadata(ctx: ExportContext, dir_name: str,
         "encodingFormat": "application/json",
     })
 
-    # Check if there are transpiled circuits available in results
-    transpiled_circuits = []
-    raw_results = ctx.results.get("raw_results", [])
-    if isinstance(raw_results, list):
-        for r in raw_results:
-            tq = r.get("transpiled_qasm")
-            if tq:
-                transpiled_circuits.append(r.get("simulator"))
-                
-    if not transpiled_circuits:
-        benchmark_summary = ctx.results.get("benchmark_summary", [])
-        if isinstance(benchmark_summary, list):
-            for task_result in benchmark_summary:
-                for r in task_result.get("raw_results", []):
-                    tq = r.get("transpiled_qasm")
-                    if tq and r.get("simulator") not in transpiled_circuits:
-                        transpiled_circuits.append(r.get("simulator"))
+    # Backends that reported a transpiled circuit (deduplicated, preserving first-seen order).
+    transpiled_circuits: List[str] = []
+    for r in _iter_raw_results(ctx):
+        sim = r.get("simulator")
+        if r.get("transpiled_qasm") and sim and sim not in transpiled_circuits:
+            transpiled_circuits.append(sim)
 
     # Add transpiled circuit entities
     for sim in transpiled_circuits:
@@ -699,7 +646,7 @@ def build_ro_crate(ctx: ExportContext) -> bytes:
     # Opt-in publication artifacts (figures/tables). Generated before metadata so each
     # file can be registered as an RO-Crate data entity.
     publication_files = _generate_publication_artifacts(ctx)
-    metadata = _build_ro_crate_metadata(ctx, dir_name, sorted(publication_files))
+    metadata = _build_ro_crate_metadata(ctx, sorted(publication_files))
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:

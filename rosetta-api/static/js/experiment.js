@@ -1,12 +1,9 @@
-// Reproducible experiment runner (T3.5) — front end.
+// Reproducible experiment runner — front end.
 //
-// Extends the existing Batch panel: the same batch queue (presets / benchmarks / uploaded
-// QASM) is run over one or more preprocessing axes via POST /experiments, then frozen into a
-// citable artifact bundle downloaded from GET /experiments/{id}/bundle. Opt-in: only the
-// dedicated "Run Experiment" button routes here; "Run Batch" is unchanged.
-//
-// Integrity: the two outputs (conformance vs prevalence) stay separated and the UI states
-// plainly that errors/prevalence are not findings until triaged (see the panel banner).
+// Runs the batch queue (presets / benchmarks / uploaded QASM) over one or more preprocessing
+// axes via POST /experiments, then downloads the frozen artifact bundle from
+// GET /experiments/{id}/bundle. The "Run Experiment" button routes here; "Run Batch" is
+// separate. The conformance and prevalence outputs are reported separately.
 
 let _lastExperimentJobId = null;
 let _lastExperimentName = 'experiment';
@@ -152,8 +149,8 @@ function renderExperimentResult(results) {
         + `<div><span class="font-medium">Errors to triage:</span> ${nErr}`
         + (nResolve ? ` &nbsp;·&nbsp; resolution errors: ${nResolve}` : '')
         + `</div>`
-        + `<div class="text-[11px] text-yellow-700 mt-1">Error signatures and prevalence counts are `
-        + `not findings until each error is triaged (adapter / SDK / by-design / resource).</div>`;
+        + `<div class="text-[11px] text-yellow-700 mt-1">Each error signature carries a `
+        + `triage='untriaged' marker; classify it as adapter / SDK / by-design / resource.</div>`;
     box.classList.remove('hidden');
 }
 

@@ -18,8 +18,8 @@ async def read_index():
 
 @router.get("/runners")
 async def get_runners():
-    """Returns enabled status, max optimization level, and per-level descriptions for every runner.
-    Single source of truth: config.py."""
+    """Returns enabled status, max optimization level, and per-level descriptions for
+    every runner, as configured in config.py."""
     result = []
     for name, config in settings.get_runner_services().items():
         opt_levels = config.get("optimization_levels", {})

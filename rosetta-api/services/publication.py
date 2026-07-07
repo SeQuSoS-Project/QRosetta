@@ -1,10 +1,9 @@
 # Publication-ready artifact engine — deterministic figures + tables from a report.
 #
 # Turns a QRosetta results dict into publication-grade figures (SVG/PNG/PDF via
-# matplotlib) and tables (LaTeX/CSV/HTML/Markdown/XLSX). Artifact/usability feature,
-# NOT a new scientific claim: every artifact is generated deterministically from the
-# stored report data, preserves provenance, and labels raw metrics vs transformed
-# analysis evidence. Two entry points share the same builders:
+# matplotlib) and tables (LaTeX/CSV/HTML/Markdown/XLSX). Every artifact is generated
+# deterministically from the stored report data, preserves provenance, and labels raw
+# metrics vs transformed analysis evidence. Two entry points share the same builders:
 #   * build_publication_artifacts(...)  -> {relative_path: bytes}  (RO-Crate bundle)
 #   * list_artifacts(...) / render_artifact(...)                    (interactive tab)
 
@@ -523,8 +522,8 @@ def _tbl_agreement(divergence_report: dict, mode: str):
         if measured:
             row.append(((r.get("metrics", {}) or {}).get("statistical_test") or {}).get("verdict", "—"))
         rows.append(row)
-    caption = ("Analysis over the registered-transform lattice; each label reports the transform "
-               "whose numerical effect explains the pair. Not a ground-truth verification.")
+    caption = ("Classification over the registered-transform lattice; each label reports the "
+               "transform whose numerical effect explains the pair.")
     return headers, rows, "Pairwise explained-cause agreement", caption
 
 
@@ -563,7 +562,7 @@ def _tbl_statistical(divergence_report: dict):
                      _fmt_num(pw.get("power_to_detect_delta_at_observed_shots"), 3),
                      pw.get("shots_per_backend_for_target_power", "—"), st.get("verdict", "—")])
     caption = ("Shot-noise-aware homogeneity tests (chi-square + G-test) with BH-corrected p-values, "
-               "effect size, and prospective power. Parallel evidence; does not override the label.")
+               "effect size, and prospective power, reported alongside the descriptive label.")
     return headers, rows, "Shot-noise statistical test", caption
 
 
@@ -609,12 +608,11 @@ def _txt_glossary(mode: str) -> str:
     for label, desc in _AGREEMENT_GLOSSARY:
         lines.append(f"- **{label}** — {desc}")
     if mode == "measured":
-        lines += ["", "Shot-noise statistical verdicts (parallel evidence; do not override the label):", ""]
+        lines += ["", "Shot-noise statistical verdicts (reported alongside the descriptive label):", ""]
         for label, desc in _VERDICT_GLOSSARY:
             lines.append(f"- **{label}** — {desc}")
-    lines += ["", "Every registered transform is reported with its numerical effect and provenance; "
-              "QRosetta never silently alters runner outputs, and agreement analysis is not "
-              "ground-truth verification."]
+    lines += ["", "Each label names the registered transform that explains the pair and reports its "
+              "numerical effect; the per-pair records carry full provenance."]
     return "\n".join(lines)
 
 
@@ -785,8 +783,9 @@ def build_publication_artifacts(results: dict, mode: str, categories: Tuple[str,
                                 table_formats: Tuple[str, ...] = ("csv",)) -> Dict[str, bytes]:
     """Build the selected publication artifacts as {relative_path: bytes} (RO-Crate bundle).
 
-    Deterministic and side-effect free; generates only what the report supports. Output paths
-    and category membership are unchanged from FIX-019 (the interactive tab exposes more).
+    Deterministic and side-effect free; generates only what the report supports. Output
+    paths and category membership follow the export-bundle contract; the interactive tab
+    exposes additional artifacts.
     """
     figure_formats = tuple(f for f in figure_formats if f in SUPPORTED_FIGURE_FORMATS)
     table_formats = tuple(f for f in table_formats if f in SUPPORTED_TABLE_FORMATS)

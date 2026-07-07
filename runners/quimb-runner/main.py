@@ -1,14 +1,8 @@
 # Execution script for the quantum simulator runner.
 
-import argparse
-import json
-import os
-import sys
-import boto3
 from fastapi import FastAPI
-from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
 from qrosetta_commons.helpers import register_runner_endpoints, run_cli_main
-from qrosetta_commons.helpers import MemoryMonitor, get_logger, encode_statevector, get_num_qubits_from_qasm, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED, with_sdk_versions
+from qrosetta_commons.helpers import MemoryMonitor, get_logger, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED, with_sdk_versions, statevector_result, counts_result, runner_error
 import numpy as np
 import time
 import gc
@@ -65,13 +59,7 @@ def _run_sv(circ) -> np.ndarray:
 def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for Quimb statevector simulation.")
     if not QUIMB_AVAILABLE:
-        return {
-            "simulator": "quimb",
-            "error": "Quimb is not installed in this environment.",
-            "execution_time_sec": 0.0,
-            "memory_usage_mb": 0.0,
-            "process_peak_mb": 0.0,
-        }
+        return runner_error("quimb", "Quimb is not installed in this environment.")
     try:
         check_qubits_limit(payload["circuit_data"], MAX_QUBITS_STATEVECTOR)
 
@@ -91,50 +79,25 @@ def process_run(payload: dict) -> dict:
             t3 = time.perf_counter()
             simulation_time = t3 - t2
 
-        memory_usage_mb = monitor.get_peak_usage_mb()
-        process_peak_mb = monitor.get_process_peak_mb()
-        execution_time = compilation_time + simulation_time
-
-        statevector_str = encode_statevector(sv)
         logger.info(
-            f"Quimb simulation successful in {execution_time:.4f}s "
+            f"Quimb simulation successful "
             f"(Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s)."
         )
-
-        return {
-            "simulator": "quimb",
-            "statevector": statevector_str,
-            "execution_time_sec": execution_time,
-            "compilation_time_sec": compilation_time,
-            "simulation_time_sec": simulation_time,
-            "memory_usage_mb": memory_usage_mb,
-            "process_peak_mb": process_peak_mb,
-            "qubit_ordering": "msb",
-            "theoretical_statevector_mb": None,
-            "preprocessing_applied": ["_preprocess_qasm(): Strips 'barrier', 'measure', and 'creg' statements from the QASM source, as quimb's tensor-network QASM parser does not support these instructions."],
-            "transpiled_qasm": transpiled_qasm
-        }
+        return statevector_result(
+            simulator="quimb", statevector=sv, compilation_time=compilation_time,
+            simulation_time=simulation_time, monitor=monitor, qubit_ordering="msb",
+            theoretical_mb=None,
+            preprocessing_applied=["_preprocess_qasm(): Strips 'barrier', 'measure', and 'creg' statements from the QASM source, as quimb's tensor-network QASM parser does not support these instructions."],
+            transpiled_qasm=transpiled_qasm)
     except Exception as e:
         logger.error(f"Error during Quimb simulation: {str(e)}\n{traceback.format_exc()}")
-        return {
-            "simulator": "quimb",
-            "error": str(e),
-            "execution_time_sec": 0.0,
-            "memory_usage_mb": 0.0,
-            "process_peak_mb": 0.0,
-        }
+        return runner_error("quimb", e)
 
 @with_sdk_versions
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received circuit data for Quimb measurement simulation.")
     if not QUIMB_AVAILABLE:
-        return {
-            "simulator": "quimb",
-            "error": "Quimb is not installed in this environment.",
-            "execution_time_sec": 0.0,
-            "memory_usage_mb": 0.0,
-            "process_peak_mb": 0.0,
-        }
+        return runner_error("quimb", "Quimb is not installed in this environment.")
     try:
         check_qubits_limit(payload["circuit_data"], MAX_QUBITS_MEASURED)
 
@@ -158,38 +121,19 @@ def process_run_measured(payload: dict) -> dict:
             t3 = time.perf_counter()
             simulation_time = t3 - t2
 
-        memory_usage_mb = monitor.get_peak_usage_mb()
-        process_peak_mb = monitor.get_process_peak_mb()
-        execution_time = compilation_time + simulation_time
-
         logger.info(
-            f"Quimb measurement simulation successful in {execution_time:.4f}s "
+            f"Quimb measurement simulation successful "
             f"(Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s)."
         )
-
-        return {
-            "simulator": "quimb",
-            "counts": counts,
-            "sampling_method": "tn_sample",
-            "execution_time_sec": execution_time,
-            "compilation_time_sec": compilation_time,
-            "simulation_time_sec": simulation_time,
-            "memory_usage_mb": memory_usage_mb,
-            "process_peak_mb": process_peak_mb,
-            "qubit_ordering": "msb",
-            "theoretical_statevector_mb": None,
-            "preprocessing_applied": ["_preprocess_qasm(): Strips 'barrier', 'measure', and 'creg' statements from the QASM source, as quimb's tensor-network QASM parser does not support these instructions."],
-            "transpiled_qasm": transpiled_qasm
-        }
+        return counts_result(
+            simulator="quimb", counts=counts, sampling_method="tn_sample",
+            compilation_time=compilation_time, simulation_time=simulation_time, monitor=monitor,
+            qubit_ordering="msb", theoretical_mb=None,
+            preprocessing_applied=["_preprocess_qasm(): Strips 'barrier', 'measure', and 'creg' statements from the QASM source, as quimb's tensor-network QASM parser does not support these instructions."],
+            transpiled_qasm=transpiled_qasm)
     except Exception as e:
         logger.error(f"Error during Quimb measurement simulation: {str(e)}\n{traceback.format_exc()}")
-        return {
-            "simulator": "quimb",
-            "error": str(e),
-            "execution_time_sec": 0.0,
-            "memory_usage_mb": 0.0,
-            "process_peak_mb": 0.0,
-        }
+        return runner_error("quimb", e)
 
 register_runner_endpoints(app, process_run, process_run_measured)
 
