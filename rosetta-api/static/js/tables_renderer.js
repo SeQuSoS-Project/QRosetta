@@ -484,7 +484,7 @@ function _provenanceBlock(prov) {
     if (!prov) return wrap;
     const rows = [
         ['qubit ordering', _kvMap(prov.qubit_ordering)],
-        ['seed', _kvMap(prov.seed)],
+        ['seed', prov.seed ? _kvMap(prov.seed) : undefined],
         ['sampling method', prov.sampling_method ? _kvMap(prov.sampling_method) : undefined],
         ['SDK versions', _kvMap(prov.sdk_versions)],
     ];

@@ -5,7 +5,6 @@ from qrosetta_commons.helpers import register_runner_endpoints, run_cli_main
 import pytket.qasm
 from pytket.extensions.qiskit import tk_to_qiskit
 from qiskit_aer import AerSimulator
-from qiskit.circuit import QuantumCircuit
 from qiskit import transpile as qiskit_transpile
 from qiskit import qasm2
 import time

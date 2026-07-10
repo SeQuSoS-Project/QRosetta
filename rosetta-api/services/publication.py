@@ -11,7 +11,7 @@ import csv
 import io
 from datetime import datetime
 from html import escape as _html_escape
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 import matplotlib
 matplotlib.use("Agg")  # headless, deterministic — before pyplot import

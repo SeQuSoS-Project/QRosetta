@@ -4,7 +4,6 @@ from fastapi import FastAPI
 from qrosetta_commons.helpers import register_runner_endpoints, run_cli_main
 from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, get_logger, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED, get_num_qubits_from_qasm, strip_barriers_from_qasm, with_sdk_versions, statevector_result, counts_result, runner_error
 import pennylane as qml
-import numpy as np
 import functools
 import time
 import gc

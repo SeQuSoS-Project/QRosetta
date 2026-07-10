@@ -5,7 +5,7 @@ import json
 import boto3
 import cachetools
 from botocore.exceptions import ClientError
-from typing import Dict, Any, List
+from typing import Any, List
 from config import settings
 from qrosetta_commons.helpers import get_logger
 

@@ -9,7 +9,6 @@ import os
 from datetime import datetime, timedelta, timezone
 import bcrypt
 from jose import jwt
-from config import settings
 
 _DEFAULT_SECRET = "your-secret-key-here-please-change-in-prod"
 SECRET_KEY = os.getenv("SECRET_KEY", _DEFAULT_SECRET)

@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    name: unit tests (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.10 matches the python:3.10-slim API image; 3.12 is an upper bound.
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node (parity harness)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            rosetta-api/requirements.txt
+            rosetta-api/tests/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r rosetta-api/requirements.txt
+          pip install -r rosetta-api/tests/requirements.txt
+
+      - name: Run unit tests
+        working-directory: rosetta-api
+        run: python -m pytest tests/unit -q
+
+  static-checks:
+    name: static checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Syntax-check frontend JS
+        run: |
+          for f in rosetta-api/static/js/*.js; do
+            node --check "$f"
+          done
+
+      - name: Byte-compile Python (services, routers, schemas, runners, commons)
+        run: |
+          python -m compileall -q \
+            rosetta-api/services rosetta-api/routers rosetta-api/schemas \
+            rosetta-api/main.py rosetta-api/config.py \
+            runners/*/main.py shared/qrosetta_commons
+
+      - name: Check for unused imports
+        run: |
+          pip install pyflakes==3.2.0
+          python -m pyflakes \
+            rosetta-api/services rosetta-api/routers rosetta-api/schemas \
+            rosetta-api/main.py rosetta-api/config.py \
+            runners/*/main.py shared/qrosetta_commons

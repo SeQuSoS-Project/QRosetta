@@ -149,10 +149,6 @@ def _pair_provenance(res_i, res_j, mode):
             sim_i: res_i.get("qubit_ordering"),
             sim_j: res_j.get("qubit_ordering"),
         },
-        "seed": {
-            sim_i: res_i.get("seed"),
-            sim_j: res_j.get("seed"),
-        },
         "sdk_versions": {
             sim_i: res_i.get("sdk_versions", {}),
             sim_j: res_j.get("sdk_versions", {}),
@@ -163,6 +159,10 @@ def _pair_provenance(res_i, res_j, mode):
         },
     }
     if mode == "measured":
+        provenance["seed"] = {
+            sim_i: res_i.get("seed"),
+            sim_j: res_j.get("seed"),
+        }
         provenance["sampling_method"] = {
             sim_i: res_i.get("sampling_method"),
             sim_j: res_j.get("sampling_method"),

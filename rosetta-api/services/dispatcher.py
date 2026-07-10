@@ -1,6 +1,5 @@
 # Dispatches jobs to external quantum runners.
 
-import os
 from config import settings
 from qrosetta_commons.helpers import get_logger
 from services.dispatcher_http import dispatch_http_local

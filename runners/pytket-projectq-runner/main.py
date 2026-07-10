@@ -1,12 +1,10 @@
 # Execution script for the quantum simulator runner.
 
 from fastapi import FastAPI
-import numpy as np
 import pytket.qasm
 from pytket.extensions.projectq import ProjectQBackend
 from pytket.passes import RemoveBarriers
 from pytket.transform import Transform
-from collections import Counter
 from qrosetta_commons.helpers import register_runner_endpoints, run_cli_main
 from qrosetta_commons.helpers import _sample_from_statevector, MemoryMonitor, get_logger, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED, with_sdk_versions, statevector_result, counts_result, runner_error
 import time
@@ -15,7 +13,6 @@ import gc
 app = FastAPI(title="ProjectQ Runner")
 logger = get_logger("pytket-projectq-runner")
 
-import projectq.types._qubit
 from projectq.types._qubit import Qubit
 
 _original_del = Qubit.__del__
