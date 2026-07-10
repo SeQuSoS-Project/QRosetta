@@ -22,7 +22,7 @@ def save_report_to_disk(data: list):
         return
     try:
         with open(os.path.join(_REPORTS_DIR, "latest_full_report.json"), "w") as f:
-            json.dump(data, f, indent=2)
+            json.dump(data, f)
     except Exception as e:
         logger.error(f"Failed to write report to disk: {e}")
 

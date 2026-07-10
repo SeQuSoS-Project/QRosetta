@@ -211,7 +211,10 @@ function makeCopyIconButton(getText, title = 'Copy to clipboard') {
     return btn;
 }
 
-function copyRawJson(btn) { copyText(jsonOutput.textContent, btn); }
+function copyRawJson(btn) {
+    if (typeof _renderRawTabIfNeeded === 'function') _renderRawTabIfNeeded();
+    copyText(jsonOutput.textContent, btn);
+}
 
 // Copy the current input-circuit QASM from the editor.
 function copyCircuitQasm(btn) {
@@ -225,6 +228,7 @@ function downloadFullReport() {
 }
 
 function downloadRawJson() {
+    if (typeof _renderRawTabIfNeeded === 'function') _renderRawTabIfNeeded();
     const jsonString = jsonOutput.textContent;
     if (!jsonString || jsonString.trim() === '') {
         alert("No JSON content to download.");
@@ -390,6 +394,13 @@ const _BATCH_STATUS_ICON = {
     error: ['✕', 'text-red-600'],
     queued: ['◦', 'text-gray-400'],
 };
+function _batchRowMarkup(t, i) {
+    const [icon, cls] = _BATCH_STATUS_ICON[t.status] || _BATCH_STATUS_ICON.queued;
+    return `<div id="bp-row-${i}" data-status="${t.status || 'queued'}" class="flex items-center gap-2 text-xs">
+            <span class="font-mono ${cls} w-3 text-center">${icon}</span>
+            <span class="truncate text-gray-600">${_escapeHtml(t.name || '')}</span>
+        </div>`;
+}
 function renderBatchProgress(progress) {
     const host = document.getElementById('batch-progress');
     if (!host) return;
@@ -399,23 +410,34 @@ function renderBatchProgress(progress) {
         return;
     }
     host.classList.remove('hidden');
-    // The poller re-renders this every few seconds; keep the task list's scroll position so
-    // it doesn't jump back to the top on each update.
-    const prevScroll = document.getElementById('batch-progress-list')?.scrollTop || 0;
-    const rows = progress.tasks.map(t => {
-        const [icon, cls] = _BATCH_STATUS_ICON[t.status] || _BATCH_STATUS_ICON.queued;
-        return `<div class="flex items-center gap-2 text-xs">
-            <span class="font-mono ${cls} w-3 text-center">${icon}</span>
-            <span class="truncate text-gray-600">${_escapeHtml(t.name || '')}</span>
-        </div>`;
-    }).join('');
+    const tasks = progress.tasks;
+    const counterText = `${progress.completed || 0}/${progress.total || tasks.length}`;
+
+    // The poller calls this every few seconds; after the first build, update only the rows
+    // whose status changed (and the counter) so the list doesn't thrash the DOM or jump scroll.
+    let list = document.getElementById('batch-progress-list');
+    if (list && list.children.length === tasks.length) {
+        const counter = document.getElementById('batch-progress-counter');
+        if (counter) counter.textContent = counterText;
+        tasks.forEach((t, i) => {
+            const row = list.children[i];
+            if (row && row.dataset.status !== (t.status || 'queued')) {
+                row.outerHTML = _batchRowMarkup(t, i);
+            }
+        });
+        return;
+    }
+
+    // First build (or the task set changed): render the whole list once.
+    const prevScroll = list?.scrollTop || 0;
+    const rows = tasks.map((t, i) => _batchRowMarkup(t, i)).join('');
     host.innerHTML = `
         <div class="flex justify-between items-center text-[11px] font-mono text-indigo-400 mb-1">
             <span class="uppercase tracking-widest">circuits</span>
-            <span>${progress.completed || 0}/${progress.total || progress.tasks.length}</span>
+            <span id="batch-progress-counter">${counterText}</span>
         </div>
         <div id="batch-progress-list" class="max-h-48 overflow-y-auto space-y-0.5 pr-1 border-l-2 border-indigo-100 pl-2">${rows}</div>`;
-    const list = document.getElementById('batch-progress-list');
+    list = document.getElementById('batch-progress-list');
     if (list) list.scrollTop = prevScroll;
 }
 

@@ -41,8 +41,33 @@ def _attach_request_seed(results: list, seed: int = None) -> list:
             result.setdefault("seed", seed)
     return results
 
+
+# Statevectors above this amplitude count are dropped from the copy returned to the browser:
+# a 2**14-amplitude vector is already ~350 KB of Base64, and the client never renders raw
+# amplitudes (the analysis is computed server-side). The full vectors are kept in the
+# on-disk report and the export path.
+_MAX_DISPLAY_STATEVECTOR_AMPLITUDES = 16384  # 2**14
+_MAX_DISPLAY_STATEVECTOR_B64_CHARS = _MAX_DISPLAY_STATEVECTOR_AMPLITUDES * 16 * 4 // 3
+_STATEVECTOR_PLACEHOLDER = "<Statevector too large for display. Analysis included in reports; full data in the exported report.>"
+
+
+def _display_result(result):
+    """Return a copy of a runner result safe to send to the browser, replacing an
+    oversized statevector with a placeholder. Handles the Base64-string wire format and
+    the legacy list format; leaves error/counts results untouched."""
+    if not isinstance(result, dict):
+        return result
+    sv = result.get("statevector")
+    too_large = (
+        (isinstance(sv, str) and len(sv) > _MAX_DISPLAY_STATEVECTOR_B64_CHARS)
+        or (isinstance(sv, list) and len(sv) > _MAX_DISPLAY_STATEVECTOR_AMPLITUDES)
+    )
+    if too_large:
+        return {**result, "statevector": _STATEVECTOR_PLACEHOLDER}
+    return result
+
 async def run_single_circuit_comparison(qasm_string: str, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = 60, target_simulators: list = None, runner_statuses: dict = None, runner_phases: dict = None, apply_preprocessing: bool = True, thresholds: dict = None):
-    logger.info(f"Processing circuit...")
+    logger.info("Processing circuit...")
     try:
         if apply_preprocessing:
             tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_string)
@@ -85,14 +110,11 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
         resource_report = {}
 
     full_report_data = [res.copy() for res in aggregated_results]
-    save_report_to_disk(full_report_data)
+    # Offload the (potentially large, statevector-carrying) disk write so it does not block
+    # the event loop while the client is polling for status.
+    await asyncio.to_thread(save_report_to_disk, full_report_data)
 
-    display_results = []
-    for result in aggregated_results:
-        if "statevector" in result and isinstance(result["statevector"], list) and len(result["statevector"]) > 16384:
-            display_results.append({**result, "statevector": "<Statevector too large for display. Analysis included in reports.>"})
-        else:
-            display_results.append(result)
+    display_results = [_display_result(result) for result in aggregated_results]
 
     return {
         "input_qasm": qasm_string,
@@ -160,7 +182,7 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
 
     aggregated_results = _attach_request_seed(results_native + results_sampled, seed)
 
-    save_report_to_disk(aggregated_results)
+    await asyncio.to_thread(save_report_to_disk, aggregated_results)
 
     try:
         divergence_report, performance_report, resource_report = await compile_measurement_reports(aggregated_results, n_shots, thresholds)
@@ -294,5 +316,5 @@ async def worker_batch_suite(job_id: str, payload: BatchPayload):
     benchmark_summary, _ = await run_batch_tasks(payload, runner_statuses, progress)
 
     progress["current_index"] = None
-    logger.info(f"--- Batch Suite Complete ---")
+    logger.info("--- Batch Suite Complete ---")
     ACTIVE_JOBS[job_id] = {"status": "completed", "target": payload.execution_target, "results": {"benchmark_summary": benchmark_summary}, "runner_statuses": runner_statuses, "progress": progress, "finished_at": time.time()}

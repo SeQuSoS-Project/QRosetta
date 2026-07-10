@@ -89,7 +89,7 @@ function clearReport() {
         }
         if (panel) panel.classList.add('hidden');
     });
-    if (jsonOutput) jsonOutput.textContent = '';
+    _setRawTabData(null);
 
     const authorNameInput = document.getElementById('export-author-name');
     const authorAffiliationInput = document.getElementById('export-author-affiliation');
@@ -99,9 +99,39 @@ function clearReport() {
     if (includeSvCheckbox) includeSvCheckbox.checked = false;
 }
 
+// The Exports/raw tab holds a pretty-printed dump of the whole report. Stringifying it
+// eagerly on every render is wasteful for large reports, so defer it until the tab is
+// first opened.
+let _rawTabData = null;
+let _rawTabRendered = false;
+
+function _reportHasTruncatedSv(data) {
+    const scan = (arr) => Array.isArray(arr) && arr.some(
+        r => typeof r?.statevector === 'string' && r.statevector.startsWith('<Statevector too large'));
+    if (scan(data?.raw_results)) return true;
+    if (Array.isArray(data?.benchmark_summary)) {
+        return data.benchmark_summary.some(task => scan(task?.raw_results));
+    }
+    return false;
+}
+
+function _setRawTabData(data) {
+    _rawTabData = data;
+    _rawTabRendered = false;
+    if (jsonOutput) jsonOutput.textContent = '';
+}
+
+function _renderRawTabIfNeeded() {
+    if (_rawTabRendered || !_rawTabData || !jsonOutput) return;
+    jsonOutput.textContent = JSON.stringify(_rawTabData, null, 2);
+    _rawTabRendered = true;
+}
+
 function showTab(tabName) {
     welcomeMessage.classList.add('hidden');
     Object.values(panelElements).forEach(panel => { if (panel) panel.classList.add('hidden') });
+
+    if (tabName === 'raw') _renderRawTabIfNeeded();
 
     const panel = panelElements[tabName];
     if (panel) panel.classList.remove('hidden');
@@ -190,12 +220,11 @@ function _makeStatusBadge(styleKey, label) {
 
 function renderDetailReport(data, title, config = getState().currentRunnerConfig) {
     renderTabs(['summary', 'performance', 'resources', 'divergence', 'agreement', 'artifacts', 'raw']);
-    const jsonString = JSON.stringify(data, null, 2);
-    jsonOutput.textContent = jsonString;
+    _setRawTabData(data);
 
     const warningBanner = document.getElementById('truncation-warning');
     const downloadButton = document.getElementById('download-btn');
-    if (jsonString.includes("<Statevector too large for display")) {
+    if (_reportHasTruncatedSv(data)) {
         warningBanner.classList.remove('hidden');
         downloadButton.classList.remove('hidden');
     } else {
@@ -219,7 +248,7 @@ function renderDetailReport(data, title, config = getState().currentRunnerConfig
 function renderSuiteSummary(data, title) {
     clearReport();
     renderTabs(['suite-summary', 'raw']);
-    jsonOutput.textContent = JSON.stringify(data, null, 2);
+    _setRawTabData(data);
 
     const panel = panelElements['suite-summary'];
     if (!panel) return;

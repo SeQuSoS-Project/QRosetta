@@ -72,7 +72,7 @@ def save_run(
         db.commit()
         db.refresh(new_run)
         return new_run
-    except Exception as e:
+    except Exception:
         db.rollback()
         logger.error("Failed to save run history", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to save run history")
