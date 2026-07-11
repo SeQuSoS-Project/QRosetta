@@ -1,7 +1,6 @@
 # Manages quantum job lifecycle and status.
 
 import asyncio
-import gc
 import random
 import time
 import pytket.qasm
@@ -87,8 +86,6 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
     except Exception as e:
         return { "input_qasm": qasm_string, "error": str(e) }
 
-    gc.collect()
-
     if target_simulators:
         filtered_urls = {k: v for k, v in STATEVECTOR_RUNNER_URLS.items() if k in target_simulators}
     else:
@@ -165,8 +162,6 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
         }
     except Exception as e:
         return { "input_qasm": qasm_string, "error": str(e) }
-
-    gc.collect()
 
     if target_simulators:
         filtered_sampled = {k: v for k, v in SAMPLED_SV_URLS.items() if k in target_simulators}

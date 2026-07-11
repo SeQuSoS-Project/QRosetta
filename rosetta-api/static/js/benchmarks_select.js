@@ -186,7 +186,7 @@ async function populateBenchmarkSelectors() {
                 o.textContent = algo;
                 mqtSel.appendChild(o);
             });
-            mqtSel.addEventListener('change', updateMqtQubitRange);
+            mqtSel.onchange = updateMqtQubitRange;  // idempotent: won't stack on re-populate
             updateMqtQubitRange();
         }
 

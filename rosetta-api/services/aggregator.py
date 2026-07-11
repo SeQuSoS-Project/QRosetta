@@ -1,7 +1,6 @@
 # Aggregates results from multiple quantum runners.
 
 import asyncio
-import gc
 import services.analysis as comparator
 from qrosetta_commons.helpers import get_logger
 
@@ -13,7 +12,6 @@ async def _compile_reports(divergence_task_factory, aggregated_results: list):
     thread pool. ``divergence_task_factory(loop)`` schedules the mode-specific
     divergence builder (statevector or counts)."""
     loop = asyncio.get_event_loop()
-    gc.collect()
 
     divergence_report_task = divergence_task_factory(loop)
     performance_report_task = loop.run_in_executor(
