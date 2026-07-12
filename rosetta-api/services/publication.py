@@ -9,6 +9,7 @@
 
 import csv
 import io
+import threading
 from datetime import datetime
 from html import escape as _html_escape
 from typing import Any, Dict, List, Tuple
@@ -16,6 +17,10 @@ from typing import Any, Dict, List, Tuple
 import matplotlib
 matplotlib.use("Agg")  # headless, deterministic — before pyplot import
 import matplotlib.pyplot as plt
+
+# pyplot keeps global state and is not thread-safe. Callers render figures off the event
+# loop (asyncio.to_thread), so serialize every figure build+save+close through this lock.
+_MPL_LOCK = threading.Lock()
 from matplotlib.colors import LinearSegmentedColormap
 import numpy as np
 from openpyxl import Workbook
@@ -149,12 +154,16 @@ def _savefig_bytes(fig, fmt: str, scale: int = 1) -> bytes:
 
 
 def _render_figure(build_fig, fmt: str, scale: int = 1) -> bytes:
-    """Build a fresh figure, render one format, and always close it (no figure leak)."""
-    fig = build_fig()
-    try:
-        return _savefig_bytes(fig, fmt, scale)
-    finally:
-        plt.close(fig)
+    """Build a fresh figure, render one format, and always close it (no figure leak).
+
+    Serialized on _MPL_LOCK because pyplot's global state is not thread-safe and callers
+    run this in a worker thread."""
+    with _MPL_LOCK:
+        fig = build_fig()
+        try:
+            return _savefig_bytes(fig, fmt, scale)
+        finally:
+            plt.close(fig)
 
 
 def _fmt_num(v: Any, digits: int = 4) -> str:

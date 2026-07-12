@@ -1,5 +1,6 @@
 # FastAPI router endpoints for FAIR data export.
 
+import asyncio
 import io
 
 from fastapi import APIRouter, HTTPException, Request
@@ -46,7 +47,8 @@ async def export_ro_crate(request: Request, payload: schemas.ExportRequest):
     )
 
     try:
-        zip_bytes = build_ro_crate(ctx)
+        # Figure rendering + zip assembly is CPU-bound; run it off the event loop.
+        zip_bytes = await asyncio.to_thread(build_ro_crate, ctx)
     except Exception:
         logger.error("RO-Crate export failed", exc_info=True)
         raise HTTPException(status_code=500, detail="Export failed")

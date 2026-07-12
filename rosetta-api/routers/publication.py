@@ -5,6 +5,7 @@
 # demand from the small statevector-stripped report the frontend posts. Stateless, public,
 # and stores nothing.
 
+import asyncio
 import io
 
 from fastapi import APIRouter, HTTPException, Request
@@ -34,7 +35,10 @@ async def publication_render(request: Request, payload: schemas.PublicationRende
 
     mode = "measured" if "n_shots" in results else "statevector"
     try:
-        data, mime, _legend = render_artifact(
+        # matplotlib is CPU-bound; run it off the event loop so concurrent requests
+        # (e.g. status pollers) are not blocked while a figure renders.
+        data, mime, _legend = await asyncio.to_thread(
+            render_artifact,
             results, mode, payload.artifact_id, payload.format, payload.scale
         )
     except KeyError:

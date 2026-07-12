@@ -52,6 +52,27 @@ def test_statevector_pairwise_evidence_preserves_matrices_and_labels_direct_agre
     }
 
 
+def test_statevector_pairwise_evidence_three_runners_memoized_decode_is_consistent():
+    # Three runners exercise the per-runner statevector decode/normalize cache: each vector
+    # is reused across multiple pairs (b is compared as both the second and first member; c
+    # as the second member twice). The report must match a plain per-pair recompute.
+    report = create_divergence_report([
+        {"simulator": "a", "statevector": ["1", "0"], "qubit_ordering": "lsb"},
+        {"simulator": "b", "statevector": ["1", "0"], "qubit_ordering": "lsb"},
+        {"simulator": "c", "statevector": ["0", "1"], "qubit_ordering": "lsb"},
+    ])
+
+    assert report["fidelity_matrix"] == [
+        [-1.0, 1.0, 0.0],
+        [1.0, -1.0, 0.0],
+        [0.0, 0.0, -1.0],
+    ]
+    assert _record(report, "a", "b")["agreement"] == "agree_directly"
+    assert _record(report, "a", "c")["agreement"] == "residual_disagreement"
+    assert _record(report, "b", "c")["agreement"] == "residual_disagreement"
+    _assert_strict_json(report)
+
+
 def test_statevector_pairwise_evidence_labels_global_phase_only_when_phase_nonzero():
     report = create_divergence_report([
         {"simulator": "a", "statevector": ["1", "0"], "qubit_ordering": "msb"},

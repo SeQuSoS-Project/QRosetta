@@ -467,6 +467,27 @@ def create_divergence_report(results_list, thresholds=None):
 
     logger.info("Starting sequential divergence comparison...")
 
+    # Decode + normalize each runner's statevector once and reuse across every pair. The
+    # cached values are identical to recomputing them per pair (parse_statevector and
+    # _normalize_statevector are pure); this only removes the O(N^2) re-decode of the same
+    # Base64 vector. Parse-error and invalid-statevector handling stays inline below.
+    _parsed_sv = {}
+    _normalized_sv = {}
+
+    def _get_parsed_sv(sim_name, res):
+        sv = _parsed_sv.get(sim_name)
+        if sv is None:
+            sv = parse_statevector(res["statevector"])
+            _parsed_sv[sim_name] = sv
+        return sv
+
+    def _get_normalized_sv(sim_name, sv):
+        nn = _normalized_sv.get(sim_name)
+        if nn is None:
+            nn = _normalize_statevector(sv)
+            _normalized_sv[sim_name] = nn
+        return nn
+
     for i in range(n_total):
         sim_i_name = simulators[i]
         res_i_raw = results_list[i]
@@ -484,7 +505,7 @@ def create_divergence_report(results_list, thresholds=None):
 
         try:
             res_i = valid_results[sim_to_valid_idx[sim_i_name]]
-            sv_i = parse_statevector(res_i["statevector"])
+            sv_i = _get_parsed_sv(sim_i_name, res_i)
 
             invalid_reason_i = _statevector_invalid_reason(sv_i)
             if invalid_reason_i is not None:
@@ -499,7 +520,7 @@ def create_divergence_report(results_list, thresholds=None):
                     )
                 continue
 
-            sv_i_norm, norm_i = _normalize_statevector(sv_i)
+            sv_i_norm, norm_i = _get_normalized_sv(sim_i_name, sv_i)
 
             if not np.isclose(norm_i, 1.0, atol=normalization_tolerance):
                  divergences_found.append({
@@ -536,7 +557,7 @@ def create_divergence_report(results_list, thresholds=None):
 
             try:
                 res_j = valid_results[sim_to_valid_idx[sim_j_name]]
-                sv_j = parse_statevector(res_j["statevector"])
+                sv_j = _get_parsed_sv(sim_j_name, res_j)
 
                 invalid_reason_j = _statevector_invalid_reason(sv_j)
                 if invalid_reason_j is not None:
@@ -573,7 +594,7 @@ def create_divergence_report(results_list, thresholds=None):
                     del sv_j
                     continue
 
-                sv_j_norm, norm_j = _normalize_statevector(sv_j)
+                sv_j_norm, norm_j = _get_normalized_sv(sim_j_name, sv_j)
                 fidelity, relative_phase = _statevector_inner_metrics(
                     sv_i_norm,
                     sv_j_norm,
@@ -654,9 +675,9 @@ def create_divergence_report(results_list, thresholds=None):
                     )
                 )
 
-        del sv_i
-        del sv_i_norm
-        gc.collect()
+    _parsed_sv.clear()
+    _normalized_sv.clear()
+    gc.collect()
 
     report = {
         "simulators": simulators,
