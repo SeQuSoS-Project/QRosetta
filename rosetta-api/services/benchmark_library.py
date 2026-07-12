@@ -1,6 +1,7 @@
 import os
 import re
 import glob
+from functools import lru_cache
 
 from fastapi import HTTPException
 from qrosetta_commons.helpers import get_logger
@@ -62,12 +63,20 @@ def get_qasmbench_circuit(circuit_name: str) -> str:
     return _read_bundled_qasm(_QASMBENCH_DIR, f"{circuit_name}.qasm", "QASMBench")
 
 
-def list_qasmbench() -> list[str]:
-    """Return the sorted names of all bundled QASMBench circuits (no extension)."""
-    return sorted(
+# The bundled QASM files are baked into the image and never change at runtime, so the
+# directory scans are cached. A fresh copy is returned each call so a caller can never
+# mutate the cached value.
+@lru_cache(maxsize=1)
+def _qasmbench_names() -> tuple:
+    return tuple(sorted(
         os.path.splitext(os.path.basename(p))[0]
         for p in glob.glob(os.path.join(_QASMBENCH_DIR, "*.qasm"))
-    )
+    ))
+
+
+def list_qasmbench() -> list[str]:
+    """Return the sorted names of all bundled QASMBench circuits (no extension)."""
+    return list(_qasmbench_names())
 
 
 def get_mqt_benchmark(algorithm: str, qubits: int) -> str:
@@ -77,8 +86,8 @@ def get_mqt_benchmark(algorithm: str, qubits: int) -> str:
     return _read_bundled_qasm(_MQTBENCH_DIR, f"{algorithm}_n{qubits}.qasm", "MQTBench")
 
 
-def list_mqt() -> dict[str, list[int]]:
-    """Return available MQTBench algorithms mapped to their bundled qubit sizes."""
+@lru_cache(maxsize=1)
+def _mqt_index() -> tuple:
     available: dict[str, list[int]] = {}
     for p in glob.glob(os.path.join(_MQTBENCH_DIR, "*.qasm")):
         stem = os.path.splitext(os.path.basename(p))[0]
@@ -86,4 +95,9 @@ def list_mqt() -> dict[str, list[int]]:
         if not m:
             continue
         available.setdefault(m.group(1), []).append(int(m.group(2)))
-    return {algo: sorted(sizes) for algo, sizes in sorted(available.items())}
+    return tuple((algo, tuple(sorted(sizes))) for algo, sizes in sorted(available.items()))
+
+
+def list_mqt() -> dict[str, list[int]]:
+    """Return available MQTBench algorithms mapped to their bundled qubit sizes."""
+    return {algo: list(sizes) for algo, sizes in _mqt_index()}
