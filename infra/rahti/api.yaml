@@ -44,7 +44,7 @@ items:
                 fieldPath: metadata.namespace
           - name: RUNNER_TIMEOUT_SEC
             value: "300"
-          - name: FRONTEND_URL
+          - name: CORS_ALLOW_ORIGINS
             value: "https://rosetta-frontend-652754634999.us-central1.run.app,http://localhost:3000,http://localhost:8080"
           - name: DATABASE_URL
             valueFrom:

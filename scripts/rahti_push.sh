@@ -81,9 +81,11 @@ oc apply -f infra/rahti/api.yaml  -n "$NAMESPACE"
 #    API on stale code. Setting the image to the immutable :$IMAGE_TAG tag (which the
 #    node has never cached) forces a real pull. This must run AFTER `oc apply` above,
 #    which re-pins the image back to :latest. IMAGE_TAG env is still needed so the
-#    dispatcher requests runner Job images by the same hash tag.
+#    dispatcher requests runner Job images by the same hash tag. QROSETTA_GIT_SHA is
+#    the same value, recorded into experiment manifests as real provenance instead of
+#    the "unknown" fallback.
 echo "--- Setting rosetta-api image + IMAGE_TAG=$IMAGE_TAG and restarting ---"
-oc set env   deployment/rosetta-api IMAGE_TAG="$IMAGE_TAG" -n "$NAMESPACE"
+oc set env   deployment/rosetta-api IMAGE_TAG="$IMAGE_TAG" QROSETTA_GIT_SHA="$IMAGE_TAG" -n "$NAMESPACE"
 oc set image deployment/rosetta-api api="$REGISTRY/rosetta-api:$IMAGE_TAG" -n "$NAMESPACE"
 oc rollout status  deployment/rosetta-api -n "$NAMESPACE" --timeout=120s
 

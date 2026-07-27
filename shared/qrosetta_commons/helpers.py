@@ -283,46 +283,54 @@ def count_qasm_gates_and_depth(qasm_str: str) -> tuple:
     return gate_count, max(depth_by_qubit.values(), default=0)
 
 
-def _call_once(module_name, func_name, payload):
-    module = _importlib.import_module(module_name)
-    return getattr(module, func_name)(payload)
+def run_with_uniform_measurement(func, payload):
+    """Run a runner's process_run/process_run_measured with a uniform disclosed warm-up,
+    getrusage-based peak/CPU capture, and derived n_shots/gate_count/circuit_depth.
+
+    Shared by both deployment modes: the local isolated-child path (_isolated_target, via
+    run_isolated) and the Kubernetes per-pod CLI path (run_cli_main's --s3-job-id branch),
+    so published timing/memory numbers mean the same thing regardless of where a run
+    executed. In k8s mode this doubles a job's simulation work (warm-up + timed call) since
+    every request already gets a fresh cold pod; that cost is the price of a comparable
+    definition of "compilation/simulation time" across both modes, not a bug.
+    """
+    func(payload)  # discarded uniform warm-up: covers import/JIT/compile caches
+
+    repeats = max(1, int(payload.get("timing_repeats", 1) or 1))
+    timed_results = [func(payload) for _ in range(repeats)]
+    result = timed_results[-1]
+
+    if isinstance(result, dict):
+        if repeats > 1:
+            exec_times = [r.get("execution_time_sec") for r in timed_results
+                          if isinstance(r.get("execution_time_sec"), (int, float))]
+            if exec_times:
+                result["timing_repeats"] = repeats
+                result["execution_time_sec_mean"] = _statistics.mean(exec_times)
+                result["execution_time_sec_stdev"] = (
+                    _statistics.stdev(exec_times) if len(exec_times) > 1 else 0.0)
+
+        usage = _resource.getrusage(_resource.RUSAGE_SELF)
+        result["process_peak_rss_mb"] = usage.ru_maxrss / 1024  # ru_maxrss is KB on Linux
+        result["cpu_time_sec"] = usage.ru_utime + usage.ru_stime
+
+        if "n_shots" in payload:
+            result["n_shots"] = payload["n_shots"]
+
+        transpiled_qasm = result.get("transpiled_qasm")
+        if transpiled_qasm:
+            gate_count, circuit_depth = count_qasm_gates_and_depth(transpiled_qasm)
+            result["gate_count"] = gate_count
+            result["circuit_depth"] = circuit_depth
+
+    return result
 
 
 def _isolated_target(result_q, module_name, func_name, payload):
     try:
-        # Uniform disclosed warm-up: one full, discarded call (covering import/JIT/compile
-        # caches) before every timed measurement, for all runners alike. Runners no longer
-        # need their own ad-hoc warm-up call.
-        _call_once(module_name, func_name, payload)
-
-        repeats = max(1, int(payload.get("timing_repeats", 1) or 1))
-        timed_results = [_call_once(module_name, func_name, payload) for _ in range(repeats)]
-        result = timed_results[-1]
-
-        if isinstance(result, dict):
-            if repeats > 1:
-                exec_times = [r.get("execution_time_sec") for r in timed_results
-                              if isinstance(r.get("execution_time_sec"), (int, float))]
-                if exec_times:
-                    result["timing_repeats"] = repeats
-                    result["execution_time_sec_mean"] = _statistics.mean(exec_times)
-                    result["execution_time_sec_stdev"] = (
-                        _statistics.stdev(exec_times) if len(exec_times) > 1 else 0.0)
-
-            usage = _resource.getrusage(_resource.RUSAGE_SELF)
-            result["process_peak_rss_mb"] = usage.ru_maxrss / 1024  # ru_maxrss is KB on Linux
-            result["cpu_time_sec"] = usage.ru_utime + usage.ru_stime
-
-            if "n_shots" in payload:
-                result["n_shots"] = payload["n_shots"]
-
-            transpiled_qasm = result.get("transpiled_qasm")
-            if transpiled_qasm:
-                gate_count, circuit_depth = count_qasm_gates_and_depth(transpiled_qasm)
-                result["gate_count"] = gate_count
-                result["circuit_depth"] = circuit_depth
-
-        result_q.put(("ok", result))
+        module = _importlib.import_module(module_name)
+        func = getattr(module, func_name)
+        result_q.put(("ok", run_with_uniform_measurement(func, payload)))
     except Exception as e:
         result_q.put(("err", f"{type(e).__name__}: {e}"))
 
@@ -496,7 +504,8 @@ def run_cli_main(app, process_run, process_run_measured, cli_name):
     args = parser.parse_args()
 
     def _process(payload_dict):
-        return process_run(payload_dict) if args.endpoint == "run" else process_run_measured(payload_dict)
+        func = process_run if args.endpoint == "run" else process_run_measured
+        return run_with_uniform_measurement(func, payload_dict)
 
     if args.s3_job_id:
         import boto3
