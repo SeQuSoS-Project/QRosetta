@@ -1,0 +1,260 @@
+{
+  "git_sha": "50e0af89917afcbebee88b9bc2bd22ede1a53526",
+  "qrosetta_api": "in-app",
+  "config": {
+    "circuits": [
+      {
+        "source": "preset",
+        "algorithm": "ghz",
+        "qubits": 3,
+        "qasm_string": null,
+        "name": null
+      },
+      {
+        "source": "preset",
+        "algorithm": "bell",
+        "qubits": 2,
+        "qasm_string": null,
+        "name": null
+      },
+      {
+        "source": "preset",
+        "algorithm": "qft",
+        "qubits": 3,
+        "qasm_string": null,
+        "name": null
+      },
+      {
+        "source": "preset",
+        "algorithm": "bv",
+        "qubits": 4,
+        "qasm_string": null,
+        "name": null
+      },
+      {
+        "source": "preset",
+        "algorithm": "grover",
+        "qubits": 3,
+        "qasm_string": null,
+        "name": null
+      },
+      {
+        "source": "preset",
+        "algorithm": "grover",
+        "qubits": 5,
+        "qasm_string": null,
+        "name": null
+      }
+    ],
+    "mode": "measured",
+    "n_shots": 2048,
+    "optimization_level": 0,
+    "runner_config": {},
+    "runner_phases": {},
+    "timeout_seconds": 300,
+    "target_simulators": [],
+    "execution_target": "local",
+    "bypass_limits": false,
+    "preprocessing_modes": [
+      true
+    ],
+    "seed": 42,
+    "thresholds": null,
+    "keep_statevectors": false,
+    "label": "experiment-2"
+  },
+  "config_sha256": "19b446b9ef2602c7f3f952a9b81f2dc5567c9669974490cdc0f3ba6d01df98c7",
+  "requested_seed": 42,
+  "effective_seeds_per_axis": {
+    "measured_preprocOn": 42
+  },
+  "circuits": [
+    {
+      "id": "000_ghz-3q",
+      "algorithm": "ghz",
+      "qubits": 3,
+      "qasm_sha256": "e53422b3e0bea94777752e2b1f13234fdf5ba4872e0cec1369a6b02a6eadbe59"
+    },
+    {
+      "id": "001_bell-2q",
+      "algorithm": "bell",
+      "qubits": 2,
+      "qasm_sha256": "44a410da0a955b7c17bbc2d8b6e78de50f9d4ac901a16718eb68a6eab74e6183"
+    },
+    {
+      "id": "002_qft-3q",
+      "algorithm": "qft",
+      "qubits": 3,
+      "qasm_sha256": "7fb38e0b77d7e76b62b9ae3b70cce08b90636205affc1a246f3e348fe8d5249d"
+    },
+    {
+      "id": "003_bv-4q",
+      "algorithm": "bv",
+      "qubits": 4,
+      "qasm_sha256": "b7ca3b3f9f0c64f972ccbd648c1ceab5ac553731e1ded5ce50e35bd9bcf1d1fd"
+    },
+    {
+      "id": "004_grover-3q",
+      "algorithm": "grover",
+      "qubits": 3,
+      "qasm_sha256": "0b2ab835d0e9e6864e81bdc16cab5dc8d8597c299873a783126f6ac2e101c8da"
+    },
+    {
+      "id": "005_grover-5q",
+      "algorithm": "grover",
+      "qubits": 5,
+      "qasm_sha256": "c91950686feaf7626a060c7a97e2dedd7aaf07f3c10fadd2d2896f5c10a54641"
+    }
+  ],
+  "executed_sdk_versions": {
+    "qiskit": {
+      "pytket-qiskit": "0.57.0",
+      "pytket": "1.33.0",
+      "qiskit": "1.2.4",
+      "qiskit-ibm-runtime": "0.33.2",
+      "qiskit-aer": "0.15.1"
+    },
+    "cirq": {
+      "cirq-aqt": "1.4.1",
+      "pyquil": "4.17.0",
+      "cirq": "1.4.1",
+      "pytket-cirq": "0.38.0",
+      "cirq-pasqal": "1.4.1",
+      "pytket": "1.33.0",
+      "cirq-core": "1.4.1",
+      "cirq-google": "1.4.1",
+      "cirq-web": "1.4.1",
+      "cirq-ionq": "1.4.1",
+      "cirq-rigetti": "1.4.1"
+    },
+    "qulacs": {
+      "pytket-qulacs": "0.38.0",
+      "pytket": "1.33.0",
+      "qulacs": "0.6.5"
+    },
+    "qsim-cirq": {
+      "cirq-aqt": "1.4.1",
+      "pyquil": "4.17.0",
+      "cirq": "1.4.1",
+      "pytket-cirq": "0.38.0",
+      "qsimcirq": "0.22.0",
+      "cirq-pasqal": "1.4.1",
+      "pytket": "1.33.0",
+      "cirq-core": "1.4.1",
+      "cirq-google": "1.4.1",
+      "cirq-web": "1.4.1",
+      "cirq-ionq": "1.4.1",
+      "cirq-rigetti": "1.4.1"
+    },
+    "qibo": {
+      "qibo": "0.3.1"
+    },
+    "qrisp": {
+      "qiskit": "0.45.3",
+      "qrisp": "0.5.2",
+      "qiskit-terra": "0.45.3"
+    },
+    "myqlm": {
+      "qat-synthopline": "0.6.0",
+      "qat-analog": "0.8.0",
+      "qat-linalg-util": "1.1.0",
+      "qat-hardware": "1.7.1",
+      "qat-fusion": "0.4.0",
+      "qat-lang": "3.4.0",
+      "qat-anapli": "0.3.0",
+      "pytket": "1.33.0",
+      "myqlm": "1.13.1",
+      "qat-devices": "0.6.0",
+      "qat-variational": "1.8.0",
+      "myqlm-contrib": "1.11.0",
+      "qat-quops": "1.6.0",
+      "myqlm-fermion": "1.4.0",
+      "myqlm-interop": "2.1.0",
+      "myqlm-clinalg": "0.5.0",
+      "qat-pbo": "1.7.0",
+      "myqlm-simulators": "1.11.0",
+      "qat-comm": "1.9.0",
+      "qat-core": "1.13.1",
+      "qat-nnize": "1.5.0"
+    },
+    "quimb": {
+      "quimb": "1.13.0"
+    },
+    "cuquantum": {
+      "qiskit": "2.4.2",
+      "qiskit-aer": "0.17.2"
+    },
+    "quest": {
+      "pytket-quest": "0.1.0",
+      "pytket": "1.34.0"
+    },
+    "pennylane-lightning": {
+      "qiskit-aer": "0.17.2",
+      "qiskit-ibm-provider": "0.11.0",
+      "qiskit-ibm-runtime": "0.29.0",
+      "PennyLane_Lightning": "0.39.0",
+      "qiskit": "1.2.4",
+      "PennyLane-qiskit": "0.39.0",
+      "PennyLane": "0.39.0"
+    },
+    "pennylane-default": {
+      "qiskit-aer": "0.17.2",
+      "qiskit-ibm-provider": "0.11.0",
+      "qiskit-ibm-runtime": "0.29.0",
+      "qiskit": "1.2.4",
+      "PennyLane-qiskit": "0.39.0",
+      "PennyLane": "0.39.0",
+      "PennyLane_Lightning": "0.40.0"
+    },
+    "pyquil": {
+      "pyquil": "4.17.0",
+      "pytket": "1.33.0",
+      "pytket-pyquil": "0.36.0"
+    },
+    "torchquantum": {
+      "qiskit": "0.45.3",
+      "qiskit-aer": "0.13.3",
+      "torchquantum": "0.1.8",
+      "torch": "2.2.2+cpu",
+      "torchvision": "0.17.2+cpu",
+      "qiskit-ibm-runtime": "0.20.0",
+      "torchpack": "0.3.1",
+      "qiskit-terra": "0.45.3",
+      "torchdiffeq": "0.2.5"
+    }
+  },
+  "image_digests": {
+    "qiskit": "sha256:855d2e09aeb0c5bd132232c1856d1eb91c19884d4ae8bd9b3e1eec37115356d4",
+    "cirq": "sha256:792e2bc3221ce65952395e1db70372aa746f2d7e068a0fe3af2600e8b973be5a",
+    "qulacs": "sha256:8d0f0f14181d2ef982b1d91c6072894eac440ec3c05b86b8af0a8d90fc001e03",
+    "braket": "sha256:f7a294bf63e0fe46ebaf276ef7476714dc8c6d08099dcd27cee7c7c8b4911644",
+    "projectq": "sha256:0c6889cb3c4e68d0a295c33c7e116b18158e2544f2b0b74c1013c732727755bd",
+    "quest": "sha256:427feb7eca2cdd246dcd55eda333c45a9b20ac28b37375e9f0bcfdb400a6c1cb",
+    "pennylane-lightning": "sha256:f44c23e1fb2dba643c280f2d96f4d7d33c1b5aeff19b32dab7bf135b83827565",
+    "pennylane-default": "sha256:6a9082b91ff0a1a03651d0d203a518de359d6899ba37ad2e551cfb35f2160f2f",
+    "qsim-cirq": "sha256:5380d6ee560cfff2fb408658a0fc4ecd666161da006e48e9e413b561c9616c58",
+    "qibo": "sha256:42f3b3c1322839c686ef9d6db5504058a8da869a1cd87077a2881a9af9eb446a",
+    "qrisp": "sha256:a4101ad3fe1867d58c365649359f066b672248378d3afad2cb94d2c0b40bd208",
+    "myqlm": "sha256:425bd9d045b50819927bcda85d26a000aee72b205b55f5a7a14cb7821e7b9608",
+    "pyquil": "sha256:ef73c36d967c2264fa8e9473446809a82c887766c24c6208cbc5406c018cf7c8",
+    "torchquantum": "sha256:0c79685fe14f45b90bfb81560d316c476af288600ba616aba00def84c161b6f2",
+    "quimb": "sha256:9b445fd359581577599a9c848cbcafce610a8f81e1d1738385d085f685d218a4",
+    "cuquantum": "sha256:54b539ead57222d7f5b9ec03d21059ad5a5bb90e16f7f901ca17bf01c9f9a47d",
+    "api": "sha256:04e469834e7cbb94818934bd1449ae14b9f556c08ca1adfc5ed78f6bc90ab71d"
+  },
+  "outputs": {
+    "conformance_matrix": "conformance_matrix.csv",
+    "agreement_prevalence": "agreement_prevalence.csv",
+    "inputs": "inputs/",
+    "results": "results/",
+    "errors": "errors/",
+    "readme": "README.txt"
+  },
+  "notes": "Error signatures are recorded with triage='untriaged': classify each as adapter / SDK / by-design / resource before reporting it as a result. Base images are pinned in the runner Dockerfiles (@sha256); record the deployed digests in 'image_digests' for a citable release. The exhaustive qubit-permutation search is bounded (disclose the bound in any prevalence analysis).",
+  "label": "experiment-2",
+  "created_utc": "2026-07-27T13:14:25.945209+00:00",
+  "mode": "measured",
+  "preprocessing_axes": [
+    "measured_preprocOn"
+  ]
+}

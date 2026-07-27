@@ -1,0 +1,4 @@
+axis,agreement_class,pair_count
+measured_preprocOn,agree_after_bit_reversal,30
+measured_preprocOn,distance_exceeds_threshold,39
+measured_preprocOn,distance_within_threshold,477
