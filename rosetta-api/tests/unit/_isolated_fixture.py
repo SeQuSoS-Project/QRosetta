@@ -20,3 +20,11 @@ def boom(payload):
 
 def raiser(payload):
     raise ValueError("bad gate")
+
+
+def with_qasm(payload):
+    return {
+        "result": "ok",
+        "execution_time_sec": 0.01,
+        "transpiled_qasm": "OPENQASM 2.0;\ninclude \"qelib1.inc\";\nqreg q[2];\nh q[0];\ncx q[0],q[1];\n",
+    }

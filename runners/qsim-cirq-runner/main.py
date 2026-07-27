@@ -82,8 +82,6 @@ def process_run(payload: dict) -> dict:
         # Provenance only — serialized after t1 so it does not inflate compilation_time.
         transpiled_qasm = pytket.qasm.circuit_to_qasm_str(tk_export)
 
-        _ = simulator.simulate(cirq_circ_no_meas)
-
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
@@ -134,8 +132,6 @@ def process_run_measured(payload: dict) -> dict:
 
         # Provenance only — serialized after t1 so it does not inflate compilation_time.
         transpiled_qasm = pytket.qasm.circuit_to_qasm_str(tk_export)
-
-        _ = simulator.run(circ_with_meas, repetitions=n_shots)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()

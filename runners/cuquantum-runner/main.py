@@ -79,8 +79,6 @@ def process_run(payload: dict) -> dict:
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
-        _run_safe(sim, qc)
-
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
@@ -119,8 +117,6 @@ def process_run_measured(payload: dict) -> dict:
         compilation_time = t1 - t0
 
         n_shots = payload.get("n_shots", 1024)
-
-        _run_safe(sim, qc, shots=10)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()

@@ -1,11 +1,15 @@
 // Frontend logic for renderers functionality.
 
 const METRIC_DEFINITIONS = {
-    "compilation": "<b>Compilation Time:</b> Time taken to parse QASM, apply transforms (e.g. Rebase), and convert to the backend's native format.",
-    "simulation": "<b>Simulation Time:</b> Time taken for the backend to execute the circuit (matrix multiplication) and retrieve results.",
+    "compilation": "<b>Compilation Time:</b> Time taken to parse QASM, apply transforms (e.g. Rebase), and convert to the backend's native format. A uniform, disclosed warm-up run precedes every timed measurement (same for all backends), so this excludes one-time import/JIT overhead.",
+    "simulation": "<b>Simulation Time:</b> Time taken for the backend to execute the circuit (matrix multiplication) and retrieve results, after the same uniform warm-up.",
     "total_time": "<b>Total Execution Time:</b> Sum of Compilation and Simulation. Represents end-to-end latency.",
-    "mem_delta": "<b>Memory Delta:</b> RAM added to the process during execution (End RSS - Start RSS). Uses MemoryMonitor with 10ms polling — may undercount short-lived C++ allocations.",
-    "proc_peak": "<b>Process Peak:</b> The absolute maximum RAM reached by the container. Hitting the limit (512 MiB local / 1 GiB K8s) causes an OOMKill.",
+    "cpu_time": "<b>CPU Time:</b> User+system CPU time (resource.getrusage) consumed by the whole isolated run, including compilation and the warm-up. Unlike wall-clock time, this is not affected by contention from other concurrent runs.",
+    "gate_count": "<b>Gate Count:</b> Number of gate-application statements in the backend's own transpiled QASM.",
+    "circuit_depth": "<b>Depth:</b> Greedy-layering circuit depth computed from the backend's own transpiled QASM.",
+    "proc_peak_rss": "<b>Process Peak RSS:</b> The kernel-reported (resource.getrusage ru_maxrss) peak memory of the whole isolated run, including compilation and the warm-up. Resources are ranked by this column.",
+    "mem_delta": "<b>Memory Delta:</b> RAM added to the process during the simulation window only (End RSS - Start RSS), reported by the backend's own MemoryMonitor with 10ms polling — may undercount short-lived C++ allocations and excludes compilation. Shown for continuity; ranking uses Process Peak RSS.",
+    "proc_peak": "<b>Process Peak (legacy):</b> The maximum RAM observed by the backend's own 10ms-polling MemoryMonitor during the simulation window only. Shown for continuity; ranking uses Process Peak RSS, the kernel-reported peak of the whole run.",
     "theoretical_sv": "<b>Theoretical SV:</b> The absolute minimum memory required to store the full statevector (2^N × 16 bytes for complex128). Tensor-network simulators (e.g. Quimb) natively use less and map to 'None'.",
     "fidelity_matrix": "<b>Fidelity Matrix:</b> Pairwise comparison of state overlap. 1.0 = Identical states.",
     "relative_phase_matrix": "<b>Relative Phase Matrix:</b> Comparison of global phase differences. Non-zero means states differ by a constant phase factor.",

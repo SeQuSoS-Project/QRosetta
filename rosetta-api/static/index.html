@@ -879,6 +879,7 @@
                     <tr>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rank</th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Simulator</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tpl-th-proc-peak-rss">Process Peak RSS (MiB)</th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tpl-th-mem-delta">Mem Delta (MiB)</th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tpl-th-proc-peak">Process Peak (MiB)</th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tpl-th-theoretical">Theoretical SV (MiB)</th>
@@ -900,6 +901,9 @@
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tpl-th-compilation">Compilation (s)</th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tpl-th-simulation">Simulation (s)</th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tpl-th-total">Total (s)</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tpl-th-cpu">CPU (s)</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tpl-th-gate-count">Gate Count</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tpl-th-depth">Depth</th>
                     </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200 tpl-tbody"></tbody>
@@ -923,11 +927,12 @@
         </div>
     </template>
 
-    <!-- Ranking table row: 4-col memory (rank / simulator / mem-delta / proc-peak / theoretical) -->
+    <!-- Ranking table row: 5-col memory (rank / simulator / proc-peak-rss / mem-delta / proc-peak / theoretical) -->
     <template id="tpl-ranking-row-memory">
         <tr>
             <td class="px-4 py-3 text-sm text-gray-500 tpl-rank"></td>
             <td class="px-4 py-3 text-sm font-medium text-gray-900 tpl-simulator"></td>
+            <td class="px-4 py-3 text-sm text-gray-900 font-mono font-medium tpl-proc-peak-rss"></td>
             <td class="px-4 py-3 text-sm text-gray-500 font-mono tpl-mem-delta"></td>
             <td class="px-4 py-3 text-sm text-gray-500 font-mono tpl-proc-peak"></td>
             <td class="px-4 py-3 text-sm text-gray-500 font-mono tpl-theoretical"></td>
@@ -942,6 +947,9 @@
             <td class="px-4 py-3 text-sm text-gray-500 font-mono tpl-comp"></td>
             <td class="px-4 py-3 text-sm text-gray-500 font-mono tpl-sim"></td>
             <td class="px-4 py-3 text-sm text-gray-900 font-mono font-medium tpl-total"></td>
+            <td class="px-4 py-3 text-sm text-gray-500 font-mono tpl-cpu"></td>
+            <td class="px-4 py-3 text-sm text-gray-500 font-mono tpl-gate-count"></td>
+            <td class="px-4 py-3 text-sm text-gray-500 font-mono tpl-depth"></td>
         </tr>
     </template>
 
@@ -1086,23 +1094,23 @@
     <!-- END TEMPLATES                                                 -->
     <!-- ============================================================ -->
 
-    <script defer src="js/state.js?v=1.0.26"></script>
-    <script defer src="js/utils.js?v=1.0.26"></script>
-    <script defer src="js/renderers.js?v=1.0.26"></script>
-    <script defer src="js/tables_renderer.js?v=1.0.26"></script>
-    <script defer src="js/artifacts_renderer.js?v=1.0.26"></script>
+    <script defer src="js/state.js?v=1.0.27"></script>
+    <script defer src="js/utils.js?v=1.0.27"></script>
+    <script defer src="js/renderers.js?v=1.0.27"></script>
+    <script defer src="js/tables_renderer.js?v=1.0.27"></script>
+    <script defer src="js/artifacts_renderer.js?v=1.0.27"></script>
     <!-- Domain modules (depend on utils/renderers globals) -->
-    <script defer src="js/api.js?v=1.0.26"></script>
-    <script defer src="js/config.js?v=1.0.26"></script>
-    <script defer src="js/drawers.js?v=1.0.26"></script>
-    <script defer src="js/batch.js?v=1.0.26"></script>
-    <script defer src="js/benchmarks_select.js?v=1.0.26"></script>
-    <script defer src="js/auth.js?v=1.0.26"></script>
-    <script defer src="js/history.js?v=1.0.26"></script>
-    <script defer src="js/autosave.js?v=1.0.26"></script>
-    <script defer src="js/experiment.js?v=1.0.26"></script>
+    <script defer src="js/api.js?v=1.0.27"></script>
+    <script defer src="js/config.js?v=1.0.27"></script>
+    <script defer src="js/drawers.js?v=1.0.27"></script>
+    <script defer src="js/batch.js?v=1.0.27"></script>
+    <script defer src="js/benchmarks_select.js?v=1.0.27"></script>
+    <script defer src="js/auth.js?v=1.0.27"></script>
+    <script defer src="js/history.js?v=1.0.27"></script>
+    <script defer src="js/autosave.js?v=1.0.27"></script>
+    <script defer src="js/experiment.js?v=1.0.27"></script>
     <!-- Controller: depends on all above -->
-    <script defer src="js/app.js?v=1.0.26"></script>
+    <script defer src="js/app.js?v=1.0.27"></script>
 
 </body>
 

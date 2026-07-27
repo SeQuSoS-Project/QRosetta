@@ -235,16 +235,94 @@ import asyncio as _asyncio
 import importlib as _importlib
 import multiprocessing as _multiprocessing
 import queue as _queue
+import re as _re
+import resource as _resource
+import statistics as _statistics
 
 _SPAWN_CTX = _multiprocessing.get_context("spawn")
 
 DEFAULT_HARD_TIMEOUT_SEC = int(os.getenv("RUNNER_HARD_TIMEOUT_SEC", "300"))
 
+_QASM_NON_GATE_KEYWORDS = {
+    "openqasm", "include", "qreg", "creg", "barrier", "measure", "reset", "if", "gate", "opaque",
+}
+_QASM_QUBIT_REF_RE = _re.compile(r'([a-zA-Z_][a-zA-Z0-9_]*)\s*\[\s*(\d+)\s*\]')
+
+
+def count_qasm_gates_and_depth(qasm_str: str) -> tuple:
+    """Count gate-application statements and their circuit depth from an OpenQASM 2.0
+    string, with no quantum-SDK dependency (this module is imported by every runner).
+
+    Depth uses the standard greedy-layering definition: a gate's layer is one more than
+    the deepest layer already recorded on any qubit it touches. Qubits are identified by
+    their literal ``register[index]`` token, so gates inside a custom ``gate ... { }``
+    definition (which refer to bare formal parameters, no ``[index]``) are not counted,
+    and neither are classically-conditioned (``if (...)``) statements.
+    """
+    depth_by_qubit = {}
+    gate_count = 0
+    # A gate/opaque definition's closing '}' has no preceding ';', so a naive split(';')
+    # would glue it onto the next real statement's first word. Blanking braces avoids that
+    # while still leaving 'gate'/'opaque' as each definition's own (skipped) first word.
+    no_braces = _re.sub(r'//.*', '', qasm_str).replace('{', ' ').replace('}', ' ')
+    for stmt in no_braces.split(';'):
+        stmt = stmt.strip()
+        if not stmt:
+            continue
+        words = stmt.split('(', 1)[0].split()
+        if not words or words[0].lower() in _QASM_NON_GATE_KEYWORDS:
+            continue
+        qubits = _QASM_QUBIT_REF_RE.findall(stmt)
+        if not qubits:
+            continue
+        gate_count += 1
+        qubit_keys = [f"{reg}[{idx}]" for reg, idx in qubits]
+        layer = max((depth_by_qubit.get(k, 0) for k in qubit_keys), default=0) + 1
+        for k in qubit_keys:
+            depth_by_qubit[k] = layer
+    return gate_count, max(depth_by_qubit.values(), default=0)
+
+
+def _call_once(module_name, func_name, payload):
+    module = _importlib.import_module(module_name)
+    return getattr(module, func_name)(payload)
+
 
 def _isolated_target(result_q, module_name, func_name, payload):
     try:
-        module = _importlib.import_module(module_name)
-        result_q.put(("ok", getattr(module, func_name)(payload)))
+        # Uniform disclosed warm-up: one full, discarded call (covering import/JIT/compile
+        # caches) before every timed measurement, for all runners alike. Runners no longer
+        # need their own ad-hoc warm-up call.
+        _call_once(module_name, func_name, payload)
+
+        repeats = max(1, int(payload.get("timing_repeats", 1) or 1))
+        timed_results = [_call_once(module_name, func_name, payload) for _ in range(repeats)]
+        result = timed_results[-1]
+
+        if isinstance(result, dict):
+            if repeats > 1:
+                exec_times = [r.get("execution_time_sec") for r in timed_results
+                              if isinstance(r.get("execution_time_sec"), (int, float))]
+                if exec_times:
+                    result["timing_repeats"] = repeats
+                    result["execution_time_sec_mean"] = _statistics.mean(exec_times)
+                    result["execution_time_sec_stdev"] = (
+                        _statistics.stdev(exec_times) if len(exec_times) > 1 else 0.0)
+
+            usage = _resource.getrusage(_resource.RUSAGE_SELF)
+            result["process_peak_rss_mb"] = usage.ru_maxrss / 1024  # ru_maxrss is KB on Linux
+            result["cpu_time_sec"] = usage.ru_utime + usage.ru_stime
+
+            if "n_shots" in payload:
+                result["n_shots"] = payload["n_shots"]
+
+            transpiled_qasm = result.get("transpiled_qasm")
+            if transpiled_qasm:
+                gate_count, circuit_depth = count_qasm_gates_and_depth(transpiled_qasm)
+                result["gate_count"] = gate_count
+                result["circuit_depth"] = circuit_depth
+
+        result_q.put(("ok", result))
     except Exception as e:
         result_q.put(("err", f"{type(e).__name__}: {e}"))
 

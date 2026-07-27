@@ -41,13 +41,17 @@ MEASURED = {
     },
     "performance_report": {"ranking": [
         {"simulator": "qiskit", "status": "success", "compilation_time_sec": 0.01,
-         "simulation_time_sec": 0.08, "execution_time_sec": 0.09},
+         "simulation_time_sec": 0.08, "execution_time_sec": 0.09, "cpu_time_sec": 0.085,
+         "gate_count": 3, "circuit_depth": 3},
         {"simulator": "qibo", "status": "success", "compilation_time_sec": 0.02,
-         "simulation_time_sec": 0.03, "execution_time_sec": 0.05},
+         "simulation_time_sec": 0.03, "execution_time_sec": 0.05, "cpu_time_sec": 0.048,
+         "gate_count": 3, "circuit_depth": 3},
     ]},
     "resource_report": {"ranking": [
-        {"simulator": "qibo", "status": "success", "memory_usage_mb": 10.0, "process_peak_mb": 100.0},
-        {"simulator": "qiskit", "status": "success", "memory_usage_mb": 12.5, "process_peak_mb": 120.0},
+        {"simulator": "qibo", "status": "success", "memory_usage_mb": 10.0, "process_peak_mb": 100.0,
+         "process_peak_rss_mb": 95.5},
+        {"simulator": "qiskit", "status": "success", "memory_usage_mb": 12.5, "process_peak_mb": 120.0,
+         "process_peak_rss_mb": 110.3},
     ]},
     "raw_results": [
         {"simulator": "qiskit", "counts": {"001": 128}},

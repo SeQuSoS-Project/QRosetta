@@ -22,7 +22,10 @@ def create_performance_report(results_list: list) -> dict:
                 "status": "success",
                 "execution_time_sec": res['execution_time_sec'],
                 "compilation_time_sec": res.get('compilation_time_sec'),
-                "simulation_time_sec": res.get('simulation_time_sec')
+                "simulation_time_sec": res.get('simulation_time_sec'),
+                "cpu_time_sec": res.get('cpu_time_sec'),
+                "gate_count": res.get('gate_count'),
+                "circuit_depth": res.get('circuit_depth'),
             })
 
     sorted_data = sorted(
@@ -37,7 +40,10 @@ def create_performance_report(results_list: list) -> dict:
 
 def create_resource_report(results_list: list) -> dict:
     """
-    Generates a report on the memory usage of each simulator.
+    Generates a report on the memory usage of each simulator, ranked by the
+    kernel-reported process peak (resource.getrusage ru_maxrss in the isolated
+    child process), which covers the whole run including compilation and any
+    warm-up and is not sensitive to when a baseline is snapshotted.
     """
     resource_data = []
 
@@ -49,6 +55,7 @@ def create_resource_report(results_list: list) -> dict:
                 "simulator": sim_name,
                 "status": "error",
                 "error": res['error'],
+                "process_peak_rss_mb": res.get('process_peak_rss_mb'),
                 "memory_usage_mb": None,
                 "process_peak_mb": None
             })
@@ -56,6 +63,7 @@ def create_resource_report(results_list: list) -> dict:
             resource_data.append({
                 "simulator": sim_name,
                 "status": "success",
+                "process_peak_rss_mb": res.get('process_peak_rss_mb'),
                 "memory_usage_mb": res.get('memory_usage_mb'),
                 "process_peak_mb": res.get('process_peak_mb'),
                 "theoretical_statevector_mb": res.get('theoretical_statevector_mb')
@@ -63,10 +71,10 @@ def create_resource_report(results_list: list) -> dict:
 
     sorted_data = sorted(
         resource_data,
-        key=lambda x: (x['memory_usage_mb'] is None, x['memory_usage_mb'])
+        key=lambda x: (x['process_peak_rss_mb'] is None, x['process_peak_rss_mb'])
     )
 
     return {
-        "summary": "Memory usage delta in MiB (lowest first).",
+        "summary": "Process peak RSS in MiB (lowest first).",
         "ranking": sorted_data
     }

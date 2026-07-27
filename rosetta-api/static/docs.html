@@ -55,6 +55,7 @@
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#taxonomy">Agreement taxonomy</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#stat">Shot-noise test</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#reproducibility">Reproducibility</a></li>
+                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#methodology">Timing/memory methodology</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#reading">Reading results</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#limits">Honest limitations</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#glossary">Glossary</a></li>
@@ -205,6 +206,25 @@
                     <li><strong>Exportable provenance.</strong> Reports can be exported as an RO-Crate that
                         conforms to the Process Run Crate profile, packaging inputs, per-backend results,
                         agreement evidence, and provenance as a FAIR, citable bundle.</li>
+                </ul>
+            </section>
+
+            <section id="methodology">
+                <h2>Timing and memory methodology</h2>
+                <ul>
+                    <li><strong>Uniform warm-up.</strong> Every backend runs once, discarded, immediately before
+                        the timed measurement — covering import, JIT, and any one-time internal caching. The
+                        same warm-up applies identically to all backends, so reported timings compare like
+                        with like.</li>
+                    <li><strong>Process peak RSS.</strong> Resources are ranked by the kernel-reported
+                        (<code>resource.getrusage</code> <code>ru_maxrss</code>) peak memory of the whole
+                        isolated run, including compilation and the warm-up. Each backend's own memory-delta
+                        and simulation-window-peak figures are also reported for continuity, but are not the
+                        ranking basis.</li>
+                    <li><strong>CPU time.</strong> User+system CPU time for the whole isolated run is reported
+                        alongside wall-clock time.</li>
+                    <li><strong>Gate count and depth.</strong> Derived from each backend's own transpiled QASM,
+                        using a greedy-layering depth definition.</li>
                 </ul>
             </section>
 

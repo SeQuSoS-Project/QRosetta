@@ -538,20 +538,31 @@ def _tbl_agreement(divergence_report: dict, mode: str):
 
 def _tbl_performance(results: dict):
     ranking = (results.get("performance_report") or {}).get("ranking", [])
-    headers = ["Rank", "Simulator", "Compilation (s)", "Simulation (s)", "Total (s)", "Status"]
+    headers = ["Rank", "Simulator", "Compilation (s)", "Simulation (s)", "Total (s)", "CPU (s)",
+               "Gate count", "Depth", "Status"]
     rows = [[i + 1, r.get("simulator", "—"), _fmt_num(r.get("compilation_time_sec"), 6),
              _fmt_num(r.get("simulation_time_sec"), 6), _fmt_num(r.get("execution_time_sec"), 6),
-             r.get("status", "—")] for i, r in enumerate(ranking)]
-    return headers, rows, "Execution timing", "Wall-clock timings measured by QRosetta (raw)."
+             _fmt_num(r.get("cpu_time_sec"), 6), _fmt_num(r.get("gate_count")),
+             _fmt_num(r.get("circuit_depth")), r.get("status", "—")]
+            for i, r in enumerate(ranking)]
+    caption = ("Wall-clock and CPU timings measured by QRosetta (raw), after a uniform disclosed "
+               "warm-up run precedes every timed measurement. Gate count/depth are derived from "
+               "each backend's own transpiled QASM.")
+    return headers, rows, "Execution timing", caption
 
 
 def _tbl_resources(results: dict):
     ranking = (results.get("resource_report") or {}).get("ranking", [])
-    headers = ["Rank", "Simulator", "Mem delta (MiB)", "Process peak (MiB)", "Theoretical SV (MiB)", "Status"]
-    rows = [[i + 1, r.get("simulator", "—"), _fmt_num(r.get("memory_usage_mb")),
-             _fmt_num(r.get("process_peak_mb"), 1), _fmt_num(r.get("theoretical_statevector_mb")),
-             r.get("status", "—")] for i, r in enumerate(ranking)]
-    return headers, rows, "Resource usage", "Memory measured by QRosetta (raw)."
+    headers = ["Rank", "Simulator", "Process peak RSS (MiB)", "Mem delta (MiB)",
+               "Process peak (MiB)", "Theoretical SV (MiB)", "Status"]
+    rows = [[i + 1, r.get("simulator", "—"), _fmt_num(r.get("process_peak_rss_mb"), 1),
+             _fmt_num(r.get("memory_usage_mb")), _fmt_num(r.get("process_peak_mb"), 1),
+             _fmt_num(r.get("theoretical_statevector_mb")), r.get("status", "—")]
+            for i, r in enumerate(ranking)]
+    caption = ("Process peak RSS (raw, resource.getrusage) is the kernel-reported peak of the "
+               "whole isolated run, including compilation and the warm-up; ranking is by this "
+               "column. Mem delta / Process peak are each backend's own sim-window measurement.")
+    return headers, rows, "Resource usage", caption
 
 
 def _tbl_statistical(divergence_report: dict):

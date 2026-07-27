@@ -78,8 +78,6 @@ def process_run(payload: dict) -> dict:
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
-        _get_statevector(circuit)
-
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
@@ -118,8 +116,6 @@ def process_run_measured(payload: dict) -> dict:
         n_shots = payload.get("n_shots", 1024)
 
         job = circuit.to_job(job_type="SAMPLE", nbshots=n_shots)
-
-        _qpu.submit(job)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()

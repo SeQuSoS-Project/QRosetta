@@ -13,11 +13,27 @@ logger = get_logger("torchquantum-runner")
 app = FastAPI(title="TorchQuantum Runner")
 
 try:
+    import importlib
     import torch
     import torchquantum as tq
+    import torchquantum.functional as tqf
     from torchquantum.plugin import qiskit2tq
     from qiskit import QuantumCircuit as QiskitCircuit, transpile as qiskit_transpile
     from qiskit import qasm2
+
+    # torchquantum 0.1.8 (latest PyPI release) ships 9 gate functions across
+    # functional/{u1,u2,paulix,hadamard,single_excitation}.py that reference an
+    # unimported module-global `mat_dict`, raising NameError at runtime for any
+    # circuit containing u1/cu1/u2/cu2/toffoli/rc3x/rccx/chadamard/singleexcitation
+    # (upstream: mit-han-lab/torchquantum#226; fixed on GitHub main for 7 of the 9
+    # but never republished to PyPI). Alias the correctly populated package-level
+    # dict into each affected module so these gates execute. importlib.import_module
+    # is required here: `torchquantum.functional`'s own `from .u2 import u2` rebinds
+    # the `u2` attribute on the package to the function of the same name, so a plain
+    # `import torchquantum.functional.u2 as m` resolves to that function, not the module.
+    for _modname in ("u1", "u2", "paulix", "hadamard", "single_excitation"):
+        importlib.import_module(f"torchquantum.functional.{_modname}").mat_dict = tqf.mat_dict
+
     TORCHQUANTUM_AVAILABLE = True
     logger.info("TorchQuantum and Qiskit loaded successfully.")
 except ImportError as e:
@@ -80,8 +96,6 @@ def process_run(payload: dict) -> dict:
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
-        _run_sv(tq_module, n_qubits)
-
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
@@ -117,8 +131,6 @@ def process_run_measured(payload: dict) -> dict:
         compilation_time = t1 - t0
 
         n_shots = payload.get("n_shots", 1024)
-
-        _run_sv(tq_module, n_qubits)
 
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()

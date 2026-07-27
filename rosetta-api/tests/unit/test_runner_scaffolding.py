@@ -18,8 +18,8 @@ def test_register_runner_endpoints_serves_both_routes():
 
     r1 = client.post("/run", json={"circuit_data": "OPENQASM 2.0;"})
     r2 = client.post("/run_measured", json={"circuit_data": "OPENQASM 2.0;", "n_shots": 8})
-    assert r1.status_code == 200 and r1.json() == {"result": 0}
-    assert r2.status_code == 200 and r2.json() == {"result": 0}
+    assert r1.status_code == 200 and r1.json()["result"] == 0
+    assert r2.status_code == 200 and r2.json()["result"] == 0
 
 
 def test_register_runner_endpoints_hard_timeout_flows_through():

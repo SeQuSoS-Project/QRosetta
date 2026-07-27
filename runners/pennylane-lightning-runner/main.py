@@ -46,7 +46,6 @@ def process_run(payload: dict) -> dict:
             qasm_op()
             return qml.state()
 
-        _ = statevector_circuit()
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
@@ -103,7 +102,6 @@ def process_run_measured(payload: dict) -> dict:
             qasm_op()
             return qml.state()
 
-        _ = statevector_circuit()
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 

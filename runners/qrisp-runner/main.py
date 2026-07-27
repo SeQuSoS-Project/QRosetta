@@ -43,11 +43,7 @@ def process_run(payload: dict) -> dict:
         # The statevector lives on the low-level QuantumCircuit itself via
         # statevector_array(); Qrisp's QASM-imported QuantumCircuit has no `.qs`
         # (QuantumSession) attribute, so the high-level qs.statevector() API is
-        # not available here. A warm-up call excludes JIT/import overhead from
-        # the timed run, matching the other native runners; failures propagate
-        # to the outer handler.
-        _ = circuit.statevector_array()
-
+        # not available here.
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
@@ -92,10 +88,7 @@ def process_run_measured(payload: dict) -> dict:
         # method (the high-level get_measurement() API belongs to QuantumVariable
         # and is not available on a QASM-imported QuantumCircuit). This requires
         # the circuit to carry measurement instructions, which measured-mode QASM
-        # does. A warm-up call excludes JIT/import overhead from the timed run;
-        # failures propagate to the outer handler.
-        _ = circuit.run(shots=min(n_shots, 10))
-
+        # does.
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 

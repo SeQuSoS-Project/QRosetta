@@ -110,19 +110,30 @@ function _dataMatrix(div, key, title) {
 function _dataPerformance(results) {
     const ranking = (results.performance_report || {}).ranking || [];
     return {
-        headers: ['Rank', 'Simulator', 'Compilation (s)', 'Simulation (s)', 'Total (s)', 'Status'],
+        headers: ['Rank', 'Simulator', 'Compilation (s)', 'Simulation (s)', 'Total (s)', 'CPU (s)',
+            'Gate count', 'Depth', 'Status'],
         rows: ranking.map((r, i) => [i + 1, r.simulator || '—', _artNum(r.compilation_time_sec, 6),
-            _artNum(r.simulation_time_sec, 6), _artNum(r.execution_time_sec, 6), r.status || '—']),
-        title: 'Execution timing', caption: 'Wall-clock timings measured by QRosetta (raw).',
+            _artNum(r.simulation_time_sec, 6), _artNum(r.execution_time_sec, 6),
+            _artNum(r.cpu_time_sec, 6), _artNum(r.gate_count, 0), _artNum(r.circuit_depth, 0),
+            r.status || '—']),
+        title: 'Execution timing',
+        caption: 'Wall-clock and CPU timings measured by QRosetta (raw), after a uniform ' +
+            'disclosed warm-up run precedes every timed measurement. Gate count/depth are ' +
+            "derived from each backend's own transpiled QASM.",
     };
 }
 function _dataResources(results) {
     const ranking = (results.resource_report || {}).ranking || [];
     return {
-        headers: ['Rank', 'Simulator', 'Mem delta (MiB)', 'Process peak (MiB)', 'Theoretical SV (MiB)', 'Status'],
-        rows: ranking.map((r, i) => [i + 1, r.simulator || '—', _artNum(r.memory_usage_mb),
-            _artNum(r.process_peak_mb, 1), _artNum(r.theoretical_statevector_mb), r.status || '—']),
-        title: 'Resource usage', caption: 'Memory measured by QRosetta (raw).',
+        headers: ['Rank', 'Simulator', 'Process peak RSS (MiB)', 'Mem delta (MiB)',
+            'Process peak (MiB)', 'Theoretical SV (MiB)', 'Status'],
+        rows: ranking.map((r, i) => [i + 1, r.simulator || '—', _artNum(r.process_peak_rss_mb, 1),
+            _artNum(r.memory_usage_mb), _artNum(r.process_peak_mb, 1),
+            _artNum(r.theoretical_statevector_mb), r.status || '—']),
+        title: 'Resource usage',
+        caption: 'Process peak RSS (raw, resource.getrusage) is the kernel-reported peak of the ' +
+            'whole isolated run, including compilation and the warm-up; ranking is by this ' +
+            "column. Mem delta / Process peak are each backend's own sim-window measurement.",
     };
 }
 function _dataStatistical(div) {

@@ -75,10 +75,15 @@ function renderRankingTable(report, key, unit, panel, config = {}) {
         report.ranking.sort((a, b) => {
             if (a.status !== 'success') return 1;
             if (b.status !== 'success') return -1;
-            return (a.process_peak_mb || 0) - (b.process_peak_mb || 0);
+            return (a.process_peak_rss_mb || 0) - (b.process_peak_rss_mb || 0);
         });
 
         const tblFrag = _cloneTemplate('tpl-ranking-header-memory');
+
+        const thProcPeakRss = tblFrag.querySelector('.tpl-th-proc-peak-rss');
+        thProcPeakRss.classList.remove('tpl-th-proc-peak-rss');
+        thProcPeakRss.innerHTML = '';
+        thProcPeakRss.appendChild(renderTooltip('proc_peak_rss', 'Process Peak RSS (MiB)'));
 
         const thMemDelta = tblFrag.querySelector('.tpl-th-mem-delta');
         thMemDelta.classList.remove('tpl-th-mem-delta');
@@ -106,6 +111,8 @@ function renderRankingTable(report, key, unit, panel, config = {}) {
             rowFrag.querySelector('.tpl-rank').textContent = i + 1;
             _fillSimulatorCell(rowFrag.querySelector('.tpl-simulator'), r.simulator, config);
 
+            const procPeakRssTd = rowFrag.querySelector('.tpl-proc-peak-rss');
+            procPeakRssTd.classList.remove('tpl-proc-peak-rss');
             const memDeltaTd = rowFrag.querySelector('.tpl-mem-delta');
             memDeltaTd.classList.remove('tpl-mem-delta');
             const procPeakTd = rowFrag.querySelector('.tpl-proc-peak');
@@ -114,16 +121,19 @@ function renderRankingTable(report, key, unit, panel, config = {}) {
             if (theoreticalTd) theoreticalTd.classList.remove('tpl-theoretical');
 
             if (r.status === 'success') {
+                procPeakRssTd.textContent = r.process_peak_rss_mb != null ? r.process_peak_rss_mb.toFixed(1) : '';
                 memDeltaTd.textContent = r.memory_usage_mb != null ? r.memory_usage_mb.toFixed(4) : '';
                 procPeakTd.textContent = r.process_peak_mb != null ? r.process_peak_mb.toFixed(1) : '';
                 if (theoreticalTd) {
                     theoreticalTd.textContent = r.theoretical_statevector_mb != null ? r.theoretical_statevector_mb.toFixed(4) : (r.theoretical_statevector_mb === null ? 'N/A' : '');
                 }
             } else if (offlineSims.has(r.simulator)) {
+                procPeakRssTd.appendChild(_makeStatusCell('offline', 'Offline'));
                 memDeltaTd.appendChild(_makeStatusCell('offline', 'Offline'));
                 procPeakTd.appendChild(_makeStatusCell('offline', 'Offline'));
                 if (theoreticalTd) theoreticalTd.appendChild(_makeStatusCell('offline', 'Offline'));
             } else {
+                procPeakRssTd.appendChild(_makeStatusCell('anomaly', 'Anomaly'));
                 memDeltaTd.appendChild(_makeStatusCell('anomaly', 'Anomaly'));
                 procPeakTd.appendChild(_makeStatusCell('anomaly', 'Anomaly'));
                 if (theoreticalTd) theoreticalTd.appendChild(_makeStatusCell('anomaly', 'Anomaly'));
@@ -153,6 +163,21 @@ function renderRankingTable(report, key, unit, panel, config = {}) {
         thTotal.innerHTML = '';
         thTotal.appendChild(renderTooltip('total_time', 'Total (s)'));
 
+        const thCpu = tblFrag.querySelector('.tpl-th-cpu');
+        thCpu.classList.remove('tpl-th-cpu');
+        thCpu.innerHTML = '';
+        thCpu.appendChild(renderTooltip('cpu_time', 'CPU (s)'));
+
+        const thGateCount = tblFrag.querySelector('.tpl-th-gate-count');
+        thGateCount.classList.remove('tpl-th-gate-count');
+        thGateCount.innerHTML = '';
+        thGateCount.appendChild(renderTooltip('gate_count', 'Gate Count'));
+
+        const thDepth = tblFrag.querySelector('.tpl-th-depth');
+        thDepth.classList.remove('tpl-th-depth');
+        thDepth.innerHTML = '';
+        thDepth.appendChild(renderTooltip('circuit_depth', 'Depth'));
+
         const tbody = tblFrag.querySelector('.tpl-tbody');
         tbody.classList.remove('tpl-tbody');
 
@@ -168,19 +193,34 @@ function renderRankingTable(report, key, unit, panel, config = {}) {
             simTd.classList.remove('tpl-sim');
             const totalTd = rowFrag.querySelector('.tpl-total');
             totalTd.classList.remove('tpl-total');
+            const cpuTd = rowFrag.querySelector('.tpl-cpu');
+            cpuTd.classList.remove('tpl-cpu');
+            const gateCountTd = rowFrag.querySelector('.tpl-gate-count');
+            gateCountTd.classList.remove('tpl-gate-count');
+            const depthTd = rowFrag.querySelector('.tpl-depth');
+            depthTd.classList.remove('tpl-depth');
 
             if (r.status === 'success') {
                 compTd.textContent = r.compilation_time_sec != null ? r.compilation_time_sec.toFixed(6) : '-';
                 simTd.textContent  = r.simulation_time_sec  != null ? r.simulation_time_sec.toFixed(6)  : '-';
                 totalTd.textContent = r.execution_time_sec  != null ? r.execution_time_sec.toFixed(6)   : '-';
+                cpuTd.textContent = r.cpu_time_sec != null ? r.cpu_time_sec.toFixed(6) : '-';
+                gateCountTd.textContent = r.gate_count != null ? r.gate_count : '-';
+                depthTd.textContent = r.circuit_depth != null ? r.circuit_depth : '-';
             } else if (offlineSims.has(r.simulator)) {
                 compTd.appendChild(_makeStatusCell('offline', 'Offline'));
                 simTd.appendChild(_makeStatusCell('offline', 'Offline'));
                 totalTd.appendChild(_makeStatusCell('offline', 'Offline'));
+                cpuTd.appendChild(_makeStatusCell('offline', 'Offline'));
+                gateCountTd.appendChild(_makeStatusCell('offline', 'Offline'));
+                depthTd.appendChild(_makeStatusCell('offline', 'Offline'));
             } else {
                 compTd.appendChild(document.createTextNode('-'));
                 simTd.appendChild(document.createTextNode('-'));
                 totalTd.appendChild(_makeStatusCell('anomaly', 'Anomaly'));
+                cpuTd.appendChild(document.createTextNode('-'));
+                gateCountTd.appendChild(document.createTextNode('-'));
+                depthTd.appendChild(document.createTextNode('-'));
             }
 
             tbody.appendChild(rowFrag);

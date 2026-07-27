@@ -53,9 +53,6 @@ def process_run(payload: dict) -> dict:
         t1 = time.perf_counter()
         compilation_time = t1 - t0
 
-        h_warm = backend.process_circuit(compiled_circ)
-        _ = backend.get_result(h_warm).get_state()
-
         with MemoryMonitor(interval=0.01) as monitor:
             gc.collect()
 
@@ -99,9 +96,6 @@ def process_run_measured(payload: dict) -> dict:
         compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=opt_level)
         t1 = time.perf_counter()
         compilation_time = t1 - t0
-
-        h_warm = backend.process_circuit(compiled_circ)
-        _ = backend.get_result(h_warm).get_state()
 
         with MemoryMonitor(interval=0.001) as monitor:
             gc.collect()
