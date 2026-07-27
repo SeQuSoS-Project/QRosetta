@@ -51,12 +51,15 @@
             <ul class="space-y-1 text-sm border-l border-gray-200">
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#what">What QRosetta is</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#quickstart">Quickstart</a></li>
+                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#circuits">Circuit sources</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#modes">Run modes</a></li>
+                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#batch">Batch runs and experiments</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#taxonomy">Agreement taxonomy</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#stat">Shot-noise test</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#reproducibility">Reproducibility</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#methodology">Timing/memory methodology</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#reading">Reading results</a></li>
+                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#accounts">Accounts, history &amp; autosave</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#limits">Honest limitations</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#glossary">Glossary</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#faq">FAQ</a></li>
@@ -100,12 +103,31 @@
                         optimization level, sampling seed, and (optionally) agreement thresholds.</li>
                     <li>Pick a <strong>run mode</strong> — statevector or measured — and run.</li>
                     <li>Read the report tabs: Summary, Performance, Resources, Divergence, Agreement,
-                        Artifacts, and Raw.</li>
+                        Artifacts, and Exports.</li>
                 </ol>
                 <div class="callout callout-tip">
-                    <strong>Tip.</strong> The <strong>Playlist</strong> lets you queue several circuits and run
-                    them as a batch; you can import/export a playlist as JSON for repeatable suites.
+                    <strong>Tip.</strong> The <strong>Batch</strong> panel lets you queue several circuits and
+                    run them together in one job; you can export/import the queue as a JSON "playlist" file for
+                    repeatable suites.
                 </div>
+            </section>
+
+            <section id="circuits">
+                <h2>Circuit sources</h2>
+                <p>A circuit can come from any of four places:</p>
+                <ul>
+                    <li><strong>Manual entry.</strong> Paste or type OpenQASM 2.0 directly into the editor.</li>
+                    <li><strong>Presets.</strong> The circuit generator builds a preset family (GHZ, Bell, QFT,
+                        Bernstein–Vazirani, Grover, and others) at a qubit count you choose.</li>
+                    <li><strong>QASMBench.</strong> A bundled suite of fixed-size circuits, selected by name.</li>
+                    <li><strong>MQT Bench</strong> (Munich Quantum Toolkit). A bundled suite of algorithm-level
+                        circuits, selected by algorithm and qubit count.</li>
+                </ul>
+                <p>
+                    The <strong>Benchmarks</strong> drawer covers the last two: pick a suite, then either load one
+                    circuit into the editor, add it to the batch queue, or use the bulk-select list (with a name
+                    filter and a qubit-count cap) to add many circuits to the batch queue at once.
+                </p>
             </section>
 
             <section id="modes">
@@ -131,6 +153,36 @@
                     statevector grows as 2<sup>n</sup>. When a circuit exceeds a backend’s limits, that pair
                     is reported as <em>not comparable</em> rather than guessed at.
                 </p>
+            </section>
+
+            <section id="batch">
+                <h2>Batch runs and experiments</h2>
+                <p>
+                    The <strong>Batch</strong> panel queues several circuits — added manually, from the
+                    generator, or from the Benchmarks drawer (including a whole suite at once, capped by
+                    qubit count) — and runs them together, in either statevector or measured mode, as a
+                    single job. A progress indicator shows which queued circuits are done, running, or
+                    still queued. The queue itself can be exported to a JSON file and re-imported later,
+                    for a repeatable circuit set.
+                </p>
+                <h3>Freezing a batch as a reproducible experiment</h3>
+                <p>
+                    Checking <strong>"Freeze as reproducible experiment"</strong> inside the Batch panel
+                    runs the same queued circuits over one or more <em>preprocessing axes</em> (with each
+                    backend's own preprocessing pass on, off, or both) and packages the result into a single
+                    downloadable ZIP bundle containing:
+                </p>
+                <ul>
+                    <li>The exact input QASM for every circuit, frozen at run time;</li>
+                    <li>A <strong>conformance matrix</strong> — did each circuit run successfully on each
+                        backend? Every error is recorded with an <code>untriaged</code> marker, to be
+                        classified afterwards as an adapter issue, an SDK issue, expected/by-design behavior,
+                        or a resource limit — before it is treated as a finding;</li>
+                    <li>An <strong>agreement-prevalence table</strong> summarizing how often backend pairs
+                        agreed, and by which registered transform;</li>
+                    <li>A manifest recording the git commit, executed SDK versions, and the seed(s) used, so
+                        the whole sweep can be reproduced or cited.</li>
+                </ul>
             </section>
 
             <section id="taxonomy">
@@ -237,10 +289,34 @@
                         <tr><td>Performance / Resources</td><td>Per-backend wall-clock timings and memory usage (raw, as measured by QRosetta).</td></tr>
                         <tr><td>Divergence</td><td>The N×N fidelity / distance matrices across backends.</td></tr>
                         <tr><td>Agreement</td><td>The explained-cause label per backend pair, with the underlying metrics, transforms, and provenance expandable per pair.</td></tr>
-                        <tr><td>Artifacts</td><td>Publication-ready figures and tables (SVG/PNG/PDF, LaTeX/CSV/HTML/Markdown/XLSX). A backend selector scopes every figure and table to any subset you choose.</td></tr>
-                        <tr><td>Raw</td><td>The complete underlying JSON report.</td></tr>
+                        <tr><td>Artifacts</td><td>Browse, preview, copy, and download individual publication-ready figures and tables (SVG/PNG/PDF; LaTeX/CSV/HTML/Markdown/XLSX). A backend-subset selector scopes every figure and table to any combination of backends you choose, computed in the browser with no new request to the server.</td></tr>
+                        <tr><td>Exports</td><td>The complete underlying JSON report (view, copy, or download), plus exporting the run as a FAIR RO-Crate ZIP — optionally bundling the same publication figures/tables (SVG/PNG/PDF; LaTeX/CSV/HTML/XLSX) directly into the archive.</td></tr>
                     </tbody>
                 </table>
+                <p>
+                    A batch or experiment run shows a reduced tab set — a suite summary and the Exports
+                    tab — rather than the full per-circuit breakdown above, since a batch covers many
+                    circuits at once rather than one.
+                </p>
+            </section>
+
+            <section id="accounts">
+                <h2>Accounts, history &amp; autosave</h2>
+                <p>
+                    An account is optional. Signing in (or registering with an email and password, via
+                    the <strong>Login / Register</strong> button) enables <strong>automatic run
+                    history</strong>: every completed run is saved to your account automatically — there
+                    is no separate "save" step. Open <strong>Your Run History</strong> to browse past runs,
+                    rename them, download their full reports, or delete them (singly or in bulk). Without
+                    an account, results exist only in your browser for that session.
+                </p>
+                <p>
+                    Separately, and independent of an account, the Config drawer offers
+                    <strong>autosave to a local folder</strong>: each completed run is written as a JSON file
+                    directly to a folder on your computer, with nothing uploaded anywhere. This needs the
+                    File System Access API (Chromium-based browsers — Chrome, Edge) and degrades gracefully
+                    elsewhere.
+                </p>
             </section>
 
             <section id="limits">
