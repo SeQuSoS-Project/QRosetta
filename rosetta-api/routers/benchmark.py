@@ -20,6 +20,8 @@ router = APIRouter()
 
 @router.get("/jobs/{job_id}", response_model=JobStatusResponse)
 async def get_job_status(job_id: str):
+    """Poll the status of any background job started by /compare, /compare_measured,
+    /run_batch_suite, or /experiments. 404 if the job id is unknown."""
     if job_id not in ACTIVE_JOBS:
         return JSONResponse(status_code=404, content={"error": "Job not found"})
 
@@ -37,6 +39,10 @@ async def get_job_status(job_id: str):
 @router.post("/compare", response_model=JobStatusResponse)
 @limiter.limit("10/minute")
 async def compare_circuits_endpoint(request: Request, payload: QasmPayload, background_tasks: BackgroundTasks):
+    """Dispatch one OpenQASM 2.0 circuit for an exact statevector comparison across the
+    simulator fleet. Runs in the background; poll GET /jobs/{job_id} for the result, which
+    includes the fidelity/phase agreement matrices, per-backend performance/resource data, and
+    the explained-cause pairwise agreement classification."""
     validate_request(payload.qasm_string, mode="statevector", bypass_limits=payload.bypass_limits)
     validate_runner_config(payload.runner_config)
     timeout = max(1, min(payload.timeout_seconds, settings.RUNNER_TIMEOUT_SEC))
@@ -51,6 +57,10 @@ async def compare_circuits_endpoint(request: Request, payload: QasmPayload, back
 @router.post("/compare_measured", response_model=JobStatusResponse)
 @limiter.limit("10/minute")
 async def compare_measured_circuits_endpoint(request: Request, payload: MeasuredQasmPayload, background_tasks: BackgroundTasks):
+    """Dispatch one OpenQASM 2.0 circuit for a shot-based measurement comparison across the
+    simulator fleet. Runs in the background; poll GET /jobs/{job_id} for the result, which
+    includes the divergence matrices, the explained-cause pairwise agreement classification,
+    and (for measured mode) the shot-noise-aware statistical test alongside it."""
     validate_request(payload.qasm_string, mode="measured", bypass_limits=payload.bypass_limits)
     validate_runner_config(payload.runner_config)
     timeout = max(1, min(payload.timeout_seconds, settings.RUNNER_TIMEOUT_SEC))
@@ -65,6 +75,9 @@ async def compare_measured_circuits_endpoint(request: Request, payload: Measured
 @router.post("/run_batch_suite", response_model=JobStatusResponse)
 @limiter.limit("10/minute")
 async def run_batch_suite_endpoint(request: Request, payload: BatchPayload, background_tasks: BackgroundTasks):
+    """Dispatch a list of circuits (presets, bundled benchmark circuits, or user-supplied
+    QASM) across the simulator fleet in a single job, in either statevector or measured mode.
+    Runs in the background; poll GET /jobs/{job_id} for progress and the per-task results."""
     validate_runner_config(payload.runner_config)
     job_id = str(uuid.uuid4())
 

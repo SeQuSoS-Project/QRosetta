@@ -1,38 +1,46 @@
 # Pydantic schemas for request/response validation.
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from typing import List, Optional
 from datetime import datetime
 
 class SavedCircuitCreate(BaseModel):
-    name: str
-    qasm_string: str
+    """Request body for POST /history/circuits."""
+    name: str = Field(..., description="Display name for the saved circuit.")
+    qasm_string: str = Field(..., description="The circuit as OpenQASM 2.0 text.")
 
 class SavedCircuitResponse(BaseModel):
-    id: str
-    user_id: int
-    name: str
-    qasm_string: str
-    created_at: datetime
+    """A saved circuit, as returned by the /history/circuits endpoints."""
+    id: str = Field(..., description="Unique id of the saved circuit.")
+    user_id: int = Field(..., description="Id of the account that saved it.")
+    name: str = Field(..., description="Display name.")
+    qasm_string: str = Field(..., description="The circuit as OpenQASM 2.0 text.")
+    created_at: datetime = Field(..., description="When it was saved.")
 
     model_config = ConfigDict(from_attributes=True)
 
 class RunHistoryCreate(BaseModel):
-    s3_object_key: str
-    circuit_id: Optional[str] = None
+    """Internal representation of a run-history record; not the POST /history/runs request
+    body (that endpoint takes the raw report dict directly, see routers/history.py)."""
+    s3_object_key: str = Field(..., description="Storage key of the saved report (local disk or S3, depending on STORAGE_MODE).")
+    circuit_id: Optional[str] = Field(None, description="Id of the saved circuit this run used, if any.")
 
 class RunHistoryResponse(BaseModel):
-    id: str
-    user_id: int
-    circuit_id: Optional[str]
-    s3_object_key: str
-    run_name: str
-    created_at: datetime
+    """A saved run's metadata, as returned by the /history/runs endpoints (the full report
+    itself is fetched separately via GET /history/runs/{run_id})."""
+    id: str = Field(..., description="Unique id of the saved run.")
+    user_id: int = Field(..., description="Id of the account that saved it.")
+    circuit_id: Optional[str] = Field(None, description="Id of the saved circuit this run used, if any.")
+    s3_object_key: str = Field(..., description="Storage key of the saved report.")
+    run_name: str = Field(..., description="Display name for the run.")
+    created_at: datetime = Field(..., description="When it was saved.")
 
     model_config = ConfigDict(from_attributes=True)
 
 class RunHistoryUpdate(BaseModel):
-    run_name: str
+    """Request body for PATCH /history/runs/{run_id}."""
+    run_name: str = Field(..., description="New display name for the run.")
 
 class RunHistoryBatchDelete(BaseModel):
-    run_ids: List[str]
+    """Request body for DELETE /history/runs."""
+    run_ids: List[str] = Field(..., description="Ids of the saved runs to delete.")

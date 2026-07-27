@@ -29,6 +29,7 @@ def create_saved_circuit(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
+    """Save a named QASM circuit to the current user's account, for later reuse."""
     new_circuit = models.SavedCircuit(
         user_id=current_user.id,
         name=circuit.name,
@@ -44,6 +45,7 @@ def get_saved_circuits(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
+    """List every circuit the current user has saved."""
     circuits = db.query(models.SavedCircuit).filter(models.SavedCircuit.user_id == current_user.id).all()
     return circuits
 
@@ -54,6 +56,10 @@ def save_run(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
+    """Save a completed run's full report to the current user's history. The report body
+    (run_payload) is stripped of statevectors and stored to local disk or S3 (depending on
+    the server's STORAGE_MODE); only a reference is kept in the database. Optionally link it
+    to a previously-saved circuit via circuit_id."""
     run_id = str(uuid.uuid4())
     run_name = run_payload.get("run_name", run_id[:8])
 
@@ -82,6 +88,7 @@ def get_run_histories(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
+    """List every run the current user has saved (metadata only, not the full report)."""
     runs = db.query(models.RunHistory).filter(models.RunHistory.user_id == current_user.id).all()
     return runs
 
@@ -91,6 +98,8 @@ def get_run_history_details(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
+    """Fetch one saved run's full report by id. 404 if it does not exist or does not belong
+    to the current user."""
     run_record = db.query(models.RunHistory).filter(
         models.RunHistory.id == run_id,
         models.RunHistory.user_id == current_user.id
@@ -113,6 +122,7 @@ def update_run_name(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
+    """Rename a saved run. 404 if it does not exist or does not belong to the current user."""
     run_record = db.query(models.RunHistory).filter(
         models.RunHistory.id == run_id,
         models.RunHistory.user_id == current_user.id
@@ -132,6 +142,8 @@ def batch_delete_runs(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
+    """Delete multiple saved runs (and their stored reports) by id in one request. Ids that
+    do not exist or do not belong to the current user are silently skipped."""
     run_records = db.query(models.RunHistory).filter(
         models.RunHistory.id.in_(payload.run_ids),
         models.RunHistory.user_id == current_user.id

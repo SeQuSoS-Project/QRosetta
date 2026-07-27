@@ -48,6 +48,9 @@ async def get_config():
 
 @router.get("/download_latest_report")
 def download_latest_report():
+    """Download the most recent completed run's full JSON report from local disk. 404 if none
+    has been saved yet — nothing is written to disk when the server's STORAGE_MODE is
+    'memory'."""
     report_path = get_latest_report_path()
     if not os.path.exists(report_path):
         return JSONResponse(content={"error": "No report available"}, status_code=404)
