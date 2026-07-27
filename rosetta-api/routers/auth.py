@@ -11,7 +11,11 @@ import db.models as models
 import schemas
 from db.database import get_db
 from services.security import verify_password, get_password_hash, create_access_token, get_current_user
+from services.storage import delete_run_reports
 from config import settings
+from qrosetta_commons.helpers import get_logger
+
+logger = get_logger("rosetta-auth")
 
 router = APIRouter(
     prefix="/auth",
@@ -72,7 +76,30 @@ def read_users_me(current_user: models.User = Depends(get_current_user)):
 
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
 def delete_user_me(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Permanently delete the account for the bearer token in the Authorization header."""
-    db.delete(current_user)
-    db.commit()
+    """Permanently delete the account for the bearer token in the Authorization header,
+    along with its saved circuits and run history (including each run's stored report)."""
+    run_records = db.query(models.RunHistory).filter(models.RunHistory.user_id == current_user.id).all()
+    s3_keys = [r.s3_object_key for r in run_records]
+
+    if s3_keys:
+        try:
+            delete_run_reports(s3_keys)
+        except Exception:
+            logger.error("Failed to delete stored run reports during account deletion", exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to delete stored run reports")
+
+    try:
+        for run in run_records:
+            db.delete(run)
+
+        circuits = db.query(models.SavedCircuit).filter(models.SavedCircuit.user_id == current_user.id).all()
+        for circuit in circuits:
+            db.delete(circuit)
+
+        db.delete(current_user)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.error("Failed to delete account", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to delete account")
     return None
