@@ -7,7 +7,7 @@
 // mirror services/publication.py so the tab and the RO-Crate export agree.
 
 import { BASE_URL, getAuthHeaders } from './api.js';
-import { COPY_ICON_SVG, _stripStatevectors, copyImageToClipboard, makeCopyIconButton } from './utils.js';
+import { COPY_ICON_SVG, _stripStatevectors, copyImageToClipboard, downloadBlob, makeCopyIconButton } from './utils.js';
 
 export const ARTIFACT_SCALES = [1, 2, 3, 5];
 export const ARTIFACT_SCALE_LABELS = ['Screen (1×)', 'High (2×)', 'Print (3×)', 'Very High (5×)'];
@@ -367,14 +367,6 @@ export async function _fetchFigureBlob(stripped, id, fmt, scale) {
     return await resp.blob();
 }
 
-export function _downloadBlob(blob, filename) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = filename;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 // ---- viewers -------------------------------------------------------------------------
 // Render format-toggle buttons into `host`, re-rendering in place on pick.
 export function _mountFmtSwitcher(host, formats, getCurrent, setCurrent) {
@@ -422,7 +414,7 @@ export function _renderTextViewer(container, art) {
     const dl = document.createElement('button');
     dl.className = 'inline-flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-md px-2 py-1';
     dl.textContent = '⬇ Download';
-    dl.onclick = () => _downloadBlob(new Blob([pre.textContent], { type: 'text/plain' }),
+    dl.onclick = () => downloadBlob(new Blob([pre.textContent], { type: 'text/plain' }),
         `${art.id}.${_TEXT_EXT[state.fmt] || 'txt'}`);
     bar.appendChild(dl);
 
@@ -499,7 +491,7 @@ export function _renderImageViewer(container, art, stripped) {
         dl.disabled = true; const old = dl.textContent; dl.textContent = 'Rendering…';
         try {
             const blob = await _fetchFigureBlob(stripped, art.id, state.fmt, scale);
-            _downloadBlob(blob, `${art.id}.${state.fmt}`);
+            downloadBlob(blob, `${art.id}.${state.fmt}`);
         } catch (e) { alert(`Download failed: ${e.message}`); }
         finally { dl.disabled = false; dl.textContent = old; }
     };

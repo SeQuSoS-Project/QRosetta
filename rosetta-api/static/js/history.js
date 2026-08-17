@@ -4,7 +4,7 @@ import { tabNav } from './dom.js';
 import { BASE_URL, getAuthHeaders } from './api.js';
 import { clearReport, renderDetailReport, renderSuiteSummary } from './renderers.js';
 import { dispatch, getState } from './state.js';
-import { _escapeHtml, setLoading } from './utils.js';
+import { _escapeHtml, downloadBlob, setLoading } from './utils.js';
 
 export async function saveRunToHistory(payload) {
     if (!getState().authToken) return null;
@@ -211,15 +211,8 @@ export async function downloadSelectedHistory() {
         const fetches = runIds.map(id => fetch(`${BASE_URL}/history/runs/${id}`, { headers: getAuthHeaders() }).then(res => res.json()));
         const results = await Promise.all(fetches);
 
-        const blob = new Blob([JSON.stringify(results, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `qrosetta_runs_batch_${Date.now()}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        downloadBlob(new Blob([JSON.stringify(results, null, 2)], { type: 'application/json' }),
+            `qrosetta_runs_batch_${Date.now()}.json`);
     } catch (e) {
         console.error(e);
         alert("Failed to download runs.");

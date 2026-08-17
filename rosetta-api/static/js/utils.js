@@ -241,15 +241,7 @@ export function downloadRawJson() {
         alert("No JSON content to download.");
         return;
     }
-    const blob = new Blob([jsonString], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href", url);
-    downloadAnchorNode.setAttribute("download", "rosetta_raw_report.json");
-    document.body.appendChild(downloadAnchorNode);
-    downloadAnchorNode.click();
-    downloadAnchorNode.remove();
-    URL.revokeObjectURL(url);
+    downloadBlob(new Blob([jsonString], { type: 'application/json' }), "rosetta_raw_report.json");
 }
 
 export function _stripStatevectors(data) {
@@ -359,14 +351,7 @@ export async function exportRoCrate() {
         const filenameMatch = disposition.match(/filename="?(.+?)"?$/);
         const filename = filenameMatch ? filenameMatch[1] : `rosetta-export.zip`;
 
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
+        downloadBlob(blob, filename);
     } catch (err) {
         console.error("RO-Crate export failed:", err);
         alert("Export failed: " + err.message);
@@ -389,6 +374,20 @@ export function getSeed() {
     if (raw === '') return null;
     const n = parseInt(raw, 10);
     return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+// Hand the browser a file. Every download in the app goes through here; six call sites
+// previously rebuilt this anchor dance, each revoking the object URL slightly differently
+// or not at all.
+export function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export function _escapeHtml(s) {
@@ -483,15 +482,7 @@ export function exportPlaylist() {
         alert("Playlist is empty.");
         return;
     }
-    const blob = new Blob([JSON.stringify(queue, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href", url);
-    downloadAnchorNode.setAttribute("download", "quantum_playlist.json");
-    document.body.appendChild(downloadAnchorNode);
-    downloadAnchorNode.click();
-    downloadAnchorNode.remove();
-    URL.revokeObjectURL(url);
+    downloadBlob(new Blob([JSON.stringify(queue, null, 2)], { type: 'application/json' }), "quantum_playlist.json");
 }
 
 // Coerce one imported playlist entry to the fields the batch runner reads, so an
@@ -562,15 +553,7 @@ export function exportQasm() {
     if (!fileName.endsWith('.qasm')) {
         fileName += '.qasm';
     }
-    const blob = new Blob([qasmText], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href", url);
-    downloadAnchorNode.setAttribute("download", fileName);
-    document.body.appendChild(downloadAnchorNode);
-    downloadAnchorNode.click();
-    downloadAnchorNode.remove();
-    URL.revokeObjectURL(url);
+    downloadBlob(new Blob([qasmText], { type: 'text/plain' }), fileName);
 }
 
 export function showVisualizerTab() {

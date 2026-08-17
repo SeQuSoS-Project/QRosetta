@@ -9,7 +9,7 @@ import { BASE_URL, getAuthHeaders, pollJobStatus } from './api.js';
 import { checkRunCountLimits, getRunnerConfig, getRunnerPhases, getTargetSimulators } from './config.js';
 import { clearReport } from './renderers.js';
 import { dispatch, getState } from './state.js';
-import { _escapeHtml, getAgreementThresholds, getSeed, setLoading } from './utils.js';
+import { _escapeHtml, downloadBlob, getAgreementThresholds, getSeed, setLoading } from './utils.js';
 
 export let _lastExperimentJobId = null;
 export let _lastExperimentName = 'experiment';
@@ -164,15 +164,7 @@ export async function downloadExperimentBundle() {
         if (!res.ok) {
             throw new Error(`Download failed: ${res.status}. ${await res.text()}`);
         }
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${_lastExperimentName || 'experiment'}.zip`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
+        downloadBlob(await res.blob(), `${_lastExperimentName || 'experiment'}.zip`);
     } catch (e) {
         console.error(e);
         alert(e.message);
