@@ -1,0 +1,378 @@
+{
+  "platform": "Quantum Rosetta",
+  "platform_version": "1.0.0",
+  "export_timestamp": "2026-07-28T10:53:57.959+00:00",
+  "execution_mode": "measured",
+  "canonical_input_format": "OpenQASM 2.0",
+  "runners_used": [
+    "qiskit",
+    "cirq",
+    "qulacs",
+    "qsim-cirq",
+    "qibo",
+    "qrisp",
+    "myqlm",
+    "quimb",
+    "cuquantum",
+    "quest",
+    "pennylane-lightning",
+    "pennylane-default",
+    "pyquil",
+    "torchquantum"
+  ],
+  "runner_configurations": {
+    "qiskit": {
+      "enabled": true,
+      "capabilities": [
+        "statevector",
+        "measured_native"
+      ],
+      "optimization_levels": {
+        "0": "No optimization",
+        "1": "Aer transpiler level 1: basic gate cancellation",
+        "2": "Aer transpiler level 2: unitary synthesis + gate cancellation",
+        "3": "Aer transpiler level 3: heavy optimization, fewest gates (slowest compile)"
+      },
+      "preprocessing_applied": [
+        "qiskit.compiler.transpile(level=1): Native Qiskit transpilation pass applied to optimize the circuit structure for the Aer backend."
+      ],
+      "sdk_versions": {
+        "pytket-qiskit": "0.57.0",
+        "pytket": "1.33.0",
+        "qiskit": "1.2.4",
+        "qiskit-ibm-runtime": "0.33.2",
+        "qiskit-aer": "0.15.1"
+      }
+    },
+    "cirq": {
+      "enabled": true,
+      "capabilities": [
+        "statevector",
+        "measured_native"
+      ],
+      "optimization_levels": {
+        "0": "No optimization",
+        "1": "Pytket light: fast peephole rewrites, remove redundant gates",
+        "2": "Pytket heavy: full KAK-based 2Q reduction + 1Q sequence merging"
+      },
+      "preprocessing_applied": [
+        "pytket.passes.RemoveBarriers(): Removes barrier instructions from the circuit to prevent parsing failures in the backend adapter.",
+        "pytket.passes.auto_rebase_pass({CX, Rz, Rx}): Universally decomposes complex multi-qubit and single-qubit gates (like CU3, CRX) into a standard CX/Rz/Rx basis to prevent parsing failures in the backend."
+      ],
+      "sdk_versions": {
+        "cirq-aqt": "1.4.1",
+        "pyquil": "4.17.0",
+        "cirq": "1.4.1",
+        "pytket-cirq": "0.38.0",
+        "cirq-pasqal": "1.4.1",
+        "pytket": "1.33.0",
+        "cirq-core": "1.4.1",
+        "cirq-google": "1.4.1",
+        "cirq-web": "1.4.1",
+        "cirq-ionq": "1.4.1",
+        "cirq-rigetti": "1.4.1"
+      }
+    },
+    "qulacs": {
+      "enabled": true,
+      "capabilities": [
+        "statevector",
+        "measured_native"
+      ],
+      "optimization_levels": {
+        "0": "No optimization",
+        "1": "Pytket light: fast peephole rewrites, remove redundant gates",
+        "2": "Pytket heavy: full KAK-based 2Q reduction + 1Q sequence merging"
+      },
+      "preprocessing_applied": [
+        "pytket.passes.RemoveBarriers(): Removes barrier instructions from the circuit to prevent parsing failures in the Qulacs backend adapter.",
+        "pytket QulacsBackend.get_compiled_circuit(level=1): pytket's native compilation pass for the Qulacs backend, decomposing gates into the backend's supported gate set."
+      ],
+      "sdk_versions": {
+        "pytket-qulacs": "0.38.0",
+        "pytket": "1.33.0",
+        "qulacs": "0.6.5"
+      }
+    },
+    "qsim-cirq": {
+      "enabled": true,
+      "capabilities": [
+        "statevector",
+        "measured_native"
+      ],
+      "optimization_levels": {
+        "0": "No optimization",
+        "1": "Drop empty moments + align left",
+        "2": "Eject Z/phased-Paulis, merge single-qubit gates to PhasedXZ"
+      },
+      "preprocessing_applied": [
+        "pytket.passes.RemoveBarriers(): Removes barrier instructions from the circuit to prevent parsing failures in the backend adapter.",
+        "pytket.passes.auto_rebase_pass({CX, Rz, Rx}): Universally decomposes complex multi-qubit and single-qubit gates (like CU3, CRX) into a standard CX/Rz/Rx basis to prevent parsing failures in the backend."
+      ],
+      "sdk_versions": {
+        "cirq-aqt": "1.4.1",
+        "pyquil": "4.17.0",
+        "cirq": "1.4.1",
+        "pytket-cirq": "0.38.0",
+        "qsimcirq": "0.22.0",
+        "cirq-pasqal": "1.4.1",
+        "pytket": "1.33.0",
+        "cirq-core": "1.4.1",
+        "cirq-google": "1.4.1",
+        "cirq-web": "1.4.1",
+        "cirq-ionq": "1.4.1",
+        "cirq-rigetti": "1.4.1"
+      }
+    },
+    "qibo": {
+      "enabled": true,
+      "capabilities": [
+        "statevector",
+        "measured_native"
+      ],
+      "optimization_levels": {
+        "0": "No optimization",
+        "1": "Gate fusion: merge runs of single-qubit gates into one unitary",
+        "2": "Gate fusion: merge up to 2-qubit blocks into one unitary"
+      },
+      "preprocessing_applied": [
+        "qibo.Circuit.fuse(max_qubits=1): Fuses consecutive single-qubit gate runs into single unitary blocks, reducing sequential gate overhead."
+      ],
+      "sdk_versions": {
+        "qibo": "0.3.1"
+      }
+    },
+    "qrisp": {
+      "enabled": true,
+      "capabilities": [
+        "statevector",
+        "measured_native"
+      ],
+      "optimization_levels": {
+        "0": "No optimization (Qrisp's optimizer targets high-level programs, not post-QASM gate passes)"
+      },
+      "preprocessing_applied": [],
+      "sdk_versions": {
+        "qiskit": "0.45.3",
+        "qrisp": "0.5.2",
+        "qiskit-terra": "0.45.3"
+      }
+    },
+    "myqlm": {
+      "enabled": true,
+      "capabilities": [
+        "statevector",
+        "measured_native"
+      ],
+      "optimization_levels": {
+        "0": "No optimization (PyLinalg does not expose circuit-level optimization passes)"
+      },
+      "preprocessing_applied": [
+        "pytket.passes.auto_rebase_pass({CX, Rz, Rx}): Universally decomposes complex multi-qubit and single-qubit gates (like CU3, CRX) into a standard CX/Rz/Rx basis to prevent OqasmParser from rejecting unsupported gates."
+      ],
+      "sdk_versions": {
+        "qat-synthopline": "0.6.0",
+        "qat-analog": "0.8.0",
+        "qat-linalg-util": "1.1.0",
+        "qat-hardware": "1.7.1",
+        "qat-fusion": "0.4.0",
+        "qat-lang": "3.4.0",
+        "qat-anapli": "0.3.0",
+        "pytket": "1.33.0",
+        "myqlm": "1.13.1",
+        "qat-devices": "0.6.0",
+        "qat-variational": "1.8.0",
+        "myqlm-contrib": "1.11.0",
+        "qat-quops": "1.6.0",
+        "myqlm-fermion": "1.4.0",
+        "myqlm-interop": "2.1.0",
+        "myqlm-clinalg": "0.5.0",
+        "qat-pbo": "1.7.0",
+        "myqlm-simulators": "1.11.0",
+        "qat-comm": "1.9.0",
+        "qat-core": "1.13.1",
+        "qat-nnize": "1.5.0"
+      }
+    },
+    "quimb": {
+      "enabled": true,
+      "capabilities": [
+        "statevector",
+        "measured_native"
+      ],
+      "optimization_levels": {
+        "0": "No optimization (quimb tensor-network contraction path is managed internally)"
+      },
+      "preprocessing_applied": [
+        "_preprocess_qasm(): Strips 'barrier', 'measure', and 'creg' statements from the QASM source, as quimb's tensor-network QASM parser does not support these instructions."
+      ],
+      "sdk_versions": {
+        "quimb": "1.13.0"
+      }
+    },
+    "cuquantum": {
+      "enabled": true,
+      "capabilities": [
+        "statevector",
+        "measured_native"
+      ],
+      "optimization_levels": {
+        "0": "No optimization",
+        "1": "Qiskit transpiler level 1: basic gate cancellation, 1Q consolidation",
+        "2": "Qiskit transpiler level 2: unitary synthesis + gate cancellation",
+        "3": "Qiskit transpiler level 3: heavy optimization, fewest gates (slowest compile)"
+      },
+      "preprocessing_applied": [
+        "qiskit.compiler.transpile(level=1): Native Qiskit transpilation pass applied to decompose and optimize the circuit for the Aer backend."
+      ],
+      "sdk_versions": {
+        "qiskit": "2.4.2",
+        "qiskit-aer": "0.17.2"
+      }
+    },
+    "quest": {
+      "enabled": true,
+      "capabilities": [
+        "statevector",
+        "measured_sampled"
+      ],
+      "optimization_levels": {
+        "0": "No optimization",
+        "1": "Pytket light: fast peephole rewrites, remove redundant gates",
+        "2": "Pytket heavy: full KAK-based 2Q reduction + 1Q sequence merging"
+      },
+      "preprocessing_applied": [
+        "pytket.passes.RemoveBarriers(): Removes barrier instructions from the circuit to prevent parsing failures in the QuEST backend adapter.",
+        "pytket QuESTBackend.get_compiled_circuit(level=1): pytket's native compilation pass for the QuEST backend, decomposing gates into the backend's supported gate set."
+      ],
+      "sdk_versions": {
+        "pytket-quest": "0.1.0",
+        "pytket": "1.34.0"
+      }
+    },
+    "pennylane-lightning": {
+      "enabled": true,
+      "capabilities": [
+        "statevector",
+        "measured_sampled"
+      ],
+      "optimization_levels": {
+        "0": "No optimization",
+        "1": "Cancel inverse gate pairs",
+        "2": "Cancel inverses + merge consecutive rotation gates",
+        "3": "Commute gates through controls, then cancel inverses + merge rotations"
+      },
+      "preprocessing_applied": [
+        "qrosetta_commons.helpers.strip_barriers_from_qasm(): Strips barrier instructions from the QASM string, as PennyLane's QASM parser does not support them.",
+        "qml.transforms.cancel_inverses: Cancels adjacent inverse gate pairs (e.g. H·H, X·X) to reduce gate count."
+      ],
+      "sdk_versions": {
+        "qiskit-aer": "0.17.2",
+        "qiskit-ibm-provider": "0.11.0",
+        "qiskit-ibm-runtime": "0.29.0",
+        "PennyLane_Lightning": "0.39.0",
+        "qiskit": "1.2.4",
+        "PennyLane-qiskit": "0.39.0",
+        "PennyLane": "0.39.0"
+      }
+    },
+    "pennylane-default": {
+      "enabled": true,
+      "capabilities": [
+        "statevector",
+        "measured_sampled"
+      ],
+      "optimization_levels": {
+        "0": "No optimization",
+        "1": "Cancel inverse gate pairs",
+        "2": "Cancel inverses + merge consecutive rotation gates",
+        "3": "Commute gates through controls, then cancel inverses + merge rotations"
+      },
+      "preprocessing_applied": [
+        "qrosetta_commons.helpers.strip_barriers_from_qasm(): Strips barrier instructions from the QASM string, as PennyLane's QASM parser does not support them.",
+        "qml.transforms.cancel_inverses: Cancels adjacent inverse gate pairs (e.g. H·H, X·X) to reduce gate count."
+      ],
+      "sdk_versions": {
+        "qiskit-aer": "0.17.2",
+        "qiskit-ibm-provider": "0.11.0",
+        "qiskit-ibm-runtime": "0.29.0",
+        "qiskit": "1.2.4",
+        "PennyLane-qiskit": "0.39.0",
+        "PennyLane": "0.39.0",
+        "PennyLane_Lightning": "0.40.0"
+      }
+    },
+    "pyquil": {
+      "enabled": true,
+      "capabilities": [
+        "statevector",
+        "measured_sampled"
+      ],
+      "optimization_levels": {
+        "0": "Barrier removal only",
+        "1": "Pytket PeepholeOptimise2Q: cancel redundant 2Q gates, merge 1Q sequences",
+        "2": "Pytket FullPeepholeOptimise: full 1Q merging + KAK-based 2Q reduction"
+      },
+      "preprocessing_applied": [
+        "pytket.passes.RemoveBarriers(): Removes barrier instructions from the circuit to prevent parsing failures in the backend adapter.",
+        "pytket.passes.auto_rebase_pass({CX, Rz, Rx}): Universally decomposes complex multi-qubit and single-qubit gates (like CU3, CRX) into a standard CX/Rz/Rx basis to prevent parsing failures in the backend."
+      ],
+      "sdk_versions": {
+        "pyquil": "4.17.0",
+        "pytket": "1.33.0",
+        "pytket-pyquil": "0.36.0"
+      }
+    },
+    "torchquantum": {
+      "enabled": true,
+      "capabilities": [
+        "statevector",
+        "measured_sampled"
+      ],
+      "optimization_levels": {
+        "0": "No optimization",
+        "1": "Qiskit transpiler level 1: single-qubit gate consolidation, basic cancellation",
+        "2": "Qiskit transpiler level 2: unitary synthesis + gate cancellation"
+      },
+      "preprocessing_applied": [
+        "qiskit.compiler.transpile(level=1, basis_gates=['h', 'x', 'y', 'z', 's', 't', 'sdg', 'cx', 'cz', 'swap', 'ccx', 'rx', 'ry', 'rz', 'u2', 'u3']): Native Qiskit transpilation pass applied to ensure all complex gates are decomposed into a safe basis set supported by TorchQuantum."
+      ],
+      "sdk_versions": {
+        "qiskit": "0.45.3",
+        "qiskit-aer": "0.13.3",
+        "torchquantum": "0.1.8",
+        "torch": "2.2.2+cpu",
+        "torchvision": "0.17.2+cpu",
+        "qiskit-ibm-runtime": "0.20.0",
+        "torchpack": "0.3.1",
+        "qiskit-terra": "0.45.3",
+        "torchdiffeq": "0.2.5"
+      }
+    }
+  },
+  "pairwise_agreement_evidence": {
+    "location": "results.json divergence_report.pairwise_agreement",
+    "record_count": 91,
+    "by_mode": {
+      "measured": 91
+    },
+    "by_agreement": {
+      "measured": {
+        "distance_within_threshold": 78,
+        "distance_exceeds_threshold": 13
+      }
+    },
+    "by_registered_transform": {
+      "measured": {
+        "identity_threshold_check": 91
+      }
+    },
+    "by_statistical_verdict": {
+      "measured": {
+        "consistent": 78,
+        "distinguishable": 13
+      }
+    },
+    "description": "Counts of agreement labels, registered transforms, and (for measured mode) shot-noise statistical verdicts. The full per-pair metrics and provenance records are preserved in results.json."
+  }
+}

@@ -1,0 +1,1452 @@
+{
+  "@context": "https://w3id.org/ro/crate/1.1/context",
+  "@graph": [
+    {
+      "@type": "CreativeWork",
+      "@id": "ro-crate-metadata.json",
+      "conformsTo": {
+        "@id": "https://w3id.org/ro/crate/1.1"
+      },
+      "about": {
+        "@id": "./"
+      }
+    },
+    {
+      "@id": "./",
+      "@type": "Dataset",
+      "conformsTo": [
+        {
+          "@id": "https://w3id.org/ro/crate/1.1"
+        },
+        {
+          "@id": "https://w3id.org/ro/wfrun/process/0.5"
+        }
+      ],
+      "name": "Quantum Rosetta Benchmark Export — 2026-07-28T10:53:57.959+00:00",
+      "description": "Reproducible quantum simulator benchmark results exported from Quantum Rosetta. Contains the input OpenQASM 2.0 circuit, cross-simulator analysis reports (including pairwise agreement evidence records when available), performance and resource reports, and full computational provenance. Each backend execution is recorded as a CreateAction per the Process Run Crate profile.",
+      "datePublished": "2026-07-28T10:53:57.959+00:00",
+      "license": {
+        "@id": "#license"
+      },
+      "hasPart": [
+        {
+          "@id": "circuit.qasm"
+        },
+        {
+          "@id": "results.json"
+        },
+        {
+          "@id": "provenance.json"
+        },
+        {
+          "@id": "transpiled_circuits/qiskit.qasm"
+        },
+        {
+          "@id": "transpiled_circuits/cirq.qasm"
+        },
+        {
+          "@id": "transpiled_circuits/qulacs.qasm"
+        },
+        {
+          "@id": "transpiled_circuits/qsim-cirq.qasm"
+        },
+        {
+          "@id": "transpiled_circuits/qibo.qasm"
+        },
+        {
+          "@id": "transpiled_circuits/qrisp.qasm"
+        },
+        {
+          "@id": "transpiled_circuits/myqlm.qasm"
+        },
+        {
+          "@id": "transpiled_circuits/quimb.qasm"
+        },
+        {
+          "@id": "transpiled_circuits/cuquantum.qasm"
+        },
+        {
+          "@id": "transpiled_circuits/quest.qasm"
+        },
+        {
+          "@id": "transpiled_circuits/pennylane-lightning.qasm"
+        },
+        {
+          "@id": "transpiled_circuits/pennylane-default.qasm"
+        },
+        {
+          "@id": "transpiled_circuits/pyquil.qasm"
+        },
+        {
+          "@id": "transpiled_circuits/torchquantum.qasm"
+        },
+        {
+          "@id": "figures/agreement_distribution.svg"
+        },
+        {
+          "@id": "figures/counts_overview.svg"
+        },
+        {
+          "@id": "figures/histogram_qiskit-cirq.svg"
+        },
+        {
+          "@id": "figures/histogram_qiskit-cuquantum.svg"
+        },
+        {
+          "@id": "figures/histogram_qiskit-myqlm.svg"
+        },
+        {
+          "@id": "figures/histogram_qiskit-pennylane-default.svg"
+        },
+        {
+          "@id": "figures/histogram_qiskit-pennylane-lightning.svg"
+        },
+        {
+          "@id": "figures/histogram_qiskit-pyquil.svg"
+        },
+        {
+          "@id": "figures/histogram_qiskit-qibo.svg"
+        },
+        {
+          "@id": "figures/histogram_qiskit-qrisp.svg"
+        },
+        {
+          "@id": "figures/histogram_qiskit-qsim-cirq.svg"
+        },
+        {
+          "@id": "figures/histogram_qiskit-quest.svg"
+        },
+        {
+          "@id": "figures/histogram_qiskit-quimb.svg"
+        },
+        {
+          "@id": "figures/histogram_qiskit-qulacs.svg"
+        },
+        {
+          "@id": "tables/agreement.csv"
+        },
+        {
+          "@id": "tables/statistical_test.csv"
+        }
+      ],
+      "mentions": [
+        {
+          "@id": "#run-qiskit"
+        },
+        {
+          "@id": "#run-cirq"
+        },
+        {
+          "@id": "#run-qulacs"
+        },
+        {
+          "@id": "#run-qsim-cirq"
+        },
+        {
+          "@id": "#run-qibo"
+        },
+        {
+          "@id": "#run-qrisp"
+        },
+        {
+          "@id": "#run-myqlm"
+        },
+        {
+          "@id": "#run-quimb"
+        },
+        {
+          "@id": "#run-cuquantum"
+        },
+        {
+          "@id": "#run-quest"
+        },
+        {
+          "@id": "#run-pennylane-lightning"
+        },
+        {
+          "@id": "#run-pennylane-default"
+        },
+        {
+          "@id": "#run-pyquil"
+        },
+        {
+          "@id": "#run-torchquantum"
+        },
+        {
+          "@id": "#agreement-analysis"
+        }
+      ]
+    },
+    {
+      "@id": "#license",
+      "@type": "CreativeWork",
+      "name": "CC BY 4.0",
+      "url": "https://creativecommons.org/licenses/by/4.0/"
+    },
+    {
+      "@id": "circuit.qasm",
+      "@type": "File",
+      "name": "circuit.qasm",
+      "description": "Input OpenQASM 2.0 circuit used for this benchmark run.",
+      "encodingFormat": "text/x-qasm",
+      "programmingLanguage": {
+        "@id": "#openqasm2"
+      }
+    },
+    {
+      "@id": "results.json",
+      "@type": "File",
+      "name": "results.json",
+      "description": "Full benchmark analysis results including divergence, pairwise agreement evidence records when available, performance, and resource reports across all dispatched simulators. Raw statevectors excluded to reduce file size.",
+      "encodingFormat": "application/json"
+    },
+    {
+      "@id": "provenance.json",
+      "@type": "File",
+      "name": "provenance.json",
+      "description": "Computational provenance: runner configurations, capabilities, optimization level descriptions, and platform metadata.",
+      "encodingFormat": "application/json"
+    },
+    {
+      "@id": "transpiled_circuits/qiskit.qasm",
+      "@type": "File",
+      "name": "qiskit.qasm",
+      "description": "The exact transpiled and preprocessed QASM 2.0 code that was executed by the qiskit backend adapter.",
+      "encodingFormat": "text/x-qasm",
+      "programmingLanguage": {
+        "@id": "#openqasm2"
+      }
+    },
+    {
+      "@id": "transpiled_circuits/cirq.qasm",
+      "@type": "File",
+      "name": "cirq.qasm",
+      "description": "The exact transpiled and preprocessed QASM 2.0 code that was executed by the cirq backend adapter.",
+      "encodingFormat": "text/x-qasm",
+      "programmingLanguage": {
+        "@id": "#openqasm2"
+      }
+    },
+    {
+      "@id": "transpiled_circuits/qulacs.qasm",
+      "@type": "File",
+      "name": "qulacs.qasm",
+      "description": "The exact transpiled and preprocessed QASM 2.0 code that was executed by the qulacs backend adapter.",
+      "encodingFormat": "text/x-qasm",
+      "programmingLanguage": {
+        "@id": "#openqasm2"
+      }
+    },
+    {
+      "@id": "transpiled_circuits/qsim-cirq.qasm",
+      "@type": "File",
+      "name": "qsim-cirq.qasm",
+      "description": "The exact transpiled and preprocessed QASM 2.0 code that was executed by the qsim-cirq backend adapter.",
+      "encodingFormat": "text/x-qasm",
+      "programmingLanguage": {
+        "@id": "#openqasm2"
+      }
+    },
+    {
+      "@id": "transpiled_circuits/qibo.qasm",
+      "@type": "File",
+      "name": "qibo.qasm",
+      "description": "The exact transpiled and preprocessed QASM 2.0 code that was executed by the qibo backend adapter.",
+      "encodingFormat": "text/x-qasm",
+      "programmingLanguage": {
+        "@id": "#openqasm2"
+      }
+    },
+    {
+      "@id": "transpiled_circuits/qrisp.qasm",
+      "@type": "File",
+      "name": "qrisp.qasm",
+      "description": "The exact transpiled and preprocessed QASM 2.0 code that was executed by the qrisp backend adapter.",
+      "encodingFormat": "text/x-qasm",
+      "programmingLanguage": {
+        "@id": "#openqasm2"
+      }
+    },
+    {
+      "@id": "transpiled_circuits/myqlm.qasm",
+      "@type": "File",
+      "name": "myqlm.qasm",
+      "description": "The exact transpiled and preprocessed QASM 2.0 code that was executed by the myqlm backend adapter.",
+      "encodingFormat": "text/x-qasm",
+      "programmingLanguage": {
+        "@id": "#openqasm2"
+      }
+    },
+    {
+      "@id": "transpiled_circuits/quimb.qasm",
+      "@type": "File",
+      "name": "quimb.qasm",
+      "description": "The exact transpiled and preprocessed QASM 2.0 code that was executed by the quimb backend adapter.",
+      "encodingFormat": "text/x-qasm",
+      "programmingLanguage": {
+        "@id": "#openqasm2"
+      }
+    },
+    {
+      "@id": "transpiled_circuits/cuquantum.qasm",
+      "@type": "File",
+      "name": "cuquantum.qasm",
+      "description": "The exact transpiled and preprocessed QASM 2.0 code that was executed by the cuquantum backend adapter.",
+      "encodingFormat": "text/x-qasm",
+      "programmingLanguage": {
+        "@id": "#openqasm2"
+      }
+    },
+    {
+      "@id": "transpiled_circuits/quest.qasm",
+      "@type": "File",
+      "name": "quest.qasm",
+      "description": "The exact transpiled and preprocessed QASM 2.0 code that was executed by the quest backend adapter.",
+      "encodingFormat": "text/x-qasm",
+      "programmingLanguage": {
+        "@id": "#openqasm2"
+      }
+    },
+    {
+      "@id": "transpiled_circuits/pennylane-lightning.qasm",
+      "@type": "File",
+      "name": "pennylane-lightning.qasm",
+      "description": "The exact transpiled and preprocessed QASM 2.0 code that was executed by the pennylane-lightning backend adapter.",
+      "encodingFormat": "text/x-qasm",
+      "programmingLanguage": {
+        "@id": "#openqasm2"
+      }
+    },
+    {
+      "@id": "transpiled_circuits/pennylane-default.qasm",
+      "@type": "File",
+      "name": "pennylane-default.qasm",
+      "description": "The exact transpiled and preprocessed QASM 2.0 code that was executed by the pennylane-default backend adapter.",
+      "encodingFormat": "text/x-qasm",
+      "programmingLanguage": {
+        "@id": "#openqasm2"
+      }
+    },
+    {
+      "@id": "transpiled_circuits/pyquil.qasm",
+      "@type": "File",
+      "name": "pyquil.qasm",
+      "description": "The exact transpiled and preprocessed QASM 2.0 code that was executed by the pyquil backend adapter.",
+      "encodingFormat": "text/x-qasm",
+      "programmingLanguage": {
+        "@id": "#openqasm2"
+      }
+    },
+    {
+      "@id": "transpiled_circuits/torchquantum.qasm",
+      "@type": "File",
+      "name": "torchquantum.qasm",
+      "description": "The exact transpiled and preprocessed QASM 2.0 code that was executed by the torchquantum backend adapter.",
+      "encodingFormat": "text/x-qasm",
+      "programmingLanguage": {
+        "@id": "#openqasm2"
+      }
+    },
+    {
+      "@id": "https://w3id.org/ro/crate/1.1",
+      "@type": "CreativeWork",
+      "name": "RO-Crate 1.1",
+      "version": "1.1"
+    },
+    {
+      "@id": "https://w3id.org/ro/wfrun/process/0.5",
+      "@type": "CreativeWork",
+      "name": "Process Run Crate",
+      "version": "0.5"
+    },
+    {
+      "@id": "#quantum-rosetta",
+      "@type": "SoftwareApplication",
+      "name": "Quantum Rosetta",
+      "softwareVersion": "1.0.0",
+      "description": "Microservices platform for cross-simulator quantum circuit benchmarking using OpenQASM 2.0 as the canonical input format. Orchestrates each backend execution and computes cross-simulator agreement evidence.",
+      "url": "https://github.com/SeQuSoS-Project/QRosetta"
+    },
+    {
+      "@id": "#openqasm2",
+      "@type": "ComputerLanguage",
+      "name": "OpenQASM 2.0",
+      "url": "https://arxiv.org/abs/1707.03429"
+    },
+    {
+      "@id": "#param-n_shots",
+      "@type": "PropertyValue",
+      "name": "n_shots",
+      "value": 4096
+    },
+    {
+      "@id": "#param-seed",
+      "@type": "PropertyValue",
+      "name": "seed",
+      "value": 20260728,
+      "description": "RNG seed for reproducible sampling."
+    },
+    {
+      "@id": "#param-optlevel-qiskit",
+      "@type": "PropertyValue",
+      "name": "optimization_level",
+      "value": 1,
+      "description": "Effective optimization level executed by the qiskit adapter."
+    },
+    {
+      "@id": "#output-qiskit",
+      "@type": "CreativeWork",
+      "name": "qiskit measured output",
+      "description": "Raw measured output and per-runner metrics produced by qiskit; values preserved in results.json under raw_results.",
+      "isPartOf": {
+        "@id": "results.json"
+      }
+    },
+    {
+      "@id": "#run-qiskit",
+      "@type": "CreateAction",
+      "name": "Execution of the input circuit on qiskit",
+      "description": "Dispatch of the input circuit to the qiskit backend adapter for measured execution.",
+      "instrument": {
+        "@id": "#qiskit"
+      },
+      "object": [
+        {
+          "@id": "circuit.qasm"
+        },
+        {
+          "@id": "#param-n_shots"
+        },
+        {
+          "@id": "#param-seed"
+        },
+        {
+          "@id": "#param-optlevel-qiskit"
+        }
+      ],
+      "result": {
+        "@id": "#output-qiskit"
+      },
+      "endTime": "2026-07-28T10:53:57.959+00:00",
+      "actionStatus": "http://schema.org/CompletedActionStatus"
+    },
+    {
+      "@id": "#param-optlevel-cirq",
+      "@type": "PropertyValue",
+      "name": "optimization_level",
+      "value": 1,
+      "description": "Effective optimization level executed by the cirq adapter."
+    },
+    {
+      "@id": "#output-cirq",
+      "@type": "CreativeWork",
+      "name": "cirq measured output",
+      "description": "Raw measured output and per-runner metrics produced by cirq; values preserved in results.json under raw_results.",
+      "isPartOf": {
+        "@id": "results.json"
+      }
+    },
+    {
+      "@id": "#run-cirq",
+      "@type": "CreateAction",
+      "name": "Execution of the input circuit on cirq",
+      "description": "Dispatch of the input circuit to the cirq backend adapter for measured execution.",
+      "instrument": {
+        "@id": "#cirq"
+      },
+      "object": [
+        {
+          "@id": "circuit.qasm"
+        },
+        {
+          "@id": "#param-n_shots"
+        },
+        {
+          "@id": "#param-seed"
+        },
+        {
+          "@id": "#param-optlevel-cirq"
+        }
+      ],
+      "result": {
+        "@id": "#output-cirq"
+      },
+      "endTime": "2026-07-28T10:53:57.959+00:00",
+      "actionStatus": "http://schema.org/CompletedActionStatus"
+    },
+    {
+      "@id": "#param-optlevel-qulacs",
+      "@type": "PropertyValue",
+      "name": "optimization_level",
+      "value": 1,
+      "description": "Effective optimization level executed by the qulacs adapter."
+    },
+    {
+      "@id": "#output-qulacs",
+      "@type": "CreativeWork",
+      "name": "qulacs measured output",
+      "description": "Raw measured output and per-runner metrics produced by qulacs; values preserved in results.json under raw_results.",
+      "isPartOf": {
+        "@id": "results.json"
+      }
+    },
+    {
+      "@id": "#run-qulacs",
+      "@type": "CreateAction",
+      "name": "Execution of the input circuit on qulacs",
+      "description": "Dispatch of the input circuit to the qulacs backend adapter for measured execution.",
+      "instrument": {
+        "@id": "#qulacs"
+      },
+      "object": [
+        {
+          "@id": "circuit.qasm"
+        },
+        {
+          "@id": "#param-n_shots"
+        },
+        {
+          "@id": "#param-seed"
+        },
+        {
+          "@id": "#param-optlevel-qulacs"
+        }
+      ],
+      "result": {
+        "@id": "#output-qulacs"
+      },
+      "endTime": "2026-07-28T10:53:57.959+00:00",
+      "actionStatus": "http://schema.org/CompletedActionStatus"
+    },
+    {
+      "@id": "#param-optlevel-qsim-cirq",
+      "@type": "PropertyValue",
+      "name": "optimization_level",
+      "value": 1,
+      "description": "Effective optimization level executed by the qsim-cirq adapter."
+    },
+    {
+      "@id": "#output-qsim-cirq",
+      "@type": "CreativeWork",
+      "name": "qsim-cirq measured output",
+      "description": "Raw measured output and per-runner metrics produced by qsim-cirq; values preserved in results.json under raw_results.",
+      "isPartOf": {
+        "@id": "results.json"
+      }
+    },
+    {
+      "@id": "#run-qsim-cirq",
+      "@type": "CreateAction",
+      "name": "Execution of the input circuit on qsim-cirq",
+      "description": "Dispatch of the input circuit to the qsim-cirq backend adapter for measured execution.",
+      "instrument": {
+        "@id": "#qsim-cirq"
+      },
+      "object": [
+        {
+          "@id": "circuit.qasm"
+        },
+        {
+          "@id": "#param-n_shots"
+        },
+        {
+          "@id": "#param-seed"
+        },
+        {
+          "@id": "#param-optlevel-qsim-cirq"
+        }
+      ],
+      "result": {
+        "@id": "#output-qsim-cirq"
+      },
+      "endTime": "2026-07-28T10:53:57.959+00:00",
+      "actionStatus": "http://schema.org/CompletedActionStatus"
+    },
+    {
+      "@id": "#param-optlevel-qibo",
+      "@type": "PropertyValue",
+      "name": "optimization_level",
+      "value": 1,
+      "description": "Effective optimization level executed by the qibo adapter."
+    },
+    {
+      "@id": "#output-qibo",
+      "@type": "CreativeWork",
+      "name": "qibo measured output",
+      "description": "Raw measured output and per-runner metrics produced by qibo; values preserved in results.json under raw_results.",
+      "isPartOf": {
+        "@id": "results.json"
+      }
+    },
+    {
+      "@id": "#run-qibo",
+      "@type": "CreateAction",
+      "name": "Execution of the input circuit on qibo",
+      "description": "Dispatch of the input circuit to the qibo backend adapter for measured execution.",
+      "instrument": {
+        "@id": "#qibo"
+      },
+      "object": [
+        {
+          "@id": "circuit.qasm"
+        },
+        {
+          "@id": "#param-n_shots"
+        },
+        {
+          "@id": "#param-seed"
+        },
+        {
+          "@id": "#param-optlevel-qibo"
+        }
+      ],
+      "result": {
+        "@id": "#output-qibo"
+      },
+      "endTime": "2026-07-28T10:53:57.959+00:00",
+      "actionStatus": "http://schema.org/CompletedActionStatus"
+    },
+    {
+      "@id": "#param-optlevel-qrisp",
+      "@type": "PropertyValue",
+      "name": "optimization_level",
+      "value": 0,
+      "description": "Effective optimization level executed by the qrisp adapter."
+    },
+    {
+      "@id": "#output-qrisp",
+      "@type": "CreativeWork",
+      "name": "qrisp measured output",
+      "description": "Raw measured output and per-runner metrics produced by qrisp; values preserved in results.json under raw_results.",
+      "isPartOf": {
+        "@id": "results.json"
+      }
+    },
+    {
+      "@id": "#run-qrisp",
+      "@type": "CreateAction",
+      "name": "Execution of the input circuit on qrisp",
+      "description": "Dispatch of the input circuit to the qrisp backend adapter for measured execution.",
+      "instrument": {
+        "@id": "#qrisp"
+      },
+      "object": [
+        {
+          "@id": "circuit.qasm"
+        },
+        {
+          "@id": "#param-n_shots"
+        },
+        {
+          "@id": "#param-seed"
+        },
+        {
+          "@id": "#param-optlevel-qrisp"
+        }
+      ],
+      "result": {
+        "@id": "#output-qrisp"
+      },
+      "endTime": "2026-07-28T10:53:57.959+00:00",
+      "actionStatus": "http://schema.org/CompletedActionStatus"
+    },
+    {
+      "@id": "#param-optlevel-myqlm",
+      "@type": "PropertyValue",
+      "name": "optimization_level",
+      "value": 0,
+      "description": "Effective optimization level executed by the myqlm adapter."
+    },
+    {
+      "@id": "#output-myqlm",
+      "@type": "CreativeWork",
+      "name": "myqlm measured output",
+      "description": "Raw measured output and per-runner metrics produced by myqlm; values preserved in results.json under raw_results.",
+      "isPartOf": {
+        "@id": "results.json"
+      }
+    },
+    {
+      "@id": "#run-myqlm",
+      "@type": "CreateAction",
+      "name": "Execution of the input circuit on myqlm",
+      "description": "Dispatch of the input circuit to the myqlm backend adapter for measured execution.",
+      "instrument": {
+        "@id": "#myqlm"
+      },
+      "object": [
+        {
+          "@id": "circuit.qasm"
+        },
+        {
+          "@id": "#param-n_shots"
+        },
+        {
+          "@id": "#param-seed"
+        },
+        {
+          "@id": "#param-optlevel-myqlm"
+        }
+      ],
+      "result": {
+        "@id": "#output-myqlm"
+      },
+      "endTime": "2026-07-28T10:53:57.959+00:00",
+      "actionStatus": "http://schema.org/CompletedActionStatus"
+    },
+    {
+      "@id": "#param-optlevel-quimb",
+      "@type": "PropertyValue",
+      "name": "optimization_level",
+      "value": 0,
+      "description": "Effective optimization level executed by the quimb adapter."
+    },
+    {
+      "@id": "#output-quimb",
+      "@type": "CreativeWork",
+      "name": "quimb measured output",
+      "description": "Raw measured output and per-runner metrics produced by quimb; values preserved in results.json under raw_results.",
+      "isPartOf": {
+        "@id": "results.json"
+      }
+    },
+    {
+      "@id": "#run-quimb",
+      "@type": "CreateAction",
+      "name": "Execution of the input circuit on quimb",
+      "description": "Dispatch of the input circuit to the quimb backend adapter for measured execution.",
+      "instrument": {
+        "@id": "#quimb"
+      },
+      "object": [
+        {
+          "@id": "circuit.qasm"
+        },
+        {
+          "@id": "#param-n_shots"
+        },
+        {
+          "@id": "#param-seed"
+        },
+        {
+          "@id": "#param-optlevel-quimb"
+        }
+      ],
+      "result": {
+        "@id": "#output-quimb"
+      },
+      "endTime": "2026-07-28T10:53:57.959+00:00",
+      "actionStatus": "http://schema.org/CompletedActionStatus"
+    },
+    {
+      "@id": "#param-optlevel-cuquantum",
+      "@type": "PropertyValue",
+      "name": "optimization_level",
+      "value": 1,
+      "description": "Effective optimization level executed by the cuquantum adapter."
+    },
+    {
+      "@id": "#output-cuquantum",
+      "@type": "CreativeWork",
+      "name": "cuquantum measured output",
+      "description": "Raw measured output and per-runner metrics produced by cuquantum; values preserved in results.json under raw_results.",
+      "isPartOf": {
+        "@id": "results.json"
+      }
+    },
+    {
+      "@id": "#run-cuquantum",
+      "@type": "CreateAction",
+      "name": "Execution of the input circuit on cuquantum",
+      "description": "Dispatch of the input circuit to the cuquantum backend adapter for measured execution.",
+      "instrument": {
+        "@id": "#cuquantum"
+      },
+      "object": [
+        {
+          "@id": "circuit.qasm"
+        },
+        {
+          "@id": "#param-n_shots"
+        },
+        {
+          "@id": "#param-seed"
+        },
+        {
+          "@id": "#param-optlevel-cuquantum"
+        }
+      ],
+      "result": {
+        "@id": "#output-cuquantum"
+      },
+      "endTime": "2026-07-28T10:53:57.959+00:00",
+      "actionStatus": "http://schema.org/CompletedActionStatus"
+    },
+    {
+      "@id": "#param-optlevel-quest",
+      "@type": "PropertyValue",
+      "name": "optimization_level",
+      "value": 1,
+      "description": "Effective optimization level executed by the quest adapter."
+    },
+    {
+      "@id": "#output-quest",
+      "@type": "CreativeWork",
+      "name": "quest measured output",
+      "description": "Raw measured output and per-runner metrics produced by quest; values preserved in results.json under raw_results.",
+      "isPartOf": {
+        "@id": "results.json"
+      }
+    },
+    {
+      "@id": "#run-quest",
+      "@type": "CreateAction",
+      "name": "Execution of the input circuit on quest",
+      "description": "Dispatch of the input circuit to the quest backend adapter for measured execution.",
+      "instrument": {
+        "@id": "#quest"
+      },
+      "object": [
+        {
+          "@id": "circuit.qasm"
+        },
+        {
+          "@id": "#param-n_shots"
+        },
+        {
+          "@id": "#param-seed"
+        },
+        {
+          "@id": "#param-optlevel-quest"
+        }
+      ],
+      "result": {
+        "@id": "#output-quest"
+      },
+      "endTime": "2026-07-28T10:53:57.959+00:00",
+      "actionStatus": "http://schema.org/CompletedActionStatus"
+    },
+    {
+      "@id": "#param-optlevel-pennylane-lightning",
+      "@type": "PropertyValue",
+      "name": "optimization_level",
+      "value": 1,
+      "description": "Effective optimization level executed by the pennylane-lightning adapter."
+    },
+    {
+      "@id": "#output-pennylane-lightning",
+      "@type": "CreativeWork",
+      "name": "pennylane-lightning measured output",
+      "description": "Raw measured output and per-runner metrics produced by pennylane-lightning; values preserved in results.json under raw_results.",
+      "isPartOf": {
+        "@id": "results.json"
+      }
+    },
+    {
+      "@id": "#run-pennylane-lightning",
+      "@type": "CreateAction",
+      "name": "Execution of the input circuit on pennylane-lightning",
+      "description": "Dispatch of the input circuit to the pennylane-lightning backend adapter for measured execution.",
+      "instrument": {
+        "@id": "#pennylane-lightning"
+      },
+      "object": [
+        {
+          "@id": "circuit.qasm"
+        },
+        {
+          "@id": "#param-n_shots"
+        },
+        {
+          "@id": "#param-seed"
+        },
+        {
+          "@id": "#param-optlevel-pennylane-lightning"
+        }
+      ],
+      "result": {
+        "@id": "#output-pennylane-lightning"
+      },
+      "endTime": "2026-07-28T10:53:57.959+00:00",
+      "actionStatus": "http://schema.org/CompletedActionStatus"
+    },
+    {
+      "@id": "#param-optlevel-pennylane-default",
+      "@type": "PropertyValue",
+      "name": "optimization_level",
+      "value": 1,
+      "description": "Effective optimization level executed by the pennylane-default adapter."
+    },
+    {
+      "@id": "#output-pennylane-default",
+      "@type": "CreativeWork",
+      "name": "pennylane-default measured output",
+      "description": "Raw measured output and per-runner metrics produced by pennylane-default; values preserved in results.json under raw_results.",
+      "isPartOf": {
+        "@id": "results.json"
+      }
+    },
+    {
+      "@id": "#run-pennylane-default",
+      "@type": "CreateAction",
+      "name": "Execution of the input circuit on pennylane-default",
+      "description": "Dispatch of the input circuit to the pennylane-default backend adapter for measured execution.",
+      "instrument": {
+        "@id": "#pennylane-default"
+      },
+      "object": [
+        {
+          "@id": "circuit.qasm"
+        },
+        {
+          "@id": "#param-n_shots"
+        },
+        {
+          "@id": "#param-seed"
+        },
+        {
+          "@id": "#param-optlevel-pennylane-default"
+        }
+      ],
+      "result": {
+        "@id": "#output-pennylane-default"
+      },
+      "endTime": "2026-07-28T10:53:57.959+00:00",
+      "actionStatus": "http://schema.org/CompletedActionStatus"
+    },
+    {
+      "@id": "#param-optlevel-pyquil",
+      "@type": "PropertyValue",
+      "name": "optimization_level",
+      "value": 1,
+      "description": "Effective optimization level executed by the pyquil adapter."
+    },
+    {
+      "@id": "#output-pyquil",
+      "@type": "CreativeWork",
+      "name": "pyquil measured output",
+      "description": "Raw measured output and per-runner metrics produced by pyquil; values preserved in results.json under raw_results.",
+      "isPartOf": {
+        "@id": "results.json"
+      }
+    },
+    {
+      "@id": "#run-pyquil",
+      "@type": "CreateAction",
+      "name": "Execution of the input circuit on pyquil",
+      "description": "Dispatch of the input circuit to the pyquil backend adapter for measured execution.",
+      "instrument": {
+        "@id": "#pyquil"
+      },
+      "object": [
+        {
+          "@id": "circuit.qasm"
+        },
+        {
+          "@id": "#param-n_shots"
+        },
+        {
+          "@id": "#param-seed"
+        },
+        {
+          "@id": "#param-optlevel-pyquil"
+        }
+      ],
+      "result": {
+        "@id": "#output-pyquil"
+      },
+      "endTime": "2026-07-28T10:53:57.959+00:00",
+      "actionStatus": "http://schema.org/CompletedActionStatus"
+    },
+    {
+      "@id": "#param-optlevel-torchquantum",
+      "@type": "PropertyValue",
+      "name": "optimization_level",
+      "value": 1,
+      "description": "Effective optimization level executed by the torchquantum adapter."
+    },
+    {
+      "@id": "#output-torchquantum",
+      "@type": "CreativeWork",
+      "name": "torchquantum measured output",
+      "description": "Raw measured output and per-runner metrics produced by torchquantum; values preserved in results.json under raw_results.",
+      "isPartOf": {
+        "@id": "results.json"
+      }
+    },
+    {
+      "@id": "#run-torchquantum",
+      "@type": "CreateAction",
+      "name": "Execution of the input circuit on torchquantum",
+      "description": "Dispatch of the input circuit to the torchquantum backend adapter for measured execution.",
+      "instrument": {
+        "@id": "#torchquantum"
+      },
+      "object": [
+        {
+          "@id": "circuit.qasm"
+        },
+        {
+          "@id": "#param-n_shots"
+        },
+        {
+          "@id": "#param-seed"
+        },
+        {
+          "@id": "#param-optlevel-torchquantum"
+        }
+      ],
+      "result": {
+        "@id": "#output-torchquantum"
+      },
+      "endTime": "2026-07-28T10:53:57.959+00:00",
+      "actionStatus": "http://schema.org/CompletedActionStatus"
+    },
+    {
+      "@id": "figures/agreement_distribution.svg",
+      "@type": "File",
+      "name": "agreement_distribution.svg",
+      "description": "Publication-ready figure derived deterministically from the analysis reports. Raw metrics vs transformed analysis evidence are distinguished in the figure/table caption.",
+      "encodingFormat": "image/svg+xml"
+    },
+    {
+      "@id": "figures/counts_overview.svg",
+      "@type": "File",
+      "name": "counts_overview.svg",
+      "description": "Publication-ready figure derived deterministically from the analysis reports. Raw metrics vs transformed analysis evidence are distinguished in the figure/table caption.",
+      "encodingFormat": "image/svg+xml"
+    },
+    {
+      "@id": "figures/histogram_qiskit-cirq.svg",
+      "@type": "File",
+      "name": "histogram_qiskit-cirq.svg",
+      "description": "Publication-ready figure derived deterministically from the analysis reports. Raw metrics vs transformed analysis evidence are distinguished in the figure/table caption.",
+      "encodingFormat": "image/svg+xml"
+    },
+    {
+      "@id": "figures/histogram_qiskit-cuquantum.svg",
+      "@type": "File",
+      "name": "histogram_qiskit-cuquantum.svg",
+      "description": "Publication-ready figure derived deterministically from the analysis reports. Raw metrics vs transformed analysis evidence are distinguished in the figure/table caption.",
+      "encodingFormat": "image/svg+xml"
+    },
+    {
+      "@id": "figures/histogram_qiskit-myqlm.svg",
+      "@type": "File",
+      "name": "histogram_qiskit-myqlm.svg",
+      "description": "Publication-ready figure derived deterministically from the analysis reports. Raw metrics vs transformed analysis evidence are distinguished in the figure/table caption.",
+      "encodingFormat": "image/svg+xml"
+    },
+    {
+      "@id": "figures/histogram_qiskit-pennylane-default.svg",
+      "@type": "File",
+      "name": "histogram_qiskit-pennylane-default.svg",
+      "description": "Publication-ready figure derived deterministically from the analysis reports. Raw metrics vs transformed analysis evidence are distinguished in the figure/table caption.",
+      "encodingFormat": "image/svg+xml"
+    },
+    {
+      "@id": "figures/histogram_qiskit-pennylane-lightning.svg",
+      "@type": "File",
+      "name": "histogram_qiskit-pennylane-lightning.svg",
+      "description": "Publication-ready figure derived deterministically from the analysis reports. Raw metrics vs transformed analysis evidence are distinguished in the figure/table caption.",
+      "encodingFormat": "image/svg+xml"
+    },
+    {
+      "@id": "figures/histogram_qiskit-pyquil.svg",
+      "@type": "File",
+      "name": "histogram_qiskit-pyquil.svg",
+      "description": "Publication-ready figure derived deterministically from the analysis reports. Raw metrics vs transformed analysis evidence are distinguished in the figure/table caption.",
+      "encodingFormat": "image/svg+xml"
+    },
+    {
+      "@id": "figures/histogram_qiskit-qibo.svg",
+      "@type": "File",
+      "name": "histogram_qiskit-qibo.svg",
+      "description": "Publication-ready figure derived deterministically from the analysis reports. Raw metrics vs transformed analysis evidence are distinguished in the figure/table caption.",
+      "encodingFormat": "image/svg+xml"
+    },
+    {
+      "@id": "figures/histogram_qiskit-qrisp.svg",
+      "@type": "File",
+      "name": "histogram_qiskit-qrisp.svg",
+      "description": "Publication-ready figure derived deterministically from the analysis reports. Raw metrics vs transformed analysis evidence are distinguished in the figure/table caption.",
+      "encodingFormat": "image/svg+xml"
+    },
+    {
+      "@id": "figures/histogram_qiskit-qsim-cirq.svg",
+      "@type": "File",
+      "name": "histogram_qiskit-qsim-cirq.svg",
+      "description": "Publication-ready figure derived deterministically from the analysis reports. Raw metrics vs transformed analysis evidence are distinguished in the figure/table caption.",
+      "encodingFormat": "image/svg+xml"
+    },
+    {
+      "@id": "figures/histogram_qiskit-quest.svg",
+      "@type": "File",
+      "name": "histogram_qiskit-quest.svg",
+      "description": "Publication-ready figure derived deterministically from the analysis reports. Raw metrics vs transformed analysis evidence are distinguished in the figure/table caption.",
+      "encodingFormat": "image/svg+xml"
+    },
+    {
+      "@id": "figures/histogram_qiskit-quimb.svg",
+      "@type": "File",
+      "name": "histogram_qiskit-quimb.svg",
+      "description": "Publication-ready figure derived deterministically from the analysis reports. Raw metrics vs transformed analysis evidence are distinguished in the figure/table caption.",
+      "encodingFormat": "image/svg+xml"
+    },
+    {
+      "@id": "figures/histogram_qiskit-qulacs.svg",
+      "@type": "File",
+      "name": "histogram_qiskit-qulacs.svg",
+      "description": "Publication-ready figure derived deterministically from the analysis reports. Raw metrics vs transformed analysis evidence are distinguished in the figure/table caption.",
+      "encodingFormat": "image/svg+xml"
+    },
+    {
+      "@id": "tables/agreement.csv",
+      "@type": "File",
+      "name": "agreement.csv",
+      "description": "Publication-ready table derived deterministically from the analysis reports. Raw metrics vs transformed analysis evidence are distinguished in the figure/table caption.",
+      "encodingFormat": "text/csv"
+    },
+    {
+      "@id": "tables/statistical_test.csv",
+      "@type": "File",
+      "name": "statistical_test.csv",
+      "description": "Publication-ready table derived deterministically from the analysis reports. Raw metrics vs transformed analysis evidence are distinguished in the figure/table caption.",
+      "encodingFormat": "text/csv"
+    },
+    {
+      "@id": "#agreement-analysis",
+      "@type": "CreateAction",
+      "name": "Cross-simulator agreement analysis",
+      "description": "QRosetta comparator computed pairwise agreement evidence over the registered-transform lattice and, for measured mode, the shot-noise statistical test, from the backend outputs. Publication figures and tables, when requested, are derived from these reports.",
+      "instrument": {
+        "@id": "#quantum-rosetta"
+      },
+      "object": [
+        {
+          "@id": "#output-qiskit"
+        },
+        {
+          "@id": "#output-cirq"
+        },
+        {
+          "@id": "#output-qulacs"
+        },
+        {
+          "@id": "#output-qsim-cirq"
+        },
+        {
+          "@id": "#output-qibo"
+        },
+        {
+          "@id": "#output-qrisp"
+        },
+        {
+          "@id": "#output-myqlm"
+        },
+        {
+          "@id": "#output-quimb"
+        },
+        {
+          "@id": "#output-cuquantum"
+        },
+        {
+          "@id": "#output-quest"
+        },
+        {
+          "@id": "#output-pennylane-lightning"
+        },
+        {
+          "@id": "#output-pennylane-default"
+        },
+        {
+          "@id": "#output-pyquil"
+        },
+        {
+          "@id": "#output-torchquantum"
+        }
+      ],
+      "result": [
+        {
+          "@id": "results.json"
+        },
+        {
+          "@id": "figures/agreement_distribution.svg"
+        },
+        {
+          "@id": "figures/counts_overview.svg"
+        },
+        {
+          "@id": "figures/histogram_qiskit-cirq.svg"
+        },
+        {
+          "@id": "figures/histogram_qiskit-cuquantum.svg"
+        },
+        {
+          "@id": "figures/histogram_qiskit-myqlm.svg"
+        },
+        {
+          "@id": "figures/histogram_qiskit-pennylane-default.svg"
+        },
+        {
+          "@id": "figures/histogram_qiskit-pennylane-lightning.svg"
+        },
+        {
+          "@id": "figures/histogram_qiskit-pyquil.svg"
+        },
+        {
+          "@id": "figures/histogram_qiskit-qibo.svg"
+        },
+        {
+          "@id": "figures/histogram_qiskit-qrisp.svg"
+        },
+        {
+          "@id": "figures/histogram_qiskit-qsim-cirq.svg"
+        },
+        {
+          "@id": "figures/histogram_qiskit-quest.svg"
+        },
+        {
+          "@id": "figures/histogram_qiskit-quimb.svg"
+        },
+        {
+          "@id": "figures/histogram_qiskit-qulacs.svg"
+        },
+        {
+          "@id": "tables/agreement.csv"
+        },
+        {
+          "@id": "tables/statistical_test.csv"
+        }
+      ],
+      "endTime": "2026-07-28T10:53:57.959+00:00"
+    },
+    {
+      "@id": "#qiskit",
+      "@type": "SoftwareApplication",
+      "name": "qiskit Simulator Adapter",
+      "softwareVersion": "pytket 1.33.0, pytket-qiskit 0.57.0, qiskit 1.2.4, qiskit-aer 0.15.1, qiskit-ibm-runtime 0.33.2",
+      "description": "Quantum execution environment provided by the qiskit backend adapter.",
+      "url": "https://github.com/SeQuSoS-Project/QRosetta/tree/main/runners/pytket-qiskit-runner",
+      "softwareRequirements": [
+        "pytket==1.33.0",
+        "pytket-qiskit==0.57.0",
+        "qiskit==1.2.4",
+        "qiskit-aer==0.15.1",
+        "qiskit-ibm-runtime==0.33.2"
+      ]
+    },
+    {
+      "@id": "#cirq",
+      "@type": "SoftwareApplication",
+      "name": "cirq Simulator Adapter",
+      "softwareVersion": "cirq 1.4.1, cirq-aqt 1.4.1, cirq-core 1.4.1, cirq-google 1.4.1, cirq-ionq 1.4.1, cirq-pasqal 1.4.1, cirq-rigetti 1.4.1, cirq-web 1.4.1, pyquil 4.17.0, pytket 1.33.0, pytket-cirq 0.38.0",
+      "description": "Quantum execution environment provided by the cirq backend adapter.",
+      "url": "https://github.com/SeQuSoS-Project/QRosetta/tree/main/runners/pytket-cirq-runner",
+      "softwareRequirements": [
+        "cirq==1.4.1",
+        "cirq-aqt==1.4.1",
+        "cirq-core==1.4.1",
+        "cirq-google==1.4.1",
+        "cirq-ionq==1.4.1",
+        "cirq-pasqal==1.4.1",
+        "cirq-rigetti==1.4.1",
+        "cirq-web==1.4.1",
+        "pyquil==4.17.0",
+        "pytket==1.33.0",
+        "pytket-cirq==0.38.0"
+      ]
+    },
+    {
+      "@id": "#qulacs",
+      "@type": "SoftwareApplication",
+      "name": "qulacs Simulator Adapter",
+      "softwareVersion": "pytket 1.33.0, pytket-qulacs 0.38.0, qulacs 0.6.5",
+      "description": "Quantum execution environment provided by the qulacs backend adapter.",
+      "url": "https://github.com/SeQuSoS-Project/QRosetta/tree/main/runners/pytket-qulacs-runner",
+      "softwareRequirements": [
+        "pytket==1.33.0",
+        "pytket-qulacs==0.38.0",
+        "qulacs==0.6.5"
+      ]
+    },
+    {
+      "@id": "#qsim-cirq",
+      "@type": "SoftwareApplication",
+      "name": "qsim-cirq Simulator Adapter",
+      "softwareVersion": "cirq 1.4.1, cirq-aqt 1.4.1, cirq-core 1.4.1, cirq-google 1.4.1, cirq-ionq 1.4.1, cirq-pasqal 1.4.1, cirq-rigetti 1.4.1, cirq-web 1.4.1, pyquil 4.17.0, pytket 1.33.0, pytket-cirq 0.38.0, qsimcirq 0.22.0",
+      "description": "Quantum execution environment provided by the qsim-cirq backend adapter.",
+      "url": "https://github.com/SeQuSoS-Project/QRosetta/tree/main/runners/qsim-cirq-runner",
+      "softwareRequirements": [
+        "cirq==1.4.1",
+        "cirq-aqt==1.4.1",
+        "cirq-core==1.4.1",
+        "cirq-google==1.4.1",
+        "cirq-ionq==1.4.1",
+        "cirq-pasqal==1.4.1",
+        "cirq-rigetti==1.4.1",
+        "cirq-web==1.4.1",
+        "pyquil==4.17.0",
+        "pytket==1.33.0",
+        "pytket-cirq==0.38.0",
+        "qsimcirq==0.22.0"
+      ]
+    },
+    {
+      "@id": "#qibo",
+      "@type": "SoftwareApplication",
+      "name": "qibo Simulator Adapter",
+      "softwareVersion": "qibo 0.3.1",
+      "description": "Quantum execution environment provided by the qibo backend adapter.",
+      "url": "https://github.com/SeQuSoS-Project/QRosetta/tree/main/runners/qibo-runner",
+      "softwareRequirements": [
+        "qibo==0.3.1"
+      ]
+    },
+    {
+      "@id": "#qrisp",
+      "@type": "SoftwareApplication",
+      "name": "qrisp Simulator Adapter",
+      "softwareVersion": "qiskit 0.45.3, qiskit-terra 0.45.3, qrisp 0.5.2",
+      "description": "Quantum execution environment provided by the qrisp backend adapter.",
+      "url": "https://github.com/SeQuSoS-Project/QRosetta/tree/main/runners/qrisp-runner",
+      "softwareRequirements": [
+        "qiskit==0.45.3",
+        "qiskit-terra==0.45.3",
+        "qrisp==0.5.2"
+      ]
+    },
+    {
+      "@id": "#myqlm",
+      "@type": "SoftwareApplication",
+      "name": "myqlm Simulator Adapter",
+      "softwareVersion": "myqlm 1.13.1, myqlm-clinalg 0.5.0, myqlm-contrib 1.11.0, myqlm-fermion 1.4.0, myqlm-interop 2.1.0, myqlm-simulators 1.11.0, pytket 1.33.0, qat-analog 0.8.0, qat-anapli 0.3.0, qat-comm 1.9.0, qat-core 1.13.1, qat-devices 0.6.0, qat-fusion 0.4.0, qat-hardware 1.7.1, qat-lang 3.4.0, qat-linalg-util 1.1.0, qat-nnize 1.5.0, qat-pbo 1.7.0, qat-quops 1.6.0, qat-synthopline 0.6.0, qat-variational 1.8.0",
+      "description": "Quantum execution environment provided by the myqlm backend adapter.",
+      "url": "https://github.com/SeQuSoS-Project/QRosetta/tree/main/runners/myqlm-runner",
+      "softwareRequirements": [
+        "myqlm==1.13.1",
+        "myqlm-clinalg==0.5.0",
+        "myqlm-contrib==1.11.0",
+        "myqlm-fermion==1.4.0",
+        "myqlm-interop==2.1.0",
+        "myqlm-simulators==1.11.0",
+        "pytket==1.33.0",
+        "qat-analog==0.8.0",
+        "qat-anapli==0.3.0",
+        "qat-comm==1.9.0",
+        "qat-core==1.13.1",
+        "qat-devices==0.6.0",
+        "qat-fusion==0.4.0",
+        "qat-hardware==1.7.1",
+        "qat-lang==3.4.0",
+        "qat-linalg-util==1.1.0",
+        "qat-nnize==1.5.0",
+        "qat-pbo==1.7.0",
+        "qat-quops==1.6.0",
+        "qat-synthopline==0.6.0",
+        "qat-variational==1.8.0"
+      ]
+    },
+    {
+      "@id": "#quimb",
+      "@type": "SoftwareApplication",
+      "name": "quimb Simulator Adapter",
+      "softwareVersion": "quimb 1.13.0",
+      "description": "Quantum execution environment provided by the quimb backend adapter.",
+      "url": "https://github.com/SeQuSoS-Project/QRosetta/tree/main/runners/quimb-runner",
+      "softwareRequirements": [
+        "quimb==1.13.0"
+      ]
+    },
+    {
+      "@id": "#cuquantum",
+      "@type": "SoftwareApplication",
+      "name": "cuquantum Simulator Adapter",
+      "softwareVersion": "qiskit 2.4.2, qiskit-aer 0.17.2",
+      "description": "Quantum execution environment provided by the cuquantum backend adapter.",
+      "url": "https://github.com/SeQuSoS-Project/QRosetta/tree/main/runners/cuquantum-runner",
+      "softwareRequirements": [
+        "qiskit==2.4.2",
+        "qiskit-aer==0.17.2"
+      ]
+    },
+    {
+      "@id": "#quest",
+      "@type": "SoftwareApplication",
+      "name": "quest Simulator Adapter",
+      "softwareVersion": "pytket 1.34.0, pytket-quest 0.1.0",
+      "description": "Quantum execution environment provided by the quest backend adapter.",
+      "url": "https://github.com/SeQuSoS-Project/QRosetta/tree/main/runners/pytket-quest-runner",
+      "softwareRequirements": [
+        "pytket==1.34.0",
+        "pytket-quest==0.1.0"
+      ]
+    },
+    {
+      "@id": "#pennylane-lightning",
+      "@type": "SoftwareApplication",
+      "name": "pennylane-lightning Simulator Adapter",
+      "softwareVersion": "PennyLane 0.39.0, PennyLane-qiskit 0.39.0, PennyLane_Lightning 0.39.0, qiskit 1.2.4, qiskit-aer 0.17.2, qiskit-ibm-provider 0.11.0, qiskit-ibm-runtime 0.29.0",
+      "description": "Quantum execution environment provided by the pennylane-lightning backend adapter.",
+      "url": "https://github.com/SeQuSoS-Project/QRosetta/tree/main/runners/pennylane-lightning-runner",
+      "softwareRequirements": [
+        "PennyLane==0.39.0",
+        "PennyLane-qiskit==0.39.0",
+        "PennyLane_Lightning==0.39.0",
+        "qiskit==1.2.4",
+        "qiskit-aer==0.17.2",
+        "qiskit-ibm-provider==0.11.0",
+        "qiskit-ibm-runtime==0.29.0"
+      ]
+    },
+    {
+      "@id": "#pennylane-default",
+      "@type": "SoftwareApplication",
+      "name": "pennylane-default Simulator Adapter",
+      "softwareVersion": "PennyLane 0.39.0, PennyLane-qiskit 0.39.0, PennyLane_Lightning 0.40.0, qiskit 1.2.4, qiskit-aer 0.17.2, qiskit-ibm-provider 0.11.0, qiskit-ibm-runtime 0.29.0",
+      "description": "Quantum execution environment provided by the pennylane-default backend adapter.",
+      "url": "https://github.com/SeQuSoS-Project/QRosetta/tree/main/runners/pennylane-default-runner",
+      "softwareRequirements": [
+        "PennyLane==0.39.0",
+        "PennyLane-qiskit==0.39.0",
+        "PennyLane_Lightning==0.40.0",
+        "qiskit==1.2.4",
+        "qiskit-aer==0.17.2",
+        "qiskit-ibm-provider==0.11.0",
+        "qiskit-ibm-runtime==0.29.0"
+      ]
+    },
+    {
+      "@id": "#pyquil",
+      "@type": "SoftwareApplication",
+      "name": "pyquil Simulator Adapter",
+      "softwareVersion": "pyquil 4.17.0, pytket 1.33.0, pytket-pyquil 0.36.0",
+      "description": "Quantum execution environment provided by the pyquil backend adapter.",
+      "url": "https://github.com/SeQuSoS-Project/QRosetta/tree/main/runners/pyquil-runner",
+      "softwareRequirements": [
+        "pyquil==4.17.0",
+        "pytket==1.33.0",
+        "pytket-pyquil==0.36.0"
+      ]
+    },
+    {
+      "@id": "#torchquantum",
+      "@type": "SoftwareApplication",
+      "name": "torchquantum Simulator Adapter",
+      "softwareVersion": "qiskit 0.45.3, qiskit-aer 0.13.3, qiskit-ibm-runtime 0.20.0, qiskit-terra 0.45.3, torch 2.2.2+cpu, torchdiffeq 0.2.5, torchpack 0.3.1, torchquantum 0.1.8, torchvision 0.17.2+cpu",
+      "description": "Quantum execution environment provided by the torchquantum backend adapter.",
+      "url": "https://github.com/SeQuSoS-Project/QRosetta/tree/main/runners/torch-quantum-runner",
+      "softwareRequirements": [
+        "qiskit==0.45.3",
+        "qiskit-aer==0.13.3",
+        "qiskit-ibm-runtime==0.20.0",
+        "qiskit-terra==0.45.3",
+        "torch==2.2.2+cpu",
+        "torchdiffeq==0.2.5",
+        "torchpack==0.3.1",
+        "torchquantum==0.1.8",
+        "torchvision==0.17.2+cpu"
+      ]
+    }
+  ]
+}

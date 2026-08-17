@@ -8,6 +8,7 @@ from services.exporter import (
     ExportContext,
     ExportFormat,
     build_ro_crate,
+    infer_export_mode,
     _strip_statevectors,
     PROCESS_RUN_CRATE_PROFILE,
 )
@@ -484,7 +485,7 @@ class TestProcessRunCrateProfile:
         results["raw_results"][1] = {"simulator": "qibo", "error": "backend crashed"}
         meta = _load_metadata(build_ro_crate(_measured_ctx(results=results)))
         action = _by_id(meta)["#run-qibo"]
-        assert action["actionStatus"] == {"@id": "http://schema.org/FailedActionStatus"}
+        assert action["actionStatus"] == "http://schema.org/FailedActionStatus"
         assert action["error"] == "backend crashed"
 
     def test_no_duplicate_graph_ids(self):
@@ -581,3 +582,160 @@ class TestPublicationArtifactsInCrate:
         })
         names = self._basenames(zipfile.ZipFile(io.BytesIO(build_ro_crate(ctx)), "r"))
         assert not any(n.startswith(("figures/", "tables/")) for n in names)
+
+
+# A batch result (POST /run_batch_suite) never duplicates the circuit/n_shots/seed at the
+# top level — each queued circuit is its own entry in benchmark_summary. "qiskit" and "qibo"
+# deliberately both appear in both tasks, to catch the exact bug this test suite is guarding
+# against: treating a batch as a single task silently drops every task's data after the first
+# occurrence of each runner id.
+SAMPLE_RESULTS_BATCH_MEASURED = {
+    "benchmark_summary": [
+        {
+            "task_name": "bell (2q)",
+            "input_qasm": "OPENQASM 2.0;\ninclude \"qelib1.inc\";\nqreg q[2];\nh q[0];\ncx q[0],q[1];\n",
+            "n_shots": 256,
+            "seed": 999,
+            "divergence_report": {
+                "simulators": ["qiskit", "qibo"],
+                "pairwise_agreement": [
+                    {"simulators": ["qiskit", "qibo"], "mode": "measured",
+                     "agreement": "agree_directly", "registered_transform": "none",
+                     "metrics": {}, "provenance": {}}
+                ],
+            },
+            "raw_results": [
+                {"simulator": "qiskit", "counts": {"00": 128, "11": 128},
+                 "optimization_level": 0, "transpiled_qasm": "// bell qiskit"},
+                {"simulator": "qibo", "counts": {"00": 130, "11": 126},
+                 "optimization_level": 0, "transpiled_qasm": "// bell qibo"},
+            ],
+        },
+        {
+            "task_name": "ghz (3q)",
+            "input_qasm": "OPENQASM 2.0;\ninclude \"qelib1.inc\";\nqreg q[3];\nh q[0];\ncx q[0],q[1];\ncx q[1],q[2];\n",
+            "n_shots": 256,
+            "seed": 999,
+            "divergence_report": {
+                "simulators": ["qiskit", "qibo"],
+                "pairwise_agreement": [
+                    {"simulators": ["qiskit", "qibo"], "mode": "measured",
+                     "agreement": "agree_directly", "registered_transform": "none",
+                     "metrics": {}, "provenance": {}}
+                ],
+            },
+            "raw_results": [
+                {"simulator": "qiskit", "counts": {"000": 130, "111": 126},
+                 "optimization_level": 0, "transpiled_qasm": "// ghz qiskit"},
+                {"simulator": "qibo", "error": "TIMEOUT (5s): the simulation exceeded the time budget and was terminated."},
+            ],
+        },
+    ],
+}
+
+
+def _batch_ctx(**overrides):
+    defaults = dict(
+        qasm_string="",
+        results=SAMPLE_RESULTS_BATCH_MEASURED,
+        mode="measured",
+        runner_services={"qiskit": {"enabled": True}, "qibo": {"enabled": True}},
+    )
+    defaults.update(overrides)
+    return ExportContext(**defaults)
+
+
+class TestInferExportMode:
+    def test_single_circuit_measured(self):
+        assert infer_export_mode({"n_shots": 128, "raw_results": []}) == "measured"
+
+    def test_single_circuit_statevector(self):
+        assert infer_export_mode({"raw_results": []}) == "statevector"
+
+    def test_batch_measured_detected_from_first_task(self):
+        # n_shots never appears at the top level for a batch — only inside benchmark_summary.
+        assert infer_export_mode(SAMPLE_RESULTS_BATCH_MEASURED) == "measured"
+
+    def test_batch_statevector_detected_from_first_task(self):
+        results = {"benchmark_summary": [{"raw_results": []}, {"raw_results": []}]}
+        assert infer_export_mode(results) == "statevector"
+
+
+class TestBatchExport:
+    """A batch/multi-circuit export must describe every task's circuit, and must not
+    collapse repeated runner ids across tasks into a single execution."""
+
+    def test_one_circuit_file_per_task_with_real_content(self):
+        zf = zipfile.ZipFile(io.BytesIO(build_ro_crate(_batch_ctx())), "r")
+        names = [n.split("/", 1)[1] for n in zf.namelist()]
+        assert "circuits/bell-2q.qasm" in names
+        assert "circuits/ghz-3q.qasm" in names
+        assert "circuit.qasm" not in names  # no misleading single/empty file for a batch
+        bell_qasm = zf.read([n for n in zf.namelist() if n.endswith("circuits/bell-2q.qasm")][0])
+        assert b"cx q[0],q[1];" in bell_qasm
+        ghz_qasm = zf.read([n for n in zf.namelist() if n.endswith("circuits/ghz-3q.qasm")][0])
+        assert b"cx q[1],q[2];" in ghz_qasm
+
+    def test_root_hasPart_lists_every_task_circuit(self):
+        meta = _load_metadata(build_ro_crate(_batch_ctx()))
+        parts = {p["@id"] for p in _by_id(meta)["./"]["hasPart"]}
+        assert "circuits/bell-2q.qasm" in parts
+        assert "circuits/ghz-3q.qasm" in parts
+
+    def test_same_runner_gets_a_distinct_action_per_task(self):
+        # This is the exact bug: qiskit runs in both tasks and must not collapse to one action.
+        meta = _load_metadata(build_ro_crate(_batch_ctx()))
+        byid = _by_id(meta)
+        bell_action = byid["#run-qiskit-bell-2q"]
+        ghz_action = byid["#run-qiskit-ghz-3q"]
+        assert bell_action["actionStatus"] == "http://schema.org/CompletedActionStatus"
+        assert ghz_action["actionStatus"] == "http://schema.org/CompletedActionStatus"
+        assert bell_action["object"] == [{"@id": "circuits/bell-2q.qasm"},
+                                          {"@id": "#param-n_shots"}, {"@id": "#param-seed"},
+                                          {"@id": "#param-optlevel-qiskit-bell-2q"}]
+        assert ghz_action["object"][0] == {"@id": "circuits/ghz-3q.qasm"}
+
+    def test_per_task_failure_recorded_independently(self):
+        # qibo fails on the ghz task but succeeded on the bell task — both must be visible.
+        meta = _load_metadata(build_ro_crate(_batch_ctx()))
+        byid = _by_id(meta)
+        assert byid["#run-qibo-bell-2q"]["actionStatus"] == "http://schema.org/CompletedActionStatus"
+        failed = byid["#run-qibo-ghz-3q"]
+        assert failed["actionStatus"] == "http://schema.org/FailedActionStatus"
+        assert "TIMEOUT" in failed["error"]
+
+    def test_transpiled_circuits_namespaced_per_task(self):
+        zf = zipfile.ZipFile(io.BytesIO(build_ro_crate(_batch_ctx())), "r")
+        names = [n.split("/", 1)[1] for n in zf.namelist()]
+        assert "transpiled_circuits/bell-2q/qiskit.qasm" in names
+        assert "transpiled_circuits/ghz-3q/qiskit.qasm" in names
+        bell = zf.read([n for n in zf.namelist() if n.endswith("transpiled_circuits/bell-2q/qiskit.qasm")][0])
+        ghz = zf.read([n for n in zf.namelist() if n.endswith("transpiled_circuits/ghz-3q/qiskit.qasm")][0])
+        assert bell == b"// bell qiskit"
+        assert ghz == b"// ghz qiskit"
+
+    def test_shared_n_shots_and_seed_present_once(self):
+        # n_shots/seed are echoed identically into every task by /run_batch_suite; the crate
+        # should record them once as shared parameters, not lose them because they are absent
+        # from the (nonexistent) top level.
+        meta = _load_metadata(build_ro_crate(_batch_ctx()))
+        byid = _by_id(meta)
+        assert byid["#param-n_shots"]["value"] == 256
+        assert byid["#param-seed"]["value"] == 999
+
+    def test_mode_inferred_measured_for_batch(self):
+        ctx = _batch_ctx(mode=infer_export_mode(SAMPLE_RESULTS_BATCH_MEASURED))
+        assert ctx.mode == "measured"
+
+    def test_no_duplicate_graph_ids_in_batch(self):
+        meta = _load_metadata(build_ro_crate(_batch_ctx()))
+        ids = [e["@id"] for e in meta["@graph"]]
+        assert len(ids) == len(set(ids))
+
+    def test_single_circuit_path_unaffected_by_batch_support(self):
+        # Guard against regressions: a plain single-circuit export must still use the
+        # unscoped ids/paths from before batch support existed.
+        meta = _load_metadata(build_ro_crate(_measured_ctx()))
+        byid = _by_id(meta)
+        assert "#run-qiskit" in byid
+        assert "circuit.qasm" in {p["@id"] for p in byid["./"]["hasPart"]}

@@ -4,6 +4,7 @@ import copy
 import io
 import json
 import os
+import re
 import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -59,6 +60,94 @@ def _generate_publication_artifacts(ctx: "ExportContext") -> Dict[str, bytes]:
     )
 
 
+@dataclass
+class _TaskView:
+    """One circuit within the export.
+
+    A single-circuit run (POST /compare, /compare_measured) yields exactly one _TaskView
+    with task_id=None: file paths and entity @ids stay exactly as they were before batch
+    support existed (circuit.qasm at the crate root, #run-<runner> action ids), so ordinary
+    exports are byte-for-byte unaffected by this.
+
+    A batch run (POST /run_batch_suite; results shaped as {"benchmark_summary": [...]})
+    yields one _TaskView per queued circuit, each with its own input_qasm and raw_results —
+    batch results never duplicate the circuit/n_shots/seed at the top level, so treating a
+    batch as "one task" silently loses every circuit but the first.
+    """
+    task_id: Optional[str]
+    label: Optional[str]
+    input_qasm: str
+    raw_results: List[dict]
+
+
+def _slugify(name: str, fallback: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", (name or "").strip().lower()).strip("-")
+    return slug or fallback
+
+
+def _iter_tasks(ctx: "ExportContext") -> List[_TaskView]:
+    benchmark_summary = ctx.results.get("benchmark_summary")
+    if isinstance(benchmark_summary, list) and benchmark_summary:
+        tasks: List[_TaskView] = []
+        seen_ids = set()
+        for i, task_result in enumerate(benchmark_summary):
+            if not isinstance(task_result, dict):
+                continue
+            label = task_result.get("task_name") or f"task {i}"
+            task_id = _slugify(label, f"task-{i}")
+            base_id, suffix = task_id, 1
+            while task_id in seen_ids:
+                suffix += 1
+                task_id = f"{base_id}-{suffix}"
+            seen_ids.add(task_id)
+            tasks.append(_TaskView(
+                task_id=task_id,
+                label=label,
+                input_qasm=task_result.get("input_qasm", ""),
+                raw_results=[r for r in task_result.get("raw_results", []) if isinstance(r, dict)],
+            ))
+        return tasks
+    # Single-circuit path, unchanged from every export before batch support existed.
+    return [_TaskView(
+        task_id=None,
+        label=None,
+        input_qasm=ctx.qasm_string,
+        raw_results=[r for r in ctx.results.get("raw_results", []) if isinstance(r, dict)],
+    )]
+
+
+def _circuit_path(task: _TaskView) -> str:
+    return "circuit.qasm" if task.task_id is None else f"circuits/{task.task_id}.qasm"
+
+
+def _shared_scalar(ctx: "ExportContext", key: str):
+    """A value that's uniform across an entire export: present at the top level for a
+    single-circuit run, or (for n_shots/seed specifically) echoed identically into every
+    task of a batch run, per the /run_batch_suite contract — read the first task's copy."""
+    if key in ctx.results:
+        return ctx.results.get(key)
+    benchmark_summary = ctx.results.get("benchmark_summary")
+    if isinstance(benchmark_summary, list) and benchmark_summary:
+        first = benchmark_summary[0]
+        if isinstance(first, dict):
+            return first.get(key)
+    return None
+
+
+def infer_export_mode(results: dict) -> str:
+    """"measured" or "statevector", from either a single-circuit result (checks the top
+    level) or a batch result (checks the first task inside benchmark_summary, since batch
+    results never duplicate n_shots at the top level)."""
+    if "n_shots" in results:
+        return "measured"
+    benchmark_summary = results.get("benchmark_summary")
+    if isinstance(benchmark_summary, list) and benchmark_summary:
+        first = benchmark_summary[0]
+        if isinstance(first, dict) and "n_shots" in first:
+            return "measured"
+    return "statevector"
+
+
 def _canonical_sim_id(simulator: str) -> str:
     """Self-comparison results carry virtual keys like 'qiskit~opt1~run2' (built by the
     dispatcher). Strip the '~opt~run' suffix back to the canonical runner id so provenance
@@ -86,7 +175,11 @@ class ExportContext:
     results: dict
     mode: str                                          # "statevector" or "measured"
     runner_services: Dict[str, Any]                    # config.get_runner_services()
-    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    # Millisecond precision (not Python's default microseconds) matches the ISO 8601
+    # format the Process Run Crate profile expects for Action endTime/startTime.
+    timestamp: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+    )
     include_statevectors: bool = False
 
     # Optional author metadata — left blank by default for the user to fill in.
@@ -155,17 +248,8 @@ def _get_runner_version(runner_id: str) -> str:
 
 def _iter_raw_results(ctx: ExportContext):
     """Yield every per-runner raw result across single runs and batch summaries."""
-    raw_results = ctx.results.get("raw_results", [])
-    if isinstance(raw_results, list):
-        for r in raw_results:
-            if isinstance(r, dict):
-                yield r
-    benchmark_summary = ctx.results.get("benchmark_summary", [])
-    if isinstance(benchmark_summary, list):
-        for task_result in benchmark_summary:
-            for r in task_result.get("raw_results", []):
-                if isinstance(r, dict):
-                    yield r
+    for task in _iter_tasks(ctx):
+        yield from task.raw_results
 
 
 def _extract_sdk_versions(ctx: ExportContext, runner_name: str) -> dict:
@@ -322,6 +406,12 @@ def _build_ro_crate_metadata(ctx: ExportContext,
     """Build the RO-Crate 1.1 metadata descriptor (JSON-LD)."""
     graph: List[dict] = []
     artifact_paths = artifact_paths or []
+    # Set below, in the author block, when the user supplied one. Referenced later as the
+    # `agent` of every CreateAction (the Person who ran the export), when available.
+    agent_ref: Optional[dict] = None
+
+    tasks = _iter_tasks(ctx)
+    is_batch = any(t.task_id is not None for t in tasks)
 
     # --- 1. Metadata descriptor entity (describes this file itself) ---
     graph.append({
@@ -342,16 +432,16 @@ def _build_ro_crate_metadata(ctx: ExportContext,
         "name": f"Quantum Rosetta Benchmark Export — {ctx.timestamp}",
         "description": (
             "Reproducible quantum simulator benchmark results exported from "
-            "Quantum Rosetta. Contains the input OpenQASM 2.0 circuit, "
+            "Quantum Rosetta. Contains the input OpenQASM 2.0 circuit"
+            + ("s" if is_batch else "") + ", "
             "cross-simulator analysis reports (including pairwise agreement evidence "
             "records when available), performance and resource reports, and full "
             "computational provenance. Each backend execution is recorded as a "
             "CreateAction per the Process Run Crate profile."
         ),
         "datePublished": ctx.timestamp,
-        "license": {"@id": "https://creativecommons.org/licenses/by/4.0/"},
-        "hasPart": [
-            {"@id": "circuit.qasm"},
+        "license": {"@id": "#license"},
+        "hasPart": [{"@id": _circuit_path(t)} for t in tasks] + [
             {"@id": "results.json"},
             {"@id": "provenance.json"},
         ],
@@ -362,6 +452,7 @@ def _build_ro_crate_metadata(ctx: ExportContext,
     if ctx.author_name:
         author_id = "#author"
         root_entity["author"] = {"@id": author_id}
+        agent_ref = {"@id": author_id}
         author_entity: dict = {
             "@id": author_id,
             "@type": "Person",
@@ -379,15 +470,27 @@ def _build_ro_crate_metadata(ctx: ExportContext,
 
     graph.append(root_entity)
 
-    # --- 3. Data Entities ---
     graph.append({
-        "@id": "circuit.qasm",
-        "@type": "File",
-        "name": "circuit.qasm",
-        "description": "Input OpenQASM 2.0 circuit used for this benchmark run.",
-        "encodingFormat": "text/x-qasm",
-        "programmingLanguage": {"@id": "#openqasm2"},
+        "@id": "#license",
+        "@type": "CreativeWork",
+        "name": "CC BY 4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/",
     })
+
+    # --- 3. Data Entities ---
+    for task in tasks:
+        graph.append({
+            "@id": _circuit_path(task),
+            "@type": "File",
+            "name": f"{task.task_id}.qasm" if task.task_id else "circuit.qasm",
+            "description": (
+                f"Input OpenQASM 2.0 circuit for '{task.label}'."
+                if task.task_id else
+                "Input OpenQASM 2.0 circuit used for this benchmark run."
+            ),
+            "encodingFormat": "text/x-qasm",
+            "programmingLanguage": {"@id": "#openqasm2"},
+        })
 
     results_desc = (
         "Full benchmark analysis results including divergence, pairwise agreement "
@@ -418,26 +521,45 @@ def _build_ro_crate_metadata(ctx: ExportContext,
         "encodingFormat": "application/json",
     })
 
-    # Backends that reported a transpiled circuit (deduplicated, preserving first-seen order).
-    transpiled_circuits: List[str] = []
-    for r in _iter_raw_results(ctx):
-        sim = r.get("simulator")
-        if r.get("transpiled_qasm") and sim and sim not in transpiled_circuits:
-            transpiled_circuits.append(sim)
-
-    # Add transpiled circuit entities
-    for sim in transpiled_circuits:
-        graph.append({
-            "@id": f"transpiled_circuits/{sim}.qasm",
-            "@type": "File",
-            "name": f"{sim}.qasm",
-            "description": f"The exact transpiled and preprocessed QASM 2.0 code that was executed by the {sim} backend adapter.",
-            "encodingFormat": "text/x-qasm",
-            "programmingLanguage": {"@id": "#openqasm2"},
-        })
-        root_entity["hasPart"].append({"@id": f"transpiled_circuits/{sim}.qasm"})
+    # Transpiled circuit entities, per task (deduplicated within each task, preserving
+    # first-seen order — the same backend can transpile differently across tasks, so a
+    # single-run's transpiled_circuits/<sim>.qasm path is only reused when there is one task).
+    for task in tasks:
+        seen_sims: List[str] = []
+        for r in task.raw_results:
+            sim = r.get("simulator")
+            if r.get("transpiled_qasm") and sim and sim not in seen_sims:
+                seen_sims.append(sim)
+        for sim in seen_sims:
+            path = (
+                f"transpiled_circuits/{sim}.qasm" if task.task_id is None
+                else f"transpiled_circuits/{task.task_id}/{sim}.qasm"
+            )
+            graph.append({
+                "@id": path,
+                "@type": "File",
+                "name": f"{sim}.qasm",
+                "description": (
+                    f"The exact transpiled and preprocessed QASM 2.0 code that was executed "
+                    f"by the {sim} backend adapter"
+                    + (f" for '{task.label}'." if task.task_id else ".")
+                ),
+                "encodingFormat": "text/x-qasm",
+                "programmingLanguage": {"@id": "#openqasm2"},
+            })
+            root_entity["hasPart"].append({"@id": path})
 
     # --- 4. Profile + orchestrating engine + language ---
+    # Both entries in the root entity's conformsTo (RO-Crate 1.1 itself and the Process
+    # Run Crate profile) need their own described CreativeWork entity in the graph, since
+    # the Process Run Crate profile requires every conformsTo target to be typed.
+    graph.append({
+        "@id": "https://w3id.org/ro/crate/1.1",
+        "@type": "CreativeWork",
+        "name": "RO-Crate 1.1",
+        "version": "1.1",
+    })
+
     graph.append({
         "@id": PROCESS_RUN_CRATE_PROFILE,
         "@type": "CreativeWork",
@@ -467,8 +589,8 @@ def _build_ro_crate_metadata(ctx: ExportContext,
     })
 
     # --- 5. Shared parameter entities (PropertyValue), referenced by run actions ---
-    n_shots = ctx.results.get("n_shots")
-    seed = ctx.results.get("seed")
+    n_shots = _shared_scalar(ctx, "n_shots")
+    seed = _shared_scalar(ctx, "seed")
     shared_param_refs: List[dict] = []
     if ctx.mode == "measured" and n_shots is not None:
         graph.append({
@@ -489,59 +611,68 @@ def _build_ro_crate_metadata(ctx: ExportContext,
         shared_param_refs.append({"@id": "#param-seed"})
 
     # --- 6. Per-execution CreateActions (Process Run Crate core) ---
-    runners_used = _extract_runners_used(ctx)
+    # One CreateAction per (task, runner) pair, not per runner: the same backend runs once
+    # per queued circuit in a batch, with its own circuit, output, and success/failure.
     run_action_refs: List[dict] = []
     output_refs: List[dict] = []
-    for runner in runners_used:
-        runner_id = _canonical_sim_id(runner)
-        frag = _entity_ref_id(runner)
-        raw = _raw_result_for(ctx, runner)
+    for task in tasks:
+        task_suffix = f"-{task.task_id}" if task.task_id else ""
+        circuit_ref = {"@id": _circuit_path(task)}
+        circuit_phrase = "the input circuit" if not task.task_id else f"'{task.label}'"
 
-        # Per-runner optimization level as its own PropertyValue (may differ per backend).
-        obj_refs = [{"@id": "circuit.qasm"}] + list(shared_param_refs)
-        opt_level = raw.get("optimization_level")
-        if opt_level is not None:
-            opt_param_id = f"#param-optlevel-{frag}"
+        for raw in task.raw_results:
+            runner = raw.get("simulator")
+            if not runner:
+                continue
+            runner_id = _canonical_sim_id(runner)
+            frag = _entity_ref_id(runner) + task_suffix
+
+            # Per-runner optimization level as its own PropertyValue (may differ per backend).
+            obj_refs = [circuit_ref] + list(shared_param_refs)
+            opt_level = raw.get("optimization_level")
+            if opt_level is not None:
+                opt_param_id = f"#param-optlevel-{frag}"
+                graph.append({
+                    "@id": opt_param_id,
+                    "@type": "PropertyValue",
+                    "name": "optimization_level",
+                    "value": opt_level,
+                    "description": f"Effective optimization level executed by the {runner} adapter.",
+                })
+                obj_refs.append({"@id": opt_param_id})
+
+            # Contextual output entity: the runner's raw output lives inside results.json.
+            output_id = f"#output-{frag}"
             graph.append({
-                "@id": opt_param_id,
-                "@type": "PropertyValue",
-                "name": "optimization_level",
-                "value": opt_level,
-                "description": f"Effective optimization level executed by the {runner} adapter.",
+                "@id": output_id,
+                "@type": "CreativeWork",
+                "name": f"{runner} {ctx.mode} output" + (f" ({task.label})" if task.task_id else ""),
+                "description": (
+                    f"Raw {ctx.mode} output and per-runner metrics produced by {runner}; "
+                    "values preserved in results.json under raw_results."
+                ),
+                "isPartOf": {"@id": "results.json"},
             })
-            obj_refs.append({"@id": opt_param_id})
+            output_refs.append({"@id": output_id})
 
-        # Contextual output entity: the runner's raw output lives inside results.json.
-        output_id = f"#output-{frag}"
-        graph.append({
-            "@id": output_id,
-            "@type": "CreativeWork",
-            "name": f"{runner} {ctx.mode} output",
-            "description": (
-                f"Raw {ctx.mode} output and per-runner metrics produced by {runner}; "
-                "values preserved in results.json under raw_results."
-            ),
-            "isPartOf": {"@id": "results.json"},
-        })
-        output_refs.append({"@id": output_id})
-
-        failed = bool(raw.get("error"))
-        action = {
-            "@id": f"#run-{frag}",
-            "@type": "CreateAction",
-            "name": f"Execution of the input circuit on {runner}",
-            "instrument": {"@id": f"#{runner_id}"},
-            "object": obj_refs,
-            "result": {"@id": output_id},
-            "endTime": ctx.timestamp,
-            "actionStatus": {
-                "@id": _ACTION_STATUS_FAILED if failed else _ACTION_STATUS_COMPLETED
-            },
-        }
-        if failed:
-            action["error"] = str(raw.get("error"))
-        graph.append(action)
-        run_action_refs.append({"@id": f"#run-{frag}"})
+            failed = bool(raw.get("error"))
+            action = {
+                "@id": f"#run-{frag}",
+                "@type": "CreateAction",
+                "name": f"Execution of {circuit_phrase} on {runner}",
+                "description": f"Dispatch of {circuit_phrase} to the {runner} backend adapter for {ctx.mode} execution.",
+                "instrument": {"@id": f"#{runner_id}"},
+                "object": obj_refs,
+                "result": {"@id": output_id},
+                "endTime": ctx.timestamp,
+                "actionStatus": _ACTION_STATUS_FAILED if failed else _ACTION_STATUS_COMPLETED,
+            }
+            if agent_ref:
+                action["agent"] = agent_ref
+            if failed:
+                action["error"] = str(raw.get("error"))
+            graph.append(action)
+            run_action_refs.append({"@id": f"#run-{frag}"})
 
     # --- 7. Publication artifact data entities (opt-in; derived analysis outputs) ---
     artifact_refs: List[dict] = []
@@ -578,6 +709,7 @@ def _build_ro_crate_metadata(ctx: ExportContext,
             "object": output_refs,
             "result": analysis_results if len(analysis_results) > 1 else {"@id": "results.json"},
             "endTime": ctx.timestamp,
+            **({"agent": agent_ref} if agent_ref else {}),
         })
         run_action_refs.append({"@id": "#agreement-analysis"})
 
@@ -588,7 +720,7 @@ def _build_ro_crate_metadata(ctx: ExportContext,
     # via importlib.metadata — ground truth). Fall back to the declared requirements.txt
     # pin only for older reports that predate sdk_versions reporting.
     seen_runner_ids = set()
-    for runner in runners_used:
+    for runner in _extract_runners_used(ctx):
         runner_id = _canonical_sim_id(runner)
         if runner_id in seen_runner_ids:
             continue
@@ -598,12 +730,18 @@ def _build_ro_crate_metadata(ctx: ExportContext,
             version = ", ".join(f"{pkg} {ver}" for pkg, ver in sorted(executed_versions.items()))
         else:
             version = _get_runner_version(runner_id)
+        svc = ctx.runner_services.get(runner_id, {})
+        dir_name = svc.get("base_url", "").split("://", 1)[-1].split(":", 1)[0].split("/", 1)[0]
         node = {
             "@id": f"#{runner_id}",
             "@type": "SoftwareApplication",
             "name": f"{runner_id} Simulator Adapter",
             "softwareVersion": version,
             "description": f"Quantum execution environment provided by the {runner_id} backend adapter.",
+            "url": (
+                f"https://github.com/SeQuSoS-Project/QRosetta/tree/main/runners/{dir_name}"
+                if dir_name else "https://github.com/SeQuSoS-Project/QRosetta"
+            ),
         }
         if executed_versions:
             # Structured, machine-readable form of the executed stack for reproducibility.
@@ -656,10 +794,8 @@ def build_ro_crate(ctx: ExportContext) -> bytes:
         )
         for rel_path, data in publication_files.items():
             zf.writestr(f"{dir_name}/{rel_path}", data)
-        zf.writestr(
-            f"{dir_name}/circuit.qasm",
-            ctx.qasm_string,
-        )
+        for task in _iter_tasks(ctx):
+            zf.writestr(f"{dir_name}/{_circuit_path(task)}", task.input_qasm)
         # Strip transpiled_qasm from results_data to save space, since we dump them separately
         if isinstance(results_data.get("raw_results"), list):
             for r in results_data["raw_results"]:
@@ -681,26 +817,20 @@ def build_ro_crate(ctx: ExportContext) -> bytes:
             json.dumps(provenance_data, indent=2, ensure_ascii=False),
         )
 
-        # Write transpiled circuits
-        raw_results = ctx.results.get("raw_results", [])
-        if isinstance(raw_results, list):
-            for r in raw_results:
+        # Write transpiled circuits, one subtree per task so the same backend's transpiled
+        # QASM from different circuits in a batch never overwrites another task's copy.
+        for task in _iter_tasks(ctx):
+            written_sims = set()
+            for r in task.raw_results:
                 tq = r.get("transpiled_qasm")
                 sim = r.get("simulator")
-                if tq and sim:
-                    zf.writestr(f"{dir_name}/transpiled_circuits/{sim}.qasm", tq)
-                    
-        benchmark_summary = ctx.results.get("benchmark_summary", [])
-        if isinstance(benchmark_summary, list):
-            for task_result in benchmark_summary:
-                for r in task_result.get("raw_results", []):
-                    tq = r.get("transpiled_qasm")
-                    sim = r.get("simulator")
-                    if tq and sim:
-                        try:
-                            zf.getinfo(f"{dir_name}/transpiled_circuits/{sim}.qasm")
-                        except KeyError:
-                            zf.writestr(f"{dir_name}/transpiled_circuits/{sim}.qasm", tq)
+                if tq and sim and sim not in written_sims:
+                    written_sims.add(sim)
+                    path = (
+                        f"transpiled_circuits/{sim}.qasm" if task.task_id is None
+                        else f"transpiled_circuits/{task.task_id}/{sim}.qasm"
+                    )
+                    zf.writestr(f"{dir_name}/{path}", tq)
 
     logger.info(f"Built RO-Crate ZIP: {dir_name} ({buf.tell()} bytes)")
     return buf.getvalue()

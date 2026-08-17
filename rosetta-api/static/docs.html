@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QRosetta — Documentation</title>
+    <title>QRosetta Documentation</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         :root { --accent: #4f46e5; }
@@ -23,7 +23,6 @@
         .doc-prose thead th { background: #eef2ff; color: #312e81; font-weight: 600; }
         .toc-link.active { color: var(--accent); font-weight: 600; border-left-color: var(--accent); }
         .callout { border-left: 4px solid; border-radius: .4rem; padding: .85rem 1rem; margin: 1.1rem 0; font-size: .92rem; }
-        .callout-integrity { background: #fffbeb; border-color: #d97706; color: #78350f; }
         .callout-tip { background: #ecfdf5; border-color: #059669; color: #065f46; }
         .callout-note { background: #eff6ff; border-color: #2563eb; color: #1e3a8a; }
     </style>
@@ -49,18 +48,18 @@
             class="hidden lg:block w-56 flex-shrink-0 sticky top-24 self-start max-h-[calc(100vh-7rem)] overflow-y-auto">
             <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">On this page</p>
             <ul class="space-y-1 text-sm border-l border-gray-200">
-                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#what">What QRosetta is</a></li>
+                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#what">Overview</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#quickstart">Quickstart</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#circuits">Circuit sources</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#modes">Run modes</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#batch">Batch runs and experiments</a></li>
-                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#taxonomy">Agreement taxonomy</a></li>
+                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#taxonomy">Agreement classification</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#stat">Shot-noise test</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#reproducibility">Reproducibility</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#methodology">Timing/memory methodology</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#reading">Reading results</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#accounts">Accounts, history &amp; autosave</a></li>
-                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#limits">Honest limitations</a></li>
+                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#limits">Limitations</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#glossary">Glossary</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#faq">FAQ</a></li>
             </ul>
@@ -69,29 +68,33 @@
         <!-- Content -->
         <main class="doc-prose min-w-0 flex-1 max-w-3xl">
             <p class="text-sm text-indigo-600 font-medium">Documentation</p>
-            <h1 class="text-3xl font-bold text-indigo-950 mb-3">Understanding QRosetta</h1>
+            <h1 class="text-3xl font-bold text-indigo-950 mb-3">QRosetta</h1>
             <p class="text-lg text-gray-600">
-                QRosetta runs <em>one</em> quantum circuit across many simulator backends under a common
-                contract and reports, transparently, where they agree and where they differ.
+                QRosetta takes one quantum circuit and runs it on many different quantum simulators.
+                It then compares the results and shows where the simulators agree and where they differ.
             </p>
 
             <section id="what">
-                <h2>What QRosetta is (and is not)</h2>
+                <h2>Overview</h2>
                 <p>
-                    You give QRosetta a single OpenQASM&nbsp;2.0 circuit. It dispatches that circuit to a
-                    fleet of quantum-simulator backends spanning major SDKs — including Qiskit (Aer), Cirq
-                    (and qsim), qibo, PennyLane (default and lightning), Qulacs, QuEST, quimb, myQLM, PyQuil,
-                    Qrisp, cuQuantum, and TorchQuantum, several of which are driven through pytket/TKET — each
-                    behind the same request/response contract. It then compares their outputs and classifies
-                    every pair of backends by
-                    <strong>whether they agree, and if not, what would explain the difference</strong>.
+                    You provide one circuit, written in OpenQASM 2.0. QRosetta sends that circuit to a set
+                    of simulator backends, currently including Qiskit (via Aer), Cirq, qsim, qibo,
+                    PennyLane, Qulacs, QuEST, quimb, myQLM, PyQuil, Qrisp, cuQuantum, and TorchQuantum.
+                    Several of these are accessed through pytket. Every backend receives the circuit in the
+                    same request format and returns its result in the same response format, so the results
+                    can be compared directly.
                 </p>
-                <div class="callout callout-integrity">
-                    <strong>Scope.</strong> QRosetta performs <em>agreement analysis</em>: it reports
-                    whether backends agree and which known convention (if any) explains a difference.
-                    Each transform applied during analysis is reported with its numerical effect and
-                    provenance in the per-pair records.
-                </div>
+                <p>
+                    QRosetta then compares the backends pairwise. For each pair, it checks whether their
+                    outputs agree and, if they don't, whether a known cause explains the difference. See
+                    <a href="#taxonomy">Agreement classification</a> for how that works.
+                </p>
+                <p>
+                    QRosetta compares outputs against each other; it has no independent way to check
+                    whether any of them is mathematically correct. If two backends disagree and you need
+                    to determine which one (if either) is right, that requires a different kind of
+                    analysis than QRosetta performs.
+                </p>
             </section>
 
             <section id="quickstart">
@@ -101,7 +104,7 @@
                         Bernstein–Vazirani, VQE, random) or pull one from a benchmark suite.</li>
                     <li>Open the <strong>Config</strong> drawer to choose which backends to run, the timeout,
                         optimization level, sampling seed, and (optionally) agreement thresholds.</li>
-                    <li>Pick a <strong>run mode</strong> — statevector or measured — and run.</li>
+                    <li>Pick a <strong>run mode</strong>, statevector or measured, and run.</li>
                     <li>Read the report tabs: Summary, Performance, Resources, Divergence, Agreement,
                         Artifacts, and Exports.</li>
                 </ol>
@@ -138,7 +141,7 @@
                         <tr>
                             <td><strong>Statevector</strong></td>
                             <td>The full output state amplitudes (exact; no sampling).</td>
-                            <td>Fidelity and relative phase between state pairs. Exact and deterministic — no seed needed.</td>
+                            <td>Fidelity and relative phase between state pairs. Exact and deterministic; no seed is needed.</td>
                         </tr>
                         <tr>
                             <td><strong>Measured</strong></td>
@@ -158,41 +161,42 @@
             <section id="batch">
                 <h2>Batch runs and experiments</h2>
                 <p>
-                    The <strong>Batch</strong> panel queues several circuits — added manually, from the
-                    generator, or from the Benchmarks drawer (including a whole suite at once, capped by
-                    qubit count) — and runs them together, in either statevector or measured mode, as a
-                    single job. A progress indicator shows which queued circuits are done, running, or
+                    The <strong>Batch</strong> panel queues several circuits and runs them together as a
+                    single job, in either statevector or measured mode. Circuits can be added manually, from
+                    the generator, or from the Benchmarks drawer, including a whole suite at once capped by
+                    qubit count. A progress indicator shows which queued circuits are done, running, or
                     still queued. The queue itself can be exported to a JSON file and re-imported later,
                     for a repeatable circuit set.
                 </p>
                 <h3>Freezing a batch as a reproducible experiment</h3>
                 <p>
                     Checking <strong>"Freeze as reproducible experiment"</strong> inside the Batch panel
-                    runs the same queued circuits over one or more <em>preprocessing axes</em> (with each
-                    backend's own preprocessing pass on, off, or both) and packages the result into a single
+                    runs the same queued circuits over one or more <em>preprocessing axes</em>, with each
+                    backend's own preprocessing pass on, off, or both, and packages the result into a single
                     downloadable ZIP bundle containing:
                 </p>
                 <ul>
-                    <li>The exact input QASM for every circuit, frozen at run time;</li>
-                    <li>A <strong>conformance matrix</strong> — did each circuit run successfully on each
-                        backend? Every error is recorded with an <code>untriaged</code> marker, to be
-                        classified afterwards as an adapter issue, an SDK issue, expected/by-design behavior,
-                        or a resource limit — before it is treated as a finding;</li>
+                    <li>The exact input QASM for every circuit, frozen at run time.</li>
+                    <li>A <strong>conformance matrix</strong> recording whether each circuit ran successfully
+                        on each backend. Every error is recorded with an <code>untriaged</code> marker, and
+                        gets classified afterwards as an adapter issue, an SDK issue, expected/by-design
+                        behavior, or a resource limit. This classification step comes before any of it is
+                        treated as a finding.</li>
                     <li>An <strong>agreement-prevalence table</strong> summarizing how often backend pairs
-                        agreed, and by which registered transform;</li>
+                        agreed, and by which registered transform.</li>
                     <li>A manifest recording the git commit, executed SDK versions, and the seed(s) used, so
                         the whole sweep can be reproduced or cited.</li>
                 </ul>
             </section>
 
             <section id="taxonomy">
-                <h2>The explained-cause agreement taxonomy</h2>
+                <h2>Agreement classification</h2>
                 <p>
-                    Two correct simulators can produce different-looking outputs for benign reasons — most
-                    commonly a different <em>qubit-ordering convention</em> (endianness) or an unobservable
-                    <em>global phase</em>. QRosetta’s core idea is to label each backend pair by the
-                    <strong>least</strong> transform that explains their difference, over a fixed, registered
-                    lattice, and to report that transform’s numerical effect explicitly.
+                    Two correct simulators can produce different-looking outputs for benign reasons. The two
+                    most common causes are a different <em>qubit-ordering convention</em> (endianness) and an
+                    unobservable <em>global phase</em>. For each backend pair, QRosetta checks a fixed set of
+                    known transforms, in order from smallest to largest effect, and reports the smallest one
+                    that makes the two outputs match, along with that transform's numerical effect.
                 </p>
                 <h3>Statevector labels</h3>
                 <table>
@@ -218,17 +222,17 @@
                     </tbody>
                 </table>
                 <div class="callout callout-note">
-                    <strong>Every transform is an explicit analysis mode.</strong> When a pair is labelled
-                    “after bit reversal,” the report also shows the raw metric and the post-transform metric,
-                    so you can see exactly what the transform changed. Transforms are never applied silently to
-                    the stored native outputs.
+                    <strong>Transforms are a labelled analysis step, applied on top of the stored data.</strong>
+                    When a pair is labelled "after bit reversal," the report shows both the raw metric and the
+                    post-transform metric, so you can see exactly what the transform changed. The stored native
+                    output for each backend stays exactly as that backend returned it.
                 </div>
             </section>
 
             <section id="stat">
                 <h2>The shot-noise-aware statistical test</h2>
                 <p>
-                    In measured mode a fixed distance threshold is only a heuristic — with few shots, two
+                    In measured mode a fixed distance threshold is only a heuristic. With few shots, two
                     <em>identical</em> distributions can still look far apart purely from sampling. Alongside
                     the descriptive JS/Hellinger label, QRosetta therefore reports a shot-noise-aware test:
                 </p>
@@ -238,10 +242,11 @@
                     <li>Effect size (total variation, Cramér’s V) and a prospective power estimate.</li>
                 </ul>
                 <p>
-                    This yields a verdict — <code>consistent</code>, <code>distinguishable</code>,
-                    <code>inconclusive_low_shots</code>, or <code>ambiguous</code> — that runs
-                    <strong>in parallel</strong> with the descriptive label and never overrides it. It answers
-                    “is this difference statistically significant?”, which a fixed threshold cannot.
+                    This produces a verdict of <code>consistent</code>, <code>distinguishable</code>,
+                    <code>inconclusive_low_shots</code>, or <code>ambiguous</code>. The verdict is reported
+                    alongside the descriptive label, and it answers a different question: whether the observed
+                    difference is statistically significant, something a fixed distance threshold cannot tell
+                    you on its own.
                 </p>
             </section>
 
@@ -249,13 +254,12 @@
                 <h2>Reproducibility</h2>
                 <p>Every measured run is reproducible by construction:</p>
                 <ul>
-                    <li><strong>Seeds are never unrecorded.</strong> Set a sampling seed in the Config drawer
-                        for an exact replay, or leave it empty — QRosetta then generates a seed
-                        <em>and records it in the report</em>. No run is ever un-seeded. (Statevector mode is
-                        exact and needs no seed.)</li>
-                    <li><strong>Executed versions are captured.</strong> Each backend reports the exact SDK
-                        versions it ran, as ground truth, into the report’s provenance.</li>
-                    <li><strong>Exportable provenance.</strong> Reports can be exported as an RO-Crate that
+                    <li><strong>Every measured run has a recorded seed.</strong> Set a sampling seed in the
+                        Config drawer for an exact replay, or leave the field empty and QRosetta generates one
+                        for you and records it in the report. Statevector mode is exact and needs no seed.</li>
+                    <li><strong>Executed SDK versions are captured.</strong> Each backend reports the exact
+                        version of the SDK it ran, and this is written into the report's provenance section.</li>
+                    <li><strong>Provenance is exportable.</strong> Reports can be exported as an RO-Crate that
                         conforms to the Process Run Crate profile, packaging inputs, per-backend results,
                         agreement evidence, and provenance as a FAIR, citable bundle.</li>
                 </ul>
@@ -264,10 +268,10 @@
             <section id="methodology">
                 <h2>Timing and memory methodology</h2>
                 <ul>
-                    <li><strong>Uniform warm-up.</strong> Every backend runs once, discarded, immediately before
-                        the timed measurement — covering import, JIT, and any one-time internal caching. The
-                        same warm-up applies identically to all backends, so reported timings compare like
-                        with like.</li>
+                    <li><strong>Uniform warm-up.</strong> Every backend runs once, and that run is discarded,
+                        immediately before the timed measurement. This absorbs import time, JIT compilation,
+                        and any one-time internal caching. The same warm-up applies identically to every
+                        backend, so the reported timings are comparable.</li>
                     <li><strong>Process peak RSS.</strong> Resources are ranked by the kernel-reported
                         (<code>resource.getrusage</code> <code>ru_maxrss</code>) peak memory of the whole
                         isolated run, including compilation and the warm-up. Each backend's own memory-delta
@@ -290,13 +294,13 @@
                         <tr><td>Divergence</td><td>The N×N fidelity / distance matrices across backends.</td></tr>
                         <tr><td>Agreement</td><td>The explained-cause label per backend pair, with the underlying metrics, transforms, and provenance expandable per pair.</td></tr>
                         <tr><td>Artifacts</td><td>Browse, preview, copy, and download individual publication-ready figures and tables (SVG/PNG/PDF; LaTeX/CSV/HTML/Markdown/XLSX). A backend-subset selector scopes every figure and table to any combination of backends you choose, computed in the browser with no new request to the server.</td></tr>
-                        <tr><td>Exports</td><td>The complete underlying JSON report (view, copy, or download), plus exporting the run as a FAIR RO-Crate ZIP — optionally bundling the same publication figures/tables (SVG/PNG/PDF; LaTeX/CSV/HTML/XLSX) directly into the archive.</td></tr>
+                        <tr><td>Exports</td><td>The complete underlying JSON report (view, copy, or download), plus exporting the run as a FAIR RO-Crate ZIP. The ZIP can optionally bundle the same publication figures and tables (SVG/PNG/PDF; LaTeX/CSV/HTML/XLSX) directly into the archive.</td></tr>
                     </tbody>
                 </table>
                 <p>
-                    A batch or experiment run shows a reduced tab set — a suite summary and the Exports
-                    tab — rather than the full per-circuit breakdown above, since a batch covers many
-                    circuits at once rather than one.
+                    A batch or experiment run shows a reduced tab set: a suite summary and the Exports tab.
+                    A batch covers many circuits at once, so the full per-circuit breakdown above doesn't
+                    apply to it.
                 </p>
             </section>
 
@@ -305,8 +309,8 @@
                 <p>
                     An account is optional. Signing in (or registering with an email and password, via
                     the <strong>Login / Register</strong> button) enables <strong>automatic run
-                    history</strong>: every completed run is saved to your account automatically — there
-                    is no separate "save" step. Open <strong>Your Run History</strong> to browse past runs,
+                    history</strong>: every completed run is saved to your account automatically, with no
+                    separate "save" step. Open <strong>Your Run History</strong> to browse past runs,
                     rename them, download their full reports, or delete them (singly or in bulk). Without
                     an account, results exist only in your browser for that session.
                 </p>
@@ -314,33 +318,35 @@
                     Separately, and independent of an account, the Config drawer offers
                     <strong>autosave to a local folder</strong>: each completed run is written as a JSON file
                     directly to a folder on your computer, with nothing uploaded anywhere. This needs the
-                    File System Access API (Chromium-based browsers — Chrome, Edge) and degrades gracefully
+                    File System Access API (Chromium-based browsers such as Chrome and Edge) and degrades gracefully
                     elsewhere.
                 </p>
             </section>
 
             <section id="limits">
-                <h2>Honest limitations</h2>
-                <p>QRosetta is deliberately explicit about what it does not claim:</p>
+                <h2>Limitations</h2>
                 <ul>
-                    <li><strong>Agreement is not correctness.</strong> Backends agreeing does not prove they are
-                        all right; a backend differing does not prove it is wrong. There is no oracle.</li>
-                    <li><strong>Measured thresholds are heuristic.</strong> The default JS/Hellinger cut-offs
-                        are configurable and shot-count dependent; treat the statistical test as the rigorous
-                        companion.</li>
+                    <li><strong>Agreement between backends is a different thing from correctness.</strong>
+                        Backends agreeing does not prove they are all right, and a backend differing from the
+                        others does not prove it is wrong. QRosetta has no independent oracle to check against.</li>
+                    <li><strong>Measured-mode thresholds are heuristic.</strong> The default JS/Hellinger
+                        cut-offs are configurable and depend on the shot count. The statistical test described
+                        above is the more rigorous companion to these thresholds.</li>
                     <li><strong>Permutation search is bounded.</strong> Exhaustive qubit-permutation matching is
-                        capped (≤&nbsp;6 qubits); larger cases report the cap rather than guessing.</li>
-                    <li><strong>A “residual disagreement” is a starting point, not a verdict.</strong> It means
-                        no <em>registered</em> convention explained the difference — the cause still needs
-                        investigation (an unregistered convention, an environment limit, or a genuine defect in
-                        a backend or its adapter).</li>
+                        capped at 6 qubits. Larger cases report that the cap was hit rather than attempting an
+                        exhaustive search.</li>
+                    <li><strong>A "residual disagreement" label is a starting point for investigation.</strong>
+                        It means that none of the registered conventions explained the difference. The
+                        underlying cause could be an unregistered convention, an environment limit, or a genuine
+                        defect in a backend or its adapter, and figuring out which one requires looking at the
+                        specific case.</li>
                 </ul>
             </section>
 
             <section id="glossary">
                 <h2>Glossary</h2>
                 <h3>Agreement classes</h3>
-                <p>See the taxonomy tables above.</p>
+                <p>See the label tables in <a href="#taxonomy">Agreement classification</a> above.</p>
                 <h3>Statistical verdicts (measured mode)</h3>
                 <table>
                     <thead><tr><th>Verdict</th><th>Meaning</th></tr></thead>
@@ -357,30 +363,26 @@
                 <h2>FAQ</h2>
                 <h3>Why would two correct simulators disagree?</h3>
                 <p>
-                    Most often because of a <em>convention</em>, not an error: different qubit-ordering
-                    (endianness) or an unobservable global phase. QRosetta’s taxonomy is designed to name
-                    exactly these causes so a benign convention difference isn’t mistaken for a defect.
+                    Usually because of a convention difference rather than an error, such as a different
+                    qubit-ordering (endianness) or an unobservable global phase. The agreement classification
+                    above exists to name these specific causes, so that a benign convention difference is
+                    identified rather than mistaken for a defect.
                 </p>
-                <h3>Is a “distance exceeds threshold” pair a bug?</h3>
+                <h3>Is a "distance exceeds threshold" pair a bug?</h3>
                 <p>
-                    Not necessarily. It means the difference survived every registered transform and (in
-                    measured mode) may be statistically significant. That warrants investigation — the cause
+                    It means the difference survived every registered transform, and in measured mode it may
+                    also be statistically significant. That result is worth investigating further. The cause
                     could be an unregistered convention, a resource limit, or a genuine defect in a backend or
-                    in its adapter. QRosetta surfaces the evidence; the diagnosis is yours to make.
+                    its adapter. QRosetta gives you the evidence needed to investigate; determining the actual
+                    cause requires looking at that specific case.
                 </p>
-                <h3>Does QRosetta modify a backend’s output?</h3>
+                <h3>Does QRosetta modify a backend's output?</h3>
                 <p>
-                    No. Native outputs are stored as returned. Bit-reversal, phase alignment, and permutation
-                    are <em>analysis modes</em> reported with their numerical effect — they are never written
-                    back over the native result.
+                    No. Native outputs are stored exactly as each backend returned them. Bit-reversal, phase
+                    alignment, and permutation matching are analysis steps that run separately and get reported
+                    with their numerical effect, alongside the untouched native result.
                 </p>
             </section>
-
-            <p class="mt-12 pt-6 border-t border-gray-200 text-sm text-gray-500">
-                QRosetta is a research tool for cross-simulator agreement analysis. It reports native outputs
-                faithfully and labels every transform explicitly. It is not a formal-verification system and
-                has no ground-truth oracle.
-            </p>
         </main>
     </div>
 

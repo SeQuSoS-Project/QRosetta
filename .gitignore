@@ -32,7 +32,6 @@ rosetta_raw_report.json
 docs/
 BUGS.md
 TODO
-design_guidelines.txt
 app.py
 
 # Offline Data (Local testing)

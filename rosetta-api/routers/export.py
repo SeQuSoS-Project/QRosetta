@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 import schemas
 from config import settings
 from services.security import limiter
-from services.exporter import ExportContext, build_ro_crate
+from services.exporter import ExportContext, build_ro_crate, infer_export_mode
 from qrosetta_commons.helpers import get_logger
 
 logger = get_logger("rosetta-export")
@@ -29,7 +29,7 @@ async def export_ro_crate(request: Request, payload: schemas.ExportRequest):
     if not results:
         raise HTTPException(status_code=400, detail="No results provided to export")
 
-    mode = "measured" if "n_shots" in results else "statevector"
+    mode = infer_export_mode(results)
     qasm_string = results.get("input_qasm", results.get("qasm_string", ""))
 
     ctx = ExportContext(

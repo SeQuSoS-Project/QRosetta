@@ -10,7 +10,7 @@ import schemas
 from db.database import get_db
 from services.security import get_current_user
 from services.storage import save_run_report, fetch_run_report, delete_run_reports
-from services.exporter import ExportContext, build_ro_crate
+from services.exporter import ExportContext, build_ro_crate, infer_export_mode
 from config import settings
 from qrosetta_commons.helpers import get_logger
 from fastapi.responses import StreamingResponse
@@ -187,7 +187,7 @@ def export_run_as_ro_crate(
         logger.error(f"Failed to fetch run report for export, run_id={run_id}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch run history for export")
 
-    mode = "measured" if "n_shots" in report_data else "statevector"
+    mode = infer_export_mode(report_data)
     qasm_string = report_data.get("input_qasm", report_data.get("qasm_string", ""))
 
     ctx = ExportContext(
