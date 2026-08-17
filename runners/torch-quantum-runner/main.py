@@ -1,12 +1,11 @@
 # Execution script for the quantum simulator runner.
 
 from fastapi import FastAPI
-from qrosetta_commons.helpers import register_runner_endpoints, run_cli_main
-from qrosetta_commons.helpers import MemoryMonitor, get_logger, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED, with_sdk_versions, statevector_result, counts_result, runner_error
+from qrosetta_commons.helpers import (
+    CompileResult, get_logger, register_runner_endpoints, run_cli_main,
+    run_measured_job, run_statevector_job, runner_error, with_sdk_versions,
+)
 import numpy as np
-import time
-import gc
-import traceback
 
 logger = get_logger("torchquantum-runner")
 
@@ -46,7 +45,7 @@ _TQ_BASIS_GATES = [
     'rx', 'ry', 'rz', 'u2', 'u3',
 ]
 
-def _compile(qasm_str: str, optimization_level: int = 0):
+def _to_tq_module(qasm_str: str, optimization_level: int = 0):
     """Parse QASM 2.0 with Qiskit and convert to a TorchQuantum module.
 
     Level 0: no optimization (but still decomposes to safe basis gates)
@@ -74,6 +73,16 @@ def _compile(qasm_str: str, optimization_level: int = 0):
     tq_module = qiskit2tq(qc)
     return tq_module, n_qubits, preprocessing_applied, transpiled_qasm
 
+
+def _compile(payload: dict) -> CompileResult:
+    tq_module, n_qubits, preprocessing_applied, transpiled_qasm = _to_tq_module(
+        payload["circuit_data"], payload.get("optimization_level", 0))
+    return CompileResult(
+        circuit=tq_module,
+        n_qubits=n_qubits,
+        preprocessing_applied=preprocessing_applied,
+        transpiled_qasm=transpiled_qasm)
+
 def _run_sv(tq_module, n_qubits: int) -> np.ndarray:
     """Execute the TorchQuantum module and return a numpy complex statevector."""
     qdev = tq.QuantumDevice(n_wires=n_qubits, bsz=1, device="cpu")
@@ -88,94 +97,55 @@ def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for TorchQuantum statevector simulation.")
     if not TORCHQUANTUM_AVAILABLE:
         return runner_error("torchquantum", "TorchQuantum is not installed in this environment.")
-    try:
-        check_qubits_limit(payload["circuit_data"], MAX_QUBITS_STATEVECTOR)
 
-        t0 = time.perf_counter()
-        tq_module, n_qubits, preprocessing_applied, transpiled_qasm = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
-        t1 = time.perf_counter()
-        compilation_time = t1 - t0
+    def execute(compiled, _payload):
+        return _run_sv(compiled.circuit, compiled.n_qubits)
 
-        with MemoryMonitor(interval=0.01) as monitor:
-            gc.collect()
+    return run_statevector_job(
+        simulator="torchquantum", payload=payload, logger=logger, compile_fn=_compile,
+        execute_fn=execute, qubit_ordering="msb")
 
-            t2 = time.perf_counter()
-            sv = _run_sv(tq_module, n_qubits)
-            t3 = time.perf_counter()
-            simulation_time = t3 - t2
-
-        logger.info(
-            f"TorchQuantum simulation successful in {compilation_time + simulation_time:.4f}s "
-            f"(Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s)."
-        )
-        return statevector_result(
-            simulator="torchquantum", statevector=sv, compilation_time=compilation_time,
-            simulation_time=simulation_time, monitor=monitor, qubit_ordering="msb",
-            n_qubits=n_qubits, preprocessing_applied=preprocessing_applied,
-            transpiled_qasm=transpiled_qasm)
-    except Exception as e:
-        logger.error(f"Error during TorchQuantum simulation: {str(e)}\n{traceback.format_exc()}")
-        return runner_error("torchquantum", e)
 
 @with_sdk_versions
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received circuit data for TorchQuantum measurement simulation.")
     if not TORCHQUANTUM_AVAILABLE:
         return runner_error("torchquantum", "TorchQuantum is not installed in this environment.")
-    try:
-        check_qubits_limit(payload["circuit_data"], MAX_QUBITS_MEASURED)
 
-        t0 = time.perf_counter()
-        tq_module, n_qubits, preprocessing_applied, transpiled_qasm = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
-        t1 = time.perf_counter()
-        compilation_time = t1 - t0
+    def execute(compiled, payload):
+        sv = _run_sv(compiled.circuit, compiled.n_qubits)
 
-        n_shots = payload.get("n_shots", 1024)
+        probs = torch.tensor(np.abs(sv) ** 2, dtype=torch.float64)
+        probs = torch.clamp(probs, min=0.0)
+        probs = probs / probs.sum()
 
-        with MemoryMonitor(interval=0.01) as monitor:
-            gc.collect()
+        # Optional reproducible sampling via a local generator; seed=None
+        # leaves torch's default (non-deterministic) RNG, the prior behaviour.
+        _seed = payload.get("seed")
+        _gen = None
+        if _seed is not None:
+            _gen = torch.Generator()
+            _gen.manual_seed(int(_seed))
 
-            t2 = time.perf_counter()
-            sv = _run_sv(tq_module, n_qubits)
+        sample_indices = torch.multinomial(
+            probs.float(), num_samples=payload.get("n_shots", 1024),
+            replacement=True, generator=_gen,
+        ).numpy()
 
-            probs = torch.tensor(np.abs(sv) ** 2, dtype=torch.float64)
+        # Histogram built inside the timed window, matching this runner's existing
+        # boundary. Runners disagree on whether this bookkeeping is simulation work;
+        # each one's original choice is preserved rather than silently normalised.
+        fmt = f"{{:0{compiled.n_qubits}b}}"
+        counts: dict[str, int] = {}
+        for idx in sample_indices:
+            bitstring = fmt.format(int(idx))
+            counts[bitstring] = counts.get(bitstring, 0) + 1
+        return counts, "sv_sample"
 
-            probs = torch.clamp(probs, min=0.0)
-            probs = probs / probs.sum()
+    return run_measured_job(
+        simulator="torchquantum", payload=payload, logger=logger, compile_fn=_compile,
+        execute_fn=execute, qubit_ordering="msb")
 
-            # Optional reproducible sampling via a local generator; seed=None
-            # leaves torch's default (non-deterministic) RNG, the prior behaviour.
-            _seed = payload.get("seed")
-            _gen = None
-            if _seed is not None:
-                _gen = torch.Generator()
-                _gen.manual_seed(int(_seed))
-
-            sample_indices = torch.multinomial(
-                probs.float(), num_samples=n_shots, replacement=True, generator=_gen
-            ).numpy()
-
-            fmt = f"{{:0{n_qubits}b}}"
-            counts: dict[str, int] = {}
-            for idx in sample_indices:
-                bitstring = fmt.format(int(idx))
-                counts[bitstring] = counts.get(bitstring, 0) + 1
-
-            t3 = time.perf_counter()
-            simulation_time = t3 - t2
-
-        logger.info(
-            f"TorchQuantum measurement simulation successful in {compilation_time + simulation_time:.4f}s "
-            f"(Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s)."
-        )
-        return counts_result(
-            simulator="torchquantum", counts=counts, sampling_method="sv_sample",
-            compilation_time=compilation_time, simulation_time=simulation_time, monitor=monitor,
-            qubit_ordering="msb", n_qubits=n_qubits, preprocessing_applied=preprocessing_applied,
-            transpiled_qasm=transpiled_qasm)
-    except Exception as e:
-        logger.error(f"Error during TorchQuantum measurement simulation: {str(e)}\n{traceback.format_exc()}")
-        return runner_error("torchquantum", e)
 
 register_runner_endpoints(app, process_run, process_run_measured)
 
