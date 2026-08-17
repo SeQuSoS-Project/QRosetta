@@ -7,9 +7,8 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 import schemas
-from config import settings
 from services.security import limiter
-from services.exporter import ExportContext, build_ro_crate, infer_export_mode
+from services.exporter import build_export_context, build_ro_crate
 from qrosetta_commons.helpers import get_logger
 
 logger = get_logger("rosetta-export")
@@ -29,22 +28,7 @@ async def export_ro_crate(request: Request, payload: schemas.ExportRequest):
     if not results:
         raise HTTPException(status_code=400, detail="No results provided to export")
 
-    mode = infer_export_mode(results)
-    qasm_string = results.get("input_qasm", results.get("qasm_string", ""))
-
-    ctx = ExportContext(
-        qasm_string=qasm_string,
-        results=results,
-        mode=mode,
-        runner_services=settings.get_runner_services(),
-        include_statevectors=payload.include_statevectors,
-        author_name=payload.author_name,
-        author_affiliation=payload.author_affiliation,
-        publication_artifacts=(
-            payload.publication_artifacts.model_dump()
-            if payload.publication_artifacts else None
-        ),
-    )
+    ctx = build_export_context(results, payload)
 
     try:
         # Figure rendering + zip assembly is CPU-bound; run it off the event loop.

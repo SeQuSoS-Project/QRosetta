@@ -81,7 +81,7 @@ def test_history_export_forwards_publication_artifacts(client):
         "table_formats": ["csv"],
     }
 
-    with patch("routers.history.fetch_run_report", return_value=_REPORT), \
+    with patch("services.history.fetch_run_report", return_value=_REPORT), \
             patch("routers.history.build_ro_crate", return_value=b"ZIP") as mock_build:
         resp = client.post(
             f"/history/runs/{run_id}/export",
@@ -101,7 +101,7 @@ def test_history_export_without_artifacts_passes_none(client):
     headers = _auth_headers(client, "export-plain@example.com")
     run_id = _seed_run("export-plain@example.com")
 
-    with patch("routers.history.fetch_run_report", return_value=_REPORT), \
+    with patch("services.history.fetch_run_report", return_value=_REPORT), \
             patch("routers.history.build_ro_crate", return_value=b"ZIP") as mock_build:
         resp = client.post(
             f"/history/runs/{run_id}/export",

@@ -149,6 +149,28 @@ def infer_export_mode(results: dict) -> str:
     return "statevector"
 
 
+def build_export_context(results: dict, payload) -> "ExportContext":
+    """Assemble an ExportContext from a report and an ExportPayload.
+
+    Both export routes go through here. They previously each assembled the context
+    inline, and the two copies drifted: one forwarded publication_artifacts and the
+    other silently dropped it.
+    """
+    return ExportContext(
+        qasm_string=results.get("input_qasm", results.get("qasm_string", "")),
+        results=results,
+        mode=infer_export_mode(results),
+        runner_services=settings.get_runner_services(),
+        include_statevectors=payload.include_statevectors,
+        author_name=payload.author_name,
+        author_affiliation=payload.author_affiliation,
+        publication_artifacts=(
+            payload.publication_artifacts.model_dump()
+            if payload.publication_artifacts else None
+        ),
+    )
+
+
 def _canonical_sim_id(simulator: str) -> str:
     """Self-comparison results carry virtual keys like 'qiskit~opt1~run2' (built by the
     dispatcher). Strip the '~opt~run' suffix back to the canonical runner id so provenance
