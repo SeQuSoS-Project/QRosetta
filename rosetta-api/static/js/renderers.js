@@ -1,6 +1,14 @@
 // Frontend logic for renderers functionality.
 
-const METRIC_DEFINITIONS = {
+import { backButtonContainer, jsonOutput, panelElements, tabNav, welcomeMessage } from './dom.js';
+
+import { renderArtifactsPanel } from './artifacts_renderer.js';
+import { getRunnerOptInfo } from './config.js';
+import { getState } from './state.js';
+import { renderAgreementPanel, renderDivergenceTables, renderRankingTable, viewDetail } from './tables_renderer.js';
+import { _escapeHtml, isConnectionError, parseRunnerKey } from './utils.js';
+
+export const METRIC_DEFINITIONS = {
     "compilation": "<b>Compilation Time:</b> Time taken to parse QASM, apply transforms (e.g. Rebase), and convert to the backend's native format. A uniform, disclosed warm-up run precedes every timed measurement (same for all backends), so this excludes one-time import/JIT overhead.",
     "simulation": "<b>Simulation Time:</b> Time taken for the backend to execute the circuit (matrix multiplication) and retrieve results, after the same uniform warm-up.",
     "total_time": "<b>Total Execution Time:</b> Sum of Compilation and Simulation. Represents end-to-end latency.",
@@ -21,7 +29,7 @@ const METRIC_DEFINITIONS = {
     "memory_usage_mb": "<b>Memory Usage:</b> The memory consumed by the simulation."
 };
 
-const STATUS_STYLES = {
+export const STATUS_STYLES = {
     success: {
         badge: "bg-green-100 text-green-800 border-green-300",
         cell: "bg-green-50 text-gray-900",
@@ -47,13 +55,13 @@ const STATUS_STYLES = {
     }
 };
 
-function _cloneTemplate(id) {
+export function _cloneTemplate(id) {
     const tpl = document.getElementById(id);
     if (!tpl) throw new Error(`Missing <template id="${id}">`);
     return tpl.content.cloneNode(true);
 }
 
-function _applyLegendDots(fragment) {
+export function _applyLegendDots(fragment) {
     const dotMap = {
         'tpl-dot-success': STATUS_STYLES.success.legendDot,
         'tpl-dot-divergence': STATUS_STYLES.divergence.legendDot,
@@ -68,7 +76,7 @@ function _applyLegendDots(fragment) {
     }
 }
 
-function renderTooltip(key, label) {
+export function renderTooltip(key, label) {
     const def = METRIC_DEFINITIONS[key];
     if (def) {
         const plainText = def.replace(/<b>/g, '').replace(/<\/b>/g, '');
@@ -82,7 +90,7 @@ function renderTooltip(key, label) {
     return document.createTextNode(label);
 }
 
-function clearReport() {
+export function clearReport() {
     welcomeMessage.classList.add('hidden');
     tabNav.innerHTML = '';
     backButtonContainer.classList.add('hidden');
@@ -106,10 +114,10 @@ function clearReport() {
 // The Exports/raw tab holds a pretty-printed dump of the whole report. Stringifying it
 // eagerly on every render is wasteful for large reports, so defer it until the tab is
 // first opened.
-let _rawTabData = null;
-let _rawTabRendered = false;
+export let _rawTabData = null;
+export let _rawTabRendered = false;
 
-function _reportHasTruncatedSv(data) {
+export function _reportHasTruncatedSv(data) {
     const scan = (arr) => Array.isArray(arr) && arr.some(
         r => typeof r?.statevector === 'string' && r.statevector.startsWith('<Statevector too large'));
     if (scan(data?.raw_results)) return true;
@@ -119,19 +127,19 @@ function _reportHasTruncatedSv(data) {
     return false;
 }
 
-function _setRawTabData(data) {
+export function _setRawTabData(data) {
     _rawTabData = data;
     _rawTabRendered = false;
     if (jsonOutput) jsonOutput.textContent = '';
 }
 
-function _renderRawTabIfNeeded() {
+export function _renderRawTabIfNeeded() {
     if (_rawTabRendered || !_rawTabData || !jsonOutput) return;
     jsonOutput.textContent = JSON.stringify(_rawTabData, null, 2);
     _rawTabRendered = true;
 }
 
-function showTab(tabName) {
+export function showTab(tabName) {
     welcomeMessage.classList.add('hidden');
     Object.values(panelElements).forEach(panel => { if (panel) panel.classList.add('hidden') });
 
@@ -151,7 +159,7 @@ function showTab(tabName) {
     }
 }
 
-function renderTabs(tabList) {
+export function renderTabs(tabList) {
     tabNav.innerHTML = '';
     tabList.forEach(tabName => {
         const button = document.createElement('button');
@@ -164,7 +172,7 @@ function renderTabs(tabList) {
     });
 }
 
-function _effectiveOptMap(data, fallbackConfig = {}) {
+export function _effectiveOptMap(data, fallbackConfig = {}) {
     // Ground-truth effective optimization level per runner, as actually executed.
     // The dispatcher stamps result.optimization_level (clamped, global-or-override
     // resolved), so this reflects what ran — including global-level runs that have no
@@ -186,7 +194,7 @@ function _effectiveOptMap(data, fallbackConfig = {}) {
     return map;
 }
 
-function getOptBadge(simulator, config) {
+export function getOptBadge(simulator, config) {
     const parsed = typeof parseRunnerKey === 'function' ? parseRunnerKey(simulator) : { simId: simulator, isMulti: false };
 
     let optLevel;
@@ -214,7 +222,7 @@ function getOptBadge(simulator, config) {
     return null;
 }
 
-function _makeStatusBadge(styleKey, label) {
+export function _makeStatusBadge(styleKey, label) {
     const frag = _cloneTemplate('tpl-status-badge');
     const span = frag.querySelector('span');
     STATUS_STYLES[styleKey].badge.split(' ').forEach(c => span.classList.add(c));
@@ -222,7 +230,7 @@ function _makeStatusBadge(styleKey, label) {
     return span;
 }
 
-function renderDetailReport(data, title, config = getState().currentRunnerConfig) {
+export function renderDetailReport(data, title, config = getState().currentRunnerConfig) {
     renderTabs(['summary', 'performance', 'resources', 'divergence', 'agreement', 'artifacts', 'raw']);
     _setRawTabData(data);
 
@@ -249,7 +257,7 @@ function renderDetailReport(data, title, config = getState().currentRunnerConfig
     showTab('summary');
 }
 
-function renderSuiteSummary(data, title) {
+export function renderSuiteSummary(data, title) {
     clearReport();
     renderTabs(['suite-summary', 'raw']);
     _setRawTabData(data);
@@ -323,7 +331,7 @@ function renderSuiteSummary(data, title) {
     showTab('suite-summary');
 }
 
-function renderSummaryPanel(data, title) {
+export function renderSummaryPanel(data, title) {
     const panel = panelElements.summary;
     if (!panel) return;
     panel.innerHTML = '';

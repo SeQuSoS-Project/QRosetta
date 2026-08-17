@@ -6,27 +6,27 @@
 // directory handle is kept in memory for the session (re-pick after a reload) to avoid the
 // IndexedDB permission-persistence dance for this first version.
 
-let _autosaveDirHandle = null;
+export let _autosaveDirHandle = null;
 
-function _autosaveSupported() {
+export function _autosaveSupported() {
     return typeof window !== 'undefined' && typeof window.showDirectoryPicker === 'function';
 }
 
-function _autosaveEl(id) { return document.getElementById(id); }
+export function _autosaveEl(id) { return document.getElementById(id); }
 
-function _autosaveSetFolderLabel() {
+export function _autosaveSetFolderLabel() {
     const label = _autosaveEl('autosave-folder');
     if (label) label.textContent = _autosaveDirHandle ? `saving to “${_autosaveDirHandle.name}”` : 'no folder chosen';
 }
 
-function _autosaveNote(text, isError) {
+export function _autosaveNote(text, isError) {
     const el = _autosaveEl('autosave-status');
     if (!el) return;
     el.textContent = text;
     el.className = 'text-[11px] mt-1 ' + (isError ? 'text-red-600' : 'text-emerald-600');
 }
 
-async function _autosaveChooseFolder() {
+export async function _autosaveChooseFolder() {
     try {
         _autosaveDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
         _autosaveSetFolderLabel();
@@ -37,7 +37,7 @@ async function _autosaveChooseFolder() {
 }
 
 // Called after every completed run. No-ops unless enabled with a chosen folder.
-async function autosaveRun(results, name) {
+export async function autosaveRun(results, name) {
     const toggle = _autosaveEl('autosave-toggle');
     if (!toggle || !toggle.checked || !_autosaveDirHandle || !results) return;
     try {
@@ -62,7 +62,7 @@ async function autosaveRun(results, name) {
     }
 }
 
-function initAutosave() {
+export function initAutosave() {
     const card = _autosaveEl('autosave-card');
     if (!card) return;
     const toggle = _autosaveEl('autosave-toggle');

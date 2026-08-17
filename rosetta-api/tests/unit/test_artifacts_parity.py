@@ -15,7 +15,7 @@ from services.publication import list_artifacts, render_artifact
 from tests.unit.test_publication import MEASURED, STATEVECTOR
 
 _NODE = shutil.which("node")
-_HARNESS = os.path.join(os.path.dirname(__file__), "artifacts_parity_harness.js")
+_HARNESS = os.path.join(os.path.dirname(__file__), "artifacts_parity_harness.mjs")
 
 pytestmark = pytest.mark.skipif(_NODE is None, reason="node not available")
 

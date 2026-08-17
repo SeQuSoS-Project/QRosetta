@@ -1,18 +1,24 @@
 // Frontend logic for tables_renderer functionality.
 
-function _makeStatusCell(styleKey, text) {
+import { backButtonContainer } from './dom.js';
+import { RUNNER_DISPLAY_NAMES } from './config.js';
+import { STATUS_STYLES, _applyLegendDots, _cloneTemplate, clearReport, getOptBadge, renderDetailReport, renderTooltip } from './renderers.js';
+import { getState } from './state.js';
+import { formatRunnerLabel, isConnectionError, makeCopyIconButton } from './utils.js';
+
+export function _makeStatusCell(styleKey, text) {
     const span = document.createElement('span');
     STATUS_STYLES[styleKey].cell.split(' ').forEach(c => span.classList.add(c));
     span.textContent = text;
     return span;
 }
 
-function _displayRunnerName(key) {
+export function _displayRunnerName(key) {
     const nameMap = typeof RUNNER_DISPLAY_NAMES !== 'undefined' ? RUNNER_DISPLAY_NAMES : null;
     return typeof formatRunnerLabel === 'function' ? formatRunnerLabel(key, nameMap) : key;
 }
 
-function _fillSimulatorCell(td, simulatorName, config) {
+export function _fillSimulatorCell(td, simulatorName, config) {
     td.classList.remove('tpl-simulator');
     td.appendChild(document.createTextNode(_displayRunnerName(simulatorName)));
 
@@ -51,7 +57,7 @@ function _fillSimulatorCell(td, simulatorName, config) {
     if (badge) td.appendChild(badge);
 }
 
-function renderRankingTable(report, key, unit, panel, config = {}) {
+export function renderRankingTable(report, key, unit, panel, config = {}) {
     if (!panel) return;
     panel.innerHTML = '';
 
@@ -264,7 +270,7 @@ function renderRankingTable(report, key, unit, panel, config = {}) {
     }
 }
 
-function renderDivergenceTables(report, panel, config = {}) {
+export function renderDivergenceTables(report, panel, config = {}) {
     if (!panel) return;
     panel.innerHTML = '';
 
@@ -382,7 +388,7 @@ function renderDivergenceTables(report, panel, config = {}) {
 
 // ---- Explained-cause agreement taxonomy + shot-noise statistical test ----
 
-const AGREEMENT_STYLE = {
+export const AGREEMENT_STYLE = {
     agree_directly: 'success',
     agree_up_to_global_phase: 'success',
     distance_within_threshold: 'success',
@@ -393,14 +399,14 @@ const AGREEMENT_STYLE = {
     not_comparable: 'offline',
 };
 
-const VERDICT_STYLE = {
+export const VERDICT_STYLE = {
     consistent: 'success',
     distinguishable: 'anomaly',
     inconclusive_low_shots: 'offline',
     ambiguous: 'divergence',
 };
 
-function _chip(badgeClasses, text, title) {
+export function _chip(badgeClasses, text, title) {
     const span = document.createElement('span');
     span.className = 'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border';
     badgeClasses.split(' ').forEach(c => span.classList.add(c));
@@ -409,13 +415,13 @@ function _chip(badgeClasses, text, title) {
     return span;
 }
 
-function _fmtNum(v, digits = 4) {
+export function _fmtNum(v, digits = 4) {
     if (v === null || v === undefined) return '—';
     if (typeof v === 'number') return Number.isNaN(v) ? '—' : v.toFixed(digits);
     return String(v);
 }
 
-function _kvGrid(rows) {
+export function _kvGrid(rows) {
     const grid = document.createElement('div');
     grid.className = 'grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-0.5';
     rows.forEach(([k, v]) => {
@@ -439,21 +445,21 @@ function _kvGrid(rows) {
     return grid;
 }
 
-function _kvMap(obj) {
+export function _kvMap(obj) {
     if (!obj) return '—';
     return Object.entries(obj)
         .map(([k, v]) => `${k}=${v === null ? 'null' : (typeof v === 'object' ? JSON.stringify(v) : v)}`)
         .join(', ');
 }
 
-function _sectionLabel(text) {
+export function _sectionLabel(text) {
     const d = document.createElement('div');
     d.className = 'font-semibold text-gray-500 mb-1';
     d.textContent = text;
     return d;
 }
 
-function _agreementMetricsBlock(p) {
+export function _agreementMetricsBlock(p) {
     const m = p.metrics || {};
     const wrap = document.createElement('div');
 
@@ -492,7 +498,7 @@ function _agreementMetricsBlock(p) {
     return wrap;
 }
 
-function _statisticalTestBlock(st) {
+export function _statisticalTestBlock(st) {
     const wrap = document.createElement('div');
     wrap.appendChild(_sectionLabel(`Shot-noise statistical test (basis: ${st.basis})`));
     const ef = st.effect_size || {};
@@ -519,7 +525,7 @@ function _statisticalTestBlock(st) {
     return wrap;
 }
 
-function _provenanceBlock(prov) {
+export function _provenanceBlock(prov) {
     const wrap = document.createElement('div');
     if (!prov) return wrap;
     const rows = [
@@ -544,7 +550,7 @@ function _provenanceBlock(prov) {
 // Saturated agreement-class colours (validated dataviz palette) for the heatmap cells +
 // legend swatches — the old bg-*-50 pastels were too dim against white. Gray = neutral
 // not-comparable state.
-const AGREEMENT_HEX = {
+export const AGREEMENT_HEX = {
     agree_directly: '#008300', distance_within_threshold: '#008300',
     agree_up_to_global_phase: '#1baf7a', agree_after_bit_reversal: '#2a78d6',
     agree_after_qubit_permutation: '#4a3aa7',
@@ -553,14 +559,14 @@ const AGREEMENT_HEX = {
 };
 
 // Severity order for the pair table: most interesting (disagreement) first.
-const _AGREEMENT_SEVERITY = {
+export const _AGREEMENT_SEVERITY = {
     residual_disagreement: 0, distance_exceeds_threshold: 0,
     agree_after_qubit_permutation: 1, agree_after_bit_reversal: 2,
     agree_up_to_global_phase: 3, agree_directly: 4, distance_within_threshold: 4,
     not_comparable: 5,
 };
 
-function _pairLookup(pairs) {
+export function _pairLookup(pairs) {
     // key on the unordered pair so heatmap cell (i,j) resolves regardless of record order.
     const map = {};
     pairs.forEach(p => {
@@ -570,7 +576,7 @@ function _pairLookup(pairs) {
     return map;
 }
 
-function _agreementLegend(present) {
+export function _agreementLegend(present) {
     const wrap = document.createElement('div');
     wrap.className = 'flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[11px]';
     present.forEach(label => {
@@ -586,7 +592,7 @@ function _agreementLegend(present) {
     return wrap;
 }
 
-function _agreementSummaryStrip(report, pairs) {
+export function _agreementSummaryStrip(report, pairs) {
     const strip = document.createElement('div');
     strip.className = 'flex flex-wrap gap-2 mb-4';
 
@@ -613,7 +619,7 @@ function _agreementSummaryStrip(report, pairs) {
     return strip;
 }
 
-function _agreementHeatmap(report, pairs, config) {
+export function _agreementHeatmap(report, pairs, config) {
     const sims = report.simulators || [];
     if (sims.length < 2) return null;
     const lookup = _pairLookup(pairs);
@@ -679,12 +685,12 @@ function _agreementHeatmap(report, pairs, config) {
     return wrap;
 }
 
-function _agrRowId(p) {
+export function _agrRowId(p) {
     const s = p.simulators || ['?', '?'];
     return `${s[0]}-${s[1]}`.replace(/[^a-zA-Z0-9-]/g, '_');
 }
 
-function _agreementPairTable(pairs) {
+export function _agreementPairTable(pairs) {
     const wrap = document.createElement('div');
     const h = document.createElement('h4');
     h.className = 'text-sm font-semibold text-gray-700 mb-2';
@@ -766,7 +772,7 @@ function _agreementPairTable(pairs) {
     return wrap;
 }
 
-function renderAgreementPanel(report, panel, config = {}) {
+export function renderAgreementPanel(report, panel, config = {}) {
     if (!panel) return;
     panel.innerHTML = '';
 
@@ -791,7 +797,7 @@ function renderAgreementPanel(report, panel, config = {}) {
     panel.appendChild(_agreementPairTable(pairs));
 }
 
-function viewDetail(index) {
+export function viewDetail(index) {
     const item = getState().currentSuiteData.benchmark_summary[index];
     const fname = item.task_name || (item.benchmark_file ? item.benchmark_file.replace('circuits/', '') : 'Unknown');
 

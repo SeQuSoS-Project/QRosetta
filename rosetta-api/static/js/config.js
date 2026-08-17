@@ -1,17 +1,23 @@
 // Frontend logic for config functionality.
 
-let _runnerOptInfo = {};
+import { BASE_URL } from './api.js';
+import { getDynamicMaxQubits } from './app.js';
+import { closeDrawers, isDrawerOpen, openDrawer } from './drawers.js';
+import { getState } from './state.js';
+import { _escapeHtml } from './utils.js';
+
+export let _runnerOptInfo = {};
 
 // Both opt-in. Off = the default panel behavior (single opt-level select per runner,
 // all runners dispatched concurrently). See applyConfigModes() for show/hide wiring.
-let _multiRunEnabled = false;   // self-comparison: run a runner N times across opt levels
-let _orderingEnabled = false;   // phased dispatch: assign runners to sequential phase waves
+export let _multiRunEnabled = false;   // self-comparison: run a runner N times across opt levels
+export let _orderingEnabled = false;   // phased dispatch: assign runners to sequential phase waves
 
-function getRunnerOptInfo(runnerId) {
+export function getRunnerOptInfo(runnerId) {
     return _runnerOptInfo[runnerId] || { max_level: 0, optimization_levels: {} };
 }
 
-const RUNNER_DISPLAY_NAMES = {
+export const RUNNER_DISPLAY_NAMES = {
     "qiskit": "Qiskit (IBM)",
     "qulacs": "Qulacs",
     "braket": "Braket (AWS)",
@@ -30,9 +36,9 @@ const RUNNER_DISPLAY_NAMES = {
     "cuquantum": "cuQuantum (NVIDIA)"
 };
 
-const DEFAULT_CHECKED_RUNNERS = new Set(['pennylane-default', 'qiskit', 'cirq', 'qulacs']);
+export const DEFAULT_CHECKED_RUNNERS = new Set(['pennylane-default', 'qiskit', 'cirq', 'qulacs']);
 
-function _buildOptTooltip(optLevels) {
+export function _buildOptTooltip(optLevels) {
     if (!optLevels || Object.keys(optLevels).length === 0) return 'No optimization levels defined.';
     return Object.entries(optLevels)
         .sort(([a], [b]) => Number(a) - Number(b))
@@ -40,7 +46,7 @@ function _buildOptTooltip(optLevels) {
         .join('\n');
 }
 
-function renderConfigPanel(runners) {
+export function renderConfigPanel(runners) {
     const grid = document.getElementById('config-grid');
     if (!grid) return;
 
@@ -170,7 +176,7 @@ function renderConfigPanel(runners) {
     applyConfigModes();
 }
 
-function applyConfigModes() {
+export function applyConfigModes() {
     document.querySelectorAll('.opt-single-wrap').forEach(el => el.classList.toggle('hidden', _multiRunEnabled));
     document.querySelectorAll('.multi-run-wrap').forEach(el => el.classList.toggle('hidden', !_multiRunEnabled));
     document.querySelectorAll('.runner-phase-wrap').forEach(el => el.classList.toggle('hidden', !_orderingEnabled));
@@ -189,21 +195,21 @@ function applyConfigModes() {
     if (presets) presets.classList.toggle('hidden', !_orderingEnabled);
 }
 
-function toggleMultiRunMode(cb) {
+export function toggleMultiRunMode(cb) {
     _multiRunEnabled = cb.checked;
     applyConfigModes();
 }
 
-function toggleOrderingMode(cb) {
+export function toggleOrderingMode(cb) {
     _orderingEnabled = cb.checked;
     applyConfigModes();
 }
 
-function setOrderingConcurrent() {
+export function setOrderingConcurrent() {
     document.querySelectorAll('.runner-phase-input').forEach(inp => { inp.value = 1; });
 }
 
-function setOrderingSequential() {
+export function setOrderingSequential() {
     const targets = new Set(getTargetSimulators());
     let phase = 1;
     document.querySelectorAll('.runner-phase-input').forEach(inp => {
@@ -211,7 +217,7 @@ function setOrderingSequential() {
     });
 }
 
-async function toggleConfigPanel() {
+export async function toggleConfigPanel() {
     if (isDrawerOpen('config-panel')) { closeDrawers(); return; }
     const grid = document.getElementById('config-grid');
     if (grid && grid.children.length === 0) {
@@ -227,7 +233,7 @@ async function toggleConfigPanel() {
 
 // Bulk-set every runner's optimization level (clamped to each runner's available
 // options) from the "Set all to" control in the Config drawer.
-function setAllOptLevels(level) {
+export function setAllOptLevels(level) {
     document.querySelectorAll('#config-grid select').forEach(sel => {
         const opt = Array.from(sel.options).find(o => parseInt(o.value, 10) === level);
         if (opt) {
@@ -237,7 +243,7 @@ function setAllOptLevels(level) {
     });
 }
 
-function getRunnerConfig() {
+export function getRunnerConfig() {
     const config = {};
 
     if (_multiRunEnabled) {
@@ -264,7 +270,7 @@ function getRunnerConfig() {
     return config;
 }
 
-function checkRunCountLimits(runnerConfig) {
+export function checkRunCountLimits(runnerConfig) {
     const perRunner = getState().maxRunsPerRunner || 16;
     const totalMax = getState().maxTotalRuns || 48;
     let total = 0;
@@ -283,7 +289,7 @@ function checkRunCountLimits(runnerConfig) {
     return true;
 }
 
-function getRunnerPhases() {
+export function getRunnerPhases() {
     if (!_orderingEnabled) return {};
     const phases = {};
     const targets = new Set(getTargetSimulators());
@@ -296,14 +302,14 @@ function getRunnerPhases() {
     return phases;
 }
 
-function toggleAllSimulators() {
+export function toggleAllSimulators() {
     const checkboxes = document.querySelectorAll('.sim-checkbox:not(:disabled)');
 
     const allChecked = Array.from(checkboxes).every(cb => cb.checked);
     checkboxes.forEach(cb => cb.checked = !allChecked);
 }
 
-function getTargetSimulators() {
+export function getTargetSimulators() {
     // In multi-run mode, selection is whatever has a non-zero run count.
     if (_multiRunEnabled) {
         return Object.keys(getRunnerConfig());
@@ -321,7 +327,7 @@ function getTargetSimulators() {
     return checked;
 }
 
-function _parseQasmStats(qasm) {
+export function _parseQasmStats(qasm) {
     let qubits = 0, gates = 0;
     for (const line of qasm.split('\n')) {
         const t = line.trim();
@@ -334,7 +340,7 @@ function _parseQasmStats(qasm) {
     return { qubits, gates };
 }
 
-function updateContextBar() {
+export function updateContextBar() {
     const nameSpan = document.getElementById('ctx-algo-name');
     const optSpan = document.getElementById('ctx-opt-level');
     const statsSpan = document.getElementById('ctx-circuit-stats');

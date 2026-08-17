@@ -5,9 +5,9 @@
 // --- Slide-over drawer controller (Config / Bench / Batch) ---
 // Panels are fixed off-canvas (translate-x-full) and slide in when opened. Only one
 // is open at a time; a shared backdrop dims the page and closes on click / Escape.
-const DRAWER_IDS = ['config-panel', 'benchmarks-panel', 'playlist-section'];
+export const DRAWER_IDS = ['config-panel', 'benchmarks-panel', 'playlist-section'];
 
-function openDrawer(panelId) {
+export function openDrawer(panelId) {
     DRAWER_IDS.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.classList.toggle('translate-x-full', id !== panelId);
@@ -16,7 +16,7 @@ function openDrawer(panelId) {
     if (backdrop) backdrop.classList.remove('hidden');
 }
 
-function closeDrawers() {
+export function closeDrawers() {
     DRAWER_IDS.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.classList.add('translate-x-full');
@@ -25,7 +25,7 @@ function closeDrawers() {
     if (backdrop) backdrop.classList.add('hidden');
 }
 
-function isDrawerOpen(panelId) {
+export function isDrawerOpen(panelId) {
     const el = document.getElementById(panelId);
     return !!el && !el.classList.contains('translate-x-full');
 }
@@ -34,7 +34,7 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeDrawers();
 });
 
-function toggleBenchPanel() {
+export function toggleBenchPanel() {
     if (isDrawerOpen('benchmarks-panel')) closeDrawers();
     else openDrawer('benchmarks-panel');
 }

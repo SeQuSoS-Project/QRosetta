@@ -1,6 +1,6 @@
 // Frontend logic for state functionality.
 
-const Store = {
+export const Store = {
     state: {
         authToken: localStorage.getItem('rosetta_token') || null,
         isProcessing: false,
@@ -70,9 +70,23 @@ const Store = {
     },
 
     getState() {
-        return this.state;
+        // A shallow frozen copy. Reads stay cheap, but `getState().x = 1` now throws in
+        // strict mode instead of quietly bypassing the reducer. Nested objects and arrays
+        // are still the live references, so callers that need to change one build a new
+        // value and dispatch it, as they already do.
+        return Object.freeze({ ...this.state });
     }
 };
 
-window.dispatch = (action, payload) => Store.dispatch(action, payload);
-window.getState = () => Store.getState();
+// Exported for modules; also published on window because index.html's inline
+// handlers and the browser console both reach for them by name.
+export function dispatch(action, payload) {
+    Store.dispatch(action, payload);
+}
+
+export function getState() {
+    return Store.getState();
+}
+
+window.dispatch = dispatch;
+window.getState = getState;

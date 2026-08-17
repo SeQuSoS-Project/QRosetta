@@ -6,38 +6,41 @@
 // the statevector-stripped report (tiny), and nothing is stored. The data builders below
 // mirror services/publication.py so the tab and the RO-Crate export agree.
 
-const ARTIFACT_SCALES = [1, 2, 3, 5];
-const ARTIFACT_SCALE_LABELS = ['Screen (1×)', 'High (2×)', 'Print (3×)', 'Very High (5×)'];
-const _TEXT_EXT = { latex: 'tex', csv: 'csv', html: 'html', markdown: 'md', qasm: 'qasm', text: 'txt' };
-const _IMG_MIME = { svg: 'image/svg+xml', png: 'image/png', pdf: 'application/pdf' };
+import { BASE_URL, getAuthHeaders } from './api.js';
+import { COPY_ICON_SVG, _stripStatevectors, copyImageToClipboard, makeCopyIconButton } from './utils.js';
+
+export const ARTIFACT_SCALES = [1, 2, 3, 5];
+export const ARTIFACT_SCALE_LABELS = ['Screen (1×)', 'High (2×)', 'Print (3×)', 'Very High (5×)'];
+export const _TEXT_EXT = { latex: 'tex', csv: 'csv', html: 'html', markdown: 'md', qasm: 'qasm', text: 'txt' };
+export const _IMG_MIME = { svg: 'image/svg+xml', png: 'image/png', pdf: 'application/pdf' };
 
 // ---- number + escaping helpers (match publication.py _fmt_num / escapers) ------------
-function _artNum(v, d = 4) {
+export function _artNum(v, d = 4) {
     if (v === null || v === undefined) return '—';
     if (typeof v === 'number') return Number.isNaN(v) ? '—' : v.toFixed(d);
     return String(v);
 }
-const _ART_LATEX_ESC = {
+export const _ART_LATEX_ESC = {
     '\\': '\\textbackslash{}', '&': '\\&', '%': '\\%', '$': '\\$', '#': '\\#',
     '_': '\\_', '{': '\\{', '}': '\\}', '~': '\\textasciitilde{}', '^': '\\textasciicircum{}',
 };
-function _artLatexEscape(s) {
+export function _artLatexEscape(s) {
     return String(s).split('').map(c => _ART_LATEX_ESC[c] || c).join('');
 }
 // Mirrors Python's html.escape (quote=True), including the &#x27; form for apostrophes.
 // Kept separate from utils.js _escapeHtml, which emits &#39; — merging the two would break
 // byte-for-byte parity with services/publication.py.
-function _artHtmlEscape(s) {
+export function _artHtmlEscape(s) {
     return String(s).replace(/[&<>"']/g, c =>
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;' }[c]));
 }
 // Mirrors publication.basename_slug: each non-alphanumeric -> '-' (no run collapsing), trimmed.
-function _artSlug(s) {
+export function _artSlug(s) {
     return String(s).toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/^-+|-+$/g, '');
 }
 
 // ---- generic table renderers ---------------------------------------------------------
-function _artLatex({ headers, rows, title, caption }) {
+export function _artLatex({ headers, rows, title, caption }) {
     const spec = 'l'.repeat(headers.length);
     const lines = ['% Requires \\usepackage{booktabs}', '\\begin{table}[htbp]', '  \\centering',
         `  \\caption{${_artLatexEscape(title)}. ${_artLatexEscape(caption)}}`,
@@ -47,14 +50,14 @@ function _artLatex({ headers, rows, title, caption }) {
     lines.push('    \\bottomrule', '  \\end{tabular}', '\\end{table}', '');
     return lines.join('\n');
 }
-function _artCsv({ headers, rows }) {
+export function _artCsv({ headers, rows }) {
     const esc = v => {
         const s = (v === null || v === undefined) ? '' : String(v);
         return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
     };
     return [headers, ...rows].map(r => r.map(esc).join(',')).join('\r\n') + '\r\n';
 }
-function _artHtml({ headers, rows, title, caption }) {
+export function _artHtml({ headers, rows, title, caption }) {
     const head = headers.map(h => `<th>${_artHtmlEscape(h)}</th>`).join('');
     const body = rows.map(r => '<tr>' + r.map(c => `<td>${_artHtmlEscape(c)}</td>`).join('') + '</tr>').join('');
     return "<!doctype html><meta charset='utf-8'>"
@@ -66,7 +69,7 @@ function _artHtml({ headers, rows, title, caption }) {
         + `<table><caption>${_artHtmlEscape(title)}<div class='cap'>${_artHtmlEscape(caption)}</div></caption>`
         + `<thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
-function _artMarkdown({ headers, rows, title, caption }) {
+export function _artMarkdown({ headers, rows, title, caption }) {
     const esc = v => String(v).replace(/\|/g, '\\|');
     const lines = [`**${title}** — ${caption}`, '',
         '| ' + headers.map(esc).join(' | ') + ' |',
@@ -75,18 +78,18 @@ function _artMarkdown({ headers, rows, title, caption }) {
     lines.push('');
     return lines.join('\n');
 }
-function _renderTable(fmt, data) {
+export function _renderTable(fmt, data) {
     return { latex: _artLatex, csv: _artCsv, html: _artHtml, markdown: _artMarkdown }[fmt](data);
 }
 
 // ---- data builders (mirror publication.py) -------------------------------------------
-function _artPairKey(rec) {
+export function _artPairKey(rec) {
     const s = rec.simulators || ['?', '?'];
     return `${s[0]} × ${s[1]}`;
 }
-function _artPairwise(div) { return Array.isArray(div.pairwise_agreement) ? div.pairwise_agreement : []; }
+export function _artPairwise(div) { return Array.isArray(div.pairwise_agreement) ? div.pairwise_agreement : []; }
 
-function _dataAgreement(div, mode) {
+export function _dataAgreement(div, mode) {
     const measured = mode === 'measured';
     const headers = ['Pair', 'Agreement', 'Registered transform', measured ? 'JS divergence' : 'Fidelity'];
     if (measured) headers.push('Stat verdict');
@@ -100,7 +103,7 @@ function _dataAgreement(div, mode) {
     return { headers, rows, title: 'Pairwise explained-cause agreement',
         caption: 'Classification over the registered-transform lattice; each label reports the transform whose numerical effect explains the pair.' };
 }
-function _dataMatrix(div, key, title) {
+export function _dataMatrix(div, key, title) {
     const labels = div.simulators || [];
     const mat = div[key];
     const headers = [''].concat(labels);
@@ -110,7 +113,7 @@ function _dataMatrix(div, key, title) {
     })));
     return { headers, rows, title, caption: `${title} (raw metric; −1 / diagonal shown as —). Symmetric matrix.` };
 }
-function _dataPerformance(results) {
+export function _dataPerformance(results) {
     const ranking = (results.performance_report || {}).ranking || [];
     return {
         headers: ['Rank', 'Simulator', 'Compilation (s)', 'Simulation (s)', 'Total (s)', 'CPU (s)',
@@ -125,7 +128,7 @@ function _dataPerformance(results) {
             "derived from each backend's own transpiled QASM.",
     };
 }
-function _dataResources(results) {
+export function _dataResources(results) {
     const ranking = (results.resource_report || {}).ranking || [];
     return {
         headers: ['Rank', 'Simulator', 'Process peak RSS (MiB)', 'Mem delta (MiB)',
@@ -139,7 +142,7 @@ function _dataResources(results) {
             "column. Mem delta / Process peak are each backend's own sim-window measurement.",
     };
 }
-function _dataStatistical(div) {
+export function _dataStatistical(div) {
     const recs = _artPairwise(div).filter(r => (r.metrics || {}).statistical_test);
     return {
         headers: ['Pair', 'Basis', 'chi2 p', 'chi2 p (BH)', 'G-test p', 'G-test p (BH)',
@@ -156,7 +159,7 @@ function _dataStatistical(div) {
         caption: 'Shot-noise-aware homogeneity tests (chi-square + G-test) with BH-corrected p-values, effect size, and prospective power, reported alongside the descriptive label.',
     };
 }
-function _dataMetadata(results, mode) {
+export function _dataMetadata(results, mode) {
     const rows = (results.raw_results || []).map(r => {
         const sdk = Object.entries(r.sdk_versions || {}).map(([k, v]) => `${k}=${v}`).join(', ') || '—';
         return [r.simulator || '—', sdk, r.qubit_ordering || '—', r.sampling_method || '—',
@@ -169,13 +172,13 @@ function _dataMetadata(results, mode) {
         rows, title: 'Run and provenance metadata',
         caption: `Run + provenance metadata (${run}). Ground-truth executed versions and endpoint labels.` };
 }
-function _txtExecutedQasm(results, runner) {
+export function _txtExecutedQasm(results, runner) {
     const r = (results.raw_results || []).find(x => x.simulator === runner);
     const header = `// Executed (transpiled) OpenQASM for backend: ${runner}\n`
         + `// This is the exact circuit the ${runner} adapter ran (after preprocessing).\n`;
     return header + ((r && r.transpiled_qasm) || '// (no transpiled QASM recorded for this runner)');
 }
-function _txtGlossary(mode) {
+export function _txtGlossary(mode) {
     const agr = [
         ['agree_directly', 'Outputs match directly, no transform needed.'],
         ['agree_up_to_global_phase', 'Match after removing an overall (unobservable) global phase.'],
@@ -203,9 +206,9 @@ function _txtGlossary(mode) {
 }
 
 // ---- catalog (mirrors publication.py _iter_artifacts availability) -------------------
-function _artifactMode(results) { return ('n_shots' in results) ? 'measured' : 'statevector'; }
+export function _artifactMode(results) { return ('n_shots' in results) ? 'measured' : 'statevector'; }
 
-function buildArtifactCatalog(results) {
+export function buildArtifactCatalog(results) {
     const div = results.divergence_report || {};
     const mode = _artifactMode(results);
     const items = [];
@@ -298,14 +301,14 @@ function buildArtifactCatalog(results) {
 // be scoped to "which vs which". Pure (no mutation): slices the N×N matrices, filters the
 // pairwise records / raw results / rankings, and recomputes the shot-noise verdict counts.
 // Figures then POST the sliced (stripped) report, so the server builders need no changes.
-function _artBackends(results) {
+export function _artBackends(results) {
     const order = (results.divergence_report || {}).simulators || [];
     const seen = new Set(order);
     const extra = (results.raw_results || []).map(r => r.simulator)
         .filter(s => s && !seen.has(s));
     return order.concat(extra);
 }
-function _subsetResults(results, selected) {
+export function _subsetResults(results, selected) {
     const div = results.divergence_report || {};
     const allSims = div.simulators || [];
     const keepIdx = [];
@@ -351,7 +354,7 @@ function _subsetResults(results, selected) {
 }
 
 // ---- figure rendering (server) -------------------------------------------------------
-async function _fetchFigureBlob(stripped, id, fmt, scale) {
+export async function _fetchFigureBlob(stripped, id, fmt, scale) {
     const resp = await fetch(`${BASE_URL}/publication/render`, {
         method: 'POST',
         headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
@@ -364,7 +367,7 @@ async function _fetchFigureBlob(stripped, id, fmt, scale) {
     return await resp.blob();
 }
 
-function _downloadBlob(blob, filename) {
+export function _downloadBlob(blob, filename) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = filename;
@@ -374,7 +377,7 @@ function _downloadBlob(blob, filename) {
 
 // ---- viewers -------------------------------------------------------------------------
 // Render format-toggle buttons into `host`, re-rendering in place on pick.
-function _mountFmtSwitcher(host, formats, getCurrent, setCurrent) {
+export function _mountFmtSwitcher(host, formats, getCurrent, setCurrent) {
     host.innerHTML = '';
     host.className = 'flex flex-wrap gap-1';
     formats.forEach(f => {
@@ -388,14 +391,14 @@ function _mountFmtSwitcher(host, formats, getCurrent, setCurrent) {
     });
 }
 
-function _legendLine(text) {
+export function _legendLine(text) {
     const p = document.createElement('p');
     p.className = 'text-xs text-gray-500 mt-2 leading-snug';
     p.innerHTML = `<span class="font-semibold text-gray-600">Legend:</span> ${_artHtmlEscape(text)}`;
     return p;
 }
 
-function _renderTextViewer(container, art) {
+export function _renderTextViewer(container, art) {
     container.innerHTML = '';
     const state = { fmt: art.formats[0] };
     const title = document.createElement('h3');
@@ -429,7 +432,7 @@ function _renderTextViewer(container, art) {
     paint();
 }
 
-function _renderImageViewer(container, art, stripped) {
+export function _renderImageViewer(container, art, stripped) {
     container.innerHTML = '';
     const state = { fmt: 'png', scaleIdx: 0 };
     const title = document.createElement('h3');
@@ -519,7 +522,7 @@ function _renderImageViewer(container, art, stripped) {
 }
 
 // ---- panel ---------------------------------------------------------------------------
-function renderArtifactsPanel(results, panel) {
+export function renderArtifactsPanel(results, panel) {
     if (!panel) return;
     panel.innerHTML = '';
 
@@ -604,7 +607,7 @@ function renderArtifactsPanel(results, panel) {
 }
 
 // Chip toggles for the backend subset + All/None shortcuts; `onChange` re-renders the tab.
-function _backendSelector(allBackends, selected, onChange) {
+export function _backendSelector(allBackends, selected, onChange) {
     const wrap = document.createElement('div');
     wrap.className = 'mb-4 p-3 border border-gray-200 rounded-lg bg-gray-50';
     const head = document.createElement('div');

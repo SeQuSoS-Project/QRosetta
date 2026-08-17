@@ -1,39 +1,24 @@
 // Frontend logic for app functionality.
 
-let qasmInput, loader, tabNav, welcomeMessage, backButtonContainer, jsonOutput;
-let playlistSection, queueList, queueCount;
-let panelElements = {};
-let allButtons = [];
+import { BASE_URL, getAuthHeaders, pollJobStatus } from './api.js';
+import { updateAuthUI, verifySession } from './auth.js';
+import { autosaveRun, initAutosave } from './autosave.js';
+import { renderBatchQueue } from './batch.js';
+import { bmLoadChecklist, populateBenchmarkSelectors } from './benchmarks_select.js';
+import { checkRunCountLimits, getRunnerConfig, getRunnerPhases, getTargetSimulators, updateContextBar } from './config.js';
+import { clearHistoryState, saveRunToHistory } from './history.js';
+import { clearReport, renderDetailReport, renderSuiteSummary } from './renderers.js';
+import { initDomRefs, qasmInput, setAllButtons, welcomeMessage } from './dom.js';
+import { dispatch, getState } from './state.js';
+import { getAgreementThresholds, getSeed, setLoading } from './utils.js';
 
 window.onload = async () => {
 
-    qasmInput = document.getElementById('qasm-input');
-    loader = document.getElementById('loader');
-    tabNav = document.getElementById('tab-nav');
-    welcomeMessage = document.getElementById('welcome-message');
-    backButtonContainer = document.getElementById('back-button-container');
-    jsonOutput = document.getElementById('json-output');
-
-    playlistSection = document.getElementById('playlist-section');
-    queueList = document.getElementById('queue-list');
-    queueCount = document.getElementById('queue-count');
-
-    panelElements = {
-        'summary': document.getElementById('summary-panel'),
-        'performance': document.getElementById('performance-panel'),
-        'resources': document.getElementById('resources-panel'),
-        'divergence': document.getElementById('divergence-panel'),
-        'agreement': document.getElementById('agreement-panel'),
-        'artifacts': document.getElementById('artifacts-panel'),
-        'raw': document.getElementById('raw-panel'),
-        'suite-summary': document.getElementById('suite-summary-panel'),
-        'visualizer': document.getElementById('visualizer-panel')
-    };
-
-    allButtons = [
+    initDomRefs();
+    setAllButtons([
         document.getElementById('btn-run'),
         document.getElementById('btn-batch-run')
-    ];
+    ]);
 
     updateAuthUI();
     verifySession();
@@ -94,12 +79,12 @@ window.onload = async () => {
     if (typeof initAutosave === 'function') initAutosave();
 };
 
-function getDynamicMaxQubits() {
+export function getDynamicMaxQubits() {
     const mode = document.querySelector('input[name="mode-single"]:checked')?.value || 'statevector';
     return mode === 'statevector' ? getState().maxQubitsStatevector : getState().maxQubitsMeasured;
 }
 
-function updateQubitConstraints(e) {
+export function updateQubitConstraints(e) {
     const algoId = document.getElementById('algo-select').value;
     const selectedAlgo = getState().allAlgorithms.find(a => a.id === algoId);
     const input = document.getElementById('algo-qubits');
@@ -127,7 +112,7 @@ function updateQubitConstraints(e) {
     }
 }
 
-async function generateCircuit() {
+export async function generateCircuit() {
     if (getState().isProcessing) return;
     const algoId = document.getElementById('algo-select').value;
     const qubits = parseInt(document.getElementById('algo-qubits').value);
@@ -164,7 +149,7 @@ async function generateCircuit() {
     }
 }
 
-function toggleSingleMode() {
+export function toggleSingleMode() {
     const mode = document.querySelector('input[name="mode-single"]:checked').value;
     const shotsContainer = document.getElementById('shots-container-single');
     if (mode === 'measured') {
@@ -175,7 +160,7 @@ function toggleSingleMode() {
     updateQubitConstraints();
 }
 
-function toggleBatchMode() {
+export function toggleBatchMode() {
     const mode = document.querySelector('input[name="mode-batch"]:checked').value;
     const shotsContainer = document.getElementById('shots-container-batch');
     const batchBtn = document.getElementById('btn-batch-run');
@@ -189,13 +174,13 @@ function toggleBatchMode() {
     }
 }
 
-function handleRun() {
+export function handleRun() {
     const mode = document.querySelector('input[name="mode-single"]:checked').value;
     const shots = parseInt(document.getElementById('shots-single').value) || 1024;
     runComparison(mode, shots);
 }
 
-async function runComparison(type, shots) {
+export async function runComparison(type, shots) {
     clearHistoryState();
     if (getState().isProcessing) return;
     const qasm = qasmInput.value.trim();
@@ -279,7 +264,7 @@ async function runComparison(type, shots) {
     }
 }
 
-async function runBatchQueue() {
+export async function runBatchQueue() {
     clearHistoryState();
     if (getState().isProcessing) return;
     if (getState().batchQueue.length === 0) return;

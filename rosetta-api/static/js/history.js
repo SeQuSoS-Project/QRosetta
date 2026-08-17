@@ -1,6 +1,12 @@
 // Frontend logic for history functionality.
 
-async function saveRunToHistory(payload) {
+import { tabNav } from './dom.js';
+import { BASE_URL, getAuthHeaders } from './api.js';
+import { clearReport, renderDetailReport, renderSuiteSummary } from './renderers.js';
+import { dispatch, getState } from './state.js';
+import { _escapeHtml, setLoading } from './utils.js';
+
+export async function saveRunToHistory(payload) {
     if (!getState().authToken) return null;
     try {
         const res = await fetch(`${BASE_URL}/history/runs`, {
@@ -17,7 +23,7 @@ async function saveRunToHistory(payload) {
     }
 }
 
-async function openHistoryModal() {
+export async function openHistoryModal() {
     document.getElementById('history-modal').classList.remove('hidden');
     const list = document.getElementById('history-list');
     list.innerHTML = '<li class="py-4 text-center text-sm text-gray-500">Loading history...</li>';
@@ -121,7 +127,7 @@ async function openHistoryModal() {
     }
 }
 
-function clearHistoryState() {
+export function clearHistoryState() {
     const banner = document.getElementById('history-active-banner');
     if (banner) {
         banner.remove();
@@ -129,13 +135,13 @@ function clearHistoryState() {
     dispatch('SET_HISTORY_RUN_ID', null);
 }
 
-function toggleSelectAllHistory() {
+export function toggleSelectAllHistory() {
     const selectAll = document.getElementById('history-select-all');
     const checkboxes = document.querySelectorAll('.history-checkbox');
     checkboxes.forEach(cb => cb.checked = selectAll.checked);
 }
 
-function toggleEditRunName(runId) {
+export function toggleEditRunName(runId) {
     document.getElementById(`run-name-text-${runId}`).classList.add('hidden');
     document.getElementById(`run-name-edit-btn-${runId}`).classList.add('hidden');
     document.getElementById(`run-name-input-${runId}`).classList.remove('hidden');
@@ -144,7 +150,7 @@ function toggleEditRunName(runId) {
     document.getElementById(`run-name-input-${runId}`).focus();
 }
 
-function cancelEditRunName(runId, originalName) {
+export function cancelEditRunName(runId, originalName) {
     document.getElementById(`run-name-input-${runId}`).value = originalName;
     document.getElementById(`run-name-text-${runId}`).classList.remove('hidden');
     document.getElementById(`run-name-edit-btn-${runId}`).classList.remove('hidden');
@@ -153,7 +159,7 @@ function cancelEditRunName(runId, originalName) {
     document.getElementById(`run-name-cancel-btn-${runId}`).classList.add('hidden');
 }
 
-async function saveRunName(runId) {
+export async function saveRunName(runId) {
     const input = document.getElementById(`run-name-input-${runId}`);
     const newName = input.value.trim();
     if (!newName) return;
@@ -175,7 +181,7 @@ async function saveRunName(runId) {
     }
 }
 
-async function deleteSelectedHistory() {
+export async function deleteSelectedHistory() {
     const checkboxes = document.querySelectorAll('.history-checkbox:checked');
     const runIds = Array.from(checkboxes).map(cb => cb.value);
     if (runIds.length === 0) return;
@@ -195,7 +201,7 @@ async function deleteSelectedHistory() {
     }
 }
 
-async function downloadSelectedHistory() {
+export async function downloadSelectedHistory() {
     const checkboxes = document.querySelectorAll('.history-checkbox:checked');
     const runIds = Array.from(checkboxes).map(cb => cb.value);
     if (runIds.length === 0) return;
@@ -222,11 +228,11 @@ async function downloadSelectedHistory() {
     }
 }
 
-function closeHistoryModal() {
+export function closeHistoryModal() {
     document.getElementById('history-modal').classList.add('hidden');
 }
 
-async function loadHistoricalRun(runId, runName, createdAt) {
+export async function loadHistoricalRun(runId, runName, createdAt) {
     if (!getState().authToken) return;
     closeHistoryModal();
     setLoading(true, "Loading Past Run...");
@@ -274,7 +280,7 @@ async function loadHistoricalRun(runId, runName, createdAt) {
     }
 }
 
-function clearHistoryView() {
+export function clearHistoryView() {
     clearReport();
     const banner = document.getElementById('history-active-banner');
     if (banner) banner.remove();

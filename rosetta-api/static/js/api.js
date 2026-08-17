@@ -1,11 +1,15 @@
 // Frontend logic for api functionality.
 
-let BASE_URL = '';
+import { loader } from './dom.js';
+import { getState } from './state.js';
+import { renderBatchProgress, updateRunnerStatuses } from './utils.js';
+
+export let BASE_URL = '';
 if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
     BASE_URL = window.location.origin;
 }
 
-function getAuthHeaders(extraHeaders = {}) {
+export function getAuthHeaders(extraHeaders = {}) {
     const headers = { ...extraHeaders };
     if (getState().authToken) {
         headers['Authorization'] = `Bearer ${getState().authToken}`;
@@ -13,7 +17,7 @@ function getAuthHeaders(extraHeaders = {}) {
     return headers;
 }
 
-async function pollJobStatus(jobId) {
+export async function pollJobStatus(jobId) {
     return new Promise((resolve, reject) => {
         let networkErrorCount = 0;
         const MAX_NETWORK_ERRORS = 4;
@@ -78,7 +82,7 @@ async function pollJobStatus(jobId) {
     });
 }
 
-async function fetchMQTBench(algorithm, qubits) {
+export async function fetchMQTBench(algorithm, qubits) {
     const res = await fetch(`${BASE_URL}/benchmarks/mqt?algorithm=${encodeURIComponent(algorithm)}&qubits=${encodeURIComponent(qubits)}`, {
         headers: getAuthHeaders()
     });
@@ -89,7 +93,7 @@ async function fetchMQTBench(algorithm, qubits) {
     return await res.json();
 }
 
-async function fetchQASMBench(circuit) {
+export async function fetchQASMBench(circuit) {
     const res = await fetch(`${BASE_URL}/benchmarks/qasmbench?circuit=${encodeURIComponent(circuit)}`, {
         headers: getAuthHeaders()
     });
@@ -100,13 +104,13 @@ async function fetchQASMBench(circuit) {
     return await res.json();
 }
 
-async function fetchMQTList() {
+export async function fetchMQTList() {
     const res = await fetch(`${BASE_URL}/benchmarks/mqt/list`, { headers: getAuthHeaders() });
     if (!res.ok) throw new Error(`Failed to fetch MQT list: ${res.status}`);
     return await res.json();
 }
 
-async function fetchQASMBenchList() {
+export async function fetchQASMBenchList() {
     const res = await fetch(`${BASE_URL}/benchmarks/qasmbench/list`, { headers: getAuthHeaders() });
     if (!res.ok) throw new Error(`Failed to fetch QASMBench list: ${res.status}`);
     return await res.json();

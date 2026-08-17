@@ -1,11 +1,15 @@
 // Frontend logic for auth functionality.
 
-function openAuthModal() {
+import { BASE_URL, getAuthHeaders } from './api.js';
+import { dispatch, getState } from './state.js';
+import { setLoading } from './utils.js';
+
+export function openAuthModal() {
     document.getElementById('auth-modal').classList.remove('hidden');
     toggleAuthMode('login');
 }
 
-function closeAuthModal() {
+export function closeAuthModal() {
     document.getElementById('auth-modal').classList.add('hidden');
     document.getElementById('login-email').value = '';
     document.getElementById('login-password').value = '';
@@ -15,7 +19,7 @@ function closeAuthModal() {
     document.getElementById('register-error').classList.add('hidden');
 }
 
-function toggleAuthMode(mode) {
+export function toggleAuthMode(mode) {
     if (mode === 'login') {
         document.getElementById('login-form-container').classList.remove('hidden');
         document.getElementById('register-form-container').classList.add('hidden');
@@ -25,7 +29,7 @@ function toggleAuthMode(mode) {
     }
 }
 
-function updateAuthUI() {
+export function updateAuthUI() {
     const loginBtn = document.getElementById('btn-login-modal');
     const userProfile = document.getElementById('user-profile');
     const emailDisplay = document.getElementById('user-email-display');
@@ -46,7 +50,7 @@ function updateAuthUI() {
     }
 }
 
-async function handleLoginSubmit() {
+export async function handleLoginSubmit() {
     const email = document.getElementById('login-email').value.trim();
     const password = document.getElementById('login-password').value.trim();
     const errorDiv = document.getElementById('login-error');
@@ -92,7 +96,7 @@ async function handleLoginSubmit() {
     }
 }
 
-async function handleRegisterSubmit() {
+export async function handleRegisterSubmit() {
     const email = document.getElementById('register-email').value.trim();
     const password = document.getElementById('register-password').value.trim();
     const errorDiv = document.getElementById('register-error');
@@ -133,13 +137,13 @@ async function handleRegisterSubmit() {
     }
 }
 
-function handleLogout() {
+export function handleLogout() {
     dispatch('SET_AUTH_TOKEN', null);
 
     updateAuthUI();
 }
 
-async function verifySession() {
+export async function verifySession() {
     if (!getState().authToken) return;
     try {
         const res = await fetch(`${BASE_URL}/auth/me`, {
@@ -153,7 +157,7 @@ async function verifySession() {
     }
 }
 
-async function handleDeleteAccount() {
+export async function handleDeleteAccount() {
     if (!confirm("Are you sure you want to permanently delete your account? This action cannot be undone.")) {
         return;
     }

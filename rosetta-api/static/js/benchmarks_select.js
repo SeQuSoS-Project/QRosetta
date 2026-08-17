@@ -6,30 +6,38 @@
 //   { source: 'mqt'|'qasmbench', algorithm, qubits, name, qasm_string: null }
 // The batch worker and the experiment runner both resolve them via benchmark_library.
 
-const _bmEntriesCache = {};   // suite -> normalized entries (fetched once)
+import { qasmInput } from './dom.js';
+import { fetchMQTBench, fetchMQTList, fetchQASMBench, fetchQASMBenchList } from './api.js';
+import { renderBatchQueue } from './batch.js';
+import { updateContextBar } from './config.js';
+import { closeDrawers, openDrawer } from './drawers.js';
+import { dispatch, getState } from './state.js';
+import { _escapeHtml, setLoading } from './utils.js';
 
-function bmCurrentSuite() {
+export const _bmEntriesCache = {};   // suite -> normalized entries (fetched once)
+
+export function bmCurrentSuite() {
     return document.querySelector('input[name="bench-suite"]:checked')?.value || 'mqt';
 }
 
 // Max-qubit cap from the Benchmarks panel input (empty = no cap). Entries whose size is
 // unknown (0, e.g. a name without an _n suffix) are kept so nothing is silently hidden.
-function bmMaxQubits() {
+export function bmMaxQubits() {
     const v = parseInt(document.getElementById('bench-max-qubits')?.value);
     return Number.isFinite(v) && v > 0 ? v : Infinity;
 }
 
-function _bmWithinCap(entry, maxQ) {
+export function _bmWithinCap(entry, maxQ) {
     return !entry.qubits || entry.qubits <= maxQ;
 }
 
-function _bmParseQubits(name) {
+export function _bmParseQubits(name) {
     const m = String(name).match(/_n(\d+)$/);
     return m ? parseInt(m[1]) : 0;
 }
 
 // Fetch and normalize every circuit in a suite to a selectable entry.
-async function bmSuiteEntries(suite) {
+export async function bmSuiteEntries(suite) {
     if (_bmEntriesCache[suite]) return _bmEntriesCache[suite];
     const entries = [];
     if (suite === 'mqt') {
@@ -49,20 +57,20 @@ async function bmSuiteEntries(suite) {
     return entries;
 }
 
-function bmEntryToQueueItem(e) {
+export function bmEntryToQueueItem(e) {
     return {
         source: e.suite, algorithm: e.algorithm, qubits: e.qubits || 0,
         name: e.label || e.algorithm, qasm_string: null,
     };
 }
 
-function _bmItemKey(item) {
+export function _bmItemKey(item) {
     if (item.source) return `${item.source}:${item.algorithm}:${item.qubits}`;
     return item.qasm_string ? `q:${item.name}:${item.qasm_string.length}` : `p:${item.algorithm}:${item.qubits}`;
 }
 
 // Add items to the batch queue, skipping ones already present. Returns the number added.
-function bmAddToQueue(items) {
+export function bmAddToQueue(items) {
     const queue = [...getState().batchQueue];
     const seen = new Set(queue.map(_bmItemKey));
     let added = 0;
@@ -82,7 +90,7 @@ function bmAddToQueue(items) {
 
 // --- Benchmarks panel: precise multi-select ------------------------------------------
 
-async function bmLoadChecklist() {
+export async function bmLoadChecklist() {
     const list = document.getElementById('bench-checklist');
     if (!list) return;
     list.innerHTML = '<div class="text-emerald-500 italic">loading…</div>';
@@ -94,7 +102,7 @@ async function bmLoadChecklist() {
     }
 }
 
-function bmRenderChecklist() {
+export function bmRenderChecklist() {
     const list = document.getElementById('bench-checklist');
     if (!list) return;
     const suite = bmCurrentSuite();
@@ -122,25 +130,25 @@ function bmRenderChecklist() {
     bmUpdateSelectedCount();
 }
 
-function bmSelectedItems() {
+export function bmSelectedItems() {
     return Array.from(document.querySelectorAll('.bm-check:checked')).map(cb => ({
         source: cb.dataset.suite, algorithm: cb.dataset.algo,
         qubits: parseInt(cb.dataset.qubits) || 0, name: cb.dataset.label, qasm_string: null,
     }));
 }
 
-function bmUpdateSelectedCount() {
+export function bmUpdateSelectedCount() {
     const el = document.getElementById('bench-selected-count');
     if (el) el.textContent = String(document.querySelectorAll('.bm-check:checked').length);
 }
 
-function bmToggleSelectAll() {
+export function bmToggleSelectAll() {
     const on = document.getElementById('bench-select-all')?.checked;
     document.querySelectorAll('.bm-check').forEach(cb => { cb.checked = on; });
     bmUpdateSelectedCount();
 }
 
-function bmAddSelectedToBatch() {
+export function bmAddSelectedToBatch() {
     const items = bmSelectedItems();
     if (items.length === 0) { alert('Select at least one benchmark circuit.'); return; }
     const added = bmAddToQueue(items);
@@ -152,7 +160,7 @@ function bmAddSelectedToBatch() {
 
 // --- Experiment panel: quick "add all of a suite" ------------------------------------
 
-async function bmAddAllOfSuite(suite, maxQubits) {
+export async function bmAddAllOfSuite(suite, maxQubits) {
     try {
         const maxQ = Number.isFinite(maxQubits) && maxQubits > 0 ? maxQubits : Infinity;
         const entries = (await bmSuiteEntries(suite)).filter(e => _bmWithinCap(e, maxQ));
@@ -166,13 +174,12 @@ async function bmAddAllOfSuite(suite, maxQubits) {
     }
 }
 
-
 // --- Benchmarks panel: selectors, single fetch, load-to-editor ----------------------
 // (moved from app.js; the benchmark concern lives here)
 
-let _mqtSizes = {};
+export let _mqtSizes = {};
 
-async function populateBenchmarkSelectors() {
+export async function populateBenchmarkSelectors() {
     try {
         const [mqt, qasm] = await Promise.all([fetchMQTList(), fetchQASMBenchList()]);
         _mqtSizes = mqt || {};
@@ -205,7 +212,7 @@ async function populateBenchmarkSelectors() {
     }
 }
 
-function updateMqtQubitRange() {
+export function updateMqtQubitRange() {
     const algo = document.getElementById('bench-mqt-algo')?.value;
     const sizes = _mqtSizes[algo] || [];
     const input = document.getElementById('bench-mqt-qubits');
@@ -216,7 +223,7 @@ function updateMqtQubitRange() {
     if (!(v >= sizes[0] && v <= sizes[sizes.length - 1])) input.value = sizes[0];
 }
 
-function toggleBenchSuite() {
+export function toggleBenchSuite() {
     const suite = document.querySelector('input[name="bench-suite"]:checked').value;
     const mqtOptions = document.getElementById('bench-mqt-options');
     const qasmbenchOptions = document.getElementById('bench-qasmbench-options');
@@ -231,7 +238,7 @@ function toggleBenchSuite() {
     if (typeof bmLoadChecklist === 'function') bmLoadChecklist();
 }
 
-async function fetchBenchmarkQasm() {
+export async function fetchBenchmarkQasm() {
     const suite = document.querySelector('input[name="bench-suite"]:checked').value;
     const errorDiv = document.getElementById('bench-error');
     errorDiv.classList.add('hidden');
@@ -263,7 +270,7 @@ async function fetchBenchmarkQasm() {
     }
 }
 
-async function loadBenchmark() {
+export async function loadBenchmark() {
     if (getState().isProcessing) return;
     const result = await fetchBenchmarkQasm();
     if (result && result.qasm) {
@@ -274,7 +281,7 @@ async function loadBenchmark() {
     }
 }
 
-function addBenchmarkToBatch() {
+export function addBenchmarkToBatch() {
     if (getState().isProcessing) return;
     const suite = bmCurrentSuite();
     let item;

@@ -2,7 +2,14 @@
 
 // Self-comparison virtual keys look like "<simId>~opt<L>~run<N>". A plain canonical
 // id (e.g. "qiskit", "pennylane-default") parses as a single, non-multi run.
-function parseRunnerKey(key) {
+import { allButtons, jsonOutput, loader, panelElements, tabNav } from './dom.js';
+import { BASE_URL, getAuthHeaders } from './api.js';
+
+import { renderBatchQueue } from './batch.js';
+import { _renderRawTabIfNeeded, showTab } from './renderers.js';
+import { dispatch, getState } from './state.js';
+
+export function parseRunnerKey(key) {
     const m = /^(.+)~opt(\d+)~run(\d+)$/.exec(key || '');
     if (m) {
         return { simId: m[1], optLevel: parseInt(m[2]), runIndex: parseInt(m[3]), isMulti: true };
@@ -10,13 +17,13 @@ function parseRunnerKey(key) {
     return { simId: key, optLevel: null, runIndex: null, isMulti: false };
 }
 
-function formatRunnerLabel(key, nameMap) {
+export function formatRunnerLabel(key, nameMap) {
     const { simId, optLevel, runIndex, isMulti } = parseRunnerKey(key);
     const base = (nameMap && nameMap[simId]) || simId;
     return isMulti ? `${base} · L${optLevel} #${runIndex}` : base;
 }
 
-function isConnectionError(errorMsg) {
+export function isConnectionError(errorMsg) {
     if (!errorMsg) return false;
     const msg = errorMsg.toLowerCase();
     return msg.includes("connection refused") ||
@@ -30,13 +37,13 @@ function isConnectionError(errorMsg) {
         msg.includes("failed to decode json");
 }
 
-let _loaderElapsedTimer = null;
+export let _loaderElapsedTimer = null;
 
 // options.overlay (default true): when true, show the full results-panel processing
 // overlay (used by actual benchmark runs). When false, show only a small busy toast so
 // circuit-prep actions (generate / preset / auto-gen / benchmark fetch) don't blank out
 // any result already displayed on the right.
-function setLoading(isLoading, message = "Processing...", options = {}) {
+export function setLoading(isLoading, message = "Processing...", options = {}) {
     const overlay = options.overlay !== false;
     const loader = document.getElementById('loader');
     const loaderText = document.getElementById('loader-text');
@@ -84,7 +91,7 @@ function setLoading(isLoading, message = "Processing...", options = {}) {
     }
 }
 
-const _STATUS_CFG = {
+export const _STATUS_CFG = {
     queued:   { color: 'bg-gray-300',    text: 'text-gray-400',   label: 'QUEUED',    pulse: false, terminal: false },
     spawning: { color: 'bg-amber-400',   text: 'text-amber-600',  label: 'SPAWNING',  pulse: true,  terminal: false },
     running:  { color: 'bg-blue-500',    text: 'text-blue-600',   label: 'RUNNING',   pulse: true,  terminal: false },
@@ -93,7 +100,7 @@ const _STATUS_CFG = {
     timeout:  { color: 'bg-orange-400',  text: 'text-orange-500', label: 'TIMEOUT',   pulse: false, terminal: true  },
 };
 
-const _RUNNER_NAMES = {
+export const _RUNNER_NAMES = {
     "qiskit": "Qiskit", "cirq": "Cirq", "qulacs": "Qulacs", "braket": "Braket",
     "projectq": "ProjectQ", "quest": "QuEST", "pennylane-lightning": "PL Lightning",
     "pennylane-default": "PL Default", "qsim-cirq": "qsim-Cirq", "qibo": "Qibo",
@@ -101,10 +108,10 @@ const _RUNNER_NAMES = {
     "torchquantum": "TorchQuantum", "quimb": "Quimb", "cuquantum": "cuQuantum",
 };
 
-let _runnerPhases = {};
-let _runnerCardTimer = null;
+export let _runnerPhases = {};
+export let _runnerCardTimer = null;
 
-function _startRunnerCardTimer() {
+export function _startRunnerCardTimer() {
     if (_runnerCardTimer) return;
     _runnerCardTimer = setInterval(() => {
         const now = Date.now();
@@ -117,12 +124,12 @@ function _startRunnerCardTimer() {
     }, 1000);
 }
 
-function _stopRunnerCardTimer() {
+export function _stopRunnerCardTimer() {
     if (_runnerCardTimer) { clearInterval(_runnerCardTimer); _runnerCardTimer = null; }
     _runnerPhases = {};
 }
 
-function updateRunnerStatuses(statuses) {
+export function updateRunnerStatuses(statuses) {
     if (!statuses || typeof statuses !== 'object') return;
     const grid = document.getElementById('runner-status-grid');
     if (!grid) return;
@@ -175,9 +182,9 @@ function updateRunnerStatuses(statuses) {
 }
 
 // --- Reusable copy affordances -------------------------------------------------------
-const COPY_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>';
+export const COPY_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>';
 
-function _flashCopied(btn) {
+export function _flashCopied(btn) {
     if (!btn) return;
     const old = btn.innerHTML;
     btn.innerHTML = '<span class="text-xs font-medium">✓ Copied</span>';
@@ -185,13 +192,13 @@ function _flashCopied(btn) {
     setTimeout(() => { btn.innerHTML = old; btn.disabled = false; }, 1500);
 }
 
-function copyText(text, btn) {
+export function copyText(text, btn) {
     navigator.clipboard.writeText(text)
         .then(() => _flashCopied(btn))
         .catch(err => { console.error(err); alert('Copy failed.'); });
 }
 
-async function copyImageToClipboard(blob, btn) {
+export async function copyImageToClipboard(blob, btn) {
     try {
         await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
         _flashCopied(btn);
@@ -202,7 +209,7 @@ async function copyImageToClipboard(blob, btn) {
 }
 
 // Build a small copy-icon button. `getText` may be a string or a () => string.
-function makeCopyIconButton(getText, title = 'Copy to clipboard') {
+export function makeCopyIconButton(getText, title = 'Copy to clipboard') {
     const btn = document.createElement('button');
     btn.className = 'inline-flex items-center gap-1 text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-md px-2 py-1 transition-all';
     btn.title = title;
@@ -211,23 +218,23 @@ function makeCopyIconButton(getText, title = 'Copy to clipboard') {
     return btn;
 }
 
-function copyRawJson(btn) {
+export function copyRawJson(btn) {
     if (typeof _renderRawTabIfNeeded === 'function') _renderRawTabIfNeeded();
     copyText(jsonOutput.textContent, btn);
 }
 
 // Copy the current input-circuit QASM from the editor.
-function copyCircuitQasm(btn) {
+export function copyCircuitQasm(btn) {
     const el = document.getElementById('qasm-input');
     if (el) copyText(el.value || '', btn);
 }
 
-function downloadFullReport() {
+export function downloadFullReport() {
 
     window.location.href = `${BASE_URL}/download_latest_report`;
 }
 
-function downloadRawJson() {
+export function downloadRawJson() {
     if (typeof _renderRawTabIfNeeded === 'function') _renderRawTabIfNeeded();
     const jsonString = jsonOutput.textContent;
     if (!jsonString || jsonString.trim() === '') {
@@ -245,7 +252,7 @@ function downloadRawJson() {
     URL.revokeObjectURL(url);
 }
 
-function _stripStatevectors(data) {
+export function _stripStatevectors(data) {
     if (Array.isArray(data)) {
         return data.map(_stripStatevectors);
     }
@@ -260,13 +267,13 @@ function _stripStatevectors(data) {
     return data;
 }
 
-function togglePublicationOptions() {
+export function togglePublicationOptions() {
     const enabled = document.getElementById('pub-enable')?.checked;
     const opts = document.getElementById('pub-options');
     if (opts) opts.classList.toggle('hidden', !enabled);
 }
 
-function _readPublicationSelection() {
+export function _readPublicationSelection() {
     // Returns null (omitted) unless the master checkbox is on and >=1 category selected.
     if (!document.getElementById('pub-enable')?.checked) return null;
     const vals = (sel) => Array.from(document.querySelectorAll(sel))
@@ -282,7 +289,7 @@ function _readPublicationSelection() {
     };
 }
 
-async function exportRoCrate() {
+export async function exportRoCrate() {
     const results = getState().currentSuiteData;
     if (!results) {
         alert("No results to export. Run a comparison first.");
@@ -375,7 +382,7 @@ async function exportRoCrate() {
 // user can see which circuit is running and what has finished. Hidden for single runs.
 // Global sampling seed (measured mode). Empty field => null, and the backend generates a
 // seed and records it in the report, so no run is ever un-reproducible. Never sends null-as-0.
-function getSeed() {
+export function getSeed() {
     const el = document.getElementById('seed-input');
     if (!el) return null;
     const raw = String(el.value).trim();
@@ -384,24 +391,24 @@ function getSeed() {
     return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
-function _escapeHtml(s) {
+export function _escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c =>
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
-const _BATCH_STATUS_ICON = {
+export const _BATCH_STATUS_ICON = {
     done: ['✓', 'text-emerald-600'],
     running: ['▶', 'text-indigo-600 animate-pulse'],
     error: ['✕', 'text-red-600'],
     queued: ['◦', 'text-gray-400'],
 };
-function _batchRowMarkup(t, i) {
+export function _batchRowMarkup(t, i) {
     const [icon, cls] = _BATCH_STATUS_ICON[t.status] || _BATCH_STATUS_ICON.queued;
     return `<div id="bp-row-${i}" data-status="${t.status || 'queued'}" class="flex items-center gap-2 text-xs">
             <span class="font-mono ${cls} w-3 text-center">${icon}</span>
             <span class="truncate text-gray-600">${_escapeHtml(t.name || '')}</span>
         </div>`;
 }
-function renderBatchProgress(progress) {
+export function renderBatchProgress(progress) {
     const host = document.getElementById('batch-progress');
     if (!host) return;
     if (!progress || !Array.isArray(progress.tasks) || !progress.tasks.length) {
@@ -444,11 +451,11 @@ function renderBatchProgress(progress) {
 // Agreement thresholds from the config panel. Defaults match the backend; sent on every
 // run so the effective values are explicit in provenance. Returns undefined if the inputs
 // are absent (older cached HTML) so the backend falls back to its defaults.
-const _AGREEMENT_THRESHOLD_DEFAULTS = {
+export const _AGREEMENT_THRESHOLD_DEFAULTS = {
     fidelity_tolerance: 1e-12, phase_tolerance: 1e-12,
     js_threshold: 0.01, hellinger_threshold: 0.1,
 };
-function getAgreementThresholds() {
+export function getAgreementThresholds() {
     const ids = { fidelity_tolerance: 'th-fidelity', phase_tolerance: 'th-phase',
                   js_threshold: 'th-js', hellinger_threshold: 'th-hellinger' };
     const out = {};
@@ -462,7 +469,7 @@ function getAgreementThresholds() {
     }
     return anyPresent ? out : undefined;
 }
-function resetAgreementThresholds() {
+export function resetAgreementThresholds() {
     const ids = { 'th-fidelity': '1e-12', 'th-phase': '1e-12', 'th-js': '0.01', 'th-hellinger': '0.1' };
     for (const [id, val] of Object.entries(ids)) {
         const el = document.getElementById(id);
@@ -470,7 +477,7 @@ function resetAgreementThresholds() {
     }
 }
 
-function exportPlaylist() {
+export function exportPlaylist() {
     const queue = getState().batchQueue;
     if (queue.length === 0) {
         alert("Playlist is empty.");
@@ -489,7 +496,7 @@ function exportPlaylist() {
 
 // Coerce one imported playlist entry to the fields the batch runner reads, so an
 // uploaded file cannot introduce unexpected types or extra keys into the queue.
-function _normalizePlaylistItem(raw) {
+export function _normalizePlaylistItem(raw) {
     if (!raw || typeof raw !== 'object') return null;
     const str = (v) => (v === undefined || v === null ? '' : String(v));
     const qubits = Number.parseInt(raw.qubits, 10);
@@ -502,7 +509,7 @@ function _normalizePlaylistItem(raw) {
     };
 }
 
-function importPlaylist(inputElement) {
+export function importPlaylist(inputElement) {
     const file = inputElement.files[0];
     if (!file) return;
     const reader = new FileReader();
@@ -528,7 +535,7 @@ function importPlaylist(inputElement) {
     reader.readAsText(file);
 }
 
-function importQasm(inputElement) {
+export function importQasm(inputElement) {
     const file = inputElement.files[0];
     if (!file) return;
     const reader = new FileReader();
@@ -545,7 +552,7 @@ function importQasm(inputElement) {
     reader.readAsText(file);
 }
 
-function exportQasm() {
+export function exportQasm() {
     const qasmText = document.getElementById('qasm-input').value;
     if (!qasmText || qasmText.trim() === '') {
         alert("No QASM content to export.");
@@ -566,7 +573,7 @@ function exportQasm() {
     URL.revokeObjectURL(url);
 }
 
-function showVisualizerTab() {
+export function showVisualizerTab() {
     const welcome = document.getElementById('welcome-message');
     if (welcome) welcome.classList.add('hidden');
     Object.values(panelElements).forEach(panel => {
@@ -583,7 +590,7 @@ function showVisualizerTab() {
     }
 }
 
-async function generateAndVisualize() {
+export async function generateAndVisualize() {
     const qasmText = document.getElementById('qasm-input').value;
     if (!qasmText || qasmText.trim() === '') {
         alert("No QASM code to visualize.");
@@ -624,7 +631,7 @@ async function generateAndVisualize() {
     }
 }
 
-function closeVisualizer() {
+export function closeVisualizer() {
     if (panelElements['visualizer']) panelElements['visualizer'].classList.add('hidden');
     const suiteData = getState().currentSuiteData;
     if (suiteData) {

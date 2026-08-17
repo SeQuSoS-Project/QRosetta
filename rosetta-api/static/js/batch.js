@@ -1,6 +1,13 @@
 // Frontend logic for batch functionality.
 
-const PRESETS = {
+import { qasmInput, queueCount, queueList } from './dom.js';
+import { BASE_URL, fetchMQTBench, fetchQASMBench, getAuthHeaders } from './api.js';
+import { updateContextBar } from './config.js';
+import { closeDrawers, isDrawerOpen, openDrawer } from './drawers.js';
+import { dispatch, getState } from './state.js';
+import { _escapeHtml, setLoading } from './utils.js';
+
+export const PRESETS = {
     "sanity": [
         { algorithm: "bell", qubits: 2, name: "Bell State (Simple)" },
         { algorithm: "ghz", qubits: 5, name: "GHZ State (Entanglement)" },
@@ -21,7 +28,7 @@ const PRESETS = {
     ]
 };
 
-async function applyPreset() {
+export async function applyPreset() {
     const val = document.getElementById('preset-select').value;
     if (PRESETS[val]) {
         if (getState().batchQueue.length > 0 && !confirm("This will replace your current playlist. Continue?")) return;
@@ -57,7 +64,7 @@ async function applyPreset() {
     }
 }
 
-function addToBatch() {
+export function addToBatch() {
     const algoId = document.getElementById('algo-select').value;
     const qubits = parseInt(document.getElementById('algo-qubits').value);
 
@@ -76,12 +83,12 @@ function addToBatch() {
     openDrawer('playlist-section');
 }
 
-function togglePlaylist() {
+export function togglePlaylist() {
     if (isDrawerOpen('playlist-section')) closeDrawers();
     else openDrawer('playlist-section');
 }
 
-function renderBatchQueue() {
+export function renderBatchQueue() {
     if (queueCount) {
         queueCount.textContent = getState().batchQueue.length;
     }
@@ -108,7 +115,7 @@ function renderBatchQueue() {
     }
 }
 
-async function viewBatchItem(index) {
+export async function viewBatchItem(index) {
     if (getState().isProcessing) return;
     const item = getState().batchQueue[index];
     if (!item) return;
@@ -181,17 +188,17 @@ async function viewBatchItem(index) {
     }
 }
 
-function removeFromBatch(index) {
+export function removeFromBatch(index) {
     const newQ = [...getState().batchQueue]; newQ.splice(index, 1); dispatch('SET_BATCH_QUEUE', newQ);
     renderBatchQueue();
 }
 
-function clearBatch() {
+export function clearBatch() {
     dispatch('SET_BATCH_QUEUE', []);
     renderBatchQueue();
 }
 
-function openGeneratorModal() {
+export function openGeneratorModal() {
     const list = document.getElementById('gen-algo-list');
     if (list && list.children.length === 0) {
         getState().allAlgorithms.forEach(algo => {
@@ -207,11 +214,11 @@ function openGeneratorModal() {
     document.getElementById('gen-modal').classList.remove('hidden');
 }
 
-function closeGeneratorModal() {
+export function closeGeneratorModal() {
     document.getElementById('gen-modal').classList.add('hidden');
 }
 
-async function runAutoGeneration() {
+export async function runAutoGeneration() {
     const checkboxes = document.querySelectorAll('#gen-algo-list input:checked');
     const selectedAlgos = Array.from(checkboxes).map(cb => cb.value);
     const minQ = parseInt(document.getElementById('gen-min').value);

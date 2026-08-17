@@ -5,21 +5,25 @@
 // GET /experiments/{id}/bundle. The "Run Experiment" button routes here; "Run Batch" is
 // separate. The conformance and prevalence outputs are reported separately.
 
-let _lastExperimentJobId = null;
-let _lastExperimentName = 'experiment';
+import { BASE_URL, getAuthHeaders, pollJobStatus } from './api.js';
+import { checkRunCountLimits, getRunnerConfig, getRunnerPhases, getTargetSimulators } from './config.js';
+import { clearReport } from './renderers.js';
+import { dispatch, getState } from './state.js';
+import { _escapeHtml, getAgreementThresholds, getSeed, setLoading } from './utils.js';
 
+export let _lastExperimentJobId = null;
+export let _lastExperimentName = 'experiment';
 
-function toggleExperimentMode() {
+export function toggleExperimentMode() {
     const on = document.getElementById('experiment-toggle')?.checked;
     const controls = document.getElementById('experiment-controls');
     if (controls) controls.classList.toggle('hidden', !on);
 }
 
-
 // Map a batch-queue item to an ExperimentCircuit. Items are benchmark refs
 // ({source:'mqt'|'qasmbench', algorithm, qubits}), literal QASM ({qasm_string}/{qasm}), or
 // presets ({algorithm, qubits}). Benchmark refs stay references so the server resolves them.
-function _queueItemToCircuit(item) {
+export function _queueItemToCircuit(item) {
     if (item.source === 'mqt' || item.source === 'qasmbench') {
         return {
             source: item.source, algorithm: item.algorithm,
@@ -40,8 +44,7 @@ function _queueItemToCircuit(item) {
     };
 }
 
-
-async function runExperiment() {
+export async function runExperiment() {
     if (getState().isProcessing) return;
     const queue = getState().batchQueue || [];
     if (queue.length === 0) { alert('Add circuits to the batch queue first.'); return; }
@@ -116,13 +119,11 @@ async function runExperiment() {
     }
 }
 
-
-function _hideExperimentResult() {
+export function _hideExperimentResult() {
     document.getElementById('experiment-result')?.classList.add('hidden');
 }
 
-
-function renderExperimentResult(results) {
+export function renderExperimentResult(results) {
     const summary = results && results.experiment_summary;
     const box = document.getElementById('experiment-result');
     const line = document.getElementById('experiment-summary-line');
@@ -154,8 +155,7 @@ function renderExperimentResult(results) {
     box.classList.remove('hidden');
 }
 
-
-async function downloadExperimentBundle() {
+export async function downloadExperimentBundle() {
     if (!_lastExperimentJobId) { alert('Run an experiment first.'); return; }
     try {
         const res = await fetch(`${BASE_URL}/experiments/${_lastExperimentJobId}/bundle`, {
