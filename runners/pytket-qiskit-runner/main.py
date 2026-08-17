@@ -72,12 +72,12 @@ def process_run_measured(payload: dict) -> dict:
     def execute(compiled, payload):
         backend, qiskit_circ = compiled.circuit
         # seed_simulator=None keeps Aer's default non-deterministic sampling.
-        result = backend.run(
+        return backend.run(
             qiskit_circ, optimization_level=0, shots=payload.get("n_shots", 1024),
-            seed_simulator=payload.get("seed")).result()
-        counts = result.get_counts()
+            seed_simulator=payload.get("seed")).result().get_counts()
 
-        num_clbits = qiskit_circ.num_clbits
+    def shape_counts(counts, compiled, _payload):
+        num_clbits = compiled.circuit[1].num_clbits
         if num_clbits == 0:
             return counts, "native"
         counts_dict = {}
@@ -89,7 +89,7 @@ def process_run_measured(payload: dict) -> dict:
 
     return run_measured_job(
         simulator="qiskit", payload=payload, logger=logger, compile_fn=compile_step,
-        execute_fn=execute, qubit_ordering="lsb")
+        execute_fn=execute, postprocess_fn=shape_counts, qubit_ordering="lsb")
 
 
 register_runner_endpoints(app, process_run, process_run_measured)

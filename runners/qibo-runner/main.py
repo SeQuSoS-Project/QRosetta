@@ -1,11 +1,11 @@
 # Execution script for the quantum simulator runner.
 
 from fastapi import FastAPI
-from qrosetta_commons.helpers import register_runner_endpoints, run_cli_main
-from qrosetta_commons.helpers import MemoryMonitor, get_logger, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED, with_sdk_versions, statevector_result, counts_result, runner_error
+from qrosetta_commons.helpers import (
+    CompileResult, get_logger, register_runner_endpoints, run_cli_main,
+    run_measured_job, run_statevector_job, with_sdk_versions,
+)
 import numpy as np
-import time
-import gc
 
 from qibo.models import Circuit
 from qibo import gates, set_backend
@@ -33,82 +33,53 @@ def _parse(qasm_str: str, optimization_level: int = 0) -> tuple[Circuit, list[st
         preprocessing_applied.append("qibo.Circuit.fuse(max_qubits=1): Fuses consecutive single-qubit gate runs into single unitary blocks, reducing sequential gate overhead.")
     return circuit, preprocessing_applied
 
+
+def _compile(payload: dict) -> CompileResult:
+    circuit, preprocessing_applied = _parse(
+        payload["circuit_data"], payload.get("optimization_level", 0))
+    return CompileResult(
+        circuit=circuit,
+        n_qubits=circuit.nqubits,
+        preprocessing_applied=preprocessing_applied,
+        transpiled_qasm=payload["circuit_data"])
+
+
 @with_sdk_versions
 def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for Qibo simulation.")
-    try:
-        check_qubits_limit(payload["circuit_data"], MAX_QUBITS_STATEVECTOR)
 
-        t0 = time.perf_counter()
-        circuit, preprocessing_applied = _parse(payload["circuit_data"], payload.get("optimization_level", 0))
-        transpiled_qasm = payload["circuit_data"]
-        t1 = time.perf_counter()
-        compilation_time = t1 - t0
+    def execute(compiled, _payload):
+        return np.array(compiled.circuit().state())
 
-        with MemoryMonitor(interval=0.01) as monitor:
-            gc.collect()
+    return run_statevector_job(
+        simulator="qibo", payload=payload, logger=logger, compile_fn=_compile,
+        execute_fn=execute, qubit_ordering="msb")
 
-            t2 = time.perf_counter()
-            result = circuit()
-            statevector = np.array(result.state())
-            t3 = time.perf_counter()
-            simulation_time = t3 - t2
-
-        logger.info(
-            f"Qibo simulation successful "
-            f"(Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s)."
-        )
-        return statevector_result(
-            simulator="qibo", statevector=statevector, compilation_time=compilation_time,
-            simulation_time=simulation_time, monitor=monitor, qubit_ordering="msb",
-            n_qubits=circuit.nqubits, preprocessing_applied=preprocessing_applied,
-            transpiled_qasm=transpiled_qasm)
-    except Exception as e:
-        logger.error(f"Error during Qibo simulation: {str(e)}")
-        return runner_error("qibo", e)
 
 @with_sdk_versions
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for Qibo simulation.")
-    try:
-        check_qubits_limit(payload["circuit_data"], MAX_QUBITS_MEASURED)
 
-        t0 = time.perf_counter()
-        circuit, preprocessing_applied = _parse(payload["circuit_data"], payload.get("optimization_level", 0))
-        transpiled_qasm = payload["circuit_data"]
+    def compile_step(payload):
+        compiled = _compile(payload)
+        if not compiled.circuit.measurements:
+            compiled.circuit.add(gates.M(*range(compiled.circuit.nqubits)))
+        return compiled
 
-        if not circuit.measurements:
-            circuit.add(gates.M(*range(circuit.nqubits)))
-        t1 = time.perf_counter()
-        compilation_time = t1 - t0
+    def seed_rng(_compiled, payload):
+        # Qibo's numpy backend samples via numpy's global RNG; seeding it makes
+        # the run reproducible. seed=None leaves it non-deterministic (prior behaviour).
+        if payload.get("seed") is not None:
+            np.random.seed(payload["seed"])
 
-        n_shots = payload.get("n_shots", 1024)
+    def execute(compiled, payload):
+        result = compiled.circuit(nshots=payload.get("n_shots", 1024))
+        return dict(result.frequencies()), "native"
 
-        with MemoryMonitor(interval=0.01) as monitor:
-            gc.collect()
+    return run_measured_job(
+        simulator="qibo", payload=payload, logger=logger, compile_fn=compile_step,
+        pre_execute_fn=seed_rng, execute_fn=execute, qubit_ordering="msb")
 
-            # Qibo's numpy backend samples via numpy's global RNG; seeding it makes
-            # the run reproducible. seed=None leaves it non-deterministic (prior behaviour).
-            if payload.get("seed") is not None:
-                np.random.seed(payload["seed"])
-            t2 = time.perf_counter()
-            result = circuit(nshots=n_shots)
-            counts_dict = dict(result.frequencies())
-            t3 = time.perf_counter()
-            simulation_time = t3 - t2
-
-        logger.info(
-            f"Qibo measurement simulation successful "
-            f"(Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s)."
-        )
-        return counts_result(
-            simulator="qibo", counts=counts_dict, sampling_method="native",
-            compilation_time=compilation_time, simulation_time=simulation_time, monitor=monitor,
-            qubit_ordering="msb", n_qubits=circuit.nqubits,
-            preprocessing_applied=preprocessing_applied, transpiled_qasm=transpiled_qasm)
-    except Exception as e:
-        logger.error(f"Error during Qibo measurement simulation: {str(e)}")
-        return runner_error("qibo", e)
 
 register_runner_endpoints(app, process_run, process_run_measured)
 

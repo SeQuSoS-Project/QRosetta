@@ -103,13 +103,15 @@ def process_run_measured(payload: dict) -> dict:
     def execute(compiled, payload):
         backend, compiled_circ, _ = compiled.circuit
         handle = backend.process_circuit(compiled_circ, n_shots=payload.get("n_shots", 1024))
-        counts = backend.get_result(handle).get_counts()
+        return backend.get_result(handle).get_counts()
+
+    def shape_counts(counts, _compiled, _payload):
         return {"".join(map(str, k)): int(v) for k, v in counts.items()}, "native"
 
     return run_measured_job(
         simulator="cirq", payload=payload, logger=logger, compile_fn=compile_step,
         serialize_fn=_serialize, pre_execute_fn=seed_rng, execute_fn=execute,
-        qubit_ordering="msb")
+        postprocess_fn=shape_counts, qubit_ordering="msb")
 
 
 register_runner_endpoints(app, process_run, process_run_measured)

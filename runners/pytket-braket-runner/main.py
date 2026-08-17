@@ -64,13 +64,16 @@ def process_run_measured(payload: dict) -> dict:
         # seed=None keeps the backend's default non-deterministic sampling.
         handle = backend.process_circuit(
             compiled_circ, n_shots=payload.get("n_shots", 1024), seed=payload.get("seed"))
-        counts = backend.get_result(handle).get_counts()
+        return backend.get_result(handle).get_counts()
+
+    def shape_counts(counts, _compiled, _payload):
         # This runner does not label a sampling_method (None omits the key).
         return {"".join(map(str, k)): int(v) for k, v in counts.items()}, None
 
     return run_measured_job(
         simulator="braket", payload=payload, logger=logger, compile_fn=_compile,
-        serialize_fn=_serialize, execute_fn=execute, qubit_ordering="lsb")
+        serialize_fn=_serialize, execute_fn=execute, postprocess_fn=shape_counts,
+        qubit_ordering="lsb")
 
 
 register_runner_endpoints(app, process_run, process_run_measured)

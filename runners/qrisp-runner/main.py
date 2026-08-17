@@ -1,13 +1,11 @@
 # Execution script for the quantum simulator runner.
 
 from fastapi import FastAPI
-from qrosetta_commons.helpers import register_runner_endpoints, run_cli_main
-from qrosetta_commons.helpers import MemoryMonitor, get_logger, get_num_qubits_from_qasm, check_qubits_limit, MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED, with_sdk_versions, statevector_result, counts_result, runner_error
+from qrosetta_commons.helpers import (
+    CompileResult, get_logger, get_num_qubits_from_qasm, register_runner_endpoints,
+    run_cli_main, run_measured_job, run_statevector_job, with_sdk_versions,
+)
 import numpy as np
-import time
-import gc
-
-import traceback
 
 logger = get_logger("qrisp-runner")
 
@@ -28,97 +26,62 @@ def _parse(qasm_str: str, optimization_level: int = 0):
         )
     return QuantumCircuit.from_qasm_str(qasm_str)
 
+
+def _compile(payload: dict) -> CompileResult:
+    circuit = _parse(payload["circuit_data"], payload.get("optimization_level", 0))
+    return CompileResult(
+        circuit=circuit,
+        n_qubits=get_num_qubits_from_qasm(payload["circuit_data"]),
+        preprocessing_applied=[],
+        transpiled_qasm=payload["circuit_data"])
+
+
 @with_sdk_versions
 def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for Qrisp simulation.")
-    try:
-        check_qubits_limit(payload["circuit_data"], MAX_QUBITS_STATEVECTOR)
 
-        t0 = time.perf_counter()
-        n_qubits = get_num_qubits_from_qasm(payload["circuit_data"])
-        circuit = _parse(payload["circuit_data"], payload.get("optimization_level", 0))
-        t1 = time.perf_counter()
-        compilation_time = t1 - t0
-
+    def execute(compiled, _payload):
         # The statevector lives on the low-level QuantumCircuit itself via
         # statevector_array(); Qrisp's QASM-imported QuantumCircuit has no `.qs`
         # (QuantumSession) attribute, so the high-level qs.statevector() API is
         # not available here.
-        with MemoryMonitor(interval=0.01) as monitor:
-            gc.collect()
+        return np.asarray(compiled.circuit.statevector_array(), dtype=complex)
 
-            t2 = time.perf_counter()
-            statevector = np.asarray(circuit.statevector_array(), dtype=complex)
-            t3 = time.perf_counter()
-            simulation_time = t3 - t2
+    # Qrisp's statevector_array() is big-endian: qubit 0 is the most significant bit of
+    # the amplitude index (verified: X on qubit 0 populates index 2^(n-1)). This differs
+    # from the counts convention of run() below, which is little-endian; both are labelled
+    # to match their actual native output rather than forced to a single value.
+    return run_statevector_job(
+        simulator="qrisp", payload=payload, logger=logger, compile_fn=_compile,
+        execute_fn=execute, qubit_ordering="msb")
 
-        logger.info(
-            f"Qrisp simulation successful in {compilation_time + simulation_time:.4f}s "
-            f"(Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s)."
-        )
-        # Qrisp's statevector_array() is big-endian: qubit 0 is the most
-        # significant bit of the amplitude index (verified: X on qubit 0
-        # populates index 2^(n-1)). This differs from the counts convention
-        # of run() below, which is little-endian; both are labelled to match
-        # their actual native output rather than forced to a single value.
-        return statevector_result(
-            simulator="qrisp", statevector=statevector, compilation_time=compilation_time,
-            simulation_time=simulation_time, monitor=monitor, qubit_ordering="msb",
-            n_qubits=n_qubits, preprocessing_applied=[],
-            transpiled_qasm=payload["circuit_data"])
-    except Exception as e:
-        logger.error(f"Error during Qrisp simulation: {str(e)}\n{traceback.format_exc()}")
-        return runner_error("qrisp", e)
 
 @with_sdk_versions
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for Qrisp simulation.")
-    try:
-        check_qubits_limit(payload["circuit_data"], MAX_QUBITS_MEASURED)
 
-        t0 = time.perf_counter()
-        n_qubits = get_num_qubits_from_qasm(payload["circuit_data"])
-        circuit = _parse(payload["circuit_data"], payload.get("optimization_level", 0))
-        t1 = time.perf_counter()
-        compilation_time = t1 - t0
+    def seed_rng(_compiled, payload):
+        # Qrisp's simulator samples via numpy's global RNG (run() exposes no seed
+        # argument); seeding it makes the run reproducible. seed=None leaves it
+        # non-deterministic (prior behaviour).
+        if payload.get("seed") is not None:
+            np.random.seed(payload["seed"])
 
-        n_shots = payload.get("n_shots", 1024)
-
+    def execute(compiled, payload):
         # Native shot-based sampling runs through the low-level circuit's run()
         # method (the high-level get_measurement() API belongs to QuantumVariable
         # and is not available on a QASM-imported QuantumCircuit). This requires
-        # the circuit to carry measurement instructions, which measured-mode QASM
-        # does.
-        with MemoryMonitor(interval=0.01) as monitor:
-            gc.collect()
+        # the circuit to carry measurement instructions, which measured-mode QASM does.
+        return compiled.circuit.run(shots=payload.get("n_shots", 1024)), "native"
 
-            # Qrisp's simulator samples via numpy's global RNG (run() exposes no seed
-            # argument); seeding it makes the run reproducible. seed=None leaves it
-            # non-deterministic (prior behaviour).
-            if payload.get("seed") is not None:
-                np.random.seed(payload["seed"])
-            t2 = time.perf_counter()
-            counts_dict = circuit.run(shots=n_shots)
-            t3 = time.perf_counter()
-            simulation_time = t3 - t2
+    # Qrisp's run() counts keys are little-endian: qubit 0 is the right-most character of
+    # the bitstring (verified: X on qubit 0 yields '0...01'), matching the qiskit/Aer
+    # counts convention. Note this differs from the statevector endpoint's big-endian
+    # ordering above; each is labelled to reflect Qrisp's actual native output.
+    return run_measured_job(
+        simulator="qrisp", payload=payload, logger=logger, compile_fn=_compile,
+        pre_execute_fn=seed_rng, execute_fn=execute, qubit_ordering="lsb")
 
-        logger.info(
-            f"Qrisp measurement simulation successful in {compilation_time + simulation_time:.4f}s "
-            f"(Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s)."
-        )
-        # Qrisp's run() counts keys are little-endian: qubit 0 is the
-        # right-most character of the bitstring (verified: X on qubit 0
-        # yields '0...01'), matching the qiskit/Aer counts convention. Note
-        # this differs from the statevector endpoint's big-endian ordering
-        # above; each is labelled to reflect Qrisp's actual native output.
-        return counts_result(
-            simulator="qrisp", counts=counts_dict, sampling_method="native",
-            compilation_time=compilation_time, simulation_time=simulation_time, monitor=monitor,
-            qubit_ordering="lsb", n_qubits=n_qubits, preprocessing_applied=[],
-            transpiled_qasm=payload["circuit_data"])
-    except Exception as e:
-        logger.error(f"Error during Qrisp measurement simulation: {str(e)}\n{traceback.format_exc()}")
-        return runner_error("qrisp", e)
 
 register_runner_endpoints(app, process_run, process_run_measured)
 

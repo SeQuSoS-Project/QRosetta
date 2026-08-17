@@ -491,7 +491,8 @@ class CompileResult:
 
 
 def _timed_job(*, simulator, logger, payload, max_qubits, compile_fn, execute_fn,
-               serialize_fn, monitor_interval, build_result, pre_execute_fn=None):
+               serialize_fn, monitor_interval, build_result, pre_execute_fn=None,
+               postprocess_fn=None):
     """The shared measurement instrument for one runner call.
 
     Every backend is timed the same way, so a difference between two backends' reported
@@ -500,9 +501,15 @@ def _timed_job(*, simulator, logger, payload, max_qubits, compile_fn, execute_fn
       check the qubit limit -> t0 -> compile_fn -> t1  (compilation_time)
       serialize for provenance, outside the compilation window where the runner allows it
       MemoryMonitor + gc.collect() -> pre_execute_fn -> t2 -> execute_fn -> t3  (simulation_time)
+      postprocess_fn, outside the simulation window
 
     ``pre_execute_fn`` covers setup that must happen under the memory monitor but is not
     simulation work, such as seeding a global RNG the backend samples from.
+
+    ``postprocess_fn`` covers shaping the backend's raw output into the reported form —
+    turning sampled indices into a counts histogram, relabelling hex keys as bitstrings.
+    That is bookkeeping rather than simulation, and on a small circuit it is a measurable
+    fraction of the run, so it is deliberately outside t2..t3.
 
     Failures at any stage become a runner_error carrying the simulator's name.
     """
@@ -530,6 +537,9 @@ def _timed_job(*, simulator, logger, payload, max_qubits, compile_fn, execute_fn
             t3 = time.perf_counter()
             simulation_time = t3 - t2
 
+        if postprocess_fn is not None:
+            executed = postprocess_fn(executed, compiled, payload)
+
         if logger is not None:
             logger.info(
                 f"{simulator} simulation successful "
@@ -542,12 +552,13 @@ def _timed_job(*, simulator, logger, payload, max_qubits, compile_fn, execute_fn
         )
     except Exception as exc:
         if logger is not None:
-            logger.error(f"Error during {simulator} simulation: {exc}")
+            logger.error(f"Error during {simulator} simulation: {exc}", exc_info=True)
         return runner_error(simulator, exc)
 
 
 def run_statevector_job(*, simulator, payload, compile_fn, execute_fn, qubit_ordering,
-                        logger=None, serialize_fn=None, pre_execute_fn=None, max_qubits=None,
+                        logger=None, serialize_fn=None, pre_execute_fn=None,
+                        postprocess_fn=None, max_qubits=None,
                         monitor_interval=0.01, theoretical_mb=_UNSET):
     """Run one statevector call through the shared measurement instrument.
 
@@ -565,12 +576,13 @@ def run_statevector_job(*, simulator, payload, compile_fn, execute_fn, qubit_ord
         simulator=simulator, logger=logger, payload=payload,
         max_qubits=MAX_QUBITS_STATEVECTOR if max_qubits is None else max_qubits,
         compile_fn=compile_fn, execute_fn=execute_fn, serialize_fn=serialize_fn,
-        pre_execute_fn=pre_execute_fn, monitor_interval=monitor_interval,
-        build_result=build_result)
+        pre_execute_fn=pre_execute_fn, postprocess_fn=postprocess_fn,
+        monitor_interval=monitor_interval, build_result=build_result)
 
 
 def run_measured_job(*, simulator, payload, compile_fn, execute_fn, qubit_ordering,
-                     logger=None, serialize_fn=None, pre_execute_fn=None, max_qubits=None,
+                     logger=None, serialize_fn=None, pre_execute_fn=None,
+                     postprocess_fn=None, max_qubits=None,
                      monitor_interval=0.01, theoretical_mb=_UNSET):
     """Run one measured call through the shared measurement instrument.
 
@@ -592,8 +604,8 @@ def run_measured_job(*, simulator, payload, compile_fn, execute_fn, qubit_orderi
         simulator=simulator, logger=logger, payload=payload,
         max_qubits=MAX_QUBITS_MEASURED if max_qubits is None else max_qubits,
         compile_fn=compile_fn, execute_fn=execute_fn, serialize_fn=serialize_fn,
-        pre_execute_fn=pre_execute_fn, monitor_interval=monitor_interval,
-        build_result=build_result)
+        pre_execute_fn=pre_execute_fn, postprocess_fn=postprocess_fn,
+        monitor_interval=monitor_interval, build_result=build_result)
 
 
 def register_runner_endpoints(app, process_run, process_run_measured):
