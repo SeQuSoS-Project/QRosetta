@@ -131,7 +131,7 @@ function bmSelectedItems() {
 
 function bmUpdateSelectedCount() {
     const el = document.getElementById('bench-selected-count');
-    if (el) el.textContent = document.querySelectorAll('.bm-check:checked').length;
+    if (el) el.textContent = String(document.querySelectorAll('.bm-check:checked').length);
 }
 
 function bmToggleSelectAll() {

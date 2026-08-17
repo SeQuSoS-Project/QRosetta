@@ -89,6 +89,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/js", StaticFiles(directory="static/js"), name="js")
+app.mount("/css", StaticFiles(directory="static/css"), name="css")
 
 app.include_router(frontend.router)
 app.include_router(generation.router)

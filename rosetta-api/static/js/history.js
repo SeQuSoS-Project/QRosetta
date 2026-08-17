@@ -39,7 +39,7 @@ async function openHistoryModal() {
             return;
         }
 
-        runs.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        runs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
         list.innerHTML = '';
         runs.forEach(run => {

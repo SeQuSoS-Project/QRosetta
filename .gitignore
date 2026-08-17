@@ -46,6 +46,8 @@ htmlcov/
 
 # Type Checking
 .mypy_cache/
+node_modules/
+rosetta-api/static/tsconfig.tsbuildinfo
 
 # Jupyter Notebooks (Common in Quantum simulation)
 .ipynb_checkpoints/

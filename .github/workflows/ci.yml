@@ -69,6 +69,11 @@ jobs:
             node --check "$f"
           done
 
+      # node --check only parses. This resolves names and types across the files,
+      # which is what catches a typo'd function or a renamed helper.
+      - name: Type-check frontend JS
+        run: ./scripts/check_frontend_types.sh
+
       - name: Byte-compile Python (services, routers, schemas, runners, commons)
         run: |
           python -m compileall -q \

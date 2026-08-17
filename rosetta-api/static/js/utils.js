@@ -508,7 +508,7 @@ function importPlaylist(inputElement) {
     const reader = new FileReader();
     reader.onload = function (e) {
         try {
-            const loaded = JSON.parse(e.target.result);
+            const loaded = JSON.parse(String(e.target.result));
             if (Array.isArray(loaded)) {
                 const items = loaded.map(_normalizePlaylistItem).filter(Boolean);
                 if (items.length !== loaded.length) {
