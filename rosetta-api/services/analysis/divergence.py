@@ -83,14 +83,16 @@ def _statevector_qubit_count(sv):
 
 
 def _permute_statevector(sv, permutation):
-    """Return sv with computational-basis bit positions permuted."""
+    """Return sv with computational-basis bit positions permuted.
+
+    Viewing the 2^n amplitudes as an n-dimensional array indexed by the individual bits
+    (axis 0 is the most significant), permuting bit positions is transposing those axes.
+    Equivalent to assigning each amplitude to the index whose bits are gathered through
+    the permutation, and checked against that formulation for every permutation of
+    n = 1..6 in test_statevector_permutation.py.
+    """
     n_qubits = _statevector_qubit_count(sv)
-    permuted_sv = np.empty_like(sv)
-    for index, amplitude in enumerate(sv):
-        bits = format(index, f"0{n_qubits}b")
-        permuted_bits = "".join(bits[source] for source in permutation)
-        permuted_sv[int(permuted_bits, 2)] = amplitude
-    return permuted_sv
+    return np.asarray(sv).reshape([2] * n_qubits).transpose(permutation).reshape(-1)
 
 
 def _bit_reversed_statevector(sv):
