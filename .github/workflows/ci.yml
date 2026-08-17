@@ -39,6 +39,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r rosetta-api/requirements.txt
           pip install -r rosetta-api/tests/requirements.txt
+          # Every service and router imports qrosetta_commons. Without this the whole
+          # suite errors at collection and the job reports nothing useful.
+          pip install ./shared
 
       - name: Run unit tests
         working-directory: rosetta-api
