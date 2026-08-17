@@ -54,3 +54,22 @@ def test_validate_request_qubit_limit_fallback_match(monkeypatch):
         validate_request(qasm, mode="statevector")
     assert exc_info.value.status_code == 400
     assert "uses qubit index 5" in exc_info.value.detail
+
+
+def test_validate_request_sums_multiple_qregs(monkeypatch):
+    """A circuit split across registers is sized by their total, not the first one."""
+    import config
+    monkeypatch.setattr(config.settings, "MAX_QUBITS_MEASURED", 24)
+
+    qasm = "OPENQASM 2.0;\nqreg a[2];\nqreg b[28];\nh a[0];\n"
+    with pytest.raises(HTTPException) as exc_info:
+        validate_request(qasm, mode="measured")
+    assert exc_info.value.status_code == 400
+    assert "requested: 30" in exc_info.value.detail
+
+
+def test_validate_request_multi_qreg_within_limit(monkeypatch):
+    import config
+    monkeypatch.setattr(config.settings, "MAX_QUBITS_STATEVECTOR", 10)
+
+    validate_request("OPENQASM 2.0;\nqreg q[6];\nqreg anc[4];\n", mode="statevector")

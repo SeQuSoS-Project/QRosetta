@@ -10,6 +10,7 @@ import logging
 import sys
 import functools
 import importlib.metadata
+import re
 
 import base64
 
@@ -138,19 +139,24 @@ def theoretical_statevector_mb(n_qubits: int) -> float:
     """
     return (2 ** n_qubits * 16) / (1024 ** 2)
 
-def get_num_qubits_from_qasm(qasm_string: str) -> int:
-    """
-    Parses QASM string to find the size of the 'qreg'.
-    Returns 0 if not found (or raises error if strict).
-    """
-    for line in qasm_string.split('\n'):
-        if line.strip().startswith("qreg"):
-            try:
+_QREG_DECL_RE = re.compile(r"\bqreg\s+\w+\s*\[\s*(\d+)\s*\]\s*;")
+_LINE_COMMENT_RE = re.compile(r"//[^\n]*")
+_BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 
-                return int(line.split('[')[1].split(']')[0])
-            except Exception:
-                pass
-    return 0
+
+def strip_qasm_comments(qasm_string: str) -> str:
+    """Remove // line comments and /* */ block comments from QASM source."""
+    return _LINE_COMMENT_RE.sub("", _BLOCK_COMMENT_RE.sub("", qasm_string))
+
+
+def get_num_qubits_from_qasm(qasm_string: str) -> int:
+    """Total qubits declared by the circuit, summed over every qreg declaration.
+
+    OpenQASM 2.0 permits several quantum registers, so `qreg q[9]; qreg flag[1];`
+    is a 10-qubit circuit. Returns 0 when the source declares no qreg.
+    """
+    sizes = _QREG_DECL_RE.findall(strip_qasm_comments(qasm_string))
+    return sum(int(size) for size in sizes)
 
 def strip_barriers_from_qasm(qasm_string: str) -> str:
     """Remove barrier instructions from QASM before simulation.
@@ -235,7 +241,6 @@ import asyncio as _asyncio
 import importlib as _importlib
 import multiprocessing as _multiprocessing
 import queue as _queue
-import re as _re
 import resource as _resource
 import statistics as _statistics
 
@@ -246,7 +251,7 @@ DEFAULT_HARD_TIMEOUT_SEC = int(os.getenv("RUNNER_HARD_TIMEOUT_SEC", "300"))
 _QASM_NON_GATE_KEYWORDS = {
     "openqasm", "include", "qreg", "creg", "barrier", "measure", "reset", "if", "gate", "opaque",
 }
-_QASM_QUBIT_REF_RE = _re.compile(r'([a-zA-Z_][a-zA-Z0-9_]*)\s*\[\s*(\d+)\s*\]')
+_QASM_QUBIT_REF_RE = re.compile(r'([a-zA-Z_][a-zA-Z0-9_]*)\s*\[\s*(\d+)\s*\]')
 
 
 def count_qasm_gates_and_depth(qasm_str: str) -> tuple:
@@ -264,7 +269,7 @@ def count_qasm_gates_and_depth(qasm_str: str) -> tuple:
     # A gate/opaque definition's closing '}' has no preceding ';', so a naive split(';')
     # would glue it onto the next real statement's first word. Blanking braces avoids that
     # while still leaving 'gate'/'opaque' as each definition's own (skipped) first word.
-    no_braces = _re.sub(r'//.*', '', qasm_str).replace('{', ' ').replace('}', ' ')
+    no_braces = re.sub(r'//.*', '', qasm_str).replace('{', ' ').replace('}', ' ')
     for stmt in no_braces.split(';'):
         stmt = stmt.strip()
         if not stmt:

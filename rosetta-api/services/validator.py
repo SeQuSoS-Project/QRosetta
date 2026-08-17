@@ -2,6 +2,7 @@
 
 from fastapi import HTTPException
 from config import settings
+from qrosetta_commons.helpers import get_num_qubits_from_qasm, strip_qasm_comments
 import re
 
 def validate_runner_config(runner_config: dict):
@@ -37,17 +38,16 @@ def validate_request(qasm: str, mode: str = "statevector", bypass_limits: bool =
 
     max_qubits = settings.MAX_QUBITS_STATEVECTOR if mode == "statevector" else settings.MAX_QUBITS_MEASURED
 
-    match = re.search(r"qreg\s+\w+\[(\d+)\];", qasm)
-    if match:
-        qubit_count = int(match.group(1))
+    qubit_count = get_num_qubits_from_qasm(qasm)
+    if qubit_count:
         if qubit_count > max_qubits:
             raise HTTPException(
                 status_code=400,
                 detail=f"Circuit exceeds the maximum limit of {max_qubits} qubits (requested: {qubit_count})."
             )
     else:
-
-        indices = re.findall(r"\w+\[(\d+)\]", qasm)
+        # No qreg declaration to size the circuit; fall back to the highest index used.
+        indices = re.findall(r"\w+\[(\d+)\]", strip_qasm_comments(qasm))
         if indices:
             max_index = max(map(int, indices))
 
