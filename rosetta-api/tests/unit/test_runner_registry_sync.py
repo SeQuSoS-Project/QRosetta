@@ -20,7 +20,7 @@ _REPO = Path(__file__).resolve().parents[3]
 _COMPOSE = _REPO / "docker-compose.yml"
 _SAFE_BOOT = _REPO / "scripts" / "safe_boot.sh"
 _RAHTI_PUSH = _REPO / "scripts" / "rahti_push.sh"
-_CONTRACT_TEST = _REPO / "tests" / "test_runner_contract_asymmetric.py"
+_CONTRACT_TEST = _REPO / "tests" / "integration" / "test_runner_contract_asymmetric.py"
 
 pytestmark = pytest.mark.skipif(
     not _COMPOSE.exists(), reason="repository layout not available in this checkout")

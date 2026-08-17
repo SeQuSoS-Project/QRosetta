@@ -98,8 +98,8 @@ pip install ../shared
 PYTHONPATH=. pytest tests/unit/
 ```
 
-`tests/` at the repository root holds live-stack integration checks that require the whole
-stack to be running; they are not part of the unit suite.
+`tests/integration/` holds live-stack checks that need the whole stack running. CI does not
+run them; see the README there.
 
 ## Project layout
 
@@ -119,7 +119,7 @@ stack to be running; they are not part of the unit suite.
 ├── runners/<name>-runner/   One directory per simulator backend
 ├── shared/qrosetta_commons/ The benchmarking contract shared by every runner
 ├── scripts/                 Boot and deployment scripts
-└── tests/                   Live-stack integration checks
+└── tests/integration/       Live-stack checks (need the stack up)
 ```
 
 ## Security

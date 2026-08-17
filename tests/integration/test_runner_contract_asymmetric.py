@@ -4,7 +4,7 @@
 Live-stack asymmetric contract test for active runners.
 
 Run against the live stack:
-    python3 tests/test_runner_contract_asymmetric.py
+    python3 tests/integration/test_runner_contract_asymmetric.py
 
 The probe is intentionally asymmetric. Symmetric Bell/GHZ smoke tests can pass
 when a runner silently returns |0...0> or when its bit-order label is wrong.

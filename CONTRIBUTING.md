@@ -170,7 +170,7 @@ silently excluded from that path rather than failing loudly.
 | `docker-compose.yml` | The local container | Nothing to dispatch to locally |
 | `scripts/safe_boot.sh` — `RUNNERS` | The local boot order | Excluded from every local boot |
 | `scripts/rahti_push.sh` — `SERVICE_MAP` | The pushed image | Kubernetes Jobs cannot pull it |
-| `tests/test_runner_contract_asymmetric.py` — `ACTIVE_STATEVECTOR_RUNNERS` | Contract coverage | Never contract-tested |
+| `tests/integration/test_runner_contract_asymmetric.py` — `ACTIVE_STATEVECTOR_RUNNERS` | Contract coverage | Never contract-tested |
 
 **`rosetta-api/config.py`**, inside `get_runner_services()`, add an entry keyed by your runner's
 short id (this id is what appears everywhere in results, config, and the UI):
@@ -220,7 +220,7 @@ the compose network by container name.
   — confirm `error` is `null`, the statevector/counts look correct, and `qubit_ordering` matches
   what you verified in step 3.
 - Add your runner's id to `ACTIVE_STATEVECTOR_RUNNERS` in
-  `tests/test_runner_contract_asymmetric.py` — one list drives both the statevector and the
+  `tests/integration/test_runner_contract_asymmetric.py` — one list drives both the statevector and the
   measured check — and run it against the live stack. This test is
   deliberately asymmetric (not a Bell/GHZ state) — a symmetric smoke test can pass even when a
   runner silently returns the all-zeros state or has its bit-order label backwards, so this is the
