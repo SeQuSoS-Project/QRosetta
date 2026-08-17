@@ -61,10 +61,16 @@ class LimitUploadSize(BaseHTTPMiddleware):
         super().__init__(app)
         self.max_upload_size = max_upload_size
 
+    _BODY_METHODS = frozenset({"POST", "PUT", "PATCH"})
+
     async def dispatch(self, request: Request, call_next):
-        if request.method == 'POST':
-            if 'content-length' in request.headers:
-                content_length = int(request.headers['content-length'])
+        if request.method in self._BODY_METHODS:
+            raw_length = request.headers.get('content-length')
+            if raw_length is not None:
+                try:
+                    content_length = int(raw_length)
+                except ValueError:
+                    return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length header"})
                 if content_length > self.max_upload_size:
                     return JSONResponse(status_code=413, content={"detail": "Payload too large"})
         return await call_next(request)

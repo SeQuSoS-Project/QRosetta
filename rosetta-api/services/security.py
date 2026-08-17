@@ -5,19 +5,37 @@ from slowapi.util import get_remote_address
 
 limiter = Limiter(key_func=get_remote_address)
 
-import os
+import secrets
 from datetime import datetime, timedelta, timezone
 import bcrypt
 from jose import jwt
 
-_DEFAULT_SECRET = "your-secret-key-here-please-change-in-prod"
-SECRET_KEY = os.getenv("SECRET_KEY", _DEFAULT_SECRET)
-if SECRET_KEY == _DEFAULT_SECRET:
+from config import settings
+
+
+def _resolve_secret_key() -> str:
+    """Return the JWT signing key, refusing to start a non-local deployment without one.
+
+    Outside EXECUTION_MODE=local an unset SECRET_KEY is fatal: tokens signed with a
+    predictable key can be forged. Local development generates a random per-process key,
+    which invalidates existing sessions on restart.
+    """
+    if settings.SECRET_KEY:
+        return settings.SECRET_KEY
+    if settings.EXECUTION_MODE != "local":
+        raise RuntimeError(
+            "SECRET_KEY is required when EXECUTION_MODE is not 'local'. "
+            "Set the SECRET_KEY environment variable before deploying."
+        )
     import logging as _logging
     _logging.getLogger("rosetta-security").warning(
-        "SECRET_KEY is using the insecure default value. "
-        "Set the SECRET_KEY environment variable before deploying to production."
+        "SECRET_KEY is unset; generating an ephemeral key for local development. "
+        "Sessions will not survive a restart."
     )
+    return secrets.token_urlsafe(64)
+
+
+SECRET_KEY = _resolve_secret_key()
 
 ALGORITHM = "HS256"
 

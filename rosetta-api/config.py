@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     # after the API has given up, reclaiming compute.
     RUNNER_DEADLINE_BUFFER_SEC: int = 15
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "")
 
     STORAGE_MODE: str = os.getenv("STORAGE_MODE", "local")
     S3_ENDPOINT_URL: str = os.getenv("S3_ENDPOINT_URL", "https://s3.amazonaws.com")

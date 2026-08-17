@@ -42,9 +42,9 @@ async def generate_circuit_endpoint(request: Request, payload: GenerateCircuitPa
         return {"qasm": qasm}
     except ValueError as ve:
         return JSONResponse(content={"error": str(ve)}, status_code=400)
-    except Exception as e:
-        logger.error(f"CRITICAL ERROR in generate_circuit: {str(e)}", exc_info=True)
-        return JSONResponse(content={"error": str(e)}, status_code=500)
+    except Exception:
+        logger.error("Circuit generation failed for algorithm=%s qubits=%s", payload.algorithm, payload.qubits, exc_info=True)
+        return JSONResponse(content={"error": "Circuit generation failed"}, status_code=500)
 
 @router.post("/visualize/quirk", response_model=VisualizerResponse)
 async def visualize_quirk(payload: QasmPayload):
@@ -56,9 +56,11 @@ async def visualize_quirk(payload: QasmPayload):
         compiler = QuirkCompiler(payload.qasm_string)
         url = compiler.generate_url()
         return {"url": url}
-    except Exception as e:
-        logger.error(f"Failed to compile QASM for Visualizer: {str(e)}", exc_info=True)
-        return JSONResponse(status_code=400, content={"error": f"Failed to generate Quirk URL: {str(e)}"})
+    except ValueError as ve:
+        return JSONResponse(status_code=400, content={"error": f"Failed to generate Quirk URL: {ve}"})
+    except Exception:
+        logger.error("Failed to compile QASM for Visualizer", exc_info=True)
+        return JSONResponse(status_code=400, content={"error": "Failed to generate Quirk URL"})
 
 @router.get("/benchmarks/mqt/list")
 async def list_mqt_bench():
@@ -84,9 +86,9 @@ async def get_mqt_bench(request: Request, algorithm: str, qubits: int = 3):
         return {"qasm": qasm}
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"MQT Bench Error: {str(e)}", exc_info=True)
-        return JSONResponse(status_code=500, content={"error": str(e)})
+    except Exception:
+        logger.error("MQT Bench lookup failed for algorithm=%s qubits=%s", algorithm, qubits, exc_info=True)
+        return JSONResponse(status_code=500, content={"error": "Benchmark circuit could not be loaded"})
 
 @router.get("/benchmarks/qasmbench")
 @limiter.limit("10/minute")
@@ -98,7 +100,7 @@ async def get_qasmbench(request: Request, circuit: str):
         return {"qasm": qasm}
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"QASMBench Error: {str(e)}", exc_info=True)
-        return JSONResponse(status_code=500, content={"error": str(e)})
+    except Exception:
+        logger.error("QASMBench lookup failed for circuit=%s", circuit, exc_info=True)
+        return JSONResponse(status_code=500, content={"error": "Benchmark circuit could not be loaded"})
 

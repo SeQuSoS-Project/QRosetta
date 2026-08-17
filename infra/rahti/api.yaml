@@ -51,6 +51,15 @@ items:
               secretKeyRef:
                 name: rosetta-secrets
                 key: DATABASE_URL
+          # JWT signing key. The API refuses to start without it when
+          # EXECUTION_MODE is not "local". Create it once with:
+          #   oc create secret generic rosetta-secrets -n qrosetta \
+          #     --from-literal=SECRET_KEY="$(openssl rand -base64 48)" ...
+          - name: SECRET_KEY
+            valueFrom:
+              secretKeyRef:
+                name: rosetta-secrets
+                key: SECRET_KEY
           - name: STORAGE_MODE
             value: "s3"
           - name: S3_ENDPOINT_URL

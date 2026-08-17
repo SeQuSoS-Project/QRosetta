@@ -198,6 +198,10 @@ def export_run_as_ro_crate(
         include_statevectors=payload.include_statevectors,
         author_name=payload.author_name,
         author_affiliation=payload.author_affiliation,
+        publication_artifacts=(
+            payload.publication_artifacts.model_dump()
+            if payload.publication_artifacts else None
+        ),
     )
 
     try:
