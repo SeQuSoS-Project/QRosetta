@@ -9,6 +9,7 @@ import os
 import logging
 import sys
 import functools
+import gc
 import importlib.metadata
 import re
 
@@ -466,6 +467,125 @@ def runner_error(simulator: str, exc) -> dict:
         "memory_usage_mb": 0.0,
         "process_peak_mb": 0.0,
     }
+
+
+class CompileResult:
+    """What a runner's compile step hands to its execute step.
+
+    ``circuit`` is whatever the SDK needs to execute — a circuit object, a (circuit, backend)
+    pair, a callable. The scaffold never inspects it.
+
+    ``transpiled_qasm`` is left None by runners whose serialization can wait until after the
+    compilation clock stops. A runner that mutates its circuit during compilation (adding a
+    save instruction, stripping measurements, rebasing in place) sets it here instead, so the
+    captured text matches the circuit that actually ran.
+    """
+
+    __slots__ = ("circuit", "n_qubits", "preprocessing_applied", "transpiled_qasm")
+
+    def __init__(self, circuit, n_qubits=None, preprocessing_applied=None, transpiled_qasm=None):
+        self.circuit = circuit
+        self.n_qubits = n_qubits
+        self.preprocessing_applied = preprocessing_applied if preprocessing_applied is not None else []
+        self.transpiled_qasm = transpiled_qasm
+
+
+def _timed_job(*, simulator, logger, payload, max_qubits, compile_fn, execute_fn,
+               serialize_fn, monitor_interval, build_result):
+    """The shared measurement instrument for one runner call.
+
+    Every backend is timed the same way, so a difference between two backends' reported
+    numbers reflects the backends rather than their adapters:
+
+      check the qubit limit -> t0 -> compile_fn -> t1  (compilation_time)
+      serialize for provenance, outside the compilation window where the runner allows it
+      MemoryMonitor + gc.collect() -> t2 -> execute_fn -> t3  (simulation_time)
+
+    Failures at any stage become a runner_error carrying the simulator's name.
+    """
+    try:
+        check_qubits_limit(payload["circuit_data"], max_qubits)
+
+        t0 = time.perf_counter()
+        compiled = compile_fn(payload)
+        t1 = time.perf_counter()
+        compilation_time = t1 - t0
+
+        transpiled_qasm = compiled.transpiled_qasm
+        if transpiled_qasm is None and serialize_fn is not None:
+            # Provenance only — serialized after t1 so it does not inflate compilation_time.
+            transpiled_qasm = serialize_fn(compiled)
+
+        with MemoryMonitor(interval=monitor_interval) as monitor:
+            gc.collect()
+
+            t2 = time.perf_counter()
+            executed = execute_fn(compiled, payload)
+            t3 = time.perf_counter()
+            simulation_time = t3 - t2
+
+        if logger is not None:
+            logger.info(
+                f"{simulator} simulation successful "
+                f"(Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s)."
+            )
+        return build_result(
+            executed=executed, compiled=compiled, monitor=monitor,
+            compilation_time=compilation_time, simulation_time=simulation_time,
+            transpiled_qasm=transpiled_qasm,
+        )
+    except Exception as exc:
+        if logger is not None:
+            logger.error(f"Error during {simulator} simulation: {exc}")
+        return runner_error(simulator, exc)
+
+
+def run_statevector_job(*, simulator, payload, compile_fn, execute_fn, qubit_ordering,
+                        logger=None, serialize_fn=None, max_qubits=None,
+                        monitor_interval=0.01, theoretical_mb=_UNSET):
+    """Run one statevector call through the shared measurement instrument.
+
+    ``execute_fn(compiled, payload)`` returns the raw statevector.
+    """
+    def build_result(*, executed, compiled, monitor, compilation_time, simulation_time,
+                     transpiled_qasm):
+        return statevector_result(
+            simulator=simulator, statevector=executed, compilation_time=compilation_time,
+            simulation_time=simulation_time, monitor=monitor, qubit_ordering=qubit_ordering,
+            n_qubits=compiled.n_qubits, preprocessing_applied=compiled.preprocessing_applied,
+            transpiled_qasm=transpiled_qasm, theoretical_mb=theoretical_mb)
+
+    return _timed_job(
+        simulator=simulator, logger=logger, payload=payload,
+        max_qubits=MAX_QUBITS_STATEVECTOR if max_qubits is None else max_qubits,
+        compile_fn=compile_fn, execute_fn=execute_fn, serialize_fn=serialize_fn,
+        monitor_interval=monitor_interval, build_result=build_result)
+
+
+def run_measured_job(*, simulator, payload, compile_fn, execute_fn, qubit_ordering,
+                     logger=None, serialize_fn=None, max_qubits=None,
+                     monitor_interval=0.01, theoretical_mb=_UNSET):
+    """Run one measured call through the shared measurement instrument.
+
+    ``execute_fn(compiled, payload)`` returns ``(counts, sampling_method)``, where
+    sampling_method is 'native' when the backend sampled shots itself and 'statevector'
+    when the counts were drawn from a computed statevector.
+    """
+    def build_result(*, executed, compiled, monitor, compilation_time, simulation_time,
+                     transpiled_qasm):
+        counts, sampling_method = executed
+        return counts_result(
+            simulator=simulator, counts=counts, sampling_method=sampling_method,
+            compilation_time=compilation_time, simulation_time=simulation_time,
+            monitor=monitor, qubit_ordering=qubit_ordering, n_qubits=compiled.n_qubits,
+            preprocessing_applied=compiled.preprocessing_applied,
+            transpiled_qasm=transpiled_qasm, theoretical_mb=theoretical_mb)
+
+    return _timed_job(
+        simulator=simulator, logger=logger, payload=payload,
+        max_qubits=MAX_QUBITS_MEASURED if max_qubits is None else max_qubits,
+        compile_fn=compile_fn, execute_fn=execute_fn, serialize_fn=serialize_fn,
+        monitor_interval=monitor_interval, build_result=build_result)
 
 
 def register_runner_endpoints(app, process_run, process_run_measured):
