@@ -19,12 +19,6 @@ class SavedCircuitResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-class RunHistoryCreate(BaseModel):
-    """Internal representation of a run-history record; not the POST /history/runs request
-    body (that endpoint takes the raw report dict directly, see routers/history.py)."""
-    s3_object_key: str = Field(..., description="Storage key of the saved report (local disk or S3, depending on STORAGE_MODE).")
-    circuit_id: Optional[str] = Field(None, description="Id of the saved circuit this run used, if any.")
-
 class RunHistoryResponse(BaseModel):
     """A saved run's metadata, as returned by the /history/runs endpoints (the full report
     itself is fetched separately via GET /history/runs/{run_id})."""

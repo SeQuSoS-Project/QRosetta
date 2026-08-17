@@ -4,6 +4,9 @@
 Standalone Python migration script to securely move existing records
 from the local SQLite database to the CSC Pukki instance, and mock S3 storage
 files to the CSC Allas bucket.
+
+One-off: this ran during the original move to CSC and is kept for reference. A fresh
+deployment does not need it — the API creates its own schema on startup.
 """
 import os
 import sys

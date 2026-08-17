@@ -48,10 +48,6 @@ class MeasuredQasmPayload(BaseModel):
     seed: Optional[int] = Field(None, description="RNG seed shared by every runner's sampling, for a reproducible run. Omit for a fresh, non-deterministic seed that is still generated and recorded in the report.")
     thresholds: Optional[AgreementThresholds] = Field(None, description="Override the default agreement thresholds for this run.")
 
-class MeasuredBenchmarkPayload(BaseModel):
-    """Request body for measured-mode benchmark-listing endpoints that only need a shot count."""
-    n_shots: int = Field(1024, description="Number of shots to sample.")
-
 class GenerateCircuitPayload(BaseModel):
     """Request body for POST /generate_circuit — build one preset circuit's OpenQASM text
     server-side, without running it."""
@@ -139,7 +135,12 @@ class JobStatusResponse(BaseModel):
 
 class RunnerPerformanceMetrics(BaseModel):
     """One backend's raw result for a single circuit run — the entries in a report's
-    raw_results list."""
+    raw_results list.
+
+    Declared as the documented shape of a report rather than as a request/response model:
+    runs complete asynchronously, so endpoints return a job envelope and the report itself
+    travels inside JobStatusResponse.results.
+    """
     simulator: str = Field(..., description="Runner id, e.g. 'qiskit', 'torchquantum'.")
     execution_time_sec: float = Field(..., description="Total wall-clock time (compilation + simulation), after the uniform warm-up run.")
     compilation_time_sec: Optional[float] = Field(0.0, description="Time to parse the circuit and prepare it for simulation.")

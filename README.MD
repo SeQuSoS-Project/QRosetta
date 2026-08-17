@@ -1,152 +1,144 @@
 # Quantum Rosetta
 
-**Quantum Rosetta** is a production-grade microservices architecture designed to benchmark, validate, and analyze quantum circuit simulators. It acts as a translation layer and orchestration engine ("The Brain") that dispatches quantum tasks to isolated simulator containers ("The Hands") to measure fidelity, execution time, and memory efficiency.
+**Quantum Rosetta** runs one OpenQASM 2.0 circuit across many quantum simulator backends and
+reports both what each backend cost and whether they agree with each other. Each backend runs
+in its own container with its own pinned dependencies, behind a single benchmarking contract,
+so results are comparable across SDKs that could not otherwise share a process.
 
-## System Architecture
+Every result set exports as a self-contained RO-Crate 1.1 archive holding the original
+circuit, the exact circuit each backend executed, the metrics, the outputs, and the SDK
+versions that produced them.
 
-The system follows a strict **Microservices Architecture** orchestrated by Docker Compose.
+## What it measures
 
-### 1. The Shield (Nginx)
-* **Role:** Reverse Proxy & Static File Server.
-* **Config:** Listens on Port 80. Serves the HTML/JS frontend directly. Proxies API requests to the internal Python backend.
-* **Safety:** Prevents direct external access to the application server and handles startup coordination via healthchecks.
+For each backend, per run:
 
-### 2. The Brain (rosetta-api)
-* **Role:** Orchestration, Content Generation, Comparative Analysis.
-* **Runtime:** **Gunicorn** (Process Manager) managing **Uvicorn** (ASGI Workers). Configured with **4 workers** for high concurrency.
-* **Key Functions:**
-    * **Dynamic Generation:** Creates valid QASM 2.0 for algorithms like GHZ, QFT, Grover, and VQE.
-    * **Internal Dispatch:** Uses direct internal async function calls to eliminate loopback network overhead.
-    * **Math Engine:** Calculates Fidelity Matrices and Jensen-Shannon Divergence in a non-blocking thread pool.
+| Metric | Meaning |
+| --- | --- |
+| `compilation_time_sec` | Parse the QASM, transpile, rebase to the backend's native gate set |
+| `simulation_time_sec` | Execute the circuit and retrieve the result |
+| `memory_usage_mb` | RSS added during the simulation window |
+| `process_peak_mb` | Peak RSS reached during execution |
+| `theoretical_statevector_mb` | `(2^N x 16) / 1024^2`, a lower bound for reference |
 
-### 3. The Hands (Simulators)
-Eight isolated runner services, each wrapping a specific quantum simulation framework.
-* **Runtime:** **Gunicorn** configured with **1 worker** to ensure strict CPU affinity for accurate benchmarking.
-* **Standardization:** All runners implement a strict contract (`POST /run`, `POST /run_measured`).
-* **Supported Frameworks:**
-    * **Qiskit Aer**
-    * **Cirq**
-    * **Qulacs**
-    * **AWS Braket**
-    * **ProjectQ**
-    * **QuEST**
-    * **PennyLane Lightning**
-    * **PennyLane Default**
+Every backend performs one untimed warm-up run before the measured one, so first-run costs
+such as JIT compilation and module imports are charged to setup rather than to the benchmark.
 
----
+Across backends, per run: statevector mode compares pairs by fidelity and relative phase;
+measured mode compares sampled outcome distributions by Jensen-Shannon divergence and
+Hellinger distance, with a shot-noise-aware statistical test. Pairs that use opposite qubit
+bit orders are flagged as such rather than reported as numerical disagreement.
 
-## Getting Started
+## Architecture
 
-### Prerequisites
-* **Docker Engine** (v20.10+)
-* **Docker Compose** (v2.0+)
+Three tiers, with Nginx as the only public-facing service.
 
-### Deployment
-This project is configured for **production deployment** by default (no volume mounts, non-root users).
+**Nginx** — reverse proxy and static file server. Serves the frontend and proxies API
+requests to the backend. The API is never exposed directly.
 
-1.  **Clone the Repository**
-    ```bash
-    git clone [https://github.com/SeQuSoS-Project/qrosetta.git](https://github.com/SeQuSoS-Project/qrosetta.git)
-    cd qrosetta
-    ```
+**rosetta-api** — orchestration, circuit generation, and comparative analysis. FastAPI under
+Gunicorn/Uvicorn. Dispatches work to the runners, aggregates results, computes the agreement
+and performance reports off the request path, and builds the RO-Crate exports.
 
-2.  **Configure Environment**
-    Create a local `.env` file from the example template and fill in your credentials (required for both local deployment and cloud deployment scripts):
-    ```bash
-    cp .env.example .env
-    ```
-    *Note: Ensure you edit the `.env` file with your actual database and cloud credentials.*
+**Runners** — 16 isolated simulator services, 14 enabled by default. Each implements the same
+two-endpoint contract (`POST /run` for statevectors, `POST /run_measured` for sampled counts)
+and returns the same set of fields.
 
-3.  **Build and Run (Local)**
-    The recommended way to deploy the stack locally with graceful failure handling is using the provided boot script:
-    ```bash
-    ./scripts/safe_boot.sh
-    ```
-    *Alternatively, you can manually use Docker Compose:*
-    ```bash
-    docker compose up --build
-    ```
-    *Note: The first build may take time as it compiles dependencies for 16 separate containers.*
+| Enabled | |
+| --- | --- |
+| Qiskit Aer, Cirq, Qulacs, QuEST | PennyLane Lightning, PennyLane Default |
+| qsim-Cirq, Qibo, Qrisp, myQLM | PyQuil, TorchQuantum, Quimb, cuQuantum |
 
-4.  **Deploy to Cloud (GCP)**
-    To deploy the backend API and Runners to Google Cloud Run:
-    ```bash
-    ./scripts/deploy.sh
-    ```
-    To deploy the static frontend:
-    ```bash
-    ./scripts/deploy_frontend.sh
-    ```
+Braket and ProjectQ ship with the stack but are disabled in `rosetta-api/config.py` because of
+persistent backend errors. Re-enable either by setting `enabled=True` there and adding it to
+`scripts/safe_boot.sh`.
 
-5.  **Access the Interface**
-    * **Web UI:** [http://localhost](http://localhost) (Served via Nginx on Port 80)
-    * **API Docs:** [http://localhost/docs](http://localhost/docs)
+The stack runs in two modes, selected by `EXECUTION_MODE`:
 
+- `local` — Docker Compose. Runners are long-running HTTP services on an internal network.
+- `kubernetes` — CSC Rahti. Runners are ephemeral Jobs spawned per request, exchanging
+  results through S3.
 
-## Security & Reliability Features
+## Getting started
 
-This project has undergone a rigorous **Hardening Sprint** to ensure stability and security.
+Requires Docker Engine 20.10+ and Docker Compose v2.
 
-* **Process Supervision:** All Python services run behind **Gunicorn**, ensuring automatic worker restarts in case of segmentation faults or crashes.
-* **Startup Coordination:** Nginx waits for the API to pass a healthcheck before accepting traffic, preventing "502 Bad Gateway" errors on boot.
-* **Observability:** Implemented **Structured Logging** across all services. Logs are standardized, timestamped, and categorized (INFO/ERROR) in stdout.
-* **Non-Root Execution:** All containers run as an unprivileged user (`appuser`) to prevent container breakout attacks.
-* **Resource Limits:** Every service is capped at **0.5 CPUs** and **512 MiB RAM** (Docker Compose) to prevent "Logic Bomb" circuits from crashing the host. On Kubernetes (Rahti), runner Jobs are allocated up to **1 GiB** (256 MiB request, 1 GiB limit).
-* **Pinned Dependencies:** All `requirements.txt` files use strict version pinning (e.g., `pennylane==0.39.0`, `autoray==0.6.12`) to prevent dependency drift.
-* **Event Loop Optimization:** Heavy mathematical operations are offloaded to thread executors to keep the API responsive.
+```bash
+git clone https://github.com/SeQuSoS-Project/qrosetta.git
+cd qrosetta
+cp .env.example .env      # then fill in your credentials
+./scripts/safe_boot.sh    # or: docker compose up --build
+```
 
----
+The first build takes a while: it compiles dependencies for 16 separate containers.
 
-## Verification (Smoke Test)
+- Web UI — http://localhost
+- API reference — http://localhost/docs (Swagger) and `docs.html` for the written guide
 
-To verify the system is fully operational (Nginx + API + Runners), use the included integration script. This requires the system to be running (`docker compose up`).
+`SECRET_KEY` must be set whenever `EXECUTION_MODE` is not `local`; the API refuses to start
+without it. Locally, leaving it empty generates a random key per process.
 
-1. **Install Test Dependencies:**
-   ```bash
-   pip install httpx
+### Deploying
 
+```bash
+./scripts/rahti_push.sh [namespace] [service ...]   # CSC Rahti (OpenShift)
+./scripts/deploy.sh                                 # GCP Cloud Run: API
+./scripts/deploy_frontend.sh                        # GCP Cloud Run: frontend
+```
 
-2.  **Run the Test:**
-    ```bash
-    python3 tests/integration_test_live.py
-    ```
-    *Success output:* `Integration Test Passed!`
+`rahti_push.sh` builds, tags each image with both its git hash and `:latest`, pushes, applies
+the manifests, and waits for the rollout.
 
------
+## Tests
 
-## Benchmarking Metrics
+```bash
+cd rosetta-api
+pip install -r requirements.txt -r tests/requirements.txt
+pip install ../shared
+PYTHONPATH=. pytest tests/unit/
+```
 
-The system captures three key metrics for every run:
+`tests/` at the repository root holds live-stack integration checks that require the whole
+stack to be running; they are not part of the unit suite.
 
-1.  **Execution Time:** Precise `time.perf_counter()` wrapping the simulation kernel.
-      * *Note:* For measured runs, this includes both the simulation time **and** the sampling process time to ensure fair comparison between native and statevector simulators.
-2.  **Memory Delta:** Real-time RAM usage (RSS) captured via a dedicated background thread (`MemoryMonitor`).
-3.  **Process Peak:** The absolute maximum memory footprint of the container during execution.
-
------
-
-## Project Structure
+## Project layout
 
 ```text
 .
-├── docker-compose.yml          # Orchestration, Healthchecks & Resource Limits
-├── nginx/                      # Reverse Proxy Configuration
-├── rosetta-api/                # The Brain (FastAPI + Gunicorn)
-│   ├── main.py                 # Entrypoint & Logic
-│   ├── library.py              # Circuit Generators
-│   ├── comparator.py           # Math Engine
-│   └── static/                 # Web Frontend
-├── shared/                     # Shared Logic
-│   └── qrosetta_commons/       # Models, MemoryMonitor, & Logger Factory
-├── pytket-qiskit-runner/       # Qiskit Runner
-├── pytket-cirq-runner/         # Cirq Runner
-├── ...                         # (Other Runners)
-└── tests/                      # Unit & Integration Tests
+├── docker-compose.yml       Orchestration, healthchecks, resource limits
+├── nginx/                   Reverse proxy for the local stack
+├── infra/                   Rahti manifests and the Cloud Run frontend image
+├── rosetta-api/             The orchestrator
+│   ├── main.py              Mounts routers only
+│   ├── routers/             Request validation and HTTP shaping
+│   ├── services/            Business logic, dispatch, analysis, export
+│   ├── schemas/             Pydantic request/response models
+│   ├── db/                  SQLAlchemy models and session handling
+│   ├── static/              Web frontend
+│   └── tests/unit/          Unit test suite (run by CI)
+├── runners/<name>-runner/   One directory per simulator backend
+├── shared/qrosetta_commons/ The benchmarking contract shared by every runner
+├── scripts/                 Boot and deployment scripts
+└── tests/                   Live-stack integration checks
 ```
+
+## Security
+
+- Only Nginx is publicly reachable; runners expose no ports and the API is not on the public
+  network.
+- All containers run as an unprivileged `appuser`.
+- Passwords are hashed with bcrypt and never logged or stored in plaintext; sessions are JWT.
+- Every endpoint that reads or writes user data requires authentication and filters by the
+  authenticated user.
+- Circuit size, gate count, qubit count, upload size, and run fan-out are all capped
+  server-side; public endpoints are rate-limited.
+- All `requirements.txt` files pin exact versions, with a `requirements.lock` alongside.
 
 ## Contributing
 
-1.  **Add a new Algorithm:** Update `rosetta-api/library.py` and register it in `rosetta-api/main.py`.
-2.  **Add a new Runner:** Duplicate an existing runner folder, update the `requirements.txt` (pinned\!), and ensure it uses the `get_logger` helper.
+See `CONTRIBUTING.md` for the full guide to adding a simulator backend or an algorithm
+template.
 
+## Citing
 
+See `CITATION.cff`.

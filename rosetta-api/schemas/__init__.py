@@ -4,7 +4,6 @@ from schemas.benchmark import (
     AgreementThresholds,
     QasmPayload,
     MeasuredQasmPayload,
-    MeasuredBenchmarkPayload,
     GenerateCircuitPayload,
     BenchmarkTask,
     BatchPayload,
@@ -27,7 +26,6 @@ from schemas.auth import (
 from schemas.history import (
     SavedCircuitCreate,
     SavedCircuitResponse,
-    RunHistoryCreate,
     RunHistoryResponse,
     RunHistoryUpdate,
     RunHistoryBatchDelete,
@@ -36,7 +34,7 @@ from schemas.history import (
 __all__ = [
 
     "AgreementThresholds",
-    "QasmPayload", "MeasuredQasmPayload", "MeasuredBenchmarkPayload",
+    "QasmPayload", "MeasuredQasmPayload",
     "GenerateCircuitPayload", "BenchmarkTask", "BatchPayload",
     "ExperimentCircuit", "ExperimentPayload",
     "VisualizerResponse", "JobStatusResponse", "RunnerPerformanceMetrics",
@@ -45,6 +43,6 @@ __all__ = [
 
     "UserCreate", "UserResponse", "Token",
 
-    "SavedCircuitCreate", "SavedCircuitResponse", "RunHistoryCreate",
+    "SavedCircuitCreate", "SavedCircuitResponse",
     "RunHistoryResponse", "RunHistoryUpdate", "RunHistoryBatchDelete",
 ]

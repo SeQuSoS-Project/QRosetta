@@ -47,7 +47,8 @@ def login_for_access_token(
     db: Session = Depends(get_db)
 ):
     """Exchange an email + password (sent as OAuth2 password-grant form fields, username =
-    email) for a bearer access token. 401 on an unrecognized email or wrong password."""
+    email) for a bearer access token. 401 on an unrecognized email, a wrong password, or a
+    deactivated account."""
 
     user = db.query(models.User).filter(models.User.email == form_data.username).first()
     if not user or not user.hashed_password:
@@ -61,6 +62,11 @@ def login_for_access_token(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account has been deactivated",
         )
 
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)

@@ -160,7 +160,17 @@ Dockerfile installs from the lock file, not the loose direct-dependency list.
 
 ## 7. Registering the runner
 
-Two places:
+A runner has to be listed in five places. `config.py` is the only one the application reads at
+runtime; the rest are build and deployment lists, and a runner missing from any of them is
+silently excluded from that path rather than failing loudly.
+
+| File | What it controls | Missing it means |
+| --- | --- | --- |
+| `rosetta-api/config.py` — `get_runner_services()` | Canonical id, URL, capabilities, enabled flag | The API never dispatches to it |
+| `docker-compose.yml` | The local container | Nothing to dispatch to locally |
+| `scripts/safe_boot.sh` — `RUNNERS` | The local boot order | Excluded from every local boot |
+| `scripts/rahti_push.sh` — `SERVICE_MAP` | The pushed image | Kubernetes Jobs cannot pull it |
+| `tests/test_runner_contract_asymmetric.py` — `ACTIVE_STATEVECTOR_RUNNERS` | Contract coverage | Never contract-tested |
 
 **`rosetta-api/config.py`**, inside `get_runner_services()`, add an entry keyed by your runner's
 short id (this id is what appears everywhere in results, config, and the UI):
@@ -209,8 +219,9 @@ the compose network by container name.
   endpoints directly against a small circuit (Bell state or similar) and read the actual response
   — confirm `error` is `null`, the statevector/counts look correct, and `qubit_ordering` matches
   what you verified in step 3.
-- Add your runner's id to `ACTIVE_STATEVECTOR_RUNNERS` (and the measured equivalent) in
-  `tests/test_runner_contract_asymmetric.py` and run it against the live stack. This test is
+- Add your runner's id to `ACTIVE_STATEVECTOR_RUNNERS` in
+  `tests/test_runner_contract_asymmetric.py` — one list drives both the statevector and the
+  measured check — and run it against the live stack. This test is
   deliberately asymmetric (not a Bell/GHZ state) — a symmetric smoke test can pass even when a
   runner silently returns the all-zeros state or has its bit-order label backwards, so this is the
   test that actually catches that failure mode.

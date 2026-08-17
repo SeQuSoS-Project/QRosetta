@@ -8,7 +8,6 @@ const Store = {
         currentSuiteTitle: '',
         batchQueue: [],
         allAlgorithms: [],
-        currentOptLevel: 0,
         currentAlgoName: "Custom",
         currentRunnerConfig: {},
         currentJobId: null,
@@ -45,9 +44,6 @@ const Store = {
                 break;
             case 'SET_ALGORITHMS':
                 this.state.allAlgorithms = payload;
-                break;
-            case 'SET_OPT_LEVEL':
-                this.state.currentOptLevel = payload;
                 break;
             case 'SET_CURRENT_ALGO_NAME':
                 this.state.currentAlgoName = payload;
