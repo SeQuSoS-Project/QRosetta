@@ -24,6 +24,9 @@ const _ART_LATEX_ESC = {
 function _artLatexEscape(s) {
     return String(s).split('').map(c => _ART_LATEX_ESC[c] || c).join('');
 }
+// Mirrors Python's html.escape (quote=True), including the &#x27; form for apostrophes.
+// Kept separate from utils.js _escapeHtml, which emits &#39; — merging the two would break
+// byte-for-byte parity with services/publication.py.
 function _artHtmlEscape(s) {
     return String(s).replace(/[&<>"']/g, c =>
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;' }[c]));

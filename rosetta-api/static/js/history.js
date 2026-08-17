@@ -247,7 +247,7 @@ async function loadHistoricalRun(runId, runName, createdAt) {
         historyBanner.className = "p-3 bg-yellow-50 border-b border-yellow-200 text-yellow-800 text-sm flex justify-between items-center";
 
         const displayDate = createdAt ? new Date(createdAt).toLocaleString() : new Date(data.created_at || Date.now()).toLocaleString();
-        const displayTitle = runName ? `<strong>Viewing Past Run:</strong> ${runName} <span class="text-xs font-mono ml-2 opacity-75">(${runId.substring(0, 8)})</span> <span class="ml-2">- ${displayDate}</span>` : `<strong>Viewing Past Run:</strong> ${displayDate}`;
+        const displayTitle = runName ? `<strong>Viewing Past Run:</strong> ${_escapeHtml(runName)} <span class="text-xs font-mono ml-2 opacity-75">(${_escapeHtml(String(runId).substring(0, 8))})</span> <span class="ml-2">- ${_escapeHtml(displayDate)}</span>` : `<strong>Viewing Past Run:</strong> ${_escapeHtml(displayDate)}`;
 
         historyBanner.innerHTML = `
             <div>${displayTitle}</div>

@@ -120,11 +120,11 @@ function renderConfigPanel(runners) {
 
         let optionsHtml = '<option value="-1">Use Global</option>';
         if (max === 0) {
-            optionsHtml += `<option value="0" title="${r.optimization_levels?.['0'] || 'No optimization'}">0 — Not supported</option>`;
+            optionsHtml += `<option value="0" title="${_escapeHtml(r.optimization_levels?.['0'] || 'No optimization')}">0 — Not supported</option>`;
         } else {
             for (let i = 0; i <= max; i++) {
                 const desc = r.optimization_levels?.[String(i)] || '';
-                optionsHtml += `<option value="${i}" title="${desc}">${i}${desc ? ` — ${desc.split(':')[0]}` : ''}</option>`;
+                optionsHtml += `<option value="${i}" title="${_escapeHtml(desc)}">${i}${desc ? ` — ${_escapeHtml(desc.split(':')[0])}` : ''}</option>`;
             }
         }
 
@@ -132,10 +132,10 @@ function renderConfigPanel(runners) {
         for (let i = 0; i <= max; i++) {
             const desc = r.optimization_levels?.[String(i)] || '';
             countsHtml += `
-                <label class="inline-flex flex-col items-center mr-1 mb-1" title="${desc || ('Optimization level ' + i)}">
+                <label class="inline-flex flex-col items-center mr-1 mb-1" title="${_escapeHtml(desc || ('Optimization level ' + i))}">
                     <span class="text-[10px] text-gray-400">L${i}</span>
                     <input type="number" class="runner-count-input w-9 text-xs border-gray-300 rounded p-0.5 text-center"
-                           data-runner="${r.id}" data-level="${i}" value="0" min="0" max="8" ${isDisabled ? 'disabled' : ''}>
+                           data-runner="${_escapeHtml(r.id)}" data-level="${i}" value="0" min="0" max="8" ${isDisabled ? 'disabled' : ''}>
                 </label>`;
         }
 
@@ -145,18 +145,18 @@ function renderConfigPanel(runners) {
             <div class="flex items-center justify-between mb-1">
                 <label class="flex items-center space-x-2 cursor-pointer ${isDisabled ? 'opacity-40 cursor-not-allowed line-through text-red-400' : ''}">
                     <input type="checkbox" class="sim-checkbox h-3 w-3 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
-                           data-sim="${r.id}" ${isDefaultChecked && !isDisabled ? 'checked' : ''} ${isDisabled ? 'disabled' : ''} ${isDisabled ? 'data-locked="1"' : ''}>
-                    <span class="block text-xs font-medium text-gray-600">${name}</span>
+                           data-sim="${_escapeHtml(r.id)}" ${isDefaultChecked && !isDisabled ? 'checked' : ''} ${isDisabled ? 'disabled' : ''} ${isDisabled ? 'data-locked="1"' : ''}>
+                    <span class="block text-xs font-medium text-gray-600">${_escapeHtml(name)}</span>
                 </label>
                 <label class="runner-phase-wrap hidden flex items-center space-x-1 text-[10px] text-gray-400">
                     <span>Phase</span>
                     <input type="number" class="runner-phase-input w-9 text-xs border-gray-300 rounded p-0.5 text-center"
-                           data-runner="${r.id}" value="1" min="1" ${isDisabled ? 'disabled' : ''}>
+                           data-runner="${_escapeHtml(r.id)}" value="1" min="1" ${isDisabled ? 'disabled' : ''}>
                 </label>
             </div>
             <div class="opt-single-wrap">
-                <select data-runner="${r.id}" class="runner-opt-select block w-full text-xs border-gray-300 rounded p-1 shadow-sm"
-                        title="${tooltip}" ${max === 0 ? 'disabled' : ''}>
+                <select data-runner="${_escapeHtml(r.id)}" class="runner-opt-select block w-full text-xs border-gray-300 rounded p-1 shadow-sm"
+                        title="${_escapeHtml(tooltip)}" ${max === 0 ? 'disabled' : ''}>
                     ${optionsHtml}
                 </select>
             </div>

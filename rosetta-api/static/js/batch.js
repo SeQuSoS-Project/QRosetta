@@ -97,7 +97,7 @@ function renderBatchQueue() {
             const li = document.createElement('li');
             li.className = "flex justify-between items-center bg-yellow-100 px-2 py-1 rounded";
             li.innerHTML = `
-                        <span class="truncate flex-1 text-xs font-mono">${item.name} (${item.qubits}q)</span>
+                        <span class="truncate flex-1 text-xs font-mono">${_escapeHtml(item.name)} (${_escapeHtml(item.qubits)}q)</span>
                         <div class="flex space-x-1 ml-2">
                             <button onclick="viewBatchItem(${index})" title="Load QASM to Editor" class="text-blue-600 hover:text-blue-800 font-bold px-1">{ }</button>
                             <button onclick="removeFromBatch(${index})" title="Remove" class="text-yellow-700 hover:text-red-600 font-bold px-1">&times;</button>

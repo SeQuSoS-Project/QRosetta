@@ -426,7 +426,7 @@ function renderSummaryPanel(data, title) {
 
                     const subSummary = document.createElement('summary');
                     subSummary.className = 'font-bold cursor-pointer hover:text-yellow-900 outline-none';
-                    subSummary.innerHTML = `${s1} <span class="font-normal opacity-60">&times; ${partners.length} partners</span>`;
+                    subSummary.innerHTML = `${_escapeHtml(s1)} <span class="font-normal opacity-60">&times; ${partners.length} partners</span>`;
                     subDetails.appendChild(subSummary);
 
                     const subUl = document.createElement('ul');
@@ -436,7 +436,7 @@ function renderSummaryPanel(data, title) {
                         let info = "";
                         if (p.fidelity !== undefined) info = ` (Fidelity: ${p.fidelity.toFixed(4)})`;
                         if (p.js !== undefined) info = ` (JS Div: ${p.js.toFixed(4)})`;
-                        liPartner.innerHTML = `vs <b>${p.name}</b>${info}`;
+                        liPartner.innerHTML = `vs <b>${_escapeHtml(p.name)}</b>${info}`;
                         subUl.appendChild(liPartner);
                     });
                     subDetails.appendChild(subUl);
@@ -468,7 +468,7 @@ function renderSummaryPanel(data, title) {
                 if (d.fidelity !== undefined) info = ` (Fidelity: ${d.fidelity.toFixed(4)})`;
                 if (d.js_divergence !== undefined) info = ` (JS Div: ${d.js_divergence.toFixed(4)})`;
 
-                liFrag.querySelector('li').innerHTML = `<b>${d.simulators.join(' & ')}</b>: ${d.type}${info}`;
+                liFrag.querySelector('li').innerHTML = `<b>${_escapeHtml(d.simulators.join(' & '))}</b>: ${_escapeHtml(d.type)}${info}`;
                 list.appendChild(liFrag);
             });
             panel.appendChild(frag);

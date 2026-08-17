@@ -114,9 +114,9 @@ function bmRenderChecklist() {
         const row = document.createElement('label');
         row.className = 'flex items-center gap-2 cursor-pointer hover:bg-emerald-50 rounded px-1';
         row.innerHTML =
-            `<input type="checkbox" class="bm-check" data-suite="${e.suite}" data-algo="${e.algorithm}" `
-            + `data-qubits="${e.qubits}" data-label="${e.label}" id="${id}" onchange="bmUpdateSelectedCount()">`
-            + `<span class="font-mono truncate">${e.label}</span>`;
+            `<input type="checkbox" class="bm-check" data-suite="${_escapeHtml(e.suite)}" data-algo="${_escapeHtml(e.algorithm)}" `
+            + `data-qubits="${_escapeHtml(e.qubits)}" data-label="${_escapeHtml(e.label)}" id="${_escapeHtml(id)}" onchange="bmUpdateSelectedCount()">`
+            + `<span class="font-mono truncate">${_escapeHtml(e.label)}</span>`;
         list.appendChild(row);
     }
     bmUpdateSelectedCount();

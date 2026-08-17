@@ -145,7 +145,7 @@ function renderExperimentResult(results) {
     line.innerHTML =
         `<div class="font-medium mb-1">Experiment complete — ${summary.cells} circuit-axis run(s), `
         + `${nCircuits} circuit(s) × ${nAxes} axis(es).</div>`
-        + `<div><span class="font-medium">Agreement prevalence:</span> ${_escapeExp(prevText)}</div>`
+        + `<div><span class="font-medium">Agreement prevalence:</span> ${_escapeHtml(prevText)}</div>`
         + `<div><span class="font-medium">Errors to triage:</span> ${nErr}`
         + (nResolve ? ` &nbsp;·&nbsp; resolution errors: ${nResolve}` : '')
         + `</div>`
@@ -179,9 +179,3 @@ async function downloadExperimentBundle() {
     }
 }
 
-
-function _escapeExp(s) {
-    const d = document.createElement('div');
-    d.textContent = String(s);
-    return d.innerHTML;
-}
