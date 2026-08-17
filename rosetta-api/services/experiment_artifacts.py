@@ -18,6 +18,8 @@ import hashlib
 import io
 import json
 
+from services.report_filters import fingerprint_statevectors
+
 # Column orders for the two CSV outputs.
 CONFORMANCE_FIELDS = ["axis", "circuit", "simulator", "status", "error_signature", "triage"]
 PREVALENCE_FIELDS = ["axis", "agreement_class", "pair_count"]
@@ -60,16 +62,8 @@ def slug(text: str) -> str:
 
 def strip_statevectors(report: dict) -> dict:
     """Replace each raw statevector with a sha256 + length so results stay small but remain
-    verifiable for reproducibility. Everything else (metrics, labels, provenance) is kept.
-
-    Mutates and returns ``report`` (the caller passes a copy when it must keep the original)."""
-    for r in report.get("raw_results", []) or []:
-        sv = r.get("statevector")
-        if sv is not None and not isinstance(sv, str):
-            r["statevector"] = None
-            r["statevector_sha256"] = sha256(sv)
-            r["statevector_len"] = len(sv) if hasattr(sv, "__len__") else None
-    return report
+    verifiable for reproducibility. Everything else (metrics, labels, provenance) is kept."""
+    return fingerprint_statevectors(report, sha256)
 
 
 def _runner_status(entry: dict) -> tuple:

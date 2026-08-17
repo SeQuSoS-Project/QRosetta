@@ -60,6 +60,11 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    def max_qubits_for_mode(self, mode: str) -> int:
+        """Qubit cap for a run mode. Statevector runs materialise all 2^N amplitudes, so
+        they are capped lower than measured runs, which only collect samples."""
+        return self.MAX_QUBITS_STATEVECTOR if mode == "statevector" else self.MAX_QUBITS_MEASURED
+
     def get_cors_origins(self) -> list:
         origins = ["http://localhost", "http://127.0.0.1"]
         origins += [o.strip() for o in self.CORS_ALLOW_ORIGINS.split(",") if o.strip()]

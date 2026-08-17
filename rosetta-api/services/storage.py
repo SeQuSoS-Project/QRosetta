@@ -5,9 +5,10 @@ import json
 import boto3
 import cachetools
 from botocore.exceptions import ClientError
-from typing import Any, List
+from typing import List
 from config import settings
 from qrosetta_commons.helpers import get_logger
+from services.report_filters import remove_statevectors
 
 logger = get_logger("rosetta-storage")
 
@@ -45,20 +46,12 @@ if settings.STORAGE_MODE == "s3":
         config=Config(signature_version='s3v4')
     )
 
-def _remove_statevectors(data: Any) -> Any:
-    """Recursively remove 'statevector' lists from dictionaries to save storage space."""
-    if isinstance(data, dict):
-        return {k: _remove_statevectors(v) for k, v in data.items() if k != 'statevector'}
-    elif isinstance(data, list):
-        return [_remove_statevectors(item) for item in data]
-    return data
-
 def save_run_report(user_id: int, run_id: str, report_data: dict) -> str:
     """
     Strips large statevectors from the report data and saves it locally or to S3.
     Returns the file path acting as an S3 object key.
     """
-    clean_data = _remove_statevectors(report_data)
+    clean_data = remove_statevectors(report_data)
     object_key = f"users/{user_id}/runs/{run_id}.json"
 
     if settings.STORAGE_MODE == "s3":

@@ -9,9 +9,9 @@ from services.exporter import (
     ExportFormat,
     build_ro_crate,
     infer_export_mode,
-    _strip_statevectors,
     PROCESS_RUN_CRATE_PROFILE,
 )
+from services.report_filters import remove_statevectors
 
 
 def _load_metadata(zip_bytes):
@@ -126,7 +126,7 @@ def _make_ctx(**overrides):
 class TestStripStatevectors:
     def test_removes_statevector_keys(self):
         data = {"simulator": "qiskit", "statevector": [1, 0, 0, 0], "time": 0.1}
-        result = _strip_statevectors(data)
+        result = remove_statevectors(data)
         assert "statevector" not in result
         assert result["simulator"] == "qiskit"
         assert result["time"] == 0.1
@@ -138,13 +138,13 @@ class TestStripStatevectors:
                 {"simulator": "b", "statevector": [0, 1]},
             ]
         }
-        result = _strip_statevectors(data)
+        result = remove_statevectors(data)
         for item in result["raw_results"]:
             assert "statevector" not in item
 
     def test_preserves_non_statevector_data(self):
         data = {"counts": {"00": 512, "11": 512}, "simulator": "qiskit"}
-        result = _strip_statevectors(data)
+        result = remove_statevectors(data)
         assert result == data
 
 

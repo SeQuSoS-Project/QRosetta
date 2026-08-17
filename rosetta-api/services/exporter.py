@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from config import settings
 from qrosetta_commons.helpers import get_logger
+from services.report_filters import remove_statevectors
 
 logger = get_logger("rosetta-exporter")
 
@@ -347,14 +348,6 @@ def _build_pairwise_agreement_summary(ctx: ExportContext) -> Optional[dict]:
         del summary["by_statistical_verdict"]
     return summary
 
-
-def _strip_statevectors(data: Any) -> Any:
-    """Recursively remove 'statevector' keys from nested dicts/lists."""
-    if isinstance(data, dict):
-        return {k: _strip_statevectors(v) for k, v in data.items() if k != "statevector"}
-    elif isinstance(data, list):
-        return [_strip_statevectors(item) for item in data]
-    return data
 
 
 def _build_provenance(ctx: ExportContext) -> dict:
@@ -778,7 +771,7 @@ def build_ro_crate(ctx: ExportContext) -> bytes:
     if ctx.include_statevectors:
         results_data = copy.deepcopy(ctx.results)
     else:
-        results_data = _strip_statevectors(ctx.results)
+        results_data = remove_statevectors(ctx.results)
 
     provenance_data = _build_provenance(ctx)
     # Opt-in publication artifacts (figures/tables). Generated before metadata so each

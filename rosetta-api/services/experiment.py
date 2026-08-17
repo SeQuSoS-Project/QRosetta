@@ -14,12 +14,10 @@ import zipfile
 from datetime import datetime, timezone
 
 from schemas import BatchPayload, BenchmarkTask, ExperimentPayload
-from config import settings
-import services.circuit_library as circuit_library
-import services.benchmark_library as benchmark_library
 from services import experiment_artifacts as art
 from services.job_manager import ACTIVE_JOBS, run_batch_tasks, _resolve_seed
 from qrosetta_commons.helpers import get_logger
+from services.circuit_resolver import resolve_circuit_qasm
 
 logger = get_logger("rosetta-experiment")
 
@@ -62,21 +60,9 @@ def resolve_circuits(payload: ExperimentPayload) -> tuple:
         )
         cid = f"{i:03d}_{art.slug(name)}"
         try:
-            if source == "qasm":
-                if not entry.qasm_string:
-                    raise ValueError("source 'qasm' requires qasm_string")
-                qasm = entry.qasm_string
-            elif source == "qasmbench":
-                qasm = benchmark_library.get_qasmbench_circuit(entry.algorithm)
-            elif source == "mqt":
-                qasm = benchmark_library.get_mqt_benchmark(entry.algorithm, int(entry.qubits))
-            elif source == "preset":
-                if int(entry.qubits) > settings.MAX_QUBITS_MEASURED:
-                    raise ValueError(
-                        f"Qubit count {entry.qubits} exceeds limit of {settings.MAX_QUBITS_MEASURED}")
-                qasm = circuit_library.generate_circuit(entry.algorithm, int(entry.qubits))
-            else:
-                raise ValueError(f"unknown circuit source '{entry.source}'")
+            qasm = resolve_circuit_qasm(
+                entry.source, entry.algorithm, entry.qubits, entry.qasm_string, mode=payload.mode
+            )
             resolved.append({"id": cid, "algorithm": entry.algorithm or name,
                              "qubits": int(entry.qubits or 0), "qasm": qasm, "source": source})
         except Exception as e:

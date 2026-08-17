@@ -13,12 +13,11 @@ from services.dispatcher import (
     SAMPLED_SV_URLS,
     dispatch_to_runners
 )
-import services.circuit_library as circuit_library
-import services.benchmark_library as benchmark_library
 from schemas import BatchPayload
 from config import settings
 from services.aggregator import compile_comparison_reports, compile_measurement_reports
 from qrosetta_commons.helpers import get_logger
+from services.circuit_resolver import resolve_circuit_qasm
 
 logger = get_logger("rosetta-job-manager")
 
@@ -250,17 +249,9 @@ async def run_batch_tasks(payload: BatchPayload, runner_statuses: dict, progress
             progress["current_index"] = gi
             progress["tasks"][gi]["status"] = "running"
         try:
-            source = (task.source or "preset").lower()
-            if task.qasm_string:
-                qasm_string = task.qasm_string
-            elif source == "mqt":
-                qasm_string = benchmark_library.get_mqt_benchmark(task.algorithm, task.qubits)
-            elif source == "qasmbench":
-                qasm_string = benchmark_library.get_qasmbench_circuit(task.algorithm)
-            else:
-                if task.qubits > settings.MAX_QUBITS_MEASURED:
-                    raise ValueError(f"Qubit count {task.qubits} exceeds limit of {settings.MAX_QUBITS_MEASURED}")
-                qasm_string = circuit_library.generate_circuit(task.algorithm, task.qubits)
+            qasm_string = resolve_circuit_qasm(
+                task.source, task.algorithm, task.qubits, task.qasm_string, mode=payload.mode
+            )
 
             validate_request(qasm_string, mode=payload.mode, bypass_limits=payload.bypass_limits)
             report = None
