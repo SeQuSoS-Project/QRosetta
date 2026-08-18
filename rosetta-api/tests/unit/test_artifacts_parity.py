@@ -1,4 +1,4 @@
-"""Parity guard: the browser text-artifact builders (static/js/artifacts_renderer.js) must
+"""Parity guard: the browser text-artifact builders (static/js/artifact_formats.js) must
 render byte-identically to services/publication.py, since the interactive Artifacts tab and the
 RO-Crate export are meant to agree. Catches silent drift between the two hand-kept copies.
 
@@ -58,7 +58,7 @@ def test_text_artifacts_match_publication_py(mode, results):
             mismatches.append(key)
     assert not mismatches, (
         "JS/publication.py drift on: " + ", ".join(mismatches)
-        + " — update static/js/artifacts_renderer.js to match services/publication.py.")
+        + " — update static/js/artifact_formats.js to match services/publication.py.")
 
 
 def test_harness_covers_expected_artifacts():
