@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI
 from qrosetta_commons.helpers import (
-    CompileResult, _sample_from_statevector, get_logger, get_num_qubits_from_qasm,
+    CompileResult, _counts_from_samples, _draw_statevector_samples, get_logger, get_num_qubits_from_qasm,
     register_runner_endpoints, run_cli_main, run_measured_job, run_statevector_job,
     strip_barriers_from_qasm, with_sdk_versions,
 )
@@ -82,13 +82,15 @@ def process_run_measured(payload: dict) -> dict:
 
     def execute(compiled, payload):
         statevector = compiled.circuit()
-        counts = _sample_from_statevector(
-            statevector, payload.get("n_shots", 1024), compiled.n_qubits, payload.get("seed"))
-        return counts, "sv_sample"
+        return _draw_statevector_samples(
+            statevector, payload.get("n_shots", 1024), payload.get("seed"))
+
+    def shape_counts(samples, compiled, _payload):
+        return _counts_from_samples(samples, compiled.n_qubits), "sv_sample"
 
     return run_measured_job(
         simulator=_SIMULATOR, payload=payload, logger=logger, compile_fn=_compile,
-        execute_fn=execute, qubit_ordering="msb")
+        execute_fn=execute, postprocess_fn=shape_counts, qubit_ordering="msb")
 
 
 register_runner_endpoints(app, process_run, process_run_measured)

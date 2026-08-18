@@ -6,7 +6,7 @@ from pytket.extensions.projectq import ProjectQBackend
 from pytket.passes import RemoveBarriers
 from pytket.transform import Transform
 from qrosetta_commons.helpers import (
-    CompileResult, _sample_from_statevector, get_logger, register_runner_endpoints,
+    CompileResult, _counts_from_samples, _draw_statevector_samples, get_logger, register_runner_endpoints,
     run_cli_main, run_measured_job, run_statevector_job, with_sdk_versions,
 )
 
@@ -80,14 +80,16 @@ def process_run_measured(payload: dict) -> dict:
         backend, compiled_circ = compiled.circuit
         handle = backend.process_circuit(compiled_circ)
         statevector = backend.get_result(handle).get_state()
-        counts = _sample_from_statevector(
-            statevector, payload.get("n_shots", 1024), compiled.n_qubits, payload.get("seed"))
+        return _draw_statevector_samples(
+            statevector, payload.get("n_shots", 1024), payload.get("seed"))
+
+    def shape_counts(samples, compiled, _payload):
         # This runner does not label a sampling_method (None omits the key).
-        return counts, None
+        return _counts_from_samples(samples, compiled.n_qubits), None
 
     return run_measured_job(
         simulator="projectq", payload=payload, logger=logger, compile_fn=_compile,
-        execute_fn=execute, qubit_ordering="lsb")
+        execute_fn=execute, postprocess_fn=shape_counts, qubit_ordering="lsb")
 
 
 register_runner_endpoints(app, process_run, process_run_measured)

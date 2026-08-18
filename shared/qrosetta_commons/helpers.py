@@ -60,9 +60,12 @@ def decode_statevector(encoded_str: str) -> np.ndarray:
 
         raise ValueError(f"Failed to decode statevector: {e}")
 
-def _sample_from_statevector(statevector, n_shots, n_qubits, seed=None):
-    """
-    Manually samples from a statevector's probability distribution.
+def _draw_statevector_samples(statevector, n_shots, seed=None):
+    """Draw shot indices from a statevector's probability distribution.
+
+    Returns the raw sampled basis-state indices. This is the sampling a native backend
+    performs internally, so it belongs inside the timed simulation window; call it from
+    ``execute_fn``. Pair it with ``_counts_from_samples`` in ``postprocess_fn``.
 
     seed: optional int for reproducible sampling. None yields a fresh,
     non-deterministic generator (the prior behaviour).
@@ -71,19 +74,23 @@ def _sample_from_statevector(statevector, n_shots, n_qubits, seed=None):
     probabilities = np.abs(statevector)**2
 
     rng = np.random.default_rng(seed)
-    samples = rng.choice(
+    return rng.choice(
         len(statevector),
         size=n_shots,
         p=probabilities
     )
 
-    sample_counts = Counter(samples)
 
-    counts_dict = {
+def _counts_from_samples(samples, n_qubits):
+    """Build a counts histogram from drawn sample indices.
+
+    Bookkeeping rather than simulation, and on a small circuit it costs more than the
+    draw itself, so call it from ``postprocess_fn`` to keep it outside t2..t3.
+    """
+    return {
         format(k, f'0{n_qubits}b'): v
-        for k, v in sample_counts.items()
+        for k, v in Counter(samples).items()
     }
-    return counts_dict
 
 class MemoryMonitor:
     def __init__(self, interval=0.001):

@@ -127,14 +127,12 @@ def process_run_measured(payload: dict) -> dict:
             _gen = torch.Generator()
             _gen.manual_seed(int(_seed))
 
-        sample_indices = torch.multinomial(
+        return torch.multinomial(
             probs.float(), num_samples=payload.get("n_shots", 1024),
             replacement=True, generator=_gen,
         ).numpy()
 
-        # Histogram built inside the timed window, matching this runner's existing
-        # boundary. Runners disagree on whether this bookkeeping is simulation work;
-        # each one's original choice is preserved rather than silently normalised.
+    def shape_counts(sample_indices, compiled, _payload):
         fmt = f"{{:0{compiled.n_qubits}b}}"
         counts: dict[str, int] = {}
         for idx in sample_indices:
@@ -144,7 +142,7 @@ def process_run_measured(payload: dict) -> dict:
 
     return run_measured_job(
         simulator="torchquantum", payload=payload, logger=logger, compile_fn=_compile,
-        execute_fn=execute, qubit_ordering="msb")
+        execute_fn=execute, postprocess_fn=shape_counts, qubit_ordering="msb")
 
 
 register_runner_endpoints(app, process_run, process_run_measured)
