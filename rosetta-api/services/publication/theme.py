@@ -91,7 +91,7 @@ _AGREEMENT_GLOSSARY = [
     ("agree_directly", "Outputs match directly, no transform needed."),
     ("agree_up_to_global_phase", "Match after removing an overall (unobservable) global phase."),
     ("agree_after_bit_reversal", "Match after reversing qubit/bit order (an endianness convention)."),
-    ("agree_after_qubit_permutation", "Match after a bounded qubit permutation (≤6 qubits)."),
+    ("agree_after_qubit_permutation", "Match after a bounded qubit permutation (≤7 qubits)."),
     ("residual_disagreement", "Statevector disagreement not explained by any registered transform."),
     ("distance_within_threshold", "Measured distributions within the JS/Hellinger thresholds "
      "(heuristic, configurable; the shot-noise statistical test is the rigorous verdict)."),

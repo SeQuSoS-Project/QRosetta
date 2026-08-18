@@ -205,7 +205,7 @@
                         <tr><td><code>agree_directly</code></td><td>Outputs match directly, no transform needed.</td></tr>
                         <tr><td><code>agree_up_to_global_phase</code></td><td>Match after removing an overall (unobservable) global phase.</td></tr>
                         <tr><td><code>agree_after_bit_reversal</code></td><td>Match after reversing qubit/bit order (an endianness convention).</td></tr>
-                        <tr><td><code>agree_after_qubit_permutation</code></td><td>Match after a bounded qubit permutation (≤&nbsp;6 qubits).</td></tr>
+                        <tr><td><code>agree_after_qubit_permutation</code></td><td>Match after a bounded qubit permutation (≤&nbsp;7 qubits).</td></tr>
                         <tr><td><code>residual_disagreement</code></td><td>Disagreement <em>not</em> explained by any registered transform.</td></tr>
                         <tr><td><code>not_comparable</code></td><td>At least one side lacks usable output; the pair cannot be compared.</td></tr>
                     </tbody>
@@ -216,7 +216,7 @@
                     <tbody>
                         <tr><td><code>distance_within_threshold</code></td><td>Distributions within the JS/Hellinger thresholds.</td></tr>
                         <tr><td><code>agree_after_bit_reversal</code></td><td>Match after reversing bit order.</td></tr>
-                        <tr><td><code>agree_after_qubit_permutation</code></td><td>Match after a bounded qubit permutation (≤&nbsp;6 qubits).</td></tr>
+                        <tr><td><code>agree_after_qubit_permutation</code></td><td>Match after a bounded qubit permutation (≤&nbsp;7 qubits).</td></tr>
                         <tr><td><code>distance_exceeds_threshold</code></td><td>Distributions still differ after every registered transform.</td></tr>
                         <tr><td><code>not_comparable</code></td><td>At least one side lacks usable output.</td></tr>
                     </tbody>
@@ -333,7 +333,7 @@
                         cut-offs are configurable and depend on the shot count. The statistical test described
                         above is the more rigorous companion to these thresholds.</li>
                     <li><strong>Permutation search is bounded.</strong> Exhaustive qubit-permutation matching is
-                        capped at 6 qubits. Larger cases report that the cap was hit rather than attempting an
+                        capped at 7 qubits. Larger cases report that the cap was hit rather than attempting an
                         exhaustive search.</li>
                     <li><strong>A "residual disagreement" label is a starting point for investigation.</strong>
                         It means that none of the registered conventions explained the difference. The

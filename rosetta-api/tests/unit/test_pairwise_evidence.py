@@ -4,6 +4,7 @@ import json
 import math
 
 from services.analysis.divergence import (
+    MAX_EXHAUSTIVE_QUBIT_PERMUTATION_QUBITS,
     _bh_adjust,
     _shots_per_backend_for_target_power,
     create_counts_report,
@@ -135,7 +136,9 @@ def test_statevector_pairwise_evidence_labels_bounded_qubit_permutation():
 
 
 def test_statevector_pairwise_evidence_reports_permutation_not_attempted_above_cap():
-    vector = ["0"] * 128
+    """One qubit above the cap, the search must decline rather than run n! transposes."""
+    over_cap = MAX_EXHAUSTIVE_QUBIT_PERMUTATION_QUBITS + 1
+    vector = ["0"] * (2 ** over_cap)
     vector[0] = "1"
 
     report = create_divergence_report([
@@ -147,7 +150,24 @@ def test_statevector_pairwise_evidence_reports_permutation_not_attempted_above_c
     assert evidence["agreement"] == "agree_directly"
     assert evidence["metrics"]["qubit_permutation"]["attempted"] is False
     assert evidence["metrics"]["qubit_permutation"]["reason"] == "too_many_qubits"
-    assert evidence["metrics"]["qubit_permutation"]["n_qubits"] == 7
+    assert evidence["metrics"]["qubit_permutation"]["n_qubits"] == over_cap
+
+
+def test_statevector_pairwise_evidence_attempts_permutation_at_the_cap():
+    """At exactly the cap the search must run, so the cap is inclusive as documented."""
+    at_cap = MAX_EXHAUSTIVE_QUBIT_PERMUTATION_QUBITS
+    vector = ["0"] * (2 ** at_cap)
+    vector[0] = "1"
+
+    report = create_divergence_report([
+        {"simulator": "a", "statevector": vector, "qubit_ordering": "msb"},
+        {"simulator": "b", "statevector": vector, "qubit_ordering": "msb"},
+    ])
+
+    permutation = _record(report, "a", "b")["metrics"]["qubit_permutation"]
+    assert permutation["attempted"] is True
+    assert permutation["reason"] is None
+    assert permutation["n_qubits"] == at_cap
 
 
 def test_statevector_pairwise_evidence_labels_residual_when_current_registered_modes_do_not_explain():

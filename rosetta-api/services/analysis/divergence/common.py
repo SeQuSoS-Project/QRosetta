@@ -11,8 +11,11 @@ STAT_TEST_TARGET_POWER = 0.8
 # Total-variation effect size the budget is sized to detect.
 STAT_TEST_DELTA_TV = 0.05
 
-# Above this qubit count the exhaustive permutation search is not attempted.
-MAX_EXHAUSTIVE_QUBIT_PERMUTATION_QUBITS = 6
+# Above this qubit count the exhaustive permutation search is not attempted. The search is
+# n! transposes over a 2^n vector, so the cost per pair rises about sixfold per qubit:
+# measured over a 91-pair (14-backend) comparison it is 2.8s at 6, 17s at 7 and 141s at 8.
+# 7 is the last affordable step.
+MAX_EXHAUSTIVE_QUBIT_PERMUTATION_QUBITS = 7
 
 
 def _json_float(value):
