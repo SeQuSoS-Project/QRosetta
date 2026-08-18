@@ -10,14 +10,14 @@
 
 import { generateCircuit, handleRun, runBatchQueue, toggleBatchMode, toggleSingleMode } from './app.js';
 import { closeAuthModal, handleDeleteAccount, handleLoginSubmit, handleLogout, handleRegisterSubmit, openAuthModal, toggleAuthMode } from './auth.js';
-import { addToBatch, applyPreset, clearBatch, closeGeneratorModal, openGeneratorModal, runAutoGeneration, togglePlaylist } from './batch.js';
+import { addToBatch, applyPreset, clearBatch, closeGeneratorModal, importPlaylist, openGeneratorModal, runAutoGeneration, togglePlaylist } from './batch.js';
 import { addBenchmarkToBatch, bmAddAllOfSuite, bmAddSelectedToBatch, bmRenderChecklist, bmToggleSelectAll, loadBenchmark, toggleBenchSuite } from './benchmarks_select.js';
 import { setAllOptLevels, toggleConfigPanel } from './config.js';
 import { closeDrawers, toggleBenchPanel } from './drawers.js';
 import { downloadExperimentBundle, runExperiment, toggleExperimentMode } from './experiment.js';
 import { closeHistoryModal, deleteSelectedHistory, downloadSelectedHistory, openHistoryModal, toggleSelectAllHistory } from './history.js';
-import { renderSuiteSummary } from './renderers.js';
-import { closeVisualizer, copyCircuitQasm, copyRawJson, downloadFullReport, downloadRawJson, exportPlaylist, exportQasm, exportRoCrate, generateAndVisualize, importPlaylist, importQasm, resetAgreementThresholds, togglePublicationOptions } from './utils.js';
+import { closeVisualizer, copyRawJson, downloadRawJson, generateAndVisualize, renderSuiteSummary } from './renderers.js';
+import { copyCircuitQasm, downloadFullReport, exportPlaylist, exportQasm, exportRoCrate, importQasm, resetAgreementThresholds, togglePublicationOptions } from './utils.js';
 
 // Imported for their side effects (state store, bootstrap, render registration).
 import './api.js';
@@ -46,6 +46,7 @@ Object.assign(window, {
     applyPreset,
     clearBatch,
     closeGeneratorModal,
+    importPlaylist,
     openGeneratorModal,
     runAutoGeneration,
     togglePlaylist,
@@ -74,18 +75,17 @@ Object.assign(window, {
     openHistoryModal,
     toggleSelectAllHistory,
     // renderers.js
+    closeVisualizer,
+    copyRawJson,
+    downloadRawJson,
+    generateAndVisualize,
     renderSuiteSummary,
     // utils.js
-    closeVisualizer,
     copyCircuitQasm,
-    copyRawJson,
     downloadFullReport,
-    downloadRawJson,
     exportPlaylist,
     exportQasm,
     exportRoCrate,
-    generateAndVisualize,
-    importPlaylist,
     importQasm,
     resetAgreementThresholds,
     togglePublicationOptions,

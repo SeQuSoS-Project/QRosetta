@@ -4,7 +4,7 @@
 // them without importing each other.
 
 import { getRunnerOptInfo } from './config.js';
-import { parseRunnerKey } from './utils.js';
+import { parseRunnerKey } from './runner_key.js';
 
 export const METRIC_DEFINITIONS = {
     "compilation": "<b>Compilation Time:</b> Time taken to parse QASM, apply transforms (e.g. Rebase), and convert to the backend's native format. A uniform, disclosed warm-up run precedes every timed measurement (same for all backends), so this excludes one-time import/JIT overhead.",

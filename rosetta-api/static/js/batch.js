@@ -198,6 +198,47 @@ export function clearBatch() {
     renderBatchQueue();
 }
 
+// Coerce one imported playlist entry to the fields the batch runner reads, so an
+// uploaded file cannot introduce unexpected types or extra keys into the queue.
+export function _normalizePlaylistItem(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const str = (v) => (v === undefined || v === null ? '' : String(v));
+    const qubits = Number.parseInt(raw.qubits, 10);
+    return {
+        name: str(raw.name),
+        algorithm: str(raw.algorithm),
+        source: str(raw.source),
+        qasm_string: str(raw.qasm_string),
+        qubits: Number.isFinite(qubits) ? qubits : 0,
+    };
+}
+
+export function importPlaylist(inputElement) {
+    const file = inputElement.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        try {
+            const loaded = JSON.parse(String(e.target.result));
+            if (Array.isArray(loaded)) {
+                const items = loaded.map(_normalizePlaylistItem).filter(Boolean);
+                if (items.length !== loaded.length) {
+                    alert(`Skipped ${loaded.length - items.length} malformed playlist entries.`);
+                }
+                dispatch('SET_BATCH_QUEUE', items);
+                renderBatchQueue();
+            } else {
+                alert("Invalid playlist file format. Expected a JSON array.");
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Error reading file: " + err.message);
+        }
+        inputElement.value = '';
+    };
+    reader.readAsText(file);
+}
+
 export function openGeneratorModal() {
     const list = document.getElementById('gen-algo-list');
     if (list && list.children.length === 0) {

@@ -2,11 +2,12 @@
 
 import { backButtonContainer, jsonOutput, panelElements, tabNav, welcomeMessage } from './dom.js';
 
+import { BASE_URL, getAuthHeaders } from './api.js';
 import { renderArtifactsPanel } from './artifacts_renderer.js';
-import { _applyLegendDots, _cloneTemplate, _makeStatusBadge, getOptBadge, renderTooltip } from './render_helpers.js';
+import { _applyLegendDots, _cloneTemplate, _makeStatusBadge } from './render_helpers.js';
 import { getState } from './state.js';
 import { renderAgreementPanel, renderDivergenceTables, renderRankingTable } from './tables_renderer.js';
-import { _escapeHtml, isConnectionError } from './utils.js';
+import { _escapeHtml, copyText, downloadBlob, isConnectionError } from './utils.js';
 
 export function clearReport() {
     welcomeMessage.classList.add('hidden');
@@ -380,4 +381,95 @@ export function viewDetail(index) {
     clearReport();
     backButtonContainer.classList.remove('hidden');
     renderDetailReport(item, `Detail: ${fname}`, getState().currentRunnerConfig);
+}
+
+export function copyRawJson(btn) {
+    _renderRawTabIfNeeded();
+    copyText(jsonOutput.textContent, btn);
+}
+
+export function downloadRawJson() {
+    _renderRawTabIfNeeded();
+    const jsonString = jsonOutput.textContent;
+    if (!jsonString || jsonString.trim() === '') {
+        alert("No JSON content to download.");
+        return;
+    }
+    downloadBlob(new Blob([jsonString], { type: 'application/json' }), "rosetta_raw_report.json");
+}
+
+export function showVisualizerTab() {
+    const welcome = document.getElementById('welcome-message');
+    if (welcome) welcome.classList.add('hidden');
+    Object.values(panelElements).forEach(panel => {
+        if (panel) panel.classList.add('hidden');
+    });
+    if (panelElements['visualizer']) panelElements['visualizer'].classList.remove('hidden');
+
+    const tabNavEl = document.getElementById('tab-nav');
+    if (tabNavEl) {
+        tabNavEl.querySelectorAll('button').forEach(btn => {
+            btn.classList.remove('border-blue-600', 'text-blue-600');
+            btn.classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-700');
+        });
+    }
+}
+
+export async function generateAndVisualize() {
+    const qasmText = document.getElementById('qasm-input').value;
+    if (!qasmText || qasmText.trim() === '') {
+        alert("No QASM code to visualize.");
+        return;
+    }
+
+    const btn = document.getElementById('btn-visualize');
+    let originalText = "📊 Visualize";
+    if (btn) {
+        originalText = btn.innerHTML;
+        btn.innerHTML = `<span class="inline-block animate-spin mr-1 border-2 border-purple-600 border-t-transparent rounded-full w-3 h-3"></span> Loading`;
+        btn.disabled = true;
+    }
+
+    try {
+        const response = await fetch(`${BASE_URL}/visualize/quirk`, {
+            method: 'POST',
+            headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ qasm_string: qasmText })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to generate visualizer URL');
+        }
+
+        document.getElementById('quirk-iframe').src = data.url;
+        showVisualizerTab();
+    } catch (err) {
+        console.error("Visualizer API Error:", err);
+        alert("Could not auto-generate Quirk visualizer for this specific circuit.\nDetails: " + err.message);
+    } finally {
+        if (btn) {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    }
+}
+
+export function closeVisualizer() {
+    if (panelElements['visualizer']) panelElements['visualizer'].classList.add('hidden');
+    const suiteData = getState().currentSuiteData;
+    if (suiteData) {
+        showTab(suiteData.benchmark_summary ? 'suite-summary' : 'summary');
+    } else {
+        const welcome = document.getElementById('welcome-message');
+        if (welcome) welcome.classList.remove('hidden');
+        const tabNavEl = document.getElementById('tab-nav');
+        if (tabNavEl) {
+            tabNavEl.querySelectorAll('button').forEach(btn => {
+                btn.classList.remove('border-blue-600', 'text-blue-600');
+                btn.classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-700');
+            });
+        }
+    }
 }

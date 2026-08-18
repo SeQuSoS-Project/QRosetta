@@ -2,8 +2,9 @@
 
 import { RUNNER_DISPLAY_NAMES } from './config.js';
 import { STATUS_STYLES, _applyLegendDots, _cloneTemplate, getOptBadge, renderTooltip } from './render_helpers.js';
+import { formatRunnerLabel } from './runner_key.js';
 import { getState } from './state.js';
-import { formatRunnerLabel, isConnectionError, makeCopyIconButton } from './utils.js';
+import { isConnectionError, makeCopyIconButton } from './utils.js';
 
 export function _makeStatusCell(styleKey, text) {
     const span = document.createElement('span');
@@ -14,7 +15,7 @@ export function _makeStatusCell(styleKey, text) {
 
 export function _displayRunnerName(key) {
     const nameMap = typeof RUNNER_DISPLAY_NAMES !== 'undefined' ? RUNNER_DISPLAY_NAMES : null;
-    return typeof formatRunnerLabel === 'function' ? formatRunnerLabel(key, nameMap) : key;
+    return formatRunnerLabel(key, nameMap);
 }
 
 export function _fillSimulatorCell(td, simulatorName, config) {

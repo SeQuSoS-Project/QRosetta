@@ -1,27 +1,10 @@
 // Frontend logic for utils functionality.
 
-// Self-comparison virtual keys look like "<simId>~opt<L>~run<N>". A plain canonical
-// id (e.g. "qiskit", "pennylane-default") parses as a single, non-multi run.
-import { allButtons, jsonOutput, loader, panelElements, tabNav } from './dom.js';
+import { allButtons } from './dom.js';
 import { BASE_URL, getAuthHeaders } from './api.js';
 
-import { renderBatchQueue } from './batch.js';
-import { _renderRawTabIfNeeded, showTab } from './renderers.js';
+import { renderBatchProgress, _stopRunnerCardTimer } from './status_cards.js';
 import { dispatch, getState } from './state.js';
-
-export function parseRunnerKey(key) {
-    const m = /^(.+)~opt(\d+)~run(\d+)$/.exec(key || '');
-    if (m) {
-        return { simId: m[1], optLevel: parseInt(m[2]), runIndex: parseInt(m[3]), isMulti: true };
-    }
-    return { simId: key, optLevel: null, runIndex: null, isMulti: false };
-}
-
-export function formatRunnerLabel(key, nameMap) {
-    const { simId, optLevel, runIndex, isMulti } = parseRunnerKey(key);
-    const base = (nameMap && nameMap[simId]) || simId;
-    return isMulti ? `${base} · L${optLevel} #${runIndex}` : base;
-}
 
 export function isConnectionError(errorMsg) {
     if (!errorMsg) return false;
@@ -53,7 +36,7 @@ export function setLoading(isLoading, message = "Processing...", options = {}) {
     if (isLoading) {
         if (overlay) {
             if (loaderText) loaderText.textContent = message;
-            if (typeof renderBatchProgress === 'function') renderBatchProgress(null);  // clear stale batch list
+            renderBatchProgress(null);  // clear stale batch list
             loader.classList.remove('hidden');
             loader.classList.add('flex');
             if (!_loaderElapsedTimer) {
@@ -89,96 +72,6 @@ export function setLoading(isLoading, message = "Processing...", options = {}) {
         const elapsedEl = document.getElementById('loader-elapsed');
         if (elapsedEl) elapsedEl.textContent = '0s elapsed';
     }
-}
-
-export const _STATUS_CFG = {
-    queued:   { color: 'bg-gray-300',    text: 'text-gray-400',   label: 'QUEUED',    pulse: false, terminal: false },
-    spawning: { color: 'bg-amber-400',   text: 'text-amber-600',  label: 'SPAWNING',  pulse: true,  terminal: false },
-    running:  { color: 'bg-blue-500',    text: 'text-blue-600',   label: 'RUNNING',   pulse: true,  terminal: false },
-    done:     { color: 'bg-green-500',   text: 'text-green-700',  label: 'DONE',      pulse: false, terminal: true  },
-    error:    { color: 'bg-red-500',     text: 'text-red-600',    label: 'ERROR',     pulse: false, terminal: true  },
-    timeout:  { color: 'bg-orange-400',  text: 'text-orange-500', label: 'TIMEOUT',   pulse: false, terminal: true  },
-};
-
-export const _RUNNER_NAMES = {
-    "qiskit": "Qiskit", "cirq": "Cirq", "qulacs": "Qulacs", "braket": "Braket",
-    "projectq": "ProjectQ", "quest": "QuEST", "pennylane-lightning": "PL Lightning",
-    "pennylane-default": "PL Default", "qsim-cirq": "qsim-Cirq", "qibo": "Qibo",
-    "qrisp": "Qrisp", "myqlm": "myQLM", "pyquil": "PyQuil",
-    "torchquantum": "TorchQuantum", "quimb": "Quimb", "cuquantum": "cuQuantum",
-};
-
-export let _runnerPhases = {};
-export let _runnerCardTimer = null;
-
-export function _startRunnerCardTimer() {
-    if (_runnerCardTimer) return;
-    _runnerCardTimer = setInterval(() => {
-        const now = Date.now();
-        for (const [simId, phase] of Object.entries(_runnerPhases)) {
-            if (phase.terminal) continue;
-            const elapsed = Math.floor((now - phase.since) / 1000);
-            const el = document.getElementById(`rsc-elapsed-${simId}`);
-            if (el) el.textContent = `${elapsed}s`;
-        }
-    }, 1000);
-}
-
-export function _stopRunnerCardTimer() {
-    if (_runnerCardTimer) { clearInterval(_runnerCardTimer); _runnerCardTimer = null; }
-    _runnerPhases = {};
-}
-
-export function updateRunnerStatuses(statuses) {
-    if (!statuses || typeof statuses !== 'object') return;
-    const grid = document.getElementById('runner-status-grid');
-    if (!grid) return;
-
-    const now = Date.now();
-
-    for (const [simId, status] of Object.entries(statuses)) {
-        const cfg = _STATUS_CFG[status] || _STATUS_CFG['queued'];
-        const name = formatRunnerLabel(simId, _RUNNER_NAMES);
-
-        const prev = _runnerPhases[simId];
-        const statusChanged = !prev || prev.status !== status;
-
-        if (statusChanged) {
-            const frozenElapsed = prev && prev.terminal ? prev.frozenElapsed
-                : prev ? Math.floor((now - prev.since) / 1000) : 0;
-            _runnerPhases[simId] = {
-                status,
-                since: now,
-                terminal: cfg.terminal,
-                frozenElapsed: cfg.terminal ? frozenElapsed : 0,
-            };
-        }
-
-        let card = document.getElementById(`rsc-${simId}`);
-
-        if (!card || statusChanged) {
-            if (!card) {
-                card = document.createElement('div');
-                card.id = `rsc-${simId}`;
-                card.className = 'flex items-center gap-2 p-2 rounded border border-gray-100 bg-gray-50 font-mono text-xs';
-                grid.appendChild(card);
-            }
-
-            const phase = _runnerPhases[simId];
-            const elapsedDisplay = cfg.terminal
-                ? `${phase.frozenElapsed}s`
-                : `<span id="rsc-elapsed-${simId}">0s</span>`;
-
-            card.innerHTML = `
-                <span class="w-2 h-2 rounded-full flex-shrink-0 ${cfg.color}${cfg.pulse ? ' animate-pulse' : ''}"></span>
-                <span class="flex-1 text-gray-700 truncate">${name}</span>
-                <span class="font-semibold tracking-widest text-[10px] ${cfg.text} mr-1">${cfg.label}</span>
-                <span class="text-gray-400 text-[10px] w-7 text-right">${elapsedDisplay}</span>
-            `;
-        }
-    }
-
-    _startRunnerCardTimer();
 }
 
 // --- Reusable copy affordances -------------------------------------------------------
@@ -218,11 +111,6 @@ export function makeCopyIconButton(getText, title = 'Copy to clipboard') {
     return btn;
 }
 
-export function copyRawJson(btn) {
-    if (typeof _renderRawTabIfNeeded === 'function') _renderRawTabIfNeeded();
-    copyText(jsonOutput.textContent, btn);
-}
-
 // Copy the current input-circuit QASM from the editor.
 export function copyCircuitQasm(btn) {
     const el = document.getElementById('qasm-input');
@@ -232,16 +120,6 @@ export function copyCircuitQasm(btn) {
 export function downloadFullReport() {
 
     window.location.href = `${BASE_URL}/download_latest_report`;
-}
-
-export function downloadRawJson() {
-    if (typeof _renderRawTabIfNeeded === 'function') _renderRawTabIfNeeded();
-    const jsonString = jsonOutput.textContent;
-    if (!jsonString || jsonString.trim() === '') {
-        alert("No JSON content to download.");
-        return;
-    }
-    downloadBlob(new Blob([jsonString], { type: 'application/json' }), "rosetta_raw_report.json");
 }
 
 export function _stripStatevectors(data) {
@@ -363,8 +241,6 @@ export async function exportRoCrate() {
     }
 }
 
-// Batch-suite progress in the compute loader: a compact done/running/queued list so the
-// user can see which circuit is running and what has finished. Hidden for single runs.
 // Global sampling seed (measured mode). Empty field => null, and the backend generates a
 // seed and records it in the report, so no run is ever un-reproducible. Never sends null-as-0.
 export function getSeed() {
@@ -393,58 +269,6 @@ export function downloadBlob(blob, filename) {
 export function _escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c =>
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-export const _BATCH_STATUS_ICON = {
-    done: ['✓', 'text-emerald-600'],
-    running: ['▶', 'text-indigo-600 animate-pulse'],
-    error: ['✕', 'text-red-600'],
-    queued: ['◦', 'text-gray-400'],
-};
-export function _batchRowMarkup(t, i) {
-    const [icon, cls] = _BATCH_STATUS_ICON[t.status] || _BATCH_STATUS_ICON.queued;
-    return `<div id="bp-row-${i}" data-status="${t.status || 'queued'}" class="flex items-center gap-2 text-xs">
-            <span class="font-mono ${cls} w-3 text-center">${icon}</span>
-            <span class="truncate text-gray-600">${_escapeHtml(t.name || '')}</span>
-        </div>`;
-}
-export function renderBatchProgress(progress) {
-    const host = document.getElementById('batch-progress');
-    if (!host) return;
-    if (!progress || !Array.isArray(progress.tasks) || !progress.tasks.length) {
-        host.classList.add('hidden');
-        host.innerHTML = '';
-        return;
-    }
-    host.classList.remove('hidden');
-    const tasks = progress.tasks;
-    const counterText = `${progress.completed || 0}/${progress.total || tasks.length}`;
-
-    // The poller calls this every few seconds; after the first build, update only the rows
-    // whose status changed (and the counter) so the list doesn't thrash the DOM or jump scroll.
-    let list = document.getElementById('batch-progress-list');
-    if (list && list.children.length === tasks.length) {
-        const counter = document.getElementById('batch-progress-counter');
-        if (counter) counter.textContent = counterText;
-        tasks.forEach((t, i) => {
-            const row = list.children[i];
-            if (row && row.dataset.status !== (t.status || 'queued')) {
-                row.outerHTML = _batchRowMarkup(t, i);
-            }
-        });
-        return;
-    }
-
-    // First build (or the task set changed): render the whole list once.
-    const prevScroll = list?.scrollTop || 0;
-    const rows = tasks.map((t, i) => _batchRowMarkup(t, i)).join('');
-    host.innerHTML = `
-        <div class="flex justify-between items-center text-[11px] font-mono text-indigo-400 mb-1">
-            <span class="uppercase tracking-widest">circuits</span>
-            <span id="batch-progress-counter">${counterText}</span>
-        </div>
-        <div id="batch-progress-list" class="max-h-48 overflow-y-auto space-y-0.5 pr-1 border-l-2 border-indigo-100 pl-2">${rows}</div>`;
-    list = document.getElementById('batch-progress-list');
-    if (list) list.scrollTop = prevScroll;
 }
 
 // Agreement thresholds from the config panel. Defaults match the backend; sent on every
@@ -485,47 +309,6 @@ export function exportPlaylist() {
     downloadBlob(new Blob([JSON.stringify(queue, null, 2)], { type: 'application/json' }), "quantum_playlist.json");
 }
 
-// Coerce one imported playlist entry to the fields the batch runner reads, so an
-// uploaded file cannot introduce unexpected types or extra keys into the queue.
-export function _normalizePlaylistItem(raw) {
-    if (!raw || typeof raw !== 'object') return null;
-    const str = (v) => (v === undefined || v === null ? '' : String(v));
-    const qubits = Number.parseInt(raw.qubits, 10);
-    return {
-        name: str(raw.name),
-        algorithm: str(raw.algorithm),
-        source: str(raw.source),
-        qasm_string: str(raw.qasm_string),
-        qubits: Number.isFinite(qubits) ? qubits : 0,
-    };
-}
-
-export function importPlaylist(inputElement) {
-    const file = inputElement.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = function (e) {
-        try {
-            const loaded = JSON.parse(String(e.target.result));
-            if (Array.isArray(loaded)) {
-                const items = loaded.map(_normalizePlaylistItem).filter(Boolean);
-                if (items.length !== loaded.length) {
-                    alert(`Skipped ${loaded.length - items.length} malformed playlist entries.`);
-                }
-                dispatch('SET_BATCH_QUEUE', items);
-                renderBatchQueue();
-            } else {
-                alert("Invalid playlist file format. Expected a JSON array.");
-            }
-        } catch (err) {
-            console.error(err);
-            alert("Error reading file: " + err.message);
-        }
-        inputElement.value = '';
-    };
-    reader.readAsText(file);
-}
-
 export function importQasm(inputElement) {
     const file = inputElement.files[0];
     if (!file) return;
@@ -556,78 +339,3 @@ export function exportQasm() {
     downloadBlob(new Blob([qasmText], { type: 'text/plain' }), fileName);
 }
 
-export function showVisualizerTab() {
-    const welcome = document.getElementById('welcome-message');
-    if (welcome) welcome.classList.add('hidden');
-    Object.values(panelElements).forEach(panel => {
-        if (panel) panel.classList.add('hidden');
-    });
-    if (panelElements['visualizer']) panelElements['visualizer'].classList.remove('hidden');
-
-    const tabNav = document.getElementById('tab-nav');
-    if (tabNav) {
-        tabNav.querySelectorAll('button').forEach(btn => {
-            btn.classList.remove('border-blue-600', 'text-blue-600');
-            btn.classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-700');
-        });
-    }
-}
-
-export async function generateAndVisualize() {
-    const qasmText = document.getElementById('qasm-input').value;
-    if (!qasmText || qasmText.trim() === '') {
-        alert("No QASM code to visualize.");
-        return;
-    }
-
-    const btn = document.getElementById('btn-visualize');
-    let originalText = "📊 Visualize";
-    if (btn) {
-        originalText = btn.innerHTML;
-        btn.innerHTML = `<span class="inline-block animate-spin mr-1 border-2 border-purple-600 border-t-transparent rounded-full w-3 h-3"></span> Loading`;
-        btn.disabled = true;
-    }
-
-    try {
-        const response = await fetch(`${BASE_URL}/visualize/quirk`, {
-            method: 'POST',
-            headers: typeof getAuthHeaders === 'function' ? getAuthHeaders({ 'Content-Type': 'application/json' }) : { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ qasm_string: qasmText })
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error(data.error || 'Failed to generate visualizer URL');
-        }
-
-        document.getElementById('quirk-iframe').src = data.url;
-        showVisualizerTab();
-    } catch (err) {
-        console.error("Visualizer API Error:", err);
-        alert("Could not auto-generate Quirk visualizer for this specific circuit.\nDetails: " + err.message);
-    } finally {
-        if (btn) {
-            btn.innerHTML = originalText;
-            btn.disabled = false;
-        }
-    }
-}
-
-export function closeVisualizer() {
-    if (panelElements['visualizer']) panelElements['visualizer'].classList.add('hidden');
-    const suiteData = getState().currentSuiteData;
-    if (suiteData) {
-        showTab(suiteData.benchmark_summary ? 'suite-summary' : 'summary');
-    } else {
-        const welcome = document.getElementById('welcome-message');
-        if (welcome) welcome.classList.remove('hidden');
-        const tabNav = document.getElementById('tab-nav');
-        if (tabNav) {
-            tabNav.querySelectorAll('button').forEach(btn => {
-                btn.classList.remove('border-blue-600', 'text-blue-600');
-                btn.classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-700');
-            });
-        }
-    }
-}

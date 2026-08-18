@@ -5,7 +5,7 @@ import { updateAuthUI, verifySession } from './auth.js';
 import { autosaveRun, initAutosave } from './autosave.js';
 import { renderBatchQueue } from './batch.js';
 import { bmLoadChecklist, populateBenchmarkSelectors } from './benchmarks_select.js';
-import { checkRunCountLimits, getRunnerConfig, getRunnerPhases, getTargetSimulators, updateContextBar } from './config.js';
+import { checkRunCountLimits, getDynamicMaxQubits, getRunnerConfig, getRunnerPhases, getTargetSimulators, updateContextBar } from './config.js';
 import { clearHistoryState, saveRunToHistory } from './history.js';
 import { clearReport, renderDetailReport, renderSuiteSummary } from './renderers.js';
 import { initDomRefs, qasmInput, setAllButtons, welcomeMessage } from './dom.js';
@@ -78,11 +78,6 @@ window.onload = async () => {
     renderBatchQueue();
     if (typeof initAutosave === 'function') initAutosave();
 };
-
-export function getDynamicMaxQubits() {
-    const mode = document.querySelector('input[name="mode-single"]:checked')?.value || 'statevector';
-    return mode === 'statevector' ? getState().maxQubitsStatevector : getState().maxQubitsMeasured;
-}
 
 export function updateQubitConstraints(e) {
     const algoId = document.getElementById('algo-select').value;

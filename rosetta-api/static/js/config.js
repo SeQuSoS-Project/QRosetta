@@ -1,10 +1,14 @@
 // Frontend logic for config functionality.
 
 import { BASE_URL } from './api.js';
-import { getDynamicMaxQubits } from './app.js';
 import { closeDrawers, isDrawerOpen, openDrawer } from './drawers.js';
 import { getState } from './state.js';
 import { _escapeHtml } from './utils.js';
+
+export function getDynamicMaxQubits() {
+    const mode = document.querySelector('input[name="mode-single"]:checked')?.value || 'statevector';
+    return mode === 'statevector' ? getState().maxQubitsStatevector : getState().maxQubitsMeasured;
+}
 
 export let _runnerOptInfo = {};
 
@@ -361,7 +365,7 @@ export function updateContextBar() {
         const qasm = qasmEl ? qasmEl.value.trim() : '';
         if (qasm) {
             const { qubits, gates } = _parseQasmStats(qasm);
-            const maxQ = typeof getDynamicMaxQubits === 'function' ? getDynamicMaxQubits() : 24;
+            const maxQ = getDynamicMaxQubits();
             statsSpan.textContent = `${qubits}q / ${gates} gates`;
             statsSpan.className = qubits > maxQ ? 'text-red-600 font-semibold' : 'text-gray-500';
         } else {

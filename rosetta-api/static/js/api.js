@@ -1,8 +1,7 @@
 // Frontend logic for api functionality.
 
-import { loader } from './dom.js';
 import { getState } from './state.js';
-import { renderBatchProgress, updateRunnerStatuses } from './utils.js';
+import { renderBatchProgress, updateRunnerStatuses } from './status_cards.js';
 
 export let BASE_URL = '';
 if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
@@ -37,9 +36,7 @@ export async function pollJobStatus(jobId) {
                     updateRunnerStatuses(data.runner_statuses);
                 }
 
-                if (typeof renderBatchProgress === 'function') {
-                    renderBatchProgress(data.progress);
-                }
+                renderBatchProgress(data.progress);
 
                 if (data.status === "completed") {
                     resolve(data.results);
