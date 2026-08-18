@@ -1,8 +1,7 @@
 // Frontend logic for tables_renderer functionality.
 
-import { backButtonContainer } from './dom.js';
 import { RUNNER_DISPLAY_NAMES } from './config.js';
-import { STATUS_STYLES, _applyLegendDots, _cloneTemplate, clearReport, getOptBadge, renderDetailReport, renderTooltip } from './renderers.js';
+import { STATUS_STYLES, _applyLegendDots, _cloneTemplate, getOptBadge, renderTooltip } from './render_helpers.js';
 import { getState } from './state.js';
 import { formatRunnerLabel, isConnectionError, makeCopyIconButton } from './utils.js';
 
@@ -795,13 +794,4 @@ export function renderAgreementPanel(report, panel, config = {}) {
     const heat = _agreementHeatmap(report, pairs, config);
     if (heat) panel.appendChild(heat);
     panel.appendChild(_agreementPairTable(pairs));
-}
-
-export function viewDetail(index) {
-    const item = getState().currentSuiteData.benchmark_summary[index];
-    const fname = item.task_name || (item.benchmark_file ? item.benchmark_file.replace('circuits/', '') : 'Unknown');
-
-    clearReport();
-    backButtonContainer.classList.remove('hidden');
-    renderDetailReport(item, `Detail: ${fname}`, getState().currentRunnerConfig);
 }
