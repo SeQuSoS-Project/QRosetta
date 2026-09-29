@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QRosetta Documentation</title>
-    <link rel="stylesheet" href="css/tailwind.css?v=1.0.28">
+    <link rel="stylesheet" href="css/tailwind.css?v=1.0.29">
     <style>
         :root { --accent: #4f46e5; }
         html { scroll-padding-top: 5rem; }
@@ -52,12 +52,15 @@
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#quickstart">Quickstart</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#circuits">Circuit sources</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#modes">Run modes</a></li>
+                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#preprocessing">Circuit preprocessing</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#batch">Batch runs and experiments</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#taxonomy">Agreement classification</a></li>
+                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#bitorder">Bit order per backend</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#stat">Shot-noise test</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#reproducibility">Reproducibility</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#methodology">Timing/memory methodology</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#reading">Reading results</a></li>
+                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#endpoints">Reports and exports</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#accounts">Accounts, history &amp; autosave</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#limits">Limitations</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#glossary">Glossary</a></li>
@@ -140,21 +143,57 @@
                     <tbody>
                         <tr>
                             <td><strong>Statevector</strong></td>
-                            <td>The full output state amplitudes (exact; no sampling).</td>
-                            <td>Fidelity and relative phase between state pairs. Exact and deterministic; no seed is needed.</td>
+                            <td>The full output state amplitudes (no sampling).</td>
+                            <td>Fidelity and relative phase between normalised state pairs. No seed is used.</td>
                         </tr>
                         <tr>
                             <td><strong>Measured</strong></td>
                             <td>A histogram of measurement outcomes over a chosen number of shots.</td>
-                            <td>Jensen–Shannon divergence and Hellinger distance between count distributions,
-                                plus a shot-noise-aware statistical test.</td>
+                            <td>Jensen–Shannon divergence (in nats) and Hellinger distance between the count
+                                distributions, each normalised by its observed total, plus a shot-noise
+                                statistical test.</td>
                         </tr>
                     </tbody>
                 </table>
                 <p>
-                    Statevector runs are limited to smaller qubit counts than measured runs, because a full
-                    statevector grows as 2<sup>n</sup>. When a circuit exceeds a backend’s limits, that pair
-                    is reported as <em>not comparable</em> rather than guessed at.
+                    Statevector runs are limited to 18 qubits and measured runs to 24, because a full
+                    statevector grows as 2<sup>n</sup>. Each backend's run ends with one of four dispatch
+                    statuses: <code>ok</code>, <code>error</code> (the backend rejected the circuit or
+                    crashed), <code>timeout</code> (the run exceeded the timeout) or <code>offline</code>
+                    (the runner could not be reached). Any pair involving a failed run is reported as
+                    <em>not comparable</em>.
+                </p>
+                <p>
+                    Each backend reports the amplitude <code>precision</code> it simulated in. Most use
+                    <code>complex128</code>; qsim, Qrisp, TorchQuantum and Cirq's measured path use
+                    <code>complex64</code>, and cuQuantum reports the precision its simulator was configured
+                    with. The report tabs show a precision badge per backend; a complex64 backend's fidelity
+                    against a complex128 one carries single-precision rounding error.
+                </p>
+            </section>
+
+            <section id="preprocessing">
+                <h2>Circuit preprocessing</h2>
+                <p>
+                    Changes to the circuit happen in two places, and both are recorded in each backend's
+                    <code>preprocessing_applied</code> list.
+                </p>
+                <ul>
+                    <li><strong>API-side</strong> (entries starting <code>API:</code>, tagged API in the
+                        UI). With <em>Apply SDK Preprocessing</em> on, the API merges several quantum registers
+                        into one in declaration order, then parses and re-emits the circuit with pytket and
+                        removes barriers. In measured mode, backends that sample natively receive the circuit
+                        with a measure-all appended when it has no measurements; this happens with
+                        preprocessing off too. With preprocessing off there is no register merge and no pytket
+                        round-trip.</li>
+                    <li><strong>Runner-side</strong>. Each backend's own passes (gate rebasing, barrier
+                        stripping, the backend's default compilation pass at every optimization level).
+                        Passes the adapter needs regardless of the setting say so in their text.</li>
+                </ul>
+                <p>
+                    The RO-Crate stores the original circuit (<code>circuit.qasm</code>), each circuit the API
+                    dispatched (<code>dispatched_circuits/</code>, one per runner group) and the circuit each
+                    backend executed (<code>transpiled_circuits/</code>).
                 </p>
             </section>
 
@@ -165,38 +204,44 @@
                     single job, in either statevector or measured mode. Circuits can be added manually, from
                     the generator, or from the Benchmarks drawer, including a whole suite at once capped by
                     qubit count. A progress indicator shows which queued circuits are done, running, or
-                    still queued. The queue itself can be exported to a JSON file and re-imported later,
-                    for a repeatable circuit set.
+                    still queued. The queue can be exported to a JSON file and re-imported later. A batch
+                    shares one master seed.
                 </p>
                 <h3>Freezing a batch as a reproducible experiment</h3>
                 <p>
                     Checking <strong>"Freeze as reproducible experiment"</strong> inside the Batch panel
-                    runs the same queued circuits over one or more <em>preprocessing axes</em>, with each
-                    backend's own preprocessing pass on, off, or both, and packages the result into a single
-                    downloadable ZIP bundle containing:
+                    runs the same queued circuits over one or more <em>preprocessing axes</em> (each
+                    backend's preprocessing on, off, or both) and packages the result into one ZIP bundle
+                    containing:
                 </p>
                 <ul>
-                    <li>The exact input QASM for every circuit, frozen at run time.</li>
-                    <li>A <strong>conformance matrix</strong> recording whether each circuit ran successfully
-                        on each backend. Every error is recorded with an <code>untriaged</code> marker, and
-                        gets classified afterwards as an adapter issue, an SDK issue, expected/by-design
-                        behavior, or a resource limit. This classification step comes before any of it is
-                        treated as a finding.</li>
-                    <li>An <strong>agreement-prevalence table</strong> summarizing how often backend pairs
-                        agreed, and by which registered transform.</li>
-                    <li>A manifest recording the git commit, executed SDK versions, and the seed(s) used, so
-                        the whole sweep can be reproduced or cited.</li>
+                    <li>The input QASM for every circuit, frozen at run time.</li>
+                    <li>A <strong>conformance matrix</strong> recording whether each circuit ran on each
+                        backend. Every error carries an <code>untriaged</code> marker for you to classify as an
+                        adapter issue, an SDK issue, by-design behaviour, or a resource limit. The software does
+                        not classify errors itself.</li>
+                    <li>An <strong>agreement-prevalence table</strong>: how many backend pairs received each
+                        agreement label.</li>
+                    <li>A manifest recording the git commit, executed SDK versions and the seeds used.</li>
                 </ul>
             </section>
 
             <section id="taxonomy">
                 <h2>Agreement classification</h2>
                 <p>
-                    Two correct simulators can produce different-looking outputs for benign reasons. The two
-                    most common causes are a different <em>qubit-ordering convention</em> (endianness) and an
-                    unobservable <em>global phase</em>. For each backend pair, QRosetta checks a fixed set of
-                    known transforms, in order from smallest to largest effect, and reports the smallest one
-                    that makes the two outputs match, along with that transform's numerical effect.
+                    Two simulators can produce different-looking outputs because of a different
+                    <em>qubit-ordering convention</em> (endianness) or an unobservable <em>global phase</em>.
+                    For each backend pair, QRosetta checks a fixed list of transforms in order and reports the
+                    first one under which the two outputs agree, with the metric before and after it.
+                </p>
+                <p>
+                    A statevector pair agrees when its fidelity, computed on normalised vectors and stored
+                    unrounded, is at least 1 − <code>fidelity_tolerance</code>. The default tolerances are
+                    <code>fidelity_tolerance = 1e-5</code>, <code>phase_tolerance = 1e-12</code> rad,
+                    <code>norm_tolerance = 1e-6</code>, <code>js_threshold = 0.01</code> nats and
+                    <code>hellinger_threshold = 0.1</code>. They can be changed in the Config drawer; the
+                    values sent are recorded in the report's run configuration and in every pair record, and
+                    the pair record's values are the ones the label was computed with.
                 </p>
                 <h3>Statevector labels</h3>
                 <table>
@@ -206,81 +251,134 @@
                         <tr><td><code>agree_up_to_global_phase</code></td><td>Match after removing an overall (unobservable) global phase.</td></tr>
                         <tr><td><code>agree_after_bit_reversal</code></td><td>Match after reversing qubit/bit order (an endianness convention).</td></tr>
                         <tr><td><code>agree_after_qubit_permutation</code></td><td>Match after a bounded qubit permutation (≤&nbsp;7 qubits).</td></tr>
-                        <tr><td><code>residual_disagreement</code></td><td>Disagreement <em>not</em> explained by any registered transform.</td></tr>
-                        <tr><td><code>not_comparable</code></td><td>At least one side lacks usable output; the pair cannot be compared.</td></tr>
+                        <tr><td><code>agree_after_normalization</code></td><td>At least one input statevector has a norm differing from 1 by more than <code>norm_tolerance</code>; the normalised vectors agree. <code>metrics.normalized_agreement</code> holds the label the normalised pair receives.</td></tr>
+                        <tr><td><code>residual_disagreement</code></td><td>Statevector disagreement not explained by any registered transform.</td></tr>
+                        <tr><td><code>not_comparable</code></td><td>At least one side lacks usable output; the pair cannot be compared. <code>metrics.reason</code> names the cause (see the <a href="#glossary">glossary</a>).</td></tr>
                     </tbody>
                 </table>
                 <h3>Measured labels</h3>
                 <table>
                     <thead><tr><th>Label</th><th>Meaning</th></tr></thead>
                     <tbody>
-                        <tr><td><code>distance_within_threshold</code></td><td>Distributions within the JS/Hellinger thresholds.</td></tr>
+                        <tr><td><code>distance_within_threshold</code></td><td>Distributions within the JS-divergence and Hellinger thresholds (descriptive; the statistical test gives the significance verdict).</td></tr>
                         <tr><td><code>agree_after_bit_reversal</code></td><td>Match after reversing bit order.</td></tr>
                         <tr><td><code>agree_after_qubit_permutation</code></td><td>Match after a bounded qubit permutation (≤&nbsp;7 qubits).</td></tr>
-                        <tr><td><code>distance_exceeds_threshold</code></td><td>Distributions still differ after every registered transform.</td></tr>
-                        <tr><td><code>not_comparable</code></td><td>At least one side lacks usable output.</td></tr>
+                        <tr><td><code>distance_exceeds_threshold</code></td><td>Distributions exceed the thresholds after every registered transform.</td></tr>
+                        <tr><td><code>not_comparable</code></td><td>At least one side lacks usable output; <code>metrics.reason</code> names the cause.</td></tr>
                     </tbody>
                 </table>
+                <p>
+                    A measured pair whose observed shot totals differ from the requested <code>n_shots</code>
+                    records both in <code>metrics.shot_total_mismatch</code>.
+                </p>
                 <div class="callout callout-note">
-                    <strong>Transforms are a labelled analysis step, applied on top of the stored data.</strong>
-                    When a pair is labelled "after bit reversal," the report shows both the raw metric and the
-                    post-transform metric, so you can see exactly what the transform changed. The stored native
-                    output for each backend stays exactly as that backend returned it.
+                    <strong>Transforms are an analysis step on top of the stored data.</strong> When a pair
+                    is labelled "after bit reversal", the report shows both the direct metric and the
+                    post-transform metric. Each backend's output is stored as that backend returned it.
                 </div>
             </section>
 
-            <section id="stat">
-                <h2>The shot-noise-aware statistical test</h2>
+            <section id="bitorder">
+                <h2>Bit order per backend</h2>
                 <p>
-                    In measured mode a fixed distance threshold is only a heuristic. With few shots, two
-                    <em>identical</em> distributions can still look far apart purely from sampling. Alongside
-                    the descriptive JS/Hellinger label, QRosetta therefore reports a shot-noise-aware test:
+                    Each result declares <code>qubit_ordering</code>: <code>msb</code> when qubit 0 is the
+                    most significant bit of the statevector index or counts bitstring, <code>lsb</code> when it
+                    is the least significant. The labels below are what each runner declares;
+                    <code>tests/integration/test_runner_contract_asymmetric.py</code> checks them against an
+                    asymmetric circuit on the live stack. The Summary tab reports whether a bit-reversed pair's declared orderings actually
+                    differ; bit reversal between two backends declaring the same ordering points to a wrong
+                    label or a defect.
+                </p>
+                <table>
+                    <thead><tr><th>Backend</th><th>Statevector</th><th>Measured</th></tr></thead>
+                    <tbody>
+                        <tr><td>Qiskit (Aer)</td><td>lsb</td><td>lsb</td></tr>
+                        <tr><td>cuQuantum</td><td>lsb</td><td>lsb</td></tr>
+                        <tr><td>Qrisp</td><td>msb</td><td>lsb</td></tr>
+                        <tr><td>Cirq, qsim, Qulacs, QuEST, PennyLane (both), Qibo, myQLM, PyQuil, TorchQuantum, quimb</td><td>msb</td><td>msb</td></tr>
+                        <tr><td>Braket, ProjectQ (disabled)</td><td>msb</td><td>msb</td></tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section id="stat">
+                <h2>The shot-noise statistical test</h2>
+                <p>
+                    In measured mode a fixed distance threshold is descriptive. With few shots, two samples
+                    of the same distribution can still differ noticeably. Alongside the JS/Hellinger label,
+                    QRosetta reports for every comparable pair:
                 </p>
                 <ul>
-                    <li>A chi-square and a G-test of homogeneity between the two count distributions;</li>
-                    <li>Benjamini–Hochberg (FDR) correction across the family of pairwise comparisons;</li>
-                    <li>Effect size (total variation, Cramér’s V) and a prospective power estimate.</li>
+                    <li>A Pearson chi-square test (no continuity correction) and a G-test of homogeneity
+                        between the two count vectors, on the transform basis the label selected;</li>
+                    <li>Benjamini–Hochberg (FDR) and Bonferroni adjusted p-values across all pairs of the
+                        run;</li>
+                    <li>Effect size (total variation, Cramér’s V) and a power estimate that uses the observed
+                        degrees of freedom (<code>power.df</code>).</li>
                 </ul>
                 <p>
-                    This produces a verdict of <code>consistent</code>, <code>distinguishable</code>,
-                    <code>inconclusive_low_shots</code>, or <code>ambiguous</code>. The verdict is reported
-                    alongside the descriptive label, and it answers a different question: whether the observed
-                    difference is statistically significant, something a fixed distance threshold cannot tell
-                    you on its own.
+                    The verdict is <code>consistent</code>, <code>distinguishable</code>,
+                    <code>inconclusive_low_shots</code> or <code>ambiguous</code>, from the BH-adjusted
+                    p-values at α&nbsp;=&nbsp;0.05. Each backend samples with its own derived seed, so two
+                    backends never draw the same shot sequence; <code>shared_seed</code> records whether a
+                    pair's runner seeds were equal.
                 </p>
             </section>
 
             <section id="reproducibility">
                 <h2>Reproducibility</h2>
-                <p>Every measured run is reproducible by construction:</p>
                 <ul>
-                    <li><strong>Every measured run has a recorded seed.</strong> Set a sampling seed in the
-                        Config drawer for an exact replay, or leave the field empty and QRosetta generates one
-                        for you and records it in the report. Statevector mode is exact and needs no seed.</li>
-                    <li><strong>Executed SDK versions are captured.</strong> Each backend reports the exact
-                        version of the SDK it ran, and this is written into the report's provenance section.</li>
-                    <li><strong>Provenance is exportable.</strong> Reports can be exported as an RO-Crate that
-                        conforms to the Process Run Crate profile, packaging inputs, per-backend results,
-                        agreement evidence, and provenance as a FAIR, citable bundle.</li>
+                    <li><strong>Seeds.</strong> Every measured run has a master seed: the one you set in the
+                        Config drawer, or one the API generates and records at <code>seed</code>. Each backend
+                        receives <code>runner_seed</code> = the first 4 bytes of
+                        <code>sha256("&lt;master seed&gt;:&lt;runner key&gt;")</code>, read big-endian, top bit
+                        cleared; the runner key includes any <code>~opt&lt;L&gt;~run&lt;N&gt;</code> suffix.
+                        The formula is recorded at <code>seed_derivation</code>. <code>seed_honoured</code> is
+                        false for a backend whose sampler ignores the seed (Braket, currently disabled).</li>
+                    <li><strong>Executed SDK versions</strong> are captured by each backend and written into
+                        the provenance.</li>
+                    <li><strong>Run configuration.</strong> Reports record the agreement thresholds sent, the
+                        timeout and its scope, the optimization levels, <code>apply_preprocessing</code>, the
+                        API-side preprocessing, the dispatched circuits, <code>started_at</code> /
+                        <code>finished_at</code>, the git commit and the runner images.</li>
+                    <li><strong>RO-Crate export.</strong> A run exports as an RO-Crate conforming to the
+                        Process Run Crate profile, with the inputs, dispatched and executed circuits, per-backend
+                        results, agreement evidence and provenance.</li>
                 </ul>
             </section>
 
             <section id="methodology">
                 <h2>Timing and memory methodology</h2>
                 <ul>
-                    <li><strong>Uniform warm-up.</strong> Every backend runs once, and that run is discarded,
-                        immediately before the timed measurement. This absorbs import time, JIT compilation,
-                        and any one-time internal caching. The same warm-up applies identically to every
-                        backend, so the reported timings are comparable.</li>
-                    <li><strong>Process peak RSS.</strong> Resources are ranked by the kernel-reported
-                        (<code>resource.getrusage</code> <code>ru_maxrss</code>) peak memory of the whole
-                        isolated run, including compilation and the warm-up. Each backend's own memory-delta
-                        and simulation-window-peak figures are also reported for continuity, but are not the
-                        ranking basis.</li>
-                    <li><strong>CPU time.</strong> User+system CPU time for the whole isolated run is reported
-                        alongside wall-clock time.</li>
-                    <li><strong>Gate count and depth.</strong> Derived from each backend's own transpiled QASM,
-                        using a greedy-layering depth definition.</li>
+                    <li><strong>One warm-up, one timed run.</strong> Each backend runs the circuit once and
+                        discards the result, then runs it once more for the reported numbers. Every timing is a
+                        single sample (<code>timing_samples = 1</code>), so run-to-run variation is not
+                        measured.</li>
+                    <li><strong>Timing windows.</strong> <code>compilation_time_sec</code> is wall clock from
+                        t0 to t1 (parse, transpile, build the native circuit); <code>simulation_time_sec</code>
+                        is wall clock from t2 to t3 (execute, return the statevector or draw the shots).
+                        Building a counts histogram from drawn shots is outside the window.</li>
+                    <li><strong>CPU time.</strong> <code>simulation_cpu_time_sec</code> is process CPU time
+                        (all threads) over t2..t3 only. <code>cpu_time_sec</code> covers the whole isolated
+                        runner process: interpreter start, SDK import, warm-up and the timed run.</li>
+                    <li><strong>Threads.</strong> Every runner is started with <code>OMP_NUM_THREADS</code>,
+                        <code>MKL_NUM_THREADS</code>, <code>OPENBLAS_NUM_THREADS</code> and
+                        <code>NUMEXPR_NUM_THREADS</code> set to 1; the values each run saw are in
+                        <code>thread_env</code>.</li>
+                    <li><strong>Memory.</strong> Memory is read from the kernel high-water mark
+                        (<code>VmHWM</code>). <code>memory_usage_mb</code> (Sim-window RSS delta) is the peak
+                        RSS minus the baseline RSS over the simulation window (pre-execute setup plus t2..t3;
+                        the high-water mark is reset when the window opens). <code>process_peak_mb</code>
+                        (Sim-window peak RSS) is the absolute peak over the same window.
+                        <code>process_peak_rss_mb</code> is the peak RSS of the simulating process over its
+                        whole life; Resources are ranked by it. <code>memory_method</code> and
+                        <code>process_peak_rss_method</code> record the method; where VmHWM is unavailable they
+                        read <code>sampled_10ms</code> (RSS polled every 10 ms, which can miss short peaks) and
+                        <code>getrusage</code> (ru_maxrss), and the UI shows a badge.</li>
+                    <li><strong>Gate count and depth</strong> come from the circuit each backend executed
+                        (its <code>transpiled_qasm</code>), using greedy layering for depth.</li>
+                    <li><strong>Rankings</strong> include only successful runs. Failed runs are listed under
+                        <code>unranked</code> with a reason, and the UI shows them after the ranked rows.</li>
                 </ul>
             </section>
 
@@ -289,18 +387,42 @@
                 <table>
                     <thead><tr><th>Tab</th><th>What it shows</th></tr></thead>
                     <tbody>
-                        <tr><td>Summary</td><td>A high-level overview of the run and which backends succeeded.</td></tr>
-                        <tr><td>Performance / Resources</td><td>Per-backend wall-clock timings and memory usage (raw, as measured by QRosetta).</td></tr>
-                        <tr><td>Divergence</td><td>The N×N fidelity / distance matrices across backends.</td></tr>
-                        <tr><td>Agreement</td><td>The explained-cause label per backend pair, with the underlying metrics, transforms, and provenance expandable per pair.</td></tr>
-                        <tr><td>Artifacts</td><td>Browse, preview, copy, and download individual publication-ready figures and tables (SVG/PNG/PDF; LaTeX/CSV/HTML/Markdown/XLSX). A backend-subset selector scopes every figure and table to any combination of backends you choose, computed in the browser with no new request to the server.</td></tr>
-                        <tr><td>Exports</td><td>The complete underlying JSON report (view, copy, or download), plus exporting the run as a FAIR RO-Crate ZIP. The ZIP can optionally bundle the same publication figures and tables (SVG/PNG/PDF; LaTeX/CSV/HTML/XLSX) directly into the archive.</td></tr>
+                        <tr><td>Summary</td><td>Failed runs grouped as Offline, Timed out and Errors; then what the pair records show. The success banner appears only when at least two backends succeeded, every pair agrees without a transform and, in measured mode, every pair's verdict is <code>consistent</code>; it states the tolerance or α that was tested. Otherwise pairs are listed by label: not explained by any transform, agree only after bit reversal (with each side's declared ordering), after a qubit permutation, after normalisation, and not comparable with its reason. A collapsible section lists per-backend precision, seeds, memory method, thread settings and preprocessing.</td></tr>
+                        <tr><td>Performance / Resources</td><td>Ranked successful runs, then the unranked runs with their status and reason. Tooltips on each column give the measurement window.</td></tr>
+                        <tr><td>Divergence</td><td>The N×N fidelity, relative-phase, JS-divergence (nats) and Hellinger matrices. A cell is green when it is within the tolerance recorded with that pair; OFF, ERR and T/O mark failed runs, n/c a pair that is not comparable. Values are unrounded: a fidelity other than 1 is printed with enough decimals to differ from 1, and non-zero values below 1e-3 in scientific notation.</td></tr>
+                        <tr><td>Agreement</td><td>The label per backend pair, with the metrics, the tolerances used, the statistical test and provenance (seeds, ordering, SDK versions, preprocessing) per pair.</td></tr>
+                        <tr><td>Artifacts</td><td>Publication figures and tables (SVG/PNG/PDF; LaTeX/CSV/HTML/Markdown/XLSX), scoped to any subset of backends in the browser.</td></tr>
+                        <tr><td>Exports</td><td>The JSON report held in the browser, the full report from the server, and the RO-Crate export (see <a href="#endpoints">Reports and exports</a>).</td></tr>
                     </tbody>
                 </table>
                 <p>
-                    A batch or experiment run shows a reduced tab set: a suite summary and the Exports tab.
-                    A batch covers many circuits at once, so the full per-circuit breakdown above doesn't
-                    apply to it.
+                    A batch or experiment run shows a suite summary and the Exports tab. The suite summary
+                    gives each circuit an agreement badge (All pairs agree, Explained / partial, Anomaly, Not
+                    compared) plus one badge per failed-run status, and the fastest and lightest successful
+                    backends.
+                </p>
+            </section>
+
+            <section id="endpoints">
+                <h2>Reports and exports</h2>
+                <p>
+                    The report sent to the browser replaces statevectors longer than 2<sup>14</sup>
+                    amplitudes (circuits over 14 qubits) with a placeholder and sets
+                    <code>statevector_omitted_for_display</code>. The server keeps the untruncated report for
+                    30 minutes after a job completes.
+                </p>
+                <table>
+                    <thead><tr><th>Endpoint</th><th>Returns</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>GET /jobs/{job_id}</code></td><td>Job status, progress and the browser copy of the report.</td></tr>
+                        <tr><td><code>GET /jobs/{job_id}/report</code></td><td>The untruncated report as JSON (the <em>Download full report</em> button). 404 if the job is unknown or expired, 409 if it has not completed.</td></tr>
+                        <tr><td><code>POST /jobs/{job_id}/export</code></td><td>An RO-Crate ZIP built from the server copy; body: <code>include_statevectors</code>, <code>author_name</code>, <code>author_affiliation</code>, <code>publication_artifacts</code>. Same 404 and 409 cases.</td></tr>
+                        <tr><td><code>POST /export</code></td><td>An RO-Crate ZIP built from a report in the request body, limited to 1 MB. Used for runs loaded from history and when the server copy has expired; it cannot include statevectors the browser copy does not hold.</td></tr>
+                    </tbody>
+                </table>
+                <p>
+                    <em>Export RO-Crate</em> uses <code>/jobs/{job_id}/export</code> for a job run in this
+                    session and offers the browser copy when the server copy has expired.
                 </p>
             </section>
 
@@ -311,7 +433,7 @@
                     the <strong>Login / Register</strong> button) enables <strong>automatic run
                     history</strong>: every completed run is saved to your account automatically, with no
                     separate "save" step. Open <strong>Your Run History</strong> to browse past runs,
-                    rename them, download their full reports, or delete them (singly or in bulk). Without
+                    rename them, download their stored reports (statevectors are removed before storage), or delete them (singly or in bulk). Without
                     an account, results exist only in your browser for that session.
                 </p>
                 <p>
@@ -326,35 +448,75 @@
             <section id="limits">
                 <h2>Limitations</h2>
                 <ul>
-                    <li><strong>Agreement between backends is a different thing from correctness.</strong>
-                        Backends agreeing does not prove they are all right, and a backend differing from the
-                        others does not prove it is wrong. QRosetta has no independent oracle to check against.</li>
-                    <li><strong>Measured-mode thresholds are heuristic.</strong> The default JS/Hellinger
-                        cut-offs are configurable and depend on the shot count. The statistical test described
-                        above is the more rigorous companion to these thresholds.</li>
+                    <li><strong>Agreement between backends is not correctness.</strong> Backends agreeing
+                        does not show they are all right, and a backend differing from the others does not
+                        show it is wrong. QRosetta has no independent reference to check against.</li>
+                    <li><strong>Measured-mode thresholds are descriptive.</strong> The JS/Hellinger cut-offs
+                        are configurable and depend on the shot count; the statistical test gives the
+                        significance verdict.</li>
                     <li><strong>Permutation search is bounded.</strong> Exhaustive qubit-permutation matching is
-                        capped at 7 qubits. Larger cases report that the cap was hit rather than attempting an
-                        exhaustive search.</li>
-                    <li><strong>A "residual disagreement" label is a starting point for investigation.</strong>
-                        It means that none of the registered conventions explained the difference. The
-                        underlying cause could be an unregistered convention, an environment limit, or a genuine
-                        defect in a backend or its adapter, and figuring out which one requires looking at the
-                        specific case.</li>
+                        capped at 7 qubits. Larger cases report <code>too_many_qubits</code> instead of
+                        searching.</li>
+                    <li><strong>Timings are single samples.</strong> One warm-up and one timed run per backend;
+                        no repeat statistics are reported by default.</li>
+                    <li><strong>A residual disagreement is a starting point for investigation.</strong> None
+                        of the registered transforms explained the difference. The cause could be an
+                        unregistered convention, an environment limit, or a defect in a backend or its adapter.</li>
                 </ul>
             </section>
 
             <section id="glossary">
                 <h2>Glossary</h2>
                 <h3>Agreement classes</h3>
-                <p>See the label tables in <a href="#taxonomy">Agreement classification</a> above.</p>
+                <p>See the label tables in <a href="#taxonomy">Agreement classification</a>.</p>
+                <h3>Not-comparable reasons (<code>metrics.reason</code>)</h3>
+                <table>
+                    <thead><tr><th>Reason</th><th>Meaning</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>missing_statevector</code></td><td>A run returned no statevector.</td></tr>
+                        <tr><td><code>statevector_parse_error</code></td><td>A returned statevector could not be decoded.</td></tr>
+                        <tr><td><code>empty_statevector</code></td><td>A statevector has no amplitudes.</td></tr>
+                        <tr><td><code>nonfinite_statevector</code></td><td>A statevector contains NaN or infinite amplitudes.</td></tr>
+                        <tr><td><code>zero_norm_statevector</code></td><td>A statevector has norm 0.</td></tr>
+                        <tr><td><code>shape_mismatch</code></td><td>The two statevectors have different lengths.</td></tr>
+                        <tr><td><code>missing_counts</code></td><td>A run returned no counts.</td></tr>
+                        <tr><td><code>empty_counts</code></td><td>A counts dictionary is empty.</td></tr>
+                        <tr><td><code>invalid_bitstring_key</code></td><td>A counts key is not a non-empty string.</td></tr>
+                        <tr><td><code>non_numeric_counts</code></td><td>A count value is not a real number (strings and booleans included).</td></tr>
+                        <tr><td><code>nonfinite_counts</code></td><td>A count value is NaN or infinite.</td></tr>
+                        <tr><td><code>negative_counts</code></td><td>A count value is negative.</td></tr>
+                        <tr><td><code>zero_total_counts</code></td><td>A counts dictionary sums to 0.</td></tr>
+                        <tr><td><code>nonfinite_metric</code></td><td>A distance metric evaluated to NaN or infinity.</td></tr>
+                        <tr><td><code>comparison_error</code></td><td>The comparison raised an exception; <code>metrics.details.error</code> holds the message.</td></tr>
+                    </tbody>
+                </table>
                 <h3>Statistical verdicts (measured mode)</h3>
                 <table>
                     <thead><tr><th>Verdict</th><th>Meaning</th></tr></thead>
                     <tbody>
-                        <tr><td><code>consistent</code></td><td>The shot-noise test finds no significant difference (after FDR correction).</td></tr>
-                        <tr><td><code>distinguishable</code></td><td>Both tests find a significant difference after FDR correction.</td></tr>
+                        <tr><td><code>consistent</code></td><td>Neither the chi-square test nor the G-test is significant after BH (FDR) correction.</td></tr>
+                        <tr><td><code>distinguishable</code></td><td>Both tests are significant after BH (FDR) correction.</td></tr>
                         <tr><td><code>inconclusive_low_shots</code></td><td>Expected counts too low for a reliable test.</td></tr>
-                        <tr><td><code>ambiguous</code></td><td>The chi-square and G-test disagree (rare).</td></tr>
+                        <tr><td><code>ambiguous</code></td><td>Exactly one of the chi-square test and the G-test is significant after BH (FDR) correction.</td></tr>
+                    </tbody>
+                </table>
+                <h3>Unranked reasons (Performance / Resources)</h3>
+                <table>
+                    <thead><tr><th>Reason</th><th>Meaning</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>runner_error</code></td><td>The run returned an error.</td></tr>
+                        <tr><td><code>missing_timing</code></td><td>The run returned no <code>execution_time_sec</code>.</td></tr>
+                        <tr><td><code>missing_process_peak_rss</code></td><td>The run returned no <code>process_peak_rss_mb</code>.</td></tr>
+                    </tbody>
+                </table>
+                <h3>Run statuses</h3>
+                <table>
+                    <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+                    <tbody>
+                        <tr><td>Offline</td><td>The runner could not be reached (infrastructure).</td></tr>
+                        <tr><td>Error</td><td>The backend rejected the circuit or crashed.</td></tr>
+                        <tr><td>Timeout</td><td>The run exceeded the timeout.</td></tr>
+                        <tr><td>Anomaly</td><td>Results exist, but a pair disagrees after every registered transform, or the shot-noise test finds it distinguishable.</td></tr>
                     </tbody>
                 </table>
             </section>
@@ -363,24 +525,24 @@
                 <h2>FAQ</h2>
                 <h3>Why would two correct simulators disagree?</h3>
                 <p>
-                    Usually because of a convention difference rather than an error, such as a different
-                    qubit-ordering (endianness) or an unobservable global phase. The agreement classification
-                    above exists to name these specific causes, so that a benign convention difference is
-                    identified rather than mistaken for a defect.
+                    Usually because of a convention: a different qubit ordering or an unobservable global
+                    phase. The agreement classification names these causes so that a convention difference
+                    is reported as such.
                 </p>
                 <h3>Is a "distance exceeds threshold" pair a bug?</h3>
                 <p>
-                    It means the difference survived every registered transform, and in measured mode it may
-                    also be statistically significant. That result is worth investigating further. The cause
-                    could be an unregistered convention, a resource limit, or a genuine defect in a backend or
-                    its adapter. QRosetta gives you the evidence needed to investigate; determining the actual
-                    cause requires looking at that specific case.
+                    It means the difference survived every registered transform; check the pair's
+                    statistical verdict to see whether it is also significant. The cause could be an
+                    unregistered convention, a resource limit, or a defect in a backend or its adapter.
+                    Determining which needs a look at the specific case.
                 </p>
                 <h3>Does QRosetta modify a backend's output?</h3>
                 <p>
-                    No. Native outputs are stored exactly as each backend returned them. Bit-reversal, phase
-                    alignment, and permutation matching are analysis steps that run separately and get reported
-                    with their numerical effect, alongside the untouched native result.
+                    No. Outputs are stored as each backend returned them. Bit reversal, phase alignment and
+                    permutation matching are analysis steps reported with their numerical effect. The
+                    <em>input</em> circuit can be changed before dispatch; every such change is listed in
+                    <code>preprocessing_applied</code> (see <a href="#preprocessing">Circuit
+                    preprocessing</a>).
                 </p>
             </section>
         </main>

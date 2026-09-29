@@ -1,4 +1,5 @@
-// Frontend logic for utils functionality.
+// Shared UI utilities: loading overlay, clipboard, downloads, report and RO-Crate export,
+// agreement-threshold inputs, seed input, and QASM/playlist import/export.
 
 import { allButtons } from './dom.js';
 import { BASE_URL, getAuthHeaders } from './api.js';
@@ -6,26 +7,10 @@ import { BASE_URL, getAuthHeaders } from './api.js';
 import { renderBatchProgress, _stopRunnerCardTimer } from './status_cards.js';
 import { dispatch, getState } from './state.js';
 
-export function isConnectionError(errorMsg) {
-    if (!errorMsg) return false;
-    const msg = errorMsg.toLowerCase();
-    return msg.includes("connection refused") ||
-        msg.includes("name or service not known") ||
-        msg.includes("failed to connect") ||
-        msg.includes("failed to fetch") ||
-        msg.includes("load resource") ||
-        msg.includes("failed to get response") ||
-        msg.includes("502 bad gateway") ||
-        msg.includes("service unavailable") ||
-        msg.includes("failed to decode json");
-}
-
 export let _loaderElapsedTimer = null;
 
-// options.overlay (default true): when true, show the full results-panel processing
-// overlay (used by actual benchmark runs). When false, show only a small busy toast so
-// circuit-prep actions (generate / preset / auto-gen / benchmark fetch) don't blank out
-// any result already displayed on the right.
+/** Show or hide the busy state. options.overlay=false shows a small toast instead of the
+ * full results-panel overlay, so a displayed report stays visible. */
 export function setLoading(isLoading, message = "Processing...", options = {}) {
     const overlay = options.overlay !== false;
     const loader = document.getElementById('loader');
@@ -36,7 +21,7 @@ export function setLoading(isLoading, message = "Processing...", options = {}) {
     if (isLoading) {
         if (overlay) {
             if (loaderText) loaderText.textContent = message;
-            renderBatchProgress(null);  // clear stale batch list
+            renderBatchProgress(null);
             loader.classList.remove('hidden');
             loader.classList.add('flex');
             if (!_loaderElapsedTimer) {
@@ -74,7 +59,6 @@ export function setLoading(isLoading, message = "Processing...", options = {}) {
     }
 }
 
-// --- Reusable copy affordances -------------------------------------------------------
 export const COPY_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>';
 
 export function _flashCopied(btn) {
@@ -101,7 +85,7 @@ export async function copyImageToClipboard(blob, btn) {
     }
 }
 
-// Build a small copy-icon button. `getText` may be a string or a () => string.
+/** A small copy-icon button; `getText` is a string or a () => string. */
 export function makeCopyIconButton(getText, title = 'Copy to clipboard') {
     const btn = document.createElement('button');
     btn.className = 'inline-flex items-center gap-1 text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-md px-2 py-1 transition-all';
@@ -111,15 +95,9 @@ export function makeCopyIconButton(getText, title = 'Copy to clipboard') {
     return btn;
 }
 
-// Copy the current input-circuit QASM from the editor.
 export function copyCircuitQasm(btn) {
     const el = document.getElementById('qasm-input');
     if (el) copyText(el.value || '', btn);
-}
-
-export function downloadFullReport() {
-
-    window.location.href = `${BASE_URL}/download_latest_report`;
 }
 
 export function _stripStatevectors(data) {
@@ -143,8 +121,8 @@ export function togglePublicationOptions() {
     if (opts) opts.classList.toggle('hidden', !enabled);
 }
 
+/** The publication-artifact selection, or null unless the checkbox is on and a category is selected. */
 export function _readPublicationSelection() {
-    // Returns null (omitted) unless the master checkbox is on and >=1 category selected.
     if (!document.getElementById('pub-enable')?.checked) return null;
     const vals = (sel) => Array.from(document.querySelectorAll(sel))
         .filter(el => el.checked).map(el => el.value);
@@ -159,6 +137,80 @@ export function _readPublicationSelection() {
     };
 }
 
+const JOB_REPORT_TTL_MIN = 30;
+const DISPLAY_SV_MAX_QUBITS = 14;
+const EXPORT_UPLOAD_LIMIT_BYTES = 1000000;
+
+const EXPIRED_TEXT = `The server keeps a job's full report for ${JOB_REPORT_TTL_MIN} minutes after it completes, and this job's copy is no longer there (expired, or the server restarted).`;
+/** What the browser-held copy of a report lacks. */
+function _browserCopyText(results) {
+    if (results && results.statevector_storage === 'removed_before_storage') {
+        return 'This report was stored without statevectors.';
+    }
+    return `The copy held in this browser does not include statevectors of circuits over ${DISPLAY_SV_MAX_QUBITS} qubits.`;
+}
+
+/** Job id of the report on screen when it came from a job run in this session, else null. */
+function _liveJobId() {
+    return getState().currentJobId || null;
+}
+
+async function _errorDetail(response) {
+    const body = await response.json().catch(() => null);
+    return (body && (body.detail || body.error)) || response.statusText || `HTTP ${response.status}`;
+}
+
+function _filenameFrom(response, fallback) {
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="?(.+?)"?$/);
+    return match ? match[1] : fallback;
+}
+
+/** Download the server's untruncated report for the current job (GET /jobs/{id}/report). */
+export async function downloadFullReport() {
+    const jobId = _liveJobId();
+    if (!jobId) {
+        alert(`This report was not produced by a job in this session, so the server holds no full copy of it. Use "Download displayed JSON". ${_browserCopyText(getState().currentSuiteData)}`);
+        return;
+    }
+    try {
+        const res = await fetch(`${BASE_URL}/jobs/${encodeURIComponent(jobId)}/report`, { headers: getAuthHeaders() });
+        if (res.status === 404) {
+            alert(`${EXPIRED_TEXT} Use "Download displayed JSON" instead. ${_browserCopyText(getState().currentSuiteData)}`);
+            return;
+        }
+        if (res.status === 409) {
+            alert(`The server has no full report for this job: ${await _errorDetail(res)}`);
+            return;
+        }
+        if (!res.ok) throw new Error(await _errorDetail(res));
+        downloadBlob(await res.blob(), _filenameFrom(res, `qrosetta_report_${jobId.slice(0, 8)}.json`));
+    } catch (err) {
+        console.error("Full report download failed:", err);
+        alert("Download failed: " + err.message);
+    }
+}
+
+/** POST /export with the report held in the browser; null if the user cancels. */
+async function _exportBrowserCopy(results, options) {
+    let body = JSON.stringify({
+        ...options,
+        results: options.include_statevectors ? results : _stripStatevectors(results),
+    });
+    if (options.include_statevectors && new Blob([body]).size > EXPORT_UPLOAD_LIMIT_BYTES) {
+        const ok = confirm("With statevectors, this report is larger than the 1 MB upload limit for exporting data held in the browser.\n\nExport it without statevectors?");
+        if (!ok) return null;
+        body = JSON.stringify({ ...options, include_statevectors: false, results: _stripStatevectors(results) });
+    }
+    return fetch(`${BASE_URL}/export`, {
+        method: 'POST',
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+        body,
+    });
+}
+
+/** Export the report as an RO-Crate ZIP: from the server copy for a live job
+ * (POST /jobs/{id}/export), else from the browser copy (POST /export). */
 export async function exportRoCrate() {
     const results = getState().currentSuiteData;
     if (!results) {
@@ -166,33 +218,13 @@ export async function exportRoCrate() {
         return;
     }
 
-    const includeStatevectors = document.getElementById('export-include-sv')?.checked || false;
-    const authorName = document.getElementById('export-author-name')?.value.trim() || null;
-    const authorAffiliation = document.getElementById('export-author-affiliation')?.value.trim() || null;
-    const publicationArtifacts = _readPublicationSelection();
-
-    // Strip statevectors client-side unless explicitly requested, so the request body
-    // stays well under the 1MB upload limit (statevector runs can be many MB otherwise).
-    let payloadResults = includeStatevectors ? results : _stripStatevectors(results);
-    let finalIncludeSv = includeStatevectors;
-
-    const tempBody = JSON.stringify({
+    const options = {
         format: 'ro-crate',
-        include_statevectors: includeStatevectors,
-        author_name: authorName,
-        author_affiliation: authorAffiliation,
-        publication_artifacts: publicationArtifacts,
-        results: payloadResults,
-    });
-
-    if (includeStatevectors && tempBody.length > 1000000) {
-        alert("Statevector exceeds the 1MB upload limit. The RO-Crate will be downloaded without it, but your complete statevector will be downloaded simultaneously as a separate JSON file directly from your browser.");
-        payloadResults = _stripStatevectors(results);
-        finalIncludeSv = false;
-        
-        // Trigger local download of full json asynchronously so it doesn't block
-        setTimeout(() => downloadFullReport(), 500);
-    }
+        include_statevectors: document.getElementById('export-include-sv')?.checked || false,
+        author_name: document.getElementById('export-author-name')?.value.trim() || null,
+        author_affiliation: document.getElementById('export-author-affiliation')?.value.trim() || null,
+        publication_artifacts: _readPublicationSelection(),
+    };
 
     const btn = document.getElementById('btn-export-rocrate');
     let originalText = '';
@@ -203,33 +235,32 @@ export async function exportRoCrate() {
     }
 
     try {
-        const response = await fetch(`${BASE_URL}/export`, {
-            method: 'POST',
-            headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-            body: JSON.stringify({
-                format: 'ro-crate',
-                include_statevectors: finalIncludeSv,
-                author_name: authorName,
-                author_affiliation: authorAffiliation,
-                publication_artifacts: publicationArtifacts,
-                results: payloadResults,
-            })
-        });
+        let response = null;
+        const jobId = _liveJobId();
+        if (jobId) {
+            response = await fetch(`${BASE_URL}/jobs/${encodeURIComponent(jobId)}/export`, {
+                method: 'POST',
+                headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify(options),
+            });
+            if (response.status === 404 || response.status === 409) {
+                const why = response.status === 404
+                    ? EXPIRED_TEXT
+                    : `The server has no exportable copy of this job: ${await _errorDetail(response)}`;
+                if (!confirm(`${why}\n\nExport the copy held in this browser instead? ${_browserCopyText(results)}`)) return;
+                response = null;
+            }
+        }
+        if (!response) response = await _exportBrowserCopy(results, options);
+        if (!response) return;
 
         if (!response.ok) {
             if (response.status === 413) {
-                throw new Error("Results too large to export with statevectors. Uncheck 'include statevectors' and try again.");
+                throw new Error("The report is larger than the 1 MB upload limit. Uncheck 'Include raw statevectors' and try again.");
             }
-            const errData = await response.json().catch(() => ({ detail: response.statusText }));
-            throw new Error(errData.detail || errData.error || `HTTP ${response.status}`);
+            throw new Error(await _errorDetail(response));
         }
-
-        const blob = await response.blob();
-        const disposition = response.headers.get('Content-Disposition') || '';
-        const filenameMatch = disposition.match(/filename="?(.+?)"?$/);
-        const filename = filenameMatch ? filenameMatch[1] : `rosetta-export.zip`;
-
-        downloadBlob(blob, filename);
+        downloadBlob(await response.blob(), _filenameFrom(response, 'rosetta-export.zip'));
     } catch (err) {
         console.error("RO-Crate export failed:", err);
         alert("Export failed: " + err.message);
@@ -241,8 +272,7 @@ export async function exportRoCrate() {
     }
 }
 
-// Global sampling seed (measured mode). Empty field => null, and the backend generates a
-// seed and records it in the report, so no run is ever un-reproducible. Never sends null-as-0.
+/** The sampling seed field; empty or invalid gives null, and the API then generates and records a seed. */
 export function getSeed() {
     const el = document.getElementById('seed-input');
     if (!el) return null;
@@ -252,9 +282,6 @@ export function getSeed() {
     return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
-// Hand the browser a file. Every download in the app goes through here; six call sites
-// previously rebuilt this anchor dance, each revoking the object URL slightly differently
-// or not at all.
 export function downloadBlob(blob, filename) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -271,32 +298,36 @@ export function _escapeHtml(s) {
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-// Agreement thresholds from the config panel. Defaults match the backend; sent on every
-// run so the effective values are explicit in provenance. Returns undefined if the inputs
-// are absent (older cached HTML) so the backend falls back to its defaults.
-export const _AGREEMENT_THRESHOLD_DEFAULTS = {
-    fidelity_tolerance: 1e-12, phase_tolerance: 1e-12,
+/** Defaults of AgreementThresholds in schemas/benchmark.py (checked by
+ * tests/unit/test_threshold_defaults_sync.py). */
+export const AGREEMENT_THRESHOLD_DEFAULTS = {
+    fidelity_tolerance: 1e-5, phase_tolerance: 1e-12,
     js_threshold: 0.01, hellinger_threshold: 0.1,
 };
+
+const THRESHOLD_INPUT_IDS = {
+    fidelity_tolerance: 'th-fidelity', phase_tolerance: 'th-phase',
+    js_threshold: 'th-js', hellinger_threshold: 'th-hellinger',
+};
+
+/** Threshold values from the config panel, sent with every run; undefined if the inputs are absent. */
 export function getAgreementThresholds() {
-    const ids = { fidelity_tolerance: 'th-fidelity', phase_tolerance: 'th-phase',
-                  js_threshold: 'th-js', hellinger_threshold: 'th-hellinger' };
     const out = {};
     let anyPresent = false;
-    for (const [key, id] of Object.entries(ids)) {
-        const el = document.getElementById(id);
+    for (const [key, id] of Object.entries(THRESHOLD_INPUT_IDS)) {
+        const el = /** @type {HTMLInputElement|null} */ (document.getElementById(id));
         if (!el) continue;
         anyPresent = true;
         const v = parseFloat(el.value);
-        out[key] = (Number.isFinite(v) && v >= 0) ? v : _AGREEMENT_THRESHOLD_DEFAULTS[key];
+        out[key] = (Number.isFinite(v) && v >= 0) ? v : AGREEMENT_THRESHOLD_DEFAULTS[key];
     }
     return anyPresent ? out : undefined;
 }
+
 export function resetAgreementThresholds() {
-    const ids = { 'th-fidelity': '1e-12', 'th-phase': '1e-12', 'th-js': '0.01', 'th-hellinger': '0.1' };
-    for (const [id, val] of Object.entries(ids)) {
-        const el = document.getElementById(id);
-        if (el) el.value = val;
+    for (const [key, id] of Object.entries(THRESHOLD_INPUT_IDS)) {
+        const el = /** @type {HTMLInputElement|null} */ (document.getElementById(id));
+        if (el) el.value = String(AGREEMENT_THRESHOLD_DEFAULTS[key]);
     }
 }
 

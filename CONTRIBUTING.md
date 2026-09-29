@@ -22,69 +22,69 @@ runners/<name>-runner/
 
 A runner implements exactly two functions:
 
-- `process_run(payload: dict) -> dict` — exact statevector simulation.
+- `process_run(payload: dict) -> dict` — statevector simulation.
 - `process_run_measured(payload: dict) -> dict` — shot-based measurement simulation.
 
 Both receive the request payload as a plain dict (see `shared/qrosetta_commons/models.py`'s
 `CircuitPayload`/`MeasuredCircuitPayload` for the exact fields: `circuit_data` is the OpenQASM 2.0
 string; `optimization_level`; `apply_preprocessing`; `MeasuredCircuitPayload` additionally has
-`n_shots` and `seed`). Both must return a result dict built from the shared helpers in
-`shared/qrosetta_commons/helpers.py` — never assemble the result dict by hand:
+`n_shots` and `seed`, where `seed` is the runner's own seed derived by the API from the run's
+master seed). Both delegate to the shared measurement instrument in
+`shared/qrosetta_commons/helpers.py`, `run_statevector_job` / `run_measured_job`, and supply
+only the SDK-specific steps as callbacks:
 
 ```python
 from qrosetta_commons.helpers import (
-    MemoryMonitor, get_logger, check_qubits_limit,
-    MAX_QUBITS_STATEVECTOR, MAX_QUBITS_MEASURED,
-    with_sdk_versions, statevector_result, counts_result, runner_error,
-    register_runner_endpoints, run_cli_main,
+    CompileResult, get_logger, register_runner_endpoints, run_cli_main,
+    run_measured_job, run_statevector_job, with_sdk_versions,
 )
+
+_PRECISION = "complex128"   # the dtype the SDK actually simulates in
+
+def _compile(payload: dict) -> CompileResult:
+    circuit, preprocessing_applied = _parse(payload["circuit_data"], payload.get("optimization_level", 0))
+    return CompileResult(circuit=circuit, n_qubits=circuit.num_qubits,
+                         preprocessing_applied=preprocessing_applied, precision=_PRECISION)
 
 @with_sdk_versions
 def process_run(payload: dict) -> dict:
-    try:
-        check_qubits_limit(payload["circuit_data"], MAX_QUBITS_STATEVECTOR)
-
-        t0 = time.perf_counter()
-        circuit, preprocessing_applied, transpiled_qasm = _compile(payload["circuit_data"], payload.get("optimization_level", 0))
-        t1 = time.perf_counter()
-        compilation_time = t1 - t0
-
-        with MemoryMonitor(interval=0.01) as monitor:
-            t2 = time.perf_counter()
-            statevector = _simulate(circuit)
-            t3 = time.perf_counter()
-            simulation_time = t3 - t2
-
-        return statevector_result(
-            simulator="my-sdk", statevector=statevector,
-            compilation_time=compilation_time, simulation_time=simulation_time,
-            monitor=monitor, qubit_ordering="msb",  # verified, not assumed - see section 3
-            preprocessing_applied=preprocessing_applied, transpiled_qasm=transpiled_qasm)
-    except Exception as e:
-        return runner_error("my-sdk", e)
+    return run_statevector_job(
+        simulator="my-sdk", payload=payload, logger=logger, compile_fn=_compile,
+        serialize_fn=lambda compiled: _to_qasm(compiled.circuit),
+        execute_fn=lambda compiled, _payload: _simulate(compiled.circuit),
+        qubit_ordering="msb", precision=_PRECISION)
 ```
 
-`process_run_measured` follows the same shape, using `counts_result` instead and adding
-`n_shots`/`seed` handling (see `runners/qibo-runner/main.py` for a short complete example, or
-`runners/qrisp-runner/main.py` for one where the two endpoints use genuinely different native
-methods).
+The instrument runs, in order: the qubit-limit check; `compile_fn` between t0 and t1
+(`compilation_time_sec`); `serialize_fn` outside the timed windows (it captures
+`transpiled_qasm`, the circuit the backend executes); `pre_execute_fn` (e.g. seeding a global
+RNG) under the memory monitor but outside the clock; `execute_fn` between t2 and t3
+(`simulation_time_sec` and `simulation_cpu_time_sec`); and `postprocess_fn` outside the
+window (shaping raw output, e.g. drawn indices into a counts histogram). Drawing shots belongs
+in `execute_fn`; building the histogram belongs in `postprocess_fn`, and
+`tests/unit/test_counts_histogram_boundary.py` fails if a runner builds it inside
+`execute_fn`. If `compile_fn` mutates the circuit (adds `save_statevector`, rebases in place),
+set `CompileResult.transpiled_qasm` yourself so the captured text matches what ran.
 
-**Always wrap the body in try/except and return `runner_error(simulator_name, exc)` on failure.**
-A caught exception that gets turned into an honest error is a correct result. Do not catch an
-exception and return a default or placeholder value instead — that reports a failure as a
-success.
+`execute_fn` for `run_measured_job` returns `(counts, sampling_method)`, where
+`sampling_method` is `"native"` when the SDK sampled the shots itself or `"sv_sample"` when
+they are drawn from a computed statevector. Thread `payload["seed"]` into the SDK's sampler, or
+into the statevector sampler if the SDK has none. If the backend ignores the seed, set
+`"honours_seed": False` for it in `config.py`, so results record `seed_honoured: false`. See
+`runners/qibo-runner/main.py` for a short complete example.
 
-**Never construct the result dict's fields directly.** `statevector_result`/`counts_result`
-compute `execution_time_sec`, `memory_usage_mb`, `process_peak_mb`, `theoretical_statevector_mb`,
-and encode the statevector to the wire format. Every runner uses the same two builder functions
-so the field names and formats stay identical across the fleet.
+Do not time, monitor memory, check qubit limits or build the result dict yourself. The
+instrument does all of that and assembles the result with `statevector_result` /
+`counts_result` (or `runner_error` on any exception), so every backend is measured the same
+way and returns the same fields: split timings, `memory_usage_mb` and `process_peak_mb` from
+the kernel high-water mark with `memory_method`, `precision`, `thread_env`,
+`preprocessing_applied` and `transpiled_qasm`. A private copy of the timing sequence makes
+the new backend non-comparable with the rest.
 
-You do **not** need to add a warm-up run, retry logic, timeout handling, `n_shots`/gate-count
-echoing, or CPU-time/process-peak-memory measurement yourself — every runner is invoked through a
-shared wrapper (`run_isolated`/`run_with_uniform_measurement` in `helpers.py`) that adds a uniform
-warm-up, hard wall-clock timeout, and additive resource-usage fields on top of whatever your
-`process_run`/`process_run_measured` returns. Just implement the SDK-specific compile+simulate
-logic and return one of the two result-builder calls.
+Every runner is invoked through `run_isolated` / `run_with_uniform_measurement`, which add one
+discarded warm-up run, a hard wall-clock timeout, and the whole-process fields
+(`cpu_time_sec`, `process_peak_rss_mb`, `metric_scope`, gate count and depth from
+`transpiled_qasm`).
 
 The rest of `main.py` is two lines, identical across every runner:
 
@@ -108,7 +108,7 @@ with `--endpoint run|run_measured --payload '<json>'` (used for local debugging)
 `--s3-job-id <id>` (the path Kubernetes deployments use, fetching the payload from and uploading
 the result to object storage).
 
-## 3. Qubit ordering must be verified empirically, not assumed
+## 3. Determine the qubit ordering with a probe
 
 Every result declares `qubit_ordering` as `"msb"` or `"lsb"` — whether qubit 0 is the
 most-significant or least-significant bit of the statevector index / counts bitstring. SDKs
@@ -127,9 +127,12 @@ matches the statevector endpoint's convention just because the SDK is the same.
 If your runner needs to transform the incoming QASM before simulating it (stripping
 barriers, rebasing gates to a supported set, decomposing unsupported instructions), gate that
 behind `payload.get("apply_preprocessing", True)` and record every applied transform as a
-plain-language string in the `preprocessing_applied` list passed to `statevector_result`/
-`counts_result`. This list is shown to the user and included in the exported provenance —
-each entry should say what the transform does, not just its name.
+plain-language string in `CompileResult.preprocessing_applied`. A pass the adapter needs
+regardless of the setting (the backend's default compilation pass, appending measurements)
+is listed too, and its text says it runs regardless. This list is shown to the user and
+included in the exported provenance; each entry should say what the transform does, not just
+its name. The API prepends its own changes to the circuit (register merging, the pytket
+round-trip, appended measurements) as entries starting `API:`, so do not use that prefix.
 
 ## 5. Dockerfile
 
@@ -201,6 +204,11 @@ my_sdk_runner:
     context: .
     dockerfile: ./runners/my-sdk-runner/Dockerfile
   container_name: my-sdk-runner
+  environment:
+    - OMP_NUM_THREADS=1
+    - MKL_NUM_THREADS=1
+    - OPENBLAS_NUM_THREADS=1
+    - NUMEXPR_NUM_THREADS=1
   networks:
     - isolated_net
   deploy:
@@ -211,18 +219,19 @@ my_sdk_runner:
 ```
 
 Runners are internal-only — not exposed to the host or through nginx — the API reaches them over
-the compose network by container name.
+the compose network by container name. The four thread variables pin every runner to one
+thread, as the Kubernetes Job spec does; results record them in `thread_env`.
 
 ## 8. Testing before you're done
 
 - `docker compose build my_sdk_runner && docker compose up -d my_sdk_runner`, then exercise both
   endpoints directly against a small circuit (Bell state or similar) and read the actual response
-  — confirm `error` is `null`, the statevector/counts look correct, and `qubit_ordering` matches
-  what you verified in step 3.
+  — confirm `error` is `null`, the statevector has `2^n` amplitudes, the counts sum to `n_shots`,
+  `precision` names the dtype the SDK used, and `qubit_ordering` matches the probe in step 3.
 - Add your runner's id to `ACTIVE_STATEVECTOR_RUNNERS` in
   `tests/integration/test_runner_contract_asymmetric.py` — one list drives both the statevector and the
   measured check — and run it against the live stack. This test is
   deliberately asymmetric (not a Bell/GHZ state) — a symmetric smoke test can pass even when a
-  runner silently returns the all-zeros state or has its bit-order label backwards, so this is the
-  test that actually catches that failure mode.
+  runner returns the all-zeros state or has its bit-order label backwards, and this test
+  catches both.
 - Run the full unit suite (`pytest rosetta-api/tests/unit`) to confirm nothing else broke.

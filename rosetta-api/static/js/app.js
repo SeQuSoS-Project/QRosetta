@@ -1,4 +1,4 @@
-// Frontend logic for app functionality.
+// Page bootstrap, single-circuit and batch run orchestration, and circuit generation.
 
 import { BASE_URL, getAuthHeaders, pollJobStatus } from './api.js';
 import { updateAuthUI, verifySession } from './auth.js';
@@ -33,8 +33,7 @@ window.onload = async () => {
         if (configResponse.ok) {
             const config = await configResponse.json();
             dispatch('SET_CONFIG_LIMITS', config);
-            // "Bypass API Safety Limits" is honoured by the API only in local mode;
-            // hide it elsewhere so it cannot imply an effect it does not have.
+            // The API honours bypass_limits only in local mode.
             if (config.execution_mode !== 'local') {
                 const bypassContainer = document.getElementById('bypass-limits-container');
                 if (bypassContainer) bypassContainer.classList.add('hidden');
@@ -214,13 +213,14 @@ export async function runComparison(type, shots) {
 
     if (type === 'measured') {
         payload.n_shots = shots;
-        payload.seed = getSeed();  // null => backend generates and records a seed
+        payload.seed = getSeed();
     }
 
     const title = type === 'statevector' ? 'Editor Run (Statevector)' : `Editor Run (Measured, ${shots} shots)`;
 
     setLoading(true, "Running Simulation...");
     clearReport();
+    dispatch('SET_JOB_ID', null);
 
     try {
         dispatch('SET_PROCESSING', true);
@@ -295,11 +295,12 @@ export async function runBatchQueue() {
         bypass_limits: bypassLimits,
         apply_preprocessing: applyPreprocessing,
         thresholds: getAgreementThresholds(),
-        seed: getSeed()  // null => backend generates and records one global seed for the suite
+        seed: getSeed()
     };
 
     setLoading(true, `Running Batch of ${getState().batchQueue.length} Circuits...`);
     clearReport();
+    dispatch('SET_JOB_ID', null);
 
     try {
         dispatch('SET_PROCESSING', true);

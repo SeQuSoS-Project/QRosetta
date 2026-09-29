@@ -1,4 +1,4 @@
-// Frontend logic for history functionality.
+// Run history: save completed runs, list, load, rename, download and delete them.
 
 import { tabNav } from './dom.js';
 import { BASE_URL, getAuthHeaders } from './api.js';
@@ -238,6 +238,7 @@ export async function loadHistoricalRun(runId, runName, createdAt) {
         if (!response.ok) throw new Error("Failed to load historical run details.");
 
         const data = await response.json();
+        dispatch('SET_JOB_ID', null);
         dispatch('SET_SUITE_DATA', data);
         dispatch('SET_HISTORY_RUN_ID', runId);
 

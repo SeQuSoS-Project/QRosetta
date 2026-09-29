@@ -1,13 +1,17 @@
-// Frontend logic for renderers functionality.
+// Report layout: tabs, the single-circuit detail report, the batch suite summary, the
+// Exports tab and the Quirk visualizer.
 
 import { backButtonContainer, jsonOutput, panelElements, tabNav, welcomeMessage } from './dom.js';
 
 import { BASE_URL, getAuthHeaders } from './api.js';
 import { renderArtifactsPanel } from './artifacts_renderer.js';
-import { _applyLegendDots, _cloneTemplate, _makeStatusBadge } from './render_helpers.js';
+import { renderRankingTable, splitRanking } from './ranking_renderer.js';
+import { _applyLegendDots, _cloneTemplate, _displayRunnerName, _makeStatusBadge } from './render_helpers.js';
+import { DIRECT_AGREEMENT, RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, UNEXPLAINED, runnerStatus } from './run_status.js';
 import { getState } from './state.js';
-import { renderAgreementPanel, renderDivergenceTables, renderRankingTable } from './tables_renderer.js';
-import { _escapeHtml, copyText, downloadBlob, isConnectionError } from './utils.js';
+import { renderSummaryPanel } from './summary_renderer.js';
+import { renderAgreementPanel, renderDivergenceTables } from './tables_renderer.js';
+import { copyText, downloadBlob } from './utils.js';
 
 export function clearReport() {
     welcomeMessage.classList.add('hidden');
@@ -30,15 +34,13 @@ export function clearReport() {
     if (includeSvCheckbox) includeSvCheckbox.checked = false;
 }
 
-// The Exports/raw tab holds a pretty-printed dump of the whole report. Stringifying it
-// eagerly on every render is wasteful for large reports, so defer it until the tab is
-// first opened.
+// The Exports tab's JSON dump is stringified when the tab is first opened.
 export let _rawTabData = null;
 export let _rawTabRendered = false;
 
 export function _reportHasTruncatedSv(data) {
-    const scan = (arr) => Array.isArray(arr) && arr.some(
-        r => typeof r?.statevector === 'string' && r.statevector.startsWith('<Statevector too large'));
+    const scan = (arr) => Array.isArray(arr) && arr.some(r => r?.statevector_omitted_for_display
+        || (typeof r?.statevector === 'string' && r.statevector.startsWith('<Statevector too large')));
     if (scan(data?.raw_results)) return true;
     if (Array.isArray(data?.benchmark_summary)) {
         return data.benchmark_summary.some(task => scan(task?.raw_results));
@@ -91,12 +93,8 @@ export function renderTabs(tabList) {
     });
 }
 
+/** Optimization level per runner from each result's optimization_level, else the override map. */
 export function _effectiveOptMap(data, fallbackConfig = {}) {
-    // Ground-truth effective optimization level per runner, as actually executed.
-    // The dispatcher stamps result.optimization_level (clamped, global-or-override
-    // resolved), so this reflects what ran — including global-level runs that have no
-    // entry in the per-runner override map. Falls back to the override map only for
-    // older reports (e.g. saved history) that predate optimization_level stamping.
     const map = { ...fallbackConfig };
     const collect = (arr) => {
         if (!Array.isArray(arr)) return;
@@ -113,26 +111,35 @@ export function _effectiveOptMap(data, fallbackConfig = {}) {
     return map;
 }
 
+/** Show or hide the Exports-tab truncation notice and the server-copy download button. */
+function _updateExportNotices(data) {
+    const warningBanner = document.getElementById('truncation-warning');
+    const downloadButton = document.getElementById('download-btn');
+    const live = !!getState().currentJobId;
+    if (warningBanner) {
+        warningBanner.classList.toggle('hidden', !_reportHasTruncatedSv(data));
+        const text = warningBanner.querySelector('.tpl-truncation-text');
+        if (text) {
+            text.textContent = live
+                ? 'Statevectors of circuits over 14 qubits are not in this browser copy. The server keeps the full report for 30 minutes after the job completes: use "Download full report" or export the RO-Crate with statevectors.'
+                : 'Statevectors of circuits over 14 qubits are not in this copy, and this report did not come from a job run in this session, so no server copy is available.';
+        }
+    }
+    if (downloadButton) downloadButton.classList.toggle('hidden', !live);
+}
+
 export function renderDetailReport(data, title, config = getState().currentRunnerConfig) {
     renderTabs(['summary', 'performance', 'resources', 'divergence', 'agreement', 'artifacts', 'raw']);
     _setRawTabData(data);
-
-    const warningBanner = document.getElementById('truncation-warning');
-    const downloadButton = document.getElementById('download-btn');
-    if (_reportHasTruncatedSv(data)) {
-        warningBanner.classList.remove('hidden');
-        downloadButton.classList.remove('hidden');
-    } else {
-        warningBanner.classList.add('hidden');
-        downloadButton.classList.add('hidden');
-    }
+    _updateExportNotices(data);
 
     renderSummaryPanel(data, title);
     if (!data.error) {
         const optMap = _effectiveOptMap(data, config);
-        if (data.performance_report) renderRankingTable(data.performance_report, 'execution_time_sec', 's', panelElements.performance, optMap);
-        if (data.resource_report) renderRankingTable(data.resource_report, 'memory_usage_mb', 'MiB', panelElements.resources, optMap);
-        if (data.divergence_report) renderDivergenceTables(data.divergence_report, panelElements.divergence, optMap);
+        const raws = data.raw_results || [];
+        if (data.performance_report) renderRankingTable(data.performance_report, 'execution_time_sec', 's', panelElements.performance, optMap, raws);
+        if (data.resource_report) renderRankingTable(data.resource_report, 'memory_usage_mb', 'MiB', panelElements.resources, optMap, raws);
+        if (data.divergence_report) renderDivergenceTables(data.divergence_report, panelElements.divergence, optMap, raws);
         if (data.divergence_report) renderAgreementPanel(data.divergence_report, panelElements.agreement, optMap);
         renderArtifactsPanel(data, panelElements.artifacts);
     }
@@ -140,10 +147,43 @@ export function renderDetailReport(data, title, config = getState().currentRunne
     showTab('summary');
 }
 
+/** Status badges for one batch task: its agreement outcome plus one badge per failed-run status. */
+function _taskBadges(item) {
+    if (item.error) return [_makeStatusBadge('error', 'Error')];
+    const raws = item.raw_results || [];
+    const failures = {};
+    raws.forEach(r => {
+        const st = runnerStatus(r);
+        if (st !== 'ok') failures[st] = (failures[st] || 0) + 1;
+    });
+    const nOk = raws.filter(r => runnerStatus(r) === 'ok').length;
+    const pairs = item.divergence_report?.pairwise_agreement || [];
+    const verdicts = pairs.map(p => p.metrics?.statistical_test?.verdict).filter(Boolean);
+
+    const badges = [];
+    if (nOk < 2) {
+        badges.push(_makeStatusBadge('offline', 'Not compared'));
+    } else if (pairs.length === 0) {
+        const n = item.divergence_report?.divergences_found?.length || 0;
+        badges.push(n ? _makeStatusBadge('divergence', `${n} divergence(s)`) : _makeStatusBadge('offline', 'No pair records'));
+    } else if (pairs.some(p => UNEXPLAINED.has(p.agreement)) || verdicts.includes('distinguishable')) {
+        badges.push(_makeStatusBadge('anomaly', 'Anomaly'));
+    } else if (pairs.every(p => DIRECT_AGREEMENT.has(p.agreement)) && verdicts.every(v => v === 'consistent')) {
+        badges.push(_makeStatusBadge('success', 'All pairs agree'));
+    } else {
+        badges.push(_makeStatusBadge('divergence', 'Explained / partial'));
+    }
+    Object.entries(failures).forEach(([st, n]) => {
+        badges.push(_makeStatusBadge(RUNNER_STATUS_STYLE[st], `${RUNNER_STATUS_LABEL[st]} ×${n}`));
+    });
+    return badges;
+}
+
 export function renderSuiteSummary(data, title) {
     clearReport();
     renderTabs(['suite-summary', 'raw']);
     _setRawTabData(data);
+    _updateExportNotices(data);
 
     const panel = panelElements['suite-summary'];
     if (!panel) return;
@@ -159,7 +199,6 @@ export function renderSuiteSummary(data, title) {
     panel.appendChild(legendFrag);
 
     if (data.error) {
-
         const errFrag = _cloneTemplate('tpl-suite-api-error');
         const errDiv = errFrag.querySelector('.tpl-error-text');
         errDiv.classList.remove('tpl-error-text');
@@ -186,20 +225,15 @@ export function renderSuiteSummary(data, title) {
 
             const statusCell = rowFrag.querySelector('.tpl-status');
             statusCell.classList.remove('tpl-status');
-            let badge;
-            if (item.error) {
-                badge = isConnectionError(item.error)
-                    ? _makeStatusBadge('offline', 'Offline')
-                    : _makeStatusBadge('anomaly', 'Anomaly');
-            } else if (item.divergence_report && item.divergence_report.divergences_found.length > 0) {
-                badge = _makeStatusBadge('divergence', 'Divergence');
-            } else {
-                badge = _makeStatusBadge('success', 'Success');
-            }
-            statusCell.appendChild(badge);
+            _taskBadges(item).forEach((badge, i) => {
+                if (i) badge.classList.add('ml-1');
+                statusCell.appendChild(badge);
+            });
 
-            rowFrag.querySelector('.tpl-fastest').textContent = item.performance_report?.ranking[0]?.simulator || '-';
-            rowFrag.querySelector('.tpl-lightest').textContent = item.resource_report?.ranking[0]?.simulator || '-';
+            const fastest = splitRanking(item.performance_report, 'execution_time_sec').ranked[0];
+            const lightest = splitRanking(item.resource_report, 'process_peak_rss_mb').ranked[0];
+            rowFrag.querySelector('.tpl-fastest').textContent = fastest ? _displayRunnerName(fastest.simulator) : '-';
+            rowFrag.querySelector('.tpl-lightest').textContent = lightest ? _displayRunnerName(lightest.simulator) : '-';
 
             const detailsBtn = rowFrag.querySelector('.tpl-details-btn');
             detailsBtn.classList.remove('tpl-details-btn');
@@ -212,166 +246,6 @@ export function renderSuiteSummary(data, title) {
     }
 
     showTab('suite-summary');
-}
-
-export function renderSummaryPanel(data, title) {
-    const panel = panelElements.summary;
-    if (!panel) return;
-    panel.innerHTML = '';
-
-    const h2 = document.createElement('h2');
-    h2.className = 'text-xl font-semibold text-gray-900 mb-4';
-    h2.textContent = title;
-    panel.appendChild(h2);
-
-    const legendFrag = _cloneTemplate('tpl-legend-suite');
-    _applyLegendDots(legendFrag);
-    panel.appendChild(legendFrag);
-
-    if (data.error) {
-        const errFrag = _cloneTemplate('tpl-summary-api-error');
-        errFrag.querySelector('.tpl-error-text').textContent = data.error;
-        panel.appendChild(errFrag);
-        return;
-    }
-
-    const allErrors = data.raw_results ? data.raw_results.filter(r => r.error) : [];
-    const offlineErrors = allErrors.filter(e => isConnectionError(e.error));
-    const criticalErrors = allErrors.filter(e => !isConnectionError(e.error));
-    const divergences = data.divergence_report ? data.divergence_report.divergences_found : [];
-
-    if (offlineErrors.length > 0) {
-        const frag = _cloneTemplate('tpl-summary-offline-block');
-        frag.querySelector('.tpl-heading').textContent = `Offline Runners (${offlineErrors.length})`;
-        const list = frag.querySelector('.tpl-list');
-        list.classList.remove('tpl-list');
-        offlineErrors.forEach(e => {
-            const liFrag = _cloneTemplate('tpl-summary-list-item');
-            const li = liFrag.querySelector('li');
-            const b = document.createElement('b');
-            b.textContent = e.simulator;
-            li.appendChild(b);
-            li.appendChild(document.createTextNode(': service unavailable'));
-            list.appendChild(liFrag);
-        });
-        panel.appendChild(frag);
-    }
-
-    if (criticalErrors.length > 0) {
-        const frag = _cloneTemplate('tpl-summary-critical-block');
-        frag.querySelector('.tpl-heading').textContent = `Critical Errors (${criticalErrors.length})`;
-        const list = frag.querySelector('.tpl-list');
-        list.classList.remove('tpl-list');
-        criticalErrors.forEach(e => {
-            const liFrag = _cloneTemplate('tpl-summary-list-item');
-            const li = liFrag.querySelector('li');
-            const b = document.createElement('b');
-            b.textContent = e.simulator;
-            li.appendChild(b);
-            li.appendChild(document.createTextNode(`: ${e.error}`));
-            list.appendChild(liFrag);
-        });
-        panel.appendChild(frag);
-    } else if (divergences.length > 0) {
-        const crossGroup = divergences.filter(d => d.is_cross_group);
-        const withinGroup = divergences.filter(d => !d.is_cross_group);
-
-        if (crossGroup.length > 0) {
-            const frag = _cloneTemplate('tpl-summary-divergence-block');
-            const heading = frag.querySelector('.tpl-heading');
-            heading.textContent = `Qubit Ordering Divergences (${crossGroup.length})`;
-            heading.parentElement.classList.remove('bg-red-50', 'text-red-700', 'border-red-200');
-            heading.parentElement.classList.add('bg-yellow-50', 'text-yellow-700', 'border-yellow-200');
-
-            const list = frag.querySelector('.tpl-list');
-            list.classList.remove('tpl-list');
-            const liFrag = _cloneTemplate('tpl-summary-list-item');
-            const li = liFrag.querySelector('li');
-            li.innerHTML = `Detected <b>${crossGroup.length}</b> pairwise divergences caused by mixed LSB vs MSB ordering conventions. These are expected and mathematically explained.`;
-
-            const details = document.createElement('details');
-            details.className = 'mt-2 text-xs text-yellow-800 cursor-pointer';
-            const summary = document.createElement('summary');
-            summary.className = 'font-semibold hover:text-yellow-600 outline-none py-1';
-            summary.textContent = 'View Affected Simulators (Grouped)';
-            details.appendChild(summary);
-
-            const pairsList = document.createElement('ul');
-            pairsList.className = 'list-none ml-2 mt-1 space-y-2 opacity-90';
-
-            const processed = new Set();
-            crossGroup.forEach(d => {
-                const [s1, s2] = d.simulators;
-                if (!processed.has(s1)) {
-                    const partners = crossGroup
-                        .filter(dx => dx.simulators.includes(s1))
-                        .map(dx => ({
-                            name: dx.simulators.find(sx => sx !== s1),
-                            type: dx.type,
-                            fidelity: dx.fidelity,
-                            js: dx.js_divergence
-                        }));
-
-                    const subDetails = document.createElement('details');
-                    subDetails.className = 'text-xs text-yellow-700';
-
-                    const subSummary = document.createElement('summary');
-                    subSummary.className = 'font-bold cursor-pointer hover:text-yellow-900 outline-none';
-                    subSummary.innerHTML = `${_escapeHtml(s1)} <span class="font-normal opacity-60">&times; ${partners.length} partners</span>`;
-                    subDetails.appendChild(subSummary);
-
-                    const subUl = document.createElement('ul');
-                    subUl.className = 'list-disc ml-4 mt-1 space-y-0.5 opacity-80';
-                    partners.forEach(p => {
-                        const liPartner = document.createElement('li');
-                        let info = "";
-                        if (p.fidelity !== undefined) info = ` (Fidelity: ${p.fidelity.toFixed(4)})`;
-                        if (p.js !== undefined) info = ` (JS Div: ${p.js.toFixed(4)})`;
-                        liPartner.innerHTML = `vs <b>${_escapeHtml(p.name)}</b>${info}`;
-                        subUl.appendChild(liPartner);
-                    });
-                    subDetails.appendChild(subUl);
-
-                    const pLi = document.createElement('li');
-                    pLi.appendChild(subDetails);
-                    pairsList.appendChild(pLi);
-
-                    processed.add(s1);
-
-                    partners.forEach(p => processed.add(p.name));
-                }
-            });
-
-            details.appendChild(pairsList);
-            li.appendChild(details);
-            list.appendChild(liFrag);
-            panel.appendChild(frag);
-        }
-
-        if (withinGroup.length > 0) {
-            const frag = _cloneTemplate('tpl-summary-divergence-block');
-            frag.querySelector('.tpl-heading').textContent = `True Numerical Divergences (${withinGroup.length})`;
-            const list = frag.querySelector('.tpl-list');
-            list.classList.remove('tpl-list');
-            withinGroup.forEach(d => {
-                const liFrag = _cloneTemplate('tpl-summary-list-item');
-                let info = "";
-                if (d.fidelity !== undefined) info = ` (Fidelity: ${d.fidelity.toFixed(4)})`;
-                if (d.js_divergence !== undefined) info = ` (JS Div: ${d.js_divergence.toFixed(4)})`;
-
-                liFrag.querySelector('li').innerHTML = `<b>${_escapeHtml(d.simulators.join(' & '))}</b>: ${_escapeHtml(d.type)}${info}`;
-                list.appendChild(liFrag);
-            });
-            panel.appendChild(frag);
-        }
-    } else {
-        const frag = _cloneTemplate('tpl-summary-success-banner');
-        const msg = data.n_shots
-            ? "All measurement distributions are statistically identical."
-            : "All statevectors are identical (1.0 Fidelity).";
-        frag.querySelector('.tpl-msg').textContent = msg;
-        panel.appendChild(frag);
-    }
 }
 
 export function viewDetail(index) {
