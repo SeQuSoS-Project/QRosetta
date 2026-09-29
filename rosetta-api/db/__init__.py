@@ -1,2 +1,2 @@
-# Initialization module for db.
+# Database engine, session and ORM models.
 

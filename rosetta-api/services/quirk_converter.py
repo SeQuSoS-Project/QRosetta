@@ -1,4 +1,4 @@
-# Converts Quirk URLs to QASM formats.
+# Converts OpenQASM 2.0 (h/x/y/z/cx only) to a Quirk circuit URL.
 
 import json
 import re

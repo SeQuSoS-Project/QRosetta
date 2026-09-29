@@ -1,10 +1,4 @@
-"""Regression test for POST /history/runs/{run_id}/export.
-
-The history export assembled its own ExportContext rather than sharing the one in
-routers/export.py, and its copy omitted publication_artifacts. A caller who asked for
-figures and tables got a bundle without them and no error. This test pins the field
-through the router so the two export paths cannot drift apart again.
-"""
+"""POST /history/runs/{run_id}/export passes publication_artifacts through to the bundle."""
 import uuid
 from unittest.mock import patch
 

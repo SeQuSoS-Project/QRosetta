@@ -1,12 +1,5 @@
-"""index.html wires controls with inline on*= attributes, which resolve against window.
-
-Module scope is not global, so js/main.js republishes those functions on window. Nothing
-enforces that list at runtime: a renamed or removed handler produces a control that looks
-fine and does nothing when clicked, with an error only in the console of whoever happens
-to try it.
-
-These tests pin the three sides together — the attributes in the HTML, the names main.js
-attaches, and the modules that actually export them.
+"""The inline on*= handlers in index.html, the names js/main.js puts on window, and the
+modules that export them must all agree.
 """
 import re
 from pathlib import Path
@@ -67,7 +60,7 @@ def test_every_attached_name_is_actually_exported():
 
 
 def test_no_stale_names_attached():
-    """Attaching a name the HTML never calls means a handler was removed but not cleaned up."""
+    """Every name main.js attaches is used by an on*= attribute in index.html."""
     stale = sorted(_names_attached_to_window() - _handlers_in_html())
     assert not stale, f"main.js attaches unused names: {stale}"
 

@@ -1,4 +1,4 @@
-# Pydantic schemas for request/response validation.
+# Pydantic request/response models, re-exported for `from schemas import X`.
 
 from schemas.benchmark import (
     AgreementThresholds,

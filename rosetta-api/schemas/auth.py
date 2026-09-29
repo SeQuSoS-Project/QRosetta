@@ -1,4 +1,4 @@
-# Pydantic schemas for request/response validation.
+# Pydantic request/response models for the /auth endpoints.
 
 from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime

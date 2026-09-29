@@ -33,7 +33,6 @@ def test_statevector_result_shape_and_encoding():
     assert r["theoretical_statevector_mb"] == theoretical_statevector_mb(1)
     assert r["preprocessing_applied"] == ["pass"]
     assert r["transpiled_qasm"] == "OPENQASM 2.0;"
-    # statevector round-trips through the wire encoding
     assert np.allclose(decode_statevector(r["statevector"]), sv)
     assert "counts" not in r and "error" not in r
 

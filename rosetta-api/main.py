@@ -1,4 +1,4 @@
-# FastAPI application entry point.
+# FastAPI application entry point: middleware, static mounts and routers.
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
@@ -21,7 +21,7 @@ import time
 import logging
 
 logger = get_logger("rosetta-main")
-_JOB_TTL_SEC = 1800  # 30 minutes
+_JOB_TTL_SEC = 1800
 
 class _SuppressAlgorithmsFilter(logging.Filter):
     """Drop GET /algorithms access log entries — they are frontend keepalive polls."""
@@ -33,7 +33,7 @@ logging.getLogger("uvicorn.access").addFilter(_SuppressAlgorithmsFilter())
 
 async def _cleanup_old_jobs():
     while True:
-        await asyncio.sleep(600)  # run every 10 minutes
+        await asyncio.sleep(600)
         cutoff = time.time() - _JOB_TTL_SEC
         expired = [jid for jid, job in list(ACTIVE_JOBS.items())
                    if job.get("status") in ("completed", "failed")

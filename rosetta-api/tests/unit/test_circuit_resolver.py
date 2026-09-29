@@ -1,9 +1,4 @@
-"""Tests for the shared batch/experiment circuit resolver.
-
-Both callers previously carried their own copy of this logic. The copies applied the
-measured-mode qubit cap regardless of the run mode, so a statevector task above the
-statevector limit was fully generated before being rejected further downstream.
-"""
+"""Tests for services/circuit_resolver.py, including the per-mode qubit cap."""
 from unittest.mock import patch
 
 import pytest

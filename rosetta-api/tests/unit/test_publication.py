@@ -1,4 +1,4 @@
-# Unit tests for the publication-artifact engine (services/publication.py).
+# Tests for the publication-artifact engine (services/publication/).
 
 import pytest
 
@@ -108,8 +108,7 @@ def test_all_tables_present_in_all_formats():
 
 
 def test_artifacts_are_byte_deterministic():
-    # SVG/PNG/PDF figures and CSV/LaTeX/HTML tables are byte-reproducible. XLSX is a ZIP
-    # container whose member timestamps vary; it is asserted structurally below instead.
+    # XLSX member timestamps vary, so it is checked structurally instead.
     a1 = _all_measured()
     a2 = _all_measured()
     assert a1.keys() == a2.keys()
@@ -153,7 +152,6 @@ def test_statistical_test_table_measured_only():
     assert "tables/statistical_test.csv" in measured
     csv = measured["tables/statistical_test.csv"].decode()
     assert "1570" in csv and "consistent" in csv  # shots-for-power + verdict
-    # statevector has no statistical test -> no table, no histograms
     sv = build_publication_artifacts(STATEVECTOR, "statevector", ("statistical",),
                                      SUPPORTED_FIGURE_FORMATS, SUPPORTED_TABLE_FORMATS)
     assert not any("statistical_test" in p for p in sv)
@@ -172,7 +170,6 @@ def test_mode_branching_heatmaps():
 
 
 def test_heatmap_handles_sentinel_and_errored_runner():
-    # A 3-runner report with a -1.0 sentinel row (errored/incomparable) must not crash.
     report = {
         "divergence_report": {
             "simulators": ["a", "b", "c"],
@@ -186,7 +183,6 @@ def test_heatmap_handles_sentinel_and_errored_runner():
 
 
 def test_graceful_when_reports_absent():
-    # No pairwise records -> no agreement artifacts; empty results -> empty output, no crash.
     assert build_publication_artifacts({}, "measured", PUBLICATION_CATEGORIES,
                                        SUPPORTED_FIGURE_FORMATS, SUPPORTED_TABLE_FORMATS) == {}
     no_pairwise = {"divergence_report": {"simulators": ["a", "b"], "fidelity_matrix": [[-1.0, 1.0], [1.0, -1.0]]}}
@@ -207,14 +203,11 @@ def test_unsupported_formats_ignored():
 
 def test_catalog_lists_expected_artifacts_measured():
     ids = {a["id"] for a in list_artifacts(MEASURED, "measured")}
-    # existing figure/table artifacts
     assert {"agreement_distribution", "agreement", "js_divergence_heatmap",
             "hellinger_heatmap", "performance_time", "resource_memory",
             "performance", "resources", "statistical_test"} <= ids
-    # new artifacts
     assert {"matrix_js", "matrix_hellinger", "metadata", "glossary"} <= ids
     assert any(i.startswith("histogram_") for i in ids)
-    # statevector-only artifact absent
     assert "fidelity_heatmap" not in ids
 
 
@@ -251,13 +244,10 @@ def test_render_artifact_text_formats():
 
 
 def test_render_new_artifacts_content():
-    # matrix-as-table
     mjs = render_artifact(MEASURED, "measured", "matrix_js", "csv")[0].decode()
     assert "qiskit" in mjs and "qibo" in mjs
-    # metadata table carries provenance
     meta = render_artifact(MEASURED, "measured", "metadata", "csv")[0].decode()
     assert "qiskit" in meta
-    # glossary text
     gloss = render_artifact(MEASURED, "measured", "glossary", "markdown")[0].decode()
     assert "agree_after_bit_reversal" in gloss and "consistent" in gloss
 
@@ -305,7 +295,6 @@ def test_counts_overview_size_bounded_for_many_outcomes():
     from services.publication import (_fig_counts_overview_bars, _fig_counts_overview_heatmap,
                                       MAX_OVERVIEW_BARS, MAX_OVERVIEW_OUTCOMES)
     import matplotlib.pyplot as plt
-    # 8-qubit spread across 5 backends: outcome space 256, must stay compact.
     cbs = {s: {format(i, "08b"): 1 for i in range(256)} for s in
            ["qiskit", "qibo", "cirq", "pennylane", "braket"]}
     for s in cbs:
@@ -314,7 +303,6 @@ def test_counts_overview_size_bounded_for_many_outcomes():
     try:
         w, h = bars.get_size_inches()
         assert w <= 13.0 and h <= 5.0  # bars: capped width, never stretches with 2**n
-        # x groups = shown outcomes (+ 'other'), bounded by the cap not the outcome space
         assert len(bars.axes[0].get_xticklabels()) <= MAX_OVERVIEW_BARS + 1
     finally:
         plt.close(bars)
@@ -329,13 +317,11 @@ def test_counts_overview_size_bounded_for_many_outcomes():
 
 def test_rank_outcomes_folds_noise_into_other():
     from services.publication import _rank_outcomes
-    # one dominant outcome + many noise outcomes below MIN_OUTCOME_PROB
     probs = {"000": 0.9}
     for i in range(1, 40):
         probs[format(i, "03b") + format(i, "05b")] = 0.001
     outcomes = list(probs)
     kept, rest = _rank_outcomes(outcomes, lambda o: probs.get(o, 0.0), cap=20)
     assert kept == ["000"] and len(rest) == 39  # noise all folded away
-    # nothing hidden when everything is significant and fits
     kept2, rest2 = _rank_outcomes(["a", "b"], lambda o: 0.5, cap=20)
     assert set(kept2) == {"a", "b"} and rest2 == []

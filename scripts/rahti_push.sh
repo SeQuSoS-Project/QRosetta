@@ -11,9 +11,9 @@ cd "$(dirname "$0")/.." || exit 1
 NAMESPACE=${1:-"qrosetta"}
 REGISTRY="image-registry.apps.2.rahti.csc.fi/$NAMESPACE"
 IMAGE_TAG=$(git rev-parse --short HEAD)
-shift || true   # remaining args are optional service subset
+shift || true
 
-# Maps registry image name -> docker compose service name (used for docker tag)
+# Registry image name -> docker compose service name.
 declare -A SERVICE_MAP=(
     ["rosetta-api"]="api"
     ["pytket-qiskit-runner"]="pytket_qiskit_runner"
@@ -34,7 +34,6 @@ declare -A SERVICE_MAP=(
     ["cuquantum-runner"]="cuquantum_runner"
 )
 
-# Determine which services to push
 if [ $# -gt 0 ]; then
     TARGETS=("$@")
 else
@@ -50,7 +49,6 @@ echo "========================================"
 
 set -e
 
-# 1. Tag and push
 for NAME in "${TARGETS[@]}"; do
     COMPOSE_SERVICE="${SERVICE_MAP[$NAME]}"
     if [ -z "$COMPOSE_SERVICE" ]; then
@@ -69,21 +67,14 @@ for NAME in "${TARGETS[@]}"; do
     echo ""
 done
 
-# 2. Apply manifests
 echo "--- Applying manifests ---"
 sed -i "s/<YOUR_NAMESPACE>/$NAMESPACE/g" infra/rahti/rbac.yaml 2>/dev/null || true
 oc apply -f infra/rahti/rbac.yaml -n "$NAMESPACE"
 oc apply -f infra/rahti/api.yaml  -n "$NAMESPACE"
 
-# 3. Point the API deployment at the content-addressed hash tag and restart.
-#    api.yaml hardcodes rosetta-api:latest; with imagePullPolicy=IfNotPresent a node
-#    that already cached :latest will NOT pull a freshly pushed :latest, leaving the
-#    API on stale code. Setting the image to the immutable :$IMAGE_TAG tag (which the
-#    node has never cached) forces a real pull. This must run AFTER `oc apply` above,
-#    which re-pins the image back to :latest. IMAGE_TAG env is still needed so the
-#    dispatcher requests runner Job images by the same hash tag. QROSETTA_GIT_SHA is
-#    the same value, recorded into experiment manifests as real provenance instead of
-#    the "unknown" fallback.
+# api.yaml pins rosetta-api:latest, which IfNotPresent will not re-pull, so set the hash
+# tag after `oc apply`. The dispatcher uses IMAGE_TAG for runner Job images;
+# QROSETTA_GIT_SHA is recorded in experiment manifests.
 echo "--- Setting rosetta-api image + IMAGE_TAG=$IMAGE_TAG and restarting ---"
 oc set env   deployment/rosetta-api IMAGE_TAG="$IMAGE_TAG" QROSETTA_GIT_SHA="$IMAGE_TAG" -n "$NAMESPACE"
 oc set image deployment/rosetta-api api="$REGISTRY/rosetta-api:$IMAGE_TAG" -n "$NAMESPACE"

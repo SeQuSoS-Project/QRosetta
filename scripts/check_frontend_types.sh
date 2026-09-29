@@ -1,18 +1,7 @@
 #!/bin/bash
-# Type-check the frontend with `tsc --checkJs`.
-#
-# The JS is plain browser scripts, so this emits nothing and changes no runtime behaviour;
-# it only reads the code and reports what does not add up.
-#
-# Two tiers, because the codebase is being typed incrementally:
-#
-#   Hard failures  Everything except TS2339. This is the class that breaks at runtime —
-#                  undefined names, typos, wrong argument types. Zero tolerance.
-#   Baseline       TS2339 ("property does not exist on type") is almost entirely
-#                  document.getElementById returning HTMLElement where the code reads
-#                  .value or .checked. Not bugs, but untyped. The count must not grow,
-#                  so new untyped DOM access is rejected while the existing backlog is
-#                  paid down over time. Lower TS2339_BASELINE as it shrinks.
+# Type-check the frontend with `tsc --checkJs` (emits nothing).
+# Any diagnostic other than TS2339 fails. TS2339 (mostly untyped getElementById results)
+# fails only if its count exceeds TS2339_BASELINE; lower the baseline as it shrinks.
 set -u
 
 TS2339_BASELINE=150

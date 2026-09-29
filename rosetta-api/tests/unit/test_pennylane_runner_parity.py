@@ -1,11 +1,4 @@
-"""The two PennyLane runners must differ only in which device they instantiate.
-
-They are deliberately separate files: main.tex presents them as separate backends and
-promises each backend's accommodation stays visible in its own module, so they are not
-merged behind a shared factory. But nothing otherwise stops their transform pipelines or
-preprocessing notes from drifting apart, which would make the pair incomparable while
-still looking like a controlled comparison. This test is that guard.
-"""
+"""The two PennyLane runners must differ only in which device they instantiate."""
 import re
 from pathlib import Path
 

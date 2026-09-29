@@ -1,4 +1,4 @@
-# Unit and integration tests.
+# Tests for services/validator.py.
 
 import pytest
 from fastapi import HTTPException

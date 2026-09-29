@@ -1,4 +1,5 @@
 #!/bin/bash
+# Build, push and deploy the static frontend image to Google Cloud Run.
 
 cd "$(dirname "$0")/.." || exit 1
 
@@ -9,7 +10,6 @@ else
     echo ">> WARNING: .env file not found. Falling back to system environment variables."
 fi
 
-# Configuration Variables
 PROJECT_ID="${GCP_PROJECT_ID}"
 REGION="${GCP_REGION:-us-central1}"
 
@@ -18,22 +18,17 @@ echo "Deploying Quantum Rosetta Frontend to GCP"
 echo "Project ID: $PROJECT_ID"
 echo "========================================"
 
-# Exit immediately if a command exits with a non-zero status
 set -e
 
 echo "--- 1. Creating Google Cloud Artifact Registry ---"
-# Create the repository if it doesn't exist. Ignore error if it does.
 gcloud artifacts repositories create rosetta-frontend-repo \
     --repository-format=docker \
     --location="${REGION}" \
     --quiet || true
 
-# Define the repository path
 REPO="${REGION}-docker.pkg.dev/${PROJECT_ID}/rosetta-frontend-repo"
 
-# Content-addressed tag, matching scripts/rahti_push.sh. Deploying a fixed :latest tag
-# lets Cloud Run reuse the existing revision, so a push can appear to succeed while
-# serving the previous build.
+# Content-addressed tag: Cloud Run reuses the existing revision for an unchanged :latest.
 IMAGE_TAG=$(git rev-parse --short HEAD)
 if ! git diff --quiet || ! git diff --cached --quiet; then
     IMAGE_TAG="${IMAGE_TAG}-dirty-$(date +%s)"

@@ -1,2 +1,2 @@
-# Unit and integration tests.
+# Unit tests.
 

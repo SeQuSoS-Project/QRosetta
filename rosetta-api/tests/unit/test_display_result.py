@@ -19,7 +19,6 @@ def test_large_base64_statevector_is_stripped():
     out = _display_result(big)
     assert out["statevector"] == _STATEVECTOR_PLACEHOLDER
     assert out["simulator"] == "qiskit"
-    # original dict is not mutated
     assert big["statevector"].startswith("A")
 
 

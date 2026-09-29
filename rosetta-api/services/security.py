@@ -1,4 +1,4 @@
-# Security utilities like password hashing and JWT.
+# Password hashing, JWT tokens, the rate limiter and the get_current_user dependency.
 
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -14,12 +14,7 @@ from config import settings
 
 
 def _resolve_secret_key() -> str:
-    """Return the JWT signing key, refusing to start a non-local deployment without one.
-
-    Outside EXECUTION_MODE=local an unset SECRET_KEY is fatal: tokens signed with a
-    predictable key can be forged. Local development generates a random per-process key,
-    which invalidates existing sessions on restart.
-    """
+    """Return SECRET_KEY; raise outside local mode if unset, else generate a per-process key."""
     if settings.SECRET_KEY:
         return settings.SECRET_KEY
     if settings.EXECUTION_MODE != "local":
@@ -83,6 +78,5 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if user is None:
         raise credentials_exception
     if not user.is_active:
-        # A token issued before deactivation stops working immediately.
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This account has been deactivated")
     return user

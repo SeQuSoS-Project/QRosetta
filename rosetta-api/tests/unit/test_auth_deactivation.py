@@ -1,9 +1,4 @@
-"""Tests for the User.is_active flag.
-
-The column existed and defaulted to True, but nothing ever read it: login issued a token
-regardless, and an already-issued token kept working. These tests pin the flag to actual
-behaviour so it stops being decoration.
-"""
+"""A deactivated user (User.is_active=False) cannot log in, and existing tokens are rejected."""
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient

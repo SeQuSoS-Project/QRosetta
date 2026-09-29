@@ -1,4 +1,4 @@
-"""Unit tests for services/analysis/performance.py (T3.8 / FIX-033 resource ranking)."""
+"""Tests for services/analysis/performance.py."""
 
 from services.analysis.performance import create_performance_report, create_resource_report
 
@@ -21,9 +21,7 @@ def test_performance_report_ranks_fastest_first_and_reports_cpu_gate_metrics():
 
 
 def test_resource_report_ranks_by_process_peak_rss_not_delta():
-    # 'inflated_delta' has the SMALLER memory_usage_mb delta (the old, biased metric)
-    # but the LARGER true process_peak_rss_mb (the new, kernel-authoritative metric).
-    # Ranking must follow process_peak_rss_mb, not memory_usage_mb.
+    # Ranking follows process_peak_rss_mb, not memory_usage_mb.
     results = [
         {"simulator": "inflated_delta", "memory_usage_mb": 1.0, "process_peak_mb": 50.0,
          "process_peak_rss_mb": 500.0},

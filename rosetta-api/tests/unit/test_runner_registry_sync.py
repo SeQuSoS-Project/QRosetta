@@ -1,12 +1,5 @@
-"""A runner has to be listed in five places, and nothing checked they agree.
-
-config.py is the only one the application reads at runtime. The rest are build and
-deployment lists, so a runner missing from one of them is not an error — it is silently
-absent from that path: never built locally, never pushed to the registry, never
-contract-tested. That failure mode is quiet by construction, which is what makes it worth
-a test.
-
-CONTRIBUTING.md documents the same five places; this keeps the code honest about them.
+"""The runner lists in docker-compose.yml, safe_boot.sh, rahti_push.sh, runners/ and the
+contract test must match config.py's registry (see CONTRIBUTING.md).
 """
 import re
 from pathlib import Path
@@ -27,12 +20,12 @@ pytestmark = pytest.mark.skipif(
 
 
 def _infra_name(base_url: str) -> str:
-    """The runner's infrastructure name, derived from its base_url as config.py intends."""
+    """The runner's infrastructure name, derived from its base_url."""
     return base_url.split("//")[1].split(":")[0]
 
 
 def _registry() -> dict:
-    """Canonical id -> service entry, straight from the single runtime source."""
+    """Canonical id -> service entry from config.py."""
     return settings.get_runner_services()
 
 
@@ -68,7 +61,7 @@ def test_every_registered_runner_has_a_source_directory():
 
 
 def test_every_runner_directory_is_registered():
-    """An orphan directory is a runner nobody can reach."""
+    """Every directory under runners/ is registered in config.py."""
     registered = {_infra_name(e["base_url"]) for e in _registry().values()}
     on_disk = {d.name for d in (_REPO / "runners").iterdir() if d.is_dir()}
     assert on_disk == registered, f"unregistered runner directories: {on_disk - registered}"
@@ -82,13 +75,13 @@ def test_docker_compose_defines_every_registered_runner():
 
 
 def test_safe_boot_builds_every_registered_runner():
-    """A runner missing here is silently excluded from every local boot."""
+    """safe_boot.sh RUNNERS matches the registry."""
     expected = {_infra_name(e["base_url"]).replace("-", "_") for e in _registry().values()}
     assert _bash_array(_SAFE_BOOT, "RUNNERS") == expected
 
 
 def test_rahti_push_maps_every_registered_runner():
-    """A runner missing here is never pushed, so its Kubernetes Jobs cannot pull an image."""
+    """rahti_push.sh SERVICE_MAP matches the registry plus rosetta-api."""
     expected = {_infra_name(e["base_url"]) for e in _registry().values()} | {"rosetta-api"}
     assert _service_map_keys() == expected
 

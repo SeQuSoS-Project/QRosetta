@@ -1,20 +1,17 @@
 #!/bin/bash
+# Build core services and each runner separately, start whatever built, then follow logs.
 
 cd "$(dirname "$0")/.." || exit 1
 
-# --- 0. PRE-FLIGHT CHECK & CONFIGURATION ---
 echo ">>> [INIT] Starting safe boot..."
 
-# Per-runner execution cap (seconds). Kept in step with the UI max (300),
-# config.py default (300), and the Kubernetes manifest (300) so a timeout
-# chosen in the config panel is honoured locally instead of silently clamped.
+# Matches the UI max, config.py default and the Kubernetes manifest.
 export RUNNER_TIMEOUT_SEC=300
 
 
-# Define the core services that MUST succeed
+# A core build failure aborts; a runner build failure only skips that runner.
 CORE_SERVICES=("nginx" "api")
 
-# Define the runner services (can fail without crashing the app)
 RUNNERS=(
   "pytket_qiskit_runner"
   "pytket_cirq_runner"
@@ -36,7 +33,6 @@ RUNNERS=(
 
 echo ">>> Starting Graceful Build..."
 
-# 1. Build Core Services
 echo "[INFO] Building Core Services: ${CORE_SERVICES[*]}"
 docker compose build "${CORE_SERVICES[@]}"
 if [ $? -ne 0 ]; then
@@ -45,7 +41,6 @@ if [ $? -ne 0 ]; then
 fi
 echo "[SUCCESS] Core services built successfully."
 
-# 2. Build Runners individually
 SUCCESSFUL_RUNNERS=()
 
 echo "[BUILD] Building Runners..."
@@ -61,14 +56,11 @@ for runner in "${RUNNERS[@]}"; do
   fi
 done
 
-# 3. Start the application
 echo ">>> Launching application..."
 echo "   Core Services: ${CORE_SERVICES[*]}"
 echo "   Active Runners: ${SUCCESSFUL_RUNNERS[*]}"
 
-# Start containers in detached mode first
 docker compose up -d "${CORE_SERVICES[@]}" "${SUCCESSFUL_RUNNERS[@]}"
 
-# 4. Stream logs immediately
 echo ">>> Attaching to container logs (Press Ctrl+C to stop watching logs)..."
 docker compose logs -f

@@ -1,4 +1,4 @@
-"""Unit tests for the stdlib-only QASM gate-count/depth metric (T3.8 / FIX-033)."""
+"""Tests for the stdlib-only QASM gate-count/depth metric."""
 
 from qrosetta_commons.helpers import count_qasm_gates_and_depth
 
@@ -63,8 +63,6 @@ h q[0]; // trailing comment
 
 
 def test_gate_definition_bodies_are_not_counted():
-    # Formal parameters (no [index]) inside a custom gate block must not be
-    # mistaken for qubit-indexed circuit-body operations.
     qasm = """OPENQASM 2.0;
 include "qelib1.inc";
 gate bell a,b { h a; cx a,b; }
@@ -72,6 +70,5 @@ qreg q[2];
 bell q[0],q[1];
 """
     gate_count, depth = count_qasm_gates_and_depth(qasm)
-    # only the top-level `bell q[0],q[1];` call has qubit[index] tokens
     assert gate_count == 1
     assert depth == 1

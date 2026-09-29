@@ -1,12 +1,5 @@
-# Migration script for transitioning to CSC environment.
-
-"""
-Standalone Python migration script to securely move existing records
-from the local SQLite database to the CSC Pukki instance, and mock S3 storage
-files to the CSC Allas bucket.
-
-One-off: this ran during the original move to CSC and is kept for reference. A fresh
-deployment does not need it — the API creates its own schema on startup.
+"""One-off migration: copy records from the local SQLite database to CSC Pukki and
+local mock-S3 files to the CSC Allas bucket. Fresh deployments do not need it.
 """
 import os
 import sys
@@ -33,7 +26,7 @@ except ImportError:
     sys.exit(1)
 
 def encode_db_url(url: str) -> str:
-    """Safely URL-encodes the password component if it contains a `#` or other unsafe chars."""
+    """URL-encode the password component of a database URL."""
     if not url or "://" not in url:
         return url
 

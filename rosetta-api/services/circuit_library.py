@@ -1,4 +1,4 @@
-# Pre-defined quantum algorithm templates.
+# Generates QASM by executing the algorithm_templates/*.json code strings.
 
 import json
 import os

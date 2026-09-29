@@ -1,12 +1,6 @@
-"""Regression test for DELETE /auth/me: deleting an account with saved circuits and run
-history must not violate a foreign-key constraint. Found while writing routers/auth.py's
-docstring - confirmed via db/models.py that no ondelete=CASCADE/relationship was configured,
-so the delete worked only by accident on SQLite (which does not enforce foreign keys by
-default) and would fail against Postgres (the production database).
-
-Uses an in-memory SQLite database with PRAGMA foreign_keys=ON so the test actually enforces
-the same constraint Postgres does by default - without this pragma the test would pass
-regardless of whether the fix is present.
+"""DELETE /auth/me removes an account with saved circuits and run history without a
+foreign-key violation. SQLite runs with PRAGMA foreign_keys=ON to enforce the constraint
+as Postgres does.
 """
 import pytest
 from fastapi import FastAPI
@@ -75,7 +69,6 @@ def test_delete_account_with_saved_circuit_and_run_history_succeeds(client, tmp_
     r = client.delete("/auth/me", headers=headers)
     assert r.status_code == 204, r.text
 
-    # the account is really gone: re-login fails
     r = client.post("/auth/token", data={"username": "delete-me-1@example.com", "password": "testpass123"})
     assert r.status_code == 401
 

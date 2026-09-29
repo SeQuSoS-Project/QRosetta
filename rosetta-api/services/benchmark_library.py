@@ -1,3 +1,5 @@
+"""Reads the bundled QASMBench and MQTBench .qasm files under rosetta-api/benchmarks/."""
+
 import os
 import re
 import glob
@@ -8,19 +10,12 @@ from qrosetta_commons.helpers import get_logger
 
 logger = get_logger("benchmark-library")
 
-# Both benchmark suites are served as static, pre-generated QASM files bundled in the
-# image — no quantum SDKs in the API. QASMBench is downloaded from pnnl/QASMBench;
-# MQTBench is produced once by scripts/generate_mqtbench.py (which needs mqt.bench) and
-# committed. Derive the location relative to rosetta-api/ so it resolves in both the
-# container (WORKDIR) and local dev checkouts.
 _BENCHMARKS_ROOT = os.path.realpath(
     os.path.join(os.path.dirname(__file__), "..", "benchmarks")
 )
 _QASMBENCH_DIR = os.path.join(_BENCHMARKS_ROOT, "qasmbench")
 _MQTBENCH_DIR = os.path.join(_BENCHMARKS_ROOT, "mqtbench")
 
-# Benchmark identifiers are filesystem path components — restrict them to a safe
-# alphabet so a crafted name (e.g. "../../etc/foo") cannot escape the bundled dirs.
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
@@ -63,9 +58,6 @@ def get_qasmbench_circuit(circuit_name: str) -> str:
     return _read_bundled_qasm(_QASMBENCH_DIR, f"{circuit_name}.qasm", "QASMBench")
 
 
-# The bundled QASM files are baked into the image and never change at runtime, so the
-# directory scans are cached. A fresh copy is returned each call so a caller can never
-# mutate the cached value.
 @lru_cache(maxsize=1)
 def _qasmbench_names() -> tuple:
     return tuple(sorted(

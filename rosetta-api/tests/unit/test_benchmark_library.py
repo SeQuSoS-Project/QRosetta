@@ -1,6 +1,4 @@
-# Tests for the cached benchmark-list helpers: the bundled QASM files never change at
-# runtime, so the directory scans are cached — but each call must return an independent
-# copy so a caller cannot mutate the cache.
+# The cached benchmark-list helpers return an independent copy on each call.
 
 from services import benchmark_library as bl
 
