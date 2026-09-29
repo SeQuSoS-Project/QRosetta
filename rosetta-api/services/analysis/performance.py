@@ -63,8 +63,8 @@ def create_performance_report(results_list: list) -> dict:
 def create_resource_report(results_list: list) -> dict:
     """Rank backends by process_peak_rss_mb, lowest first.
 
-    process_peak_rss_mb is the kernel-reported peak (ru_maxrss) of the isolated child
-    process over the whole run, including compilation and warm-up.
+    process_peak_rss_mb is the simulating process's own peak RSS (VmHWM) over its
+    whole life: interpreter start, SDK import, warm-up and the timed run.
     """
     ranked = []
     unranked = []
