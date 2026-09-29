@@ -1,5 +1,6 @@
 """RO-Crate export routes: from a report in the request body, or from a job's server copy."""
 
+from config import settings
 import asyncio
 import io
 
@@ -35,7 +36,7 @@ async def _crate_response(results: dict, payload) -> StreamingResponse:
 
 
 @router.post("/export")
-@limiter.limit("10/minute")
+@limiter.limit(settings.RUN_RATE_LIMIT)
 async def export_ro_crate(request: Request, payload: schemas.ExportRequest):
     """Build an RO-Crate ZIP from the report supplied in the request body (subject to the
     1 MB upload limit). No authentication; nothing is stored."""
@@ -45,7 +46,7 @@ async def export_ro_crate(request: Request, payload: schemas.ExportRequest):
 
 
 @router.post("/jobs/{job_id}/export")
-@limiter.limit("10/minute")
+@limiter.limit(settings.RUN_RATE_LIMIT)
 async def export_job_ro_crate(request: Request, job_id: str, payload: schemas.ExportPayload):
     """Build an RO-Crate ZIP from the server's untruncated copy of a completed /compare,
     /compare_measured or /run_batch_suite job. With ``include_statevectors=true`` it carries

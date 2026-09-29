@@ -7,6 +7,7 @@ The probe flips q[0] of a 3-qubit register and leaves q[1], q[2] idle, so a runn
 returns |0...0>, mislabels its bit order, or drops idle qubits from the statevector fails.
 """
 
+import os
 import base64
 import math
 import struct
@@ -15,7 +16,7 @@ import time
 import httpx
 
 
-BASE_URL = "http://localhost"
+BASE_URL = os.environ.get("QROSETTA_BASE_URL", "http://localhost")
 N_SHOTS = 64
 
 ACTIVE_STATEVECTOR_RUNNERS = [

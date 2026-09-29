@@ -27,6 +27,8 @@ class Settings(BaseSettings):
 
     PLATFORM_VERSION: str = os.getenv("QROSETTA_VERSION", "1.0.0")
 
+    RUN_RATE_LIMIT: str = os.getenv("QROSETTA_RUN_RATE_LIMIT", "10/minute")
+
     RUNNER_TIMEOUT_SEC: int = 300
     RUNNER_CONNECT_TIMEOUT_SEC: int = 10
     RUNNER_DEADLINE_BUFFER_SEC: int = 15

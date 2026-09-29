@@ -6,10 +6,11 @@ Local smoke test for the Quimb runner.
 Run against the live stack:
     python3 tests/test_quimb_runner.py
 """
+import os
 import httpx
 import time
 
-BASE_URL = "http://localhost"
+BASE_URL = os.environ.get("QROSETTA_BASE_URL", "http://localhost")
 
 def _poll_job(job_id: str, timeout: int = 180) -> dict:
     deadline = time.time() + timeout

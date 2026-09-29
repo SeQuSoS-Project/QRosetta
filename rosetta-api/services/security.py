@@ -3,7 +3,19 @@
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-limiter = Limiter(key_func=get_remote_address)
+
+def client_address(request) -> str:
+    """Client IP as recorded by the nearest proxy (X-Real-IP, else last X-Forwarded-For hop)."""
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip.strip()
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[-1].strip()
+    return get_remote_address(request)
+
+
+limiter = Limiter(key_func=client_address)
 
 import secrets
 from datetime import datetime, timedelta, timezone

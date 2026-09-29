@@ -32,7 +32,7 @@ async def get_algorithms():
     ]
 
 @router.post("/generate_circuit")
-@limiter.limit("10/minute")
+@limiter.limit(settings.RUN_RATE_LIMIT)
 async def generate_circuit_endpoint(request: Request, payload: GenerateCircuitPayload):
     """Build one preset circuit's OpenQASM 2.0 text server-side, without running it."""
     if payload.qubits > settings.MAX_QUBITS_MEASURED:
@@ -75,7 +75,7 @@ async def list_qasmbench():
     return benchmark_library.list_qasmbench()
 
 @router.get("/benchmarks/mqt")
-@limiter.limit("10/minute")
+@limiter.limit(settings.RUN_RATE_LIMIT)
 async def get_mqt_bench(request: Request, algorithm: str, qubits: int = 3):
     """Fetch one bundled MQT Bench circuit's OpenQASM 2.0 text, by algorithm name and qubit
     count (see GET /benchmarks/mqt/list for the available combinations)."""
@@ -91,7 +91,7 @@ async def get_mqt_bench(request: Request, algorithm: str, qubits: int = 3):
         return JSONResponse(status_code=500, content={"error": "Benchmark circuit could not be loaded"})
 
 @router.get("/benchmarks/qasmbench")
-@limiter.limit("10/minute")
+@limiter.limit(settings.RUN_RATE_LIMIT)
 async def get_qasmbench(request: Request, circuit: str):
     """Fetch one bundled QASMBench circuit's OpenQASM 2.0 text, by name (see GET
     /benchmarks/qasmbench/list for the available names)."""

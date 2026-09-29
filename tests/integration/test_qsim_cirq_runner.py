@@ -6,10 +6,11 @@ Local smoke test for the qsim-cirq runner.
 Run against the live stack:
     pip install httpx && python3 tests/test_qsim_cirq_runner.py
 """
+import os
 import httpx
 import json
 
-BASE_URL = "http://localhost"
+BASE_URL = os.environ.get("QROSETTA_BASE_URL", "http://localhost")
 
 BELL_QASM_SV = """\
 OPENQASM 2.0;

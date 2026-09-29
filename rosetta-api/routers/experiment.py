@@ -1,6 +1,7 @@
 """Experiment routes: POST /experiments starts a sweep (poll GET /jobs/{id});
 GET /experiments/{id}/bundle streams the finished bundle as an in-memory ZIP."""
 
+from config import settings
 import io
 import uuid
 
@@ -18,7 +19,7 @@ router = APIRouter()
 
 
 @router.post("/experiments", response_model=JobStatusResponse)
-@limiter.limit("10/minute")
+@limiter.limit(settings.RUN_RATE_LIMIT)
 async def start_experiment(request: Request, payload: ExperimentPayload, background_tasks: BackgroundTasks):
     """Start a fleet-wide experiment: run every circuit in the payload across the fleet, over
     every preprocessing axis, and freeze the results into a citable bundle. Runs in the

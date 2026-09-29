@@ -6,10 +6,11 @@ Local smoke test for the qrisp runner.
 Run against the live stack:
     python3 tests/test_qrisp_runner.py
 """
+import os
 import httpx
 import time
 
-BASE_URL = "http://localhost"
+BASE_URL = os.environ.get("QROSETTA_BASE_URL", "http://localhost")
 
 def _poll_job(job_id: str, timeout: int = 120) -> dict:
     deadline = time.time() + timeout

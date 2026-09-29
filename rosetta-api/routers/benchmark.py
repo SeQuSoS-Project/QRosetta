@@ -54,7 +54,7 @@ async def get_job_full_report(request: Request, job_id: str):
     )
 
 @router.post("/compare", response_model=JobStatusResponse)
-@limiter.limit("10/minute")
+@limiter.limit(settings.RUN_RATE_LIMIT)
 async def compare_circuits_endpoint(request: Request, payload: QasmPayload, background_tasks: BackgroundTasks):
     """Dispatch one OpenQASM 2.0 circuit for an exact statevector comparison across the
     simulator fleet. Runs in the background; poll GET /jobs/{job_id} for the result, which
@@ -72,7 +72,7 @@ async def compare_circuits_endpoint(request: Request, payload: QasmPayload, back
     return {"job_id": job_id, "status": ACTIVE_JOBS[job_id]["status"], "target": ACTIVE_JOBS[job_id]["target"]}
 
 @router.post("/compare_measured", response_model=JobStatusResponse)
-@limiter.limit("10/minute")
+@limiter.limit(settings.RUN_RATE_LIMIT)
 async def compare_measured_circuits_endpoint(request: Request, payload: MeasuredQasmPayload, background_tasks: BackgroundTasks):
     """Dispatch one OpenQASM 2.0 circuit for a shot-based measurement comparison across the
     simulator fleet. Runs in the background; poll GET /jobs/{job_id} for the result, which
@@ -90,7 +90,7 @@ async def compare_measured_circuits_endpoint(request: Request, payload: Measured
     return {"job_id": job_id, "status": ACTIVE_JOBS[job_id]["status"], "target": ACTIVE_JOBS[job_id]["target"]}
 
 @router.post("/run_batch_suite", response_model=JobStatusResponse)
-@limiter.limit("10/minute")
+@limiter.limit(settings.RUN_RATE_LIMIT)
 async def run_batch_suite_endpoint(request: Request, payload: BatchPayload, background_tasks: BackgroundTasks):
     """Dispatch a list of circuits (presets, bundled benchmark circuits, or user-supplied
     QASM) across the simulator fleet in a single job, in either statevector or measured mode.

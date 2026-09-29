@@ -11,13 +11,14 @@ via /compare (statevector) and /compare_measured, then verifies:
     (optimization changes circuit structure, not results — global phase allowed)
 """
 
+import os
 import sys
 import time
 import base64
 import numpy as np
 import httpx
 
-BASE_URL = "http://localhost"
+BASE_URL = os.environ.get("QROSETTA_BASE_URL", "http://localhost")
 POLL_INTERVAL = 2.0
 JOB_TIMEOUT = 180
 
