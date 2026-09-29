@@ -283,22 +283,39 @@ def strip_terminal_measurements(qasm: str):
     return "\n".join(kept) + "\n", note
 
 
+def _restore_register_order(emitted: str, original: str) -> str:
+    """Reorder the register declarations of ``emitted`` to their order in ``original``."""
+    order = {(kind, name): k for k, (kind, name, _) in enumerate(declared_registers(original))}
+    lines = emitted.split("\n")
+    slots = [i for i, line in enumerate(lines) if _DECL_RE.match(line)]
+    decls = [lines[i] for i in slots]
+    keys = [_DECL_RE.match(line).group(1, 2) for line in decls]
+    if sorted(keys) != sorted(order):
+        return emitted
+    for i, line in zip(slots, sorted(decls, key=lambda d: order[_DECL_RE.match(d).group(1, 2)])):
+        lines[i] = line
+    return "\n".join(lines)
+
+
 def _pytket_round_trip(qasm: str, remove_barriers: bool):
-    """Parse and re-emit ``qasm`` with pytket, optionally removing barriers."""
+    """Parse and re-emit ``qasm`` with pytket, optionally removing barriers.
+
+    Register declarations keep their order in ``qasm``.
+    """
     import pytket.qasm
     from pytket.passes import RemoveBarriers
 
     circ = pytket.qasm.circuit_from_qasm_str(qasm)
     notes = [
         "API: parsed and re-emitted with pytket (circuit_from_qasm_str / circuit_to_qasm_str): "
-        "register declarations re-emitted in pytket's order, custom gate definitions inlined, "
+        "register declarations kept in declaration order, custom gate definitions inlined, "
         "gates rewritten into pytket's QASM gate set (e.g. u -> u3 with angles as multiples of "
         "pi), register broadcasts expanded, comments removed"
     ]
     if remove_barriers and has_barriers(qasm):
         RemoveBarriers().apply(circ)
         notes.append("API: removed barrier statements (pytket RemoveBarriers)")
-    return pytket.qasm.circuit_to_qasm_str(circ), notes
+    return _restore_register_order(pytket.qasm.circuit_to_qasm_str(circ), qasm), notes
 
 
 def prepare_statevector_dispatch(qasm: str, apply_preprocessing: bool) -> dict:

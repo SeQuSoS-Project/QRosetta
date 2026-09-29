@@ -50,8 +50,14 @@ def _compile(payload: dict, qasm: str, notes=()) -> CompileResult:
     """Parse the measurement-free QASM with Qiskit, transpile to the TorchQuantum basis and
     convert with qiskit2tq. The circuit is (tq_module, transpiled_qiskit_circuit)."""
     level = min(max(payload.get("optimization_level", 0), 0), 2)
+    parsed = QiskitCircuit.from_qasm_str(qasm)
+    if len(parsed.qregs) > 1:
+        raise ValueError(
+            "qiskit2tq places each qubit on the wire given by its index within its own "
+            "register, so this adapter cannot run a circuit with more than one quantum "
+            "register; enable apply_preprocessing to merge them.")
     qc = qiskit_transpile(
-        QiskitCircuit.from_qasm_str(qasm),
+        parsed,
         optimization_level=level,
         basis_gates=_TQ_BASIS_GATES,
     )

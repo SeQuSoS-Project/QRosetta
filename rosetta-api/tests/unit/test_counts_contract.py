@@ -161,3 +161,23 @@ def test_every_runner_keys_counts_over_classical_bits():
     missing = [p.parent.name for p in sorted(_RUNNERS.glob("*/main.py"))
                if not markers.search(p.read_text())]
     assert not missing, f"runners not keying counts over classical bits: {missing}"
+
+
+def test_api_round_trip_keeps_register_declaration_order():
+    from services.circuit_resolver import prepare_measured_dispatch, prepare_statevector_dispatch
+    qasm = H + ("qreg r[1]; qreg b[1]; creg w[2]; creg a[1]; x b[0]; "
+                "measure r[0] -> w[1]; measure b[0] -> a[0];")
+    original = parse_measurement_layout(qasm).clbits
+    for group in ("measured_native", "measured_sampled"):
+        sent = prepare_measured_dispatch(qasm, True)[group]["qasm"]
+        assert parse_measurement_layout(sent).clbits == original
+    sent = prepare_statevector_dispatch(qasm, True)["qasm"]
+    assert [n for n, _ in parse_measurement_layout(sent).cregs] == ["w", "a"]
+
+
+def test_restore_register_order_leaves_mismatched_declarations_alone():
+    from services.circuit_resolver import _restore_register_order
+    emitted = "qreg q[1];\ncreg a[1];\ncreg b[1];\n"
+    assert _restore_register_order(emitted, H + "qreg q[1]; creg b[1]; creg a[1];") == (
+        "qreg q[1];\ncreg b[1];\ncreg a[1];\n")
+    assert _restore_register_order(emitted, H + "qreg q[1]; creg b[1];") == emitted
