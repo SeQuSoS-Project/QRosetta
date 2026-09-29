@@ -1,4 +1,4 @@
-# Tests for services/aggregator.py.
+"""Tests for services/aggregator.py."""
 
 import pytest
 import asyncio

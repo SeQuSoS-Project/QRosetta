@@ -1,4 +1,4 @@
-# Statevector primitives: parsing, normalisation, and bit-order transforms.
+"""Statevector primitives: parsing, validation, normalisation, and bit-order transforms."""
 
 from itertools import permutations
 
@@ -9,7 +9,7 @@ from .common import MAX_EXHAUSTIVE_QUBIT_PERMUTATION_QUBITS
 
 
 def parse_statevector(sv_data):
-    """Converts a statevector (Base64 string or list) into a numpy array."""
+    """Convert a statevector (Base64 string or list) into a numpy array."""
     if sv_data is None:
         return np.array([])
 
@@ -24,13 +24,7 @@ def parse_statevector(sv_data):
 
 
 def _statevector_invalid_reason(sv):
-    """Return a not-comparable reason for a degenerate statevector, else None.
-
-    Guards against inputs that would otherwise inject non-finite values (NaN/Inf)
-    into the report — e.g. an empty vector, a vector containing NaN/Inf, or an
-    all-zero vector whose normalization divides by zero. These are reported as
-    explicit not-comparable evidence rather than silently normalized/repaired.
-    """
+    """Return a not-comparable reason for an empty, non-finite or zero-norm vector, else None."""
     if sv.size == 0:
         return "empty_statevector"
     if not np.all(np.isfinite(sv)):
@@ -41,24 +35,30 @@ def _statevector_invalid_reason(sv):
 
 
 def _normalize_statevector(sv):
+    """Return (sv / ||sv||, ||sv||)."""
     norm = np.linalg.norm(sv)
     return sv / norm, norm
 
 
 def _statevector_inner_metrics(sv_i_norm, sv_j_norm, fidelity_tolerance, phase_tolerance):
-    inner_product = np.dot(np.conjugate(sv_i_norm), sv_j_norm)
-    fidelity = np.abs(inner_product)**2
-    relative_phase = np.angle(inner_product)
+    """Return (fidelity, relative_phase) of two normalised vectors.
 
-    if np.isclose(fidelity, 1.0, atol=fidelity_tolerance):
-        fidelity = 1.0
-    if np.isclose(relative_phase, 0.0, atol=phase_tolerance):
+    Fidelity is |<i|j>|^2 clamped to [0, 1]; it is never rounded toward 1. A relative phase
+    within ``phase_tolerance`` of 0 is reported as 0. ``fidelity_tolerance`` is accepted for
+    signature compatibility and does not alter the returned fidelity.
+    """
+    inner_product = np.dot(np.conjugate(sv_i_norm), sv_j_norm)
+    fidelity = float(min(max(np.abs(inner_product) ** 2, 0.0), 1.0))
+    relative_phase = float(np.angle(inner_product))
+
+    if abs(relative_phase) <= phase_tolerance:
         relative_phase = 0.0
 
     return fidelity, relative_phase
 
 
 def _statevector_qubit_count(sv):
+    """Return log2(len(sv)); raise ValueError if the length is not a power of two."""
     size = len(sv)
     if size == 0 or size & (size - 1):
         raise ValueError(f"statevector length {size} is not a power of two")
@@ -68,11 +68,8 @@ def _statevector_qubit_count(sv):
 def _permute_statevector(sv, permutation):
     """Return sv with computational-basis bit positions permuted.
 
-    Viewing the 2^n amplitudes as an n-dimensional array indexed by the individual bits
-    (axis 0 is the most significant), permuting bit positions is transposing those axes.
-    Equivalent to assigning each amplitude to the index whose bits are gathered through
-    the permutation, and checked against that formulation for every permutation of
-    n = 1..6 in test_statevector_permutation.py.
+    The 2^n amplitudes are viewed as an n-dimensional array indexed by the bits (axis 0 is
+    the most significant), and permuting bit positions is transposing those axes.
     """
     n_qubits = _statevector_qubit_count(sv)
     return np.asarray(sv).reshape([2] * n_qubits).transpose(permutation).reshape(-1)
@@ -85,6 +82,11 @@ def _bit_reversed_statevector(sv):
 
 
 def _best_statevector_qubit_permutation_metrics(sv_i_norm, sv_j_norm, fidelity_tolerance, phase_tolerance):
+    """Search every non-identity, non-reversal qubit permutation for the highest fidelity.
+
+    Ties keep the lexicographically first permutation. Above the qubit cap the search is
+    not attempted and the result says so.
+    """
     n_qubits = _statevector_qubit_count(sv_j_norm)
     if n_qubits > MAX_EXHAUSTIVE_QUBIT_PERMUTATION_QUBITS:
         return {

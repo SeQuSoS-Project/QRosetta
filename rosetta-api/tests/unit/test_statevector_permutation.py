@@ -1,12 +1,7 @@
-"""Equivalence guard for the tensor-transpose form of _permute_statevector.
+"""Checks the transpose form of _permute_statevector against a per-amplitude reference.
 
-The function was a per-amplitude scatter: for each index, format the index as bits, gather
-those bits through the permutation, and write the amplitude at the resulting index. It is
-now a reshape/transpose, which is the same operation expressed on axes — but the axis order
-is easy to invert, and an inverted permutation would not crash. It would silently report a
-different transform in the pairwise agreement taxonomy, which is a published result.
-
-So the reference implementation lives here, and the two are compared exhaustively.
+An inverted axis order would not crash but would report the wrong permutation in the
+pairwise agreement taxonomy, so the two forms are compared exhaustively for n = 1..6.
 """
 from itertools import permutations
 
@@ -17,7 +12,7 @@ from services.analysis.divergence import _permute_statevector
 
 
 def _reference_permute(sv, permutation):
-    """The original per-amplitude scatter, kept as the definition of correctness."""
+    """Per-amplitude scatter: gather each index's bits through the permutation."""
     n_qubits = int(np.log2(len(sv)))
     out = np.empty_like(sv)
     for index, amplitude in enumerate(sv):

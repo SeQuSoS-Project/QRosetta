@@ -1,4 +1,9 @@
-# Shot-noise-aware hypothesis testing and multiple-comparison correction.
+"""Shot-noise-aware homogeneity tests, power model, and multiple-comparison correction.
+
+The tests treat the two backends' counts as independent multinomial samples. Backends that
+sampled from a shared seed may draw correlated samples, which the tests do not model; each
+test block records whether the pair shared a runner seed.
+"""
 
 import numpy as np
 from scipy.stats import chi2 as _chi2_dist, chi2_contingency, ncx2
@@ -6,28 +11,45 @@ from scipy.optimize import brentq
 
 from .common import STAT_TEST_ALPHA, STAT_TEST_DELTA_TV, STAT_TEST_TARGET_POWER
 
+POWER_MODEL = "min_cohens_w (w = delta_tv, df = observed outcomes - 1)"
 
-def _shots_per_backend_for_target_power(alpha, target_power, delta_tv):
-    """Shots per backend needed to detect a total-variation difference of ``delta_tv``.
 
-    Prospective shot budget under a deliberately conservative two-outcome alternative:
-    two outcomes carry all the probability mass and differ by +/- delta_tv between the
-    two backends, so the pooled cell probabilities are 0.5 each and Cohen's w reduces to
-    exactly ``delta_tv`` on a single degree of freedom. This is the *largest* shot budget
-    among alternatives with the same total-variation distance (smallest w), so it does not
-    under-state the required shots. Deterministic; scipy-only.
+def _shots_per_backend_for_target_power(alpha, target_power, delta_tv, df=1):
+    """Shots per backend for power ``target_power`` against a total-variation gap ``delta_tv``.
+
+    For a 2 x K homogeneity test with equal shots per backend, Cohen's w satisfies w >= TV
+    for every alternative (Cauchy-Schwarz), so w = delta_tv is the least favourable effect
+    for that TV distance. The noncentrality is lambda = N_total * w^2 on ``df`` = K - 1
+    degrees of freedom. The result is exact for the outcome support supplied; if the true
+    support is larger than the observed one, the budget can be too small.
     """
-    if delta_tv <= 0:
+    if delta_tv <= 0 or df < 1:
         return None
-    crit = _chi2_dist.ppf(1 - alpha, 1)
-    # Required noncentrality lambda so that power == target_power at df=1.
+    crit = _chi2_dist.ppf(1 - alpha, df)
     lam_required = brentq(
-        lambda lam: ncx2.cdf(crit, 1, lam) - (1 - target_power),
+        lambda lam: ncx2.cdf(crit, df, lam) - (1 - target_power),
         0.0,
         1.0e6,
     )
-    n_total = lam_required / (delta_tv ** 2)  # lambda = N * w^2, w = delta_tv
+    n_total = lam_required / (delta_tv ** 2)
     return int(np.ceil(n_total / 2.0))
+
+
+def _power_at_shots(alpha, delta_tv, df, n_total):
+    """Power to detect ``delta_tv`` with ``n_total`` shots across both backends, on ``df``."""
+    crit = _chi2_dist.ppf(1 - alpha, df)
+    return float(1 - ncx2.cdf(crit, df, n_total * (delta_tv ** 2)))
+
+
+def _shared_seed(res_i, res_j):
+    """True/False if both results carry a runner_seed, else None."""
+    if res_i is None or res_j is None:
+        return None
+    seed_i = res_i.get("runner_seed")
+    seed_j = res_j.get("runner_seed")
+    if seed_i is None or seed_j is None:
+        return None
+    return bool(seed_i == seed_j)
 
 
 def _statistical_agreement_test(
@@ -39,29 +61,35 @@ def _statistical_agreement_test(
     alpha=STAT_TEST_ALPHA,
     target_power=STAT_TEST_TARGET_POWER,
     delta_tv=STAT_TEST_DELTA_TV,
+    res_i=None,
+    res_j=None,
 ):
-    """Shot-noise-aware homogeneity test between two count distributions.
+    """Uncorrected Pearson chi-square and G-test of homogeneity between two count vectors.
 
-    ``counts_j`` is already aligned to the registered transform named by ``basis`` (direct
-    counts, bit-reversed keys, or permuted keys), so the statistical verdict is computed on
-    the same basis the explained-cause label selected. Returns descriptive metrics plus raw
-    chi-square and G-test p-values; family-wise correction and the final verdict are filled
-    in a second pass over all pairs.
+    ``counts_j`` is already aligned to ``basis``. Outcomes with zero counts in both rows are
+    dropped before testing. Family-wise correction and the verdict are filled in by
+    ``_apply_multiple_comparison_correction``. Raises ValueError if scipy rejects the table.
     """
-    outcomes = sorted(set(counts_i) | set(counts_j))
+    outcomes = [
+        o for o in sorted(set(counts_i) | set(counts_j))
+        if float(counts_i.get(o, 0)) + float(counts_j.get(o, 0)) > 0
+    ]
     row_i = np.array([float(counts_i.get(o, 0)) for o in outcomes])
     row_j = np.array([float(counts_j.get(o, 0)) for o in outcomes])
     n_i = float(row_i.sum())
     n_j = float(row_j.sum())
+    n_total = n_i + n_j
 
     p_i = row_i / n_i
     p_j = row_j / n_j
     total_variation = float(0.5 * np.abs(p_i - p_j).sum())
 
+    df = max(len(outcomes) - 1, 1)
     block = {
         "basis": basis,
         "n_shots": {sim_i: int(round(n_i)), sim_j: int(round(n_j))},
         "alpha": alpha,
+        "shared_seed": _shared_seed(res_i, res_j),
         "effect_size": {
             "total_variation": total_variation,
             "cramers_v": None,
@@ -69,10 +97,11 @@ def _statistical_agreement_test(
         "power": {
             "delta_tv": delta_tv,
             "target_power": target_power,
-            "model": "two_outcome_conservative (Cohen's w = delta_tv, df=1)",
-            "power_to_detect_delta_at_observed_shots": None,
+            "model": POWER_MODEL,
+            "df": df,
+            "power_to_detect_delta_at_observed_shots": _power_at_shots(alpha, delta_tv, df, n_total),
             "shots_per_backend_for_target_power": _shots_per_backend_for_target_power(
-                alpha, target_power, delta_tv
+                alpha, target_power, delta_tv, df
             ),
         },
         "chi2": {
@@ -95,17 +124,6 @@ def _statistical_agreement_test(
         "verdict": None,
     }
 
-    # Prospective sensitivity: with the shots actually used, power to detect a delta_tv
-    # difference (same conservative df=1 model). Not post-hoc/observed-effect power.
-    n_total = n_i + n_j
-    crit_ref = _chi2_dist.ppf(1 - alpha, 1)
-    lam_at_observed = n_total * (delta_tv ** 2)
-    block["power"]["power_to_detect_delta_at_observed_shots"] = float(
-        1 - ncx2.cdf(crit_ref, 1, lam_at_observed)
-    )
-
-    # A single shared outcome (K < 2) is a degenerate contingency table (df 0): the two
-    # backends put all mass on the same bitstring, so they are trivially consistent.
     if len(outcomes) < 2:
         block["chi2"].update({"statistic": 0.0, "dof": 0, "p_value": 1.0})
         block["g_test"].update({"statistic": 0.0, "dof": 0, "p_value": 1.0})
@@ -114,7 +132,7 @@ def _statistical_agreement_test(
 
     table = np.vstack([row_i, row_j])
     chi2_stat, chi2_p, dof, expected = chi2_contingency(table, correction=False)
-    g_stat, g_p, _, _ = chi2_contingency(table, lambda_="log-likelihood")
+    g_stat, g_p, _, _ = chi2_contingency(table, correction=False, lambda_="log-likelihood")
 
     block["low_count_warning"] = bool((expected < 5).any())
     block["effect_size"]["cramers_v"] = float(np.sqrt(chi2_stat / n_total))
@@ -139,7 +157,6 @@ def _bh_adjust(pvalues):
     pvals = np.asarray(pvalues, dtype=float)
     order = np.argsort(pvals)
     ranked = pvals[order] * m / np.arange(1, m + 1)
-    # Enforce monotonicity (step-up): each adjusted value is the running min from the top.
     ranked = np.minimum.accumulate(ranked[::-1])[::-1]
     ranked = np.clip(ranked, 0.0, 1.0)
     adjusted = np.empty(m)
@@ -150,9 +167,8 @@ def _bh_adjust(pvalues):
 def _apply_multiple_comparison_correction(stat_records, alpha=STAT_TEST_ALPHA):
     """Fill BH/Bonferroni-adjusted p-values and verdicts across the pairwise family.
 
-    ``stat_records`` is the list of ``statistical_test`` blocks (one per comparable pair).
-    Correction is applied per test (chi-square and G-test) across all pairs, so the fleet's
-    many pairwise comparisons do not inflate the false-discovery rate.
+    ``stat_records`` holds one ``statistical_test`` block per tested pair. Correction is
+    applied per test (chi-square and G-test) across all pairs.
     """
     m = len(stat_records)
     if m == 0:

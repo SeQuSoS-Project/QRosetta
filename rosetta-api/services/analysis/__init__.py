@@ -1,4 +1,4 @@
-# Quantum state and performance analysis utilities.
+"""Quantum state agreement and performance analysis."""
 
 from .divergence import create_divergence_report, create_counts_report
 from .performance import create_performance_report, create_resource_report

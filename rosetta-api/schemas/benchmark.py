@@ -1,22 +1,22 @@
-# Pydantic schemas for request/response validation.
+"""Pydantic request and response schemas for the benchmark endpoints."""
 
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional, Union
 
 class AgreementThresholds(BaseModel):
-    """Cut-offs the comparator uses to descriptively label a backend pair as agreeing or not.
+    """Cut-offs the comparator uses to label a backend pair as agreeing or not.
 
-    Optional on every run payload; omitting it (or any field) keeps the default shown below.
-    The statevector tolerances (fidelity/phase) are numerical-precision cut-offs for exact
-    statevector comparison. The measured cut-offs (JS divergence/Hellinger distance) are
-    heuristic and shot-count dependent — the additive statistical_test block in the report
-    carries the shot-noise-aware verdict alongside this descriptive label. Whatever values
-    were actually used are recorded per pair in the report's pairwise_agreement records.
+    Optional on every run payload; an omitted field keeps its default. The statevector
+    tolerances are numerical-precision cut-offs. The measured cut-offs (JS divergence in
+    nats, Hellinger distance) are descriptive and shot-count dependent; the report's
+    statistical_test block carries the shot-noise-aware verdict. The values used are
+    recorded in every pairwise_agreement record.
     """
-    fidelity_tolerance: float = Field(1e-12, description="Statevector fidelity below 1 minus this is not 'agree_directly'.")
-    phase_tolerance: float = Field(1e-12, description="Global-phase difference below this is treated as equal.")
-    js_threshold: float = Field(0.01, description="Jensen-Shannon divergence between two backends' measured distributions above this is 'distance_exceeds_threshold'.")
-    hellinger_threshold: float = Field(0.1, description="Hellinger distance between two backends' measured distributions above this is 'distance_exceeds_threshold'.")
+    fidelity_tolerance: float = Field(1e-5, ge=0, description="A statevector pair agrees when fidelity >= 1 minus this value.")
+    phase_tolerance: float = Field(1e-12, ge=0, description="A relative phase within this many radians of 0 is reported as 0.")
+    norm_tolerance: float = Field(1e-6, ge=0, description="A statevector whose norm differs from 1 by more than this is flagged unnormalized_input; an agreeing pair is then labelled 'agree_after_normalization'.")
+    js_threshold: float = Field(0.01, ge=0, description="Jensen-Shannon divergence (nats) between two backends' measured distributions above this is 'distance_exceeds_threshold'.")
+    hellinger_threshold: float = Field(0.1, ge=0, description="Hellinger distance between two backends' measured distributions above this is 'distance_exceeds_threshold'.")
 
 class QasmPayload(BaseModel):
     """Request body for POST /compare — an exact statevector comparison of one OpenQASM 2.0
@@ -36,7 +36,7 @@ class MeasuredQasmPayload(BaseModel):
     """Request body for POST /compare_measured — a shot-based measurement comparison of one
     OpenQASM 2.0 circuit across the simulator fleet."""
     qasm_string: str = Field(..., description="The circuit to run, as OpenQASM 2.0 text (must contain measurement instructions).")
-    n_shots: int = Field(1024, description="Number of shots each runner samples.")
+    n_shots: int = Field(1024, ge=1, description="Number of shots each runner samples.")
     optimization_level: int = Field(0, description="Requested transpiler/optimization level (0-3, each backend clamps to its own supported max).")
     runner_config: Dict[str, Union[int, List[int]]] = Field({}, description="Per-runner optimization-level override. An int runs that runner once at that level; a list runs it once per element.")
     runner_phases: Dict[str, int] = Field({}, description="Maps runner id to a phase number. Runners sharing a phase run concurrently; phases execute in ascending order.")
@@ -65,7 +65,7 @@ class BatchPayload(BaseModel):
     """Request body for POST /run_batch_suite — run a list of circuits (BenchmarkTask entries)
     across the simulator fleet in a single job."""
     tasks: List[BenchmarkTask] = Field(..., description="The circuits to run, in order.")
-    n_shots: int = Field(1024, description="Number of shots per runner, used only when mode is 'measured'.")
+    n_shots: int = Field(1024, ge=1, description="Number of shots per runner, used only when mode is 'measured'.")
     mode: str = Field(..., description="'statevector' or 'measured'.")
     optimization_level: int = Field(0, description="Requested transpiler/optimization level (0-3, each backend clamps to its own supported max).")
     runner_config: Dict[str, Union[int, List[int]]] = Field({}, description="Per-runner optimization-level override, same semantics as in QasmPayload.")
@@ -77,11 +77,6 @@ class BatchPayload(BaseModel):
     apply_preprocessing: bool = Field(True, description="Whether each runner applies its own preprocessing pass before simulating.")
     seed: Optional[int] = Field(None, description="RNG seed shared by every task and runner's sampling (measured mode only), for a reproducible run. Omit for a fresh, non-deterministic seed that is still generated and recorded.")
     thresholds: Optional[AgreementThresholds] = Field(None, description="Override the default agreement thresholds for this run.")
-
-# --- Reproducible experiment runner (T3.5) -------------------------------------------
-# One experiment = a set of circuits x the fleet, run over one or more preprocessing axes,
-# frozen into a citable artifact bundle. Opt-in and additive: reuses the batch execution
-# core; no change to the compare/batch payloads above.
 
 class ExperimentCircuit(BaseModel):
     """One circuit to include in an experiment (POST /experiments), from any of the wired
@@ -104,7 +99,7 @@ class ExperimentPayload(BaseModel):
     a citable artifact bundle (downloaded via GET /experiments/{job_id}/bundle)."""
     circuits: List[ExperimentCircuit] = Field(..., description="The circuits to include.")
     mode: str = Field("measured", description="'statevector' or 'measured'.")
-    n_shots: int = Field(1024, description="Number of shots per runner, used only when mode is 'measured'.")
+    n_shots: int = Field(1024, ge=1, description="Number of shots per runner, used only when mode is 'measured'.")
     optimization_level: int = Field(0, description="Requested transpiler/optimization level (0-3, each backend clamps to its own supported max).")
     runner_config: Dict[str, Union[int, List[int]]] = Field({}, description="Per-runner optimization-level override, same semantics as in QasmPayload.")
     runner_phases: Dict[str, int] = Field({}, description="Maps runner id to a phase number for staged concurrent execution.")
@@ -157,8 +152,8 @@ class ComparisonResult(BaseModel):
     """The full report for one circuit run across the fleet."""
     input_qasm: str = Field(..., description="The circuit as submitted, before any runner-specific preprocessing.")
     divergence_report: Dict[str, Any] = Field(..., description="Cross-backend agreement: fidelity/distance matrices, the explained-cause pairwise_agreement records, and (measured mode) the statistical_test_summary.")
-    performance_report: Dict[str, Any] = Field(..., description="Per-backend timing, ranked fastest first.")
-    resource_report: Dict[str, Any] = Field(..., description="Per-backend memory usage, ranked by process peak RSS (lowest first).")
+    performance_report: Dict[str, Any] = Field(..., description="Per-backend timing: 'ranking' lists successful backends fastest first; 'unranked' lists the rest with a reason.")
+    resource_report: Dict[str, Any] = Field(..., description="Per-backend memory usage: 'ranking' lists successful backends by process peak RSS (lowest first); 'unranked' lists the rest with a reason.")
     raw_results: List[RunnerPerformanceMetrics] = Field(..., description="Every backend's individual result.")
 
 class PublicationArtifactsSelection(BaseModel):

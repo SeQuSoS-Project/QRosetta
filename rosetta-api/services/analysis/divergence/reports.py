@@ -1,19 +1,21 @@
-# The two report builders that walk every backend pair.
+"""The statevector and counts report builders that walk every backend pair."""
 
+import gc
+import math
 
 import numpy as np
 
 from .common import (
-    logger,
+    DEFAULT_FIDELITY_TOLERANCE, DEFAULT_HELLINGER_THRESHOLD, DEFAULT_JS_THRESHOLD,
+    DEFAULT_NORM_TOLERANCE, DEFAULT_PHASE_TOLERANCE, JS_DIVERGENCE_UNIT, _threshold, logger,
 )
 from .classification import (
     _classify_counts_pair, _classify_statevector_pair, _counts_not_comparable_record,
     _statevector_not_comparable_record,
 )
 from .counts import (
-    _best_counts_qubit_permutation_metrics, _bit_reversed_counts,
-    _counts_distance_metrics, _counts_invalid_reason, _counts_probability_vector,
-    _permute_counts,
+    _best_counts_qubit_permutation_metrics, _bit_reversed_counts, _counts_distance_metrics,
+    _counts_invalid_reason, _counts_probability_vector, _counts_total, _permute_counts,
 )
 from .statevector import (
     _best_statevector_qubit_permutation_metrics, _bit_reversed_statevector,
@@ -27,15 +29,12 @@ from .statistics import (
 
 
 def create_divergence_report(results_list, thresholds=None):
-    """
-    Generates a full report including fidelity and phase.
-    Optimized for memory: Parses statevectors ONLY when needed and compares sequentially.
+    """Build the statevector divergence report: fidelity/phase matrices and pair records.
 
-    thresholds: optional dict overriding the agreement tolerances. Recognized keys:
-    ``fidelity_tolerance`` and ``phase_tolerance`` (defaults = 1e-12, numerical-precision
-    tolerances for exact — shot-noise-free — statevectors). Absent/None keeps the defaults.
+    Each statevector is decoded and normalised once and reused across pairs. ``thresholds``
+    may override ``fidelity_tolerance`` (default 1e-5), ``phase_tolerance`` (default 1e-12)
+    and ``norm_tolerance`` (default 1e-6); an absent or None key keeps the default.
     """
-    import gc
 
     ordering_map = {}
     for res in results_list:
@@ -68,17 +67,12 @@ def create_divergence_report(results_list, thresholds=None):
     divergences_found = []
     pairwise_agreement = []
 
-    _t = thresholds or {}
-    fidelity_tolerance = _t.get("fidelity_tolerance", 1e-12)
-    phase_tolerance = _t.get("phase_tolerance", 1e-12)
-    normalization_tolerance = 1e-9  # numerical only; not user-facing
+    fidelity_tolerance = _threshold(thresholds, "fidelity_tolerance", DEFAULT_FIDELITY_TOLERANCE)
+    phase_tolerance = _threshold(thresholds, "phase_tolerance", DEFAULT_PHASE_TOLERANCE)
+    norm_tolerance = _threshold(thresholds, "norm_tolerance", DEFAULT_NORM_TOLERANCE)
 
     logger.info("Starting sequential divergence comparison...")
 
-    # Decode + normalize each runner's statevector once and reuse across every pair. The
-    # cached values are identical to recomputing them per pair (parse_statevector and
-    # _normalize_statevector are pure); this only removes the O(N^2) re-decode of the same
-    # Base64 vector. Parse-error and invalid-statevector handling stays inline below.
     _parsed_sv = {}
     _normalized_sv = {}
 
@@ -130,11 +124,11 @@ def create_divergence_report(results_list, thresholds=None):
 
             sv_i_norm, norm_i = _get_normalized_sv(sim_i_name, sv_i)
 
-            if not np.isclose(norm_i, 1.0, atol=normalization_tolerance):
-                 divergences_found.append({
+            if abs(float(norm_i) - 1.0) > norm_tolerance:
+                divergences_found.append({
                     "type": "Normalization",
-                    "simulator": sim_i_name,
-                    "norm": float(norm_i)
+                    "simulators": [sim_i_name],
+                    "norm": float(norm_i),
                 })
 
         except Exception as e:
@@ -228,9 +222,10 @@ def create_divergence_report(results_list, thresholds=None):
                 phase_matrix[i, j] = relative_phase
                 phase_matrix[j, i] = -relative_phase
 
-                is_cross_group = (lsb_sims and msb_sims and
-                                 ((sim_i_name in lsb_sims and sim_j_name in msb_sims) or
-                                  (sim_i_name in msb_sims and sim_j_name in lsb_sims)))
+                is_cross_group = bool(
+                    (sim_i_name in lsb_sims and sim_j_name in msb_sims)
+                    or (sim_i_name in msb_sims and sim_j_name in lsb_sims)
+                )
 
                 pairwise_agreement.append(
                     _classify_statevector_pair(
@@ -246,6 +241,7 @@ def create_divergence_report(results_list, thresholds=None):
                         is_cross_group,
                         fidelity_tolerance,
                         phase_tolerance,
+                        norm_tolerance,
                     )
                 )
 
@@ -261,7 +257,7 @@ def create_divergence_report(results_list, thresholds=None):
                     divergences_found.append({
                         "type": "Phase",
                         "simulators": [sim_i_name, sim_j_name],
-                        "fidelity": 1.0,
+                        "fidelity": float(fidelity),
                         "relative_phase": float(relative_phase),
                         "is_cross_group": is_cross_group
                     })
@@ -300,21 +296,103 @@ def create_divergence_report(results_list, thresholds=None):
     return report
 
 
+def _as_number(total):
+    """Return an integral float as int, otherwise the float."""
+    return int(total) if float(total).is_integer() else float(total)
+
+
+def _shot_total_mismatch(sim_i, total_i, sim_j, total_j, n_shots):
+    """Return {"observed": {...}, "requested": n_shots} if a total differs from n_shots."""
+    if n_shots is None or (total_i == n_shots and total_j == n_shots):
+        return None
+    return {
+        "observed": {sim_i: _as_number(total_i), sim_j: _as_number(total_j)},
+        "requested": n_shots,
+    }
+
+
+def _compare_counts_pair(res_i, res_j, is_cross_group, js_threshold, hellinger_threshold, n_shots):
+    """Return (record, statistical_test block or None, (js, hellinger) or None) for one pair."""
+    sim_i = res_i.get("simulator", "unknown")
+    sim_j = res_j.get("simulator", "unknown")
+    counts_i = res_i["counts"]
+    counts_j = res_j["counts"]
+
+    outcomes = sorted(set(counts_i) | set(counts_j))
+    js_div, h_dist = _counts_distance_metrics(
+        _counts_probability_vector(counts_i, outcomes),
+        _counts_probability_vector(counts_j, outcomes),
+    )
+
+    bit_reversed_counts_j = _bit_reversed_counts(counts_j)
+    bit_reversed_outcomes = sorted(set(counts_i) | set(bit_reversed_counts_j))
+    bit_reversed_js_div, bit_reversed_h_dist = _counts_distance_metrics(
+        _counts_probability_vector(counts_i, bit_reversed_outcomes),
+        _counts_probability_vector(bit_reversed_counts_j, bit_reversed_outcomes),
+    )
+
+    nonfinite = {
+        name: value for name, value in (
+            ("js_divergence", js_div),
+            ("hellinger_distance", h_dist),
+            ("bit_reversed_js_divergence", bit_reversed_js_div),
+            ("bit_reversed_hellinger_distance", bit_reversed_h_dist),
+        ) if not math.isfinite(value)
+    }
+    if nonfinite:
+        return (
+            _counts_not_comparable_record(
+                res_i, res_j, "nonfinite_metric", {name: str(v) for name, v in nonfinite.items()}
+            ),
+            None,
+            None,
+        )
+
+    qubit_permutation_metrics = _best_counts_qubit_permutation_metrics(counts_i, counts_j)
+    shot_total_mismatch = _shot_total_mismatch(
+        sim_i, _counts_total(counts_i), sim_j, _counts_total(counts_j), n_shots
+    )
+
+    record = _classify_counts_pair(
+        res_i,
+        res_j,
+        js_div,
+        h_dist,
+        bit_reversed_js_div,
+        bit_reversed_h_dist,
+        qubit_permutation_metrics,
+        is_cross_group,
+        js_threshold,
+        hellinger_threshold,
+        n_shots,
+        shot_total_mismatch,
+    )
+
+    if record["agreement"] == "agree_after_bit_reversal":
+        basis, counts_j_aligned = "bit_reversal", bit_reversed_counts_j
+    elif record["agreement"] == "agree_after_qubit_permutation":
+        basis = "qubit_permutation"
+        counts_j_aligned = _permute_counts(counts_j, record["transform_effect"]["permutation"])
+    else:
+        basis, counts_j_aligned = "direct", counts_j
+
+    stat_block = _statistical_agreement_test(
+        counts_i, counts_j_aligned, basis, sim_i, sim_j, res_i=res_i, res_j=res_j
+    )
+    record["metrics"]["statistical_test"] = stat_block
+    return record, stat_block, (js_div, h_dist)
+
+
 def create_counts_report(results_list, n_shots, thresholds=None):
-    """
-    Generates a full report on the statistical divergence
-    between counts distributions using JS Divergence AND Hellinger Distance.
+    """Build the measured report: JS/Hellinger matrices, pair records and shot-noise tests.
 
-    thresholds: optional dict overriding the descriptive distance thresholds. Recognized
-    keys: ``js_threshold`` (default 0.01) and ``hellinger_threshold`` (default 0.1). Both
-    are heuristic, shot-count-dependent cut-offs; the statistical_test block carries the
-    shot-noise-aware verdict. Absent/None keeps the defaults; the effective values are
-    recorded per pair in the pairwise_agreement records.
+    Each backend's distribution is normalised by its observed total. JS divergence is in
+    nats (maximum ln 2). ``thresholds`` may override ``js_threshold`` (default 0.01) and
+    ``hellinger_threshold`` (default 0.1); an absent or None key keeps the default. A pair
+    whose comparison raises is recorded as not_comparable with reason ``comparison_error``.
     """
-
     simulators = [res.get('simulator', 'unknown') for res in results_list]
 
-    # Per-simulator counts validity: None if comparable, else a not-comparable reason.
     counts_validity = []
     for res in results_list:
         if "counts" not in res:
@@ -326,20 +404,9 @@ def create_counts_report(results_list, n_shots, thresholds=None):
     for res, reason in zip(results_list, counts_validity):
         if reason is None:
             all_bitstrings.update(res["counts"].keys())
-
-    all_bitstrings = sorted(list(all_bitstrings))
-
-    prob_vectors = []
-    for res, reason in zip(results_list, counts_validity):
-        if reason is None:
-            prob_vectors.append(
-                _counts_probability_vector(res["counts"], all_bitstrings, n_shots)
-            )
-        else:
-            prob_vectors.append(None)
+    all_bitstrings = sorted(all_bitstrings)
 
     n = len(simulators)
-
     js_matrix = np.zeros((n, n))
     hellinger_matrix = np.zeros((n, n))
 
@@ -347,9 +414,8 @@ def create_counts_report(results_list, n_shots, thresholds=None):
     pairwise_agreement = []
     stat_test_records = []
 
-    _t = thresholds or {}
-    js_threshold = _t.get("js_threshold", 0.01)
-    hellinger_threshold = _t.get("hellinger_threshold", 0.1)
+    js_threshold = _threshold(thresholds, "js_threshold", DEFAULT_JS_THRESHOLD)
+    hellinger_threshold = _threshold(thresholds, "hellinger_threshold", DEFAULT_HELLINGER_THRESHOLD)
 
     lsb_sims = [res.get('simulator') for res in results_list if res.get('qubit_ordering') == 'lsb']
     msb_sims = [res.get('simulator') for res in results_list if res.get('qubit_ordering') == 'msb']
@@ -358,102 +424,30 @@ def create_counts_report(results_list, n_shots, thresholds=None):
         for j in range(i + 1, n):
             sim_i = simulators[i]
             sim_j = simulators[j]
-            pv_i = prob_vectors[i]
-            pv_j = prob_vectors[j]
+            reason_i = counts_validity[i]
+            reason_j = counts_validity[j]
 
-            if pv_i is not None and pv_j is not None:
-
-                js_div, h_dist = _counts_distance_metrics(pv_i, pv_j)
-
-                bit_reversed_counts_j = _bit_reversed_counts(results_list[j]["counts"])
-                bit_reversed_outcomes = sorted(
-                    set(results_list[i]["counts"].keys()) | set(bit_reversed_counts_j.keys())
+            distances = None
+            if reason_i is None and reason_j is None:
+                is_cross_group = bool(
+                    (sim_i in lsb_sims and sim_j in msb_sims)
+                    or (sim_i in msb_sims and sim_j in lsb_sims)
                 )
-                pv_i_for_bit_reversal = _counts_probability_vector(
-                    results_list[i]["counts"], bit_reversed_outcomes, n_shots
-                )
-                pv_j_bit_reversed = _counts_probability_vector(
-                    bit_reversed_counts_j, bit_reversed_outcomes, n_shots
-                )
-                bit_reversed_js_div, bit_reversed_h_dist = _counts_distance_metrics(
-                    pv_i_for_bit_reversal, pv_j_bit_reversed
-                )
-                qubit_permutation_metrics = _best_counts_qubit_permutation_metrics(
-                    results_list[i]["counts"],
-                    results_list[j]["counts"],
-                    n_shots,
-                    js_threshold,
-                    hellinger_threshold,
-                )
-
-                js_matrix[i, j] = js_div
-                js_matrix[j, i] = js_div
-
-                hellinger_matrix[i, j] = h_dist
-                hellinger_matrix[j, i] = h_dist
-
-                is_cross_group = False
-
-                if (sim_i in lsb_sims and sim_j in msb_sims) or (sim_i in msb_sims and sim_j in lsb_sims):
-                    is_cross_group = True
-
-                record = _classify_counts_pair(
-                    results_list[i],
-                    results_list[j],
-                    js_div,
-                    h_dist,
-                    bit_reversed_js_div,
-                    bit_reversed_h_dist,
-                    qubit_permutation_metrics,
-                    is_cross_group,
-                    js_threshold,
-                    hellinger_threshold,
-                    n_shots,
-                )
-
-                # Shot-noise statistical test, computed on the same registered-transform
-                # basis the descriptive label selected.
-                if record["agreement"] == "agree_after_bit_reversal":
-                    basis = "bit_reversal"
-                    counts_j_aligned = _bit_reversed_counts(results_list[j]["counts"])
-                elif record["agreement"] == "agree_after_qubit_permutation":
-                    basis = "qubit_permutation"
-                    counts_j_aligned = _permute_counts(
-                        results_list[j]["counts"],
-                        record["transform_effect"]["permutation"],
+                try:
+                    record, stat_block, distances = _compare_counts_pair(
+                        results_list[i], results_list[j], is_cross_group,
+                        js_threshold, hellinger_threshold, n_shots,
                     )
-                else:
-                    basis = "direct"
-                    counts_j_aligned = results_list[j]["counts"]
-
-                stat_block = _statistical_agreement_test(
-                    results_list[i]["counts"],
-                    counts_j_aligned,
-                    basis,
-                    sim_i,
-                    sim_j,
-                )
-                record["metrics"]["statistical_test"] = stat_block
-                stat_test_records.append(stat_block)
-
+                except Exception as e:
+                    logger.error(f"Error comparing counts {sim_i} vs {sim_j}: {e}")
+                    record = _counts_not_comparable_record(
+                        results_list[i], results_list[j], "comparison_error", {"error": str(e)}
+                    )
+                    stat_block = None
                 pairwise_agreement.append(record)
-
-                if js_div > js_threshold or h_dist > hellinger_threshold:
-                    divergences_found.append({
-                        "type": "Distribution Divergence",
-                        "simulators": [sim_i, sim_j],
-                        "js_divergence": js_div,
-                        "hellinger_distance": h_dist,
-                        "is_cross_group": is_cross_group
-                    })
+                if stat_block is not None:
+                    stat_test_records.append(stat_block)
             else:
-                js_matrix[i, j] = -1.0
-                js_matrix[j, i] = -1.0
-                hellinger_matrix[i, j] = -1.0
-                hellinger_matrix[j, i] = -1.0
-                reason_i = counts_validity[i]
-                reason_j = counts_validity[j]
-                reason = reason_i or reason_j
                 details = {}
                 if reason_i:
                     details[sim_i] = reason_i
@@ -461,14 +455,27 @@ def create_counts_report(results_list, n_shots, thresholds=None):
                     details[sim_j] = reason_j
                 pairwise_agreement.append(
                     _counts_not_comparable_record(
-                        results_list[i],
-                        results_list[j],
-                        reason,
-                        details,
+                        results_list[i], results_list[j], reason_i or reason_j, details
                     )
                 )
 
-    # Family-wise correction across every comparable pair, applied per test, then verdicts.
+            if distances is None:
+                js_matrix[i, j] = js_matrix[j, i] = -1.0
+                hellinger_matrix[i, j] = hellinger_matrix[j, i] = -1.0
+                continue
+
+            js_div, h_dist = distances
+            js_matrix[i, j] = js_matrix[j, i] = js_div
+            hellinger_matrix[i, j] = hellinger_matrix[j, i] = h_dist
+            if js_div > js_threshold or h_dist > hellinger_threshold:
+                divergences_found.append({
+                    "type": "Distribution Divergence",
+                    "simulators": [sim_i, sim_j],
+                    "js_divergence": js_div,
+                    "hellinger_distance": h_dist,
+                    "is_cross_group": is_cross_group,
+                })
+
     statistical_test_summary = _apply_multiple_comparison_correction(stat_test_records)
 
     ordering_map = {res.get('simulator'): res.get('qubit_ordering') for res in results_list if "qubit_ordering" in res}
@@ -476,6 +483,7 @@ def create_counts_report(results_list, n_shots, thresholds=None):
         "simulators": simulators,
         "statistical_distance_matrix (js_divergence)": js_matrix.tolist(),
         "hellinger_distance_matrix": hellinger_matrix.tolist(),
+        "js_divergence_unit": JS_DIVERGENCE_UNIT,
         "divergences_found": divergences_found,
         "pairwise_agreement": pairwise_agreement,
         "statistical_test_summary": statistical_test_summary,

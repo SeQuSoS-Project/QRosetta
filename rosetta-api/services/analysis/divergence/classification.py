@@ -1,11 +1,10 @@
-# Turning one backend pair's metrics into an explained-cause agreement record.
+"""Turning one backend pair's metrics into an explained-cause agreement record."""
 
-import numpy as np
-
-from .common import _json_float
+from .common import DEFAULT_NORM_TOLERANCE, _json_float
 
 
 def _pair_provenance(res_i, res_j, mode):
+    """Copy ordering, SDK, preprocessing and (measured) seed/sampling provenance per backend."""
     sim_i = res_i.get("simulator", "unknown")
     sim_j = res_j.get("simulator", "unknown")
     provenance = {
@@ -27,6 +26,10 @@ def _pair_provenance(res_i, res_j, mode):
             sim_i: res_i.get("seed"),
             sim_j: res_j.get("seed"),
         }
+        provenance["runner_seed"] = {
+            sim_i: res_i.get("runner_seed"),
+            sim_j: res_j.get("runner_seed"),
+        }
         provenance["sampling_method"] = {
             sim_i: res_i.get("sampling_method"),
             sim_j: res_j.get("sampling_method"),
@@ -35,10 +38,12 @@ def _pair_provenance(res_i, res_j, mode):
 
 
 def _run_status(res):
+    """Return "error" if the result carries an error, else "completed"."""
     return "error" if "error" in res else "completed"
 
 
 def _statevector_not_comparable_record(res_i, res_j, reason, details=None):
+    """Build a not_comparable statevector record with ``reason``."""
     sim_i = res_i.get("simulator", "unknown")
     sim_j = res_j.get("simulator", "unknown")
     return {
@@ -72,10 +77,23 @@ def _classify_statevector_pair(
     is_cross_group,
     fidelity_tolerance,
     phase_tolerance,
+    norm_tolerance=None,
 ):
+    """Label a statevector pair from its direct, bit-reversed and permuted fidelities.
+
+    Fidelities are computed on normalised vectors. A pair agrees when fidelity >=
+    1 - fidelity_tolerance. If either input norm differs from 1 by more than
+    ``norm_tolerance``, an agreeing pair is labelled ``agree_after_normalization`` and the
+    label it would otherwise have received is kept in ``metrics.normalized_agreement``.
+    """
     sim_i = res_i.get("simulator", "unknown")
     sim_j = res_j.get("simulator", "unknown")
-    phase_agrees = np.isclose(relative_phase, 0.0, atol=phase_tolerance)
+    if norm_tolerance is None:
+        norm_tolerance = DEFAULT_NORM_TOLERANCE
+    unnormalized_input = bool(
+        abs(float(norm_i) - 1.0) > norm_tolerance or abs(float(norm_j) - 1.0) > norm_tolerance
+    )
+    phase_agrees = abs(relative_phase) <= phase_tolerance
     fidelity_agrees = fidelity >= (1.0 - fidelity_tolerance)
     bit_reversal_agrees = bit_reversed_fidelity >= (1.0 - fidelity_tolerance)
     qubit_permutation_fidelity = qubit_permutation_metrics.get("fidelity")
@@ -124,6 +142,11 @@ def _classify_statevector_pair(
         registered_transform = None
         transform_effect = None
 
+    normalized_agreement = None
+    if unnormalized_input and agreement != "residual_disagreement":
+        normalized_agreement = agreement
+        agreement = "agree_after_normalization"
+
     return {
         "simulators": [sim_i, sim_j],
         "mode": "statevector",
@@ -154,8 +177,11 @@ def _classify_statevector_pair(
                 sim_i: _json_float(norm_i),
                 sim_j: _json_float(norm_j),
             },
+            "unnormalized_input": unnormalized_input,
+            "normalized_agreement": normalized_agreement,
             "fidelity_tolerance": fidelity_tolerance,
             "phase_tolerance": phase_tolerance,
+            "norm_tolerance": norm_tolerance,
             "is_cross_group": bool(is_cross_group),
         },
         "provenance": _pair_provenance(res_i, res_j, "statevector"),
@@ -163,6 +189,7 @@ def _classify_statevector_pair(
 
 
 def _counts_not_comparable_record(res_i, res_j, reason, details=None):
+    """Build a not_comparable measured record with ``reason``."""
     sim_i = res_i.get("simulator", "unknown")
     sim_j = res_j.get("simulator", "unknown")
     return {
@@ -195,7 +222,14 @@ def _classify_counts_pair(
     js_threshold,
     hellinger_threshold,
     n_shots,
+    shot_total_mismatch=None,
 ):
+    """Label a measured pair from its direct, bit-reversed and permuted JS/Hellinger distances.
+
+    The label is a descriptive threshold check; ``metrics.statistical_test`` is added by the
+    report builder. ``shot_total_mismatch`` is recorded when an observed total differs from
+    the requested ``n_shots``.
+    """
     sim_i = res_i.get("simulator", "unknown")
     sim_j = res_j.get("simulator", "unknown")
     direct_agrees = js_div <= js_threshold and h_dist <= hellinger_threshold
@@ -276,6 +310,7 @@ def _classify_counts_pair(
             "js_threshold": js_threshold,
             "hellinger_threshold": hellinger_threshold,
             "n_shots": n_shots,
+            "shot_total_mismatch": shot_total_mismatch,
             "is_cross_group": bool(is_cross_group),
         },
         "provenance": _pair_provenance(res_i, res_j, "measured"),

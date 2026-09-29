@@ -1,23 +1,47 @@
-# Quantum state and performance analysis utilities.
+"""Timing and memory rankings across backends.
+
+``ranking`` lists only backends that succeeded and report the ranking metric, in rank
+order, each with a 1-based ``rank``. Everything else is listed in ``unranked`` with a
+``reason``, so ``ranking[0]`` is absent when no backend succeeded.
+"""
+
+
+def _rank(entries, metric):
+    """Sort ranked entries ascending by ``metric`` (stable) and assign 1-based ranks."""
+    ordered = sorted(entries, key=lambda x: x[metric])
+    for position, entry in enumerate(ordered, start=1):
+        entry["rank"] = position
+    return ordered
+
 
 def create_performance_report(results_list: list) -> dict:
-    """
-    Generates a report on the execution time of each simulator.
-    """
-    performance_data = []
+    """Rank backends by execution_time_sec, fastest first."""
+    ranked = []
+    unranked = []
 
     for res in results_list:
         sim_name = res.get('simulator', 'unknown')
 
         if 'error' in res:
-            performance_data.append({
+            unranked.append({
                 "simulator": sim_name,
                 "status": "error",
+                "reason": "runner_error",
                 "error": res['error'],
-                "execution_time_sec": None
+                "execution_time_sec": None,
+                "rank": None,
             })
-        elif 'execution_time_sec' in res:
-            performance_data.append({
+        elif res.get('execution_time_sec') is None:
+            unranked.append({
+                "simulator": sim_name,
+                "status": "error",
+                "reason": "missing_timing",
+                "error": "Result carried no execution_time_sec.",
+                "execution_time_sec": None,
+                "rank": None,
+            })
+        else:
+            ranked.append({
                 "simulator": sim_name,
                 "status": "success",
                 "execution_time_sec": res['execution_time_sec'],
@@ -28,53 +52,56 @@ def create_performance_report(results_list: list) -> dict:
                 "circuit_depth": res.get('circuit_depth'),
             })
 
-    sorted_data = sorted(
-        performance_data,
-        key=lambda x: (x['execution_time_sec'] is None, x['execution_time_sec'])
-    )
-
     return {
         "summary": "Execution time in seconds (fastest first).",
-        "ranking": sorted_data
+        "ranking_metric": "execution_time_sec",
+        "ranking": _rank(ranked, "execution_time_sec"),
+        "unranked": unranked,
     }
 
+
 def create_resource_report(results_list: list) -> dict:
+    """Rank backends by process_peak_rss_mb, lowest first.
+
+    process_peak_rss_mb is the kernel-reported peak (ru_maxrss) of the isolated child
+    process over the whole run, including compilation and warm-up.
     """
-    Generates a report on the memory usage of each simulator, ranked by the
-    kernel-reported process peak (resource.getrusage ru_maxrss in the isolated
-    child process), which covers the whole run including compilation and any
-    warm-up and is not sensitive to when a baseline is snapshotted.
-    """
-    resource_data = []
+    ranked = []
+    unranked = []
 
     for res in results_list:
         sim_name = res.get('simulator', 'unknown')
 
         if 'error' in res:
-            resource_data.append({
+            unranked.append({
                 "simulator": sim_name,
                 "status": "error",
+                "reason": "runner_error",
                 "error": res['error'],
                 "process_peak_rss_mb": res.get('process_peak_rss_mb'),
                 "memory_usage_mb": None,
-                "process_peak_mb": None
+                "process_peak_mb": None,
+                "rank": None,
             })
-        else:
-            resource_data.append({
-                "simulator": sim_name,
-                "status": "success",
-                "process_peak_rss_mb": res.get('process_peak_rss_mb'),
-                "memory_usage_mb": res.get('memory_usage_mb'),
-                "process_peak_mb": res.get('process_peak_mb'),
-                "theoretical_statevector_mb": res.get('theoretical_statevector_mb')
-            })
+            continue
 
-    sorted_data = sorted(
-        resource_data,
-        key=lambda x: (x['process_peak_rss_mb'] is None, x['process_peak_rss_mb'])
-    )
+        entry = {
+            "simulator": sim_name,
+            "status": "success",
+            "process_peak_rss_mb": res.get('process_peak_rss_mb'),
+            "memory_usage_mb": res.get('memory_usage_mb'),
+            "process_peak_mb": res.get('process_peak_mb'),
+            "theoretical_statevector_mb": res.get('theoretical_statevector_mb'),
+        }
+        if entry["process_peak_rss_mb"] is None:
+            entry.update({"reason": "missing_process_peak_rss", "rank": None})
+            unranked.append(entry)
+        else:
+            ranked.append(entry)
 
     return {
         "summary": "Process peak RSS in MiB (lowest first).",
-        "ranking": sorted_data
+        "ranking_metric": "process_peak_rss_mb",
+        "ranking": _rank(ranked, "process_peak_rss_mb"),
+        "unranked": unranked,
     }
