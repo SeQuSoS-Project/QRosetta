@@ -42,8 +42,12 @@ def load_algorithms() -> Dict[str, Any]:
     _ALGORITHMS_CACHE = loaded
     return _ALGORITHMS_CACHE
 
-def generate_circuit(algorithm_id: str, n_qubits: int) -> str:
-    """Generates a circuit by dynamically executing the algorithm's code template."""
+def generate_circuit(algorithm_id: str, n_qubits: int, seed: int = None) -> str:
+    """Generates a circuit by dynamically executing the algorithm's code template.
+
+    ``seed`` is passed to templates with random content; None lets them derive it from
+    ``n_qubits``.
+    """
     algorithms = load_algorithms()
     if algorithm_id not in algorithms:
         raise ValueError(f"Unknown algorithm: {algorithm_id}")
@@ -57,6 +61,7 @@ def generate_circuit(algorithm_id: str, n_qubits: int) -> str:
         "circuit_to_qasm_str": circuit_to_qasm_str,
         "Transform": Transform,
         "random": random,
+        "seed": seed,
         "qasm": ""
     }
 

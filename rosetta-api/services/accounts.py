@@ -3,6 +3,7 @@
 Raises the exceptions below; routers/auth.py maps them to HTTP status codes.
 """
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 import db.models as models
@@ -29,8 +30,16 @@ class StoredReportsNotDeleted(RuntimeError):
     """The account's stored run reports could not be removed, so nothing was deleted."""
 
 
+def _find_by_email(db: Session, email: str):
+    """Account whose email matches case-insensitively."""
+    return db.query(models.User).filter(
+        func.lower(models.User.email) == email.strip().lower()).first()
+
+
 def register(db: Session, email: str, password: str) -> models.User:
-    if db.query(models.User).filter(models.User.email == email).first():
+    """Create a local account; the email is stored lower-cased."""
+    email = email.strip().lower()
+    if _find_by_email(db, email):
         raise EmailAlreadyRegistered(email)
 
     user = models.User(
@@ -48,9 +57,9 @@ def authenticate(db: Session, email: str, password: str) -> models.User:
     """Return the user for these credentials.
 
     Unknown email and wrong password raise the same InvalidCredentials, so the response
-    does not reveal which addresses are registered.
+    does not reveal which addresses are registered. The email matches case-insensitively.
     """
-    user = db.query(models.User).filter(models.User.email == email).first()
+    user = _find_by_email(db, email)
     if not user or not user.hashed_password:
         raise InvalidCredentials(email)
     if not verify_password(password, user.hashed_password):

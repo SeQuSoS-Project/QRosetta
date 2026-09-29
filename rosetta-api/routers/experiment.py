@@ -11,8 +11,11 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from qrosetta_commons.helpers import get_logger
 from schemas import ExperimentPayload, JobStatusResponse
 from services.security import limiter
-from services.job_manager import ACTIVE_JOBS
+from services.job_manager import ACTIVE_JOBS, new_job
 from services.experiment import worker_experiment, build_bundle_zip
+from services.validator import (
+    check_statevector_circuit, validate_runner_config, validate_runner_ids,
+)
 
 logger = get_logger("rosetta-experiment-api")
 router = APIRouter()
@@ -24,18 +27,29 @@ async def start_experiment(request: Request, payload: ExperimentPayload, backgro
     """Start a fleet-wide experiment: run every circuit in the payload across the fleet, over
     every preprocessing axis, and freeze the results into a citable bundle. Runs in the
     background; poll GET /jobs/{job_id} for status, then GET /experiments/{job_id}/bundle once
-    complete."""
+    complete. 400 for unknown/disabled runner ids or, in statevector mode, a literal circuit
+    with mid-circuit measurement, reset or classical control. The job's target is the
+    server's EXECUTION_MODE."""
     if not payload.circuits:
         return JSONResponse(status_code=400, content={"error": "No circuits selected."})
     if payload.mode not in ("measured", "statevector"):
         return JSONResponse(status_code=400,
                             content={"error": f"Unknown mode: {payload.mode}"})
 
+    validate_runner_ids(payload.target_simulators, payload.runner_config, payload.runner_phases)
+    validate_runner_config(payload.runner_config)
+    if payload.mode == "statevector":
+        for circuit in payload.circuits:
+            if circuit.qasm_string:
+                check_statevector_circuit(circuit.qasm_string)
+
     job_id = str(uuid.uuid4())
-    ACTIVE_JOBS[job_id] = {"status": "pending", "target": payload.execution_target}
+    ACTIVE_JOBS[job_id] = new_job(payload.execution_target)
+    requested_target = ACTIVE_JOBS[job_id].get("requested_target")
+    payload.execution_target = settings.EXECUTION_MODE
     background_tasks.add_task(worker_experiment, job_id, payload)
     return {"job_id": job_id, "status": ACTIVE_JOBS[job_id]["status"],
-            "target": ACTIVE_JOBS[job_id]["target"]}
+            "target": ACTIVE_JOBS[job_id]["target"], "requested_target": requested_target}
 
 
 @router.get("/experiments/{job_id}/bundle")

@@ -8,6 +8,17 @@ echo ">>> [INIT] Starting safe boot..."
 # Matches the UI max, config.py default and the Kubernetes manifest.
 export RUNNER_TIMEOUT_SEC=300
 
+# Recorded as git_sha in every run report; "-dirty" marks uncommitted changes.
+if QROSETTA_GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null); then
+  if [ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]; then
+    QROSETTA_GIT_SHA="${QROSETTA_GIT_SHA}-dirty"
+  fi
+else
+  QROSETTA_GIT_SHA="unknown"
+fi
+export QROSETTA_GIT_SHA
+echo "[INFO] QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA}"
+
 
 # A core build failure aborts; a runner build failure only skips that runner.
 CORE_SERVICES=("nginx" "api")

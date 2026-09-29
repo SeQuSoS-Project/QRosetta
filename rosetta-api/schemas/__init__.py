@@ -22,6 +22,9 @@ from schemas.auth import (
     UserCreate,
     UserResponse,
     Token,
+    PASSWORD_MAX_BYTES,
+    normalize_email,
+    password_too_long,
 )
 from schemas.history import (
     SavedCircuitCreate,
@@ -42,6 +45,7 @@ __all__ = [
     "PublicationArtifactsSelection", "PublicationRenderRequest",
 
     "UserCreate", "UserResponse", "Token",
+    "PASSWORD_MAX_BYTES", "normalize_email", "password_too_long",
 
     "SavedCircuitCreate", "SavedCircuitResponse",
     "RunHistoryResponse", "RunHistoryUpdate", "RunHistoryBatchDelete",

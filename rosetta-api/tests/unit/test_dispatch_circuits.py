@@ -9,6 +9,8 @@ from services.circuit_resolver import (
     has_measurements,
     prepare_measured_dispatch,
     prepare_statevector_dispatch,
+    StatevectorIncompatible,
+    strip_terminal_measurements,
 )
 
 qiskit = pytest.importorskip("qiskit")
@@ -95,3 +97,33 @@ def test_measured_preprocessing_on_measures_in_declaration_order():
 def test_single_register_is_not_rewritten():
     qasm = HEADER + "qreg q[2];\nh q;\n"
     assert flatten_qregs(qasm) == (qasm, None)
+
+
+def test_statevector_dispatch_strips_terminal_measurements():
+    qasm = HEADER + "qreg q[2];\ncreg c[2];\nh q[0];\nmeasure q[0] -> c[0];\ncx q[1],q[1];\nbarrier q;\nmeasure q -> c;\n"
+    qasm = qasm.replace("cx q[1],q[1];\n", "x q[1];\n")
+    for pp in (False, True):
+        sv = prepare_statevector_dispatch(qasm, apply_preprocessing=pp)
+        assert not has_measurements(sv["qasm"])
+        assert sv["api_preprocessing_applied"][0].startswith("API: removed 3 terminal measurement(s)")
+        assert np.allclose(_statevector(sv["qasm"]), _statevector(qasm))
+
+
+def test_terminal_measurement_keeps_classical_registers():
+    out, note = strip_terminal_measurements(HEADER + "qreg q[1];\ncreg c[1];\nh q[0];\nmeasure q[0] -> c[0];\n")
+    assert "creg c[1];" in out and "measure" not in out and note
+
+
+def test_statevector_dispatch_without_measurements_is_unchanged():
+    qasm = HEADER + "qreg q[2];\nh q[0];\n"
+    assert strip_terminal_measurements(qasm) == (qasm, None)
+
+
+@pytest.mark.parametrize("body", [
+    "qreg q[2];\ncreg c[2];\nmeasure q -> c;\ncx q[1],q[0];\n",
+    "qreg q[1];\nreset q[0];\n",
+    "qreg q[1];\ncreg c[1];\nif (c == 1) x q[0];\n",
+])
+def test_statevector_dispatch_rejects_non_unitary_circuits(body):
+    with pytest.raises(StatevectorIncompatible, match="measured mode"):
+        prepare_statevector_dispatch(HEADER + body, apply_preprocessing=False)

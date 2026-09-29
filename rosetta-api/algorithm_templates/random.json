@@ -4,6 +4,6 @@
   "min_qubits": 2,
   "max_qubits": 20,
   "default_qubits": 5,
-  "description": "Random gates to defeat compiler optimizations.",
-  "code": "if n_qubits < 2:\n    raise ValueError(\"Random circuit requires at least 2 qubits.\")\n\ncirc = Circuit(n_qubits)\ndepth = n_qubits\n\nfor _ in range(depth):\n    q = random.randint(0, n_qubits - 1)\n    circ.Rz(0.5, q)\n    \n    q1 = random.randint(0, n_qubits - 1)\n    q2 = random.randint(0, n_qubits - 1)\n    while q1 == q2:\n        q2 = random.randint(0, n_qubits - 1)\n        \n    circ.CX(q1, q2)\n    \nqasm = circuit_to_qasm_str(circ)"
+  "description": "Seeded random circuit: max(2, n) layers of H/Rx/Ry/Rz on every qubit (the first layer H/Rx/Ry only) followed by CX on randomly paired qubits. The seed defaults to the qubit count, so a given size is always the same circuit.",
+  "code": "if n_qubits < 2:\n    raise ValueError(\"Random circuit requires at least 2 qubits.\")\n\nrng = random.Random(n_qubits if seed is None else seed)\ncirc = Circuit(n_qubits)\n\nfor layer in range(max(2, n_qubits)):\n    choices = (\"H\", \"Rx\", \"Ry\") if layer == 0 else (\"H\", \"Rx\", \"Ry\", \"Rz\")\n    for q in range(n_qubits):\n        gate = rng.choice(choices)\n        if gate == \"H\":\n            circ.H(q)\n        else:\n            getattr(circ, gate)(round(rng.uniform(0.05, 1.95), 6), q)\n    order = list(range(n_qubits))\n    rng.shuffle(order)\n    for control, target in zip(order[0::2], order[1::2]):\n        circ.CX(control, target)\n\nqasm = circuit_to_qasm_str(circ)\n"
 }

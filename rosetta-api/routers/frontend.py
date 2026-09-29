@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 from fastapi.responses import FileResponse, JSONResponse
 from config import settings
+from schemas import AgreementThresholds
 
 router = APIRouter()
 
@@ -32,7 +33,14 @@ async def get_runners():
 
 @router.get("/config")
 async def get_config():
-    """Server-side circuit limits and execution mode."""
+    """Server-side circuit limits, request bounds, agreement-threshold defaults and the
+    execution mode.
+
+    ``limits`` holds the bounds the run endpoints validate against: qubit caps per mode,
+    ``timeout_min``/``timeout_max`` (seconds; larger requests are clamped to
+    ``timeout_max``) and ``shots_min``/``shots_max``. The top-level qubit and size keys are
+    kept for existing clients.
+    """
     return JSONResponse(content={
         "max_qubits_statevector": settings.MAX_QUBITS_STATEVECTOR,
         "max_qubits_measured": settings.MAX_QUBITS_MEASURED,
@@ -41,4 +49,13 @@ async def get_config():
         "max_runs_per_runner": settings.MAX_RUNS_PER_RUNNER,
         "max_total_runs": settings.MAX_TOTAL_RUNS,
         "execution_mode": settings.EXECUTION_MODE,
+        "agreement_threshold_defaults": AgreementThresholds().model_dump(),
+        "limits": {
+            "max_qubits_statevector": settings.MAX_QUBITS_STATEVECTOR,
+            "max_qubits_measured": settings.MAX_QUBITS_MEASURED,
+            "timeout_min": settings.MIN_TIMEOUT_SEC,
+            "timeout_max": settings.RUNNER_TIMEOUT_SEC,
+            "shots_min": settings.MIN_SHOTS,
+            "shots_max": settings.MAX_SHOTS,
+        },
     })

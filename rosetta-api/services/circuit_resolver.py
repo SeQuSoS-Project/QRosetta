@@ -3,7 +3,8 @@
 ``resolve_circuit_qasm`` turns one batch or experiment task into OpenQASM 2.0 text.
 ``prepare_statevector_dispatch`` and ``prepare_measured_dispatch`` build the exact circuit
 text each runner group receives, and return every change made to it as a list of
-``"API: ..."`` strings.
+``"API: ..."`` strings. ``strip_terminal_measurements`` raises
+``StatevectorIncompatible`` for circuits statevector mode cannot represent.
 """
 
 import re
@@ -62,6 +63,14 @@ _IDENT_RE = re.compile(r"[A-Za-z_]\w*")
 _MEASURE_RE = re.compile(r"\bmeasure\b")
 _BARRIER_RE = re.compile(r"\bbarrier\b")
 _PASSTHROUGH_OPS = {"OPENQASM", "include", "qreg", "creg", "gate", "opaque"}
+_IF_RE = re.compile(r"^\s*if\s*\(")
+
+_USE_MEASURED_MODE = ("Statevector mode reports the pre-measurement state of a unitary "
+                      "circuit; run this circuit in measured mode instead.")
+
+
+class StatevectorIncompatible(ValueError):
+    """The circuit has mid-circuit measurement, reset or classical control."""
 
 
 def split_statements(qasm: str) -> list:
@@ -217,6 +226,63 @@ def append_measure_all(qasm: str):
     return text + "\n".join(lines) + "\n", note
 
 
+def _qubits_in(args: str, qregs: dict) -> set:
+    """``(register, index)`` pairs an operand list refers to; a bare register means all of
+    its qubits."""
+    qubits = set()
+    for m in _REF_RE.finditer(args):
+        name, idx = m.group(1), m.group(3)
+        if name not in qregs:
+            continue
+        if idx is None:
+            qubits.update((name, k) for k in range(qregs[name]))
+        else:
+            qubits.add((name, int(idx)))
+    return qubits
+
+
+def strip_terminal_measurements(qasm: str):
+    """Remove terminal ``measure`` statements for statevector dispatch.
+
+    A measurement is terminal when no gate acts on its qubit afterwards (barriers do not
+    count). Returns ``(qasm, note)``; with no measurements the text is returned unchanged
+    and ``note`` is None. Otherwise the text is rebuilt from its statements, so comments
+    are removed; creg declarations are kept. Raises ``StatevectorIncompatible`` for
+    ``reset``, ``if(...)`` or a gate after a measurement on the same qubit.
+    """
+    qregs = {name: size for kind, name, size in declared_registers(qasm) if kind == "qreg"}
+    measured, removed, kept = set(), 0, []
+    for stmt in split_statements(qasm):
+        if _IF_RE.match(stmt):
+            raise StatevectorIncompatible(
+                f"Circuit uses classical control ('{stmt}'). {_USE_MEASURED_MODE}")
+        op, _head, args = _split_op(stmt)
+        if op is None or op in _PASSTHROUGH_OPS:
+            kept.append(stmt)
+            continue
+        if op == "reset":
+            raise StatevectorIncompatible(f"Circuit uses reset ('{stmt}'). {_USE_MEASURED_MODE}")
+        if op == "measure":
+            qubits = _qubits_in(args.split("->", 1)[0], qregs)
+            measured |= qubits
+            removed += len(qubits)
+            continue
+        if op != "barrier":
+            after = sorted(_qubits_in(args, qregs) & measured)
+            if after:
+                name, idx = after[0]
+                raise StatevectorIncompatible(
+                    f"Circuit has a mid-circuit measurement: '{stmt}' acts on {name}[{idx}] "
+                    f"after it was measured. {_USE_MEASURED_MODE}")
+        kept.append(stmt)
+
+    if not removed:
+        return qasm, None
+    note = (f"API: removed {removed} terminal measurement(s); statevector mode reports the "
+            f"pre-measurement state (comments removed, classical registers kept)")
+    return "\n".join(kept) + "\n", note
+
+
 def _pytket_round_trip(qasm: str, remove_barriers: bool):
     """Parse and re-emit ``qasm`` with pytket, optionally removing barriers."""
     import pytket.qasm
@@ -238,14 +304,17 @@ def _pytket_round_trip(qasm: str, remove_barriers: bool):
 def prepare_statevector_dispatch(qasm: str, apply_preprocessing: bool) -> dict:
     """Return ``{"qasm", "api_preprocessing_applied"}`` for the statevector runners.
 
-    With preprocessing, multi-register circuits are first merged in declaration order and
-    then round-tripped through pytket with barriers removed. Without it the text is
+    Terminal measurements are always removed (``strip_terminal_measurements``, which
+    raises ``StatevectorIncompatible`` for mid-circuit measurement, reset or ``if``). With
+    preprocessing, multi-register circuits are then merged in declaration order and
+    round-tripped through pytket with barriers removed; without it the text is otherwise
     dispatched unchanged.
     """
+    text, note = strip_terminal_measurements(qasm)
+    notes = [note] if note else []
     if not apply_preprocessing:
-        return {"qasm": qasm, "api_preprocessing_applied": []}
-    notes = []
-    text, note = flatten_qregs(qasm)
+        return {"qasm": text, "api_preprocessing_applied": notes}
+    text, note = flatten_qregs(text)
     if note:
         notes.append(note)
     text, rt_notes = _pytket_round_trip(text, remove_barriers=True)

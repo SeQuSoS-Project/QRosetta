@@ -25,7 +25,9 @@ router = APIRouter(
 
 @router.post("/register", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
 def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    """Create an account with an email and password. 400 if the email is already registered."""
+    """Create an account with an email and password. 422 for an invalid email (format, over
+    254 characters) or password (under 8 characters, over 72 bytes); 400 if the email is
+    already registered, compared case-insensitively."""
     try:
         return accounts.register(db, user.email, user.password)
     except accounts.EmailAlreadyRegistered:
@@ -38,8 +40,13 @@ def login_for_access_token(
     db: Session = Depends(get_db)
 ):
     """Exchange an email + password (sent as OAuth2 password-grant form fields, username =
-    email) for a bearer access token. 401 on an unrecognized email or wrong password, 403 on
-    a deactivated account."""
+    email, matched case-insensitively) for a bearer access token. 400 for a password over
+    72 bytes, 401 on an unrecognized email or wrong password, 403 on a deactivated account."""
+    if schemas.password_too_long(form_data.password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Password must be at most {schemas.PASSWORD_MAX_BYTES} bytes (UTF-8)",
+        )
     try:
         user = accounts.authenticate(db, form_data.username, form_data.password)
     except accounts.AccountDeactivated:

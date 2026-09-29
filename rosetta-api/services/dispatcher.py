@@ -27,7 +27,10 @@ DISPATCH_STATUSES = ("ok", "error", "timeout", "offline")
 TIMEOUT_SCOPE = {
     "local": (
         "whole isolated runner child process: process spawn, SDK import, warm-up run and timed "
-        "run, killed at hard_timeout_seconds; the API waits RUNNER_DEADLINE_BUFFER_SEC longer"
+        "run, killed at hard_timeout_seconds. The budget starts when the run leaves the "
+        "runner's queue (one run per runner at a time); a run may queue for up to "
+        "timeout_seconds x (runs of that runner in the same phase) and reports "
+        "queue_wait_sec. The API waits queue budget + timeout + RUNNER_DEADLINE_BUFFER_SEC"
     ),
     "kubernetes": (
         "whole Kubernetes Job measured from job creation: pod scheduling, image pull, container "
@@ -48,6 +51,12 @@ def utc_now_iso() -> str:
 def timeout_scope() -> str:
     """What the per-runner timeout covers in the current execution mode."""
     return TIMEOUT_SCOPE.get(EXECUTION_MODE, TIMEOUT_SCOPE["local"])
+
+
+def queue_wait_budget(timeout_seconds, runs_of_this_runner: int) -> float:
+    """Seconds a run may wait for a runner's execution slot: one full timeout per run of the
+    same runner dispatched in the same phase (at least one)."""
+    return float(timeout_seconds) * max(1, int(runs_of_this_runner))
 
 
 def runner_seed_for(master_seed, runner_key: str):
@@ -103,7 +112,8 @@ def annotate_result(result: dict, spec: dict, sent_payload: dict, dispatched_at:
 
 
 def _clamp_opt(sim_name: str, level: int) -> int:
-    """Clamp an optimization level to the max the runner supports."""
+    """Clamp an optimization level to [0, the max the runner supports]."""
+    level = max(0, level)
     opt_levels = RUNNER_SERVICES.get(sim_name, {}).get("optimization_levels", {})
     if opt_levels:
         return min(level, max(opt_levels.keys()))

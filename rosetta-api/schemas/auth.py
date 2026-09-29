@@ -1,12 +1,54 @@
 # Pydantic request/response models for the /auth endpoints.
 
-from pydantic import BaseModel, ConfigDict, Field
+import re
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from datetime import datetime
+
+EMAIL_MAX_LENGTH = 254
+PASSWORD_MIN_CHARS = 8
+PASSWORD_MAX_BYTES = 72
+
+_EMAIL_RE = re.compile(
+    r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}"
+    r"@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$"
+)
+
+
+def normalize_email(email: str) -> str:
+    """Trimmed, lower-cased email, the form accounts are stored and looked up by."""
+    return email.strip().lower()
+
+
+def password_too_long(password: str) -> bool:
+    """True when the UTF-8 password exceeds bcrypt's 72-byte input limit."""
+    return len(password.encode("utf-8")) > PASSWORD_MAX_BYTES
+
 
 class UserCreate(BaseModel):
     """Request body for POST /auth/register."""
-    email: str = Field(..., description="Account email; also used as the login username.")
-    password: str = Field(..., description="Account password, stored only as a hash.")
+    email: str = Field(..., description=f"Account email, at most {EMAIL_MAX_LENGTH} characters; also the login username. Stored lower-cased, so addresses differing only in case are the same account.")
+    password: str = Field(..., description=f"Account password, at least {PASSWORD_MIN_CHARS} characters and at most {PASSWORD_MAX_BYTES} bytes as UTF-8; stored only as a bcrypt hash.")
+
+    @field_validator("email")
+    @classmethod
+    def _valid_email(cls, value: str) -> str:
+        email = normalize_email(value)
+        if len(email) > EMAIL_MAX_LENGTH:
+            raise ValueError(f"email must be at most {EMAIL_MAX_LENGTH} characters")
+        if not _EMAIL_RE.match(email):
+            raise ValueError("email must be a valid address such as name@example.org")
+        return email
+
+    @field_validator("password")
+    @classmethod
+    def _valid_password(cls, value: str) -> str:
+        if len(value) < PASSWORD_MIN_CHARS:
+            raise ValueError(f"password must be at least {PASSWORD_MIN_CHARS} characters")
+        if password_too_long(value):
+            raise ValueError(f"password must be at most {PASSWORD_MAX_BYTES} bytes (UTF-8)")
+        return value
 
 class UserResponse(BaseModel):
     """An account, as returned by /auth/register and GET /auth/me."""

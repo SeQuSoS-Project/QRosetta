@@ -58,6 +58,8 @@ services:
       - MKL_NUM_THREADS=1
       - OPENBLAS_NUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
+      - NUMBA_NUM_THREADS=1
+      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
     networks:
       - isolated_net
     deploy:
@@ -76,6 +78,8 @@ services:
       - MKL_NUM_THREADS=1
       - OPENBLAS_NUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
+      - NUMBA_NUM_THREADS=1
+      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
     networks:
       - isolated_net
     deploy:
@@ -94,6 +98,8 @@ services:
       - MKL_NUM_THREADS=1
       - OPENBLAS_NUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
+      - NUMBA_NUM_THREADS=1
+      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
     networks:
       - isolated_net
     deploy:
@@ -112,6 +118,8 @@ services:
       - MKL_NUM_THREADS=1
       - OPENBLAS_NUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
+      - NUMBA_NUM_THREADS=1
+      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
     networks:
       - isolated_net
     deploy:
@@ -130,6 +138,8 @@ services:
       - MKL_NUM_THREADS=1
       - OPENBLAS_NUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
+      - NUMBA_NUM_THREADS=1
+      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
     networks:
       - isolated_net
     deploy:
@@ -148,6 +158,8 @@ services:
       - MKL_NUM_THREADS=1
       - OPENBLAS_NUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
+      - NUMBA_NUM_THREADS=1
+      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
     networks:
       - isolated_net
     deploy:
@@ -166,6 +178,8 @@ services:
       - MKL_NUM_THREADS=1
       - OPENBLAS_NUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
+      - NUMBA_NUM_THREADS=1
+      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
     networks:
       - isolated_net
     deploy:
@@ -184,6 +198,8 @@ services:
       - MKL_NUM_THREADS=1
       - OPENBLAS_NUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
+      - NUMBA_NUM_THREADS=1
+      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
     networks:
       - isolated_net
     deploy:
@@ -202,6 +218,8 @@ services:
       - MKL_NUM_THREADS=1
       - OPENBLAS_NUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
+      - NUMBA_NUM_THREADS=1
+      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
     networks:
       - isolated_net
     deploy:
@@ -220,6 +238,8 @@ services:
       - MKL_NUM_THREADS=1
       - OPENBLAS_NUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
+      - NUMBA_NUM_THREADS=1
+      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
     networks:
       - isolated_net
     deploy:
@@ -238,6 +258,8 @@ services:
       - MKL_NUM_THREADS=1
       - OPENBLAS_NUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
+      - NUMBA_NUM_THREADS=1
+      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
     networks:
       - isolated_net
     deploy:
@@ -256,6 +278,8 @@ services:
       - MKL_NUM_THREADS=1
       - OPENBLAS_NUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
+      - NUMBA_NUM_THREADS=1
+      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
     networks:
       - isolated_net
     deploy:
@@ -274,6 +298,8 @@ services:
       - MKL_NUM_THREADS=1
       - OPENBLAS_NUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
+      - NUMBA_NUM_THREADS=1
+      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
     networks:
       - isolated_net
     deploy:
@@ -292,6 +318,8 @@ services:
       - MKL_NUM_THREADS=1
       - OPENBLAS_NUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
+      - NUMBA_NUM_THREADS=1
+      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
     networks:
       - isolated_net
     deploy:
@@ -310,6 +338,8 @@ services:
       - MKL_NUM_THREADS=1
       - OPENBLAS_NUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
+      - NUMBA_NUM_THREADS=1
+      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
     networks:
       - isolated_net
     deploy:
@@ -328,6 +358,8 @@ services:
       - MKL_NUM_THREADS=1
       - OPENBLAS_NUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
+      - NUMBA_NUM_THREADS=1
+      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
     networks:
       - isolated_net
     deploy:

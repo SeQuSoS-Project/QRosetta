@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     RUN_RATE_LIMIT: str = os.getenv("QROSETTA_RUN_RATE_LIMIT", "10/minute")
 
     RUNNER_TIMEOUT_SEC: int = 300
+    MIN_TIMEOUT_SEC: int = 10
+    MIN_SHOTS: int = 1
+    MAX_SHOTS: int = 1_000_000
     RUNNER_CONNECT_TIMEOUT_SEC: int = 10
     RUNNER_DEADLINE_BUFFER_SEC: int = 15
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30

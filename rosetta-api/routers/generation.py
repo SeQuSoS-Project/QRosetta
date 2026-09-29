@@ -38,7 +38,7 @@ async def generate_circuit_endpoint(request: Request, payload: GenerateCircuitPa
     if payload.qubits > settings.MAX_QUBITS_MEASURED:
         return JSONResponse(status_code=400, content={"error": f"Qubit count {payload.qubits} exceeds limit of {settings.MAX_QUBITS_MEASURED}"})
     try:
-        qasm = library.generate_circuit(payload.algorithm, payload.qubits)
+        qasm = library.generate_circuit(payload.algorithm, payload.qubits, payload.seed)
         return {"qasm": qasm}
     except ValueError as ve:
         return JSONResponse(content={"error": str(ve)}, status_code=400)

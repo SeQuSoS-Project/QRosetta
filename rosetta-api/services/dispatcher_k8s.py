@@ -11,7 +11,7 @@ from botocore.config import Config as BotoConfig
 from botocore.exceptions import ClientError, BotoCoreError
 from kubernetes import client as k8s_client, config as k8s_config
 from config import settings
-from qrosetta_commons.helpers import get_logger
+from qrosetta_commons.helpers import get_logger, unmeasured_metrics
 
 logger = get_logger("rosetta-api")
 
@@ -79,6 +79,7 @@ def _build_job_spec(sim_name: str, hostname: str, job_id: str, endpoint_type: st
         k8s_client.V1EnvVar(name="MKL_NUM_THREADS",      value="1"),
         k8s_client.V1EnvVar(name="OPENBLAS_NUM_THREADS", value="1"),
         k8s_client.V1EnvVar(name="NUMEXPR_NUM_THREADS",  value="1"),
+        k8s_client.V1EnvVar(name="NUMBA_NUM_THREADS",    value="1"),
         # OpenShift's random UID can reset HOME to /, where pytket cannot write its config.
         k8s_client.V1EnvVar(name="HOME",                 value="/home/appuser"),
         _secret_ref("S3_ACCESS_KEY"),
@@ -183,8 +184,8 @@ def _k8s_error(sim_name: str, message: str, dispatch_status: str) -> dict:
         "simulator": sim_name,
         "error": message,
         "dispatch_status": dispatch_status,
-        "execution_time_sec": 0.0,
-        "memory_usage_mb": 0.0,
+        **unmeasured_metrics(),
+        "queue_wait_sec": None,
     }
 
 
@@ -249,7 +250,7 @@ def _run_k8s_job_inner(sim_name: str, url: str, local_payload: dict, timeout_sec
         if terminal_state == "failed":
             if status_callback:
                 status_callback("error")
-            return _k8s_error(sim_name, "Runner pod failed (non-zero exit). Check container logs in your Kubernetes cluster.", "error")
+            return _k8s_error(sim_name, "The runner pod exited with an error before returning a result (likely out of memory or time). Server operators can see details in the runner pod logs.", "error")
 
         if terminal_state == "succeeded":
             logger.info(f"[K8s] Fetching S3 result for {sim_name} (job_id={job_id})")
@@ -275,7 +276,7 @@ def _run_k8s_job_inner(sim_name: str, url: str, local_payload: dict, timeout_sec
         if terminal_state == "timeout_pending":
             return _k8s_error(sim_name, f"UNAVAILABLE: the {sim_name} pod was not running after {timeout_seconds}s (unschedulable, or the image could not be pulled).", "offline")
         if timed_out:
-            return _k8s_error(sim_name, f"TIMEOUT ({timeout_seconds}s): K8s job did not complete in time.", "timeout")
+            return _k8s_error(sim_name, f"TIMEOUT ({timeout_seconds}s): the Kubernetes Job (scheduling, image pull, SDK import, warm-up and timed run) did not complete within {timeout_seconds} s.", "timeout")
         return _k8s_error(sim_name, "Runner pod completed but S3 result was not found.", "error")
     finally:
         api_client.close()

@@ -9,6 +9,7 @@ Both are evicted together after the job TTL in ``main.py``.
 import asyncio
 import random
 import time
+from fastapi import HTTPException
 from services.validator import validate_request
 from services.dispatcher import (
     STATEVECTOR_RUNNER_URLS,
@@ -20,7 +21,7 @@ from services.dispatcher import (
     timeout_scope,
     utc_now_iso,
 )
-from schemas import BatchPayload
+from schemas import AgreementThresholds, BatchPayload
 from config import settings, server_git_sha, server_image_digests, runner_registry_snapshot
 from services.aggregator import compile_comparison_reports, compile_measurement_reports
 from qrosetta_commons.helpers import get_logger
@@ -43,6 +44,20 @@ _STATEVECTOR_PLACEHOLDER = (
     "and returned by GET /jobs/{job_id}/report and POST /jobs/{job_id}/export "
     "(include_statevectors=true) until the job expires; it is not in this copy.>"
 )
+
+
+def effective_thresholds(thresholds) -> dict:
+    """The agreement thresholds a run uses: the caller's (dict or model), else the defaults."""
+    if thresholds is None:
+        return AgreementThresholds().model_dump()
+    if isinstance(thresholds, AgreementThresholds):
+        return thresholds.model_dump()
+    return dict(thresholds)
+
+
+def clamp_timeout(timeout_seconds: int) -> int:
+    """Per-runner budget: the request's value bounded to [MIN_TIMEOUT_SEC, RUNNER_TIMEOUT_SEC]."""
+    return max(settings.MIN_TIMEOUT_SEC, min(int(timeout_seconds), settings.RUNNER_TIMEOUT_SEC))
 
 
 def _resolve_seed(seed):
@@ -122,6 +137,7 @@ def _dispatched_circuit_record(group: str, circuit: dict, results: list) -> dict
 async def run_single_circuit_comparison(qasm_string: str, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = 60, target_simulators: list = None, runner_statuses: dict = None, runner_phases: dict = None, apply_preprocessing: bool = True, thresholds: dict = None):
     """Run one circuit on the statevector fleet and return the full (untruncated) report."""
     started_at = utc_now_iso()
+    thresholds = effective_thresholds(thresholds)
     context = _run_context(optimization_level, runner_config, timeout_seconds,
                            apply_preprocessing, thresholds, runner_phases)
     try:
@@ -180,6 +196,7 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
     """
     started_at = utc_now_iso()
     seed = _resolve_seed(seed)
+    thresholds = effective_thresholds(thresholds)
     logger.info(f"Processing measured circuit for {n_shots} shots (seed={seed})...")
     context = _run_context(optimization_level, runner_config, timeout_seconds,
                            apply_preprocessing, thresholds, runner_phases)
@@ -249,21 +266,56 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
     return report
 
 
+def job_targets(requested_target: str = None) -> dict:
+    """``target`` (the execution mode runs are dispatched with) and, when the request asked
+    for a different one, ``requested_target``."""
+    targets = {"target": EXECUTION_MODE}
+    if requested_target and requested_target != EXECUTION_MODE:
+        targets["requested_target"] = requested_target
+    return targets
+
+
+def new_job(requested_target: str = None) -> dict:
+    """ACTIVE_JOBS entry for a job that has been accepted but not started."""
+    return {"status": "pending", **job_targets(requested_target)}
+
+
 def _completed_job(target: str, full_report: dict, runner_statuses: dict, **extra) -> dict:
-    return {"status": "completed", "target": target, "results": display_report(full_report),
+    return {"status": "completed", **job_targets(target), "results": display_report(full_report),
             "full_results": full_report, "runner_statuses": runner_statuses,
             "finished_at": time.time(), **extra}
 
 
+def _failed_job(target: str, error: str, runner_statuses: dict, report: dict = None, **extra) -> dict:
+    """A failed job; ``report`` (when any) is served in ``results`` but not exportable."""
+    job = {"status": "failed", **job_targets(target), "error": error,
+           "runner_statuses": runner_statuses, "finished_at": time.time(), **extra}
+    if report is not None:
+        job["results"] = display_report(report)
+    return job
+
+
+def report_failed_before_dispatch(report: dict) -> bool:
+    """True for a report whose circuit never reached a runner (top-level error, no results)."""
+    return isinstance(report, dict) and bool(report.get("error")) and "raw_results" not in report
+
+
 async def _run_single_job(job_id: str, execution_target: str, runner_statuses: dict, run_coro):
-    """Await ``run_coro`` (a run_single_* coroutine) and record the terminal state."""
+    """Await ``run_coro`` (a run_single_* coroutine) and record the terminal state.
+
+    A report that failed before dispatch (e.g. the circuit does not parse) is ``failed``.
+    """
     ACTIVE_JOBS[job_id]["status"] = "processing"
     ACTIVE_JOBS[job_id]["runner_statuses"] = runner_statuses
     try:
         report = await run_coro
-        ACTIVE_JOBS[job_id] = _completed_job(execution_target, report, runner_statuses)
+        if report_failed_before_dispatch(report):
+            ACTIVE_JOBS[job_id] = _failed_job(execution_target, str(report["error"]),
+                                              runner_statuses, report)
+        else:
+            ACTIVE_JOBS[job_id] = _completed_job(execution_target, report, runner_statuses)
     except Exception as e:
-        ACTIVE_JOBS[job_id] = {"status": "failed", "target": execution_target, "error": str(e), "runner_statuses": runner_statuses, "finished_at": time.time()}
+        ACTIVE_JOBS[job_id] = _failed_job(execution_target, str(e), runner_statuses)
 
 
 async def worker_compare(job_id: str, qasm_string: str, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str, runner_phases: dict = None, apply_preprocessing: bool = True, thresholds: dict = None):
@@ -293,7 +345,7 @@ async def run_batch_tasks(payload: BatchPayload, runner_statuses: dict, progress
     * ``batch_seed`` — master seed for every task; resolved here when None.
     """
     benchmark_summary = []
-    batch_thresholds = payload.thresholds.model_dump() if payload.thresholds else None
+    batch_thresholds = effective_thresholds(payload.thresholds)
     if batch_seed is None:
         batch_seed = _resolve_seed(payload.seed)
 
@@ -310,7 +362,7 @@ async def run_batch_tasks(payload: BatchPayload, runner_statuses: dict, progress
             )
 
             validate_request(qasm_string, mode=payload.mode, bypass_limits=payload.bypass_limits)
-            timeout = max(1, min(payload.timeout_seconds, settings.RUNNER_TIMEOUT_SEC))
+            timeout = clamp_timeout(payload.timeout_seconds)
             if payload.mode == 'statevector':
                 report = await run_single_circuit_comparison(qasm_string, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, runner_statuses, payload.runner_phases, payload.apply_preprocessing, batch_thresholds)
             elif payload.mode == 'measured':
@@ -321,12 +373,14 @@ async def run_batch_tasks(payload: BatchPayload, runner_statuses: dict, progress
             report["task_name"] = task_name
             benchmark_summary.append(report)
             if progress is not None:
-                progress["tasks"][gi]["status"] = "done"
+                progress["tasks"][gi]["status"] = (
+                    "error" if report_failed_before_dispatch(report) else "done")
 
         except Exception as e:
+            reason = e.detail if isinstance(e, HTTPException) else str(e)
             benchmark_summary.append({
                 "task_name": task_name,
-                "error": f"Failed to process task: {str(e)}"
+                "error": f"Failed to process task: {reason}"
             })
             if progress is not None:
                 progress["tasks"][gi]["status"] = "error"
@@ -367,5 +421,12 @@ async def worker_batch_suite(job_id: str, payload: BatchPayload):
     if payload.mode == "measured":
         full_report["seed"] = batch_seed
         full_report["seed_derivation"] = SEED_DERIVATION
+    if benchmark_summary and all(report_failed_before_dispatch(t) for t in benchmark_summary):
+        ACTIVE_JOBS[job_id] = _failed_job(
+            payload.execution_target,
+            f"All {len(benchmark_summary)} task(s) failed before dispatch; first error: "
+            f"{benchmark_summary[0]['error']}",
+            runner_statuses, full_report, progress=progress)
+        return
     ACTIVE_JOBS[job_id] = _completed_job(payload.execution_target, full_report, runner_statuses,
                                          progress=progress)

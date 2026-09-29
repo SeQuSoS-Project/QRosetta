@@ -46,10 +46,20 @@ SECRET_KEY = _resolve_secret_key()
 
 ALGORITHM = "HS256"
 
+BCRYPT_MAX_PASSWORD_BYTES = 72
+
+
 def verify_password(plain_password, hashed_password):
-    return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+    """False for a wrong password, including one longer than bcrypt's 72-byte limit."""
+    encoded = plain_password.encode('utf-8')
+    if len(encoded) > BCRYPT_MAX_PASSWORD_BYTES:
+        return False
+    return bcrypt.checkpw(encoded, hashed_password.encode('utf-8'))
 
 def get_password_hash(password):
+    """bcrypt hash; ValueError for a password longer than 72 bytes (UTF-8)."""
+    if len(password.encode('utf-8')) > BCRYPT_MAX_PASSWORD_BYTES:
+        raise ValueError(f"password must be at most {BCRYPT_MAX_PASSWORD_BYTES} bytes (UTF-8)")
     salt = bcrypt.gensalt()
     hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
     return hashed.decode('utf-8')

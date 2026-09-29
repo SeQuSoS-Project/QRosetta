@@ -10,12 +10,12 @@ class _RaisingClient:
     def __init__(self, exc):
         self._exc = exc
 
-    async def post(self, url, json):
+    async def post(self, url, json, timeout=None):
         raise self._exc
 
 
 class _StatusErrorClient:
-    async def post(self, url, json):
+    async def post(self, url, json, timeout=None):
         req = httpx.Request("POST", "http://runner/run")
         resp = httpx.Response(500, request=req)
         return resp  # raise_for_status() below turns 500 into HTTPStatusError
@@ -60,8 +60,15 @@ def test_http_status_error_is_classified():
 
 def test_error_shape_is_preserved():
     r = _run(_RaisingClient(httpx.ConnectError("x")))
-    assert set(r) >= {"simulator", "error", "execution_time_sec", "memory_usage_mb"}
-    assert r["execution_time_sec"] == 0.0
+    assert set(r) >= {"simulator", "error", "execution_time_sec", "memory_usage_mb",
+                      "compilation_time_sec", "simulation_time_sec", "queue_wait_sec"}
+    assert r["execution_time_sec"] is None and r["memory_usage_mb"] is None
+    assert r["queue_wait_sec"] is None
+
+
+def test_messages_do_not_point_users_at_container_logs():
+    for exc in (httpx.ConnectError("x"), httpx.ReadError("reset")):
+        assert "container logs" not in _run(_RaisingClient(exc), timeout_s=10**9)["error"]
 
 
 def test_dispatch_status_classification():
