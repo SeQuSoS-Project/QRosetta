@@ -1,4 +1,4 @@
-# Execution script for the quantum simulator runner.
+"""cuQuantum runner: simulates OpenQASM 2.0 circuits with qiskit-aer's statevector method, on GPU when available."""
 
 from fastapi import FastAPI
 from qrosetta_commons.helpers import (
@@ -62,6 +62,21 @@ def _transpile(qasm_str: str, optimization_level: int = 0):
     return qc, preprocessing_applied
 
 
+_SAVE_STATEVECTOR_NOTE = (
+    "qiskit.QuantumCircuit.remove_final_measurements() + save_statevector(): Terminal "
+    "measurements are removed and a save_statevector instruction is appended so Aer returns "
+    "the final state; transpiled_qasm is the circuit before these two edits. Required by "
+    "the adapter, applied regardless of apply_preprocessing.")
+
+
+def _precision(sim) -> str:
+    return "complex128" if sim.options.precision == "double" else "complex64"
+
+
+def _serialize(compiled) -> str:
+    return qasm2.dumps(compiled.circuit[2])
+
+
 def _simulator():
     return (AerSimulator(method='statevector', device='GPU') if _GPU_AVAILABLE
             else AerSimulator(method='statevector'))
@@ -76,25 +91,26 @@ def process_run(payload: dict) -> dict:
     def compile_step(payload):
         qc, preprocessing_applied = _transpile(
             payload["circuit_data"], payload.get("optimization_level", 0))
-        # Serialized inside the compilation window: the circuit is rewritten below
-        # (measurements removed, save_statevector added) and capturing afterwards would
-        # record instructions the user never sent.
-        transpiled_qasm = qasm2.dumps(qc)
-        qc.remove_final_measurements(inplace=True)
-        qc.save_statevector()
+        executed_qc = qc.remove_final_measurements(inplace=False)
+        executed_qc.save_statevector()
+        sim = _simulator()
         return CompileResult(
-            circuit=(_simulator(), qc),
+            circuit=(sim, executed_qc, qc),
             n_qubits=qc.num_qubits,
-            preprocessing_applied=preprocessing_applied,
-            transpiled_qasm=transpiled_qasm)
+            preprocessing_applied=preprocessing_applied + [_SAVE_STATEVECTOR_NOTE],
+            precision=_precision(sim))
 
     def execute(compiled, _payload):
-        sim, qc = compiled.circuit
-        return np.asarray(_run_safe(sim, qc).get_statevector())
+        sim, executed_qc, _qc = compiled.circuit
+        return _run_safe(sim, executed_qc)
+
+    def shape_statevector(result, _compiled, _payload):
+        return np.asarray(result.get_statevector())
 
     return run_statevector_job(
         simulator="cuquantum", payload=payload, logger=logger, compile_fn=compile_step,
-        execute_fn=execute, qubit_ordering="lsb")
+        serialize_fn=_serialize, execute_fn=execute, postprocess_fn=shape_statevector,
+        qubit_ordering="lsb")
 
 
 @with_sdk_versions
@@ -106,22 +122,25 @@ def process_run_measured(payload: dict) -> dict:
     def compile_step(payload):
         qc, preprocessing_applied = _transpile(
             payload["circuit_data"], payload.get("optimization_level", 0))
+        sim = _simulator()
         return CompileResult(
-            circuit=(_simulator(), qc),
+            circuit=(sim, qc, qc),
             n_qubits=qc.num_qubits,
             preprocessing_applied=preprocessing_applied,
-            transpiled_qasm=qasm2.dumps(qc))
+            precision=_precision(sim))
 
     def execute(compiled, payload):
-        sim, qc = compiled.circuit
-        # seed_simulator=None keeps Aer's default non-deterministic sampling.
-        result = _run_safe(sim, qc, shots=payload.get("n_shots", 1024),
-                           seed_simulator=payload.get("seed"))
+        sim, qc, _qc = compiled.circuit
+        return _run_safe(sim, qc, shots=payload.get("n_shots", 1024),
+                         seed_simulator=payload.get("seed"))
+
+    def shape_counts(result, _compiled, _payload):
         return dict(result.get_counts()), "native"
 
     return run_measured_job(
         simulator="cuquantum", payload=payload, logger=logger, compile_fn=compile_step,
-        execute_fn=execute, qubit_ordering="lsb")
+        serialize_fn=_serialize, execute_fn=execute, postprocess_fn=shape_counts,
+        qubit_ordering="lsb")
 
 
 register_runner_endpoints(app, process_run, process_run_measured)
