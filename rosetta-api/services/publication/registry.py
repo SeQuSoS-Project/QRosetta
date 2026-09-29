@@ -42,7 +42,7 @@ def _iter_artifacts(results: dict, mode: str) -> List[dict]:
 
     def table_artifact(aid, label, group, build_data, legend):
         out.append({"id": aid, "label": label, "group": group, "view": "text",
-                    "formats": list(TAB_TABLE_FORMATS), "legend": legend,
+                    "formats": list(TAB_TABLE_FORMATS), "legend": legend, "_data": build_data,
                     "_render": lambda fmt, scale, bd=build_data: _table_bytes(*bd(), fmt)})
 
     def text_artifact(aid, label, group, build_text, formats, legend):
@@ -60,14 +60,15 @@ def _iter_artifacts(results: dict, mode: str) -> List[dict]:
                        lambda: _tbl_agreement(div, mode),
                        "One row per backend pair: explained-cause label, registered transform, key "
                        f"metric (direct fidelity or JS divergence in {JS_UNIT}), statistical "
-                       "verdict (measured) and not-comparable reason.")
+                       "verdict and measured assessment (measured) and not-comparable reason.")
 
     multi = len(div.get("simulators", [])) >= 2
     for key, title, base in _heatmap_specs(mode):
         if multi and isinstance(div.get(key), list) and div.get(key):
             fig_artifact(base, title.split("(")[0].strip() + " heatmap", "Divergence",
                          lambda k=key, t=title: _fig_heatmap(div, k, t),
-                         f"{title}: N×N heatmap; darker = larger value. −1/diagonal shown neutral.")
+                         f"{title}: N×N heatmap; darker = larger value. Not-compared pairs "
+                         "and the diagonal shown neutral.")
             mid = {"fidelity_matrix": "matrix_fidelity",
                    "statistical_distance_matrix (js_divergence)": "matrix_js",
                    "hellinger_distance_matrix": "matrix_hellinger"}[key]
@@ -82,7 +83,9 @@ def _iter_artifacts(results: dict, mode: str) -> List[dict]:
                      lambda: _fig_ranking_bar(results, "performance_report",
                                               [("compilation_time_sec", "#2a78d6", "compilation"),
                                                ("simulation_time_sec", "#1baf7a", "simulation")],
-                                              "Wall-clock time by stage", "seconds"),
+                                              "Wall-clock time by stage", "seconds",
+                                              f"n={_timing_samples(results)} timing sample(s) per "
+                                              "backend; timed run only, warm-up excluded"),
                      "Stacked compilation + simulation wall-clock time per backend (raw), "
                      f"n={_timing_samples(results)} timing sample(s) per backend; " + unranked_note)
         table_artifact("performance", "Execution-time table", "Performance",
@@ -95,7 +98,9 @@ def _iter_artifacts(results: dict, mode: str) -> List[dict]:
         fig_artifact("resource_memory", "Process peak RSS chart", "Resources",
                      lambda: _fig_ranking_bar(results, "resource_report",
                                               [("process_peak_rss_mb", "#2a78d6", "process peak RSS")],
-                                              "Process peak RSS (whole runner process)", "MiB"),
+                                              "Process peak RSS (whole runner process)", "MiB",
+                                              "includes interpreter start, SDK import and warm-up; "
+                                              "SDK import dominates for small circuits"),
                      "Peak RSS of each backend's simulating process over its whole life "
                      "(interpreter start, imports, warm-up and timed run), in MiB; method: "
                      f"{_distinct(results, 'process_peak_rss_method')}. Ranked lowest first; "
@@ -183,6 +188,26 @@ def render_artifact(results: dict, mode: str, artifact_id: str, fmt: str,
             data = a["_render"](fmt, max(1, int(scale)))
             return data, MIME_TYPES.get(fmt, "application/octet-stream"), a["legend"]
     raise KeyError(artifact_id)
+
+
+def describe_artifact_paths(results: dict, mode: str, paths: List[str]) -> Dict[str, str]:
+    """{path: description} for bundle paths "figures/<id>.<fmt>" / "tables/<id>.<fmt>":
+    the artifact legend, plus the table title and caption for tables."""
+    by_id = {a["id"]: a for a in _iter_artifacts(results, mode)}
+    out: Dict[str, str] = {}
+    for path in paths:
+        aid, _, fmt = path.rsplit("/", 1)[-1].rpartition(".")
+        a = by_id.get(aid)
+        if not a:
+            continue
+        text = a["legend"]
+        if "_data" in a:
+            _, _, title, caption = a["_data"]()
+            where = ("The file carries no caption; it is " if fmt == "csv"
+                     else "The file carries the caption ")
+            text += f" {where}\"{title}. {caption}\""
+        out[path] = text
+    return out
 
 
 _BUNDLE_FIGURES = {

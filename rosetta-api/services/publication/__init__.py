@@ -44,7 +44,9 @@ from .formats import (
     _table_bytes,
     basename_slug,
 )
-from .registry import build_publication_artifacts, list_artifacts, render_artifact
+from .registry import (
+    build_publication_artifacts, describe_artifact_paths, list_artifacts, render_artifact,
+)
 from .selectors import _heatmap_specs, _key_metric, _pair_key, _pairwise_records
 from .tables import (
     _tbl_agreement,
@@ -59,6 +61,7 @@ from .tables import (
 
 __all__ = [
     "build_publication_artifacts",
+    "describe_artifact_paths",
     "list_artifacts",
     "render_artifact",
     "basename_slug",

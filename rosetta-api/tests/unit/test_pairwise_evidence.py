@@ -38,7 +38,7 @@ def test_statevector_pairwise_evidence_preserves_matrices_and_labels_direct_agre
         },
     ])
 
-    assert report["fidelity_matrix"] == [[-1.0, 1.0], [1.0, -1.0]]
+    assert report["fidelity_matrix"] == [[1.0, 1.0], [1.0, 1.0]]
     assert "pairwise_agreement" in report
 
     evidence = _record(report, "a", "b")
@@ -62,9 +62,9 @@ def test_statevector_pairwise_evidence_three_runners_memoized_decode_is_consiste
     ])
 
     assert report["fidelity_matrix"] == [
-        [-1.0, 1.0, 0.0],
-        [1.0, -1.0, 0.0],
-        [0.0, 0.0, -1.0],
+        [1.0, 1.0, 0.0],
+        [1.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0],
     ]
     assert _record(report, "a", "b")["agreement"] == "agree_directly"
     assert _record(report, "a", "c")["agreement"] == "residual_disagreement"

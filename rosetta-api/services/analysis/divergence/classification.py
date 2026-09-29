@@ -38,7 +38,10 @@ def _pair_provenance(res_i, res_j, mode):
 
 
 def _run_status(res):
-    """Return "error" if the result carries an error, else "completed"."""
+    """The result's dispatch_status when it is timeout/offline, "error" if it carries an
+    error, else "completed"."""
+    if res.get("dispatch_status") in ("timeout", "offline"):
+        return res["dispatch_status"]
     return "error" if "error" in res else "completed"
 
 

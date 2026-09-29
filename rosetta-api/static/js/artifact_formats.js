@@ -131,7 +131,9 @@ function _artRawBySim(results) {
     return out;
 }
 
-/** Ranked entries in rank order, then unranked entries, as {entry, raw, ranked, rank, status}. */
+const _FAILED_STATUSES = ['error', 'timeout', 'offline'];
+
+/** Ranked entries in rank order, then unranked entries, as {entry, raw, ranked, failed, rank, status}. */
 export function _artReportRows(results, reportKey) {
     const report = results[reportKey] || {};
     const raw = _artRawBySim(results);
@@ -139,19 +141,22 @@ export function _artReportRows(results, reportKey) {
     [[true, report.ranking || []], [false, report.unranked || []]].forEach(([ranked, entries]) => {
         entries.forEach((e, i) => {
             const r = raw[e.simulator] || {};
-            let status = r.status || e.status || '—';
+            let status = r.dispatch_status || r.status || e.status || '—';
             if (status === 'success') status = 'ok';
+            const failed = !ranked && _FAILED_STATUSES.includes(status);
             let rank = '—';
             if (ranked) rank = _artInt((e.rank !== null && e.rank !== undefined) ? e.rank : i + 1);
-            else status = `${status} (${e.reason || 'unranked'})`;
-            rows.push({ entry: e, raw: r, ranked, rank, status });
+            else if (e.reason && e.reason !== 'runner_error') status = `${status} (${e.reason})`;
+            else if (!failed) status = `${status} (${e.reason || 'unranked'})`;
+            rows.push({ entry: e, raw: r, ranked, failed, rank, status });
         });
     });
     return rows;
 }
 
-/** `key` from the report entry, falling back to the raw result. */
+/** `key` from the report entry, falling back to the raw result; null for failed runs. */
 function _artField(row, key) {
+    if (row.failed) return null;
     const v = row.entry[key];
     return (v === null || v === undefined) ? row.raw[key] : v;
 }
@@ -184,7 +189,7 @@ export const AGREEMENT_GLOSSARY = [
     ['agree_up_to_global_phase', 'Match after removing an overall (unobservable) global phase.'],
     ['agree_after_bit_reversal', 'Match after reversing qubit/bit order (an endianness convention).'],
     ['agree_after_qubit_permutation', 'Match after a bounded qubit permutation (≤7 qubits).'],
-    ['agree_after_normalization', 'At least one input statevector has a norm differing from 1 by more than norm_tolerance; the normalised vectors agree. metrics.normalized_agreement holds the label the normalised pair receives.'],
+    ['agree_after_normalization', 'At least one input statevector has a norm differing from 1 by more than norm_tolerance; the normalised vectors agree. metrics.normalized_agreement holds the label the normalised pair receives. The default norm_tolerance (1e-4) lies above complex64 rounding, which leaves norms about 2e-6 from 1.'],
     ['residual_disagreement', 'Statevector disagreement not explained by any registered transform.'],
     ['distance_within_threshold', 'Measured distributions within the JS-divergence and Hellinger thresholds (descriptive, configurable; the shot-noise statistical test gives the significance verdict).'],
     ['distance_exceeds_threshold', 'Measured distributions exceed the (descriptive, configurable) thresholds after registered transforms; see the statistical test for significance.'],
@@ -213,47 +218,59 @@ export const VERDICT_GLOSSARY = [
     ['inconclusive_low_shots', 'Expected counts too low for a reliable test.'],
     ['ambiguous', 'Exactly one of the chi-square test and the G-test is significant after BH (FDR) correction.'],
 ];
+export const ASSESSMENT_GLOSSARY = [
+    ['consistent_within_shot_noise', 'The shot-noise verdict is consistent: neither test separates the distributions at the observed shot count, whatever the distance label.'],
+    ['distinguishable', 'The shot-noise verdict is distinguishable: the distributions differ beyond sampling noise.'],
+    ['ambiguous', 'Exactly one of the two tests is significant.'],
+    ['inconclusive_low_shots', 'Expected counts too low for a reliable test; the shot count cannot separate the distributions.'],
+    ['not_comparable', 'At least one side lacks usable counts.'],
+];
 export const UNRANKED_GLOSSARY = [
-    ['runner_error', 'The run returned an error.'],
+    ['runner_error', 'The run failed; Status gives the dispatch status (error, timeout or offline) and its metrics are shown as —.'],
     ['missing_timing', 'The run returned no execution_time_sec.'],
     ['missing_process_peak_rss', 'The run returned no process_peak_rss_mb.'],
 ];
 export const THRESHOLD_DEFAULTS = 'fidelity_tolerance = 1e-5, phase_tolerance = 1e-12 rad, '
-    + 'norm_tolerance = 1e-6, js_threshold = 0.01 nats, hellinger_threshold = 0.1';
+    + 'norm_tolerance = 1e-4, js_threshold = 0.01 nats, hellinger_threshold = 0.1';
 
 // ---- table builders (tables.py) ----
-/** One row per backend pair: label, transform, key metric, verdict (measured), reason. */
+/** One row per backend pair: label, transform, key metric, verdict and assessment (measured), reason. */
 export function _dataAgreement(div, mode) {
     const measured = mode === 'measured';
     const headers = ['Pair', 'Agreement', 'Registered transform',
         measured ? `JS divergence (${JS_UNIT})` : 'Direct fidelity'];
-    if (measured) headers.push('Stat verdict');
+    if (measured) headers.push('Stat verdict', 'Measured assessment');
     headers.push('Not-comparable reason');
     const rows = _artPairwise(div).map(r => {
         const m = r.metrics || {};
         const metric = r.mode === 'statevector' ? m.direct_fidelity : m.js_divergence;
         const row = [_artPairKey(r), _artText(r.agreement), _artText(r.registered_transform), _artNum(metric)];
-        if (measured) row.push(_artText((m.statistical_test || {}).verdict));
+        if (measured) row.push(_artText((m.statistical_test || {}).verdict), _artText(r.measured_assessment));
         row.push(r.agreement === 'not_comparable' ? _artText(m.reason) : '—');
         return row;
     });
     const metricNote = measured
         ? `JS divergence is the direct (untransformed) Jensen–Shannon divergence in ${JS_UNIT}`
         : 'Direct fidelity is |<a|b>|^2 of the normalised vectors before any transform';
-    return { headers, rows, title: 'Pairwise explained-cause agreement',
-        caption: 'Classification over the registered-transform lattice; each label reports the '
-            + `transform whose numerical effect explains the pair. ${metricNote}.` };
+    let caption = 'Classification over the registered-transform lattice; each label reports the '
+        + `transform whose numerical effect explains the pair. ${metricNote}.`;
+    if (measured) {
+        caption += ' Measured assessment combines the descriptive label with the shot-noise '
+            + 'verdict: a pair over the distance thresholds whose verdict is consistent '
+            + 'is consistent_within_shot_noise.';
+    }
+    return { headers, rows, title: 'Pairwise explained-cause agreement', caption };
 }
-/** The N×N matrix `key` with the diagonal and -1 sentinels shown as "—". */
+/** The N×N matrix `key` with the diagonal and not-compared (null) cells shown as "—". */
 export function _dataMatrix(div, key, title) {
     const labels = div.simulators || [];
     const mat = div[key];
     const headers = [''].concat(labels);
     const rows = labels.map((s1, i) => [s1].concat(labels.map((_, j) => {
         const v = mat[i][j];
-        return (i === j || v === -1.0) ? '—' : _artNum(v);
+        return (i === j || v === null || v === undefined || v === -1.0) ? '—' : _artNum(v);
     })));
-    return { headers, rows, title, caption: `${title} (raw metric; −1 / diagonal shown as —). Symmetric matrix.` };
+    return { headers, rows, title, caption: `${title} (raw metric; not-compared pairs and the diagonal shown as —). Symmetric matrix.` };
 }
 /** Per-backend timings: ranked runs by total time, then unranked runs with the reason. */
 export function _dataPerformance(results) {
@@ -298,7 +315,9 @@ export function _dataResources(results) {
             + 'first; runs without a rank follow with the reason in Status. Sim-window peak RSS '
             + 'and RSS delta (peak minus RSS at monitor entry) cover the pre-execute step and '
             + `simulation window of the timed run; method: ${_artDistinct(results, 'memory_method')}. `
-            + 'Theoretical SV is 2^n × 16 bytes for the declared qubit count. 1 MiB = 1024^2 bytes.',
+            + 'Theoretical SV is 2^n × 16 bytes for the declared qubit count. 1 MiB = 1024^2 bytes. '
+            + 'For small circuits process peak RSS is dominated by the SDK import footprint; '
+            + "the sim-window RSS delta is the simulation's own allocation.",
     };
 }
 /** Per-pair chi-square and G-test p-values, effect sizes, power and verdict. */
@@ -323,7 +342,7 @@ export function _dataStatistical(div) {
 export function _dataMetadata(results, mode) {
     const rows = (results.raw_results || []).map(r => {
         const sdk = Object.entries(r.sdk_versions || {}).map(([k, v]) => `${k}=${_artText(v)}`).join(', ') || '—';
-        const status = r.status || ((r.error !== null && r.error !== undefined) ? 'error' : 'ok');
+        const status = r.dispatch_status || r.status || ((r.error !== null && r.error !== undefined) ? 'error' : 'ok');
         return [_artText(r.simulator), sdk, _artText(r.qubit_ordering), _artText(r.sampling_method),
             _artInt(r.optimization_level), _artText(status)];
     });
@@ -351,6 +370,8 @@ export function _txtGlossary(mode) {
     if (mode === 'measured') {
         out.push('', 'Shot-noise statistical verdicts (reported alongside the descriptive label):', '');
         VERDICT_GLOSSARY.forEach(([l, d]) => out.push(`- **${l}** — ${d}`));
+        out.push('', 'Measured assessment (measured_assessment, from the verdict):', '');
+        ASSESSMENT_GLOSSARY.forEach(([l, d]) => out.push(`- **${l}** — ${d}`));
     }
     out.push('', 'Unranked runs in the timing and resource tables (reason):', '');
     UNRANKED_GLOSSARY.forEach(([l, d]) => out.push(`- **${l}** — ${d}`));
@@ -384,7 +405,7 @@ export function buildArtifactCatalog(results) {
         image('agreement_distribution', 'Agreement class distribution', 'Agreement',
             'Bar chart of how many backend pairs fall into each explained-cause class' + (mode === 'measured' ? ' and shot-noise verdict' : '') + '.');
         table('agreement', 'Pairwise agreement table', 'Agreement', () => _dataAgreement(div, mode),
-            `One row per backend pair: explained-cause label, registered transform, key metric (direct fidelity or JS divergence in ${JS_UNIT}), statistical verdict (measured) and not-comparable reason.`);
+            `One row per backend pair: explained-cause label, registered transform, key metric (direct fidelity or JS divergence in ${JS_UNIT}), statistical verdict and measured assessment (measured) and not-comparable reason.`);
     }
     const heat = mode === 'statevector'
         ? [['fidelity_matrix', 'Raw statevector fidelity (no transform)', 'fidelity']]
@@ -395,7 +416,7 @@ export function buildArtifactCatalog(results) {
         if (multi && Array.isArray(div[key]) && div[key].length) {
             const short = title.split('(')[0].trim();
             image(`${base}_heatmap`, `${short} heatmap`, 'Divergence',
-                `${title}: N×N heatmap; darker = larger value. −1/diagonal shown neutral.`);
+                `${title}: N×N heatmap; darker = larger value. Not-compared pairs and the diagonal shown neutral.`);
             const mid = { fidelity: 'matrix_fidelity', js_divergence: 'matrix_js', hellinger: 'matrix_hellinger' }[base];
             table(mid, `${short} matrix (table)`, 'Divergence', () => _dataMatrix(div, key, title),
                 `${title} as a copyable N×N matrix table (raw metric).`);

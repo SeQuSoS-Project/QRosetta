@@ -13,6 +13,10 @@ from typing import Any, Dict, List, Optional
 
 from config import settings
 from qrosetta_commons.helpers import get_logger
+from services.analysis.divergence.common import (
+    DEFAULT_FIDELITY_TOLERANCE, DEFAULT_HELLINGER_THRESHOLD, DEFAULT_JS_THRESHOLD,
+    DEFAULT_NORM_TOLERANCE, DEFAULT_PHASE_TOLERANCE,
+)
 from services.report_filters import (
     OMITTED_FOR_DISPLAY,
     is_display_placeholder,
@@ -35,6 +39,15 @@ _RUN_CONFIG_FIELDS = (
 )
 
 
+_THRESHOLD_DEFAULTS = {
+    "statevector": {"fidelity_tolerance": DEFAULT_FIDELITY_TOLERANCE,
+                    "phase_tolerance": DEFAULT_PHASE_TOLERANCE,
+                    "norm_tolerance": DEFAULT_NORM_TOLERANCE},
+    "measured": {"js_threshold": DEFAULT_JS_THRESHOLD,
+                 "hellinger_threshold": DEFAULT_HELLINGER_THRESHOLD},
+}
+
+
 def _entity_ref_id(key: str) -> str:
     """Sanitize a (possibly virtual '~opt~run') runner key into a safe @id fragment."""
     return (key or "unknown").replace("~", "-").replace(" ", "_")
@@ -51,22 +64,21 @@ def _artifact_encoding_format(path: str) -> str:
     return _ARTIFACT_ENCODING.get(path.rsplit(".", 1)[-1], "application/octet-stream")
 
 
-def _generate_publication_artifacts(ctx: "ExportContext") -> Dict[str, bytes]:
-    """Generate the requested publication figures/tables, or {} when none are requested.
-
-    The publication engine (and matplotlib) is imported only when artifacts are requested.
-    """
+def _generate_publication_artifacts(ctx: "ExportContext") -> tuple:
+    """(files, descriptions) for the requested publication figures/tables; ({}, {}) when
+    none are requested. The publication engine (and matplotlib) is imported only then."""
     sel = ctx.publication_artifacts
     if not sel or not sel.get("categories"):
-        return {}
-    from services.publication import build_publication_artifacts
-    return build_publication_artifacts(
+        return {}, {}
+    from services.publication import build_publication_artifacts, describe_artifact_paths
+    files = build_publication_artifacts(
         ctx.results,
         ctx.mode,
         tuple(sel.get("categories", [])),
         tuple(sel.get("figure_formats", ["svg"])),
         tuple(sel.get("table_formats", ["csv"])),
     )
+    return files, describe_artifact_paths(ctx.results, ctx.mode, sorted(files))
 
 
 @dataclass
@@ -206,19 +218,54 @@ class ExportContext:
 
 # --- report lookups --------------------------------------------------------------------
 
+def _runner_dir_name(svc: dict) -> str:
+    """Runner directory / infrastructure name from a registry entry's base_url."""
+    return (svc or {}).get("base_url", "").split("://", 1)[-1].split(":", 1)[0].split("/", 1)[0]
+
+
+def _runner_base_paths(dir_name: str) -> List[str]:
+    return [
+        os.path.join(os.getcwd(), "runners", dir_name),
+        os.path.join(os.getcwd(), "..", "runners", dir_name),
+    ]
+
+
+def _read_runner_lock(dir_name: str) -> Optional[bytes]:
+    """The runner's requirements.lock bytes, or None when not on disk."""
+    for base in _runner_base_paths(dir_name):
+        path = os.path.join(base, "requirements.lock")
+        if os.path.exists(path):
+            try:
+                with open(path, "rb") as f:
+                    return f.read()
+            except OSError:
+                return None
+    return None
+
+
+def _runner_lock_files(ctx: "ExportContext") -> Dict[str, bytes]:
+    """{crate path: bytes} of requirements.lock for each runner used, where found on disk."""
+    out: Dict[str, bytes] = {}
+    for runner in _extract_runners_used(ctx):
+        dir_name = _runner_dir_name(ctx.runner_services.get(_canonical_sim_id(runner), {}))
+        if not dir_name or f"runners/{dir_name}/requirements.lock" in out:
+            continue
+        data = _read_runner_lock(dir_name)
+        if data is not None:
+            out[f"runners/{dir_name}/requirements.lock"] = data
+    return out
+
+
 def _get_runner_version(runner_id: str) -> str:
     """Quantum-SDK pins from the runner's requirements.txt, or 'unknown'."""
     svc = settings.get_runner_services().get(runner_id)
     if not svc:
         return "unknown"
-    dir_name = svc.get("base_url", "").split("://", 1)[-1].split(":", 1)[0].split("/", 1)[0]
+    dir_name = _runner_dir_name(svc)
     if not dir_name:
         return "unknown"
 
-    base_paths = [
-        os.path.join(os.getcwd(), "runners", dir_name),
-        os.path.join(os.getcwd(), "..", "runners", dir_name),
-    ]
+    base_paths = _runner_base_paths(dir_name)
 
     versions = []
     keywords = ["qiskit", "cirq", "qulacs", "pennylane", "qibo", "pytket", "cuquantum",
@@ -332,10 +379,11 @@ def _build_pairwise_agreement_summary(ctx: ExportContext) -> Optional[dict]:
         "by_agreement": {},
         "by_registered_transform": {},
         "by_statistical_verdict": {},
+        "by_measured_assessment": {},
         "description": (
             "Counts of agreement labels, registered transforms, and (for measured "
-            "mode) shot-noise statistical verdicts. The full per-pair metrics and "
-            "provenance records are preserved in results.json."
+            "mode) shot-noise statistical verdicts and measured assessments. The full "
+            "per-pair metrics and provenance records are preserved in results.json."
         ),
     }
     for record in records:
@@ -348,9 +396,13 @@ def _build_pairwise_agreement_summary(ctx: ExportContext) -> Optional[dict]:
         verdict = ((record.get("metrics") or {}).get("statistical_test") or {}).get("verdict")
         if verdict:
             _increment_nested_count(summary["by_statistical_verdict"], mode, verdict)
+        if record.get("measured_assessment"):
+            _increment_nested_count(summary["by_measured_assessment"], mode,
+                                    record["measured_assessment"])
 
-    if not summary["by_statistical_verdict"]:
-        del summary["by_statistical_verdict"]
+    for key in ("by_statistical_verdict", "by_measured_assessment"):
+        if not summary[key]:
+            del summary[key]
     return summary
 
 
@@ -364,9 +416,32 @@ def _run_configuration(ctx: ExportContext) -> dict:
         if key in ("n_shots", "seed", "seed_derivation") and ctx.mode != "measured":
             continue
         config[key] = NOT_RECORDED if value is None else value
+    requested = _shared_scalar(ctx, "agreement_thresholds")
+    config["agreement_thresholds"] = _effective_thresholds(ctx, requested)
+    config["agreement_thresholds_requested"] = (
+        requested if requested is not None else "none (defaults applied)")
     if ctx.mode == "measured" and config.get("seed_derivation") == NOT_RECORDED:
         config["seed_derivation"] = "not recorded (every runner received the report seed unchanged)"
     return config
+
+
+def _effective_thresholds(ctx: ExportContext, requested) -> dict:
+    """Thresholds the analysis applied for this mode: defaults, overridden by the request's
+    non-null values, overridden by the values recorded in the pairwise records."""
+    effective = dict(_THRESHOLD_DEFAULTS.get(ctx.mode, {}))
+    for key, value in (requested if isinstance(requested, dict) else {}).items():
+        if key in effective and value is not None:
+            effective[key] = value
+    pending = set(effective)
+    for record in _iter_pairwise_agreement_records(ctx):
+        metrics = record.get("metrics") or {}
+        for key in list(pending):
+            if metrics.get(key) is not None:
+                effective[key] = metrics[key]
+                pending.discard(key)
+        if not pending:
+            break
+    return effective
 
 
 def _per_task(ctx: ExportContext, fn) -> Any:
@@ -473,10 +548,14 @@ def _statevector_description(ctx: ExportContext) -> str:
 # --- ro-crate-metadata.json ------------------------------------------------------------
 
 def _build_ro_crate_metadata(ctx: ExportContext,
-                             artifact_paths: Optional[List[str]] = None) -> dict:
+                             artifact_paths: Optional[List[str]] = None,
+                             artifact_descriptions: Optional[Dict[str, str]] = None,
+                             lock_paths: Optional[List[str]] = None) -> dict:
     """Build the RO-Crate 1.1 metadata descriptor (JSON-LD)."""
     graph: List[dict] = []
     artifact_paths = artifact_paths or []
+    artifact_descriptions = artifact_descriptions or {}
+    lock_paths = set(lock_paths or [])
     agent_ref: Optional[dict] = None
 
     tasks = _iter_tasks(ctx)
@@ -503,6 +582,11 @@ def _build_ro_crate_metadata(ctx: ExportContext,
                     "and per-runner raw results)")
     contents.append("provenance.json (run configuration, runner registry, SDK versions, seeds, "
                     "and the git SHA and runner image references where recorded)")
+    if lock_paths:
+        contents.append("each runner's pinned environment as runners/<runner>/requirements.lock")
+    if artifact_paths:
+        contents.append("publication figures and tables under figures/ and tables/, each "
+                        "described below with its legend and, for tables, its caption")
     root_entity: dict = {
         "@id": "./",
         "@type": "Dataset",
@@ -758,10 +842,9 @@ def _build_ro_crate_metadata(ctx: ExportContext,
             "@type": "File",
             "name": path.rsplit("/", 1)[-1],
             "description": (
-                f"Publication-ready {kind} derived deterministically from the analysis "
-                "reports. Raw metrics vs transformed analysis evidence are distinguished "
-                "in the figure/table caption."
-            ),
+                f"Publication-ready {kind} derived deterministically from the analysis reports. "
+                + artifact_descriptions.get(path, "")
+            ).strip(),
             "encodingFormat": _artifact_encoding_format(path),
         })
         artifact_refs.append({"@id": path})
@@ -804,7 +887,7 @@ def _build_ro_crate_metadata(ctx: ExportContext,
         else:
             version = _get_runner_version(runner_id)
         svc = ctx.runner_services.get(runner_id, {})
-        dir_name = svc.get("base_url", "").split("://", 1)[-1].split(":", 1)[0].split("/", 1)[0]
+        dir_name = _runner_dir_name(svc)
         node = {
             "@id": f"#{runner_id}",
             "@type": "SoftwareApplication",
@@ -816,10 +899,25 @@ def _build_ro_crate_metadata(ctx: ExportContext,
                 if dir_name else "https://github.com/SeQuSoS-Project/QRosetta"
             ),
         }
-        if executed_versions:
-            node["softwareRequirements"] = [
-                f"{pkg}=={ver}" for pkg, ver in sorted(executed_versions.items())
-            ]
+        requirements: List[Any] = [
+            f"{pkg}=={ver}" for pkg, ver in sorted(executed_versions.items())
+        ]
+        lock_path = f"runners/{dir_name}/requirements.lock"
+        if lock_path in lock_paths:
+            requirements.append({"@id": lock_path})
+            graph.append({
+                "@id": lock_path,
+                "@type": "File",
+                "name": "requirements.lock",
+                "description": (
+                    f"Full pinned Python environment (pip freeze) of the {runner_id} runner "
+                    "image, as committed in the exporting server's source tree."
+                ),
+                "encodingFormat": "text/plain",
+            })
+            root_entity["hasPart"].append({"@id": lock_path})
+        if requirements:
+            node["softwareRequirements"] = requirements
         graph.append(node)
 
     return {
@@ -861,8 +959,10 @@ def build_ro_crate(ctx: ExportContext) -> bytes:
 
     results_data = _results_json_data(ctx)
     provenance_data = _build_provenance(ctx)
-    publication_files = _generate_publication_artifacts(ctx)
-    metadata = _build_ro_crate_metadata(ctx, sorted(publication_files))
+    publication_files, artifact_descriptions = _generate_publication_artifacts(ctx)
+    lock_files = _runner_lock_files(ctx)
+    metadata = _build_ro_crate_metadata(ctx, sorted(publication_files), artifact_descriptions,
+                                        sorted(lock_files))
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -871,6 +971,8 @@ def build_ro_crate(ctx: ExportContext) -> bytes:
             json.dumps(metadata, indent=2, ensure_ascii=False),
         )
         for rel_path, data in publication_files.items():
+            zf.writestr(f"{dir_name}/{rel_path}", data)
+        for rel_path, data in lock_files.items():
             zf.writestr(f"{dir_name}/{rel_path}", data)
         for task in _iter_tasks(ctx):
             zf.writestr(f"{dir_name}/{_circuit_path(task)}", task.input_qasm)

@@ -46,12 +46,17 @@ def _raw_by_sim(results: dict) -> dict:
     return out
 
 
+_FAILED_STATUSES = ("error", "timeout", "offline")
+
+
 def _report_rows(results: dict, report_key: str) -> List[dict]:
-    """Ranked entries in rank order, then unranked entries, as {entry, raw, ranked, rank, status}.
+    """Ranked entries in rank order, then unranked entries, as
+    {entry, raw, ranked, failed, rank, status}.
 
     ``rank`` is the entry's rank (its 1-based position when absent) or "—" if unranked.
-    ``status`` is the raw result's ``status`` when present, else the entry's, with
-    "success" shown as "ok"; unranked rows append the reason, e.g. "timeout (runner_error)".
+    ``status`` is the raw result's ``dispatch_status``, else its ``status``, else the
+    entry's, with "success" shown as "ok". ``failed`` marks error/timeout/offline runs;
+    unranked rows that did not fail append the reason, e.g. "ok (missing_timing)".
     """
     report = results.get(report_key) or {}
     raw = _raw_by_sim(results)
@@ -59,20 +64,26 @@ def _report_rows(results: dict, report_key: str) -> List[dict]:
     for ranked, entries in ((True, report.get("ranking") or []), (False, report.get("unranked") or [])):
         for i, e in enumerate(entries):
             r = raw.get(e.get("simulator")) or {}
-            status = r.get("status") or e.get("status") or "—"
+            status = r.get("dispatch_status") or r.get("status") or e.get("status") or "—"
             if status == "success":
                 status = "ok"
+            failed = not ranked and status in _FAILED_STATUSES
             rank = "—"
             if ranked:
                 rank = _fmt_int(e.get("rank") if e.get("rank") is not None else i + 1)
-            else:
+            elif e.get("reason") and e.get("reason") != "runner_error":
+                status = f"{status} ({e.get('reason')})"
+            elif not failed:
                 status = f"{status} ({e.get('reason') or 'unranked'})"
-            rows.append({"entry": e, "raw": r, "ranked": ranked, "rank": rank, "status": status})
+            rows.append({"entry": e, "raw": r, "ranked": ranked, "failed": failed,
+                         "rank": rank, "status": status})
     return rows
 
 
 def _field(row: dict, key: str) -> Any:
-    """``key`` from the report entry, falling back to the raw result."""
+    """``key`` from the report entry, falling back to the raw result; None for failed runs."""
+    if row.get("failed"):
+        return None
     v = row["entry"].get(key)
     return row["raw"].get(key) if v is None else v
 

@@ -92,3 +92,18 @@ def test_resource_report_success_without_peak_is_unranked():
     ])
     assert [r["simulator"] for r in report["ranking"]] == ["ok"]
     assert report["unranked"][0]["reason"] == "missing_process_peak_rss"
+
+
+def test_failed_runs_carry_their_dispatch_status_and_never_rank():
+    results = [
+        {"simulator": "ok", "dispatch_status": "ok", "execution_time_sec": 1.0,
+         "process_peak_rss_mb": 50.0},
+        {"simulator": "slow", "dispatch_status": "timeout", "error": "TIMEOUT",
+         "execution_time_sec": None, "process_peak_rss_mb": None},
+        {"simulator": "gone", "dispatch_status": "offline", "execution_time_sec": 0.1,
+         "process_peak_rss_mb": 10.0},
+    ]
+    for report in (create_performance_report(results), create_resource_report(results)):
+        assert [r["simulator"] for r in report["ranking"]] == ["ok"]
+        assert {r["simulator"]: r["status"] for r in report["unranked"]} == {
+            "slow": "timeout", "gone": "offline"}

@@ -47,7 +47,7 @@ def _sv_edge():
         "divergence_report": {
             "simulators": sims,
             "fidelity_matrix": [[-1.0, 0.99996, 1, 0], [0.99996, -1.0, 5e-5, 0.996],
-                                [1, 5e-5, -1.0, -1.0], [0, 0.996, -1.0, -1.0]],
+                                [1, 5e-5, 1.0, None], [0, 0.996, None, -1.0]],
             "pairwise_agreement": pairs,
         },
         "performance_report": {
@@ -107,6 +107,9 @@ def _measured_edge():
                           "agreement": "distance_within_threshold" if (i + j) % 2 else
                           "distance_exceeds_threshold",
                           "registered_transform": "identity_threshold_check",
+                          "measured_assessment": [
+                              "consistent_within_shot_noise", "distinguishable",
+                              "inconclusive_low_shots", "ambiguous"][(i * j) % 4],
                           "metrics": {"js_divergence": [0, 5e-5, 0.69, 1e-9][(i + j) % 4],
                                       "statistical_test": {
                                           "basis": "direct", "verdict": [
@@ -119,9 +122,10 @@ def _measured_edge():
                                           "g_test": {"p_value": 3e-12, "p_value_bh": None}}}})
     for reason in _COUNT_REASONS:
         pairs.append({"simulators": ["m0", "x"], "mode": "measured", "agreement": "not_comparable",
-                      "registered_transform": None, "metrics": {"reason": reason, "details": {}}})
+                      "registered_transform": None, "measured_assessment": "not_comparable",
+                      "metrics": {"reason": reason, "details": {}}})
     n = len(sims)
-    mat = [[-1.0 if a == b else [0, 5e-5, 0.69][(a + b) % 3] for b in range(n)] for a in range(n)]
+    mat = [[0.0 if a == b else [0, 5e-5, 0.69, None][(a + b) % 4] for b in range(n)] for a in range(n)]
     raw = [{"simulator": s, "counts": {"00": 64, "11": 64}, "memory_method": "vmhwm"} for s in sims]
     raw.append({"simulator": "x", "error": "boom", "status": "offline"})
     return {"n_shots": 128.0, "seed": 7, "divergence_report": {

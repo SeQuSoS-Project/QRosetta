@@ -53,10 +53,11 @@ def _fig_agreement_distribution(divergence_report: dict, mode: str):
 
 
 def _fig_heatmap(divergence_report: dict, key: str, title: str):
-    """N×N heatmap of matrix ``key``; diagonal and -1 sentinels are masked."""
+    """N×N heatmap of matrix ``key``; the diagonal and not-compared (None) cells are masked."""
     labels = divergence_report.get("simulators", [])
-    arr = np.array(divergence_report[key], dtype=float)
-    mask = (arr == -1.0)
+    arr = np.array([[np.nan if v is None else v for v in row] for row in divergence_report[key]],
+                   dtype=float)
+    mask = np.isnan(arr) | (arr == -1.0)
     np.fill_diagonal(mask, True)
     masked = np.ma.masked_array(arr, mask=mask)
     n = len(labels)
@@ -77,9 +78,9 @@ def _fig_heatmap(divergence_report: dict, key: str, title: str):
     return fig
 
 
-def _fig_ranking_bar(results, report_key, value_keys, title, xlabel):
+def _fig_ranking_bar(results, report_key, value_keys, title, xlabel, subtitle=None):
     """Horizontal bars for ranked runs in rank order; unranked runs follow with no bar and
-    an annotation giving their status and reason."""
+    an annotation giving their status and reason. ``subtitle`` is a second title line."""
     rows = [r for r in _report_rows(results, report_key) if r["entry"].get("simulator")]
     sims = [r["entry"]["simulator"] for r in rows]
     fig, ax = plt.subplots(figsize=(max(5.0, 0.5 * len(sims) + 2), max(2.4, 0.32 * len(sims) + 1.6)))
@@ -96,7 +97,11 @@ def _fig_ranking_bar(results, report_key, value_keys, title, xlabel):
     for tick, r in zip(ax.get_yticklabels(), rows):
         if not r["ranked"]:
             tick.set_color(_MUTED)
-    ax.set_xlabel(xlabel); ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    if subtitle:
+        ax.set_title(f"{title}\n{subtitle}", fontsize=10)
+    else:
+        ax.set_title(title)
     if not left.any():
         ax.set_xlim(0, 1)
     if len(value_keys) > 1:

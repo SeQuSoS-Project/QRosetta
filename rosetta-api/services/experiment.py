@@ -92,6 +92,7 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
 
         conformance, prevalence = [], []
         effective_seeds, sdk_versions = {}, {}
+        all_reports: list = []
         result_files: dict = {}
         offset = 0
         for pp, axis in zip(axes, axis_labels):
@@ -108,6 +109,7 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
             )
             summary, _ = await run_batch_tasks(batch_payload, runner_statuses, progress,
                                                batch_seed=exp_seed, task_offset=offset)
+            all_reports += summary
             offset += len(resolved)
 
             for e in resolution_errors:
@@ -133,7 +135,7 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
 
         files: dict = dict(result_files)
         for c in resolved:
-            files[f"inputs/{c['id']}.qasm"] = c["qasm"].encode("utf-8")
+            files[f"inputs/{c['id']}.qasm"] = art.qasm_bytes(c["qasm"])
         files["conformance_matrix.csv"] = art.csv_string(
             conformance, art.CONFORMANCE_FIELDS).encode("utf-8")
         files["agreement_prevalence.csv"] = art.csv_string(
@@ -142,13 +144,19 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
             files[f"errors/{art.slug(sim)}.log"] = text.encode("utf-8")
         files["README.txt"] = art.TRIAGE_README.encode("utf-8")
 
+        if payload.mode == "measured":
+            seed_derivation = art.recorded_value(all_reports, "seed_derivation") or SEED_DERIVATION
+        else:
+            seed_derivation = "not applicable (statevector mode has no sampling seed)"
         manifest = art.build_manifest(
-            config=payload.model_dump(), git_sha=server_git_sha(), api_base="in-app",
+            config=payload.model_dump(),
+            git_sha=art.recorded_value(all_reports, "git_sha") or server_git_sha(),
+            api_base="in-app",
             requested_seed=payload.seed, effective_seeds=effective_seeds, circuits=resolved,
             sdk_versions=sdk_versions, image_digests=server_image_digests(),
             extra_notes=(f"Resolution errors: {len(resolution_errors)}."
                          if resolution_errors else ""),
-            seed_derivation=SEED_DERIVATION if payload.mode == "measured" else None)
+            seed_derivation=seed_derivation)
         manifest["label"] = payload.label
         manifest["created_utc"] = datetime.now(timezone.utc).isoformat()
         manifest["mode"] = payload.mode

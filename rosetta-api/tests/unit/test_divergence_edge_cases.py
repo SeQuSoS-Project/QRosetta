@@ -11,6 +11,7 @@ from pydantic import ValidationError
 import services.analysis.divergence.reports as reports_module
 from schemas.benchmark import AgreementThresholds, BatchPayload, ExperimentPayload, MeasuredQasmPayload
 from services.analysis.divergence import (
+    DEFAULT_NORM_TOLERANCE,
     _best_counts_qubit_permutation_metrics,
     _counts_distance_metrics,
     _counts_probability_vector,
@@ -82,7 +83,7 @@ def test_norm_three_vector_is_not_a_plain_agreement():
     assert record["metrics"]["unnormalized_input"] is True
     assert record["metrics"]["normalized_agreement"] == "agree_directly"
     assert record["metrics"]["norms"] == {"a": 3.0, "b": 1.0}
-    assert record["metrics"]["norm_tolerance"] == 1e-6
+    assert record["metrics"]["norm_tolerance"] == DEFAULT_NORM_TOLERANCE
     normalization = [d for d in report["divergences_found"] if d["type"] == "Normalization"]
     assert normalization == [{"type": "Normalization", "simulators": ["a"], "norm": 3.0}]
 
@@ -113,6 +114,18 @@ def test_norm_tolerance_is_configurable():
     assert _record(loose, "a", "b")["agreement"] == "agree_directly"
 
 
+def test_default_norm_tolerance_ignores_single_precision_rounding():
+    amp = math.sqrt(0.99999797 ** 2 / 2)
+    rows = [
+        {"simulator": "a", "statevector": [amp, amp], "qubit_ordering": "msb"},
+        {"simulator": "b", "statevector": [math.sqrt(0.5), math.sqrt(0.5)], "qubit_ordering": "msb"},
+    ]
+    record = _record(create_divergence_report(rows), "a", "b")
+    assert DEFAULT_NORM_TOLERANCE == 1e-4
+    assert record["metrics"]["unnormalized_input"] is False
+    assert record["agreement"] == "agree_directly"
+
+
 def test_none_threshold_values_keep_defaults():
     record = _record(create_divergence_report(
         _near_one_pair(1e-8),
@@ -120,7 +133,7 @@ def test_none_threshold_values_keep_defaults():
     ), "a", "b")
     assert record["metrics"]["fidelity_tolerance"] == 1e-5
     assert record["metrics"]["phase_tolerance"] == 1e-12
-    assert record["metrics"]["norm_tolerance"] == 1e-6
+    assert record["metrics"]["norm_tolerance"] == DEFAULT_NORM_TOLERANCE
 
 
 def test_statevector_divergence_is_cross_group_is_bool():
@@ -143,7 +156,7 @@ def test_all_zero_counts_are_not_comparable():
     record = _record(report, "a", "b")
     assert record["agreement"] == "not_comparable"
     assert record["metrics"]["reason"] == "zero_total_counts"
-    assert report["statistical_distance_matrix (js_divergence)"][0][1] == -1.0
+    assert report["statistical_distance_matrix (js_divergence)"][0][1] is None
     _strict_json(report)
 
 
@@ -242,7 +255,7 @@ def test_per_pair_exception_is_not_comparable_and_other_pairs_survive(monkeypatc
     assert "table rejected" in failed["metrics"]["details"]["error"]
     assert _record(report, "a", "c")["agreement"] == "distance_within_threshold"
     assert report["statistical_test_summary"]["family_size"] == 2
-    assert report["statistical_distance_matrix (js_divergence)"][0][1] == -1.0
+    assert report["statistical_distance_matrix (js_divergence)"][0][1] is None
 
 
 def test_nan_metric_is_not_comparable_never_zero(monkeypatch):
@@ -254,7 +267,7 @@ def test_nan_metric_is_not_comparable_never_zero(monkeypatch):
     record = _record(report, "a", "b")
     assert record["agreement"] == "not_comparable"
     assert record["metrics"]["reason"] == "nonfinite_metric"
-    assert report["statistical_distance_matrix (js_divergence)"][0][1] == -1.0
+    assert report["statistical_distance_matrix (js_divergence)"][0][1] is None
     _strict_json(report)
 
 
@@ -393,7 +406,7 @@ def test_agreement_threshold_defaults():
     thresholds = AgreementThresholds()
     assert thresholds.fidelity_tolerance == 1e-5
     assert thresholds.phase_tolerance == 1e-12
-    assert thresholds.norm_tolerance == 1e-6
+    assert thresholds.norm_tolerance == DEFAULT_NORM_TOLERANCE
     assert thresholds.js_threshold == 0.01
     assert thresholds.hellinger_threshold == 0.1
 
@@ -402,4 +415,35 @@ def test_schema_thresholds_flow_into_report():
     report = create_divergence_report(_near_one_pair(1e-8), thresholds=AgreementThresholds().model_dump())
     record = _record(report, "a", "b")
     assert record["agreement"] == "agree_directly"
-    assert record["metrics"]["norm_tolerance"] == 1e-6
+    assert record["metrics"]["norm_tolerance"] == DEFAULT_NORM_TOLERANCE
+
+
+def test_measured_assessment_combines_distance_label_and_verdict():
+    report = create_counts_report([
+        {"simulator": "a", "counts": {"0": 6, "1": 4}},
+        {"simulator": "b", "counts": {"0": 4, "1": 6}},
+        {"simulator": "c", "counts": {"0": 0, "1": 0}},
+    ], n_shots=10)
+    ab = _record(report, "a", "b")
+    assert ab["agreement"] == "distance_exceeds_threshold"
+    assert ab["metrics"]["statistical_test"]["verdict"] == "consistent"
+    assert ab["measured_assessment"] == "consistent_within_shot_noise"
+    assert _record(report, "a", "c")["measured_assessment"] == "not_comparable"
+    assert report["statistical_test_summary"]["measured_assessment_counts"] == {
+        "consistent_within_shot_noise": 1, "not_comparable": 2}
+
+
+def test_matrices_use_null_for_uncompared_pairs_and_exact_self_values():
+    counts = create_counts_report([
+        {"simulator": "a", "counts": {"0": 5, "1": 5}},
+        {"simulator": "b", "counts": {"0": 0, "1": 0}},
+    ], n_shots=10)
+    assert counts["statistical_distance_matrix (js_divergence)"] == [[0.0, None], [None, None]]
+    assert counts["hellinger_distance_matrix"] == [[0.0, None], [None, None]]
+    sv = create_divergence_report([
+        {"simulator": "a", "statevector": [1.0, 0.0]},
+        {"simulator": "b", "error": "boom"},
+    ])
+    assert sv["fidelity_matrix"] == [[1.0, None], [None, None]]
+    assert sv["relative_phase_matrix"] == [[0.0, None], [None, None]]
+    _strict_json(counts)

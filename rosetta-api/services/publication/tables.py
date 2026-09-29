@@ -1,8 +1,8 @@
 """Table builders, returning (headers, rows, title, caption), and text-blob builders."""
 
 from .theme import (
-    _AGREEMENT_GLOSSARY, _NOT_COMPARABLE_GLOSSARY, _THRESHOLD_DEFAULTS, _UNRANKED_GLOSSARY,
-    _VERDICT_GLOSSARY,
+    _AGREEMENT_GLOSSARY, _ASSESSMENT_GLOSSARY, _NOT_COMPARABLE_GLOSSARY, _THRESHOLD_DEFAULTS,
+    _UNRANKED_GLOSSARY, _VERDICT_GLOSSARY,
 )
 from .formats import _fmt_int, _fmt_num, _fmt_text
 from .selectors import (
@@ -12,13 +12,14 @@ from .selectors import (
 
 
 def _tbl_agreement(divergence_report: dict, mode: str):
-    """One row per backend pair: label, transform, key metric, verdict (measured), reason."""
+    """One row per backend pair: label, transform, key metric, verdict and assessment
+    (measured), reason."""
     records = _pairwise_records(divergence_report)
     measured = mode == "measured"
     headers = ["Pair", "Agreement", "Registered transform",
                f"JS divergence ({JS_UNIT})" if measured else "Direct fidelity"]
     if measured:
-        headers.append("Stat verdict")
+        headers += ["Stat verdict", "Measured assessment"]
     headers.append("Not-comparable reason")
     rows = []
     for r in records:
@@ -26,7 +27,8 @@ def _tbl_agreement(divergence_report: dict, mode: str):
         row = [_pair_key(r), _fmt_text(r.get("agreement")),
                _fmt_text(r.get("registered_transform")), _fmt_num(_key_metric(r))]
         if measured:
-            row.append(_fmt_text((m.get("statistical_test") or {}).get("verdict")))
+            row += [_fmt_text((m.get("statistical_test") or {}).get("verdict")),
+                    _fmt_text(r.get("measured_assessment"))]
         row.append(_fmt_text(m.get("reason")) if r.get("agreement") == "not_comparable" else "—")
         rows.append(row)
     metric = (f"JS divergence is the direct (untransformed) Jensen–Shannon divergence in {JS_UNIT}"
@@ -34,6 +36,10 @@ def _tbl_agreement(divergence_report: dict, mode: str):
               "Direct fidelity is |<a|b>|^2 of the normalised vectors before any transform")
     caption = ("Classification over the registered-transform lattice; each label reports the "
                f"transform whose numerical effect explains the pair. {metric}.")
+    if measured:
+        caption += (" Measured assessment combines the descriptive label with the shot-noise "
+                    "verdict: a pair over the distance thresholds whose verdict is consistent "
+                    "is consistent_within_shot_noise.")
     return headers, rows, "Pairwise explained-cause agreement", caption
 
 
@@ -79,7 +85,9 @@ def _tbl_resources(results: dict):
                "first; runs without a rank follow with the reason in Status. Sim-window peak RSS "
                "and RSS delta (peak minus RSS at monitor entry) cover the pre-execute step and "
                f"simulation window of the timed run; method: {_distinct(results, 'memory_method')}. "
-               "Theoretical SV is 2^n × 16 bytes for the declared qubit count. 1 MiB = 1024^2 bytes.")
+               "Theoretical SV is 2^n × 16 bytes for the declared qubit count. 1 MiB = 1024^2 bytes. "
+               "For small circuits process peak RSS is dominated by the SDK import footprint; "
+               "the sim-window RSS delta is the simulation's own allocation.")
     return headers, rows, "Resource usage", caption
 
 
@@ -107,7 +115,7 @@ def _tbl_statistical(divergence_report: dict):
 
 
 def _tbl_matrix(divergence_report: dict, key: str, title: str):
-    """The N×N matrix ``key`` with the diagonal and -1 sentinels shown as "—"."""
+    """The N×N matrix ``key`` with the diagonal and not-compared (None) cells shown as "—"."""
     labels = divergence_report.get("simulators", [])
     mat = divergence_report[key]
     headers = [""] + list(labels)
@@ -116,9 +124,9 @@ def _tbl_matrix(divergence_report: dict, key: str, title: str):
         row = [s1]
         for j in range(len(labels)):
             v = mat[i][j]
-            row.append("—" if (i == j or v == -1.0) else _fmt_num(v))
+            row.append("—" if (i == j or v is None or v == -1.0) else _fmt_num(v))
         rows.append(row)
-    caption = f"{title} (raw metric; −1 / diagonal shown as —). Symmetric matrix."
+    caption = f"{title} (raw metric; not-compared pairs and the diagonal shown as —). Symmetric matrix."
     return headers, rows, title, caption
 
 
@@ -128,7 +136,8 @@ def _tbl_metadata(results: dict, mode: str):
     rows = []
     for r in results.get("raw_results", []):
         sdk = ", ".join(f"{k}={_fmt_text(v)}" for k, v in (r.get("sdk_versions") or {}).items()) or "—"
-        status = r.get("status") or ("error" if r.get("error") is not None else "ok")
+        status = (r.get("dispatch_status") or r.get("status")
+                  or ("error" if r.get("error") is not None else "ok"))
         rows.append([_fmt_text(r.get("simulator")), sdk, _fmt_text(r.get("qubit_ordering")),
                      _fmt_text(r.get("sampling_method")), _fmt_int(r.get("optimization_level")),
                      _fmt_text(status)])
@@ -155,6 +164,9 @@ def _txt_glossary(mode: str) -> str:
     if mode == "measured":
         lines += ["", "Shot-noise statistical verdicts (reported alongside the descriptive label):", ""]
         for label, desc in _VERDICT_GLOSSARY:
+            lines.append(f"- **{label}** — {desc}")
+        lines += ["", "Measured assessment (measured_assessment, from the verdict):", ""]
+        for label, desc in _ASSESSMENT_GLOSSARY:
             lines.append(f"- **{label}** — {desc}")
     lines += ["", "Unranked runs in the timing and resource tables (reason):", ""]
     for label, desc in _UNRANKED_GLOSSARY:

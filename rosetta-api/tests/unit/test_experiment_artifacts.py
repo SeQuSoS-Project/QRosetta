@@ -1,4 +1,5 @@
 """Unit tests for services/experiment_artifacts.py (stdlib-only bundle builders)."""
+import hashlib
 import json
 
 from services import experiment_artifacts as art
@@ -160,7 +161,8 @@ def test_manifest_provenance_and_integrity_notes():
         sdk_versions={"qiskit": {"qiskit": "2.4.1"}})
     assert m["git_sha"] == "abc123"
     assert m["config_sha256"] == art.sha256({"mode": "measured"})
-    assert m["circuits"][0]["qasm_sha256"] == art.sha256("OPENQASM 2.0;")
+    assert m["circuits"][0]["qasm_sha256"] == hashlib.sha256(b"OPENQASM 2.0;").hexdigest()
+    assert m["circuits"][0]["qasm_file"] == "inputs/000_bell.qasm"
     assert "qasm" not in m["circuits"][0]           # only the hash is stored, not raw QASM
     assert m["image_digests"] == "not recorded"
     assert m["seed_derivation"] == "not recorded"
@@ -171,6 +173,12 @@ def test_manifest_provenance_and_integrity_notes():
                             effective_seeds={}, circuits=[], sdk_versions={},
                             extra_notes="Resolution errors: 2.")
     assert "Resolution errors: 2." in m2["notes"]
+
+
+def test_recorded_value_skips_missing_and_unknown():
+    reports = [{"git_sha": "unknown"}, {}, {"git_sha": "abc"}, {"git_sha": "def"}]
+    assert art.recorded_value(reports, "git_sha") == "abc"
+    assert art.recorded_value([{}], "git_sha") is None
 
 
 def test_triage_readme_states_the_gate():

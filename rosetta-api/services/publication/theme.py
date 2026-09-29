@@ -76,7 +76,8 @@ _AGREEMENT_GLOSSARY = [
     ("agree_after_qubit_permutation", "Match after a bounded qubit permutation (≤7 qubits)."),
     ("agree_after_normalization", "At least one input statevector has a norm differing from 1 by "
      "more than norm_tolerance; the normalised vectors agree. metrics.normalized_agreement "
-     "holds the label the normalised pair receives."),
+     "holds the label the normalised pair receives. The default norm_tolerance (1e-4) lies "
+     "above complex64 rounding, which leaves norms about 2e-6 from 1."),
     ("residual_disagreement", "Statevector disagreement not explained by any registered transform."),
     ("distance_within_threshold", "Measured distributions within the JS-divergence and Hellinger "
      "thresholds (descriptive, configurable; the shot-noise statistical test gives the "
@@ -109,13 +110,24 @@ _VERDICT_GLOSSARY = [
     ("inconclusive_low_shots", "Expected counts too low for a reliable test."),
     ("ambiguous", "Exactly one of the chi-square test and the G-test is significant after BH (FDR) correction."),
 ]
+_ASSESSMENT_GLOSSARY = [
+    ("consistent_within_shot_noise", "The shot-noise verdict is consistent: neither test "
+     "separates the distributions at the observed shot count, whatever the distance label."),
+    ("distinguishable", "The shot-noise verdict is distinguishable: the distributions differ "
+     "beyond sampling noise."),
+    ("ambiguous", "Exactly one of the two tests is significant."),
+    ("inconclusive_low_shots", "Expected counts too low for a reliable test; the shot count "
+     "cannot separate the distributions."),
+    ("not_comparable", "At least one side lacks usable counts."),
+]
 _UNRANKED_GLOSSARY = [
-    ("runner_error", "The run returned an error."),
+    ("runner_error", "The run failed; Status gives the dispatch status (error, timeout or "
+     "offline) and its metrics are shown as —."),
     ("missing_timing", "The run returned no execution_time_sec."),
     ("missing_process_peak_rss", "The run returned no process_peak_rss_mb."),
 ]
 _THRESHOLD_DEFAULTS = ("fidelity_tolerance = 1e-5, phase_tolerance = 1e-12 rad, "
-                       "norm_tolerance = 1e-6, js_threshold = 0.01 nats, "
+                       "norm_tolerance = 1e-4, js_threshold = 0.01 nats, "
                        "hellinger_threshold = 0.1")
 
 

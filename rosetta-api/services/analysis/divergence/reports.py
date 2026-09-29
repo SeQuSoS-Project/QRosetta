@@ -3,8 +3,6 @@
 import gc
 import math
 
-import numpy as np
-
 from .common import (
     DEFAULT_FIDELITY_TOLERANCE, DEFAULT_HELLINGER_THRESHOLD, DEFAULT_JS_THRESHOLD,
     DEFAULT_NORM_TOLERANCE, DEFAULT_PHASE_TOLERANCE, JS_DIVERGENCE_UNIT, _threshold, logger,
@@ -28,12 +26,35 @@ from .statistics import (
 )
 
 
+def _measured_assessment(record):
+    """Combined measured-mode reading of a pair from its statistical verdict.
+
+    consistent -> consistent_within_shot_noise; distinguishable, ambiguous and
+    inconclusive_low_shots pass through; a not_comparable pair is not_comparable. A pair
+    without a verdict falls back to its distance label.
+    """
+    if record.get("agreement") == "not_comparable":
+        return "not_comparable"
+    verdict = ((record.get("metrics") or {}).get("statistical_test") or {}).get("verdict")
+    if verdict == "consistent":
+        return "consistent_within_shot_noise"
+    if verdict in ("distinguishable", "ambiguous", "inconclusive_low_shots"):
+        return verdict
+    if record.get("agreement") == "distance_exceeds_threshold":
+        return "distinguishable"
+    return "consistent_within_shot_noise"
+
+
 def create_divergence_report(results_list, thresholds=None):
     """Build the statevector divergence report: fidelity/phase matrices and pair records.
 
     Each statevector is decoded and normalised once and reused across pairs. ``thresholds``
     may override ``fidelity_tolerance`` (default 1e-5), ``phase_tolerance`` (default 1e-12)
-    and ``norm_tolerance`` (default 1e-6); an absent or None key keeps the default.
+    and ``norm_tolerance`` (default 1e-4); an absent or None key keeps the default.
+
+    Matrix cells are None for pairs that were not compared; a diagonal cell holds the
+    exact self-value (fidelity 1.0, relative phase 0.0) when that backend's statevector
+    is usable, else None.
     """
 
     ordering_map = {}
@@ -61,8 +82,8 @@ def create_divergence_report(results_list, thresholds=None):
 
     n_total = len(simulators)
 
-    fidelity_matrix = np.full((n_total, n_total), -1.0)
-    phase_matrix = np.zeros((n_total, n_total))
+    fidelity_matrix = _empty_matrix(n_total)
+    phase_matrix = _empty_matrix(n_total)
 
     divergences_found = []
     pairwise_agreement = []
@@ -123,6 +144,8 @@ def create_divergence_report(results_list, thresholds=None):
                 continue
 
             sv_i_norm, norm_i = _get_normalized_sv(sim_i_name, sv_i)
+            fidelity_matrix[i][i] = 1.0
+            phase_matrix[i][i] = 0.0
 
             if abs(float(norm_i) - 1.0) > norm_tolerance:
                 divergences_found.append({
@@ -175,8 +198,6 @@ def create_divergence_report(results_list, thresholds=None):
                     continue
 
                 if sv_i.shape != sv_j.shape:
-                    fidelity_matrix[i, j] = 0.0
-                    fidelity_matrix[j, i] = 0.0
                     divergences_found.append({
                         "type": "Shape Mismatch",
                         "simulators": [sim_i_name, sim_j_name],
@@ -217,10 +238,9 @@ def create_divergence_report(results_list, thresholds=None):
                     phase_tolerance,
                 )
 
-                fidelity_matrix[i, j] = fidelity
-                fidelity_matrix[j, i] = fidelity
-                phase_matrix[i, j] = relative_phase
-                phase_matrix[j, i] = -relative_phase
+                fidelity_matrix[i][j] = fidelity_matrix[j][i] = float(fidelity)
+                phase_matrix[i][j] = float(relative_phase)
+                phase_matrix[j][i] = float(-relative_phase)
 
                 is_cross_group = bool(
                     (sim_i_name in lsb_sims and sim_j_name in msb_sims)
@@ -268,8 +288,8 @@ def create_divergence_report(results_list, thresholds=None):
 
             except Exception as e:
                 logger.error(f"Error comparing {sim_i_name} vs {sim_j_name}: {e}")
-                fidelity_matrix[i, j] = -1.0
-                fidelity_matrix[j, i] = -1.0
+                fidelity_matrix[i][j] = fidelity_matrix[j][i] = None
+                phase_matrix[i][j] = phase_matrix[j][i] = None
                 pairwise_agreement.append(
                     _statevector_not_comparable_record(
                         res_i,
@@ -285,8 +305,8 @@ def create_divergence_report(results_list, thresholds=None):
 
     report = {
         "simulators": simulators,
-        "fidelity_matrix": fidelity_matrix.tolist(),
-        "relative_phase_matrix": phase_matrix.tolist(),
+        "fidelity_matrix": fidelity_matrix,
+        "relative_phase_matrix": phase_matrix,
         "divergences_found": divergences_found,
         "pairwise_agreement": pairwise_agreement,
         "qubit_ordering_warning": qubit_ordering_warning,
@@ -294,6 +314,11 @@ def create_divergence_report(results_list, thresholds=None):
     }
 
     return report
+
+
+def _empty_matrix(n):
+    """n×n list of None."""
+    return [[None] * n for _ in range(n)]
 
 
 def _as_number(total):
@@ -407,8 +432,11 @@ def create_counts_report(results_list, n_shots, thresholds=None):
     all_bitstrings = sorted(all_bitstrings)
 
     n = len(simulators)
-    js_matrix = np.zeros((n, n))
-    hellinger_matrix = np.zeros((n, n))
+    js_matrix = _empty_matrix(n)
+    hellinger_matrix = _empty_matrix(n)
+    for k, reason in enumerate(counts_validity):
+        if reason is None:
+            js_matrix[k][k] = hellinger_matrix[k][k] = 0.0
 
     divergences_found = []
     pairwise_agreement = []
@@ -460,13 +488,11 @@ def create_counts_report(results_list, n_shots, thresholds=None):
                 )
 
             if distances is None:
-                js_matrix[i, j] = js_matrix[j, i] = -1.0
-                hellinger_matrix[i, j] = hellinger_matrix[j, i] = -1.0
                 continue
 
             js_div, h_dist = distances
-            js_matrix[i, j] = js_matrix[j, i] = js_div
-            hellinger_matrix[i, j] = hellinger_matrix[j, i] = h_dist
+            js_matrix[i][j] = js_matrix[j][i] = float(js_div)
+            hellinger_matrix[i][j] = hellinger_matrix[j][i] = float(h_dist)
             if js_div > js_threshold or h_dist > hellinger_threshold:
                 divergences_found.append({
                     "type": "Distribution Divergence",
@@ -477,12 +503,18 @@ def create_counts_report(results_list, n_shots, thresholds=None):
                 })
 
     statistical_test_summary = _apply_multiple_comparison_correction(stat_test_records)
+    assessment_counts = {}
+    for record in pairwise_agreement:
+        record["measured_assessment"] = _measured_assessment(record)
+        assessment_counts[record["measured_assessment"]] = (
+            assessment_counts.get(record["measured_assessment"], 0) + 1)
+    statistical_test_summary["measured_assessment_counts"] = assessment_counts
 
     ordering_map = {res.get('simulator'): res.get('qubit_ordering') for res in results_list if "qubit_ordering" in res}
     return {
         "simulators": simulators,
-        "statistical_distance_matrix (js_divergence)": js_matrix.tolist(),
-        "hellinger_distance_matrix": hellinger_matrix.tolist(),
+        "statistical_distance_matrix (js_divergence)": js_matrix,
+        "hellinger_distance_matrix": hellinger_matrix,
         "js_divergence_unit": JS_DIVERGENCE_UNIT,
         "divergences_found": divergences_found,
         "pairwise_agreement": pairwise_agreement,

@@ -1,6 +1,7 @@
 """Unit tests for services/experiment.py, with the fleet mocked at run_batch_tasks."""
 import asyncio
 import io
+import hashlib
 import json
 import zipfile
 
@@ -20,6 +21,8 @@ def _fake_summary(batch_seed):
     return [{
         "task_name": "bell (2q)",
         "seed": batch_seed,
+        "git_sha": "feedface",
+        "seed_derivation": "recorded derivation",
         "raw_results": [
             {"simulator": "qiskit", "statevector": [0.0, 0.707, 0.0, 0.707],
              "sdk_versions": {"qiskit": "2.4.1"}},
@@ -89,6 +92,10 @@ def test_experiment_completes_and_freezes_bundle(monkeypatch):
     assert manifest["requested_seed"] == 42
     assert manifest["effective_seeds_per_axis"]["measured_preprocOn"] == 42
     assert manifest["mode"] == "measured"
+    assert manifest["git_sha"] == "feedface"
+    assert manifest["seed_derivation"] == "recorded derivation"
+    digest = hashlib.sha256(files["inputs/000_bell.qasm"]).hexdigest()
+    assert manifest["circuits"][0]["qasm_sha256"] == digest
 
 
 def test_bundle_zip_is_valid_archive(monkeypatch):

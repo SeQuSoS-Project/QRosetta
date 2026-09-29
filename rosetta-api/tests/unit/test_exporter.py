@@ -739,3 +739,44 @@ class TestBatchExport:
         byid = _by_id(meta)
         assert "#run-qiskit" in byid
         assert "circuit.qasm" in {p["@id"] for p in byid["./"]["hasPart"]}
+
+
+def _provenance(zip_bytes):
+    zf = zipfile.ZipFile(io.BytesIO(zip_bytes), "r")
+    return json.loads(zf.read([n for n in zf.namelist() if n.endswith("provenance.json")][0]))
+
+
+class TestRunnerLocksAndThresholds:
+    def test_runner_requirements_lock_is_bundled_and_referenced(self):
+        services = {"qiskit": {"enabled": True, "base_url": "http://pytket-qiskit-runner:8000"}}
+        data = build_ro_crate(_make_ctx(runner_services=services))
+        zf = zipfile.ZipFile(io.BytesIO(data), "r")
+        lock = [n for n in zf.namelist() if n.endswith("runners/pytket-qiskit-runner/requirements.lock")]
+        assert len(lock) == 1 and b"==" in zf.read(lock[0])
+        byid = _by_id(_load_metadata(data))
+        path = "runners/pytket-qiskit-runner/requirements.lock"
+        assert byid[path]["@type"] == "File"
+        assert {"@id": path} in byid["#qiskit"]["softwareRequirements"]
+        assert {"@id": path} in byid["./"]["hasPart"]
+
+    def test_omitted_thresholds_export_the_effective_values(self):
+        run_config = _provenance(build_ro_crate(_make_ctx()))["run_configuration"]
+        assert run_config["agreement_thresholds"] == {
+            "fidelity_tolerance": 1e-5, "phase_tolerance": 1e-12, "norm_tolerance": 1e-4}
+        assert run_config["agreement_thresholds_requested"] == "none (defaults applied)"
+
+    def test_recorded_pair_thresholds_win_over_defaults(self):
+        results = json.loads(json.dumps(SAMPLE_RESULTS_MEASURED))
+        results["agreement_thresholds"] = {"js_threshold": 0.02, "hellinger_threshold": None}
+        for rec in results["divergence_report"]["pairwise_agreement"]:
+            rec.setdefault("metrics", {})["hellinger_threshold"] = 0.2
+        run_config = _provenance(build_ro_crate(_measured_ctx(results=results)))["run_configuration"]
+        assert run_config["agreement_thresholds"] == {"js_threshold": 0.02, "hellinger_threshold": 0.2}
+
+    def test_csv_artifact_description_carries_its_caption(self):
+        ctx = _measured_ctx(publication_artifacts={
+            "categories": ["agreement"], "figure_formats": ["svg"], "table_formats": ["csv", "latex"]})
+        byid = _by_id(_load_metadata(build_ro_crate(ctx)))
+        csv_desc = byid["tables/agreement.csv"]["description"]
+        assert "carries no caption" in csv_desc and "registered-transform lattice" in csv_desc
+        assert "carries the caption" in byid["tables/agreement.latex"]["description"]

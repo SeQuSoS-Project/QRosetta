@@ -69,6 +69,20 @@ def sha256(obj) -> str:
     ).hexdigest()
 
 
+def qasm_bytes(qasm: str) -> bytes:
+    """The bytes written to inputs/<id>.qasm for ``qasm``."""
+    return qasm.encode("utf-8")
+
+
+def recorded_value(summary: list, key: str, missing=("", "unknown")):
+    """First value of ``key`` across the per-circuit reports that is not None or in ``missing``."""
+    for report in summary:
+        value = (report or {}).get(key)
+        if value is not None and value not in missing:
+            return value
+    return None
+
+
 def slug(text: str) -> str:
     """Lowercase alphanumeric slug with '-' separators ('circuit' if empty)."""
     return "".join(c if c.isalnum() else "-" for c in str(text).lower()).strip("-") or "circuit"
@@ -163,7 +177,8 @@ def build_manifest(*, config: dict, git_sha: str, api_base: str, requested_seed,
                    effective_seeds: dict, circuits: list, sdk_versions: dict,
                    image_digests: dict = None, extra_notes: str = "",
                    seed_derivation: str = None) -> dict:
-    """Bundle manifest. ``circuits`` is [{id, algorithm, qubits, qasm}]."""
+    """Bundle manifest. ``circuits`` is [{id, algorithm, qubits, qasm}]; each ``qasm_sha256``
+    is the sha256 of the bytes in inputs/<id>.qasm."""
     notes = (
         "Error signatures are recorded with triage='untriaged': classify each as adapter / "
         "SDK / by-design / resource before reporting it as a result. Base images are pinned "
@@ -182,7 +197,9 @@ def build_manifest(*, config: dict, git_sha: str, api_base: str, requested_seed,
         "effective_seeds_per_axis": effective_seeds,
         "seed_derivation": seed_derivation or "not recorded",
         "circuits": [{"id": c["id"], "algorithm": c["algorithm"], "qubits": c["qubits"],
-                      "qasm_sha256": sha256(c["qasm"])} for c in circuits],
+                      "qasm_file": f"inputs/{c['id']}.qasm",
+                      "qasm_sha256": hashlib.sha256(qasm_bytes(c["qasm"])).hexdigest()}
+                     for c in circuits],
         "executed_sdk_versions": sdk_versions,
         "image_digests": image_digests or "not recorded",
         "outputs": {"conformance_matrix": "conformance_matrix.csv",

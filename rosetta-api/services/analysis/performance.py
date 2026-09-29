@@ -2,8 +2,21 @@
 
 ``ranking`` lists only backends that succeeded and report the ranking metric, in rank
 order, each with a 1-based ``rank``. Everything else is listed in ``unranked`` with a
-``reason``, so ``ranking[0]`` is absent when no backend succeeded.
+``reason``, so ``ranking[0]`` is absent when no backend succeeded. A failed run's
+``status`` is its ``dispatch_status`` (error, timeout or offline).
 """
+
+_FAILED_DISPATCH = ("error", "timeout", "offline")
+
+
+def _failure_status(res):
+    """"error"/"timeout"/"offline" for a failed run, else None."""
+    dispatch_status = res.get("dispatch_status")
+    if dispatch_status in _FAILED_DISPATCH:
+        return dispatch_status
+    if res.get("error") not in (None, ""):
+        return "error"
+    return None
 
 
 def _rank(entries, metric):
@@ -22,12 +35,13 @@ def create_performance_report(results_list: list) -> dict:
     for res in results_list:
         sim_name = res.get('simulator', 'unknown')
 
-        if 'error' in res:
+        failure = _failure_status(res)
+        if failure:
             unranked.append({
                 "simulator": sim_name,
-                "status": "error",
+                "status": failure,
                 "reason": "runner_error",
-                "error": res['error'],
+                "error": res.get('error'),
                 "execution_time_sec": None,
                 "rank": None,
             })
@@ -72,12 +86,13 @@ def create_resource_report(results_list: list) -> dict:
     for res in results_list:
         sim_name = res.get('simulator', 'unknown')
 
-        if 'error' in res:
+        failure = _failure_status(res)
+        if failure:
             unranked.append({
                 "simulator": sim_name,
-                "status": "error",
+                "status": failure,
                 "reason": "runner_error",
-                "error": res['error'],
+                "error": res.get('error'),
                 "process_peak_rss_mb": res.get('process_peak_rss_mb'),
                 "memory_usage_mb": None,
                 "process_peak_mb": None,

@@ -330,10 +330,11 @@ def test_tables_list_unranked_runs_after_ranked_with_reason():
     rep = _report_with_failures()
     perf = render_artifact(rep, "statevector", "performance", "csv")[0].decode().splitlines()
     assert [line.split(",")[1] for line in perf[1:]] == ["s0", "s1", "s2", "s3"]
-    assert perf[3].startswith("—,s2,") and perf[3].endswith("timeout (runner_error)")
+    assert perf[3] == "—,s2,—,—,—,—,—,—,—,timeout"
     assert perf[4].endswith("error (missing_timing)")
-    res = render_artifact(rep, "statevector", "resources", "csv")[0].decode()
-    assert "ok (missing_process_peak_rss)" in res and "timeout (runner_error)" in res
+    res = render_artifact(rep, "statevector", "resources", "csv")[0].decode().splitlines()
+    assert any(line.endswith("ok (missing_process_peak_rss)") for line in res)
+    assert "—,s2,—,—,—,—,—,timeout" in res
 
 
 def test_ranking_figures_mark_unranked_runs_and_plot_the_ranking_metric():
@@ -348,7 +349,7 @@ def test_ranking_figures_mark_unranked_runs_and_plot_the_ranking_metric():
         assert widths == [80.0, 0.0, 0.0]
         notes = [t.get_text() for t in ax.texts]
         assert any("missing_process_peak_rss" in n for n in notes)
-        assert any("runner_error" in n for n in notes)
+        assert any(n.strip() == "not ranked: timeout" for n in notes)
     finally:
         plt.close(fig)
     only_failed = {"performance_report": {"ranking": [], "unranked": [
@@ -388,3 +389,21 @@ def test_histograms_take_first_twelve_pairs_with_counts():
     hist = [a for a in list_artifacts(rep, "measured") if a["id"].startswith("histogram_")]
     assert len(hist) == 12 and hist[0]["id"] == "histogram_m0-m1"
     assert "first 12 of 21" in hist[0]["legend"]
+
+
+def test_ranking_figures_state_timing_scope_in_subtitle():
+    rep = _report_with_failures()
+    perf = render_artifact(rep, "statevector", "performance_time", "svg")[0].decode()
+    assert "n=1 timing sample(s) per backend; timed run only, warm-up excluded" in perf
+    mem = render_artifact(rep, "statevector", "resource_memory", "svg")[0].decode()
+    assert "SDK import dominates for small circuits" in mem
+
+
+def test_heatmap_masks_null_cells():
+    rep = {"divergence_report": {"simulators": ["a", "b", "c"],
+                                 "fidelity_matrix": [[1.0, 0.5, None], [0.5, 1.0, None],
+                                                     [None, None, None]]}}
+    data = render_artifact(rep, "statevector", "fidelity_heatmap", "svg")[0]
+    assert _MAGIC["svg"](data)
+    table = render_artifact(rep, "statevector", "matrix_fidelity", "csv")[0].decode().splitlines()
+    assert table[1] == "a,—,0.5000,—"
