@@ -3,9 +3,9 @@
 
 import {
     TAG_AMBER, TAG_GRAY, _applyLegendDots, _cloneTemplate, _displayRunnerName,
-    _makeStatusCell, _tag, fmtInt, fmtNum, getOptBadge, precisionTag, renderTooltip,
+    _makeStatusCell, _tag, executionTags, fmtInt, fmtNum, getOptBadge, precisionTag, queueWaitText, renderTooltip,
 } from './render_helpers.js';
-import { RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, runnerStatus } from './run_status.js';
+import { RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, runnerStatus, userFacingError } from './run_status.js';
 
 const SAMPLING_TAGS = {
     native: { label: 'Native', color: 'bg-green-100 text-green-700 border-green-200', title: 'The backend sampled the shots itself.' },
@@ -61,6 +61,9 @@ function _fillSimulatorCell(td, simulatorName, config, raw, { memory = false } =
     }
     const prec = precisionTag(raw?.precision);
     if (prec) td.appendChild(prec);
+    executionTags(raw).forEach(tag => td.appendChild(tag));
+    const wait = queueWaitText(raw);
+    if (wait) td.appendChild(_tag('queued', TAG_AMBER, wait.charAt(0).toUpperCase() + wait.slice(1)));
     if (memory && raw?.memory_method && raw.memory_method !== 'vmhwm') {
         td.appendChild(_tag(raw.memory_method, TAG_AMBER,
             `Window memory measured by ${raw.memory_method} RSS polling instead of the kernel high-water mark; short peaks can be missed.`));
@@ -76,10 +79,13 @@ function _fillSimulatorCell(td, simulatorName, config, raw, { memory = false } =
 function _timingNote(rawResults) {
     const samples = new Set((rawResults || []).filter(r => r && !r.error)
         .map(r => r.timing_samples).filter(n => Number.isInteger(n)));
-    if (samples.size === 0 || (samples.size === 1 && samples.has(1))) {
-        return 'Each value is one timed run (n=1) after one discarded warm-up run.';
-    }
-    return `Timed runs per backend: ${[...samples].sort().join(', ')}; the columns show the last run (mean and stdev are in the raw JSON).`;
+    let note = (samples.size === 0 || (samples.size === 1 && samples.has(1)))
+        ? 'Each value is one timed run (n=1) after one discarded warm-up run.'
+        : `Timed runs per backend: ${[...samples].sort().join(', ')}; the columns show the last run (mean and stdev are in the raw JSON).`;
+    note += ' Each runner is limited to 0.5 CPU, so wall time can exceed CPU time.';
+    const waited = (rawResults || []).filter(r => typeof r?.queue_wait_sec === 'number' && r.queue_wait_sec > 0).length;
+    if (waited) note += ` ${waited} run(s) waited for their runner to finish another run (tag "queued"); the wait is not in these timings.`;
+    return note;
 }
 
 const TH_CLASS = 'px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase';
@@ -117,6 +123,7 @@ const MEMORY_COLUMNS = [
 
 function _statusOf(entry, raw) {
     if (raw) return runnerStatus(raw);
+    if (['error', 'timeout', 'offline'].includes(entry.status)) return entry.status;
     if (entry.error) return runnerStatus(entry);
     return 'ok';
 }
@@ -201,7 +208,7 @@ export function renderRankingTable(report, key, unit, panel, config = {}, rawRes
             if (status !== 'ok') {
                 if (idx === 0) {
                     td.appendChild(_makeStatusCell(RUNNER_STATUS_STYLE[status], RUNNER_STATUS_LABEL[status],
-                        r.error || raw?.error || undefined));
+                        userFacingError(r.error || raw?.error) || undefined));
                 } else {
                     td.textContent = '—';
                 }

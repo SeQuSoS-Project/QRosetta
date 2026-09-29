@@ -1,15 +1,18 @@
-// Summary tab of a single-circuit report: failed runs by status, what the pairwise
-// agreement records show, and per-backend run details (precision, seeds, preprocessing).
+// Summary tab of a single-circuit report: which backends ran, failed runs by status, what
+// the pairwise agreement records show, and per-backend run details.
 
 import { panelElements } from './dom.js';
 import {
     STATUS_STYLES, _applyLegendDots, _chip, _cloneTemplate, _displayRunnerName, fmtInt, fmtNum,
-    precisionTag, renderPreprocessingList,
+    executionTags, precisionTag, queueWaitText, renderPreprocessingList,
 } from './render_helpers.js';
+import { getEnabledRunnerIds } from './config.js';
+import { parseRunnerKey } from './runner_key.js';
 import {
-    DIRECT_AGREEMENT, RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, TRANSFORM_AGREEMENT, UNEXPLAINED, runnerStatus,
+    RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, effectiveAgreement, measuredAssessment, recommendedShots,
+    runnerStatus, userFacingError,
 } from './run_status.js';
-import { AGREEMENT_THRESHOLD_DEFAULTS } from './utils.js';
+import { thresholdDefaults } from './utils.js';
 
 const FAILURE_HEADINGS = {
     offline: { heading: 'Offline', text: 'runner unreachable' },
@@ -41,7 +44,18 @@ function _block(heading, styleKey, items) {
             else li.appendChild(item);
             ul.appendChild(li);
         });
-        wrap.appendChild(ul);
+        if (items.length > 12) {
+            const det = document.createElement('details');
+            det.className = 'mt-2 text-sm';
+            const sum = document.createElement('summary');
+            sum.className = 'cursor-pointer select-none';
+            sum.textContent = `Show all ${items.length}`;
+            det.appendChild(sum);
+            det.appendChild(ul);
+            wrap.appendChild(det);
+        } else {
+            wrap.appendChild(ul);
+        }
     }
     return wrap;
 }
@@ -69,29 +83,225 @@ function _orderingNote(p) {
 function _tolerances(pairs, data) {
     const recorded = pairs.find(p => p.metrics && p.agreement !== 'not_comparable')?.metrics || {};
     const requested = data.agreement_thresholds || {};
+    const defaults = thresholdDefaults();
     const pick = key => (typeof recorded[key] === 'number' ? recorded[key]
-        : (typeof requested[key] === 'number' ? requested[key] : AGREEMENT_THRESHOLD_DEFAULTS[key]));
+        : (typeof requested[key] === 'number' ? requested[key] : defaults[key]));
     const text = v => (typeof v === 'number' && v !== 0 && Math.abs(v) < 1e-3 ? v.toExponential() : String(v));
     return {
         fidelity: text(pick('fidelity_tolerance')),
         phase: text(pick('phase_tolerance')),
+        norm: text(pick('norm_tolerance')),
         js: text(pick('js_threshold')),
         hellinger: text(pick('hellinger_threshold')),
     };
 }
 
-function _metricText(p) {
+const TRANSFORM_NAMES = {
+    agree_directly: 'direct',
+    agree_up_to_global_phase: 'direct',
+    agree_after_bit_reversal: 'bit-reversed',
+    agree_after_qubit_permutation: 'permuted',
+};
+
+/** Fidelity under the transform the pair's label names, with the direct value when it differs. */
+function _statevectorMetricText(p) {
     const m = p.metrics || {};
     const t = p.transform_effect || {};
-    if (p.mode === 'statevector') {
-        const after = t.fidelity_after_transform !== undefined ? `, fidelity after transform ${fmtNum(t.fidelity_after_transform)}` : '';
-        return `direct fidelity ${fmtNum(m.direct_fidelity)}${after}`;
+    const label = effectiveAgreement(p);
+    let named = null;
+    if (label === 'agree_after_bit_reversal') named = m.bit_reversed_fidelity ?? t.fidelity_after_transform;
+    else if (label === 'agree_after_qubit_permutation') named = m.qubit_permutation?.fidelity ?? t.fidelity_after_transform;
+    const direct = `direct fidelity ${fmtNum(m.direct_fidelity)}`;
+    if (named !== null && named !== undefined) {
+        return `${TRANSFORM_NAMES[label]} fidelity ${fmtNum(named)} (${direct})`;
     }
-    const after = t.js_divergence_after_transform !== undefined ? `; after transform JS ${fmtNum(t.js_divergence_after_transform)} nats` : '';
-    return `JS ${fmtNum(m.js_divergence)} nats, Hellinger ${fmtNum(m.hellinger_distance)}${after}`;
+    if (label === 'residual_disagreement') {
+        const parts = [direct, `bit-reversed ${fmtNum(m.bit_reversed_fidelity)}`];
+        if (m.qubit_permutation?.attempted) parts.push(`best permutation ${fmtNum(m.qubit_permutation.fidelity)}`);
+        return parts.join(', ');
+    }
+    const phase = m.direct_relative_phase_rad;
+    return `${direct}${typeof phase === 'number' && phase !== 0 ? `, relative phase ${fmtNum(phase)} rad` : ''}`;
 }
 
-/** Agreement blocks built from pairwise_agreement[].agreement and the statistical verdicts. */
+function _measuredMetricText(p) {
+    const m = p.metrics || {};
+    const t = p.transform_effect || {};
+    const label = p.agreement;
+    if ((label === 'agree_after_bit_reversal' || label === 'agree_after_qubit_permutation')
+        && t.js_divergence_after_transform !== undefined) {
+        return `${TRANSFORM_NAMES[label]} JS ${fmtNum(t.js_divergence_after_transform)} nats, Hellinger `
+            + `${fmtNum(t.hellinger_distance_after_transform)} (direct JS ${fmtNum(m.js_divergence)} nats)`;
+    }
+    return `JS ${fmtNum(m.js_divergence)} nats, Hellinger ${fmtNum(m.hellinger_distance)}`;
+}
+
+function _metricText(p) {
+    return p.mode === 'statevector' ? _statevectorMetricText(p) : _measuredMetricText(p);
+}
+
+function _testText(p) {
+    const st = p.metrics?.statistical_test;
+    if (!st) return '';
+    return `; χ² p (BH) ${fmtNum(st.chi2?.p_value_bh)}, G-test p (BH) ${fmtNum(st.g_test?.p_value_bh)}`;
+}
+
+function _notComparableBlock(panel, pairs) {
+    const notComparable = pairs.filter(p => p.agreement === 'not_comparable');
+    if (!notComparable.length) return;
+    panel.appendChild(_block(`Not comparable (${notComparable.length})`, 'offline',
+        notComparable.map(p => {
+            const details = p.metrics?.details && Object.keys(p.metrics.details).length
+                ? ` (${Object.entries(p.metrics.details).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join('; ')})`
+                : '';
+            return _pairItem(p, `${p.metrics?.reason || 'reason not recorded'}${details}`);
+        })));
+}
+
+function _transformBlocks(panel, pairs) {
+    const bitrev = pairs.filter(p => effectiveAgreement(p) === 'agree_after_bit_reversal');
+    if (bitrev.length) {
+        panel.appendChild(_block(`Agree only after reversing bit order (${bitrev.length})`, 'divergence',
+            bitrev.map(p => _pairItem(p, `${_metricText(p)}${_orderingNote(p)}`))));
+    }
+    const perm = pairs.filter(p => effectiveAgreement(p) === 'agree_after_qubit_permutation');
+    if (perm.length) {
+        panel.appendChild(_block(`Agree only after a qubit permutation (${perm.length})`, 'divergence',
+            perm.map(p => _pairItem(p, `permutation ${JSON.stringify(p.transform_effect?.permutation ?? p.metrics?.qubit_permutation?.permutation ?? null)}; ${_metricText(p)}`))));
+    }
+}
+
+/** Statevector pairs: direct and global-phase agreement, transforms, normalisation notes, residuals. */
+function _renderStatevectorBlocks(panel, pairs, tol) {
+    const direct = pairs.filter(p => effectiveAgreement(p) === 'agree_directly');
+    const phase = pairs.filter(p => effectiveAgreement(p) === 'agree_up_to_global_phase');
+    const comparable = pairs.filter(p => p.agreement !== 'not_comparable');
+    const normalised = pairs.filter(p => p.agreement === 'agree_after_normalization');
+    const residual = pairs.filter(p => p.agreement === 'residual_disagreement');
+
+    const allAgree = direct.length + phase.length === pairs.length;
+    if (allAgree) {
+        let msg = `All ${pairs.length} pairs agree within fidelity tolerance ${tol.fidelity} (fidelity ≥ 1 − ${tol.fidelity})`;
+        msg += phase.length ? `; ${phase.length} of them differ by a global phase larger than ${tol.phase} rad.` : '.';
+        if (normalised.length) msg += ` ${normalised.length} pair(s) involve a statevector whose norm differs from 1 by more than ${tol.norm}; see below.`;
+        const frag = _cloneTemplate('tpl-summary-success-banner');
+        frag.querySelector('.tpl-msg').textContent = msg;
+        panel.appendChild(frag);
+    } else {
+        const ov = document.createElement('p');
+        ov.className = 'text-sm text-gray-700 mb-3';
+        ov.textContent = `${direct.length} of ${pairs.length} pairs agree directly and ${phase.length} agree up to a global phase `
+            + `(fidelity ≥ 1 − ${tol.fidelity}, phase tolerance ${tol.phase} rad); `
+            + `${comparable.length} of ${pairs.length} pairs were comparable.`;
+        panel.appendChild(ov);
+    }
+
+    if (residual.length) {
+        panel.appendChild(_block(`Not explained by any registered transform (${residual.length})`, 'anomaly',
+            residual.map(p => _pairItem(p, _metricText(p)))));
+    }
+    _transformBlocks(panel, pairs);
+
+    if (normalised.length) {
+        panel.appendChild(_block(`Agree after normalising a statevector whose norm is off by more than ${tol.norm} (${normalised.length})`, 'success',
+            normalised.map(p => {
+                const norms = p.metrics?.norms || {};
+                const text = Object.entries(norms).map(([k, v]) => `${_displayRunnerName(k)} norm ${fmtNum(v, 8)}`).join(', ');
+                return _pairItem(p, `${text}; after normalisation: ${p.metrics?.normalized_agreement ?? '—'}, ${_metricText(p)}`);
+            })));
+    }
+
+    const known = new Set(['agree_directly', 'agree_up_to_global_phase', 'agree_after_bit_reversal',
+        'agree_after_qubit_permutation', 'residual_disagreement', 'not_comparable']);
+    const other = pairs.filter(p => !known.has(effectiveAgreement(p)));
+    if (other.length) {
+        panel.appendChild(_block(`Other labels (${other.length})`, 'divergence', other.map(p => _pairItem(p, p.agreement))));
+    }
+    _notComparableBlock(panel, pairs);
+}
+
+/** Measured pairs grouped by their shot-noise assessment; only "distinguishable" is a disagreement. */
+function _renderMeasuredBlocks(panel, pairs, tol, data, alpha) {
+    const groups = { consistent_within_shot_noise: [], inconclusive_low_shots: [], distinguishable: [], ambiguous: [], untested: [] };
+    pairs.forEach(p => {
+        if (p.agreement === 'not_comparable') return;
+        const a = measuredAssessment(p);
+        (groups[a] || groups.untested).push(p);
+    });
+    const comparable = pairs.filter(p => p.agreement !== 'not_comparable');
+    const shots = data.n_shots ? `${fmtInt(data.n_shots)} shots per backend` : 'shots per backend not recorded';
+    const test = `chi-square and G-test, BH-corrected at α=${alpha ?? '—'}; ${shots}`;
+
+    const allConsistent = comparable.length === pairs.length
+        && groups.consistent_within_shot_noise.length === pairs.length
+        && pairs.every(p => p.agreement === 'distance_within_threshold');
+    if (allConsistent) {
+        const frag = _cloneTemplate('tpl-summary-success-banner');
+        frag.querySelector('.tpl-msg').textContent = `All ${pairs.length} pairs are consistent within shot noise (${test}) `
+            + `and within JS ≤ ${tol.js} nats and Hellinger ≤ ${tol.hellinger}.`;
+        panel.appendChild(frag);
+        return;
+    }
+
+    const ov = document.createElement('p');
+    ov.className = 'text-sm text-gray-700 mb-3';
+    const parts = [
+        `${groups.consistent_within_shot_noise.length} consistent within shot noise`,
+        `${groups.inconclusive_low_shots.length} inconclusive (too few shots)`,
+        `${groups.distinguishable.length} distinguishable`,
+    ];
+    if (groups.ambiguous.length) parts.push(`${groups.ambiguous.length} inconclusive (the two tests disagree)`);
+    if (groups.untested.length) parts.push(`${groups.untested.length} without a shot-noise test`);
+    ov.textContent = `Of ${pairs.length} pairs: ${parts.join(', ')}; ${pairs.length - comparable.length} not comparable (${test}).`;
+    panel.appendChild(ov);
+
+    if (groups.distinguishable.length) {
+        panel.appendChild(_block(`Distinguishable beyond shot noise (${groups.distinguishable.length})`, 'anomaly',
+            groups.distinguishable.map(p => _pairItem(p, `${p.agreement}; ${_metricText(p)}${_testText(p)}`))));
+    }
+    if (groups.ambiguous.length) {
+        panel.appendChild(_block(`Inconclusive: the chi-square and G-test disagree (${groups.ambiguous.length})`, 'offline',
+            groups.ambiguous.map(p => _pairItem(p, `${_metricText(p)}${_testText(p)}`))));
+    }
+    if (groups.untested.length) {
+        const exceeds = groups.untested.filter(p => p.agreement === 'distance_exceeds_threshold');
+        const rest = groups.untested.filter(p => p.agreement !== 'distance_exceeds_threshold');
+        if (exceeds.length) {
+            panel.appendChild(_block(`Above the JS/Hellinger thresholds, no shot-noise test recorded (${exceeds.length})`, 'anomaly',
+                exceeds.map(p => _pairItem(p, _metricText(p)))));
+        }
+        if (rest.length) {
+            panel.appendChild(_block(`No shot-noise test recorded (${rest.length})`, 'offline',
+                rest.map(p => _pairItem(p, `${p.agreement}; ${_metricText(p)}`))));
+        }
+    }
+    if (groups.inconclusive_low_shots.length) {
+        const rec = recommendedShots(groups.inconclusive_low_shots);
+        const items = groups.inconclusive_low_shots.map(p => _pairItem(p, `${_metricText(p)}${_testText(p)}`));
+        const block = _block(`Inconclusive: too few shots for the test (${groups.inconclusive_low_shots.length})`, 'offline', items);
+        const note = document.createElement('p');
+        note.className = 'text-sm mt-2';
+        note.textContent = 'Some expected counts are below 5, so the chi-square and G-test cannot decide either way. '
+            + 'These pairs are neither consistent nor in disagreement. Run again with more shots'
+            + (rec ? `: the power model needs about ${fmtInt(rec)} shots per backend to detect a total-variation gap of `
+                + `${groups.inconclusive_low_shots[0].metrics?.statistical_test?.power?.delta_tv ?? '—'} with power `
+                + `${groups.inconclusive_low_shots[0].metrics?.statistical_test?.power?.target_power ?? '—'}.` : '.');
+        block.insertBefore(note, block.querySelector('details, ul'));
+        panel.appendChild(block);
+    }
+
+    _transformBlocks(panel, pairs);
+
+    const consistent = groups.consistent_within_shot_noise;
+    if (consistent.length) {
+        const aboveThreshold = consistent.filter(p => p.agreement === 'distance_exceeds_threshold').length;
+        panel.appendChild(_block(`Consistent within shot noise (${consistent.length})`, 'success',
+            aboveThreshold ? [`${aboveThreshold} of these are above the descriptive JS ≤ ${tol.js} / Hellinger ≤ ${tol.hellinger} thresholds, which depend on the shot count; the test finds no difference beyond shot noise.`] : []));
+    }
+    _notComparableBlock(panel, pairs);
+}
+
+/** Agreement blocks built from pairwise_agreement[] and the shot-noise assessments. */
 function _renderAgreementBlocks(panel, data, nOk) {
     const report = data.divergence_report || {};
     const pairs = Array.isArray(report.pairwise_agreement) ? report.pairwise_agreement : [];
@@ -115,98 +325,28 @@ function _renderAgreementBlocks(panel, data, nOk) {
     }
 
     const tol = _tolerances(pairs, data);
-    const comparable = pairs.filter(p => p.agreement !== 'not_comparable');
-    const direct = pairs.filter(p => DIRECT_AGREEMENT.has(p.agreement));
-    const verdictOf = p => p.metrics?.statistical_test?.verdict;
-    const alpha = report.statistical_test_summary?.alpha;
+    if (measured) _renderMeasuredBlocks(panel, pairs, tol, data, report.statistical_test_summary?.alpha);
+    else _renderStatevectorBlocks(panel, pairs, tol);
+}
 
-    const allDirect = direct.length === pairs.length;
-    const allConsistent = !measured || pairs.every(p => verdictOf(p) === 'consistent');
-    if (allDirect && allConsistent) {
-        let msg;
-        if (measured) {
-            msg = `All ${pairs.length} pairs are within JS ≤ ${tol.js} nats and Hellinger ≤ ${tol.hellinger}, `
-                + `and no pair is statistically distinguishable at α=${alpha ?? '—'} `
-                + `(chi-square and G-test, BH-corrected; ${fmtInt(data.n_shots)} shots per backend).`;
-        } else {
-            const phaseOnly = direct.filter(p => p.agreement === 'agree_up_to_global_phase').length;
-            msg = `All ${pairs.length} pairs agree within fidelity tolerance ${tol.fidelity} `
-                + `(fidelity ≥ 1 − ${tol.fidelity})`
-                + (phaseOnly ? `; ${phaseOnly} of them differ by a global phase larger than ${tol.phase} rad.` : '.');
-        }
-        const frag = _cloneTemplate('tpl-summary-success-banner');
-        frag.querySelector('.tpl-msg').textContent = msg;
-        panel.appendChild(frag);
+/** "N of M enabled backends ran", with the enabled backends that were not part of the run. */
+function _renderCoverage(panel, raws) {
+    const ranIds = [...new Set(raws.map(r => parseRunnerKey(r.simulator).simId))];
+    const okIds = new Set(raws.filter(r => runnerStatus(r) === 'ok').map(r => parseRunnerKey(r.simulator).simId));
+    const enabled = getEnabledRunnerIds();
+    const p = document.createElement('p');
+    p.className = 'text-sm text-gray-700 mb-3';
+    if (enabled.length === 0) {
+        p.textContent = `${ranIds.length} backend(s) ran; ${okIds.size} returned a result.`;
+        panel.appendChild(p);
         return;
     }
-
-    const overview = `${direct.length} of ${pairs.length} pairs agree without a transform`
-        + (measured ? ` (JS ≤ ${tol.js} nats, Hellinger ≤ ${tol.hellinger})` : ` (fidelity ≥ 1 − ${tol.fidelity})`)
-        + `; ${comparable.length} of ${pairs.length} pairs were comparable.`;
-    const ov = document.createElement('p');
-    ov.className = 'text-sm text-gray-700 mb-3';
-    ov.textContent = overview;
-    panel.appendChild(ov);
-
-    const unexplained = pairs.filter(p => UNEXPLAINED.has(p.agreement));
-    if (unexplained.length) {
-        panel.appendChild(_block(`Not explained by any registered transform (${unexplained.length})`, 'anomaly',
-            unexplained.map(p => _pairItem(p, `${p.agreement}; ${_metricText(p)}`))));
-    }
-
-    const bitrev = pairs.filter(p => p.agreement === 'agree_after_bit_reversal');
-    if (bitrev.length) {
-        panel.appendChild(_block(`Agree only after reversing bit order (${bitrev.length})`, 'divergence',
-            bitrev.map(p => _pairItem(p, `${_metricText(p)}${_orderingNote(p)}`))));
-    }
-
-    const perm = pairs.filter(p => p.agreement === 'agree_after_qubit_permutation');
-    if (perm.length) {
-        panel.appendChild(_block(`Agree only after a qubit permutation (${perm.length})`, 'divergence',
-            perm.map(p => _pairItem(p, `permutation ${JSON.stringify(p.transform_effect?.permutation ?? null)}; ${_metricText(p)}`))));
-    }
-
-    const norm = pairs.filter(p => p.agreement === 'agree_after_normalization');
-    if (norm.length) {
-        panel.appendChild(_block(`Agree after normalising an input statevector (${norm.length})`, 'divergence',
-            norm.map(p => {
-                const norms = p.metrics?.norms || {};
-                const text = Object.entries(norms).map(([k, v]) => `${k} norm ${fmtNum(v, 6)}`).join(', ');
-                return _pairItem(p, `${text}; label after normalisation: ${p.metrics?.normalized_agreement ?? '—'}`);
-            })));
-    }
-
-    const other = pairs.filter(p => !DIRECT_AGREEMENT.has(p.agreement) && !TRANSFORM_AGREEMENT.has(p.agreement)
-        && !UNEXPLAINED.has(p.agreement) && p.agreement !== 'not_comparable');
-    if (other.length) {
-        panel.appendChild(_block(`Other labels (${other.length})`, 'divergence',
-            other.map(p => _pairItem(p, p.agreement))));
-    }
-
-    const notComparable = pairs.filter(p => p.agreement === 'not_comparable');
-    if (notComparable.length) {
-        panel.appendChild(_block(`Not comparable (${notComparable.length})`, 'offline',
-            notComparable.map(p => {
-                const details = p.metrics?.details && Object.keys(p.metrics.details).length
-                    ? ` (${Object.entries(p.metrics.details).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join('; ')})`
-                    : '';
-                return _pairItem(p, `${p.metrics?.reason || 'reason not recorded'}${details}`);
-            })));
-    }
-
-    if (measured) {
-        const notConsistent = pairs.filter(p => verdictOf(p) && verdictOf(p) !== 'consistent');
-        if (notConsistent.length) {
-            const anyDistinguishable = notConsistent.some(p => verdictOf(p) === 'distinguishable');
-            panel.appendChild(_block(
-                `Shot-noise test at α=${alpha ?? '—'}: ${notConsistent.length} pair(s) not consistent`,
-                anyDistinguishable ? 'anomaly' : 'divergence',
-                notConsistent.map(p => {
-                    const st = p.metrics.statistical_test;
-                    return _pairItem(p, `${st.verdict}; χ² p (BH) ${fmtNum(st.chi2?.p_value_bh)}, G-test p (BH) ${fmtNum(st.g_test?.p_value_bh)}`);
-                })));
-        }
-    }
+    const ranEnabled = ranIds.filter(id => enabled.includes(id));
+    const skipped = enabled.filter(id => !ranIds.includes(id));
+    let text = `${ranEnabled.length} of ${enabled.length} enabled backends ran; ${okIds.size} returned a result.`;
+    if (skipped.length) text += ` Not in this run: ${skipped.map(_displayRunnerName).join(', ')}.`;
+    p.textContent = text;
+    panel.appendChild(p);
 }
 
 function _renderFailures(panel, raws) {
@@ -223,7 +363,10 @@ function _renderFailures(panel, raws) {
             const b = document.createElement('b');
             b.textContent = _displayRunnerName(r.simulator);
             frag.appendChild(b);
-            frag.appendChild(document.createTextNode(`: ${cfg.text || r.error || RUNNER_STATUS_LABEL[st]}`));
+            const why = r.never_started
+                ? 'queued and never started: the runner was busy with other runs for the whole wait budget'
+                : (cfg.text || userFacingError(r.error) || RUNNER_STATUS_LABEL[st]);
+            frag.appendChild(document.createTextNode(`: ${why}`));
             return frag;
         })));
     });
@@ -249,7 +392,7 @@ function _renderRunDetails(panel, data, raws) {
     details.className = 'mt-4 border rounded bg-white';
     const summary = document.createElement('summary');
     summary.className = 'px-3 py-2 cursor-pointer text-sm font-semibold text-gray-700 select-none';
-    summary.textContent = 'Run details per backend (precision, seeds, preprocessing)';
+    summary.textContent = 'Run details per backend (device, precision, seeds, queue wait, preprocessing)';
     details.appendChild(summary);
 
     const body = document.createElement('div');
@@ -285,10 +428,18 @@ function _renderRunDetails(panel, data, raws) {
         head.appendChild(_chip(STATUS_STYLES[RUNNER_STATUS_STYLE[st]].badge, RUNNER_STATUS_LABEL[st], 'Dispatch status'));
         const prec = precisionTag(r.precision);
         if (prec) head.appendChild(prec);
+        executionTags(r).forEach(tag => head.appendChild(tag));
         card.appendChild(head);
 
         const grid = document.createElement('div');
         grid.className = 'grid grid-cols-1 sm:grid-cols-2 gap-x-4 mt-1';
+        _kv(grid, 'device', r.device);
+        _kv(grid, 'simulator backend', r.simulator_backend);
+        _kv(grid, 'simulation method', r.simulation_method);
+        const wait = queueWaitText(r);
+        if (wait) _kv(grid, 'queue wait', wait);
+        if (r.never_started) _kv(grid, 'started', 'no: the run stayed queued until its wait budget ran out');
+        if (r.timed_out) _kv(grid, 'timed out', 'yes');
         _kv(grid, 'qubit ordering', r.qubit_ordering);
         _kv(grid, 'sampling method', r.sampling_method);
         _kv(grid, 'runner seed', r.runner_seed);
@@ -337,12 +488,16 @@ export function renderSummaryPanel(data, title) {
 
     if (data.error) {
         const errFrag = _cloneTemplate('tpl-summary-api-error');
-        errFrag.querySelector('.tpl-error-text').textContent = data.error;
+        errFrag.querySelector('.tpl-error-text').textContent = userFacingError(data.error);
         panel.appendChild(errFrag);
         return;
     }
 
+    if (data.job_error) {
+        panel.appendChild(_block('The job failed', 'anomaly', [userFacingError(data.job_error)]));
+    }
     const raws = Array.isArray(data.raw_results) ? data.raw_results : [];
+    _renderCoverage(panel, raws);
     _renderFailures(panel, raws);
     _renderAgreementBlocks(panel, data, raws.filter(r => runnerStatus(r) === 'ok').length);
     _renderRunDetails(panel, data, raws);

@@ -272,14 +272,15 @@ export async function exportRoCrate() {
     }
 }
 
-/** The sampling seed field; empty or invalid gives null, and the API then generates and records a seed. */
+/** The sampling seed field; empty gives null, and the API then generates and records a seed.
+ * A value that is not a non-negative integer is rejected by validateRunInputs() before a run. */
 export function getSeed() {
     const el = document.getElementById('seed-input');
     if (!el) return null;
     const raw = String(el.value).trim();
     if (raw === '') return null;
-    const n = parseInt(raw, 10);
-    return Number.isFinite(n) && n >= 0 ? n : null;
+    const n = Number(raw);
+    return Number.isInteger(n) && n >= 0 ? n : null;
 }
 
 export function downloadBlob(blob, filename) {
@@ -302,15 +303,24 @@ export function _escapeHtml(s) {
  * tests/unit/test_threshold_defaults_sync.py). */
 export const AGREEMENT_THRESHOLD_DEFAULTS = {
     fidelity_tolerance: 1e-5, phase_tolerance: 1e-12,
-    js_threshold: 0.01, hellinger_threshold: 0.1,
+    js_threshold: 0.01, hellinger_threshold: 0.1, norm_tolerance: 1e-4,
 };
 
-const THRESHOLD_INPUT_IDS = {
+export const THRESHOLD_INPUT_IDS = {
     fidelity_tolerance: 'th-fidelity', phase_tolerance: 'th-phase',
-    js_threshold: 'th-js', hellinger_threshold: 'th-hellinger',
+    js_threshold: 'th-js', hellinger_threshold: 'th-hellinger', norm_tolerance: 'th-norm',
 };
 
-/** Threshold values from the config panel, sent with every run; undefined if the inputs are absent. */
+/** Threshold defaults: the server's (GET /config agreement_threshold_defaults) over the built-in ones. */
+export function thresholdDefaults() {
+    const server = getState().thresholdDefaults || {};
+    const out = { ...AGREEMENT_THRESHOLD_DEFAULTS };
+    Object.keys(out).forEach(k => { if (typeof server[k] === 'number') out[k] = server[k]; });
+    return out;
+}
+
+/** Threshold values from the config panel, sent with every run; undefined if the inputs are absent.
+ * Fields that do not parse are left out; validateRunInputs() blocks the run before that. */
 export function getAgreementThresholds() {
     const out = {};
     let anyPresent = false;
@@ -318,16 +328,18 @@ export function getAgreementThresholds() {
         const el = /** @type {HTMLInputElement|null} */ (document.getElementById(id));
         if (!el) continue;
         anyPresent = true;
-        const v = parseFloat(el.value);
-        out[key] = (Number.isFinite(v) && v >= 0) ? v : AGREEMENT_THRESHOLD_DEFAULTS[key];
+        const raw = String(el.value).trim();
+        const v = Number(raw);
+        if (raw !== '' && Number.isFinite(v) && v >= 0) out[key] = v;
     }
     return anyPresent ? out : undefined;
 }
 
 export function resetAgreementThresholds() {
+    const defaults = thresholdDefaults();
     for (const [key, id] of Object.entries(THRESHOLD_INPUT_IDS)) {
         const el = /** @type {HTMLInputElement|null} */ (document.getElementById(id));
-        if (el) el.value = String(AGREEMENT_THRESHOLD_DEFAULTS[key]);
+        if (el) el.value = String(defaults[key]);
     }
 }
 

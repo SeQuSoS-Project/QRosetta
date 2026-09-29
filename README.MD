@@ -71,6 +71,10 @@ and returns the same set of fields.
 | Qiskit Aer, Cirq, Qulacs, QuEST | PennyLane Lightning, PennyLane Default |
 | qsim-Cirq, Qibo, Qrisp, myQLM | PyQuil, TorchQuantum, Quimb, cuQuantum |
 
+The web UI runs every enabled backend unless you deselect some in the Config drawer. The
+cuQuantum runner executes the circuit with qiskit-aer's statevector method and uses a GPU only
+when one is present; on a host without one it runs on the CPU, and its `device` field says so.
+
 Braket and ProjectQ ship with the stack but are disabled in `rosetta-api/config.py` because of
 persistent backend errors. Re-enable either by setting `enabled=True` there and adding it to
 `scripts/safe_boot.sh`.

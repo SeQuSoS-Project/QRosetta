@@ -16,6 +16,35 @@ export function getAuthHeaders(extraHeaders = {}) {
     return headers;
 }
 
+/** FastAPI `detail` as text: a string as is, validation errors as "field: message" lines. */
+export function apiDetailText(detail) {
+    if (detail === undefined || detail === null) return '';
+    if (Array.isArray(detail)) {
+        return detail.map(d => {
+            const loc = Array.isArray(d?.loc) ? d.loc.filter(x => x !== 'body').join('.') : '';
+            return `${loc ? `${loc}: ` : ''}${d?.msg ?? JSON.stringify(d)}`;
+        }).join('\n');
+    }
+    return typeof detail === 'string' ? detail : JSON.stringify(detail);
+}
+
+/**
+ * The error text of a rejected API request: FastAPI's `detail` (a string, or a list of
+ * validation errors with their field paths), else `error`, else the raw body.
+ * @param {Response} res
+ */
+export async function formatApiError(res) {
+    const body = await res.text().catch(() => '');
+    let message = body;
+    try {
+        const data = JSON.parse(body);
+        message = apiDetailText(data?.detail ?? data?.error ?? data?.message) || body;
+    } catch (_) { /* body is not JSON */ }
+    const kind = res.status === 400 || res.status === 422 ? 'The server rejected the request'
+        : res.status === 429 ? 'Too many requests' : 'Request failed';
+    return `${kind} (HTTP ${res.status}): ${message || res.statusText}`;
+}
+
 export async function pollJobStatus(jobId) {
     return new Promise((resolve, reject) => {
         let networkErrorCount = 0;
@@ -26,6 +55,10 @@ export async function pollJobStatus(jobId) {
                 const res = await fetch(`${BASE_URL}/jobs/${jobId}`, {
                     headers: getAuthHeaders()
                 });
+                if (res.status === 404) {
+                    reject(Object.assign(new Error('The server has no record of this job. It may have expired or the server may have restarted.'), { terminal: true }));
+                    return;
+                }
                 if (!res.ok) {
                     throw new Error(`Failed to fetch job status: ${res.status}`);
                 }
@@ -41,26 +74,19 @@ export async function pollJobStatus(jobId) {
                 if (data.status === "completed") {
                     resolve(data.results);
                 } else if (data.status === "failed") {
-
-                    if (data.results) {
-                        resolve(data.results);
+                    const r = data.results;
+                    const hasResults = r && ((Array.isArray(r.raw_results) && r.raw_results.some(x => x && !x.error))
+                        || (Array.isArray(r.benchmark_summary) && r.benchmark_summary.length > 0));
+                    if (hasResults) {
+                        resolve(data.error ? { ...r, job_error: data.error } : r);
                     } else {
-                        reject(new Error(data.error || "Job failed on backend"));
+                        reject(Object.assign(new Error(data.error || data.results?.error || 'The job failed on the server without an error message.'), { terminal: true }));
                     }
                 } else {
 
-                    // In local mode the server dispatches over HTTP to Docker containers
-                    // regardless of the execution-target dropdown, so report that — never
-                    // imply a Kubernetes cluster when running locally.
-                    const executionMode = (typeof getState === 'function') ? getState().executionMode : 'kubernetes';
-                    let targetName;
-                    if (executionMode === 'local') {
-                        targetName = "local containers";
-                    } else if (data.target === "lumi") {
-                        targetName = "LUMI (HPC)";
-                    } else {
-                        targetName = "Kubernetes Cluster";
-                    }
+                    const executionMode = getState().executionMode;
+                    const targetName = executionMode === 'local' ? "this server's runners"
+                        : executionMode === 'kubernetes' ? 'the Kubernetes cluster' : 'the server';
                     const loaderText = document.getElementById('loader-text');
                     if (loaderText) loaderText.textContent = `Running on ${targetName}...`;
                     setTimeout(checkStatus, 3000);

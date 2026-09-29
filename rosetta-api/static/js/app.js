@@ -1,16 +1,113 @@
 // Page bootstrap, single-circuit and batch run orchestration, and circuit generation.
 
-import { BASE_URL, getAuthHeaders, pollJobStatus } from './api.js';
+import { BASE_URL, formatApiError, getAuthHeaders, pollJobStatus } from './api.js';
 import { updateAuthUI, verifySession } from './auth.js';
 import { autosaveRun, initAutosave } from './autosave.js';
 import { renderBatchQueue } from './batch.js';
 import { bmLoadChecklist, populateBenchmarkSelectors } from './benchmarks_select.js';
-import { checkRunCountLimits, getDynamicMaxQubits, getRunnerConfig, getRunnerPhases, getTargetSimulators, updateContextBar } from './config.js';
+import {
+    checkRunCountLimits, getDynamicMaxQubits, getRunnerConfig, getRunnerPhases, getTargetSimulators,
+    loadRunners, runnerSelectionProblem, updateContextBar,
+} from './config.js';
 import { clearHistoryState, saveRunToHistory } from './history.js';
 import { clearReport, renderDetailReport, renderSuiteSummary } from './renderers.js';
 import { initDomRefs, qasmInput, setAllButtons, welcomeMessage } from './dom.js';
+import { shotsRange, showRunErrors, timeoutRange, validateRunInputs } from './run_inputs.js';
+import { clearPendingJob, loadEditorCircuit, loadPendingJob, saveEditorCircuit, savePendingJob } from './session_store.js';
 import { dispatch, getState } from './state.js';
-import { getAgreementThresholds, getSeed, setLoading } from './utils.js';
+import { getAgreementThresholds, getSeed, resetAgreementThresholds, setLoading } from './utils.js';
+
+const EXECUTION_MODE_LABELS = {
+    local: 'This server: local runner services',
+    kubernetes: 'This server: Kubernetes Jobs',
+};
+
+/** Execution-target menu, timeout and shots bounds, and threshold defaults from GET /config. */
+function _applyServerConfig(config) {
+    const mode = getState().executionMode;
+    const select = /** @type {HTMLSelectElement|null} */ (document.getElementById('execution-target-select'));
+    if (select && mode) {
+        select.innerHTML = '';
+        const opt = document.createElement('option');
+        opt.value = mode;
+        opt.textContent = EXECUTION_MODE_LABELS[mode] || mode;
+        select.appendChild(opt);
+        select.value = mode;
+        select.disabled = true;
+    }
+
+    const { min: tMin, max: tMax } = timeoutRange();
+    const tInput = /** @type {HTMLInputElement|null} */ (document.getElementById('timeout-input'));
+    if (tInput) {
+        tInput.min = String(tMin);
+        tInput.max = String(tMax);
+        const current = Number(tInput.value);
+        if (!Number.isFinite(current) || current > tMax) tInput.value = String(tMax);
+    }
+    const tHelp = document.getElementById('timeout-help');
+    if (tHelp) {
+        tHelp.textContent = `This value is sent with every run from this page. It covers process start, SDK import, `
+            + `the warm-up run and the timed run of each backend. Allowed: ${tMin}–${tMax} s.`;
+    }
+
+    const { min: sMin, max: sMax } = shotsRange();
+    ['shots-single', 'shots-batch'].forEach(id => {
+        const el = /** @type {HTMLInputElement|null} */ (document.getElementById(id));
+        if (!el) return;
+        el.min = String(sMin);
+        if (sMax !== null && sMax !== undefined) el.max = String(sMax);
+    });
+
+    if (config.agreement_threshold_defaults) resetAgreementThresholds();
+}
+
+/** The execution target to send: the server's mode, or undefined when it is not known. */
+function _executionTarget() {
+    const v = /** @type {HTMLSelectElement|null} */ (document.getElementById('execution-target-select'))?.value;
+    return v || getState().executionMode || undefined;
+}
+
+let _editorSaveTimer = null;
+function _saveEditorSoon() {
+    if (_editorSaveTimer) clearTimeout(_editorSaveTimer);
+    _editorSaveTimer = setTimeout(() => {
+        saveEditorCircuit(qasmInput.value, getState().currentAlgoName);
+    }, 400);
+}
+
+function _restoreEditorCircuit() {
+    const saved = loadEditorCircuit();
+    if (!saved) return false;
+    qasmInput.value = saved.qasm;
+    dispatch('SET_CURRENT_ALGO_NAME', saved.name);
+    updateContextBar();
+    return true;
+}
+
+function _hideResumeBanner() {
+    document.getElementById('resume-job-banner')?.classList.add('hidden');
+}
+
+function _offerPendingJob() {
+    const job = loadPendingJob();
+    const banner = document.getElementById('resume-job-banner');
+    if (!job || !banner) return;
+    const when = new Date(job.submitted_at).toLocaleTimeString();
+    const what = job.kind === 'batch' ? 'A batch run' : 'A run';
+    const text = document.getElementById('resume-job-text');
+    if (text) text.textContent = `${what} submitted at ${when} (${job.run_name || job.title}) had not finished loading when the page was closed.`;
+    banner.classList.remove('hidden');
+    document.getElementById('resume-job-btn')?.addEventListener('click', () => {
+        _hideResumeBanner();
+        if (getState().isProcessing) return;
+        if (job.kind === 'batch') _finishBatchRun(job);
+        else _finishSingleRun(job);
+    }, { once: true });
+    document.getElementById('resume-job-discard')?.addEventListener('click', () => {
+        clearPendingJob(job.job_id);
+        _hideResumeBanner();
+    }, { once: true });
+}
 
 window.onload = async () => {
 
@@ -23,6 +120,7 @@ window.onload = async () => {
     updateAuthUI();
     verifySession();
 
+    let restored = false;
     try {
         const [algorithmsResponse, configResponse] = await Promise.all([
             fetch(`${BASE_URL}/algorithms`, { headers: getAuthHeaders() }),
@@ -33,6 +131,7 @@ window.onload = async () => {
         if (configResponse.ok) {
             const config = await configResponse.json();
             dispatch('SET_CONFIG_LIMITS', config);
+            _applyServerConfig(config);
             // The API honours bypass_limits only in local mode.
             if (config.execution_mode !== 'local') {
                 const bypassContainer = document.getElementById('bypass-limits-container');
@@ -41,6 +140,7 @@ window.onload = async () => {
                 if (bypassCheckbox) bypassCheckbox.checked = false;
             }
         }
+        loadRunners();
 
         const select = document.getElementById('algo-select');
         select.innerHTML = '';
@@ -57,7 +157,9 @@ window.onload = async () => {
         qasmInput.addEventListener('input', () => {
             dispatch('SET_CURRENT_ALGO_NAME', "Custom / Modified");
             updateContextBar();
+            _saveEditorSoon();
         });
+        restored = _restoreEditorCircuit();
         updateContextBar();
 
     } catch (error) {
@@ -71,11 +173,12 @@ window.onload = async () => {
     populateBenchmarkSelectors();
     if (typeof bmLoadChecklist === 'function') bmLoadChecklist();
 
-    if (getState().allAlgorithms.length > 0) {
+    if (!restored && getState().allAlgorithms.length > 0) {
         generateCircuit();
     }
     renderBatchQueue();
     if (typeof initAutosave === 'function') initAutosave();
+    _offerPendingJob();
 };
 
 export function updateQubitConstraints(e) {
@@ -131,6 +234,7 @@ export async function generateCircuit() {
             const selectElement = document.getElementById('algo-select');
             dispatch('SET_CURRENT_ALGO_NAME', selectElement.options[selectElement.selectedIndex].text + ` (${qubits}q)`);
             updateContextBar();
+            saveEditorCircuit(qasmInput.value, getState().currentAlgoName);
         } else {
             throw new Error(data.error || "Failed to generate circuit.");
         }
@@ -170,88 +274,45 @@ export function toggleBatchMode() {
 
 export function handleRun() {
     const mode = document.querySelector('input[name="mode-single"]:checked').value;
-    const shots = parseInt(document.getElementById('shots-single').value) || 1024;
-    runComparison(mode, shots);
+    runComparison(mode);
 }
 
-export async function runComparison(type, shots) {
-    clearHistoryState();
-    if (getState().isProcessing) return;
-    const qasm = qasmInput.value.trim();
-    if (!qasm) { alert("Please enter QASM code."); return; }
-
-    const globalOpt = parseInt(document.getElementById('opt-global')?.value || 0);
-    const timeout = parseInt(document.getElementById('timeout-input')?.value || 300);
-    const runNameInput = document.getElementById('single-run-name')?.value.trim();
-    dispatch('SET_RUNNER_CONFIG', getRunnerConfig());
-
-    const endpoint = type === 'statevector' ? '/compare' : '/compare_measured';
-    const targetSims = getTargetSimulators();
-    const executionTarget = document.getElementById('execution-target-select')?.value || 'kubernetes';
-    const bypassLimits = document.getElementById('bypass-limits-checkbox')?.checked || false;
-    const applyPreprocessing = document.getElementById('apply-preprocessing-checkbox')?.checked ?? true;
-
-    if (targetSims.length === 0) {
-        alert("Please select at least one simulator from the Config Panel to run.");
-        return;
+/** Validate the inputs and the backend selection; shows the problems next to the run button. */
+async function _checkBeforeRun(messageId, shotsId, measured) {
+    const v = validateRunInputs({ shotsId, measured });
+    if (!v.ok) {
+        showRunErrors(messageId, v.errors);
+        return null;
     }
-
-    if (!checkRunCountLimits(getState().currentRunnerConfig)) return;
-
-    const payload = {
-        qasm_string: qasm,
-        optimization_level: globalOpt,
-        timeout_seconds: timeout,
-        runner_config: getState().currentRunnerConfig,
-        runner_phases: getRunnerPhases(),
-        target_simulators: targetSims,
-        execution_target: executionTarget,
-        bypass_limits: bypassLimits,
-        apply_preprocessing: applyPreprocessing,
-        thresholds: getAgreementThresholds()
-    };
-
-    if (type === 'measured') {
-        payload.n_shots = shots;
-        payload.seed = getSeed();
+    await loadRunners();
+    const problem = runnerSelectionProblem();
+    if (problem) {
+        showRunErrors(messageId, [problem]);
+        return null;
     }
+    showRunErrors(messageId, []);
+    return v;
+}
 
-    const title = type === 'statevector' ? 'Editor Run (Statevector)' : `Editor Run (Measured, ${shots} shots)`;
-
+async function _finishSingleRun(job) {
     setLoading(true, "Running Simulation...");
     clearReport();
-    dispatch('SET_JOB_ID', null);
-
+    dispatch('SET_PROCESSING', true);
+    dispatch('SET_JOB_ID', job.job_id);
     try {
-        dispatch('SET_PROCESSING', true);
-        const res = await fetch(`${BASE_URL}${endpoint}`, {
-            method: 'POST',
-            headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-            body: JSON.stringify(payload)
-        });
-        if (!res.ok) {
-            const errorText = await res.text();
-            throw new Error(`HTTP error! Status: ${res.status} ${res.statusText}. Details: ${errorText}`);
-        }
-
-        const jobData = await res.json();
-
-        if (jobData.status === "failed") {
-            throw new Error(jobData.error);
-        }
-
-        const results = await pollJobStatus(jobData.job_id);
-
-        dispatch('SET_JOB_ID', jobData.job_id);
+        const results = await pollJobStatus(job.job_id);
+        clearPendingJob(job.job_id);
         dispatch('SET_SUITE_DATA', results);
-        renderDetailReport(results, title, getState().currentRunnerConfig);
+        renderDetailReport(results, job.title, job.runner_config || {});
 
-        if (runNameInput) results.run_name = runNameInput;
+        if (job.run_name) results.run_name = job.run_name;
         const historyRunId = await saveRunToHistory(results);
         dispatch('SET_HISTORY_RUN_ID', historyRunId);
-        if (typeof autosaveRun === 'function') autosaveRun(results, runNameInput || title);
+        if (typeof autosaveRun === 'function') autosaveRun(results, job.run_name || job.title);
     } catch (e) {
         console.error(e);
+        if (e && e.terminal) clearPendingJob(job.job_id);
+        dispatch('SET_JOB_ID', null);
         renderDetailReport({ error: e.message }, "Error");
     } finally {
         setLoading(false);
@@ -259,85 +320,171 @@ export async function runComparison(type, shots) {
     }
 }
 
-export async function runBatchQueue() {
+async function _finishBatchRun(job) {
+    setLoading(true, 'Running Batch...');
+    clearReport();
+    dispatch('SET_PROCESSING', true);
+    dispatch('SET_JOB_ID', job.job_id);
+    try {
+        const results = await pollJobStatus(job.job_id);
+        clearPendingJob(job.job_id);
+        dispatch('SET_SUITE_DATA', results);
+        dispatch('SET_SUITE_TITLE', job.title);
+        renderSuiteSummary(results, getState().currentSuiteTitle);
+
+        if (job.run_name) results.run_name = job.run_name;
+        const historyRunId = await saveRunToHistory(results);
+        dispatch('SET_HISTORY_RUN_ID', historyRunId);
+        if (typeof autosaveRun === 'function') autosaveRun(results, job.run_name || 'batch');
+    } catch (e) {
+        console.error(e);
+        if (e && e.terminal) clearPendingJob(job.job_id);
+        dispatch('SET_JOB_ID', null);
+        renderSuiteSummary({ error: e.message }, "Batch Error");
+    } finally {
+        setLoading(false);
+        dispatch('SET_PROCESSING', false);
+    }
+}
+
+/** POST a run; returns the job id, or throws with the server's error text. */
+async function _submit(endpoint, payload) {
+    const res = await fetch(`${BASE_URL}${endpoint}`, {
+        method: 'POST',
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error(await formatApiError(res));
+    const jobData = await res.json();
+    if (jobData.status === "failed") throw new Error(jobData.error || 'The server rejected the job without an error message.');
+    return jobData.job_id;
+}
+
+export async function runComparison(type) {
     clearHistoryState();
     if (getState().isProcessing) return;
-    if (getState().batchQueue.length === 0) return;
+    const qasm = qasmInput.value.trim();
+    if (!qasm) {
+        showRunErrors('single-validation-msg', ['The editor is empty. Enter or generate an OpenQASM 2.0 circuit.']);
+        return;
+    }
 
-    const mode = document.querySelector('input[name="mode-batch"]:checked').value;
-    const shots = parseInt(document.getElementById('shots-batch').value) || 1024;
+    const v = await _checkBeforeRun('single-validation-msg', 'shots-single', type === 'measured');
+    if (!v) return;
+
     const globalOpt = parseInt(document.getElementById('opt-global')?.value || 0);
-    const timeout = parseInt(document.getElementById('timeout-input')?.value || 300);
-    const runNameInput = document.getElementById('batch-run-name')?.value.trim();
+    const runNameInput = document.getElementById('single-run-name')?.value.trim();
     dispatch('SET_RUNNER_CONFIG', getRunnerConfig());
+
+    const endpoint = type === 'statevector' ? '/compare' : '/compare_measured';
     const targetSims = getTargetSimulators();
-    const executionTarget = document.getElementById('execution-target-select')?.value || 'kubernetes';
     const bypassLimits = document.getElementById('bypass-limits-checkbox')?.checked || false;
     const applyPreprocessing = document.getElementById('apply-preprocessing-checkbox')?.checked ?? true;
 
-    if (targetSims.length === 0) {
-        alert("Please select at least one simulator from the Config Panel to run.");
+    if (!checkRunCountLimits(getState().currentRunnerConfig)) return;
+
+    const payload = {
+        qasm_string: qasm,
+        optimization_level: globalOpt,
+        timeout_seconds: v.timeout,
+        runner_config: getState().currentRunnerConfig,
+        runner_phases: getRunnerPhases(),
+        target_simulators: targetSims,
+        execution_target: _executionTarget(),
+        bypass_limits: bypassLimits,
+        apply_preprocessing: applyPreprocessing,
+        thresholds: getAgreementThresholds()
+    };
+
+    if (type === 'measured') {
+        payload.n_shots = v.shots;
+        payload.seed = getSeed();
+    }
+
+    const title = type === 'statevector' ? 'Editor Run (Statevector)' : `Editor Run (Measured, ${v.shots} shots)`;
+    saveEditorCircuit(qasmInput.value, getState().currentAlgoName);
+    _hideResumeBanner();
+
+    setLoading(true, "Running Simulation...");
+    clearReport();
+    dispatch('SET_JOB_ID', null);
+
+    let jobId;
+    try {
+        dispatch('SET_PROCESSING', true);
+        jobId = await _submit(endpoint, payload);
+    } catch (e) {
+        console.error(e);
+        renderDetailReport({ error: e.message }, "Error");
+        setLoading(false);
+        dispatch('SET_PROCESSING', false);
         return;
     }
+    const job = {
+        job_id: jobId, kind: /** @type {'single'} */ ('single'), title, run_name: runNameInput || null,
+        runner_config: getState().currentRunnerConfig, submitted_at: Date.now(),
+    };
+    savePendingJob(job);
+    await _finishSingleRun(job);
+}
+
+export async function runBatchQueue() {
+    clearHistoryState();
+    if (getState().isProcessing) return;
+    if (getState().batchQueue.length === 0) {
+        showRunErrors('batch-validation-msg', ['The batch queue is empty. Add circuits first.']);
+        return;
+    }
+
+    const mode = document.querySelector('input[name="mode-batch"]:checked').value;
+    const v = await _checkBeforeRun('batch-validation-msg', 'shots-batch', mode === 'measured');
+    if (!v) return;
+
+    const globalOpt = parseInt(document.getElementById('opt-global')?.value || 0);
+    const runNameInput = document.getElementById('batch-run-name')?.value.trim();
+    dispatch('SET_RUNNER_CONFIG', getRunnerConfig());
+    const targetSims = getTargetSimulators();
+    const bypassLimits = document.getElementById('bypass-limits-checkbox')?.checked || false;
+    const applyPreprocessing = document.getElementById('apply-preprocessing-checkbox')?.checked ?? true;
 
     if (!checkRunCountLimits(getState().currentRunnerConfig)) return;
 
     const payload = {
         tasks: getState().batchQueue,
         mode: mode,
-        n_shots: shots,
         optimization_level: globalOpt,
-        timeout_seconds: timeout,
+        timeout_seconds: v.timeout,
         runner_config: getState().currentRunnerConfig,
         runner_phases: getRunnerPhases(),
         target_simulators: targetSims,
-        execution_target: executionTarget,
+        execution_target: _executionTarget(),
         bypass_limits: bypassLimits,
         apply_preprocessing: applyPreprocessing,
         thresholds: getAgreementThresholds(),
         seed: getSeed()
     };
+    if (mode === 'measured') payload.n_shots = v.shots;
 
+    _hideResumeBanner();
     setLoading(true, `Running Batch of ${getState().batchQueue.length} Circuits...`);
     clearReport();
     dispatch('SET_JOB_ID', null);
 
+    let jobId;
     try {
         dispatch('SET_PROCESSING', true);
-        const res = await fetch(`${BASE_URL}/run_batch_suite`, {
-            method: 'POST',
-            headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-            body: JSON.stringify(payload)
-        });
-
-        if (!res.ok) {
-            const errorText = await res.text();
-            throw new Error(`HTTP error! Status: ${res.status}. Details: ${errorText}`);
-        }
-
-        const jobData = await res.json();
-
-        if (jobData.status === "failed") {
-            throw new Error(jobData.error);
-        }
-
-        const results = await pollJobStatus(jobData.job_id);
-
-        dispatch('SET_JOB_ID', jobData.job_id);
-        dispatch('SET_SUITE_DATA', results);
-        dispatch('SET_SUITE_TITLE', "Playlist Batch Report");
-        renderSuiteSummary(results, getState().currentSuiteTitle);
-
-        if (runNameInput) results.run_name = runNameInput;
-        const historyRunId = await saveRunToHistory(results);
-        dispatch('SET_HISTORY_RUN_ID', historyRunId);
-        if (typeof autosaveRun === 'function') autosaveRun(results, runNameInput || 'batch');
-
+        jobId = await _submit('/run_batch_suite', payload);
     } catch (e) {
         console.error(e);
         renderSuiteSummary({ error: e.message }, "Batch Error");
-    } finally {
         setLoading(false);
         dispatch('SET_PROCESSING', false);
+        return;
     }
+    const job = {
+        job_id: jobId, kind: /** @type {'batch'} */ ('batch'), title: 'Playlist Batch Report',
+        run_name: runNameInput || null, runner_config: getState().currentRunnerConfig, submitted_at: Date.now(),
+    };
+    savePendingJob(job);
+    await _finishBatchRun(job);
 }

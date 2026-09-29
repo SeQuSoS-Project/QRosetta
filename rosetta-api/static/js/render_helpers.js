@@ -210,6 +210,30 @@ export function precisionTag(precision) {
         `Amplitude precision the backend simulated in: ${precision}`);
 }
 
+/** Device / simulator-backend / simulation-method tags a runner reported, e.g. CPU · qiskit-aer · statevector. */
+export function executionTags(r) {
+    const tags = [];
+    if (!r) return tags;
+    if (r.device) {
+        tags.push(_tag(String(r.device), String(r.device).toUpperCase() === 'GPU' ? TAG_AMBER : TAG_GRAY,
+            `Device the simulation ran on: ${r.device}`));
+    }
+    if (r.simulator_backend) {
+        tags.push(_tag(String(r.simulator_backend), TAG_GRAY, `Simulator library that executed the circuit: ${r.simulator_backend}`));
+    }
+    if (r.simulation_method) {
+        tags.push(_tag(String(r.simulation_method), TAG_GRAY, `Simulation method: ${r.simulation_method}`));
+    }
+    return tags;
+}
+
+/** Queue-wait note for a run that waited for its runner, or null. */
+export function queueWaitText(r) {
+    const w = r?.queue_wait_sec;
+    if (typeof w !== 'number' || !(w > 0)) return null;
+    return `waited ${fmtNum(w, 1)} s for the runner to finish another run; not included in timings`;
+}
+
 /**
  * A preprocessing_applied list. Entries starting "API:" were applied by the API before
  * dispatch and are tagged API; the rest were applied by the runner.

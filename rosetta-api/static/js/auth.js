@@ -1,6 +1,6 @@
 // Frontend logic for auth functionality.
 
-import { BASE_URL, getAuthHeaders } from './api.js';
+import { BASE_URL, apiDetailText, getAuthHeaders } from './api.js';
 import { dispatch, getState } from './state.js';
 import { setLoading } from './utils.js';
 
@@ -80,7 +80,7 @@ export async function handleLoginSubmit() {
         const data = await res.json();
 
         if (!res.ok) {
-            throw new Error(data.detail || "Login failed.");
+            throw new Error(apiDetailText(data.detail) || "Login failed.");
         }
 
         dispatch('SET_AUTH_TOKEN', data.access_token);
@@ -121,7 +121,7 @@ export async function handleRegisterSubmit() {
         const data = await res.json();
 
         if (!res.ok) {
-            throw new Error(data.detail || "Registration failed.");
+            throw new Error(apiDetailText(data.detail) || "Registration failed.");
         }
 
         toggleAuthMode('login');

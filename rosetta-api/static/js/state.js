@@ -16,7 +16,12 @@ export const Store = {
         maxQubitsMeasured: 24,
         maxRunsPerRunner: 16,
         maxTotalRuns: 48,
-        executionMode: 'kubernetes',
+        executionMode: null,
+        timeoutMin: 10,
+        timeoutMax: 300,
+        shotsMin: 1,
+        shotsMax: null,
+        thresholdDefaults: null,
     },
 
     dispatch(action, payload) {
@@ -57,13 +62,23 @@ export const Store = {
             case 'SET_HISTORY_RUN_ID':
                 this.state.currentHistoryRunId = payload;
                 break;
-            case 'SET_CONFIG_LIMITS':
-                this.state.maxQubitsStatevector = payload.max_qubits_statevector;
-                this.state.maxQubitsMeasured = payload.max_qubits_measured;
+            case 'SET_CONFIG_LIMITS': {
+                const limits = payload.limits || {};
+                const num = v => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+                this.state.maxQubitsStatevector = num(limits.max_qubits_statevector) ?? num(payload.max_qubits_statevector) ?? this.state.maxQubitsStatevector;
+                this.state.maxQubitsMeasured = num(limits.max_qubits_measured) ?? num(payload.max_qubits_measured) ?? this.state.maxQubitsMeasured;
+                this.state.timeoutMin = num(limits.timeout_min) ?? this.state.timeoutMin;
+                this.state.timeoutMax = num(limits.timeout_max) ?? this.state.timeoutMax;
+                this.state.shotsMin = num(limits.shots_min) ?? this.state.shotsMin;
+                this.state.shotsMax = num(limits.shots_max) ?? this.state.shotsMax;
+                if (payload.agreement_threshold_defaults && typeof payload.agreement_threshold_defaults === 'object') {
+                    this.state.thresholdDefaults = { ...payload.agreement_threshold_defaults };
+                }
                 if (payload.max_runs_per_runner !== undefined) this.state.maxRunsPerRunner = payload.max_runs_per_runner;
                 if (payload.max_total_runs !== undefined) this.state.maxTotalRuns = payload.max_total_runs;
                 if (payload.execution_mode !== undefined) this.state.executionMode = payload.execution_mode;
                 break;
+            }
             default:
                 console.warn(`[State] Unknown action: ${action}`);
         }

@@ -5,8 +5,9 @@
 // GET /experiments/{id}/bundle. The "Run Experiment" button routes here; "Run Batch" is
 // separate. The conformance and prevalence outputs are reported separately.
 
-import { BASE_URL, getAuthHeaders, pollJobStatus } from './api.js';
-import { checkRunCountLimits, getRunnerConfig, getRunnerPhases, getTargetSimulators } from './config.js';
+import { BASE_URL, formatApiError, getAuthHeaders, pollJobStatus } from './api.js';
+import { checkRunCountLimits, getRunnerConfig, getRunnerPhases, getTargetSimulators, loadRunners, runnerSelectionProblem } from './config.js';
+import { showRunErrors, validateRunInputs } from './run_inputs.js';
 import { clearReport } from './renderers.js';
 import { dispatch, getState } from './state.js';
 import { _escapeHtml, downloadBlob, getAgreementThresholds, getSeed, setLoading } from './utils.js';
@@ -54,17 +55,20 @@ export async function runExperiment() {
     if (document.getElementById('exp-axis-off')?.checked) axes.push(false);
     if (axes.length === 0) { alert('Select at least one preprocessing axis.'); return; }
 
-    const targetSims = getTargetSimulators();
-    if (targetSims.length === 0) {
-        alert('Please select at least one simulator from the Config Panel to run.');
-        return;
-    }
-
     const mode = document.querySelector('input[name="mode-batch"]:checked').value;
-    const shots = parseInt(document.getElementById('shots-batch').value) || 1024;
+    const v = validateRunInputs({ shotsId: 'shots-batch', measured: mode === 'measured' });
+    if (!v.ok) { showRunErrors('batch-validation-msg', v.errors); return; }
+    await loadRunners();
+    const problem = runnerSelectionProblem();
+    if (problem) { showRunErrors('batch-validation-msg', [problem]); return; }
+    showRunErrors('batch-validation-msg', []);
+
+    const targetSims = getTargetSimulators();
+    const shots = mode === 'measured' ? v.shots : undefined;
     const globalOpt = parseInt(document.getElementById('opt-global')?.value || 0);
-    const timeout = parseInt(document.getElementById('timeout-input')?.value || 300);
-    const executionTarget = document.getElementById('execution-target-select')?.value || 'kubernetes';
+    const timeout = v.timeout;
+    const executionTarget = /** @type {HTMLSelectElement|null} */ (document.getElementById('execution-target-select'))?.value
+        || getState().executionMode || undefined;
     const bypassLimits = document.getElementById('bypass-limits-checkbox')?.checked || false;
     const label = document.getElementById('experiment-name')?.value.trim() || null;
 
@@ -101,9 +105,7 @@ export async function runExperiment() {
             headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify(payload),
         });
-        if (!res.ok) {
-            throw new Error(`HTTP error! Status: ${res.status}. Details: ${await res.text()}`);
-        }
+        if (!res.ok) throw new Error(await formatApiError(res));
         const jobData = await res.json();
         if (jobData.status === 'failed') throw new Error(jobData.error);
 

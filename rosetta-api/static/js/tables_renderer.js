@@ -5,15 +5,15 @@ import {
     STATUS_STYLES, _applyLegendDots, _chip, _cloneTemplate, _displayRunnerName, fmtInt, fmtNum,
     getOptBadge, renderPreprocessingList, renderTooltip,
 } from './render_helpers.js';
-import { RUNNER_STATUS_STYLE, statusBySimulator } from './run_status.js';
-import { AGREEMENT_THRESHOLD_DEFAULTS, makeCopyIconButton } from './utils.js';
+import { RUNNER_STATUS_STYLE, effectiveAgreement, measuredAssessment, statusBySimulator } from './run_status.js';
+import { makeCopyIconButton, thresholdDefaults } from './utils.js';
 
 const STATUS_CELL_TEXT = { offline: 'OFF', error: 'ERR', timeout: 'T/O' };
 
 /** Threshold recorded with a pair record, else the schema default. */
 function _pairThreshold(rec, key) {
     const v = rec?.metrics?.[key];
-    return typeof v === 'number' ? v : AGREEMENT_THRESHOLD_DEFAULTS[key];
+    return typeof v === 'number' ? v : thresholdDefaults()[key];
 }
 
 const MATRICES = [
@@ -89,14 +89,16 @@ export function renderDivergenceTables(report, panel, config = {}, rawResults = 
                 let text;
                 let style;
                 let title = `${_displayRunnerName(s1)} × ${_displayRunnerName(s2)}`;
+                const legacySentinel = val === -1;
                 if (i === j) {
-                    text = '-';
+                    text = typeof val === 'number' && !legacySentinel ? fmtNum(val) : '-';
                     style = 'neutral';
+                    title += ': the backend compared with itself';
                 } else if (failed) {
                     text = STATUS_CELL_TEXT[failed];
                     style = RUNNER_STATUS_STYLE[failed];
                     title += `: a run ended with status ${failed}`;
-                } else if (rec?.agreement === 'not_comparable' || typeof val !== 'number' || (val === -1 && spec.key !== 'relative_phase_matrix')) {
+                } else if (rec?.agreement === 'not_comparable' || typeof val !== 'number' || legacySentinel) {
                     text = 'n/c';
                     style = 'offline';
                     title += `: not comparable (${rec?.metrics?.reason || 'no value'})`;
@@ -131,11 +133,45 @@ export const AGREEMENT_STYLE = {
     distance_within_threshold: 'success',
     agree_after_bit_reversal: 'divergence',
     agree_after_qubit_permutation: 'divergence',
-    agree_after_normalization: 'divergence',
+    agree_after_normalization: 'success',
     residual_disagreement: 'anomaly',
     distance_exceeds_threshold: 'anomaly',
     not_comparable: 'offline',
 };
+
+export const ASSESSMENT_STYLE = {
+    consistent_within_shot_noise: 'success',
+    inconclusive_low_shots: 'offline',
+    distinguishable: 'anomaly',
+    ambiguous: 'offline',
+    not_comparable: 'offline',
+};
+
+/** Badge style for a pair: by its measured assessment, else by the label without the normalisation note. */
+function _pairStyle(p) {
+    if (p.mode === 'measured') {
+        const a = measuredAssessment(p);
+        if (a === 'consistent_within_shot_noise') {
+            return AGREEMENT_STYLE[p.agreement] === 'divergence' ? 'divergence' : 'success';
+        }
+        if (a && ASSESSMENT_STYLE[a]) return ASSESSMENT_STYLE[a];
+    }
+    return AGREEMENT_STYLE[effectiveAgreement(p)] || AGREEMENT_STYLE[p.agreement] || 'offline';
+}
+
+/** Summary-row metric: the value under the transform the label names. */
+function _pairMetricText(p) {
+    const m = p.metrics || {};
+    const label = effectiveAgreement(p);
+    if (p.mode === 'statevector') {
+        if (label === 'agree_after_bit_reversal') return `F(bit-rev)=${_fmtNum(m.bit_reversed_fidelity)}`;
+        if (label === 'agree_after_qubit_permutation') return `F(perm)=${_fmtNum(m.qubit_permutation?.fidelity ?? p.transform_effect?.fidelity_after_transform)}`;
+        return `F=${_fmtNum(m.direct_fidelity)}`;
+    }
+    if (label === 'agree_after_bit_reversal') return `JS(bit-rev)=${_fmtNum(m.bit_reversed_js_divergence)} nats`;
+    if (label === 'agree_after_qubit_permutation') return `JS(perm)=${_fmtNum(m.qubit_permutation?.js_divergence)} nats`;
+    return `JS=${_fmtNum(m.js_divergence)} nats`;
+}
 
 export const VERDICT_STYLE = {
     consistent: 'success',
@@ -321,6 +357,18 @@ export const AGREEMENT_HEX = {
     not_comparable: '#898781',
 };
 
+const ASSESSMENT_HEX = {
+    consistent_within_shot_noise: '#008300', inconclusive_low_shots: '#898781',
+    distinguishable: '#e34948', ambiguous: '#898781',
+};
+
+/** Heatmap colour: a measured pair above the descriptive thresholds takes its shot-noise assessment's colour. */
+function _cellHex(rec) {
+    const a = rec.mode === 'measured' ? measuredAssessment(rec) : null;
+    if (a && rec.agreement === 'distance_exceeds_threshold' && ASSESSMENT_HEX[a]) return ASSESSMENT_HEX[a];
+    return AGREEMENT_HEX[rec.agreement] || '#898781';
+}
+
 /** Pair-table order: disagreement first, not_comparable last. */
 export const _AGREEMENT_SEVERITY = {
     residual_disagreement: 0, distance_exceeds_threshold: 0,
@@ -363,18 +411,35 @@ export function _agreementSummaryStrip(report, pairs) {
     const strip = document.createElement('div');
     strip.className = 'flex flex-wrap gap-2 mb-4';
 
+    const assessed = pairs.some(p => p.mode === 'measured' && measuredAssessment(p));
     const counts = {};
     pairs.forEach(p => { counts[p.agreement] = (counts[p.agreement] || 0) + 1; });
     Object.keys(counts)
         .sort((a, b) => (_AGREEMENT_SEVERITY[a] ?? 9) - (_AGREEMENT_SEVERITY[b] ?? 9))
         .forEach(label => {
-            const pill = _chip(STATUS_STYLES[AGREEMENT_STYLE[label] || 'offline'].badge,
-                `${label} · ${counts[label]}`, 'Agreement class count');
+            const style = assessed && label === 'distance_exceeds_threshold' ? 'offline' : (AGREEMENT_STYLE[label] || 'offline');
+            const pill = _chip(STATUS_STYLES[style].badge, `${label} · ${counts[label]}`,
+                assessed && label === 'distance_exceeds_threshold'
+                    ? 'Above the descriptive JS/Hellinger thresholds; the shot-noise assessment decides whether this is a disagreement'
+                    : 'Agreement class count');
             strip.appendChild(pill);
         });
 
     const st = report.statistical_test_summary;
-    if (st && st.verdict_counts) {
+    if (assessed) {
+        const sep = document.createElement('span');
+        sep.className = 'w-px bg-gray-200 mx-1';
+        strip.appendChild(sep);
+        const aCounts = {};
+        pairs.forEach(p => {
+            const a = measuredAssessment(p);
+            if (a && a !== 'not_comparable') aCounts[a] = (aCounts[a] || 0) + 1;
+        });
+        Object.entries(aCounts).forEach(([a, n]) => {
+            strip.appendChild(_chip(STATUS_STYLES[ASSESSMENT_STYLE[a] || 'offline'].badge,
+                `${a} · ${n}`, `Shot-noise assessment${st ? ` (α=${st.alpha}, ${(st.correction || []).join('+')})` : ''}`));
+        });
+    } else if (st && st.verdict_counts) {
         const sep = document.createElement('span');
         sep.className = 'w-px bg-gray-200 mx-1';
         strip.appendChild(sep);
@@ -425,11 +490,12 @@ export function _agreementHeatmap(report, pairs, config) {
             if (i === j) {
                 td.classList.add('bg-gray-100');
             } else {
-                const rec = lookup[[s1, s2].sort().join('')];
+                const rec = lookup[_pairKey(s1, s2)];
                 if (rec) {
-                    td.style.backgroundColor = AGREEMENT_HEX[rec.agreement] || '#898781';
+                    td.style.backgroundColor = _cellHex(rec);
                     td.style.color = '#ffffff';
-                    td.title = `${_displayRunnerName(s1)} × ${_displayRunnerName(s2)}: ${rec.agreement}`;
+                    const a = rec.mode === 'measured' ? measuredAssessment(rec) : null;
+                    td.title = `${_displayRunnerName(s1)} × ${_displayRunnerName(s2)}: ${rec.agreement}${a ? `, ${a}` : ''}`;
                     td.style.cursor = 'pointer';
                     td.onclick = () => {
                         const row = document.getElementById(`agr-row-${_agrRowId(rec)}`);
@@ -448,7 +514,19 @@ export function _agreementHeatmap(report, pairs, config) {
 
     const present = [...new Set(pairs.map(p => p.agreement))]
         .sort((a, b) => (_AGREEMENT_SEVERITY[a] ?? 9) - (_AGREEMENT_SEVERITY[b] ?? 9));
-    wrap.appendChild(_agreementLegend(present));
+    const assessedExceeds = pairs.filter(p => p.agreement === 'distance_exceeds_threshold' && p.mode === 'measured' && measuredAssessment(p));
+    const legend = _agreementLegend(present.filter(l => !(l === 'distance_exceeds_threshold' && assessedExceeds.length === pairs.filter(p => p.agreement === l).length)));
+    [...new Set(assessedExceeds.map(p => measuredAssessment(p)))].forEach(a => {
+        const item = document.createElement('span');
+        item.className = 'inline-flex items-center gap-1';
+        const sw = document.createElement('span');
+        sw.className = 'inline-block w-3 h-3 rounded-sm border border-gray-300';
+        sw.style.backgroundColor = ASSESSMENT_HEX[a] || '#898781';
+        item.appendChild(sw);
+        item.appendChild(document.createTextNode(`distance_exceeds_threshold, ${a}`));
+        legend.appendChild(item);
+    });
+    wrap.appendChild(legend);
     return wrap;
 }
 
@@ -507,20 +585,24 @@ export function _agreementPairTable(pairs) {
         name.textContent = `${_displayRunnerName(sims[0])} × ${_displayRunnerName(sims[1])}`;
         sum.appendChild(name);
 
-        sum.appendChild(_chip(STATUS_STYLES[AGREEMENT_STYLE[p.agreement] || 'offline'].badge,
-            p.agreement, 'Explained-cause label'));
+        sum.appendChild(_chip(STATUS_STYLES[_pairStyle(p)].badge,
+            p.agreement, p.agreement === 'agree_after_normalization'
+                ? `Agrees after normalising an input statevector; label after normalisation: ${p.metrics?.normalized_agreement ?? '—'}`
+                : 'Explained-cause label'));
 
         const metric = document.createElement('span');
         metric.className = 'text-xs text-gray-500 font-mono text-right';
-        metric.title = p.mode === 'statevector' ? 'Direct fidelity' : 'Direct JS divergence';
-        const m = p.metrics || {};
-        metric.textContent = p.mode === 'statevector'
-            ? `F=${_fmtNum(m.direct_fidelity)}` : `JS=${_fmtNum(m.js_divergence)} nats`;
+        metric.title = p.mode === 'statevector' ? 'Fidelity under the transform the label names' : 'JS divergence under the transform the label names';
+        metric.textContent = _pairMetricText(p);
         sum.appendChild(metric);
 
         const st = p.metrics && p.metrics.statistical_test;
         const vslot = document.createElement('span');
-        if (st && st.verdict) {
+        const assessment = p.mode === 'measured' ? measuredAssessment(p) : null;
+        if (assessment && assessment !== 'not_comparable') {
+            vslot.appendChild(_chip(STATUS_STYLES[ASSESSMENT_STYLE[assessment] || 'offline'].badge,
+                assessment, `Shot-noise assessment${st?.verdict ? ` (test verdict: ${st.verdict})` : ''}`));
+        } else if (st && st.verdict) {
             vslot.appendChild(_chip(STATUS_STYLES[VERDICT_STYLE[st.verdict] || 'offline'].badge,
                 st.verdict, 'Shot-noise statistical verdict'));
         }

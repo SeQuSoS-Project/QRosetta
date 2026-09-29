@@ -7,7 +7,9 @@ import { BASE_URL, getAuthHeaders } from './api.js';
 import { renderArtifactsPanel } from './artifacts_renderer.js';
 import { renderRankingTable, splitRanking } from './ranking_renderer.js';
 import { _applyLegendDots, _cloneTemplate, _displayRunnerName, _makeStatusBadge } from './render_helpers.js';
-import { DIRECT_AGREEMENT, RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, UNEXPLAINED, runnerStatus } from './run_status.js';
+import {
+    DIRECT_AGREEMENT, RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, TRANSFORM_AGREEMENT, effectiveAgreement, isDisagreement, measuredAssessment, runnerStatus,
+} from './run_status.js';
 import { getState } from './state.js';
 import { renderSummaryPanel } from './summary_renderer.js';
 import { renderAgreementPanel, renderDivergenceTables } from './tables_renderer.js';
@@ -158,7 +160,7 @@ function _taskBadges(item) {
     });
     const nOk = raws.filter(r => runnerStatus(r) === 'ok').length;
     const pairs = item.divergence_report?.pairwise_agreement || [];
-    const verdicts = pairs.map(p => p.metrics?.statistical_test?.verdict).filter(Boolean);
+    const assessments = pairs.filter(p => p.mode === 'measured').map(measuredAssessment).filter(a => a && a !== 'not_comparable');
 
     const badges = [];
     if (nOk < 2) {
@@ -166,10 +168,16 @@ function _taskBadges(item) {
     } else if (pairs.length === 0) {
         const n = item.divergence_report?.divergences_found?.length || 0;
         badges.push(n ? _makeStatusBadge('divergence', `${n} divergence(s)`) : _makeStatusBadge('offline', 'No pair records'));
-    } else if (pairs.some(p => UNEXPLAINED.has(p.agreement)) || verdicts.includes('distinguishable')) {
+    } else if (pairs.some(isDisagreement)) {
         badges.push(_makeStatusBadge('anomaly', 'Anomaly'));
-    } else if (pairs.every(p => DIRECT_AGREEMENT.has(p.agreement)) && verdicts.every(v => v === 'consistent')) {
+    } else if (pairs.every(p => (p.mode === 'measured' && measuredAssessment(p)
+        ? measuredAssessment(p) === 'consistent_within_shot_noise' && !TRANSFORM_AGREEMENT.has(p.agreement)
+        : DIRECT_AGREEMENT.has(effectiveAgreement(p))))) {
         badges.push(_makeStatusBadge('success', 'All pairs agree'));
+    } else if (assessments.length
+        && assessments.every(a => ['inconclusive_low_shots', 'ambiguous', 'consistent_within_shot_noise'].includes(a))
+        && assessments.some(a => a !== 'consistent_within_shot_noise')) {
+        badges.push(_makeStatusBadge('offline', 'Inconclusive'));
     } else {
         badges.push(_makeStatusBadge('divergence', 'Explained / partial'));
     }
@@ -202,9 +210,18 @@ export function renderSuiteSummary(data, title) {
         const errFrag = _cloneTemplate('tpl-suite-api-error');
         const errDiv = errFrag.querySelector('.tpl-error-text');
         errDiv.classList.remove('tpl-error-text');
-        errDiv.textContent = `API Error: ${data.error}`;
+        errDiv.textContent = data.error;
+        errDiv.classList.add('whitespace-pre-wrap');
         panel.appendChild(errFrag);
     } else {
+        if (data.job_error) {
+            const errFrag = _cloneTemplate('tpl-suite-api-error');
+            const errDiv = errFrag.querySelector('.tpl-error-text');
+            errDiv.classList.remove('tpl-error-text');
+            errDiv.classList.add('mb-4');
+            errDiv.textContent = `The job failed: ${data.job_error}`;
+            panel.appendChild(errFrag);
+        }
         const summary = data.benchmark_summary || [];
         const errors = summary.filter(r => r.error).length;
 

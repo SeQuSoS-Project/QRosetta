@@ -125,17 +125,18 @@
                     <!-- Group: Execution -->
                     <h3 class="text-xs font-semibold uppercase tracking-wide text-indigo-700 mb-2">Execution</h3>
                     <div class="flex flex-col mb-3 bg-white p-3 rounded shadow-sm border border-indigo-100">
-                        <label class="block text-sm font-medium text-indigo-900 mb-1">Execution Environment</label>
+                        <label class="block text-sm font-medium text-indigo-900 mb-1" for="execution-target-select">Execution Environment</label>
                         <select id="execution-target-select"
                             class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
-                            <option value="kubernetes">Kubernetes Cluster</option>
-                            <option value="lumi" disabled>LUMI (HPC) - Pending Phase 4</option>
+                            <option value="">Server default</option>
                         </select>
+                        <span id="execution-target-help" class="text-xs text-gray-500 mt-1">The server runs every job in its configured mode; the report records it as the execution target.</span>
                     </div>
                     <div class="flex flex-col mb-4 bg-white p-3 rounded shadow-sm border border-indigo-100">
-                        <label class="block text-sm font-medium text-indigo-900 mb-1">Timeout (seconds)</label>
-                        <input type="number" id="timeout-input" value="300" min="30" max="300"
+                        <label class="block text-sm font-medium text-indigo-900 mb-1" for="timeout-input">Timeout per backend (seconds)</label>
+                        <input type="number" id="timeout-input" value="300" min="10" max="300" step="1"
                             class="block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                        <span id="timeout-help" class="text-xs text-gray-500 mt-1">This value is sent with every run from this page. It covers process start, SDK import, the warm-up run and the timed run of each backend. Allowed: 10–300 s.</span>
                     </div>
                     <div class="flex flex-col mb-4 bg-white p-3 rounded shadow-sm border border-indigo-100">
                         <label class="block text-sm font-medium text-indigo-900 mb-1" for="seed-input">Sampling seed (measured)</label>
@@ -161,10 +162,10 @@
                         <span class="text-xs text-gray-500 mt-1">Local mode only — skips API gate/size guards. Runner qubit caps still apply.</span>
                     </div>
 
-                    <!-- Group: Optimization Levels -->
-                    <details class="bg-white rounded shadow-sm border border-indigo-100 p-3">
+                    <!-- Group: Backends and optimization levels -->
+                    <details open class="bg-white rounded shadow-sm border border-indigo-100 p-3">
                         <summary class="cursor-pointer select-none text-xs font-semibold uppercase tracking-wide text-indigo-700">
-                            Runner Optimization Levels
+                            Backends and optimization levels
                         </summary>
                         <div class="flex items-center gap-2 mt-3 mb-3">
                             <label class="text-xs text-indigo-900">Set all to</label>
@@ -192,7 +193,8 @@
                             are applied. A statevector pair agrees when fidelity ≥ 1 − fidelity tol; a relative
                             phase within phase tol (radians) counts as 0. The measured JS (nats) and Hellinger
                             cut-offs are descriptive and depend on the shot count; the shot-noise statistical test
-                            gives the significance verdict.
+                            gives the significance verdict. A statevector whose norm differs from 1 by more than
+                            the norm tol is flagged; its pair is labelled agree_after_normalization if it agrees.
                         </p>
                         <div class="grid grid-cols-2 gap-2 mt-3">
                             <label class="text-xs text-indigo-900">Statevector fidelity tol
@@ -206,6 +208,9 @@
                                     class="mt-1 block w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-indigo-500 focus:border-indigo-500"></label>
                             <label class="text-xs text-indigo-900">Measured Hellinger threshold
                                 <input type="number" id="th-hellinger" value="0.1" step="any" min="0"
+                                    class="mt-1 block w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-indigo-500 focus:border-indigo-500"></label>
+                            <label class="text-xs text-indigo-900">Statevector norm tol
+                                <input type="number" id="th-norm" value="1e-4" step="any" min="0"
                                     class="mt-1 block w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-indigo-500 focus:border-indigo-500"></label>
                         </div>
                         <button type="button" onclick="resetAgreementThresholds()"
@@ -374,7 +379,7 @@
                         </div>
                         <div id="shots-container-batch" class="hidden">
                             <label for="shots-batch" class="block text-sm font-medium text-yellow-800">Shots</label>
-                            <input type="number" id="shots-batch" value="1024"
+                            <input type="number" id="shots-batch" value="1024" min="1" step="1"
                                 class="mt-1 block w-full border border-yellow-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm">
                         </div>
                     </div>
@@ -388,10 +393,12 @@
                         <input type="text" id="batch-run-name" placeholder="E.g., Baseline Test"
                             class="mt-1 block w-full border border-yellow-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm">
                     </div>
+                    <p class="backend-selection-summary text-xs text-yellow-900 mb-1"></p>
                     <button id="btn-batch-run" onclick="runBatchQueue()"
                         class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
                         Run Batch
                     </button>
+                    <div id="batch-validation-msg" role="alert" class="hidden mt-2 p-2 text-xs text-red-800 bg-red-50 border border-red-200 rounded"></div>
 
                     <!-- Reproducible experiment: runs this batch over preprocessing axes into one bundle -->
                     <div class="mt-3 border-t border-yellow-200 pt-3">
@@ -494,7 +501,7 @@
                         </div>
                         <div id="shots-container-single" class="hidden">
                             <label for="shots-single" class="block text-sm font-medium text-gray-700">Shots</label>
-                            <input type="number" id="shots-single" value="1024"
+                            <input type="number" id="shots-single" value="1024" min="1" step="1"
                                 class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                         </div>
                         <div class="mt-2">
@@ -503,10 +510,13 @@
                             <input type="text" id="single-run-name" placeholder="E.g., GHZ Final Opt"
                                 class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                         </div>
+                        <p class="text-xs text-gray-600"><span class="backend-selection-summary"></span>
+                            <button type="button" onclick="toggleConfigPanel()" class="ml-1 text-indigo-600 hover:text-indigo-800 underline">change</button></p>
                         <button onclick="handleRun()" id="btn-run"
                             class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
                             Run Editor Code
                         </button>
+                        <div id="single-validation-msg" role="alert" class="hidden p-2 text-xs text-red-800 bg-red-50 border border-red-200 rounded"></div>
                     </div>
                 </div>
 
@@ -538,6 +548,12 @@
                     </div>
 
                     <nav class="flex flex-wrap border-b border-gray-200 flex-shrink-0" id="tab-nav"></nav>
+
+                    <div id="resume-job-banner" role="status" class="hidden p-3 border-b border-amber-200 bg-amber-50 text-sm text-amber-900 flex flex-wrap items-center gap-2">
+                        <span id="resume-job-text" class="flex-1 min-w-0"></span>
+                        <button type="button" id="resume-job-btn" class="px-2 py-1 rounded border border-amber-300 bg-white hover:bg-amber-100 text-xs font-medium">Show results</button>
+                        <button type="button" id="resume-job-discard" class="px-2 py-1 rounded border border-amber-200 hover:bg-amber-100 text-xs">Dismiss</button>
+                    </div>
 
                     <div class="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden" id="tab-content">
                         <div id="welcome-message" class="p-4 text-gray-500 block">Select an algorithm on the left to
@@ -750,6 +766,7 @@
                                 <input type="password" id="register-password"
                                     class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2"
                                     onkeydown="if(event.key === 'Enter') handleRegisterSubmit()">
+                                <span class="text-xs text-gray-500">8 to 72 bytes.</span>
                             </div>
                         </div>
                     </div>
@@ -906,8 +923,8 @@
 
     <template id="tpl-summary-api-error">
         <div class="p-4 bg-red-50 text-red-700 border border-red-200 rounded">
-            <h3 class="font-bold">API Error</h3>
-            <pre class="mt-2 text-xs tpl-error-text"></pre>
+            <h3 class="font-bold">The run did not complete</h3>
+            <pre class="mt-2 text-xs whitespace-pre-wrap break-words tpl-error-text"></pre>
         </div>
     </template>
 

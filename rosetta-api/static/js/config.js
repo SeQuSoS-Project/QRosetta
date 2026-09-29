@@ -40,7 +40,82 @@ export const RUNNER_DISPLAY_NAMES = {
     "cuquantum": "cuQuantum (NVIDIA)"
 };
 
-export const DEFAULT_CHECKED_RUNNERS = new Set(['pennylane-default', 'qiskit', 'cirq', 'qulacs']);
+const DESELECTED_KEY = 'rosetta_deselected_runners';
+
+function _loadDeselected() {
+    try {
+        const v = JSON.parse(localStorage.getItem(DESELECTED_KEY) || '[]');
+        return new Set(Array.isArray(v) ? v : []);
+    } catch (_) {
+        return new Set();
+    }
+}
+
+function _saveDeselected() {
+    const off = [];
+    document.querySelectorAll('.sim-checkbox:not([data-locked])').forEach(cb => {
+        const el = /** @type {HTMLInputElement} */ (cb);
+        if (!el.checked) off.push(el.dataset.sim);
+    });
+    try { localStorage.setItem(DESELECTED_KEY, JSON.stringify(off)); } catch (_) { /* storage unavailable */ }
+}
+
+let _runnersPromise = null;
+let _runnersLoadError = null;
+
+/** Fetch GET /runners once and render the backend selection; resolves to the runner list. */
+export function loadRunners() {
+    if (!_runnersPromise) {
+        _runnersPromise = (async () => {
+            let runners = [];
+            try {
+                const resp = await fetch(`${BASE_URL}/runners`);
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                runners = await resp.json();
+                _runnersLoadError = null;
+            } catch (e) {
+                _runnersLoadError = e instanceof Error ? e.message : String(e);
+                _runnersPromise = null;
+            }
+            renderConfigPanel(runners);
+            return runners;
+        })();
+    }
+    return _runnersPromise;
+}
+
+/** Canonical IDs of the runners the server has enabled, from GET /runners. */
+export function getEnabledRunnerIds() {
+    return Object.values(_runnerOptInfo).filter(r => r.enabled !== false).map(r => r.id);
+}
+
+/** Why no backend can be selected, or null. */
+export function runnerSelectionProblem() {
+    if (Object.keys(_runnerOptInfo).length === 0) {
+        return `The backend list could not be loaded from the server${_runnersLoadError ? ` (${_runnersLoadError})` : ''}. Reload the page to try again.`;
+    }
+    if (getTargetSimulators().length === 0) {
+        return 'No backend is selected. Open Config → Backends and check at least one.';
+    }
+    return null;
+}
+
+/** Update every "Backends: N of M selected" line. */
+export function updateBackendSelectionSummary() {
+    const enabled = getEnabledRunnerIds();
+    const selected = getTargetSimulators();
+    let text;
+    if (enabled.length === 0) {
+        text = _runnersLoadError ? 'Backends: list not loaded' : 'Backends: loading…';
+    } else if (_multiRunEnabled) {
+        text = `Backends: ${selected.length} of ${enabled.length} enabled (multi-run counts)`;
+    } else if (selected.length === enabled.length) {
+        text = `Backends: all ${enabled.length} enabled backends selected`;
+    } else {
+        text = `Backends: ${selected.length} of ${enabled.length} enabled backends selected`;
+    }
+    document.querySelectorAll('.backend-selection-summary').forEach(el => { el.textContent = text; });
+}
 
 export function _buildOptTooltip(optLevels) {
     if (!optLevels || Object.keys(optLevels).length === 0) return 'No optimization levels defined.';
@@ -106,14 +181,30 @@ export function renderConfigPanel(runners) {
     `;
     grid.appendChild(globalDiv);
 
+    const mode = getState().executionMode;
+    const memText = mode === 'local' ? '512 MiB' : mode === 'kubernetes' ? '1 GiB' : '512 MiB (local) / 1 GiB (Kubernetes)';
     const sysDiv = document.createElement('div');
     sysDiv.className = "col-span-1 p-2 bg-gray-50 rounded border border-gray-200 mb-2 flex justify-between items-center text-xs";
     sysDiv.innerHTML = `
-        <span class="font-bold text-gray-500">⚡ System Limits:</span>
-        <span class="text-gray-600 font-mono">Memory: 512 MiB (local) / 1 GiB (K8s)</span>
+        <span class="font-bold text-gray-500">Per runner:</span>
+        <span class="text-gray-600 font-mono">0.5 CPU, 1 thread, ${memText} memory</span>
     `;
     grid.appendChild(sysDiv);
 
+    const selHead = document.createElement('div');
+    selHead.className = "col-span-1 flex items-center justify-between border-b border-indigo-200 pb-1";
+    selHead.innerHTML = `<span class="text-xs font-bold text-indigo-800 uppercase">Backends (checked ones run)</span>
+        <span class="backend-selection-summary text-xs text-indigo-700"></span>`;
+    grid.appendChild(selHead);
+
+    if (runners.length === 0) {
+        const p = document.createElement('p');
+        p.className = 'text-xs text-red-700';
+        p.textContent = 'The backend list could not be loaded from the server. Reload the page to try again.';
+        grid.appendChild(p);
+    }
+
+    const deselected = _loadDeselected();
     const orderedIds = Object.keys(RUNNER_DISPLAY_NAMES);
     const runnerMap = Object.fromEntries(runners.map(r => [r.id, r]));
     const orderedRunners = [
@@ -125,8 +216,8 @@ export function renderConfigPanel(runners) {
         const max = r.max_level ?? 0;
         const name = RUNNER_DISPLAY_NAMES[r.id] || r.id;
         const tooltip = _buildOptTooltip(r.optimization_levels);
-        const isDefaultChecked = DEFAULT_CHECKED_RUNNERS.has(r.id);
         const isDisabled = r.enabled === false;
+        const isDefaultChecked = !deselected.has(r.id);
 
         let optionsHtml = '<option value="-1">Use Global</option>';
         if (max === 0) {
@@ -156,7 +247,7 @@ export function renderConfigPanel(runners) {
                 <label class="flex items-center space-x-2 cursor-pointer ${isDisabled ? 'opacity-40 cursor-not-allowed line-through text-red-400' : ''}">
                     <input type="checkbox" class="sim-checkbox h-3 w-3 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
                            data-sim="${_escapeHtml(r.id)}" ${isDefaultChecked && !isDisabled ? 'checked' : ''} ${isDisabled ? 'disabled' : ''} ${isDisabled ? 'data-locked="1"' : ''}>
-                    <span class="block text-xs font-medium text-gray-600">${_escapeHtml(name)}</span>
+                    <span class="block text-xs font-medium text-gray-600">${_escapeHtml(name)}${isDisabled ? ' (disabled on this server)' : ''}</span>
                 </label>
                 <label class="runner-phase-wrap hidden flex items-center space-x-1 text-[10px] text-gray-400">
                     <span>Phase</span>
@@ -176,6 +267,12 @@ export function renderConfigPanel(runners) {
         `;
         grid.appendChild(div);
     });
+
+    grid.querySelectorAll('.sim-checkbox').forEach(cb => cb.addEventListener('change', () => {
+        _saveDeselected();
+        updateBackendSelectionSummary();
+    }));
+    grid.querySelectorAll('.runner-count-input').forEach(inp => inp.addEventListener('input', updateBackendSelectionSummary));
 
     applyConfigModes();
 }
@@ -197,6 +294,7 @@ export function applyConfigModes() {
     if (note) note.classList.toggle('hidden', !_multiRunEnabled);
     const presets = document.getElementById('ordering-presets');
     if (presets) presets.classList.toggle('hidden', !_orderingEnabled);
+    updateBackendSelectionSummary();
 }
 
 export function toggleMultiRunMode(cb) {
@@ -223,16 +321,9 @@ export function setOrderingSequential() {
 
 export async function toggleConfigPanel() {
     if (isDrawerOpen('config-panel')) { closeDrawers(); return; }
-    const grid = document.getElementById('config-grid');
-    if (grid && grid.children.length === 0) {
-        let runners = [];
-        try {
-            const resp = await fetch(`${BASE_URL}/runners`);
-            if (resp.ok) runners = await resp.json();
-        } catch (_) {}
-        renderConfigPanel(runners);
-    }
     openDrawer('config-panel');
+    const grid = document.getElementById('config-grid');
+    if (grid && Object.keys(_runnerOptInfo).length === 0) await loadRunners();
 }
 
 // Bulk-set every runner's optimization level (clamped to each runner's available
@@ -311,17 +402,14 @@ export function toggleAllSimulators() {
 
     const allChecked = Array.from(checkboxes).every(cb => cb.checked);
     checkboxes.forEach(cb => cb.checked = !allChecked);
+    _saveDeselected();
+    updateBackendSelectionSummary();
 }
 
 export function getTargetSimulators() {
     // In multi-run mode, selection is whatever has a non-zero run count.
     if (_multiRunEnabled) {
         return Object.keys(getRunnerConfig());
-    }
-
-    const checkboxes = document.querySelectorAll('.sim-checkbox:not(:disabled)');
-    if (checkboxes.length === 0) {
-        return ['pennylane-default', 'qiskit', 'cirq', 'qulacs'];
     }
 
     const checked = [];

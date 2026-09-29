@@ -19,12 +19,12 @@ export const PRESETS = {
         { algorithm: "ghz", qubits: 5, name: "GHZ State (Entanglement)" },
         { algorithm: "ghz", qubits: 10, name: "GHZ State (Entanglement)" },
         { algorithm: "ghz", qubits: 15, name: "GHZ State (Entanglement)" },
-        { algorithm: "ghz", qubits: 20, name: "GHZ State (Entanglement)" }
+        { algorithm: "ghz", qubits: 18, name: "GHZ State (Entanglement)" }
     ],
     "stress": [
-        { algorithm: "random", qubits: 20, name: "Random Circuit" },
-        { algorithm: "bv", qubits: 20, name: "Bernstein-Vazirani" },
-        { algorithm: "vqe", qubits: 20, name: "VQE Ansatz" }
+        { algorithm: "random", qubits: 18, name: "Random Circuit" },
+        { algorithm: "bv", qubits: 18, name: "Bernstein-Vazirani" },
+        { algorithm: "vqe", qubits: 18, name: "VQE Ansatz" }
     ]
 };
 
@@ -33,7 +33,9 @@ export async function applyPreset() {
     if (PRESETS[val]) {
         if (getState().batchQueue.length > 0 && !confirm("This will replace your current playlist. Continue?")) return;
 
-        const selectedPreset = JSON.parse(JSON.stringify(PRESETS[val]));
+        const cap = getState().maxQubitsStatevector;
+        const selectedPreset = JSON.parse(JSON.stringify(PRESETS[val]))
+            .map(item => ({ ...item, qubits: Math.min(item.qubits, cap) }));
 
         setLoading(true, `Loading Preset: ${val}...`, { overlay: false });
         try {
