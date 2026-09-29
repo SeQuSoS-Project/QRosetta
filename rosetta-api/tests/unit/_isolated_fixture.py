@@ -14,7 +14,6 @@ def slow(payload):
 
 
 def boom(payload):
-    # Simulate an OOM / hard crash: die without returning a result.
     os.kill(os.getpid(), signal.SIGKILL)
 
 

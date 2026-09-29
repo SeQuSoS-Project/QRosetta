@@ -1,4 +1,4 @@
-# Unit and integration tests.
+# Tests for qrosetta_commons MemoryMonitor.
 
 import sys
 import os
@@ -12,9 +12,7 @@ sys.path.insert(0, shared_dir)
 from qrosetta_commons.helpers import MemoryMonitor
 
 def test_memory_monitor_captures_spike():
-    """
-    Tests if the MemoryMonitor can capture a sudden memory allocation.
-    """
+    """MemoryMonitor captures a sudden allocation."""
     print("Running Verification...")
 
     target_mb = 100

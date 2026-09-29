@@ -1,151 +1,102 @@
-# Shared common utilities for the Rosetta ecosystem.
+"""Shared runner utilities: QASM helpers, the timing/memory instrument, result contract,
+isolated execution and the HTTP/CLI scaffolding."""
 
-import numpy as np
-from collections import Counter
-import time
-import psutil
-import threading
-import os
-import logging
-import sys
+import asyncio as _asyncio
+import base64
 import functools
 import gc
+import importlib as _importlib
 import importlib.metadata
+import logging
+import multiprocessing as _multiprocessing
+import os
+import queue as _queue
 import re
+import resource as _resource
+import statistics as _statistics
+import sys
+import time
+from collections import Counter
 
-import base64
+import numpy as np
+
+from qrosetta_commons.memory import MemoryMonitor, lifetime_peak_rss
 
 MAX_QUBITS_STATEVECTOR = int(os.getenv("MAX_QUBITS_STATEVECTOR", "18"))
 MAX_QUBITS_MEASURED = int(os.getenv("MAX_QUBITS_MEASURED", "24"))
 
-def get_logger(service_name: str) -> logging.Logger:
-    """
-    Configures a structured logger that outputs to stdout.
-    Format: [Timestamp] [Level] [Service] Message
-    """
-    logger = logging.getLogger(service_name)
+THREAD_ENV_VARS = ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
+                   "NUMEXPR_NUM_THREADS")
 
+METRIC_SCOPE = {
+    "compilation_time_sec": "wall clock, t0..t1 of the last timed run",
+    "simulation_time_sec": "wall clock, t2..t3 of the last timed run",
+    "simulation_cpu_time_sec": "process CPU time (all threads), t2..t3 of the last timed run",
+    "memory_usage_mb": "peak RSS minus RSS at monitor entry, pre_execute + t2..t3 of the "
+                       "last timed run",
+    "process_peak_mb": "peak RSS, pre_execute + t2..t3 of the last timed run",
+    "cpu_time_sec": "process CPU time over the whole runner process: interpreter start, "
+                    "imports, warm-up and all timed runs",
+    "process_peak_rss_mb": "peak RSS over the whole runner process: interpreter start, "
+                           "imports, warm-up and all timed runs",
+}
+
+
+def get_logger(service_name: str) -> logging.Logger:
+    """Return a stdout logger formatted as ``timestamp | level | service | message``."""
+    logger = logging.getLogger(service_name)
     if logger.hasHandlers():
         return logger
 
     logger.setLevel(logging.INFO)
-
     handler = logging.StreamHandler(sys.stdout)
-    formatter = logging.Formatter(
+    handler.setFormatter(logging.Formatter(
         fmt='%(asctime)s | %(levelname)-8s | %(name)-20s | %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    handler.setFormatter(formatter)
+    ))
     logger.addHandler(handler)
-
     return logger
 
-def encode_statevector(statevector: np.ndarray) -> str:
-    """
-    Serializes a NumPy array (complex128) to a Base64 string.
-    """
 
+def encode_statevector(statevector: np.ndarray) -> str:
+    """Serialize a statevector to Base64 as complex128."""
     if statevector.dtype != np.complex128:
         statevector = statevector.astype(np.complex128)
     return base64.b64encode(statevector.tobytes()).decode('utf-8')
 
-def decode_statevector(encoded_str: str) -> np.ndarray:
-    """
-    Deserializes a Base64 string back to a NumPy array (complex128).
-    """
-    try:
-        bytes_data = base64.b64decode(encoded_str)
-        return np.frombuffer(bytes_data, dtype=np.complex128)
-    except Exception as e:
 
+def decode_statevector(encoded_str: str) -> np.ndarray:
+    """Deserialize a Base64 string into a complex128 array."""
+    try:
+        return np.frombuffer(base64.b64decode(encoded_str), dtype=np.complex128)
+    except Exception as e:
         raise ValueError(f"Failed to decode statevector: {e}")
 
+
 def _draw_statevector_samples(statevector, n_shots, seed=None):
-    """Draw shot indices from a statevector's probability distribution.
+    """Draw ``n_shots`` basis-state indices from a statevector's |amplitude|^2.
 
-    Returns the raw sampled basis-state indices. This is the sampling a native backend
-    performs internally, so it belongs inside the timed simulation window; call it from
-    ``execute_fn``. Pair it with ``_counts_from_samples`` in ``postprocess_fn``.
-
-    seed: optional int for reproducible sampling. None yields a fresh,
-    non-deterministic generator (the prior behaviour).
+    Call from ``execute_fn``; pair with ``_counts_from_samples`` in ``postprocess_fn``.
+    ``seed=None`` uses a fresh non-deterministic generator.
     """
-
     probabilities = np.abs(statevector)**2
-
     rng = np.random.default_rng(seed)
-    return rng.choice(
-        len(statevector),
-        size=n_shots,
-        p=probabilities
-    )
+    return rng.choice(len(statevector), size=n_shots, p=probabilities)
 
 
 def _counts_from_samples(samples, n_qubits):
-    """Build a counts histogram from drawn sample indices.
-
-    Bookkeeping rather than simulation, and on a small circuit it costs more than the
-    draw itself, so call it from ``postprocess_fn`` to keep it outside t2..t3.
-    """
+    """Build a ``{bitstring: count}`` histogram from sampled indices. Call from
+    ``postprocess_fn``."""
     return {
         format(k, f'0{n_qubits}b'): v
         for k, v in Counter(samples).items()
     }
 
-class MemoryMonitor:
-    def __init__(self, interval=0.001):
-        """
-        interval: Sampling rate in seconds.
-        0.001 (1ms) is fast enough to catch C++ spikes
-        without slowing down the simulation significantly.
-        """
-        self.interval = interval
-        self.process = psutil.Process(os.getpid())
-        self.keep_measuring = True
-        self.peak_memory = 0
-        self.start_memory = 0
-        self.baseline_memory = 0
-
-    def _measure_loop(self):
-        while self.keep_measuring:
-
-            current_mem = self.process.memory_info().rss
-            if current_mem > self.peak_memory:
-                self.peak_memory = current_mem
-            time.sleep(self.interval)
-
-    def __enter__(self):
-
-        self.baseline_memory = self.process.memory_info().rss
-        self.peak_memory = self.baseline_memory
-
-        self.keep_measuring = True
-        self.thread = threading.Thread(target=self._measure_loop)
-        self.thread.start()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-
-        self.keep_measuring = False
-        self.thread.join()
-
-    def get_peak_usage_mb(self):
-
-        return (self.peak_memory - self.baseline_memory) / (1024 * 1024)
-
-    def get_process_peak_mb(self):
-
-        return self.peak_memory / (1024 * 1024)
 
 def theoretical_statevector_mb(n_qubits: int) -> float:
-    """
-    Minimum memory to store a full statevector for n_qubits in complex128.
-    = 2^N amplitudes × 16 bytes each.
-    This is a lower-bound reference; actual runtime usage is always higher
-    due to working buffers, compilation state, and intermediate tensors.
-    Not meaningful for tensor-network simulators (report None for those).
-    """
+    """Size of a dense complex128 statevector for ``n_qubits``: ``2^N * 16`` bytes, in MiB."""
     return (2 ** n_qubits * 16) / (1024 ** 2)
+
 
 _QREG_DECL_RE = re.compile(r"\bqreg\s+\w+\s*\[\s*(\d+)\s*\]\s*;")
 _LINE_COMMENT_RE = re.compile(r"//[^\n]*")
@@ -158,39 +109,26 @@ def strip_qasm_comments(qasm_string: str) -> str:
 
 
 def get_num_qubits_from_qasm(qasm_string: str) -> int:
-    """Total qubits declared by the circuit, summed over every qreg declaration.
-
-    OpenQASM 2.0 permits several quantum registers, so `qreg q[9]; qreg flag[1];`
-    is a 10-qubit circuit. Returns 0 when the source declares no qreg.
-    """
+    """Total qubits declared by the circuit, summed over every ``qreg``; 0 if none."""
     sizes = _QREG_DECL_RE.findall(strip_qasm_comments(qasm_string))
     return sum(int(size) for size in sizes)
 
+
 def strip_barriers_from_qasm(qasm_string: str) -> str:
-    """Remove barrier instructions from QASM before simulation.
-    Barriers are visual hints only — they don't affect the statevector.
-    Some C++ backends (lightning.qubit) raise errors on qml.Barrier at larger wire counts."""
+    """Remove ``barrier`` lines from QASM source."""
     return '\n'.join(
         line for line in qasm_string.split('\n')
         if not line.strip().startswith('barrier')
     )
 
+
 def check_qubits_limit(qasm_string: str, max_qubits: int = 24):
-    """
-    Raises ValueError if the circuit has more qubits than allowed.
-    24 qubits ~ 268 MB statevector (complex128).
-    25 qubits ~ 536 MB statevector (OOM on 512 MiB local container,
-    fits within 1 GiB K8s runner pod).
-    """
+    """Raise ValueError if the circuit declares more than ``max_qubits`` qubits."""
     n_qubits = get_num_qubits_from_qasm(qasm_string)
     if n_qubits > max_qubits:
         raise ValueError(f"Circuit has {n_qubits} qubits, which exceeds the limit of {max_qubits} for this runner.")
 
 
-# Distribution-name substrings that identify the quantum SDK packages worth recording
-# for provenance. A runner's image is isolated and only contains its own stack, so
-# scanning installed distributions for these yields exactly that runner's quantum
-# dependencies (e.g. pytket + pytket-qiskit + qiskit + qiskit-aer for the qiskit runner).
 _SDK_VERSION_KEYWORDS = (
     "qiskit", "cirq", "qulacs", "pennylane", "qibo", "pytket", "cuquantum",
     "custatevec", "torch", "quimb", "myqlm", "qat", "qrisp", "pyquil",
@@ -199,14 +137,9 @@ _SDK_VERSION_KEYWORDS = (
 
 _sdk_versions_cache = None
 
-def get_sdk_versions() -> dict:
-    """Return {distribution_name: version} for the quantum SDK packages installed in
-    this process, read from importlib.metadata at runtime.
 
-    These are the versions that executed the circuit, recorded in the report and the
-    RO-Crate provenance. Versions are fixed for a process's lifetime, so the scan is
-    cached after the first call.
-    """
+def get_sdk_versions() -> dict:
+    """Return ``{distribution: version}`` for installed quantum-SDK packages (cached)."""
     global _sdk_versions_cache
     if _sdk_versions_cache is not None:
         return dict(_sdk_versions_cache)
@@ -224,12 +157,9 @@ def get_sdk_versions() -> dict:
     _sdk_versions_cache = versions
     return dict(versions)
 
-def with_sdk_versions(func):
-    """Decorator for a runner's process_run / process_run_measured.
 
-    Attaches the executed SDK versions (get_sdk_versions) to the returned result dict
-    under 'sdk_versions' on both the success and error paths.
-    """
+def with_sdk_versions(func):
+    """Decorator adding ``sdk_versions`` to a runner processor's result dict."""
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         result = func(*args, **kwargs)
@@ -239,18 +169,10 @@ def with_sdk_versions(func):
     return wrapper
 
 
-# --- isolated, hard-timeout execution -------------------------------------------------
-# Runs a runner's process_run / process_run_measured in a spawned child process with a hard
-# wall-clock kill, off the async event loop. A CPU-bound simulation cannot be interrupted in
-# a thread, so a runaway or out-of-memory run is stopped by killing the process. spawn (not
-# fork) is used so the GPU runners initialise cleanly in the child.
+def get_thread_env() -> dict:
+    """Return the thread-count environment variables of this process (None if unset)."""
+    return {name: os.environ.get(name) for name in THREAD_ENV_VARS}
 
-import asyncio as _asyncio
-import importlib as _importlib
-import multiprocessing as _multiprocessing
-import queue as _queue
-import resource as _resource
-import statistics as _statistics
 
 _SPAWN_CTX = _multiprocessing.get_context("spawn")
 
@@ -263,20 +185,13 @@ _QASM_QUBIT_REF_RE = re.compile(r'([a-zA-Z_][a-zA-Z0-9_]*)\s*\[\s*(\d+)\s*\]')
 
 
 def count_qasm_gates_and_depth(qasm_str: str) -> tuple:
-    """Count gate-application statements and their circuit depth from an OpenQASM 2.0
-    string, with no quantum-SDK dependency (this module is imported by every runner).
+    """Return ``(gate_count, depth)`` for the top-level gate statements of OpenQASM 2.0.
 
-    Depth uses the standard greedy-layering definition: a gate's layer is one more than
-    the deepest layer already recorded on any qubit it touches. Qubits are identified by
-    their literal ``register[index]`` token, so gates inside a custom ``gate ... { }``
-    definition (which refer to bare formal parameters, no ``[index]``) are not counted,
-    and neither are classically-conditioned (``if (...)``) statements.
+    Depth is greedy layering over literal ``reg[i]`` operands. Statements inside
+    ``gate``/``opaque`` definitions and ``if (...)`` statements are not counted.
     """
     depth_by_qubit = {}
     gate_count = 0
-    # A gate/opaque definition's closing '}' has no preceding ';', so a naive split(';')
-    # would glue it onto the next real statement's first word. Blanking braces avoids that
-    # while still leaving 'gate'/'opaque' as each definition's own (skipped) first word.
     no_braces = re.sub(r'//.*', '', qasm_str).replace('{', ' ').replace('}', ' ')
     for stmt in no_braces.split(';'):
         stmt = stmt.strip()
@@ -297,17 +212,14 @@ def count_qasm_gates_and_depth(qasm_str: str) -> tuple:
 
 
 def run_with_uniform_measurement(func, payload):
-    """Run a runner's process_run/process_run_measured with a uniform disclosed warm-up,
-    getrusage-based peak/CPU capture, and derived n_shots/gate_count/circuit_depth.
+    """Run a runner processor once as a discarded warm-up, then ``timing_repeats`` timed
+    times, and attach process-level diagnostics to the last timed result.
 
-    Shared by both deployment modes: the local isolated-child path (_isolated_target, via
-    run_isolated) and the Kubernetes per-pod CLI path (run_cli_main's --s3-job-id branch),
-    so published timing/memory numbers mean the same thing regardless of where a run
-    executed. In k8s mode this doubles a job's simulation work (warm-up + timed call) since
-    every request already gets a fresh cold pod; that cost is the price of a comparable
-    definition of "compilation/simulation time" across both modes, not a bug.
+    Used by both the isolated child (``run_isolated``) and the Kubernetes CLI path.
+    ``cpu_time_sec`` and ``process_peak_rss_mb`` cover the whole runner process; see
+    ``METRIC_SCOPE``, which is copied into the result as ``metric_scope``.
     """
-    func(payload)  # discarded uniform warm-up: covers import/JIT/compile caches
+    func(payload)
 
     repeats = max(1, int(payload.get("timing_repeats", 1) or 1))
     timed_results = [func(payload) for _ in range(repeats)]
@@ -324,8 +236,11 @@ def run_with_uniform_measurement(func, payload):
                     _statistics.stdev(exec_times) if len(exec_times) > 1 else 0.0)
 
         usage = _resource.getrusage(_resource.RUSAGE_SELF)
-        result["process_peak_rss_mb"] = usage.ru_maxrss / 1024  # ru_maxrss is KB on Linux
+        peak_mb, peak_method = lifetime_peak_rss()
+        result["process_peak_rss_mb"] = peak_mb
+        result["process_peak_rss_method"] = peak_method
         result["cpu_time_sec"] = usage.ru_utime + usage.ru_stime
+        result["metric_scope"] = dict(METRIC_SCOPE)
 
         if "n_shots" in payload:
             result["n_shots"] = payload["n_shots"]
@@ -353,14 +268,13 @@ def _isolated_error(message):
 
 
 def _run_isolated_blocking(module_name, func_name, payload, timeout_s):
+    """Run the processor in a spawned child; poll every 0.2 s for a result, a dead child
+    or the deadline."""
     result_q = _SPAWN_CTX.Queue()
     proc = _SPAWN_CTX.Process(
         target=_isolated_target, args=(result_q, module_name, func_name, payload))
     proc.start()
 
-    # Poll so a crashed child (e.g. OOM kill) is detected in ~0.2s rather than only at the
-    # deadline, while still enforcing the hard timeout. get() drains the pipe as the child
-    # writes, avoiding a large-result deadlock.
     deadline = time.monotonic() + timeout_s
     outcome = None
     while True:
@@ -394,10 +308,10 @@ def _run_isolated_blocking(module_name, func_name, payload, timeout_s):
 
 
 async def run_isolated(func, payload, default_timeout=None):
-    """Await a runner function in a killable child process, without blocking the event loop.
+    """Await a runner processor in a killable spawned child process.
 
-    The wall-clock budget comes from ``payload['hard_timeout_seconds']`` (set by the
-    dispatcher), falling back to ``default_timeout`` / RUNNER_HARD_TIMEOUT_SEC.
+    The wall-clock budget is ``payload['hard_timeout_seconds']``, else ``default_timeout``,
+    else RUNNER_HARD_TIMEOUT_SEC.
     """
     if default_timeout is None:
         default_timeout = DEFAULT_HARD_TIMEOUT_SEC
@@ -407,18 +321,14 @@ async def run_isolated(func, payload, default_timeout=None):
         None, _run_isolated_blocking, func.__module__, func.__name__, payload, int(timeout_s))
 
 
-# --- shared runner scaffolding --------------------------------------------------------
-# Every runner exposes the same HTTP surface, the same S3/local CLI, and the same result
-# contract. These helpers hold that boilerplate once so each runner file is its imports plus
-# the SDK-specific compile/execute logic.
-
 _UNSET = object()
 
 
 def _base_result(*, simulator, compilation_time, simulation_time, monitor, qubit_ordering,
-                 n_qubits, theoretical_mb, preprocessing_applied, transpiled_qasm):
-    # theoretical_mb defaults to (2^n * 16) computed from n_qubits; pass it explicitly
-    # (e.g. None) for backends where a dense statevector size is not meaningful.
+                 n_qubits, theoretical_mb, preprocessing_applied, transpiled_qasm,
+                 simulation_cpu_time=None, precision=None):
+    """Fields common to statevector and counts results. ``theoretical_mb`` defaults to the
+    dense size for ``n_qubits``; pass None where a dense statevector does not apply."""
     if theoretical_mb is _UNSET:
         theoretical_mb = theoretical_statevector_mb(n_qubits)
     return {
@@ -426,39 +336,45 @@ def _base_result(*, simulator, compilation_time, simulation_time, monitor, qubit
         "execution_time_sec": compilation_time + simulation_time,
         "compilation_time_sec": compilation_time,
         "simulation_time_sec": simulation_time,
+        "simulation_cpu_time_sec": simulation_cpu_time,
         "memory_usage_mb": monitor.get_peak_usage_mb(),
         "process_peak_mb": monitor.get_process_peak_mb(),
+        "memory_method": getattr(monitor, "method", None),
         "qubit_ordering": qubit_ordering,
         "theoretical_statevector_mb": theoretical_mb,
         "preprocessing_applied": preprocessing_applied,
         "transpiled_qasm": transpiled_qasm,
+        "precision": precision,
+        "thread_env": get_thread_env(),
     }
 
 
 def statevector_result(*, simulator, statevector, compilation_time, simulation_time, monitor,
                        qubit_ordering, preprocessing_applied, transpiled_qasm,
-                       n_qubits=None, theoretical_mb=_UNSET):
-    """Assemble a runner's statevector result dict. ``statevector`` is the raw array-like
-    output; it is encoded to the Base64 wire format here."""
+                       n_qubits=None, theoretical_mb=_UNSET, simulation_cpu_time=None,
+                       precision=None):
+    """Assemble a statevector result; ``statevector`` is encoded to Base64 here."""
     result = _base_result(
         simulator=simulator, compilation_time=compilation_time, simulation_time=simulation_time,
         monitor=monitor, qubit_ordering=qubit_ordering, n_qubits=n_qubits,
         theoretical_mb=theoretical_mb, preprocessing_applied=preprocessing_applied,
-        transpiled_qasm=transpiled_qasm)
+        transpiled_qasm=transpiled_qasm, simulation_cpu_time=simulation_cpu_time,
+        precision=precision)
     result["statevector"] = encode_statevector(np.asarray(statevector))
     return result
 
 
 def counts_result(*, simulator, counts, sampling_method, compilation_time, simulation_time,
                   monitor, qubit_ordering, preprocessing_applied, transpiled_qasm,
-                  n_qubits=None, theoretical_mb=_UNSET):
-    """Assemble a runner's measured (counts) result dict. ``sampling_method=None`` omits the
-    key (a runner that does not label its sampling method)."""
+                  n_qubits=None, theoretical_mb=_UNSET, simulation_cpu_time=None,
+                  precision=None):
+    """Assemble a counts result; ``sampling_method=None`` omits that key."""
     result = _base_result(
         simulator=simulator, compilation_time=compilation_time, simulation_time=simulation_time,
         monitor=monitor, qubit_ordering=qubit_ordering, n_qubits=n_qubits,
         theoretical_mb=theoretical_mb, preprocessing_applied=preprocessing_applied,
-        transpiled_qasm=transpiled_qasm)
+        transpiled_qasm=transpiled_qasm, simulation_cpu_time=simulation_cpu_time,
+        precision=precision)
     result["counts"] = counts
     if sampling_method is not None:
         result["sampling_method"] = sampling_method
@@ -466,7 +382,7 @@ def counts_result(*, simulator, counts, sampling_method, compilation_time, simul
 
 
 def runner_error(simulator: str, exc) -> dict:
-    """Assemble a runner's error result dict from a caught exception."""
+    """Assemble a runner error result from an exception."""
     return {
         "simulator": simulator,
         "error": str(exc),
@@ -477,51 +393,41 @@ def runner_error(simulator: str, exc) -> dict:
 
 
 class CompileResult:
-    """What a runner's compile step hands to its execute step.
+    """Output of a runner's compile step, passed to its execute step.
 
-    ``circuit`` is whatever the SDK needs to execute — a circuit object, a (circuit, backend)
-    pair, a callable. The scaffold never inspects it.
-
-    ``transpiled_qasm`` is left None by runners whose serialization can wait until after the
-    compilation clock stops. A runner that mutates its circuit during compilation (adding a
-    save instruction, stripping measurements, rebasing in place) sets it here instead, so the
-    captured text matches the circuit that actually ran.
+    ``circuit`` is whatever the SDK executes; the scaffold does not inspect it.
+    ``transpiled_qasm`` is set by runners that mutate the circuit during compilation;
+    otherwise ``serialize_fn`` fills it after t1. ``precision`` (e.g. ``"complex64"``)
+    overrides the ``precision`` passed to ``run_statevector_job`` / ``run_measured_job``.
     """
 
-    __slots__ = ("circuit", "n_qubits", "preprocessing_applied", "transpiled_qasm")
+    __slots__ = ("circuit", "n_qubits", "preprocessing_applied", "transpiled_qasm", "precision")
 
-    def __init__(self, circuit, n_qubits=None, preprocessing_applied=None, transpiled_qasm=None):
+    def __init__(self, circuit, n_qubits=None, preprocessing_applied=None, transpiled_qasm=None,
+                 precision=None):
         self.circuit = circuit
         self.n_qubits = n_qubits
         self.preprocessing_applied = preprocessing_applied if preprocessing_applied is not None else []
         self.transpiled_qasm = transpiled_qasm
+        self.precision = precision
 
 
 def _timed_job(*, simulator, logger, payload, max_qubits, compile_fn, execute_fn,
                serialize_fn, monitor_interval, build_result, pre_execute_fn=None,
                postprocess_fn=None):
-    """The shared measurement instrument for one runner call.
+    """The shared measurement instrument for one runner call::
 
-    Every backend is timed the same way, so a difference between two backends' reported
-    numbers reflects the backends rather than their adapters:
+      check_qubits_limit -> t0 -> compile_fn -> t1                       (compilation_time)
+      serialize_fn                                                       (outside both windows)
+      MemoryMonitor + gc.collect() -> pre_execute_fn -> t2 -> execute_fn -> t3
+                                                                         (simulation_time)
+      postprocess_fn                                                     (outside both windows)
 
-      check the qubit limit -> t0 -> compile_fn -> t1  (compilation_time)
-      serialize for provenance, outside the compilation window where the runner allows it
-      MemoryMonitor + gc.collect() -> pre_execute_fn -> t2 -> execute_fn -> t3  (simulation_time)
-      postprocess_fn, outside the simulation window
-
-    ``pre_execute_fn`` covers setup that must happen under the memory monitor but is not
-    simulation work, such as seeding a global RNG the backend samples from.
-
-    ``postprocess_fn`` covers shaping the backend's raw output into the reported form —
-    turning sampled indices into a counts histogram, relabelling hex keys as bitstrings.
-    That is bookkeeping rather than simulation, and on a small circuit it is a measurable
-    fraction of the run, so it is deliberately outside t2..t3.
-
-    Failures at any stage become a runner_error carrying the simulator's name.
+    Any failure becomes a ``runner_error``.
     """
     try:
         check_qubits_limit(payload["circuit_data"], max_qubits)
+        declared_qubits = get_num_qubits_from_qasm(payload["circuit_data"])
 
         t0 = time.perf_counter()
         compiled = compile_fn(payload)
@@ -530,7 +436,6 @@ def _timed_job(*, simulator, logger, payload, max_qubits, compile_fn, execute_fn
 
         transpiled_qasm = compiled.transpiled_qasm
         if transpiled_qasm is None and serialize_fn is not None:
-            # Provenance only — serialized after t1 so it does not inflate compilation_time.
             transpiled_qasm = serialize_fn(compiled)
 
         with MemoryMonitor(interval=monitor_interval) as monitor:
@@ -539,9 +444,11 @@ def _timed_job(*, simulator, logger, payload, max_qubits, compile_fn, execute_fn
             if pre_execute_fn is not None:
                 pre_execute_fn(compiled, payload)
 
+            c2 = time.process_time()
             t2 = time.perf_counter()
             executed = execute_fn(compiled, payload)
             t3 = time.perf_counter()
+            c3 = time.process_time()
             simulation_time = t3 - t2
 
         if postprocess_fn is not None:
@@ -555,7 +462,8 @@ def _timed_job(*, simulator, logger, payload, max_qubits, compile_fn, execute_fn
         return build_result(
             executed=executed, compiled=compiled, monitor=monitor,
             compilation_time=compilation_time, simulation_time=simulation_time,
-            transpiled_qasm=transpiled_qasm,
+            transpiled_qasm=transpiled_qasm, simulation_cpu_time=c3 - c2,
+            declared_qubits=declared_qubits,
         )
     except Exception as exc:
         if logger is not None:
@@ -563,21 +471,32 @@ def _timed_job(*, simulator, logger, payload, max_qubits, compile_fn, execute_fn
         return runner_error(simulator, exc)
 
 
+def _resolve_theoretical_mb(theoretical_mb, declared_qubits):
+    """Dense statevector size for the declared qubit count unless the runner overrode it."""
+    if theoretical_mb is _UNSET:
+        return theoretical_statevector_mb(declared_qubits)
+    return theoretical_mb
+
+
 def run_statevector_job(*, simulator, payload, compile_fn, execute_fn, qubit_ordering,
                         logger=None, serialize_fn=None, pre_execute_fn=None,
                         postprocess_fn=None, max_qubits=None,
-                        monitor_interval=0.01, theoretical_mb=_UNSET):
-    """Run one statevector call through the shared measurement instrument.
+                        monitor_interval=0.01, theoretical_mb=_UNSET, precision=None):
+    """Run one statevector call through ``_timed_job``.
 
-    ``execute_fn(compiled, payload)`` returns the raw statevector.
+    ``execute_fn(compiled, payload)`` returns the raw statevector. ``precision`` names the
+    backend's amplitude dtype (e.g. ``"complex128"``); None if unspecified.
     """
     def build_result(*, executed, compiled, monitor, compilation_time, simulation_time,
-                     transpiled_qasm):
+                     transpiled_qasm, simulation_cpu_time, declared_qubits):
         return statevector_result(
             simulator=simulator, statevector=executed, compilation_time=compilation_time,
             simulation_time=simulation_time, monitor=monitor, qubit_ordering=qubit_ordering,
             n_qubits=compiled.n_qubits, preprocessing_applied=compiled.preprocessing_applied,
-            transpiled_qasm=transpiled_qasm, theoretical_mb=theoretical_mb)
+            transpiled_qasm=transpiled_qasm,
+            theoretical_mb=_resolve_theoretical_mb(theoretical_mb, declared_qubits),
+            simulation_cpu_time=simulation_cpu_time,
+            precision=getattr(compiled, "precision", None) or precision)
 
     return _timed_job(
         simulator=simulator, logger=logger, payload=payload,
@@ -590,22 +509,25 @@ def run_statevector_job(*, simulator, payload, compile_fn, execute_fn, qubit_ord
 def run_measured_job(*, simulator, payload, compile_fn, execute_fn, qubit_ordering,
                      logger=None, serialize_fn=None, pre_execute_fn=None,
                      postprocess_fn=None, max_qubits=None,
-                     monitor_interval=0.01, theoretical_mb=_UNSET):
-    """Run one measured call through the shared measurement instrument.
+                     monitor_interval=0.01, theoretical_mb=_UNSET, precision=None):
+    """Run one measured call through ``_timed_job``.
 
     ``execute_fn(compiled, payload)`` returns ``(counts, sampling_method)``, where
-    sampling_method is 'native' when the backend sampled shots itself and 'statevector'
-    when the counts were drawn from a computed statevector.
+    sampling_method is ``'native'`` (backend sampled shots) or ``'statevector'`` (drawn
+    from a computed statevector). ``precision`` as in ``run_statevector_job``.
     """
     def build_result(*, executed, compiled, monitor, compilation_time, simulation_time,
-                     transpiled_qasm):
+                     transpiled_qasm, simulation_cpu_time, declared_qubits):
         counts, sampling_method = executed
         return counts_result(
             simulator=simulator, counts=counts, sampling_method=sampling_method,
             compilation_time=compilation_time, simulation_time=simulation_time,
             monitor=monitor, qubit_ordering=qubit_ordering, n_qubits=compiled.n_qubits,
             preprocessing_applied=compiled.preprocessing_applied,
-            transpiled_qasm=transpiled_qasm, theoretical_mb=theoretical_mb)
+            transpiled_qasm=transpiled_qasm,
+            theoretical_mb=_resolve_theoretical_mb(theoretical_mb, declared_qubits),
+            simulation_cpu_time=simulation_cpu_time,
+            precision=getattr(compiled, "precision", None) or precision)
 
     return _timed_job(
         simulator=simulator, logger=logger, payload=payload,
@@ -616,11 +538,7 @@ def run_measured_job(*, simulator, payload, compile_fn, execute_fn, qubit_orderi
 
 
 def register_runner_endpoints(app, process_run, process_run_measured):
-    """Register the standard /run and /run_measured endpoints on a runner's FastAPI app.
-
-    Each runs the CPU-bound processor in a killable child process (run_isolated) so a runaway
-    or OOM simulation cannot hang the worker.
-    """
+    """Register ``/run`` and ``/run_measured`` on a runner app, each via ``run_isolated``."""
     from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
 
     @app.post("/run")
@@ -633,11 +551,8 @@ def register_runner_endpoints(app, process_run, process_run_measured):
 
 
 def run_cli_main(app, process_run, process_run_measured, cli_name):
-    """Runner entrypoint. With no CLI args, serves the FastAPI app; with ``--endpoint`` it
-    runs one job from an inline ``--payload`` or an S3 job id (the Kubernetes dispatch path).
-    Call under ``if __name__ == "__main__":``.
-    """
-    import sys
+    """Runner entrypoint: with no args serve ``app``; with ``--endpoint`` run one job from
+    ``--payload`` or ``--s3-job-id`` (the Kubernetes path)."""
     if len(sys.argv) <= 1:
         import uvicorn
         uvicorn.run(app, host="0.0.0.0", port=8000)
@@ -645,7 +560,6 @@ def run_cli_main(app, process_run, process_run_measured, cli_name):
 
     import argparse
     import json
-    import os
     parser = argparse.ArgumentParser(description=f"{cli_name} runner CLI")
     parser.add_argument("--endpoint", choices=["run", "run_measured"], required=True,
                         help="Which endpoint to invoke")

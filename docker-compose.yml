@@ -53,6 +53,11 @@ services:
       context: .
       dockerfile: ./runners/pytket-qiskit-runner/Dockerfile
     container_name: pytket-qiskit-runner
+    environment:
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
     networks:
       - isolated_net
     deploy:
@@ -66,6 +71,11 @@ services:
       context: .
       dockerfile: ./runners/pytket-cirq-runner/Dockerfile
     container_name: pytket-cirq-runner
+    environment:
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
     networks:
       - isolated_net
     deploy:
@@ -79,6 +89,11 @@ services:
       context: .
       dockerfile: ./runners/pytket-qulacs-runner/Dockerfile
     container_name: pytket-qulacs-runner
+    environment:
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
     networks:
       - isolated_net
     deploy:
@@ -92,6 +107,11 @@ services:
       context: .
       dockerfile: ./runners/pytket-braket-runner/Dockerfile
     container_name: pytket-braket-runner
+    environment:
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
     networks:
       - isolated_net
     deploy:
@@ -105,6 +125,11 @@ services:
       context: .
       dockerfile: ./runners/pytket-projectq-runner/Dockerfile
     container_name: pytket-projectq-runner
+    environment:
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
     networks:
       - isolated_net
     deploy:
@@ -118,6 +143,11 @@ services:
       context: .
       dockerfile: ./runners/pytket-quest-runner/Dockerfile
     container_name: pytket-quest-runner
+    environment:
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
     networks:
       - isolated_net
     deploy:
@@ -131,6 +161,11 @@ services:
       context: .
       dockerfile: ./runners/pennylane-lightning-runner/Dockerfile
     container_name: pennylane-lightning-runner
+    environment:
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
     networks:
       - isolated_net
     deploy:
@@ -144,6 +179,11 @@ services:
       context: .
       dockerfile: ./runners/pennylane-default-runner/Dockerfile
     container_name: pennylane-default-runner
+    environment:
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
     networks:
       - isolated_net
     deploy:
@@ -157,6 +197,11 @@ services:
       context: .
       dockerfile: ./runners/qibo-runner/Dockerfile
     container_name: qibo-runner
+    environment:
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
     networks:
       - isolated_net
     deploy:
@@ -170,6 +215,11 @@ services:
       context: .
       dockerfile: ./runners/qrisp-runner/Dockerfile
     container_name: qrisp-runner
+    environment:
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
     networks:
       - isolated_net
     deploy:
@@ -183,6 +233,11 @@ services:
       context: .
       dockerfile: ./runners/myqlm-runner/Dockerfile
     container_name: myqlm-runner
+    environment:
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
     networks:
       - isolated_net
     deploy:
@@ -196,6 +251,11 @@ services:
       context: .
       dockerfile: ./runners/pyquil-runner/Dockerfile
     container_name: pyquil-runner
+    environment:
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
     networks:
       - isolated_net
     deploy:
@@ -209,6 +269,11 @@ services:
       context: .
       dockerfile: ./runners/qsim-cirq-runner/Dockerfile
     container_name: qsim-cirq-runner
+    environment:
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
     networks:
       - isolated_net
     deploy:
@@ -222,6 +287,11 @@ services:
       context: .
       dockerfile: ./runners/torch-quantum-runner/Dockerfile
     container_name: torch-quantum-runner
+    environment:
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
     networks:
       - isolated_net
     deploy:
@@ -235,6 +305,11 @@ services:
       context: .
       dockerfile: ./runners/quimb-runner/Dockerfile
     container_name: quimb-runner
+    environment:
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
     networks:
       - isolated_net
     deploy:
@@ -248,6 +323,11 @@ services:
       context: .
       dockerfile: ./runners/cuquantum-runner/Dockerfile
     container_name: cuquantum-runner
+    environment:
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
     networks:
       - isolated_net
     deploy:

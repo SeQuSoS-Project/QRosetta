@@ -1,4 +1,4 @@
-"""Tests for helpers.run_isolated — the in-runner spawned-subprocess hard-kill (Phase 2).
+"""Tests for helpers.run_isolated, the spawned-subprocess hard-kill.
 
 Verifies a normal run returns, a runaway is killed promptly at the budget, a crash (OOM)
 fails fast, and an in-sim exception is surfaced. Driven with asyncio.run.
@@ -17,7 +17,6 @@ def _call(func, payload):
 def test_normal_run_returns_result():
     r = _call(fx.fast, {"x": 21})
     assert r["result"] == 42
-    # additive diagnostics from the isolated-child wrapper (uniform warm-up + getrusage)
     assert isinstance(r["cpu_time_sec"], float) and r["cpu_time_sec"] >= 0
     assert isinstance(r["process_peak_rss_mb"], float) and r["process_peak_rss_mb"] > 0
 
@@ -45,7 +44,6 @@ def test_in_sim_exception_is_surfaced():
 
 
 def test_default_timeout_used_when_absent():
-    # No hard_timeout_seconds -> falls back to the default; fast func still returns.
     assert _call(fx.fast, {"x": 5})["result"] == 10
 
 
@@ -66,8 +64,7 @@ def test_gate_count_and_depth_derived_from_transpiled_qasm():
 
 
 def test_repeat_with_variance():
-    # fx.with_qasm reports a constant execution_time_sec, so the mean is that constant
-    # and the stdev is exactly 0 — a deterministic check of the aggregation itself.
+    # fx.with_qasm reports a constant execution_time_sec, so the stdev is exactly 0.
     r = _call(fx.with_qasm, {"timing_repeats": 3})
     assert r["timing_repeats"] == 3
     assert r["execution_time_sec_mean"] == 0.01

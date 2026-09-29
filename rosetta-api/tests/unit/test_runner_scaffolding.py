@@ -1,5 +1,4 @@
-"""Tests for the shared runner scaffolding (helpers.register_runner_endpoints / run_cli_main),
-which replaced ~750 lines of per-runner boilerplate."""
+"""Tests for the shared runner scaffolding (helpers.register_runner_endpoints / run_cli_main)."""
 import json
 from unittest.mock import MagicMock, patch
 
@@ -13,7 +12,7 @@ from tests.unit import _isolated_fixture as fx
 
 def test_register_runner_endpoints_serves_both_routes():
     app = FastAPI()
-    # module-level fixture functions so run_isolated can resolve them in the spawned child
+    # Module-level functions, so the spawned child can import them.
     register_runner_endpoints(app, fx.fast, fx.fast)
     client = TestClient(app)
 
@@ -24,7 +23,6 @@ def test_register_runner_endpoints_serves_both_routes():
 
 
 def test_register_runner_endpoints_hard_timeout_flows_through():
-    # A runaway processor is killed at the payload's hard_timeout_seconds and returns a TIMEOUT.
     app = FastAPI()
     register_runner_endpoints(app, fx.slow, fx.slow)
     client = TestClient(app)
@@ -33,9 +31,6 @@ def test_register_runner_endpoints_hard_timeout_flows_through():
 
 
 def test_run_cli_main_payload_branch(monkeypatch, capsys):
-    # The CLI path (k8s --s3-job-id and manual --payload alike) goes through the same
-    # run_with_uniform_measurement wrapper as the local isolated-child path, so it also
-    # picks up the additive getrusage-based diagnostics.
     monkeypatch.setattr("sys.argv", ["main.py", "--endpoint", "run", "--payload", '{"x": 21}'])
     run_cli_main(None, fx.fast, fx.fast, "Test")
     out = json.loads(capsys.readouterr().out.strip())
@@ -61,9 +56,7 @@ def test_run_cli_main_requires_payload_or_s3(monkeypatch):
 
 
 def test_run_cli_main_s3_job_path_gets_uniform_measurement(monkeypatch):
-    # This is the actual Kubernetes dispatch path (dispatcher_k8s.py invokes
-    # `main.py --endpoint run --s3-job-id <id>`) — it must get the same warm-up +
-    # getrusage diagnostics as the local isolated-child path, not just --payload.
+    # The Kubernetes dispatch path: `main.py --endpoint run --s3-job-id <id>`.
     monkeypatch.setattr("sys.argv",
                         ["main.py", "--endpoint", "run", "--s3-job-id", "job123"])
     monkeypatch.setenv("QROSETTA_PAYLOAD", '{"x": 21}')
