@@ -1,4 +1,4 @@
-# Validates QASM and circuit payloads.
+"""Request guards: QASM size, gate count, qubit count, and multi-run fan-out."""
 
 from fastapi import HTTPException
 from config import settings
@@ -6,10 +6,10 @@ from qrosetta_commons.helpers import get_num_qubits_from_qasm, strip_qasm_commen
 import re
 
 def validate_runner_config(runner_config: dict):
-    """Bound multi-run fan-out. runner_config[name] may be an int (one run) or a
-    list of opt levels (one run each). Without a cap, a crafted request could spawn
-    unbounded runner jobs (httpx tasks locally, K8s pods on Rahti) and explode the
-    O(n^2) divergence analysis. Enforced server-side regardless of the UI."""
+    """Reject a runner_config that exceeds MAX_RUNS_PER_RUNNER or MAX_TOTAL_RUNS.
+
+    runner_config[name] is an int (one run) or a list of opt levels (one run each).
+    """
     if not runner_config:
         return
     total = 0
@@ -28,9 +28,11 @@ def validate_runner_config(runner_config: dict):
         )
 
 def validate_request(qasm: str, mode: str = "statevector", bypass_limits: bool = False):
-    if bypass_limits and settings.EXECUTION_MODE == "local":
-        pass  # Skip gate limits for massive local runs
-    else:
+    """Raise HTTPException for an oversized, too-complex or too-wide circuit.
+
+    ``bypass_limits`` skips the size and gate-count checks in local mode only.
+    """
+    if not (bypass_limits and settings.EXECUTION_MODE == "local"):
         if len(qasm) > settings.MAX_QASM_SIZE:
             raise HTTPException(status_code=413, detail="Payload too large")
         if qasm.count(";") > settings.MAX_QASM_GATES:
@@ -46,7 +48,6 @@ def validate_request(qasm: str, mode: str = "statevector", bypass_limits: bool =
                 detail=f"Circuit exceeds the maximum limit of {max_qubits} qubits (requested: {qubit_count})."
             )
     else:
-        # No qreg declaration to size the circuit; fall back to the highest index used.
         indices = re.findall(r"\w+\[(\d+)\]", strip_qasm_comments(qasm))
         if indices:
             max_index = max(map(int, indices))

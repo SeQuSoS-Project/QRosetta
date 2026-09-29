@@ -1,4 +1,4 @@
-# HTTP-based dispatcher for quantum runners.
+"""HTTP dispatcher for runners running as long-lived Docker Compose services."""
 
 import time
 import httpx
@@ -8,38 +8,43 @@ from config import settings
 
 logger = get_logger("rosetta-api")
 
+LOCAL_RUNNER_IMAGE = "not recorded (HTTP dispatch to a Compose service exposes no image id)"
 
-def _runner_error(sim_name: str, message: str) -> dict:
+
+def _runner_error(sim_name: str, message: str, dispatch_status: str = "error") -> dict:
     return {
         "simulator": sim_name,
         "error": message,
+        "dispatch_status": dispatch_status,
         "execution_time_sec": 0.0,
         "memory_usage_mb": 0.0,
     }
 
 
 async def safe_request(client, url, payload, sim_name, timeout_s):
-    """Dispatch to one runner and classify transport failures by cause and timing.
+    """Dispatch to one runner and classify transport failures.
 
-    A connection dropped near the deadline is reported as a probable timeout/OOM;
-    an early drop is reported as a lost connection.
+    Failures carry ``dispatch_status``: ``timeout`` when httpx's read budget expires,
+    ``offline`` when the runner cannot be reached, ``error`` otherwise. A connection
+    dropped near the deadline is reported as a probable timeout/OOM kill with status
+    ``error``, since the cause is not known.
     """
     t0 = time.perf_counter()
     try:
         response = await client.post(url, json=payload)
         response.raise_for_status()
         return response.json()
+    except (httpx.ConnectError, httpx.ConnectTimeout):
+        return _runner_error(
+            sim_name,
+            f"UNAVAILABLE: could not connect to the {sim_name} runner. Check that its "
+            f"container is running.", "offline")
     except httpx.TimeoutException:
         return _runner_error(
             sim_name,
             f"TIMEOUT ({timeout_s}s): the {sim_name} runner did not respond within the time "
             f"budget. The circuit may be too large or deep for the allocated resources — "
-            f"reduce the qubit count or raise the timeout.")
-    except httpx.ConnectError:
-        return _runner_error(
-            sim_name,
-            f"UNAVAILABLE: could not connect to the {sim_name} runner. Check that its "
-            f"container is running.")
+            f"reduce the qubit count or raise the timeout.", "timeout")
     except (httpx.RemoteProtocolError, httpx.ReadError) as e:
         elapsed = time.perf_counter() - t0
         if elapsed >= 0.8 * float(timeout_s):
@@ -62,14 +67,20 @@ async def safe_request(client, url, payload, sim_name, timeout_s):
             sim_name,
             f"Unexpected error communicating with the {sim_name} runner: {type(e).__name__}.")
 
+
 async def dispatch_http_local(runner_urls: dict, runner_payload: dict, timeout_seconds: int, runner_statuses: dict = None) -> list:
-    from services.dispatcher import expand_runner_jobs, group_specs_by_phase, build_runner_payload
+    """Run every job over HTTP, phase by phase, and return the annotated results.
+
+    The connect timeout is short so an unreachable runner fails fast; the read budget is
+    the runner's hard-kill budget plus RUNNER_DEADLINE_BUFFER_SEC.
+    """
+    from services.dispatcher import (
+        expand_runner_jobs, group_specs_by_phase, build_runner_payload, annotate_result,
+        utc_now_iso,
+    )
 
     specs = expand_runner_jobs(runner_urls, runner_payload)
     phase_groups = group_specs_by_phase(specs)
-    # Granular timeouts: a short connect timeout so an unreachable/backed-up runner fails
-    # fast. The read budget = the runner's hard-kill budget + headroom, so the runner returns
-    # a clean timeout result (it self-terminates at hard_timeout_seconds) before httpx gives up.
     timeout_float = float(timeout_seconds)
     http_timeout = httpx.Timeout(
         timeout_float + float(settings.RUNNER_DEADLINE_BUFFER_SEC),
@@ -80,12 +91,11 @@ async def dispatch_http_local(runner_urls: dict, runner_payload: dict, timeout_s
         key = spec["key"]
         if runner_statuses is not None:
             runner_statuses[key] = "running"
+        dispatched_at = utc_now_iso()
         result = await safe_request(client, spec["url"], local_payload, key, timeout_seconds)
-        result["simulator"] = key
-        # Record the effective (clamped, global-or-override-resolved) opt level this
-        # runner actually ran at, so the UI/report show ground truth rather than only
-        # the per-runner override map.
-        result["optimization_level"] = spec["opt_level"]
+        annotate_result(result, spec, local_payload, dispatched_at,
+                        dispatch_status=result.pop("dispatch_status", None),
+                        runner_image=LOCAL_RUNNER_IMAGE)
         if runner_statuses is not None:
             runner_statuses[key] = "error" if "error" in result else "done"
         return result
@@ -99,8 +109,7 @@ async def dispatch_http_local(runner_urls: dict, runner_payload: dict, timeout_s
         for group in phase_groups:
             tasks = []
             for spec in group:
-                local_payload = build_runner_payload(runner_payload, spec["opt_level"])
-                # The runner self-terminates at this budget; httpx waits slightly longer.
+                local_payload = build_runner_payload(runner_payload, spec)
                 local_payload["hard_timeout_seconds"] = int(timeout_seconds)
                 logger.info(f"Dispatching job to {spec['key']} (Level: {spec['opt_level']}, Phase: {spec['phase']})...")
                 tasks.append(_run_and_track(client, spec, local_payload))

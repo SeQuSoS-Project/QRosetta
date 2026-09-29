@@ -1,5 +1,6 @@
-# Application configuration and environment variables.
+"""Application settings, runner registry, and build/provenance identifiers."""
 
+import json
 import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -24,13 +25,10 @@ class Settings(BaseSettings):
     QUIMB_RUNNER_URL: str = "http://quimb-runner:8000"
     CUQUANTUM_RUNNER_URL: str = "http://cuquantum-runner:8000"
 
+    PLATFORM_VERSION: str = os.getenv("QROSETTA_VERSION", "1.0.0")
+
     RUNNER_TIMEOUT_SEC: int = 300
-    # Fast connect timeout so an unreachable/backed-up runner fails quickly instead of
-    # tying up the full read budget on establishing a connection.
     RUNNER_CONNECT_TIMEOUT_SEC: int = 10
-    # Extra headroom (seconds) added to the runner timeout when bounding a K8s Job's own
-    # runtime (activeDeadlineSeconds), so the cluster kills an over-running pod shortly
-    # after the API has given up, reclaiming compute.
     RUNNER_DEADLINE_BUFFER_SEC: int = 15
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     SECRET_KEY: str = os.getenv("SECRET_KEY", "")
@@ -48,21 +46,15 @@ class Settings(BaseSettings):
     MAX_QASM_GATES: int = 10_000
     MAX_UPLOAD_BYTES: int = 1_048_576
 
-    # Comma-separated CORS origins for deployment-specific frontends. localhost is always
-    # allowed for local development; deployments add their frontend origin via the env var.
     CORS_ALLOW_ORIGINS: str = os.getenv("CORS_ALLOW_ORIGINS", "")
 
-    # Multi-run (self-comparison) fan-out caps. One request expands to one job per
-    # configured run; without these a crafted request could spawn unbounded httpx
-    # calls (local) or K8s Job pods (Rahti) and blow up the O(n^2) divergence analysis.
     MAX_RUNS_PER_RUNNER: int = 16
     MAX_TOTAL_RUNS: int = 48
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     def max_qubits_for_mode(self, mode: str) -> int:
-        """Qubit cap for a run mode. Statevector runs materialise all 2^N amplitudes, so
-        they are capped lower than measured runs, which only collect samples."""
+        """Qubit cap for a run mode: statevector runs are capped lower than measured runs."""
         return self.MAX_QUBITS_STATEVECTOR if mode == "statevector" else self.MAX_QUBITS_MEASURED
 
     def get_cors_origins(self) -> list:
@@ -71,6 +63,11 @@ class Settings(BaseSettings):
         return origins
 
     def get_runner_services(self):
+        """Canonical runner id -> base_url, capabilities, enabled flag, optimization levels.
+
+        ``honours_seed`` is False for a runner whose backend ignores the sampling seed it
+        is passed; it defaults to True when absent.
+        """
         return {
 
             "qiskit": {
@@ -89,7 +86,7 @@ class Settings(BaseSettings):
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": True,
                 "optimization_levels": {
-                    0: "No optimization",
+                    0: "Backend default rebase only: pytket default_compilation_pass level 0 (DecomposeBoxes, FlattenRegisters, AutoRebase to the backend gate set), no optimization",
                     1: "Pytket light: fast peephole rewrites, remove redundant gates",
                     2: "Pytket heavy: full KAK-based 2Q reduction + 1Q sequence merging",
                 }
@@ -99,7 +96,7 @@ class Settings(BaseSettings):
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": True,
                 "optimization_levels": {
-                    0: "No optimization",
+                    0: "Backend default rebase only: pytket default_compilation_pass level 0 (DecomposeBoxes, FlattenRegisters, AutoRebase to the backend gate set), no optimization",
                     1: "Pytket light: fast peephole rewrites, remove redundant gates",
                     2: "Pytket heavy: full KAK-based 2Q reduction + 1Q sequence merging",
                 }
@@ -108,8 +105,9 @@ class Settings(BaseSettings):
                 "base_url": self.PYTKET_BRAKET_RUNNER_URL,
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": False,
+                "honours_seed": False,
                 "optimization_levels": {
-                    0: "No optimization",
+                    0: "Backend default rebase only: pytket default_compilation_pass level 0 (DecomposeBoxes, FlattenRegisters, AutoRebase to the backend gate set), no optimization",
                     1: "Pytket light: fast peephole rewrites, remove redundant gates",
                     2: "Pytket heavy: full KAK-based 2Q reduction + 1Q sequence merging",
                 }
@@ -120,7 +118,7 @@ class Settings(BaseSettings):
                 "capabilities": ["statevector", "measured_sampled"],
                 "enabled": False,
                 "optimization_levels": {
-                    0: "No optimization",
+                    0: "Backend default rebase only: pytket default_compilation_pass level 0 (DecomposeBoxes, FlattenRegisters, AutoRebase to the backend gate set), no optimization",
                     1: "Pytket light: fast peephole rewrites, remove redundant gates",
                     2: "Pytket heavy: full KAK-based 2Q reduction + 1Q sequence merging",
                 }
@@ -130,7 +128,7 @@ class Settings(BaseSettings):
                 "capabilities": ["statevector", "measured_sampled"],
                 "enabled": True,
                 "optimization_levels": {
-                    0: "No optimization",
+                    0: "Backend default rebase only: pytket default_compilation_pass level 0 (DecomposeBoxes, FlattenRegisters, AutoRebase to the backend gate set), no optimization",
                     1: "Pytket light: fast peephole rewrites, remove redundant gates",
                     2: "Pytket heavy: full KAK-based 2Q reduction + 1Q sequence merging",
                 }
@@ -195,13 +193,11 @@ class Settings(BaseSettings):
             },
             "pyquil": {
                 "base_url": self.PYQUIL_RUNNER_URL,
-                # pyquil's NumpyWavefunctionSimulator has no native shot sampler; the
-                # runner samples the computed statevector (sampling_method="sv_sample"),
-                # so it is classified as sampled, not native.
+                # NumpyWavefunctionSimulator has no shot sampler; the runner samples the statevector.
                 "capabilities": ["statevector", "measured_sampled"],
                 "enabled": True,
                 "optimization_levels": {
-                    0: "Barrier removal only",
+                    0: "No optimization pass: barriers removed and gates rebased to CX/Rz/Rx (with apply_preprocessing=false, single-qubit Rz/Rx rebase only)",
                     1: "Pytket PeepholeOptimise2Q: cancel redundant 2Q gates, merge 1Q sequences",
                     2: "Pytket FullPeepholeOptimise: full 1Q merging + KAK-based 2Q reduction",
                 }
@@ -238,3 +234,34 @@ class Settings(BaseSettings):
         }
 
 settings = Settings()
+
+
+def server_git_sha() -> str:
+    """Git SHA injected at build time via QROSETTA_GIT_SHA (or GIT_SHA); 'unknown' if unset."""
+    return (os.getenv("QROSETTA_GIT_SHA") or os.getenv("GIT_SHA") or "").strip() or "unknown"
+
+
+def server_image_digests() -> dict:
+    """Deployed image digests from the QROSETTA_IMAGE_DIGESTS JSON env var, or {}."""
+    raw = os.getenv("QROSETTA_IMAGE_DIGESTS")
+    if not raw:
+        return {}
+    try:
+        val = json.loads(raw)
+    except ValueError:
+        return {}
+    return val if isinstance(val, dict) else {}
+
+
+def runner_registry_snapshot(runner_services: dict = None) -> dict:
+    """JSON-safe copy of the runner registry fields that describe a run's configuration."""
+    services = runner_services if runner_services is not None else settings.get_runner_services()
+    return {
+        name: {
+            "enabled": svc.get("enabled", True),
+            "capabilities": list(svc.get("capabilities", [])),
+            "optimization_levels": {str(k): v for k, v in svc.get("optimization_levels", {}).items()},
+            "honours_seed": svc.get("honours_seed", True),
+        }
+        for name, svc in services.items()
+    }

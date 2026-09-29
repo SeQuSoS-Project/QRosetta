@@ -1,10 +1,5 @@
-# FastAPI router for the reproducible experiment runner (T3.5).
-#
-# POST /experiments            -> start a background fleet sweep, returns a job_id
-# GET  /jobs/{id}              -> reuse the existing status/progress endpoint
-# GET  /experiments/{id}/bundle -> stream the frozen artifact bundle as an in-memory ZIP
-#
-# Additive and opt-in: reuses the batch execution core; stores nothing on disk.
+"""Experiment routes: POST /experiments starts a sweep (poll GET /jobs/{id});
+GET /experiments/{id}/bundle streams the finished bundle as an in-memory ZIP."""
 
 import io
 import uuid

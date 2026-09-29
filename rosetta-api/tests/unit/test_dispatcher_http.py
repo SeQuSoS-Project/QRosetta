@@ -1,8 +1,4 @@
-"""Unit tests for the HTTP dispatcher's honest failure classification (Phase-1 timeout fix).
-
-A dropped connection must not be asserted to be a specific C++ crash; it is classified by how
-long it took, so a timeout/OOM is not mislabelled. Driven with asyncio.run (no pytest-asyncio).
-"""
+"""Unit tests for the HTTP dispatcher's failure classification and dispatch_status."""
 import asyncio
 
 import httpx
@@ -66,3 +62,10 @@ def test_error_shape_is_preserved():
     r = _run(_RaisingClient(httpx.ConnectError("x")))
     assert set(r) >= {"simulator", "error", "execution_time_sec", "memory_usage_mb"}
     assert r["execution_time_sec"] == 0.0
+
+
+def test_dispatch_status_classification():
+    assert _run(_RaisingClient(httpx.TimeoutException("slow")))["dispatch_status"] == "timeout"
+    assert _run(_RaisingClient(httpx.ConnectError("refused")))["dispatch_status"] == "offline"
+    assert _run(_RaisingClient(httpx.ConnectTimeout("no route")))["dispatch_status"] == "offline"
+    assert _run(_StatusErrorClient())["dispatch_status"] == "error"

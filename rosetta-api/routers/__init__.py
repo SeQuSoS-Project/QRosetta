@@ -1,2 +1,2 @@
-# FastAPI router endpoints for __init__.
+"""FastAPI routers mounted by main.py."""
 

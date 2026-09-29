@@ -1,7 +1,13 @@
-# Dispatches jobs to external quantum runners.
+"""Runner dispatch: job fan-out, per-runner payloads and seeds, and result annotation.
+
+Routes each dispatch to the HTTP (Docker Compose) or Kubernetes Jobs backend.
+"""
+
+from datetime import datetime, timezone
 
 from config import settings
 from qrosetta_commons.helpers import get_logger
+from qrosetta_commons.seeds import derive_runner_seed
 from services.dispatcher_http import dispatch_http_local
 from services.dispatcher_k8s import dispatch_kubernetes_jobs
 
@@ -10,21 +16,94 @@ logger = get_logger("rosetta-api")
 
 RUNNER_SERVICES = settings.get_runner_services()
 
+SEED_DERIVATION = (
+    "runner_seed = first 4 bytes of sha256(f'{master_seed}:{runner_key}') read big-endian, "
+    "top bit cleared (0 <= runner_seed < 2**31); runner_key is the result's simulator key, "
+    "including ~opt<L>~run<N> suffixes"
+)
 
-# Dispatcher-only fields used to fan out / order jobs. Runners never read them, and
-# runner_config may hold lists in multi-run mode that the runner's Dict[str, int]
-# schema rejects with 422 — so strip both from the payload sent to each runner.
+DISPATCH_STATUSES = ("ok", "error", "timeout", "offline")
+
+TIMEOUT_SCOPE = {
+    "local": (
+        "whole isolated runner child process: process spawn, SDK import, warm-up run and timed "
+        "run, killed at hard_timeout_seconds; the API waits RUNNER_DEADLINE_BUFFER_SEC longer"
+    ),
+    "kubernetes": (
+        "whole Kubernetes Job measured from job creation: pod scheduling, image pull, container "
+        "start, SDK import, warm-up run, timed run and S3 upload"
+    ),
+}
+
 _ORCHESTRATION_FIELDS = ("runner_config", "runner_phases")
 
+_RUNNER_TIMEOUT_PREFIX = "TIMEOUT ("
 
-def build_runner_payload(runner_payload: dict, opt_level: int) -> dict:
+
+def utc_now_iso() -> str:
+    """Current UTC time as ISO 8601 with millisecond precision."""
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+
+
+def timeout_scope() -> str:
+    """What the per-runner timeout covers in the current execution mode."""
+    return TIMEOUT_SCOPE.get(EXECUTION_MODE, TIMEOUT_SCOPE["local"])
+
+
+def runner_seed_for(master_seed, runner_key: str):
+    """Seed passed to ``runner_key`` for ``master_seed``; None when there is no master seed."""
+    if master_seed is None:
+        return None
+    return derive_runner_seed(int(master_seed), runner_key)
+
+
+def build_runner_payload(runner_payload: dict, spec: dict) -> dict:
+    """Payload sent to one runner job: orchestration fields removed, the job's effective
+    optimization level set, and the master seed replaced by the job's derived seed.
+
+    runner_config/runner_phases are dropped because a multi-run runner_config holds lists
+    that the runner's ``Dict[str, int]`` schema rejects.
+    """
     payload = {k: v for k, v in runner_payload.items() if k not in _ORCHESTRATION_FIELDS}
-    payload["optimization_level"] = opt_level
+    payload["optimization_level"] = spec["opt_level"]
+    if payload.get("seed") is not None:
+        payload["seed"] = runner_seed_for(payload["seed"], spec["key"])
     return payload
 
 
+def classify_runner_result(result: dict) -> str:
+    """Dispatch status of a result the runner itself returned: ok, timeout or error."""
+    if not isinstance(result, dict) or not result.get("error"):
+        return "ok"
+    if result.get("timed_out") or str(result["error"]).startswith(_RUNNER_TIMEOUT_PREFIX):
+        return "timeout"
+    return "error"
+
+
+def annotate_result(result: dict, spec: dict, sent_payload: dict, dispatched_at: str,
+                    dispatch_status: str = None, runner_image: str = None) -> dict:
+    """Stamp one runner result with its key, dispatch outcome, seed and timing metadata.
+
+    Fields: simulator, optimization_level, dispatch_status, dispatched_at, completed_at,
+    timing_samples, runner_image, and for seeded runs runner_seed, seed, seed_honoured.
+    """
+    result["simulator"] = spec["key"]
+    result["optimization_level"] = spec["opt_level"]
+    result["dispatch_status"] = dispatch_status or classify_runner_result(result)
+    result["dispatched_at"] = dispatched_at
+    result["completed_at"] = utc_now_iso()
+    result["timing_samples"] = int(result.get("timing_repeats") or 1)
+    result["runner_image"] = runner_image or "not recorded"
+    seed = sent_payload.get("seed")
+    if seed is not None:
+        result["runner_seed"] = seed
+        result["seed"] = seed
+        result["seed_honoured"] = RUNNER_SERVICES.get(spec["sim_name"], {}).get("honours_seed", True)
+    return result
+
+
 def _clamp_opt(sim_name: str, level: int) -> int:
-    """Clamp an optimization level to the max the runner actually supports."""
+    """Clamp an optimization level to the max the runner supports."""
     opt_levels = RUNNER_SERVICES.get(sim_name, {}).get("optimization_levels", {})
     if opt_levels:
         return min(level, max(opt_levels.keys()))
@@ -32,13 +111,11 @@ def _clamp_opt(sim_name: str, level: int) -> int:
 
 
 def expand_runner_jobs(runner_urls: dict, runner_payload: dict) -> list:
-    """Flatten runner_urls into one job spec per actual run.
+    """Flatten runner_urls into one job spec per run.
 
-    runner_config[sim] may be an int (single run, default mode) or a list of opt
-    levels (self-comparison: one job per element, repeats allowed). A runner that
-    yields exactly one job keeps its canonical id as the key (no behavior change).
-    A runner yielding N>1 jobs gets virtual keys 'sim~opt{L}~run{i}' so each instance
-    flows through aggregation/storage/frontend as a distinct entry.
+    runner_config[sim] is an int (one run) or a list of opt levels (one job per element,
+    repeats allowed; an empty list skips the runner). A runner with one job keeps its
+    canonical id as the key; N>1 jobs get keys ``sim~opt{L}~run{i}``.
 
     Each spec: {key, sim_name, url, opt_level, phase}.
     """
@@ -54,7 +131,6 @@ def expand_runner_jobs(runner_urls: dict, runner_payload: dict) -> list:
         levels = [_clamp_opt(sim_name, int(lvl)) for lvl in levels]
 
         if not levels:
-            # Explicit empty list = "do not run this runner".
             continue
 
         if len(levels) == 1:
@@ -73,12 +149,12 @@ def expand_runner_jobs(runner_urls: dict, runner_payload: dict) -> list:
 
 
 def group_specs_by_phase(specs: list) -> list:
-    """Group job specs into phase waves, ordered ascending. Each wave runs
-    concurrently; the dispatcher awaits a wave before starting the next."""
+    """Group job specs into phase waves in ascending order; each wave runs concurrently."""
     by_phase = {}
     for spec in specs:
         by_phase.setdefault(spec["phase"], []).append(spec)
     return [by_phase[p] for p in sorted(by_phase.keys())]
+
 
 STATEVECTOR_RUNNER_URLS = {
     name: f"{config['base_url']}/run" for name, config in RUNNER_SERVICES.items()
@@ -93,7 +169,9 @@ SAMPLED_SV_URLS = {
     if "measured_sampled" in config["capabilities"] and config.get("enabled", True)
 }
 
+
 async def dispatch_to_runners(runner_urls: dict, runner_payload: dict, timeout_seconds: int = settings.RUNNER_TIMEOUT_SEC, runner_statuses: dict = None) -> list:
+    """Run every job for ``runner_urls`` and return the annotated results."""
     if EXECUTION_MODE == "kubernetes":
         return await dispatch_kubernetes_jobs(runner_urls, runner_payload, timeout_seconds, runner_statuses)
     return await dispatch_http_local(runner_urls, runner_payload, timeout_seconds, runner_statuses)

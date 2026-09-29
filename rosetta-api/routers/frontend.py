@@ -1,9 +1,7 @@
-# FastAPI router endpoints for frontend.
+"""Frontend routes: the index page, the runner registry, and client-facing limits."""
 
 from fastapi import APIRouter
 from fastapi.responses import FileResponse, JSONResponse
-import os
-from services.storage import get_latest_report_path
 from config import settings
 
 router = APIRouter()
@@ -18,8 +16,7 @@ async def read_index():
 
 @router.get("/runners")
 async def get_runners():
-    """Returns enabled status, max optimization level, and per-level descriptions for
-    every runner, as configured in config.py."""
+    """Enabled status, max optimization level, and per-level descriptions for every runner."""
     result = []
     for name, config in settings.get_runner_services().items():
         opt_levels = config.get("optimization_levels", {})
@@ -35,7 +32,7 @@ async def get_runners():
 
 @router.get("/config")
 async def get_config():
-    """Returns server-side circuit limits so the frontend never hardcodes them."""
+    """Server-side circuit limits and execution mode."""
     return JSONResponse(content={
         "max_qubits_statevector": settings.MAX_QUBITS_STATEVECTOR,
         "max_qubits_measured": settings.MAX_QUBITS_MEASURED,
@@ -45,13 +42,3 @@ async def get_config():
         "max_total_runs": settings.MAX_TOTAL_RUNS,
         "execution_mode": settings.EXECUTION_MODE,
     })
-
-@router.get("/download_latest_report")
-def download_latest_report():
-    """Download the most recent completed run's full JSON report from local disk. 404 if none
-    has been saved yet — nothing is written to disk when the server's STORAGE_MODE is
-    'memory'."""
-    report_path = get_latest_report_path()
-    if not os.path.exists(report_path):
-        return JSONResponse(content={"error": "No report available"}, status_code=404)
-    return FileResponse(report_path, media_type="application/json", filename="full_quantum_report.json")

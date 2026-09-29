@@ -8,41 +8,22 @@ in-memory ZIP (nothing is written to server disk).
 from __future__ import annotations
 
 import io
-import os
+import json
 import time
 import zipfile
 from datetime import datetime, timezone
 
+from config import server_git_sha, server_image_digests
 from schemas import BatchPayload, BenchmarkTask, ExperimentPayload
 from services import experiment_artifacts as art
+from services.dispatcher import SEED_DERIVATION
 from services.job_manager import ACTIVE_JOBS, run_batch_tasks, _resolve_seed
 from qrosetta_commons.helpers import get_logger
 from services.circuit_resolver import resolve_circuit_qasm
 
 logger = get_logger("rosetta-experiment")
 
-# One experiment = circuits x axes x fleet. Caps the circuit-axis units so a request
-# cannot spawn an unbounded number of runner calls / K8s Job pods (bypass_limits skips it).
 MAX_EXPERIMENT_CELLS = 200
-
-
-def _server_git_sha() -> str:
-    """Git SHA injected at build/deploy time; the API image ships no .git, so this
-    reports 'unknown' when the env slot is unset."""
-    return (os.getenv("QROSETTA_GIT_SHA") or os.getenv("GIT_SHA") or "unknown").strip() or "unknown"
-
-
-def _server_image_digests() -> dict:
-    """Deployed container image digests, if injected at deploy time (JSON env)."""
-    raw = os.getenv("QROSETTA_IMAGE_DIGESTS")
-    if not raw:
-        return {}
-    try:
-        import json
-        val = json.loads(raw)
-        return val if isinstance(val, dict) else {}
-    except Exception:
-        return {}
 
 
 def resolve_circuits(payload: ExperimentPayload) -> tuple:
@@ -71,10 +52,17 @@ def resolve_circuits(payload: ExperimentPayload) -> tuple:
 
 
 def _axis_label(mode: str, pp: bool) -> str:
+    """Axis name, e.g. 'measured_preprocOn'."""
     return f"{mode}_preproc{'On' if pp else 'Off'}"
 
 
 async def worker_experiment(job_id: str, payload: ExperimentPayload):
+    """Background task for POST /experiments.
+
+    Runs every resolved circuit on every preprocessing axis with one master seed, and
+    stores the bundle files in ``ACTIVE_JOBS[job_id]["bundle_files"]``. The number of
+    circuit-axis cells is capped at MAX_EXPERIMENT_CELLS unless bypass_limits is set.
+    """
     runner_statuses = {}
     ACTIVE_JOBS[job_id]["status"] = "processing"
     ACTIVE_JOBS[job_id]["runner_statuses"] = runner_statuses
@@ -92,11 +80,8 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
                 f"circuit-axis runs exceeds the cap of {MAX_EXPERIMENT_CELLS}. Reduce the "
                 f"selection or set bypass_limits.")
 
-        # One seed shared across every circuit and axis (measured mode; statevector is
-        # exact and seedless).
         exp_seed = _resolve_seed(payload.seed) if payload.mode == "measured" else None
 
-        # Cumulative progress across all axes, in the exact shape the batch UI already renders.
         axis_labels = [_axis_label(payload.mode, bool(pp)) for pp in axes]
         progress = {
             "total": cells, "completed": 0, "current_index": None,
@@ -107,7 +92,7 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
 
         conformance, prevalence = [], []
         effective_seeds, sdk_versions = {}, {}
-        result_files: dict = {}  # results/<axis>/<slug>.json -> bytes
+        result_files: dict = {}
         offset = 0
         for pp, axis in zip(axes, axis_labels):
             batch_payload = BatchPayload(
@@ -125,18 +110,17 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
                                                batch_seed=exp_seed, task_offset=offset)
             offset += len(resolved)
 
-            # Add rows for circuits that never made it into the batch (resolution failures).
             for e in resolution_errors:
                 conformance.append({"axis": axis, "circuit": e["name"], "simulator": "(circuit)",
                                     "status": "resolution_error",
-                                    "error_signature": str(e["error"])[:300], "triage": "untriaged"})
+                                    "error_signature": str(e["error"])[:300], "triage": "untriaged",
+                                    "circuit_id": e["id"]})
 
-            import json
-            for report in summary:
+            for circuit, report in zip(resolved, summary):
+                report["circuit_id"] = circuit["id"]
                 if not payload.keep_statevectors:
                     report = art.strip_statevectors(report)
-                cid = art.slug(report.get("task_name", "circuit"))
-                result_files[f"results/{axis}/{cid}.json"] = json.dumps(
+                result_files[f"results/{axis}/{circuit['id']}.json"] = json.dumps(
                     report, indent=2, default=str).encode("utf-8")
                 if report.get("seed") is not None:
                     effective_seeds[axis] = report["seed"]
@@ -147,7 +131,6 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
 
         progress["current_index"] = None
 
-        # --- assemble the frozen bundle (in memory; nothing persisted to disk) ---
         files: dict = dict(result_files)
         for c in resolved:
             files[f"inputs/{c['id']}.qasm"] = c["qasm"].encode("utf-8")
@@ -160,23 +143,21 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
         files["README.txt"] = art.TRIAGE_README.encode("utf-8")
 
         manifest = art.build_manifest(
-            config=payload.model_dump(), git_sha=_server_git_sha(), api_base="in-app",
+            config=payload.model_dump(), git_sha=server_git_sha(), api_base="in-app",
             requested_seed=payload.seed, effective_seeds=effective_seeds, circuits=resolved,
-            sdk_versions=sdk_versions, image_digests=_server_image_digests(),
+            sdk_versions=sdk_versions, image_digests=server_image_digests(),
             extra_notes=(f"Resolution errors: {len(resolution_errors)}."
-                         if resolution_errors else ""))
+                         if resolution_errors else ""),
+            seed_derivation=SEED_DERIVATION if payload.mode == "measured" else None)
         manifest["label"] = payload.label
         manifest["created_utc"] = datetime.now(timezone.utc).isoformat()
         manifest["mode"] = payload.mode
         manifest["preprocessing_axes"] = axis_labels
-        import json
         files["manifest.json"] = json.dumps(manifest, indent=2, default=str).encode("utf-8")
 
         n_err = sum(1 for r in conformance if r.get("error_signature"))
         bundle_name = f"experiment_{art.slug(payload.label) if payload.label else job_id[:8]}"
 
-        # JSON-safe summary for the UI (bundle bytes are kept OUT of results so /jobs stays
-        # serializable; the ZIP is fetched from GET /experiments/{id}/bundle).
         experiment_summary = {
             "label": payload.label, "mode": payload.mode, "axes": axis_labels,
             "requested_seed": payload.seed, "effective_seeds_per_axis": effective_seeds,
@@ -203,7 +184,7 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
 
 
 def build_bundle_zip(files: dict) -> bytes:
-    """Zip the assembled {relative_path: bytes} bundle in memory (deterministic file order)."""
+    """Zip the {relative_path: bytes} bundle in memory, files in sorted order."""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for rel_path in sorted(files):

@@ -1,4 +1,4 @@
-# FastAPI router endpoints for auth.
+"""Account routes: register, token login, logout, and account deletion."""
 
 from datetime import timedelta
 from typing import Annotated

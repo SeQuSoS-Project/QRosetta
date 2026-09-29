@@ -1,9 +1,9 @@
-# Manages S3 storage for heavy artifacts.
+"""Run-history report storage on S3 or a local directory that mirrors the S3 key layout."""
 
 import os
 import json
 import boto3
-import cachetools
+from botocore.config import Config
 from botocore.exceptions import ClientError
 from typing import List
 from config import settings
@@ -12,28 +12,10 @@ from services.report_filters import remove_statevectors
 
 logger = get_logger("rosetta-storage")
 
-_REPORTS_DIR = "export/reports"
-os.makedirs(_REPORTS_DIR, exist_ok=True)
-_RESULT_CACHE = cachetools.TTLCache(maxsize=10, ttl=3600)
-
-def save_report_to_disk(data: list):
-    _RESULT_CACHE["latest_full_report"] = data
-    if settings.STORAGE_MODE == "memory":
-        logger.info("STORAGE_MODE=memory: Skipping saving report to disk.")
-        return
-    try:
-        with open(os.path.join(_REPORTS_DIR, "latest_full_report.json"), "w") as f:
-            json.dump(data, f)
-    except Exception as e:
-        logger.error(f"Failed to write report to disk: {e}")
-
-def get_latest_report_path() -> str:
-    return os.path.join(_REPORTS_DIR, "latest_full_report.json")
+STATEVECTOR_STORAGE_MARKER = "removed_before_storage"
 
 MOCK_S3_DIR = os.getenv("S3_LOCAL_DIR", "./data/s3_storage_mock")
 os.makedirs(MOCK_S3_DIR, exist_ok=True)
-
-from botocore.config import Config
 
 s3_client = None
 if settings.STORAGE_MODE == "s3":
@@ -47,11 +29,14 @@ if settings.STORAGE_MODE == "s3":
     )
 
 def save_run_report(user_id: int, run_id: str, report_data: dict) -> str:
-    """
-    Strips large statevectors from the report data and saves it locally or to S3.
-    Returns the file path acting as an S3 object key.
+    """Save a report with every statevector removed, to S3 or the local mirror.
+
+    The stored report carries ``statevector_storage = "removed_before_storage"`` at the top level.
+    Returns the object key.
     """
     clean_data = remove_statevectors(report_data)
+    if isinstance(clean_data, dict):
+        clean_data["statevector_storage"] = STATEVECTOR_STORAGE_MARKER
     object_key = f"users/{user_id}/runs/{run_id}.json"
 
     if settings.STORAGE_MODE == "s3":
@@ -83,9 +68,7 @@ def save_run_report(user_id: int, run_id: str, report_data: dict) -> str:
         return object_key
 
 def fetch_run_report(s3_object_key: str) -> dict:
-    """
-    Retrieves a JSON report from the local file system or S3 using the key.
-    """
+    """Fetch a stored JSON report by object key."""
     if settings.STORAGE_MODE == "s3":
         try:
             response = s3_client.get_object(Bucket=settings.S3_BUCKET_NAME, Key=s3_object_key)
@@ -103,9 +86,7 @@ def fetch_run_report(s3_object_key: str) -> dict:
             return json.load(f)
 
 def delete_run_reports(s3_object_keys: List[str]):
-    """
-    Deletes a list of JSON reports from S3 or local storage.
-    """
+    """Delete the stored reports for the given object keys."""
     if not s3_object_keys:
         return
 

@@ -1,10 +1,4 @@
-"""Unit tests for services/experiment.py — the in-app experiment orchestrator (T3.5).
-
-The fleet is mocked at the run_batch_tasks seam, so these exercise the orchestration,
-freezing, integrity gate and in-memory ZIP without any runners. They pull the full API
-runtime (job_manager -> pytket/kubernetes), so they skip on a bare host venv and run
-in-container/CI. Async workers are driven with asyncio.run (no pytest-asyncio needed).
-"""
+"""Unit tests for services/experiment.py, with the fleet mocked at run_batch_tasks."""
 import asyncio
 import io
 import json
@@ -66,8 +60,8 @@ def test_experiment_completes_and_freezes_bundle(monkeypatch):
     files = job["bundle_files"]
     # both axes frozen, plus inputs + the two separated CSVs + manifest + README + error log
     assert "inputs/000_bell.qasm" in files
-    assert "results/measured_preprocOn/bell--2q.json" in files
-    assert "results/measured_preprocOff/bell--2q.json" in files
+    assert "results/measured_preprocOn/000_bell.json" in files
+    assert "results/measured_preprocOff/000_bell.json" in files
     assert "conformance_matrix.csv" in files
     assert "agreement_prevalence.csv" in files
     assert "manifest.json" in files
@@ -78,7 +72,7 @@ def test_experiment_completes_and_freezes_bundle(monkeypatch):
     assert seen == [42, 42]
 
     # statevector stripped in the frozen result
-    report = json.loads(files["results/measured_preprocOn/bell--2q.json"])
+    report = json.loads(files["results/measured_preprocOn/000_bell.json"])
     qiskit = next(r for r in report["raw_results"] if r["simulator"] == "qiskit")
     assert qiskit["statevector"] is None and len(qiskit["statevector_sha256"]) == 64
 
@@ -185,3 +179,36 @@ def test_statevector_mode_is_seedless(monkeypatch):
     _, job = _run_experiment(payload)
     assert job["status"] == "completed"
     assert seen == [None]  # statevector is exact/seedless — no seed forced across axes
+
+
+def test_result_files_named_by_circuit_id_do_not_collide(monkeypatch):
+    async def fake_run_batch_tasks(payload, runner_statuses, progress=None,
+                                   batch_seed=None, task_offset=0):
+        summary = []
+        for i, task in enumerate(payload.tasks):
+            summary.append({
+                "task_name": f"{task.algorithm} ({task.qubits}q)",
+                "input_qasm": task.qasm_string,
+                "raw_results": [{"simulator": "qiskit", "counts": {"00": 1}, "dispatch_status": "ok"}],
+            })
+            if progress is not None:
+                progress["tasks"][task_offset + i]["status"] = "done"
+                progress["completed"] += 1
+        return summary, batch_seed
+    monkeypatch.setattr(exp, "run_batch_tasks", fake_run_batch_tasks)
+
+    other = BELL_QASM.replace("h q[0];", "x q[0];")
+    payload = ExperimentPayload(circuits=[
+        ExperimentCircuit(source="qasm", qasm_string=BELL_QASM, algorithm="bell", qubits=2),
+        ExperimentCircuit(source="qasm", qasm_string=other, algorithm="bell", qubits=2),
+    ], mode="measured", preprocessing_modes=[True], seed=3)
+    _, job = _run_experiment(payload)
+    files = job["bundle_files"]
+    results = sorted(k for k in files if k.startswith("results/"))
+    assert results == ["results/measured_preprocOn/000_bell-2q.json",
+                       "results/measured_preprocOn/001_bell-2q.json"]
+    first = json.loads(files[results[0]])
+    second = json.loads(files[results[1]])
+    assert first["input_qasm"] == BELL_QASM and second["input_qasm"] == other
+    assert {r["circuit_id"] for r in job["results"]["experiment_summary"]["conformance"]} == {
+        "000_bell-2q", "001_bell-2q"}

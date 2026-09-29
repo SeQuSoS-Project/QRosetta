@@ -1,10 +1,4 @@
-"""Unit tests for services/experiment_artifacts.py — the pure, stdlib-only builders shared
-by the CLI harness and the in-app experiment runner (T3.5).
-
-These have no heavy deps (no pytket/kubernetes), so they run on the host venv. The
-orchestration layer (services/experiment.worker_experiment) is covered by test_experiment.py,
-which needs the full API runtime and runs in-container/CI.
-"""
+"""Unit tests for services/experiment_artifacts.py (stdlib-only bundle builders)."""
 import json
 
 from services import experiment_artifacts as art
@@ -21,17 +15,43 @@ def test_slug_and_sha256_stable():
 def test_strip_statevectors_replaces_list_keeps_metrics():
     report = {"raw_results": [
         {"simulator": "qiskit", "statevector": [0.0, 1.0], "execution_time_sec": 0.5},
-        {"simulator": "already", "statevector": "<too large>"},  # string placeholder untouched
         {"simulator": "none", "statevector": None},
     ]}
     out = art.strip_statevectors(report)
     r0 = out["raw_results"][0]
     assert r0["statevector"] is None
     assert r0["statevector_len"] == 2
+    assert r0["statevector_digest_input"] == "json_list"
     assert len(r0["statevector_sha256"]) == 64
-    assert r0["execution_time_sec"] == 0.5          # metrics preserved
-    assert out["raw_results"][1]["statevector"] == "<too large>"  # string left alone
+    assert r0["execution_time_sec"] == 0.5
     assert "statevector_sha256" not in out["raw_results"][1]
+
+
+def test_strip_statevectors_hashes_base64_decoded_bytes():
+    import base64
+    import hashlib
+    import numpy as np
+    sv = np.array([1 / np.sqrt(2), 0, 0, 1 / np.sqrt(2)], dtype=np.complex128)
+    encoded = base64.b64encode(sv.tobytes()).decode("utf-8")
+    out = art.strip_statevectors({"raw_results": [{"simulator": "qiskit", "statevector": encoded}]})
+    r0 = out["raw_results"][0]
+    assert r0["statevector"] is None
+    assert r0["statevector_sha256"] == hashlib.sha256(sv.tobytes()).hexdigest()
+    assert r0["statevector_len"] == 4
+    assert r0["statevector_digest_input"] == "base64_decoded_bytes"
+
+
+def test_strip_statevectors_marks_display_placeholder_without_hash():
+    from services.report_filters import DISPLAY_PLACEHOLDER_PREFIX
+    report = {"raw_results": [
+        {"simulator": "a", "statevector": DISPLAY_PLACEHOLDER_PREFIX + " for display.>"},
+        {"simulator": "b", "statevector": "<x>", "statevector_omitted_for_display": True},
+    ]}
+    out = art.strip_statevectors(report)
+    for r in out["raw_results"]:
+        assert r["statevector"] is None
+        assert r["statevector_omitted_for_display"] is True
+        assert "statevector_sha256" not in r
 
 
 def test_conformance_rows_success_error_and_timeout():
@@ -75,6 +95,33 @@ def test_prevalence_counts_by_class():
     assert counts == {"agree_directly": 2, "agree_after_bit_reversal": 1,
                       "residual_disagreement": 1}
     assert all(r["axis"] == "axisA" for r in rows)
+    assert all(r["pair_scope"] == "compared" for r in rows)
+
+
+def test_prevalence_counts_not_comparable_separately():
+    summary = [{"divergence_report": {"pairwise_agreement": [
+        {"agreement": "agree_directly"}, {"agreement": "not_comparable"},
+        {"agreement": "not_comparable"}]}}]
+    rows = art.build_prevalence_rows("axisA", summary)
+    compared = [r for r in rows if r["pair_scope"] == "compared"]
+    excluded = [r for r in rows if r["pair_scope"] == "not_comparable"]
+    assert compared == [{"axis": "axisA", "agreement_class": "agree_directly",
+                         "pair_count": 1, "pair_scope": "compared"}]
+    assert excluded == [{"axis": "axisA", "agreement_class": "not_comparable",
+                         "pair_count": 2, "pair_scope": "not_comparable"}]
+
+
+def test_conformance_uses_dispatch_status():
+    summary = [{"task_name": "bell (2q)", "circuit_id": "000_bell", "raw_results": [
+        {"simulator": "qiskit", "dispatch_status": "ok"},
+        {"simulator": "qibo", "error": "UNAVAILABLE: no route", "dispatch_status": "offline"},
+        {"simulator": "quest", "error": "something about a timeout", "dispatch_status": "error"},
+    ]}]
+    by_sim = {r["simulator"]: r for r in art.build_conformance_rows("axisA", summary)}
+    assert by_sim["qiskit"]["status"] == "success"
+    assert by_sim["qibo"]["status"] == "offline"
+    assert by_sim["quest"]["status"] == "error"
+    assert by_sim["qiskit"]["circuit_id"] == "000_bell"
 
 
 def test_collect_sdk_versions_first_seen_and_accumulate():
@@ -101,8 +148,8 @@ def test_csv_string_headers_and_rows():
     csv = art.csv_string([{"axis": "a", "agreement_class": "agree_directly", "pair_count": 3}],
                          art.PREVALENCE_FIELDS)
     lines = csv.strip().splitlines()
-    assert lines[0] == "axis,agreement_class,pair_count"
-    assert lines[1] == "a,agree_directly,3"
+    assert lines[0] == "axis,agreement_class,pair_count,pair_scope"
+    assert lines[1] == "a,agree_directly,3,"
 
 
 def test_manifest_provenance_and_integrity_notes():
@@ -115,7 +162,8 @@ def test_manifest_provenance_and_integrity_notes():
     assert m["config_sha256"] == art.sha256({"mode": "measured"})
     assert m["circuits"][0]["qasm_sha256"] == art.sha256("OPENQASM 2.0;")
     assert "qasm" not in m["circuits"][0]           # only the hash is stored, not raw QASM
-    assert m["image_digests"] == {}                 # honest empty slot until release
+    assert m["image_digests"] == "not recorded"
+    assert m["seed_derivation"] == "not recorded"
     assert m["outputs"]["readme"] == "README.txt"
     assert "triage" in m["notes"].lower()
     # extra_notes are appended, not lost.

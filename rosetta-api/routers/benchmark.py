@@ -1,4 +1,4 @@
-# FastAPI router endpoints for benchmark.
+"""Benchmark job routes: start single, measured and batch runs; poll and fetch job reports."""
 
 from fastapi import APIRouter, Request, BackgroundTasks
 from fastapi.responses import JSONResponse
@@ -35,6 +35,23 @@ async def get_job_status(job_id: str):
         "runner_statuses": job_data.get("runner_statuses"),
         "progress": job_data.get("progress"),
     }
+
+@router.get("/jobs/{job_id}/report")
+@limiter.limit("30/minute")
+async def get_job_full_report(request: Request, job_id: str):
+    """Download the untruncated report of a completed /compare, /compare_measured or
+    /run_batch_suite job as JSON, including statevectors that GET /jobs/{job_id} replaces
+    with a placeholder. 404 if the job id is unknown or expired; 409 if the job has not
+    completed or has no server copy."""
+    job = ACTIVE_JOBS.get(job_id)
+    if not job:
+        return JSONResponse(status_code=404, content={"error": "Job not found"})
+    if job.get("status") != "completed" or not job.get("full_results"):
+        return JSONResponse(status_code=409, content={"error": f"No report for this job (status: {job.get('status')})"})
+    return JSONResponse(
+        content=job["full_results"],
+        headers={"Content-Disposition": f'attachment; filename="qrosetta_report_{job_id[:8]}.json"'},
+    )
 
 @router.post("/compare", response_model=JobStatusResponse)
 @limiter.limit("10/minute")

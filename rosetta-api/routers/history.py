@@ -1,4 +1,4 @@
-# FastAPI router endpoints for history.
+"""Saved-circuit and run-history routes, all scoped to the authenticated user."""
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -49,10 +49,10 @@ def save_run(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    """Save a completed run's full report to the current user's history. The report body
-    (run_payload) is stripped of statevectors and stored to local disk or S3 (depending on
-    the server's STORAGE_MODE); only a reference is kept in the database. Optionally link it
-    to a previously-saved circuit via circuit_id."""
+    """Save a completed run's report to the current user's history. Statevectors are
+    removed and the stored report is marked ``statevector_storage="removed_before_storage"``;
+    it goes to local disk or S3 per STORAGE_MODE, with a reference in the database.
+    Optionally link it to a saved circuit via circuit_id."""
     try:
         return history_service.save_run(db, current_user.id, run_payload, circuit_id)
     except Exception:
@@ -106,7 +106,7 @@ def batch_delete_runs(
     current_user: models.User = Depends(get_current_user)
 ):
     """Delete multiple saved runs (and their stored reports) by id in one request. Ids that
-    do not exist or do not belong to the current user are silently skipped."""
+    do not exist or do not belong to the current user are skipped."""
     try:
         deleted = history_service.delete_runs(db, current_user.id, payload.run_ids)
     except Exception:
@@ -125,7 +125,8 @@ def export_run_as_ro_crate(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    """Export a saved run history as a FAIR-compliant RO-Crate ZIP bundle."""
+    """Export a saved run as an RO-Crate ZIP bundle (without statevectors, which are not
+    kept in history)."""
     try:
         report_data = history_service.get_run_report(db, current_user.id, run_id)
     except history_service.RunNotFound:

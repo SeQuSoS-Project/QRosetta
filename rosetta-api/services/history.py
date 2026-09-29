@@ -1,12 +1,7 @@
 """Saved circuits and run history: database access and report storage.
 
-The router used to hold this directly — SQLAlchemy queries, commits, rollbacks and S3
-calls inline in six of its seven endpoints, plus its own copy of the RO-Crate
-ExportContext assembly. That second copy is how routers/export.py and routers/history.py
-drifted apart until one of them silently dropped publication_artifacts.
-
-Every lookup filters by user_id, so a caller can only reach their own rows. Functions
-raise ValueError for "not found"; the router turns that into a 404.
+Every lookup filters by user_id. A missing or foreign run raises RunNotFound (a
+ValueError), which the router turns into a 404.
 """
 
 import uuid
@@ -24,9 +19,8 @@ class RunNotFound(ValueError):
     """No run with that id belongs to this user."""
 
 
-# --- Saved circuits ---
-
 def create_circuit(db: Session, user_id: int, name: str, qasm_string: str) -> models.SavedCircuit:
+    """Store a named circuit for ``user_id``."""
     circuit = models.SavedCircuit(user_id=user_id, name=name, qasm_string=qasm_string)
     db.add(circuit)
     db.commit()
@@ -35,10 +29,9 @@ def create_circuit(db: Session, user_id: int, name: str, qasm_string: str) -> mo
 
 
 def list_circuits(db: Session, user_id: int) -> list:
+    """All circuits saved by ``user_id``."""
     return db.query(models.SavedCircuit).filter(models.SavedCircuit.user_id == user_id).all()
 
-
-# --- Run history ---
 
 def _owned_run(db: Session, user_id: int, run_id: str) -> models.RunHistory:
     run = db.query(models.RunHistory).filter(
@@ -76,15 +69,18 @@ def save_run(db: Session, user_id: int, run_payload: dict,
 
 
 def list_runs(db: Session, user_id: int) -> list:
+    """All runs saved by ``user_id`` (metadata rows)."""
     return db.query(models.RunHistory).filter(models.RunHistory.user_id == user_id).all()
 
 
 def get_run_report(db: Session, user_id: int, run_id: str) -> dict:
+    """The stored report of one of ``user_id``'s runs."""
     run = _owned_run(db, user_id, run_id)
     return fetch_run_report(run.s3_object_key)
 
 
 def rename_run(db: Session, user_id: int, run_id: str, run_name: str) -> models.RunHistory:
+    """Rename one of ``user_id``'s runs."""
     run = _owned_run(db, user_id, run_id)
     run.run_name = run_name
     db.commit()

@@ -1,4 +1,4 @@
-# FastAPI router endpoints for generation.
+"""Circuit generation, benchmark-circuit lookup, and Quirk visualisation routes."""
 
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
