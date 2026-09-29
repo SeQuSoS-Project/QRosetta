@@ -25,16 +25,18 @@ def test_runaway_is_killed_at_the_budget():
     t0 = time.monotonic()
     r = _call(fx.slow, {"sleep": 60, "hard_timeout_seconds": 1})
     elapsed = time.monotonic() - t0
-    assert "TIMEOUT" in r["error"] and "1s" in r["error"]
+    assert r["error"].startswith("TIMEOUT (1s)") and r["timed_out"] is True
+    assert "SDK import" in r["error"]
     assert elapsed < 10, f"kill took too long: {elapsed:.1f}s"  # not the full 60s
-    assert r["execution_time_sec"] == 0.0
+    assert r["execution_time_sec"] is None and r["memory_usage_mb"] is None
 
 
 def test_crash_fails_fast_not_at_deadline():
     t0 = time.monotonic()
     r = _call(fx.boom, {"hard_timeout_seconds": 30})
     elapsed = time.monotonic() - t0
-    assert "without a result" in r["error"]  # OOM-style message
+    assert "before returning a result" in r["error"]  # OOM-style message
+    assert "container logs" not in r["error"] and "timed_out" not in r
     assert elapsed < 10, f"crash detection waited for the deadline: {elapsed:.1f}s"
 
 

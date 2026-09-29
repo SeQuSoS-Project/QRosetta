@@ -4,6 +4,7 @@ The simulator has no shot sampler here, so the measured endpoint samples the sta
 """
 
 from fastapi import FastAPI
+from qrosetta_commons.counts import prepare_final_state_sampling, prepare_statevector_qasm
 from qrosetta_commons.helpers import (
     CompileResult, get_logger, register_runner_endpoints, run_cli_main,
     run_measured_job, run_statevector_job, with_sdk_versions,
@@ -42,9 +43,6 @@ _FULL_PEEPHOLE_NOTE = (
 _GLOBAL_PHASE_NOTE = (
     "Global phase: Quil has no global-phase instruction, so tk_to_pyquil drops the pytket "
     "circuit's phase; the returned statevector is multiplied by exp(i*pi*phase) to restore it.")
-_STRIP_MEASUREMENTS_NOTE = (
-    "Measurement operations removed before statevector simulation, applied regardless of "
-    "apply_preprocessing, so the returned state is the pre-measurement state.")
 
 
 def _to_quil_program(qasm_str: str, optimization_level: int = 0, apply_preprocessing: bool = True):
@@ -91,14 +89,13 @@ def _simulate_statevector(gate_prog: Program, n_qubits: int) -> np.ndarray:
     return np.array(sim.wf).flatten()
 
 
-def _compile(payload: dict) -> CompileResult:
+def _compile(payload: dict, qasm: str, notes=()) -> CompileResult:
     prog, n_qubits, preprocessing_applied, tk_export = _to_quil_program(
-        payload["circuit_data"], payload.get("optimization_level", 0),
-        payload.get("apply_preprocessing", True))
+        qasm, payload.get("optimization_level", 0), payload.get("apply_preprocessing", True))
     return CompileResult(
         circuit=(_gates_only(prog), tk_export),
         n_qubits=n_qubits,
-        preprocessing_applied=preprocessing_applied)
+        preprocessing_applied=[*notes, *preprocessing_applied])
 
 
 def _serialize(compiled: CompileResult) -> str:
@@ -110,9 +107,8 @@ def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for PyQuil simulation.")
 
     def compile_step(payload):
-        compiled = _compile(payload)
-        if compiled.circuit[1].n_gates_of_type(OpType.Measure):
-            compiled.preprocessing_applied.append(_STRIP_MEASUREMENTS_NOTE)
+        qasm, notes = prepare_statevector_qasm(payload["circuit_data"])
+        compiled = _compile(payload, qasm, notes)
         compiled.preprocessing_applied.append(_GLOBAL_PHASE_NOTE)
         return compiled
 
@@ -134,6 +130,12 @@ def process_run(payload: dict) -> dict:
 def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for PyQuil simulation.")
 
+    def compile_step(payload):
+        qasm, layout, notes = prepare_final_state_sampling(payload["circuit_data"])
+        compiled = _compile(payload, qasm, notes)
+        layouts.append(layout)
+        return compiled
+
     def execute(compiled, payload):
         gate_prog, _ = compiled.circuit
         statevector = _simulate_statevector(gate_prog, compiled.n_qubits)
@@ -142,15 +144,15 @@ def process_run_measured(payload: dict) -> dict:
         rng = np.random.default_rng(payload.get("seed"))
         return rng.choice(len(probs), size=payload.get("n_shots", 1024), p=probs)
 
-    def shape_counts(indices, compiled, _payload):
-        counts_dict = {}
-        for idx in indices:
-            bitstring = format(idx, f"0{compiled.n_qubits}b")
-            counts_dict[bitstring] = counts_dict.get(bitstring, 0) + 1
-        return counts_dict, "sv_sample"
+    def shape_counts(indices, _compiled, _payload):
+        """Map the sampled qubit outcomes (qubit 0 most significant) to classical-bit keys."""
+        layout = layouts[0]
+        positions = layout.qubit_positions("msb")
+        return layout.counts_from_qubit_samples(indices, positions, "msb"), "sv_sample"
 
+    layouts = []
     return run_measured_job(
-        simulator="pyquil", payload=payload, logger=logger, compile_fn=_compile,
+        simulator="pyquil", payload=payload, logger=logger, compile_fn=compile_step,
         serialize_fn=_serialize, execute_fn=execute, postprocess_fn=shape_counts,
         qubit_ordering="msb", precision="complex128")
 

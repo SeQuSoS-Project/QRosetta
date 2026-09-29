@@ -48,6 +48,7 @@ def _reset_hwm():
 def lifetime_peak_rss():
     """Peak RSS of this process over its whole life, as ``(mib, method)``.
 
+    Never lower than any MemoryMonitor window peak recorded in this process.
     ``method`` is ``"vmhwm"`` (kernel high-water mark, adjusted for resets done by
     MemoryMonitor) or ``"getrusage"`` (ru_maxrss, which in a spawned child also
     includes the parent's peak).
@@ -55,7 +56,8 @@ def lifetime_peak_rss():
     hwm = _read_status_bytes("VmHWM")
     if hwm is not None:
         return max(hwm, _lifetime_hwm_bytes) / _MIB, "vmhwm"
-    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024, "getrusage"
+    maxrss_mib = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+    return max(maxrss_mib, _lifetime_hwm_bytes / _MIB), "getrusage"
 
 
 class MemoryMonitor:
@@ -101,14 +103,16 @@ class MemoryMonitor:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        global _lifetime_hwm_bytes
         if self.method == "vmhwm":
             hwm = _read_status_bytes("VmHWM")
             if hwm is not None:
                 self.peak_memory = max(self.peak_memory, hwm)
-            return
-        self._keep_measuring = False
-        self._thread.join()
-        self._sample()
+        else:
+            self._keep_measuring = False
+            self._thread.join()
+            self._sample()
+        _lifetime_hwm_bytes = max(_lifetime_hwm_bytes, self.peak_memory)
 
     def get_peak_usage_mb(self):
         """Peak RSS inside the block minus RSS at entry, in MiB."""

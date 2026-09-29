@@ -8,6 +8,9 @@ import cmath
 import warnings
 
 from fastapi import FastAPI
+from qrosetta_commons.counts import (
+    parse_measurement_layout, prepare_statevector_qasm, unit_pairs, unordered_qreg_note,
+)
 from qrosetta_commons.helpers import (
     CompileResult, get_logger, register_runner_endpoints, run_cli_main,
     run_measured_job, run_statevector_job, runner_error, with_sdk_versions,
@@ -18,6 +21,7 @@ from pytket.extensions.cirq import tk_to_cirq
 from pytket.passes import RemoveBarriers, auto_rebase_pass
 from pytket.transform import Transform
 import cirq
+import numpy as np
 
 try:
     import qsimcirq
@@ -47,13 +51,11 @@ _LEVEL_2_NOTE = (
     "cirq.eject_z, cirq.eject_phased_paulis, cirq.merge_single_qubit_gates_to_phxz, "
     "cirq.drop_empty_moments (optimization_level=2): rewrite single-qubit gates into "
     "PhasedXZ form; the circuit is preserved up to global phase.")
-_STRIP_MEASUREMENTS_NOTE = (
-    "Measurement operations removed before statevector simulation, applied regardless of "
-    "apply_preprocessing, so the returned state is the pre-measurement state.")
-_MEASURE_ALL_NOTE = (
-    "The circuit's measurements are replaced by one measurement of every declared qubit "
-    "(key 'result', qubits in ascending index order), applied regardless of "
-    "apply_preprocessing.")
+_NATIVE_RUN_NOTE = (
+    "qsimcirq.QSimSimulator(seed).run(): the circuit's own measurements, one Cirq "
+    "measurement key per classical bit, are sampled by qsim, including mid-circuit "
+    "measurements. Counts keys hold every declared classical bit in declaration order, flat "
+    "clbit 0 leftmost; a classical bit measured more than once takes its last value.")
 
 _POW_GATE_TYPES = frozenset({
     OpType.Rx, OpType.Ry, OpType.Rz, OpType.PhasedX,
@@ -90,26 +92,19 @@ def _to_cirq_with_phase(tk_circ: Circuit) -> cirq.Circuit:
     return circ
 
 
-def _strip_measurements(circ: cirq.Circuit) -> cirq.Circuit:
-    """Return a copy of the circuit with all measurement gates removed."""
-    return cirq.Circuit(
-        op for op in circ.all_operations()
-        if not isinstance(op.gate, cirq.MeasurementGate)
-    )
-
-
-def _to_cirq_circuit(payload: dict):
+def _to_cirq_circuit(payload: dict, qasm: str, notes=()):
     """Parse the QASM via pytket, convert to Cirq, then apply the Cirq optimisation passes.
 
-    Measurements are removed before the passes: cirq.eject_phased_paulis folds a trailing
-    Pauli into a measurement's invert mask, which would lose the gate once the measurement
-    is removed. Returns the measurement-free Cirq circuit, the declared qubits in Cirq's
-    order, whether measurements were removed, and the preprocessing list.
+    Returns the Cirq circuit, the declared qubits in Cirq's order, the parsed circuit's bits
+    as ``(register, index)`` pairs in pytket's sorted order, and the preprocessing list.
     """
-    tk_circ = pytket.qasm.circuit_from_qasm_str(payload["circuit_data"])
+    tk_circ = pytket.qasm.circuit_from_qasm_str(qasm)
     optimization_level = payload.get("optimization_level", 0)
 
-    preprocessing_applied = []
+    preprocessing_applied = list(notes)
+    qreg_note = unordered_qreg_note(parse_measurement_layout(qasm))
+    if qreg_note:
+        preprocessing_applied.append(qreg_note)
     if payload.get("apply_preprocessing", True):
         RemoveBarriers().apply(tk_circ)
         preprocessing_applied.append(_REMOVE_BARRIERS_NOTE)
@@ -120,8 +115,6 @@ def _to_cirq_circuit(payload: dict):
         preprocessing_applied.append(_RZRX_NOTE)
 
     circ = _to_cirq_with_phase(tk_circ)
-    had_measurements = circ.has_measurements()
-    circ = _strip_measurements(circ)
 
     if optimization_level >= 1:
         circ = cirq.drop_empty_moments(circ)
@@ -135,7 +128,7 @@ def _to_cirq_circuit(payload: dict):
         circ = cirq.drop_empty_moments(circ)
         preprocessing_applied.append(_LEVEL_2_NOTE)
 
-    return circ, _cirq_qubits(tk_circ), had_measurements, preprocessing_applied
+    return circ, _cirq_qubits(tk_circ), unit_pairs(tk_circ.bits), preprocessing_applied
 
 
 def _serialize(compiled: CompileResult) -> str:
@@ -153,9 +146,8 @@ def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for qsim-Cirq simulation.")
 
     def compile_step(payload):
-        cirq_circ, qubits, had_measurements, preprocessing_applied = _to_cirq_circuit(payload)
-        if had_measurements:
-            preprocessing_applied.append(_STRIP_MEASUREMENTS_NOTE)
+        qasm, strip_notes = prepare_statevector_qasm(payload["circuit_data"])
+        cirq_circ, qubits, _, preprocessing_applied = _to_cirq_circuit(payload, qasm, strip_notes)
         return CompileResult(
             circuit=(qsimcirq.QSimSimulator(), cirq_circ, qubits),
             n_qubits=len(qubits),
@@ -179,24 +171,28 @@ def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for qsim-Cirq simulation.")
 
     def compile_step(payload):
-        cirq_circ, qubits, _, preprocessing_applied = _to_cirq_circuit(payload)
-        circ_with_meas = cirq_circ + cirq.measure(*qubits, key="result")
-        preprocessing_applied.append(_MEASURE_ALL_NOTE)
+        cirq_circ, qubits, bits, preprocessing_applied = _to_cirq_circuit(
+            payload, payload["circuit_data"])
+        key_bits = {f"{name}[{index}]": (name, index) for name, index in bits}
         return CompileResult(
-            circuit=(qsimcirq.QSimSimulator(seed=payload.get("seed")), circ_with_meas),
+            circuit=(qsimcirq.QSimSimulator(seed=payload.get("seed")), cirq_circ, key_bits),
             n_qubits=len(qubits),
-            preprocessing_applied=preprocessing_applied)
+            preprocessing_applied=preprocessing_applied + [_NATIVE_RUN_NOTE])
 
     def execute(compiled, payload):
-        simulator, circ = compiled.circuit
+        simulator, circ, _ = compiled.circuit
         return simulator.run(circ, repetitions=payload.get("n_shots", 1024))
 
-    def shape_counts(run_result, _compiled, _payload):
-        counts_dict: dict = {}
-        for shot in run_result.measurements["result"]:
-            bitstring = "".join(str(int(b)) for b in shot)
-            counts_dict[bitstring] = counts_dict.get(bitstring, 0) + 1
-        return counts_dict, "native"
+    def shape_counts(run_result, compiled, payload):
+        """Assemble per-shot keys over the declared classical bits (msb)."""
+        _, _, key_bits = compiled.circuit
+        layout = parse_measurement_layout(payload["circuit_data"])
+        index = {bit: k for k, bit in enumerate(layout.clbits)}
+        table = np.zeros((payload.get("n_shots", 1024), layout.n_clbits), dtype=np.int8)
+        for key, record in run_result.records.items():
+            table[:, index[key_bits[key]]] = record[:, -1, 0]
+        rows, counts = np.unique(table, axis=0, return_counts=True)
+        return {layout.key(row, "msb"): int(c) for row, c in zip(rows, counts)}, "native"
 
     return run_measured_job(
         simulator="qsim-cirq", payload=payload, logger=logger, compile_fn=compile_step,

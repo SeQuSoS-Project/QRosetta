@@ -5,6 +5,9 @@ import logging
 import warnings
 
 from fastapi import FastAPI
+from qrosetta_commons.counts import (
+    parse_measurement_layout, prepare_statevector_qasm, unit_pairs, unordered_qreg_note,
+)
 from qrosetta_commons.helpers import (
     CompileResult, get_logger, register_runner_endpoints, run_cli_main,
     run_measured_job, run_statevector_job, with_sdk_versions,
@@ -40,9 +43,11 @@ _REBASE_NOTE = (
     "pytket.passes.auto_rebase_pass({CX, Rz, Rx}): Universally decomposes complex "
     "multi-qubit and single-qubit gates (like CU3, CRX) into a standard CX/Rz/Rx basis to "
     "prevent parsing failures in the backend.")
-_STRIP_MEASUREMENTS_NOTE = (
-    "Measurement operations removed before statevector simulation, applied regardless of "
-    "apply_preprocessing, so the returned state is the pre-measurement state.")
+_NATIVE_RUN_NOTE = (
+    "cirq.Simulator(dtype=complex64, seed).run(): the circuit's own measurements, one Cirq "
+    "measurement key per classical bit, are sampled by Cirq, including mid-circuit "
+    "measurements. Counts keys hold every declared classical bit in declaration order, flat "
+    "clbit 0 leftmost; a classical bit measured more than once takes its last value.")
 
 _PASS_NOTES = {}
 
@@ -68,10 +73,17 @@ def _compilation_note(backend, level):
     return _PASS_NOTES[key]
 
 
-def _compile_tket(payload: dict):
-    """Parse the QASM and run the preprocessing and backend compilation both endpoints share."""
-    tk_circ = pytket.qasm.circuit_from_qasm_str(payload["circuit_data"])
-    preprocessing_applied = []
+def _compile_tket(payload: dict, qasm: str, notes=()):
+    """Parse the QASM and run the preprocessing and backend compilation both endpoints share.
+
+    Also returns the parsed circuit's bits as ``(register, index)`` pairs in pytket's sorted
+    order, which the compiled circuit's bits follow position for position.
+    """
+    tk_circ = pytket.qasm.circuit_from_qasm_str(qasm)
+    preprocessing_applied = list(notes)
+    qreg_note = unordered_qreg_note(parse_measurement_layout(qasm))
+    if qreg_note:
+        preprocessing_applied.append(qreg_note)
     if payload.get("apply_preprocessing", True):
         RemoveBarriers().apply(tk_circ)
         preprocessing_applied.append(_REMOVE_BARRIERS_NOTE)
@@ -82,7 +94,7 @@ def _compile_tket(payload: dict):
     opt_level = min(payload.get("optimization_level", 0), 2)
     compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=opt_level)
     preprocessing_applied.append(_compilation_note(backend, opt_level))
-    return backend, compiled_circ, preprocessing_applied
+    return compiled_circ, preprocessing_applied, unit_pairs(tk_circ.bits)
 
 
 def _cirq_qubits(tk_circ: Circuit) -> list:
@@ -130,14 +142,9 @@ def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for Cirq simulation.")
 
     def compile_step(payload):
-        _, compiled_circ, preprocessing_applied = _compile_tket(payload)
+        qasm, strip_notes = prepare_statevector_qasm(payload["circuit_data"])
+        compiled_circ, preprocessing_applied, _ = _compile_tket(payload, qasm, strip_notes)
         cirq_circ = _to_cirq_with_phase(compiled_circ)
-        if cirq_circ.has_measurements():
-            cirq_circ = cirq.drop_terminal_measurements(cirq_circ)
-            if cirq_circ.has_measurements():
-                raise ValueError(
-                    "Statevector simulation needs every measurement to be terminal.")
-            preprocessing_applied.append(_STRIP_MEASUREMENTS_NOTE)
         qubits = _cirq_qubits(compiled_circ)
         simulator = cirq.Simulator(dtype=np.complex128)
         return CompileResult(
@@ -160,30 +167,37 @@ def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for Cirq simulation.")
 
     def compile_step(payload):
-        backend, compiled_circ, preprocessing_applied = _compile_tket(payload)
+        compiled_circ, preprocessing_applied, bits = _compile_tket(
+            payload, payload["circuit_data"])
+        if len(compiled_circ.bits) != len(bits):
+            raise ValueError("backend compilation changed the number of classical bits")
+        key_bits = {str(b): pair for b, pair in zip(compiled_circ.bits, bits)}
+        simulator = cirq.Simulator(dtype=np.complex64, seed=payload.get("seed"))
         return CompileResult(
-            circuit=(backend, compiled_circ),
+            circuit=(simulator, _to_cirq_with_phase(compiled_circ), key_bits, compiled_circ),
             n_qubits=compiled_circ.n_qubits,
-            preprocessing_applied=preprocessing_applied)
-
-    def seed_rng(_compiled, payload):
-        """CirqStateSampleBackend samples from numpy's global RNG, so seed that."""
-        if payload.get("seed") is not None:
-            np.random.seed(payload["seed"])
+            preprocessing_applied=preprocessing_applied + [_NATIVE_RUN_NOTE])
 
     def execute(compiled, payload):
-        backend, compiled_circ = compiled.circuit
-        handle = backend.process_circuit(compiled_circ, n_shots=payload.get("n_shots", 1024))
-        return backend.get_result(handle)
+        simulator, cirq_circ, _, _ = compiled.circuit
+        return simulator.run(cirq_circ, repetitions=payload.get("n_shots", 1024))
 
-    def shape_counts(result, _compiled, _payload):
-        counts = result.get_counts()
-        return {"".join(map(str, k)): int(v) for k, v in counts.items()}, "native"
+    def shape_counts(result, compiled, payload):
+        """Assemble per-shot keys over the declared classical bits (msb)."""
+        _, _, key_bits, _ = compiled.circuit
+        layout = parse_measurement_layout(payload["circuit_data"])
+        index = {bit: k for k, bit in enumerate(layout.clbits)}
+        shots = payload.get("n_shots", 1024)
+        table = np.zeros((shots, layout.n_clbits), dtype=np.int8)
+        for key, record in result.records.items():
+            table[:, index[key_bits[key]]] = record[:, -1, 0]
+        rows, counts = np.unique(table, axis=0, return_counts=True)
+        return {layout.key(row, "msb"): int(c) for row, c in zip(rows, counts)}, "native"
 
     return run_measured_job(
         simulator="cirq", payload=payload, logger=logger, compile_fn=compile_step,
-        serialize_fn=_serialize, pre_execute_fn=seed_rng, execute_fn=execute,
-        postprocess_fn=shape_counts, qubit_ordering="msb", precision="complex64")
+        serialize_fn=_serialize, execute_fn=execute, postprocess_fn=shape_counts,
+        qubit_ordering="msb", precision="complex64")
 
 
 register_runner_endpoints(app, process_run, process_run_measured)

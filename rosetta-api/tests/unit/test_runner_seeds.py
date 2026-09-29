@@ -46,7 +46,7 @@ def test_annotate_records_runner_seed_and_honoured_flag():
 
 
 def _fake_runner(monkeypatch):
-    async def fake_safe_request(client, url, payload, sim_name, timeout_s):
+    async def fake_safe_request(client, url, payload, sim_name, timeout_s, http_timeout=None):
         return {"counts": {"00": 1}, "received_seed": payload.get("seed"),
                 "received_qasm": payload["circuit_data"],
                 "preprocessing_applied": ["runner pass"]}

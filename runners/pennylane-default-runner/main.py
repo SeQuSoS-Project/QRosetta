@@ -1,8 +1,9 @@
 """PennyLane runner: parses QASM with pennylane-qiskit and executes the tape on a PennyLane device."""
 
 from fastapi import FastAPI
+from qrosetta_commons.counts import prepare_final_state_sampling, prepare_statevector_qasm
 from qrosetta_commons.helpers import (
-    CompileResult, _counts_from_samples, _draw_statevector_samples, get_logger, get_num_qubits_from_qasm,
+    CompileResult, _draw_statevector_samples, get_logger, get_num_qubits_from_qasm,
     register_runner_endpoints, run_cli_main, run_measured_job, run_statevector_job,
     strip_barriers_from_qasm, with_sdk_versions,
 )
@@ -23,9 +24,8 @@ _STRIP_BARRIERS_NOTE = (
 _FROM_QASM_NOTE = (
     "qml.from_qasm(measurements=[qml.state()]) (pennylane-qiskit): Maps each Qiskit "
     "instruction to a PennyLane operation; gates without a direct PennyLane equivalent "
-    "(e.g. cu3) become QubitUnitary matrices, and terminal measure statements are replaced "
-    "by a statevector readout (counts are sampled from that statevector). Required by the "
-    "adapter, applied regardless of apply_preprocessing.")
+    "(e.g. cu3) become QubitUnitary matrices; the tape ends in a statevector readout. "
+    "Required by the adapter, applied regardless of apply_preprocessing.")
 _CANCEL_INVERSES_NOTE = (
     "qml.transforms.cancel_inverses: Cancels adjacent inverse gate pairs (e.g. H·H, X·X) to "
     "reduce gate count.")
@@ -54,17 +54,17 @@ def _optimization_pipeline(level: int):
     return [], []
 
 
-def _compile(payload: dict) -> CompileResult:
+def _compile(payload: dict, qasm: str, notes=()) -> CompileResult:
     """Build the state tape, apply the optimisation pipeline and the device preprocess program.
 
     Returns (device, tapes, execution_config, device_postprocessing) as the circuit.
     """
-    circuit_data = strip_barriers_from_qasm(payload["circuit_data"])
-    num_qubits = get_num_qubits_from_qasm(payload["circuit_data"])
+    circuit_data = strip_barriers_from_qasm(qasm)
+    num_qubits = get_num_qubits_from_qasm(qasm)
     dev = qml.device(_DEVICE, wires=num_qubits, shots=None)
     qasm_op = qml.from_qasm(circuit_data, measurements=[qml.state()])
     tape = qml.tape.make_qscript(qasm_op)()
-    notes = [_STRIP_BARRIERS_NOTE, _FROM_QASM_NOTE]
+    notes = [*notes, _STRIP_BARRIERS_NOTE, _FROM_QASM_NOTE]
 
     passes, pass_notes = _optimization_pipeline(payload.get("optimization_level", 0))
     if passes:
@@ -86,6 +86,17 @@ def _compile(payload: dict) -> CompileResult:
         n_qubits=num_qubits,
         preprocessing_applied=notes,
         precision=_PRECISION)
+
+
+def _compile_statevector(payload: dict) -> CompileResult:
+    qasm, notes = prepare_statevector_qasm(payload["circuit_data"])
+    return _compile(payload, qasm, notes)
+
+
+def _compile_sampled(payload: dict):
+    """Compile the measurement-free circuit; returns it with the classical-bit layout."""
+    qasm, layout, notes = prepare_final_state_sampling(payload["circuit_data"])
+    return _compile(payload, qasm, notes), layout
 
 
 def _serialize(compiled) -> str:
@@ -114,7 +125,7 @@ def process_run(payload: dict) -> dict:
         return _statevector(results, compiled)
 
     return run_statevector_job(
-        simulator=_SIMULATOR, payload=payload, logger=logger, compile_fn=_compile,
+        simulator=_SIMULATOR, payload=payload, logger=logger, compile_fn=_compile_statevector,
         serialize_fn=_serialize, execute_fn=execute, postprocess_fn=shape_statevector,
         qubit_ordering="msb", precision=_PRECISION)
 
@@ -128,11 +139,20 @@ def process_run_measured(payload: dict) -> dict:
         return _draw_statevector_samples(
             statevector, payload.get("n_shots", 1024), payload.get("seed"))
 
-    def shape_counts(samples, compiled, _payload):
-        return _counts_from_samples(samples, compiled.n_qubits), "sv_sample"
+    def compile_step(payload):
+        compiled, layout = _compile_sampled(payload)
+        layouts.append(layout)
+        return compiled
 
+    def shape_counts(samples, _compiled, _payload):
+        """Map the sampled wire outcomes (wire 0 most significant) to classical-bit keys."""
+        layout = layouts[0]
+        positions = layout.qubit_positions("msb")
+        return layout.counts_from_qubit_samples(samples, positions, "msb"), "sv_sample"
+
+    layouts = []
     return run_measured_job(
-        simulator=_SIMULATOR, payload=payload, logger=logger, compile_fn=_compile,
+        simulator=_SIMULATOR, payload=payload, logger=logger, compile_fn=compile_step,
         serialize_fn=_serialize, execute_fn=execute, postprocess_fn=shape_counts,
         qubit_ordering="msb", precision=_PRECISION)
 

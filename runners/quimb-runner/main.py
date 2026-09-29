@@ -6,6 +6,7 @@ import re
 import warnings
 
 from fastapi import FastAPI
+from qrosetta_commons.counts import prepare_final_state_sampling, prepare_statevector_qasm
 from qrosetta_commons.helpers import (
     CompileResult, get_logger, register_runner_endpoints, run_cli_main, run_measured_job,
     run_statevector_job, runner_error, strip_qasm_comments, with_sdk_versions,
@@ -31,8 +32,8 @@ _DROPPED_STATEMENT = re.compile(r"(barrier|measure|creg)\b")
 _STRIP_NOTE = (
     "_strip_unsupported_statements(): Removes every 'barrier', 'measure' and 'creg' statement "
     "(split on ';'), as quimb's QASM parser does not support them. On the measured path "
-    "every qubit is sampled. Required by the adapter, applied regardless of "
-    "apply_preprocessing.")
+    "every qubit is sampled and the outcomes are re-keyed over the circuit's classical bits. "
+    "Required by the adapter, applied regardless of apply_preprocessing.")
 _GATE_CONTRACT_NOTE = (
     "quimb.tensor.Circuit(gate_contract='auto-split-gate') (quimb default): While parsing, "
     "each two-qubit gate is contracted into the network and split by SVD when that lowers "
@@ -70,7 +71,7 @@ def _reset_contraction_caches(_compiled, _payload):
     ctg_presets.get_auto_hq_optimizer.cache_clear()
 
 
-def _compile(payload: dict, extra_notes=()) -> CompileResult:
+def _compile(payload: dict, qasm: str, notes=(), extra_notes=()) -> CompileResult:
     """Parse the cleaned QASM into a quimb Circuit.
 
     quimb has no circuit-level optimisation passes, so optimization_level is not applied.
@@ -80,10 +81,10 @@ def _compile(payload: dict, extra_notes=()) -> CompileResult:
         logger.info(
             f"Quimb: optimization_level={optimization_level} requested "
             "but not applicable to tensor-network simulation; using default contraction.")
-    cleaned = _strip_unsupported_statements(payload["circuit_data"])
+    cleaned = _strip_unsupported_statements(qasm)
     return CompileResult(
         circuit=_qtn().Circuit.from_openqasm2_str(cleaned),
-        preprocessing_applied=[_STRIP_NOTE, _GATE_CONTRACT_NOTE, *extra_notes],
+        preprocessing_applied=[*notes, _STRIP_NOTE, _GATE_CONTRACT_NOTE, *extra_notes],
         transpiled_qasm=cleaned,
         precision=_PRECISION)
 
@@ -94,6 +95,10 @@ def process_run(payload: dict) -> dict:
     if not QUIMB_AVAILABLE:
         return runner_error("quimb", "Quimb is not installed in this environment.")
 
+    def compile_step(payload):
+        qasm, notes = prepare_statevector_qasm(payload["circuit_data"])
+        return _compile(payload, qasm, notes)
+
     def execute(compiled, _payload):
         return compiled.circuit.to_dense()
 
@@ -101,7 +106,7 @@ def process_run(payload: dict) -> dict:
         return np.asarray(dense).flatten()
 
     return run_statevector_job(
-        simulator="quimb", payload=payload, logger=logger, compile_fn=_compile,
+        simulator="quimb", payload=payload, logger=logger, compile_fn=compile_step,
         pre_execute_fn=_reset_contraction_caches, execute_fn=execute,
         postprocess_fn=shape_statevector, qubit_ordering="msb", theoretical_mb=None,
         precision=_PRECISION)
@@ -114,15 +119,22 @@ def process_run_measured(payload: dict) -> dict:
         return runner_error("quimb", "Quimb is not installed in this environment.")
 
     def compile_step(payload):
-        return _compile(payload, extra_notes=(_SAMPLING_NOTE,))
+        qasm, layout, notes = prepare_final_state_sampling(payload["circuit_data"])
+        layouts.append(layout)
+        return _compile(payload, qasm, notes, extra_notes=(_SAMPLING_NOTE,))
 
     def execute(compiled, payload):
         return compiled.circuit.simulate_counts(
             C=payload.get("n_shots", 1024), seed=payload.get("seed"))
 
     def shape_counts(counts, _compiled, _payload):
-        return dict(counts), "tn_sample"
+        """Map quimb's all-qubit bitstrings (qubit 0 leftmost) to classical-bit keys."""
+        layout = layouts[0]
+        positions = layout.qubit_positions("msb")
+        qubit_counts = {int(k, 2): v for k, v in counts.items()}
+        return layout.counts_from_qubit_counts(qubit_counts, positions, "msb"), "tn_sample"
 
+    layouts = []
     return run_measured_job(
         simulator="quimb", payload=payload, logger=logger, compile_fn=compile_step,
         pre_execute_fn=_reset_contraction_caches, execute_fn=execute,

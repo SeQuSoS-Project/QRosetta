@@ -6,12 +6,15 @@ from typing import Dict, Optional
 
 class CircuitPayload(BaseModel):
     """``/run`` payload. ``hard_timeout_seconds`` is the wall-clock budget enforced by
-    ``helpers.run_isolated``; None uses the runner default."""
+    ``helpers.run_isolated``; None uses the runner default. ``max_queue_wait_seconds``
+    bounds the wait for an execution slot (``helpers.ExecutionSlots``); None waits
+    indefinitely."""
     circuit_data: str
     optimization_level: int = 0
     runner_config: Dict[str, int] = {}
     apply_preprocessing: bool = True
     hard_timeout_seconds: Optional[int] = None
+    max_queue_wait_seconds: Optional[float] = None
 
 
 class MeasuredCircuitPayload(BaseModel):
@@ -24,3 +27,4 @@ class MeasuredCircuitPayload(BaseModel):
     apply_preprocessing: bool = True
     seed: Optional[int] = None
     hard_timeout_seconds: Optional[int] = None
+    max_queue_wait_seconds: Optional[float] = None

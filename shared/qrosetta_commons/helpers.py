@@ -26,7 +26,15 @@ MAX_QUBITS_STATEVECTOR = int(os.getenv("MAX_QUBITS_STATEVECTOR", "18"))
 MAX_QUBITS_MEASURED = int(os.getenv("MAX_QUBITS_MEASURED", "24"))
 
 THREAD_ENV_VARS = ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
-                   "NUMEXPR_NUM_THREADS")
+                   "NUMEXPR_NUM_THREADS", "NUMBA_NUM_THREADS")
+
+UNMEASURED_METRICS = ("execution_time_sec", "compilation_time_sec", "simulation_time_sec",
+                      "memory_usage_mb", "process_peak_mb")
+
+
+def unmeasured_metrics() -> dict:
+    """The per-run metrics of a failed run, each None because it was not measured."""
+    return {name: None for name in UNMEASURED_METRICS}
 
 METRIC_SCOPE = {
     "compilation_time_sec": "wall clock, t0..t1 of the last timed run",
@@ -39,6 +47,8 @@ METRIC_SCOPE = {
                     "imports, warm-up and all timed runs",
     "process_peak_rss_mb": "peak RSS over the whole runner process: interpreter start, "
                            "imports, warm-up and all timed runs",
+    "queue_wait_sec": "wall clock the request waited for this runner's execution slot "
+                      "before its process was spawned; 0 on the Kubernetes path",
 }
 
 
@@ -263,8 +273,11 @@ def _isolated_target(result_q, module_name, func_name, payload):
         result_q.put(("err", f"{type(e).__name__}: {e}"))
 
 
-def _isolated_error(message):
-    return {"error": message, "execution_time_sec": 0.0, "memory_usage_mb": 0.0}
+def _isolated_error(message, timed_out=False):
+    result = {"error": message, **unmeasured_metrics()}
+    if timed_out:
+        result["timed_out"] = True
+    return result
 
 
 def _run_isolated_blocking(module_name, func_name, payload, timeout_s):
@@ -294,11 +307,12 @@ def _run_isolated_blocking(module_name, func_name, payload, timeout_s):
                 proc.kill()
                 proc.join()
             return _isolated_error(
-                f"TIMEOUT ({timeout_s}s): the simulation exceeded the time budget and was "
-                f"terminated.")
+                f"TIMEOUT ({timeout_s}s): the runner process (spawn, SDK import, warm-up and "
+                f"timed run) exceeded {timeout_s} s and was terminated.", timed_out=True)
         return _isolated_error(
-            f"Runner subprocess exited (code {proc.exitcode}) without a result — most likely "
-            f"an out-of-memory kill.")
+            f"The runner process was terminated (exit code {proc.exitcode}) before returning "
+            f"a result, most likely out of memory. Server operators can see details in the "
+            f"runner logs.")
 
     proc.join(5)
     if proc.is_alive():
@@ -383,13 +397,7 @@ def counts_result(*, simulator, counts, sampling_method, compilation_time, simul
 
 def runner_error(simulator: str, exc) -> dict:
     """Assemble a runner error result from an exception."""
-    return {
-        "simulator": simulator,
-        "error": str(exc),
-        "execution_time_sec": 0.0,
-        "memory_usage_mb": 0.0,
-        "process_peak_mb": 0.0,
-    }
+    return {"simulator": simulator, "error": str(exc), **unmeasured_metrics()}
 
 
 class CompileResult:
@@ -537,17 +545,76 @@ def run_measured_job(*, simulator, payload, compile_fn, execute_fn, qubit_orderi
         monitor_interval=monitor_interval, build_result=build_result)
 
 
-def register_runner_endpoints(app, process_run, process_run_measured):
-    """Register ``/run`` and ``/run_measured`` on a runner app, each via ``run_isolated``."""
+RUNNER_MAX_CONCURRENT = max(1, int(os.getenv("RUNNER_MAX_CONCURRENT", "1")))
+
+
+class ExecutionSlots:
+    """Admits at most ``limit`` isolated runs of one runner process at a time, first come
+    first served.
+
+    ``run`` waits for a slot (at most ``payload['max_queue_wait_seconds']`` when set), then
+    calls ``run_isolated``, whose hard timeout therefore starts after the wait. Every result
+    carries ``queue_wait_sec``. A run whose wait budget expires is not started and returns
+    a ``timed_out`` / ``never_started`` error.
+    """
+
+    def __init__(self, limit=None):
+        self.limit = RUNNER_MAX_CONCURRENT if limit is None else max(1, int(limit))
+        self._semaphore = _asyncio.Semaphore(self.limit)
+        self.waiting = 0
+        self.running = 0
+
+    async def run(self, func, payload):
+        ahead = self.waiting + self.running
+        budget = payload.get("max_queue_wait_seconds")
+        t0 = time.monotonic()
+        self.waiting += 1
+        try:
+            if budget is None:
+                await self._semaphore.acquire()
+            else:
+                await _asyncio.wait_for(self._semaphore.acquire(), timeout=float(budget))
+        except _asyncio.TimeoutError:
+            waited = time.monotonic() - t0
+            result = _isolated_error(
+                f"TIMEOUT while queued behind {ahead} other run(s) on this runner: waited "
+                f"{waited:.0f} s (queue budget {float(budget):.0f} s); the run never started.",
+                timed_out=True)
+            result["never_started"] = True
+            result["queue_wait_sec"] = waited
+            return result
+        finally:
+            self.waiting -= 1
+
+        waited = time.monotonic() - t0
+        self.running += 1
+        try:
+            result = await run_isolated(func, payload)
+        finally:
+            self.running -= 1
+            self._semaphore.release()
+        if isinstance(result, dict):
+            result["queue_wait_sec"] = waited
+        return result
+
+
+def register_runner_endpoints(app, process_run, process_run_measured, max_concurrent=None):
+    """Register ``/run`` and ``/run_measured`` on a runner app.
+
+    Both endpoints share one ``ExecutionSlots`` (``RUNNER_MAX_CONCURRENT``, default 1), so
+    concurrent requests to this runner queue instead of sharing its CPU and memory.
+    """
     from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
+
+    slots = ExecutionSlots(max_concurrent)
 
     @app.post("/run")
     async def run_circuit(payload: CircuitPayload):
-        return await run_isolated(process_run, payload.model_dump())
+        return await slots.run(process_run, payload.model_dump())
 
     @app.post("/run_measured")
     async def run_measured_circuit(payload: MeasuredCircuitPayload):
-        return await run_isolated(process_run_measured, payload.model_dump())
+        return await slots.run(process_run_measured, payload.model_dump())
 
 
 def run_cli_main(app, process_run, process_run_measured, cli_name):
@@ -571,7 +638,10 @@ def run_cli_main(app, process_run, process_run_measured, cli_name):
 
     def _process(payload_dict):
         func = process_run if args.endpoint == "run" else process_run_measured
-        return run_with_uniform_measurement(func, payload_dict)
+        result = run_with_uniform_measurement(func, payload_dict)
+        if isinstance(result, dict):
+            result["queue_wait_sec"] = 0.0
+        return result
 
     if args.s3_job_id:
         import boto3

@@ -1,8 +1,9 @@
 """TorchQuantum runner: parses QASM with Qiskit, converts it with qiskit2tq and simulates it on a tq.QuantumDevice."""
 
 from fastapi import FastAPI
+from qrosetta_commons.counts import prepare_final_state_sampling, prepare_statevector_qasm
 from qrosetta_commons.helpers import (
-    CompileResult, get_logger, register_runner_endpoints, run_cli_main,
+    CompileResult, _draw_statevector_samples, get_logger, register_runner_endpoints, run_cli_main,
     run_measured_job, run_statevector_job, runner_error, with_sdk_versions,
 )
 
@@ -39,37 +40,30 @@ _TQ_BASIS_GATES = [
 
 _PRECISION = "complex64"
 
-_REMOVE_MEASUREMENTS_NOTE = (
-    "qiskit.QuantumCircuit.remove_final_measurements(): Terminal measurements are removed "
-    "before qiskit2tq conversion; counts are sampled from the resulting statevector. Required by the adapter, applied regardless of "
-    "apply_preprocessing.")
 _PRECISION_NOTE = (
-    "TorchQuantum 0.1.8 simulates in complex64 (its fixed C_DTYPE); counts are sampled from "
-    "float64 probabilities computed from that statevector.")
+    "TorchQuantum 0.1.8 simulates in complex64 (its fixed C_DTYPE); counts are drawn with "
+    "numpy.random.Generator.choice from that statevector's float32 probabilities, which "
+    "choice normalises.")
 
 
-def _compile(payload: dict) -> CompileResult:
-    """Parse with Qiskit, transpile to the TorchQuantum basis and convert with qiskit2tq.
-
-    The circuit is (tq_module, transpiled_qiskit_circuit); the latter keeps its measurements
-    for provenance serialisation.
-    """
+def _compile(payload: dict, qasm: str, notes=()) -> CompileResult:
+    """Parse the measurement-free QASM with Qiskit, transpile to the TorchQuantum basis and
+    convert with qiskit2tq. The circuit is (tq_module, transpiled_qiskit_circuit)."""
     level = min(max(payload.get("optimization_level", 0), 0), 2)
     qc = qiskit_transpile(
-        QiskitCircuit.from_qasm_str(payload["circuit_data"]),
+        QiskitCircuit.from_qasm_str(qasm),
         optimization_level=level,
         basis_gates=_TQ_BASIS_GATES,
     )
-    executed_qc = qc.remove_final_measurements(inplace=False)
     return CompileResult(
-        circuit=(qiskit2tq(executed_qc), qc),
-        n_qubits=executed_qc.num_qubits,
+        circuit=(qiskit2tq(qc), qc),
+        n_qubits=qc.num_qubits,
         preprocessing_applied=[
+            *notes,
             f"qiskit.compiler.transpile(optimization_level={level}, "
             f"basis_gates={_TQ_BASIS_GATES}): Decomposes every gate into a basis TorchQuantum "
             "can execute (levels above 2 run at 2). Required by the adapter, applied "
             "regardless of apply_preprocessing.",
-            _REMOVE_MEASUREMENTS_NOTE,
             _PRECISION_NOTE,
         ],
         precision=_PRECISION)
@@ -93,6 +87,10 @@ def process_run(payload: dict) -> dict:
     if not TORCHQUANTUM_AVAILABLE:
         return runner_error("torchquantum", "TorchQuantum is not installed in this environment.")
 
+    def compile_step(payload):
+        qasm, notes = prepare_statevector_qasm(payload["circuit_data"])
+        return _compile(payload, qasm, notes)
+
     def execute(compiled, _payload):
         return _run_sv(compiled.circuit[0], compiled.n_qubits)
 
@@ -100,7 +98,7 @@ def process_run(payload: dict) -> dict:
         return states.detach().cpu().numpy()[0]
 
     return run_statevector_job(
-        simulator="torchquantum", payload=payload, logger=logger, compile_fn=_compile,
+        simulator="torchquantum", payload=payload, logger=logger, compile_fn=compile_step,
         serialize_fn=_serialize, execute_fn=execute, postprocess_fn=shape_statevector,
         qubit_ordering="msb", precision=_PRECISION)
 
@@ -111,31 +109,25 @@ def process_run_measured(payload: dict) -> dict:
     if not TORCHQUANTUM_AVAILABLE:
         return runner_error("torchquantum", "TorchQuantum is not installed in this environment.")
 
+    def compile_step(payload):
+        qasm, layout, notes = prepare_final_state_sampling(payload["circuit_data"])
+        layouts.append(layout)
+        return _compile(payload, qasm, notes)
+
     def execute(compiled, payload):
-        state = _run_sv(compiled.circuit[0], compiled.n_qubits)[0].to(torch.complex128)
-        probs = torch.clamp(state.abs() ** 2, min=0.0)
-        probs = probs / probs.sum()
+        state = _run_sv(compiled.circuit[0], compiled.n_qubits)[0].numpy()
+        return _draw_statevector_samples(
+            state, payload.get("n_shots", 1024), payload.get("seed"))
 
-        generator = None
-        if payload.get("seed") is not None:
-            generator = torch.Generator()
-            generator.manual_seed(int(payload["seed"]))
+    def shape_counts(sample_indices, _compiled, _payload):
+        """Map the sampled wire outcomes (wire 0 most significant) to classical-bit keys."""
+        layout = layouts[0]
+        positions = layout.qubit_positions("msb")
+        return layout.counts_from_qubit_samples(sample_indices, positions, "msb"), "sv_sample"
 
-        return torch.multinomial(
-            probs, num_samples=payload.get("n_shots", 1024),
-            replacement=True, generator=generator,
-        ).numpy()
-
-    def shape_counts(sample_indices, compiled, _payload):
-        fmt = f"{{:0{compiled.n_qubits}b}}"
-        counts: dict[str, int] = {}
-        for idx in sample_indices:
-            bitstring = fmt.format(int(idx))
-            counts[bitstring] = counts.get(bitstring, 0) + 1
-        return counts, "sv_sample"
-
+    layouts = []
     return run_measured_job(
-        simulator="torchquantum", payload=payload, logger=logger, compile_fn=_compile,
+        simulator="torchquantum", payload=payload, logger=logger, compile_fn=compile_step,
         serialize_fn=_serialize, execute_fn=execute, postprocess_fn=shape_counts,
         qubit_ordering="msb", precision=_PRECISION)
 

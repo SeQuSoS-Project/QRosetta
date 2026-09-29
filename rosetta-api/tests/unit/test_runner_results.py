@@ -62,7 +62,9 @@ def test_runner_error_shape():
     assert r == {
         "simulator": "pennylane-default",
         "error": "boom",
-        "execution_time_sec": 0.0,
-        "memory_usage_mb": 0.0,
-        "process_peak_mb": 0.0,
+        "execution_time_sec": None,
+        "compilation_time_sec": None,
+        "simulation_time_sec": None,
+        "memory_usage_mb": None,
+        "process_peak_mb": None,
     }

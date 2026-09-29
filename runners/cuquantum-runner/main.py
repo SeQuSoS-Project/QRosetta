@@ -1,6 +1,9 @@
 """cuQuantum runner: simulates OpenQASM 2.0 circuits with qiskit-aer's statevector method, on GPU when available."""
 
 from fastapi import FastAPI
+from qrosetta_commons.counts import (
+    counts_from_register_keys, parse_measurement_layout, prepare_statevector_qasm,
+)
 from qrosetta_commons.helpers import (
     CompileResult, get_logger, register_runner_endpoints, run_cli_main,
     run_measured_job, run_statevector_job, runner_error, with_sdk_versions,
@@ -63,10 +66,31 @@ def _transpile(qasm_str: str, optimization_level: int = 0):
 
 
 _SAVE_STATEVECTOR_NOTE = (
-    "qiskit.QuantumCircuit.remove_final_measurements() + save_statevector(): Terminal "
-    "measurements are removed and a save_statevector instruction is appended so Aer returns "
-    "the final state; transpiled_qasm is the circuit before these two edits. Required by "
-    "the adapter, applied regardless of apply_preprocessing.")
+    "qiskit_aer save_statevector(): appended so Aer returns the final state; transpiled_qasm "
+    "is the circuit before it. Required by the adapter, applied regardless of "
+    "apply_preprocessing.")
+_METHOD_NOTE = (
+    "AerSimulator(method='statevector'): the simulation method is fixed, so Aer does not "
+    "switch to its stabilizer method on Clifford circuits. The device (GPU when "
+    "qiskit-aer's cuStateVec build and a GPU are present, else CPU) is reported in the "
+    "result's device field.")
+_COUNTS_KEY_NOTE = (
+    "Counts keys: Aer's space-separated per-register fields are re-keyed to one bitstring "
+    "over every declared classical bit in declaration order, flat clbit 0 rightmost.")
+
+
+def _backend_fields(result, sim) -> dict:
+    """Method and device Aer reports for the executed experiment."""
+    metadata = result.results[0].metadata
+    method = metadata.get("method", sim.options.method)
+    device = metadata.get("device", sim.options.device)
+    return {
+        "device": device,
+        "simulation_method": method,
+        "simulator_backend": (
+            f"qiskit-aer AerSimulator(method={method}, precision={sim.options.precision}, "
+            f"device={device})"),
+    }
 
 
 def _precision(sim) -> str:
@@ -89,28 +113,34 @@ def process_run(payload: dict) -> dict:
         return runner_error("cuquantum", "qiskit-aer not installed.")
 
     def compile_step(payload):
-        qc, preprocessing_applied = _transpile(
-            payload["circuit_data"], payload.get("optimization_level", 0))
-        executed_qc = qc.remove_final_measurements(inplace=False)
+        qasm, strip_notes = prepare_statevector_qasm(payload["circuit_data"])
+        qc, preprocessing_applied = _transpile(qasm, payload.get("optimization_level", 0))
+        executed_qc = qc.copy()
         executed_qc.save_statevector()
         sim = _simulator()
         return CompileResult(
             circuit=(sim, executed_qc, qc),
             n_qubits=qc.num_qubits,
-            preprocessing_applied=preprocessing_applied + [_SAVE_STATEVECTOR_NOTE],
+            preprocessing_applied=(strip_notes + preprocessing_applied
+                                   + [_METHOD_NOTE, _SAVE_STATEVECTOR_NOTE]),
             precision=_precision(sim))
 
     def execute(compiled, _payload):
         sim, executed_qc, _qc = compiled.circuit
         return _run_safe(sim, executed_qc)
 
-    def shape_statevector(result, _compiled, _payload):
+    def shape_statevector(result, compiled, _payload):
+        backend_fields.update(_backend_fields(result, compiled.circuit[0]))
         return np.asarray(result.get_statevector())
 
-    return run_statevector_job(
+    backend_fields = {}
+    result = run_statevector_job(
         simulator="cuquantum", payload=payload, logger=logger, compile_fn=compile_step,
         serialize_fn=_serialize, execute_fn=execute, postprocess_fn=shape_statevector,
         qubit_ordering="lsb")
+    if "error" not in result:
+        result.update(backend_fields)
+    return result
 
 
 @with_sdk_versions
@@ -126,7 +156,7 @@ def process_run_measured(payload: dict) -> dict:
         return CompileResult(
             circuit=(sim, qc, qc),
             n_qubits=qc.num_qubits,
-            preprocessing_applied=preprocessing_applied,
+            preprocessing_applied=preprocessing_applied + [_METHOD_NOTE, _COUNTS_KEY_NOTE],
             precision=_precision(sim))
 
     def execute(compiled, payload):
@@ -134,13 +164,22 @@ def process_run_measured(payload: dict) -> dict:
         return _run_safe(sim, qc, shots=payload.get("n_shots", 1024),
                          seed_simulator=payload.get("seed"))
 
-    def shape_counts(result, _compiled, _payload):
-        return dict(result.get_counts()), "native"
+    def shape_counts(result, compiled, payload):
+        """Re-key Aer counts over the circuit's declared classical bits (lsb)."""
+        sim, qc, _qc = compiled.circuit
+        backend_fields.update(_backend_fields(result, sim))
+        registers = [(reg.name, reg.size) for reg in qc.cregs]
+        layout = parse_measurement_layout(payload["circuit_data"])
+        return counts_from_register_keys(layout, result.get_counts(), registers, "lsb"), "native"
 
-    return run_measured_job(
+    backend_fields = {}
+    result = run_measured_job(
         simulator="cuquantum", payload=payload, logger=logger, compile_fn=compile_step,
         serialize_fn=_serialize, execute_fn=execute, postprocess_fn=shape_counts,
         qubit_ordering="lsb")
+    if "error" not in result:
+        result.update(backend_fields)
+    return result
 
 
 register_runner_endpoints(app, process_run, process_run_measured)

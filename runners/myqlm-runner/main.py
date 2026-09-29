@@ -1,6 +1,9 @@
 """myQLM runner: parses OpenQASM 2.0 with qat.interop's OqasmParser and simulates it on PyLinalg."""
 
 from fastapi import FastAPI
+from qrosetta_commons.counts import (
+    parse_measurement_layout, prepare_final_state_sampling, prepare_statevector_qasm,
+)
 from qrosetta_commons.helpers import (
     CompileResult, get_logger, register_runner_endpoints, run_cli_main,
     run_measured_job, run_statevector_job, with_sdk_versions,
@@ -32,8 +35,9 @@ _TDG_NOTE = (
     "(D-T); u1(-pi/4) = diag(1, e^{-i pi/4}) is the identical matrix. Required by the "
     "adapter, applied when apply_preprocessing is False.")
 _SAMPLING_NOTE = (
-    "PyLinalg SAMPLE job: returns per-state frequencies; counts are rebuilt as "
-    "round(frequency * n_shots) after the timed window.")
+    "PyLinalg SAMPLE job: returns per-state frequencies over every qubit; counts are rebuilt "
+    "as round(frequency * n_shots) after the timed window and re-keyed over the circuit's "
+    "classical bits.")
 
 
 def _preprocess_qasm(qasm_str: str, apply_preprocessing: bool) -> tuple[str, list[str]]:
@@ -42,10 +46,12 @@ def _preprocess_qasm(qasm_str: str, apply_preprocessing: bool) -> tuple[str, lis
         tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_str)
         auto_rebase_pass({OpType.CX, OpType.Rz, OpType.Rx}).apply(tk_circ)
         return pytket.qasm.circuit_to_qasm_str(tk_circ), [_REBASE_NOTE]
+    if not re.search(r"\btdg\b", qasm_str):
+        return qasm_str, []
     return re.sub(r"\btdg\b", "u1(-pi/4)", qasm_str), [_TDG_NOTE]
 
 
-def _compile(payload: dict, extra_notes=()) -> CompileResult:
+def _compile(payload: dict, qasm: str, leading_notes=(), extra_notes=()) -> CompileResult:
     """Preprocess and parse into a myQLM Circuit (fresh parser per call: OqasmParser is stateful).
 
     PyLinalg exposes no circuit optimisation passes, so optimization_level is not applied.
@@ -56,12 +62,12 @@ def _compile(payload: dict, extra_notes=()) -> CompileResult:
             f"myQLM: optimization_level={optimization_level} requested "
             "but not supported by PyLinalg; running at level 0.")
     transpiled_qasm, preprocessing_applied = _preprocess_qasm(
-        payload["circuit_data"], payload.get("apply_preprocessing", True))
+        qasm, payload.get("apply_preprocessing", True))
     circuit = OqasmParser().compile(transpiled_qasm)
     return CompileResult(
         circuit=circuit,
         n_qubits=circuit.nbqbits,
-        preprocessing_applied=preprocessing_applied + list(extra_notes),
+        preprocessing_applied=[*leading_notes, *preprocessing_applied, *extra_notes],
         transpiled_qasm=transpiled_qasm,
         precision=_PRECISION)
 
@@ -69,6 +75,10 @@ def _compile(payload: dict, extra_notes=()) -> CompileResult:
 @with_sdk_versions
 def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for myQLM simulation.")
+
+    def compile_step(payload):
+        qasm, notes = prepare_statevector_qasm(payload["circuit_data"])
+        return _compile(payload, qasm, leading_notes=notes)
 
     def execute(compiled, _payload):
         return _qpu.submit(compiled.circuit.to_job(job_type="SAMPLE", nbshots=0))
@@ -81,7 +91,7 @@ def process_run(payload: dict) -> dict:
         return sv
 
     return run_statevector_job(
-        simulator="myqlm", payload=payload, logger=logger, compile_fn=_compile,
+        simulator="myqlm", payload=payload, logger=logger, compile_fn=compile_step,
         execute_fn=execute, postprocess_fn=shape_statevector, qubit_ordering="msb",
         precision=_PRECISION)
 
@@ -91,7 +101,11 @@ def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for myQLM simulation.")
 
     def compile_step(payload):
-        return _compile(payload, extra_notes=(_SAMPLING_NOTE,))
+        qasm, layout, notes = prepare_final_state_sampling(payload["circuit_data"])
+        compiled = _compile(payload, qasm, leading_notes=notes, extra_notes=(_SAMPLING_NOTE,))
+        backend_qubits = parse_measurement_layout(compiled.transpiled_qasm).qubits
+        compiled.circuit = (compiled.circuit, layout, backend_qubits)
+        return compiled
 
     def seed_rng(_compiled, payload):
         """PyLinalg samples from numpy's global RNG; the QPU exposes no seed argument."""
@@ -99,24 +113,27 @@ def process_run_measured(payload: dict) -> dict:
             np.random.seed(payload["seed"])
 
     def execute(compiled, payload):
-        job = compiled.circuit.to_job(
+        circuit, _, _ = compiled.circuit
+        job = circuit.to_job(
             job_type="SAMPLE", nbshots=payload.get("n_shots", 1024))
         return _qpu.submit(job)
 
     def shape_counts(result, compiled, payload):
-        """Rebuild integer counts from frequencies, which are exact multiples of 1/n_shots."""
+        """Rebuild integer counts from frequencies, which are exact multiples of 1/n_shots,
+        then map the qubit states (first qubit most significant) to classical-bit keys."""
+        _, layout, backend_qubits = compiled.circuit
         n_shots = payload.get("n_shots", 1024)
-        n_qubits = compiled.n_qubits
-        counts_dict = {
-            format(sample.state.int, f"0{n_qubits}b"): round(sample.probability * n_shots)
+        state_counts = {
+            sample.state.int: round(sample.probability * n_shots)
             for sample in result
             if round(sample.probability * n_shots) > 0
         }
-        diff = n_shots - sum(counts_dict.values())
-        if diff != 0 and counts_dict:
-            top = max(counts_dict, key=counts_dict.get)
-            counts_dict[top] += diff
-        return counts_dict, "native"
+        diff = n_shots - sum(state_counts.values())
+        if diff != 0 and state_counts:
+            top = max(state_counts, key=state_counts.get)
+            state_counts[top] += diff
+        positions = layout.qubit_positions("msb", backend_qubits)
+        return layout.counts_from_qubit_counts(state_counts, positions, "msb"), "native"
 
     return run_measured_job(
         simulator="myqlm", payload=payload, logger=logger, compile_fn=compile_step,

@@ -32,6 +32,36 @@ def test_memory_monitor_captures_spike():
 
     assert abs(measured_mb - target_mb) < 5, "The monitor failed to capture the C++ memory spike."
 
+def test_lifetime_peak_is_never_below_a_window_peak(monkeypatch):
+    """A window peak above the VmHWM read afterwards is folded into the lifetime peak."""
+    from qrosetta_commons import memory
+
+    mib = 1024 * 1024
+    status = {"VmHWM": 150 * mib, "VmRSS": 100 * mib}
+    monkeypatch.setattr(memory, "_read_status_bytes", lambda field: status.get(field))
+    monkeypatch.setattr(memory, "_lifetime_hwm_bytes", 0)
+
+    monitor = memory.MemoryMonitor()
+    monitor.method = "vmhwm"
+    monitor.baseline_memory = 100 * mib
+    monitor.peak_memory = 170 * mib
+    monitor.__exit__(None, None, None)
+
+    peak_mb, method = memory.lifetime_peak_rss()
+    assert method == "vmhwm"
+    assert peak_mb >= monitor.get_process_peak_mb() == 170
+
+
+def test_lifetime_peak_fallback_includes_sampled_window(monkeypatch):
+    from qrosetta_commons import memory
+
+    monkeypatch.setattr(memory, "_read_status_bytes", lambda field: None)
+    monkeypatch.setattr(memory, "_lifetime_hwm_bytes", 10 ** 13)
+    peak_mb, method = memory.lifetime_peak_rss()
+    assert method == "getrusage"
+    assert peak_mb == 10 ** 13 / (1024 * 1024)
+
+
 if __name__ == "__main__":
     test_memory_monitor_captures_spike()
 
