@@ -1,13 +1,8 @@
-"""Building a counts histogram must stay outside the timed simulation window.
+"""Counts construction stays outside the timed simulation window.
 
-The shared instrument documents the split: drawing shots is simulation work, shaping the
-drawn indices into a counts histogram is bookkeeping and belongs in postprocess_fn. On the
-circuit sizes this project publishes, the histogram costs more than the draw, and five
-runners used to charge it to simulation_time while nine did not. That put the reported
-gap between the fastest backends below the size of the inconsistency itself.
-
-These tests pin both halves: the split preserves the sampled counts exactly, and the
-runners that sample from a statevector keep the histogram in postprocess_fn.
+Drawing shots is simulation work; turning a backend's raw result into a counts dict is
+bookkeeping and belongs in postprocess_fn. These tests check that the split preserves the
+sampled counts exactly and that no runner's measured execute_fn builds counts.
 """
 import re
 from collections import Counter
@@ -33,11 +28,10 @@ def _random_statevector(n_qubits, seed=7):
 @pytest.mark.parametrize("n_qubits", [2, 3, 5, 8])
 @pytest.mark.parametrize("seed", [0, 42, 12345])
 def test_split_draw_and_histogram_match_the_combined_form(n_qubits, seed):
-    """Moving the histogram out must not perturb the RNG stream or the counts."""
+    """Splitting draw and histogram must not perturb the RNG stream or the counts."""
     sv = _random_statevector(n_qubits)
     n_shots = 2048
 
-    # The combined form this replaced: one generator, drawn then counted.
     rng = np.random.default_rng(seed)
     expected = {
         format(k, f"0{n_qubits}b"): v
@@ -62,9 +56,8 @@ def _runner_sources():
     return sorted(_RUNNERS.glob("*/main.py"))
 
 
-# A runner draws its own shots if any of these appear; the shared helper is preferred but
-# a hand-rolled draw is equally subject to the boundary rule (pyquil renormalises its
-# probabilities first, so it keeps its own draw deliberately).
+# A runner draws its own shots if any of these appear (pyquil renormalises its
+# probabilities before drawing, so it has its own draw).
 _DRAW_MARKERS = ("_draw_statevector_samples", "rng.choice(", "multinomial(")
 
 # Tokens that only appear when a counts histogram is being assembled.
@@ -84,8 +77,7 @@ def test_statevector_samplers_shape_counts_outside_the_timed_window():
     """A runner that draws its own shots must build the histogram in postprocess_fn.
 
     Building it in execute_fn puts it inside t2..t3 and makes that backend's
-    simulation_time incomparable with the natively-sampling runners. On the circuit sizes
-    published here the histogram outweighs the draw, so this is not a rounding error.
+    simulation_time incomparable with the natively-sampling runners.
     """
     offenders = []
     for path in _runner_sources():
@@ -104,6 +96,35 @@ def test_statevector_samplers_shape_counts_outside_the_timed_window():
     assert not offenders, (
         "these runners charge counts-histogram construction to simulation_time: "
         + ", ".join(offenders))
+
+
+# Calls that turn a backend's raw result into a counts dict. They belong in postprocess_fn
+# for every runner, native samplers included.
+_COUNTS_BUILDER_MARKERS = ("get_counts(", "Counter(", "readout_counts")
+
+
+def test_no_runner_builds_counts_inside_execute_fn():
+    """execute_fn returns the backend's raw result; postprocess_fn builds the counts dict."""
+    offenders = []
+    for path in _runner_sources():
+        body = _measured_execute_body(path.read_text())
+        if body is None:
+            continue
+        found = [m for m in _COUNTS_BUILDER_MARKERS if m in body]
+        if found:
+            offenders.append(f"{path.parent.name} ({', '.join(found)})")
+
+    assert not offenders, (
+        "these runners build counts inside the timed simulation window: "
+        + ", ".join(offenders))
+
+
+def test_the_counts_builder_check_inspects_every_runner():
+    """Guard the guard: every runner's measured execute_fn must be found by the regex."""
+    sources = _runner_sources()
+    unmatched = [p.parent.name for p in sources
+                 if _measured_execute_body(p.read_text()) is None]
+    assert sources and not unmatched, f"measured execute_fn not located in: {unmatched}"
 
 
 def test_the_boundary_check_actually_inspects_the_sampling_runners():

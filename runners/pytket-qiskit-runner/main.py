@@ -1,4 +1,4 @@
-# Execution script for the quantum simulator runner.
+"""Qiskit runner: executes OpenQASM 2.0 circuits on Qiskit Aer (double precision)."""
 
 from fastapi import FastAPI
 import pytket.qasm
@@ -14,6 +14,11 @@ from qrosetta_commons.helpers import (
 logger = get_logger("pytket-qiskit-runner")
 
 app = FastAPI(title="Qiskit Runner")
+
+_MULTI_CREG_NOTE = (
+    "Counts keys: Aer reports one space-separated field per classical register (last-declared "
+    "register leftmost, each register little-endian); the spaces are removed, giving one "
+    "bitstring with clbit 0 of the first register rightmost.")
 
 
 def _to_qiskit(payload: dict):
@@ -37,9 +42,8 @@ def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for Qiskit simulation.")
 
     def compile_step(payload):
+        """Capture the QASM before save_statevector() appends an Aer-only instruction."""
         tk_circ, qiskit_circ, preprocessing_applied = _to_qiskit(payload)
-        # Serialized inside the compilation window: save_statevector mutates the circuit
-        # below, so capturing afterwards would record an instruction the user never sent.
         transpiled_qasm = qasm2.dumps(qiskit_circ)
         qiskit_circ.save_statevector()
         return CompileResult(
@@ -54,7 +58,7 @@ def process_run(payload: dict) -> dict:
 
     return run_statevector_job(
         simulator="qiskit", payload=payload, logger=logger, compile_fn=compile_step,
-        execute_fn=execute, qubit_ordering="lsb")
+        execute_fn=execute, qubit_ordering="lsb", precision="complex128")
 
 
 @with_sdk_versions
@@ -63,33 +67,46 @@ def process_run_measured(payload: dict) -> dict:
 
     def compile_step(payload):
         tk_circ, qiskit_circ, preprocessing_applied = _to_qiskit(payload)
+        if len(qiskit_circ.cregs) > 1:
+            preprocessing_applied.append(_MULTI_CREG_NOTE)
         return CompileResult(
             circuit=(AerSimulator(precision="double"), qiskit_circ),
             n_qubits=tk_circ.n_qubits,
-            preprocessing_applied=preprocessing_applied,
-            transpiled_qasm=qasm2.dumps(qiskit_circ))
+            preprocessing_applied=preprocessing_applied)
+
+    def serialize(compiled):
+        return qasm2.dumps(compiled.circuit[1])
 
     def execute(compiled, payload):
         backend, qiskit_circ = compiled.circuit
-        # seed_simulator=None keeps Aer's default non-deterministic sampling.
         return backend.run(
             qiskit_circ, optimization_level=0, shots=payload.get("n_shots", 1024),
-            seed_simulator=payload.get("seed")).result().get_counts()
+            seed_simulator=payload.get("seed")).result()
 
-    def shape_counts(counts, compiled, _payload):
+    def shape_counts(result, compiled, _payload):
+        """Normalise Aer counts keys to plain bitstrings zero-padded to the clbit count.
+
+        Aer separates registers with spaces (last-declared register leftmost, each register
+        little-endian); the spaces are removed so the key is the full clbit string with
+        clbit 0 of the first register rightmost.
+        """
+        counts = result.get_counts()
         num_clbits = compiled.circuit[1].num_clbits
         if num_clbits == 0:
             return counts, "native"
         counts_dict = {}
         for k, v in counts.items():
-            binary_key = format(int(k, 16), f"0{num_clbits}b") if k.startswith("0x") \
-                else k.zfill(num_clbits)
-            counts_dict[binary_key] = v
+            if k.startswith("0x"):
+                binary_key = format(int(k, 16), f"0{num_clbits}b")
+            else:
+                binary_key = k.replace(" ", "").zfill(num_clbits)
+            counts_dict[binary_key] = counts_dict.get(binary_key, 0) + v
         return counts_dict, "native"
 
     return run_measured_job(
         simulator="qiskit", payload=payload, logger=logger, compile_fn=compile_step,
-        execute_fn=execute, postprocess_fn=shape_counts, qubit_ordering="lsb")
+        serialize_fn=serialize, execute_fn=execute, postprocess_fn=shape_counts,
+        qubit_ordering="lsb", precision="complex128")
 
 
 register_runner_endpoints(app, process_run, process_run_measured)

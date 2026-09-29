@@ -1,4 +1,7 @@
-# Execution script for the quantum simulator runner.
+"""PyQuil runner: converts OpenQASM 2.0 to Quil via pytket and simulates with NumpyWavefunctionSimulator.
+
+The simulator has no shot sampler here, so the measured endpoint samples the statevector.
+"""
 
 from fastapi import FastAPI
 from qrosetta_commons.helpers import (
@@ -19,29 +22,56 @@ logger = get_logger("pyquil-runner")
 
 app = FastAPI(title="PyQuil Runner")
 
+_REMOVE_BARRIERS_NOTE = (
+    "pytket.passes.RemoveBarriers(): Removes barrier instructions from the circuit to "
+    "prevent parsing failures in the backend adapter.")
+_REBASE_NOTE = (
+    "pytket.passes.auto_rebase_pass({CX, Rz, Rx}): Universally decomposes complex "
+    "multi-qubit and single-qubit gates (like CU3, CRX) into a standard CX/Rz/Rx basis to "
+    "prevent parsing failures in the backend.")
+_RZRX_NOTE = (
+    "pytket.transform.Transform.RebaseToRzRx(): rewrites single-qubit gates as Rz/Rx "
+    "rotations; required by the pytket-to-Quil adapter, applied regardless of "
+    "apply_preprocessing.")
+_PEEPHOLE_2Q_NOTE = (
+    "pytket.passes.PeepholeOptimise2Q() (optimization_level=1): cancels redundant two-qubit "
+    "gates and merges single-qubit sequences.")
+_FULL_PEEPHOLE_NOTE = (
+    "pytket.passes.FullPeepholeOptimise() (optimization_level=2): single-qubit merging and "
+    "KAK-based two-qubit reduction.")
+_GLOBAL_PHASE_NOTE = (
+    "Global phase: Quil has no global-phase instruction, so tk_to_pyquil drops the pytket "
+    "circuit's phase; the returned statevector is multiplied by exp(i*pi*phase) to restore it.")
+_STRIP_MEASUREMENTS_NOTE = (
+    "Measurement operations removed before statevector simulation, applied regardless of "
+    "apply_preprocessing, so the returned state is the pre-measurement state.")
+
+
 def _to_quil_program(qasm_str: str, optimization_level: int = 0, apply_preprocessing: bool = True):
-    """Parse QASM via pytket and convert to a Quil Program."""
+    """Parse QASM via pytket, apply the preprocessing and optimisation passes, convert to Quil."""
     tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_str)
 
     preprocessing_applied = []
     if apply_preprocessing:
         RemoveBarriers().apply(tk_circ)
-        preprocessing_applied.append("pytket.passes.RemoveBarriers(): Removes barrier instructions from the circuit to prevent parsing failures in the backend adapter.")
+        preprocessing_applied.append(_REMOVE_BARRIERS_NOTE)
 
     if optimization_level >= 2:
         FullPeepholeOptimise().apply(tk_circ)
+        preprocessing_applied.append(_FULL_PEEPHOLE_NOTE)
     elif optimization_level == 1:
         PeepholeOptimise2Q().apply(tk_circ)
+        preprocessing_applied.append(_PEEPHOLE_2Q_NOTE)
 
     if apply_preprocessing:
         auto_rebase_pass({OpType.CX, OpType.Rz, OpType.Rx}).apply(tk_circ)
-        preprocessing_applied.append("pytket.passes.auto_rebase_pass({CX, Rz, Rx}): Universally decomposes complex multi-qubit and single-qubit gates (like CU3, CRX) into a standard CX/Rz/Rx basis to prevent parsing failures in the backend.")
+        preprocessing_applied.append(_REBASE_NOTE)
     else:
         Transform.RebaseToRzRx().apply(tk_circ)
+        preprocessing_applied.append(_RZRX_NOTE)
 
-    # Return the pytket Circuit (not its QASM string) so the caller can serialize it
-    # for provenance outside the timed compilation window.
     return tk_to_pyquil(tk_circ), tk_circ.n_qubits, preprocessing_applied, tk_circ
+
 
 def _gates_only(prog: Program) -> Program:
     """Return a Program with only Gate instructions — strips MEASURE, DECLARE, HALT, etc."""
@@ -50,6 +80,7 @@ def _gates_only(prog: Program) -> Program:
         if isinstance(inst, Gate):
             clean += inst
     return clean
+
 
 def _simulate_statevector(gate_prog: Program, n_qubits: int) -> np.ndarray:
     """Apply gate instructions sequentially to |0> and return the statevector."""
@@ -78,13 +109,25 @@ def _serialize(compiled: CompileResult) -> str:
 def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for PyQuil simulation.")
 
+    def compile_step(payload):
+        compiled = _compile(payload)
+        if compiled.circuit[1].n_gates_of_type(OpType.Measure):
+            compiled.preprocessing_applied.append(_STRIP_MEASUREMENTS_NOTE)
+        compiled.preprocessing_applied.append(_GLOBAL_PHASE_NOTE)
+        return compiled
+
     def execute(compiled, _payload):
         gate_prog, _ = compiled.circuit
         return _simulate_statevector(gate_prog, compiled.n_qubits)
 
+    def restore_phase(statevector, compiled, _payload):
+        _, tk_circ = compiled.circuit
+        return statevector * np.exp(1j * np.pi * float(tk_circ.phase))
+
     return run_statevector_job(
-        simulator="pyquil", payload=payload, logger=logger, compile_fn=_compile,
-        serialize_fn=_serialize, execute_fn=execute, qubit_ordering="msb")
+        simulator="pyquil", payload=payload, logger=logger, compile_fn=compile_step,
+        serialize_fn=_serialize, execute_fn=execute, postprocess_fn=restore_phase,
+        qubit_ordering="msb", precision="complex128")
 
 
 @with_sdk_versions
@@ -109,7 +152,7 @@ def process_run_measured(payload: dict) -> dict:
     return run_measured_job(
         simulator="pyquil", payload=payload, logger=logger, compile_fn=_compile,
         serialize_fn=_serialize, execute_fn=execute, postprocess_fn=shape_counts,
-        qubit_ordering="msb")
+        qubit_ordering="msb", precision="complex128")
 
 
 register_runner_endpoints(app, process_run, process_run_measured)

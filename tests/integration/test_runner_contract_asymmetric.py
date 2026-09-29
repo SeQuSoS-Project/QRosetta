@@ -1,13 +1,10 @@
-# Unit and integration tests.
-
-"""
-Live-stack asymmetric contract test for active runners.
+"""Live-stack asymmetric contract test for active runners.
 
 Run against the live stack:
     python3 tests/integration/test_runner_contract_asymmetric.py
 
-The probe is intentionally asymmetric. Symmetric Bell/GHZ smoke tests can pass
-when a runner silently returns |0...0> or when its bit-order label is wrong.
+The probe flips q[0] of a 3-qubit register and leaves q[1], q[2] idle, so a runner that
+returns |0...0>, mislabels its bit order, or drops idle qubits from the statevector fails.
 """
 
 import base64
@@ -37,6 +34,8 @@ ACTIVE_STATEVECTOR_RUNNERS = [
     "quimb",
     "cuquantum",
 ]
+
+N_QUBITS = 3
 
 ONE_HOT_QASM = """OPENQASM 2.0;
 include "qelib1.inc";
@@ -108,6 +107,9 @@ def test_active_runner_statevector_ordering_contract():
         assert ordering in EXPECTED_STATEVECTOR_INDEX, f"{runner} invalid ordering: {ordering}"
 
         statevector = _decode_complex128_base64(result["statevector"])
+        assert len(statevector) == 2 ** N_QUBITS, (
+            f"{runner} returned {len(statevector)} amplitudes, expected {2 ** N_QUBITS}"
+        )
         probabilities = [abs(value) ** 2 for value in statevector]
         norm = sum(probabilities)
         max_index = max(range(len(probabilities)), key=probabilities.__getitem__)
