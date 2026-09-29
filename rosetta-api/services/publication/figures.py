@@ -1,4 +1,4 @@
-# Figure builders. Each returns a matplotlib Figure; rendering to bytes is formats.py's job.
+"""Figure builders; each returns a matplotlib Figure."""
 
 import numpy as np
 from typing import Dict, List
@@ -10,10 +10,12 @@ from .theme import (
     VERDICT_COLORS, _AGREEMENT_ORDER, _CATEGORICAL, _INK, _MUTED,
     MIN_OUTCOME_PROB, _VERDICT_ORDER, _blue_cmap, _prob_cmap, _rank_outcomes,
 )
-from .selectors import _pairwise_records
+from .formats import _fmt_num
+from .selectors import _field, _pairwise_records, _report_rows
 
 
 def _fig_agreement_distribution(divergence_report: dict, mode: str):
+    """Bar chart of pair counts per agreement label, plus verdict counts when present."""
     records = _pairwise_records(divergence_report)
     counts = {}
     for r in records:
@@ -51,6 +53,7 @@ def _fig_agreement_distribution(divergence_report: dict, mode: str):
 
 
 def _fig_heatmap(divergence_report: dict, key: str, title: str):
+    """N×N heatmap of matrix ``key``; diagonal and -1 sentinels are masked."""
     labels = divergence_report.get("simulators", [])
     arr = np.array(divergence_report[key], dtype=float)
     mask = (arr == -1.0)
@@ -64,33 +67,46 @@ def _fig_heatmap(divergence_report: dict, key: str, title: str):
     ax.set_yticklabels(labels, fontsize=8)
     ax.set_title(title)
     if n <= 12:
+        thr = 0.6 * float(masked.max()) if masked.count() else 0.0
         for i in range(n):
             for j in range(n):
                 if not masked.mask[i, j]:
-                    ax.text(j, i, f"{arr[i, j]:.2f}", ha="center", va="center", fontsize=7, color=_INK)
+                    ax.text(j, i, _fmt_num(arr[i, j], 2), ha="center", va="center", fontsize=7,
+                            color="white" if thr > 0 and arr[i, j] >= thr else _INK)
     fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     return fig
 
 
-def _fig_ranking_bar(ranking, value_keys, title, xlabel):
-    rows = [r for r in ranking if r.get("simulator")]
-    sims = [r["simulator"] for r in rows]
-    fig, ax = plt.subplots(figsize=(max(5.0, 0.5 * len(sims) + 2), 4.2))
+def _fig_ranking_bar(results, report_key, value_keys, title, xlabel):
+    """Horizontal bars for ranked runs in rank order; unranked runs follow with no bar and
+    an annotation giving their status and reason."""
+    rows = [r for r in _report_rows(results, report_key) if r["entry"].get("simulator")]
+    sims = [r["entry"]["simulator"] for r in rows]
+    fig, ax = plt.subplots(figsize=(max(5.0, 0.5 * len(sims) + 2), max(2.4, 0.32 * len(sims) + 1.6)))
     y = np.arange(len(sims)); left = np.zeros(len(sims))
     for key, color, label in value_keys:
-        vals = np.array([(r.get(key) or 0.0) if r.get("status") == "success" else 0.0 for r in rows])
+        vals = np.array([float(_field(r, key) or 0.0) if r["ranked"] else 0.0 for r in rows])
         ax.barh(y, vals, left=left, color=color, label=label, height=0.7)
         left += vals
+    for i, r in enumerate(rows):
+        if not r["ranked"]:
+            ax.text(0, i, f"  not ranked: {r['status']}", va="center", ha="left",
+                    fontsize=7, color=_MUTED, style="italic")
     ax.set_yticks(y); ax.set_yticklabels(sims, fontsize=8); ax.invert_yaxis()
+    for tick, r in zip(ax.get_yticklabels(), rows):
+        if not r["ranked"]:
+            tick.set_color(_MUTED)
     ax.set_xlabel(xlabel); ax.set_title(title)
+    if not left.any():
+        ax.set_xlim(0, 1)
     if len(value_keys) > 1:
-        # Legend below the axes so it never overlaps the stacked bars.
         ax.legend(fontsize=8, frameon=False, loc="upper center",
-                  bbox_to_anchor=(0.5, -0.12), ncol=len(value_keys))
+                  bbox_to_anchor=(0.5, -0.12 - 0.6 / max(len(sims), 1)), ncol=len(value_keys))
     return fig
 
 
 def _fig_count_histogram(counts_a, counts_b, a, b):
+    """Grouped bars of two backends' measured probabilities over the top outcomes."""
     na, nb = sum(counts_a.values()), sum(counts_b.values())
 
     def prob(counts, n, o):
@@ -104,8 +120,6 @@ def _fig_count_histogram(counts_a, counts_b, a, b):
     pa = [prob(counts_a, na, o) for o in kept]
     pb = [prob(counts_b, nb, o) for o in kept]
     if rest:
-        # Fold sub-threshold / overflow outcomes into one aggregated "other" bar so the
-        # figure stays a publishable width instead of scaling with the 2**n outcome space.
         labels.append(f"other (+{len(rest)})")
         pa.append(sum(prob(counts_a, na, o) for o in rest))
         pb.append(sum(prob(counts_b, nb, o) for o in rest))
@@ -123,14 +137,12 @@ def _fig_count_histogram(counts_a, counts_b, a, b):
         title += (f"\n{len(kept)} of {len(all_outcomes)} outcomes shown "
                   f"(p≥{MIN_OUTCOME_PROB:g} on either side); {len(rest)} folded into 'other'")
     ax.set_title(title)
-    # Legend outside the axes so it never sits on top of the bars.
     ax.legend(fontsize=8, frameon=False, loc="center left", bbox_to_anchor=(1.0, 0.5))
     return fig
 
 
 def _counts_probabilities(counts_by_sim: Dict[str, dict], sims_order: List[str]):
-    """Shared setup for the total count figures: ordered backends with counts, a per-sim
-    probability accessor, and the sorted union of observed outcomes."""
+    """Return (backends with counts in order, prob(sim, outcome), sorted union of outcomes)."""
     sims = [s for s in sims_order if counts_by_sim.get(s)]
     totals = {s: sum(counts_by_sim[s].values()) for s in sims}
 
@@ -142,12 +154,7 @@ def _counts_probabilities(counts_by_sim: Dict[str, dict], sims_order: List[str])
 
 
 def _fig_counts_overview_bars(counts_by_sim: Dict[str, dict], sims_order: List[str]):
-    """Total measured-count figure (default): clustered bar histogram over the top-K outcomes.
-
-    The field-standard cross-backend comparison (cf. Qiskit ``plot_histogram`` with a list of
-    counts + ``number_to_keep``): one colour per backend, grouped by outcome, capped so it
-    never stretches with the 2**n outcome space. Raw counts only; no transform is applied.
-    """
+    """Clustered bars of every backend's raw measured probabilities over the top outcomes."""
     sims, prob, all_outcomes = _counts_probabilities(counts_by_sim, sims_order)
     kept, rest = _rank_outcomes(all_outcomes, lambda o: max((prob(s, o) for s in sims), default=0.0),
                                 MAX_OVERVIEW_BARS)
@@ -174,20 +181,13 @@ def _fig_counts_overview_bars(counts_by_sim: Dict[str, dict], sims_order: List[s
         title += (f"\ntop {len(kept)} of {len(all_outcomes)} outcomes "
                   f"(p≥{MIN_OUTCOME_PROB:g} on any backend); rest folded into 'other'")
     ax.set_title(title)
-    # Legend outside the axes so it never sits on top of the bars.
     ax.legend(fontsize=8, frameon=False, loc="center left", bbox_to_anchor=(1.0, 0.5),
               title="backend")
     return fig
 
 
 def _fig_counts_overview_heatmap(counts_by_sim: Dict[str, dict], sims_order: List[str]):
-    """Optional total measured-count figure: outcome × backend probability heatmap.
-
-    Compact alternative to a wall of per-pair histograms — width scales with the number of
-    backends (bounded), height with the number of shown outcomes (capped). A row of uniform
-    colour = all backends agree on that outcome; a row that varies = disagreement. Raw
-    counts only; no transform is applied (bit-reversal etc. remain separate labelled modes).
-    """
+    """Outcome × backend heatmap of raw measured probabilities over the top outcomes."""
     sims, prob, all_outcomes = _counts_probabilities(counts_by_sim, sims_order)
     kept, rest = _rank_outcomes(all_outcomes, lambda o: max((prob(s, o) for s in sims), default=0.0),
                                 MAX_OVERVIEW_OUTCOMES)
@@ -206,13 +206,13 @@ def _fig_counts_overview_heatmap(counts_by_sim: Dict[str, dict], sims_order: Lis
     ax.set_xticks(range(M)); ax.set_xticklabels(sims, rotation=45, ha="right", fontsize=8)
     ax.set_yticks(range(K)); ax.set_yticklabels(rows, fontsize=8, fontfamily="monospace")
     ax.set_xlabel("backend"); ax.set_ylabel("measured outcome")
-    if K * M <= 160:  # annotate only when the grid is small enough to stay legible
+    if K * M <= 160:
         thr = P.max() * 0.6
         for i in range(K):
             for j in range(M):
                 v = P[i, j]
                 if v >= 0.005:
-                    ax.text(j, i, f"{v:.2f}", ha="center", va="center", fontsize=6.5,
+                    ax.text(j, i, _fmt_num(v, 2), ha="center", va="center", fontsize=6.5,
                             color="white" if v >= thr else _INK)
     title = f"Measured outcome probabilities across {M} backend(s) (raw counts)"
     if rest:

@@ -1,4 +1,4 @@
-# Tests for the publication-artifact engine (services/publication/).
+"""Tests for the publication-artifact engine (services/publication/)."""
 
 import pytest
 
@@ -108,7 +108,7 @@ def test_all_tables_present_in_all_formats():
 
 
 def test_artifacts_are_byte_deterministic():
-    # XLSX member timestamps vary, so it is checked structurally instead.
+    """Every non-XLSX artifact is byte-identical across two builds."""
     a1 = _all_measured()
     a2 = _all_measured()
     assert a1.keys() == a2.keys()
@@ -126,8 +126,8 @@ def test_xlsx_tables_are_valid_and_reopenable():
     assert xlsx
     for data in xlsx:
         assert data[:2] == b"PK"
-        wb = load_workbook(io.BytesIO(data))  # must reopen without error
-        assert wb.active.max_row >= 3  # title + caption + header at minimum
+        wb = load_workbook(io.BytesIO(data))
+        assert wb.active.max_row >= 3
 
 
 def test_latex_uses_booktabs_and_escapes_underscores():
@@ -135,8 +135,8 @@ def test_latex_uses_booktabs_and_escapes_underscores():
                                        (), ("latex",))
     tex = arts["tables/agreement.latex"].decode()
     assert "\\toprule" in tex and "\\bottomrule" in tex and "booktabs" in tex
-    assert "agree\\_after\\_bit\\_reversal" in tex  # underscore escaped
-    assert "registered-transform lattice" in tex  # caption present
+    assert "agree\\_after\\_bit\\_reversal" in tex
+    assert "registered-transform lattice" in tex
 
 
 def test_agreement_table_content():
@@ -144,14 +144,14 @@ def test_agreement_table_content():
     csv = arts["tables/agreement.csv"].decode()
     assert "qiskit × qibo" in csv
     assert "agree_after_bit_reversal" in csv
-    assert "consistent" in csv  # statistical verdict column present for measured
+    assert "consistent" in csv
 
 
 def test_statistical_test_table_measured_only():
     measured = build_publication_artifacts(MEASURED, "measured", ("statistical",), (), ("csv",))
     assert "tables/statistical_test.csv" in measured
     csv = measured["tables/statistical_test.csv"].decode()
-    assert "1570" in csv and "consistent" in csv  # shots-for-power + verdict
+    assert "1570" in csv and "consistent" in csv
     sv = build_publication_artifacts(STATEVECTOR, "statevector", ("statistical",),
                                      SUPPORTED_FIGURE_FORMATS, SUPPORTED_TABLE_FORMATS)
     assert not any("statistical_test" in p for p in sv)
@@ -187,8 +187,8 @@ def test_graceful_when_reports_absent():
                                        SUPPORTED_FIGURE_FORMATS, SUPPORTED_TABLE_FORMATS) == {}
     no_pairwise = {"divergence_report": {"simulators": ["a", "b"], "fidelity_matrix": [[-1.0, 1.0], [1.0, -1.0]]}}
     arts = build_publication_artifacts(no_pairwise, "statevector", ("agreement", "heatmaps"), ("svg",), ("csv",))
-    assert not any("agreement" in p for p in arts)   # no pairwise -> no agreement fig/table
-    assert "figures/fidelity_heatmap.svg" in arts     # heatmap still produced
+    assert not any("agreement" in p for p in arts)
+    assert "figures/fidelity_heatmap.svg" in arts
 
 
 def test_unsupported_formats_ignored():
@@ -197,9 +197,6 @@ def test_unsupported_formats_ignored():
     assert "figures/agreement_distribution.svg" in arts
     assert "tables/agreement.csv" in arts
     assert not any(p.endswith(".bogus") or p.endswith(".nope") for p in arts)
-
-
-# --- Interactive catalog + single-artifact render (used by the Artifacts tab) ---------
 
 def test_catalog_lists_expected_artifacts_measured():
     ids = {a["id"] for a in list_artifacts(MEASURED, "measured")}
@@ -231,7 +228,7 @@ def test_render_artifact_image_scale_increases_size():
     small, mime, legend = render_artifact(MEASURED, "measured", "agreement_distribution", "png", 1)
     big, _, _ = render_artifact(MEASURED, "measured", "agreement_distribution", "png", 5)
     assert small[:8] == b"\x89PNG\r\n\x1a\n" and big[:8] == b"\x89PNG\r\n\x1a\n"
-    assert len(big) > len(small)  # higher dpi => more pixels/bytes
+    assert len(big) > len(small)
     assert mime == "image/png" and legend
 
 
@@ -240,7 +237,7 @@ def test_render_artifact_text_formats():
         data, mime, _ = render_artifact(MEASURED, "measured", "agreement", fmt)
         assert data and isinstance(data, bytes)
     md = render_artifact(MEASURED, "measured", "agreement", "markdown")[0].decode()
-    assert md.startswith("**") and "|" in md  # markdown table
+    assert md.startswith("**") and "|" in md
 
 
 def test_render_new_artifacts_content():
@@ -256,14 +253,12 @@ def test_render_artifact_rejects_bad_id_and_format():
     with pytest.raises(KeyError):
         render_artifact(MEASURED, "measured", "does_not_exist", "png")
     with pytest.raises(ValueError):
-        render_artifact(MEASURED, "measured", "agreement", "png")  # table has no png
+        render_artifact(MEASURED, "measured", "agreement", "png")
 
-
-# --- counts_overview (total count heatmap) ------------------------------------------
 
 def test_counts_overview_available_measured_only():
     ids = {a["id"] for a in list_artifacts(MEASURED, "measured")}
-    assert "counts_overview" in ids  # >= 2 backends with counts
+    assert "counts_overview" in ids
     assert "counts_overview" not in {a["id"] for a in list_artifacts(STATEVECTOR, "statevector")}
 
 
@@ -286,7 +281,7 @@ def test_counts_overview_in_statistical_bundle():
 
 def test_counts_overview_heatmap_available_and_renders():
     ids = {a["id"] for a in list_artifacts(MEASURED, "measured")}
-    assert "counts_overview_heatmap" in ids  # optional secondary view
+    assert "counts_overview_heatmap" in ids
     data, _, _ = render_artifact(MEASURED, "measured", "counts_overview_heatmap", "png")
     assert _MAGIC["png"](data)
 
@@ -302,7 +297,7 @@ def test_counts_overview_size_bounded_for_many_outcomes():
     bars = _fig_counts_overview_bars(cbs, list(cbs))
     try:
         w, h = bars.get_size_inches()
-        assert w <= 13.0 and h <= 5.0  # bars: capped width, never stretches with 2**n
+        assert w <= 13.0 and h <= 5.0
         assert len(bars.axes[0].get_xticklabels()) <= MAX_OVERVIEW_BARS + 1
     finally:
         plt.close(bars)
@@ -322,6 +317,74 @@ def test_rank_outcomes_folds_noise_into_other():
         probs[format(i, "03b") + format(i, "05b")] = 0.001
     outcomes = list(probs)
     kept, rest = _rank_outcomes(outcomes, lambda o: probs.get(o, 0.0), cap=20)
-    assert kept == ["000"] and len(rest) == 39  # noise all folded away
+    assert kept == ["000"] and len(rest) == 39
     kept2, rest2 = _rank_outcomes(["a", "b"], lambda o: 0.5, cap=20)
     assert set(kept2) == {"a", "b"} and rest2 == []
+
+def _report_with_failures():
+    from tests.unit.test_artifacts_parity import _sv_edge
+    return _sv_edge()
+
+
+def test_tables_list_unranked_runs_after_ranked_with_reason():
+    rep = _report_with_failures()
+    perf = render_artifact(rep, "statevector", "performance", "csv")[0].decode().splitlines()
+    assert [line.split(",")[1] for line in perf[1:]] == ["s0", "s1", "s2", "s3"]
+    assert perf[3].startswith("—,s2,") and perf[3].endswith("timeout (runner_error)")
+    assert perf[4].endswith("error (missing_timing)")
+    res = render_artifact(rep, "statevector", "resources", "csv")[0].decode()
+    assert "ok (missing_process_peak_rss)" in res and "timeout (runner_error)" in res
+
+
+def test_ranking_figures_mark_unranked_runs_and_plot_the_ranking_metric():
+    import matplotlib.pyplot as plt
+    from services.publication import _fig_ranking_bar
+    rep = _report_with_failures()
+    fig = _fig_ranking_bar(rep, "resource_report",
+                           [("process_peak_rss_mb", "#2a78d6", "process peak RSS")], "t", "MiB")
+    try:
+        ax = fig.axes[0]
+        widths = [p.get_width() for p in ax.patches]
+        assert widths == [80.0, 0.0, 0.0]
+        notes = [t.get_text() for t in ax.texts]
+        assert any("missing_process_peak_rss" in n for n in notes)
+        assert any("runner_error" in n for n in notes)
+    finally:
+        plt.close(fig)
+    only_failed = {"performance_report": {"ranking": [], "unranked": [
+        {"simulator": "x", "status": "error", "reason": "runner_error"}]}}
+    data, _, legend = render_artifact(only_failed, "statevector", "performance_time", "svg")
+    assert _MAGIC["svg"](data) and "n=1 timing sample" in legend
+
+
+def test_heatmap_annotations_do_not_round_to_one_or_zero():
+    import matplotlib.pyplot as plt
+    from services.publication import _fig_heatmap
+    rep = _report_with_failures()
+    fig = _fig_heatmap(rep["divergence_report"], "fidelity_matrix", "t")
+    try:
+        texts = sorted(t.get_text() for t in fig.axes[0].texts)
+    finally:
+        plt.close(fig)
+    assert "0.99996" in texts and "0.996" in texts and "5.00e-05" in texts
+    assert texts.count("1.00") == 2
+
+
+def test_fmt_num_never_shows_non_one_as_one_or_nonzero_as_zero():
+    from services.publication import _fmt_num
+    assert _fmt_num(0.99996) == "0.99996"
+    assert _fmt_num(0.996, 2) == "0.996"
+    assert _fmt_num(4e-5) == "4.00e-05"
+    assert _fmt_num(6.103515625e-05) == "6.10e-05"
+    assert _fmt_num(0) == "0.0000" and _fmt_num(1) == "1.0000"
+
+
+def test_histograms_take_first_twelve_pairs_with_counts():
+    from tests.unit.test_artifacts_parity import _measured_edge
+    rep = _measured_edge()
+    rep["divergence_report"]["pairwise_agreement"].insert(0, {
+        "simulators": ["m0", "x"], "mode": "measured", "agreement": "not_comparable",
+        "metrics": {"reason": "missing_counts"}})
+    hist = [a for a in list_artifacts(rep, "measured") if a["id"].startswith("histogram_")]
+    assert len(hist) == 12 and hist[0]["id"] == "histogram_m0-m1"
+    assert "first 12 of 21" in hist[0]["legend"]

@@ -1,11 +1,6 @@
-// Artifacts tab — publication-ready figures + tables.
-//
-// Text artifacts (tables, matrices, executed QASM, glossary) are generated ENTIRELY in
-// the browser (no upload) from the report the page already holds. Only matplotlib
-// figures need the server: they are rendered on demand via POST /publication/render with
-// the statevector-stripped report (tiny), and nothing is stored. The data/text builders
-// that mirror services/publication.py live in artifact_formats.js, not here — this file
-// is the DOM/viewer layer on top of that catalog.
+// Artifacts tab: viewers and panel over the catalog from artifact_formats.js. Text
+// artifacts are built in the browser; figures are rendered by POST /publication/render
+// from the statevector-stripped report.
 
 import { BASE_URL, getAuthHeaders } from './api.js';
 import { _artHtmlEscape, _artBackends, _subsetResults, buildArtifactCatalog } from './artifact_formats.js';
@@ -16,7 +11,7 @@ export const ARTIFACT_SCALE_LABELS = ['Screen (1×)', 'High (2×)', 'Print (3×)
 export const _TEXT_EXT = { latex: 'tex', csv: 'csv', html: 'html', markdown: 'md', qasm: 'qasm', text: 'txt' };
 export const _IMG_MIME = { svg: 'image/svg+xml', png: 'image/png', pdf: 'application/pdf' };
 
-// ---- figure rendering (server) -------------------------------------------------------
+/** Render one figure on the server and return it as a Blob. */
 export async function _fetchFigureBlob(stripped, id, fmt, scale) {
     const resp = await fetch(`${BASE_URL}/publication/render`, {
         method: 'POST',
@@ -30,8 +25,7 @@ export async function _fetchFigureBlob(stripped, id, fmt, scale) {
     return await resp.blob();
 }
 
-// ---- viewers -------------------------------------------------------------------------
-// Render format-toggle buttons into `host`, re-rendering in place on pick.
+/** Render format-toggle buttons into `host`, re-rendering in place on pick. */
 export function _mountFmtSwitcher(host, formats, getCurrent, setCurrent) {
     host.innerHTML = '';
     host.className = 'flex flex-wrap gap-1';
@@ -46,6 +40,7 @@ export function _mountFmtSwitcher(host, formats, getCurrent, setCurrent) {
     });
 }
 
+/** Legend paragraph for an artifact. */
 export function _legendLine(text) {
     const p = document.createElement('p');
     p.className = 'text-xs text-gray-500 mt-2 leading-snug';
@@ -53,6 +48,7 @@ export function _legendLine(text) {
     return p;
 }
 
+/** Text viewer with format switcher, copy and download. */
 export function _renderTextViewer(container, art) {
     container.innerHTML = '';
     const state = { fmt: art.formats[0] };
@@ -87,6 +83,7 @@ export function _renderTextViewer(container, art) {
     paint();
 }
 
+/** Figure viewer: SVG preview plus format, resolution, download and copy controls. */
 export function _renderImageViewer(container, art, stripped) {
     container.innerHTML = '';
     const state = { fmt: 'png', scaleIdx: 0 };
@@ -95,7 +92,6 @@ export function _renderImageViewer(container, art, stripped) {
     title.textContent = art.label;
     container.appendChild(title);
 
-    // Preview (SVG at screen scale — crisp and cheap).
     const preview = document.createElement('div');
     preview.className = 'bg-white border border-gray-200 rounded p-2 mb-3 overflow-auto max-h-[46vh] flex items-center justify-center';
     preview.textContent = 'Rendering preview…';
@@ -108,7 +104,6 @@ export function _renderImageViewer(container, art, stripped) {
         preview.innerHTML = ''; preview.appendChild(img);
     }).catch(e => { preview.textContent = `Preview failed: ${e.message}`; });
 
-    // Controls: format + resolution slider + download + copy image.
     const controls = document.createElement('div');
     controls.className = 'space-y-2';
 
@@ -176,7 +171,7 @@ export function _renderImageViewer(container, art, stripped) {
     container.appendChild(_legendLine(art.legend));
 }
 
-// ---- panel ---------------------------------------------------------------------------
+/** Render the Artifacts tab for `results` into `panel`. */
 export function renderArtifactsPanel(results, panel) {
     if (!panel) return;
     panel.innerHTML = '';
@@ -198,7 +193,6 @@ export function renderArtifactsPanel(results, panel) {
         return;
     }
 
-    // Backend selector — scope every figure/table to a chosen subset ("which vs which").
     const allBackends = _artBackends(results);
     const selected = new Set(allBackends);
     if (allBackends.length > 1) {
@@ -214,7 +208,6 @@ export function renderArtifactsPanel(results, panel) {
     layout.append(left, right);
     panel.appendChild(layout);
 
-    // (Re)build the catalog + viewers for the currently-selected backend subset.
     function rebuild() {
         left.innerHTML = '';
         right.innerHTML = '<p class="text-sm text-gray-400">Select an artifact on the left.</p>';
@@ -261,7 +254,7 @@ export function renderArtifactsPanel(results, panel) {
     rebuild();
 }
 
-// Chip toggles for the backend subset + All/None shortcuts; `onChange` re-renders the tab.
+/** Chip toggles for the backend subset plus All/None; `onChange` re-renders the tab. */
 export function _backendSelector(allBackends, selected, onChange) {
     const wrap = document.createElement('div');
     wrap.className = 'mb-4 p-3 border border-gray-200 rounded-lg bg-gray-50';

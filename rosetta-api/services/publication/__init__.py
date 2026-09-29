@@ -1,20 +1,10 @@
-# Publication-ready artifact engine — deterministic figures + tables.
-#
-# Split along the section boundaries the single module already used:
-#
-#   theme.py      constants, matplotlib configuration, palette, glossary wording
-#   formats.py    rendering a figure or table into a concrete output format
-#   selectors.py  pulling the pieces a builder needs out of a report
-#   figures.py    figure builders (each returns a matplotlib Figure)
-#   tables.py     table and text-blob builders
-#   registry.py   which artifacts exist for a report, and the public API
-#
-# Every name importable from services.publication before the split still is, so callers
-# and tests are unaffected.
-#
-# formats.py carries the parity contract: _fmt_num, _latex_escape, basename_slug and the
-# table renderers are mirrored by static/js/artifacts_renderer.js and compared byte-for-byte
-# by tests/unit/test_artifacts_parity.py.
+"""Publication artifacts: deterministic figures (SVG/PNG/PDF) and tables built from a report.
+
+theme.py holds constants, matplotlib setup, palette and glossary text; formats.py number
+formatting and output renderers; selectors.py report accessors; figures.py and tables.py
+the builders; registry.py the artifact catalog and public API. static/js/artifact_formats.js
+mirrors the text builders and catalog.
+"""
 
 from .theme import (
     AGREEMENT_COLORS,
@@ -41,7 +31,9 @@ from .figures import (
     _fig_ranking_bar,
 )
 from .formats import (
+    _fmt_int,
     _fmt_num,
+    _fmt_text,
     _latex_escape,
     _render_csv,
     _render_figure,
@@ -66,12 +58,10 @@ from .tables import (
 )
 
 __all__ = [
-    # Public surface.
     "build_publication_artifacts",
     "list_artifacts",
     "render_artifact",
     "basename_slug",
-    # Configuration.
     "AGREEMENT_COLORS",
     "BASE_DPI",
     "MAX_HISTOGRAM_OUTCOMES",
@@ -85,14 +75,15 @@ __all__ = [
     "SUPPORTED_TABLE_FORMATS",
     "TAB_TABLE_FORMATS",
     "VERDICT_COLORS",
-    # Internals re-exported so the pre-split import path keeps working.
     "_fig_agreement_distribution",
     "_fig_count_histogram",
     "_fig_counts_overview_bars",
     "_fig_counts_overview_heatmap",
     "_fig_heatmap",
     "_fig_ranking_bar",
+    "_fmt_int",
     "_fmt_num",
+    "_fmt_text",
     "_heatmap_specs",
     "_key_metric",
     "_latex_escape",

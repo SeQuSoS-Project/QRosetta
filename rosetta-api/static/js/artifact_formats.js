@@ -1,34 +1,71 @@
-// Publication-artifact data + text builders. Pure (no DOM, no network) so this file is the
-// exact browser-side parity surface with services/publication.py, imported directly by
-// tests/unit/artifacts_parity_harness.mjs. artifacts_renderer.js (DOM/viewers) imports from
-// here rather than duplicating any of it.
+// Publication-artifact number formatting, text builders and catalog. Mirrors
+// services/publication (formats.py, selectors.py, tables.py, theme.py glossaries,
+// registry.py catalog); tests/unit/test_artifacts_parity.py compares the two. No DOM, no
+// network.
 
-// ---- number + escaping helpers (match publication.py _fmt_num / escapers) ------------
+const _SCI_BELOW = 1e-3;
+const _SCI_ABOVE = 1e15;
+const _MAX_DIGITS = 17;
+export const JS_UNIT = 'nats';
+export const MAX_HISTOGRAM_PAIRS = 12;
+
+/** Scientific notation with 3 significant digits and a signed 2+ digit exponent. */
+function _artSci(x) {
+    const [mant, exp] = x.toExponential(2).split('e');
+    const e = parseInt(exp, 10);
+    return `${mant}e${e < 0 ? '-' : '+'}${String(Math.abs(e)).padStart(2, '0')}`;
+}
+
+/** Format a real-valued metric (same rules as formats.py _fmt_num). */
 export function _artNum(v, d = 4) {
     if (v === null || v === undefined) return '—';
-    if (typeof v === 'number') return Number.isNaN(v) ? '—' : v.toFixed(d);
+    if (typeof v === 'boolean') return v ? 'true' : 'false';
+    if (typeof v !== 'number') return String(v);
+    if (Number.isNaN(v)) return '—';
+    if (!Number.isFinite(v)) return v > 0 ? 'inf' : '-inf';
+    if (v === 0) return (0).toFixed(d);
+    if (Math.abs(v) < _SCI_BELOW || Math.abs(v) >= _SCI_ABOVE) return _artSci(v);
+    let s = v.toFixed(d);
+    if (parseFloat(s) === 0) return _artSci(v);
+    let digits = d;
+    while (v !== 1 && parseFloat(s) === 1 && digits < _MAX_DIGITS) {
+        digits += 1;
+        s = v.toFixed(digits);
+    }
+    return s;
+}
+
+/** Format a count-like value: integral numbers without decimals, else as _artNum. */
+export function _artInt(v) {
+    if (typeof v === 'number' && Number.isInteger(v) && Math.abs(v) < _SCI_ABOVE) return String(v);
+    return _artNum(v);
+}
+
+/** Format a label: null/undefined/"" -> "—", else String(v). */
+export function _artText(v) {
+    if (v === null || v === undefined || v === '') return '—';
     return String(v);
 }
+
 export const _ART_LATEX_ESC = {
     '\\': '\\textbackslash{}', '&': '\\&', '%': '\\%', '$': '\\$', '#': '\\#',
     '_': '\\_', '{': '\\{', '}': '\\}', '~': '\\textasciitilde{}', '^': '\\textasciicircum{}',
 };
+/** Escape LaTeX special characters. */
 export function _artLatexEscape(s) {
     return String(s).split('').map(c => _ART_LATEX_ESC[c] || c).join('');
 }
-// Mirrors Python's html.escape (quote=True), including the &#x27; form for apostrophes.
-// Kept separate from utils.js _escapeHtml, which emits &#39; — merging them would break
-// byte-for-byte parity with services/publication.py.
+/** Python html.escape(quote=True), apostrophe as &#x27;. */
 export function _artHtmlEscape(s) {
     return String(s).replace(/[&<>"']/g, c =>
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;' }[c]));
 }
-// Mirrors publication.basename_slug: each non-alphanumeric -> '-' (no run collapsing), trimmed.
+/** Lower-case, each non-alphanumeric -> '-', trimmed (basename_slug). */
 export function _artSlug(s) {
     return String(s).toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/^-+|-+$/g, '');
 }
 
-// ---- generic table renderers ---------------------------------------------------------
+/** booktabs LaTeX table. */
 export function _artLatex({ headers, rows, title, caption }) {
     const spec = 'l'.repeat(headers.length);
     const lines = ['% Requires \\usepackage{booktabs}', '\\begin{table}[htbp]', '  \\centering',
@@ -39,13 +76,15 @@ export function _artLatex({ headers, rows, title, caption }) {
     lines.push('    \\bottomrule', '  \\end{tabular}', '\\end{table}', '');
     return lines.join('\n');
 }
+/** CSV with CRLF rows (Python csv module defaults). */
 export function _artCsv({ headers, rows }) {
     const esc = v => {
         const s = (v === null || v === undefined) ? '' : String(v);
-        return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+        return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
     };
     return [headers, ...rows].map(r => r.map(esc).join(',')).join('\r\n') + '\r\n';
 }
+/** Standalone HTML table. */
 export function _artHtml({ headers, rows, title, caption }) {
     const head = headers.map(h => `<th>${_artHtmlEscape(h)}</th>`).join('');
     const body = rows.map(r => '<tr>' + r.map(c => `<td>${_artHtmlEscape(c)}</td>`).join('') + '</tr>').join('');
@@ -58,6 +97,7 @@ export function _artHtml({ headers, rows, title, caption }) {
         + `<table><caption>${_artHtmlEscape(title)}<div class='cap'>${_artHtmlEscape(caption)}</div></caption>`
         + `<thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
+/** Markdown table preceded by a bold title line. */
 export function _artMarkdown({ headers, rows, title, caption }) {
     const esc = v => String(v).replace(/\|/g, '\\|');
     const lines = [`**${title}** — ${caption}`, '',
@@ -67,31 +107,144 @@ export function _artMarkdown({ headers, rows, title, caption }) {
     lines.push('');
     return lines.join('\n');
 }
+/** Render table data in `fmt`. */
 export function _renderTable(fmt, data) {
     return { latex: _artLatex, csv: _artCsv, html: _artHtml, markdown: _artMarkdown }[fmt](data);
 }
 
-// ---- data builders (mirror publication.py) -------------------------------------------
+// ---- report accessors (selectors.py) ----
+/** "a × b" for a pairwise record. */
 export function _artPairKey(rec) {
     const s = rec.simulators || ['?', '?'];
     return `${s[0]} × ${s[1]}`;
 }
+/** The pairwise_agreement list, or []. */
 export function _artPairwise(div) { return Array.isArray(div.pairwise_agreement) ? div.pairwise_agreement : []; }
 
+/** Map simulator -> its first raw result. */
+function _artRawBySim(results) {
+    const out = {};
+    (results.raw_results || []).forEach(r => {
+        const sim = r.simulator;
+        if (sim !== null && sim !== undefined && !(sim in out)) out[sim] = r;
+    });
+    return out;
+}
+
+/** Ranked entries in rank order, then unranked entries, as {entry, raw, ranked, rank, status}. */
+export function _artReportRows(results, reportKey) {
+    const report = results[reportKey] || {};
+    const raw = _artRawBySim(results);
+    const rows = [];
+    [[true, report.ranking || []], [false, report.unranked || []]].forEach(([ranked, entries]) => {
+        entries.forEach((e, i) => {
+            const r = raw[e.simulator] || {};
+            let status = r.status || e.status || '—';
+            if (status === 'success') status = 'ok';
+            let rank = '—';
+            if (ranked) rank = _artInt((e.rank !== null && e.rank !== undefined) ? e.rank : i + 1);
+            else status = `${status} (${e.reason || 'unranked'})`;
+            rows.push({ entry: e, raw: r, ranked, rank, status });
+        });
+    });
+    return rows;
+}
+
+/** `key` from the report entry, falling back to the raw result. */
+function _artField(row, key) {
+    const v = row.entry[key];
+    return (v === null || v === undefined) ? row.raw[key] : v;
+}
+
+/** Distinct non-empty values of `key` across raw results, comma-joined, or "not recorded". */
+export function _artDistinct(results, key) {
+    const seen = [];
+    (results.raw_results || []).forEach(r => {
+        const v = r[key];
+        if (v !== null && v !== undefined && v !== '' && !seen.includes(_artText(v))) seen.push(_artText(v));
+    });
+    return seen.length ? seen.join(', ') : 'not recorded';
+}
+
+/** Timing samples per backend: results.timing_samples, else the raw results' values, else 1. */
+export function _artTimingSamples(results) {
+    const top = results.timing_samples;
+    if (top !== null && top !== undefined) return _artInt(top);
+    const vals = [];
+    (results.raw_results || []).forEach(r => {
+        const v = r.timing_samples;
+        if (v !== null && v !== undefined && !vals.includes(_artInt(v))) vals.push(_artInt(v));
+    });
+    return vals.length ? vals.join('/') : '1';
+}
+
+// ---- glossaries (theme.py) ----
+export const AGREEMENT_GLOSSARY = [
+    ['agree_directly', 'Outputs match directly, no transform needed.'],
+    ['agree_up_to_global_phase', 'Match after removing an overall (unobservable) global phase.'],
+    ['agree_after_bit_reversal', 'Match after reversing qubit/bit order (an endianness convention).'],
+    ['agree_after_qubit_permutation', 'Match after a bounded qubit permutation (≤7 qubits).'],
+    ['agree_after_normalization', 'At least one input statevector has a norm differing from 1 by more than norm_tolerance; the normalised vectors agree. metrics.normalized_agreement holds the label the normalised pair receives.'],
+    ['residual_disagreement', 'Statevector disagreement not explained by any registered transform.'],
+    ['distance_within_threshold', 'Measured distributions within the JS-divergence and Hellinger thresholds (descriptive, configurable; the shot-noise statistical test gives the significance verdict).'],
+    ['distance_exceeds_threshold', 'Measured distributions exceed the (descriptive, configurable) thresholds after registered transforms; see the statistical test for significance.'],
+    ['not_comparable', 'At least one side lacks usable output; the pair cannot be compared. metrics.reason names the cause.'],
+];
+export const NOT_COMPARABLE_GLOSSARY = [
+    ['missing_statevector', 'A run returned no statevector.'],
+    ['statevector_parse_error', 'A returned statevector could not be decoded.'],
+    ['empty_statevector', 'A statevector has no amplitudes.'],
+    ['nonfinite_statevector', 'A statevector contains NaN or infinite amplitudes.'],
+    ['zero_norm_statevector', 'A statevector has norm 0.'],
+    ['shape_mismatch', 'The two statevectors have different lengths.'],
+    ['missing_counts', 'A run returned no counts.'],
+    ['empty_counts', 'A counts dictionary is empty.'],
+    ['invalid_bitstring_key', 'A counts key is not a non-empty string.'],
+    ['non_numeric_counts', 'A count value is not a real number (strings and booleans included).'],
+    ['nonfinite_counts', 'A count value is NaN or infinite.'],
+    ['negative_counts', 'A count value is negative.'],
+    ['zero_total_counts', 'A counts dictionary sums to 0.'],
+    ['nonfinite_metric', 'A distance metric evaluated to NaN or infinity.'],
+    ['comparison_error', 'The comparison raised an exception; metrics.details.error holds the message.'],
+];
+export const VERDICT_GLOSSARY = [
+    ['consistent', 'Neither the chi-square test nor the G-test is significant after BH (FDR) correction.'],
+    ['distinguishable', 'Both tests are significant after BH (FDR) correction.'],
+    ['inconclusive_low_shots', 'Expected counts too low for a reliable test.'],
+    ['ambiguous', 'Exactly one of the chi-square test and the G-test is significant after BH (FDR) correction.'],
+];
+export const UNRANKED_GLOSSARY = [
+    ['runner_error', 'The run returned an error.'],
+    ['missing_timing', 'The run returned no execution_time_sec.'],
+    ['missing_process_peak_rss', 'The run returned no process_peak_rss_mb.'],
+];
+export const THRESHOLD_DEFAULTS = 'fidelity_tolerance = 1e-5, phase_tolerance = 1e-12 rad, '
+    + 'norm_tolerance = 1e-6, js_threshold = 0.01 nats, hellinger_threshold = 0.1';
+
+// ---- table builders (tables.py) ----
+/** One row per backend pair: label, transform, key metric, verdict (measured), reason. */
 export function _dataAgreement(div, mode) {
     const measured = mode === 'measured';
-    const headers = ['Pair', 'Agreement', 'Registered transform', measured ? 'JS divergence' : 'Fidelity'];
+    const headers = ['Pair', 'Agreement', 'Registered transform',
+        measured ? `JS divergence (${JS_UNIT})` : 'Direct fidelity'];
     if (measured) headers.push('Stat verdict');
+    headers.push('Not-comparable reason');
     const rows = _artPairwise(div).map(r => {
         const m = r.metrics || {};
-        const metric = measured ? m.js_divergence : m.direct_fidelity;
-        const row = [_artPairKey(r), r.agreement || '—', r.registered_transform || '—', _artNum(metric)];
-        if (measured) row.push((m.statistical_test || {}).verdict || '—');
+        const metric = r.mode === 'statevector' ? m.direct_fidelity : m.js_divergence;
+        const row = [_artPairKey(r), _artText(r.agreement), _artText(r.registered_transform), _artNum(metric)];
+        if (measured) row.push(_artText((m.statistical_test || {}).verdict));
+        row.push(r.agreement === 'not_comparable' ? _artText(m.reason) : '—');
         return row;
     });
+    const metricNote = measured
+        ? `JS divergence is the direct (untransformed) Jensen–Shannon divergence in ${JS_UNIT}`
+        : 'Direct fidelity is |<a|b>|^2 of the normalised vectors before any transform';
     return { headers, rows, title: 'Pairwise explained-cause agreement',
-        caption: 'Classification over the registered-transform lattice; each label reports the transform whose numerical effect explains the pair.' };
+        caption: 'Classification over the registered-transform lattice; each label reports the '
+            + `transform whose numerical effect explains the pair. ${metricNote}.` };
 }
+/** The N×N matrix `key` with the diagonal and -1 sentinels shown as "—". */
 export function _dataMatrix(div, key, title) {
     const labels = div.simulators || [];
     const mat = div[key];
@@ -102,35 +255,53 @@ export function _dataMatrix(div, key, title) {
     })));
     return { headers, rows, title, caption: `${title} (raw metric; −1 / diagonal shown as —). Symmetric matrix.` };
 }
+/** Per-backend timings: ranked runs by total time, then unranked runs with the reason. */
 export function _dataPerformance(results) {
-    const ranking = (results.performance_report || {}).ranking || [];
     return {
-        headers: ['Rank', 'Simulator', 'Compilation (s)', 'Simulation (s)', 'Total (s)', 'CPU (s)',
-            'Gate count', 'Depth', 'Status'],
-        rows: ranking.map((r, i) => [i + 1, r.simulator || '—', _artNum(r.compilation_time_sec, 6),
-            _artNum(r.simulation_time_sec, 6), _artNum(r.execution_time_sec, 6),
-            _artNum(r.cpu_time_sec, 6), _artNum(r.gate_count, 0), _artNum(r.circuit_depth, 0),
-            r.status || '—']),
+        headers: ['Rank', 'Simulator', 'Compilation (s)', 'Simulation (s)', 'Total (s)',
+            'Simulation CPU (s)', 'Process CPU (s)', 'Gate count', 'Depth', 'Status'],
+        rows: _artReportRows(results, 'performance_report').map(row => [row.rank,
+            _artText(row.entry.simulator),
+            _artNum(_artField(row, 'compilation_time_sec'), 6),
+            _artNum(_artField(row, 'simulation_time_sec'), 6),
+            _artNum(_artField(row, 'execution_time_sec'), 6),
+            _artNum(_artField(row, 'simulation_cpu_time_sec'), 6),
+            _artNum(_artField(row, 'cpu_time_sec'), 6),
+            _artInt(_artField(row, 'gate_count')), _artInt(_artField(row, 'circuit_depth')),
+            row.status]),
         title: 'Execution timing',
-        caption: 'Wall-clock and CPU timings measured by QRosetta (raw), after a uniform ' +
-            'disclosed warm-up run precedes every timed measurement. Gate count/depth are ' +
-            "derived from each backend's own transpiled QASM.",
+        caption: `Wall-clock times of the timed run, n=${_artTimingSamples(results)} timing sample(s) `
+            + 'per backend; a warm-up run precedes it and is not included. Total = compilation '
+            + '+ simulation. Simulation CPU is process CPU time over the simulation window. '
+            + 'Process CPU is getrusage CPU time of the whole isolated runner process, '
+            + 'including interpreter start, imports and the warm-up. Ranked by total time, '
+            + 'fastest first; runs without a rank follow with the reason in Status. Gate '
+            + "count and depth are taken from each backend's transpiled QASM.",
     };
 }
+/** Per-backend memory: ranked runs by process peak RSS, then unranked runs with the reason. */
 export function _dataResources(results) {
-    const ranking = (results.resource_report || {}).ranking || [];
     return {
-        headers: ['Rank', 'Simulator', 'Process peak RSS (MiB)', 'Mem delta (MiB)',
-            'Process peak (MiB)', 'Theoretical SV (MiB)', 'Status'],
-        rows: ranking.map((r, i) => [i + 1, r.simulator || '—', _artNum(r.process_peak_rss_mb, 1),
-            _artNum(r.memory_usage_mb), _artNum(r.process_peak_mb, 1),
-            _artNum(r.theoretical_statevector_mb), r.status || '—']),
+        headers: ['Rank', 'Simulator', 'Process peak RSS (MiB)', 'Sim-window peak RSS (MiB)',
+            'Sim-window RSS delta (MiB)', 'Theoretical SV (MiB)', 'Precision', 'Status'],
+        rows: _artReportRows(results, 'resource_report').map(row => [row.rank,
+            _artText(row.entry.simulator),
+            _artNum(_artField(row, 'process_peak_rss_mb'), 1),
+            _artNum(_artField(row, 'process_peak_mb'), 1),
+            _artNum(_artField(row, 'memory_usage_mb')),
+            _artNum(_artField(row, 'theoretical_statevector_mb')),
+            _artText(_artField(row, 'precision')), row.status]),
         title: 'Resource usage',
-        caption: 'Process peak RSS (raw, resource.getrusage) is the kernel-reported peak of the ' +
-            'whole isolated run, including compilation and the warm-up; ranking is by this ' +
-            "column. Mem delta / Process peak are each backend's own sim-window measurement.",
+        caption: 'Process peak RSS is the peak resident memory of the simulating process over its '
+            + 'whole life (interpreter start, imports, warm-up and timed run); method: '
+            + `${_artDistinct(results, 'process_peak_rss_method')}. Rows are ranked by it, lowest `
+            + 'first; runs without a rank follow with the reason in Status. Sim-window peak RSS '
+            + 'and RSS delta (peak minus RSS at monitor entry) cover the pre-execute step and '
+            + `simulation window of the timed run; method: ${_artDistinct(results, 'memory_method')}. `
+            + 'Theoretical SV is 2^n × 16 bytes for the declared qubit count. 1 MiB = 1024^2 bytes.',
     };
 }
+/** Per-pair chi-square and G-test p-values, effect sizes, power and verdict. */
 export function _dataStatistical(div) {
     const recs = _artPairwise(div).filter(r => (r.metrics || {}).statistical_test);
     return {
@@ -139,64 +310,60 @@ export function _dataStatistical(div) {
         rows: recs.map(r => {
             const st = r.metrics.statistical_test, ef = st.effect_size || {}, pw = st.power || {},
                 c = st.chi2 || {}, g = st.g_test || {};
-            return [_artPairKey(r), st.basis || '—', _artNum(c.p_value), _artNum(c.p_value_bh),
+            return [_artPairKey(r), _artText(st.basis), _artNum(c.p_value), _artNum(c.p_value_bh),
                 _artNum(g.p_value), _artNum(g.p_value_bh), _artNum(ef.total_variation), _artNum(ef.cramers_v),
                 _artNum(pw.power_to_detect_delta_at_observed_shots, 3),
-                pw.shots_per_backend_for_target_power ?? '—', st.verdict || '—'];
+                _artInt(pw.shots_per_backend_for_target_power), _artText(st.verdict)];
         }),
         title: 'Shot-noise statistical test',
         caption: 'Shot-noise-aware homogeneity tests (chi-square + G-test) with BH-corrected p-values, effect size, and prospective power, reported alongside the descriptive label.',
     };
 }
+/** Per-backend SDK versions, ordering and sampling labels, opt level and status. */
 export function _dataMetadata(results, mode) {
     const rows = (results.raw_results || []).map(r => {
-        const sdk = Object.entries(r.sdk_versions || {}).map(([k, v]) => `${k}=${v}`).join(', ') || '—';
-        return [r.simulator || '—', sdk, r.qubit_ordering || '—', r.sampling_method || '—',
-            r.optimization_level ?? '—', r.error ? 'error' : 'completed'];
+        const sdk = Object.entries(r.sdk_versions || {}).map(([k, v]) => `${k}=${_artText(v)}`).join(', ') || '—';
+        const status = r.status || ((r.error !== null && r.error !== undefined) ? 'error' : 'ok');
+        return [_artText(r.simulator), sdk, _artText(r.qubit_ordering), _artText(r.sampling_method),
+            _artInt(r.optimization_level), _artText(status)];
     });
     let run = `mode=${mode}`;
-    if (results.n_shots !== undefined && results.n_shots !== null) run += `, n_shots=${results.n_shots}`;
-    if (results.seed !== undefined && results.seed !== null) run += `, seed=${results.seed}`;
+    if (results.n_shots !== undefined && results.n_shots !== null) run += `, n_shots=${_artInt(results.n_shots)}`;
+    if (results.seed !== undefined && results.seed !== null) run += `, seed=${_artInt(results.seed)}`;
     return { headers: ['Simulator', 'SDK versions', 'Qubit ordering', 'Sampling method', 'Opt level', 'Status'],
         rows, title: 'Run and provenance metadata',
         caption: `Run + provenance metadata (${run}). Ground-truth executed versions and endpoint labels.` };
 }
+/** The transpiled QASM `runner` executed, with a two-line comment header. */
 export function _txtExecutedQasm(results, runner) {
     const r = (results.raw_results || []).find(x => x.simulator === runner);
+    if (!r) return `// no result for runner ${runner}`;
     const header = `// Executed (transpiled) OpenQASM for backend: ${runner}\n`
         + `// This is the exact circuit the ${runner} adapter ran (after preprocessing).\n`;
-    return header + ((r && r.transpiled_qasm) || '// (no transpiled QASM recorded for this runner)');
+    return header + (r.transpiled_qasm || '// (no transpiled QASM recorded for this runner)');
 }
+/** Markdown glossary of agreement labels, not-comparable reasons and (measured) verdicts. */
 export function _txtGlossary(mode) {
-    const agr = [
-        ['agree_directly', 'Outputs match directly, no transform needed.'],
-        ['agree_up_to_global_phase', 'Match after removing an overall (unobservable) global phase.'],
-        ['agree_after_bit_reversal', 'Match after reversing qubit/bit order (an endianness convention).'],
-        ['agree_after_qubit_permutation', 'Match after a bounded qubit permutation (≤7 qubits).'],
-        ['residual_disagreement', 'Statevector disagreement not explained by any registered transform.'],
-        ['distance_within_threshold', 'Measured distributions within the JS/Hellinger thresholds (heuristic, configurable; the shot-noise statistical test is the rigorous verdict).'],
-        ['distance_exceeds_threshold', 'Measured distributions exceed the (heuristic, configurable) thresholds after registered transforms; see the statistical test for significance.'],
-        ['not_comparable', 'At least one side lacks usable output; the pair cannot be compared.'],
-    ];
-    const ver = [
-        ['consistent', 'Shot-noise test finds no significant difference (after FDR correction).'],
-        ['distinguishable', 'Both tests find a significant difference after FDR correction.'],
-        ['inconclusive_low_shots', 'Expected counts too low for a reliable test.'],
-        ['ambiguous', 'The chi-square and G-test disagree (rare).'],
-    ];
-    let out = ['# QRosetta agreement taxonomy — glossary', '', 'Agreement classes (registered-transform lattice):', ''];
-    agr.forEach(([l, d]) => out.push(`- **${l}** — ${d}`));
+    const out = ['# QRosetta agreement taxonomy — glossary', '', 'Agreement classes (registered-transform lattice):', ''];
+    AGREEMENT_GLOSSARY.forEach(([l, d]) => out.push(`- **${l}** — ${d}`));
+    out.push('', 'Not-comparable reasons (metrics.reason):', '');
+    NOT_COMPARABLE_GLOSSARY.forEach(([l, d]) => out.push(`- **${l}** — ${d}`));
     if (mode === 'measured') {
         out.push('', 'Shot-noise statistical verdicts (reported alongside the descriptive label):', '');
-        ver.forEach(([l, d]) => out.push(`- **${l}** — ${d}`));
+        VERDICT_GLOSSARY.forEach(([l, d]) => out.push(`- **${l}** — ${d}`));
     }
-    out.push('', 'Each label names the registered transform that explains the pair and reports its numerical effect; the per-pair records carry full provenance.');
+    out.push('', 'Unranked runs in the timing and resource tables (reason):', '');
+    UNRANKED_GLOSSARY.forEach(([l, d]) => out.push(`- **${l}** — ${d}`));
+    out.push('', `Default thresholds: ${THRESHOLD_DEFAULTS}. A run may override them; the values applied are recorded in each pairwise record. JS divergence is in ${JS_UNIT} (maximum ln 2).`,
+        '', 'Each label names the registered transform that explains the pair and reports its numerical effect; the per-pair records carry full provenance.');
     return out.join('\n');
 }
 
-// ---- catalog (mirrors publication.py _iter_artifacts availability) -------------------
+// ---- catalog (registry.py _iter_artifacts) ----
+/** "measured" when the report has n_shots, else "statevector". */
 export function _artifactMode(results) { return ('n_shots' in results) ? 'measured' : 'statevector'; }
 
+/** Artifacts available for `results`: {id, label, group, view, formats, legend[, getText]}. */
 export function buildArtifactCatalog(results) {
     const div = results.divergence_report || {};
     const mode = _artifactMode(results);
@@ -217,13 +384,13 @@ export function buildArtifactCatalog(results) {
         image('agreement_distribution', 'Agreement class distribution', 'Agreement',
             'Bar chart of how many backend pairs fall into each explained-cause class' + (mode === 'measured' ? ' and shot-noise verdict' : '') + '.');
         table('agreement', 'Pairwise agreement table', 'Agreement', () => _dataAgreement(div, mode),
-            'One row per backend pair: explained-cause label, registered transform, key metric, and (measured) verdict. Analysis, not verification.');
+            `One row per backend pair: explained-cause label, registered transform, key metric (direct fidelity or JS divergence in ${JS_UNIT}), statistical verdict (measured) and not-comparable reason.`);
     }
     const heat = mode === 'statevector'
         ? [['fidelity_matrix', 'Raw statevector fidelity (no transform)', 'fidelity']]
-        : [['statistical_distance_matrix (js_divergence)', 'Raw Jensen–Shannon divergence', 'js_divergence'],
+        : [['statistical_distance_matrix (js_divergence)', `Raw Jensen–Shannon divergence (${JS_UNIT})`, 'js_divergence'],
            ['hellinger_distance_matrix', 'Raw Hellinger distance', 'hellinger']];
-    const multi = (div.simulators || []).length >= 2;  // heatmap/matrix needs a pair
+    const multi = (div.simulators || []).length >= 2;
     heat.forEach(([key, title, base]) => {
         if (multi && Array.isArray(div[key]) && div[key].length) {
             const short = title.split('(')[0].trim();
@@ -234,13 +401,22 @@ export function buildArtifactCatalog(results) {
                 `${title} as a copyable N×N matrix table (raw metric).`);
         }
     });
-    if (((results.performance_report || {}).ranking || []).length) {
-        image('performance_time', 'Execution-time chart', 'Performance', 'Stacked compilation + simulation time per backend (raw).');
-        table('performance', 'Execution-time table', 'Performance', () => _dataPerformance(results), 'Per-backend compilation/simulation/total time and status (raw).');
+    const unrankedNote = 'runs without a rank are listed with their status and reason and have no bar.';
+    const perf = results.performance_report || {};
+    if ((perf.ranking || []).length || (perf.unranked || []).length) {
+        image('performance_time', 'Execution-time chart', 'Performance',
+            'Stacked compilation + simulation wall-clock time per backend (raw), '
+            + `n=${_artTimingSamples(results)} timing sample(s) per backend; ` + unrankedNote);
+        table('performance', 'Execution-time table', 'Performance', () => _dataPerformance(results),
+            'Per-backend compilation, simulation and total wall-clock time, simulation and process CPU time, and status (raw).');
     }
-    if (((results.resource_report || {}).ranking || []).length) {
-        image('resource_memory', 'Process-peak memory chart', 'Resources', 'Peak process memory per backend (raw).');
-        table('resources', 'Resource-usage table', 'Resources', () => _dataResources(results), 'Per-backend memory delta, process peak, theoretical SV, status (raw).');
+    const res = results.resource_report || {};
+    if ((res.ranking || []).length || (res.unranked || []).length) {
+        image('resource_memory', 'Process peak RSS chart', 'Resources',
+            "Peak RSS of each backend's simulating process over its whole life (interpreter start, imports, warm-up and timed run), in MiB; method: "
+            + `${_artDistinct(results, 'process_peak_rss_method')}. Ranked lowest first; ` + unrankedNote);
+        table('resources', 'Resource-usage table', 'Resources', () => _dataResources(results),
+            'Per-backend process peak RSS, sim-window peak RSS and RSS delta, theoretical statevector size, precision and status (raw).');
     }
     if (mode === 'measured') {
         if (pairwise.some(r => (r.metrics || {}).statistical_test)) {
@@ -249,24 +425,32 @@ export function buildArtifactCatalog(results) {
         }
         const rawCounts = {};
         (results.raw_results || []).forEach(r => {
-            if (r.counts && Object.keys(r.counts).length) rawCounts[r.simulator] = r.counts;
+            const c = r.counts;
+            if (c && typeof c === 'object' && !Array.isArray(c) && Object.keys(c).length) rawCounts[r.simulator] = c;
         });
-        // Total count figure: one compact outcome × backend heatmap over all backends with
-        // counts (mirrors publication.py counts_overview availability: >= 2 such backends).
+        const missing = [];
+        (results.raw_results || []).forEach(r => {
+            const sim = r.simulator;
+            if (sim && !(sim in rawCounts) && !missing.includes(sim)) missing.push(sim);
+        });
+        const missingNote = missing.length ? ` Backends without counts are not drawn: ${missing.join(', ')}.` : '';
         if (Object.keys(rawCounts).length >= 2) {
             image('counts_overview', 'Count overview (all backends)', 'Statistical',
-                'Clustered bar histogram of raw measured probabilities, one colour per backend over the top outcomes (Qiskit plot_histogram convention); low-probability outcomes are folded into "other" (disclosed in-figure).');
+                "Clustered bar histogram of raw measured probabilities, one colour per backend over the top outcomes (Qiskit plot_histogram convention); low-probability outcomes are folded into 'other' (disclosed in-figure)." + missingNote);
             image('counts_overview_heatmap', 'Count overview heatmap (optional)', 'Statistical',
-                'Optional compact view: outcome × backend probability heatmap; a uniform row = agreement, a varying row = disagreement. Scales to many backends.');
+                'Optional compact view: outcome × backend probability heatmap; a uniform row = agreement, a varying row = disagreement. Scales to many backends.' + missingNote);
         }
-        let n = 0;
-        pairwise.forEach(rec => {
-            const [a, b] = rec.simulators || [];
-            if (n < 12 && rawCounts[a] && rawCounts[b]) {
-                n++;
-                image(`histogram_${_artSlug(a + '_' + b)}`, `Count histogram: ${a} vs ${b}`, 'Statistical',
-                    `Raw measured probability distributions for ${a} vs ${b}.`);
-            }
+        const eligible = pairwise.filter(rec => {
+            const [a, b] = rec.simulators || [null, null];
+            return rawCounts[a] && rawCounts[b];
+        });
+        const capNote = eligible.length > MAX_HISTOGRAM_PAIRS
+            ? ` Histograms are generated for the first ${MAX_HISTOGRAM_PAIRS} of ${eligible.length} backend pairs with counts.`
+            : '';
+        eligible.slice(0, MAX_HISTOGRAM_PAIRS).forEach(rec => {
+            const [a, b] = rec.simulators;
+            image(`histogram_${_artSlug(a + '_' + b)}`, `Count histogram: ${a} vs ${b}`, 'Statistical',
+                `Raw measured probability distributions for ${a} vs ${b}.` + capNote);
         });
     }
     if ((results.raw_results || []).length) {
@@ -280,16 +464,16 @@ export function buildArtifactCatalog(results) {
             }
         });
     }
+    const terms = ['agreement class', 'not-comparable reason'];
+    if (mode === 'measured') terms.push('statistical verdict');
+    terms.push('unranked reason');
     blob('glossary', 'Taxonomy glossary', 'Reference', ['markdown', 'text'], () => _txtGlossary(mode),
-        'Definitions of every agreement class' + (mode === 'measured' ? ' and statistical verdict' : '') + '.');
+        'Definitions of every ' + terms.join(', ') + ', plus the default thresholds.');
     return items;
 }
 
-// ---- backend subset transform --------------------------------------------------------
-// Filter a report down to a chosen set of backends so every figure/table in the tab can
-// be scoped to "which vs which". Pure (no mutation): slices the N×N matrices, filters the
-// pairwise records / raw results / rankings, and recomputes the shot-noise verdict counts.
-// Figures then POST the sliced (stripped) report, so the server builders need no changes.
+// ---- backend subset ----
+/** Backends in divergence-report order, then any others present in raw_results. */
 export function _artBackends(results) {
     const order = (results.divergence_report || {}).simulators || [];
     const seen = new Set(order);
@@ -297,6 +481,11 @@ export function _artBackends(results) {
         .filter(s => s && !seen.has(s));
     return order.concat(extra);
 }
+/**
+ * Copy of `results` restricted to the `selected` backends: square N×N matrices sliced,
+ * pairwise records, raw results, ranking and unranked lists filtered, verdict counts
+ * recomputed. Does not mutate `results`.
+ */
 export function _subsetResults(results, selected) {
     const div = results.divergence_report || {};
     const allSims = div.simulators || [];
@@ -304,8 +493,6 @@ export function _subsetResults(results, selected) {
     allSims.forEach((s, i) => { if (selected.has(s)) keepIdx.push(i); });
     const newDiv = Object.assign({}, div);
     newDiv.simulators = keepIdx.map(i => allSims[i]);
-    // Slice any square N×N matrix indexed by `simulators` (fidelity/phase/js/hellinger),
-    // detected structurally so we don't depend on the exact key names.
     Object.keys(div).forEach(k => {
         const v = div[k];
         if (Array.isArray(v) && v.length === allSims.length
@@ -333,11 +520,13 @@ export function _subsetResults(results, selected) {
         out.raw_results = results.raw_results.filter(r => selected.has(r.simulator));
     }
     ['performance_report', 'resource_report'].forEach(rep => {
-        if (results[rep] && Array.isArray(results[rep].ranking)) {
-            out[rep] = Object.assign({}, results[rep], {
-                ranking: results[rep].ranking.filter(r => selected.has(r.simulator)),
-            });
-        }
+        const report = results[rep];
+        if (!report) return;
+        const patch = {};
+        ['ranking', 'unranked'].forEach(k => {
+            if (Array.isArray(report[k])) patch[k] = report[k].filter(r => selected.has(r.simulator));
+        });
+        out[rep] = Object.assign({}, report, patch);
     });
     return out;
 }
