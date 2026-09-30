@@ -85,7 +85,7 @@ async def compare_circuits_endpoint(request: Request, payload: QasmPayload, back
 
     ACTIVE_JOBS[job_id] = new_job(payload.execution_target)
     thresholds = effective_thresholds(payload.thresholds)
-    background_tasks.add_task(worker_compare, job_id, payload.qasm_string, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, payload.execution_target, payload.runner_phases, payload.apply_preprocessing, thresholds)
+    background_tasks.add_task(worker_compare, job_id, payload.qasm_string, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, payload.execution_target, payload.runner_phases, payload.apply_preprocessing, thresholds, payload.bypass_limits)
 
     return _job_envelope(job_id)
 
@@ -108,7 +108,7 @@ async def compare_measured_circuits_endpoint(request: Request, payload: Measured
 
     ACTIVE_JOBS[job_id] = new_job(payload.execution_target)
     thresholds = effective_thresholds(payload.thresholds)
-    background_tasks.add_task(worker_compare_measured, job_id, payload.qasm_string, payload.n_shots, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, payload.execution_target, payload.runner_phases, payload.apply_preprocessing, payload.seed, thresholds)
+    background_tasks.add_task(worker_compare_measured, job_id, payload.qasm_string, payload.n_shots, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, payload.execution_target, payload.runner_phases, payload.apply_preprocessing, payload.seed, thresholds, payload.bypass_limits)
 
     return _job_envelope(job_id)
 

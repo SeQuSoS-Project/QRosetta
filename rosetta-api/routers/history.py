@@ -1,6 +1,6 @@
 """Saved-circuit and run-history routes, all scoped to the authenticated user."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -10,7 +10,7 @@ import services.history as history_service
 from db.database import get_db
 from services.security import get_current_user
 from services.exporter import build_export_context, build_ro_crate
-from services.job_manager import job_report_or_error
+from services.job_manager import ACTIVE_JOBS, job_report_or_error
 from routers.errors import responses
 from qrosetta_commons.helpers import get_logger
 from fastapi.responses import StreamingResponse
@@ -65,6 +65,7 @@ def save_run(
              status_code=status.HTTP_201_CREATED, responses=responses(404, 409, 422))
 def save_run_from_job(
     job_id: str,
+    response: Response,
     body: schemas.RunHistoryFromJob | None = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
@@ -73,15 +74,23 @@ def save_run_from_job(
     user's history from the server's copy of its report, so the browser uploads nothing.
     Statevectors are removed before storage and the stored report is marked
     ``statevector_storage="removed_before_storage"``. Returns the saved run; its ``id`` is
-    the run id. 404 if the job id is unknown or expired; 409 if the job has not finished,
-    failed before any runner ran, or is an experiment."""
+    the run id (201). Saving a job the current user already saved returns that run (200)
+    and stores nothing new. 404 if the job id is unknown or expired; 409 if the job has not
+    finished, failed before any runner ran, or is an experiment."""
     report = job_report_or_error(job_id, "save")
+    saved_runs = ACTIVE_JOBS[job_id].setdefault("saved_runs", {})
+    existing = history_service.find_run(db, current_user.id, saved_runs.get(current_user.id))
+    if existing is not None:
+        response.status_code = status.HTTP_200_OK
+        return existing
     name = (body.name if body else None) or history_service.default_run_name(report, job_id)
     try:
-        return history_service.save_run(
+        run = history_service.save_run(
             db, current_user.id, {**report, "run_name": name, "job_id": job_id})
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to save run history")
+    saved_runs[current_user.id] = run.id
+    return run
 
 
 @router.get("/runs", response_model=List[schemas.RunHistoryResponse])

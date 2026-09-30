@@ -297,6 +297,12 @@ def _restore_register_order(emitted: str, original: str) -> str:
     return "\n".join(lines)
 
 
+def _classical_width(qasm: str) -> int:
+    """pytket ``maxwidth`` that admits every creg of ``qasm``: the total declared classical
+    bits, at least pytket's default of 32."""
+    return max(32, sum(size for kind, _, size in declared_registers(qasm) if kind == "creg"))
+
+
 def _pytket_round_trip(qasm: str, remove_barriers: bool):
     """Parse and re-emit ``qasm`` with pytket, optionally removing barriers.
 
@@ -305,7 +311,8 @@ def _pytket_round_trip(qasm: str, remove_barriers: bool):
     import pytket.qasm
     from pytket.passes import RemoveBarriers
 
-    circ = pytket.qasm.circuit_from_qasm_str(qasm)
+    maxwidth = _classical_width(qasm)
+    circ = pytket.qasm.circuit_from_qasm_str(qasm, maxwidth=maxwidth)
     notes = [
         "API: parsed and re-emitted with pytket (circuit_from_qasm_str / circuit_to_qasm_str): "
         "register declarations kept in declaration order, custom gate definitions inlined, "
@@ -315,7 +322,8 @@ def _pytket_round_trip(qasm: str, remove_barriers: bool):
     if remove_barriers and has_barriers(qasm):
         RemoveBarriers().apply(circ)
         notes.append("API: removed barrier statements (pytket RemoveBarriers)")
-    return _restore_register_order(pytket.qasm.circuit_to_qasm_str(circ), qasm), notes
+    emitted = pytket.qasm.circuit_to_qasm_str(circ, maxwidth=maxwidth)
+    return _restore_register_order(emitted, qasm), notes
 
 
 def prepare_statevector_dispatch(qasm: str, apply_preprocessing: bool) -> dict:
@@ -344,19 +352,19 @@ def prepare_measured_dispatch(qasm: str, apply_preprocessing: bool) -> dict:
     ``measured_sampled`` runners sample a statevector and receive the circuit without
     added measurements. ``measured_native`` runners sample natively and receive the same
     circuit plus measure-all when it has no measure statements. With preprocessing, both
-    groups get the declaration-order register merge, and the native group is also
-    round-tripped through pytket with barriers removed.
+    groups get the declaration-order register merge and the pytket round-trip with
+    barriers removed, as the statevector group does; without it both receive the input
+    text (plus measure-all for the native group).
     """
     base, base_notes = qasm, []
     if apply_preprocessing:
         base, note = flatten_qregs(qasm)
         if note:
             base_notes.append(note)
+        base, rt_notes = _pytket_round_trip(base, remove_barriers=True)
+        base_notes += rt_notes
 
     native, native_notes = base, list(base_notes)
-    if apply_preprocessing:
-        native, rt_notes = _pytket_round_trip(native, remove_barriers=True)
-        native_notes += rt_notes
     if not has_measurements(native):
         native, note = append_measure_all(native)
         native_notes.append(note)

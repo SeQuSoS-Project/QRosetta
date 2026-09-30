@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     MIN_TIMEOUT_SEC: int = 10
     MIN_SHOTS: int = 1
     MAX_SHOTS: int = 1_000_000
+    DEFAULT_SHOTS: int = 4096
     RUNNER_CONNECT_TIMEOUT_SEC: int = 10
     RUNNER_DEADLINE_BUFFER_SEC: int = 15
     RUNNER_QUEUE_MAX_WAIT_SEC: int = int(os.getenv("RUNNER_QUEUE_MAX_WAIT_SEC", "1800"))
@@ -72,9 +73,10 @@ class Settings(BaseSettings):
     def get_runner_services(self):
         """Canonical runner id -> base_url, capabilities, enabled flag, optimization levels.
 
-        ``honours_seed`` is False for a runner whose backend ignores the sampling seed it
-        is passed; it defaults to True when absent. ``requires_gpu`` marks a runner that is
-        unavailable unless the deployment has a GPU (see ``services.availability``).
+        Every entry sets ``honours_seed`` explicitly: False for a runner whose backend ignores
+        the sampling seed it is passed (results then record ``seed_honoured: false``).
+        ``requires_gpu`` marks a runner that is unavailable unless the deployment has a GPU
+        (see ``services.availability``).
         """
         return {
 
@@ -82,6 +84,7 @@ class Settings(BaseSettings):
                 "base_url": self.PYTKET_QISKIT_RUNNER_URL,
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": True,
+                "honours_seed": True,
                 "optimization_levels": {
                     0: "No optimization",
                     1: "Aer transpiler level 1: basic gate cancellation",
@@ -93,6 +96,7 @@ class Settings(BaseSettings):
                 "base_url": self.PYTKET_CIRQ_RUNNER_URL,
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": True,
+                "honours_seed": True,
                 "optimization_levels": {
                     0: "Backend default rebase only: pytket default_compilation_pass level 0 (DecomposeBoxes, FlattenRegisters, AutoRebase to the backend gate set), no optimization",
                     1: "Pytket light: fast peephole rewrites, remove redundant gates",
@@ -103,6 +107,7 @@ class Settings(BaseSettings):
                 "base_url": self.PYTKET_QULACS_RUNNER_URL,
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": True,
+                "honours_seed": True,
                 "optimization_levels": {
                     0: "Backend default rebase only: pytket default_compilation_pass level 0 (DecomposeBoxes, FlattenRegisters, AutoRebase to the backend gate set), no optimization",
                     1: "Pytket light: fast peephole rewrites, remove redundant gates",
@@ -125,6 +130,7 @@ class Settings(BaseSettings):
                 "base_url": self.PYTKET_PROJECTQ_RUNNER_URL,
                 "capabilities": ["statevector", "measured_sampled"],
                 "enabled": False,
+                "honours_seed": True,
                 "optimization_levels": {
                     0: "Backend default rebase only: pytket default_compilation_pass level 0 (DecomposeBoxes, FlattenRegisters, AutoRebase to the backend gate set), no optimization",
                     1: "Pytket light: fast peephole rewrites, remove redundant gates",
@@ -135,6 +141,7 @@ class Settings(BaseSettings):
                 "base_url": self.PYTKET_QUEST_RUNNER_URL,
                 "capabilities": ["statevector", "measured_sampled"],
                 "enabled": True,
+                "honours_seed": True,
                 "optimization_levels": {
                     0: "Backend default rebase only: pytket default_compilation_pass level 0 (DecomposeBoxes, FlattenRegisters, AutoRebase to the backend gate set), no optimization",
                     1: "Pytket light: fast peephole rewrites, remove redundant gates",
@@ -145,6 +152,7 @@ class Settings(BaseSettings):
                 "base_url": self.PENNYLANE_LIGHTNING_RUNNER_URL,
                 "capabilities": ["statevector", "measured_sampled"],
                 "enabled": True,
+                "honours_seed": True,
                 "optimization_levels": {
                     0: "No optimization",
                     1: "Cancel inverse gate pairs",
@@ -156,6 +164,7 @@ class Settings(BaseSettings):
                 "base_url": self.PENNYLANE_DEFAULT_RUNNER_URL,
                 "capabilities": ["statevector", "measured_sampled"],
                 "enabled": True,
+                "honours_seed": True,
                 "optimization_levels": {
                     0: "No optimization",
                     1: "Cancel inverse gate pairs",
@@ -167,6 +176,7 @@ class Settings(BaseSettings):
                 "base_url": self.QSIM_CIRQ_RUNNER_URL,
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": True,
+                "honours_seed": True,
                 "optimization_levels": {
                     0: "No optimization",
                     1: "Drop empty moments + align left",
@@ -177,6 +187,7 @@ class Settings(BaseSettings):
                 "base_url": self.QIBO_RUNNER_URL,
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": True,
+                "honours_seed": True,
                 "optimization_levels": {
                     0: "No optimization",
                     1: "Gate fusion: merge runs of single-qubit gates into one unitary",
@@ -187,6 +198,7 @@ class Settings(BaseSettings):
                 "base_url": self.QRISP_RUNNER_URL,
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": True,
+                "honours_seed": True,
                 "optimization_levels": {
                     0: "No optimization (Qrisp's optimizer targets high-level programs, not post-QASM gate passes)",
                 }
@@ -195,6 +207,7 @@ class Settings(BaseSettings):
                 "base_url": self.MYQLM_RUNNER_URL,
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": True,
+                "honours_seed": True,
                 "optimization_levels": {
                     0: "No optimization (PyLinalg does not expose circuit-level optimization passes)",
                 }
@@ -204,6 +217,7 @@ class Settings(BaseSettings):
                 # NumpyWavefunctionSimulator has no shot sampler; the runner samples the statevector.
                 "capabilities": ["statevector", "measured_sampled"],
                 "enabled": True,
+                "honours_seed": True,
                 "optimization_levels": {
                     0: "No optimization pass: barriers removed and gates rebased to CX/Rz/Rx (with apply_preprocessing=false, single-qubit Rz/Rx rebase only)",
                     1: "Pytket PeepholeOptimise2Q: cancel redundant 2Q gates, merge 1Q sequences",
@@ -214,6 +228,7 @@ class Settings(BaseSettings):
                 "base_url": self.TORCHQUANTUM_RUNNER_URL,
                 "capabilities": ["statevector", "measured_sampled"],
                 "enabled": True,
+                "honours_seed": True,
                 "optimization_levels": {
                     0: "No optimization",
                     1: "Qiskit transpiler level 1: single-qubit gate consolidation, basic cancellation",
@@ -224,6 +239,7 @@ class Settings(BaseSettings):
                 "base_url": self.QUIMB_RUNNER_URL,
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": True,
+                "honours_seed": True,
                 "optimization_levels": {
                     0: "No optimization (quimb tensor-network contraction path is managed internally)",
                 }
@@ -232,6 +248,7 @@ class Settings(BaseSettings):
                 "base_url": self.CUQUANTUM_RUNNER_URL,
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": True,
+                "honours_seed": True,
                 "requires_gpu": True,
                 "optimization_levels": {
                     0: "No optimization",
@@ -270,7 +287,7 @@ def runner_registry_snapshot(runner_services: dict = None) -> dict:
             "enabled": svc.get("enabled", True),
             "capabilities": list(svc.get("capabilities", [])),
             "optimization_levels": {str(k): v for k, v in svc.get("optimization_levels", {}).items()},
-            "honours_seed": svc.get("honours_seed", True),
+            "honours_seed": svc["honours_seed"],
             "requires_gpu": bool(svc.get("requires_gpu", False)),
         }
         for name, svc in services.items()

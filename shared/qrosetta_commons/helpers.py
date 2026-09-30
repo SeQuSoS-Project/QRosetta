@@ -5,6 +5,7 @@ import asyncio as _asyncio
 import base64
 import functools
 import gc
+import hashlib
 import importlib as _importlib
 import importlib.metadata
 import logging
@@ -17,6 +18,7 @@ import statistics as _statistics
 import sys
 import time
 from collections import Counter
+from pathlib import Path
 
 import numpy as np
 
@@ -94,8 +96,9 @@ def decode_statevector(encoded_str: str) -> np.ndarray:
 def _draw_statevector_samples(statevector, n_shots, seed=None):
     """Draw ``n_shots`` basis-state indices from a statevector's |amplitude|^2.
 
-    Call from ``execute_fn``; pair with ``_counts_from_samples`` in ``postprocess_fn``.
-    ``seed=None`` uses a fresh non-deterministic generator.
+    Call from ``execute_fn``. Build the counts in ``postprocess_fn`` with
+    ``qrosetta_commons.counts.MeasurementLayout.counts_from_qubit_samples``, which keys them
+    over the circuit's classical bits. ``seed=None`` uses a fresh non-deterministic generator.
     """
     probabilities = np.abs(statevector)**2
     rng = np.random.default_rng(seed)
@@ -103,8 +106,9 @@ def _draw_statevector_samples(statevector, n_shots, seed=None):
 
 
 def _counts_from_samples(samples, n_qubits):
-    """Build a ``{bitstring: count}`` histogram from sampled indices. Call from
-    ``postprocess_fn``."""
+    """Build a ``{bitstring: count}`` histogram over qubit indices (width ``n_qubits``) from
+    sampled indices. The keys are basis-state indices, not the classical-bit keys of the
+    counts contract; runners use ``MeasurementLayout.counts_from_qubit_samples`` instead."""
     return {
         format(k, f'0{n_qubits}b'): v
         for k, v in Counter(samples).items()
@@ -165,43 +169,96 @@ def check_qubits_limit(qasm_string: str, max_qubits: int = 24):
         raise ValueError(f"Circuit has {n_qubits} qubits, which exceeds the limit of {max_qubits} for this runner.")
 
 
-_SDK_VERSION_KEYWORDS = (
-    "qiskit", "cirq", "qulacs", "pennylane", "qibo", "pytket", "cuquantum",
-    "custatevec", "torch", "quimb", "myqlm", "qat", "qrisp", "pyquil",
-    "braket", "projectq",
-)
+_DECLARED_SDK_PACKAGES: list = []
 
-_sdk_versions_cache = None
+NOT_INSTALLED = "not installed"
+
+
+def declare_sdk_packages(*names: str) -> tuple:
+    """Register the distributions whose versions every result reports as ``sdk_versions``.
+
+    Call once at module level in the runner's ``main.py`` with the pip distribution names
+    from its ``requirements.txt`` (e.g. ``"qiskit", "qiskit-aer"``). Repeated names are kept
+    once. Returns the registered names.
+    """
+    for name in names:
+        if name not in _DECLARED_SDK_PACKAGES:
+            _DECLARED_SDK_PACKAGES.append(str(name))
+    return tuple(_DECLARED_SDK_PACKAGES)
+
+
+def declared_sdk_packages() -> tuple:
+    return tuple(_DECLARED_SDK_PACKAGES)
 
 
 def get_sdk_versions() -> dict:
-    """Return ``{distribution: version}`` for installed quantum-SDK packages (cached)."""
-    global _sdk_versions_cache
-    if _sdk_versions_cache is not None:
-        return dict(_sdk_versions_cache)
+    """``{name: version}`` for every declared package, read from the installed distribution
+    metadata; ``"not installed"`` for a declared name with no installed distribution."""
     versions = {}
-    try:
-        for dist in importlib.metadata.distributions():
-            try:
-                name = dist.metadata["Name"]
-            except Exception:
-                name = None
-            if name and any(k in name.lower() for k in _SDK_VERSION_KEYWORDS):
-                versions[name] = dist.version
-    except Exception:
-        pass
-    _sdk_versions_cache = versions
-    return dict(versions)
+    for name in _DECLARED_SDK_PACKAGES:
+        try:
+            versions[name] = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            versions[name] = NOT_INSTALLED
+    return versions
+
+
+RUNNER_CODE_SHA256_BASIS = (
+    "sha256 over the bytes of the runner's main.py followed by the bytes of every .py file "
+    "of the installed qrosetta_commons package, in order of relative path")
+
+_code_sha_cache: dict = {}
+
+
+def _commons_sources() -> list:
+    root = Path(__file__).resolve().parent
+    return sorted(root.rglob("*.py"), key=lambda p: p.relative_to(root).as_posix())
+
+
+def runner_code_sha256(main_path) -> str:
+    """``RUNNER_CODE_SHA256_BASIS`` for ``main_path``; ``"unavailable: ..."`` when a file
+    cannot be read."""
+    key = str(main_path)
+    if key not in _code_sha_cache:
+        try:
+            digest = hashlib.sha256(Path(main_path).read_bytes())
+            for path in _commons_sources():
+                digest.update(path.read_bytes())
+            _code_sha_cache[key] = digest.hexdigest()
+        except OSError as exc:
+            _code_sha_cache[key] = f"unavailable: {type(exc).__name__}: {exc}"
+    return _code_sha_cache[key]
+
+
+def _module_code_sha256(func) -> str:
+    module = sys.modules.get(getattr(func, "__module__", ""), None)
+    path = getattr(module, "__file__", None)
+    return runner_code_sha256(path) if path else "unavailable: processor module has no file"
+
+
+DEFAULT_DEVICE = "CPU"
 
 
 def with_sdk_versions(func):
-    """Decorator adding ``sdk_versions`` to a runner processor's result dict."""
+    """Decorator for ``process_run`` / ``process_run_measured``.
+
+    Adds ``sdk_versions`` (the ``declare_sdk_packages`` registry), ``runner_code_sha256``
+    (computed when the runner module is imported) and ``device`` to every result dict.
+    ``device`` keeps a value the runner set, else is ``"CPU"``, and is None on an error
+    result the runner did not label.
+    """
+    code_sha = _module_code_sha256(func)
+
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         result = func(*args, **kwargs)
-        if isinstance(result, dict) and "sdk_versions" not in result:
-            result["sdk_versions"] = get_sdk_versions()
+        if isinstance(result, dict):
+            result.setdefault("sdk_versions", get_sdk_versions())
+            result.setdefault("runner_code_sha256", code_sha)
+            if result.get("device") is None:
+                result["device"] = None if result.get("error") else DEFAULT_DEVICE
         return result
+    wrapper.runner_code_sha256 = code_sha
     return wrapper
 
 
@@ -372,10 +429,10 @@ _UNSET = object()
 
 def _base_result(*, simulator, compilation_time, simulation_time, monitor, qubit_ordering,
                  n_qubits, theoretical_mb, preprocessing_applied, transpiled_qasm,
-                 simulation_cpu_time=None, precision=None):
+                 simulation_cpu_time=None, precision=None, device=None):
     """Fields common to statevector and counts results. The theoretical statevector size is
     computed from ``n_qubits`` and ``precision`` for every backend; ``theoretical_mb`` is
-    ignored."""
+    ignored. ``device`` None is filled in by ``with_sdk_versions``."""
     theoretical_mb = theoretical_statevector_mb(n_qubits or 0, precision)
     return {
         "simulator": simulator,
@@ -392,6 +449,7 @@ def _base_result(*, simulator, compilation_time, simulation_time, monitor, qubit
         "preprocessing_applied": preprocessing_applied,
         "transpiled_qasm": transpiled_qasm,
         "precision": precision,
+        "device": device,
         "thread_env": get_thread_env(),
     }
 
@@ -399,7 +457,7 @@ def _base_result(*, simulator, compilation_time, simulation_time, monitor, qubit
 def statevector_result(*, simulator, statevector, compilation_time, simulation_time, monitor,
                        qubit_ordering, preprocessing_applied, transpiled_qasm,
                        n_qubits=None, theoretical_mb=_UNSET, simulation_cpu_time=None,
-                       precision=None):
+                       precision=None, device=None):
     """Assemble a statevector result; ``statevector`` is encoded to Base64 here.
 
     Raises ValueError when the vector does not hold ``2**n_qubits`` amplitudes.
@@ -414,7 +472,7 @@ def statevector_result(*, simulator, statevector, compilation_time, simulation_t
         monitor=monitor, qubit_ordering=qubit_ordering, n_qubits=n_qubits,
         theoretical_mb=theoretical_mb, preprocessing_applied=preprocessing_applied,
         transpiled_qasm=transpiled_qasm, simulation_cpu_time=simulation_cpu_time,
-        precision=precision)
+        precision=precision, device=device)
     result["statevector"] = encode_statevector(amplitudes)
     return result
 
@@ -422,14 +480,14 @@ def statevector_result(*, simulator, statevector, compilation_time, simulation_t
 def counts_result(*, simulator, counts, sampling_method, compilation_time, simulation_time,
                   monitor, qubit_ordering, preprocessing_applied, transpiled_qasm,
                   n_qubits=None, theoretical_mb=_UNSET, simulation_cpu_time=None,
-                  precision=None):
+                  precision=None, device=None):
     """Assemble a counts result; ``sampling_method=None`` omits that key."""
     result = _base_result(
         simulator=simulator, compilation_time=compilation_time, simulation_time=simulation_time,
         monitor=monitor, qubit_ordering=qubit_ordering, n_qubits=n_qubits,
         theoretical_mb=theoretical_mb, preprocessing_applied=preprocessing_applied,
         transpiled_qasm=transpiled_qasm, simulation_cpu_time=simulation_cpu_time,
-        precision=precision)
+        precision=precision, device=device)
     result["counts"] = counts
     if sampling_method is not None:
         result["sampling_method"] = sampling_method
@@ -461,6 +519,23 @@ class CompileResult:
         self.precision = precision
 
 
+_MAXWIDTH_HINT = (
+    " The compiled circuit has a classical register wider than the 32 bits pytket's QASM "
+    "writer accepts by default (a backend pass such as FlattenRegisters merges every creg "
+    "into one); the runner's serialize_fn must pass maxwidth to circuit_to_qasm_str.")
+
+
+def _serialize(serialize_fn, compiled):
+    """``serialize_fn(compiled)``; a failure is re-raised naming the step."""
+    try:
+        return serialize_fn(compiled)
+    except Exception as exc:
+        hint = _MAXWIDTH_HINT if "maxwidth" in str(exc) else ""
+        raise RuntimeError(
+            f"serialize_fn (recording transpiled_qasm after compilation) failed: "
+            f"{type(exc).__name__}: {exc}{hint}") from exc
+
+
 def _timed_job(*, simulator, logger, payload, max_qubits, compile_fn, execute_fn,
                serialize_fn, monitor_interval, build_result, pre_execute_fn=None,
                postprocess_fn=None):
@@ -485,7 +560,7 @@ def _timed_job(*, simulator, logger, payload, max_qubits, compile_fn, execute_fn
 
         transpiled_qasm = compiled.transpiled_qasm
         if transpiled_qasm is None and serialize_fn is not None:
-            transpiled_qasm = serialize_fn(compiled)
+            transpiled_qasm = _serialize(serialize_fn, compiled)
 
         with MemoryMonitor(interval=monitor_interval) as monitor:
             gc.collect()
@@ -523,11 +598,15 @@ def _timed_job(*, simulator, logger, payload, max_qubits, compile_fn, execute_fn
 def run_statevector_job(*, simulator, payload, compile_fn, execute_fn, qubit_ordering,
                         logger=None, serialize_fn=None, pre_execute_fn=None,
                         postprocess_fn=None, max_qubits=None,
-                        monitor_interval=0.01, theoretical_mb=_UNSET, precision=None):
+                        monitor_interval=0.01, theoretical_mb=_UNSET, precision=None,
+                        device=None):
     """Run one statevector call through ``_timed_job``.
 
-    ``execute_fn(compiled, payload)`` returns the raw statevector. ``precision`` names the
-    backend's amplitude dtype (e.g. ``"complex128"``); None if unspecified.
+    ``execute_fn(compiled, payload)`` returns the raw backend output; the statevector is
+    ``postprocess_fn(raw, compiled, payload)`` when a ``postprocess_fn`` is given, else the
+    raw output. ``precision`` names the backend's amplitude dtype (e.g. ``"complex128"``);
+    None if unspecified. ``device`` (e.g. ``"GPU"``) defaults to ``"CPU"`` via
+    ``with_sdk_versions``.
     """
     def build_result(*, executed, compiled, monitor, compilation_time, simulation_time,
                      transpiled_qasm, simulation_cpu_time, declared_qubits):
@@ -537,7 +616,7 @@ def run_statevector_job(*, simulator, payload, compile_fn, execute_fn, qubit_ord
             n_qubits=declared_qubits, preprocessing_applied=compiled.preprocessing_applied,
             transpiled_qasm=transpiled_qasm,
             simulation_cpu_time=simulation_cpu_time,
-            precision=getattr(compiled, "precision", None) or precision)
+            precision=getattr(compiled, "precision", None) or precision, device=device)
 
     return _timed_job(
         simulator=simulator, logger=logger, payload=payload,
@@ -550,12 +629,14 @@ def run_statevector_job(*, simulator, payload, compile_fn, execute_fn, qubit_ord
 def run_measured_job(*, simulator, payload, compile_fn, execute_fn, qubit_ordering,
                      logger=None, serialize_fn=None, pre_execute_fn=None,
                      postprocess_fn=None, max_qubits=None,
-                     monitor_interval=0.01, theoretical_mb=_UNSET, precision=None):
+                     monitor_interval=0.01, theoretical_mb=_UNSET, precision=None,
+                     device=None):
     """Run one measured call through ``_timed_job``.
 
-    ``execute_fn(compiled, payload)`` returns ``(counts, sampling_method)``, where
-    sampling_method is ``'native'`` (backend sampled shots) or ``'statevector'`` (drawn
-    from a computed statevector). ``precision`` as in ``run_statevector_job``.
+    ``postprocess_fn(raw, compiled, payload)`` returns ``(counts, sampling_method)``; without
+    a ``postprocess_fn``, ``execute_fn(compiled, payload)`` returns it. ``sampling_method``
+    is ``'native'`` (the backend sampled the shots) or ``'sv_sample'`` (shots drawn from a
+    computed statevector). ``precision`` and ``device`` as in ``run_statevector_job``.
     """
     def build_result(*, executed, compiled, monitor, compilation_time, simulation_time,
                      transpiled_qasm, simulation_cpu_time, declared_qubits):
@@ -567,7 +648,7 @@ def run_measured_job(*, simulator, payload, compile_fn, execute_fn, qubit_orderi
             preprocessing_applied=compiled.preprocessing_applied,
             transpiled_qasm=transpiled_qasm,
             simulation_cpu_time=simulation_cpu_time,
-            precision=getattr(compiled, "precision", None) or precision)
+            precision=getattr(compiled, "precision", None) or precision, device=device)
 
     return _timed_job(
         simulator=simulator, logger=logger, payload=payload,
@@ -578,6 +659,12 @@ def run_measured_job(*, simulator, payload, compile_fn, execute_fn, qubit_orderi
 
 
 RUNNER_MAX_CONCURRENT = max(1, int(os.getenv("RUNNER_MAX_CONCURRENT", "1")))
+
+
+def _stamp_code_sha(result: dict, func) -> None:
+    code_sha = getattr(func, "runner_code_sha256", None)
+    if code_sha:
+        result.setdefault("runner_code_sha256", code_sha)
 
 
 class ExecutionSlots:
@@ -614,6 +701,7 @@ class ExecutionSlots:
                 timed_out=True)
             result["never_started"] = True
             result["queue_wait_sec"] = waited
+            _stamp_code_sha(result, func)
             return result
         finally:
             self.waiting -= 1
@@ -627,6 +715,7 @@ class ExecutionSlots:
             self._semaphore.release()
         if isinstance(result, dict):
             result["queue_wait_sec"] = waited
+            _stamp_code_sha(result, func)
         return result
 
 
@@ -663,9 +752,77 @@ def register_runner_endpoints(app, process_run, process_run_measured, max_concur
         return await slots.run(process_run_measured, payload.model_dump())
 
 
-def run_cli_main(app, process_run, process_run_measured, cli_name):
+def _self_test_probes(process_run, process_run_measured, sv_order, counts_order):
+    """``(name, thunk)`` for every probe; each thunk returns a list of failure messages."""
+    from qrosetta_commons import contract_probes as cp
+
+    def sv(qasm, pp=True):
+        return process_run({"circuit_data": qasm, "optimization_level": 0,
+                            "runner_config": {}, "apply_preprocessing": pp})
+
+    def measured(qasm, n_shots, seed=cp.SEED_A):
+        return process_run_measured({"circuit_data": qasm, "n_shots": n_shots, "seed": seed,
+                                     "optimization_level": 0, "runner_config": {},
+                                     "apply_preprocessing": True})
+
+    probes = [
+        ("statevector_one_hot",
+         lambda: cp.check_one_hot_statevector(sv(cp.ONE_HOT_QASM), sv_order)),
+        ("counts_one_hot",
+         lambda: cp.check_one_hot_counts(measured(cp.ONE_HOT_MEASURED_QASM, cp.N_SHOTS),
+                                         cp.N_SHOTS, counts_order)),
+    ]
+    for name, (body, pp, _n, _expected) in cp.STATEVECTOR_SHAPE_PROBES.items():
+        probes.append((f"statevector_{name}", lambda name=name, body=body, pp=pp:
+                       cp.check_statevector_shape(name, sv(cp.QASM_HEADER + body, pp), sv_order)))
+    for name, (body, _expected) in cp.CLASSICAL_BIT_PROBES.items():
+        probes.append((f"counts_{name}", lambda name=name, body=body: cp.check_classical_bits(
+            name, measured(cp.QASM_HEADER + body, cp.CLASSICAL_N_SHOTS), cp.CLASSICAL_N_SHOTS,
+            counts_order)))
+    probes.append(("counts_measured_subset", lambda: cp.check_measured_subset(
+        measured(cp.QASM_HEADER + cp.SUBSET_QASM, cp.CLASSICAL_N_SHOTS))))
+    probes.append(("counts_mid_circuit", lambda: cp.check_mid_circuit(
+        measured(cp.QASM_HEADER + cp.MID_CIRCUIT_QASM, cp.CLASSICAL_N_SHOTS))))
+    probes.append(("seed_reproducibility", lambda: cp.check_seed_reproducibility(
+        measured(cp.SEED_QASM, cp.SEED_N_SHOTS, cp.SEED_A),
+        measured(cp.SEED_QASM, cp.SEED_N_SHOTS, cp.SEED_A),
+        measured(cp.SEED_QASM, cp.SEED_N_SHOTS, cp.SEED_B))))
+    return probes
+
+
+def run_self_test(process_run, process_run_measured, qubit_ordering_statevector=None,
+                  qubit_ordering_counts=None, out=None) -> int:
+    """Run the contract probes of ``qrosetta_commons.contract_probes`` in-process.
+
+    Each probe calls ``process_run`` / ``process_run_measured`` directly with the probe's
+    circuit text and ``apply_preprocessing`` (the API's own dispatch rewrites are not
+    applied), and prints ``PASS <probe>`` or ``FAIL <probe>: <reason>``. With a declared
+    ordering, a result reporting a different ``qubit_ordering`` fails. Returns the number
+    of failed probes.
+    """
+    out = out or sys.stdout
+    failed = 0
+    probes = _self_test_probes(process_run, process_run_measured,
+                               qubit_ordering_statevector, qubit_ordering_counts)
+    for name, probe in probes:
+        try:
+            failures = probe()
+        except Exception as exc:
+            failures = [f"{type(exc).__name__}: {exc}"]
+        if failures:
+            failed += 1
+            print(f"FAIL {name}: {'; '.join(failures)}", file=out)
+        else:
+            print(f"PASS {name}", file=out)
+    print(f"{failed} of {len(probes)} probe(s) failed", file=out)
+    return failed
+
+
+def run_cli_main(app, process_run, process_run_measured, cli_name,
+                 qubit_ordering_statevector=None, qubit_ordering_counts=None):
     """Runner entrypoint: with no args serve ``app``; with ``--endpoint`` run one job from
-    ``--payload`` or ``--s3-job-id`` (the Kubernetes path)."""
+    ``--payload`` or ``--s3-job-id`` (the Kubernetes path); with ``--self-test`` run
+    ``run_self_test`` and exit non-zero when a probe fails."""
     if len(sys.argv) <= 1:
         import uvicorn
         uvicorn.run(app, host="0.0.0.0", port=8000)
@@ -674,19 +831,28 @@ def run_cli_main(app, process_run, process_run_measured, cli_name):
     import argparse
     import json
     parser = argparse.ArgumentParser(description=f"{cli_name} runner CLI")
-    parser.add_argument("--endpoint", choices=["run", "run_measured"], required=True,
+    parser.add_argument("--endpoint", choices=["run", "run_measured"], default=None,
                         help="Which endpoint to invoke")
+    parser.add_argument("--self-test", action="store_true",
+                        help="Run the contract probes in-process and exit non-zero on failure")
     parser.add_argument("--payload", default=None, help="JSON payload string")
     parser.add_argument("--s3-job-id", default=None,
                         help="S3 job ID: download payload from jobs/pending/<id>.json, "
                              "upload result to jobs/completed/<id>.json")
     args = parser.parse_args()
 
+    if args.self_test:
+        sys.exit(1 if run_self_test(process_run, process_run_measured,
+                                    qubit_ordering_statevector, qubit_ordering_counts) else 0)
+    if args.endpoint is None:
+        parser.error("--endpoint is required unless --self-test is given")
+
     def _process(payload_dict):
         func = process_run if args.endpoint == "run" else process_run_measured
         result = run_with_uniform_measurement(func, payload_dict)
         if isinstance(result, dict):
             result["queue_wait_sec"] = 0.0
+            _stamp_code_sha(result, func)
         return result
 
     if args.s3_job_id:

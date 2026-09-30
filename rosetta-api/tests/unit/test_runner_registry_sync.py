@@ -1,6 +1,7 @@
 """The runner lists in docker-compose.yml, safe_boot.sh, rahti_push.sh, runners/ and the
 contract test must match config.py's registry (see CONTRIBUTING.md).
 """
+import ast
 import re
 from pathlib import Path
 
@@ -95,3 +96,74 @@ def test_disabled_runners_are_excluded_from_contract_coverage():
     disabled = {cid for cid, e in _registry().items() if not e.get("enabled", True)}
     assert not (disabled & _contract_test_runners()), \
         "a disabled runner is listed for contract testing"
+
+
+def test_every_runner_declares_whether_it_honours_the_seed():
+    """honours_seed has no default: a runner that ignores its seed must say so."""
+    missing = [cid for cid, e in _registry().items() if not isinstance(e.get("honours_seed"), bool)]
+    assert not missing, f"no explicit boolean honours_seed for: {missing}"
+
+
+def _normalise(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def _requirement_names(path: Path) -> set:
+    names = set()
+    for line in path.read_text().splitlines():
+        line = line.split("#", 1)[0].strip()
+        if not line or line.startswith("-"):
+            continue
+        names.add(_normalise(re.split(r"[\[<>=!~;\s]", line, 1)[0]))
+    return names
+
+
+def _declared_sdk_packages(main_py: Path) -> list:
+    tree = ast.parse(main_py.read_text())
+    declared = []
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id == "declare_sdk_packages"):
+            for arg in node.args:
+                assert isinstance(arg, ast.Constant) and isinstance(arg.value, str), (
+                    f"{main_py.parent.name}: declare_sdk_packages takes string literals")
+                declared.append(arg.value)
+    return declared
+
+
+@pytest.mark.parametrize("canonical_id", sorted(settings.get_runner_services()))
+def test_runner_declares_its_sdk_packages_from_its_requirements(canonical_id):
+    """sdk_versions lists exactly what the runner declares. Each name must be pinned in its
+    requirements.txt, or in requirements.lock for a dependency the SDK pulls in (cirq-core
+    under cirq)."""
+    directory = _REPO / "runners" / _infra_name(_registry()[canonical_id]["base_url"])
+    declared = _declared_sdk_packages(directory / "main.py")
+    assert declared, f"{directory.name}/main.py never calls declare_sdk_packages"
+    pinned = set()
+    for name in ("requirements.txt", "requirements.lock"):
+        if (directory / name).is_file():
+            pinned |= _requirement_names(directory / name)
+    unpinned = [name for name in declared if _normalise(name) not in pinned]
+    assert not unpinned, (
+        f"{directory.name}: declared but in neither requirements.txt nor requirements.lock: "
+        f"{unpinned}")
+
+
+_RUNNER_ENV = ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
+               "NUMEXPR_NUM_THREADS", "NUMBA_NUM_THREADS", "RUNNER_MAX_CONCURRENT")
+
+
+def test_compose_runner_blocks_pin_threads_and_concurrency():
+    """Every runner service sets the five thread variables and RUNNER_MAX_CONCURRENT."""
+    from qrosetta_commons.helpers import THREAD_ENV_VARS
+    assert set(THREAD_ENV_VARS) <= set(_RUNNER_ENV)
+    services = yaml.safe_load(_COMPOSE.read_text()).get("services", {})
+    problems = []
+    for canonical_id, entry in _registry().items():
+        service = services.get(_infra_name(entry["base_url"]).replace("-", "_"), {})
+        env = service.get("environment") or []
+        names = set(env) if isinstance(env, dict) else {str(v).split("=", 1)[0] for v in env}
+        missing = [name for name in _RUNNER_ENV if name not in names]
+        if missing:
+            problems.append(f"{canonical_id}: {missing}")
+    assert not problems, "compose environment missing: " + "; ".join(problems)

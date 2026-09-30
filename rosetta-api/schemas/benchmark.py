@@ -1,6 +1,8 @@
 """Pydantic request and response schemas for the benchmark endpoints."""
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StrictBool, StrictInt
+from pydantic import (
+    BaseModel, BeforeValidator, ConfigDict, Field, StrictBool, StrictInt, model_validator,
+)
 from typing import Annotated, List, Dict, Any, Literal, Optional, Union
 
 from config import settings
@@ -32,8 +34,13 @@ _TIMEOUT_DESCRIPTION = (f"Requested wall-clock budget per run in seconds, at lea
                         f"are clamped to it. It starts when the run leaves the runner's queue; "
                         f"the queue wait is capped separately by the server's "
                         f"RUNNER_QUEUE_MAX_WAIT_SEC (the report's queue_max_wait_sec).")
-_SHOTS_DESCRIPTION = (f"Number of shots each runner samples, {settings.MIN_SHOTS} to "
-                      f"{settings.MAX_SHOTS}.")
+_SHOTS_DESCRIPTION = (
+    f"Number of shots each runner samples, {settings.MIN_SHOTS} to {settings.MAX_SHOTS}. "
+    f"Default {settings.DEFAULT_SHOTS}: the statistical test labels a backend pair "
+    f"'consistent' only when its power to detect a total-variation distance of 0.05 is at "
+    f"least 0.8. At 1024 shots that power is 0.62 for 2 outcomes and 0.45 for 4, so no pair "
+    f"can be 'consistent'; at 4096 it is at least 0.84 for up to 16 outcomes. Circuits with "
+    f"more outcomes need more shots (each pair's recommended_shots_per_backend).")
 _TARGET_DESCRIPTION = ("'local' or 'kubernetes'. Defaults to the server's EXECUTION_MODE. Runs "
                        "are dispatched according to the server's EXECUTION_MODE; the job's "
                        "'target' records the mode actually used and 'requested_target' this "
@@ -48,12 +55,15 @@ _SEED_DESCRIPTION = ("Master seed, a non-negative integer. Each runner result re
                      "generated master seed, which is recorded in the report.")
 _PREPROCESSING_DESCRIPTION = (
     "Whether preprocessing is applied. Each runner applies its own pass (e.g. barrier "
-    "stripping, gate rebasing), and the API rewrites the dispatched circuit: statevector "
-    "runners and measured runners that sample natively get the multi-register merge and a "
-    "pytket parse/re-emit with barriers removed; measured runners that sample a final "
-    "statevector get only the multi-register merge, so their text stays closer to the input. "
-    "Every change is listed in api_preprocessing_applied and each result's "
-    "preprocessing_applied.")
+    "stripping, gate rebasing). The API also rewrites the circuit it dispatches to every "
+    "runner group (statevector, measured with native sampling, measured with statevector "
+    "sampling): quantum registers are merged into one in declaration order, and the circuit "
+    "is parsed and re-emitted with pytket, which inlines custom gate definitions, rewrites "
+    "gates into pytket's QASM gate set and removes barriers. With false, every runner "
+    "receives the circuit as submitted, except that statevector mode removes terminal "
+    "measurements and native samplers get measure-all appended to a circuit without "
+    "measure statements. Every change is listed in api_preprocessing_applied and each "
+    "result's preprocessing_applied.")
 
 
 class _Request(BaseModel):
@@ -72,7 +82,8 @@ class AgreementThresholds(BaseModel):
     tolerances are numerical-precision cut-offs. The measured cut-offs (JS divergence in
     nats, Hellinger distance) are descriptive and shot-count dependent; the report's
     statistical_test block carries the shot-noise-aware verdict. The values used are
-    recorded in every pairwise_agreement record. NaN and infinity are rejected.
+    recorded in every pairwise_agreement record and in the divergence report's
+    agreement_thresholds, next to its analysis_version. NaN and infinity are rejected.
     """
     model_config = ConfigDict(allow_inf_nan=False, extra="forbid")
 
@@ -100,7 +111,7 @@ class MeasuredQasmPayload(_Request):
     """Request body for POST /compare_measured — a shot-based measurement comparison of one
     OpenQASM 2.0 circuit across the simulator fleet."""
     qasm_string: str = Field(..., description="The circuit to run, as OpenQASM 2.0 text (must contain measurement instructions).")
-    n_shots: Int = Field(1024, ge=settings.MIN_SHOTS, le=settings.MAX_SHOTS, description=_SHOTS_DESCRIPTION)
+    n_shots: Int = Field(settings.DEFAULT_SHOTS, ge=settings.MIN_SHOTS, le=settings.MAX_SHOTS, description=_SHOTS_DESCRIPTION)
     optimization_level: OptimizationLevel = Field(0, description=_OPT_LEVEL_DESCRIPTION)
     runner_config: RunnerConfig = Field({}, description="Per-runner optimization-level override. An int runs that runner once at that level; a list runs it once per element.")
     runner_phases: RunnerPhases = Field({}, description="Maps runner id to a phase number. Runners sharing a phase run concurrently; phases execute in ascending order.")
@@ -122,15 +133,21 @@ class GenerateCircuitPayload(_Request):
 class BenchmarkTask(_Request):
     """One circuit within a batch run (POST /run_batch_suite)."""
     algorithm: str = Field(..., description="Circuit identifier: a preset family name, or the file name for a bundled benchmark circuit.")
-    qubits: Int = Field(..., ge=0, description="Number of qubits for a generated preset or MQT Bench circuit. Ignored for QASMBench and literal circuits, whose qubit count is read from the QASM.")
+    qubits: Optional[Int] = Field(None, ge=0, description="Number of qubits for a generated preset or MQT Bench circuit; required for those sources. Optional and ignored for QASMBench and literal circuits, whose qubit count is read from the QASM.")
     qasm_string: Optional[str] = Field(None, description="User-supplied OpenQASM 2.0 text. When present, this is run as-is and algorithm/qubits/source are ignored.")
     source: Optional[CircuitSource] = Field(None, description="Where to resolve the circuit from when qasm_string is absent: None or 'preset' generates it from the built-in circuit library; 'qasmbench' or 'mqt' loads it from the corresponding bundled benchmark suite; 'qasm' requires qasm_string.")
+
+    @model_validator(mode="after")
+    def _qubits_for_generated_sources(self):
+        if not self.qasm_string and (self.source or "preset") in ("preset", "mqt") and self.qubits is None:
+            raise ValueError("qubits is required for preset and MQT Bench tasks")
+        return self
 
 class BatchPayload(_Request):
     """Request body for POST /run_batch_suite — run a list of circuits (BenchmarkTask entries)
     across the simulator fleet in a single job."""
     tasks: List[BenchmarkTask] = Field(..., description="The circuits to run, in order.")
-    n_shots: Int = Field(1024, ge=settings.MIN_SHOTS, le=settings.MAX_SHOTS, description=_SHOTS_DESCRIPTION + " Used only when mode is 'measured'.")
+    n_shots: Int = Field(settings.DEFAULT_SHOTS, ge=settings.MIN_SHOTS, le=settings.MAX_SHOTS, description=_SHOTS_DESCRIPTION + " Used only when mode is 'measured'.")
     mode: RunMode = Field(..., description="'statevector' or 'measured'.")
     optimization_level: OptimizationLevel = Field(0, description=_OPT_LEVEL_DESCRIPTION)
     runner_config: RunnerConfig = Field({}, description="Per-runner optimization-level override, same semantics as in QasmPayload.")
@@ -164,7 +181,7 @@ class ExperimentPayload(_Request):
     a citable artifact bundle (downloaded via GET /experiments/{job_id}/bundle)."""
     circuits: List[ExperimentCircuit] = Field(..., description="The circuits to include.")
     mode: RunMode = Field("measured", description="'statevector' or 'measured'.")
-    n_shots: Int = Field(1024, ge=settings.MIN_SHOTS, le=settings.MAX_SHOTS, description=_SHOTS_DESCRIPTION + " Used only when mode is 'measured'.")
+    n_shots: Int = Field(settings.DEFAULT_SHOTS, ge=settings.MIN_SHOTS, le=settings.MAX_SHOTS, description=_SHOTS_DESCRIPTION + " Used only when mode is 'measured'.")
     optimization_level: OptimizationLevel = Field(0, description=_OPT_LEVEL_DESCRIPTION)
     runner_config: RunnerConfig = Field({}, description="Per-runner optimization-level override, same semantics as in QasmPayload.")
     runner_phases: RunnerPhases = Field({}, description="Maps runner id to a phase number for staged concurrent execution.")

@@ -17,7 +17,9 @@ from config import server_git_sha, server_image_digests
 from schemas import BatchPayload, BenchmarkTask, ExperimentPayload
 from services import experiment_artifacts as art
 from services.dispatcher import SEED_DERIVATION
-from services.job_manager import ACTIVE_JOBS, run_batch_tasks, task_label, task_qubits, _resolve_seed
+from services.job_manager import (
+    ACTIVE_JOBS, _resolve_seed, effective_thresholds, run_batch_tasks, task_label, task_qubits,
+)
 from qrosetta_commons.helpers import get_logger
 from services.circuit_resolver import resolve_circuit_qasm
 
@@ -29,8 +31,9 @@ MAX_EXPERIMENT_CELLS = 200
 def resolve_circuits(payload: ExperimentPayload) -> tuple:
     """Resolve every configured circuit to a frozen QASM string.
 
-    Returns (resolved, errors) where resolved = [{id, algorithm, qubits, qasm, source}] and
-    errors = [{id, name, error}] for circuits that could not be resolved. Resolution
+    Returns (resolved, errors) where resolved = [{id, algorithm, qubits, qasm, source,
+    request}] and errors = [{id, name, error}] for circuits that could not be resolved.
+    ``request`` is the circuit entry as submitted (source, algorithm, qubits, literal flag). Resolution
     failures are recorded per circuit and do not abort the experiment.
     """
     resolved, errors = [], []
@@ -52,8 +55,22 @@ def resolve_circuits(payload: ExperimentPayload) -> tuple:
             errors.append({"id": cid, "name": name, "error": error})
             continue
         resolved.append({"id": cid, "algorithm": entry.algorithm or name,
-                         "qubits": qubits, "qasm": qasm, "source": source})
+                         "qubits": qubits, "qasm": qasm, "source": source,
+                         "request": {"source": source, "algorithm": entry.algorithm,
+                                     "qubits": entry.qubits,
+                                     "literal_qasm": bool(entry.qasm_string)}})
     return resolved, errors
+
+
+def effective_config(payload: ExperimentPayload, seed, thresholds: dict,
+                     dispatched: list) -> dict:
+    """The request with every default it ran under filled in: the master seed used, the
+    effective agreement thresholds and the runner ids actually dispatched."""
+    config = payload.model_dump()
+    config["seed"] = seed
+    config["thresholds"] = thresholds
+    config["target_simulators"] = list(dispatched)
+    return config
 
 
 def _axis_label(mode: str, pp: bool) -> str:
@@ -97,6 +114,7 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
 
         conformance, prevalence = [], []
         effective_seeds, sdk_versions = {}, {}
+        thresholds_per_axis, runners_per_axis = {}, {}
         all_reports: list = []
         result_files: dict = {}
         offset = 0
@@ -125,6 +143,15 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
 
             for circuit, report in zip(resolved, summary):
                 report["circuit_id"] = circuit["id"]
+                report["task_request"] = circuit["request"]
+                if report.get("agreement_thresholds") is not None:
+                    thresholds_per_axis.setdefault(axis, report["agreement_thresholds"])
+                if report.get("resolved_runners"):
+                    runners = runners_per_axis.setdefault(
+                        axis, {"dispatched": set(), "skipped": {}})
+                    runners["dispatched"].update(report["resolved_runners"]["dispatched"])
+                    for skip in report["resolved_runners"]["skipped"]:
+                        runners["skipped"].setdefault(skip["id"], skip["reason"])
                 if not payload.keep_statevectors:
                     report = art.strip_statevectors(report)
                 result_files[f"results/{axis}/{circuit['id']}.json"] = json.dumps(
@@ -162,6 +189,18 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
             extra_notes=(f"Resolution errors: {len(resolution_errors)}."
                          if resolution_errors else ""),
             seed_derivation=seed_derivation)
+        resolved_runners = {
+            axis: {"dispatched": sorted(r["dispatched"]),
+                   "skipped": [{"id": k, "reason": v} for k, v in sorted(r["skipped"].items())]}
+            for axis, r in runners_per_axis.items()}
+        dispatched = sorted({sim for r in resolved_runners.values() for sim in r["dispatched"]})
+        run_config = effective_config(payload, exp_seed,
+                                      effective_thresholds(payload.thresholds), dispatched)
+        manifest["effective_config"] = run_config
+        manifest["effective_config_sha256"] = art.sha256(run_config)
+        manifest["effective_thresholds_per_axis"] = {
+            axis: thresholds_per_axis.get(axis, run_config["thresholds"]) for axis in axis_labels}
+        manifest["resolved_runners_per_axis"] = resolved_runners
         manifest["job_id"] = job_id
         manifest["runner_images"] = art.collect_runner_images(all_reports)
         manifest["label"] = payload.label
@@ -176,6 +215,8 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
         experiment_summary = {
             "label": payload.label, "mode": payload.mode, "axes": axis_labels,
             "requested_seed": payload.seed, "effective_seeds_per_axis": effective_seeds,
+            "effective_config_sha256": manifest["effective_config_sha256"],
+            "resolved_runners_per_axis": resolved_runners,
             "circuits": [{"id": c["id"], "algorithm": c["algorithm"], "qubits": c["qubits"],
                           "source": c["source"]} for c in resolved],
             "resolution_errors": resolution_errors,

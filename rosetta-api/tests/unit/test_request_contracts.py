@@ -126,7 +126,8 @@ def test_compare_passes_effective_thresholds(client):
     client.post("/compare", json={"qasm_string": QASM})
     name, args = client.started[-1]
     assert name == "worker_compare"
-    assert args[-1] == AgreementThresholds().model_dump()
+    assert args[-2] == AgreementThresholds().model_dump()
+    assert args[-1] is False
 
 
 def test_failed_parse_job_is_failed_and_not_exportable(client, monkeypatch):
@@ -163,6 +164,7 @@ def test_config_exposes_mode_thresholds_and_limits(client):
         "timeout_max": settings.RUNNER_TIMEOUT_SEC,
         "shots_min": settings.MIN_SHOTS,
         "shots_max": settings.MAX_SHOTS,
+        "shots_default": settings.DEFAULT_SHOTS,
     }
 
 

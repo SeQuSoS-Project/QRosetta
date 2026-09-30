@@ -44,6 +44,16 @@ def _owned_run(db: Session, user_id: int, run_id: str) -> models.RunHistory:
     return run
 
 
+def find_run(db: Session, user_id: int, run_id: str | None):
+    """``user_id``'s run with ``run_id``, or None when there is none."""
+    if not run_id:
+        return None
+    try:
+        return _owned_run(db, user_id, run_id)
+    except RunNotFound:
+        return None
+
+
 def save_run(db: Session, user_id: int, run_payload: dict,
              circuit_id: str | None = None) -> models.RunHistory:
     """Store the report, then record it. The row is only committed once the report is

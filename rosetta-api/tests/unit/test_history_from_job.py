@@ -96,3 +96,20 @@ def test_rejects_unknown_unfinished_and_experiment_jobs(client):
 def test_requires_authentication(client):
     client.headers.pop("Authorization")
     assert client.post("/history/runs/from_job/anything", json={}).status_code == 401
+
+
+def test_saving_the_same_job_twice_returns_the_first_run(client):
+    _job("dup-job-0001", {"n_shots": 10, "raw_results": []})
+    try:
+        first = client.post("/history/runs/from_job/dup-job-0001")
+        second = client.post("/history/runs/from_job/dup-job-0001", json={"name": "again"})
+        assert first.status_code == 201 and second.status_code == 200
+        assert second.json()["id"] == first.json()["id"]
+        assert len(client.get("/history/runs").json()) == len(
+            {r["id"] for r in client.get("/history/runs").json()})
+        assert sum(r["id"] == first.json()["id"] for r in client.get("/history/runs").json()) == 1
+        client.request("DELETE", "/history/runs", json={"run_ids": [first.json()["id"]]})
+        third = client.post("/history/runs/from_job/dup-job-0001")
+        assert third.status_code == 201 and third.json()["id"] != first.json()["id"]
+    finally:
+        del job_manager.ACTIVE_JOBS["dup-job-0001"]

@@ -112,7 +112,7 @@ def annotate_result(result: dict, spec: dict, sent_payload: dict, dispatched_at:
         result["seed"] = seed
         result["seed_honoured"] = (
             None if result.get("error")
-            else RUNNER_SERVICES.get(spec["sim_name"], {}).get("honours_seed", True))
+            else RUNNER_SERVICES.get(spec["sim_name"], {}).get("honours_seed"))
     return result
 
 

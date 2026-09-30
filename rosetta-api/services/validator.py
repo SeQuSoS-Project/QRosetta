@@ -74,7 +74,8 @@ def _comment_free_keeping_lines(qasm: str) -> str:
 
 
 def _top_level_statements(code: str):
-    """``(offset, text)`` for each top-level statement; gate bodies are skipped."""
+    """``(offset, text, terminated)`` for each top-level statement; gate bodies are skipped.
+    ``terminated`` is False only for trailing text with no closing semicolon."""
     depth, start = 0, 0
     for i, ch in enumerate(code):
         if ch == "{":
@@ -86,15 +87,15 @@ def _top_level_statements(code: str):
         elif ch == ";" and depth == 0:
             text = code[start:i]
             if text.strip():
-                yield start, text
+                yield start, text, True
             start = i + 1
     if depth == 0 and code[start:].strip():
-        yield start, code[start:]
+        yield start, code[start:], False
 
 
 def check_qasm_syntax(qasm: str) -> None:
-    """400 for an OpenQASM 3 program or a malformed qreg/creg declaration (with its line
-    number)."""
+    """400 for an OpenQASM 3 program, a malformed qreg/creg declaration, or a final
+    statement with no semicolon (each with its line number)."""
     code = _comment_free_keeping_lines(qasm)
     version = _VERSION_RE.search(code)
     if version and not version.group(1).startswith("2"):
@@ -104,8 +105,14 @@ def check_qasm_syntax(qasm: str) -> None:
     if not _REG_KEYWORD_RE.search(code) and _QASM3_DECL_RE.search(code):
         _bad_request(_QASM3_MESSAGE)
 
-    for start, raw in _top_level_statements(code):
+    for start, raw, terminated in _top_level_statements(code):
         stmt = " ".join(raw.split())
+        if not terminated:
+            line = code.count("\n", 0, start + len(raw) - len(raw.lstrip())) + 1
+            shown = stmt if len(stmt) <= 80 else stmt[:77] + "..."
+            _bad_request(
+                f"Syntax error on line {line}: statement '{shown}' is missing its "
+                f"terminating semicolon.")
         if _REG_KEYWORD_RE.search(stmt) and not _REG_DECL_RE.match(stmt):
             line = code.count("\n", 0, start + _REG_KEYWORD_RE.search(raw).start()) + 1
             shown = stmt if len(stmt) <= 80 else stmt[:77] + "..."

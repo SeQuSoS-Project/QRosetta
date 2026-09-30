@@ -11,6 +11,7 @@ from collections import Counter
 
 import numpy as np
 
+PYTKET_QASM_MAXWIDTH = 1024
 MID_CIRCUIT_ERROR = "mid-circuit measurement is not supported by this adapter"
 STATEVECTOR_TERMINAL_ERROR = "statevector simulation needs every measurement to be terminal"
 
