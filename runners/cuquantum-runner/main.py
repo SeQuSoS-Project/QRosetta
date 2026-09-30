@@ -12,6 +12,9 @@ from qrosetta_commons.helpers import (
     CompileResult, get_logger, register_runner_endpoints, run_cli_main,
     run_measured_job, run_statevector_job, runner_error, with_sdk_versions,
 )
+import json
+import os
+
 import numpy as np
 
 logger = get_logger("cuquantum-runner")
@@ -29,6 +32,7 @@ except ImportError as e:
     logger.warning(f"qiskit-aer-gpu import failed: {e}. Runner will report itself unavailable.")
 
 _CAPABILITIES = None
+_CAPABILITIES_ENV = "QROSETTA_CUQUANTUM_CAPABILITIES"
 
 
 def _gpu_name():
@@ -45,6 +49,10 @@ def capabilities() -> dict:
     """Probe once for a GPU on which Aer runs with cuStateVec enabled."""
     global _CAPABILITIES
     if _CAPABILITIES is not None:
+        return _CAPABILITIES
+    inherited = os.environ.get(_CAPABILITIES_ENV)
+    if inherited:
+        _CAPABILITIES = json.loads(inherited)
         return _CAPABILITIES
     if not AERSIM_AVAILABLE:
         _CAPABILITIES = {"available": False, "reason": "qiskit-aer-gpu is not installed",
@@ -64,6 +72,7 @@ def capabilities() -> dict:
         _CAPABILITIES = {"available": False,
                          "reason": f"requires an NVIDIA GPU with cuStateVec; none usable ({e})"[:300],
                          "device": None, "gpu_name": None}
+    os.environ[_CAPABILITIES_ENV] = json.dumps(_CAPABILITIES)
     logger.info(f"cuQuantum capabilities: {_CAPABILITIES}")
     return _CAPABILITIES
 
@@ -235,6 +244,10 @@ register_runner_endpoints(app, process_run, process_run_measured)
 @app.get("/capabilities")
 def get_capabilities():
     return capabilities()
+
+
+if __name__ != "__mp_main__":
+    capabilities()
 
 logger.info("cuQuantum runner API instantiated and ready to receive traffic.")
 
