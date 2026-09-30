@@ -2,8 +2,9 @@
 // reason they are not ranked. Reads the report without modifying it.
 
 import {
-    TAG_AMBER, TAG_GRAY, _applyLegendDots, _cloneTemplate, _displayRunnerName,
-    _makeStatusCell, _tag, executionTags, fmtInt, fmtNum, getOptBadge, precisionTag, queueWaitText, renderTooltip,
+    QUEUE_WAIT_SHOWN_SEC, TAG_AMBER, TAG_GRAY, _applyLegendDots, _cloneTemplate, _displayRunnerName,
+    _makeStatusCell, _tag, deviceTitle, executionTags, fmtInt, fmtNum, getOptBadge, isGpuRun, precisionTag, queueWaitText,
+    renderTooltip,
 } from './render_helpers.js';
 import { RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, runnerStatus, userFacingError } from './run_status.js';
 
@@ -22,6 +23,7 @@ const UNRANKED_REASON_TEXT = {
     runner_error: 'the run returned an error',
     missing_timing: 'the run returned no execution_time_sec',
     missing_process_peak_rss: 'the run returned no process_peak_rss_mb',
+    gpu_memory_not_measured: 'it ran on a GPU, whose device memory is not measured',
 };
 
 /**
@@ -61,7 +63,7 @@ function _fillSimulatorCell(td, simulatorName, config, raw, { memory = false } =
     }
     const prec = precisionTag(raw?.precision);
     if (prec) td.appendChild(prec);
-    executionTags(raw).forEach(tag => td.appendChild(tag));
+    executionTags(raw, { device: false }).forEach(tag => td.appendChild(tag));
     const wait = queueWaitText(raw);
     if (wait) td.appendChild(_tag('queued', TAG_AMBER, wait.charAt(0).toUpperCase() + wait.slice(1)));
     if (memory && raw?.memory_method && raw.memory_method !== 'vmhwm') {
@@ -77,15 +79,49 @@ function _fillSimulatorCell(td, simulatorName, config, raw, { memory = false } =
 }
 
 function _timingNote(rawResults) {
-    const samples = new Set((rawResults || []).filter(r => r && !r.error)
-        .map(r => r.timing_samples).filter(n => Number.isInteger(n)));
+    const ok = (rawResults || []).filter(r => r && !r.error);
+    const samples = new Set(ok.map(r => r.timing_samples).filter(n => Number.isInteger(n)));
     let note = (samples.size === 0 || (samples.size === 1 && samples.has(1)))
         ? 'Each value is one timed run (n=1) after one discarded warm-up run.'
         : `Timed runs per backend: ${[...samples].sort().join(', ')}; the columns show the last run (mean and stdev are in the raw JSON).`;
-    note += ' Each runner is limited to 0.5 CPU, so wall time can exceed CPU time.';
-    const waited = (rawResults || []).filter(r => typeof r?.queue_wait_sec === 'number' && r.queue_wait_sec > 0).length;
-    if (waited) note += ` ${waited} run(s) waited for their runner to finish another run (tag "queued"); the wait is not in these timings.`;
+    note += ok.some(isGpuRun)
+        ? ' CPU runners: 0.5 CPU, 1 thread each, so wall time can exceed CPU time. GPU runners run kernels on the GPU with '
+            + 'host-side work under the same 0.5-CPU quota; times across devices compare different hardware.'
+        : ' Each runner is limited to 0.5 CPU and 1 thread, so wall time can exceed CPU time.';
+    const waited = (rawResults || []).filter(r => typeof r?.queue_wait_sec === 'number' && r.queue_wait_sec >= QUEUE_WAIT_SHOWN_SEC).length;
+    if (waited) note += ` ${waited} run(s) waited ${QUEUE_WAIT_SHOWN_SEC} s or more for their runner to finish another run (tag "queued"); the wait is not in these timings.`;
     return note;
+}
+
+function _memoryNote(rawResults, unranked) {
+    const gpu = (rawResults || []).filter(r => r && !r.error && isGpuRun(r));
+    if (!gpu.length) return '';
+    const unrankedIds = new Set(unranked.map(r => r.simulator));
+    const names = gpu.map(r => `${_displayRunnerName(r.simulator)} (GPU)`).join(', ');
+    return gpu.every(r => unrankedIds.has(r.simulator))
+        ? ` Memory fields are host RSS. GPU device memory is not measured, so ${names} is not ranked by memory; its host-side values are listed after the ranked runs.`
+        : ` Memory fields are host RSS. GPU device memory is not measured, so the rank and memory values of ${names} describe host memory only.`;
+}
+
+function _deviceCell(raw) {
+    const td = document.createElement('td');
+    td.className = 'px-4 py-3 text-sm text-gray-700';
+    if (!raw?.device) {
+        td.textContent = '—';
+        return td;
+    }
+    td.textContent = String(raw.device);
+    td.title = deviceTitle(raw);
+    if (isGpuRun(raw)) {
+        td.className += ' font-medium text-amber-800';
+        if (raw.gpu_name) {
+            const sub = document.createElement('div');
+            sub.className = 'text-[11px] font-normal text-gray-500';
+            sub.textContent = String(raw.gpu_name);
+            td.appendChild(sub);
+        }
+    }
+    return td;
 }
 
 const TH_CLASS = 'px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase';
@@ -140,7 +176,7 @@ export function renderRankingTable(report, key, unit, panel, config = {}, rawRes
     const { ranked, unranked } = splitRanking(report, metric);
 
     const hFrag = _cloneTemplate('tpl-ranking-section-header');
-    const note = isMemory ? '' : ` ${_timingNote(rawResults)}`;
+    const note = isMemory ? _memoryNote(rawResults, unranked) : ` ${_timingNote(rawResults)}`;
     hFrag.querySelector('.tpl-summary-text').textContent =
         `${report.summary || ''}${note}${unranked.length ? ` ${unranked.length} run(s) are not ranked; they are listed after the ranked runs.` : ''}`;
     panel.appendChild(hFrag);
@@ -158,6 +194,7 @@ export function renderRankingTable(report, key, unit, panel, config = {}, rawRes
     const hr = document.createElement('tr');
     hr.appendChild(_th('Rank'));
     hr.appendChild(_th('Simulator'));
+    hr.appendChild(_th('Device'));
     columns.forEach(c => hr.appendChild(_th(c.label, c.key)));
     thead.appendChild(hr);
     table.appendChild(thead);
@@ -176,6 +213,7 @@ export function renderRankingTable(report, key, unit, panel, config = {}, rawRes
         simTd.className = 'px-4 py-3 text-sm font-medium text-gray-900';
         _fillSimulatorCell(simTd, r.simulator, config, raw, { memory: isMemory });
         tr.appendChild(simTd);
+        tr.appendChild(_deviceCell(raw));
         columns.forEach(c => {
             const td = document.createElement('td');
             td.className = c.strong ? 'px-4 py-3 text-sm text-gray-900 font-mono font-medium' : TD_CLASS;
@@ -202,6 +240,7 @@ export function renderRankingTable(report, key, unit, panel, config = {}, rawRes
         reason.textContent = `reason: ${r.reason || 'not recorded'}${UNRANKED_REASON_TEXT[r.reason] ? ` (${UNRANKED_REASON_TEXT[r.reason]})` : ''}`;
         simTd.appendChild(reason);
         tr.appendChild(simTd);
+        tr.appendChild(_deviceCell(raw));
         columns.forEach((c, idx) => {
             const td = document.createElement('td');
             td.className = TD_CLASS;

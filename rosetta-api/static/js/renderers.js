@@ -6,7 +6,9 @@ import { backButtonContainer, jsonOutput, panelElements, tabNav, welcomeMessage 
 import { BASE_URL, apiDetailText, getAuthHeaders } from './api.js';
 import { renderArtifactsPanel } from './artifacts_renderer.js';
 import { renderRankingTable, splitRanking } from './ranking_renderer.js';
-import { _applyLegendDots, _cloneTemplate, _displayRunnerName, _makeStatusBadge } from './render_helpers.js';
+import {
+    TAG_AMBER, TAG_GRAY, _applyLegendDots, _cloneTemplate, _displayRunnerName, _makeStatusBadge, _tag, deviceTitle, isGpuRun,
+} from './render_helpers.js';
 import {
     DIRECT_AGREEMENT, RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, TRANSFORM_AGREEMENT, effectiveAgreement, isDisagreement, measuredAssessment, runnerStatus,
 } from './run_status.js';
@@ -149,6 +151,22 @@ export function renderDetailReport(data, title, config = getState().currentRunne
     showTab('summary');
 }
 
+/** A suite Fastest/Lightest cell: the backend name and its device tag. */
+function _fillWinnerCell(td, entry, rawResults) {
+    if (!td) return;
+    if (!entry) {
+        td.textContent = '-';
+        return;
+    }
+    td.textContent = _displayRunnerName(entry.simulator);
+    const raw = (Array.isArray(rawResults) ? rawResults : []).find(r => r && r.simulator === entry.simulator);
+    const device = raw?.device ?? entry.device;
+    if (device) {
+        const run = raw || entry;
+        td.appendChild(_tag(String(device), isGpuRun(run) ? TAG_AMBER : TAG_GRAY, deviceTitle(run)));
+    }
+}
+
 /** Status badges for one batch task: its agreement outcome plus one badge per failed-run status. */
 function _taskBadges(item) {
     if (item.error) return [_makeStatusBadge('error', 'Error')];
@@ -249,8 +267,8 @@ export function renderSuiteSummary(data, title) {
 
             const fastest = splitRanking(item.performance_report, 'execution_time_sec').ranked[0];
             const lightest = splitRanking(item.resource_report, 'process_peak_rss_mb').ranked[0];
-            rowFrag.querySelector('.tpl-fastest').textContent = fastest ? _displayRunnerName(fastest.simulator) : '-';
-            rowFrag.querySelector('.tpl-lightest').textContent = lightest ? _displayRunnerName(lightest.simulator) : '-';
+            _fillWinnerCell(rowFrag.querySelector('.tpl-fastest'), fastest, item.raw_results);
+            _fillWinnerCell(rowFrag.querySelector('.tpl-lightest'), lightest, item.raw_results);
 
             const detailsBtn = rowFrag.querySelector('.tpl-details-btn');
             detailsBtn.classList.remove('tpl-details-btn');

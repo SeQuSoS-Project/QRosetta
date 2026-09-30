@@ -170,6 +170,14 @@ export function fmtPValue(v) {
     return fmtNum(v);
 }
 
+/** A probability such as test power: 3 decimals, with values that would round to 1 or 0 shown as bounds. */
+export function fmtProb(v) {
+    if (typeof v !== 'number' || !Number.isFinite(v)) return fmtNum(v);
+    if (v >= 0.9995) return '> 0.999';
+    if (v <= 0.0005) return '< 0.001';
+    return v.toFixed(3);
+}
+
 /** A count-like value (gate count, depth, shots, seed): integers without decimals. */
 export function fmtInt(v) {
     if (typeof v === 'number' && Number.isInteger(v) && Math.abs(v) < 1e15) return String(v);
@@ -216,13 +224,33 @@ export function precisionTag(precision) {
         `Amplitude precision the backend simulated in: ${precision}`);
 }
 
-/** Device / simulator-backend / simulation-method tags a runner reported, e.g. CPU · qiskit-aer · statevector. */
-export function executionTags(r) {
+/** True when the run reports that it simulated on a GPU. */
+export function isGpuRun(r) {
+    return String(r?.device ?? '').toUpperCase() === 'GPU';
+}
+
+/** Tooltip for a run's device tag: the device, and for a GPU run its name and whether cuStateVec was on. */
+export function deviceTitle(r) {
+    if (!isGpuRun(r)) return `Device the simulation ran on: ${r?.device}`;
+    const parts = [`Simulated on a GPU${r.gpu_name ? `: ${r.gpu_name}` : ''}.`];
+    if (typeof r.custatevec_enabled === 'boolean') parts.push(`cuStateVec ${r.custatevec_enabled ? 'enabled' : 'not enabled'}.`);
+    parts.push('Host-side work runs under the same 0.5-CPU quota as the CPU runners; GPU device memory is not measured.');
+    return parts.join(' ');
+}
+
+/**
+ * Device / simulator-backend / simulation-method tags a runner reported, e.g. CPU · qiskit-aer · statevector.
+ * @param {any} r
+ * @param {{ device?: boolean }} [opts] device: false omits the device tag (for tables with a Device column)
+ */
+export function executionTags(r, { device = true } = {}) {
     const tags = [];
     if (!r) return tags;
-    if (r.device) {
-        tags.push(_tag(String(r.device), String(r.device).toUpperCase() === 'GPU' ? TAG_AMBER : TAG_GRAY,
-            `Device the simulation ran on: ${r.device}`));
+    if (r.device && device) {
+        tags.push(_tag(String(r.device), isGpuRun(r) ? TAG_AMBER : TAG_GRAY, deviceTitle(r)));
+    }
+    if (isGpuRun(r) && r.custatevec_enabled === true) {
+        tags.push(_tag('cuStateVec', TAG_AMBER, deviceTitle(r)));
     }
     if (r.simulator_backend) {
         tags.push(_tag(String(r.simulator_backend), TAG_GRAY, `Simulator library that executed the circuit: ${r.simulator_backend}`));
@@ -233,10 +261,13 @@ export function executionTags(r) {
     return tags;
 }
 
+/** Shortest queue wait the UI reports; shorter waits are dispatch overhead. */
+export const QUEUE_WAIT_SHOWN_SEC = 0.5;
+
 /** Queue-wait note for a run that waited for its runner, or null. */
 export function queueWaitText(r) {
     const w = r?.queue_wait_sec;
-    if (typeof w !== 'number' || !(w >= 0.5)) return null;
+    if (typeof w !== 'number' || !(w >= QUEUE_WAIT_SHOWN_SEC)) return null;
     return `waited ${fmtNum(w, 1)} s for the runner to finish another run; not included in timings`;
 }
 

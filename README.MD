@@ -38,7 +38,10 @@ label when none applies, or `not_comparable` with a reason. Statevector pairs ag
 fidelity, stored unrounded, is at least 1 - `fidelity_tolerance` (default 1e-5); the
 tolerances used are recorded in every pair record. Measured pairs are compared by
 Jensen-Shannon divergence (nats) and Hellinger distance, with a chi-square and G-test of
-homogeneity, Benjamini-Hochberg corrected across pairs.
+homogeneity, Benjamini-Hochberg corrected across pairs. A measured pair is consistent only
+when neither test is significant and the power to detect a total-variation gap of 0.05,
+computed at α/m for m tested pairs, is at least 0.8. The default is 4096 shots per backend
+(`default_n_shots` in `GET /config`).
 
 Measured runs record a master seed; each backend receives a `runner_seed` made of the first
 4 bytes of `sha256(f"{master}:{runner_key}")`, read big-endian with the top bit cleared, so
@@ -72,9 +75,11 @@ and returns the same set of fields.
 | qsim-Cirq, Qibo, Qrisp, myQLM | PyQuil, TorchQuantum, Quimb, cuQuantum |
 
 The web UI runs every enabled backend unless you deselect some in the Config drawer. The
-cuQuantum runner simulates with NVIDIA cuStateVec on an NVIDIA GPU. On a host without one,
-`GET /runners` marks it unavailable with a reason, the Config drawer shows it greyed out, and it
-is not dispatched. Its GPU timings are not limited by the 0.5-CPU quota the other runners have.
+cuQuantum runner is qiskit-aer-gpu 0.15.1 with cuStateVec enabled, on an NVIDIA GPU. On a host
+without one, `GET /runners` marks it unavailable with a reason, the Config drawer shows it
+greyed out, and it is not dispatched. Its kernels run on the GPU; its host-side work runs under
+the same 0.5-CPU quota as the other runners, so its times compare different hardware. Memory
+fields are host RSS: GPU device memory is not measured, and GPU runs are not ranked by memory.
 
 Braket and ProjectQ ship with the stack but are disabled in `rosetta-api/config.py` because of
 persistent backend errors. Re-enable either by setting `enabled=True` there and adding it to

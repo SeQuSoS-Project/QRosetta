@@ -23,6 +23,7 @@ function _write(key, value) {
 
 /**
  * @typedef {{ job_id: string, kind: 'single'|'batch', title: string, run_name?: string|null,
+ *             circuit_name?: string|null,
  *             runner_config?: object, submitted_at: number }} PendingJob
  */
 

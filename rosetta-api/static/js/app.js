@@ -60,6 +60,11 @@ function _applyServerConfig(config) {
         if (!el) return;
         el.min = String(sMin);
         if (sMax !== null && sMax !== undefined) el.max = String(sMax);
+        const dflt = config?.default_n_shots ?? config?.limits?.default_n_shots;
+        if (typeof dflt === 'number' && Number.isInteger(dflt) && el.value === el.defaultValue) {
+            el.value = String(dflt);
+            el.defaultValue = String(dflt);
+        }
     });
 
     if (config.agreement_threshold_defaults) resetAgreementThresholds();
@@ -69,6 +74,12 @@ function _applyServerConfig(config) {
 function _executionTarget() {
     const v = /** @type {HTMLSelectElement|null} */ (document.getElementById('execution-target-select'))?.value;
     return v || getState().executionMode || undefined;
+}
+
+/** Name of the circuit in the editor for report figures, or null for an unnamed custom circuit. */
+function _editorCircuitName() {
+    const name = getState().currentAlgoName;
+    return name && !/^Custom\b/.test(name) ? name : null;
 }
 
 let _editorSaveTimer = null;
@@ -307,10 +318,11 @@ async function _finishSingleRun(job) {
     try {
         const results = await pollJobStatus(job.job_id);
         clearPendingJob(job.job_id);
+        if (job.run_name) results.run_name = job.run_name;
+        if (job.circuit_name && !results.circuit_name) results.circuit_name = job.circuit_name;
         dispatch('SET_SUITE_DATA', results);
         renderDetailReport(results, job.title, job.runner_config || {});
 
-        if (job.run_name) results.run_name = job.run_name;
         const historyRunId = await saveRunToHistory(job.job_id, job.run_name || null);
         dispatch('SET_HISTORY_RUN_ID', historyRunId);
         if (typeof autosaveRun === 'function') autosaveRun(results, job.run_name || job.title);
@@ -333,11 +345,11 @@ async function _finishBatchRun(job) {
     try {
         const results = await pollJobStatus(job.job_id);
         clearPendingJob(job.job_id);
+        if (job.run_name) results.run_name = job.run_name;
         dispatch('SET_SUITE_DATA', results);
         dispatch('SET_SUITE_TITLE', job.title);
         renderSuiteSummary(results, getState().currentSuiteTitle);
 
-        if (job.run_name) results.run_name = job.run_name;
         const historyRunId = await saveRunToHistory(job.job_id, job.run_name || null);
         dispatch('SET_HISTORY_RUN_ID', historyRunId);
         if (typeof autosaveRun === 'function') autosaveRun(results, job.run_name || 'batch');
@@ -428,7 +440,7 @@ export async function runComparison(type) {
     }
     const job = {
         job_id: jobId, kind: /** @type {'single'} */ ('single'), title, run_name: runNameInput || null,
-        runner_config: getState().currentRunnerConfig, submitted_at: Date.now(),
+        circuit_name: _editorCircuitName(), runner_config: getState().currentRunnerConfig, submitted_at: Date.now(),
     };
     savePendingJob(job);
     await _finishSingleRun(job);

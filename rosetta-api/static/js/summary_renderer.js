@@ -3,14 +3,14 @@
 
 import { panelElements } from './dom.js';
 import {
-    STATUS_STYLES, _applyLegendDots, _chip, _cloneTemplate, _displayRunnerName, fmtInt, fmtNum, fmtPValue,
+    STATUS_STYLES, _applyLegendDots, _chip, _cloneTemplate, _displayRunnerName, fmtInt, fmtNum, fmtPValue, fmtProb,
     executionTags, precisionTag, queueWaitText, renderPreprocessingList,
 } from './render_helpers.js';
 import { getEnabledRunnerIds } from './config.js';
 import { parseRunnerKey } from './runner_key.js';
 import {
-    RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, effectiveAgreement, measuredAssessment, pairPower, recommendedShots,
-    runnerStatus, userFacingError,
+    RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, effectiveAgreement, measuredAssessment, pairPower, pairPowerLevel,
+    recommendedShots, resolvableByMoreShots, runnerStatus, userFacingError,
 } from './run_status.js';
 import { thresholdDefaults } from './utils.js';
 
@@ -127,18 +127,50 @@ function _statevectorMetricText(p) {
 function _measuredMetricText(p) {
     const m = p.metrics || {};
     const t = p.transform_effect || {};
-    const label = p.agreement;
-    if ((label === 'agree_after_bit_reversal' || label === 'agree_after_qubit_permutation')
-        && t.js_divergence_after_transform !== undefined) {
-        return `${TRANSFORM_NAMES[label]} JS ${fmtNum(t.js_divergence_after_transform)} nats, Hellinger `
-            + `${fmtNum(t.hellinger_distance_after_transform)} (direct JS ${fmtNum(m.js_divergence)} nats)`;
-    }
     const direct = `JS ${fmtNum(m.js_divergence)} nats, Hellinger ${fmtNum(m.hellinger_distance)}`;
+    if (p.agreement === 'agree_after_qubit_permutation' && t.js_divergence_after_transform !== undefined) {
+        return `permuted JS ${fmtNum(t.js_divergence_after_transform)} nats, Hellinger `
+            + `${fmtNum(t.hellinger_distance_after_transform)} (direct ${direct})`;
+    }
     if (m.label_aligned_basis === 'bit_reversal' && typeof m.label_aligned_js_divergence === 'number') {
         return `label-aligned (bit-reversed) JS ${fmtNum(m.label_aligned_js_divergence)} nats, Hellinger `
             + `${fmtNum(m.label_aligned_hellinger_distance)} (direct ${direct})`;
     }
+    if (p.agreement === 'agree_after_bit_reversal' && t.js_divergence_after_transform !== undefined) {
+        return `bit-reversed JS ${fmtNum(t.js_divergence_after_transform)} nats, Hellinger `
+            + `${fmtNum(t.hellinger_distance_after_transform)} (direct ${direct})`;
+    }
     return direct;
+}
+
+/** True when a measured pair's distance label agrees in the basis its declared bit orders select. */
+function _agreesInLabelAlignedBasis(p) {
+    const basis = p.metrics?.label_aligned_basis;
+    if (p.agreement === 'distance_within_threshold') return basis !== 'bit_reversal';
+    if (p.agreement === 'agree_after_bit_reversal') return basis === 'bit_reversal';
+    return false;
+}
+
+/** The descriptive JS/Hellinger label of a measured pair, as secondary detail beside its assessment. */
+function _distanceLabelText(p) {
+    const basis = p.metrics?.label_aligned_basis;
+    const perm = p.transform_effect?.permutation ?? p.metrics?.qubit_permutation?.permutation;
+    switch (p.agreement) {
+        case 'distance_within_threshold':
+            return basis === 'bit_reversal'
+                ? `within the JS/Hellinger thresholds only without reversing bit order, although the declared orderings differ${_orderingNote(p)}`
+                : 'within the JS/Hellinger thresholds';
+        case 'agree_after_bit_reversal':
+            return basis === 'bit_reversal'
+                ? 'agree in the label-aligned (bit-reversed) basis'
+                : `within the thresholds only after reversing bit order${_orderingNote(p)}`;
+        case 'agree_after_qubit_permutation':
+            return `within the thresholds only after qubit permutation ${JSON.stringify(perm ?? null)}`;
+        case 'distance_exceeds_threshold':
+            return 'above the JS/Hellinger thresholds under every registered transform';
+        default:
+            return String(p.agreement);
+    }
 }
 
 function _metricText(p) {
@@ -155,7 +187,29 @@ function _powerText(p) {
     const power = pairPower(p);
     if (power === null) return '';
     const delta = p.metrics?.statistical_test?.power?.delta_tv;
-    return `; power ${fmtNum(power, 2)}${typeof delta === 'number' ? ` to detect a TV gap of ${fmtNum(delta)}` : ''}`;
+    return `; power ${fmtProb(power)} to detect a TV gap of ${typeof delta === 'number' ? fmtNum(delta) : '—'}`;
+}
+
+/** Significance level the power figures of these pairs were computed at. */
+function _powerLevelText(pairs) {
+    const lvl = pairs.map(pairPowerLevel).find(l => l.alphaUsed !== null);
+    if (lvl) {
+        const m = lvl.m !== null ? `, m = ${fmtInt(lvl.m)} tested pairs` : '';
+        return `Power is computed for a single test at α/m = ${fmtNum(lvl.alphaUsed)} (α = ${lvl.alpha ?? '—'}${m}).`;
+    }
+    const alpha = pairs.map(pairPowerLevel).find(l => l.alpha !== null)?.alpha;
+    return `Power is computed for a single test at the unadjusted α = ${alpha ?? '—'}; this report predates the α/m power rule.`;
+}
+
+function _measuredItem(p, { power = true } = {}) {
+    return _pairItem(p, `${_metricText(p)}; distance label: ${_distanceLabelText(p)}${_testText(p)}${power ? _powerText(p) : ''}`);
+}
+
+function _note(block, text) {
+    const note = document.createElement('p');
+    note.className = 'text-sm mt-2';
+    note.textContent = text;
+    block.insertBefore(note, block.querySelector('details, ul'));
 }
 
 function _notComparableBlock(panel, pairs) {
@@ -236,7 +290,47 @@ function _renderStatevectorBlocks(panel, pairs, tol) {
     _notComparableBlock(panel, pairs);
 }
 
-/** Measured pairs grouped by their shot-noise assessment; only "distinguishable" is a disagreement. */
+/** Inconclusive pairs by cause: low power, expected counts more shots can raise, outcomes too rare at any shot count. */
+function _inconclusiveBlocks(panel, pairs) {
+    const target = pairs[0]?.metrics?.statistical_test?.power?.target_power ?? 0.8;
+    const reason = p => p.metrics?.statistical_test?.inconclusive_reason;
+    const lowPower = pairs.filter(p => reason(p) === 'low_power');
+    const rest = pairs.filter(p => reason(p) !== 'low_power');
+    const tooRare = rest.filter(p => resolvableByMoreShots(p) === false);
+    const lowCounts = rest.filter(p => resolvableByMoreShots(p) !== false);
+    const pooling = rest.some(p => p.metrics?.statistical_test?.pooled_outcomes !== undefined) ? ' even after pooling rare outcomes' : '';
+
+    if (lowPower.length) {
+        const rec = recommendedShots(lowPower);
+        const advice = rec ? `: more shots would help: ~${fmtInt(rec)} per backend` : '';
+        const block = _block(`Inconclusive, test power below ${target} (${lowPower.length})${advice}`, 'offline',
+            lowPower.map(p => _measuredItem(p)));
+        _note(block, 'Neither test finds a significant difference, but the power to detect the target gap is below '
+            + `${target}, so these pairs are neither consistent nor in disagreement. ${_powerLevelText(lowPower)}`
+            + (rec ? ` The power model reaches ${target} at about ${fmtInt(rec)} shots per backend.` : ''));
+        panel.appendChild(block);
+    }
+    if (lowCounts.length) {
+        const block = _block(`Inconclusive, expected counts below 5${pooling} (${lowCounts.length}): more shots would help`, 'offline',
+            lowCounts.map(p => _measuredItem(p)));
+        _note(block, 'Some outcomes are too rare in this sample for the chi-square and G-test to be reliable, so the tests '
+            + 'cannot decide either way.');
+        panel.appendChild(block);
+    }
+    if (tooRare.length) {
+        const block = _block(`Inconclusive, outcomes too rare for the test at any practical shot count (${tooRare.length})`, 'offline',
+            tooRare.map(p => _measuredItem(p)));
+        _note(block, `Expected counts stay below 5${pooling}, and the report records that more shots would not change `
+            + 'this at a practical shot count. The distance label and the metrics are the available evidence for these pairs.');
+        panel.appendChild(block);
+    }
+}
+
+/**
+ * Measured pairs grouped only by their shot-noise assessment, so each pair appears in one
+ * group; the descriptive distance label is shown as detail. Only "distinguishable" is a
+ * disagreement.
+ */
 function _renderMeasuredBlocks(panel, pairs, tol, data, alpha) {
     const groups = { consistent_within_shot_noise: [], inconclusive_low_shots: [], distinguishable: [], ambiguous: [], untested: [] };
     pairs.forEach(p => {
@@ -250,11 +344,13 @@ function _renderMeasuredBlocks(panel, pairs, tol, data, alpha) {
 
     const allConsistent = comparable.length === pairs.length
         && groups.consistent_within_shot_noise.length === pairs.length
-        && pairs.every(p => p.agreement === 'distance_within_threshold');
+        && pairs.every(_agreesInLabelAlignedBasis);
     if (allConsistent) {
         const frag = _cloneTemplate('tpl-summary-success-banner');
         frag.querySelector('.tpl-msg').textContent = `All ${pairs.length} pairs are consistent within shot noise (${test}) `
-            + `and within JS ≤ ${tol.js} nats and Hellinger ≤ ${tol.hellinger}.`;
+            + `and within JS ≤ ${tol.js} nats and Hellinger ≤ ${tol.hellinger} in the label-aligned basis. `
+            + 'Consistent means the tests found no difference at the stated power; it does not show the distributions are equal. '
+            + _powerLevelText(pairs);
         panel.appendChild(frag);
         return;
     }
@@ -263,28 +359,27 @@ function _renderMeasuredBlocks(panel, pairs, tol, data, alpha) {
     ov.className = 'text-sm text-gray-700 mb-3';
     const parts = [
         `${groups.consistent_within_shot_noise.length} consistent within shot noise`,
-        `${groups.inconclusive_low_shots.length} inconclusive (too few shots)`,
+        `${groups.inconclusive_low_shots.length} inconclusive (low power or rare outcomes)`,
         `${groups.distinguishable.length} distinguishable`,
     ];
     if (groups.ambiguous.length) parts.push(`${groups.ambiguous.length} inconclusive (the two tests disagree)`);
     if (groups.untested.length) parts.push(`${groups.untested.length} without a shot-noise test`);
-    ov.textContent = `Of ${pairs.length} pairs: ${parts.join(', ')}; ${pairs.length - comparable.length} not comparable (${test}).`;
+    ov.textContent = `Of ${pairs.length} pairs: ${parts.join(', ')}; ${pairs.length - comparable.length} not comparable (${test}). `
+        + 'Each pair is listed once, under its shot-noise assessment; the JS/Hellinger distance label is shown beside it.';
     panel.appendChild(ov);
 
     if (groups.distinguishable.length) {
         const block = _block(`Distinguishable beyond shot noise (${groups.distinguishable.length})`, 'anomaly',
-            groups.distinguishable.map(p => _pairItem(p, `${p.agreement}; ${_metricText(p)}${_testText(p)}${_orderingNote(p)}`)));
-        const note = document.createElement('p');
-        note.className = 'text-sm mt-2';
-        note.textContent = `The Benjamini-Hochberg correction controls the false discovery rate at q = ${alpha ?? '—'}: `
-            + `on average up to that fraction of the flagged pairs are flagged by chance, so one or two flagged pairs among many `
-            + 'can be false discoveries. Pairs that share a backend are not independent tests.';
-        block.insertBefore(note, block.querySelector('details, ul'));
+            groups.distinguishable.map(p => _measuredItem(p, { power: false })));
+        _note(block, `The Benjamini-Hochberg correction controls the false discovery rate at q = ${alpha ?? '—'}: `
+            + 'on average up to that fraction of the flagged pairs are flagged by chance, so one or two flagged pairs among many '
+            + 'can be false discoveries. BH assumes independent or positively dependent (PRDS) tests; pairs that share a '
+            + 'backend share its sample and are dependent.');
         panel.appendChild(block);
     }
     if (groups.ambiguous.length) {
         panel.appendChild(_block(`Inconclusive: the chi-square and G-test disagree (${groups.ambiguous.length})`, 'offline',
-            groups.ambiguous.map(p => _pairItem(p, `${_metricText(p)}${_testText(p)}`))));
+            groups.ambiguous.map(p => _measuredItem(p, { power: false }))));
     }
     if (groups.untested.length) {
         const exceeds = groups.untested.filter(p => p.agreement === 'distance_exceeds_threshold');
@@ -295,57 +390,29 @@ function _renderMeasuredBlocks(panel, pairs, tol, data, alpha) {
         }
         if (rest.length) {
             panel.appendChild(_block(`No shot-noise test recorded (${rest.length})`, 'offline',
-                rest.map(p => _pairItem(p, `${p.agreement}; ${_metricText(p)}`))));
+                rest.map(p => _pairItem(p, `${_distanceLabelText(p)}; ${_metricText(p)}`))));
         }
     }
-    if (groups.inconclusive_low_shots.length) {
-        const rec = recommendedShots(groups.inconclusive_low_shots);
-        const items = groups.inconclusive_low_shots.map(p => _pairItem(p, `${_metricText(p)}${_testText(p)}${_powerText(p)}`));
-        const block = _block(`Inconclusive: too few shots for the test (${groups.inconclusive_low_shots.length})`, 'offline', items);
-        const note = document.createElement('p');
-        note.className = 'text-sm mt-2';
-        const pw = groups.inconclusive_low_shots[0].metrics?.statistical_test?.power || {};
-        const reasons = { low_expected_counts: 0, low_power: 0 };
-        groups.inconclusive_low_shots.forEach(p => {
-            const r = p.metrics?.statistical_test?.inconclusive_reason;
-            reasons[r === 'low_power' ? 'low_power' : 'low_expected_counts'] += 1;
-        });
-        const why = [];
-        const pooling = groups.inconclusive_low_shots.some(p => p.metrics?.statistical_test?.pooled_outcomes !== undefined)
-            ? ' even after pooling rare outcomes' : '';
-        if (reasons.low_expected_counts) why.push(`${reasons.low_expected_counts} have expected counts below 5${pooling}`);
-        if (reasons.low_power) why.push(`${reasons.low_power} show no significant difference, but the test's power to detect the target gap is below ${pw.target_power ?? 0.8}`);
-        note.textContent = `Of these pairs, ${why.join('; ')}. The chi-square and G-test cannot decide either way, `
-            + 'so these pairs are neither consistent nor in disagreement.'
-            + (rec ? ` The power model needs about ${fmtInt(rec)} shots per backend to detect a total-variation gap of `
-                + `${pw.delta_tv ?? '—'} with power ${pw.target_power ?? '—'}; run again with at least that many.` : '');
-        block.insertBefore(note, block.querySelector('details, ul'));
-        panel.appendChild(block);
-    }
-
-    _transformBlocks(panel, pairs);
+    if (groups.inconclusive_low_shots.length) _inconclusiveBlocks(panel, groups.inconclusive_low_shots);
 
     const consistent = groups.consistent_within_shot_noise;
     if (consistent.length) {
-        const aboveThreshold = consistent.filter(p => p.agreement === 'distance_exceeds_threshold').length;
+        const aboveThreshold = consistent.filter(p => !_agreesInLabelAlignedBasis(p)).length;
         const powers = consistent.map(pairPower).filter(v => v !== null);
         const block = _block(`Consistent within shot noise (${consistent.length})`, 'success',
-            consistent.map(p => _pairItem(p, `${_metricText(p)}${_powerText(p)}`)));
+            consistent.map(p => _measuredItem(p)));
         const notes = [];
         if (powers.length) {
             const lo = Math.min(...powers), hi = Math.max(...powers);
-            notes.push(`Test power ${lo === hi ? fmtNum(lo, 2) : `${fmtNum(lo, 2)}–${fmtNum(hi, 2)}`} to detect a total-variation gap of `
-                + `${consistent[0].metrics?.statistical_test?.power?.delta_tv ?? '—'}; power is the chance the test would flag a gap of that size.`);
+            const range = fmtProb(lo) === fmtProb(hi) ? fmtProb(lo) : `${fmtProb(lo)}–${fmtProb(hi)}`;
+            notes.push(`Test power ${range} to detect a total-variation gap of `
+                + `${consistent[0].metrics?.statistical_test?.power?.delta_tv ?? '—'}; power is the chance the test would flag a gap of that size. `
+                + _powerLevelText(consistent));
         }
         if (aboveThreshold) {
-            notes.push(`${aboveThreshold} of these are above the descriptive JS ≤ ${tol.js} / Hellinger ≤ ${tol.hellinger} thresholds, which depend on the shot count; the test finds no difference beyond shot noise.`);
+            notes.push(`${aboveThreshold} of these do not meet the descriptive JS ≤ ${tol.js} / Hellinger ≤ ${tol.hellinger} thresholds in the label-aligned basis; those thresholds depend on the shot count, and the test finds no difference beyond shot noise.`);
         }
-        notes.forEach(t => {
-            const note = document.createElement('p');
-            note.className = 'text-sm mt-2';
-            note.textContent = t;
-            block.insertBefore(note, block.querySelector('details, ul'));
-        });
+        notes.forEach(t => _note(block, t));
         panel.appendChild(block);
     }
     _notComparableBlock(panel, pairs);
@@ -454,6 +521,8 @@ function _renderRunDetails(panel, data, raws) {
     _kv(top, 'per-runner seed derivation', data.seed_derivation);
     _kv(top, 'n_shots', data.n_shots);
     _kv(top, 'apply_preprocessing', data.apply_preprocessing);
+    _kv(top, 'analysis version', data.analysis_version ?? data.divergence_report?.analysis_version);
+    _kv(top, 'git commit', data.git_sha);
     _kv(top, 'started', data.started_at);
     _kv(top, 'finished', data.finished_at);
     if (Array.isArray(data.api_preprocessing_applied)) {
@@ -484,6 +553,8 @@ function _renderRunDetails(panel, data, raws) {
         const grid = document.createElement('div');
         grid.className = 'grid grid-cols-1 sm:grid-cols-2 gap-x-4 mt-1';
         _kv(grid, 'device', r.device);
+        _kv(grid, 'GPU', r.gpu_name);
+        if (typeof r.custatevec_enabled === 'boolean') _kv(grid, 'cuStateVec', r.custatevec_enabled ? 'enabled' : 'not enabled');
         _kv(grid, 'simulator backend', r.simulator_backend);
         _kv(grid, 'simulation method', r.simulation_method);
         const wait = queueWaitText(r);
@@ -499,6 +570,7 @@ function _renderRunDetails(panel, data, raws) {
         _kv(grid, 'dispatch group', r.dispatch_group);
         _kv(grid, 'timed runs', r.timing_samples);
         _kv(grid, 'window memory method', r.memory_method);
+        _kv(grid, 'runner code sha256', r.runner_code_sha256);
         _kv(grid, 'process peak method', r.process_peak_rss_method);
         if (r.thread_env) {
             _kv(grid, 'thread env', Object.entries(r.thread_env).map(([k, v]) => `${k}=${v ?? 'unset'}`).join(', '));

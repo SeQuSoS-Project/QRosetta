@@ -193,12 +193,15 @@
                     <code>simulator_backend</code> (the library that executed the circuit) and
                     <code>simulation_method</code>. The Summary tab's per-backend details and the
                     Performance and Resources tables show them as tags. Qiskit runs on qiskit-aer's
-                    <code>AerSimulator</code> with <code>method="statevector"</code>. The cuQuantum runner
-                    simulates with NVIDIA cuStateVec on an NVIDIA GPU. On a server without one it is listed
-                    as unavailable in the Config drawer, with the reason the server gives, and it is not
-                    dispatched. Its GPU timings are not subject to the 0.5-CPU quota the other runners run
-                    under (see <a href="#resources">Resources, queueing and timeouts</a>), so compare them
-                    with the CPU backends with that in mind.
+                    <code>AerSimulator</code> with <code>method="statevector"</code>. The cuQuantum runner is
+                    qiskit-aer-gpu 0.15.1 with cuStateVec enabled, running on an NVIDIA GPU; its results
+                    also carry <code>gpu_name</code> and <code>custatevec_enabled</code>. On a server without
+                    an NVIDIA GPU it is listed as unavailable in the Config drawer, with the reason the server
+                    gives, and it is not dispatched; it never falls back to the CPU. Its kernels run on the
+                    GPU, while its host-side work (parsing, launching kernels, copying results back,
+                    sampling) runs under the same 0.5-CPU quota as the other runners (see
+                    <a href="#resources">Resources, queueing and timeouts</a>). A time comparison between
+                    cuQuantum and a CPU backend therefore compares different hardware.
                 </p>
                 <p>
                     Each backend reports the amplitude <code>precision</code> it simulated in. Most use
@@ -223,14 +226,14 @@
                             <li><em>Statevector mode</em>: terminal measurements are removed, several
                                 quantum registers are merged into one in declaration order, and the circuit
                                 is parsed and re-emitted with pytket with barriers removed.</li>
-                            <li><em>Measured mode, native group</em> (<code>measured_native</code>, backends
-                                that sample with their own sampler): register merge, then the pytket
-                                round-trip with barriers removed.</li>
-                            <li><em>Measured mode, sampled group</em> (<code>measured_sampled</code>,
-                                backends that sample a statevector): register merge only. This group receives
-                                the circuit text without the pytket round-trip, so a gate pytket would rewrite
-                                (for example <code>u0</code>) reaches these backends as written.</li>
+                            <li><em>Measured mode</em>, both groups (<code>measured_native</code>, backends
+                                that sample with their own sampler, and <code>measured_sampled</code>, backends
+                                that sample a statevector): register merge, then the pytket round-trip with
+                                barriers removed.</li>
                         </ul>
+                        The pytket round-trip inlines custom <code>gate</code> definitions, rewrites gates
+                        into pytket's QASM gate set (for example <code>u</code> becomes <code>u3</code>, with
+                        angles as multiples of π) and expands register broadcasts.
                         In measured mode the native group also receives a measure-all when the circuit has no
                         measurements; this happens with preprocessing off too. With preprocessing off there is
                         no register merge and no pytket round-trip in any group; statevector mode still removes
@@ -330,8 +333,8 @@
                 <table>
                     <thead><tr><th><code>measured_assessment</code></th><th>Meaning</th></tr></thead>
                     <tbody>
-                        <tr><td><code>consistent_within_shot_noise</code></td><td>Neither test finds a difference beyond shot noise. This holds even when the label is <code>distance_exceeds_threshold</code>.</td></tr>
-                        <tr><td><code>inconclusive_low_shots</code></td><td>Either some expected counts are below 5 after rare outcomes are pooled (<code>inconclusive_reason: low_expected_counts</code>), or neither test is significant but the power to detect the target gap is below 0.8 (<code>low_power</code>). The pair is neither consistent nor in disagreement; the Summary tab gives the shot count the power model recommends when it exceeds the shots used.</td></tr>
+                        <tr><td><code>consistent_within_shot_noise</code></td><td>Neither test is significant after BH correction, and the power to detect a total-variation gap of 0.05, computed at α/m, is at least 0.8. This holds even when the label is <code>distance_exceeds_threshold</code>. It is a failure to find a difference at that power, not a demonstration that the distributions are equal.</td></tr>
+                        <tr><td><code>inconclusive_low_shots</code></td><td>Either some expected counts are below 5 after rare outcomes are pooled (<code>inconclusive_reason: low_expected_counts</code>), or neither test is significant but the power to detect the target gap, computed at α/m, is below 0.8 (<code>low_power</code>). <code>resolvable_by_more_shots</code> records whether more shots can resolve the pair; it is false when the outcomes are too rare for the test at any practical shot count. The pair is neither consistent nor in disagreement; the Summary tab groups these pairs by cause and gives the shot count the power model recommends when it exceeds the shots used.</td></tr>
                         <tr><td><code>distinguishable</code></td><td>Both tests are significant after BH correction. This is the only measured outcome the Summary tab counts as a disagreement.</td></tr>
                         <tr><td><code>ambiguous</code></td><td>Exactly one of the two tests is significant. Treated as inconclusive, not as a disagreement.</td></tr>
                         <tr><td><code>not_comparable</code></td><td>The pair has no usable counts on at least one side.</td></tr>
@@ -439,22 +442,32 @@
                         Bonferroni: <code>min(1, m p)</code>. A test is significant when its BH-adjusted
                         p-value is below α = 0.05. BH controls the false discovery rate at q = α: among
                         the pairs it flags, up to a fraction q are expected to be flagged by chance, so one
-                        or two flagged pairs in a run with many can be false discoveries. Pairs that share a
-                        backend are not independent tests. A p-value that underflows to 0 is shown as
+                        or two flagged pairs in a run with many can be false discoveries. This guarantee assumes
+                        the tests are independent or positively dependent (PRDS). Pairs that share a backend
+                        share that backend's sample, so their tests are dependent, and PRDS has not been
+                        established for chi-square statistics that share a sample. A p-value that underflows to 0 is shown as
                         <code>&lt;1e-300</code>, and values below 1e-3 in scientific notation.</li>
-                    <li><strong>Verdict</strong>: <code>inconclusive_low_shots</code> if no pooling gives
-                        adequate expected counts; else <code>distinguishable</code> if both tests are
-                        significant, <code>ambiguous</code> if exactly one is, and, if neither is,
-                        <code>consistent</code> when the power at the observed shots is at least 0.8 and
-                        <code>inconclusive_low_shots</code> (<code>low_power</code>) otherwise.</li>
+                    <li><strong>Verdict</strong>: <code>inconclusive_low_shots</code>
+                        (<code>low_expected_counts</code>) if no pooling gives adequate expected counts; else
+                        <code>distinguishable</code> if both tests are significant, <code>ambiguous</code> if
+                        exactly one is, and, if neither is, <code>consistent</code> when the power at the
+                        observed shots, computed at α/m, is at least 0.8 and
+                        <code>inconclusive_low_shots</code> (<code>low_power</code>) otherwise.
+                        <code>resolvable_by_more_shots</code>, beside <code>inconclusive_reason</code>, says
+                        whether more shots can turn an inconclusive pair into a verdict.</li>
                     <li><strong>Power model</strong>: the effect size is Cohen's
                         <code>w = δ</code> with δ = 0.05, the smallest w any distribution pair at total
                         variation δ can have (w ≥ TV). The chi-square statistic then follows a noncentral
                         χ² with <code>df = K − 1</code> and noncentrality <code>λ = N w²</code>.
-                        <code>power_to_detect_delta_at_observed_shots = 1 − F(χ²₁₋α,df ; df, λ)</code>,
+                        <code>power_to_detect_delta_at_observed_shots = 1 − F(χ²₁₋α′,df ; df, λ)</code> with
+                        α′ = α/m, the Bonferroni level for the m tested pairs of the run (recorded as
+                        <code>power.alpha_used</code> and <code>power.m_pairs</code>). α/m is at most the
+                        level BH applies to any pair, so the power figure does not overstate the chance
+                        that the corrected test flags a gap of size δ. It is still the power of the
+                        chi-square test alone; the verdict needs both tests to be significant.
                         and <code>recommended_shots_per_backend</code> (also recorded under its earlier name
                         <code>shots_per_backend_for_target_power</code>) is ⌈N*/2⌉, where N* is the
-                        total giving power 0.8. <code>recommended_exceeds_actual</code> says whether that is
+                        total giving power 0.8 at α/m. <code>recommended_exceeds_actual</code> says whether that is
                         more than the shots either backend used; the Summary tab recommends more shots only
                         then. Because df uses the observed outcomes, the recommendation
                         can be too small when the true support is larger.</li>
@@ -508,8 +521,8 @@
                         select, with rare outcomes pooled;</li>
                     <li>Benjamini–Hochberg (FDR) and Bonferroni adjusted p-values across all pairs of the
                         run;</li>
-                    <li>Effect size (total variation, Cramér’s V) and a power estimate that uses the observed
-                        degrees of freedom (<code>power.df</code>).</li>
+                    <li>Effect size (total variation, Cramér’s V) and a power estimate at α/m that uses the
+                        observed degrees of freedom (<code>power.df</code>).</li>
                 </ul>
                 <p>
                     The verdict is <code>consistent</code>, <code>distinguishable</code>,
@@ -536,11 +549,43 @@
                     <li><strong>Run configuration.</strong> Reports record the agreement thresholds sent, the
                         timeout and its scope, the optimization levels, <code>apply_preprocessing</code>, the
                         API-side preprocessing, the dispatched circuits, <code>started_at</code> /
-                        <code>finished_at</code>, the git commit and the runner images.</li>
+                        <code>finished_at</code> and the git commit (<code>git_sha</code>). The divergence
+                        report records <code>analysis_version</code>, the version of the classification and
+                        test rules. Runner image digests are recorded only when the deployment sets
+                        <code>QROSETTA_IMAGE_DIGESTS</code>; in local mode the report says "not recorded".
+                        Each result carries <code>runner_code_sha256</code>, the sha256 of the runner's
+                        code, which identifies the adapter that produced it.</li>
+                    <li><strong>Statevector hashes.</strong> A report stored without statevectors keeps
+                        <code>statevector_sha256</code> and the length. The hash is not stable across replays
+                        for every backend: Cirq, for example, can differ in the last bits of some amplitudes
+                        between two runs of the same circuit. Compare replayed statevectors by fidelity.</li>
                     <li><strong>RO-Crate export.</strong> A run exports as an RO-Crate conforming to the
                         Process Run Crate profile, with the inputs, dispatched and executed circuits, per-backend
                         results, agreement evidence and provenance.</li>
                 </ul>
+                <h3 id="replay">Replaying a run</h3>
+                <ol>
+                    <li>Take the circuit from the crate's <code>circuit.qasm</code> (<code>circuits/</code>
+                        for a batch) or the experiment bundle's <code>inputs/*.qasm</code>, which hold the
+                        text as submitted; for a bundle, check each file against the manifest's
+                        <code>qasm_sha256</code>. Submit it as literal QASM; do not regenerate a preset.</li>
+                    <li>Send the effective values rather than the requested ones: the seed from
+                        <code>results.seed</code> (for an experiment,
+                        <code>effective_seeds_per_axis</code>); the thresholds from the report's
+                        <code>agreement_thresholds</code>, sent explicitly, because defaults can change between
+                        versions; an explicit runner list taken from <code>raw_results[].simulator</code>,
+                        because an empty list means every runner enabled at the time; and
+                        <code>n_shots</code>, <code>apply_preprocessing</code>,
+                        <code>optimization_level</code>, <code>runner_config</code>,
+                        <code>runner_phases</code> and <code>timeout_seconds</code>.</li>
+                    <li>Compare in this order: <code>runner_seed</code> per backend; the dispatched and
+                        transpiled circuits; counts, byte for byte; statevectors by fidelity; then the
+                        verdicts.</li>
+                    <li>If <code>git_sha</code>, <code>analysis_version</code> or a backend's
+                        <code>runner_code_sha256</code> differs between the two reports, verdicts can differ
+                        even when the counts are identical, and a changed adapter can change that backend's
+                        output. Re-derive the verdicts on the new version rather than comparing labels.</li>
+                </ol>
             </section>
 
             <section id="methodology">
@@ -554,6 +599,11 @@
                         t0 to t1 (parse, transpile, build the native circuit); <code>simulation_time_sec</code>
                         is wall clock from t2 to t3 (execute, return the statevector or draw the shots).
                         Building a counts histogram from drawn shots is outside the window.</li>
+                    <li><strong>cuQuantum's timed window.</strong> cuQuantum's <code>simulation_time_sec</code>
+                        covers <code>sim.run(qc).result()</code>: Aer's conversion of the circuit, GPU memory
+                        allocation, the cuStateVec kernels and the copy of the result from device to host.
+                        CUDA context initialisation happens in the warm-up run, outside the window; it shows
+                        up in <code>cpu_time_sec</code>, which covers the whole process.</li>
                     <li><strong>CPU time.</strong> <code>simulation_cpu_time_sec</code> is process CPU time
                         (all threads) over t2..t3 only. <code>cpu_time_sec</code> covers the whole isolated
                         runner process: interpreter start, SDK import, warm-up and the timed run.</li>
@@ -571,6 +621,10 @@
                         <code>process_peak_rss_method</code> record the method; where VmHWM is unavailable they
                         read <code>sampled_10ms</code> (RSS polled every 10 ms, which can miss short peaks) and
                         <code>getrusage</code> (ru_maxrss), and the UI shows a badge.</li>
+                    <li><strong>Host memory only.</strong> Every memory field is host RSS. GPU device memory
+                        is not measured, so a GPU run's memory fields do not include its statevector on the
+                        GPU. GPU runs are not ranked by memory; they are listed under <code>unranked</code>
+                        with reason <code>gpu_memory_not_measured</code>, and the Resources tab says so.</li>
                     <li><strong>Units.</strong> Every memory field ending in <code>_mb</code> is in MiB
                         (2<sup>20</sup> bytes).</li>
                     <li><strong>What dominates memory.</strong> For small circuits,
@@ -580,8 +634,10 @@
                         reflect their libraries, not their simulation algorithms.</li>
                     <li><strong>Gate count and depth</strong> come from the circuit each backend executed
                         (its <code>transpiled_qasm</code>), using greedy layering for depth.</li>
-                    <li><strong>Rankings</strong> include only successful runs. Failed runs are listed under
-                        <code>unranked</code> with a reason, and the UI shows them after the ranked rows.</li>
+                    <li><strong>Rankings</strong> include only successful runs. Failed runs, and GPU runs in
+                        the memory ranking, are listed under <code>unranked</code> with a reason, and the UI
+                        shows them after the ranked rows. The Performance and Resources tables have a Device
+                        column, and the batch summary tags the device of each Fastest and Lightest backend.</li>
                 </ul>
             </section>
 
@@ -592,8 +648,10 @@
                         CPU limit of 0.5 and 512 MiB of memory; Kubernetes mode: a 0.5 CPU limit and 1 GiB), and
                         its math libraries run one thread. A process that needs a full core is throttled
                         under this quota, so wall-clock <code>simulation_time_sec</code> can exceed
-                        <code>simulation_cpu_time_sec</code>. The cuQuantum runner's simulation runs on the
-                        GPU, which this quota does not limit.</li>
+                        <code>simulation_cpu_time_sec</code>. The cuQuantum runner's container has the same
+                        quota: its kernels run on the GPU, but its host-side work (circuit conversion, kernel
+                        launches, synchronisation, the device-to-host copy and sampling) is throttled like any
+                        other runner's.</li>
                     <li><strong>One run at a time per runner.</strong> A runner executes one run at a time.
                         When several jobs, yours or other users', target the same runner, later runs wait for
                         it. The wait is recorded as <code>queue_wait_sec</code> and is not part of any timing.
@@ -625,8 +683,8 @@
                 <table>
                     <thead><tr><th>Tab</th><th>What it shows</th></tr></thead>
                     <tbody>
-                        <tr><td>Summary</td><td>How many of the server's enabled backends ran and which were not part of the run; failed runs grouped as Offline, Timed out and Errors; then what the pair records show. Statevector pairs are counted as agreeing directly or up to a global phase, and listed by label: not explained by any transform, agree up to a global phase offset (with its value), agree only after bit reversal (with each side's declared ordering and the bit-reversed fidelity), after a qubit permutation, after normalising a slightly unnormalised vector, and not comparable with its reason. Measured pairs are grouped by <code>measured_assessment</code>: distinguishable (the only measured disagreement), inconclusive with too few shots (with each pair's test power, and the recommended shot count when it exceeds the shots used), inconclusive because the two tests disagree, consistent within shot noise (with each pair's test power), and not comparable. The distinguishable group carries a note on expected false discoveries under the BH correction. The success banner appears only when at least two backends succeeded and every pair agrees without a transform (in measured mode: every pair is consistent within shot noise and within the thresholds); it states the tolerance or α that was tested. A collapsible section lists per-backend device, simulator backend, precision, seeds, queue wait, memory method, thread settings and preprocessing.</td></tr>
-                        <tr><td>Performance / Resources</td><td>Ranked successful runs, then the unranked runs with their status and reason. Tooltips on each column give the measurement window.</td></tr>
+                        <tr><td>Summary</td><td>How many of the server's enabled backends ran and which were not part of the run; failed runs grouped as Offline, Timed out and Errors; then what the pair records show. Statevector pairs are counted as agreeing directly or up to a global phase, and listed by label: not explained by any transform, agree up to a global phase offset (with its value), agree only after bit reversal (with each side's declared ordering and the bit-reversed fidelity), after a qubit permutation, after normalising a slightly unnormalised vector, and not comparable with its reason. Measured pairs are grouped only by <code>measured_assessment</code>, so each pair appears once, with its JS/Hellinger distance label as detail (a pair of an <code>lsb</code> and an <code>msb</code> backend reads "agree in the label-aligned (bit-reversed) basis"): distinguishable (the only measured disagreement); inconclusive, split into low power (with the recommended shots per backend when it exceeds the shots used), expected counts more shots can raise, and outcomes too rare for the test at any practical shot count; inconclusive because the two tests disagree; consistent within shot noise; and not comparable. Power is shown to three decimals, as "&gt; 0.999" or "&lt; 0.001" at the extremes, with the α/m and m it was computed at. The distinguishable group carries a note on expected false discoveries under the BH correction. The success banner appears only when at least two backends succeeded and every pair agrees without a transform (in measured mode: every pair is consistent within shot noise and within the thresholds in the label-aligned basis); it states the tolerance or α that was tested. A collapsible section lists the analysis version and git commit, then per-backend device (with the GPU name and cuStateVec state for a GPU run), simulator backend, precision, seeds, queue wait, memory method, runner code hash, thread settings and preprocessing.</td></tr>
+                        <tr><td>Performance / Resources</td><td>Ranked successful runs, then the unranked runs with their status and reason, with a Device column (GPU runs name the GPU). Tooltips on each column give the measurement window. When a GPU run is present, the Performance note says that times across devices compare different hardware and the Resources note says that GPU device memory is not measured.</td></tr>
                         <tr><td>Divergence</td><td>The N×N fidelity, global phase offset arg⟨a|b⟩, JS-divergence (nats) and Hellinger matrices. A cell is green when it is within the tolerance recorded with that pair; OFF, ERR and T/O mark failed runs, n/c a pair that is not comparable (<code>null</code> in the report; reports from older versions use −1). The diagonal holds each backend compared with itself (fidelity 1, JS 0, phase 0). Values are unrounded: a fidelity other than 1 is printed with enough decimals to differ from 1, and non-zero values below 1e-3 in scientific notation.</td></tr>
                         <tr><td>Agreement</td><td>The label per backend pair, with the metrics, the tolerances used, the statistical test and provenance (seeds, ordering, SDK versions, preprocessing) per pair.</td></tr>
                         <tr><td>Artifacts</td><td>Publication figures and tables (SVG/PNG/PDF; LaTeX/CSV/HTML/Markdown/XLSX), scoped to any subset of backends in the browser.</td></tr>
@@ -637,7 +695,7 @@
                     A batch or experiment run shows a suite summary and the Exports tab. The suite summary
                     gives each circuit an agreement badge (All pairs agree, Explained / partial,
                     Inconclusive, Anomaly, Not compared) plus one badge per failed-run
-                    status, and the fastest and lightest successful backends.
+                    status, and the fastest and lightest successful backends, each tagged with its device.
                 </p>
             </section>
 
@@ -745,9 +803,9 @@
                 <table>
                     <thead><tr><th>Verdict</th><th>Meaning</th></tr></thead>
                     <tbody>
-                        <tr><td><code>consistent</code></td><td>Neither the chi-square test nor the G-test is significant after BH (FDR) correction.</td></tr>
+                        <tr><td><code>consistent</code></td><td>Neither the chi-square test nor the G-test is significant after BH (FDR) correction, and the power to detect a total-variation gap of 0.05, computed at α/m, is at least 0.8.</td></tr>
                         <tr><td><code>distinguishable</code></td><td>Both tests are significant after BH (FDR) correction.</td></tr>
-                        <tr><td><code>inconclusive_low_shots</code></td><td>Expected counts too low for a reliable test.</td></tr>
+                        <tr><td><code>inconclusive_low_shots</code></td><td>Expected counts below 5 after pooling rare outcomes (<code>inconclusive_reason: low_expected_counts</code>), or neither test significant with power below 0.8 at α/m (<code>low_power</code>). <code>resolvable_by_more_shots</code> is false when the outcomes are too rare for the test at any practical shot count.</td></tr>
                         <tr><td><code>ambiguous</code></td><td>Exactly one of the chi-square test and the G-test is significant after BH (FDR) correction.</td></tr>
                     </tbody>
                 </table>
@@ -758,6 +816,7 @@
                         <tr><td><code>runner_error</code></td><td>The run returned an error.</td></tr>
                         <tr><td><code>missing_timing</code></td><td>The run returned no <code>execution_time_sec</code>.</td></tr>
                         <tr><td><code>missing_process_peak_rss</code></td><td>The run returned no <code>process_peak_rss_mb</code>.</td></tr>
+                        <tr><td><code>gpu_memory_not_measured</code></td><td>The run simulated on a GPU; its device memory is not measured, so it is not ranked by memory.</td></tr>
                     </tbody>
                 </table>
                 <h3>Run statuses</h3>
@@ -786,7 +845,7 @@
                     every registered transform. Check the pair's <code>measured_assessment</code>: if it is
                     <code>consistent_within_shot_noise</code>, the difference is what sampling alone
                     produces at this shot count; if <code>inconclusive_low_shots</code>, rerun with more
-                    shots; only <code>distinguishable</code> indicates a real difference, whose cause could
+                    shots when <code>resolvable_by_more_shots</code> is true; only <code>distinguishable</code> indicates a real difference, whose cause could
                     be an unregistered convention, a resource limit, or a defect in a backend or its adapter.
                 </p>
                 <h3>Does QRosetta modify a backend's output?</h3>

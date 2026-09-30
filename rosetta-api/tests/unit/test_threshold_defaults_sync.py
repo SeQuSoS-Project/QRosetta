@@ -1,11 +1,12 @@
 """The agreement-threshold defaults the browser sends (static/js/utils.js) and shows
-(static/index.html) equal the AgreementThresholds defaults in schemas/benchmark.py."""
+(static/index.html) equal the AgreementThresholds defaults in schemas/benchmark.py, and the
+shots fields start at the schema's n_shots default."""
 import re
 from pathlib import Path
 
 import pytest
 
-from schemas import AgreementThresholds
+from schemas import AgreementThresholds, MeasuredQasmPayload
 
 _STATIC = Path(__file__).resolve().parents[2] / "static"
 _UTILS = _STATIC / "js" / "utils.js"
@@ -41,3 +42,12 @@ def test_index_input_values_match_schema():
         m = re.search(rf'id="{element_id}"\s+value="([^"]+)"', html)
         assert m, f"index.html has no value for #{element_id}"
         assert float(m.group(1)) == getattr(schema, key), f"#{element_id}={m.group(1)}, schema {getattr(schema, key)}"
+
+
+def test_index_shots_values_match_schema_default():
+    html = _INDEX.read_text()
+    default = MeasuredQasmPayload.model_fields["n_shots"].default
+    for element_id in ("shots-single", "shots-batch"):
+        m = re.search(rf'id="{element_id}"\s+value="([^"]+)"', html)
+        assert m, f"index.html has no value for #{element_id}"
+        assert int(m.group(1)) == default, f"#{element_id}={m.group(1)}, schema n_shots default {default}"

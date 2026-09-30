@@ -2,7 +2,7 @@
 // evidence with metrics, shot-noise test and provenance).
 
 import {
-    STATUS_STYLES, _applyLegendDots, _chip, _cloneTemplate, _displayRunnerName, fmtInt, fmtNum, fmtPValue,
+    STATUS_STYLES, _applyLegendDots, _chip, _cloneTemplate, _displayRunnerName, fmtInt, fmtNum, fmtPValue, fmtProb,
     getOptBadge, renderPreprocessingList, renderTooltip,
 } from './render_helpers.js';
 import { RUNNER_STATUS_STYLE, effectiveAgreement, measuredAssessment, statusBySimulator } from './run_status.js';
@@ -298,7 +298,9 @@ export function _statisticalTestBlock(st) {
         ['same runner seed', st.shared_seed === null || st.shared_seed === undefined ? 'not recorded' : _yesNo(st.shared_seed)],
         ['total variation', _fmtNum(ef.total_variation)],
         ["Cramér's V", _fmtNum(ef.cramers_v)],
-        [`power at observed shots (δ=${pw.delta_tv})`, _fmtNum(pw.power_to_detect_delta_at_observed_shots, 3)],
+        [`power at observed shots (δ=${pw.delta_tv})`, fmtProb(pw.power_to_detect_delta_at_observed_shots)],
+        ['power computed at α/m', typeof pw.alpha_used === 'number'
+            ? `${fmtNum(pw.alpha_used)}${typeof pw.m_pairs === 'number' ? ` (m = ${fmtInt(pw.m_pairs)})` : ''}` : undefined],
         ['shots/backend for target power', fmtInt(pw.recommended_shots_per_backend ?? st.recommended_shots_per_backend ?? pw.shots_per_backend_for_target_power)],
         ['more shots than used', typeof (pw.recommended_exceeds_actual ?? st.recommended_exceeds_actual) === 'boolean'
             ? _yesNo(pw.recommended_exceeds_actual ?? st.recommended_exceeds_actual) : undefined],
@@ -309,6 +311,7 @@ export function _statisticalTestBlock(st) {
             ? `${fmtInt(st.observed_outcomes)} / ${fmtInt(st.tested_outcome_bins)}` : undefined],
         ['rare outcomes pooled', st.pooled_outcomes !== undefined ? fmtInt(st.pooled_outcomes) : undefined],
         ['inconclusive reason', st.inconclusive_reason ?? undefined],
+        ['resolvable by more shots', typeof st.resolvable_by_more_shots === 'boolean' ? _yesNo(st.resolvable_by_more_shots) : undefined],
     ]));
     const model = document.createElement('div');
     model.className = 'text-[11px] text-gray-400 mt-1';

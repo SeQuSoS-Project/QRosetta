@@ -95,6 +95,25 @@ export function pairPower(p) {
     return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
+/**
+ * Significance level the power figure was computed at, the pair-family size and the
+ * run's α, as far as the pair records them.
+ * @returns {{ alphaUsed: number|null, m: number|null, alpha: number|null }}
+ */
+export function pairPowerLevel(p) {
+    const st = p?.metrics?.statistical_test || {};
+    const power = st.power || {};
+    const num = v => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+    return { alphaUsed: num(power.alpha_used), m: num(power.m_pairs), alpha: num(st.alpha) };
+}
+
+/** Whether more shots can resolve an inconclusive pair: true, false, or null when not recorded. */
+export function resolvableByMoreShots(p) {
+    const st = p?.metrics?.statistical_test || {};
+    const v = st.resolvable_by_more_shots ?? st.power?.resolvable_by_more_shots;
+    return typeof v === 'boolean' ? v : null;
+}
+
 /** Shots per backend the power model recommends for a pair, and whether that exceeds the shots used. */
 export function pairRecommendation(p) {
     const st = p?.metrics?.statistical_test || {};

@@ -157,7 +157,7 @@
                             <input type="checkbox" id="apply-preprocessing-checkbox" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded" checked>
                             <span class="text-sm font-medium text-indigo-900">Apply SDK Preprocessing</span>
                         </label>
-                        <span class="text-xs text-gray-500 mt-1">On: the API merges multiple quantum registers in declaration order and re-emits the circuit through pytket (barriers removed) before dispatch, and each runner applies its own passes. Off: the circuit is dispatched as written, except that measure-all is appended for natively sampling backends when it has no measurements. Every change is listed in each backend's preprocessing, API changes tagged API.</span>
+                        <span class="text-xs text-gray-500 mt-1">On: before dispatch the API merges multiple quantum registers in declaration order and round-trips the circuit of every dispatch group (statevector, measured native, measured sampled) through pytket, which inlines custom gate definitions and removes barriers; each runner then applies its own passes. Off: no register merge and no pytket round-trip; statevector mode still removes terminal measurements, and measured mode appends measure-all for natively sampling backends when the circuit has none. Every change is listed in each backend's preprocessing, API changes tagged API.</span>
                     </div>
                     <div id="bypass-limits-container" class="flex flex-col mb-4 bg-white p-3 rounded shadow-sm border border-indigo-100">
                         <label class="flex items-center space-x-2">
@@ -384,8 +384,9 @@
                         </div>
                         <div id="shots-container-batch" class="hidden">
                             <label for="shots-batch" class="block text-sm font-medium text-yellow-800">Shots</label>
-                            <input type="number" id="shots-batch" value="1024" min="1" step="1"
+                            <input type="number" id="shots-batch" value="4096" min="1" step="1"
                                 class="mt-1 block w-full border border-yellow-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm">
+                            <p id="shots-hint-batch" class="text-xs text-yellow-800 mt-1">A pair is called consistent only when the test has power 0.8 to detect a total-variation gap of 0.05 at α/m, where m is the number of backend pairs. With fewer shots than the default, most pairs come out inconclusive.</p>
                         </div>
                     </div>
 
@@ -506,8 +507,9 @@
                         </div>
                         <div id="shots-container-single" class="hidden">
                             <label for="shots-single" class="block text-sm font-medium text-gray-700">Shots</label>
-                            <input type="number" id="shots-single" value="1024" min="1" step="1"
+                            <input type="number" id="shots-single" value="4096" min="1" step="1"
                                 class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                            <p id="shots-hint-single" class="text-xs text-gray-500 mt-1">A pair is called consistent only when the test has power 0.8 to detect a total-variation gap of 0.05 at α/m, where m is the number of backend pairs. With fewer shots than the default, most pairs come out inconclusive.</p>
                         </div>
                         <div class="mt-2">
                             <label for="single-run-name" class="block text-sm font-medium text-gray-700">Run Name
@@ -900,8 +902,8 @@
                     <tr>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task</th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" title="Lowest total time among successful runs (one timed run each)">Fastest</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" title="Lowest process peak RSS among successful runs">Lightest</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" title="Lowest total time among successful runs (one timed run each). A GPU tag marks a backend that simulated on a GPU; times across devices compare different hardware.">Fastest</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" title="Lowest process peak RSS among successful CPU runs. GPU runs are not ranked by memory because GPU device memory is not measured.">Lightest</th>
                         <th></th>
                     </tr>
                 </thead>
