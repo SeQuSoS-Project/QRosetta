@@ -9,6 +9,7 @@ import warnings
 
 from fastapi import FastAPI
 from qrosetta_commons.counts import (
+    PYTKET_QASM_MAXWIDTH,
     parse_measurement_layout, prepare_statevector_qasm, unit_pairs, unordered_qreg_note,
 )
 from qrosetta_commons.helpers import (
@@ -100,7 +101,7 @@ def _to_cirq_circuit(payload: dict, qasm: str, notes=()):
     Returns the Cirq circuit, the declared qubits in Cirq's order, the parsed circuit's bits
     as ``(register, index)`` pairs in pytket's sorted order, and the preprocessing list.
     """
-    tk_circ = pytket.qasm.circuit_from_qasm_str(qasm)
+    tk_circ = pytket.qasm.circuit_from_qasm_str(qasm, maxwidth=PYTKET_QASM_MAXWIDTH)
     if len(tk_circ.q_registers) > 1:
         raise ValueError(
             "Cirq can only support a single linear register: pytket's tk_to_cirq cannot "

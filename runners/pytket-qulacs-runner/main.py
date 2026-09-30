@@ -4,6 +4,7 @@ from random import Random
 
 from fastapi import FastAPI
 from qrosetta_commons.counts import (
+    PYTKET_QASM_MAXWIDTH,
     counts_from_pytket_result, parse_measurement_layout, prepare_statevector_qasm,
     statevector_in_declaration_order, unit_pairs, unordered_qreg_note,
 )
@@ -73,7 +74,7 @@ class _QulacsBackend(QulacsBackend):
 
 
 def _compile(payload: dict, qasm: str, notes=()) -> CompileResult:
-    tk_circ = pytket.qasm.circuit_from_qasm_str(qasm)
+    tk_circ = pytket.qasm.circuit_from_qasm_str(qasm, maxwidth=PYTKET_QASM_MAXWIDTH)
     preprocessing_applied = list(notes)
     qreg_note = unordered_qreg_note(parse_measurement_layout(qasm))
     if qreg_note:

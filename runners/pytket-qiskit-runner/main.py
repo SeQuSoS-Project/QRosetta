@@ -9,6 +9,7 @@ from qiskit import qasm2
 from qiskit.circuit import Instruction
 from qiskit.circuit.library import CHGate
 from qrosetta_commons.counts import (
+    PYTKET_QASM_MAXWIDTH,
     counts_from_register_keys, parse_measurement_layout, prepare_statevector_qasm,
     statevector_in_declaration_order, unordered_qreg_note,
 )
@@ -111,7 +112,7 @@ def _qubit_pairs(qiskit_circ) -> list:
 
 def _to_qiskit(qasm: str, payload: dict):
     """Parse the QASM via pytket, convert to a Qiskit circuit, and apply the opt level."""
-    tk_circ = pytket.qasm.circuit_from_qasm_str(qasm)
+    tk_circ = pytket.qasm.circuit_from_qasm_str(qasm, maxwidth=PYTKET_QASM_MAXWIDTH)
     qiskit_circ = tk_to_qiskit(tk_circ)
 
     preprocessing_applied = [_PARSE_NOTE]

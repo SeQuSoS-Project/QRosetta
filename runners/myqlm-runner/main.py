@@ -2,6 +2,7 @@
 
 from fastapi import FastAPI
 from qrosetta_commons.counts import (
+    PYTKET_QASM_MAXWIDTH,
     parse_measurement_layout, prepare_final_state_sampling, prepare_statevector_qasm,
     statevector_in_declaration_order,
 )
@@ -46,7 +47,7 @@ _SAMPLING_NOTE = (
 def _preprocess_qasm(qasm_str: str, apply_preprocessing: bool) -> tuple[str, list[str]]:
     """Rewrite gates PyLinalg cannot simulate; returns (qasm, preprocessing notes)."""
     if apply_preprocessing:
-        tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_str)
+        tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_str, maxwidth=PYTKET_QASM_MAXWIDTH)
         auto_rebase_pass({OpType.CX, OpType.Rz, OpType.Rx}).apply(tk_circ)
         qasm = pytket.qasm.circuit_to_qasm_str(tk_circ, maxwidth=max(32, len(tk_circ.bits)))
         return qasm, [_REBASE_NOTE]

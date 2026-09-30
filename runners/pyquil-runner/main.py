@@ -5,6 +5,7 @@ The simulator has no shot sampler here, so the measured endpoint samples the sta
 
 from fastapi import FastAPI
 from qrosetta_commons.counts import (
+    PYTKET_QASM_MAXWIDTH,
     prepare_final_state_sampling, prepare_statevector_qasm, strip_identity_gates,
 )
 from qrosetta_commons.helpers import (
@@ -55,7 +56,7 @@ _GLOBAL_PHASE_NOTE = (
 def _to_quil_program(qasm_str: str, optimization_level: int = 0, apply_preprocessing: bool = True):
     """Parse QASM via pytket, apply the preprocessing and optimisation passes, convert to Quil."""
     qasm_str, removed = strip_identity_gates(qasm_str, ("u0",))
-    tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_str)
+    tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_str, maxwidth=PYTKET_QASM_MAXWIDTH)
     if len(tk_circ.q_registers) > 1:
         raise ValueError(
             "Cannot convert circuit with multiple quantum registers to pyQuil: "
