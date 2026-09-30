@@ -6,6 +6,8 @@
 // separate. The conformance and prevalence outputs are reported separately.
 
 import { BASE_URL, formatApiError, getAuthHeaders, pollJobStatus } from './api.js';
+import { bareCircuitName } from './batch.js';
+import { closeDrawers } from './drawers.js';
 import { checkRunCountLimits, getRunnerConfig, getRunnerPhases, getTargetSimulators, loadRunners, runnerSelectionProblem } from './config.js';
 import { showRunErrors, validateRunInputs } from './run_inputs.js';
 import { clearReport } from './renderers.js';
@@ -28,20 +30,20 @@ export function _queueItemToCircuit(item) {
     if (item.source === 'mqt' || item.source === 'qasmbench') {
         return {
             source: item.source, algorithm: item.algorithm,
-            qubits: parseInt(item.qubits) || 0, name: item.name || item.algorithm,
+            qubits: parseInt(item.qubits) || 0, name: bareCircuitName(item.name) || item.algorithm,
         };
     }
     const qasm = item.qasm_string || item.qasm;
     if (qasm) {
         return {
             source: 'qasm', qasm_string: qasm,
-            name: item.name || item.algorithm || 'circuit',
+            name: bareCircuitName(item.name) || item.algorithm || 'circuit',
             qubits: parseInt(item.qubits) || 0,
         };
     }
     return {
         source: 'preset', algorithm: item.algorithm,
-        qubits: parseInt(item.qubits) || 0, name: item.name || null,
+        qubits: parseInt(item.qubits) || 0, name: bareCircuitName(item.name) || null,
     };
 }
 
@@ -95,6 +97,7 @@ export async function runExperiment() {
 
     _lastExperimentName = label ? label.replace(/[^A-Za-z0-9_-]+/g, '_') : 'experiment';
     _hideExperimentResult();
+    closeDrawers();
     setLoading(true, `Running experiment: ${circuits.length} circuit(s) × ${axes.length} axis(es)…`);
     clearReport();
 

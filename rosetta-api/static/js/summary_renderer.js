@@ -3,13 +3,13 @@
 
 import { panelElements } from './dom.js';
 import {
-    STATUS_STYLES, _applyLegendDots, _chip, _cloneTemplate, _displayRunnerName, fmtInt, fmtNum,
+    STATUS_STYLES, _applyLegendDots, _chip, _cloneTemplate, _displayRunnerName, fmtInt, fmtNum, fmtPValue,
     executionTags, precisionTag, queueWaitText, renderPreprocessingList,
 } from './render_helpers.js';
 import { getEnabledRunnerIds } from './config.js';
 import { parseRunnerKey } from './runner_key.js';
 import {
-    RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, effectiveAgreement, measuredAssessment, recommendedShots,
+    RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, effectiveAgreement, measuredAssessment, pairPower, recommendedShots,
     runnerStatus, userFacingError,
 } from './run_status.js';
 import { thresholdDefaults } from './utils.js';
@@ -121,7 +121,7 @@ function _statevectorMetricText(p) {
         return parts.join(', ');
     }
     const phase = m.direct_relative_phase_rad;
-    return `${direct}${typeof phase === 'number' && phase !== 0 ? `, relative phase ${fmtNum(phase)} rad` : ''}`;
+    return `${direct}${typeof phase === 'number' && phase !== 0 ? `, global phase offset arg⟨a|b⟩ ${fmtNum(phase)} rad` : ''}`;
 }
 
 function _measuredMetricText(p) {
@@ -133,7 +133,12 @@ function _measuredMetricText(p) {
         return `${TRANSFORM_NAMES[label]} JS ${fmtNum(t.js_divergence_after_transform)} nats, Hellinger `
             + `${fmtNum(t.hellinger_distance_after_transform)} (direct JS ${fmtNum(m.js_divergence)} nats)`;
     }
-    return `JS ${fmtNum(m.js_divergence)} nats, Hellinger ${fmtNum(m.hellinger_distance)}`;
+    const direct = `JS ${fmtNum(m.js_divergence)} nats, Hellinger ${fmtNum(m.hellinger_distance)}`;
+    if (m.label_aligned_basis === 'bit_reversal' && typeof m.label_aligned_js_divergence === 'number') {
+        return `label-aligned (bit-reversed) JS ${fmtNum(m.label_aligned_js_divergence)} nats, Hellinger `
+            + `${fmtNum(m.label_aligned_hellinger_distance)} (direct ${direct})`;
+    }
+    return direct;
 }
 
 function _metricText(p) {
@@ -143,7 +148,14 @@ function _metricText(p) {
 function _testText(p) {
     const st = p.metrics?.statistical_test;
     if (!st) return '';
-    return `; χ² p (BH) ${fmtNum(st.chi2?.p_value_bh)}, G-test p (BH) ${fmtNum(st.g_test?.p_value_bh)}`;
+    return `; χ² p (BH) ${fmtPValue(st.chi2?.p_value_bh)}, G-test p (BH) ${fmtPValue(st.g_test?.p_value_bh)}`;
+}
+
+function _powerText(p) {
+    const power = pairPower(p);
+    if (power === null) return '';
+    const delta = p.metrics?.statistical_test?.power?.delta_tv;
+    return `; power ${fmtNum(power, 2)}${typeof delta === 'number' ? ` to detect a TV gap of ${fmtNum(delta)}` : ''}`;
 }
 
 function _notComparableBlock(panel, pairs) {
@@ -201,6 +213,10 @@ function _renderStatevectorBlocks(panel, pairs, tol) {
             residual.map(p => _pairItem(p, _metricText(p)))));
     }
     _transformBlocks(panel, pairs);
+    if (phase.length) {
+        panel.appendChild(_block(`Agree up to a global phase offset larger than ${tol.phase} rad (${phase.length})`, 'success',
+            phase.map(p => _pairItem(p, _metricText(p)))));
+    }
 
     if (normalised.length) {
         panel.appendChild(_block(`Agree after normalising a statevector whose norm is off by more than ${tol.norm} (${normalised.length})`, 'success',
@@ -256,8 +272,15 @@ function _renderMeasuredBlocks(panel, pairs, tol, data, alpha) {
     panel.appendChild(ov);
 
     if (groups.distinguishable.length) {
-        panel.appendChild(_block(`Distinguishable beyond shot noise (${groups.distinguishable.length})`, 'anomaly',
-            groups.distinguishable.map(p => _pairItem(p, `${p.agreement}; ${_metricText(p)}${_testText(p)}`))));
+        const block = _block(`Distinguishable beyond shot noise (${groups.distinguishable.length})`, 'anomaly',
+            groups.distinguishable.map(p => _pairItem(p, `${p.agreement}; ${_metricText(p)}${_testText(p)}${_orderingNote(p)}`)));
+        const note = document.createElement('p');
+        note.className = 'text-sm mt-2';
+        note.textContent = `The Benjamini-Hochberg correction controls the false discovery rate at q = ${alpha ?? '—'}: `
+            + `on average up to that fraction of the flagged pairs are flagged by chance, so one or two flagged pairs among many `
+            + 'can be false discoveries. Pairs that share a backend are not independent tests.';
+        block.insertBefore(note, block.querySelector('details, ul'));
+        panel.appendChild(block);
     }
     if (groups.ambiguous.length) {
         panel.appendChild(_block(`Inconclusive: the chi-square and G-test disagree (${groups.ambiguous.length})`, 'offline',
@@ -277,15 +300,25 @@ function _renderMeasuredBlocks(panel, pairs, tol, data, alpha) {
     }
     if (groups.inconclusive_low_shots.length) {
         const rec = recommendedShots(groups.inconclusive_low_shots);
-        const items = groups.inconclusive_low_shots.map(p => _pairItem(p, `${_metricText(p)}${_testText(p)}`));
+        const items = groups.inconclusive_low_shots.map(p => _pairItem(p, `${_metricText(p)}${_testText(p)}${_powerText(p)}`));
         const block = _block(`Inconclusive: too few shots for the test (${groups.inconclusive_low_shots.length})`, 'offline', items);
         const note = document.createElement('p');
         note.className = 'text-sm mt-2';
-        note.textContent = 'Some expected counts are below 5, so the chi-square and G-test cannot decide either way. '
-            + 'These pairs are neither consistent nor in disagreement. Run again with more shots'
-            + (rec ? `: the power model needs about ${fmtInt(rec)} shots per backend to detect a total-variation gap of `
-                + `${groups.inconclusive_low_shots[0].metrics?.statistical_test?.power?.delta_tv ?? '—'} with power `
-                + `${groups.inconclusive_low_shots[0].metrics?.statistical_test?.power?.target_power ?? '—'}.` : '.');
+        const pw = groups.inconclusive_low_shots[0].metrics?.statistical_test?.power || {};
+        const reasons = { low_expected_counts: 0, low_power: 0 };
+        groups.inconclusive_low_shots.forEach(p => {
+            const r = p.metrics?.statistical_test?.inconclusive_reason;
+            reasons[r === 'low_power' ? 'low_power' : 'low_expected_counts'] += 1;
+        });
+        const why = [];
+        const pooling = groups.inconclusive_low_shots.some(p => p.metrics?.statistical_test?.pooled_outcomes !== undefined)
+            ? ' even after pooling rare outcomes' : '';
+        if (reasons.low_expected_counts) why.push(`${reasons.low_expected_counts} have expected counts below 5${pooling}`);
+        if (reasons.low_power) why.push(`${reasons.low_power} show no significant difference, but the test's power to detect the target gap is below ${pw.target_power ?? 0.8}`);
+        note.textContent = `Of these pairs, ${why.join('; ')}. The chi-square and G-test cannot decide either way, `
+            + 'so these pairs are neither consistent nor in disagreement.'
+            + (rec ? ` The power model needs about ${fmtInt(rec)} shots per backend to detect a total-variation gap of `
+                + `${pw.delta_tv ?? '—'} with power ${pw.target_power ?? '—'}; run again with at least that many.` : '');
         block.insertBefore(note, block.querySelector('details, ul'));
         panel.appendChild(block);
     }
@@ -295,8 +328,25 @@ function _renderMeasuredBlocks(panel, pairs, tol, data, alpha) {
     const consistent = groups.consistent_within_shot_noise;
     if (consistent.length) {
         const aboveThreshold = consistent.filter(p => p.agreement === 'distance_exceeds_threshold').length;
-        panel.appendChild(_block(`Consistent within shot noise (${consistent.length})`, 'success',
-            aboveThreshold ? [`${aboveThreshold} of these are above the descriptive JS ≤ ${tol.js} / Hellinger ≤ ${tol.hellinger} thresholds, which depend on the shot count; the test finds no difference beyond shot noise.`] : []));
+        const powers = consistent.map(pairPower).filter(v => v !== null);
+        const block = _block(`Consistent within shot noise (${consistent.length})`, 'success',
+            consistent.map(p => _pairItem(p, `${_metricText(p)}${_powerText(p)}`)));
+        const notes = [];
+        if (powers.length) {
+            const lo = Math.min(...powers), hi = Math.max(...powers);
+            notes.push(`Test power ${lo === hi ? fmtNum(lo, 2) : `${fmtNum(lo, 2)}–${fmtNum(hi, 2)}`} to detect a total-variation gap of `
+                + `${consistent[0].metrics?.statistical_test?.power?.delta_tv ?? '—'}; power is the chance the test would flag a gap of that size.`);
+        }
+        if (aboveThreshold) {
+            notes.push(`${aboveThreshold} of these are above the descriptive JS ≤ ${tol.js} / Hellinger ≤ ${tol.hellinger} thresholds, which depend on the shot count; the test finds no difference beyond shot noise.`);
+        }
+        notes.forEach(t => {
+            const note = document.createElement('p');
+            note.className = 'text-sm mt-2';
+            note.textContent = t;
+            block.insertBefore(note, block.querySelector('details, ul'));
+        });
+        panel.appendChild(block);
     }
     _notComparableBlock(panel, pairs);
 }

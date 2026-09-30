@@ -1,15 +1,16 @@
 // Page bootstrap, single-circuit and batch run orchestration, and circuit generation.
 
-import { BASE_URL, formatApiError, getAuthHeaders, pollJobStatus } from './api.js';
+import { BASE_URL, apiDetailText, formatApiError, getAuthHeaders, pollJobStatus } from './api.js';
 import { updateAuthUI, verifySession } from './auth.js';
 import { autosaveRun, initAutosave } from './autosave.js';
-import { renderBatchQueue } from './batch.js';
+import { renderBatchQueue, toBatchTask } from './batch.js';
+import { closeDrawers } from './drawers.js';
 import { bmLoadChecklist, populateBenchmarkSelectors } from './benchmarks_select.js';
 import {
     checkRunCountLimits, getDynamicMaxQubits, getRunnerConfig, getRunnerPhases, getTargetSimulators,
     loadRunners, runnerSelectionProblem, updateContextBar,
 } from './config.js';
-import { clearHistoryState, saveRunToHistory } from './history.js';
+import { clearHistoryState, saveRunToHistory, showHistoryNotice } from './history.js';
 import { clearReport, renderDetailReport, renderSuiteSummary } from './renderers.js';
 import { initDomRefs, qasmInput, setAllButtons, welcomeMessage } from './dom.js';
 import { shotsRange, showRunErrors, timeoutRange, validateRunInputs } from './run_inputs.js';
@@ -47,7 +48,10 @@ function _applyServerConfig(config) {
     const tHelp = document.getElementById('timeout-help');
     if (tHelp) {
         tHelp.textContent = `This value is sent with every run from this page. It covers process start, SDK import, `
-            + `the warm-up run and the timed run of each backend. Allowed: ${tMin}–${tMax} s.`;
+            + `the warm-up run and the timed run of each backend. Allowed: ${tMin}–${tMax} s.`
+            + (typeof config?.queue_max_wait_sec === 'number' && mode === 'local'
+                ? ` Time spent waiting for a busy runner is not part of it; a run waits at most ${config.queue_max_wait_sec} s to start.`
+                : '');
     }
 
     const { min: sMin, max: sMax } = shotsRange();
@@ -112,6 +116,7 @@ function _offerPendingJob() {
 window.onload = async () => {
 
     initDomRefs();
+    document.getElementById('history-save-notice-close')?.addEventListener('click', () => showHistoryNotice(''));
     setAllButtons([
         document.getElementById('btn-run'),
         document.getElementById('btn-batch-run')
@@ -236,7 +241,7 @@ export async function generateCircuit() {
             updateContextBar();
             saveEditorCircuit(qasmInput.value, getState().currentAlgoName);
         } else {
-            throw new Error(data.error || "Failed to generate circuit.");
+            throw new Error(apiDetailText(data.detail) || data.error || "Failed to generate circuit.");
         }
     } catch (error) {
         console.error("Circuit generation failed:", error);
@@ -306,7 +311,7 @@ async function _finishSingleRun(job) {
         renderDetailReport(results, job.title, job.runner_config || {});
 
         if (job.run_name) results.run_name = job.run_name;
-        const historyRunId = await saveRunToHistory(results);
+        const historyRunId = await saveRunToHistory(job.job_id, job.run_name || null);
         dispatch('SET_HISTORY_RUN_ID', historyRunId);
         if (typeof autosaveRun === 'function') autosaveRun(results, job.run_name || job.title);
     } catch (e) {
@@ -333,7 +338,7 @@ async function _finishBatchRun(job) {
         renderSuiteSummary(results, getState().currentSuiteTitle);
 
         if (job.run_name) results.run_name = job.run_name;
-        const historyRunId = await saveRunToHistory(results);
+        const historyRunId = await saveRunToHistory(job.job_id, job.run_name || null);
         dispatch('SET_HISTORY_RUN_ID', historyRunId);
         if (typeof autosaveRun === 'function') autosaveRun(results, job.run_name || 'batch');
     } catch (e) {
@@ -404,6 +409,7 @@ export async function runComparison(type) {
     const title = type === 'statevector' ? 'Editor Run (Statevector)' : `Editor Run (Measured, ${v.shots} shots)`;
     saveEditorCircuit(qasmInput.value, getState().currentAlgoName);
     _hideResumeBanner();
+    closeDrawers();
 
     setLoading(true, "Running Simulation...");
     clearReport();
@@ -450,7 +456,7 @@ export async function runBatchQueue() {
     if (!checkRunCountLimits(getState().currentRunnerConfig)) return;
 
     const payload = {
-        tasks: getState().batchQueue,
+        tasks: getState().batchQueue.map(toBatchTask),
         mode: mode,
         optimization_level: globalOpt,
         timeout_seconds: v.timeout,
@@ -466,6 +472,7 @@ export async function runBatchQueue() {
     if (mode === 'measured') payload.n_shots = v.shots;
 
     _hideResumeBanner();
+    closeDrawers();
     setLoading(true, `Running Batch of ${getState().batchQueue.length} Circuits...`);
     clearReport();
     dispatch('SET_JOB_ID', null);

@@ -72,8 +72,9 @@ and returns the same set of fields.
 | qsim-Cirq, Qibo, Qrisp, myQLM | PyQuil, TorchQuantum, Quimb, cuQuantum |
 
 The web UI runs every enabled backend unless you deselect some in the Config drawer. The
-cuQuantum runner executes the circuit with qiskit-aer's statevector method and uses a GPU only
-when one is present; on a host without one it runs on the CPU, and its `device` field says so.
+cuQuantum runner simulates with NVIDIA cuStateVec on an NVIDIA GPU. On a host without one,
+`GET /runners` marks it unavailable with a reason, the Config drawer shows it greyed out, and it
+is not dispatched. Its GPU timings are not limited by the 0.5-CPU quota the other runners have.
 
 Braket and ProjectQ ship with the stack but are disabled in `rosetta-api/config.py` because of
 persistent backend errors. Re-enable either by setting `enabled=True` there and adding it to

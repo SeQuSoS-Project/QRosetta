@@ -118,10 +118,10 @@ export async function handleRegisterSubmit() {
             body: JSON.stringify(payload)
         });
 
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
 
         if (!res.ok) {
-            throw new Error(apiDetailText(data.detail) || "Registration failed.");
+            throw new Error(apiDetailText(data.detail) || `Registration failed (HTTP ${res.status}).`);
         }
 
         toggleAuthMode('login');

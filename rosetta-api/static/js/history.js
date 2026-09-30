@@ -1,24 +1,64 @@
 // Run history: save completed runs, list, load, rename, download and delete them.
 
 import { tabNav } from './dom.js';
-import { BASE_URL, getAuthHeaders } from './api.js';
+import { BASE_URL, formatApiError, getAuthHeaders } from './api.js';
 import { clearReport, renderDetailReport, renderSuiteSummary } from './renderers.js';
 import { dispatch, getState } from './state.js';
-import { _escapeHtml, downloadBlob, setLoading } from './utils.js';
+import { downloadBlob, setLoading } from './utils.js';
 
-export async function saveRunToHistory(payload) {
-    if (!getState().authToken) return null;
+/** Parse a server timestamp; one without a zone designator is UTC. */
+export function parseServerTime(value) {
+    if (!value) return null;
+    const text = String(value);
+    const zoned = /(Z|[+-]\d{2}:?\d{2})$/i.test(text) ? text : `${text}Z`;
+    const d = new Date(zoned);
+    return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function _formatServerTime(value) {
+    const d = parseServerTime(value);
+    return d ? d.toLocaleString() : '';
+}
+
+/** Show (or with an empty message, hide) the history-save notice. */
+export function showHistoryNotice(message, kind = 'error') {
+    const box = document.getElementById('history-save-notice');
+    const text = document.getElementById('history-save-notice-text');
+    if (!box || !text) return;
+    if (!message) {
+        box.classList.add('hidden');
+        box.classList.remove('flex');
+        return;
+    }
+    text.textContent = message;
+    box.classList.toggle('bg-red-50', kind === 'error');
+    box.classList.toggle('border-red-300', kind === 'error');
+    box.classList.toggle('text-red-800', kind === 'error');
+    box.classList.toggle('bg-green-50', kind !== 'error');
+    box.classList.toggle('border-green-300', kind !== 'error');
+    box.classList.toggle('text-green-800', kind !== 'error');
+    box.classList.remove('hidden');
+    box.classList.add('flex');
+}
+
+/** Save a finished job to the signed-in user's history from the server's copy of the report.
+ * Returns the saved run id, or null (with a visible notice) when saving failed. */
+export async function saveRunToHistory(jobId, name = null) {
+    if (!getState().authToken || !jobId) return null;
     try {
-        const res = await fetch(`${BASE_URL}/history/runs`, {
+        const res = await fetch(`${BASE_URL}/history/runs/from_job/${encodeURIComponent(jobId)}`, {
             method: 'POST',
             headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-            body: JSON.stringify(payload)
+            body: JSON.stringify(name ? { name } : {})
         });
-        if (!res.ok) return null;
-        const data = await res.json();
-        return data.id || null;
+        if (!res.ok) throw new Error(await formatApiError(res));
+        const data = await res.json().catch(() => null);
+        const id = typeof data === 'string' ? data : (data?.id || data?.run_id || null);
+        showHistoryNotice('');
+        return id;
     } catch (e) {
         console.error("Failed to save run to history:", e);
+        showHistoryNotice(`This run was not saved to your history. ${e.message || ''}`.trim());
         return null;
     }
 }
@@ -45,12 +85,12 @@ export async function openHistoryModal() {
             return;
         }
 
-        runs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        runs.sort((a, b) => (parseServerTime(b.created_at)?.getTime() ?? 0) - (parseServerTime(a.created_at)?.getTime() ?? 0));
 
         list.innerHTML = '';
         runs.forEach(run => {
             const runName = run.run_name || run.id.substring(0, 8);
-            const dateStr = new Date(run.created_at).toLocaleString();
+            const dateStr = _formatServerTime(run.created_at);
 
             const li = document.createElement('li');
             li.className = "py-4 flex items-center justify-between";
@@ -100,7 +140,7 @@ export async function openHistoryModal() {
             cancelBtn.id = `run-name-cancel-btn-${run.id}`;
             cancelBtn.className = "hidden ml-2 text-xs font-medium text-red-600 hover:text-red-800";
             cancelBtn.textContent = "Cancel";
-            cancelBtn.addEventListener('click', () => cancelEditRunName(run.id, nameInput.value));
+            cancelBtn.addEventListener('click', () => cancelEditRunName(run.id, nameSpan.textContent));
 
             const dateSpan = document.createElement('span');
             dateSpan.className = "text-xs text-gray-500";
@@ -173,7 +213,6 @@ export async function saveRunName(runId) {
         if (!res.ok) throw new Error("Failed to update run name");
 
         document.getElementById(`run-name-text-${runId}`).textContent = newName;
-        document.getElementById(`run-name-cancel-btn-${runId}`).setAttribute('onclick', `cancelEditRunName('${runId}', '${newName}')`);
         cancelEditRunName(runId, newName);
     } catch (e) {
         console.error(e);
@@ -246,13 +285,28 @@ export async function loadHistoricalRun(runId, runName, createdAt) {
         historyBanner.id = "history-active-banner";
         historyBanner.className = "p-3 bg-yellow-50 border-b border-yellow-200 text-yellow-800 text-sm flex justify-between items-center";
 
-        const displayDate = createdAt ? new Date(createdAt).toLocaleString() : new Date(data.created_at || Date.now()).toLocaleString();
-        const displayTitle = runName ? `<strong>Viewing Past Run:</strong> ${_escapeHtml(runName)} <span class="text-xs font-mono ml-2 opacity-75">(${_escapeHtml(String(runId).substring(0, 8))})</span> <span class="ml-2">- ${_escapeHtml(displayDate)}</span>` : `<strong>Viewing Past Run:</strong> ${_escapeHtml(displayDate)}`;
-
-        historyBanner.innerHTML = `
-            <div>${displayTitle}</div>
-            <button onclick="clearHistoryView()" class="text-yellow-600 hover:text-yellow-900 font-bold underline">Close Results & Return to Editor</button>
-        `;
+        const displayDate = _formatServerTime(createdAt || data.created_at) || new Date().toLocaleString();
+        const title = document.createElement('div');
+        const strong = document.createElement('strong');
+        strong.textContent = 'Viewing Past Run:';
+        title.append(strong, ' ');
+        if (runName) {
+            const idTag = document.createElement('span');
+            idTag.className = 'text-xs font-mono ml-2 opacity-75';
+            idTag.textContent = `(${String(runId).substring(0, 8)})`;
+            const when = document.createElement('span');
+            when.className = 'ml-2';
+            when.textContent = `- ${displayDate}`;
+            title.append(runName, idTag, when);
+        } else {
+            title.append(displayDate);
+        }
+        const closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'text-yellow-600 hover:text-yellow-900 font-bold underline';
+        closeBtn.textContent = 'Close Results & Return to Editor';
+        closeBtn.addEventListener('click', clearHistoryView);
+        historyBanner.append(title, closeBtn);
 
         const tabNav = document.getElementById('tab-nav');
         if (!document.getElementById('history-active-banner')) {

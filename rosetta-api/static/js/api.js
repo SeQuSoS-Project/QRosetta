@@ -22,10 +22,11 @@ export function apiDetailText(detail) {
     if (Array.isArray(detail)) {
         return detail.map(d => {
             const loc = Array.isArray(d?.loc) ? d.loc.filter(x => x !== 'body').join('.') : '';
-            return `${loc ? `${loc}: ` : ''}${d?.msg ?? JSON.stringify(d)}`;
+            const msg = typeof d?.msg === 'string' ? d.msg.replace(/^(Value|Assertion) error,\s*/i, '') : JSON.stringify(d);
+            return `${loc ? `${loc}: ` : ''}${msg}`;
         }).join('\n');
     }
-    return typeof detail === 'string' ? detail : JSON.stringify(detail);
+    return typeof detail === 'string' ? detail.replace(/^(Value|Assertion) error,\s*/i, '') : JSON.stringify(detail);
 }
 
 /**
@@ -75,10 +76,10 @@ export async function pollJobStatus(jobId) {
                     resolve(data.results);
                 } else if (data.status === "failed") {
                     const r = data.results;
-                    const hasResults = r && ((Array.isArray(r.raw_results) && r.raw_results.some(x => x && !x.error))
+                    const hasResults = r && ((Array.isArray(r.raw_results) && r.raw_results.length > 0)
                         || (Array.isArray(r.benchmark_summary) && r.benchmark_summary.length > 0));
                     if (hasResults) {
-                        resolve(data.error ? { ...r, job_error: data.error } : r);
+                        resolve({ ...r, job_error: data.error || 'Every backend failed on this circuit.' });
                     } else {
                         reject(Object.assign(new Error(data.error || data.results?.error || 'The job failed on the server without an error message.'), { terminal: true }));
                     }

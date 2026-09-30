@@ -123,8 +123,9 @@ export function bmRenderChecklist() {
         row.className = 'flex items-center gap-2 cursor-pointer hover:bg-emerald-50 rounded px-1';
         row.innerHTML =
             `<input type="checkbox" class="bm-check" data-suite="${_escapeHtml(e.suite)}" data-algo="${_escapeHtml(e.algorithm)}" `
-            + `data-qubits="${_escapeHtml(e.qubits)}" data-label="${_escapeHtml(e.label)}" id="${_escapeHtml(id)}" onchange="bmUpdateSelectedCount()">`
+            + `data-qubits="${_escapeHtml(e.qubits)}" data-label="${_escapeHtml(e.label)}" id="${_escapeHtml(id)}">`
             + `<span class="font-mono truncate">${_escapeHtml(e.label)}</span>`;
+        row.querySelector('input').addEventListener('change', bmUpdateSelectedCount);
         list.appendChild(row);
     }
     bmUpdateSelectedCount();
@@ -289,7 +290,7 @@ export function addBenchmarkToBatch() {
         const algo = document.getElementById('bench-mqt-algo').value;
         const qubits = parseInt(document.getElementById('bench-mqt-qubits').value) || 0;
         if (!algo) return;
-        item = { source: 'mqt', algorithm: algo, qubits, name: `${algo} (${qubits}q)`, qasm_string: null };
+        item = { source: 'mqt', algorithm: algo, qubits, name: algo, qasm_string: null };
     } else {
         const circuit = document.getElementById('bench-qasmbench-circuit').value;
         if (!circuit) return;

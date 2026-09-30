@@ -3,7 +3,7 @@
 
 import { backButtonContainer, jsonOutput, panelElements, tabNav, welcomeMessage } from './dom.js';
 
-import { BASE_URL, getAuthHeaders } from './api.js';
+import { BASE_URL, apiDetailText, getAuthHeaders } from './api.js';
 import { renderArtifactsPanel } from './artifacts_renderer.js';
 import { renderRankingTable, splitRanking } from './ranking_renderer.js';
 import { _applyLegendDots, _cloneTemplate, _displayRunnerName, _makeStatusBadge } from './render_helpers.js';
@@ -331,7 +331,7 @@ export async function generateAndVisualize() {
         const data = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.error || 'Failed to generate visualizer URL');
+            throw new Error(apiDetailText(data.detail) || data.error || 'Failed to generate visualizer URL');
         }
 
         document.getElementById('quirk-iframe').src = data.url;

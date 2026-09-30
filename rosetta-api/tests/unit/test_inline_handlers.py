@@ -65,6 +65,21 @@ def test_no_stale_names_attached():
     assert not stale, f"main.js attaches unused names: {stale}"
 
 
+def test_generated_markup_has_no_inline_handlers():
+    """Markup built in JS wires its controls with addEventListener. An on*= attribute in a
+    template literal or string resolves against window, where module functions are absent."""
+    offenders = []
+    for path in sorted((_STATIC / "js").glob("*.js")):
+        for lineno, line in enumerate(path.read_text().split("\n"), 1):
+            if re.search(r"""\son(?:click|dbl\w+|change|input|submit|key\w+|mouse\w+|pointer\w+|focus\w*|blur|load|error|drag\w*|drop|scroll|toggle)\s*=\s*\\?["'`]""", line) or re.search(
+                    r"""setAttribute\(\s*['"]on[a-z]+['"]""", line):
+                offenders.append(f"{path.name}:{lineno}: {line.strip()}")
+    assert not offenders, (
+        "Inline event handlers in JS-generated markup (use addEventListener):\n"
+        + "\n".join(offenders)
+    )
+
+
 def test_index_loads_exactly_one_module_entry_point():
     html = _INDEX.read_text()
     assert 'type="module"' in html, "index.html should load the frontend as a module"

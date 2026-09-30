@@ -2,10 +2,10 @@
 
 import { qasmInput, queueCount, queueList } from './dom.js';
 import { BASE_URL, fetchMQTBench, fetchQASMBench, getAuthHeaders } from './api.js';
-import { updateContextBar } from './config.js';
+import { _parseQasmStats, updateContextBar } from './config.js';
 import { closeDrawers, isDrawerOpen, openDrawer } from './drawers.js';
 import { dispatch, getState } from './state.js';
-import { _escapeHtml, setLoading } from './utils.js';
+import { setLoading } from './utils.js';
 
 export const PRESETS = {
     "sanity": [
@@ -66,20 +66,48 @@ export async function applyPreset() {
     }
 }
 
+const _PLACEHOLDER_NAMES = new Set(['', 'no circuit loaded', 'custom / modified', 'custom circuit']);
+
+/** A circuit name without a trailing qubit-count suffix such as " (4q)". */
+export function bareCircuitName(name) {
+    return String(name ?? '').replace(/(\s*\(\d+q\))+\s*$/, '').trim();
+}
+
+/** Queue label: the circuit's name followed by its qubit count, once. */
+export function batchItemLabel(item) {
+    const name = bareCircuitName(item.name) || item.algorithm || 'custom';
+    return `${name} (${item.qubits}q)`;
+}
+
+/** A queue item as a BenchmarkTask: only the fields the server defines. */
+export function toBatchTask(item) {
+    const task = { algorithm: String(item.algorithm || 'custom'), qubits: parseInt(item.qubits) || 0 };
+    if (item.qasm_string) task.qasm_string = item.qasm_string;
+    if (item.source) task.source = item.source;
+    return task;
+}
+
 export function addToBatch() {
     const algoId = document.getElementById('algo-select').value;
-    const qubits = parseInt(document.getElementById('algo-qubits').value);
-
-    const algoName = document.getElementById('ctx-algo-name').value || "Custom Circuit";
+    const selectorQubits = parseInt(document.getElementById('algo-qubits').value);
     const currentQasm = qasmInput.value.trim();
 
-    if (!algoId || isNaN(qubits)) return;
-    const newItem = {
-        algorithm: algoId,
-        qubits: qubits,
-        name: algoName,
-        qasm_string: currentQasm || null
-    };
+    let newItem;
+    if (currentQasm) {
+        const qubits = _parseQasmStats(currentQasm).qubits;
+        const typed = bareCircuitName(document.getElementById('ctx-algo-name').value);
+        const sel = /** @type {HTMLSelectElement} */ (document.getElementById('algo-select'));
+        const algoLabel = sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex].text : '';
+        const fromGenerator = !!algoId && getState().currentAlgoName === `${algoLabel} (${qubits}q)`;
+        const userName = _PLACEHOLDER_NAMES.has(typed.toLowerCase()) ? '' : typed;
+        newItem = fromGenerator
+            ? { algorithm: algoId, qubits, name: algoLabel, qasm_string: currentQasm }
+            : { algorithm: userName || 'custom', qubits, name: userName || 'custom', qasm_string: currentQasm };
+    } else {
+        if (!algoId || isNaN(selectorQubits)) return;
+        const sel = /** @type {HTMLSelectElement} */ (document.getElementById('algo-select'));
+        newItem = { algorithm: algoId, qubits: selectorQubits, name: sel.options[sel.selectedIndex].text, qasm_string: null };
+    }
     dispatch('SET_BATCH_QUEUE', [...getState().batchQueue, newItem]);
     renderBatchQueue();
     openDrawer('playlist-section');
@@ -105,13 +133,25 @@ export function renderBatchQueue() {
         getState().batchQueue.forEach((item, index) => {
             const li = document.createElement('li');
             li.className = "flex justify-between items-center bg-yellow-100 px-2 py-1 rounded";
-            li.innerHTML = `
-                        <span class="truncate flex-1 text-xs font-mono">${_escapeHtml(item.name)} (${_escapeHtml(item.qubits)}q)</span>
-                        <div class="flex space-x-1 ml-2">
-                            <button onclick="viewBatchItem(${index})" title="Load QASM to Editor" class="text-blue-600 hover:text-blue-800 font-bold px-1">{ }</button>
-                            <button onclick="removeFromBatch(${index})" title="Remove" class="text-yellow-700 hover:text-red-600 font-bold px-1">&times;</button>
-                        </div>
-                    `;
+            const label = document.createElement('span');
+            label.className = 'truncate flex-1 text-xs font-mono';
+            label.textContent = batchItemLabel(item);
+            const actions = document.createElement('div');
+            actions.className = 'flex space-x-1 ml-2';
+            const view = document.createElement('button');
+            view.type = 'button';
+            view.title = 'Load QASM to Editor';
+            view.className = 'text-blue-600 hover:text-blue-800 font-bold px-1';
+            view.textContent = '{ }';
+            view.addEventListener('click', () => viewBatchItem(index));
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.title = 'Remove';
+            remove.className = 'text-yellow-700 hover:text-red-600 font-bold px-1';
+            remove.textContent = '\u00d7';
+            remove.addEventListener('click', () => removeFromBatch(index));
+            actions.append(view, remove);
+            li.append(label, actions);
             queueList.appendChild(li);
         });
     }
@@ -130,8 +170,8 @@ export async function viewBatchItem(index) {
             document.getElementById('algo-qubits').value = item.qubits;
         }
 
-        document.getElementById('ctx-algo-name').value = item.name;
-        dispatch('SET_CURRENT_ALGO_NAME', item.name);
+        document.getElementById('ctx-algo-name').value = batchItemLabel(item);
+        dispatch('SET_CURRENT_ALGO_NAME', batchItemLabel(item));
         updateContextBar();
         return;
     }
@@ -145,8 +185,8 @@ export async function viewBatchItem(index) {
                 ? await fetchMQTBench(item.algorithm, item.qubits)
                 : await fetchQASMBench(item.algorithm);
             qasmInput.value = data.qasm || "";
-            document.getElementById('ctx-algo-name').value = item.name;
-            dispatch('SET_CURRENT_ALGO_NAME', item.name);
+            document.getElementById('ctx-algo-name').value = batchItemLabel(item);
+            dispatch('SET_CURRENT_ALGO_NAME', batchItemLabel(item));
             updateContextBar();
         } catch (e) {
             qasmInput.value = "";
@@ -176,8 +216,8 @@ export async function viewBatchItem(index) {
                 document.getElementById('algo-qubits').value = item.qubits;
             }
 
-            document.getElementById('ctx-algo-name').value = item.name + ` (${item.qubits}q)`;
-            dispatch('SET_CURRENT_ALGO_NAME', item.name + ` (${item.qubits}q)`);
+            document.getElementById('ctx-algo-name').value = batchItemLabel(item);
+            dispatch('SET_CURRENT_ALGO_NAME', batchItemLabel(item));
             updateContextBar();
         } else {
             qasmInput.value = "";
@@ -207,7 +247,7 @@ export function _normalizePlaylistItem(raw) {
     const str = (v) => (v === undefined || v === null ? '' : String(v));
     const qubits = Number.parseInt(raw.qubits, 10);
     return {
-        name: str(raw.name),
+        name: bareCircuitName(str(raw.name)),
         algorithm: str(raw.algorithm),
         source: str(raw.source),
         qasm_string: str(raw.qasm_string),

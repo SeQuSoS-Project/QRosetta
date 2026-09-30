@@ -86,7 +86,7 @@ export function loadRunners() {
 
 /** Canonical IDs of the runners the server has enabled, from GET /runners. */
 export function getEnabledRunnerIds() {
-    return Object.values(_runnerOptInfo).filter(r => r.enabled !== false).map(r => r.id);
+    return Object.values(_runnerOptInfo).filter(r => r.enabled !== false && r.available !== false).map(r => r.id);
 }
 
 /** Why no backend can be selected, or null. */
@@ -136,14 +136,15 @@ export function renderConfigPanel(runners) {
 
     const btnDiv = document.createElement('div');
     btnDiv.className = "col-span-1 flex justify-end space-x-2 mb-2 border-b border-indigo-200 pb-2";
-    btnDiv.innerHTML = `<button onclick="toggleAllSimulators()" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium bg-indigo-100 px-3 py-1 rounded border border-indigo-300 shadow-sm transition-colors duration-200">Toggle All</button>`;
+    btnDiv.innerHTML = `<button type="button" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium bg-indigo-100 px-3 py-1 rounded border border-indigo-300 shadow-sm transition-colors duration-200">Toggle All</button>`;
+    btnDiv.querySelector('button').addEventListener('click', toggleAllSimulators);
     grid.appendChild(btnDiv);
 
     const modesDiv = document.createElement('div');
     modesDiv.className = "col-span-1 p-2 bg-white rounded border border-indigo-200 mb-2 space-y-2";
     modesDiv.innerHTML = `
         <label class="flex items-center space-x-2 cursor-pointer">
-            <input type="checkbox" id="multirun-toggle" onchange="toggleMultiRunMode(this)" ${_multiRunEnabled ? 'checked' : ''}
+            <input type="checkbox" id="multirun-toggle" ${_multiRunEnabled ? 'checked' : ''}
                    class="h-3 w-3 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500">
             <span class="text-xs font-bold text-indigo-800 uppercase">Multi-run mode (self-comparison)</span>
         </label>
@@ -152,16 +153,22 @@ export function renderConfigPanel(runners) {
             Selection is driven by counts; the checkboxes above are ignored. Runners with all-zero counts do not run.
         </p>
         <label class="flex items-center space-x-2 cursor-pointer pt-1 border-t border-indigo-50">
-            <input type="checkbox" id="ordering-toggle" onchange="toggleOrderingMode(this)" ${_orderingEnabled ? 'checked' : ''}
+            <input type="checkbox" id="ordering-toggle" ${_orderingEnabled ? 'checked' : ''}
                    class="h-3 w-3 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500">
             <span class="text-xs font-bold text-indigo-800 uppercase">Custom ordering (phases)</span>
         </label>
         <div id="ordering-presets" class="pl-5 space-x-2 ${_orderingEnabled ? '' : 'hidden'}">
             <span class="text-xs text-indigo-600">Lower phase number runs first; same number runs together.</span>
-            <button type="button" onclick="setOrderingConcurrent()" class="text-xs text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">All concurrent</button>
-            <button type="button" onclick="setOrderingSequential()" class="text-xs text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">Sequential</button>
+            <button type="button" data-ordering="concurrent" class="text-xs text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">All concurrent</button>
+            <button type="button" data-ordering="sequential" class="text-xs text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">Sequential</button>
         </div>
     `;
+    const multiRunToggle = /** @type {HTMLInputElement} */ (modesDiv.querySelector('#multirun-toggle'));
+    const orderingToggle = /** @type {HTMLInputElement} */ (modesDiv.querySelector('#ordering-toggle'));
+    multiRunToggle.addEventListener('change', () => toggleMultiRunMode(multiRunToggle));
+    orderingToggle.addEventListener('change', () => toggleOrderingMode(orderingToggle));
+    modesDiv.querySelector('[data-ordering="concurrent"]').addEventListener('click', setOrderingConcurrent);
+    modesDiv.querySelector('[data-ordering="sequential"]').addEventListener('click', setOrderingSequential);
     grid.appendChild(modesDiv);
 
     const maxGlobal = Math.max(...runners.map(r => r.max_level ?? 0), 0);
@@ -174,11 +181,12 @@ export function renderConfigPanel(runners) {
     globalDiv.className = "col-span-1 p-2 bg-indigo-100 rounded border border-indigo-200 mb-2";
     globalDiv.innerHTML = `
         <label class="block text-xs font-bold text-indigo-800 uppercase mb-1">Global Optimization Level</label>
-        <select id="opt-global" onchange="updateContextBar()" class="block w-full text-xs border-indigo-300 rounded p-1 focus:ring-indigo-500 focus:border-indigo-500">
+        <select id="opt-global" class="block w-full text-xs border-indigo-300 rounded p-1 focus:ring-indigo-500 focus:border-indigo-500">
             ${globalOpts}
         </select>
         <p class="text-xs text-indigo-600 mt-1">Applied to all runners — each runner uses the nearest level it supports. Override per-runner below.</p>
     `;
+    globalDiv.querySelector('#opt-global').addEventListener('change', updateContextBar);
     grid.appendChild(globalDiv);
 
     const mode = getState().executionMode;
@@ -216,7 +224,10 @@ export function renderConfigPanel(runners) {
         const max = r.max_level ?? 0;
         const name = RUNNER_DISPLAY_NAMES[r.id] || r.id;
         const tooltip = _buildOptTooltip(r.optimization_levels);
-        const isDisabled = r.enabled === false;
+        const isUnavailable = r.enabled !== false && r.available === false;
+        const isDisabled = r.enabled === false || isUnavailable;
+        const lockedNote = r.enabled === false ? ' (disabled on this server)'
+            : isUnavailable ? ` (unavailable${r.unavailable_reason ? `: ${r.unavailable_reason}` : ' on this server'})` : '';
         const isDefaultChecked = !deselected.has(r.id);
 
         let optionsHtml = '<option value="-1">Use Global</option>';
@@ -244,10 +255,10 @@ export function renderConfigPanel(runners) {
         div.className = "space-y-1";
         div.innerHTML = `
             <div class="flex items-center justify-between mb-1">
-                <label class="flex items-center space-x-2 cursor-pointer ${isDisabled ? 'opacity-40 cursor-not-allowed line-through text-red-400' : ''}">
+                <label class="flex items-center space-x-2 cursor-pointer ${r.enabled === false ? 'opacity-40 cursor-not-allowed line-through text-red-400' : isUnavailable ? 'opacity-40 cursor-not-allowed' : ''}"${isUnavailable && r.unavailable_reason ? ` title="${_escapeHtml(r.unavailable_reason)}"` : ''}>
                     <input type="checkbox" class="sim-checkbox h-3 w-3 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
                            data-sim="${_escapeHtml(r.id)}" ${isDefaultChecked && !isDisabled ? 'checked' : ''} ${isDisabled ? 'disabled' : ''} ${isDisabled ? 'data-locked="1"' : ''}>
-                    <span class="block text-xs font-medium text-gray-600">${_escapeHtml(name)}${isDisabled ? ' (disabled on this server)' : ''}</span>
+                    <span class="block text-xs font-medium text-gray-600">${_escapeHtml(name)}${_escapeHtml(lockedNote)}</span>
                 </label>
                 <label class="runner-phase-wrap hidden flex items-center space-x-1 text-[10px] text-gray-400">
                     <span>Phase</span>
@@ -257,7 +268,7 @@ export function renderConfigPanel(runners) {
             </div>
             <div class="opt-single-wrap">
                 <select data-runner="${_escapeHtml(r.id)}" class="runner-opt-select block w-full text-xs border-gray-300 rounded p-1 shadow-sm"
-                        title="${_escapeHtml(tooltip)}" ${max === 0 ? 'disabled' : ''}>
+                        title="${_escapeHtml(tooltip)}" ${max === 0 || isDisabled ? 'disabled' : ''}>
                     ${optionsHtml}
                 </select>
             </div>
@@ -347,7 +358,7 @@ export function getRunnerConfig() {
             const runner = inp.getAttribute('data-runner');
             const level = parseInt(inp.getAttribute('data-level'));
             const count = parseInt(inp.value) || 0;
-            if (count > 0) {
+            if (count > 0 && !/** @type {HTMLInputElement} */ (inp).disabled) {
                 if (!config[runner]) config[runner] = [];
                 for (let k = 0; k < count; k++) config[runner].push(level);
             }
@@ -355,8 +366,10 @@ export function getRunnerConfig() {
         return config;
     }
 
+    const selectable = new Set(getEnabledRunnerIds());
     const selects = document.querySelectorAll('.runner-opt-select');
     selects.forEach(s => {
+        if (!selectable.has(s.getAttribute('data-runner'))) return;
         const val = parseInt(s.value);
         if (val !== -1) {
             config[s.getAttribute('data-runner')] = val;

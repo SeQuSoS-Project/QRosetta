@@ -157,7 +157,7 @@
                         <tr>
                             <td><strong>Statevector</strong></td>
                             <td>The full output state amplitudes (no sampling).</td>
-                            <td>Fidelity and relative phase between normalised state pairs. No seed is used.</td>
+                            <td>Fidelity and global phase offset arg⟨a|b⟩ between normalised state pairs. No seed is used.</td>
                         </tr>
                         <tr>
                             <td><strong>Measured</strong></td>
@@ -194,9 +194,11 @@
                     <code>simulation_method</code>. The Summary tab's per-backend details and the
                     Performance and Resources tables show them as tags. Qiskit runs on qiskit-aer's
                     <code>AerSimulator</code> with <code>method="statevector"</code>. The cuQuantum runner
-                    also executes the circuit with qiskit-aer's statevector method; it uses the GPU only when
-                    one is available, and this deployment has none, so its results are qiskit-aer results
-                    computed on the CPU.
+                    simulates with NVIDIA cuStateVec on an NVIDIA GPU. On a server without one it is listed
+                    as unavailable in the Config drawer, with the reason the server gives, and it is not
+                    dispatched. Its GPU timings are not subject to the 0.5-CPU quota the other runners run
+                    under (see <a href="#resources">Resources, queueing and timeouts</a>), so compare them
+                    with the CPU backends with that in mind.
                 </p>
                 <p>
                     Each backend reports the amplitude <code>precision</code> it simulated in. Most use
@@ -215,12 +217,25 @@
                 </p>
                 <ul>
                     <li><strong>API-side</strong> (entries starting <code>API:</code>, tagged API in the
-                        UI). With <em>Apply SDK Preprocessing</em> on, the API merges several quantum registers
-                        into one in declaration order, then parses and re-emits the circuit with pytket and
-                        removes barriers. In measured mode, backends that sample natively receive the circuit
-                        with a measure-all appended when it has no measurements; this happens with
-                        preprocessing off too. With preprocessing off there is no register merge and no pytket
-                        round-trip.</li>
+                        UI). The API prepares one circuit per dispatch group. With <em>Apply SDK
+                        Preprocessing</em> on:
+                        <ul>
+                            <li><em>Statevector mode</em>: terminal measurements are removed, several
+                                quantum registers are merged into one in declaration order, and the circuit
+                                is parsed and re-emitted with pytket with barriers removed.</li>
+                            <li><em>Measured mode, native group</em> (<code>measured_native</code>, backends
+                                that sample with their own sampler): register merge, then the pytket
+                                round-trip with barriers removed.</li>
+                            <li><em>Measured mode, sampled group</em> (<code>measured_sampled</code>,
+                                backends that sample a statevector): register merge only. This group receives
+                                the circuit text without the pytket round-trip, so a gate pytket would rewrite
+                                (for example <code>u0</code>) reaches these backends as written.</li>
+                        </ul>
+                        In measured mode the native group also receives a measure-all when the circuit has no
+                        measurements; this happens with preprocessing off too. With preprocessing off there is
+                        no register merge and no pytket round-trip in any group; statevector mode still removes
+                        terminal measurements. The report's <code>dispatched_circuits</code> lists which runners
+                        were in which group.</li>
                     <li><strong>Runner-side</strong>. Each backend's own passes (gate rebasing, barrier
                         stripping, the backend's default compilation pass at every optimization level).
                         Passes the adapter needs regardless of the setting say so in their text.</li>
@@ -272,12 +287,15 @@
                 <p>
                     A statevector pair agrees when its fidelity, computed on normalised vectors and stored
                     unrounded, is at least 1 − <code>fidelity_tolerance</code>. The default tolerances are
-                    <code>fidelity_tolerance = 1e-5</code>, <code>phase_tolerance = 1e-12</code> rad,
+                    <code>fidelity_tolerance = 1e-5</code>, <code>phase_tolerance = 1e-6</code> rad,
                     <code>norm_tolerance = 1e-4</code>, <code>js_threshold = 0.01</code> nats and
                     <code>hellinger_threshold = 0.1</code> (the server reports its defaults at
                     <code>GET /config</code>). They can be changed in the Config drawer; the
                     values sent are recorded in the report's run configuration and in every pair record, and
-                    the pair record's values are the ones the label was computed with.
+                    the pair record's values are the ones the label was computed with. The phase tolerance
+                    of 1e-6 rad sits above single-precision rounding (about 1e-7 for
+                    <code>complex64</code>), so a complex64 backend is not reported as carrying a global
+                    phase because of rounding alone.
                 </p>
                 <h3>Statevector labels</h3>
                 <table>
@@ -313,7 +331,7 @@
                     <thead><tr><th><code>measured_assessment</code></th><th>Meaning</th></tr></thead>
                     <tbody>
                         <tr><td><code>consistent_within_shot_noise</code></td><td>Neither test finds a difference beyond shot noise. This holds even when the label is <code>distance_exceeds_threshold</code>.</td></tr>
-                        <tr><td><code>inconclusive_low_shots</code></td><td>Some expected counts are below 5, so the tests cannot decide. The pair is neither consistent nor in disagreement; the Summary tab gives the shot count the power model recommends.</td></tr>
+                        <tr><td><code>inconclusive_low_shots</code></td><td>Either some expected counts are below 5 after rare outcomes are pooled (<code>inconclusive_reason: low_expected_counts</code>), or neither test is significant but the power to detect the target gap is below 0.8 (<code>low_power</code>). The pair is neither consistent nor in disagreement; the Summary tab gives the shot count the power model recommends when it exceeds the shots used.</td></tr>
                         <tr><td><code>distinguishable</code></td><td>Both tests are significant after BH correction. This is the only measured outcome the Summary tab counts as a disagreement.</td></tr>
                         <tr><td><code>ambiguous</code></td><td>Exactly one of the two tests is significant. Treated as inconclusive, not as a disagreement.</td></tr>
                         <tr><td><code>not_comparable</code></td><td>The pair has no usable counts on at least one side.</td></tr>
@@ -346,8 +364,12 @@
                 <ul>
                     <li><strong>Direct fidelity</strong>: <code>F = |⟨â|b̂⟩|² = |Σₖ conj(âₖ) b̂ₖ|²</code>,
                         clamped to [0, 1] and stored unrounded.</li>
-                    <li><strong>Relative phase</strong>: <code>φ = arg⟨â|b̂⟩</code> in radians, in
-                        (−π, π]. A value with <code>|φ| ≤ phase_tolerance</code> is reported as 0.</li>
+                    <li><strong>Global phase offset</strong>: <code>φ = arg⟨â|b̂⟩</code> in radians, in
+                        (−π, π]. A value with <code>|φ| ≤ phase_tolerance</code> is reported as 0. This is
+                        the overall phase between the two states; a relative phase between components of a
+                        superposition shows up as reduced fidelity instead. The JSON field keeps its name,
+                        <code>direct_relative_phase_rad</code>, and the matrix is
+                        <code>relative_phase_matrix</code>.</li>
                     <li><strong>Bit-reversed fidelity</strong>: <code>F_rev = |⟨â|R b̂⟩|²</code>, where
                         <code>(R b)ₖ = b_rev(k)</code> and <code>rev(k)</code> reverses the n-bit binary
                         representation of the index <code>k</code>.</li>
@@ -394,7 +416,15 @@
                 <p>
                     The two backends' counts form a 2 × K contingency table <code>O</code> over the K
                     outcomes observed by either backend (outcomes with zero counts on both sides are
-                    dropped), on the basis the label selected. With row totals <code>Rᵢ</code>, column
+                    dropped). The table is built in the label-aligned basis: when the two backends declare
+                    different bit orders (<code>lsb</code> against <code>msb</code>), the second backend's
+                    keys are bit-reversed first; otherwise the keys are compared directly. The basis comes
+                    from the declared orderings, not from which basis gives the smaller distance, and is
+                    recorded as <code>statistical_test.basis</code>. Outcomes whose expected count is below 5
+                    are pooled into one bin, and more of the rarest outcomes are merged in until the pooled
+                    bin reaches an expected count of 5 or the table meets Cochran's rule (no expected count
+                    below 1, at most 20% below 5); <code>pooled_outcomes</code> records how many outcomes
+                    were merged. With row totals <code>Rᵢ</code>, column
                     totals <code>Cⱼ</code> and <code>N = Σ O</code>, the expected counts are
                     <code>Eᵢⱼ = Rᵢ Cⱼ / N</code>.
                 </p>
@@ -407,18 +437,26 @@
                         for each test. Benjamini–Hochberg: with p-values sorted
                         <code>p₍₁₎ ≤ … ≤ p₍ₘ₎</code>, <code>p̃₍ₖ₎ = min over j ≥ k of min(1, m p₍ⱼ₎ / j)</code>.
                         Bonferroni: <code>min(1, m p)</code>. A test is significant when its BH-adjusted
-                        p-value is below α = 0.05.</li>
-                    <li><strong>Verdict</strong>: <code>inconclusive_low_shots</code> if any
-                        <code>Eᵢⱼ &lt; 5</code>; else <code>distinguishable</code> if both tests are
-                        significant, <code>consistent</code> if neither is, <code>ambiguous</code> if
-                        exactly one is.</li>
+                        p-value is below α = 0.05. BH controls the false discovery rate at q = α: among
+                        the pairs it flags, up to a fraction q are expected to be flagged by chance, so one
+                        or two flagged pairs in a run with many can be false discoveries. Pairs that share a
+                        backend are not independent tests. A p-value that underflows to 0 is shown as
+                        <code>&lt;1e-300</code>, and values below 1e-3 in scientific notation.</li>
+                    <li><strong>Verdict</strong>: <code>inconclusive_low_shots</code> if no pooling gives
+                        adequate expected counts; else <code>distinguishable</code> if both tests are
+                        significant, <code>ambiguous</code> if exactly one is, and, if neither is,
+                        <code>consistent</code> when the power at the observed shots is at least 0.8 and
+                        <code>inconclusive_low_shots</code> (<code>low_power</code>) otherwise.</li>
                     <li><strong>Power model</strong>: the effect size is Cohen's
                         <code>w = δ</code> with δ = 0.05, the smallest w any distribution pair at total
                         variation δ can have (w ≥ TV). The chi-square statistic then follows a noncentral
                         χ² with <code>df = K − 1</code> and noncentrality <code>λ = N w²</code>.
                         <code>power_to_detect_delta_at_observed_shots = 1 − F(χ²₁₋α,df ; df, λ)</code>,
-                        and <code>shots_per_backend_for_target_power</code> is ⌈N*/2⌉, where N* is the
-                        total giving power 0.8. Because df uses the observed outcomes, the recommendation
+                        and <code>recommended_shots_per_backend</code> (also recorded under its earlier name
+                        <code>shots_per_backend_for_target_power</code>) is ⌈N*/2⌉, where N* is the
+                        total giving power 0.8. <code>recommended_exceeds_actual</code> says whether that is
+                        more than the shots either backend used; the Summary tab recommends more shots only
+                        then. Because df uses the observed outcomes, the recommendation
                         can be too small when the true support is larger.</li>
                 </ul>
             </section>
@@ -446,8 +484,8 @@
                 </table>
                 <h3>Counts keys</h3>
                 <p>
-                    A counts key is a bitstring over the classical bits the circuit's own
-                    <code>measure</code> statements write. Classical bits get one flat index in
+                    A counts key is a bitstring over every classical bit the circuit declares, including
+                    bits no <code>measure</code> statement writes; those read 0. Classical bits get one flat index in
                     <code>creg</code> declaration order: with <code>creg c[2]; creg d[3];</code>,
                     <code>c[0]</code>, <code>c[1]</code> are bits 0 and 1 and <code>d[0]</code>…<code>d[2]</code>
                     are bits 2–4. In an <code>lsb</code> key, classical bit 0 is the rightmost character; in an
@@ -466,7 +504,8 @@
                 </p>
                 <ul>
                     <li>A Pearson chi-square test (no continuity correction) and a G-test of homogeneity
-                        between the two count vectors, on the transform basis the label selected;</li>
+                        between the two count vectors, in the basis the two backends' declared bit orders
+                        select, with rare outcomes pooled;</li>
                     <li>Benjamini–Hochberg (FDR) and Bonferroni adjusted p-values across all pairs of the
                         run;</li>
                     <li>Effect size (total variation, Cramér’s V) and a power estimate that uses the observed
@@ -553,17 +592,22 @@
                         CPU limit of 0.5 and 512 MiB of memory; Kubernetes mode: a 0.5 CPU limit and 1 GiB), and
                         its math libraries run one thread. A process that needs a full core is throttled
                         under this quota, so wall-clock <code>simulation_time_sec</code> can exceed
-                        <code>simulation_cpu_time_sec</code>.</li>
+                        <code>simulation_cpu_time_sec</code>. The cuQuantum runner's simulation runs on the
+                        GPU, which this quota does not limit.</li>
                     <li><strong>One run at a time per runner.</strong> A runner executes one run at a time.
                         When several jobs, yours or other users', target the same runner, later runs wait for
-                        it. The wait is recorded as <code>queue_wait_sec</code>, shown in the per-backend
-                        details and as a "queued" tag in the Performance and Resources tables, and it is not
-                        part of any timing.</li>
+                        it. The wait is recorded as <code>queue_wait_sec</code> and is not part of any timing.
+                        Waits of 0.5 s or more are shown in the per-backend details and as a "queued" tag in
+                        the Performance and Resources tables; shorter values are dispatch overhead. In local
+                        mode a run may wait at most the server-wide cap <code>RUNNER_QUEUE_MAX_WAIT_SEC</code> (default
+                        1800 s, recorded in the report as <code>queue_max_wait_sec</code>); a run still queued
+                        at the cap is not started and is reported with <code>never_started: true</code>.</li>
                     <li><strong>Timeout scope.</strong> The timeout set in the Config drawer (the server's
                         allowed range is shown under the field) applies to each backend separately and covers
                         starting the isolated runner process, importing the SDK, the warm-up run and the timed
                         run. In local mode the budget starts when the run leaves the runner's queue, so time
-                        spent waiting for a busy runner does not count against it; in Kubernetes mode it runs
+                        spent waiting for a busy runner does not count against it; the queue wait has its own
+                        cap, independent of the timeout (see the previous item). In Kubernetes mode it runs
                         from Job creation and also covers pod scheduling, image pull and the result upload.
                         The report records the scope that applied. A backend that exceeds it ends with status
                         <code>timeout</code>. The value in the
@@ -581,9 +625,9 @@
                 <table>
                     <thead><tr><th>Tab</th><th>What it shows</th></tr></thead>
                     <tbody>
-                        <tr><td>Summary</td><td>How many of the server's enabled backends ran and which were not part of the run; failed runs grouped as Offline, Timed out and Errors; then what the pair records show. Statevector pairs are counted as agreeing directly or up to a global phase, and listed by label: not explained by any transform, agree only after bit reversal (with each side's declared ordering and the bit-reversed fidelity), after a qubit permutation, after normalising a slightly unnormalised vector, and not comparable with its reason. Measured pairs are grouped by <code>measured_assessment</code>: distinguishable (the only measured disagreement), inconclusive with too few shots (with the recommended shot count), inconclusive because the two tests disagree, consistent within shot noise, and not comparable. The success banner appears only when at least two backends succeeded and every pair agrees without a transform (in measured mode: every pair is consistent within shot noise and within the thresholds); it states the tolerance or α that was tested. A collapsible section lists per-backend device, simulator backend, precision, seeds, queue wait, memory method, thread settings and preprocessing.</td></tr>
+                        <tr><td>Summary</td><td>How many of the server's enabled backends ran and which were not part of the run; failed runs grouped as Offline, Timed out and Errors; then what the pair records show. Statevector pairs are counted as agreeing directly or up to a global phase, and listed by label: not explained by any transform, agree up to a global phase offset (with its value), agree only after bit reversal (with each side's declared ordering and the bit-reversed fidelity), after a qubit permutation, after normalising a slightly unnormalised vector, and not comparable with its reason. Measured pairs are grouped by <code>measured_assessment</code>: distinguishable (the only measured disagreement), inconclusive with too few shots (with each pair's test power, and the recommended shot count when it exceeds the shots used), inconclusive because the two tests disagree, consistent within shot noise (with each pair's test power), and not comparable. The distinguishable group carries a note on expected false discoveries under the BH correction. The success banner appears only when at least two backends succeeded and every pair agrees without a transform (in measured mode: every pair is consistent within shot noise and within the thresholds); it states the tolerance or α that was tested. A collapsible section lists per-backend device, simulator backend, precision, seeds, queue wait, memory method, thread settings and preprocessing.</td></tr>
                         <tr><td>Performance / Resources</td><td>Ranked successful runs, then the unranked runs with their status and reason. Tooltips on each column give the measurement window.</td></tr>
-                        <tr><td>Divergence</td><td>The N×N fidelity, relative-phase, JS-divergence (nats) and Hellinger matrices. A cell is green when it is within the tolerance recorded with that pair; OFF, ERR and T/O mark failed runs, n/c a pair that is not comparable (<code>null</code> in the report; reports from older versions use −1). The diagonal holds each backend compared with itself (fidelity 1, JS 0, phase 0). Values are unrounded: a fidelity other than 1 is printed with enough decimals to differ from 1, and non-zero values below 1e-3 in scientific notation.</td></tr>
+                        <tr><td>Divergence</td><td>The N×N fidelity, global phase offset arg⟨a|b⟩, JS-divergence (nats) and Hellinger matrices. A cell is green when it is within the tolerance recorded with that pair; OFF, ERR and T/O mark failed runs, n/c a pair that is not comparable (<code>null</code> in the report; reports from older versions use −1). The diagonal holds each backend compared with itself (fidelity 1, JS 0, phase 0). Values are unrounded: a fidelity other than 1 is printed with enough decimals to differ from 1, and non-zero values below 1e-3 in scientific notation.</td></tr>
                         <tr><td>Agreement</td><td>The label per backend pair, with the metrics, the tolerances used, the statistical test and provenance (seeds, ordering, SDK versions, preprocessing) per pair.</td></tr>
                         <tr><td>Artifacts</td><td>Publication figures and tables (SVG/PNG/PDF; LaTeX/CSV/HTML/Markdown/XLSX), scoped to any subset of backends in the browser.</td></tr>
                         <tr><td>Exports</td><td>The JSON report held in the browser, the full report from the server, and the RO-Crate export (see <a href="#endpoints">Reports and exports</a>).</td></tr>

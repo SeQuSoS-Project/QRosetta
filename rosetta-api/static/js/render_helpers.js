@@ -17,7 +17,7 @@ export const METRIC_DEFINITIONS = {
     "proc_peak": "<b>Window Peak:</b> Absolute peak RSS during the simulation window of the timed run, measured the same way as Mem Delta.",
     "theoretical_sv": "<b>Theoretical SV:</b> 2^N × 16 bytes, a dense complex128 statevector for the declared qubits (complex64 needs half). N/A for tensor-network backends (quimb).",
     "fidelity_matrix": "<b>Fidelity Matrix:</b> |⟨ψi|ψj⟩|² between the normalised statevectors, unrounded. Green when F ≥ 1 − the fidelity tolerance recorded with the pair. A value other than 1 is printed with enough decimals to differ from 1.",
-    "relative_phase_matrix": "<b>Relative Phase Matrix:</b> arg⟨ψi|ψj⟩ in radians. Green when |phase| ≤ the phase tolerance recorded with the pair. A non-zero phase with fidelity at 1 is a global phase.",
+    "relative_phase_matrix": "<b>Global phase offset arg⟨a|b⟩:</b> arg⟨ψi|ψj⟩ in radians. Green when |phase| ≤ the phase tolerance recorded with the pair. A non-zero value with fidelity at 1 means the two states differ only by a global phase.",
     "statistical_distance_matrix (js_divergence)": "<b>JS Divergence:</b> Jensen–Shannon divergence between the two count distributions, each normalised by its observed total, in nats (maximum ln 2 ≈ 0.693). Green when ≤ the JS threshold recorded with the pair.",
     "hellinger_distance_matrix": "<b>Hellinger Distance:</b> Hellinger distance between the two normalised count distributions (0 to 1). Green when ≤ the Hellinger threshold recorded with the pair.",
     "pairwise_agreement": "<b>Explained-Cause Agreement:</b> Each backend pair gets the first registered transform under which it agrees: direct → global phase → bit reversal → qubit permutation (up to 7 qubits). Otherwise residual_disagreement (statevector) or distance_exceeds_threshold (measured). agree_after_normalization marks an agreeing pair whose input norm differed from 1 by more than the norm tolerance. not_comparable pairs carry a reason.",
@@ -164,6 +164,12 @@ export function fmtNum(v, d = 4) {
     return s;
 }
 
+/** A p-value: fmtNum, with an underflowed 0 shown as below the smallest double. */
+export function fmtPValue(v) {
+    if (v === 0) return '<1e-300';
+    return fmtNum(v);
+}
+
 /** A count-like value (gate count, depth, shots, seed): integers without decimals. */
 export function fmtInt(v) {
     if (typeof v === 'number' && Number.isInteger(v) && Math.abs(v) < 1e15) return String(v);
@@ -230,7 +236,7 @@ export function executionTags(r) {
 /** Queue-wait note for a run that waited for its runner, or null. */
 export function queueWaitText(r) {
     const w = r?.queue_wait_sec;
-    if (typeof w !== 'number' || !(w > 0)) return null;
+    if (typeof w !== 'number' || !(w >= 0.5)) return null;
     return `waited ${fmtNum(w, 1)} s for the runner to finish another run; not included in timings`;
 }
 

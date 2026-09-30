@@ -2,7 +2,7 @@
 // evidence with metrics, shot-noise test and provenance).
 
 import {
-    STATUS_STYLES, _applyLegendDots, _chip, _cloneTemplate, _displayRunnerName, fmtInt, fmtNum,
+    STATUS_STYLES, _applyLegendDots, _chip, _cloneTemplate, _displayRunnerName, fmtInt, fmtNum, fmtPValue,
     getOptBadge, renderPreprocessingList, renderTooltip,
 } from './render_helpers.js';
 import { RUNNER_STATUS_STYLE, effectiveAgreement, measuredAssessment, statusBySimulator } from './run_status.js';
@@ -22,7 +22,7 @@ const MATRICES = [
         within: (v, rec) => v >= 1 - _pairThreshold(rec, 'fidelity_tolerance'),
     },
     {
-        key: 'relative_phase_matrix', title: 'Relative Phase Matrix (rad)',
+        key: 'relative_phase_matrix', title: 'Global phase offset arg⟨a|b⟩ (rad)',
         within: (v, rec) => Math.abs(v) <= _pairThreshold(rec, 'phase_tolerance'),
     },
     {
@@ -248,7 +248,7 @@ export function _agreementMetricsBlock(p) {
     if (p.mode === 'statevector') {
         rows = [
             ['direct fidelity', _fmtNum(m.direct_fidelity)],
-            ['direct phase (rad)', _fmtNum(m.direct_relative_phase_rad)],
+            ['global phase offset arg⟨a|b⟩ (rad)', _fmtNum(m.direct_relative_phase_rad)],
             ['bit-reversed fidelity', _fmtNum(m.bit_reversed_fidelity)],
             ['perm attempted', _permRow(qp)],
             ['perm', qp.permutation ? JSON.stringify(qp.permutation) : '—'],
@@ -287,11 +287,11 @@ export function _statisticalTestBlock(st) {
     const chi2 = st.chi2 || {};
     const gt = st.g_test || {};
     wrap.appendChild(_kvGrid([
-        ['χ² p', _fmtNum(chi2.p_value)],
-        ['χ² p (BH)', _fmtNum(chi2.p_value_bh)],
+        ['χ² p', fmtPValue(chi2.p_value)],
+        ['χ² p (BH)', fmtPValue(chi2.p_value_bh)],
         ['χ² significant (BH)', _yesNo(chi2.significant_bh) ?? '—'],
-        ['G-test p', _fmtNum(gt.p_value)],
-        ['G-test p (BH)', _fmtNum(gt.p_value_bh)],
+        ['G-test p', fmtPValue(gt.p_value)],
+        ['G-test p (BH)', fmtPValue(gt.p_value_bh)],
         ['G-test significant (BH)', _yesNo(gt.significant_bh) ?? '—'],
         ['α', st.alpha],
         ['shots', st.n_shots ? _kvMap(st.n_shots) : undefined],
@@ -299,9 +299,16 @@ export function _statisticalTestBlock(st) {
         ['total variation', _fmtNum(ef.total_variation)],
         ["Cramér's V", _fmtNum(ef.cramers_v)],
         [`power at observed shots (δ=${pw.delta_tv})`, _fmtNum(pw.power_to_detect_delta_at_observed_shots, 3)],
-        ['shots/backend for target power', fmtInt(pw.shots_per_backend_for_target_power)],
+        ['shots/backend for target power', fmtInt(pw.recommended_shots_per_backend ?? st.recommended_shots_per_backend ?? pw.shots_per_backend_for_target_power)],
+        ['more shots than used', typeof (pw.recommended_exceeds_actual ?? st.recommended_exceeds_actual) === 'boolean'
+            ? _yesNo(pw.recommended_exceeds_actual ?? st.recommended_exceeds_actual) : undefined],
         ['power df', pw.df !== undefined ? fmtInt(pw.df) : undefined],
         ['low-count warning', st.low_count_warning ? 'yes' : 'no'],
+        ['basis source', st.basis_source ?? undefined],
+        ['outcomes observed / tested bins', st.observed_outcomes !== undefined
+            ? `${fmtInt(st.observed_outcomes)} / ${fmtInt(st.tested_outcome_bins)}` : undefined],
+        ['rare outcomes pooled', st.pooled_outcomes !== undefined ? fmtInt(st.pooled_outcomes) : undefined],
+        ['inconclusive reason', st.inconclusive_reason ?? undefined],
     ]));
     const model = document.createElement('div');
     model.className = 'text-[11px] text-gray-400 mt-1';

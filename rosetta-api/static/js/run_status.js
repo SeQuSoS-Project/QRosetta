@@ -89,12 +89,34 @@ export function isDisagreement(p) {
     return p?.agreement === 'residual_disagreement';
 }
 
-/** Largest shots-per-backend the power model recommends across these pairs, or null. */
+/** Power of the pair's shot-noise test to detect the target total-variation gap, or null. */
+export function pairPower(p) {
+    const v = p?.metrics?.statistical_test?.power?.power_to_detect_delta_at_observed_shots;
+    return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+/** Shots per backend the power model recommends for a pair, and whether that exceeds the shots used. */
+export function pairRecommendation(p) {
+    const st = p?.metrics?.statistical_test || {};
+    const power = st.power || {};
+    const pick = [power.recommended_shots_per_backend, st.recommended_shots_per_backend,
+        p?.recommended_shots_per_backend, power.shots_per_backend_for_target_power];
+    const shots = pick.find(n => typeof n === 'number' && Number.isFinite(n)) ?? null;
+    let exceeds = [power.recommended_exceeds_actual, st.recommended_exceeds_actual, p?.recommended_exceeds_actual]
+        .find(v => typeof v === 'boolean');
+    if (exceeds === undefined) {
+        const used = Object.values(st.n_shots || {}).filter(n => typeof n === 'number');
+        exceeds = shots !== null && used.length > 0 && shots > Math.min(...used);
+    }
+    return { shots, exceeds };
+}
+
+/** Largest recommended shots-per-backend across the pairs whose recommendation exceeds the shots used, or null. */
 export function recommendedShots(pairs) {
     let best = null;
     (pairs || []).forEach(p => {
-        const n = p?.metrics?.statistical_test?.power?.shots_per_backend_for_target_power;
-        if (typeof n === 'number' && Number.isFinite(n) && (best === null || n > best)) best = n;
+        const { shots, exceeds } = pairRecommendation(p);
+        if (exceeds && shots !== null && (best === null || shots > best)) best = shots;
     });
     return best;
 }

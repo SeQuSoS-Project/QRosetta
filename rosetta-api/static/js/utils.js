@@ -2,7 +2,7 @@
 // agreement-threshold inputs, seed input, and QASM/playlist import/export.
 
 import { allButtons } from './dom.js';
-import { BASE_URL, getAuthHeaders } from './api.js';
+import { BASE_URL, apiDetailText, getAuthHeaders } from './api.js';
 
 import { renderBatchProgress, _stopRunnerCardTimer } from './status_cards.js';
 import { dispatch, getState } from './state.js';
@@ -157,7 +157,7 @@ function _liveJobId() {
 
 async function _errorDetail(response) {
     const body = await response.json().catch(() => null);
-    return (body && (body.detail || body.error)) || response.statusText || `HTTP ${response.status}`;
+    return (body && (apiDetailText(body.detail) || body.error)) || response.statusText || `HTTP ${response.status}`;
 }
 
 function _filenameFrom(response, fallback) {
@@ -302,7 +302,7 @@ export function _escapeHtml(s) {
 /** Defaults of AgreementThresholds in schemas/benchmark.py (checked by
  * tests/unit/test_threshold_defaults_sync.py). */
 export const AGREEMENT_THRESHOLD_DEFAULTS = {
-    fidelity_tolerance: 1e-5, phase_tolerance: 1e-12,
+    fidelity_tolerance: 1e-5, phase_tolerance: 1e-6,
     js_threshold: 0.01, hellinger_threshold: 0.1, norm_tolerance: 1e-4,
 };
 
