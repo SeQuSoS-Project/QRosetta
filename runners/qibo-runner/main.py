@@ -1,10 +1,12 @@
 """Qibo runner: parses OpenQASM 2.0 with qibo.Circuit.from_qasm and simulates it on Qibo's numpy backend."""
 
+import re
+
 from fastapi import FastAPI
 from qrosetta_commons.counts import prepare_final_state_sampling, prepare_statevector_qasm
 from qrosetta_commons.helpers import (
-    CompileResult, get_logger, register_runner_endpoints, run_cli_main,
-    run_measured_job, run_statevector_job, with_sdk_versions,
+    CompileResult, declare_sdk_packages, get_logger, register_runner_endpoints,
+    run_cli_main, run_measured_job, run_statevector_job, with_sdk_versions,
 )
 import numpy as np
 
@@ -12,6 +14,8 @@ from qibo.models import Circuit
 from qibo import gates, set_backend
 
 set_backend("numpy")
+
+declare_sdk_packages("qibo")
 
 logger = get_logger("qibo-runner")
 
@@ -24,6 +28,10 @@ _FROM_QASM_NOTE = (
     "qelib1 gates map to Qibo gates, and Qibo's U3 differs from qelib1 u3 by the global "
     "phase e^{-i(phi+lambda)/2}, which becomes a relative phase once the gate is controlled "
     "(cu3). Required by the adapter, applied regardless of apply_preprocessing.")
+_REMOVE_BARRIERS_NOTE = (
+    "Regex removal of barrier statements: Circuit.from_qasm rejects every barrier "
+    "(\"Unsupported QuantumBarrier statement\").")
+_BARRIER_RE = re.compile(r"\bbarrier\b[^;]*;")
 _FUSION_NOTE_SUFFIX = (
     " transpiled_qasm is the circuit before fusion, since fused blocks have no OpenQASM 2.0 "
     "form.")
@@ -60,11 +68,15 @@ def _parse(qasm_str: str, optimization_level: int = 0) -> tuple[Circuit, list[st
 
 
 def _compile(payload: dict, qasm: str, notes=()) -> CompileResult:
+    notes = list(notes)
+    if payload.get("apply_preprocessing", True) and _BARRIER_RE.search(qasm):
+        qasm = _BARRIER_RE.sub("", qasm)
+        notes.append(_REMOVE_BARRIERS_NOTE)
     circuit, preprocessing_applied = _parse(qasm, payload.get("optimization_level", 0))
     return CompileResult(
         circuit=circuit,
         n_qubits=circuit.nqubits,
-        preprocessing_applied=list(notes) + preprocessing_applied,
+        preprocessing_applied=notes + preprocessing_applied,
         transpiled_qasm=qasm,
         precision=_PRECISION)
 

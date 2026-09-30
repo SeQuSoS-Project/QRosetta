@@ -5,10 +5,13 @@ import random
 from fastapi import FastAPI
 from qrosetta_commons.counts import parse_measurement_layout, prepare_statevector_qasm
 from qrosetta_commons.helpers import (
-    CompileResult, get_logger, get_num_qubits_from_qasm, register_runner_endpoints,
-    run_cli_main, run_measured_job, run_statevector_job, with_sdk_versions,
+    CompileResult, declare_sdk_packages, get_logger, get_num_qubits_from_qasm,
+    register_runner_endpoints, run_cli_main, run_measured_job, run_statevector_job,
+    with_sdk_versions,
 )
 import numpy as np
+
+declare_sdk_packages("qrisp", "qiskit", "qiskit-terra")
 
 logger = get_logger("qrisp-runner")
 

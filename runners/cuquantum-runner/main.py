@@ -9,13 +9,15 @@ from qrosetta_commons.counts import (
     counts_from_register_keys, parse_measurement_layout, prepare_statevector_qasm,
 )
 from qrosetta_commons.helpers import (
-    CompileResult, get_logger, register_runner_endpoints, run_cli_main,
-    run_measured_job, run_statevector_job, runner_error, with_sdk_versions,
+    CompileResult, declare_sdk_packages, get_logger, register_runner_endpoints,
+    run_cli_main, run_measured_job, run_statevector_job, runner_error, with_sdk_versions,
 )
 import json
 import os
 
 import numpy as np
+
+declare_sdk_packages("qiskit", "qiskit-aer-gpu", "custatevec-cu12")
 
 logger = get_logger("cuquantum-runner")
 

@@ -12,8 +12,8 @@ from qrosetta_commons.counts import (
     parse_measurement_layout, prepare_statevector_qasm, unit_pairs, unordered_qreg_note,
 )
 from qrosetta_commons.helpers import (
-    CompileResult, get_logger, register_runner_endpoints, run_cli_main,
-    run_measured_job, run_statevector_job, runner_error, with_sdk_versions,
+    CompileResult, declare_sdk_packages, get_logger, register_runner_endpoints,
+    run_cli_main, run_measured_job, run_statevector_job, runner_error, with_sdk_versions,
 )
 import pytket.qasm
 from pytket.circuit import Circuit, OpType
@@ -28,6 +28,8 @@ try:
     QSIM_AVAILABLE = True
 except ImportError:
     QSIM_AVAILABLE = False
+
+declare_sdk_packages("pytket", "pytket-cirq", "cirq-core", "qsimcirq")
 
 logger = get_logger("qsim-cirq-runner")
 

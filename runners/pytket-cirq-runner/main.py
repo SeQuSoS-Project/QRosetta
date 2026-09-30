@@ -10,8 +10,8 @@ from qrosetta_commons.counts import (
     unit_pairs, unordered_qreg_note,
 )
 from qrosetta_commons.helpers import (
-    CompileResult, get_logger, register_runner_endpoints, run_cli_main,
-    run_measured_job, run_statevector_job, with_sdk_versions,
+    CompileResult, declare_sdk_packages, get_logger, register_runner_endpoints,
+    run_cli_main, run_measured_job, run_statevector_job, with_sdk_versions,
 )
 import numpy as np
 import pytket.qasm
@@ -32,6 +32,8 @@ class _SuppressGlobalPhaseWarning(logging.Filter):
 
 
 logging.getLogger().addFilter(_SuppressGlobalPhaseWarning())
+
+declare_sdk_packages("pytket", "pytket-cirq", "cirq-core")
 
 logger = get_logger("pytket-cirq-runner")
 
@@ -136,7 +138,9 @@ def _to_cirq_with_phase(tk_circ: Circuit) -> cirq.Circuit:
 
 def _serialize(compiled: CompileResult) -> str:
     """QASM of the compiled pytket circuit; hqslib1 covers the PhasedX gates it contains."""
-    return pytket.qasm.circuit_to_qasm_str(compiled.circuit[-1], header="hqslib1")
+    circ = compiled.circuit[-1]
+    return pytket.qasm.circuit_to_qasm_str(
+        circ, header="hqslib1", maxwidth=max(32, len(circ.bits)))
 
 
 @with_sdk_versions

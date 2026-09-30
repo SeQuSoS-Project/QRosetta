@@ -6,8 +6,8 @@ from qrosetta_commons.counts import (
     statevector_in_declaration_order,
 )
 from qrosetta_commons.helpers import (
-    CompileResult, get_logger, register_runner_endpoints, run_cli_main,
-    run_measured_job, run_statevector_job, with_sdk_versions,
+    CompileResult, declare_sdk_packages, get_logger, register_runner_endpoints,
+    run_cli_main, run_measured_job, run_statevector_job, with_sdk_versions,
 )
 import re
 import numpy as np
@@ -17,6 +17,8 @@ from pytket.circuit import OpType
 
 from qat.interop.openqasm import OqasmParser
 from qat.qpus import PyLinalg
+
+declare_sdk_packages("myqlm", "myqlm-interop", "myqlm-simulators", "qat-core", "pytket")
 
 logger = get_logger("myqlm-runner")
 
@@ -46,7 +48,8 @@ def _preprocess_qasm(qasm_str: str, apply_preprocessing: bool) -> tuple[str, lis
     if apply_preprocessing:
         tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_str)
         auto_rebase_pass({OpType.CX, OpType.Rz, OpType.Rx}).apply(tk_circ)
-        return pytket.qasm.circuit_to_qasm_str(tk_circ), [_REBASE_NOTE]
+        qasm = pytket.qasm.circuit_to_qasm_str(tk_circ, maxwidth=max(32, len(tk_circ.bits)))
+        return qasm, [_REBASE_NOTE]
     if not re.search(r"\btdg\b", qasm_str):
         return qasm_str, []
     return re.sub(r"\btdg\b", "u1(-pi/4)", qasm_str), [_TDG_NOTE]

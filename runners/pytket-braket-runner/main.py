@@ -6,12 +6,16 @@ from qrosetta_commons.counts import (
     statevector_in_declaration_order, unit_pairs, unordered_qreg_note,
 )
 from qrosetta_commons.helpers import (
-    CompileResult, get_logger, register_runner_endpoints, run_cli_main,
-    run_measured_job, run_statevector_job, with_sdk_versions,
+    CompileResult, declare_sdk_packages, get_logger, register_runner_endpoints,
+    run_cli_main, run_measured_job, run_statevector_job, with_sdk_versions,
 )
 import pytket.qasm
+from pytket.circuit import Bit
 from pytket.extensions.braket import BraketBackend
 from pytket.passes import RemoveBarriers
+
+declare_sdk_packages(
+    "pytket", "pytket-braket", "amazon-braket-sdk", "amazon-braket-default-simulator")
 
 logger = get_logger("pytket-braket-runner")
 
@@ -98,7 +102,8 @@ def _compile_measured(payload: dict) -> CompileResult:
 
 
 def _serialize(compiled: CompileResult) -> str:
-    return pytket.qasm.circuit_to_qasm_str(compiled.circuit[1])
+    circ = compiled.circuit[1]
+    return pytket.qasm.circuit_to_qasm_str(circ, maxwidth=max(32, len(circ.bits)))
 
 
 @with_sdk_versions
@@ -131,11 +136,14 @@ def process_run_measured(payload: dict) -> dict:
         return backend.get_result(handle)
 
     def shape_counts(result, compiled, payload):
-        """Re-key the counts over the declared classical bits (msb)."""
+        """Re-key the counts over the declared classical bits (msb).
+
+        pytket-braket reads out bit k of the compiled circuit as ``c[k]``.
+        """
         _, compiled_circ, bits, _ = compiled.circuit
         layout = parse_measurement_layout(payload["circuit_data"])
-        return counts_from_pytket_result(
-            layout, result, compiled_circ.bits, bits, "msb"), None
+        result_bits = [Bit(k) for k in range(len(compiled_circ.bits))]
+        return counts_from_pytket_result(layout, result, result_bits, bits, "msb"), None
 
     return run_measured_job(
         simulator="braket", payload=payload, logger=logger, compile_fn=_compile_measured,

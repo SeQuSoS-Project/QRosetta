@@ -11,11 +11,13 @@ from qrosetta_commons.counts import (
     statevector_in_declaration_order, unit_pairs, unordered_qreg_note,
 )
 from qrosetta_commons.helpers import (
-    CompileResult, _draw_statevector_samples, get_logger,
+    CompileResult, _draw_statevector_samples, declare_sdk_packages, get_logger,
     register_runner_endpoints, run_cli_main, run_measured_job, run_statevector_job,
     with_sdk_versions,
 )
 from pytket.passes import RemoveBarriers
+
+declare_sdk_packages("pytket", "pytket-quest", "pyquest")
 
 app = FastAPI(title="QuEST Runner")
 logger = get_logger("pytket-quest-runner")
@@ -84,7 +86,8 @@ def _compile_sampled(payload: dict) -> CompileResult:
 
 
 def _serialize(compiled: CompileResult) -> str:
-    return pytket.qasm.circuit_to_qasm_str(compiled.circuit[1])
+    circ = compiled.circuit[1]
+    return pytket.qasm.circuit_to_qasm_str(circ, maxwidth=max(32, len(circ.bits)))
 
 
 @with_sdk_versions

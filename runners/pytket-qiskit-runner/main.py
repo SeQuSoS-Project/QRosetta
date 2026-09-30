@@ -13,9 +13,11 @@ from qrosetta_commons.counts import (
     statevector_in_declaration_order, unordered_qreg_note,
 )
 from qrosetta_commons.helpers import (
-    CompileResult, get_logger, register_runner_endpoints, run_cli_main,
-    run_measured_job, run_statevector_job, with_sdk_versions,
+    CompileResult, declare_sdk_packages, get_logger, register_runner_endpoints,
+    run_cli_main, run_measured_job, run_statevector_job, with_sdk_versions,
 )
+
+declare_sdk_packages("pytket", "pytket-qiskit", "qiskit", "qiskit-aer")
 
 logger = get_logger("pytket-qiskit-runner")
 

@@ -8,12 +8,14 @@ from qrosetta_commons.counts import (
     statevector_in_declaration_order, unit_pairs, unordered_qreg_note,
 )
 from qrosetta_commons.helpers import (
-    CompileResult, get_logger, register_runner_endpoints, run_cli_main,
-    run_measured_job, run_statevector_job, with_sdk_versions,
+    CompileResult, declare_sdk_packages, get_logger, register_runner_endpoints,
+    run_cli_main, run_measured_job, run_statevector_job, with_sdk_versions,
 )
 import pytket.qasm
 from pytket.extensions.qulacs import QulacsBackend
 from pytket.passes import RemoveBarriers
+
+declare_sdk_packages("pytket", "pytket-qulacs", "qulacs")
 
 logger = get_logger("pytket-qulacs-runner")
 
@@ -105,7 +107,8 @@ def _compile_measured(payload: dict) -> CompileResult:
 
 
 def _serialize(compiled: CompileResult) -> str:
-    return pytket.qasm.circuit_to_qasm_str(compiled.circuit[1])
+    circ = compiled.circuit[1]
+    return pytket.qasm.circuit_to_qasm_str(circ, maxwidth=max(32, len(circ.bits)))
 
 
 @with_sdk_versions

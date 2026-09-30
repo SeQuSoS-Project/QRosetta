@@ -3,9 +3,12 @@
 from fastapi import FastAPI
 from qrosetta_commons.counts import prepare_final_state_sampling, prepare_statevector_qasm
 from qrosetta_commons.helpers import (
-    CompileResult, _draw_statevector_samples, get_logger, register_runner_endpoints, run_cli_main,
-    run_measured_job, run_statevector_job, runner_error, with_sdk_versions,
+    CompileResult, _draw_statevector_samples, declare_sdk_packages, get_logger,
+    register_runner_endpoints, run_cli_main, run_measured_job, run_statevector_job,
+    runner_error, with_sdk_versions,
 )
+
+declare_sdk_packages("torchquantum", "torch", "qiskit", "qiskit-terra")
 
 logger = get_logger("torchquantum-runner")
 

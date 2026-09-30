@@ -3,12 +3,14 @@
 from fastapi import FastAPI
 from qrosetta_commons.counts import prepare_final_state_sampling, prepare_statevector_qasm
 from qrosetta_commons.helpers import (
-    CompileResult, _draw_statevector_samples, get_logger, get_num_qubits_from_qasm,
-    register_runner_endpoints, run_cli_main, run_measured_job, run_statevector_job,
-    strip_barriers_from_qasm, with_sdk_versions,
+    CompileResult, _draw_statevector_samples, declare_sdk_packages, get_logger,
+    get_num_qubits_from_qasm, register_runner_endpoints, run_cli_main, run_measured_job,
+    run_statevector_job, strip_barriers_from_qasm, with_sdk_versions,
 )
 import numpy as np
 import pennylane as qml
+
+declare_sdk_packages("pennylane", "pennylane-lightning", "pennylane-qiskit", "qiskit")
 
 app = FastAPI(title="Pennylane Default Runner")
 logger = get_logger("pennylane-default-runner")

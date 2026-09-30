@@ -10,8 +10,9 @@ from qrosetta_commons.counts import (
     prepare_final_state_sampling, prepare_statevector_qasm, strip_identity_gates,
 )
 from qrosetta_commons.helpers import (
-    CompileResult, get_logger, register_runner_endpoints, run_cli_main, run_measured_job,
-    run_statevector_job, runner_error, strip_qasm_comments, with_sdk_versions,
+    CompileResult, declare_sdk_packages, get_logger, register_runner_endpoints,
+    run_cli_main, run_measured_job, run_statevector_job, runner_error, strip_qasm_comments,
+    with_sdk_versions,
 )
 import numpy as np
 
@@ -19,6 +20,8 @@ warnings.filterwarnings("ignore", message=".*kahypar.*", category=UserWarning)
 warnings.filterwarnings("ignore", message=".*optuna.*", category=UserWarning)
 warnings.filterwarnings("ignore", message=".*cmaes.*", category=UserWarning)
 warnings.filterwarnings("ignore", message=".*nevergrad.*", category=UserWarning)
+
+declare_sdk_packages("quimb", "autoray", "cotengra")
 
 logger = get_logger("quimb-runner")
 
