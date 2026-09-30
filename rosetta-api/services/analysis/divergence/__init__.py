@@ -49,6 +49,8 @@ from .statevector import (
 from .statistics import (
     _apply_multiple_comparison_correction,
     _bh_adjust,
+    _by_adjust,
+    _by_constant,
     _shots_per_backend_for_target_power,
     _statistical_agreement_test,
 )
@@ -73,6 +75,8 @@ __all__ = [
     "_best_counts_qubit_permutation_metrics",
     "_best_statevector_qubit_permutation_metrics",
     "_bh_adjust",
+    "_by_adjust",
+    "_by_constant",
     "_bit_reversed_counts",
     "_bit_reversed_statevector",
     "_classify_counts_pair",

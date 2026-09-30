@@ -4,8 +4,12 @@
 order, each with a 1-based ``rank``. Everything else is listed in ``unranked`` with a
 ``reason``, so ``ranking[0]`` is absent when no backend succeeded. A failed run's
 ``status`` is its ``dispatch_status`` (error, timeout or offline). Every entry carries the
-``device`` the run reported ("CPU" when it reported none).
+``device`` the run reported ("CPU" when it reported none). A run with two or more timing
+samples also carries its median total time (median compilation + median simulation) and
+the IQR and stdev of the per-run totals, and is ranked by the median total.
 """
+
+from .timing import stage_median, timing_summary
 
 _FAILED_DISPATCH = ("error", "timeout", "offline")
 
@@ -27,8 +31,11 @@ def _device(res):
 
 
 def _rank(entries, metric):
-    """Sort ranked entries ascending by ``metric`` (stable) and assign 1-based ranks."""
-    ordered = sorted(entries, key=lambda x: x[metric])
+    """Sort ranked entries ascending by ``metric`` (stable) and assign 1-based ranks.
+
+    ``metric`` is a key or a function of the entry."""
+    key = metric if callable(metric) else (lambda x: x[metric])
+    ordered = sorted(entries, key=key)
     for position, entry in enumerate(ordered, start=1):
         entry["rank"] = position
     return ordered
@@ -64,7 +71,7 @@ def create_performance_report(results_list: list) -> dict:
                 "rank": None,
             })
         else:
-            ranked.append({
+            entry = {
                 "simulator": sim_name,
                 "device": _device(res),
                 "status": "success",
@@ -74,12 +81,17 @@ def create_performance_report(results_list: list) -> dict:
                 "cpu_time_sec": res.get('cpu_time_sec'),
                 "gate_count": res.get('gate_count'),
                 "circuit_depth": res.get('circuit_depth'),
-            })
+            }
+            entry.update(_repeat_statistics(res))
+            ranked.append(entry)
 
+    repeated = any("execution_time_sec_median" in e for e in ranked)
     return {
-        "summary": "Execution time in seconds (fastest first).",
-        "ranking_metric": "execution_time_sec",
-        "ranking": _rank(ranked, "execution_time_sec"),
+        "summary": ("Median execution time in seconds over the timed runs (fastest first)."
+                    if repeated else "Execution time in seconds (fastest first)."),
+        "ranking_metric": "execution_time_sec_median" if repeated else "execution_time_sec",
+        "ranking": _rank(ranked, lambda e: e.get("execution_time_sec_median",
+                                                 e["execution_time_sec"])),
         "unranked": unranked,
     }
 
@@ -135,4 +147,19 @@ def create_resource_report(results_list: list) -> dict:
         "ranking_metric": "process_peak_rss_mb",
         "ranking": _rank(ranked, "process_peak_rss_mb"),
         "unranked": unranked,
+    }
+
+
+def _repeat_statistics(res):
+    """Median total time and the IQR and stdev of the per-run totals for a result with two
+    or more timing samples; {} otherwise."""
+    total = timing_summary(res, "execution_time")
+    if total is None:
+        return {}
+    return {
+        "execution_time_sec_median": stage_median(res, "execution_time"),
+        "execution_time_sec_iqr": total["iqr"],
+        "execution_time_sec_stdev": total["stdev"],
+        "timing_samples": total["n"],
+        "timing_statistic": "median",
     }

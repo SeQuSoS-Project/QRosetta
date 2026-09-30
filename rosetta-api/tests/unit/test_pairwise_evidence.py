@@ -3,6 +3,8 @@
 import json
 import math
 
+import pytest
+
 from services.analysis.divergence import (
     MAX_EXHAUSTIVE_QUBIT_PERMUTATION_QUBITS,
     _bh_adjust,
@@ -390,8 +392,8 @@ def test_statistical_test_consistent_for_identical_distributions():
     assert stat["basis"] == "direct"
     assert stat["verdict"] == "consistent"
     assert stat["effect_size"]["total_variation"] == 0.0
-    assert stat["chi2"]["significant_bh"] is False
-    assert stat["g_test"]["significant_bh"] is False
+    assert stat["chi2"]["significant_by"] is False
+    assert stat["g_test"]["significant_by"] is False
     assert evidence["agreement"] == "distance_within_threshold"
     _assert_strict_json(report)
 
@@ -405,8 +407,8 @@ def test_statistical_test_distinguishable_for_clearly_different_distributions():
     evidence = _record(report, "a", "b")
     stat = evidence["metrics"]["statistical_test"]
     assert stat["verdict"] == "distinguishable"
-    assert stat["chi2"]["significant_bh"] is True
-    assert stat["g_test"]["significant_bh"] is True
+    assert stat["chi2"]["significant_by"] is True
+    assert stat["g_test"]["significant_by"] is True
     assert stat["effect_size"]["total_variation"] > 0.5
     _assert_strict_json(report)
 
@@ -450,9 +452,13 @@ def test_statistical_test_summary_and_fdr_across_family():
     summary = report["statistical_test_summary"]
     assert summary["family_size"] == 3  # C(3,2) comparable pairs
     assert summary["alpha"] == 0.05
-    assert "benjamini_hochberg" in summary["correction"]
+    assert summary["correction"] == "BY"
+    assert summary["c_m"] == 1 + 1 / 2 + 1 / 3
+    assert summary["adjusted_p_values"] == ["benjamini_yekutieli", "benjamini_hochberg", "bonferroni"]
     for pair in report["pairwise_agreement"]:
         stat = pair["metrics"]["statistical_test"]
+        assert stat["correction"] == "BY"
+        assert stat["chi2"]["p_value_by"] >= stat["chi2"]["p_value_bh"]
         assert stat["chi2"]["p_value_bh"] is not None
         assert stat["chi2"]["p_value_bonferroni"] is not None
         assert stat["verdict"] in {
@@ -571,24 +577,35 @@ def test_single_outcome_tables_use_one_degree_of_freedom_and_low_count_checks():
     assert many["verdict"] == "consistent"
 
 
-def test_power_is_evaluated_at_bonferroni_alpha_over_the_comparable_pairs():
+def test_power_is_evaluated_at_the_by_single_discovery_level():
     backends = [{"simulator": s, "counts": {"0": 1000, "1": 1000}} for s in "abcde"]
     report = create_counts_report(backends, n_shots=2000)
     power = _record(report, "a", "b")["metrics"]["statistical_test"]["power"]
+    c_m = sum(1 / i for i in range(1, 11))
     assert power["m_pairs"] == 10
-    assert power["alpha_used"] == 0.05 / 10
+    assert power["c_m"] == pytest.approx(c_m)
+    assert power["alpha_used"] == pytest.approx(0.05 / (10 * c_m))
     assert power["recommended_shots_per_backend"] == _shots_per_backend_for_target_power(
-        0.005, 0.8, 0.05) == 2663
+        power["alpha_used"], 0.8, 0.05) == 3166
     assert power["power_to_detect_delta_at_observed_shots"] < 0.8
-    assert "alpha/m" in power["model"]
+    assert "alpha/(m*c_m)" in power["model"]
     summary = report["statistical_test_summary"]
-    assert summary["power_alpha"] == 0.005 and "PRDS" in summary["fdr_dependence_note"]
+    assert summary["power_alpha"] == pytest.approx(0.05 / (10 * c_m))
+    assert "arbitrary dependence" in summary["fdr_dependence_note"]
     assert summary["verdict_counts"] == {"inconclusive_low_shots": 10}
 
-    enough = [{"simulator": s, "counts": {"0": 1332, "1": 1331}} for s in "abcde"]
-    stat = _record(create_counts_report(enough, n_shots=2663), "a", "b")["metrics"]["statistical_test"]
+    enough = [{"simulator": s, "counts": {"0": 1583, "1": 1583}} for s in "abcde"]
+    stat = _record(create_counts_report(enough, n_shots=3166), "a", "b")["metrics"]["statistical_test"]
     assert stat["power"]["power_to_detect_delta_at_observed_shots"] >= 0.8
     assert stat["verdict"] == "consistent"
+
+
+def test_by_adjustment_scales_bh_by_the_harmonic_constant():
+    from services.analysis.divergence import _bh_adjust, _by_adjust
+    p = [0.001, 0.02, 0.04, 0.3]
+    c_m = 1 + 1 / 2 + 1 / 3 + 1 / 4
+    assert _by_adjust(p) == pytest.approx([min(1.0, b * c_m) for b in _bh_adjust(p)])
+    assert _by_adjust([0.5]) == [0.5]
 
 
 def test_divergence_reports_record_analysis_version_and_effective_thresholds():

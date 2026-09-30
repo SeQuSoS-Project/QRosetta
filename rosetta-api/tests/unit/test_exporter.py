@@ -825,3 +825,61 @@ class TestAnalysisProvenance:
         assert config["task_requests"]["ghz-3q"]["request"] == "not recorded"
         assert set(config["agreement_thresholds_by_task"]) == {"bell-2q", "ghz-3q"}
         assert config["bypass_limits"] == "not recorded"
+
+
+def _crate_results(zip_bytes):
+    zf = zipfile.ZipFile(io.BytesIO(zip_bytes), "r")
+    return json.loads(zf.read([n for n in zf.namelist() if n.endswith("results.json")][0]))
+
+
+class TestCommitPinnedUrlsAndStatevectorFingerprints:
+    def test_urls_use_the_recorded_commit(self):
+        results = json.loads(json.dumps(SAMPLE_RESULTS_SV))
+        results["git_sha"] = "d54d208abc"
+        services = {k: dict(v, base_url=f"http://{k}-runner:8000")
+                    for k, v in SAMPLE_RUNNER_SERVICES.items()}
+        graph = _by_id(_load_metadata(build_ro_crate(_make_ctx(
+            results=results, runner_services=services))))
+        assert graph["#quantum-rosetta"]["url"].endswith("/commit/d54d208abc")
+        assert graph["#qiskit"]["url"].endswith("/tree/d54d208abc/runners/qiskit-runner")
+        assert all("tree/main" not in json.dumps(e) for e in graph.values())
+
+    def test_unknown_commit_points_to_the_repository_root(self):
+        results = json.loads(json.dumps(SAMPLE_RESULTS_SV))
+        results["git_sha"] = "unknown"
+        graph = _by_id(_load_metadata(build_ro_crate(_make_ctx(results=results))))
+        assert graph["#quantum-rosetta"]["url"] == "https://github.com/SeQuSoS-Project/QRosetta"
+
+    def test_excluded_statevectors_leave_a_sha256_and_length(self):
+        import base64
+        import hashlib
+        import numpy as np
+        vec = np.array([2 ** -0.5, 0, 0, 2 ** -0.5], dtype=np.complex128)
+        results = json.loads(json.dumps(SAMPLE_RESULTS_SV))
+        results["raw_results"][0]["statevector"] = base64.b64encode(vec.tobytes()).decode()
+        out = _crate_results(build_ro_crate(_make_ctx(results=results)))
+        qiskit = next(r for r in out["raw_results"] if r["simulator"] == "qiskit")
+        assert "statevector" not in qiskit
+        assert qiskit["statevector_sha256"] == hashlib.sha256(vec.tobytes()).hexdigest()
+        assert qiskit["statevector_length"] == 4
+        assert results["raw_results"][0]["statevector"]
+
+    def test_batch_crate_fingerprints_every_task(self):
+        batch = {"benchmark_summary": [
+            {"task_name": f"t{i}", "input_qasm": SAMPLE_QASM,
+             "raw_results": [{"simulator": "qiskit", "statevector": [1.0, 0.0]}]}
+            for i in range(2)]}
+        out = _crate_results(build_ro_crate(_make_ctx(results=batch)))
+        for task in out["benchmark_summary"]:
+            (r,) = task["raw_results"]
+            assert "statevector" not in r
+            assert len(r["statevector_sha256"]) == 64 and r["statevector_length"] == 2
+
+    def test_stored_fingerprint_is_kept_when_the_vector_was_already_removed(self):
+        results = json.loads(json.dumps(SAMPLE_RESULTS_SV))
+        for r in results["raw_results"]:
+            r.pop("statevector", None)
+            r.update({"statevector_sha256": "ab" * 32, "statevector_len": 8})
+        out = _crate_results(build_ro_crate(_make_ctx(results=results)))
+        assert all(r["statevector_sha256"] == "ab" * 32 and r["statevector_length"] == 8
+                   for r in out["raw_results"])

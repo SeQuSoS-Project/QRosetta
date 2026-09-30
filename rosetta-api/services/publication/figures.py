@@ -12,7 +12,8 @@ from .theme import (
 )
 from .formats import _fmt_num
 from .selectors import (
-    COMMON_KEY_ORDER_NOTE, _device, _device_label, _field, _pairwise_records, _report_rows,
+    COMMON_KEY_ORDER_NOTE, _device, _device_label, _pairwise_records, _report_rows,
+    _timing_value,
 )
 
 
@@ -87,13 +88,14 @@ def _fig_heatmap(divergence_report: dict, key: str, title: str):
 def _fig_ranking_bar(results, report_key, value_keys, title, xlabel, subtitle=None):
     """Horizontal bars for ranked runs in rank order; unranked runs follow with no bar and
     an annotation giving their status and reason. ``subtitle`` is a second title line. GPU
-    runs are labelled "<simulator> (GPU)" with an amber tick label."""
+    runs are labelled "<simulator> (GPU)" with an amber tick label. Timing stages with two or
+    more samples are drawn at their median."""
     rows = [r for r in _report_rows(results, report_key) if r["entry"].get("simulator")]
     sims = [_device_label(r) for r in rows]
     fig, ax = plt.subplots(figsize=(max(5.0, 0.5 * len(sims) + 2), max(2.4, 0.32 * len(sims) + 1.6)))
     y = np.arange(len(sims)); left = np.zeros(len(sims))
     for key, color, label in value_keys:
-        vals = np.array([float(_field(r, key) or 0.0) if r["ranked"] else 0.0 for r in rows])
+        vals = np.array([float(_timing_value(r, key) or 0.0) if r["ranked"] else 0.0 for r in rows])
         ax.barh(y, vals, left=left, color=color, label=label, height=0.7)
         left += vals
     for i, r in enumerate(rows):

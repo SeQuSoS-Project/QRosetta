@@ -31,8 +31,8 @@ MEASURED = {
                         "effect_size": {"total_variation": 0.0, "cramers_v": 0.0},
                         "power": {"power_to_detect_delta_at_observed_shots": 0.126,
                                   "shots_per_backend_for_target_power": 1570},
-                        "chi2": {"p_value": 1.0, "p_value_bh": 1.0},
-                        "g_test": {"p_value": 1.0, "p_value_bh": 1.0},
+                        "chi2": {"p_value": 1.0, "p_value_by": 1.0, "p_value_bh": 1.0},
+                        "g_test": {"p_value": 1.0, "p_value_by": 1.0, "p_value_bh": 1.0},
                     },
                 },
             }
@@ -455,3 +455,71 @@ def test_figures_name_the_circuit_and_mark_gpu_runs():
         assert [t.get_text() for t in fig.axes[0].get_yticklabels()] == ["cu (GPU)"]
     finally:
         plt.close(fig)
+
+
+@pytest.mark.parametrize("name", ["a $x^$ b", "GHZ $\\alpha$ test", "$\\notacommand{x}$"])
+def test_user_names_with_dollar_signs_render_literally(name):
+    import copy
+    rep = copy.deepcopy(MEASURED)
+    rep["run_name"] = name
+    for aid in ("performance_time", "resource_memory", "counts_overview",
+                "counts_overview_heatmap", "histogram_qiskit-qibo"):
+        svg = render_artifact(rep, "measured", aid, "svg")[0].decode()
+        assert name in svg.replace("<!--", ""), aid
+        assert "α" not in svg, aid
+    files = build_publication_artifacts(rep, "measured", PUBLICATION_CATEGORIES,
+                                        figure_formats=("svg", "png", "pdf"))
+    assert name in files["figures/performance_time.svg"].decode()
+
+
+def _repeated(results):
+    import copy
+    rep = copy.deepcopy(results)
+    rep["raw_results"] = [
+        {"simulator": "qiskit", "counts": {"001": 128}, "timing_samples": 5,
+         "compilation_time_samples": [0.01, 0.012, 0.011, 0.02, 0.01],
+         "simulation_time_samples": [0.08, 0.07, 0.3, 0.09, 0.075],
+         "compilation_time_sec": 0.011, "simulation_time_sec": 0.08, "execution_time_sec": 0.091},
+        {"simulator": "qibo", "counts": {"100": 128}, "timing_samples": 5,
+         "compilation_time_samples": [0.02, 0.02, 0.021, 0.019, 0.02],
+         "simulation_time_samples": [0.03, 0.031, 0.029, 0.03, 0.2],
+         "compilation_time_sec": 0.02, "simulation_time_sec": 0.03, "execution_time_sec": 0.05},
+    ]
+    rep["timing_samples"] = 5
+    return rep
+
+
+def test_repeated_timing_table_shows_median_iqr_stdev_and_n():
+    import csv, io, statistics
+    rep = _repeated(MEASURED)
+    text = render_artifact(rep, "measured", "performance", "csv")[0].decode()
+    rows = list(csv.reader(io.StringIO(text)))
+    assert rows[0][3:9] == ["Compilation median (s)", "Simulation median (s)", "Total median (s)",
+                            "Total IQR (s)", "Total stdev (s)", "n"]
+    qiskit = next(r for r in rows if r[1] == "qiskit")
+    totals = [c + s for c, s in zip(rep["raw_results"][0]["compilation_time_samples"],
+                                    rep["raw_results"][0]["simulation_time_samples"])]
+    assert float(qiskit[5]) == pytest.approx(0.011 + 0.08)
+    assert float(qiskit[7]) == pytest.approx(statistics.stdev(totals))
+    assert qiskit[8] == "5"
+    caption = render_artifact(rep, "measured", "performance", "markdown")[0].decode()
+    assert "Median wall-clock times" in caption and "Ranked by median total time" in caption
+
+
+def test_performance_report_ranks_by_median_total_time():
+    from services.analysis.performance import create_performance_report
+    fast_median = {"simulator": "a", "execution_time_sec": 0.3, "compilation_time_sec": 0.0,
+                   "simulation_time_sec": 0.3, "compilation_time_samples": [0.0, 0.0, 0.0],
+                   "simulation_time_samples": [0.1, 0.1, 5.0], "timing_samples": 3}
+    steady = {"simulator": "b", "execution_time_sec": 0.2, "compilation_time_sec": 0.0,
+              "simulation_time_sec": 0.2, "compilation_time_samples": [0.0, 0.0, 0.0],
+              "simulation_time_samples": [0.2, 0.2, 0.2], "timing_samples": 3}
+    report = create_performance_report([fast_median, steady])
+    assert report["ranking_metric"] == "execution_time_sec_median"
+    assert [e["simulator"] for e in report["ranking"]] == ["a", "b"]
+    first = report["ranking"][0]
+    assert first["execution_time_sec_median"] == pytest.approx(0.1)
+    assert first["timing_samples"] == 3 and first["timing_statistic"] == "median"
+    single = create_performance_report([{"simulator": "c", "execution_time_sec": 0.1}])
+    assert single["ranking_metric"] == "execution_time_sec"
+    assert "execution_time_sec_median" not in single["ranking"][0]

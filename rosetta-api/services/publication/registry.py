@@ -19,7 +19,7 @@ from .figures import (
 from .formats import _render_figure, _table_bytes, basename_slug
 from .selectors import (
     COMMON_KEY_ORDER_NOTE, JS_UNIT, _circuit_name, _distinct, _heatmap_specs, _msb_counts,
-    _pairwise_records, _run_label, _timing_samples,
+    _pairwise_records, _run_label, _timing_repeated, _timing_samples,
 )
 from .tables import (
     _tbl_agreement, _tbl_matrix, _tbl_metadata, _tbl_performance, _tbl_resources,
@@ -83,6 +83,7 @@ def _iter_artifacts(results: dict, mode: str) -> List[dict]:
 
     unranked_note = "runs without a rank are listed with their status and reason and have no bar."
     perf = results.get("performance_report") or {}
+    repeated = _timing_repeated(results)
     if perf.get("ranking") or perf.get("unranked"):
         fig_artifact("performance_time", "Execution-time chart", "Performance",
                      lambda: _fig_ranking_bar(results, "performance_report",
@@ -90,15 +91,20 @@ def _iter_artifacts(results: dict, mode: str) -> List[dict]:
                                                ("simulation_time_sec", "#1baf7a", "simulation")],
                                               f"Wall-clock time by stage: {_circuit_name(results)}",
                                               "seconds",
-                                              f"n={_timing_samples(results)} timing sample(s) per "
-                                              "backend; timed run only, warm-up excluded"),
-                     "Stacked compilation + simulation wall-clock time per backend (raw), "
-                     f"n={_timing_samples(results)} timing sample(s) per backend; GPU runs are "
+                                              (f"medians of n={_timing_samples(results)} timed "
+                                               "runs per backend; warm-up excluded")
+                                              if repeated else
+                                              (f"n={_timing_samples(results)} timing sample(s) per "
+                                               "backend; timed run only, warm-up excluded")),
+                     "Stacked compilation + simulation wall-clock time per backend "
+                     + ("(median of each stage over the timed runs), " if repeated else "(raw), ")
+                     + f"n={_timing_samples(results)} timing sample(s) per backend; GPU runs are "
                      "labelled (GPU); " + unranked_note)
         table_artifact("performance", "Execution-time table", "Performance",
                        lambda: _tbl_performance(results),
-                       "Per-backend device, compilation, simulation and total wall-clock time, "
-                       "simulation and process CPU time, and status (raw).")
+                       "Per-backend device, compilation, simulation and total wall-clock time"
+                       + (" (medians, with the IQR, stdev and n of total time)" if repeated else "")
+                       + ", simulation and process CPU time, and status (raw).")
 
     res = results.get("resource_report") or {}
     if res.get("ranking") or res.get("unranked"):
@@ -123,7 +129,7 @@ def _iter_artifacts(results: dict, mode: str) -> List[dict]:
         if any((r.get("metrics", {}) or {}).get("statistical_test") for r in records):
             table_artifact("statistical_test", "Statistical-test table", "Statistical",
                            lambda: _tbl_statistical(div),
-                           "Chi-square + G-test p-values (raw + BH) in the label-aligned basis, "
+                           "Chi-square + G-test p-values (raw + BY) in the label-aligned basis, "
                            "effect size, power and pooled outcomes per pair.")
         raw = _msb_counts(results)
         run_label = _run_label(results)

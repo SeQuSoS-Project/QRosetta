@@ -2,6 +2,8 @@
 
 from typing import Any, List
 
+from services.analysis.timing import TIMING_BASES, stage_median, timing_summary
+
 from .formats import _fmt_int, _fmt_text
 
 JS_UNIT = "nats"
@@ -94,6 +96,31 @@ DEVICE_NOTE = ("Device is the hardware the simulation ran on (CPU when the run r
                "quota, so timings across devices compare different hardware.")
 GPU_MEMORY_NOTE = ("Memory fields are host RSS and do not include GPU device memory; GPU runs "
                    "are not ranked (gpu_memory_not_measured).")
+
+
+def _timing_stats(row: dict, key: str):
+    """timing_summary of ``key`` (e.g. "simulation_time_sec") for a non-failed row, else None."""
+    base = key[:-4] if key.endswith("_sec") else key
+    if row.get("failed") or base not in TIMING_BASES:
+        return None
+    return timing_summary(row.get("raw") or {}, base)
+
+
+def _timing_value(row: dict, key: str) -> Any:
+    """stage_median of ``key`` when the row has two or more timing samples, else
+    _field(row, key)."""
+    base = key[:-4] if key.endswith("_sec") else key
+    if not row.get("failed") and base in TIMING_BASES:
+        median = stage_median(row.get("raw") or {}, base)
+        if median is not None:
+            return median
+    return _field(row, key)
+
+
+def _timing_repeated(results: dict) -> bool:
+    """True when any successful result has two or more total-time samples."""
+    return any(timing_summary(r, "execution_time") for r in results.get("raw_results") or []
+               if isinstance(r, dict) and r.get("error") in (None, ""))
 
 
 def _device(row: dict) -> str:

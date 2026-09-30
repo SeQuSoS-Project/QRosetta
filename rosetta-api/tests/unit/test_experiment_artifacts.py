@@ -106,10 +106,35 @@ def test_prevalence_counts_not_comparable_separately():
     rows = art.build_prevalence_rows("axisA", summary)
     compared = [r for r in rows if r["pair_scope"] == "compared"]
     excluded = [r for r in rows if r["pair_scope"] == "not_comparable"]
-    assert compared == [{"axis": "axisA", "agreement_class": "agree_directly",
-                         "pair_count": 1, "pair_scope": "compared"}]
-    assert excluded == [{"axis": "axisA", "agreement_class": "not_comparable",
-                         "pair_count": 2, "pair_scope": "not_comparable"}]
+    assert compared == [{"axis": "axisA", "count_basis": "agreement_label",
+                         "agreement_class": "agree_directly", "pair_count": 1,
+                         "pair_scope": "compared", "distance_labels": ""}]
+    assert excluded == [{"axis": "axisA", "count_basis": "agreement_label",
+                         "agreement_class": "not_comparable", "pair_count": 2,
+                         "pair_scope": "not_comparable", "distance_labels": ""}]
+
+
+def test_measured_prevalence_counts_by_assessment_with_distance_labels_secondary():
+    summary = [{"divergence_report": {"pairwise_agreement": [
+        {"mode": "measured", "agreement": "agree_after_bit_reversal",
+         "measured_assessment": "distinguishable"},
+        {"mode": "measured", "agreement": "distance_within_threshold",
+         "measured_assessment": "distinguishable"},
+        {"mode": "measured", "agreement": "agree_after_bit_reversal",
+         "measured_assessment": "consistent_within_shot_noise"},
+        {"mode": "measured", "agreement": "distance_exceeds_threshold",
+         "metrics": {"statistical_test": {"verdict": "consistent"}}},
+        {"mode": "measured", "agreement": "not_comparable", "measured_assessment": "not_comparable"},
+    ]}}]
+    rows = {r["agreement_class"]: r for r in art.build_prevalence_rows("m", summary)}
+    assert {k: r["pair_count"] for k, r in rows.items()} == {
+        "distinguishable": 2, "consistent_within_shot_noise": 2, "not_comparable": 1}
+    assert all(r["count_basis"] == "measured_assessment" for r in rows.values())
+    assert rows["distinguishable"]["distance_labels"] == (
+        "agree_after_bit_reversal:1; distance_within_threshold:1")
+    assert rows["consistent_within_shot_noise"]["distance_labels"] == (
+        "agree_after_bit_reversal:1; distance_exceeds_threshold:1")
+    assert rows["not_comparable"]["pair_scope"] == "not_comparable"
 
 
 def test_conformance_uses_dispatch_status():
@@ -149,8 +174,8 @@ def test_csv_string_headers_and_rows():
     csv = art.csv_string([{"axis": "a", "agreement_class": "agree_directly", "pair_count": 3}],
                          art.PREVALENCE_FIELDS)
     lines = csv.strip().splitlines()
-    assert lines[0] == "axis,agreement_class,pair_count,pair_scope"
-    assert lines[1] == "a,agree_directly,3,"
+    assert lines[0] == "axis,count_basis,agreement_class,pair_count,pair_scope,distance_labels"
+    assert lines[1] == "a,,agree_directly,3,,"
 
 
 def test_manifest_provenance_and_integrity_notes():

@@ -70,7 +70,8 @@ def create_divergence_report(results_list, thresholds=None):
             f"Mixed qubit-ordering conventions detected. "
             f"LSB (qubit-0 = bit-0): {lsb_sims}. "
             f"MSB (qubit-0 = most-significant): {msb_sims}. "
-            "Fidelity comparisons across groups may be misleading."
+            "Pairs across the two groups are labelled in the bit-reversed basis; the raw "
+            "fidelity matrix compares amplitudes as reported."
         )
         logger.warning(qubit_ordering_warning)
 
@@ -247,41 +248,30 @@ def create_divergence_report(results_list, thresholds=None):
                     (sim_i_name in lsb_sims and sim_j_name in msb_sims)
                     or (sim_i_name in msb_sims and sim_j_name in lsb_sims)
                 )
+                basis, basis_source = _statevector_label_aligned_basis(
+                    res_i, res_j, len(sv_j_norm))
 
-                pairwise_agreement.append(
-                    _classify_statevector_pair(
-                        res_i,
-                        res_j,
-                        fidelity,
-                        relative_phase,
-                        bit_reversed_fidelity,
-                        bit_reversed_relative_phase,
-                        qubit_permutation_metrics,
-                        norm_i,
-                        norm_j,
-                        is_cross_group,
-                        fidelity_tolerance,
-                        phase_tolerance,
-                        norm_tolerance,
-                    )
+                record = _classify_statevector_pair(
+                    res_i,
+                    res_j,
+                    fidelity,
+                    relative_phase,
+                    bit_reversed_fidelity,
+                    bit_reversed_relative_phase,
+                    qubit_permutation_metrics,
+                    norm_i,
+                    norm_j,
+                    is_cross_group,
+                    fidelity_tolerance,
+                    phase_tolerance,
+                    norm_tolerance,
+                    label_aligned_basis=basis,
+                    basis_source=basis_source,
                 )
-
-                if fidelity < (1.0 - fidelity_tolerance):
-                    divergences_found.append({
-                        "type": "Fidelity",
-                        "simulators": [sim_i_name, sim_j_name],
-                        "fidelity": float(fidelity),
-                        "relative_phase": float(relative_phase),
-                        "is_cross_group": is_cross_group
-                    })
-                elif relative_phase != 0.0:
-                    divergences_found.append({
-                        "type": "Phase",
-                        "simulators": [sim_i_name, sim_j_name],
-                        "fidelity": float(fidelity),
-                        "relative_phase": float(relative_phase),
-                        "is_cross_group": is_cross_group
-                    })
+                pairwise_agreement.append(record)
+                divergence = _statevector_divergence_entry(record, is_cross_group)
+                if divergence is not None:
+                    divergences_found.append(divergence)
 
                 del sv_j
                 del sv_j_norm
@@ -323,6 +313,67 @@ def create_divergence_report(results_list, thresholds=None):
     return report
 
 
+_DECLARED_ORDERS = ("lsb", "msb")
+
+DISAGREEMENT_GROUPS = {
+    "residual_disagreement": "disagreement: not explained by the declared qubit orderings",
+    "unaligned_basis_match": ("disagreement: agrees only in the basis the declared qubit "
+                              "orderings do not imply"),
+    "agree_after_qubit_permutation": ("disagreement: agrees only after an undeclared qubit "
+                                      "permutation"),
+}
+
+
+def _label_aligned_basis(res_i, res_j):
+    """"bit_reversal" when the two results declare different counts bit orders, else "direct"."""
+    order_i = res_i.get("qubit_ordering")
+    order_j = res_j.get("qubit_ordering")
+    if order_i in _DECLARED_ORDERS and order_j in _DECLARED_ORDERS and order_i != order_j:
+        return "bit_reversal"
+    return "direct"
+
+
+def _statevector_label_aligned_basis(res_i, res_j, length):
+    """(basis, basis_source) for a statevector pair of ``length`` amplitudes.
+
+    One qubit: bit reversal is the identity, so ("direct", "single_qubit"). Both orderings
+    declared: the basis they imply. Otherwise ("direct", "undeclared_qubit_ordering").
+    """
+    if length <= 2:
+        return "direct", "single_qubit"
+    if (res_i.get("qubit_ordering") in _DECLARED_ORDERS
+            and res_j.get("qubit_ordering") in _DECLARED_ORDERS):
+        return _label_aligned_basis(res_i, res_j), "declared_qubit_ordering"
+    return "direct", "undeclared_qubit_ordering"
+
+
+def _statevector_divergence_entry(record, is_cross_group):
+    """divergences_found entry for a disagreeing pair ("Fidelity") or an agreeing pair with a
+    global phase offset in the label-aligned basis ("Phase"); None otherwise."""
+    metrics = record["metrics"]
+    agreement = record["agreement"]
+    entry = {
+        "simulators": record["simulators"],
+        "basis": metrics["label_aligned_basis"],
+        "fidelity": metrics["label_aligned_fidelity"],
+        "direct_fidelity": metrics["direct_fidelity"],
+        "relative_phase": metrics["label_aligned_relative_phase_rad"],
+        "agreement": agreement,
+        "is_cross_group": is_cross_group,
+    }
+    if metrics.get("unaligned_basis_match"):
+        entry.update({"type": "Fidelity", "group": DISAGREEMENT_GROUPS["unaligned_basis_match"],
+                      "unaligned_basis_match": metrics["unaligned_basis_match"]})
+        return entry
+    if agreement in ("residual_disagreement", "agree_after_qubit_permutation"):
+        entry.update({"type": "Fidelity", "group": DISAGREEMENT_GROUPS[agreement]})
+        return entry
+    if agreement != "not_comparable" and metrics["label_aligned_relative_phase_rad"] != 0.0:
+        entry["type"] = "Phase"
+        return entry
+    return None
+
+
 def _empty_matrix(n):
     """n×n list of None."""
     return [[None] * n for _ in range(n)]
@@ -341,18 +392,6 @@ def _shot_total_mismatch(sim_i, total_i, sim_j, total_j, n_shots):
         "observed": {sim_i: _as_number(total_i), sim_j: _as_number(total_j)},
         "requested": n_shots,
     }
-
-
-_DECLARED_ORDERS = ("lsb", "msb")
-
-
-def _label_aligned_basis(res_i, res_j):
-    """"bit_reversal" when the two results declare different counts bit orders, else "direct"."""
-    order_i = res_i.get("qubit_ordering")
-    order_j = res_j.get("qubit_ordering")
-    if order_i in _DECLARED_ORDERS and order_j in _DECLARED_ORDERS and order_i != order_j:
-        return "bit_reversal"
-    return "direct"
 
 
 def _compare_counts_pair(res_i, res_j, is_cross_group, js_threshold, hellinger_threshold, n_shots):
@@ -516,14 +555,18 @@ def create_counts_report(results_list, n_shots, thresholds=None):
             js_matrix[i][j] = js_matrix[j][i] = float(js_div)
             hellinger_matrix[i][j] = hellinger_matrix[j][i] = float(h_dist)
             if aligned_js > js_threshold or aligned_h > hellinger_threshold:
-                divergences_found.append({
+                entry = {
                     "type": "Distribution Divergence",
                     "simulators": [sim_i, sim_j],
                     "basis": record["metrics"]["label_aligned_basis"],
                     "js_divergence": aligned_js,
                     "hellinger_distance": aligned_h,
+                    "agreement": record["agreement"],
                     "is_cross_group": is_cross_group,
-                })
+                }
+                if record["agreement"] == "agree_after_qubit_permutation":
+                    entry["group"] = DISAGREEMENT_GROUPS["agree_after_qubit_permutation"]
+                divergences_found.append(entry)
 
     statistical_test_summary = _apply_multiple_comparison_correction(stat_test_records)
     assessment_counts = {}

@@ -265,14 +265,92 @@ export function _artTimingSamples(results) {
     return vals.length ? vals.join('/') : '1';
 }
 
+// ---- repeated timing (services/analysis/timing.py) ----
+const _TIMING_BASES = ['compilation_time', 'simulation_time', 'execution_time'];
+const _isFiniteNum = v => typeof v === 'number' && Number.isFinite(v);
+
+function _artListedSamples(res, base) {
+    for (const key of [`${base}_samples`, `${base}_sec_samples`]) {
+        const v = res[key];
+        if (Array.isArray(v) && v.length && v.every(_isFiniteNum)) return v.slice();
+    }
+    return null;
+}
+/** Per-run samples of `base` on a result, or null (timing.py timing_samples). */
+export function _artTimingSampleList(res, base) {
+    let samples = _artListedSamples(res, base);
+    if (samples === null && base === 'execution_time') {
+        const comp = _artListedSamples(res, 'compilation_time');
+        const sim = _artListedSamples(res, 'simulation_time');
+        if (comp && sim && comp.length === sim.length) samples = comp.map((c, i) => c + sim[i]);
+    }
+    return samples;
+}
+function _artQuantile(ordered, q) {
+    const pos = (ordered.length - 1) * q;
+    const lo = Math.floor(pos);
+    const hi = Math.min(lo + 1, ordered.length - 1);
+    return ordered[lo] + (ordered[hi] - ordered[lo]) * (pos - lo);
+}
+/** {n, median, q1, q3, iqr, stdev} of a sample list (timing.py summarize). */
+export function _artSummarize(samples) {
+    const ordered = samples.slice().sort((a, b) => a - b);
+    const n = ordered.length;
+    let total = 0.0;
+    for (const x of ordered) total += x;
+    const mean = total / n;
+    let ss = 0.0;
+    for (const x of ordered) { const d = x - mean; ss += d * d; }
+    const q1 = _artQuantile(ordered, 0.25), q3 = _artQuantile(ordered, 0.75);
+    const mid = Math.floor(n / 2);
+    const median = n % 2 ? ordered[mid] : (ordered[mid - 1] + ordered[mid]) / 2;
+    return { n, median, q1, q3, iqr: q3 - q1,
+        stdev: n > 1 ? Math.sqrt(ss / (n - 1)) : 0.0 };
+}
+/** _artSummarize of the result's `base` samples when it has at least two, else null. */
+export function _artTimingSummary(res, base) {
+    const samples = _artTimingSampleList(res, base);
+    if (samples === null || samples.length < 2) return null;
+    return _artSummarize(samples);
+}
+function _artTimingStats(row, key) {
+    const base = key.endsWith('_sec') ? key.slice(0, -4) : key;
+    if (row.failed || !_TIMING_BASES.includes(base)) return null;
+    return _artTimingSummary(row.raw || {}, base);
+}
+/** Median of `base` over two or more samples, else null; total = median compilation + median simulation (timing.py stage_median). */
+export function _artStageMedian(res, base) {
+    if (base === 'execution_time') {
+        const comp = _artTimingSummary(res, 'compilation_time');
+        const sim = _artTimingSummary(res, 'simulation_time');
+        if (comp && sim) return comp.median + sim.median;
+    }
+    const stats = _artTimingSummary(res, base);
+    return stats ? stats.median : null;
+}
+function _artTimingValue(row, key) {
+    const base = key.endsWith('_sec') ? key.slice(0, -4) : key;
+    if (!row.failed && _TIMING_BASES.includes(base)) {
+        const median = _artStageMedian(row.raw || {}, base);
+        if (median !== null) return median;
+    }
+    return _artField(row, key);
+}
+/** True when any successful result has two or more total-time samples. */
+export function _artTimingRepeated(results) {
+    return (results.raw_results || []).some(r => r && typeof r === 'object'
+        && (r.error === null || r.error === undefined || r.error === '')
+        && _artTimingSummary(r, 'execution_time') !== null);
+}
+
 // ---- glossaries (theme.py) ----
 export const AGREEMENT_GLOSSARY = [
-    ['agree_directly', 'Outputs match directly, no transform needed.'],
+    ['agree_directly', 'Outputs match directly, no transform needed. For a statevector pair this requires the same declared qubit ordering, or a one-qubit circuit, where bit reversal is the identity.'],
     ['agree_up_to_global_phase', 'Match after removing the global phase offset arg⟨a|b⟩ between the two states, which is unobservable. An offset within phase_tolerance is reported as 0 and the pair agrees directly.'],
-    ['agree_after_bit_reversal', 'Match after reversing qubit/bit order (an endianness convention). For a measured pair whose declared bit orders differ (lsb vs msb) the label means the pair agrees in the label-aligned (bit-reversed) basis; it is used by convention even when the direct distances are equal too, as for GHZ-type outcomes that bit reversal leaves unchanged.'],
-    ['agree_after_qubit_permutation', 'Match after a bounded qubit permutation (≤7 qubits).'],
+    ['agree_after_bit_reversal', 'Match after reversing qubit/bit order, the transform the declared orderings imply when one backend is lsb and the other msb. A statevector pair gets this label only for such a pair; transform_effect.global_phase_aligned is true when a global phase offset remains after the reversal. For a measured pair whose declared bit orders differ the label means the pair agrees in the label-aligned (bit-reversed) basis; it is used by convention even when the direct distances are equal too, as for GHZ-type outcomes that bit reversal leaves unchanged.'],
+    ['agree_after_qubit_permutation', 'Disagreement: agrees only after an undeclared qubit permutation (searched up to ≤7 qubits). No declared ordering implies the permutation, so the pair is counted as a disagreement.'],
     ['agree_after_normalization', 'At least one input statevector has a norm differing from 1 by more than norm_tolerance; the normalised vectors agree. metrics.normalized_agreement holds the label the normalised pair receives. The default norm_tolerance (1e-4) lies above complex64 rounding, which leaves norms about 2e-6 from 1.'],
-    ['residual_disagreement', 'Statevector disagreement not explained by any registered transform.'],
+    ['residual_disagreement', 'Statevector disagreement in the label-aligned basis that no registered transform explains. metrics.unaligned_basis_match is "direct" or "bit_reversal" when the pair matches only in the basis its declared orderings do not imply, as when an lsb and an msb backend return equal vectors for an asymmetric state.'],
     ['distance_within_threshold', 'Measured distributions within the JS-divergence and Hellinger thresholds without a bit-order transform (descriptive, configurable; the shot-noise statistical test gives the significance verdict).'],
     ['distance_exceeds_threshold', 'Measured distributions exceed the (descriptive, configurable) thresholds after registered transforms; see the statistical test for significance.'],
     ['not_comparable', 'At least one side lacks usable output; the pair cannot be compared. metrics.reason names the cause.'],
@@ -295,16 +373,16 @@ export const NOT_COMPARABLE_GLOSSARY = [
     ['comparison_error', 'The comparison raised an exception; metrics.details.error holds the message.'],
 ];
 export const VERDICT_GLOSSARY = [
-    ['consistent', "Neither the chi-square test nor the G-test is significant after BH (FDR) correction over the m comparable pairs, and the power to detect a total-variation gap of 0.05 at the observed shots is at least 0.8. Power is that of the chi-square test at the Bonferroni level alpha/m (power.alpha_used, power.m_pairs), the threshold BH applies to a single discovery, on df = tested outcome bins - 1 with Cohen's w = 0.05: a lower bound for detecting one wrong backend."],
-    ['distinguishable', 'Both tests are significant after BH (FDR) correction. At FDR q = 0.05 the expected share of false discoveries among flagged pairs is at most q, so a few flagged pairs are expected by chance.'],
-    ['inconclusive_low_shots', 'Expected counts stay below 5 after pooling rare outcomes (inconclusive_reason = low_expected_counts), or neither test is significant and the power at alpha/m to detect a total-variation gap of 0.05 is below 0.8 (inconclusive_reason = low_power). resolvable_by_more_shots is false when no shot count up to the platform maximum would give a testable table (low_expected_counts) or the target power (low_power); shots_per_backend_for_expected_counts gives the count that would. power.recommended_exceeds_actual is true when the recommended shots per backend exceed the shots used.'],
-    ['ambiguous', 'Exactly one of the chi-square test and the G-test is significant after BH (FDR) correction.'],
+    ['consistent', "Neither the chi-square test nor the G-test is significant after Benjamini-Yekutieli (BY, FDR) correction over the m comparable pairs, and the power to detect a total-variation gap of 0.05 at the observed shots is at least 0.8. Power is that of the chi-square test at alpha/(m·c_m) (power.alpha_used, power.m_pairs, power.c_m; c_m = 1 + 1/2 + ... + 1/m), the threshold BY applies to a single discovery, on df = tested outcome bins - 1 with Cohen's w = 0.05: a lower bound for detecting one wrong backend."],
+    ['distinguishable', "Both tests are significant after BY (FDR) correction. BY keeps the expected share of false discoveries among flagged pairs at most q = 0.05 under any dependence between the tests, including pairs that share one backend's sample; a flagged pair can still be a false discovery."],
+    ['inconclusive_low_shots', 'Expected counts stay below 5 after pooling rare outcomes (inconclusive_reason = low_expected_counts), or neither test is significant and the power at alpha/(m·c_m) to detect a total-variation gap of 0.05 is below 0.8 (inconclusive_reason = low_power). resolvable_by_more_shots is false when no shot count up to the platform maximum would give a testable table (low_expected_counts) or the target power (low_power); shots_per_backend_for_expected_counts gives the count that would. power.recommended_exceeds_actual is true when the recommended shots per backend exceed the shots used.'],
+    ['ambiguous', 'Exactly one of the chi-square test and the G-test is significant after BY (FDR) correction.'],
 ];
 export const ASSESSMENT_GLOSSARY = [
     ['consistent_within_shot_noise', 'The shot-noise verdict is consistent: neither test separates the distributions at a shot count with power of at least 0.8, whatever the distance label.'],
     ['distinguishable', 'The shot-noise verdict is distinguishable: the distributions differ beyond sampling noise, subject to the FDR share of false discoveries.'],
     ['ambiguous', 'Exactly one of the two tests is significant.'],
-    ['inconclusive_low_shots', 'The shot count cannot separate the distributions: expected counts stay below 5 after pooling, or the test is not significant at power below 0.8 (evaluated at alpha/m).'],
+    ['inconclusive_low_shots', 'The shot count cannot separate the distributions: expected counts stay below 5 after pooling, or the test is not significant at power below 0.8 (evaluated at alpha/(m·c_m)).'],
     ['not_comparable', 'At least one side lacks usable counts.'],
 ];
 export const UNRANKED_GLOSSARY = [
@@ -315,11 +393,11 @@ export const UNRANKED_GLOSSARY = [
 ];
 export const MEASUREMENT_NOTES = [
     'Global phase offset arg⟨a|b⟩: the phase of the inner product of two normalised statevectors. It is a global-phase difference between the states, not a relative phase between components of one superposition. The JSON fields relative_phase_matrix and *relative_phase* keep their names for compatibility.',
-    "Label-aligned basis: for a measured pair whose declared counts bit orders differ (lsb vs msb) the second backend's keys are bit-reversed; otherwise the keys are compared directly. The statistical tests and the label-aligned distances use this basis; the direct distances are recorded as well.",
+    "Label-aligned basis: for a pair whose declared qubit orderings differ (lsb vs msb) the second backend's output is bit-reversed (statevector amplitudes or counts keys); otherwise it is compared directly, and on a one-qubit circuit bit reversal is the identity. Statevector labels, the statistical tests and the label-aligned distances use this basis; the direct values are recorded as well.",
     'Outcomes with an expected count below 5 are pooled into one bin before the chi-square and G-tests; statistical_test.pooled_outcomes gives how many were pooled.',
-    'Benjamini-Hochberg controls the false discovery rate when the p-values are independent or positively regression dependent (PRDS). Pairs that share a backend reuse its sample and are dependent; PRDS is not established for chi-square statistics sharing a sample.',
+    'Benjamini-Yekutieli controls the false discovery rate at q = alpha under arbitrary dependence between the p-values; pairs that share a backend reuse its sample and are dependent. Its threshold is alpha·i/(m·c_m) with c_m = 1 + 1/2 + ... + 1/m. BH-adjusted p-values are recorded for reference (p_value_bh) and do not set the verdict.',
 ];
-export const ANALYSIS_VERSION = 'divergence-2026.09.30';
+export const ANALYSIS_VERSION = 'divergence-2026.09.30.2';
 export const ANALYSIS_VERSION_NOTE = `Analysis version ${ANALYSIS_VERSION} (analysis_version in each divergence report). The `
     + 'labels and verdicts are a function of the outputs and of the analysis rules; verdicts '
     + 'computed under different analysis versions may differ for identical counts.';
@@ -332,19 +410,24 @@ export function _dataAgreement(div, mode) {
     const measured = mode === 'measured';
     const headers = ['Pair', 'Agreement', 'Registered transform'];
     if (measured) headers.push(`JS, direct (${JS_UNIT})`, `JS, label-aligned basis (${JS_UNIT})`, 'Stat verdict', 'Measured assessment');
-    else headers.push('Direct fidelity');
+    else headers.push('Direct fidelity', 'Fidelity, label-aligned basis', 'Unaligned-basis match');
     headers.push('Not-comparable reason');
     const rows = _formatColumns(_artPairwise(div).map(r => {
         const m = r.metrics || {};
         const metric = r.mode === 'statevector' ? m.direct_fidelity : m.js_divergence;
         const row = [_artPairKey(r), _artText(r.agreement), _artText(r.registered_transform), _n(metric)];
         if (measured) row.push(_n(m.label_aligned_js_divergence), _artText((m.statistical_test || {}).verdict), _artText(r.measured_assessment));
+        else row.push(_n(m.label_aligned_fidelity), _artText(m.unaligned_basis_match));
         row.push(r.agreement === 'not_comparable' ? _artText(m.reason) : '—');
         return row;
     }));
     const metricNote = measured
         ? `JS, direct is the Jensen–Shannon divergence in ${JS_UNIT} of the keys as reported; JS, label-aligned basis bit-reverses the second backend's keys when the two declared bit orders differ (lsb vs msb) and equals the direct value otherwise`
-        : 'Direct fidelity is |<a|b>|^2 of the normalised vectors before any transform';
+        : 'Direct fidelity is |<a|b>|^2 of the normalised vectors before any transform; '
+            + 'the label-aligned basis bit-reverses the second vector when the two declared '
+            + 'qubit orderings differ (lsb vs msb) and the label is assigned in it. '
+            + 'Unaligned-basis match names the other basis when the pair matches only there, '
+            + 'which is a disagreement';
     let caption = 'Classification over the registered-transform lattice; each label reports the '
         + `transform whose numerical effect explains the pair. ${metricNote}.`;
     if (measured) {
@@ -367,6 +450,7 @@ export function _dataMatrix(div, key, title) {
 }
 /** Per-backend timings: ranked runs by total time, then unranked runs with the reason. */
 export function _dataPerformance(results) {
+    if (_artTimingRepeated(results)) return _dataPerformanceRepeated(results);
     return {
         headers: ['Rank', 'Simulator', 'Device', 'Compilation (s)', 'Simulation (s)', 'Total (s)',
             'Simulation CPU (s)', 'Process CPU (s)', 'Gate count', 'Depth', 'Status'],
@@ -388,6 +472,41 @@ export function _dataPerformance(results) {
             + 'fastest first; runs without a rank follow with the reason in Status. Gate '
             + "count and depth are taken from each backend's transpiled QASM. "
             + DEVICE_NOTE,
+    };
+}
+/** _dataPerformance with median stage times and the spread of total time. */
+function _dataPerformanceRepeated(results) {
+    return {
+        headers: ['Rank', 'Simulator', 'Device', 'Compilation median (s)', 'Simulation median (s)',
+            'Total median (s)', 'Total IQR (s)', 'Total stdev (s)', 'n',
+            'Simulation CPU (s)', 'Process CPU (s)', 'Gate count', 'Depth', 'Status'],
+        rows: _formatColumns(_artReportRows(results, 'performance_report').map(row => {
+            const total = _artTimingStats(row, 'execution_time_sec');
+            const n = total ? total.n : (row.failed ? null : 1);
+            return [row.rank, _artText(row.entry.simulator), _artDevice(row),
+                _n(_artTimingValue(row, 'compilation_time_sec'), 6),
+                _n(_artTimingValue(row, 'simulation_time_sec'), 6),
+                _n(_artTimingValue(row, 'execution_time_sec'), 6),
+                _n(total ? total.iqr : null, 6),
+                _n(total ? total.stdev : null, 6),
+                _artInt(n),
+                _n(_artField(row, 'simulation_cpu_time_sec'), 6),
+                _n(_artField(row, 'cpu_time_sec'), 6),
+                _artInt(_artField(row, 'gate_count')), _artInt(_artField(row, 'circuit_depth')),
+                row.status];
+        })),
+        title: 'Execution timing',
+        caption: 'Median wall-clock times over the n timed runs of each backend (column n); a '
+            + 'warm-up run precedes them and is not included. Total median = compilation '
+            + 'median + simulation median, the reported execution_time_sec. Total IQR is the '
+            + 'interquartile range (Q3 - Q1, linear interpolation) and Total stdev the sample '
+            + 'standard deviation (n - 1) of the per-run totals (compilation + simulation); '
+            + 'both are — for a backend with one run. Simulation CPU and process CPU '
+            + 'are from the last timed run; process CPU is getrusage CPU time of the whole '
+            + 'isolated runner process, including interpreter start, imports and the '
+            + 'warm-up. Ranked by median total time, fastest first; runs without a rank '
+            + 'follow with the reason in Status. Gate count and depth are taken from each '
+            + `backend's transpiled QASM. ${DEVICE_NOTE}`,
     };
 }
 /** Per-backend memory: ranked runs by process peak RSS, then unranked runs with the reason. */
@@ -424,12 +543,15 @@ function _artVerdictText(st) {
     if (st.resolvable_by_more_shots === false) reason += '; not resolvable by more shots';
     return `${verdict} (${reason})`;
 }
-/** " = <alpha_used> (m = <m_pairs>)" from the first record that records them, else "". */
+/** " = <alpha_used> (m = <m_pairs>, c_m = <c_m>)" from the first record that records them, else "". */
 function _artPowerAlphaText(recs) {
     for (const r of recs) {
         const pw = r.metrics.statistical_test.power || {};
         const has = v => v !== null && v !== undefined;
-        if (has(pw.alpha_used) && has(pw.m_pairs)) return ` = ${_artNum(pw.alpha_used)} (m = ${_artInt(pw.m_pairs)})`;
+        if (has(pw.alpha_used) && has(pw.m_pairs)) {
+            const cm = has(pw.c_m) ? `, c_m = ${_artNum(pw.c_m)}` : '';
+            return ` = ${_artNum(pw.alpha_used)} (m = ${_artInt(pw.m_pairs)}${cm})`;
+        }
     }
     return '';
 }
@@ -437,31 +559,31 @@ function _artPowerAlphaText(recs) {
 export function _dataStatistical(div) {
     const recs = _artPairwise(div).filter(r => (r.metrics || {}).statistical_test);
     return {
-        headers: ['Pair', 'Basis', 'chi2 p', 'chi2 p (BH)', 'G-test p', 'G-test p (BH)',
+        headers: ['Pair', 'Basis', 'chi2 p', 'chi2 p (BY)', 'G-test p', 'G-test p (BY)',
             'Total variation', "Cramér's V", 'Power@obs', 'Shots/backend for power',
             'Pooled outcomes', 'Verdict'],
         rows: _formatColumns(recs.map(r => {
             const st = r.metrics.statistical_test, ef = st.effect_size || {}, pw = st.power || {},
                 c = st.chi2 || {}, g = st.g_test || {};
-            return [_artPairKey(r), _artText(st.basis), _pn(c.p_value), _pn(c.p_value_bh),
-                _pn(g.p_value), _pn(g.p_value_bh), _n(ef.total_variation), _n(ef.cramers_v),
+            return [_artPairKey(r), _artText(st.basis), _pn(c.p_value), _pn(c.p_value_by),
+                _pn(g.p_value), _pn(g.p_value_by), _n(ef.total_variation), _n(ef.cramers_v),
                 _n(pw.power_to_detect_delta_at_observed_shots, 3),
                 _artInt(pw.shots_per_backend_for_target_power), _artInt(st.pooled_outcomes),
                 _artVerdictText(st)];
         })),
         title: 'Shot-noise statistical test',
         caption: 'Shot-noise-aware homogeneity tests (chi-square + G-test) in the label-aligned '
-            + 'basis (bit-reversed when the declared bit orders differ), with BH-corrected '
-            + 'p-values and effect size. A pair is distinguishable only when both tests are '
-            + 'significant after BH over the m comparable pairs. Power@obs is the power of the '
-            + 'chi-square test to detect a total-variation gap of 0.05 at the Bonferroni level '
-            + `alpha/m${_artPowerAlphaText(recs)}, the threshold BH applies to a single `
-            + 'discovery: a lower bound for detecting one wrong backend. Outcomes with an '
-            + 'expected count below 5 are pooled into one bin. At FDR q = 0.05 the expected '
-            + 'share of false discoveries among flagged pairs is at most q, so a few flagged '
-            + 'pairs are expected by chance; BH assumes independent or positively regression '
-            + 'dependent (PRDS) p-values, and pairs sharing a backend are dependent. A '
-            + 'non-significant pair with power below 0.8 is inconclusive_low_shots.',
+            + 'basis (bit-reversed when the declared bit orders differ), with '
+            + 'Benjamini-Yekutieli (BY) adjusted p-values and effect size. A pair is '
+            + 'distinguishable only when both tests are significant after BY over the m '
+            + 'comparable pairs. BY controls the false discovery rate at q = 0.05 under any '
+            + "dependence between the tests, including pairs that share one backend's "
+            + 'sample; a flagged pair can still be a false discovery. Power@obs is the power '
+            + 'of the chi-square test to detect a total-variation gap of 0.05 at '
+            + `alpha/(m·c_m)${_artPowerAlphaText(recs)}, the threshold BY applies to a `
+            + 'single discovery: a lower bound for detecting one wrong backend. Outcomes with '
+            + 'an expected count below 5 are pooled into one bin. A non-significant pair with '
+            + 'power below 0.8 is inconclusive_low_shots.',
     };
 }
 /** Per-backend SDK versions, ordering and sampling labels, opt level and status. */
@@ -554,12 +676,16 @@ export function buildArtifactCatalog(results) {
     });
     const unrankedNote = 'runs without a rank are listed with their status and reason and have no bar.';
     const perf = results.performance_report || {};
+    const repeated = _artTimingRepeated(results);
     if ((perf.ranking || []).length || (perf.unranked || []).length) {
         image('performance_time', 'Execution-time chart', 'Performance',
-            'Stacked compilation + simulation wall-clock time per backend (raw), '
+            'Stacked compilation + simulation wall-clock time per backend '
+            + (repeated ? '(median of each stage over the timed runs), ' : '(raw), ')
             + `n=${_artTimingSamples(results)} timing sample(s) per backend; GPU runs are labelled (GPU); ` + unrankedNote);
         table('performance', 'Execution-time table', 'Performance', () => _dataPerformance(results),
-            'Per-backend device, compilation, simulation and total wall-clock time, simulation and process CPU time, and status (raw).');
+            'Per-backend device, compilation, simulation and total wall-clock time'
+            + (repeated ? ' (medians, with the IQR, stdev and n of total time)' : '')
+            + ', simulation and process CPU time, and status (raw).');
     }
     const res = results.resource_report || {};
     if ((res.ranking || []).length || (res.unranked || []).length) {
@@ -572,7 +698,7 @@ export function buildArtifactCatalog(results) {
     if (mode === 'measured') {
         if (pairwise.some(r => (r.metrics || {}).statistical_test)) {
             table('statistical_test', 'Statistical-test table', 'Statistical', () => _dataStatistical(div),
-                'Chi-square + G-test p-values (raw + BH) in the label-aligned basis, effect size, power and pooled outcomes per pair.');
+                'Chi-square + G-test p-values (raw + BY) in the label-aligned basis, effect size, power and pooled outcomes per pair.');
         }
         const rawCounts = {};
         (results.raw_results || []).forEach(r => {

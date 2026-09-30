@@ -37,7 +37,9 @@ def _sv_edge():
     for i, label in enumerate(_LABELS):
         pairs.append({"simulators": [sims[i % 4], sims[(i + 1) % 4]], "mode": "statevector",
                       "agreement": label, "registered_transform": "identity" if i == 0 else None,
-                      "metrics": {"direct_fidelity": _FIDELITIES[i]}})
+                      "metrics": {"direct_fidelity": _FIDELITIES[i],
+                                  "label_aligned_fidelity": _FIDELITIES[-1 - i],
+                                  "unaligned_basis_match": [None, "direct", "bit_reversal"][i % 3]}})
     for reason in _SV_REASONS:
         pairs.append({"simulators": ["s0", "s3"], "mode": "statevector",
                       "agreement": "not_comparable", "registered_transform": None,
@@ -126,10 +128,11 @@ def _measured_edge():
                                           "effect_size": {"total_variation": 0, "cramers_v": 2e-6},
                                           "power": {"power_to_detect_delta_at_observed_shots": 0.99996,
                                                     "shots_per_backend_for_target_power": 1570.0,
-                                                    "alpha_used": 0.05 / 21, "m_pairs": 21},
+                                                    "alpha_used": 0.05 / (21 * 3.645359), "m_pairs": 21,
+                                                    "c_m": 3.6453587047627294},
                                           "chi2": {"p_value": [1, 0.0, 1.65e-188][(i + j) % 3],
-                                                   "p_value_bh": [0.99996, 0, 2e-300][(i + j) % 3]},
-                                          "g_test": {"p_value": 3e-12, "p_value_bh": None}}}})
+                                                   "p_value_by": [0.99996, 0, 2e-300][(i + j) % 3]},
+                                          "g_test": {"p_value": 3e-12, "p_value_by": None}}}})
     for reason in _COUNT_REASONS:
         pairs.append({"simulators": ["m0", "x"], "mode": "measured", "agreement": "not_comparable",
                       "registered_transform": None, "measured_assessment": "not_comparable",
@@ -150,8 +153,21 @@ def _measured_edge():
         "raw_results": raw}
 
 
+def _repeated_timing():
+    """_sv_edge with per-run timing samples: odd and even counts, ties, one single-run backend."""
+    rep = _sv_edge()
+    rep["timing_samples"] = 4
+    s0, s1 = rep["raw_results"][0], rep["raw_results"][1]
+    s0.update({"timing_samples": 4, "compilation_time_samples": [0.0, 1e-7, 0.0, 3e-7],
+               "simulation_time_samples": [2.0, 0.1, 0.30000000000000004, 7.5]})
+    s1.update({"timing_samples": 3, "compilation_time_samples": [1e-7, 1e-7, 2e-7],
+               "simulation_time_samples": [0.5, 0.49, 0.5100001]})
+    return rep
+
+
 _CASES = [("measured", MEASURED), ("statevector", STATEVECTOR),
-          ("statevector", _sv_edge()), ("measured", _measured_edge())]
+          ("statevector", _sv_edge()), ("measured", _measured_edge()),
+          ("statevector", _repeated_timing())]
 
 
 def _js(payload):

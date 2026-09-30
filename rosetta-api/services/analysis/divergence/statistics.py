@@ -12,17 +12,25 @@ from scipy.optimize import brentq
 from .common import STAT_TEST_ALPHA, STAT_TEST_DELTA_TV, STAT_TEST_TARGET_POWER
 
 POWER_MODEL = (
-    "min_cohens_w at the Bonferroni level alpha/m (w = delta_tv; df = tested outcome bins - 1, "
-    "at least 1; m = comparable pairs in the report, the family BH corrects over). alpha/m is "
-    "the threshold BH applies to a single discovery, so the power is a lower bound for "
-    "detecting one wrong backend under the rule that both tests are significant after BH."
+    "min_cohens_w at alpha/(m*c_m) (w = delta_tv; df = tested outcome bins - 1, at least 1; "
+    "m = comparable pairs in the report, the family BY corrects over; c_m = sum_{i=1..m} 1/i). "
+    "alpha/(m*c_m) is the threshold Benjamini-Yekutieli applies to a single discovery, so the "
+    "power is a lower bound for detecting one wrong backend under the rule that both tests "
+    "are significant after BY."
 )
 MIN_EXPECTED_COUNT = 5.0
+CORRECTION = "BY"
 FDR_DEPENDENCE_NOTE = (
-    "BH controls the false discovery rate when the p-values are independent or positively "
-    "regression dependent (PRDS). Pairs that share a backend reuse its sample and are "
-    "dependent; PRDS is not established for chi-square statistics sharing a sample."
+    "Benjamini-Yekutieli controls the false discovery rate at q = alpha under arbitrary "
+    "dependence between the p-values. Pairs that share a backend reuse its sample, so their "
+    "p-values are dependent; BY does not assume independence or positive dependence. Its "
+    "threshold is alpha*i/(m*c_m) with c_m = sum_{i=1..m} 1/i."
 )
+
+
+def _by_constant(m):
+    """c_m = sum_{i=1..m} 1/i, the Benjamini-Yekutieli dependence constant (1.0 for m <= 1)."""
+    return float(sum(1.0 / i for i in range(1, max(int(m), 1) + 1)))
 
 
 def _shots_per_backend_for_target_power(alpha, target_power, delta_tv, df=1):
@@ -53,9 +61,11 @@ def _power_at_shots(alpha, delta_tv, df, n_total):
 
 
 def _set_power(block, alpha, m_pairs):
-    """Fill ``block["power"]`` for a family of ``m_pairs`` tests at the level alpha/m_pairs."""
+    """Fill ``block["power"]`` for a family of ``m_pairs`` tests at alpha/(m_pairs*c_m)."""
     power = block["power"]
-    alpha_used = alpha / max(int(m_pairs), 1)
+    m = max(int(m_pairs), 1)
+    c_m = _by_constant(m)
+    alpha_used = alpha / (m * c_m)
     n_shots = list(block["n_shots"].values())
     n_total = float(sum(n_shots))
     recommended = _shots_per_backend_for_target_power(
@@ -63,6 +73,8 @@ def _set_power(block, alpha, m_pairs):
     power.update({
         "alpha_used": alpha_used,
         "m_pairs": int(m_pairs),
+        "c_m": c_m,
+        "correction": CORRECTION,
         "power_to_detect_delta_at_observed_shots": _power_at_shots(
             alpha_used, power["delta_tv"], power["df"], n_total),
         "shots_per_backend_for_target_power": recommended,
@@ -175,7 +187,7 @@ def _statistical_agreement_test(
     (``pooled_outcomes``). A table with a single outcome bin is tested against the empty
     complement bin: statistic 0 on 1 degree of freedom. ``low_count_warning`` is set when no
     pooling gives adequate expected counts. Power is evaluated on the tested table's degrees
-    of freedom. Family-wise correction and the verdict are filled in by
+    of freedom. Multiple-comparison correction and the verdict are filled in by
     ``_apply_multiple_comparison_correction``. Raises ValueError if scipy rejects the table.
     """
     outcomes = [
@@ -217,17 +229,19 @@ def _statistical_agreement_test(
             "statistic": None,
             "dof": None,
             "p_value": None,
+            "p_value_by": None,
             "p_value_bh": None,
             "p_value_bonferroni": None,
-            "significant_bh": None,
+            "significant_by": None,
         },
         "g_test": {
             "statistic": None,
             "dof": None,
             "p_value": None,
+            "p_value_by": None,
             "p_value_bh": None,
             "p_value_bonferroni": None,
-            "significant_bh": None,
+            "significant_by": None,
         },
         "low_count_warning": not counts_ok,
         "shots_per_backend_for_expected_counts": (
@@ -262,14 +276,14 @@ def _statistical_agreement_test(
     return block
 
 
-def _bh_adjust(pvalues):
-    """Benjamini-Hochberg step-up adjusted p-values, aligned to input order."""
+def _step_up_adjust(pvalues, scale):
+    """Step-up adjusted p-values min_{k>=i} p_(k) * m * scale / k, clipped to 1, in input order."""
     m = len(pvalues)
     if m == 0:
         return []
     pvals = np.asarray(pvalues, dtype=float)
     order = np.argsort(pvals)
-    ranked = pvals[order] * m / np.arange(1, m + 1)
+    ranked = pvals[order] * m * scale / np.arange(1, m + 1)
     ranked = np.minimum.accumulate(ranked[::-1])[::-1]
     ranked = np.clip(ranked, 0.0, 1.0)
     adjusted = np.empty(m)
@@ -277,42 +291,58 @@ def _bh_adjust(pvalues):
     return adjusted.tolist()
 
 
+def _bh_adjust(pvalues):
+    """Benjamini-Hochberg step-up adjusted p-values, aligned to input order."""
+    return _step_up_adjust(pvalues, 1.0)
+
+
+def _by_adjust(pvalues):
+    """Benjamini-Yekutieli adjusted p-values (BH scaled by c_m), aligned to input order."""
+    return _step_up_adjust(pvalues, _by_constant(len(pvalues)))
+
+
 def _apply_multiple_comparison_correction(stat_records, alpha=STAT_TEST_ALPHA):
-    """Fill BH/Bonferroni-adjusted p-values and verdicts across the pairwise family.
+    """Fill BY, BH and Bonferroni adjusted p-values and verdicts across the pairwise family.
 
     ``stat_records`` holds one ``statistical_test`` block per tested pair. Correction is
-    applied per test (chi-square and G-test) across all pairs. Power is recomputed at
-    alpha/m for the m pairs of the family before the verdicts are assigned.
+    applied per test (chi-square and G-test) across all pairs; significance is BY-adjusted
+    p < alpha. BH-adjusted p-values are recorded for reference. Power is recomputed at
+    alpha/(m*c_m) for the m pairs of the family before the verdicts are assigned.
     """
     m = len(stat_records)
+    c_m = _by_constant(m) if m else None
     summary = {
         "family_size": m,
         "alpha": alpha,
-        "power_alpha": alpha / m if m else None,
+        "correction": CORRECTION,
+        "c_m": c_m,
+        "power_alpha": alpha / (m * c_m) if m else None,
         "power_model": POWER_MODEL,
-        "correction": ["benjamini_hochberg", "bonferroni"],
+        "adjusted_p_values": ["benjamini_yekutieli", "benjamini_hochberg", "bonferroni"],
         "fdr_dependence_note": FDR_DEPENDENCE_NOTE,
     }
     if m == 0:
-        return {**summary, "verdict_counts": {}, "n_significant_bh": {"chi2": 0, "g_test": 0}}
+        return {**summary, "verdict_counts": {}, "n_significant_by": {"chi2": 0, "g_test": 0}}
 
     for rec in stat_records:
         _set_power(rec, alpha, m)
+        rec["correction"] = CORRECTION
 
     for test in ("chi2", "g_test"):
         raw = [rec[test]["p_value"] for rec in stat_records]
+        by = _by_adjust(raw)
         bh = _bh_adjust(raw)
-        for rec, p_raw, p_bh in zip(stat_records, raw, bh):
-            p_bonf = min(p_raw * m, 1.0)
+        for rec, p_raw, p_by, p_bh in zip(stat_records, raw, by, bh):
+            rec[test]["p_value_by"] = float(p_by)
             rec[test]["p_value_bh"] = float(p_bh)
-            rec[test]["p_value_bonferroni"] = float(p_bonf)
-            rec[test]["significant_bh"] = bool(p_bh < alpha)
+            rec[test]["p_value_bonferroni"] = float(min(p_raw * m, 1.0))
+            rec[test]["significant_by"] = bool(p_by < alpha)
 
     verdict_counts = {}
     n_sig = {"chi2": 0, "g_test": 0}
     for rec in stat_records:
-        chi2_sig = rec["chi2"]["significant_bh"]
-        g_sig = rec["g_test"]["significant_bh"]
+        chi2_sig = rec["chi2"]["significant_by"]
+        g_sig = rec["g_test"]["significant_by"]
         n_sig["chi2"] += int(bool(chi2_sig))
         n_sig["g_test"] += int(bool(g_sig))
         power = rec.get("power") or {}
@@ -338,4 +368,4 @@ def _apply_multiple_comparison_correction(stat_records, alpha=STAT_TEST_ALPHA):
         rec["verdict"] = verdict
         verdict_counts[verdict] = verdict_counts.get(verdict, 0) + 1
 
-    return {**summary, "verdict_counts": verdict_counts, "n_significant_bh": n_sig}
+    return {**summary, "verdict_counts": verdict_counts, "n_significant_by": n_sig}

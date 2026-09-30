@@ -67,6 +67,9 @@ def _statevector_not_comparable_record(res_i, res_j, reason, details=None):
     }
 
 
+_STATEVECTOR_AGREEING = ("agree_directly", "agree_up_to_global_phase", "agree_after_bit_reversal")
+
+
 def _classify_statevector_pair(
     res_i,
     res_j,
@@ -81,13 +84,20 @@ def _classify_statevector_pair(
     fidelity_tolerance,
     phase_tolerance,
     norm_tolerance=None,
+    label_aligned_basis="direct",
+    basis_source="declared_qubit_ordering",
 ):
-    """Label a statevector pair from its direct, bit-reversed and permuted fidelities.
+    """Label a statevector pair in the basis its declared qubit orderings imply.
 
-    Fidelities are computed on normalised vectors. A pair agrees when fidelity >=
-    1 - fidelity_tolerance. If either input norm differs from 1 by more than
-    ``norm_tolerance``, an agreeing pair is labelled ``agree_after_normalization`` and the
-    label it would otherwise have received is kept in ``metrics.normalized_agreement``.
+    ``label_aligned_basis`` is "bit_reversal" for an lsb x msb pair and "direct" otherwise.
+    A pair agrees when the fidelity in that basis is >= 1 - fidelity_tolerance:
+    agree_directly / agree_up_to_global_phase in the direct basis, agree_after_bit_reversal
+    in the bit-reversed one (``transform_effect.global_phase_aligned`` marks a phase offset).
+    A pair that matches only in the other basis is residual_disagreement with
+    ``metrics.unaligned_basis_match`` naming that basis. agree_after_qubit_permutation
+    (an undeclared permutation) is a disagreement class. If either input norm differs
+    from 1 by more than ``norm_tolerance``, an agreeing pair is labelled
+    ``agree_after_normalization`` and its label is kept in ``metrics.normalized_agreement``.
     """
     sim_i = res_i.get("simulator", "unknown")
     sim_j = res_j.get("simulator", "unknown")
@@ -96,8 +106,7 @@ def _classify_statevector_pair(
     unnormalized_input = bool(
         abs(float(norm_i) - 1.0) > norm_tolerance or abs(float(norm_j) - 1.0) > norm_tolerance
     )
-    phase_agrees = abs(relative_phase) <= phase_tolerance
-    fidelity_agrees = fidelity >= (1.0 - fidelity_tolerance)
+    direct_agrees = fidelity >= (1.0 - fidelity_tolerance)
     bit_reversal_agrees = bit_reversed_fidelity >= (1.0 - fidelity_tolerance)
     qubit_permutation_fidelity = qubit_permutation_metrics.get("fidelity")
     qubit_permutation_agrees = (
@@ -105,15 +114,22 @@ def _classify_statevector_pair(
         and qubit_permutation_fidelity is not None
         and qubit_permutation_fidelity >= (1.0 - fidelity_tolerance)
     )
+    reversed_basis = label_aligned_basis == "bit_reversal"
+    aligned_fidelity = bit_reversed_fidelity if reversed_basis else fidelity
+    aligned_phase = bit_reversed_relative_phase if reversed_basis else relative_phase
+    aligned_agrees = bit_reversal_agrees if reversed_basis else direct_agrees
+    unaligned_agrees = direct_agrees if reversed_basis else bit_reversal_agrees
+    phase_agrees = abs(aligned_phase) <= phase_tolerance
+    unaligned_basis_match = None
 
-    if fidelity_agrees and phase_agrees:
+    if aligned_agrees and not reversed_basis and phase_agrees:
         agreement = "agree_directly"
         registered_transform = "identity"
         transform_effect = {
             "fidelity_delta": 0.0,
             "relative_phase_delta_rad": 0.0,
         }
-    elif fidelity_agrees:
+    elif aligned_agrees and not reversed_basis:
         agreement = "agree_up_to_global_phase"
         registered_transform = "global_phase_alignment"
         transform_effect = {
@@ -121,20 +137,26 @@ def _classify_statevector_pair(
             "relative_phase_delta_rad": _json_float(-relative_phase),
             "relative_phase_after_alignment_rad": 0.0,
         }
-    elif bit_reversal_agrees:
+    elif aligned_agrees:
         agreement = "agree_after_bit_reversal"
         registered_transform = "bit_reversal"
         transform_effect = {
             "fidelity_delta": _json_float(bit_reversed_fidelity - fidelity),
             "fidelity_after_transform": _json_float(bit_reversed_fidelity),
             "relative_phase_after_transform_rad": _json_float(bit_reversed_relative_phase),
+            "global_phase_aligned": not phase_agrees,
         }
+    elif unaligned_agrees:
+        agreement = "residual_disagreement"
+        registered_transform = None
+        transform_effect = None
+        unaligned_basis_match = "direct" if reversed_basis else "bit_reversal"
     elif qubit_permutation_agrees:
         agreement = "agree_after_qubit_permutation"
         registered_transform = "qubit_permutation"
         transform_effect = {
             "permutation": qubit_permutation_metrics["permutation"],
-            "fidelity_delta": _json_float(qubit_permutation_fidelity - fidelity),
+            "fidelity_delta": _json_float(qubit_permutation_fidelity - aligned_fidelity),
             "fidelity_after_transform": _json_float(qubit_permutation_fidelity),
             "relative_phase_after_transform_rad": _json_float(
                 qubit_permutation_metrics.get("relative_phase")
@@ -146,7 +168,7 @@ def _classify_statevector_pair(
         transform_effect = None
 
     normalized_agreement = None
-    if unnormalized_input and agreement != "residual_disagreement":
+    if unnormalized_input and agreement in _STATEVECTOR_AGREEING:
         normalized_agreement = agreement
         agreement = "agree_after_normalization"
 
@@ -165,6 +187,11 @@ def _classify_statevector_pair(
             "direct_relative_phase_rad": _json_float(relative_phase),
             "bit_reversed_fidelity": _json_float(bit_reversed_fidelity),
             "bit_reversed_relative_phase_rad": _json_float(bit_reversed_relative_phase),
+            "label_aligned_basis": label_aligned_basis,
+            "basis_source": basis_source,
+            "label_aligned_fidelity": _json_float(aligned_fidelity),
+            "label_aligned_relative_phase_rad": _json_float(aligned_phase),
+            "unaligned_basis_match": unaligned_basis_match,
             "qubit_permutation": {
                 "attempted": bool(qubit_permutation_metrics.get("attempted")),
                 "reason": qubit_permutation_metrics.get("reason"),

@@ -6,8 +6,10 @@ so the CLI can import it without the API's runtime dependencies.
 
 Bundle outputs:
   A) conformance matrix  — per (circuit x simulator) run status + error signature
-  B) agreement prevalence — agreement-class counts over compared pairs, with
-     not_comparable pairs counted in their own rows
+  B) agreement prevalence — pair counts per class over compared pairs, with
+     not_comparable pairs counted in their own rows. Measured pairs are counted by
+     measured_assessment (the shot-noise verdict), with the distance labels of each class
+     in a secondary column; statevector pairs by agreement label.
 
 Error rows carry a raw signature with ``triage='untriaged'``; classification into
 adapter / SDK / by-design / resource happens during review.
@@ -23,9 +25,14 @@ from services.report_filters import fingerprint_statevectors
 
 CONFORMANCE_FIELDS = ["axis", "circuit", "simulator", "status", "error_signature", "triage",
                       "circuit_id"]
-PREVALENCE_FIELDS = ["axis", "agreement_class", "pair_count", "pair_scope"]
+PREVALENCE_FIELDS = ["axis", "count_basis", "agreement_class", "pair_count", "pair_scope",
+                     "distance_labels"]
 
 NOT_COMPARABLE = "not_comparable"
+
+_VERDICT_TO_ASSESSMENT = {"consistent": "consistent_within_shot_noise",
+                          "distinguishable": "distinguishable", "ambiguous": "ambiguous",
+                          "inconclusive_low_shots": "inconclusive_low_shots"}
 
 _DISPATCH_TO_CONFORMANCE = {"ok": "success", "error": "error", "timeout": "timeout",
                             "offline": "offline"}
@@ -39,12 +46,21 @@ TRIAGE_README = (
     "  results/<axis>/<id>.json - per-circuit reports, named by circuit id. By default each\n"
     "                             statevector is replaced by statevector_sha256 (sha256 of the\n"
     "                             Base64-decoded complex128 bytes; for list-form vectors, of\n"
-    "                             the sorted-key JSON) and statevector_len;\n"
+    "                             the sorted-key JSON) and statevector_length (also\n"
+    "                             written as statevector_len);\n"
     "                             metrics, labels and provenance are kept in full\n"
     "  conformance_matrix.csv   - per (circuit x simulator) run status + error signature\n"
-    "  agreement_prevalence.csv - agreement-class counts over compared pairs\n"
+    "  agreement_prevalence.csv - pair counts per class over compared pairs\n"
     "                             (pair_scope=compared); pairs where a side had no usable\n"
-    "                             output are counted separately (pair_scope=not_comparable)\n"
+    "                             output are counted separately (pair_scope=not_comparable).\n"
+    "                             count_basis says what the class is: measured pairs are\n"
+    "                             counted by measured_assessment (the shot-noise verdict:\n"
+    "                             consistent_within_shot_noise, distinguishable, ambiguous,\n"
+    "                             inconclusive_low_shots), and distance_labels lists the\n"
+    "                             descriptive distance labels within each class as\n"
+    "                             label:count; statevector pairs are counted by agreement\n"
+    "                             label. A distance label such as agree_after_bit_reversal\n"
+    "                             on a distinguishable pair is not an agreement.\n"
     "  errors/*.log             - per-simulator error signatures\n"
     "  manifest.json            - config as requested (nulls mean server defaults) and\n"
     "                             effective_config (the seed, agreement thresholds and runner\n"
@@ -93,8 +109,13 @@ def slug(text: str) -> str:
 
 
 def strip_statevectors(report: dict) -> dict:
-    """Replace each raw statevector with a sha256 + length (see fingerprint_statevectors)."""
-    return fingerprint_statevectors(report, sha256)
+    """Replace each raw statevector with statevector_sha256 and statevector_length (see
+    fingerprint_statevectors)."""
+    fingerprint_statevectors(report, sha256)
+    for entry in report.get("raw_results", []) or []:
+        if isinstance(entry, dict) and "statevector_len" in entry:
+            entry.setdefault("statevector_length", entry["statevector_len"])
+    return report
 
 
 def _runner_status(entry: dict) -> tuple:
@@ -130,20 +151,49 @@ def build_conformance_rows(axis_label: str, summary: list) -> list:
     return rows
 
 
+def _measured_class(rec: dict) -> str:
+    """measured_assessment of a measured pair record, else the class its verdict implies."""
+    if rec.get("agreement") == NOT_COMPARABLE:
+        return NOT_COMPARABLE
+    if rec.get("measured_assessment"):
+        return rec["measured_assessment"]
+    verdict = ((rec.get("metrics") or {}).get("statistical_test") or {}).get("verdict")
+    return _VERDICT_TO_ASSESSMENT.get(verdict, "unassessed")
+
+
 def build_prevalence_rows(axis_label: str, summary: list) -> list:
-    """Agreement-class counts per axis: compared pairs (``pair_scope='compared'``), then
-    not_comparable pairs in their own row (``pair_scope='not_comparable'``)."""
+    """Pair counts per class and axis: compared pairs (``pair_scope='compared'``), then
+    not_comparable pairs in their own row (``pair_scope='not_comparable'``).
+
+    Measured pairs (``mode='measured'`` or a ``measured_assessment``) are counted by
+    measured_assessment (``count_basis='measured_assessment'``) and ``distance_labels``
+    holds "label:count" for the distance labels in that class, joined by "; ". Other pairs
+    are counted by agreement label (``count_basis='agreement_label'``)."""
     counts: dict = {}
+    labels: dict = {}
+    basis = "agreement_label"
     for report in summary:
         for rec in (report.get("divergence_report") or {}).get("pairwise_agreement", []) or []:
-            key = rec.get("agreement", "unknown")
+            label = rec.get("agreement", "unknown")
+            if rec.get("mode") == "measured" or "measured_assessment" in rec:
+                basis = "measured_assessment"
+                key = _measured_class(rec)
+                per_class = labels.setdefault(key, {})
+                per_class[label] = per_class.get(label, 0) + 1
+            else:
+                key = label
             counts[key] = counts.get(key, 0) + 1
+
+    def row(key, count, scope):
+        per_class = labels.get(key, {})
+        return {"axis": axis_label, "count_basis": basis, "agreement_class": key,
+                "pair_count": count, "pair_scope": scope,
+                "distance_labels": "; ".join(f"{k}:{v}" for k, v in sorted(per_class.items()))}
+
     not_comparable = counts.pop(NOT_COMPARABLE, 0)
-    rows = [{"axis": axis_label, "agreement_class": k, "pair_count": v, "pair_scope": "compared"}
-            for k, v in sorted(counts.items())]
+    rows = [row(k, v, "compared") for k, v in sorted(counts.items())]
     if not_comparable:
-        rows.append({"axis": axis_label, "agreement_class": NOT_COMPARABLE,
-                     "pair_count": not_comparable, "pair_scope": NOT_COMPARABLE})
+        rows.append(row(NOT_COMPARABLE, not_comparable, NOT_COMPARABLE))
     return rows
 
 

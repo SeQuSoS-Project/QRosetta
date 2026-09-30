@@ -17,8 +17,10 @@ from services.analysis.divergence.common import (
     ANALYSIS_VERSION, DEFAULT_FIDELITY_TOLERANCE, DEFAULT_HELLINGER_THRESHOLD,
     DEFAULT_JS_THRESHOLD, DEFAULT_NORM_TOLERANCE, DEFAULT_PHASE_TOLERANCE,
 )
+from services.experiment_artifacts import sha256 as _json_sha256
 from services.report_filters import (
     OMITTED_FOR_DISPLAY,
+    fingerprint_statevectors,
     is_display_placeholder,
     remove_statevectors,
     statevector_inventory,
@@ -27,6 +29,8 @@ from services.report_filters import (
 logger = get_logger("rosetta-exporter")
 
 PROCESS_RUN_CRATE_PROFILE = "https://w3id.org/ro/wfrun/process/0.5"
+REPOSITORY_URL = "https://github.com/SeQuSoS-Project/QRosetta"
+_GIT_SHA = re.compile(r"^[0-9a-f]{7,40}$")
 _ACTION_STATUS_COMPLETED = "http://schema.org/CompletedActionStatus"
 _ACTION_STATUS_FAILED = "http://schema.org/FailedActionStatus"
 NOT_RECORDED = "not recorded"
@@ -46,6 +50,22 @@ _THRESHOLD_DEFAULTS = {
     "measured": {"js_threshold": DEFAULT_JS_THRESHOLD,
                  "hellinger_threshold": DEFAULT_HELLINGER_THRESHOLD},
 }
+
+
+def _recorded_commit(ctx: "ExportContext") -> Optional[str]:
+    """The report's git_sha when it is a hexadecimal commit id, else None."""
+    sha = _shared_scalar(ctx, "git_sha")
+    sha = str(sha).strip().lower() if sha else ""
+    return sha if _GIT_SHA.match(sha) else None
+
+
+def _source_url(ctx: "ExportContext", path: str = "") -> str:
+    """Repository URL pinned to the recorded commit: the commit page for the whole tree,
+    ``tree/<sha>/<path>`` for a directory; the repository root when no commit is recorded."""
+    sha = _recorded_commit(ctx)
+    if not sha:
+        return REPOSITORY_URL
+    return f"{REPOSITORY_URL}/tree/{sha}/{path}" if path else f"{REPOSITORY_URL}/commit/{sha}"
 
 
 def _entity_ref_id(key: str) -> str:
@@ -583,7 +603,10 @@ def _statevector_description(ctx: ExportContext) -> str:
     if ctx.mode != "statevector":
         return ""
     if not ctx.include_statevectors:
-        return " Raw statevectors excluded from this export."
+        return (" Raw statevectors excluded from this export; each result that had one "
+                "carries statevector_sha256 (sha256 of the Base64-decoded complex128 bytes, "
+                "or of the sorted-key JSON for a list-form vector; statevector_digest_input "
+                "says which) and statevector_length (amplitude count).")
     inv = statevector_inventory(ctx.results)
     parts = []
     if inv["present"]:
@@ -779,7 +802,7 @@ def _build_ro_crate_metadata(ctx: ExportContext,
             "using OpenQASM 2.0 as the canonical input format. Orchestrates each backend "
             "execution and computes cross-simulator agreement evidence."
         ),
-        "url": "https://github.com/SeQuSoS-Project/QRosetta",
+        "url": _source_url(ctx),
     })
     graph.append({
         "@id": "#openqasm2",
@@ -949,10 +972,7 @@ def _build_ro_crate_metadata(ctx: ExportContext,
             "name": f"{runner_id} Simulator Adapter",
             "softwareVersion": version,
             "description": f"Quantum execution environment provided by the {runner_id} backend adapter.",
-            "url": (
-                f"https://github.com/SeQuSoS-Project/QRosetta/tree/main/runners/{dir_name}"
-                if dir_name else "https://github.com/SeQuSoS-Project/QRosetta"
-            ),
+            "url": _source_url(ctx, f"runners/{dir_name}" if dir_name else ""),
         }
         requirements: List[Any] = [
             f"{pkg}=={ver}" for pkg, ver in sorted(executed_versions.items())
@@ -983,10 +1003,26 @@ def _build_ro_crate_metadata(ctx: ExportContext,
 
 # --- public API ------------------------------------------------------------------------
 
+def _fingerprint(report: dict) -> None:
+    """Replace each statevector in ``report['raw_results']`` with statevector_sha256 and
+    statevector_length (statevector_len is kept alongside it)."""
+    fingerprint_statevectors(report, _json_sha256)
+    for r in report.get("raw_results", []) or []:
+        if isinstance(r, dict) and "statevector_len" in r:
+            r.setdefault("statevector_length", r["statevector_len"])
+
+
 def _results_json_data(ctx: ExportContext) -> dict:
-    """results.json content: statevectors per ``include_statevectors``, display
-    placeholders nulled and flagged, and circuit texts written as separate files removed."""
-    data = copy.deepcopy(ctx.results) if ctx.include_statevectors else remove_statevectors(ctx.results)
+    """results.json content: statevectors per ``include_statevectors`` (else a sha256 and
+    length per result), display placeholders nulled and flagged, and circuit texts written
+    as separate files removed."""
+    data = copy.deepcopy(ctx.results)
+    if not ctx.include_statevectors:
+        _fingerprint(data)
+        for task_result in data.get("benchmark_summary", []) or []:
+            if isinstance(task_result, dict):
+                _fingerprint(task_result)
+        data = remove_statevectors(data)
 
     def clean(report: dict) -> None:
         for r in report.get("raw_results", []) or []:

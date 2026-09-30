@@ -44,6 +44,7 @@ plt.rcParams.update({
     "axes.edgecolor": "#c3c2b7", "axes.linewidth": 0.8,
     "axes.spines.top": False, "axes.spines.right": False,
     "svg.hashsalt": "qrosetta-publication", "svg.fonttype": "none",
+    "text.parse_math": False,
 })
 
 _INK = "#0b0b0b"
@@ -72,21 +73,30 @@ _CATEGORICAL = ["#2a78d6", "#1baf7a", "#e0812a", "#8b5cf6", "#e34948", "#0d9488"
                 "#0e7490", "#9d174d"]
 
 _AGREEMENT_GLOSSARY = [
-    ("agree_directly", "Outputs match directly, no transform needed."),
+    ("agree_directly", "Outputs match directly, no transform needed. For a statevector pair "
+     "this requires the same declared qubit ordering, or a one-qubit circuit, where bit "
+     "reversal is the identity."),
     ("agree_up_to_global_phase", "Match after removing the global phase offset arg⟨a|b⟩ "
      "between the two states, which is unobservable. An offset within phase_tolerance is "
      "reported as 0 and the pair agrees directly."),
-    ("agree_after_bit_reversal", "Match after reversing qubit/bit order (an endianness "
-     "convention). For a measured pair whose declared bit orders differ (lsb vs msb) the "
-     "label means the pair agrees in the label-aligned (bit-reversed) basis; it is used by "
-     "convention even when the direct distances are equal too, as for GHZ-type outcomes "
-     "that bit reversal leaves unchanged."),
-    ("agree_after_qubit_permutation", "Match after a bounded qubit permutation (≤7 qubits)."),
+    ("agree_after_bit_reversal", "Match after reversing qubit/bit order, the transform the "
+     "declared orderings imply when one backend is lsb and the other msb. A statevector pair "
+     "gets this label only for such a pair; transform_effect.global_phase_aligned is true "
+     "when a global phase offset remains after the reversal. For a measured pair whose "
+     "declared bit orders differ the label means the pair agrees in the label-aligned "
+     "(bit-reversed) basis; it is used by convention even when the direct distances are "
+     "equal too, as for GHZ-type outcomes that bit reversal leaves unchanged."),
+    ("agree_after_qubit_permutation", "Disagreement: agrees only after an undeclared qubit "
+     "permutation (searched up to ≤7 qubits). No declared ordering implies the permutation, "
+     "so the pair is counted as a disagreement."),
     ("agree_after_normalization", "At least one input statevector has a norm differing from 1 by "
      "more than norm_tolerance; the normalised vectors agree. metrics.normalized_agreement "
      "holds the label the normalised pair receives. The default norm_tolerance (1e-4) lies "
      "above complex64 rounding, which leaves norms about 2e-6 from 1."),
-    ("residual_disagreement", "Statevector disagreement not explained by any registered transform."),
+    ("residual_disagreement", "Statevector disagreement in the label-aligned basis that no "
+     "registered transform explains. metrics.unaligned_basis_match is \"direct\" or "
+     "\"bit_reversal\" when the pair matches only in the basis its declared orderings do not "
+     "imply, as when an lsb and an msb backend return equal vectors for an asymmetric state."),
     ("distance_within_threshold", "Measured distributions within the JS-divergence and Hellinger "
      "thresholds without a bit-order transform (descriptive, configurable; the shot-noise "
      "statistical test gives the significance verdict)."),
@@ -113,24 +123,26 @@ _NOT_COMPARABLE_GLOSSARY = [
     ("comparison_error", "The comparison raised an exception; metrics.details.error holds the message."),
 ]
 _VERDICT_GLOSSARY = [
-    ("consistent", "Neither the chi-square test nor the G-test is significant after BH (FDR) "
-     "correction over the m comparable pairs, and the power to detect a total-variation gap "
-     "of 0.05 at the observed shots is at least 0.8. Power is that of the chi-square test at "
-     "the Bonferroni level alpha/m (power.alpha_used, power.m_pairs), the threshold BH "
-     "applies to a single discovery, on df = tested outcome bins - 1 with Cohen's w = 0.05: "
-     "a lower bound for detecting one wrong backend."),
-    ("distinguishable", "Both tests are significant after BH (FDR) correction. At FDR q = 0.05 "
-     "the expected share of false discoveries among flagged pairs is at most q, so a few "
-     "flagged pairs are expected by chance."),
+    ("consistent", "Neither the chi-square test nor the G-test is significant after "
+     "Benjamini-Yekutieli (BY, FDR) correction over the m comparable pairs, and the power to "
+     "detect a total-variation gap of 0.05 at the observed shots is at least 0.8. Power is "
+     "that of the chi-square test at alpha/(m·c_m) (power.alpha_used, power.m_pairs, "
+     "power.c_m; c_m = 1 + 1/2 + ... + 1/m), the threshold BY applies to a single discovery, "
+     "on df = tested outcome bins - 1 with Cohen's w = 0.05: a lower bound for detecting one "
+     "wrong backend."),
+    ("distinguishable", "Both tests are significant after BY (FDR) correction. BY keeps the "
+     "expected share of false discoveries among flagged pairs at most q = 0.05 under any "
+     "dependence between the tests, including pairs that share one backend's sample; a "
+     "flagged pair can still be a false discovery."),
     ("inconclusive_low_shots", "Expected counts stay below 5 after pooling rare outcomes "
      "(inconclusive_reason = low_expected_counts), or neither test is significant and the "
-     "power at alpha/m to detect a total-variation gap of 0.05 is below 0.8 "
+     "power at alpha/(m·c_m) to detect a total-variation gap of 0.05 is below 0.8 "
      "(inconclusive_reason = low_power). resolvable_by_more_shots is false when no shot count "
      "up to the platform maximum would give a testable table (low_expected_counts) or the "
      "target power (low_power); shots_per_backend_for_expected_counts gives the count that "
      "would. power.recommended_exceeds_actual is true when the recommended shots per backend "
      "exceed the shots used."),
-    ("ambiguous", "Exactly one of the chi-square test and the G-test is significant after BH (FDR) correction."),
+    ("ambiguous", "Exactly one of the chi-square test and the G-test is significant after BY (FDR) correction."),
 ]
 _ASSESSMENT_GLOSSARY = [
     ("consistent_within_shot_noise", "The shot-noise verdict is consistent: neither test "
@@ -141,7 +153,7 @@ _ASSESSMENT_GLOSSARY = [
     ("ambiguous", "Exactly one of the two tests is significant."),
     ("inconclusive_low_shots", "The shot count cannot separate the distributions: expected "
      "counts stay below 5 after pooling, or the test is not significant at power below 0.8 "
-     "(evaluated at alpha/m)."),
+     "(evaluated at alpha/(m·c_m))."),
     ("not_comparable", "At least one side lacks usable counts."),
 ]
 _UNRANKED_GLOSSARY = [
@@ -157,15 +169,17 @@ _MEASUREMENT_NOTES = [
     "statevectors. It is a global-phase difference between the states, not a relative phase "
     "between components of one superposition. The JSON fields relative_phase_matrix and "
     "*relative_phase* keep their names for compatibility.",
-    "Label-aligned basis: for a measured pair whose declared counts bit orders differ (lsb vs "
-    "msb) the second backend's keys are bit-reversed; otherwise the keys are compared "
-    "directly. The statistical tests and the label-aligned distances use this basis; the "
-    "direct distances are recorded as well.",
+    "Label-aligned basis: for a pair whose declared qubit orderings differ (lsb vs msb) the "
+    "second backend's output is bit-reversed (statevector amplitudes or counts keys); "
+    "otherwise it is compared directly, and on a one-qubit circuit bit reversal is the "
+    "identity. Statevector labels, the statistical tests and the label-aligned distances use "
+    "this basis; the direct values are recorded as well.",
     "Outcomes with an expected count below 5 are pooled into one bin before the chi-square "
     "and G-tests; statistical_test.pooled_outcomes gives how many were pooled.",
-    "Benjamini-Hochberg controls the false discovery rate when the p-values are independent "
-    "or positively regression dependent (PRDS). Pairs that share a backend reuse its sample "
-    "and are dependent; PRDS is not established for chi-square statistics sharing a sample.",
+    "Benjamini-Yekutieli controls the false discovery rate at q = alpha under arbitrary "
+    "dependence between the p-values; pairs that share a backend reuse its sample and are "
+    "dependent. Its threshold is alpha·i/(m·c_m) with c_m = 1 + 1/2 + ... + 1/m. BH-adjusted "
+    "p-values are recorded for reference (p_value_bh) and do not set the verdict.",
 ]
 _ANALYSIS_VERSION_NOTE = (
     f"Analysis version {ANALYSIS_VERSION} (analysis_version in each divergence report). The "
