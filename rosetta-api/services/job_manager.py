@@ -10,6 +10,7 @@ import asyncio
 import random
 import time
 from fastapi import HTTPException
+from services.availability import filter_available
 from services.validator import validate_request
 from services.dispatcher import (
     STATEVECTOR_RUNNER_URLS,
@@ -24,7 +25,7 @@ from services.dispatcher import (
 from schemas import AgreementThresholds, BatchPayload
 from config import settings, server_git_sha, server_image_digests, runner_registry_snapshot
 from services.aggregator import compile_comparison_reports, compile_measurement_reports
-from qrosetta_commons.helpers import get_logger
+from qrosetta_commons.helpers import get_logger, get_num_qubits_from_qasm
 from services.circuit_resolver import (
     resolve_circuit_qasm,
     prepare_measured_dispatch,
@@ -107,6 +108,7 @@ def _run_context(optimization_level, runner_config, timeout_seconds, apply_prepr
         "runner_config": runner_config or {},
         "runner_phases": runner_phases or {},
         "timeout_seconds": timeout_seconds,
+        "queue_max_wait_sec": settings.RUNNER_QUEUE_MAX_WAIT_SEC if EXECUTION_MODE == "local" else None,
         "timeout_scope": timeout_scope(),
         "agreement_thresholds": thresholds,
         "runner_registry": runner_registry_snapshot(),
@@ -157,6 +159,7 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
         filtered_urls = {k: v for k, v in STATEVECTOR_RUNNER_URLS.items() if k in target_simulators}
     else:
         filtered_urls = STATEVECTOR_RUNNER_URLS
+    filtered_urls, skipped = await filter_available(filtered_urls, target_simulators)
 
     aggregated_results = await dispatch_to_runners(
         runner_urls=filtered_urls,
@@ -179,6 +182,7 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
         **context,
         "api_preprocessing_applied": list(circuit["api_preprocessing_applied"]),
         "dispatched_circuits": [_dispatched_circuit_record("statevector", circuit, aggregated_results)],
+        "skipped_runners": skipped,
         "started_at": started_at,
         "finished_at": utc_now_iso(),
         "divergence_report": divergence_report,
@@ -224,6 +228,8 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
     else:
         filtered_sampled = SAMPLED_SV_URLS
         filtered_native = NATIVE_SAMPLING_URLS
+    filtered_sampled, skipped_sampled = await filter_available(filtered_sampled, target_simulators)
+    filtered_native, skipped_native = await filter_available(filtered_native, target_simulators)
 
     results_sampled, results_native = await asyncio.gather(
         dispatch_to_runners(filtered_sampled, payload_for("measured_sampled"), timeout_seconds, runner_statuses),
@@ -246,6 +252,7 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
             _dispatched_circuit_record("measured_native", circuits["measured_native"], results_native),
             _dispatched_circuit_record("measured_sampled", circuits["measured_sampled"], results_sampled),
         ],
+        "skipped_runners": skipped_native + skipped_sampled,
         "started_at": started_at,
     }
 
@@ -286,12 +293,16 @@ def _completed_job(target: str, full_report: dict, runner_statuses: dict, **extr
             "finished_at": time.time(), **extra}
 
 
-def _failed_job(target: str, error: str, runner_statuses: dict, report: dict = None, **extra) -> dict:
-    """A failed job; ``report`` (when any) is served in ``results`` but not exportable."""
+def _failed_job(target: str, error: str, runner_statuses: dict, report: dict = None,
+                keep_full: bool = False, **extra) -> dict:
+    """A failed job. ``report`` (when any) is served in ``results``; with ``keep_full`` the
+    untruncated copy is kept too, so a report that reached the runners stays exportable."""
     job = {"status": "failed", **job_targets(target), "error": error,
            "runner_statuses": runner_statuses, "finished_at": time.time(), **extra}
     if report is not None:
         job["results"] = display_report(report)
+        if keep_full:
+            job["full_results"] = report
     return job
 
 
@@ -300,18 +311,75 @@ def report_failed_before_dispatch(report: dict) -> bool:
     return isinstance(report, dict) and bool(report.get("error")) and "raw_results" not in report
 
 
+def all_runners_failed(report: dict):
+    """``"all N runners failed"`` when a dispatched report has results and none succeeded,
+    else None."""
+    results = report.get("raw_results") if isinstance(report, dict) else None
+    if not results:
+        return None
+    if any(isinstance(r, dict) and not r.get("error") for r in results):
+        return None
+    return f"all {len(results)} runners failed"
+
+
+def task_label(algorithm, qubits: int) -> str:
+    """``"<name> (<n>q)"``; a name already ending in ``(<n>q)`` is kept as it is."""
+    name = str(algorithm or "circuit").strip()
+    suffix = f"({qubits}q)"
+    return name if name.endswith(suffix) else f"{name} {suffix}"
+
+
+def task_qubits(task, qasm_string: str = None) -> int:
+    """Qubit count of a task: read from its QASM when available, else the declared field."""
+    text = qasm_string or getattr(task, "qasm_string", None)
+    if text:
+        n = get_num_qubits_from_qasm(text)
+        if n:
+            return n
+    return int(getattr(task, "qubits", 0) or 0)
+
+
+def experiment_report_detail(job_id: str) -> str:
+    return (f"This is an experiment job; it has no single report. Download its bundle with "
+            f"GET /experiments/{job_id}/bundle.")
+
+
+def is_experiment_job(job: dict) -> bool:
+    return job.get("kind") == "experiment" or "bundle_files" in job
+
+
+def job_report_or_error(job_id: str, action: str) -> dict:
+    """The server's full report of ``job_id``; raises 404 for an unknown job and 409 for an
+    experiment job, an unfinished job, or a job with no report (failed before dispatch)."""
+    job = ACTIVE_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if is_experiment_job(job):
+        raise HTTPException(status_code=409, detail=experiment_report_detail(job_id))
+    if job.get("status") not in ("completed", "failed"):
+        raise HTTPException(status_code=409, detail=f"The job has not finished yet (status: {job.get('status')}); poll GET /jobs/{job_id}.")
+    if not job.get("full_results"):
+        raise HTTPException(status_code=409, detail=f"This job failed before any runner ran and has no report to {action}: {job.get('error')}")
+    return job["full_results"]
+
+
 async def _run_single_job(job_id: str, execution_target: str, runner_statuses: dict, run_coro):
     """Await ``run_coro`` (a run_single_* coroutine) and record the terminal state.
 
-    A report that failed before dispatch (e.g. the circuit does not parse) is ``failed``.
+    A report that failed before dispatch (e.g. the circuit does not parse) is ``failed``;
+    so is one where every runner returned an error, which keeps its report.
     """
     ACTIVE_JOBS[job_id]["status"] = "processing"
     ACTIVE_JOBS[job_id]["runner_statuses"] = runner_statuses
     try:
         report = await run_coro
+        every_runner_failed = all_runners_failed(report)
         if report_failed_before_dispatch(report):
             ACTIVE_JOBS[job_id] = _failed_job(execution_target, str(report["error"]),
                                               runner_statuses, report)
+        elif every_runner_failed:
+            ACTIVE_JOBS[job_id] = _failed_job(execution_target, every_runner_failed,
+                                              runner_statuses, report, keep_full=True)
         else:
             ACTIVE_JOBS[job_id] = _completed_job(execution_target, report, runner_statuses)
     except Exception as e:
@@ -351,7 +419,7 @@ async def run_batch_tasks(payload: BatchPayload, runner_statuses: dict, progress
 
     for idx, task in enumerate(payload.tasks):
         gi = task_offset + idx
-        task_name = f"{task.algorithm} ({task.qubits}q)"
+        task_name = task_label(task.algorithm, task_qubits(task))
         logger.info(f"--- Running task: {task_name} ---")
         if progress is not None:
             progress["current_index"] = gi
@@ -360,6 +428,10 @@ async def run_batch_tasks(payload: BatchPayload, runner_statuses: dict, progress
             qasm_string = resolve_circuit_qasm(
                 task.source, task.algorithm, task.qubits, task.qasm_string, mode=payload.mode
             )
+            task_name = task_label(task.algorithm, task_qubits(task, qasm_string))
+            if progress is not None:
+                _, sep, axis = progress["tasks"][gi]["name"].partition(" · ")
+                progress["tasks"][gi]["name"] = task_name + (sep + axis if sep else "")
 
             validate_request(qasm_string, mode=payload.mode, bypass_limits=payload.bypass_limits)
             timeout = clamp_timeout(payload.timeout_seconds)
@@ -374,7 +446,8 @@ async def run_batch_tasks(payload: BatchPayload, runner_statuses: dict, progress
             benchmark_summary.append(report)
             if progress is not None:
                 progress["tasks"][gi]["status"] = (
-                    "error" if report_failed_before_dispatch(report) else "done")
+                    "error" if report_failed_before_dispatch(report) or all_runners_failed(report)
+                    else "done")
 
         except Exception as e:
             reason = e.detail if isinstance(e, HTTPException) else str(e)
@@ -402,7 +475,7 @@ async def worker_batch_suite(job_id: str, payload: BatchPayload):
         "total": len(payload.tasks),
         "completed": 0,
         "current_index": None,
-        "tasks": [{"name": f"{t.algorithm} ({t.qubits}q)", "status": "queued"}
+        "tasks": [{"name": task_label(t.algorithm, task_qubits(t)), "status": "queued"}
                   for t in payload.tasks],
     }
     ACTIVE_JOBS[job_id]["progress"] = progress
@@ -427,6 +500,13 @@ async def worker_batch_suite(job_id: str, payload: BatchPayload):
             f"All {len(benchmark_summary)} task(s) failed before dispatch; first error: "
             f"{benchmark_summary[0]['error']}",
             runner_statuses, full_report, progress=progress)
+        return
+    if benchmark_summary and all(report_failed_before_dispatch(t) or all_runners_failed(t)
+                                 for t in benchmark_summary):
+        ACTIVE_JOBS[job_id] = _failed_job(
+            payload.execution_target,
+            f"All {len(benchmark_summary)} task(s) failed: no runner returned a result",
+            runner_statuses, full_report, keep_full=True, progress=progress)
         return
     ACTIVE_JOBS[job_id] = _completed_job(payload.execution_target, full_report, runner_statuses,
                                          progress=progress)

@@ -76,3 +76,23 @@ def test_dispatch_status_classification():
     assert _run(_RaisingClient(httpx.ConnectError("refused")))["dispatch_status"] == "offline"
     assert _run(_RaisingClient(httpx.ConnectTimeout("no route")))["dispatch_status"] == "offline"
     assert _run(_StatusErrorClient())["dispatch_status"] == "error"
+
+
+def test_queue_wait_is_capped_by_the_server_setting_not_the_timeout(monkeypatch):
+    import services.dispatcher_http as dh
+    from config import settings
+    sent = []
+
+    async def fake_safe_request(client, url, payload, sim_name, timeout_s, http_timeout=None):
+        sent.append((payload, http_timeout))
+        return {"statevector": ""}
+    monkeypatch.setattr(dh, "safe_request", fake_safe_request)
+    monkeypatch.setattr(settings, "RUNNER_QUEUE_MAX_WAIT_SEC", 1800)
+    urls = {"qiskit": "http://pytket-qiskit-runner:8000/run"}
+    payload = {"circuit_data": "x", "runner_config": {"qiskit": [0, 0, 0]}}
+    asyncio.run(dh.dispatch_http_local(urls, payload, 10))
+    assert len(sent) == 3
+    for body, http_timeout in sent:
+        assert body["max_queue_wait_seconds"] == 1800.0
+        assert body["hard_timeout_seconds"] == 10
+        assert http_timeout.read == 1800 + 10 + settings.RUNNER_DEADLINE_BUFFER_SEC

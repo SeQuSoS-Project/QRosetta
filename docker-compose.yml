@@ -27,6 +27,8 @@ services:
     container_name: rosetta-api
     environment:
       - RUNNER_TIMEOUT_SEC=${RUNNER_TIMEOUT_SEC:-300}
+      - RUNNER_QUEUE_MAX_WAIT_SEC=${RUNNER_QUEUE_MAX_WAIT_SEC:-1800}
+      - QROSETTA_GPU_AVAILABLE=${QROSETTA_GPU_AVAILABLE:-false}
       - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
       - QROSETTA_IMAGE_DIGESTS=${QROSETTA_IMAGE_DIGESTS:-}
     volumes:

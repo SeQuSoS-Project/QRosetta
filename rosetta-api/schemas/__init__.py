@@ -30,6 +30,7 @@ from schemas.history import (
     SavedCircuitCreate,
     SavedCircuitResponse,
     RunHistoryResponse,
+    RunHistoryFromJob,
     RunHistoryUpdate,
     RunHistoryBatchDelete,
 )
@@ -48,5 +49,5 @@ __all__ = [
     "PASSWORD_MAX_BYTES", "normalize_email", "password_too_long",
 
     "SavedCircuitCreate", "SavedCircuitResponse",
-    "RunHistoryResponse", "RunHistoryUpdate", "RunHistoryBatchDelete",
+    "RunHistoryResponse", "RunHistoryFromJob", "RunHistoryUpdate", "RunHistoryBatchDelete",
 ]

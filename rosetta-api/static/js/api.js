@@ -112,7 +112,7 @@ export async function fetchMQTBench(algorithm, qubits) {
     });
     if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || `Failed to fetch MQT Bench: ${res.status}`);
+        throw new Error(apiDetailText(errorData.detail) || `Failed to fetch MQT Bench: ${res.status}`);
     }
     return await res.json();
 }
@@ -123,7 +123,7 @@ export async function fetchQASMBench(circuit) {
     });
     if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || `Failed to fetch QASMBench: ${res.status}`);
+        throw new Error(apiDetailText(errorData.detail) || `Failed to fetch QASMBench: ${res.status}`);
     }
     return await res.json();
 }

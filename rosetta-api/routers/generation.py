@@ -1,7 +1,6 @@
 """Circuit generation, benchmark-circuit lookup, and Quirk visualisation routes."""
 
 from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import JSONResponse
 from qrosetta_commons.helpers import get_logger
 import services.circuit_library as library
 import services.benchmark_library as benchmark_library
@@ -36,15 +35,17 @@ async def get_algorithms():
 async def generate_circuit_endpoint(request: Request, payload: GenerateCircuitPayload):
     """Build one preset circuit's OpenQASM 2.0 text server-side, without running it."""
     if payload.qubits > settings.MAX_QUBITS_MEASURED:
-        return JSONResponse(status_code=400, content={"error": f"Qubit count {payload.qubits} exceeds limit of {settings.MAX_QUBITS_MEASURED}"})
+        raise HTTPException(status_code=400, detail=f"Qubit count {payload.qubits} exceeds limit of {settings.MAX_QUBITS_MEASURED}")
     try:
         qasm = library.generate_circuit(payload.algorithm, payload.qubits, payload.seed)
         return {"qasm": qasm}
+    except HTTPException:
+        raise
     except ValueError as ve:
-        return JSONResponse(content={"error": str(ve)}, status_code=400)
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception:
         logger.error("Circuit generation failed for algorithm=%s qubits=%s", payload.algorithm, payload.qubits, exc_info=True)
-        return JSONResponse(content={"error": "Circuit generation failed"}, status_code=500)
+        raise HTTPException(status_code=500, detail="Circuit generation failed")
 
 @router.post("/visualize/quirk", response_model=VisualizerResponse)
 async def visualize_quirk(payload: QasmPayload):
@@ -56,11 +57,13 @@ async def visualize_quirk(payload: QasmPayload):
         compiler = QuirkCompiler(payload.qasm_string)
         url = compiler.generate_url()
         return {"url": url}
+    except HTTPException:
+        raise
     except ValueError as ve:
-        return JSONResponse(status_code=400, content={"error": f"Failed to generate Quirk URL: {ve}"})
+        raise HTTPException(status_code=400, detail=f"Failed to generate Quirk URL: {ve}")
     except Exception:
         logger.error("Failed to compile QASM for Visualizer", exc_info=True)
-        return JSONResponse(status_code=400, content={"error": "Failed to generate Quirk URL"})
+        raise HTTPException(status_code=400, detail="Failed to generate Quirk URL")
 
 @router.get("/benchmarks/mqt/list")
 async def list_mqt_bench():
@@ -80,7 +83,7 @@ async def get_mqt_bench(request: Request, algorithm: str, qubits: int = 3):
     """Fetch one bundled MQT Bench circuit's OpenQASM 2.0 text, by algorithm name and qubit
     count (see GET /benchmarks/mqt/list for the available combinations)."""
     if qubits > settings.MAX_QUBITS_MEASURED:
-        return JSONResponse(status_code=400, content={"error": f"Qubit count {qubits} exceeds limit of {settings.MAX_QUBITS_MEASURED}"})
+        raise HTTPException(status_code=400, detail=f"Qubit count {qubits} exceeds limit of {settings.MAX_QUBITS_MEASURED}")
     try:
         qasm = benchmark_library.get_mqt_benchmark(algorithm, qubits)
         return {"qasm": qasm}
@@ -88,7 +91,7 @@ async def get_mqt_bench(request: Request, algorithm: str, qubits: int = 3):
         raise
     except Exception:
         logger.error("MQT Bench lookup failed for algorithm=%s qubits=%s", algorithm, qubits, exc_info=True)
-        return JSONResponse(status_code=500, content={"error": "Benchmark circuit could not be loaded"})
+        raise HTTPException(status_code=500, detail="Benchmark circuit could not be loaded")
 
 @router.get("/benchmarks/qasmbench")
 @limiter.limit(settings.RUN_RATE_LIMIT)
@@ -102,5 +105,5 @@ async def get_qasmbench(request: Request, circuit: str):
         raise
     except Exception:
         logger.error("QASMBench lookup failed for circuit=%s", circuit, exc_info=True)
-        return JSONResponse(status_code=500, content={"error": "Benchmark circuit could not be loaded"})
+        raise HTTPException(status_code=500, detail="Benchmark circuit could not be loaded")
 

@@ -5,6 +5,7 @@ import pytest
 
 pytest.importorskip("kubernetes")
 
+from config import settings  # noqa: E402
 import services.dispatcher_http as dispatcher_http  # noqa: E402
 import services.job_manager as job_manager  # noqa: E402
 from qrosetta_commons.seeds import derive_runner_seed  # noqa: E402
@@ -41,7 +42,7 @@ def test_annotate_records_runner_seed_and_honoured_flag():
     assert r["timing_samples"] == 1
     spec = {"key": "qiskit", "sim_name": "qiskit", "opt_level": 0}
     r = annotate_result({"error": "TIMEOUT (5s): killed"}, spec, {"seed": 7}, "t0")
-    assert r["seed_honoured"] is True
+    assert r["seed_honoured"] is None
     assert r["dispatch_status"] == "timeout"
 
 
@@ -81,6 +82,8 @@ def test_measured_run_records_master_and_runner_seeds(monkeypatch):
     assert report["api_preprocessing_applied"]
     assert report["started_at"] <= report["finished_at"]
     assert report["timeout_scope"]
+    assert report["queue_max_wait_sec"] == settings.RUNNER_QUEUE_MAX_WAIT_SEC
+    assert report["skipped_runners"] == []
     assert report["runner_registry"]["qiskit"]["enabled"] is True
 
 

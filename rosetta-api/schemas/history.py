@@ -2,9 +2,17 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 from typing import List, Optional
-from datetime import datetime
 
-class SavedCircuitCreate(BaseModel):
+from schemas.timestamps import UtcDatetime
+
+_CREATED_AT = "When it was saved, UTC ISO 8601 ending in 'Z'."
+
+
+class _Request(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class SavedCircuitCreate(_Request):
     """Request body for POST /history/circuits."""
     name: str = Field(..., description="Display name for the saved circuit.")
     qasm_string: str = Field(..., description="The circuit as OpenQASM 2.0 text.")
@@ -15,7 +23,7 @@ class SavedCircuitResponse(BaseModel):
     user_id: int = Field(..., description="Id of the account that saved it.")
     name: str = Field(..., description="Display name.")
     qasm_string: str = Field(..., description="The circuit as OpenQASM 2.0 text.")
-    created_at: datetime = Field(..., description="When it was saved.")
+    created_at: UtcDatetime = Field(..., description=_CREATED_AT)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -27,14 +35,18 @@ class RunHistoryResponse(BaseModel):
     circuit_id: Optional[str] = Field(None, description="Id of the saved circuit this run used, if any.")
     s3_object_key: str = Field(..., description="Storage key of the saved report.")
     run_name: str = Field(..., description="Display name for the run.")
-    created_at: datetime = Field(..., description="When it was saved.")
+    created_at: UtcDatetime = Field(..., description=_CREATED_AT)
 
     model_config = ConfigDict(from_attributes=True)
 
-class RunHistoryUpdate(BaseModel):
+class RunHistoryFromJob(_Request):
+    """Request body for POST /history/runs/from_job/{job_id}."""
+    name: Optional[str] = Field(None, max_length=200, description="Display name for the saved run. Defaults to the mode and the first 8 characters of the job id.")
+
+class RunHistoryUpdate(_Request):
     """Request body for PATCH /history/runs/{run_id}."""
     run_name: str = Field(..., description="New display name for the run.")
 
-class RunHistoryBatchDelete(BaseModel):
+class RunHistoryBatchDelete(_Request):
     """Request body for DELETE /history/runs."""
     run_ids: List[str] = Field(..., description="Ids of the saved runs to delete.")

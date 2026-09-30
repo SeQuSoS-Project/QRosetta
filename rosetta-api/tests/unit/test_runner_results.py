@@ -65,6 +65,9 @@ def test_runner_error_shape():
         "execution_time_sec": None,
         "compilation_time_sec": None,
         "simulation_time_sec": None,
+        "simulation_cpu_time_sec": None,
         "memory_usage_mb": None,
         "process_peak_mb": None,
+        "process_peak_rss_mb": None,
+        "cpu_time_sec": None,
     }

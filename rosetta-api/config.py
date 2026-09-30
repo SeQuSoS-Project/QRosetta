@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     MAX_SHOTS: int = 1_000_000
     RUNNER_CONNECT_TIMEOUT_SEC: int = 10
     RUNNER_DEADLINE_BUFFER_SEC: int = 15
+    RUNNER_QUEUE_MAX_WAIT_SEC: int = int(os.getenv("RUNNER_QUEUE_MAX_WAIT_SEC", "1800"))
+    GPU_AVAILABLE: bool = os.getenv("QROSETTA_GPU_AVAILABLE", "false").strip().lower() in ("1", "true", "yes")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     SECRET_KEY: str = os.getenv("SECRET_KEY", "")
 
@@ -71,7 +73,8 @@ class Settings(BaseSettings):
         """Canonical runner id -> base_url, capabilities, enabled flag, optimization levels.
 
         ``honours_seed`` is False for a runner whose backend ignores the sampling seed it
-        is passed; it defaults to True when absent.
+        is passed; it defaults to True when absent. ``requires_gpu`` marks a runner that is
+        unavailable unless the deployment has a GPU (see ``services.availability``).
         """
         return {
 
@@ -229,6 +232,7 @@ class Settings(BaseSettings):
                 "base_url": self.CUQUANTUM_RUNNER_URL,
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": True,
+                "requires_gpu": True,
                 "optimization_levels": {
                     0: "No optimization",
                     1: "Qiskit transpiler level 1: basic gate cancellation, 1Q consolidation",
@@ -267,6 +271,7 @@ def runner_registry_snapshot(runner_services: dict = None) -> dict:
             "capabilities": list(svc.get("capabilities", [])),
             "optimization_levels": {str(k): v for k, v in svc.get("optimization_levels", {}).items()},
             "honours_seed": svc.get("honours_seed", True),
+            "requires_gpu": bool(svc.get("requires_gpu", False)),
         }
         for name, svc in services.items()
     }

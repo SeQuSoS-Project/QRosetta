@@ -164,7 +164,7 @@ def test_manifest_provenance_and_integrity_notes():
     assert m["circuits"][0]["qasm_sha256"] == hashlib.sha256(b"OPENQASM 2.0;").hexdigest()
     assert m["circuits"][0]["qasm_file"] == "inputs/000_bell.qasm"
     assert "qasm" not in m["circuits"][0]           # only the hash is stored, not raw QASM
-    assert m["image_digests"] == "not recorded"
+    assert m["image_digests"].startswith("not recorded")
     assert m["seed_derivation"] == "not recorded"
     assert m["outputs"]["readme"] == "README.txt"
     assert "triage" in m["notes"].lower()

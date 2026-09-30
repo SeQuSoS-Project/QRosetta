@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 import db.models as models
 from qrosetta_commons.helpers import get_logger
+from schemas.timestamps import utc_iso
 from services.storage import delete_run_reports, fetch_run_report, save_run_report
 
 logger = get_logger("rosetta-history")
@@ -77,6 +78,27 @@ def get_run_report(db: Session, user_id: int, run_id: str) -> dict:
     """The stored report of one of ``user_id``'s runs."""
     run = _owned_run(db, user_id, run_id)
     return fetch_run_report(run.s3_object_key)
+
+
+def get_run_report_with_metadata(db: Session, user_id: int, run_id: str) -> dict:
+    """The stored report with ``run_id``, ``run_name`` and ``created_at`` (UTC, 'Z') added."""
+    run = _owned_run(db, user_id, run_id)
+    report = fetch_run_report(run.s3_object_key)
+    if not isinstance(report, dict):
+        return report
+    return {**report, "run_id": run.id, "run_name": run.run_name,
+            "created_at": utc_iso(run.created_at) if run.created_at else None}
+
+
+def default_run_name(report: dict, job_id: str) -> str:
+    """``"<mode> run <job id prefix>"``, with mode batch, measured or statevector."""
+    if isinstance(report, dict) and "benchmark_summary" in report:
+        mode = f"{report.get('mode', '')} batch".strip()
+    elif isinstance(report, dict) and "n_shots" in report:
+        mode = "measured"
+    else:
+        mode = "statevector"
+    return f"{mode} run {job_id[:8]}"
 
 
 def rename_run(db: Session, user_id: int, run_id: str, run_name: str) -> models.RunHistory:

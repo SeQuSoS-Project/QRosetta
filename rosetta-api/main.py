@@ -4,13 +4,12 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from routers import frontend, generation, benchmark, auth, history, export, publication, experiment
+from routers.errors import register_error_handlers
 import db.models as models
 from db.database import engine
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
 from services.security import limiter
 from services.job_manager import ACTIVE_JOBS
 from config import settings
@@ -54,7 +53,7 @@ app = FastAPI(title="Quantum Rosetta API", lifespan=lifespan)
 models.Base.metadata.create_all(bind=engine)
 
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+register_error_handlers(app)
 
 class LimitUploadSize(BaseHTTPMiddleware):
     def __init__(self, app, max_upload_size: int) -> None:
@@ -72,7 +71,7 @@ class LimitUploadSize(BaseHTTPMiddleware):
                 except ValueError:
                     return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length header"})
                 if content_length > self.max_upload_size:
-                    return JSONResponse(status_code=413, content={"detail": "Payload too large"})
+                    return JSONResponse(status_code=413, content={"detail": f"Request body exceeds the upload limit of {self.max_upload_size} bytes"})
         return await call_next(request)
 
 app.add_middleware(LimitUploadSize, max_upload_size=settings.MAX_UPLOAD_BYTES)

@@ -4,6 +4,7 @@ from fastapi import APIRouter
 from fastapi.responses import FileResponse, JSONResponse
 from config import settings
 from schemas import AgreementThresholds
+from services.availability import runner_availability
 
 router = APIRouter()
 
@@ -17,15 +18,31 @@ async def read_index():
 
 @router.get("/runners")
 async def get_runners():
-    """Enabled status, max optimization level, and per-level descriptions for every runner."""
+    """Enabled status, availability, max optimization level, and per-level descriptions for
+    every runner.
+
+    ``available`` is False for a disabled runner (``unavailable_reason`` "disabled"), and
+    for an enabled one that cannot run here: unreachable, or reporting no usable device
+    via its GET /capabilities, or (Kubernetes, or a runner without that endpoint)
+    ``requires_gpu`` on a deployment without QROSETTA_GPU_AVAILABLE. Probes are cached
+    for 60 s. ``device`` is what the runner's /capabilities reported, else None.
+    """
+    services = settings.get_runner_services()
+    availability = await runner_availability()
     result = []
-    for name, config in settings.get_runner_services().items():
+    for name, config in services.items():
         opt_levels = config.get("optimization_levels", {})
 
         opt_levels_str = {str(k): v for k, v in opt_levels.items()}
+        enabled = config.get("enabled", True)
+        info = availability.get(name) or {"available": False, "reason": "disabled", "device": None}
         result.append({
             "id": name,
-            "enabled": config.get("enabled", True),
+            "enabled": enabled,
+            "available": bool(enabled and info["available"]),
+            "unavailable_reason": None if (enabled and info["available"]) else (info["reason"] or "unavailable"),
+            "device": info.get("device"),
+            "requires_gpu": bool(config.get("requires_gpu", False)),
             "max_level": max(opt_levels.keys()) if opt_levels else 0,
             "optimization_levels": opt_levels_str,
         })
@@ -49,6 +66,7 @@ async def get_config():
         "max_runs_per_runner": settings.MAX_RUNS_PER_RUNNER,
         "max_total_runs": settings.MAX_TOTAL_RUNS,
         "execution_mode": settings.EXECUTION_MODE,
+        "queue_max_wait_sec": settings.RUNNER_QUEUE_MAX_WAIT_SEC,
         "agreement_threshold_defaults": AgreementThresholds().model_dump(),
         "limits": {
             "max_qubits_statevector": settings.MAX_QUBITS_STATEVECTOR,

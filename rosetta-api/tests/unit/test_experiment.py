@@ -219,3 +219,32 @@ def test_result_files_named_by_circuit_id_do_not_collide(monkeypatch):
     assert first["input_qasm"] == BELL_QASM and second["input_qasm"] == other
     assert {r["circuit_id"] for r in job["results"]["experiment_summary"]["conformance"]} == {
         "000_bell-2q", "001_bell-2q"}
+
+
+def test_qubits_and_labels_come_from_the_qasm(monkeypatch):
+    from schemas import ExperimentPayload as EP, ExperimentCircuit as EC
+    payload = EP(circuits=[
+        EC(source="qasmbench", algorithm="adder_n4"),
+        EC(source="qasm", qasm_string=BELL_QASM, name="Bell (2q)"),
+    ], mode="measured")
+    resolved, errors = exp.resolve_circuits(payload)
+    assert not errors
+    by_alg = {r["algorithm"]: r for r in resolved}
+    assert by_alg["adder_n4"]["qubits"] == 4
+    assert by_alg["adder_n4"]["id"] == "000_adder-n4-4q"
+    assert by_alg["Bell (2q)"]["qubits"] == 2
+    from services.job_manager import task_label
+    assert task_label("Bell (2q)", 2) == "Bell (2q)"
+    assert task_label("adder_n4", 4) == "adder_n4 (4q)"
+
+
+def test_manifest_records_the_job_id(monkeypatch):
+    _install_fake_batch(monkeypatch, [])
+    payload = ExperimentPayload(
+        circuits=[ExperimentCircuit(source="qasm", qasm_string=BELL_QASM, name="bell")],
+        mode="measured", seed=1)
+    job_id, job = _run_experiment(payload)
+    manifest = json.loads(job["bundle_files"]["manifest.json"])
+    assert manifest["job_id"] == job_id
+    assert manifest["circuits"][0]["qubits"] == 2
+    assert job["kind"] == "experiment"

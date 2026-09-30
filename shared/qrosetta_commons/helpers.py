@@ -29,7 +29,8 @@ THREAD_ENV_VARS = ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
                    "NUMEXPR_NUM_THREADS", "NUMBA_NUM_THREADS")
 
 UNMEASURED_METRICS = ("execution_time_sec", "compilation_time_sec", "simulation_time_sec",
-                      "memory_usage_mb", "process_peak_mb")
+                      "simulation_cpu_time_sec", "memory_usage_mb", "process_peak_mb",
+                      "process_peak_rss_mb", "cpu_time_sec")
 
 
 def unmeasured_metrics() -> dict:
@@ -49,7 +50,14 @@ METRIC_SCOPE = {
                            "imports, warm-up and all timed runs",
     "queue_wait_sec": "wall clock the request waited for this runner's execution slot "
                       "before its process was spawned; 0 on the Kubernetes path",
+    "theoretical_statevector_mb": "2^N x bytes per amplitude / 1024^2, N = qubits declared "
+                                  "by the dispatched circuit; 8 bytes for complex64, 16 for "
+                                  "complex128, and 16 when the backend reports no precision "
+                                  "(see theoretical_statevector_basis)",
 }
+
+METRIC_SCOPE_ON_ERROR = ("every per-run and process metric is null: a failed run is not "
+                         "measured")
 
 
 def get_logger(service_name: str) -> logging.Logger:
@@ -103,9 +111,27 @@ def _counts_from_samples(samples, n_qubits):
     }
 
 
-def theoretical_statevector_mb(n_qubits: int) -> float:
-    """Size of a dense complex128 statevector for ``n_qubits``: ``2^N * 16`` bytes, in MiB."""
-    return (2 ** n_qubits * 16) / (1024 ** 2)
+_BYTES_PER_AMPLITUDE = {"complex64": 8, "complex128": 16}
+
+
+def bytes_per_amplitude(precision=None) -> int:
+    """8 for complex64, 16 for complex128 and for an unknown or unreported precision."""
+    return _BYTES_PER_AMPLITUDE.get(str(precision).lower() if precision else "", 16)
+
+
+def theoretical_statevector_mb(n_qubits: int, precision=None) -> float:
+    """Size of a dense statevector for ``n_qubits``: ``2^N * bytes_per_amplitude`` in MiB."""
+    return (2 ** int(n_qubits or 0) * bytes_per_amplitude(precision)) / (1024 ** 2)
+
+
+def theoretical_statevector_basis(n_qubits: int, precision=None) -> str:
+    """The inputs of ``theoretical_statevector_mb`` in words, e.g. '2^5 x 16 B (complex128)'."""
+    size = bytes_per_amplitude(precision)
+    known = str(precision).lower() if precision else ""
+    if known in _BYTES_PER_AMPLITUDE:
+        return f"2^{int(n_qubits or 0)} x {size} B ({known})"
+    return (f"2^{int(n_qubits or 0)} x {size} B (precision not reported; complex128 "
+            f"assumed)")
 
 
 _QREG_DECL_RE = re.compile(r"\bqreg\s+\w+\s*\[\s*(\d+)\s*\]\s*;")
@@ -235,6 +261,12 @@ def run_with_uniform_measurement(func, payload):
     timed_results = [func(payload) for _ in range(repeats)]
     result = timed_results[-1]
 
+    if isinstance(result, dict) and result.get("error"):
+        result.update(unmeasured_metrics())
+        result["process_peak_rss_method"] = None
+        result["metric_scope"] = {"on_error": METRIC_SCOPE_ON_ERROR}
+        return result
+
     if isinstance(result, dict):
         if repeats > 1:
             exec_times = [r.get("execution_time_sec") for r in timed_results
@@ -341,10 +373,10 @@ _UNSET = object()
 def _base_result(*, simulator, compilation_time, simulation_time, monitor, qubit_ordering,
                  n_qubits, theoretical_mb, preprocessing_applied, transpiled_qasm,
                  simulation_cpu_time=None, precision=None):
-    """Fields common to statevector and counts results. ``theoretical_mb`` defaults to the
-    dense size for ``n_qubits``; pass None where a dense statevector does not apply."""
-    if theoretical_mb is _UNSET:
-        theoretical_mb = theoretical_statevector_mb(n_qubits)
+    """Fields common to statevector and counts results. The theoretical statevector size is
+    computed from ``n_qubits`` and ``precision`` for every backend; ``theoretical_mb`` is
+    ignored."""
+    theoretical_mb = theoretical_statevector_mb(n_qubits or 0, precision)
     return {
         "simulator": simulator,
         "execution_time_sec": compilation_time + simulation_time,
@@ -356,6 +388,7 @@ def _base_result(*, simulator, compilation_time, simulation_time, monitor, qubit
         "memory_method": getattr(monitor, "method", None),
         "qubit_ordering": qubit_ordering,
         "theoretical_statevector_mb": theoretical_mb,
+        "theoretical_statevector_basis": theoretical_statevector_basis(n_qubits or 0, precision),
         "preprocessing_applied": preprocessing_applied,
         "transpiled_qasm": transpiled_qasm,
         "precision": precision,
@@ -367,14 +400,22 @@ def statevector_result(*, simulator, statevector, compilation_time, simulation_t
                        qubit_ordering, preprocessing_applied, transpiled_qasm,
                        n_qubits=None, theoretical_mb=_UNSET, simulation_cpu_time=None,
                        precision=None):
-    """Assemble a statevector result; ``statevector`` is encoded to Base64 here."""
+    """Assemble a statevector result; ``statevector`` is encoded to Base64 here.
+
+    Raises ValueError when the vector does not hold ``2**n_qubits`` amplitudes.
+    """
+    amplitudes = np.asarray(statevector).ravel()
+    if n_qubits is not None and amplitudes.size != 2 ** int(n_qubits):
+        raise ValueError(
+            f"backend returned {amplitudes.size} amplitudes for {int(n_qubits)} qubits "
+            f"(expected {2 ** int(n_qubits)})")
     result = _base_result(
         simulator=simulator, compilation_time=compilation_time, simulation_time=simulation_time,
         monitor=monitor, qubit_ordering=qubit_ordering, n_qubits=n_qubits,
         theoretical_mb=theoretical_mb, preprocessing_applied=preprocessing_applied,
         transpiled_qasm=transpiled_qasm, simulation_cpu_time=simulation_cpu_time,
         precision=precision)
-    result["statevector"] = encode_statevector(np.asarray(statevector))
+    result["statevector"] = encode_statevector(amplitudes)
     return result
 
 
@@ -479,13 +520,6 @@ def _timed_job(*, simulator, logger, payload, max_qubits, compile_fn, execute_fn
         return runner_error(simulator, exc)
 
 
-def _resolve_theoretical_mb(theoretical_mb, declared_qubits):
-    """Dense statevector size for the declared qubit count unless the runner overrode it."""
-    if theoretical_mb is _UNSET:
-        return theoretical_statevector_mb(declared_qubits)
-    return theoretical_mb
-
-
 def run_statevector_job(*, simulator, payload, compile_fn, execute_fn, qubit_ordering,
                         logger=None, serialize_fn=None, pre_execute_fn=None,
                         postprocess_fn=None, max_qubits=None,
@@ -500,9 +534,8 @@ def run_statevector_job(*, simulator, payload, compile_fn, execute_fn, qubit_ord
         return statevector_result(
             simulator=simulator, statevector=executed, compilation_time=compilation_time,
             simulation_time=simulation_time, monitor=monitor, qubit_ordering=qubit_ordering,
-            n_qubits=compiled.n_qubits, preprocessing_applied=compiled.preprocessing_applied,
+            n_qubits=declared_qubits, preprocessing_applied=compiled.preprocessing_applied,
             transpiled_qasm=transpiled_qasm,
-            theoretical_mb=_resolve_theoretical_mb(theoretical_mb, declared_qubits),
             simulation_cpu_time=simulation_cpu_time,
             precision=getattr(compiled, "precision", None) or precision)
 
@@ -530,10 +563,9 @@ def run_measured_job(*, simulator, payload, compile_fn, execute_fn, qubit_orderi
         return counts_result(
             simulator=simulator, counts=counts, sampling_method=sampling_method,
             compilation_time=compilation_time, simulation_time=simulation_time,
-            monitor=monitor, qubit_ordering=qubit_ordering, n_qubits=compiled.n_qubits,
+            monitor=monitor, qubit_ordering=qubit_ordering, n_qubits=declared_qubits,
             preprocessing_applied=compiled.preprocessing_applied,
             transpiled_qasm=transpiled_qasm,
-            theoretical_mb=_resolve_theoretical_mb(theoretical_mb, declared_qubits),
             simulation_cpu_time=simulation_cpu_time,
             precision=getattr(compiled, "precision", None) or precision)
 
@@ -598,15 +630,29 @@ class ExecutionSlots:
         return result
 
 
-def register_runner_endpoints(app, process_run, process_run_measured, max_concurrent=None):
+def register_runner_endpoints(app, process_run, process_run_measured, max_concurrent=None,
+                              capabilities=None):
     """Register ``/run`` and ``/run_measured`` on a runner app.
 
     Both endpoints share one ``ExecutionSlots`` (``RUNNER_MAX_CONCURRENT``, default 1), so
-    concurrent requests to this runner queue instead of sharing its CPU and memory.
+    concurrent requests to this runner queue instead of sharing its CPU and memory. With
+    ``capabilities`` (a callable returning ``{"available": bool, "reason": str | None,
+    "device": str | None}``), ``GET /capabilities`` returns its result; the API treats a
+    runner without that endpoint as available.
     """
     from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
 
     slots = ExecutionSlots(max_concurrent)
+
+    if capabilities is not None:
+        @app.get("/capabilities")
+        async def runner_capabilities():
+            try:
+                info = dict(capabilities())
+            except Exception as exc:
+                return {"available": False, "reason": f"{type(exc).__name__}: {exc}", "device": None}
+            return {"available": bool(info.get("available", False)),
+                    "reason": info.get("reason"), "device": info.get("device")}
 
     @app.post("/run")
     async def run_circuit(payload: CircuitPayload):

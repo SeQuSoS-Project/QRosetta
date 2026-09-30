@@ -173,6 +173,19 @@ def csv_string(rows: list, fields: list) -> str:
     return buf.getvalue()
 
 
+def collect_runner_images(reports: list) -> dict:
+    """``{simulator: runner_image}`` for every result that recorded its image."""
+    images = {}
+    for report in reports or []:
+        for result in (report or {}).get("raw_results", []) or []:
+            if not isinstance(result, dict):
+                continue
+            image = result.get("runner_image")
+            if image and not str(image).startswith("not recorded"):
+                images[str(result.get("simulator"))] = image
+    return images
+
+
 def build_manifest(*, config: dict, git_sha: str, api_base: str, requested_seed,
                    effective_seeds: dict, circuits: list, sdk_versions: dict,
                    image_digests: dict = None, extra_notes: str = "",
@@ -201,7 +214,8 @@ def build_manifest(*, config: dict, git_sha: str, api_base: str, requested_seed,
                       "qasm_sha256": hashlib.sha256(qasm_bytes(c["qasm"])).hexdigest()}
                      for c in circuits],
         "executed_sdk_versions": sdk_versions,
-        "image_digests": image_digests or "not recorded",
+        "image_digests": image_digests or ("not recorded: the deployment did not set "
+                                           "QROSETTA_IMAGE_DIGESTS"),
         "outputs": {"conformance_matrix": "conformance_matrix.csv",
                     "agreement_prevalence": "agreement_prevalence.csv",
                     "inputs": "inputs/", "results": "results/", "errors": "errors/",

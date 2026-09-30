@@ -28,9 +28,11 @@ TIMEOUT_SCOPE = {
     "local": (
         "whole isolated runner child process: process spawn, SDK import, warm-up run and timed "
         "run, killed at hard_timeout_seconds. The budget starts when the run leaves the "
-        "runner's queue (one run per runner at a time); a run may queue for up to "
-        "timeout_seconds x (runs of that runner in the same phase) and reports "
-        "queue_wait_sec. The API waits queue budget + timeout + RUNNER_DEADLINE_BUFFER_SEC"
+        "runner's queue (one run per runner at a time), so time spent queued does not count "
+        "against it. The queue wait has its own server-wide cap, RUNNER_QUEUE_MAX_WAIT_SEC "
+        "(recorded as queue_max_wait_sec), independent of timeout_seconds; a run still queued "
+        "at that cap is reported as never_started. Each result reports queue_wait_sec. The "
+        "API waits queue cap + timeout + RUNNER_DEADLINE_BUFFER_SEC"
     ),
     "kubernetes": (
         "whole Kubernetes Job measured from job creation: pod scheduling, image pull, container "
@@ -53,10 +55,10 @@ def timeout_scope() -> str:
     return TIMEOUT_SCOPE.get(EXECUTION_MODE, TIMEOUT_SCOPE["local"])
 
 
-def queue_wait_budget(timeout_seconds, runs_of_this_runner: int) -> float:
-    """Seconds a run may wait for a runner's execution slot: one full timeout per run of the
-    same runner dispatched in the same phase (at least one)."""
-    return float(timeout_seconds) * max(1, int(runs_of_this_runner))
+def queue_wait_budget() -> float:
+    """Seconds a run may wait for a runner's execution slot (RUNNER_QUEUE_MAX_WAIT_SEC),
+    independent of the run's own timeout."""
+    return float(settings.RUNNER_QUEUE_MAX_WAIT_SEC)
 
 
 def runner_seed_for(master_seed, runner_key: str):
@@ -95,6 +97,7 @@ def annotate_result(result: dict, spec: dict, sent_payload: dict, dispatched_at:
 
     Fields: simulator, optimization_level, dispatch_status, dispatched_at, completed_at,
     timing_samples, runner_image, and for seeded runs runner_seed, seed, seed_honoured.
+    ``seed_honoured`` is None for a failed run, which sampled nothing.
     """
     result["simulator"] = spec["key"]
     result["optimization_level"] = spec["opt_level"]
@@ -107,7 +110,9 @@ def annotate_result(result: dict, spec: dict, sent_payload: dict, dispatched_at:
     if seed is not None:
         result["runner_seed"] = seed
         result["seed"] = seed
-        result["seed_honoured"] = RUNNER_SERVICES.get(spec["sim_name"], {}).get("honours_seed", True)
+        result["seed_honoured"] = (
+            None if result.get("error")
+            else RUNNER_SERVICES.get(spec["sim_name"], {}).get("honours_seed", True))
     return result
 
 

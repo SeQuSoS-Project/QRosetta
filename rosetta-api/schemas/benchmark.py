@@ -1,27 +1,64 @@
 """Pydantic request and response schemas for the benchmark endpoints."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StrictBool, StrictInt
 from typing import Annotated, List, Dict, Any, Literal, Optional, Union
 
 from config import settings
 
-OptimizationLevel = Annotated[int, Field(ge=0, le=3)]
+
+
+def _reject_bool(value):
+    if isinstance(value, bool):
+        raise ValueError("must be an integer, not a boolean")
+    return value
+
+
+Int = Annotated[int, BeforeValidator(_reject_bool)]
+Seed = Annotated[StrictInt, Field(ge=0)]
+OptimizationLevel = Annotated[Int, Field(ge=0, le=3)]
 RunnerConfig = Dict[str, Union[OptimizationLevel, List[OptimizationLevel]]]
+RunnerPhases = Dict[str, Int]
 ExecutionTarget = Literal["local", "kubernetes"]
+RunMode = Literal["statevector", "measured"]
+CircuitSource = Literal["preset", "qasmbench", "mqt", "qasm"]
+FigureFormat = Literal["svg", "png", "pdf"]
+TableFormat = Literal["latex", "csv", "html", "xlsx"]
+PublicationCategory = Literal["agreement", "heatmaps", "performance", "statistical"]
 
 _OPT_LEVEL_DESCRIPTION = ("Requested transpiler/optimization level, 0-3; each backend clamps it "
                           "to its own supported max.")
-_TIMEOUT_DESCRIPTION = (f"Requested wall-clock budget per runner in seconds, at least "
+_TIMEOUT_DESCRIPTION = (f"Requested wall-clock budget per run in seconds, at least "
                         f"{settings.MIN_TIMEOUT_SEC}; values above the server's RUNNER_TIMEOUT_SEC "
-                        f"are clamped to it.")
+                        f"are clamped to it. It starts when the run leaves the runner's queue; "
+                        f"the queue wait is capped separately by the server's "
+                        f"RUNNER_QUEUE_MAX_WAIT_SEC (the report's queue_max_wait_sec).")
 _SHOTS_DESCRIPTION = (f"Number of shots each runner samples, {settings.MIN_SHOTS} to "
                       f"{settings.MAX_SHOTS}.")
 _TARGET_DESCRIPTION = ("'local' or 'kubernetes'. Defaults to the server's EXECUTION_MODE. Runs "
                        "are dispatched according to the server's EXECUTION_MODE; the job's "
                        "'target' records the mode actually used and 'requested_target' this "
                        "value.")
-_BYPASS_DESCRIPTION = ("Skip the MAX_QASM_SIZE and MAX_QASM_GATES checks (local EXECUTION_MODE "
-                       "only). The qubit limits still apply.")
+_BYPASS_DESCRIPTION = ("Skip the MAX_QASM_SIZE and MAX_QASM_GATES checks when the server's "
+                       "EXECUTION_MODE is 'local'; ignored otherwise. The qubit limits, the "
+                       "syntax checks and the measurement checks still apply.")
+_SEED_DESCRIPTION = ("Master seed, a non-negative integer. Each runner result receives its own "
+                     "seed derived from it and the result key (see the report's "
+                     "seed_derivation and each result's runner_seed), so a replay with the "
+                     "same master seed reproduces every runner's sampling. Omit for a "
+                     "generated master seed, which is recorded in the report.")
+_PREPROCESSING_DESCRIPTION = (
+    "Whether preprocessing is applied. Each runner applies its own pass (e.g. barrier "
+    "stripping, gate rebasing), and the API rewrites the dispatched circuit: statevector "
+    "runners and measured runners that sample natively get the multi-register merge and a "
+    "pytket parse/re-emit with barriers removed; measured runners that sample a final "
+    "statevector get only the multi-register merge, so their text stays closer to the input. "
+    "Every change is listed in api_preprocessing_applied and each result's "
+    "preprocessing_applied.")
+
+
+class _Request(BaseModel):
+    """Request body base: unknown fields are rejected."""
+    model_config = ConfigDict(extra="forbid")
 
 
 def _default_execution_target() -> str:
@@ -37,76 +74,76 @@ class AgreementThresholds(BaseModel):
     statistical_test block carries the shot-noise-aware verdict. The values used are
     recorded in every pairwise_agreement record. NaN and infinity are rejected.
     """
-    model_config = ConfigDict(allow_inf_nan=False)
+    model_config = ConfigDict(allow_inf_nan=False, extra="forbid")
 
     fidelity_tolerance: float = Field(1e-5, ge=0, description="A statevector pair agrees when fidelity >= 1 minus this value.")
-    phase_tolerance: float = Field(1e-12, ge=0, description="A relative phase within this many radians of 0 is reported as 0.")
+    phase_tolerance: float = Field(1e-6, ge=0, description="A global phase offset arg<a|b> between two statevectors within this many radians of 0 is reported as 0 (the pair then agrees directly). The default lies above complex64 rounding (about 1e-8 rad). Reported in the relative_phase* fields.")
     norm_tolerance: float = Field(1e-4, ge=0, description="A statevector whose norm differs from 1 by more than this is flagged unnormalized_input; an agreeing pair is then labelled 'agree_after_normalization'.")
     js_threshold: float = Field(0.01, ge=0, description="Jensen-Shannon divergence (nats) between two backends' measured distributions above this is 'distance_exceeds_threshold'.")
     hellinger_threshold: float = Field(0.1, ge=0, description="Hellinger distance between two backends' measured distributions above this is 'distance_exceeds_threshold'.")
 
-class QasmPayload(BaseModel):
+class QasmPayload(_Request):
     """Request body for POST /compare — an exact statevector comparison of one OpenQASM 2.0
     circuit across the simulator fleet."""
     qasm_string: str = Field(..., description="The circuit to run, as OpenQASM 2.0 text.")
     optimization_level: OptimizationLevel = Field(0, description=_OPT_LEVEL_DESCRIPTION)
     runner_config: RunnerConfig = Field({}, description="Per-runner optimization-level override. An int runs that runner once at that level; a list runs it once per element (repeats allowed, e.g. the same level twice).")
-    runner_phases: Dict[str, int] = Field({}, description="Maps runner id to a phase number. Runners sharing a phase run concurrently; phases execute in ascending order. Absent/empty means every runner executes concurrently.")
-    timeout_seconds: int = Field(60, ge=settings.MIN_TIMEOUT_SEC, description=_TIMEOUT_DESCRIPTION)
+    runner_phases: RunnerPhases = Field({}, description="Maps runner id to a phase number. Runners sharing a phase run concurrently; phases execute in ascending order. Absent/empty means every runner executes concurrently.")
+    timeout_seconds: Int = Field(60, ge=settings.MIN_TIMEOUT_SEC, description=_TIMEOUT_DESCRIPTION)
     target_simulators: List[str] = Field(default_factory=list, description="Which runner ids to dispatch to. Empty means every enabled runner.")
     execution_target: ExecutionTarget = Field(default_factory=_default_execution_target, description=_TARGET_DESCRIPTION)
-    bypass_limits: bool = Field(False, description=_BYPASS_DESCRIPTION)
-    apply_preprocessing: bool = Field(True, description="Whether each runner applies its own preprocessing pass (e.g. barrier stripping, gate rebasing) before simulating. Every applied pass is recorded in the result's preprocessing_applied list either way.")
+    bypass_limits: StrictBool = Field(False, description=_BYPASS_DESCRIPTION)
+    apply_preprocessing: StrictBool = Field(True, description=_PREPROCESSING_DESCRIPTION)
     thresholds: Optional[AgreementThresholds] = Field(None, description="Override the default agreement thresholds for this run. Omit to use the defaults.")
 
-class MeasuredQasmPayload(BaseModel):
+class MeasuredQasmPayload(_Request):
     """Request body for POST /compare_measured — a shot-based measurement comparison of one
     OpenQASM 2.0 circuit across the simulator fleet."""
     qasm_string: str = Field(..., description="The circuit to run, as OpenQASM 2.0 text (must contain measurement instructions).")
-    n_shots: int = Field(1024, ge=settings.MIN_SHOTS, le=settings.MAX_SHOTS, description=_SHOTS_DESCRIPTION)
+    n_shots: Int = Field(1024, ge=settings.MIN_SHOTS, le=settings.MAX_SHOTS, description=_SHOTS_DESCRIPTION)
     optimization_level: OptimizationLevel = Field(0, description=_OPT_LEVEL_DESCRIPTION)
     runner_config: RunnerConfig = Field({}, description="Per-runner optimization-level override. An int runs that runner once at that level; a list runs it once per element.")
-    runner_phases: Dict[str, int] = Field({}, description="Maps runner id to a phase number. Runners sharing a phase run concurrently; phases execute in ascending order.")
-    timeout_seconds: int = Field(60, ge=settings.MIN_TIMEOUT_SEC, description=_TIMEOUT_DESCRIPTION)
+    runner_phases: RunnerPhases = Field({}, description="Maps runner id to a phase number. Runners sharing a phase run concurrently; phases execute in ascending order.")
+    timeout_seconds: Int = Field(60, ge=settings.MIN_TIMEOUT_SEC, description=_TIMEOUT_DESCRIPTION)
     target_simulators: List[str] = Field(default_factory=list, description="Which runner ids to dispatch to. Empty means every enabled runner.")
     execution_target: ExecutionTarget = Field(default_factory=_default_execution_target, description=_TARGET_DESCRIPTION)
-    bypass_limits: bool = Field(False, description=_BYPASS_DESCRIPTION)
-    apply_preprocessing: bool = Field(True, description="Whether each runner applies its own preprocessing pass before simulating.")
-    seed: Optional[int] = Field(None, description="RNG seed shared by every runner's sampling, for a reproducible run. Omit for a fresh, non-deterministic seed that is still generated and recorded in the report.")
+    bypass_limits: StrictBool = Field(False, description=_BYPASS_DESCRIPTION)
+    apply_preprocessing: StrictBool = Field(True, description=_PREPROCESSING_DESCRIPTION)
+    seed: Optional[Seed] = Field(None, description=_SEED_DESCRIPTION)
     thresholds: Optional[AgreementThresholds] = Field(None, description="Override the default agreement thresholds for this run.")
 
-class GenerateCircuitPayload(BaseModel):
+class GenerateCircuitPayload(_Request):
     """Request body for POST /generate_circuit — build one preset circuit's OpenQASM text
     server-side, without running it."""
     algorithm: str = Field(..., description="Preset circuit family, e.g. 'ghz', 'bell', 'qft', 'bv', 'grover'.")
-    qubits: int = Field(..., ge=1, description="Number of qubits to generate the circuit for.")
-    seed: Optional[int] = Field(None, description="Seed for presets with random content (e.g. 'random'). Omit to derive it from the qubit count, so the same request always yields the same circuit.")
+    qubits: Int = Field(..., ge=1, description="Number of qubits to generate the circuit for.")
+    seed: Optional[Seed] = Field(None, description="Seed for presets with random content (e.g. 'random'). Omit to derive it from the qubit count, so the same request always yields the same circuit.")
 
-class BenchmarkTask(BaseModel):
+class BenchmarkTask(_Request):
     """One circuit within a batch run (POST /run_batch_suite)."""
     algorithm: str = Field(..., description="Circuit identifier: a preset family name, or the file name for a bundled benchmark circuit.")
-    qubits: int = Field(..., description="Number of qubits (ignored for bundled benchmark circuits, which are fixed-size).")
+    qubits: Int = Field(..., ge=0, description="Number of qubits for a generated preset or MQT Bench circuit. Ignored for QASMBench and literal circuits, whose qubit count is read from the QASM.")
     qasm_string: Optional[str] = Field(None, description="User-supplied OpenQASM 2.0 text. When present, this is run as-is and algorithm/qubits/source are ignored.")
-    source: Optional[str] = Field(None, description="Where to resolve the circuit from when qasm_string is absent: None or 'preset' generates it from the built-in circuit library; 'qasmbench' or 'mqt' loads it from the corresponding bundled benchmark suite.")
+    source: Optional[CircuitSource] = Field(None, description="Where to resolve the circuit from when qasm_string is absent: None or 'preset' generates it from the built-in circuit library; 'qasmbench' or 'mqt' loads it from the corresponding bundled benchmark suite; 'qasm' requires qasm_string.")
 
-class BatchPayload(BaseModel):
+class BatchPayload(_Request):
     """Request body for POST /run_batch_suite — run a list of circuits (BenchmarkTask entries)
     across the simulator fleet in a single job."""
     tasks: List[BenchmarkTask] = Field(..., description="The circuits to run, in order.")
-    n_shots: int = Field(1024, ge=settings.MIN_SHOTS, le=settings.MAX_SHOTS, description=_SHOTS_DESCRIPTION + " Used only when mode is 'measured'.")
-    mode: str = Field(..., description="'statevector' or 'measured'.")
+    n_shots: Int = Field(1024, ge=settings.MIN_SHOTS, le=settings.MAX_SHOTS, description=_SHOTS_DESCRIPTION + " Used only when mode is 'measured'.")
+    mode: RunMode = Field(..., description="'statevector' or 'measured'.")
     optimization_level: OptimizationLevel = Field(0, description=_OPT_LEVEL_DESCRIPTION)
     runner_config: RunnerConfig = Field({}, description="Per-runner optimization-level override, same semantics as in QasmPayload.")
-    runner_phases: Dict[str, int] = Field({}, description="Maps runner id to a phase number for staged concurrent execution, same semantics as in QasmPayload.")
-    timeout_seconds: int = Field(60, ge=settings.MIN_TIMEOUT_SEC, description=_TIMEOUT_DESCRIPTION)
+    runner_phases: RunnerPhases = Field({}, description="Maps runner id to a phase number for staged concurrent execution, same semantics as in QasmPayload.")
+    timeout_seconds: Int = Field(60, ge=settings.MIN_TIMEOUT_SEC, description=_TIMEOUT_DESCRIPTION)
     target_simulators: List[str] = Field(default_factory=list, description="Which runner ids to dispatch to. Empty means every enabled runner.")
     execution_target: ExecutionTarget = Field(default_factory=_default_execution_target, description=_TARGET_DESCRIPTION)
-    bypass_limits: bool = Field(False, description=_BYPASS_DESCRIPTION)
-    apply_preprocessing: bool = Field(True, description="Whether each runner applies its own preprocessing pass before simulating.")
-    seed: Optional[int] = Field(None, description="RNG seed shared by every task and runner's sampling (measured mode only), for a reproducible run. Omit for a fresh, non-deterministic seed that is still generated and recorded.")
+    bypass_limits: StrictBool = Field(False, description=_BYPASS_DESCRIPTION)
+    apply_preprocessing: StrictBool = Field(True, description=_PREPROCESSING_DESCRIPTION)
+    seed: Optional[Seed] = Field(None, description=_SEED_DESCRIPTION + " One master seed covers every task; used only when mode is 'measured'.")
     thresholds: Optional[AgreementThresholds] = Field(None, description="Override the default agreement thresholds for this run.")
 
-class ExperimentCircuit(BaseModel):
+class ExperimentCircuit(_Request):
     """One circuit to include in an experiment (POST /experiments), from any of the wired
     sources.
 
@@ -115,30 +152,30 @@ class ExperimentCircuit(BaseModel):
              "mqt"       -> bundled MQTBench circuit (needs algorithm + qubits)
              "qasm"      -> user-supplied OpenQASM in qasm_string
     """
-    source: str = Field("preset", description="Where to resolve this circuit from: 'preset', 'qasmbench', 'mqt', or 'qasm'.")
+    source: CircuitSource = Field("preset", description="Where to resolve this circuit from: 'preset', 'qasmbench', 'mqt', or 'qasm'.")
     algorithm: Optional[str] = Field(None, description="Circuit identifier for the 'preset', 'qasmbench', or 'mqt' sources.")
-    qubits: int = Field(0, description="Number of qubits, for the 'preset' and 'mqt' sources.")
+    qubits: Int = Field(0, ge=0, description="Number of qubits, for the 'preset' and 'mqt' sources. For 'qasmbench' and 'qasm' the count is read from the QASM.")
     qasm_string: Optional[str] = Field(None, description="User-supplied OpenQASM 2.0 text, for source='qasm'.")
     name: Optional[str] = Field(None, description="Display label for this circuit in the frozen bundle; defaults to a name derived from algorithm/qubits.")
 
-class ExperimentPayload(BaseModel):
+class ExperimentPayload(_Request):
     """Request body for POST /experiments — run a fixed set of circuits across the fleet
     over one or more preprocessing axes, and freeze the inputs, environment, and outputs into
     a citable artifact bundle (downloaded via GET /experiments/{job_id}/bundle)."""
     circuits: List[ExperimentCircuit] = Field(..., description="The circuits to include.")
-    mode: str = Field("measured", description="'statevector' or 'measured'.")
-    n_shots: int = Field(1024, ge=settings.MIN_SHOTS, le=settings.MAX_SHOTS, description=_SHOTS_DESCRIPTION + " Used only when mode is 'measured'.")
+    mode: RunMode = Field("measured", description="'statevector' or 'measured'.")
+    n_shots: Int = Field(1024, ge=settings.MIN_SHOTS, le=settings.MAX_SHOTS, description=_SHOTS_DESCRIPTION + " Used only when mode is 'measured'.")
     optimization_level: OptimizationLevel = Field(0, description=_OPT_LEVEL_DESCRIPTION)
     runner_config: RunnerConfig = Field({}, description="Per-runner optimization-level override, same semantics as in QasmPayload.")
-    runner_phases: Dict[str, int] = Field({}, description="Maps runner id to a phase number for staged concurrent execution.")
-    timeout_seconds: int = Field(300, ge=settings.MIN_TIMEOUT_SEC, description=_TIMEOUT_DESCRIPTION)
+    runner_phases: RunnerPhases = Field({}, description="Maps runner id to a phase number for staged concurrent execution.")
+    timeout_seconds: Int = Field(300, ge=settings.MIN_TIMEOUT_SEC, description=_TIMEOUT_DESCRIPTION)
     target_simulators: List[str] = Field(default_factory=list, description="Which runner ids to include. Empty means every enabled runner.")
     execution_target: ExecutionTarget = Field(default_factory=_default_execution_target, description=_TARGET_DESCRIPTION)
-    bypass_limits: bool = Field(False, description=_BYPASS_DESCRIPTION + " For experiments it also lifts the circuit-axis cell cap.")
-    preprocessing_modes: List[bool] = Field(default_factory=lambda: [True], description="The preprocessing axis: the whole circuit set runs once per value in this list (True = each runner's own preprocessing pass applied, False = raw circuit). Multiple values run multiple full passes.")
-    seed: Optional[int] = Field(None, description="RNG seed shared by every circuit, axis, and runner's sampling. Omit for a fresh seed that is still generated and recorded in the manifest, so every experiment is replayable.")
+    bypass_limits: StrictBool = Field(False, description=_BYPASS_DESCRIPTION + " For experiments it also lifts the circuit-axis cell cap.")
+    preprocessing_modes: List[StrictBool] = Field(default_factory=lambda: [True], description="The preprocessing axis: the whole circuit set runs once per value in this list (True = each runner's own preprocessing pass applied, False = raw circuit). Multiple values run multiple full passes.")
+    seed: Optional[Seed] = Field(None, description=_SEED_DESCRIPTION + " One master seed covers every circuit and axis and is recorded in the manifest.")
     thresholds: Optional[AgreementThresholds] = Field(None, description="Override the default agreement thresholds for this experiment.")
-    keep_statevectors: bool = Field(False, description="Keep full statevectors in the frozen results bundle. Default strips them to a sha256 hash + length to keep the bundle small; the live report is unaffected either way.")
+    keep_statevectors: StrictBool = Field(False, description="Keep full statevectors in the frozen results bundle. Default strips them to a sha256 hash + length to keep the bundle small; the live report is unaffected either way.")
     label: Optional[str] = Field(None, description="Human-readable name for this experiment, recorded in the manifest.")
 
 class VisualizerResponse(BaseModel):
@@ -149,11 +186,11 @@ class JobStatusResponse(BaseModel):
     """Response body for GET /jobs/{job_id}, and the initial response to every job-creating
     POST endpoint (/compare, /compare_measured, /run_batch_suite, /experiments)."""
     job_id: str = Field(..., description="Identifier to poll via GET /jobs/{job_id}.")
-    status: str = Field(..., description="'pending', 'processing', 'completed', or 'failed'. 'failed' means the circuit could not be dispatched at all (e.g. it does not parse), or every task of a batch failed.")
+    status: str = Field(..., description="'pending', 'processing', 'completed', or 'failed'. 'failed' means the circuit could not be dispatched (e.g. it does not parse), every runner returned an error, or every task of a batch failed. A failed job that reached the runners still carries its report in results.")
     target: str = Field(..., description="The execution mode this job was dispatched with ('local' or 'kubernetes').")
     requested_target: Optional[str] = Field(None, description="The execution_target the request asked for, when it differs from target.")
     results: Optional[Dict[str, Any]] = Field(None, description="The report, present once status is 'completed' (and for a failed single-circuit job).")
-    error: Optional[str] = Field(None, description="Failure message, present if status is 'failed'. A failed single-circuit job still carries its report in results.")
+    error: Optional[str] = Field(None, description="Failure message, present if status is 'failed', e.g. 'all 14 runners failed'.")
     runner_statuses: Optional[Dict[str, str]] = Field(None, description="Per-runner status while the job is in flight.")
     progress: Optional[Dict[str, Any]] = Field(None, description="Batch/experiment progress: {total, completed, current_index, tasks:[{name,status}]}. Present only while a multi-circuit run is in progress; absent for single-circuit runs.")
 
@@ -188,19 +225,19 @@ class ComparisonResult(BaseModel):
     resource_report: Dict[str, Any] = Field(..., description="Per-backend memory usage: 'ranking' lists successful backends by process peak RSS (lowest first); 'unranked' lists the rest with a reason.")
     raw_results: List[RunnerPerformanceMetrics] = Field(..., description="Every backend's individual result.")
 
-class PublicationArtifactsSelection(BaseModel):
+class PublicationArtifactsSelection(_Request):
     """Opt-in selection of publication-ready figures/tables to bundle into an RO-Crate export.
 
     Empty/absent categories means no artifacts are generated (the default, non-breaking).
     """
-    categories: List[str] = Field(default_factory=list, description="Which artifact categories to generate, e.g. 'agreement', 'performance', 'resources'. Empty generates none.")
-    figure_formats: List[str] = Field(default_factory=lambda: ["svg"], description="Raster/vector formats to render each figure in, e.g. 'svg', 'png', 'pdf'.")
-    table_formats: List[str] = Field(default_factory=lambda: ["csv"], description="Formats to render each table in, e.g. 'csv', 'html', 'latex', 'xlsx'.")
+    categories: List[PublicationCategory] = Field(default_factory=list, description="Which artifact categories to generate: 'agreement', 'heatmaps', 'performance', 'statistical'. Empty generates none.")
+    figure_formats: List[FigureFormat] = Field(default_factory=lambda: ["svg"], description="Formats to render each figure in: 'svg', 'png', 'pdf'.")
+    table_formats: List[TableFormat] = Field(default_factory=lambda: ["csv"], description="Formats to render each table in: 'latex', 'csv', 'html', 'xlsx'.")
 
-class ExportPayload(BaseModel):
+class ExportPayload(_Request):
     """Options for exporting a completed report as a citable artifact."""
-    format: str = Field("ro-crate", description="Export format. Currently only 'ro-crate' (an RO-Crate 1.1 archive conforming to the Process Run Crate profile) is supported.")
-    include_statevectors: bool = Field(False, description="Include full statevectors in the export. Default strips them to keep the archive small.")
+    format: Literal["ro-crate"] = Field("ro-crate", description="Export format. Only 'ro-crate' (an RO-Crate 1.1 archive conforming to the Process Run Crate profile) is accepted.")
+    include_statevectors: StrictBool = Field(False, description="Include full statevectors in the export. Default strips them to keep the archive small.")
     author_name: Optional[str] = Field(None, description="Author name recorded in the crate's metadata.")
     author_affiliation: Optional[str] = Field(None, description="Author affiliation recorded in the crate's metadata.")
     publication_artifacts: Optional[PublicationArtifactsSelection] = Field(None, description="Optionally bundle publication-ready figures/tables into the crate alongside the raw results.")
@@ -209,10 +246,10 @@ class ExportRequest(ExportPayload):
     """POST /export request body: export options plus the report to export."""
     results: Dict[str, Any] = Field(..., description="The full report to export (as returned in a completed job's results field).")
 
-class PublicationRenderRequest(BaseModel):
+class PublicationRenderRequest(_Request):
     """Request body for POST /publication/render — render one publication figure or table
     on demand, without generating a full export."""
     results: Dict[str, Any] = Field(..., description="The statevector-stripped report the browser already holds.")
     artifact_id: str = Field(..., description="Which figure or table to render, from the report's list of available artifacts.")
     format: str = Field(..., description="Output format for this artifact, e.g. 'svg', 'png', 'pdf', 'csv', 'html', 'latex'.")
-    scale: int = Field(1, ge=1, le=4, description="Raster resolution multiplier for image formats, 1-4 (rendered at BASE_DPI x scale). Ignored for vector/text formats.")
+    scale: Int = Field(1, ge=1, le=4, description="Raster resolution multiplier for image formats, 1-4 (rendered at BASE_DPI x scale). Ignored for vector/text formats.")

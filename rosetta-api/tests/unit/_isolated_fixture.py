@@ -27,3 +27,7 @@ def with_qasm(payload):
         "execution_time_sec": 0.01,
         "transpiled_qasm": "OPENQASM 2.0;\ninclude \"qelib1.inc\";\nqreg q[2];\nh q[0];\ncx q[0],q[1];\n",
     }
+
+
+def returns_error(payload):
+    return {"simulator": "t", "error": "bad gate", "execution_time_sec": None}

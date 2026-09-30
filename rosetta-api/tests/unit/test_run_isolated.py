@@ -77,3 +77,9 @@ def test_default_repeats_is_one_and_omits_variance_fields():
     r = _call(fx.with_qasm, {})
     assert "timing_repeats" not in r
     assert "execution_time_sec_mean" not in r
+
+
+def test_failed_run_reports_no_process_metrics():
+    r = _call(fx.returns_error, {"seed": 1})
+    assert r["error"]
+    assert r["cpu_time_sec"] is None and r["process_peak_rss_mb"] is None

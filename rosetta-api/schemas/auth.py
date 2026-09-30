@@ -3,7 +3,8 @@
 import re
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from datetime import datetime
+
+from schemas.timestamps import UtcDatetime
 
 EMAIL_MAX_LENGTH = 254
 PASSWORD_MIN_CHARS = 8
@@ -28,6 +29,8 @@ def password_too_long(password: str) -> bool:
 
 class UserCreate(BaseModel):
     """Request body for POST /auth/register."""
+    model_config = ConfigDict(extra="forbid")
+
     email: str = Field(..., description=f"Account email, at most {EMAIL_MAX_LENGTH} characters; also the login username. Stored lower-cased, so addresses differing only in case are the same account.")
     password: str = Field(..., description=f"Account password, at least {PASSWORD_MIN_CHARS} characters and at most {PASSWORD_MAX_BYTES} bytes as UTF-8; stored only as a bcrypt hash.")
 
@@ -56,7 +59,7 @@ class UserResponse(BaseModel):
     email: str = Field(..., description="Account email.")
     auth_provider: str = Field(..., description="How the account authenticates, e.g. 'local' for email+password.")
     is_active: bool = Field(..., description="Whether the account is active.")
-    created_at: datetime = Field(..., description="When the account was created.")
+    created_at: UtcDatetime = Field(..., description="When the account was created, UTC ISO 8601 ending in 'Z'.")
 
     model_config = ConfigDict(from_attributes=True)
 

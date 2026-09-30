@@ -17,7 +17,7 @@ from config import server_git_sha, server_image_digests
 from schemas import BatchPayload, BenchmarkTask, ExperimentPayload
 from services import experiment_artifacts as art
 from services.dispatcher import SEED_DERIVATION
-from services.job_manager import ACTIVE_JOBS, run_batch_tasks, _resolve_seed
+from services.job_manager import ACTIVE_JOBS, run_batch_tasks, task_label, task_qubits, _resolve_seed
 from qrosetta_commons.helpers import get_logger
 from services.circuit_resolver import resolve_circuit_qasm
 
@@ -36,18 +36,23 @@ def resolve_circuits(payload: ExperimentPayload) -> tuple:
     resolved, errors = [], []
     for i, entry in enumerate(payload.circuits):
         source = (entry.source or "preset").lower()
-        name = entry.name or (
-            f"{entry.algorithm}_{entry.qubits}q" if entry.algorithm else f"circuit_{i}"
-        )
-        cid = f"{i:03d}_{art.slug(name)}"
         try:
             qasm = resolve_circuit_qasm(
                 entry.source, entry.algorithm, entry.qubits, entry.qasm_string, mode=payload.mode
             )
-            resolved.append({"id": cid, "algorithm": entry.algorithm or name,
-                             "qubits": int(entry.qubits or 0), "qasm": qasm, "source": source})
         except Exception as e:
-            errors.append({"id": cid, "name": name, "error": str(e)})
+            qasm, error = None, str(e)
+        qubits = task_qubits(entry, qasm)
+        name = entry.name or (
+            (f"{entry.algorithm}_{qubits}q" if qubits else entry.algorithm)
+            if entry.algorithm else f"circuit_{i}"
+        )
+        cid = f"{i:03d}_{art.slug(name)}"
+        if qasm is None:
+            errors.append({"id": cid, "name": name, "error": error})
+            continue
+        resolved.append({"id": cid, "algorithm": entry.algorithm or name,
+                         "qubits": qubits, "qasm": qasm, "source": source})
     return resolved, errors
 
 
@@ -85,7 +90,7 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
         axis_labels = [_axis_label(payload.mode, bool(pp)) for pp in axes]
         progress = {
             "total": cells, "completed": 0, "current_index": None,
-            "tasks": [{"name": f"{c['algorithm']} ({c['qubits']}q) · {lbl}", "status": "queued"}
+            "tasks": [{"name": f"{task_label(c['algorithm'], c['qubits'])} · {lbl}", "status": "queued"}
                       for lbl in axis_labels for c in resolved],
         }
         ACTIVE_JOBS[job_id]["progress"] = progress
@@ -157,6 +162,8 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
             extra_notes=(f"Resolution errors: {len(resolution_errors)}."
                          if resolution_errors else ""),
             seed_derivation=seed_derivation)
+        manifest["job_id"] = job_id
+        manifest["runner_images"] = art.collect_runner_images(all_reports)
         manifest["label"] = payload.label
         manifest["created_utc"] = datetime.now(timezone.utc).isoformat()
         manifest["mode"] = payload.mode
@@ -175,9 +182,10 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
             "conformance": conformance, "prevalence": prevalence,
             "sdk_versions": sdk_versions, "error_count": n_err,
             "cells": cells, "bundle_ready": True, "bundle_name": bundle_name,
+            "job_id": job_id,
         }
         ACTIVE_JOBS[job_id] = {
-            "status": "completed", "target": payload.execution_target,
+            "status": "completed", "kind": "experiment", "target": payload.execution_target,
             "results": {"experiment_summary": experiment_summary},
             "runner_statuses": runner_statuses, "progress": progress,
             "bundle_files": files, "bundle_name": bundle_name, "finished_at": time.time(),
@@ -186,7 +194,8 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
 
     except Exception as e:
         logger.error(f"Experiment {job_id} failed: {e}", exc_info=True)
-        ACTIVE_JOBS[job_id] = {"status": "failed", "target": payload.execution_target,
+        ACTIVE_JOBS[job_id] = {"status": "failed", "kind": "experiment",
+                               "target": payload.execution_target,
                                "error": str(e), "runner_statuses": runner_statuses,
                                "finished_at": time.time()}
 

@@ -111,14 +111,34 @@ def test_precision_default_kwarg_and_compile_override():
     assert r["precision"] == "complex64" and r["counts"] == {"00": 4}
 
 
-def test_theoretical_size_uses_declared_qubits_not_backend_count():
+def _basis(n):
+    v = np.zeros(2 ** n, dtype=complex)
+    v[0] = 1
+    return v
+
+
+def test_theoretical_size_uses_declared_qubits_and_precision():
     qasm = 'OPENQASM 2.0;\nqreg a[2];\nqreg b[3];\nh a[0];\n'
     reduced = lambda p: CompileResult(circuit=None, n_qubits=1)
-    r = _sv_job(lambda c, p: np.array([1, 0]), qasm=qasm, compile_fn=reduced)
-    assert r["theoretical_statevector_mb"] == theoretical_statevector_mb(5)
-    r_none = _sv_job(lambda c, p: np.array([1, 0]), qasm=qasm, compile_fn=reduced,
+    r = _sv_job(lambda c, p: _basis(5), qasm=qasm, compile_fn=reduced)
+    assert r["theoretical_statevector_mb"] == theoretical_statevector_mb(5) == 32 * 16 / MIB
+    assert "precision not reported" in r["theoretical_statevector_basis"]
+    r_none = _sv_job(lambda c, p: _basis(5), qasm=qasm, compile_fn=reduced,
                      theoretical_mb=None)
-    assert r_none["theoretical_statevector_mb"] is None
+    assert r_none["theoretical_statevector_mb"] == theoretical_statevector_mb(5)
+    r64 = _sv_job(lambda c, p: _basis(5), qasm=qasm, precision="complex64")
+    assert r64["theoretical_statevector_mb"] == 32 * 8 / MIB
+    assert r64["theoretical_statevector_basis"] == "2^5 x 8 B (complex64)"
+    assert theoretical_statevector_mb(5, "complex128") == 32 * 16 / MIB
+
+
+@pytest.mark.parametrize("vector", [np.array([], dtype=complex), _basis(1), _basis(3)])
+def test_statevector_of_the_wrong_length_is_an_error(vector):
+    r = _sv_job(lambda c, p: vector)
+    assert "statevector" not in r
+    assert r["error"] == (f"backend returned {vector.size} amplitudes for 2 qubits "
+                          f"(expected 4)")
+    assert r["execution_time_sec"] is None
 
 
 def test_derive_runner_seed_is_deterministic_and_bounded():

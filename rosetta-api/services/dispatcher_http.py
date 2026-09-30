@@ -3,7 +3,6 @@
 import time
 import httpx
 import asyncio
-from collections import Counter
 from qrosetta_commons.helpers import get_logger, unmeasured_metrics
 from config import settings
 
@@ -76,11 +75,13 @@ async def dispatch_http_local(runner_urls: dict, runner_payload: dict, timeout_s
     """Run every job over HTTP, phase by phase, and return the annotated results.
 
     Each runner executes one run at a time and queues the rest. A job may wait in that
-    queue for ``queue_wait_budget`` seconds (sent as ``max_queue_wait_seconds``); its
-    hard-kill budget ``timeout_seconds`` starts once it leaves the queue. The API's read
-    timeout is queue budget + timeout + RUNNER_DEADLINE_BUFFER_SEC, so the runner reports
-    a queue or run timeout before the API gives up. The connect timeout is short so an
-    unreachable runner fails fast.
+    queue for ``queue_wait_budget()`` seconds (RUNNER_QUEUE_MAX_WAIT_SEC, sent as
+    ``max_queue_wait_seconds``); its hard-kill budget ``timeout_seconds`` starts once it
+    leaves the queue. The API's read timeout is queue cap + timeout +
+    RUNNER_DEADLINE_BUFFER_SEC, so the runner reports a queue or run timeout before the API
+    gives up. The job runs in a background task that the browser polls, so no gateway
+    timeout applies to this wait. The connect timeout is short so an unreachable runner
+    fails fast.
     """
     from services.dispatcher import (
         expand_runner_jobs, group_specs_by_phase, build_runner_payload, annotate_result,
@@ -117,13 +118,11 @@ async def dispatch_http_local(runner_urls: dict, runner_payload: dict, timeout_s
     results = []
     async with httpx.AsyncClient(timeout=_http_timeout(0)) as client:
         for group in phase_groups:
-            runs_per_runner = Counter(spec["sim_name"] for spec in group)
             tasks = []
             for spec in group:
                 local_payload = build_runner_payload(runner_payload, spec)
                 local_payload["hard_timeout_seconds"] = int(timeout_seconds)
-                local_payload["max_queue_wait_seconds"] = queue_wait_budget(
-                    timeout_seconds, runs_per_runner[spec["sim_name"]])
+                local_payload["max_queue_wait_seconds"] = queue_wait_budget()
                 logger.info(f"Dispatching job to {spec['key']} (Level: {spec['opt_level']}, Phase: {spec['phase']})...")
                 tasks.append(_run_and_track(client, spec, local_payload))
             results.extend(await asyncio.gather(*tasks))

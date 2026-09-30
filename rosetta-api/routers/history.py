@@ -10,6 +10,8 @@ import services.history as history_service
 from db.database import get_db
 from services.security import get_current_user
 from services.exporter import build_export_context, build_ro_crate
+from services.job_manager import job_report_or_error
+from routers.errors import responses
 from qrosetta_commons.helpers import get_logger
 from fastapi.responses import StreamingResponse
 import io
@@ -59,6 +61,29 @@ def save_run(
         raise HTTPException(status_code=500, detail="Failed to save run history")
 
 
+@router.post("/runs/from_job/{job_id}", response_model=schemas.RunHistoryResponse,
+             status_code=status.HTTP_201_CREATED, responses=responses(404, 409, 422))
+def save_run_from_job(
+    job_id: str,
+    body: schemas.RunHistoryFromJob | None = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """Save a finished /compare, /compare_measured or /run_batch_suite job to the current
+    user's history from the server's copy of its report, so the browser uploads nothing.
+    Statevectors are removed before storage and the stored report is marked
+    ``statevector_storage="removed_before_storage"``. Returns the saved run; its ``id`` is
+    the run id. 404 if the job id is unknown or expired; 409 if the job has not finished,
+    failed before any runner ran, or is an experiment."""
+    report = job_report_or_error(job_id, "save")
+    name = (body.name if body else None) or history_service.default_run_name(report, job_id)
+    try:
+        return history_service.save_run(
+            db, current_user.id, {**report, "run_name": name, "job_id": job_id})
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to save run history")
+
+
 @router.get("/runs", response_model=List[schemas.RunHistoryResponse])
 def get_run_histories(
     db: Session = Depends(get_db),
@@ -74,10 +99,11 @@ def get_run_history_details(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    """Fetch one saved run's full report by id. 404 if it does not exist or does not belong
-    to the current user."""
+    """Fetch one saved run's full report by id, with ``run_id``, ``run_name`` and
+    ``created_at`` (UTC ISO 8601 ending in 'Z') added at the top level. 404 if it does not
+    exist or does not belong to the current user."""
     try:
-        return history_service.get_run_report(db, current_user.id, run_id)
+        return history_service.get_run_report_with_metadata(db, current_user.id, run_id)
     except history_service.RunNotFound:
         raise HTTPException(status_code=404, detail="Run history not found")
     except Exception:

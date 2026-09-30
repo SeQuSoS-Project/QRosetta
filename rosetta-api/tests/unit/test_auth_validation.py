@@ -8,6 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from db.database import Base, get_db
 from routers import auth
+from routers.errors import register_error_handlers
 
 _engine = create_engine(
     "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
@@ -27,6 +28,7 @@ def _get_db():
 @pytest.fixture
 def client():
     app = FastAPI()
+    register_error_handlers(app)
     app.include_router(auth.router)
     app.dependency_overrides[get_db] = _get_db
     return TestClient(app)
@@ -64,3 +66,17 @@ def test_login_with_overlong_password_is_400(client):
 def test_72_byte_password_is_accepted(client):
     r = client.post("/auth/register", json={"email": "max@example.org", "password": "p" * 72})
     assert r.status_code == 201
+
+
+def test_validation_error_does_not_echo_the_password(client):
+    password = "secret-" + "p" * 70
+    r = client.post("/auth/register", json={"email": "echo@example.org", "password": password})
+    assert r.status_code == 422
+    assert password not in r.text
+    assert r.json()["detail"][0]["msg"] == "password must be at most 72 bytes (UTF-8)"
+
+
+def test_register_rejects_unknown_fields(client):
+    r = client.post("/auth/register", json={"email": "extra@example.org", "password": "testpass123",
+                                            "is_admin": True})
+    assert r.status_code == 422
