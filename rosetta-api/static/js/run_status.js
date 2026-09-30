@@ -18,7 +18,7 @@ export function isConnectionError(errorMsg) {
 const DISPATCH_STATUSES = new Set(['ok', 'error', 'timeout', 'offline']);
 
 /**
- * The runner's dispatch_status, or for reports that predate it, a classification of the
+ * The runner's dispatch_status, or for reports without one, a classification of the
  * error text.
  * @returns {'ok'|'error'|'timeout'|'offline'}
  */
@@ -46,8 +46,6 @@ export function statusBySimulator(rawResults) {
 }
 
 export const DIRECT_AGREEMENT = new Set(['agree_directly', 'agree_up_to_global_phase', 'distance_within_threshold']);
-export const TRANSFORM_AGREEMENT = new Set(['agree_after_bit_reversal', 'agree_after_qubit_permutation']);
-export const UNEXPLAINED = new Set(['residual_disagreement', 'distance_exceeds_threshold']);
 
 /**
  * The label a pair would carry without the normalisation note: for
@@ -79,6 +77,39 @@ export function measuredAssessment(p) {
     return VERDICT_TO_ASSESSMENT[verdict] || null;
 }
 
+/**
+ * The basis ('direct' or 'bit_reversal') in which a pair matches although its declared
+ * qubit orderings imply the other one, or null.
+ * @returns {string|null}
+ */
+export function unalignedBasis(p) {
+    const v = p?.metrics?.unaligned_basis_match ?? p?.unaligned_basis_match;
+    if (typeof v === 'string' && v) return v;
+    return v === true || p?.agreement === 'unaligned_basis_match' ? 'unrecorded' : null;
+}
+
+/** True when a pair matches only in a basis its declared qubit orderings do not imply. */
+export function unalignedBasisMatch(p) {
+    return unalignedBasis(p) !== null;
+}
+
+/**
+ * Group of a statevector pair: 'agree' (directly, up to a global phase, or after
+ * normalisation), 'bit_order' (after the bit reversal the declared orderings imply),
+ * 'disagree' (residual, only after an undeclared qubit permutation, or only in an
+ * unaligned basis), 'not_comparable', or 'other'.
+ * @returns {'agree'|'bit_order'|'disagree'|'not_comparable'|'other'}
+ */
+export function statevectorGroup(p) {
+    if (p?.agreement === 'not_comparable') return 'not_comparable';
+    if (unalignedBasisMatch(p)) return 'disagree';
+    const label = effectiveAgreement(p);
+    if (label === 'residual_disagreement' || label === 'agree_after_qubit_permutation') return 'disagree';
+    if (label === 'agree_directly' || label === 'agree_up_to_global_phase') return 'agree';
+    if (label === 'agree_after_bit_reversal') return 'bit_order';
+    return 'other';
+}
+
 /** True when the pair's outputs disagree by the evidence the report records. */
 export function isDisagreement(p) {
     if (p?.mode === 'measured') {
@@ -86,7 +117,7 @@ export function isDisagreement(p) {
         if (a) return a === 'distinguishable';
         return p.agreement === 'distance_exceeds_threshold';
     }
-    return p?.agreement === 'residual_disagreement';
+    return statevectorGroup(p) === 'disagree';
 }
 
 /** Power of the pair's shot-noise test to detect the target total-variation gap, or null. */
@@ -96,15 +127,16 @@ export function pairPower(p) {
 }
 
 /**
- * Significance level the power figure was computed at, the pair-family size and the
- * run's α, as far as the pair records them.
- * @returns {{ alphaUsed: number|null, m: number|null, alpha: number|null }}
+ * Significance level the power figure was computed at, the pair-family size, the
+ * Benjamini–Yekutieli constant c_m and the run's α, as far as the pair records them.
+ * @returns {{ alphaUsed: number|null, m: number|null, alpha: number|null, cm: number|null }}
  */
 export function pairPowerLevel(p) {
     const st = p?.metrics?.statistical_test || {};
     const power = st.power || {};
     const num = v => (typeof v === 'number' && Number.isFinite(v) ? v : null);
-    return { alphaUsed: num(power.alpha_used), m: num(power.m_pairs), alpha: num(st.alpha) };
+    const cm = num(power.c_m ?? power.by_constant ?? power.harmonic_constant);
+    return { alphaUsed: num(power.alpha_used), m: num(power.m_pairs), alpha: num(st.alpha), cm };
 }
 
 /** Whether more shots can resolve an inconclusive pair: true, false, or null when not recorded. */
@@ -153,4 +185,35 @@ export function userFacingError(msg) {
     let text = String(msg);
     OPERATOR_HINTS.forEach(([re, repl]) => { text = text.replace(re, repl); });
     return text;
+}
+
+/**
+ * Short name of the multiple-testing correction a report or pair records: 'BY'
+ * (Benjamini–Yekutieli) or 'BH' (Benjamini–Hochberg). Reports without a correction field
+ * show 'BH'.
+ */
+export function correctionName(...records) {
+    for (const r of records) {
+        const c = r?.correction;
+        const list = Array.isArray(c) ? c : (c ? [c] : []);
+        const text = list.map(v => String(v).toLowerCase()).join(' ');
+        if (/\bby\b|yekutieli/.test(text)) return 'BY';
+        if (/\bbh\b|hochberg/.test(text)) return 'BH';
+    }
+    return 'BH';
+}
+
+/** The correction's full name for prose. */
+export function correctionLongName(short) {
+    return short === 'BY' ? 'Benjamini–Yekutieli' : 'Benjamini–Hochberg';
+}
+
+/** Multiplicity-adjusted p-value of one test block (chi2 or g_test). */
+export function adjustedPValue(test) {
+    return test?.p_value_adjusted ?? test?.p_value_by ?? test?.p_value_bh;
+}
+
+/** Whether one test block is significant after the multiplicity adjustment. */
+export function adjustedSignificant(test) {
+    return test?.significant_adjusted ?? test?.significant_by ?? test?.significant_bh;
 }

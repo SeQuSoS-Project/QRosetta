@@ -10,7 +10,12 @@ import { dispatch, getState } from './state.js';
 export let _loaderElapsedTimer = null;
 
 /** Show or hide the busy state. options.overlay=false shows a small toast instead of the
- * full results-panel overlay, so a displayed report stays visible. */
+ * full results-panel overlay, so a displayed report stays visible; options.startedAt
+ * (epoch ms) starts the elapsed counter from that time.
+ * @param {boolean} isLoading
+ * @param {string} [message]
+ * @param {{ overlay?: boolean, startedAt?: number }} [options]
+ */
 export function setLoading(isLoading, message = "Processing...", options = {}) {
     const overlay = options.overlay !== false;
     const loader = document.getElementById('loader');
@@ -25,9 +30,9 @@ export function setLoading(isLoading, message = "Processing...", options = {}) {
             loader.classList.remove('hidden');
             loader.classList.add('flex');
             if (!_loaderElapsedTimer) {
-                const startTime = Date.now();
+                const startTime = typeof options.startedAt === 'number' ? Math.min(options.startedAt, Date.now()) : Date.now();
                 const elapsedEl = document.getElementById('loader-elapsed');
-                if (elapsedEl) elapsedEl.textContent = '0s elapsed';
+                if (elapsedEl) elapsedEl.textContent = `${Math.floor((Date.now() - startTime) / 1000)}s elapsed`;
                 _loaderElapsedTimer = setInterval(() => {
                     const el = document.getElementById('loader-elapsed');
                     if (el) el.textContent = `${Math.floor((Date.now() - startTime) / 1000)}s elapsed`;

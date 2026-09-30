@@ -2,6 +2,7 @@
 
 import { tabNav } from './dom.js';
 import { BASE_URL, formatApiError, getAuthHeaders } from './api.js';
+import { onNextLogin, openAuthModal, updateAuthUI } from './auth.js';
 import { clearReport, renderDetailReport, renderSuiteSummary } from './renderers.js';
 import { dispatch, getState } from './state.js';
 import { downloadBlob, setLoading } from './utils.js';
@@ -20,11 +21,23 @@ function _formatServerTime(value) {
     return d ? d.toLocaleString() : '';
 }
 
-/** Show (or with an empty message, hide) the history-save notice. */
-export function showHistoryNotice(message, kind = 'error') {
+/**
+ * Show (or with an empty message, hide) the history-save notice, optionally with one
+ * action button.
+ * @param {string} message
+ * @param {'error'|'success'} [kind]
+ * @param {{ label: string, onClick: () => void } | null} [action]
+ */
+export function showHistoryNotice(message, kind = 'error', action = null) {
     const box = document.getElementById('history-save-notice');
     const text = document.getElementById('history-save-notice-text');
+    const button = document.getElementById('history-save-notice-action');
     if (!box || !text) return;
+    if (button) {
+        button.classList.toggle('hidden', !action);
+        button.textContent = action ? action.label : '';
+        button.onclick = action ? () => { showHistoryNotice(''); action.onClick(); } : null;
+    }
     if (!message) {
         box.classList.add('hidden');
         box.classList.remove('flex');
@@ -41,6 +54,27 @@ export function showHistoryNotice(message, kind = 'error') {
     box.classList.add('flex');
 }
 
+/** Sign-in prompt for a save rejected with 401; after sign-in the save is retried. */
+function _offerSignInAndRetry(jobId, name) {
+    dispatch('SET_AUTH_TOKEN', null);
+    updateAuthUI();
+    const retry = async () => {
+        const id = await saveRunToHistory(jobId, name);
+        if (id) {
+            if (getState().currentJobId === jobId) dispatch('SET_HISTORY_RUN_ID', id);
+            showHistoryNotice('Saved to your history.', 'success');
+        }
+    };
+    showHistoryNotice('Your session has expired, so this run was not saved to your history. '
+        + 'Sign in again to save it; the server keeps the result for at least 30 minutes after the run finishes.', 'error', {
+        label: 'Sign in and save',
+        onClick: () => {
+            onNextLogin(retry);
+            openAuthModal();
+        },
+    });
+}
+
 /** Save a finished job to the signed-in user's history from the server's copy of the report.
  * Returns the saved run id, or null (with a visible notice) when saving failed. */
 export async function saveRunToHistory(jobId, name = null) {
@@ -49,8 +83,12 @@ export async function saveRunToHistory(jobId, name = null) {
         const res = await fetch(`${BASE_URL}/history/runs/from_job/${encodeURIComponent(jobId)}`, {
             method: 'POST',
             headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-            body: JSON.stringify(name ? { name } : {})
+            body: JSON.stringify(name ? { run_name: name } : {})
         });
+        if (res.status === 401) {
+            _offerSignInAndRetry(jobId, name);
+            return null;
+        }
         if (!res.ok) throw new Error(await formatApiError(res));
         const data = await res.json().catch(() => null);
         const id = typeof data === 'string' ? data : (data?.id || data?.run_id || null);
@@ -77,6 +115,12 @@ export async function openHistoryModal() {
         const response = await fetch(`${BASE_URL}/history/runs`, {
             headers: getAuthHeaders()
         });
+        if (response.status === 401) {
+            dispatch('SET_AUTH_TOKEN', null);
+            updateAuthUI();
+            list.innerHTML = '<li class="py-4 text-center text-sm text-gray-500">Your session has expired. Sign in again to view your history.</li>';
+            return;
+        }
         if (!response.ok) throw new Error("Failed to fetch history");
 
         const runs = await response.json();
@@ -315,10 +359,10 @@ export async function loadHistoricalRun(runId, runName, createdAt) {
 
         const isBatch = !!data.benchmark_summary;
         if (isBatch) {
-            dispatch('SET_SUITE_TITLE', "Historical Batch Run");
+            dispatch('SET_SUITE_TITLE', runName || "Historical Batch Run");
             renderSuiteSummary(data, getState().currentSuiteTitle);
         } else {
-            renderDetailReport(data, "Historical Single Run", {});
+            renderDetailReport(data, runName || "Historical Single Run", {});
         }
     } catch (e) {
         console.error("Historical load fail:", e);

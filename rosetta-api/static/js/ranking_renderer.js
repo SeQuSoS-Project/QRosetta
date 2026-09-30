@@ -28,7 +28,7 @@ const UNRANKED_REASON_TEXT = {
 
 /**
  * Ranked and unranked rows of a performance or resource report, as new arrays.
- * Reports that predate `unranked` carry failed runs inside `ranking`; those are moved to
+ * Reports without `unranked` carry failed runs inside `ranking`; those are moved to
  * the unranked list here.
  */
 export function splitRanking(report, metric) {
@@ -80,10 +80,12 @@ function _fillSimulatorCell(td, simulatorName, config, raw, { memory = false } =
 
 function _timingNote(rawResults) {
     const ok = (rawResults || []).filter(r => r && !r.error);
-    const samples = new Set(ok.map(r => r.timing_samples).filter(n => Number.isInteger(n)));
-    let note = (samples.size === 0 || (samples.size === 1 && samples.has(1)))
+    const samples = new Set(ok.map(_timingCount));
+    let note = (samples.size === 1 && samples.has(1))
         ? 'Each value is one timed run (n=1) after one discarded warm-up run.'
-        : `Timed runs per backend: ${[...samples].sort().join(', ')}; the columns show the last run (mean and stdev are in the raw JSON).`;
+        : `Timed runs per backend: ${[...samples].sort((a, b) => a - b).join(', ')}, after one discarded warm-up run. `
+            + 'With more than one, a value is the median of the timed runs ± their sample standard deviation, with n; '
+            + 'the per-run samples are in the raw JSON.';
     note += ok.some(isGpuRun)
         ? ' CPU runners: 0.5 CPU, 1 thread each, so wall time can exceed CPU time. GPU runners run kernels on the GPU with '
             + 'host-side work under the same 0.5-CPU quota; times across devices compare different hardware.'
@@ -97,10 +99,10 @@ function _memoryNote(rawResults, unranked) {
     const gpu = (rawResults || []).filter(r => r && !r.error && isGpuRun(r));
     if (!gpu.length) return '';
     const unrankedIds = new Set(unranked.map(r => r.simulator));
-    const names = gpu.map(r => `${_displayRunnerName(r.simulator)} (GPU)`).join(', ');
+    const names = gpu.map(r => _displayRunnerName(r.simulator)).join(', ');
     return gpu.every(r => unrankedIds.has(r.simulator))
-        ? ` Memory fields are host RSS. GPU device memory is not measured, so ${names} is not ranked by memory; its host-side values are listed after the ranked runs.`
-        : ` Memory fields are host RSS. GPU device memory is not measured, so the rank and memory values of ${names} describe host memory only.`;
+        ? ` Memory fields are host RSS. GPU device memory is not measured, so the GPU run of ${names} is not ranked by memory; its host-side values are listed after the ranked runs.`
+        : ` Memory fields are host RSS. GPU device memory is not measured, so the rank and memory values of the GPU run of ${names} describe host memory only.`;
 }
 
 function _deviceCell(raw) {
@@ -134,10 +136,52 @@ function _th(text, tooltipKey) {
     return th;
 }
 
+/** Number of timed runs behind a result's timing fields. */
+function _timingCount(raw) {
+    const n = raw?.timing_samples ?? raw?.timing_repeats;
+    if (Number.isInteger(n) && n > 0) return n;
+    return Array.isArray(raw?.simulation_time_samples) ? raw.simulation_time_samples.length || 1 : 1;
+}
+
+function _median(xs) {
+    const s = [...xs].sort((a, b) => a - b);
+    const mid = Math.floor(s.length / 2);
+    return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+function _stdev(xs) {
+    if (xs.length < 2) return 0;
+    const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
+    return Math.sqrt(xs.reduce((a, b) => a + (b - mean) ** 2, 0) / (xs.length - 1));
+}
+
+/** Per-run samples of one timing stage ('compilation', 'simulation' or 'execution'), or null. */
+function _stageSamples(raw, stage) {
+    const num = a => (Array.isArray(a) && a.length && a.every(v => typeof v === 'number') ? a : null);
+    if (stage !== 'execution') return num(raw?.[`${stage}_time_samples`]);
+    const exec = num(raw?.execution_time_samples);
+    if (exec) return exec;
+    const c = num(raw?.compilation_time_samples), s = num(raw?.simulation_time_samples);
+    return c && s && c.length === s.length ? c.map((v, i) => v + s[i]) : null;
+}
+
+/** A timing cell: the value, or median ± sample standard deviation (n) over several timed runs. */
+function _timingValue(r, raw, stage) {
+    const field = `${stage}_time_sec`;
+    const value = r[field] ?? raw?.[field];
+    const n = _timingCount(raw);
+    if (n <= 1) return fmtNum(value, 6);
+    const samples = _stageSamples(raw, stage);
+    const pick = (...keys) => keys.map(k => raw?.[k]).find(v => typeof v === 'number');
+    const median = pick(`${stage}_time_sec_median`, `${stage}_time_median_sec`) ?? (samples ? _median(samples) : value);
+    const sd = pick(`${stage}_time_sec_stdev`, `${stage}_time_stdev_sec`) ?? (samples ? _stdev(samples) : null);
+    return `${fmtNum(median, 6)}${sd !== null ? ` ± ${fmtNum(sd, 6)}` : ''} (n=${n})`;
+}
+
 const TIME_COLUMNS = [
-    { key: 'compilation', label: 'Compilation (s)', value: (r) => fmtNum(r.compilation_time_sec, 6) },
-    { key: 'simulation', label: 'Simulation (s)', value: (r) => fmtNum(r.simulation_time_sec, 6) },
-    { key: 'total_time', label: 'Total (s)', value: (r) => fmtNum(r.execution_time_sec, 6), strong: true },
+    { key: 'compilation', label: 'Compilation (s)', value: (r, raw) => _timingValue(r, raw, 'compilation') },
+    { key: 'simulation', label: 'Simulation (s)', value: (r, raw) => _timingValue(r, raw, 'simulation') },
+    { key: 'total_time', label: 'Total (s)', value: (r, raw) => _timingValue(r, raw, 'execution'), strong: true },
     { key: 'sim_cpu_time', label: 'Sim CPU (s)', value: (r, raw) => fmtNum(raw?.simulation_cpu_time_sec, 6) },
     { key: 'cpu_time', label: 'CPU, whole process (s)', value: (r, raw) => fmtNum(r.cpu_time_sec ?? raw?.cpu_time_sec, 6) },
     { key: 'gate_count', label: 'Gate Count', value: (r, raw) => fmtInt(r.gate_count ?? raw?.gate_count) },
@@ -177,8 +221,10 @@ export function renderRankingTable(report, key, unit, panel, config = {}, rawRes
 
     const hFrag = _cloneTemplate('tpl-ranking-section-header');
     const note = isMemory ? _memoryNote(rawResults, unranked) : ` ${_timingNote(rawResults)}`;
-    hFrag.querySelector('.tpl-summary-text').textContent =
-        `${report.summary || ''}${note}${unranked.length ? ` ${unranked.length} run(s) are not ranked; they are listed after the ranked runs.` : ''}`;
+    const otherUnranked = isMemory ? unranked.filter(r => r.reason !== 'gpu_memory_not_measured') : unranked;
+    hFrag.querySelector('.tpl-summary-text').textContent = `${report.summary || ''}${note}`
+        + (otherUnranked.length ? ` ${otherUnranked.length} ${otherUnranked.length === 1 ? 'run is' : 'runs are'} not ranked; `
+            + `${otherUnranked.length === 1 ? 'it is' : 'they are'} listed after the ranked runs.` : '');
     panel.appendChild(hFrag);
 
     const legendFrag = _cloneTemplate('tpl-legend-ranking');

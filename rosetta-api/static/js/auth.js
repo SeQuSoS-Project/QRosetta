@@ -4,6 +4,14 @@ import { BASE_URL, apiDetailText, getAuthHeaders } from './api.js';
 import { dispatch, getState } from './state.js';
 import { setLoading } from './utils.js';
 
+/** @type {null | (() => void)} */
+let _afterLogin = null;
+
+/** Run `cb` once after the next successful sign-in. */
+export function onNextLogin(cb) {
+    _afterLogin = cb;
+}
+
 export function openAuthModal() {
     document.getElementById('auth-modal').classList.remove('hidden');
     toggleAuthMode('login');
@@ -87,6 +95,9 @@ export async function handleLoginSubmit() {
 
         updateAuthUI();
         closeAuthModal();
+        const next = _afterLogin;
+        _afterLogin = null;
+        if (next) next();
 
     } catch (e) {
         errorDiv.textContent = e.message;

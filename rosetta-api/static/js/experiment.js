@@ -12,7 +12,8 @@ import { checkRunCountLimits, getRunnerConfig, getRunnerPhases, getTargetSimulat
 import { showRunErrors, validateRunInputs } from './run_inputs.js';
 import { clearReport } from './renderers.js';
 import { dispatch, getState } from './state.js';
-import { _escapeHtml, downloadBlob, getAgreementThresholds, getSeed, setLoading } from './utils.js';
+import { statevectorGroup } from './run_status.js';
+import { downloadBlob, getAgreementThresholds, getSeed, setLoading } from './utils.js';
 
 export let _lastExperimentJobId = null;
 export let _lastExperimentName = 'experiment';
@@ -86,6 +87,7 @@ export async function runExperiment() {
         runner_config: getState().currentRunnerConfig,
         runner_phases: getRunnerPhases(),
         timeout_seconds: timeout,
+        timing_repeats: v.timingRepeats,
         target_simulators: targetSims,
         execution_target: executionTarget,
         bypass_limits: bypassLimits,
@@ -128,6 +130,70 @@ export function _hideExperimentResult() {
     document.getElementById('experiment-result')?.classList.add('hidden');
 }
 
+const ASSESSMENTS = ['consistent_within_shot_noise', 'inconclusive_low_shots', 'ambiguous', 'distinguishable'];
+
+/** Class a prevalence row counts: its shot-noise assessment when recorded, else its agreement class. */
+function _prevalenceClass(row) {
+    return row.measured_assessment ?? row.assessment ?? row.agreement_class;
+}
+
+/**
+ * Pair counts across axes: measured experiments by shot-noise assessment, statevector
+ * experiments by label group.
+ * @returns {{ heading: string, text: string }}
+ */
+function _prevalenceText(summary) {
+    const rows = summary.prevalence || [];
+    const counts = {};
+    rows.forEach(r => {
+        const k = _prevalenceClass(r);
+        counts[k] = (counts[k] || 0) + (r.pair_count || 0);
+    });
+    const nc = counts.not_comparable || 0;
+    delete counts.not_comparable;
+    const tail = nc ? ` · not comparable: ${nc}` : '';
+    if (!Object.keys(counts).length) return { heading: 'Pairs', text: nc ? `not comparable: ${nc}` : 'none' };
+
+    if (summary.mode === 'measured') {
+        const keys = Object.keys(counts);
+        if (keys.every(k => ASSESSMENTS.includes(k))) {
+            return {
+                heading: 'Pairs by shot-noise assessment',
+                text: ASSESSMENTS.filter(k => counts[k]).map(k => `${k}: ${counts[k]}`).join(' · ') + tail,
+            };
+        }
+        return {
+            heading: 'Pairs by distance label (this summary records no shot-noise assessment; the bundle results/ hold it per pair)',
+            text: keys.map(k => `${k}: ${counts[k]}`).join(' · ') + tail,
+        };
+    }
+    const groups = { agree: 0, bit_order: 0, disagree: 0, other: 0 };
+    Object.entries(counts).forEach(([k, n]) => {
+        const g = statevectorGroup({ agreement: k, mode: 'statevector' });
+        groups[g === 'not_comparable' ? 'other' : g] += n;
+    });
+    const parts = [`agree: ${groups.agree}`, `agree after the declared bit reversal: ${groups.bit_order}`,
+        `disagree: ${groups.disagree}`];
+    if (groups.other) parts.push(`other labels: ${groups.other}`);
+    return {
+        heading: 'Statevector pairs',
+        text: `${parts.join(' · ')}${tail} (${Object.entries(counts).map(([k, n]) => `${k} ${n}`).join(', ')})`,
+    };
+}
+
+function _line(parent, heading, text, className = '') {
+    const div = document.createElement('div');
+    if (className) div.className = className;
+    if (heading) {
+        const b = document.createElement('span');
+        b.className = 'font-medium';
+        b.textContent = `${heading}: `;
+        div.appendChild(b);
+    }
+    div.appendChild(document.createTextNode(text));
+    parent.appendChild(div);
+}
+
 export function renderExperimentResult(results) {
     const summary = results && results.experiment_summary;
     const box = document.getElementById('experiment-result');
@@ -138,25 +204,15 @@ export function renderExperimentResult(results) {
     const nAxes = (summary.axes || []).length;
     const nErr = summary.error_count || 0;
     const nResolve = (summary.resolution_errors || []).length;
+    const prev = _prevalenceText(summary);
 
-    // Prevalence rollup across axes (kept SEPARATE from the conformance/error counts above).
-    const prev = {};
-    for (const r of (summary.prevalence || [])) {
-        prev[r.agreement_class] = (prev[r.agreement_class] || 0) + r.pair_count;
-    }
-    const prevText = Object.keys(prev).length
-        ? Object.entries(prev).map(([k, v]) => `${k}: ${v}`).join(' · ')
-        : 'none';
-
-    line.innerHTML =
-        `<div class="font-medium mb-1">Experiment complete — ${summary.cells} circuit-axis run(s), `
-        + `${nCircuits} circuit(s) × ${nAxes} axis(es).</div>`
-        + `<div><span class="font-medium">Agreement prevalence:</span> ${_escapeHtml(prevText)}</div>`
-        + `<div><span class="font-medium">Errors to triage:</span> ${nErr}`
-        + (nResolve ? ` &nbsp;·&nbsp; resolution errors: ${nResolve}` : '')
-        + `</div>`
-        + `<div class="text-[11px] text-yellow-700 mt-1">Each error signature carries a `
-        + `triage='untriaged' marker; classify it as adapter / SDK / by-design / resource.</div>`;
+    line.innerHTML = '';
+    _line(line, null, `Experiment complete: ${summary.cells} circuit-axis run(s), ${nCircuits} circuit(s) × ${nAxes} axis(es).`,
+        'font-medium mb-1');
+    _line(line, prev.heading, prev.text);
+    _line(line, 'Errors to triage', `${nErr}${nResolve ? ` · resolution errors: ${nResolve}` : ''}`);
+    _line(line, null, "Each error signature carries a triage='untriaged' marker; classify it as adapter / SDK / by-design / resource.",
+        'text-[11px] text-yellow-700 mt-1');
     box.classList.remove('hidden');
 }
 

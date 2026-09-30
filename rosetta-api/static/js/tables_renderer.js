@@ -5,7 +5,10 @@ import {
     STATUS_STYLES, _applyLegendDots, _chip, _cloneTemplate, _displayRunnerName, fmtInt, fmtNum, fmtPValue, fmtProb,
     getOptBadge, renderPreprocessingList, renderTooltip,
 } from './render_helpers.js';
-import { RUNNER_STATUS_STYLE, effectiveAgreement, measuredAssessment, statusBySimulator } from './run_status.js';
+import {
+    RUNNER_STATUS_STYLE, adjustedPValue, adjustedSignificant, correctionName, effectiveAgreement, measuredAssessment,
+    statusBySimulator, unalignedBasisMatch,
+} from './run_status.js';
 import { makeCopyIconButton, thresholdDefaults } from './utils.js';
 
 const STATUS_CELL_TEXT = { offline: 'OFF', error: 'ERR', timeout: 'T/O' };
@@ -132,7 +135,8 @@ export const AGREEMENT_STYLE = {
     agree_up_to_global_phase: 'success',
     distance_within_threshold: 'success',
     agree_after_bit_reversal: 'divergence',
-    agree_after_qubit_permutation: 'divergence',
+    agree_after_qubit_permutation: 'anomaly',
+    unaligned_basis_match: 'anomaly',
     agree_after_normalization: 'success',
     residual_disagreement: 'anomaly',
     distance_exceeds_threshold: 'anomaly',
@@ -155,6 +159,8 @@ function _pairStyle(p) {
             return AGREEMENT_STYLE[p.agreement] === 'divergence' ? 'divergence' : 'success';
         }
         if (a && ASSESSMENT_STYLE[a]) return ASSESSMENT_STYLE[a];
+    } else if (unalignedBasisMatch(p)) {
+        return 'anomaly';
     }
     return AGREEMENT_STYLE[effectiveAgreement(p)] || AGREEMENT_STYLE[p.agreement] || 'offline';
 }
@@ -286,20 +292,21 @@ export function _statisticalTestBlock(st) {
     const pw = st.power || {};
     const chi2 = st.chi2 || {};
     const gt = st.g_test || {};
+    const c = correctionName(st);
     wrap.appendChild(_kvGrid([
         ['χ² p', fmtPValue(chi2.p_value)],
-        ['χ² p (BH)', fmtPValue(chi2.p_value_bh)],
-        ['χ² significant (BH)', _yesNo(chi2.significant_bh) ?? '—'],
+        [`χ² p (${c})`, fmtPValue(adjustedPValue(chi2))],
+        [`χ² significant (${c})`, _yesNo(adjustedSignificant(chi2)) ?? '—'],
         ['G-test p', fmtPValue(gt.p_value)],
-        ['G-test p (BH)', fmtPValue(gt.p_value_bh)],
-        ['G-test significant (BH)', _yesNo(gt.significant_bh) ?? '—'],
+        [`G-test p (${c})`, fmtPValue(adjustedPValue(gt))],
+        [`G-test significant (${c})`, _yesNo(adjustedSignificant(gt)) ?? '—'],
         ['α', st.alpha],
         ['shots', st.n_shots ? _kvMap(st.n_shots) : undefined],
         ['same runner seed', st.shared_seed === null || st.shared_seed === undefined ? 'not recorded' : _yesNo(st.shared_seed)],
         ['total variation', _fmtNum(ef.total_variation)],
         ["Cramér's V", _fmtNum(ef.cramers_v)],
         [`power at observed shots (δ=${pw.delta_tv})`, fmtProb(pw.power_to_detect_delta_at_observed_shots)],
-        ['power computed at α/m', typeof pw.alpha_used === 'number'
+        [c === 'BY' ? 'power computed at α/(m·c_m)' : 'power computed at α/m', typeof pw.alpha_used === 'number'
             ? `${fmtNum(pw.alpha_used)}${typeof pw.m_pairs === 'number' ? ` (m = ${fmtInt(pw.m_pairs)})` : ''}` : undefined],
         ['shots/backend for target power', fmtInt(pw.recommended_shots_per_backend ?? st.recommended_shots_per_backend ?? pw.shots_per_backend_for_target_power)],
         ['more shots than used', typeof (pw.recommended_exceeds_actual ?? st.recommended_exceeds_actual) === 'boolean'
@@ -447,7 +454,7 @@ export function _agreementSummaryStrip(report, pairs) {
         });
         Object.entries(aCounts).forEach(([a, n]) => {
             strip.appendChild(_chip(STATUS_STYLES[ASSESSMENT_STYLE[a] || 'offline'].badge,
-                `${a} · ${n}`, `Shot-noise assessment${st ? ` (α=${st.alpha}, ${(st.correction || []).join('+')})` : ''}`));
+                `${a} · ${n}`, `Shot-noise assessment${st ? ` (α=${st.alpha}, ${[].concat(st.correction || []).join('+')})` : ''}`));
         });
     } else if (st && st.verdict_counts) {
         const sep = document.createElement('span');
@@ -455,7 +462,7 @@ export function _agreementSummaryStrip(report, pairs) {
         strip.appendChild(sep);
         Object.entries(st.verdict_counts).forEach(([v, n]) => {
             strip.appendChild(_chip(STATUS_STYLES[VERDICT_STYLE[v] || 'offline'].badge,
-                `stat: ${v} · ${n}`, `Shot-noise verdict (α=${st.alpha}, ${(st.correction || []).join('+')})`));
+                `stat: ${v} · ${n}`, `Shot-noise verdict (α=${st.alpha}, ${[].concat(st.correction || []).join('+')})`));
         });
     }
     return strip;
@@ -595,10 +602,14 @@ export function _agreementPairTable(pairs) {
         name.textContent = `${_displayRunnerName(sims[0])} × ${_displayRunnerName(sims[1])}`;
         sum.appendChild(name);
 
+        const unaligned = p.mode === 'statevector' && unalignedBasisMatch(p) && p.agreement !== 'unaligned_basis_match';
         sum.appendChild(_chip(STATUS_STYLES[_pairStyle(p)].badge,
-            p.agreement, p.agreement === 'agree_after_normalization'
-                ? `Agrees after normalising an input statevector; label after normalisation: ${p.metrics?.normalized_agreement ?? '—'}`
-                : 'Explained-cause label'));
+            unaligned ? `${p.agreement} · unaligned basis` : p.agreement,
+            unaligned
+                ? 'Matches only in the basis the declared qubit orderings do not imply; counted as a disagreement'
+                : (p.agreement === 'agree_after_normalization'
+                    ? `Agrees after normalising an input statevector; label after normalisation: ${p.metrics?.normalized_agreement ?? '—'}`
+                    : 'Explained-cause label')));
 
         const metric = document.createElement('span');
         metric.className = 'text-xs text-gray-500 font-mono text-right';

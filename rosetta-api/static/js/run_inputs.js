@@ -1,4 +1,4 @@
-// Validation of the run inputs (shots, timeout, seed, agreement thresholds) against the
+// Validation of the run inputs (shots, timeout, timing repeats, seed, agreement thresholds) against the
 // server limits, with inline error messages. A run is not submitted while any input is invalid.
 
 import { getState } from './state.js';
@@ -11,6 +11,9 @@ const THRESHOLD_LABELS = {
     hellinger_threshold: 'Measured Hellinger threshold',
     norm_tolerance: 'Statevector norm tolerance',
 };
+
+const TIMING_REPEATS_MIN = 1;
+const TIMING_REPEATS_MAX = 10;
 
 const INVALID_CLASSES = ['border-red-500', 'ring-1', 'ring-red-500'];
 
@@ -69,7 +72,7 @@ export function shotsRange() {
 /**
  * Check the inputs a run sends. Marks invalid fields inline and returns the errors.
  * @param {{ shotsId?: string, measured?: boolean }} opts
- * @returns {{ ok: boolean, errors: string[], shots: number|null, timeout: number|null }}
+ * @returns {{ ok: boolean, errors: string[], shots: number|null, timeout: number|null, timingRepeats: number|null }}
  */
 export function validateRunInputs({ shotsId, measured = false } = {}) {
     const errors = [];
@@ -98,6 +101,16 @@ export function validateRunInputs({ shotsId, measured = false } = {}) {
         if (msg) errors.push(`Config → ${msg}`);
     }
 
+    let timingRepeats = 1;
+    const rEl = _input('timing-repeats-input');
+    if (rEl) {
+        timingRepeats = _integerIn(rEl.value, TIMING_REPEATS_MIN, TIMING_REPEATS_MAX);
+        const msg = timingRepeats === null
+            ? `Timing repeats must be ${_rangeText(TIMING_REPEATS_MIN, TIMING_REPEATS_MAX)}.` : null;
+        _setFieldError(rEl, msg);
+        if (msg) errors.push(`Config → ${msg}`);
+    }
+
     const seedEl = _input('seed-input');
     if (seedEl) {
         const raw = String(seedEl.value).trim();
@@ -118,7 +131,7 @@ export function validateRunInputs({ shotsId, measured = false } = {}) {
         if (msg) errors.push(`Config → Agreement thresholds → ${msg}`);
     }
 
-    return { ok: errors.length === 0, errors, shots, timeout };
+    return { ok: errors.length === 0, errors, shots, timeout, timingRepeats };
 }
 
 /** Show (or clear, with an empty list) the validation errors next to a run button. */

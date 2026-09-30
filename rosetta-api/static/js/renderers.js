@@ -10,7 +10,7 @@ import {
     TAG_AMBER, TAG_GRAY, _applyLegendDots, _cloneTemplate, _displayRunnerName, _makeStatusBadge, _tag, deviceTitle, isGpuRun,
 } from './render_helpers.js';
 import {
-    DIRECT_AGREEMENT, RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, TRANSFORM_AGREEMENT, effectiveAgreement, isDisagreement, measuredAssessment, runnerStatus,
+    RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, isDisagreement, measuredAssessment, runnerStatus, statevectorGroup,
 } from './run_status.js';
 import { getState } from './state.js';
 import { renderSummaryPanel } from './summary_renderer.js';
@@ -167,6 +167,27 @@ function _fillWinnerCell(td, entry, rawResults) {
     }
 }
 
+/** Agreement badge for a task whose pairs show no disagreement: measured pairs by assessment, statevector pairs by label group. */
+function _agreementBadge(comparable) {
+    const measured = comparable.filter(p => p.mode === 'measured');
+    if (measured.length) {
+        const assessments = measured.map(measuredAssessment);
+        if (assessments.every(a => a === 'consistent_within_shot_noise')) {
+            return _makeStatusBadge('success', 'All pairs consistent');
+        }
+        if (assessments.some(a => a === 'inconclusive_low_shots' || a === 'ambiguous')) {
+            return _makeStatusBadge('offline', 'Inconclusive');
+        }
+        return _makeStatusBadge('offline', 'No shot-noise test');
+    }
+    const groups = comparable.map(statevectorGroup);
+    if (groups.every(g => g === 'agree')) return _makeStatusBadge('success', 'All pairs agree');
+    if (groups.every(g => g === 'agree' || g === 'bit_order')) {
+        return _makeStatusBadge('success', 'All pairs agree (bit order as declared)');
+    }
+    return _makeStatusBadge('divergence', 'Other labels');
+}
+
 /** Status badges for one batch task: its agreement outcome plus one badge per failed-run status. */
 function _taskBadges(item) {
     if (item.error) return [_makeStatusBadge('error', 'Error')];
@@ -178,7 +199,7 @@ function _taskBadges(item) {
     });
     const nOk = raws.filter(r => runnerStatus(r) === 'ok').length;
     const pairs = item.divergence_report?.pairwise_agreement || [];
-    const assessments = pairs.filter(p => p.mode === 'measured').map(measuredAssessment).filter(a => a && a !== 'not_comparable');
+    const comparable = pairs.filter(p => p.agreement !== 'not_comparable');
 
     const badges = [];
     if (nOk < 2) {
@@ -186,18 +207,12 @@ function _taskBadges(item) {
     } else if (pairs.length === 0) {
         const n = item.divergence_report?.divergences_found?.length || 0;
         badges.push(n ? _makeStatusBadge('divergence', `${n} divergence(s)`) : _makeStatusBadge('offline', 'No pair records'));
-    } else if (pairs.some(isDisagreement)) {
+    } else if (comparable.some(isDisagreement)) {
         badges.push(_makeStatusBadge('anomaly', 'Anomaly'));
-    } else if (pairs.every(p => (p.mode === 'measured' && measuredAssessment(p)
-        ? measuredAssessment(p) === 'consistent_within_shot_noise' && !TRANSFORM_AGREEMENT.has(p.agreement)
-        : DIRECT_AGREEMENT.has(effectiveAgreement(p))))) {
-        badges.push(_makeStatusBadge('success', 'All pairs agree'));
-    } else if (assessments.length
-        && assessments.every(a => ['inconclusive_low_shots', 'ambiguous', 'consistent_within_shot_noise'].includes(a))
-        && assessments.some(a => a !== 'consistent_within_shot_noise')) {
-        badges.push(_makeStatusBadge('offline', 'Inconclusive'));
+    } else if (!comparable.length) {
+        badges.push(_makeStatusBadge('offline', 'Not comparable'));
     } else {
-        badges.push(_makeStatusBadge('divergence', 'Explained / partial'));
+        badges.push(_agreementBadge(comparable));
     }
     Object.entries(failures).forEach(([st, n]) => {
         badges.push(_makeStatusBadge(RUNNER_STATUS_STYLE[st], `${RUNNER_STATUS_LABEL[st]} ×${n}`));

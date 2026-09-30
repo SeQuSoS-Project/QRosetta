@@ -48,7 +48,7 @@ function _applyServerConfig(config) {
     const tHelp = document.getElementById('timeout-help');
     if (tHelp) {
         tHelp.textContent = `This value is sent with every run from this page. It covers process start, SDK import, `
-            + `the warm-up run and the timed run of each backend. Allowed: ${tMin}–${tMax} s.`
+            + `the warm-up run and the timed runs of each backend. Allowed: ${tMin}–${tMax} s.`
             + (typeof config?.queue_max_wait_sec === 'number' && mode === 'local'
                 ? ` Time spent waiting for a busy runner is not part of it; a run waits at most ${config.queue_max_wait_sec} s to start.`
                 : '');
@@ -311,7 +311,7 @@ async function _checkBeforeRun(messageId, shotsId, measured) {
 }
 
 async function _finishSingleRun(job) {
-    setLoading(true, "Running Simulation...");
+    setLoading(true, "Running Simulation...", { startedAt: job.submitted_at });
     clearReport();
     dispatch('SET_PROCESSING', true);
     dispatch('SET_JOB_ID', job.job_id);
@@ -338,7 +338,7 @@ async function _finishSingleRun(job) {
 }
 
 async function _finishBatchRun(job) {
-    setLoading(true, 'Running Batch...');
+    setLoading(true, 'Running Batch...', { startedAt: job.submitted_at });
     clearReport();
     dispatch('SET_PROCESSING', true);
     dispatch('SET_JOB_ID', job.job_id);
@@ -404,6 +404,7 @@ export async function runComparison(type) {
         qasm_string: qasm,
         optimization_level: globalOpt,
         timeout_seconds: v.timeout,
+        timing_repeats: v.timingRepeats,
         runner_config: getState().currentRunnerConfig,
         runner_phases: getRunnerPhases(),
         target_simulators: targetSims,
@@ -418,7 +419,8 @@ export async function runComparison(type) {
         payload.seed = getSeed();
     }
 
-    const title = type === 'statevector' ? 'Editor Run (Statevector)' : `Editor Run (Measured, ${v.shots} shots)`;
+    const modeText = type === 'statevector' ? 'Statevector' : `Measured, ${v.shots} shots`;
+    const title = `${runNameInput || 'Editor Run'} (${modeText})`;
     saveEditorCircuit(qasmInput.value, getState().currentAlgoName);
     _hideResumeBanner();
     closeDrawers();
@@ -472,6 +474,7 @@ export async function runBatchQueue() {
         mode: mode,
         optimization_level: globalOpt,
         timeout_seconds: v.timeout,
+        timing_repeats: v.timingRepeats,
         runner_config: getState().currentRunnerConfig,
         runner_phases: getRunnerPhases(),
         target_simulators: targetSims,
@@ -501,7 +504,7 @@ export async function runBatchQueue() {
         return;
     }
     const job = {
-        job_id: jobId, kind: /** @type {'batch'} */ ('batch'), title: 'Playlist Batch Report',
+        job_id: jobId, kind: /** @type {'batch'} */ ('batch'), title: runNameInput || 'Playlist Batch Report',
         run_name: runNameInput || null, runner_config: getState().currentRunnerConfig, submitted_at: Date.now(),
     };
     savePendingJob(job);

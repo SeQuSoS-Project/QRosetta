@@ -9,8 +9,9 @@ import {
 import { getEnabledRunnerIds } from './config.js';
 import { parseRunnerKey } from './runner_key.js';
 import {
-    RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, effectiveAgreement, measuredAssessment, pairPower, pairPowerLevel,
-    recommendedShots, resolvableByMoreShots, runnerStatus, userFacingError,
+    RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, adjustedPValue, correctionLongName, correctionName, effectiveAgreement,
+    measuredAssessment, pairPower, pairPowerLevel, recommendedShots, resolvableByMoreShots, runnerStatus,
+    statevectorGroup, unalignedBasis, unalignedBasisMatch, userFacingError,
 } from './run_status.js';
 import { thresholdDefaults } from './utils.js';
 
@@ -113,7 +114,9 @@ function _statevectorMetricText(p) {
     else if (label === 'agree_after_qubit_permutation') named = m.qubit_permutation?.fidelity ?? t.fidelity_after_transform;
     const direct = `direct fidelity ${fmtNum(m.direct_fidelity)}`;
     if (named !== null && named !== undefined) {
-        return `${TRANSFORM_NAMES[label]} fidelity ${fmtNum(named)} (${direct})`;
+        const phase = label === 'agree_after_bit_reversal' && t.global_phase_aligned
+            ? `, global phase offset ${fmtNum(t.relative_phase_after_transform_rad ?? m.label_aligned_relative_phase_rad)} rad` : '';
+        return `${TRANSFORM_NAMES[label]} fidelity ${fmtNum(named)}${phase} (${direct})`;
     }
     if (label === 'residual_disagreement') {
         const parts = [direct, `bit-reversed ${fmtNum(m.bit_reversed_fidelity)}`];
@@ -180,7 +183,8 @@ function _metricText(p) {
 function _testText(p) {
     const st = p.metrics?.statistical_test;
     if (!st) return '';
-    return `; χ² p (BH) ${fmtPValue(st.chi2?.p_value_bh)}, G-test p (BH) ${fmtPValue(st.g_test?.p_value_bh)}`;
+    const c = correctionName(st);
+    return `; χ² p (${c}) ${fmtPValue(adjustedPValue(st.chi2))}, G-test p (${c}) ${fmtPValue(adjustedPValue(st.g_test))}`;
 }
 
 function _powerText(p) {
@@ -195,10 +199,12 @@ function _powerLevelText(pairs) {
     const lvl = pairs.map(pairPowerLevel).find(l => l.alphaUsed !== null);
     if (lvl) {
         const m = lvl.m !== null ? `, m = ${fmtInt(lvl.m)} tested pairs` : '';
-        return `Power is computed for a single test at α/m = ${fmtNum(lvl.alphaUsed)} (α = ${lvl.alpha ?? '—'}${m}).`;
+        const cm = lvl.cm !== null ? `, c_m = ${fmtNum(lvl.cm)}` : '';
+        const level = lvl.cm !== null ? 'α/(m·c_m)' : 'α/m';
+        return `Power is computed for a single test at ${level} = ${fmtNum(lvl.alphaUsed)} (α = ${lvl.alpha ?? '—'}${m}${cm}).`;
     }
     const alpha = pairs.map(pairPowerLevel).find(l => l.alpha !== null)?.alpha;
-    return `Power is computed for a single test at the unadjusted α = ${alpha ?? '—'}; this report predates the α/m power rule.`;
+    return `This report records no adjusted significance level, so power is shown at the unadjusted α = ${alpha ?? '—'}.`;
 }
 
 function _measuredItem(p, { power = true } = {}) {
@@ -224,31 +230,38 @@ function _notComparableBlock(panel, pairs) {
         })));
 }
 
-function _transformBlocks(panel, pairs) {
-    const bitrev = pairs.filter(p => effectiveAgreement(p) === 'agree_after_bit_reversal');
-    if (bitrev.length) {
-        panel.appendChild(_block(`Agree only after reversing bit order (${bitrev.length})`, 'divergence',
-            bitrev.map(p => _pairItem(p, `${_metricText(p)}${_orderingNote(p)}`))));
+/** Why a statevector pair in the disagreement group disagrees, followed by its metrics. */
+function _disagreementText(p) {
+    if (unalignedBasisMatch(p)) {
+        const basis = { direct: 'the direct basis', bit_reversal: 'the bit-reversed basis' }[unalignedBasis(p)] || 'a basis';
+        return `matches only in ${basis}, which the declared orderings do not imply${_orderingNote(p)}; ${_metricText(p)}`;
     }
-    const perm = pairs.filter(p => effectiveAgreement(p) === 'agree_after_qubit_permutation');
-    if (perm.length) {
-        panel.appendChild(_block(`Agree only after a qubit permutation (${perm.length})`, 'divergence',
-            perm.map(p => _pairItem(p, `permutation ${JSON.stringify(p.transform_effect?.permutation ?? p.metrics?.qubit_permutation?.permutation ?? null)}; ${_metricText(p)}`))));
+    if (effectiveAgreement(p) === 'agree_after_qubit_permutation') {
+        const perm = p.transform_effect?.permutation ?? p.metrics?.qubit_permutation?.permutation ?? null;
+        return `agrees only after an undeclared qubit permutation ${JSON.stringify(perm)}; ${_metricText(p)}`;
     }
+    return `no registered transform explains the difference; ${_metricText(p)}`;
 }
 
-/** Statevector pairs: direct and global-phase agreement, transforms, normalisation notes, residuals. */
+/** Statevector pairs: agreement, bit order as declared, disagreements, normalisation notes. */
 function _renderStatevectorBlocks(panel, pairs, tol) {
-    const direct = pairs.filter(p => effectiveAgreement(p) === 'agree_directly');
-    const phase = pairs.filter(p => effectiveAgreement(p) === 'agree_up_to_global_phase');
+    const byGroup = { agree: [], bit_order: [], disagree: [], not_comparable: [], other: [] };
+    pairs.forEach(p => byGroup[statevectorGroup(p)].push(p));
+    const direct = byGroup.agree.filter(p => effectiveAgreement(p) === 'agree_directly');
+    const phase = byGroup.agree.filter(p => effectiveAgreement(p) === 'agree_up_to_global_phase');
+    const bitOrder = byGroup.bit_order;
+    const disagree = byGroup.disagree;
     const comparable = pairs.filter(p => p.agreement !== 'not_comparable');
-    const normalised = pairs.filter(p => p.agreement === 'agree_after_normalization');
-    const residual = pairs.filter(p => p.agreement === 'residual_disagreement');
+    const normalised = pairs.filter(p => p.agreement === 'agree_after_normalization' && statevectorGroup(p) !== 'disagree');
 
-    const allAgree = direct.length + phase.length === pairs.length;
+    const allAgree = byGroup.agree.length + bitOrder.length === pairs.length;
+    const criterion = `fidelity ≥ 1 − ${tol.fidelity}, phase tolerance ${tol.phase} rad`;
     if (allAgree) {
-        let msg = `All ${pairs.length} pairs agree within fidelity tolerance ${tol.fidelity} (fidelity ≥ 1 − ${tol.fidelity})`;
-        msg += phase.length ? `; ${phase.length} of them differ by a global phase larger than ${tol.phase} rad.` : '.';
+        let msg = `All ${pairs.length} pairs agree (${criterion})`;
+        const parts = [];
+        if (bitOrder.length) parts.push(`${bitOrder.length} after the bit reversal their declared orderings imply`);
+        if (phase.length) parts.push(`${phase.length} up to a global phase larger than ${tol.phase} rad`);
+        msg += parts.length ? `; ${parts.join(', ')}.` : '.';
         if (normalised.length) msg += ` ${normalised.length} pair(s) involve a statevector whose norm differs from 1 by more than ${tol.norm}; see below.`;
         const frag = _cloneTemplate('tpl-summary-success-banner');
         frag.querySelector('.tpl-msg').textContent = msg;
@@ -256,17 +269,23 @@ function _renderStatevectorBlocks(panel, pairs, tol) {
     } else {
         const ov = document.createElement('p');
         ov.className = 'text-sm text-gray-700 mb-3';
-        ov.textContent = `${direct.length} of ${pairs.length} pairs agree directly and ${phase.length} agree up to a global phase `
-            + `(fidelity ≥ 1 − ${tol.fidelity}, phase tolerance ${tol.phase} rad); `
-            + `${comparable.length} of ${pairs.length} pairs were comparable.`;
+        ov.textContent = `Of ${pairs.length} pairs: ${direct.length} agree directly, ${phase.length} up to a global phase, `
+            + `${bitOrder.length} after the bit reversal their declared orderings imply, ${disagree.length} disagree `
+            + `(${criterion}); ${comparable.length} of ${pairs.length} pairs were comparable.`;
         panel.appendChild(ov);
     }
 
-    if (residual.length) {
-        panel.appendChild(_block(`Not explained by any registered transform (${residual.length})`, 'anomaly',
-            residual.map(p => _pairItem(p, _metricText(p)))));
+    if (disagree.length) {
+        const block = _block(`Disagree (${disagree.length})`, 'anomaly', disagree.map(p => _pairItem(p, _disagreementText(p))));
+        _note(block, 'A pair disagrees when no registered transform explains the difference, when it agrees only after an '
+            + 'undeclared qubit permutation, or when it matches only in the basis the declared qubit orderings do not imply. '
+            + 'The report does not decide which backend is wrong; check against an independent reference.');
+        panel.appendChild(block);
     }
-    _transformBlocks(panel, pairs);
+    if (bitOrder.length) {
+        panel.appendChild(_block(`Agree after the bit reversal the declared orderings imply (${bitOrder.length})`, 'divergence',
+            bitOrder.map(p => _pairItem(p, `${_metricText(p)}${_orderingNote(p)}`))));
+    }
     if (phase.length) {
         panel.appendChild(_block(`Agree up to a global phase offset larger than ${tol.phase} rad (${phase.length})`, 'success',
             phase.map(p => _pairItem(p, _metricText(p)))));
@@ -281,11 +300,8 @@ function _renderStatevectorBlocks(panel, pairs, tol) {
             })));
     }
 
-    const known = new Set(['agree_directly', 'agree_up_to_global_phase', 'agree_after_bit_reversal',
-        'agree_after_qubit_permutation', 'residual_disagreement', 'not_comparable']);
-    const other = pairs.filter(p => !known.has(effectiveAgreement(p)));
-    if (other.length) {
-        panel.appendChild(_block(`Other labels (${other.length})`, 'divergence', other.map(p => _pairItem(p, p.agreement))));
+    if (byGroup.other.length) {
+        panel.appendChild(_block(`Other labels (${byGroup.other.length})`, 'divergence', byGroup.other.map(p => _pairItem(p, p.agreement))));
     }
     _notComparableBlock(panel, pairs);
 }
@@ -340,7 +356,9 @@ function _renderMeasuredBlocks(panel, pairs, tol, data, alpha) {
     });
     const comparable = pairs.filter(p => p.agreement !== 'not_comparable');
     const shots = data.n_shots ? `${fmtInt(data.n_shots)} shots per backend` : 'shots per backend not recorded';
-    const test = `chi-square and G-test, BH-corrected at α=${alpha ?? '—'}; ${shots}`;
+    const corr = correctionName(data.divergence_report?.statistical_test_summary,
+        pairs.find(p => p.metrics?.statistical_test)?.metrics?.statistical_test);
+    const test = `chi-square and G-test, ${corr}-corrected at α=${alpha ?? '—'}; ${shots}`;
 
     const allConsistent = comparable.length === pairs.length
         && groups.consistent_within_shot_noise.length === pairs.length
@@ -371,10 +389,14 @@ function _renderMeasuredBlocks(panel, pairs, tol, data, alpha) {
     if (groups.distinguishable.length) {
         const block = _block(`Distinguishable beyond shot noise (${groups.distinguishable.length})`, 'anomaly',
             groups.distinguishable.map(p => _measuredItem(p, { power: false })));
-        _note(block, `The Benjamini-Hochberg correction controls the false discovery rate at q = ${alpha ?? '—'}: `
-            + 'on average up to that fraction of the flagged pairs are flagged by chance, so one or two flagged pairs among many '
-            + 'can be false discoveries. BH assumes independent or positively dependent (PRDS) tests; pairs that share a '
-            + 'backend share its sample and are dependent.');
+        _note(block, corr === 'BY'
+            ? `The Benjamini–Yekutieli correction controls the false discovery rate at q = ${alpha ?? '—'} under any dependence `
+                + 'between the tests, including pairs that share a backend and so share its sample. On average up to that '
+                + 'fraction of the flagged pairs are flagged by chance, so a few flagged pairs among many can be false '
+                + 'discoveries; flags that all involve one backend can come from one unusual sample of that backend.'
+            : `The ${correctionLongName(corr)} correction controls the false discovery rate at q = ${alpha ?? '—'} for `
+                + 'independent or positively dependent (PRDS) tests; pairs that share a backend share its sample and are '
+                + 'dependent. A few flagged pairs among many can be false discoveries.');
         panel.appendChild(block);
     }
     if (groups.ambiguous.length) {

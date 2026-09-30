@@ -114,7 +114,8 @@ Return values:
   qubits, or the run fails.
 - `run_measured_job`: with a `postprocess_fn`, it returns `(counts, sampling_method)`;
   without one, `execute_fn` does. `sampling_method` is `"native"` when the SDK sampled the
-  shots itself and `"sv_sample"` when they were drawn from a computed statevector.
+  shots itself, `"sv_sample"` when they were drawn from a computed statevector, and
+  `"tn_sample"` when they were sampled from tensor-network amplitudes (quimb).
 
 Drawing shots belongs in `execute_fn`; building the counts histogram belongs in
 `postprocess_fn`. `rosetta-api/tests/unit/test_counts_histogram_boundary.py` finds the
