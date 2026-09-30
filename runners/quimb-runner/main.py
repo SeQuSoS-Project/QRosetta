@@ -3,6 +3,7 @@
 import importlib
 import importlib.util
 import re
+import sys
 import warnings
 
 from fastapi import FastAPI
@@ -56,14 +57,32 @@ _GATE_CONTRACT_NOTE = (
     "the bond dimension. This tensor work happens during parsing and is counted in "
     "compilation_time_sec. Required by the adapter, applied regardless of "
     "apply_preprocessing.")
+_PATH_SEARCH_NOTE = (
+    "cotengra worker pools off: cotengra.parallel.parse_parallel_arg maps parallel='auto' "
+    "(the default of every cotengra optimiser, including the ones its path search builds "
+    "internally) to no pool, so the contraction-path search runs in the simulating process "
+    "and its CPU time and memory are measured with the rest of the run. The search itself is "
+    "quimb's default ('auto-hq'). Applied regardless of apply_preprocessing.")
 _SAMPLING_NOTE = (
     "quimb.tensor.Circuit.simulate_counts(): Contracts the network, samples shots and tallies "
     "them in one call, so the tally is inside simulation_time_sec.")
 
 
 def _qtn():
-    """Import quimb.tensor on first use, so only the process that simulates holds it."""
-    return importlib.import_module("quimb.tensor")
+    """Import quimb.tensor on first use, so only the process that simulates holds it, with
+    cotengra's worker pools turned off (``_PATH_SEARCH_NOTE``)."""
+    qtn = importlib.import_module("quimb.tensor")
+    parallel = importlib.import_module("cotengra.parallel")
+    default = parallel.parse_parallel_arg
+    if not getattr(default, "in_process", False):
+        def in_process(value):
+            return None if value == "auto" else default(value)
+
+        in_process.in_process = True
+        for name, module in list(sys.modules.items()):
+            if name.startswith("cotengra") and getattr(module, "parse_parallel_arg", None) is default:
+                module.parse_parallel_arg = in_process
+    return qtn
 
 
 def _strip_unsupported_statements(qasm_str: str) -> str:
@@ -115,7 +134,8 @@ def _compile(payload: dict, qasm: str, notes=(), extra_notes=()) -> CompileResul
     return CompileResult(
         circuit=circuit,
         preprocessing_applied=[
-            *notes, _STRIP_NOTE, *gate_notes, _GATE_CONTRACT_NOTE, *extra_notes],
+            *notes, _STRIP_NOTE, *gate_notes, _GATE_CONTRACT_NOTE, _PATH_SEARCH_NOTE,
+            *extra_notes],
         transpiled_qasm=cleaned,
         precision=_PRECISION)
 
