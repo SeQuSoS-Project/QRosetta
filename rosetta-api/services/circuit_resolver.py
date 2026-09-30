@@ -442,6 +442,17 @@ def _custom_gate_names(circ) -> set:
     return names
 
 
+def _empty_custom_gate_names(circ) -> list:
+    """Names of custom gates in ``circ`` whose definition has no operations."""
+    from pytket.circuit import OpType
+    names = set()
+    for cmd in circ.get_commands():
+        op = cmd.op.op if cmd.op.type == OpType.Conditional else cmd.op
+        if op.type == OpType.CustomGate and op.get_circuit().n_gates == 0:
+            names.add(op.gate.name)
+    return sorted(names)
+
+
 def check_round_trip_integrity(circ, qasm: str) -> None:
     """Raise RoundTripIntegrityError when pytket's parse of ``qasm`` turned a gate call
     into a barrier, or when a user-defined gate called at top level is not a custom gate
@@ -470,7 +481,7 @@ def _pytket_round_trip(qasm: str, remove_barriers: bool):
     (see ``check_round_trip_integrity``) instead of emitting a circuit that lost a gate.
     """
     import pytket.qasm
-    from pytket.passes import RemoveBarriers
+    from pytket.passes import DecomposeBoxes, RemoveBarriers
 
     maxwidth = _classical_width(qasm)
     circ = pytket.qasm.circuit_from_qasm_str(qasm, maxwidth=maxwidth)
@@ -481,6 +492,12 @@ def _pytket_round_trip(qasm: str, remove_barriers: bool):
         "gates rewritten into pytket's QASM gate set (e.g. u -> u3 with angles as multiples of "
         "pi), register broadcasts expanded, comments removed"
     ]
+    empty = _empty_custom_gate_names(circ)
+    if empty:
+        DecomposeBoxes().apply(circ)
+        notes.append(f"API: removed the calls to {', '.join(empty)}, whose gate definition is "
+                     f"empty (the identity), because pytket's QASM writer rejects empty gates "
+                     f"(pytket DecomposeBoxes)")
     if remove_barriers and has_barriers(qasm):
         RemoveBarriers().apply(circ)
         notes.append("API: removed barrier statements (pytket RemoveBarriers)")
