@@ -1,7 +1,8 @@
 """Pydantic request and response schemas for the benchmark endpoints."""
 
 from pydantic import (
-    BaseModel, BeforeValidator, ConfigDict, Field, StrictBool, StrictInt, model_validator,
+    BaseModel, BeforeValidator, ConfigDict, Field, PlainValidator, StrictBool, StrictInt,
+    WithJsonSchema, field_validator, model_validator,
 )
 from typing import Annotated, List, Dict, Any, Literal, Optional, Union
 
@@ -18,7 +19,30 @@ def _reject_bool(value):
 Int = Annotated[int, BeforeValidator(_reject_bool)]
 Seed = Annotated[StrictInt, Field(ge=0)]
 OptimizationLevel = Annotated[Int, Field(ge=0, le=3)]
-RunnerConfig = Dict[str, Union[OptimizationLevel, List[OptimizationLevel]]]
+
+RUNNER_CONFIG_MESSAGE = "runner_config values must be an int 0–3 or a list of ints 0–3"
+
+
+def _is_level(value) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 3
+
+
+def _runner_config_value(value):
+    if _is_level(value):
+        return value
+    if isinstance(value, list) and all(_is_level(v) for v in value):
+        return list(value)
+    raise ValueError(RUNNER_CONFIG_MESSAGE)
+
+
+RunnerConfigValue = Annotated[
+    Union[int, List[int]],
+    PlainValidator(_runner_config_value),
+    WithJsonSchema({"anyOf": [{"type": "integer", "minimum": 0, "maximum": 3},
+                              {"type": "array", "items": {"type": "integer", "minimum": 0, "maximum": 3}}]}),
+]
+RunnerConfig = Dict[str, RunnerConfigValue]
+TimingRepeats = Annotated[Int, Field(ge=1, le=settings.MAX_TIMING_REPEATS)]
 RunnerPhases = Dict[str, Int]
 ExecutionTarget = Literal["local", "kubernetes"]
 RunMode = Literal["statevector", "measured"]
@@ -27,8 +51,21 @@ FigureFormat = Literal["svg", "png", "pdf"]
 TableFormat = Literal["latex", "csv", "html", "xlsx"]
 PublicationCategory = Literal["agreement", "heatmaps", "performance", "statistical"]
 
-_OPT_LEVEL_DESCRIPTION = ("Requested transpiler/optimization level, 0-3; each backend clamps it "
-                          "to its own supported max.")
+_OPT_LEVEL_DESCRIPTION = ("Requested transpiler/optimization level, 0-3; each backend runs at "
+                          "the nearest level it supports (at most its max_level in /runners). "
+                          "Each result records optimization_level_requested and the applied "
+                          "optimization_level.")
+_RUNNER_CONFIG_DESCRIPTION = ("Per-runner optimization-level override. An int runs that runner "
+                              "once at that level; a list runs it once per element (repeats "
+                              "allowed, e.g. the same level twice). A level above the runner's "
+                              "max_level in /runners is rejected with 400.")
+_TIMING_REPEATS_DESCRIPTION = (
+    "Timed runs per backend, 1-10, after the one discarded warm-up. Each timed run is a full "
+    "compile + execute with the same seed. compilation_time_sec and simulation_time_sec are "
+    "the medians over the timed runs (timing_statistic 'median'), execution_time_sec their "
+    "sum; per-run values are in compilation_time_samples and simulation_time_samples with "
+    "*_sec_mean, *_sec_median and *_sec_stdev. Counts, statevector and memory come from the "
+    "first timed run. The per-run timeout covers the warm-up and every timed run.")
 _TIMEOUT_DESCRIPTION = (f"Requested wall-clock budget per run in seconds, at least "
                         f"{settings.MIN_TIMEOUT_SEC}; values above the server's RUNNER_TIMEOUT_SEC "
                         f"are clamped to it. It starts when the run leaves the runner's queue; "
@@ -36,11 +73,12 @@ _TIMEOUT_DESCRIPTION = (f"Requested wall-clock budget per run in seconds, at lea
                         f"RUNNER_QUEUE_MAX_WAIT_SEC (the report's queue_max_wait_sec).")
 _SHOTS_DESCRIPTION = (
     f"Number of shots each runner samples, {settings.MIN_SHOTS} to {settings.MAX_SHOTS}. "
-    f"Default {settings.DEFAULT_SHOTS}: the statistical test labels a backend pair "
+    f"Default {settings.DEFAULT_SHOTS}. The statistical test labels a backend pair "
     f"'consistent' only when its power to detect a total-variation distance of 0.05 is at "
-    f"least 0.8. At 1024 shots that power is 0.62 for 2 outcomes and 0.45 for 4, so no pair "
-    f"can be 'consistent'; at 4096 it is at least 0.84 for up to 16 outcomes. Circuits with "
-    f"more outcomes need more shots (each pair's recommended_shots_per_backend).")
+    f"least 0.8 at the Benjamini-Yekutieli level alpha/(m*c_m) over the m backend pairs. "
+    f"The report computes each pair's power and recommended_shots_per_backend for the "
+    f"circuit's outcome count and backend set; circuits with more outcomes or more backends "
+    f"need more shots.")
 _TARGET_DESCRIPTION = ("'local' or 'kubernetes'. Defaults to the server's EXECUTION_MODE. Runs "
                        "are dispatched according to the server's EXECUTION_MODE; the job's "
                        "'target' records the mode actually used and 'requested_target' this "
@@ -98,9 +136,10 @@ class QasmPayload(_Request):
     circuit across the simulator fleet."""
     qasm_string: str = Field(..., description="The circuit to run, as OpenQASM 2.0 text.")
     optimization_level: OptimizationLevel = Field(0, description=_OPT_LEVEL_DESCRIPTION)
-    runner_config: RunnerConfig = Field({}, description="Per-runner optimization-level override. An int runs that runner once at that level; a list runs it once per element (repeats allowed, e.g. the same level twice).")
+    runner_config: RunnerConfig = Field({}, description=_RUNNER_CONFIG_DESCRIPTION)
     runner_phases: RunnerPhases = Field({}, description="Maps runner id to a phase number. Runners sharing a phase run concurrently; phases execute in ascending order. Absent/empty means every runner executes concurrently.")
-    timeout_seconds: Int = Field(60, ge=settings.MIN_TIMEOUT_SEC, description=_TIMEOUT_DESCRIPTION)
+    timeout_seconds: Int = Field(settings.DEFAULT_TIMEOUT_SEC, ge=settings.MIN_TIMEOUT_SEC, description=_TIMEOUT_DESCRIPTION)
+    timing_repeats: TimingRepeats = Field(1, description=_TIMING_REPEATS_DESCRIPTION)
     target_simulators: List[str] = Field(default_factory=list, description="Which runner ids to dispatch to. Empty means every enabled runner.")
     execution_target: ExecutionTarget = Field(default_factory=_default_execution_target, description=_TARGET_DESCRIPTION)
     bypass_limits: StrictBool = Field(False, description=_BYPASS_DESCRIPTION)
@@ -110,12 +149,13 @@ class QasmPayload(_Request):
 class MeasuredQasmPayload(_Request):
     """Request body for POST /compare_measured — a shot-based measurement comparison of one
     OpenQASM 2.0 circuit across the simulator fleet."""
-    qasm_string: str = Field(..., description="The circuit to run, as OpenQASM 2.0 text (must contain measurement instructions).")
+    qasm_string: str = Field(..., description="The circuit to run, as OpenQASM 2.0 text. A circuit without measure statements is measured on every qubit (see api_preprocessing_applied).")
     n_shots: Int = Field(settings.DEFAULT_SHOTS, ge=settings.MIN_SHOTS, le=settings.MAX_SHOTS, description=_SHOTS_DESCRIPTION)
     optimization_level: OptimizationLevel = Field(0, description=_OPT_LEVEL_DESCRIPTION)
-    runner_config: RunnerConfig = Field({}, description="Per-runner optimization-level override. An int runs that runner once at that level; a list runs it once per element.")
+    runner_config: RunnerConfig = Field({}, description=_RUNNER_CONFIG_DESCRIPTION)
     runner_phases: RunnerPhases = Field({}, description="Maps runner id to a phase number. Runners sharing a phase run concurrently; phases execute in ascending order.")
-    timeout_seconds: Int = Field(60, ge=settings.MIN_TIMEOUT_SEC, description=_TIMEOUT_DESCRIPTION)
+    timeout_seconds: Int = Field(settings.DEFAULT_TIMEOUT_SEC, ge=settings.MIN_TIMEOUT_SEC, description=_TIMEOUT_DESCRIPTION)
+    timing_repeats: TimingRepeats = Field(1, description=_TIMING_REPEATS_DESCRIPTION)
     target_simulators: List[str] = Field(default_factory=list, description="Which runner ids to dispatch to. Empty means every enabled runner.")
     execution_target: ExecutionTarget = Field(default_factory=_default_execution_target, description=_TARGET_DESCRIPTION)
     bypass_limits: StrictBool = Field(False, description=_BYPASS_DESCRIPTION)
@@ -132,13 +172,15 @@ class GenerateCircuitPayload(_Request):
 
 class BenchmarkTask(_Request):
     """One circuit within a batch run (POST /run_batch_suite)."""
-    algorithm: str = Field(..., description="Circuit identifier: a preset family name, or the file name for a bundled benchmark circuit.")
+    algorithm: Optional[str] = Field(None, description="Circuit identifier: a preset family name, or the file name for a bundled benchmark circuit. Required unless qasm_string is given, where it is only a label.")
     qubits: Optional[Int] = Field(None, ge=0, description="Number of qubits for a generated preset or MQT Bench circuit; required for those sources. Optional and ignored for QASMBench and literal circuits, whose qubit count is read from the QASM.")
     qasm_string: Optional[str] = Field(None, description="User-supplied OpenQASM 2.0 text. When present, this is run as-is and algorithm/qubits/source are ignored.")
     source: Optional[CircuitSource] = Field(None, description="Where to resolve the circuit from when qasm_string is absent: None or 'preset' generates it from the built-in circuit library; 'qasmbench' or 'mqt' loads it from the corresponding bundled benchmark suite; 'qasm' requires qasm_string.")
 
     @model_validator(mode="after")
     def _qubits_for_generated_sources(self):
+        if not self.qasm_string and not self.algorithm:
+            raise ValueError("algorithm is required unless qasm_string is given")
         if not self.qasm_string and (self.source or "preset") in ("preset", "mqt") and self.qubits is None:
             raise ValueError("qubits is required for preset and MQT Bench tasks")
         return self
@@ -150,9 +192,10 @@ class BatchPayload(_Request):
     n_shots: Int = Field(settings.DEFAULT_SHOTS, ge=settings.MIN_SHOTS, le=settings.MAX_SHOTS, description=_SHOTS_DESCRIPTION + " Used only when mode is 'measured'.")
     mode: RunMode = Field(..., description="'statevector' or 'measured'.")
     optimization_level: OptimizationLevel = Field(0, description=_OPT_LEVEL_DESCRIPTION)
-    runner_config: RunnerConfig = Field({}, description="Per-runner optimization-level override, same semantics as in QasmPayload.")
+    runner_config: RunnerConfig = Field({}, description=_RUNNER_CONFIG_DESCRIPTION)
     runner_phases: RunnerPhases = Field({}, description="Maps runner id to a phase number for staged concurrent execution, same semantics as in QasmPayload.")
-    timeout_seconds: Int = Field(60, ge=settings.MIN_TIMEOUT_SEC, description=_TIMEOUT_DESCRIPTION)
+    timeout_seconds: Int = Field(settings.DEFAULT_TIMEOUT_SEC, ge=settings.MIN_TIMEOUT_SEC, description=_TIMEOUT_DESCRIPTION)
+    timing_repeats: TimingRepeats = Field(1, description=_TIMING_REPEATS_DESCRIPTION)
     target_simulators: List[str] = Field(default_factory=list, description="Which runner ids to dispatch to. Empty means every enabled runner.")
     execution_target: ExecutionTarget = Field(default_factory=_default_execution_target, description=_TARGET_DESCRIPTION)
     bypass_limits: StrictBool = Field(False, description=_BYPASS_DESCRIPTION)
@@ -183,17 +226,25 @@ class ExperimentPayload(_Request):
     mode: RunMode = Field("measured", description="'statevector' or 'measured'.")
     n_shots: Int = Field(settings.DEFAULT_SHOTS, ge=settings.MIN_SHOTS, le=settings.MAX_SHOTS, description=_SHOTS_DESCRIPTION + " Used only when mode is 'measured'.")
     optimization_level: OptimizationLevel = Field(0, description=_OPT_LEVEL_DESCRIPTION)
-    runner_config: RunnerConfig = Field({}, description="Per-runner optimization-level override, same semantics as in QasmPayload.")
+    runner_config: RunnerConfig = Field({}, description=_RUNNER_CONFIG_DESCRIPTION)
     runner_phases: RunnerPhases = Field({}, description="Maps runner id to a phase number for staged concurrent execution.")
-    timeout_seconds: Int = Field(300, ge=settings.MIN_TIMEOUT_SEC, description=_TIMEOUT_DESCRIPTION)
+    timeout_seconds: Int = Field(settings.DEFAULT_TIMEOUT_SEC, ge=settings.MIN_TIMEOUT_SEC, description=_TIMEOUT_DESCRIPTION)
+    timing_repeats: TimingRepeats = Field(1, description=_TIMING_REPEATS_DESCRIPTION)
     target_simulators: List[str] = Field(default_factory=list, description="Which runner ids to include. Empty means every enabled runner.")
     execution_target: ExecutionTarget = Field(default_factory=_default_execution_target, description=_TARGET_DESCRIPTION)
     bypass_limits: StrictBool = Field(False, description=_BYPASS_DESCRIPTION + " For experiments it also lifts the circuit-axis cell cap.")
-    preprocessing_modes: List[StrictBool] = Field(default_factory=lambda: [True], description="The preprocessing axis: the whole circuit set runs once per value in this list (True = each runner's own preprocessing pass applied, False = raw circuit). Multiple values run multiple full passes.")
+    preprocessing_modes: List[StrictBool] = Field(default_factory=lambda: [True], min_length=1, max_length=2, description="The preprocessing axis: the whole circuit set runs once per value in this list (True = preprocessing applied, False = raw circuit). One or both of true and false, each at most once.")
     seed: Optional[Seed] = Field(None, description=_SEED_DESCRIPTION + " One master seed covers every circuit and axis and is recorded in the manifest.")
     thresholds: Optional[AgreementThresholds] = Field(None, description="Override the default agreement thresholds for this experiment.")
     keep_statevectors: StrictBool = Field(False, description="Keep full statevectors in the frozen results bundle. Default strips them to a sha256 hash + length to keep the bundle small; the live report is unaffected either way.")
     label: Optional[str] = Field(None, description="Human-readable name for this experiment, recorded in the manifest.")
+
+    @field_validator("preprocessing_modes")
+    @classmethod
+    def _unique_modes(cls, modes):
+        if len(set(modes)) != len(modes):
+            raise ValueError("preprocessing_modes must not repeat a value")
+        return modes
 
 class VisualizerResponse(BaseModel):
     """Response body carrying a URL to an interactive circuit visualization."""
@@ -205,7 +256,7 @@ class JobStatusResponse(BaseModel):
     job_id: str = Field(..., description="Identifier to poll via GET /jobs/{job_id}.")
     status: str = Field(..., description="'pending', 'processing', 'completed', or 'failed'. 'failed' means the circuit could not be dispatched (e.g. it does not parse), every runner returned an error, or every task of a batch failed. A failed job that reached the runners still carries its report in results.")
     target: str = Field(..., description="The execution mode this job was dispatched with ('local' or 'kubernetes').")
-    requested_target: Optional[str] = Field(None, description="The execution_target the request asked for, when it differs from target.")
+    requested_target: Optional[str] = Field(None, description="The execution_target value the request carried (the server's EXECUTION_MODE when omitted).")
     results: Optional[Dict[str, Any]] = Field(None, description="The report, present once status is 'completed' (and for a failed single-circuit job).")
     error: Optional[str] = Field(None, description="Failure message, present if status is 'failed', e.g. 'all 14 runners failed'.")
     runner_statuses: Optional[Dict[str, str]] = Field(None, description="Per-runner status while the job is in flight.")
@@ -245,7 +296,7 @@ class ComparisonResult(BaseModel):
 class PublicationArtifactsSelection(_Request):
     """Opt-in selection of publication-ready figures/tables to bundle into an RO-Crate export.
 
-    Empty/absent categories means no artifacts are generated (the default, non-breaking).
+    Empty or absent categories generate no artifacts (the default).
     """
     categories: List[PublicationCategory] = Field(default_factory=list, description="Which artifact categories to generate: 'agreement', 'heatmaps', 'performance', 'statistical'. Empty generates none.")
     figure_formats: List[FigureFormat] = Field(default_factory=lambda: ["svg"], description="Formats to render each figure in: 'svg', 'png', 'pdf'.")

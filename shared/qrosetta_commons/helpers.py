@@ -40,12 +40,16 @@ def unmeasured_metrics() -> dict:
     return {name: None for name in UNMEASURED_METRICS}
 
 METRIC_SCOPE = {
-    "compilation_time_sec": "wall clock, t0..t1 of the last timed run",
-    "simulation_time_sec": "wall clock, t2..t3 of the last timed run",
-    "simulation_cpu_time_sec": "process CPU time (all threads), t2..t3 of the last timed run",
+    "compilation_time_sec": "wall clock, t0..t1; median over the timed runs "
+                            "(compilation_time_samples)",
+    "simulation_time_sec": "wall clock, t2..t3; median over the timed runs "
+                           "(simulation_time_samples)",
+    "simulation_cpu_time_sec": "process CPU time (all threads), t2..t3; median over the timed "
+                               "runs (simulation_cpu_time_samples)",
+    "execution_time_sec": "compilation_time_sec + simulation_time_sec",
     "memory_usage_mb": "peak RSS minus RSS at monitor entry, pre_execute + t2..t3 of the "
-                       "last timed run",
-    "process_peak_mb": "peak RSS, pre_execute + t2..t3 of the last timed run",
+                       "first timed run",
+    "process_peak_mb": "peak RSS, pre_execute + t2..t3 of the first timed run",
     "cpu_time_sec": "process CPU time over the whole runner process: interpreter start, "
                     "imports, warm-up and all timed runs",
     "process_peak_rss_mb": "peak RSS over the whole runner process: interpreter start, "
@@ -304,35 +308,82 @@ def count_qasm_gates_and_depth(qasm_str: str) -> tuple:
     return gate_count, max(depth_by_qubit.values(), default=0)
 
 
+MAX_TIMING_REPEATS = 10
+
+TIMING_STATISTIC = "median"
+
+_TIMED_SERIES = ("compilation_time", "simulation_time", "simulation_cpu_time")
+
+
+def timing_repeats_of(payload) -> int:
+    """``payload['timing_repeats']`` bounded to [1, MAX_TIMING_REPEATS]; 1 when absent."""
+    try:
+        n = int(payload.get("timing_repeats") or 1)
+    except (TypeError, ValueError):
+        n = 1
+    return max(1, min(n, MAX_TIMING_REPEATS))
+
+
+def _summarise_timings(result: dict, timed_results: list) -> None:
+    """Per-repeat samples and their mean/median/stdev; the reported compilation and
+    simulation times become the medians and execution time their sum."""
+    for series in _TIMED_SERIES:
+        samples = [r.get(f"{series}_sec") for r in timed_results]
+        if not all(isinstance(v, (int, float)) for v in samples):
+            continue
+        result[f"{series}_samples"] = samples
+        result[f"{series}_sec_mean"] = _statistics.mean(samples)
+        result[f"{series}_sec_median"] = _statistics.median(samples)
+        result[f"{series}_sec_stdev"] = _statistics.stdev(samples) if len(samples) > 1 else None
+        result[f"{series}_sec"] = result[f"{series}_sec_median"]
+    comp, sim = result.get("compilation_time_sec"), result.get("simulation_time_sec")
+    if isinstance(comp, (int, float)) and isinstance(sim, (int, float)):
+        result["execution_time_sec"] = comp + sim
+    result["timing_repeats"] = len(timed_results)
+    result["timing_statistic"] = TIMING_STATISTIC
+
+
 def run_with_uniform_measurement(func, payload):
     """Run a runner processor once as a discarded warm-up, then ``timing_repeats`` timed
-    times, and attach process-level diagnostics to the last timed result.
+    times (each a full compile + execute through the shared instrument, with the same
+    payload and seed), and attach process-level diagnostics.
 
-    Used by both the isolated child (``run_isolated``) and the Kubernetes CLI path.
-    ``cpu_time_sec`` and ``process_peak_rss_mb`` cover the whole runner process; see
-    ``METRIC_SCOPE``, which is copied into the result as ``metric_scope``.
+    The result, its output (statevector or counts) and its memory fields are those of the
+    first timed run. ``compilation_time_sec``, ``simulation_time_sec`` and
+    ``simulation_cpu_time_sec`` are the medians over the timed runs, with the per-run values
+    in ``*_samples`` and ``*_sec_mean`` / ``*_sec_median`` / ``*_sec_stdev`` (stdev None
+    for one run); ``execution_time_sec`` is compilation + simulation. A timed run that fails
+    makes the result that failure (``failed_timing_repeat`` names which run).
+
+    Used by both the isolated child (``run_isolated``) and the Kubernetes CLI path; the
+    hard timeout covers the warm-up and every timed run. ``cpu_time_sec`` and
+    ``process_peak_rss_mb`` cover the whole runner process; see ``METRIC_SCOPE``, which is
+    copied into the result as ``metric_scope``.
     """
     func(payload)
 
-    repeats = max(1, int(payload.get("timing_repeats", 1) or 1))
-    timed_results = [func(payload) for _ in range(repeats)]
-    result = timed_results[-1]
+    repeats = timing_repeats_of(payload)
+    timed_results = []
+    failed = None
+    for i in range(repeats):
+        timed = func(payload)
+        timed_results.append(timed)
+        if not isinstance(timed, dict) or timed.get("error"):
+            failed = i
+            break
+    result = timed_results[0] if failed is None else timed_results[failed]
 
     if isinstance(result, dict) and result.get("error"):
         result.update(unmeasured_metrics())
         result["process_peak_rss_method"] = None
         result["metric_scope"] = {"on_error": METRIC_SCOPE_ON_ERROR}
+        result["timing_repeats"] = repeats
+        if failed:
+            result["failed_timing_repeat"] = failed + 1
         return result
 
     if isinstance(result, dict):
-        if repeats > 1:
-            exec_times = [r.get("execution_time_sec") for r in timed_results
-                          if isinstance(r.get("execution_time_sec"), (int, float))]
-            if exec_times:
-                result["timing_repeats"] = repeats
-                result["execution_time_sec_mean"] = _statistics.mean(exec_times)
-                result["execution_time_sec_stdev"] = (
-                    _statistics.stdev(exec_times) if len(exec_times) > 1 else 0.0)
+        _summarise_timings(result, timed_results)
 
         usage = _resource.getrusage(_resource.RUSAGE_SELF)
         peak_mb, peak_method = lifetime_peak_rss()
@@ -397,7 +448,7 @@ def _run_isolated_blocking(module_name, func_name, payload, timeout_s):
                 proc.join()
             return _isolated_error(
                 f"TIMEOUT ({timeout_s}s): the runner process (spawn, SDK import, warm-up and "
-                f"timed run) exceeded {timeout_s} s and was terminated.", timed_out=True)
+                f"every timed run) exceeded {timeout_s} s and was terminated.", timed_out=True)
         return _isolated_error(
             f"The runner process was terminated (exit code {proc.exitcode}) before returning "
             f"a result, most likely out of memory. Server operators can see details in the "

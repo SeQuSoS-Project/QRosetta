@@ -31,9 +31,11 @@ class Settings(BaseSettings):
 
     RUNNER_TIMEOUT_SEC: int = 300
     MIN_TIMEOUT_SEC: int = 10
+    DEFAULT_TIMEOUT_SEC: int = 60
+    MAX_TIMING_REPEATS: int = 10
     MIN_SHOTS: int = 1
     MAX_SHOTS: int = 1_000_000
-    DEFAULT_SHOTS: int = 4096
+    DEFAULT_SHOTS: int = 8192
     RUNNER_CONNECT_TIMEOUT_SEC: int = 10
     RUNNER_DEADLINE_BUFFER_SEC: int = 15
     RUNNER_QUEUE_MAX_WAIT_SEC: int = int(os.getenv("RUNNER_QUEUE_MAX_WAIT_SEC", "1800"))

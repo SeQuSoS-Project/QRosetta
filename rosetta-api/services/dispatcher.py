@@ -6,7 +6,7 @@ Routes each dispatch to the HTTP (Docker Compose) or Kubernetes Jobs backend.
 from datetime import datetime, timezone
 
 from config import settings
-from qrosetta_commons.helpers import get_logger
+from qrosetta_commons.helpers import TIMING_STATISTIC, get_logger
 from qrosetta_commons.seeds import derive_runner_seed
 from services.dispatcher_http import dispatch_http_local
 from services.dispatcher_k8s import dispatch_kubernetes_jobs
@@ -26,8 +26,8 @@ DISPATCH_STATUSES = ("ok", "error", "timeout", "offline")
 
 TIMEOUT_SCOPE = {
     "local": (
-        "whole isolated runner child process: process spawn, SDK import, warm-up run and timed "
-        "run, killed at hard_timeout_seconds. The budget starts when the run leaves the "
+        "whole isolated runner child process: process spawn, SDK import, warm-up run and every "
+        "timed run (timing_repeats), killed at hard_timeout_seconds. The budget starts when the run leaves the "
         "runner's queue (one run per runner at a time), so time spent queued does not count "
         "against it. The queue wait has its own server-wide cap, RUNNER_QUEUE_MAX_WAIT_SEC "
         "(recorded as queue_max_wait_sec), independent of timeout_seconds; a run still queued "
@@ -36,7 +36,7 @@ TIMEOUT_SCOPE = {
     ),
     "kubernetes": (
         "whole Kubernetes Job measured from job creation: pod scheduling, image pull, container "
-        "start, SDK import, warm-up run, timed run and S3 upload"
+        "start, SDK import, warm-up run, every timed run (timing_repeats) and S3 upload"
     ),
 }
 
@@ -95,16 +95,22 @@ def annotate_result(result: dict, spec: dict, sent_payload: dict, dispatched_at:
                     dispatch_status: str = None, runner_image: str = None) -> dict:
     """Stamp one runner result with its key, dispatch outcome, seed and timing metadata.
 
-    Fields: simulator, optimization_level, dispatch_status, dispatched_at, completed_at,
-    timing_samples, runner_image, and for seeded runs runner_seed, seed, seed_honoured.
-    ``seed_honoured`` is None for a failed run, which sampled nothing.
+    Fields: simulator, optimization_level (applied), optimization_level_requested,
+    dispatch_status, timeout_kind (``"queue"`` for a run that never left the runner's
+    queue, ``"run"`` otherwise; only on timeouts), dispatched_at, completed_at,
+    timing_samples, timing_statistic, runner_image, and for seeded runs runner_seed, seed,
+    seed_honoured. ``seed_honoured`` is None for a failed run, which sampled nothing.
     """
     result["simulator"] = spec["key"]
     result["optimization_level"] = spec["opt_level"]
+    result["optimization_level_requested"] = spec.get("requested_level", spec["opt_level"])
     result["dispatch_status"] = dispatch_status or classify_runner_result(result)
+    if result["dispatch_status"] == "timeout":
+        result["timeout_kind"] = "queue" if result.get("never_started") else "run"
     result["dispatched_at"] = dispatched_at
     result["completed_at"] = utc_now_iso()
     result["timing_samples"] = int(result.get("timing_repeats") or 1)
+    result.setdefault("timing_statistic", TIMING_STATISTIC)
     result["runner_image"] = runner_image or "not recorded"
     seed = sent_payload.get("seed")
     if seed is not None:
@@ -132,7 +138,8 @@ def expand_runner_jobs(runner_urls: dict, runner_payload: dict) -> list:
     repeats allowed; an empty list skips the runner). A runner with one job keeps its
     canonical id as the key; N>1 jobs get keys ``sim~opt{L}~run{i}``.
 
-    Each spec: {key, sim_name, url, opt_level, phase}.
+    Each spec: {key, sim_name, url, opt_level (clamped to the runner's max),
+    requested_level, phase}.
     """
     global_opt = runner_payload.get("optimization_level", 0)
     runner_overrides = runner_payload.get("runner_config", {})
@@ -142,23 +149,24 @@ def expand_runner_jobs(runner_urls: dict, runner_payload: dict) -> list:
     for sim_name, url in runner_urls.items():
         phase = runner_phases.get(sim_name, 1)
         cfg = runner_overrides.get(sim_name, global_opt)
-        levels = list(cfg) if isinstance(cfg, list) else [cfg]
-        levels = [_clamp_opt(sim_name, int(lvl)) for lvl in levels]
+        requested = [int(lvl) for lvl in (list(cfg) if isinstance(cfg, list) else [cfg])]
 
-        if not levels:
+        if not requested:
             continue
 
-        if len(levels) == 1:
+        if len(requested) == 1:
             specs.append({"key": sim_name, "sim_name": sim_name, "url": url,
-                          "opt_level": levels[0], "phase": phase})
+                          "opt_level": _clamp_opt(sim_name, requested[0]),
+                          "requested_level": requested[0], "phase": phase})
             continue
 
         per_level_idx = {}
-        for lvl in levels:
+        for req in requested:
+            lvl = _clamp_opt(sim_name, req)
             per_level_idx[lvl] = per_level_idx.get(lvl, 0) + 1
             key = f"{sim_name}~opt{lvl}~run{per_level_idx[lvl]}"
             specs.append({"key": key, "sim_name": sim_name, "url": url,
-                          "opt_level": lvl, "phase": phase})
+                          "opt_level": lvl, "requested_level": req, "phase": phase})
 
     return specs
 

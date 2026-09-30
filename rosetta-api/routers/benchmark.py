@@ -74,8 +74,10 @@ async def compare_circuits_endpoint(request: Request, payload: QasmPayload, back
     the explained-cause pairwise agreement classification. 400 for a circuit that does not
     parse as OpenQASM 2.0, has too many qubits, or has mid-circuit measurement, reset or
     classical control, and for unknown, disabled or unavailable runner ids; 413 for a
-    circuit over MAX_QASM_SIZE."""
-    validate_request(payload.qasm_string, mode="statevector", bypass_limits=payload.bypass_limits)
+    circuit over MAX_QASM_SIZE. 400 also for a gate definition under a name a runner's
+    parser reserves, and a runner_config level above that runner's max."""
+    validate_request(payload.qasm_string, mode="statevector", bypass_limits=payload.bypass_limits,
+                     apply_preprocessing=payload.apply_preprocessing)
     check_statevector_circuit(payload.qasm_string)
     validate_runner_ids(payload.target_simulators, payload.runner_config, payload.runner_phases)
     validate_runner_config(payload.runner_config)
@@ -85,7 +87,7 @@ async def compare_circuits_endpoint(request: Request, payload: QasmPayload, back
 
     ACTIVE_JOBS[job_id] = new_job(payload.execution_target)
     thresholds = effective_thresholds(payload.thresholds)
-    background_tasks.add_task(worker_compare, job_id, payload.qasm_string, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, payload.execution_target, payload.runner_phases, payload.apply_preprocessing, thresholds, payload.bypass_limits)
+    background_tasks.add_task(worker_compare, job_id, payload.qasm_string, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, payload.execution_target, payload.runner_phases, payload.apply_preprocessing, thresholds, payload.bypass_limits, payload.timing_repeats)
 
     return _job_envelope(job_id)
 
@@ -99,7 +101,8 @@ async def compare_measured_circuits_endpoint(request: Request, payload: Measured
     circuit that does not parse as OpenQASM 2.0 (including a measure whose operands differ
     in size) or has too many qubits, and for unknown, disabled or unavailable runner ids;
     413 for a circuit over MAX_QASM_SIZE."""
-    validate_request(payload.qasm_string, mode="measured", bypass_limits=payload.bypass_limits)
+    validate_request(payload.qasm_string, mode="measured", bypass_limits=payload.bypass_limits,
+                     apply_preprocessing=payload.apply_preprocessing)
     validate_runner_ids(payload.target_simulators, payload.runner_config, payload.runner_phases)
     validate_runner_config(payload.runner_config)
     await require_available(payload.target_simulators)
@@ -108,7 +111,7 @@ async def compare_measured_circuits_endpoint(request: Request, payload: Measured
 
     ACTIVE_JOBS[job_id] = new_job(payload.execution_target)
     thresholds = effective_thresholds(payload.thresholds)
-    background_tasks.add_task(worker_compare_measured, job_id, payload.qasm_string, payload.n_shots, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, payload.execution_target, payload.runner_phases, payload.apply_preprocessing, payload.seed, thresholds, payload.bypass_limits)
+    background_tasks.add_task(worker_compare_measured, job_id, payload.qasm_string, payload.n_shots, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, payload.execution_target, payload.runner_phases, payload.apply_preprocessing, payload.seed, thresholds, payload.bypass_limits, payload.timing_repeats)
 
     return _job_envelope(job_id)
 
@@ -129,11 +132,12 @@ async def run_batch_suite_endpoint(request: Request, payload: BatchPayload, back
     for index, task in enumerate(payload.tasks):
         if task.qasm_string:
             try:
-                validate_request(task.qasm_string, mode=payload.mode, bypass_limits=payload.bypass_limits)
+                validate_request(task.qasm_string, mode=payload.mode, bypass_limits=payload.bypass_limits,
+                                 apply_preprocessing=payload.apply_preprocessing)
                 if payload.mode == "statevector":
                     check_statevector_circuit(task.qasm_string)
             except HTTPException as exc:
-                raise HTTPException(status_code=exc.status_code, detail=f"Task {index} ({task.algorithm}): {exc.detail}")
+                raise HTTPException(status_code=exc.status_code, detail=f"Task {index} ({task.algorithm or 'qasm'}): {exc.detail}")
     await require_available(payload.target_simulators)
     job_id = str(uuid.uuid4())
 

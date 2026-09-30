@@ -62,8 +62,10 @@ STATEVECTOR_SHAPE_PROBES = {
     "barrier_only": ("qreg q[2]; barrier q;", True, 2, {"lsb": 0, "msb": 0}),
     "qreg_declaration_order": (
         "qreg b[1]; qreg a[2]; x b[0]; x a[0];", False, 3, {"lsb": 3, "msb": 6}),
+    "register_broadcast": ("qreg q[1]; qreg r[2]; x q[0]; cx q[0],r;", False, 3, {"lsb": 7, "msb": 7}),
 }
 MULTI_QREG_REFUSAL = "enable apply_preprocessing"
+MULTI_QREG_PROBES = ("qreg_declaration_order", "register_broadcast")
 
 SUBSET_QASM = "qreg q[3]; creg c[1]; x q[2]; h q[0]; measure q[0] -> c[0];"
 
@@ -144,7 +146,7 @@ def check_statevector_shape(name: str, result: dict, declared=None) -> list:
     _body, _pp, n_qubits, expected = STATEVECTOR_SHAPE_PROBES[name]
     error = result.get("error")
     if error:
-        if name == "qreg_declaration_order" and MULTI_QREG_REFUSAL in str(error).lower():
+        if name in MULTI_QREG_PROBES and MULTI_QREG_REFUSAL in str(error).lower():
             return []
         return [f"error: {error}"]
     ordering, failures = _ordering(result, declared, expected)

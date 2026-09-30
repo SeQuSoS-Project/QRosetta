@@ -1,6 +1,6 @@
 # Pydantic request/response models for the /history endpoints.
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from typing import List, Optional
 
 from schemas.timestamps import UtcDatetime
@@ -36,12 +36,15 @@ class RunHistoryResponse(BaseModel):
     s3_object_key: str = Field(..., description="Storage key of the saved report.")
     run_name: str = Field(..., description="Display name for the run.")
     created_at: UtcDatetime = Field(..., description=_CREATED_AT)
+    job_id: Optional[str] = Field(None, description="The job the run was saved from; set on POST /history/runs/from_job/{job_id} responses, null on the other /history/runs responses.")
 
     model_config = ConfigDict(from_attributes=True)
 
 class RunHistoryFromJob(_Request):
     """Request body for POST /history/runs/from_job/{job_id}."""
-    name: Optional[str] = Field(None, max_length=200, description="Display name for the saved run. Defaults to the mode and the first 8 characters of the job id.")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    run_name: Optional[str] = Field(None, max_length=200, validation_alias=AliasChoices("run_name", "name"), description="Display name for the saved run (also accepted as 'name'). Defaults to the mode and the first 8 characters of the job id.")
 
 class RunHistoryUpdate(_Request):
     """Request body for PATCH /history/runs/{run_id}."""

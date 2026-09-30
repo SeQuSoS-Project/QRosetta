@@ -6,8 +6,12 @@ import re
 from fastapi import HTTPException
 from config import settings
 from qrosetta_commons.counts import parse_measurement_layout
-from qrosetta_commons.helpers import get_num_qubits_from_qasm, strip_qasm_comments
-from services.circuit_resolver import StatevectorIncompatible, strip_terminal_measurements
+from qrosetta_commons.helpers import get_num_qubits_from_qasm
+from services.circuit_resolver import (
+    ParameterExpressionError, StatevectorIncompatible, evaluate_caret_parameters,
+    split_statements, strip_terminal_measurements,
+)
+from services.reserved_gate_names import reserved_gate_reason
 
 _VERSION_RE = re.compile(r"^\s*OPENQASM\s+([^;\s]+)\s*;", re.MULTILINE)
 _QASM3_DECL_RE = re.compile(r"^\s*(?:qubit|bit)\s*(?:\[|\s+[A-Za-z_])", re.MULTILINE)
@@ -16,29 +20,42 @@ _REG_DECL_RE = re.compile(r"^(qreg|creg)\s+[A-Za-z_]\w*\s*\[\s*\d+\s*\]$")
 _BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 _LINE_COMMENT_RE = re.compile(r"//[^\n]*")
 _QASM3_MESSAGE = "OpenQASM 3 is not supported; submit OpenQASM 2.0 (header 'OPENQASM 2.0;')."
+_DEFINITION_RE = re.compile(r"^\s*(?:gate|opaque)\s+([A-Za-z_]\w*)")
+_NON_OPERATION_RE = re.compile(r"^\s*(?:OPENQASM|include|qreg|creg|gate|opaque)\b")
+
+
+def _unprocessable(loc: list, msg: str):
+    raise HTTPException(status_code=422, detail=[{"loc": loc, "msg": msg, "type": "value_error"}])
 
 
 def validate_runner_config(runner_config: dict):
-    """Reject a runner_config that exceeds MAX_RUNS_PER_RUNNER or MAX_TOTAL_RUNS.
+    """Reject a runner_config that exceeds MAX_RUNS_PER_RUNNER or MAX_TOTAL_RUNS (422), or
+    names a level above a runner's highest supported level (400, naming the max).
 
     runner_config[name] is an int (one run) or a list of opt levels (one run each).
     """
     if not runner_config:
         return
+    services = settings.get_runner_services()
     total = 0
     for name, val in runner_config.items():
-        count = len(val) if isinstance(val, list) else 1
-        if count > settings.MAX_RUNS_PER_RUNNER:
+        levels = val if isinstance(val, list) else [val]
+        if len(levels) > settings.MAX_RUNS_PER_RUNNER:
+            _unprocessable(["body", "runner_config", name],
+                           f"Runner '{name}' requested {len(levels)} runs, exceeding the "
+                           f"per-runner limit of {settings.MAX_RUNS_PER_RUNNER}.")
+        total += len(levels)
+        supported = services.get(name, {}).get("optimization_levels") or {}
+        if supported and levels and max(levels) > max(supported):
             raise HTTPException(
-                status_code=422,
-                detail=f"Runner '{name}' requested {count} runs, exceeding the per-runner limit of {settings.MAX_RUNS_PER_RUNNER}."
-            )
-        total += count
+                status_code=400,
+                detail=f"runner_config requests optimization level {max(levels)} for '{name}', "
+                       f"whose highest supported level is {max(supported)}.")
     if total > settings.MAX_TOTAL_RUNS:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Requested {total} total runs across all simulators, exceeding the limit of {settings.MAX_TOTAL_RUNS}. Reduce the run counts in multi-run mode."
-        )
+        _unprocessable(["body", "runner_config"],
+                       f"Requested {total} total runs across all simulators, exceeding the "
+                       f"limit of {settings.MAX_TOTAL_RUNS}. Reduce the run counts in "
+                       f"multi-run mode.")
 
 
 def validate_runner_ids(target_simulators=None, runner_config=None, runner_phases=None):
@@ -134,28 +151,68 @@ def check_measurements(qasm: str) -> None:
                      f"which is outside the declared register.")
 
 
-def validate_request(qasm: str, mode: str = "statevector", bypass_limits: bool = False):
-    """Raise HTTPException for an oversized, too-complex, malformed, qubit-less or too-wide
-    circuit.
+def count_gate_statements(qasm: str, statements: list = None) -> int:
+    """Top-level operation statements (gates, measure, reset, barrier, if); the header,
+    includes, register declarations and gate definitions are not counted."""
+    statements = split_statements(qasm) if statements is None else statements
+    return sum(1 for stmt in statements if not _NON_OPERATION_RE.match(stmt))
 
-    ``bypass_limits`` skips the size and gate-count checks in local mode only. Statements
-    are counted after comments are removed.
+
+def check_gate_names(qasm: str, statements: list = None) -> None:
+    """400 for a ``gate``/``opaque`` definition whose name a runner's parser reserves
+    (``services.reserved_gate_names``)."""
+    statements = split_statements(qasm) if statements is None else statements
+    for stmt in statements:
+        m = _DEFINITION_RE.match(stmt)
+        if not m:
+            continue
+        reason = reserved_gate_reason(m.group(1))
+        if reason:
+            _bad_request(f"gate name '{m.group(1)}' is {reason}; rename the gate")
+
+
+def check_parameter_expressions(qasm: str) -> None:
+    """400 for a '^' the API cannot evaluate before the pytket round-trip."""
+    if "^" not in qasm:
+        return
+    try:
+        evaluate_caret_parameters(qasm)
+    except ParameterExpressionError as exc:
+        _bad_request(f"Invalid gate parameter: {exc}.")
+
+
+def validate_request(qasm: str, mode: str = "statevector", bypass_limits: bool = False,
+                     apply_preprocessing: bool = True, check_reserved_names: bool = True):
+    """Raise HTTPException for an oversized, too-complex, malformed, qubit-less or too-wide
+    circuit, a gate definition under a reserved name (``check_reserved_names``; off for the
+    bundled benchmark circuits, whose definitions carry the built-in semantics), or (with
+    ``apply_preprocessing``) a '^' parameter expression the API cannot evaluate.
+
+    ``bypass_limits`` skips the size and gate-count checks in local mode only. Gate
+    statements are counted by ``count_gate_statements``.
     """
-    code = strip_qasm_comments(qasm)
+    statements = None
     if not (bypass_limits and settings.EXECUTION_MODE == "local"):
         if len(qasm) > settings.MAX_QASM_SIZE:
             raise HTTPException(
                 status_code=413,
                 detail=f"Payload too large: {len(qasm)} characters exceeds the limit of {settings.MAX_QASM_SIZE}.",
             )
-        statements = code.count(";")
-        if statements > settings.MAX_QASM_GATES:
+        statements = split_statements(qasm)
+        n_gates = count_gate_statements(qasm, statements)
+        if n_gates > settings.MAX_QASM_GATES:
             raise HTTPException(
                 status_code=400,
-                detail=f"Circuit too complex: {statements} statements exceeds the limit of {settings.MAX_QASM_GATES}.",
+                detail=(f"Circuit too complex: {n_gates} gate statements exceeds the limit of "
+                        f"{settings.MAX_QASM_GATES} (the header, includes, register declarations "
+                        f"and gate definitions are not counted)."),
             )
 
     check_qasm_syntax(qasm)
+    if check_reserved_names:
+        check_gate_names(qasm, statements)
+    if apply_preprocessing:
+        check_parameter_expressions(qasm)
     qubit_count = get_num_qubits_from_qasm(qasm)
     if qubit_count < 1:
         raise HTTPException(

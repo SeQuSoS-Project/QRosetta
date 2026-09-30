@@ -105,3 +105,17 @@ def test_history_export_without_artifacts_passes_none(client):
 
     assert resp.status_code == 200, resp.text
     assert mock_build.call_args.args[0].publication_artifacts is None
+
+
+def test_history_export_uses_the_current_run_name(client):
+    headers = _auth_headers(client, "export-rename@example.com")
+    run_id = _seed_run("export-rename@example.com")
+    assert client.patch(f"/history/runs/{run_id}", json={"run_name": "renamed run"},
+                        headers=headers).status_code == 200
+
+    with patch("services.history.fetch_run_report", return_value={**_REPORT, "run_name": "old"}), \
+            patch("routers.history.build_ro_crate", return_value=b"ZIP") as mock_build:
+        resp = client.post(f"/history/runs/{run_id}/export", json={}, headers=headers)
+
+    assert resp.status_code == 200, resp.text
+    assert mock_build.call_args.args[0].results["run_name"] == "renamed run"

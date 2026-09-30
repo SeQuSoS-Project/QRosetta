@@ -90,7 +90,7 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
     ACTIVE_JOBS[job_id]["runner_statuses"] = runner_statuses
     try:
         resolved, resolution_errors = resolve_circuits(payload)
-        axes = payload.preprocessing_modes or [True]
+        axes = payload.preprocessing_modes
         if not resolved:
             raise ValueError("No circuits could be resolved: "
                              + "; ".join(f"{e['name']}: {e['error']}" for e in resolution_errors))
@@ -121,11 +121,12 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
         for pp, axis in zip(axes, axis_labels):
             batch_payload = BatchPayload(
                 tasks=[BenchmarkTask(algorithm=c["algorithm"], qubits=c["qubits"],
-                                     qasm_string=c["qasm"]) for c in resolved],
+                                     qasm_string=c["qasm"], source=c["source"]) for c in resolved],
                 mode=payload.mode, n_shots=payload.n_shots,
                 optimization_level=payload.optimization_level,
                 runner_config=payload.runner_config, runner_phases=payload.runner_phases,
                 timeout_seconds=payload.timeout_seconds,
+                timing_repeats=payload.timing_repeats,
                 target_simulators=payload.target_simulators,
                 execution_target=payload.execution_target, bypass_limits=payload.bypass_limits,
                 apply_preprocessing=bool(pp), seed=exp_seed, thresholds=payload.thresholds,

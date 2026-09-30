@@ -113,3 +113,80 @@ def test_saving_the_same_job_twice_returns_the_first_run(client):
         assert third.status_code == 201 and third.json()["id"] != first.json()["id"]
     finally:
         del job_manager.ACTIVE_JOBS["dup-job-0001"]
+
+
+def test_run_name_is_accepted_and_name_is_an_alias(client):
+    _job("named-job-0001", {"n_shots": 10, "raw_results": []})
+    _job("named-job-0002", {"n_shots": 10, "raw_results": []})
+    try:
+        r = client.post("/history/runs/from_job/named-job-0001", json={"run_name": "via run_name"})
+        assert r.status_code == 201 and r.json()["run_name"] == "via run_name"
+        assert r.json()["job_id"] == "named-job-0001"
+        r = client.post("/history/runs/from_job/named-job-0002", json={"name": "via name"})
+        assert r.status_code == 201 and r.json()["run_name"] == "via name"
+        again = client.post("/history/runs/from_job/named-job-0002")
+        assert again.status_code == 200 and again.json()["job_id"] == "named-job-0002"
+    finally:
+        del job_manager.ACTIVE_JOBS["named-job-0001"], job_manager.ACTIVE_JOBS["named-job-0002"]
+
+
+def test_concurrent_saves_of_one_job_store_one_run(monkeypatch):
+    import threading
+    import time
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from fastapi import Response
+    import routers.history as history_router
+    import services.history as history_service
+
+    stored = {}
+
+    def slow_save(db, user_id, payload, circuit_id=None):
+        time.sleep(0.2)
+        run = SimpleNamespace(id=f"run-{len(stored)}", user_id=user_id, run_name=payload["run_name"],
+                              created_at=datetime.now(timezone.utc))
+        stored[run.id] = run
+        return run
+    monkeypatch.setattr(history_service, "save_run", slow_save)
+    monkeypatch.setattr(history_service, "find_run", lambda db, uid, rid: stored.get(rid))
+    user = SimpleNamespace(id=1)
+    _job("race-job-0001", {"n_shots": 10, "raw_results": []})
+    codes, ids = [], []
+
+    def save():
+        response = Response(status_code=201)
+        run = history_router.save_run_from_job("race-job-0001", response, None, None, user)
+        codes.append(response.status_code)
+        ids.append(run.id)
+    try:
+        threads = [threading.Thread(target=save) for _ in range(6)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert len(stored) == 1 and len(set(ids)) == 1
+        assert sorted(codes) == [200] * 5 + [201]
+    finally:
+        del job_manager.ACTIVE_JOBS["race-job-0001"]
+
+
+@pytest.mark.parametrize("body", [
+    {"result": "ok"},
+    {"raw_results": "notalist"},
+    {"raw_results": [1, 2]},
+    {"raw_results": [], "divergence_report": "x"},
+    {"benchmark_summary": "x"},
+    {"benchmark_summary": [{"raw_results": "x"}]},
+])
+def test_client_supplied_report_is_validated(client, body):
+    r = client.post("/history/runs", json=body)
+    assert r.status_code == 422, r.text
+    assert isinstance(r.json()["detail"], list) and r.json()["detail"][0]["msg"]
+
+
+@pytest.mark.parametrize("body", [
+    {"raw_results": [{"simulator": "qiskit"}], "divergence_report": {}},
+    {"benchmark_summary": [{"task_name": "t", "error": "failed"}, {"raw_results": []}]},
+])
+def test_valid_client_reports_are_stored(client, body):
+    assert client.post("/history/runs", json=body).status_code == 201

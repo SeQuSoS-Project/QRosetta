@@ -63,7 +63,7 @@ def test_delete_account_with_saved_circuit_and_run_history_succeeds(client, tmp_
     assert r.status_code == 201, r.text
     circuit_id = r.json()["id"]
 
-    r = client.post(f"/history/runs?circuit_id={circuit_id}", json={"result": "ok"}, headers=headers)
+    r = client.post(f"/history/runs?circuit_id={circuit_id}", json={"raw_results": []}, headers=headers)
     assert r.status_code == 201, r.text
 
     r = client.delete("/auth/me", headers=headers)

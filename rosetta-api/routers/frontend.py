@@ -55,9 +55,11 @@ async def get_config():
 
     ``limits`` holds the bounds the run endpoints validate against: qubit caps per mode,
     ``timeout_min``/``timeout_max`` (seconds; larger requests are clamped to
-    ``timeout_max``) and ``shots_min``/``shots_max``. ``default_n_shots`` is the shot count
-    the measured, batch and experiment endpoints use when ``n_shots`` is omitted. The
-    top-level qubit and size keys are kept for existing clients.
+    ``timeout_max``), ``timeout_default`` (every run endpoint), ``shots_min``/``shots_max``,
+    ``timing_repeats_max`` and ``max_qasm_gate_statements`` (top-level operation statements;
+    the header, includes, register declarations and gate definitions are not counted).
+    ``default_n_shots`` is the shot count the measured, batch and experiment endpoints use
+    when ``n_shots`` is omitted. The top-level keys repeat the qubit, size and gate limits.
     """
     return JSONResponse(content={
         "max_qubits_statevector": settings.MAX_QUBITS_STATEVECTOR,
@@ -75,6 +77,9 @@ async def get_config():
             "max_qubits_measured": settings.MAX_QUBITS_MEASURED,
             "timeout_min": settings.MIN_TIMEOUT_SEC,
             "timeout_max": settings.RUNNER_TIMEOUT_SEC,
+            "timeout_default": settings.DEFAULT_TIMEOUT_SEC,
+            "timing_repeats_max": settings.MAX_TIMING_REPEATS,
+            "max_qasm_gate_statements": settings.MAX_QASM_GATES,
             "shots_min": settings.MIN_SHOTS,
             "shots_max": settings.MAX_SHOTS,
             "shots_default": settings.DEFAULT_SHOTS,

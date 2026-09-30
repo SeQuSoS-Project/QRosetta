@@ -11,7 +11,7 @@ import db.models as models
 import schemas
 import services.accounts as accounts
 from db.database import get_db
-from services.security import create_access_token, get_current_user
+from services.security import access_token_for, get_current_user
 from config import settings
 from qrosetta_commons.helpers import get_logger
 
@@ -61,10 +61,8 @@ def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token = create_access_token(
-        data={"sub": user.email},
-        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
-    )
+    access_token = access_token_for(
+        user, expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES))
     return {"access_token": access_token, "token_type": "bearer"}
 
 

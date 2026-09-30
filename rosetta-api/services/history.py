@@ -100,6 +100,43 @@ def get_run_report_with_metadata(db: Session, user_id: int, run_id: str) -> dict
             "created_at": utc_iso(run.created_at) if run.created_at else None}
 
 
+def _single_report_problems(report, where: str) -> list:
+    if not isinstance(report, dict):
+        return [(where, "must be an object")]
+    problems = []
+    raw = report.get("raw_results")
+    if raw is None and "error" not in report:
+        problems.append((where + ["raw_results"], "a single-circuit report needs raw_results (a list of runner results) or a top-level error"))
+    elif raw is not None:
+        if not isinstance(raw, list):
+            problems.append((where + ["raw_results"], "must be a list of runner results"))
+        elif not all(isinstance(r, dict) for r in raw):
+            problems.append((where + ["raw_results"], "every runner result must be an object"))
+    for key in ("divergence_report", "performance_report", "resource_report"):
+        if key in report and not isinstance(report[key], dict):
+            problems.append((where + [key], "must be an object"))
+    return problems
+
+
+def report_structure_problems(report) -> list:
+    """``[(loc, msg)]`` for a report that is neither a single-circuit report (``raw_results``
+    list, optional ``divergence_report`` object) nor a batch report (``benchmark_summary``
+    list of single-circuit reports or task errors). Empty when the structure is valid."""
+    if not isinstance(report, dict):
+        return [(["body"], "the report must be a JSON object")]
+    if "benchmark_summary" in report:
+        tasks = report["benchmark_summary"]
+        if not isinstance(tasks, list):
+            return [(["body", "benchmark_summary"], "must be a list of task reports")]
+        problems = []
+        for i, task in enumerate(tasks):
+            problems += _single_report_problems(task, ["body", "benchmark_summary", i])
+        return problems
+    if "raw_results" not in report and "divergence_report" not in report:
+        return [(["body"], "not a run report: expected raw_results (single circuit) or benchmark_summary (batch)")]
+    return _single_report_problems(report, ["body"])
+
+
 def default_run_name(report: dict, job_id: str) -> str:
     """``"<mode> run <job id prefix>"``, with mode batch, measured or statevector."""
     if isinstance(report, dict) and "benchmark_summary" in report:

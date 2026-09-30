@@ -65,14 +65,40 @@ def get_password_hash(password):
     return hashed.decode('utf-8')
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None):
+    """Signed JWT carrying ``data`` plus ``iat`` (issue time, integer seconds) and ``exp``
+    (default 15 minutes after issue)."""
     to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
-    else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+    now = datetime.now(timezone.utc)
+    to_encode.update({"iat": int(now.timestamp()),
+                      "exp": now + (expires_delta or timedelta(minutes=15))})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def access_token_for(user, expires_delta: timedelta | None = None) -> str:
+    """Access token bound to ``user``: ``sub`` is the email and ``uid`` the account id."""
+    return create_access_token({"sub": user.email, "uid": user.id}, expires_delta)
+
+
+TOKEN_CLOCK_TOLERANCE_SEC = 2
+
+
+def _as_utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+
+
+def token_matches_account(payload: dict, user) -> bool:
+    """True when the token's ``uid`` is ``user.id`` and the account existed when the token
+    was issued (``created_at`` at most TOKEN_CLOCK_TOLERANCE_SEC after ``iat``). A token
+    without ``uid`` or ``iat`` does not match."""
+    uid, iat = payload.get("uid"), payload.get("iat")
+    if isinstance(uid, bool) or not isinstance(uid, int) or uid != user.id:
+        return False
+    if isinstance(iat, bool) or not isinstance(iat, (int, float)):
+        return False
+    created = getattr(user, "created_at", None)
+    if created is None:
+        return True
+    return _as_utc(created).timestamp() <= iat + TOKEN_CLOCK_TOLERANCE_SEC
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -84,6 +110,9 @@ import db.models as models
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    """The account a bearer token was issued to. 401 for an invalid or expired token, one
+    whose ``uid`` is not the account now registered under its email, or one issued before
+    that account was created; 403 for a deactivated account."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -97,7 +126,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     except JWTError:
         raise credentials_exception
     user = db.query(models.User).filter(models.User.email == email).first()
-    if user is None:
+    if user is None or not token_matches_account(payload, user):
         raise credentials_exception
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This account has been deactivated")

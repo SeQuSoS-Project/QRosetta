@@ -48,7 +48,7 @@ async def lifespan(app: FastAPI):
     yield
     cleanup_task.cancel()
 
-app = FastAPI(title="Quantum Rosetta API", lifespan=lifespan)
+app = FastAPI(title="Quantum Rosetta API", version=settings.PLATFORM_VERSION, lifespan=lifespan)
 
 models.Base.metadata.create_all(bind=engine)
 

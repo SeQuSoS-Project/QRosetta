@@ -41,7 +41,8 @@ async def start_experiment(request: Request, payload: ExperimentPayload, backgro
         if circuit.qasm_string:
             label = circuit.name or circuit.algorithm or f"circuit {index}"
             try:
-                validate_request(circuit.qasm_string, mode=payload.mode, bypass_limits=payload.bypass_limits)
+                validate_request(circuit.qasm_string, mode=payload.mode, bypass_limits=payload.bypass_limits,
+                                 apply_preprocessing=True in payload.preprocessing_modes)
                 if payload.mode == "statevector":
                     check_statevector_circuit(circuit.qasm_string)
             except HTTPException as exc:

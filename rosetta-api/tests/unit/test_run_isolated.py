@@ -65,18 +65,16 @@ def test_gate_count_and_depth_derived_from_transpiled_qasm():
     assert r["circuit_depth"] == 2
 
 
-def test_repeat_with_variance():
-    # fx.with_qasm reports a constant execution_time_sec, so the stdev is exactly 0.
+def test_repeats_report_samples_and_medians():
     r = _call(fx.with_qasm, {"timing_repeats": 3})
     assert r["timing_repeats"] == 3
-    assert r["execution_time_sec_mean"] == 0.01
-    assert r["execution_time_sec_stdev"] == 0.0
+    assert r["timing_statistic"] == "median"
 
 
-def test_default_repeats_is_one_and_omits_variance_fields():
+def test_default_repeats_is_one():
     r = _call(fx.with_qasm, {})
-    assert "timing_repeats" not in r
-    assert "execution_time_sec_mean" not in r
+    assert r["timing_repeats"] == 1
+    assert r["timing_statistic"] == "median"
 
 
 def test_failed_run_reports_no_process_metrics():

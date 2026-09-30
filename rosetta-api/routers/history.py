@@ -15,6 +15,7 @@ from routers.errors import responses
 from qrosetta_commons.helpers import get_logger
 from fastapi.responses import StreamingResponse
 import io
+import threading
 
 logger = get_logger("rosetta-history")
 
@@ -22,6 +23,17 @@ router = APIRouter(
     prefix="/history",
     tags=["history"],
 )
+
+_SAVE_LOCKS: dict = {}
+_SAVE_LOCKS_GUARD = threading.Lock()
+
+
+def _job_save_lock(job_id: str) -> threading.Lock:
+    """One lock per job id for from_job saves; locks of evicted jobs are dropped."""
+    with _SAVE_LOCKS_GUARD:
+        for stale in [jid for jid in _SAVE_LOCKS if jid not in ACTIVE_JOBS]:
+            _SAVE_LOCKS.pop(stale, None)
+        return _SAVE_LOCKS.setdefault(job_id, threading.Lock())
 
 
 @router.post("/circuits", response_model=schemas.SavedCircuitResponse, status_code=status.HTTP_201_CREATED)
@@ -44,7 +56,8 @@ def get_saved_circuits(
     return history_service.list_circuits(db, current_user.id)
 
 
-@router.post("/runs", response_model=schemas.RunHistoryResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/runs", response_model=schemas.RunHistoryResponse, status_code=status.HTTP_201_CREATED,
+             responses=responses(422))
 def save_run(
     run_payload: dict,
     circuit_id: str | None = None,
@@ -54,7 +67,13 @@ def save_run(
     """Save a completed run's report to the current user's history. Statevectors are
     removed and the stored report is marked ``statevector_storage="removed_before_storage"``;
     it goes to local disk or S3 per STORAGE_MODE, with a reference in the database.
-    Optionally link it to a saved circuit via circuit_id."""
+    Optionally link it to a saved circuit via circuit_id. 422 for a body that is neither a
+    single-circuit report (raw_results list) nor a batch report (benchmark_summary list).
+    Prefer POST /history/runs/from_job/{job_id}, which stores the server's copy."""
+    problems = history_service.report_structure_problems(run_payload)
+    if problems:
+        raise HTTPException(status_code=422, detail=[
+            {"loc": loc, "msg": msg, "type": "value_error"} for loc, msg in problems])
     try:
         return history_service.save_run(db, current_user.id, run_payload, circuit_id)
     except Exception:
@@ -78,18 +97,21 @@ def save_run_from_job(
     and stores nothing new. 404 if the job id is unknown or expired; 409 if the job has not
     finished, failed before any runner ran, or is an experiment."""
     report = job_report_or_error(job_id, "save")
-    saved_runs = ACTIVE_JOBS[job_id].setdefault("saved_runs", {})
-    existing = history_service.find_run(db, current_user.id, saved_runs.get(current_user.id))
-    if existing is not None:
-        response.status_code = status.HTTP_200_OK
-        return existing
-    name = (body.name if body else None) or history_service.default_run_name(report, job_id)
-    try:
-        run = history_service.save_run(
-            db, current_user.id, {**report, "run_name": name, "job_id": job_id})
-    except Exception:
-        raise HTTPException(status_code=500, detail="Failed to save run history")
-    saved_runs[current_user.id] = run.id
+    with _job_save_lock(job_id):
+        saved_runs = ACTIVE_JOBS[job_id].setdefault("saved_runs", {})
+        existing = history_service.find_run(db, current_user.id, saved_runs.get(current_user.id))
+        if existing is not None:
+            response.status_code = status.HTTP_200_OK
+            existing.job_id = job_id
+            return existing
+        name = (body.run_name if body else None) or history_service.default_run_name(report, job_id)
+        try:
+            run = history_service.save_run(
+                db, current_user.id, {**report, "run_name": name, "job_id": job_id})
+        except Exception:
+            raise HTTPException(status_code=500, detail="Failed to save run history")
+        saved_runs[current_user.id] = run.id
+    run.job_id = job_id
     return run
 
 
@@ -160,10 +182,10 @@ def export_run_as_ro_crate(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    """Export a saved run as an RO-Crate ZIP bundle (without statevectors, which are not
-    kept in history)."""
+    """Export a saved run as an RO-Crate ZIP bundle. The crate carries the run's current
+    name; stored reports keep each statevector's sha256 and length, not the vector."""
     try:
-        report_data = history_service.get_run_report(db, current_user.id, run_id)
+        report_data = history_service.get_run_report_with_metadata(db, current_user.id, run_id)
     except history_service.RunNotFound:
         raise HTTPException(status_code=404, detail="Run history not found")
     except Exception:

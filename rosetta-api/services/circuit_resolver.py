@@ -3,10 +3,13 @@
 ``resolve_circuit_qasm`` turns one batch or experiment task into OpenQASM 2.0 text.
 ``prepare_statevector_dispatch`` and ``prepare_measured_dispatch`` build the exact circuit
 text each runner group receives, and return every change made to it as a list of
-``"API: ..."`` strings. ``strip_terminal_measurements`` raises
+``"API: ..."`` strings. With preprocessing they raise ``ParameterExpressionError`` or
+``RoundTripIntegrityError`` rather than dispatch a circuit pytket cannot parse faithfully. ``strip_terminal_measurements`` raises
 ``StatevectorIncompatible`` for circuits statevector mode cannot represent.
 """
 
+import ast
+import math
 import re
 
 from config import settings
@@ -283,6 +286,124 @@ def strip_terminal_measurements(qasm: str):
     return "\n".join(kept) + "\n", note
 
 
+# --- '^' in gate parameters ------------------------------------------------------------
+
+class ParameterExpressionError(ValueError):
+    """A gate parameter expression the API cannot evaluate before the pytket round-trip."""
+
+
+_QASM_FUNCTIONS = {"sin": math.sin, "cos": math.cos, "tan": math.tan, "exp": math.exp,
+                   "ln": math.log, "sqrt": math.sqrt}
+_BINARY_OPS = {ast.Add: lambda a, b: a + b, ast.Sub: lambda a, b: a - b,
+               ast.Mult: lambda a, b: a * b, ast.Div: lambda a, b: a / b,
+               ast.Pow: lambda a, b: a ** b}
+_CARET_NOTE = ("API: evaluated constant gate parameters (pytket's parser does not accept '^'): "
+               "each parameter of a top-level gate statement containing '^' was replaced by its "
+               "value in full double precision")
+
+
+def _eval_node(node):
+    if isinstance(node, ast.Expression):
+        return _eval_node(node.body)
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) \
+            and not isinstance(node.value, bool):
+        return float(node.value)
+    if isinstance(node, ast.Name) and node.id == "pi":
+        return math.pi
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
+        value = _eval_node(node.operand)
+        return -value if isinstance(node.op, ast.USub) else value
+    if isinstance(node, ast.BinOp) and type(node.op) in _BINARY_OPS:
+        return _BINARY_OPS[type(node.op)](_eval_node(node.left), _eval_node(node.right))
+    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            and node.func.id in _QASM_FUNCTIONS and len(node.args) == 1 and not node.keywords):
+        return _QASM_FUNCTIONS[node.func.id](_eval_node(node.args[0]))
+    raise ParameterExpressionError("only numbers, pi, + - * / ^, unary minus and "
+                                   "sin/cos/tan/exp/ln/sqrt are allowed")
+
+
+def evaluate_constant_expression(text: str) -> float:
+    """Value of an OpenQASM 2.0 constant expression (numbers, pi, + - * / ^, unary minus,
+    sin cos tan exp ln sqrt), computed in floating point. Raises
+    ParameterExpressionError for anything else or a non-finite value."""
+    try:
+        tree = ast.parse(text.replace("^", "**").strip(), mode="eval")
+        value = _eval_node(tree)
+    except ParameterExpressionError:
+        raise
+    except OverflowError:
+        raise ParameterExpressionError("the value is too large")
+    except ZeroDivisionError:
+        raise ParameterExpressionError("division by zero")
+    except (SyntaxError, ValueError) as exc:
+        raise ParameterExpressionError(str(exc) or type(exc).__name__)
+    if not math.isfinite(value):
+        raise ParameterExpressionError("the value is not finite")
+    return value
+
+
+def _split_params(text: str) -> list:
+    parts, depth, buf = [], 0, []
+    for ch in text:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        if ch == "," and depth == 0:
+            parts.append("".join(buf))
+            buf = []
+        else:
+            buf.append(ch)
+    parts.append("".join(buf))
+    return parts
+
+
+def _evaluated_statement(stmt: str) -> str:
+    op, head, args = _split_op(stmt)
+    open_at = head.find("(", _OP_RE.match(head).end()) if op is not None else -1
+    if open_at < 0 or "^" not in head[open_at:]:
+        raise ParameterExpressionError(f"'^' outside a gate parameter list in '{stmt}'")
+    inner = head[open_at + 1:-1]
+    values = []
+    for param in _split_params(inner):
+        if "^" not in param:
+            values.append(param.strip())
+            continue
+        try:
+            values.append(repr(evaluate_constant_expression(param)))
+        except ParameterExpressionError as exc:
+            raise ParameterExpressionError(
+                f"cannot evaluate the parameter '{param.strip()}' of '{stmt}': {exc}")
+    return f"{head[:open_at]}({', '.join(values)}){args}"
+
+
+def evaluate_caret_parameters(qasm: str):
+    """Replace every parameter of a top-level gate statement that contains '^' with its
+    value, for pytket's parser, which rejects '^'.
+
+    Returns ``(qasm, note)``; ``note`` is None and the text is unchanged when no top-level
+    statement contains '^'. Otherwise the text is rebuilt from its statements (comments
+    removed). Raises ParameterExpressionError for '^' inside a gate definition, where the
+    expression is symbolic, or for a parameter that is not a constant expression.
+    """
+    statements = split_statements(qasm)
+    if not any("^" in stmt for stmt in statements):
+        return qasm, None
+    out = []
+    for stmt in statements:
+        if "^" not in stmt:
+            out.append(stmt)
+            continue
+        name = _GATE_NAME_RE.match(stmt)
+        if name:
+            raise ParameterExpressionError(
+                f"gate definition '{name.group(1)}' uses '^' in its body, which pytket's parser "
+                f"does not accept; write the power as a product (e.g. theta*theta) or run with "
+                f"apply_preprocessing=false")
+        out.append(_evaluated_statement(stmt))
+    return "\n".join(out) + "\n", _CARET_NOTE
+
+
 def _restore_register_order(emitted: str, original: str) -> str:
     """Reorder the register declarations of ``emitted`` to their order in ``original``."""
     order = {(kind, name): k for k, (kind, name, _) in enumerate(declared_registers(original))}
@@ -303,16 +424,57 @@ def _classical_width(qasm: str) -> int:
     return max(32, sum(size for kind, _, size in declared_registers(qasm) if kind == "creg"))
 
 
+# --- pytket round-trip ------------------------------------------------------------------
+
+class RoundTripIntegrityError(ValueError):
+    """pytket's parse of the circuit dropped or replaced a user-defined gate."""
+
+
+def _custom_gate_names(circ) -> set:
+    from pytket.circuit import OpType
+    names = set()
+    for cmd in circ.get_commands():
+        op = cmd.op
+        if op.type == OpType.Conditional:
+            op = op.op
+        if op.type == OpType.CustomGate:
+            names.add(op.gate.name)
+    return names
+
+
+def check_round_trip_integrity(circ, qasm: str) -> None:
+    """Raise RoundTripIntegrityError when pytket's parse of ``qasm`` turned a gate call
+    into a barrier, or when a user-defined gate called at top level is not a custom gate
+    in ``circ`` (pytket substituted a built-in operation for it)."""
+    from pytket.circuit import OpType
+    for cmd in circ.get_commands():
+        data = getattr(cmd.op, "data", "") if cmd.op.type == OpType.Barrier else ""
+        if data:
+            raise RoundTripIntegrityError(
+                f"pytket's parser turned the gate call '{data}' into a barrier, which would "
+                f"delete it from the dispatched circuit; rename the gate")
+    statements = split_statements(qasm)
+    defined = {m.group(1) for stmt in statements for m in [_GATE_NAME_RE.match(stmt)] if m}
+    called = {op for stmt in statements for op, _h, _a in [_split_op(stmt)] if op in defined}
+    missing = sorted(called - _custom_gate_names(circ))
+    if missing:
+        raise RoundTripIntegrityError(
+            f"pytket's parser replaced the user-defined gate(s) {', '.join(missing)} with a "
+            f"different operation instead of their definitions; rename the gate(s)")
+
+
 def _pytket_round_trip(qasm: str, remove_barriers: bool):
     """Parse and re-emit ``qasm`` with pytket, optionally removing barriers.
 
-    Register declarations keep their order in ``qasm``.
+    Register declarations keep their order in ``qasm``. Raises RoundTripIntegrityError
+    (see ``check_round_trip_integrity``) instead of emitting a circuit that lost a gate.
     """
     import pytket.qasm
     from pytket.passes import RemoveBarriers
 
     maxwidth = _classical_width(qasm)
     circ = pytket.qasm.circuit_from_qasm_str(qasm, maxwidth=maxwidth)
+    check_round_trip_integrity(circ, qasm)
     notes = [
         "API: parsed and re-emitted with pytket (circuit_from_qasm_str / circuit_to_qasm_str): "
         "register declarations kept in declaration order, custom gate definitions inlined, "
@@ -326,24 +488,35 @@ def _pytket_round_trip(qasm: str, remove_barriers: bool):
     return _restore_register_order(emitted, qasm), notes
 
 
+def _preprocessed_base(qasm: str):
+    """Register merge, '^' parameter evaluation and the pytket round-trip, with notes."""
+    notes = []
+    text, note = flatten_qregs(qasm)
+    if note:
+        notes.append(note)
+    text, note = evaluate_caret_parameters(text)
+    if note:
+        notes.append(note)
+    text, rt_notes = _pytket_round_trip(text, remove_barriers=True)
+    return text, notes + rt_notes
+
+
 def prepare_statevector_dispatch(qasm: str, apply_preprocessing: bool) -> dict:
     """Return ``{"qasm", "api_preprocessing_applied"}`` for the statevector runners.
 
     Terminal measurements are always removed (``strip_terminal_measurements``, which
     raises ``StatevectorIncompatible`` for mid-circuit measurement, reset or ``if``). With
     preprocessing, multi-register circuits are then merged in declaration order and
-    round-tripped through pytket with barriers removed; without it the text is otherwise
+    round-tripped through pytket with barriers removed (parameters containing '^' are
+    evaluated first, see ``evaluate_caret_parameters``); without it the text is otherwise
     dispatched unchanged.
     """
     text, note = strip_terminal_measurements(qasm)
     notes = [note] if note else []
     if not apply_preprocessing:
         return {"qasm": text, "api_preprocessing_applied": notes}
-    text, note = flatten_qregs(text)
-    if note:
-        notes.append(note)
-    text, rt_notes = _pytket_round_trip(text, remove_barriers=True)
-    return {"qasm": text, "api_preprocessing_applied": notes + rt_notes}
+    text, pp_notes = _preprocessed_base(text)
+    return {"qasm": text, "api_preprocessing_applied": notes + pp_notes}
 
 
 def prepare_measured_dispatch(qasm: str, apply_preprocessing: bool) -> dict:
@@ -358,11 +531,7 @@ def prepare_measured_dispatch(qasm: str, apply_preprocessing: bool) -> dict:
     """
     base, base_notes = qasm, []
     if apply_preprocessing:
-        base, note = flatten_qregs(qasm)
-        if note:
-            base_notes.append(note)
-        base, rt_notes = _pytket_round_trip(base, remove_barriers=True)
-        base_notes += rt_notes
+        base, base_notes = _preprocessed_base(qasm)
 
     native, native_notes = base, list(base_notes)
     if not has_measurements(native):

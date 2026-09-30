@@ -3,7 +3,7 @@ import numpy as np
 import pytket.qasm
 
 from qrosetta_commons.counts import (
-    prepare_final_state_sampling, prepare_statevector_qasm, statevector_in_declaration_order,
+    expand_register_broadcasts, prepare_final_state_sampling, prepare_statevector_qasm, statevector_in_declaration_order,
     unit_pairs,
 )
 from qrosetta_commons.helpers import (
@@ -16,9 +16,10 @@ declare_sdk_packages("pytket", "numpy")
 
 def _compile(payload):
     qasm, notes = prepare_statevector_qasm(payload["circuit_data"])
+    qasm, note = expand_register_broadcasts(qasm, "pytket drops broadcast gate calls")
     circ = pytket.qasm.circuit_from_qasm_str(qasm)
     return CompileResult(circuit=(circ, unit_pairs(circ.qubits)), n_qubits=circ.n_qubits,
-                         preprocessing_applied=notes)
+                         preprocessing_applied=notes + ([note] if note else []))
 
 
 def _execute(compiled, _payload):
