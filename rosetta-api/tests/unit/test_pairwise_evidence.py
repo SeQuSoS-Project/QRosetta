@@ -569,3 +569,62 @@ def test_single_outcome_tables_use_one_degree_of_freedom_and_low_count_checks():
         {"simulator": "a", "counts": {"00": 2048}}, {"simulator": "b", "counts": {"00": 2048}},
     ], n_shots=2048), "a", "b")["metrics"]["statistical_test"]
     assert many["verdict"] == "consistent"
+
+
+def test_power_is_evaluated_at_bonferroni_alpha_over_the_comparable_pairs():
+    backends = [{"simulator": s, "counts": {"0": 1000, "1": 1000}} for s in "abcde"]
+    report = create_counts_report(backends, n_shots=2000)
+    power = _record(report, "a", "b")["metrics"]["statistical_test"]["power"]
+    assert power["m_pairs"] == 10
+    assert power["alpha_used"] == 0.05 / 10
+    assert power["recommended_shots_per_backend"] == _shots_per_backend_for_target_power(
+        0.005, 0.8, 0.05) == 2663
+    assert power["power_to_detect_delta_at_observed_shots"] < 0.8
+    assert "alpha/m" in power["model"]
+    summary = report["statistical_test_summary"]
+    assert summary["power_alpha"] == 0.005 and "PRDS" in summary["fdr_dependence_note"]
+    assert summary["verdict_counts"] == {"inconclusive_low_shots": 10}
+
+    enough = [{"simulator": s, "counts": {"0": 1332, "1": 1331}} for s in "abcde"]
+    stat = _record(create_counts_report(enough, n_shots=2663), "a", "b")["metrics"]["statistical_test"]
+    assert stat["power"]["power_to_detect_delta_at_observed_shots"] >= 0.8
+    assert stat["verdict"] == "consistent"
+
+
+def test_divergence_reports_record_analysis_version_and_effective_thresholds():
+    from services.analysis.divergence import ANALYSIS_VERSION
+    counts = create_counts_report([
+        {"simulator": "a", "counts": {"0": 5}}, {"simulator": "b", "counts": {"0": 5}},
+    ], n_shots=5, thresholds={"js_threshold": 0.2})
+    assert counts["analysis_version"] == ANALYSIS_VERSION
+    assert counts["agreement_thresholds"]["js_threshold"] == 0.2
+    assert counts["agreement_thresholds"]["hellinger_threshold"] == 0.1
+    sv = create_divergence_report([
+        {"simulator": "a", "statevector": ["1", "0"]}, {"simulator": "b", "statevector": ["1", "0"]},
+    ])
+    assert sv["analysis_version"] == ANALYSIS_VERSION
+    assert set(sv["agreement_thresholds"]) == {"fidelity_tolerance", "phase_tolerance", "norm_tolerance"}
+
+
+def test_low_expected_counts_reports_whether_more_shots_can_resolve_it():
+    fixable = _record(create_counts_report([
+        {"simulator": "a", "counts": {"0": 99997, "1": 3}},
+        {"simulator": "b", "counts": {"0": 99997, "1": 3}},
+    ], n_shots=100000), "a", "b")["metrics"]["statistical_test"]
+    assert fixable["inconclusive_reason"] == "low_expected_counts"
+    assert fixable["resolvable_by_more_shots"] is True
+    assert 100000 < fixable["shots_per_backend_for_expected_counts"] <= 1_000_000
+
+    unfixable = _record(create_counts_report([
+        {"simulator": "a", "counts": {"0": 999999, "1": 1}},
+        {"simulator": "b", "counts": {"0": 1000000}},
+    ], n_shots=1000000), "a", "b")["metrics"]["statistical_test"]
+    assert unfixable["inconclusive_reason"] == "low_expected_counts"
+    assert unfixable["resolvable_by_more_shots"] is False
+    assert unfixable["shots_per_backend_for_expected_counts"] is None
+
+    low_power = _record(create_counts_report([
+        {"simulator": "a", "counts": {"00": 10}}, {"simulator": "b", "counts": {"00": 10}},
+    ], n_shots=10), "a", "b")["metrics"]["statistical_test"]
+    assert low_power["inconclusive_reason"] == "low_power"
+    assert low_power["resolvable_by_more_shots"] is True

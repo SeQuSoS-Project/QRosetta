@@ -4,8 +4,9 @@ import gc
 import math
 
 from .common import (
-    DEFAULT_FIDELITY_TOLERANCE, DEFAULT_HELLINGER_THRESHOLD, DEFAULT_JS_THRESHOLD,
-    DEFAULT_NORM_TOLERANCE, DEFAULT_PHASE_TOLERANCE, JS_DIVERGENCE_UNIT, _threshold, logger,
+    ANALYSIS_VERSION, DEFAULT_FIDELITY_TOLERANCE, DEFAULT_HELLINGER_THRESHOLD,
+    DEFAULT_JS_THRESHOLD, DEFAULT_NORM_TOLERANCE, DEFAULT_PHASE_TOLERANCE, JS_DIVERGENCE_UNIT,
+    STAT_TEST_ALPHA, STAT_TEST_DELTA_TV, STAT_TEST_TARGET_POWER, _threshold, logger,
 )
 from .classification import (
     _classify_counts_pair, _classify_statevector_pair, _counts_not_comparable_record,
@@ -304,6 +305,12 @@ def create_divergence_report(results_list, thresholds=None):
     gc.collect()
 
     report = {
+        "analysis_version": ANALYSIS_VERSION,
+        "agreement_thresholds": {
+            "fidelity_tolerance": fidelity_tolerance,
+            "phase_tolerance": phase_tolerance,
+            "norm_tolerance": norm_tolerance,
+        },
         "simulators": simulators,
         "fidelity_matrix": fidelity_matrix,
         "relative_phase_matrix": phase_matrix,
@@ -528,6 +535,14 @@ def create_counts_report(results_list, n_shots, thresholds=None):
 
     ordering_map = {res.get('simulator'): res.get('qubit_ordering') for res in results_list if "qubit_ordering" in res}
     return {
+        "analysis_version": ANALYSIS_VERSION,
+        "agreement_thresholds": {
+            "js_threshold": js_threshold,
+            "hellinger_threshold": hellinger_threshold,
+            "stat_test_alpha": STAT_TEST_ALPHA,
+            "stat_test_target_power": STAT_TEST_TARGET_POWER,
+            "stat_test_delta_tv": STAT_TEST_DELTA_TV,
+        },
         "simulators": simulators,
         "statistical_distance_matrix (js_divergence)": js_matrix,
         "hellinger_distance_matrix": hellinger_matrix,

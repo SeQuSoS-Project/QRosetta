@@ -799,3 +799,29 @@ class TestRunnerLocksAndThresholds:
         csv_desc = byid["tables/agreement.csv"]["description"]
         assert "carries no caption" in csv_desc and "registered-transform lattice" in csv_desc
         assert "carries the caption" in byid["tables/agreement.latex"]["description"]
+
+
+class TestAnalysisProvenance:
+    def test_single_run_records_analysis_version_bypass_and_report_thresholds(self):
+        results = json.loads(json.dumps(SAMPLE_RESULTS_BATCH_MEASURED["benchmark_summary"][0]))
+        results["bypass_limits"] = True
+        results["divergence_report"]["analysis_version"] = "divergence-test"
+        results["divergence_report"]["agreement_thresholds"] = {
+            "js_threshold": 0.3, "hellinger_threshold": 0.1}
+        prov = _provenance(build_ro_crate(_measured_ctx(results=results)))
+        config = prov["run_configuration"]
+        assert config["analysis_version"] == "divergence-test"
+        assert config["bypass_limits"] is True
+        assert config["agreement_thresholds"] == {"js_threshold": 0.3, "hellinger_threshold": 0.1}
+        assert "exporter_analysis_version" in prov
+
+    def test_batch_records_each_task_request_and_thresholds(self):
+        results = json.loads(json.dumps(SAMPLE_RESULTS_BATCH_MEASURED))
+        results["benchmark_summary"][0]["task_request"] = {"source": "preset", "algorithm": "bell",
+                                                           "qubits": 2}
+        prov = _provenance(build_ro_crate(_batch_ctx(results=results)))
+        config = prov["run_configuration"]
+        assert config["task_requests"]["bell-2q"]["request"]["algorithm"] == "bell"
+        assert config["task_requests"]["ghz-3q"]["request"] == "not recorded"
+        assert set(config["agreement_thresholds_by_task"]) == {"bell-2q", "ghz-3q"}
+        assert config["bypass_limits"] == "not recorded"

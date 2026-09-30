@@ -12,6 +12,8 @@ from matplotlib.colors import LinearSegmentedColormap
 
 from qrosetta_commons.helpers import get_logger
 
+from services.analysis.divergence.common import ANALYSIS_VERSION
+
 logger = get_logger("rosetta-publication")
 
 _MPL_LOCK = threading.Lock()
@@ -75,8 +77,10 @@ _AGREEMENT_GLOSSARY = [
      "between the two states, which is unobservable. An offset within phase_tolerance is "
      "reported as 0 and the pair agrees directly."),
     ("agree_after_bit_reversal", "Match after reversing qubit/bit order (an endianness "
-     "convention). A measured pair whose declared bit orders differ (lsb vs msb) is checked "
-     "in the bit-reversed basis first."),
+     "convention). For a measured pair whose declared bit orders differ (lsb vs msb) the "
+     "label means the pair agrees in the label-aligned (bit-reversed) basis; it is used by "
+     "convention even when the direct distances are equal too, as for GHZ-type outcomes "
+     "that bit reversal leaves unchanged."),
     ("agree_after_qubit_permutation", "Match after a bounded qubit permutation (≤7 qubits)."),
     ("agree_after_normalization", "At least one input statevector has a norm differing from 1 by "
      "more than norm_tolerance; the normalised vectors agree. metrics.normalized_agreement "
@@ -110,16 +114,22 @@ _NOT_COMPARABLE_GLOSSARY = [
 ]
 _VERDICT_GLOSSARY = [
     ("consistent", "Neither the chi-square test nor the G-test is significant after BH (FDR) "
-     "correction, and the power to detect a total-variation gap of 0.05 at the observed shots "
-     "is at least 0.8."),
+     "correction over the m comparable pairs, and the power to detect a total-variation gap "
+     "of 0.05 at the observed shots is at least 0.8. Power is that of the chi-square test at "
+     "the Bonferroni level alpha/m (power.alpha_used, power.m_pairs), the threshold BH "
+     "applies to a single discovery, on df = tested outcome bins - 1 with Cohen's w = 0.05: "
+     "a lower bound for detecting one wrong backend."),
     ("distinguishable", "Both tests are significant after BH (FDR) correction. At FDR q = 0.05 "
      "the expected share of false discoveries among flagged pairs is at most q, so a few "
      "flagged pairs are expected by chance."),
     ("inconclusive_low_shots", "Expected counts stay below 5 after pooling rare outcomes "
      "(inconclusive_reason = low_expected_counts), or neither test is significant and the "
-     "power to detect a total-variation gap of 0.05 is below 0.8 (inconclusive_reason = "
-     "low_power). power.recommended_exceeds_actual is true when the recommended shots per "
-     "backend exceed the shots used."),
+     "power at alpha/m to detect a total-variation gap of 0.05 is below 0.8 "
+     "(inconclusive_reason = low_power). resolvable_by_more_shots is false when no shot count "
+     "up to the platform maximum would give a testable table (low_expected_counts) or the "
+     "target power (low_power); shots_per_backend_for_expected_counts gives the count that "
+     "would. power.recommended_exceeds_actual is true when the recommended shots per backend "
+     "exceed the shots used."),
     ("ambiguous", "Exactly one of the chi-square test and the G-test is significant after BH (FDR) correction."),
 ]
 _ASSESSMENT_GLOSSARY = [
@@ -130,7 +140,8 @@ _ASSESSMENT_GLOSSARY = [
      "beyond sampling noise, subject to the FDR share of false discoveries."),
     ("ambiguous", "Exactly one of the two tests is significant."),
     ("inconclusive_low_shots", "The shot count cannot separate the distributions: expected "
-     "counts stay below 5 after pooling, or the test is not significant at power below 0.8."),
+     "counts stay below 5 after pooling, or the test is not significant at power below 0.8 "
+     "(evaluated at alpha/m)."),
     ("not_comparable", "At least one side lacks usable counts."),
 ]
 _UNRANKED_GLOSSARY = [
@@ -138,6 +149,8 @@ _UNRANKED_GLOSSARY = [
      "offline) and its metrics are shown as —."),
     ("missing_timing", "The run returned no execution_time_sec."),
     ("missing_process_peak_rss", "The run returned no process_peak_rss_mb."),
+    ("gpu_memory_not_measured", "The run executed on a GPU. The memory fields are host RSS "
+     "and do not include GPU device memory, so the run is not ranked by memory."),
 ]
 _MEASUREMENT_NOTES = [
     "Global phase offset arg⟨a|b⟩: the phase of the inner product of two normalised "
@@ -150,7 +163,14 @@ _MEASUREMENT_NOTES = [
     "direct distances are recorded as well.",
     "Outcomes with an expected count below 5 are pooled into one bin before the chi-square "
     "and G-tests; statistical_test.pooled_outcomes gives how many were pooled.",
+    "Benjamini-Hochberg controls the false discovery rate when the p-values are independent "
+    "or positively regression dependent (PRDS). Pairs that share a backend reuse its sample "
+    "and are dependent; PRDS is not established for chi-square statistics sharing a sample.",
 ]
+_ANALYSIS_VERSION_NOTE = (
+    f"Analysis version {ANALYSIS_VERSION} (analysis_version in each divergence report). The "
+    "labels and verdicts are a function of the outputs and of the analysis rules; verdicts "
+    "computed under different analysis versions may differ for identical counts.")
 _THRESHOLD_DEFAULTS = ("fidelity_tolerance = 1e-5, phase_tolerance = 1e-6 rad, "
                        "norm_tolerance = 1e-4, js_threshold = 0.01 nats, "
                        "hellinger_threshold = 0.1")

@@ -18,8 +18,8 @@ from .figures import (
 )
 from .formats import _render_figure, _table_bytes, basename_slug
 from .selectors import (
-    COMMON_KEY_ORDER_NOTE, JS_UNIT, _distinct, _heatmap_specs, _msb_counts, _pairwise_records,
-    _run_label, _timing_samples,
+    COMMON_KEY_ORDER_NOTE, JS_UNIT, _circuit_name, _distinct, _heatmap_specs, _msb_counts,
+    _pairwise_records, _run_label, _timing_samples,
 )
 from .tables import (
     _tbl_agreement, _tbl_matrix, _tbl_metadata, _tbl_performance, _tbl_resources,
@@ -88,31 +88,35 @@ def _iter_artifacts(results: dict, mode: str) -> List[dict]:
                      lambda: _fig_ranking_bar(results, "performance_report",
                                               [("compilation_time_sec", "#2a78d6", "compilation"),
                                                ("simulation_time_sec", "#1baf7a", "simulation")],
-                                              "Wall-clock time by stage", "seconds",
+                                              f"Wall-clock time by stage: {_circuit_name(results)}",
+                                              "seconds",
                                               f"n={_timing_samples(results)} timing sample(s) per "
                                               "backend; timed run only, warm-up excluded"),
                      "Stacked compilation + simulation wall-clock time per backend (raw), "
-                     f"n={_timing_samples(results)} timing sample(s) per backend; " + unranked_note)
+                     f"n={_timing_samples(results)} timing sample(s) per backend; GPU runs are "
+                     "labelled (GPU); " + unranked_note)
         table_artifact("performance", "Execution-time table", "Performance",
                        lambda: _tbl_performance(results),
-                       "Per-backend compilation, simulation and total wall-clock time, simulation "
-                       "and process CPU time, and status (raw).")
+                       "Per-backend device, compilation, simulation and total wall-clock time, "
+                       "simulation and process CPU time, and status (raw).")
 
     res = results.get("resource_report") or {}
     if res.get("ranking") or res.get("unranked"):
         fig_artifact("resource_memory", "Process peak RSS chart", "Resources",
                      lambda: _fig_ranking_bar(results, "resource_report",
                                               [("process_peak_rss_mb", "#2a78d6", "process peak RSS")],
-                                              "Process peak RSS (whole runner process)", "MiB",
+                                              "Process peak RSS (whole runner process): "
+                                              f"{_circuit_name(results)}", "MiB",
                                               "includes interpreter start, SDK import and warm-up; "
                                               "SDK import dominates for small circuits"),
                      "Peak RSS of each backend's simulating process over its whole life "
                      "(interpreter start, imports, warm-up and timed run), in MiB; method: "
-                     f"{_distinct(results, 'process_peak_rss_method')}. Ranked lowest first; "
-                     + unranked_note)
+                     f"{_distinct(results, 'process_peak_rss_method')}. Ranked lowest first; GPU "
+                     "runs are labelled (GPU) and not ranked because GPU device memory is not "
+                     "measured; " + unranked_note)
         table_artifact("resources", "Resource-usage table", "Resources",
                        lambda: _tbl_resources(results),
-                       "Per-backend process peak RSS, sim-window peak RSS and RSS delta, "
+                       "Per-backend device, process peak RSS, sim-window peak RSS and RSS delta, "
                        "theoretical statevector size, precision and status (raw).")
 
     if mode == "measured":
@@ -166,7 +170,7 @@ def _iter_artifacts(results: dict, mode: str) -> List[dict]:
     if results.get("raw_results"):
         table_artifact("metadata", "Run + provenance metadata", "Metadata",
                        lambda: _tbl_metadata(results, mode),
-                       "Backends, SDK versions, qubit-ordering & sampling labels, opt level, run params.")
+                       "Backends, device, SDK versions, qubit-ordering & sampling labels, opt level, run params.")
         for r in results.get("raw_results", []):
             sim = r.get("simulator")
             if sim and r.get("transpiled_qasm"):

@@ -11,8 +11,18 @@ from scipy.optimize import brentq
 
 from .common import STAT_TEST_ALPHA, STAT_TEST_DELTA_TV, STAT_TEST_TARGET_POWER
 
-POWER_MODEL = "min_cohens_w (w = delta_tv, df = tested outcome bins - 1, at least 1)"
+POWER_MODEL = (
+    "min_cohens_w at the Bonferroni level alpha/m (w = delta_tv; df = tested outcome bins - 1, "
+    "at least 1; m = comparable pairs in the report, the family BH corrects over). alpha/m is "
+    "the threshold BH applies to a single discovery, so the power is a lower bound for "
+    "detecting one wrong backend under the rule that both tests are significant after BH."
+)
 MIN_EXPECTED_COUNT = 5.0
+FDR_DEPENDENCE_NOTE = (
+    "BH controls the false discovery rate when the p-values are independent or positively "
+    "regression dependent (PRDS). Pairs that share a backend reuse its sample and are "
+    "dependent; PRDS is not established for chi-square statistics sharing a sample."
+)
 
 
 def _shots_per_backend_for_target_power(alpha, target_power, delta_tv, df=1):
@@ -40,6 +50,56 @@ def _power_at_shots(alpha, delta_tv, df, n_total):
     """Power to detect ``delta_tv`` with ``n_total`` shots across both backends, on ``df``."""
     crit = _chi2_dist.ppf(1 - alpha, df)
     return float(1 - ncx2.cdf(crit, df, n_total * (delta_tv ** 2)))
+
+
+def _set_power(block, alpha, m_pairs):
+    """Fill ``block["power"]`` for a family of ``m_pairs`` tests at the level alpha/m_pairs."""
+    power = block["power"]
+    alpha_used = alpha / max(int(m_pairs), 1)
+    n_shots = list(block["n_shots"].values())
+    n_total = float(sum(n_shots))
+    recommended = _shots_per_backend_for_target_power(
+        alpha_used, power["target_power"], power["delta_tv"], power["df"])
+    power.update({
+        "alpha_used": alpha_used,
+        "m_pairs": int(m_pairs),
+        "power_to_detect_delta_at_observed_shots": _power_at_shots(
+            alpha_used, power["delta_tv"], power["df"], n_total),
+        "shots_per_backend_for_target_power": recommended,
+        "recommended_shots_per_backend": recommended,
+        "recommended_exceeds_actual": (
+            None if recommended is None else bool(recommended > min(n_shots))),
+    })
+
+
+def _max_shots_per_backend():
+    from config import settings
+    return int(settings.MAX_SHOTS)
+
+
+def _shots_per_backend_for_expected_counts(row_i, row_j):
+    """Smallest shots per backend at which the observed proportions pool into a testable table.
+
+    Both rows are scaled to the same shots per backend, keeping each row's observed
+    proportions. None when no count up to the platform's MAX_SHOTS suffices.
+    """
+    p_i = row_i / row_i.sum()
+    p_j = row_j / row_j.sum()
+
+    def testable(shots):
+        return _pool_rare_outcomes(p_i * shots, p_j * shots)[3]
+
+    hi = _max_shots_per_backend()
+    if not testable(hi):
+        return None
+    lo = 1
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if testable(mid):
+            hi = mid
+        else:
+            lo = mid + 1
+    return int(lo)
 
 
 def _shared_seed(res_i, res_j):
@@ -134,7 +194,6 @@ def _statistical_agreement_test(
 
     t_i, t_j, pooled_outcomes, counts_ok = _pool_rare_outcomes(row_i, row_j)
     df = max(len(t_i) - 1, 1)
-    recommended = _shots_per_backend_for_target_power(alpha, target_power, delta_tv, df)
     block = {
         "basis": basis,
         "basis_source": "declared_qubit_ordering",
@@ -153,12 +212,6 @@ def _statistical_agreement_test(
             "target_power": target_power,
             "model": POWER_MODEL,
             "df": df,
-            "power_to_detect_delta_at_observed_shots": _power_at_shots(alpha, delta_tv, df, n_total),
-            "shots_per_backend_for_target_power": recommended,
-            "recommended_shots_per_backend": recommended,
-            "recommended_exceeds_actual": (
-                None if recommended is None else bool(recommended > min(n_i, n_j))
-            ),
         },
         "chi2": {
             "statistic": None,
@@ -177,9 +230,13 @@ def _statistical_agreement_test(
             "significant_bh": None,
         },
         "low_count_warning": not counts_ok,
+        "shots_per_backend_for_expected_counts": (
+            None if counts_ok else _shots_per_backend_for_expected_counts(row_i, row_j)),
         "inconclusive_reason": None,
+        "resolvable_by_more_shots": None,
         "verdict": None,
     }
+    _set_power(block, alpha, 1)
 
     if len(t_i) < 2:
         block["chi2"].update({"statistic": 0.0, "dof": df, "p_value": 1.0})
@@ -224,17 +281,23 @@ def _apply_multiple_comparison_correction(stat_records, alpha=STAT_TEST_ALPHA):
     """Fill BH/Bonferroni-adjusted p-values and verdicts across the pairwise family.
 
     ``stat_records`` holds one ``statistical_test`` block per tested pair. Correction is
-    applied per test (chi-square and G-test) across all pairs.
+    applied per test (chi-square and G-test) across all pairs. Power is recomputed at
+    alpha/m for the m pairs of the family before the verdicts are assigned.
     """
     m = len(stat_records)
+    summary = {
+        "family_size": m,
+        "alpha": alpha,
+        "power_alpha": alpha / m if m else None,
+        "power_model": POWER_MODEL,
+        "correction": ["benjamini_hochberg", "bonferroni"],
+        "fdr_dependence_note": FDR_DEPENDENCE_NOTE,
+    }
     if m == 0:
-        return {
-            "family_size": 0,
-            "alpha": alpha,
-            "correction": ["benjamini_hochberg", "bonferroni"],
-            "verdict_counts": {},
-            "n_significant_bh": {"chi2": 0, "g_test": 0},
-        }
+        return {**summary, "verdict_counts": {}, "n_significant_bh": {"chi2": 0, "g_test": 0}}
+
+    for rec in stat_records:
+        _set_power(rec, alpha, m)
 
     for test in ("chi2", "g_test"):
         raw = [rec[test]["p_value"] for rec in stat_records]
@@ -258,12 +321,16 @@ def _apply_multiple_comparison_correction(stat_records, alpha=STAT_TEST_ALPHA):
         if rec["low_count_warning"]:
             verdict = "inconclusive_low_shots"
             rec["inconclusive_reason"] = "low_expected_counts"
+            rec["resolvable_by_more_shots"] = rec.get("shots_per_backend_for_expected_counts") is not None
         elif chi2_sig and g_sig:
             verdict = "distinguishable"
         elif not chi2_sig and not g_sig:
             if power_at_obs is not None and power_at_obs < target:
                 verdict = "inconclusive_low_shots"
                 rec["inconclusive_reason"] = "low_power"
+                recommended = power.get("recommended_shots_per_backend")
+                rec["resolvable_by_more_shots"] = bool(
+                    recommended is not None and recommended <= _max_shots_per_backend())
             else:
                 verdict = "consistent"
         else:
@@ -271,10 +338,4 @@ def _apply_multiple_comparison_correction(stat_records, alpha=STAT_TEST_ALPHA):
         rec["verdict"] = verdict
         verdict_counts[verdict] = verdict_counts.get(verdict, 0) + 1
 
-    return {
-        "family_size": m,
-        "alpha": alpha,
-        "correction": ["benjamini_hochberg", "bonferroni"],
-        "verdict_counts": verdict_counts,
-        "n_significant_bh": n_sig,
-    }
+    return {**summary, "verdict_counts": verdict_counts, "n_significant_bh": n_sig}

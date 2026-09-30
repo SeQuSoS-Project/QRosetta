@@ -14,8 +14,8 @@ from typing import Any, Dict, List, Optional
 from config import settings
 from qrosetta_commons.helpers import get_logger
 from services.analysis.divergence.common import (
-    DEFAULT_FIDELITY_TOLERANCE, DEFAULT_HELLINGER_THRESHOLD, DEFAULT_JS_THRESHOLD,
-    DEFAULT_NORM_TOLERANCE, DEFAULT_PHASE_TOLERANCE,
+    ANALYSIS_VERSION, DEFAULT_FIDELITY_TOLERANCE, DEFAULT_HELLINGER_THRESHOLD,
+    DEFAULT_JS_THRESHOLD, DEFAULT_NORM_TOLERANCE, DEFAULT_PHASE_TOLERANCE,
 )
 from services.report_filters import (
     OMITTED_FOR_DISPLAY,
@@ -35,7 +35,7 @@ _RUN_CONFIG_FIELDS = (
     "execution_mode", "platform_version", "git_sha", "image_digests", "apply_preprocessing",
     "optimization_level", "runner_config", "runner_phases", "timeout_seconds",
     "timeout_scope", "agreement_thresholds", "n_shots", "seed", "seed_derivation",
-    "started_at", "finished_at",
+    "bypass_limits", "started_at", "finished_at",
 )
 
 
@@ -434,21 +434,45 @@ def _run_configuration(ctx: ExportContext) -> dict:
     config["agreement_thresholds"] = _effective_thresholds(ctx, requested)
     config["agreement_thresholds_requested"] = (
         requested if requested is not None else "none (defaults applied)")
+    config["analysis_version"] = _analysis_version(ctx)
+    tasks = _iter_tasks(ctx)
+    if any(t.task_id is not None for t in tasks):
+        config["agreement_thresholds_by_task"] = {
+            t.task_id: _task_effective_thresholds(ctx, t, requested) for t in tasks}
+        config["task_requests"] = {
+            t.task_id: {"task_name": t.label,
+                        "request": t.report.get("task_request", NOT_RECORDED)}
+            for t in tasks}
     if ctx.mode == "measured" and config.get("seed_derivation") == NOT_RECORDED:
         config["seed_derivation"] = "not recorded (every runner received the report seed unchanged)"
     return config
 
 
 def _effective_thresholds(ctx: ExportContext, requested) -> dict:
-    """Thresholds the analysis applied for this mode: defaults, overridden by the request's
+    """Thresholds the analysis applied for this mode: the first report's recorded
+    agreement_thresholds when present; otherwise defaults, overridden by the request's
     non-null values, overridden by the values recorded in the pairwise records."""
+    tasks = _iter_tasks(ctx)
+    return _task_effective_thresholds(ctx, tasks[0], requested) if tasks else dict(
+        _THRESHOLD_DEFAULTS.get(ctx.mode, {}))
+
+
+def _task_effective_thresholds(ctx: ExportContext, task: "_TaskView", requested) -> dict:
+    """Effective thresholds of one report (see _effective_thresholds)."""
+    divergence_report = task.report.get("divergence_report")
+    recorded = (divergence_report or {}).get("agreement_thresholds") \
+        if isinstance(divergence_report, dict) else None
+    if isinstance(recorded, dict) and recorded:
+        return dict(recorded)
     effective = dict(_THRESHOLD_DEFAULTS.get(ctx.mode, {}))
     for key, value in (requested if isinstance(requested, dict) else {}).items():
         if key in effective and value is not None:
             effective[key] = value
     pending = set(effective)
-    for record in _iter_pairwise_agreement_records(ctx):
-        metrics = record.get("metrics") or {}
+    records = (divergence_report or {}).get("pairwise_agreement") \
+        if isinstance(divergence_report, dict) else None
+    for record in records or []:
+        metrics = (record or {}).get("metrics") or {}
         for key in list(pending):
             if metrics.get(key) is not None:
                 effective[key] = metrics[key]
@@ -456,6 +480,21 @@ def _effective_thresholds(ctx: ExportContext, requested) -> dict:
         if not pending:
             break
     return effective
+
+
+def _analysis_version(ctx: ExportContext):
+    """The divergence reports' analysis_version: one string when every report agrees, else
+    {task_id: version}. Reports that predate the field are "not recorded"."""
+    versions = {}
+    for task in _iter_tasks(ctx):
+        divergence_report = task.report.get("divergence_report")
+        version = (divergence_report.get("analysis_version")
+                   if isinstance(divergence_report, dict) else None)
+        versions[task.task_id] = version or NOT_RECORDED
+    distinct = set(versions.values())
+    if len(distinct) == 1:
+        return distinct.pop()
+    return versions
 
 
 def _per_task(ctx: ExportContext, fn) -> Any:
@@ -515,6 +554,7 @@ def _build_provenance(ctx: ExportContext) -> dict:
     provenance = {
         "platform": "Quantum Rosetta",
         "exporter_platform_version": settings.PLATFORM_VERSION,
+        "exporter_analysis_version": ANALYSIS_VERSION,
         "export_timestamp": ctx.timestamp,
         "execution_mode": ctx.mode,
         "canonical_input_format": "OpenQASM 2.0",

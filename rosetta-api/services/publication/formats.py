@@ -1,7 +1,8 @@
 """Number formatting and rendering of figures and tables into concrete output formats.
 
-The formatters, escapers, basename_slug and the text table renderers are mirrored by
-static/js/artifact_formats.js; tests/unit/test_artifacts_parity.py compares the two.
+The formatters, column formatting, escapers, basename_slug and the text table renderers are
+mirrored by static/js/artifact_formats.js; tests/unit/test_artifacts_parity.py compares the
+two.
 """
 
 import csv
@@ -118,6 +119,87 @@ def _fmt_int(v: Any) -> str:
     return _fmt_num(v)
 
 
+def _full(v: Any) -> str:
+    """Shortest round-trip text of a finite float: integral values below 1e15 as integers,
+    1e-3 <= |v| < 1e15 positional, otherwise d.ddde±XX with every significant digit."""
+    x = float(v)
+    if x == 0:
+        return "0"
+    if x.is_integer() and abs(x) < _SCI_ABOVE:
+        return str(int(x))
+    _, digit_tuple, exp = Decimal(repr(x)).as_tuple()
+    digits = "".join(str(d) for d in digit_tuple)
+    e = len(digits) + exp - 1
+    digits = digits.rstrip("0") or "0"
+    sign = "-" if x < 0 else ""
+    if _SCI_BELOW <= abs(x) < _SCI_ABOVE:
+        if e >= 0:
+            whole = digits[:e + 1].ljust(e + 1, "0")
+            frac = digits[e + 1:]
+        else:
+            whole, frac = "0", "0" * (-e - 1) + digits
+        return sign + whole + ("." + frac if frac else "")
+    mant = digits[0] + ("." + digits[1:] if len(digits) > 1 else "")
+    return f"{sign}{mant}e{'-' if e < 0 else '+'}{abs(e):02d}"
+
+
+class _Cell(str):
+    """A table cell's display text; ``csv`` holds the text written to CSV."""
+
+    def __new__(cls, text: str, csv_text: str):
+        obj = super().__new__(cls, text)
+        obj.csv = csv_text
+        return obj
+
+
+class _Num:
+    """A numeric cell awaiting column formatting: ``digits`` places, or a p-value."""
+    __slots__ = ("v", "digits", "p")
+
+    def __init__(self, v: Any, digits: int = 4, p: bool = False):
+        self.v, self.digits, self.p = v, digits, p
+
+
+def _num(v: Any, digits: int = 4) -> _Num:
+    return _Num(v, digits)
+
+
+def _pnum(v: Any) -> _Num:
+    return _Num(v, 4, True)
+
+
+def _finite(v: Any) -> bool:
+    return _is_number(v) and math.isfinite(float(v))
+
+
+def _needs_sci(n: _Num) -> bool:
+    if not _finite(n.v) or float(n.v) == 0:
+        return False
+    return "e" in _fmt_num(n.v, n.digits)
+
+
+def _render_num(n: _Num, sci: bool) -> str:
+    if n.p and _is_number(n.v) and float(n.v) == 0:
+        return _Cell(P_VALUE_FLOOR, P_VALUE_FLOOR)
+    if not _finite(n.v):
+        text = _fmt_num(n.v, n.digits)
+        return _Cell(text, text)
+    text = _sci(float(n.v)) if sci else _fmt_num(n.v, n.digits)
+    return _Cell(text, _full(n.v))
+
+
+def _format_columns(rows):
+    """Replace every _Num cell with a _Cell. A column in which any cell needs scientific
+    notation is formatted in scientific notation throughout; CSV text keeps full precision."""
+    sci_cols = set()
+    for r in rows:
+        for c, cell in enumerate(r):
+            if isinstance(cell, _Num) and c not in sci_cols and _needs_sci(cell):
+                sci_cols.add(c)
+    return [[_render_num(cell, c in sci_cols) if isinstance(cell, _Num) else cell
+             for c, cell in enumerate(r)] for r in rows]
+
+
 def _fmt_text(v: Any) -> str:
     """Format a label: None or "" -> "—", booleans lower-case, else str(v)."""
     if v is None or v == "":
@@ -166,7 +248,7 @@ def _render_csv(headers, rows) -> str:
     sio = io.StringIO()
     w = csv.writer(sio)
     w.writerow(headers)
-    w.writerows(rows)
+    w.writerows([[getattr(c, "csv", c) for c in r] for r in rows])
     return sio.getvalue()
 
 

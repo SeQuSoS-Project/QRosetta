@@ -1,4 +1,4 @@
-// Publication-artifact number formatting, text builders and catalog. Mirrors
+// Publication-artifact number and column formatting, text builders and catalog. Mirrors
 // services/publication (formats.py, selectors.py, tables.py, theme.py glossaries,
 // registry.py catalog); tests/unit/test_artifacts_parity.py compares the two. No DOM, no
 // network.
@@ -50,6 +50,63 @@ export function _artInt(v) {
     return _artNum(v);
 }
 
+/** Shortest round-trip text of a finite number (formats.py _full). */
+export function _artFull(x) {
+    if (x === 0) return '0';
+    if (Number.isInteger(x) && Math.abs(x) < _SCI_ABOVE) return String(x);
+    const [mant, exp] = Math.abs(x).toExponential().split('e');
+    const e = parseInt(exp, 10);
+    const digits = mant.replace('.', '').replace(/0+$/, '') || '0';
+    const sign = x < 0 ? '-' : '';
+    if (Math.abs(x) >= _SCI_BELOW && Math.abs(x) < _SCI_ABOVE) {
+        let whole, frac;
+        if (e >= 0) {
+            whole = digits.slice(0, e + 1).padEnd(e + 1, '0');
+            frac = digits.slice(e + 1);
+        } else {
+            whole = '0';
+            frac = '0'.repeat(-e - 1) + digits;
+        }
+        return sign + whole + (frac ? '.' + frac : '');
+    }
+    const m = digits[0] + (digits.length > 1 ? '.' + digits.slice(1) : '');
+    return `${sign}${m}e${e < 0 ? '-' : '+'}${String(Math.abs(e)).padStart(2, '0')}`;
+}
+
+/** A table cell's display text; `csv` holds the text written to CSV. */
+class _ArtCell {
+    constructor(text, csv) { this.text = text; this.csv = csv; }
+    toString() { return this.text; }
+}
+/** A numeric cell awaiting column formatting: `digits` places, or a p-value. */
+class _ArtNumSpec {
+    constructor(v, digits = 4, p = false) { this.v = v; this.digits = digits; this.p = p; }
+}
+const _n = (v, d = 4) => new _ArtNumSpec(v, d);
+const _pn = v => new _ArtNumSpec(v, 4, true);
+const _finiteNum = v => typeof v === 'number' && Number.isFinite(v);
+
+function _needsSci(n) {
+    if (!_finiteNum(n.v) || n.v === 0) return false;
+    return _artNum(n.v, n.digits).includes('e');
+}
+function _renderNum(n, sci) {
+    if (n.p && typeof n.v === 'number' && n.v === 0) return new _ArtCell(P_VALUE_FLOOR, P_VALUE_FLOOR);
+    if (!_finiteNum(n.v)) {
+        const text = _artNum(n.v, n.digits);
+        return new _ArtCell(text, text);
+    }
+    return new _ArtCell(sci ? _artSci(n.v) : _artNum(n.v, n.digits), _artFull(n.v));
+}
+/** Column formatting (formats.py _format_columns). */
+export function _formatColumns(rows) {
+    const sciCols = new Set();
+    rows.forEach(r => r.forEach((cell, c) => {
+        if (cell instanceof _ArtNumSpec && !sciCols.has(c) && _needsSci(cell)) sciCols.add(c);
+    }));
+    return rows.map(r => r.map((cell, c) => (cell instanceof _ArtNumSpec ? _renderNum(cell, sciCols.has(c)) : cell)));
+}
+
 /** Format a label: null/undefined/"" -> "—", else String(v). */
 export function _artText(v) {
     if (v === null || v === undefined || v === '') return '—';
@@ -88,7 +145,7 @@ export function _artLatex({ headers, rows, title, caption }) {
 /** CSV with CRLF rows (Python csv module defaults). */
 export function _artCsv({ headers, rows }) {
     const esc = v => {
-        const s = (v === null || v === undefined) ? '' : String(v);
+        const s = (v === null || v === undefined) ? '' : String(v instanceof _ArtCell ? v.csv : v);
         return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
     };
     return [headers, ...rows].map(r => r.map(esc).join(',')).join('\r\n') + '\r\n';
@@ -170,6 +227,22 @@ function _artField(row, key) {
     return (v === null || v === undefined) ? row.raw[key] : v;
 }
 
+export const DEVICE_NOTE = 'Device is the hardware the simulation ran on (CPU when the run reports '
+    + 'none). CPU runners are limited to 0.5 CPU and 1 thread each; GPU runners '
+    + 'execute kernels on the GPU while their host-side work is under the same 0.5-CPU '
+    + 'quota, so timings across devices compare different hardware.';
+export const GPU_MEMORY_NOTE = 'Memory fields are host RSS and do not include GPU device memory; GPU runs '
+    + 'are not ranked (gpu_memory_not_measured).';
+
+/** The row's device from the report entry, else the raw result, upper-cased; "CPU" when neither records one. */
+export function _artDevice(row) {
+    for (const src of [row.entry || {}, row.raw || {}]) {
+        const v = src.device;
+        if (v !== null && v !== undefined && v !== '') return String(v).toUpperCase();
+    }
+    return 'CPU';
+}
+
 /** Distinct non-empty values of `key` across raw results, comma-joined, or "not recorded". */
 export function _artDistinct(results, key) {
     const seen = [];
@@ -196,7 +269,7 @@ export function _artTimingSamples(results) {
 export const AGREEMENT_GLOSSARY = [
     ['agree_directly', 'Outputs match directly, no transform needed.'],
     ['agree_up_to_global_phase', 'Match after removing the global phase offset arg⟨a|b⟩ between the two states, which is unobservable. An offset within phase_tolerance is reported as 0 and the pair agrees directly.'],
-    ['agree_after_bit_reversal', 'Match after reversing qubit/bit order (an endianness convention). A measured pair whose declared bit orders differ (lsb vs msb) is checked in the bit-reversed basis first.'],
+    ['agree_after_bit_reversal', 'Match after reversing qubit/bit order (an endianness convention). For a measured pair whose declared bit orders differ (lsb vs msb) the label means the pair agrees in the label-aligned (bit-reversed) basis; it is used by convention even when the direct distances are equal too, as for GHZ-type outcomes that bit reversal leaves unchanged.'],
     ['agree_after_qubit_permutation', 'Match after a bounded qubit permutation (≤7 qubits).'],
     ['agree_after_normalization', 'At least one input statevector has a norm differing from 1 by more than norm_tolerance; the normalised vectors agree. metrics.normalized_agreement holds the label the normalised pair receives. The default norm_tolerance (1e-4) lies above complex64 rounding, which leaves norms about 2e-6 from 1.'],
     ['residual_disagreement', 'Statevector disagreement not explained by any registered transform.'],
@@ -222,28 +295,34 @@ export const NOT_COMPARABLE_GLOSSARY = [
     ['comparison_error', 'The comparison raised an exception; metrics.details.error holds the message.'],
 ];
 export const VERDICT_GLOSSARY = [
-    ['consistent', 'Neither the chi-square test nor the G-test is significant after BH (FDR) correction, and the power to detect a total-variation gap of 0.05 at the observed shots is at least 0.8.'],
+    ['consistent', "Neither the chi-square test nor the G-test is significant after BH (FDR) correction over the m comparable pairs, and the power to detect a total-variation gap of 0.05 at the observed shots is at least 0.8. Power is that of the chi-square test at the Bonferroni level alpha/m (power.alpha_used, power.m_pairs), the threshold BH applies to a single discovery, on df = tested outcome bins - 1 with Cohen's w = 0.05: a lower bound for detecting one wrong backend."],
     ['distinguishable', 'Both tests are significant after BH (FDR) correction. At FDR q = 0.05 the expected share of false discoveries among flagged pairs is at most q, so a few flagged pairs are expected by chance.'],
-    ['inconclusive_low_shots', 'Expected counts stay below 5 after pooling rare outcomes (inconclusive_reason = low_expected_counts), or neither test is significant and the power to detect a total-variation gap of 0.05 is below 0.8 (inconclusive_reason = low_power). power.recommended_exceeds_actual is true when the recommended shots per backend exceed the shots used.'],
+    ['inconclusive_low_shots', 'Expected counts stay below 5 after pooling rare outcomes (inconclusive_reason = low_expected_counts), or neither test is significant and the power at alpha/m to detect a total-variation gap of 0.05 is below 0.8 (inconclusive_reason = low_power). resolvable_by_more_shots is false when no shot count up to the platform maximum would give a testable table (low_expected_counts) or the target power (low_power); shots_per_backend_for_expected_counts gives the count that would. power.recommended_exceeds_actual is true when the recommended shots per backend exceed the shots used.'],
     ['ambiguous', 'Exactly one of the chi-square test and the G-test is significant after BH (FDR) correction.'],
 ];
 export const ASSESSMENT_GLOSSARY = [
     ['consistent_within_shot_noise', 'The shot-noise verdict is consistent: neither test separates the distributions at a shot count with power of at least 0.8, whatever the distance label.'],
     ['distinguishable', 'The shot-noise verdict is distinguishable: the distributions differ beyond sampling noise, subject to the FDR share of false discoveries.'],
     ['ambiguous', 'Exactly one of the two tests is significant.'],
-    ['inconclusive_low_shots', 'The shot count cannot separate the distributions: expected counts stay below 5 after pooling, or the test is not significant at power below 0.8.'],
+    ['inconclusive_low_shots', 'The shot count cannot separate the distributions: expected counts stay below 5 after pooling, or the test is not significant at power below 0.8 (evaluated at alpha/m).'],
     ['not_comparable', 'At least one side lacks usable counts.'],
 ];
 export const UNRANKED_GLOSSARY = [
     ['runner_error', 'The run failed; Status gives the dispatch status (error, timeout or offline) and its metrics are shown as —.'],
     ['missing_timing', 'The run returned no execution_time_sec.'],
     ['missing_process_peak_rss', 'The run returned no process_peak_rss_mb.'],
+    ['gpu_memory_not_measured', 'The run executed on a GPU. The memory fields are host RSS and do not include GPU device memory, so the run is not ranked by memory.'],
 ];
 export const MEASUREMENT_NOTES = [
     'Global phase offset arg⟨a|b⟩: the phase of the inner product of two normalised statevectors. It is a global-phase difference between the states, not a relative phase between components of one superposition. The JSON fields relative_phase_matrix and *relative_phase* keep their names for compatibility.',
     "Label-aligned basis: for a measured pair whose declared counts bit orders differ (lsb vs msb) the second backend's keys are bit-reversed; otherwise the keys are compared directly. The statistical tests and the label-aligned distances use this basis; the direct distances are recorded as well.",
     'Outcomes with an expected count below 5 are pooled into one bin before the chi-square and G-tests; statistical_test.pooled_outcomes gives how many were pooled.',
+    'Benjamini-Hochberg controls the false discovery rate when the p-values are independent or positively regression dependent (PRDS). Pairs that share a backend reuse its sample and are dependent; PRDS is not established for chi-square statistics sharing a sample.',
 ];
+export const ANALYSIS_VERSION = 'divergence-2026.09.30';
+export const ANALYSIS_VERSION_NOTE = `Analysis version ${ANALYSIS_VERSION} (analysis_version in each divergence report). The `
+    + 'labels and verdicts are a function of the outputs and of the analysis rules; verdicts '
+    + 'computed under different analysis versions may differ for identical counts.';
 export const THRESHOLD_DEFAULTS = 'fidelity_tolerance = 1e-5, phase_tolerance = 1e-6 rad, '
     + 'norm_tolerance = 1e-4, js_threshold = 0.01 nats, hellinger_threshold = 0.1';
 
@@ -255,14 +334,14 @@ export function _dataAgreement(div, mode) {
     if (measured) headers.push(`JS, direct (${JS_UNIT})`, `JS, label-aligned basis (${JS_UNIT})`, 'Stat verdict', 'Measured assessment');
     else headers.push('Direct fidelity');
     headers.push('Not-comparable reason');
-    const rows = _artPairwise(div).map(r => {
+    const rows = _formatColumns(_artPairwise(div).map(r => {
         const m = r.metrics || {};
         const metric = r.mode === 'statevector' ? m.direct_fidelity : m.js_divergence;
-        const row = [_artPairKey(r), _artText(r.agreement), _artText(r.registered_transform), _artNum(metric)];
-        if (measured) row.push(_artNum(m.label_aligned_js_divergence), _artText((m.statistical_test || {}).verdict), _artText(r.measured_assessment));
+        const row = [_artPairKey(r), _artText(r.agreement), _artText(r.registered_transform), _n(metric)];
+        if (measured) row.push(_n(m.label_aligned_js_divergence), _artText((m.statistical_test || {}).verdict), _artText(r.measured_assessment));
         row.push(r.agreement === 'not_comparable' ? _artText(m.reason) : '—');
         return row;
-    });
+    }));
     const metricNote = measured
         ? `JS, direct is the Jensen–Shannon divergence in ${JS_UNIT} of the keys as reported; JS, label-aligned basis bit-reverses the second backend's keys when the two declared bit orders differ (lsb vs msb) and equals the direct value otherwise`
         : 'Direct fidelity is |<a|b>|^2 of the normalised vectors before any transform';
@@ -280,26 +359,26 @@ export function _dataMatrix(div, key, title) {
     const labels = div.simulators || [];
     const mat = div[key];
     const headers = [''].concat(labels);
-    const rows = labels.map((s1, i) => [s1].concat(labels.map((_, j) => {
+    const rows = _formatColumns(labels.map((s1, i) => [s1].concat(labels.map((_, j) => {
         const v = mat[i][j];
-        return (i === j || v === null || v === undefined || v === -1.0) ? '—' : _artNum(v);
-    })));
+        return (i === j || v === null || v === undefined || v === -1.0) ? '—' : _n(v);
+    }))));
     return { headers, rows, title, caption: `${title} (raw metric; not-compared pairs and the diagonal shown as —). Symmetric matrix.` };
 }
 /** Per-backend timings: ranked runs by total time, then unranked runs with the reason. */
 export function _dataPerformance(results) {
     return {
-        headers: ['Rank', 'Simulator', 'Compilation (s)', 'Simulation (s)', 'Total (s)',
+        headers: ['Rank', 'Simulator', 'Device', 'Compilation (s)', 'Simulation (s)', 'Total (s)',
             'Simulation CPU (s)', 'Process CPU (s)', 'Gate count', 'Depth', 'Status'],
-        rows: _artReportRows(results, 'performance_report').map(row => [row.rank,
-            _artText(row.entry.simulator),
-            _artNum(_artField(row, 'compilation_time_sec'), 6),
-            _artNum(_artField(row, 'simulation_time_sec'), 6),
-            _artNum(_artField(row, 'execution_time_sec'), 6),
-            _artNum(_artField(row, 'simulation_cpu_time_sec'), 6),
-            _artNum(_artField(row, 'cpu_time_sec'), 6),
+        rows: _formatColumns(_artReportRows(results, 'performance_report').map(row => [row.rank,
+            _artText(row.entry.simulator), _artDevice(row),
+            _n(_artField(row, 'compilation_time_sec'), 6),
+            _n(_artField(row, 'simulation_time_sec'), 6),
+            _n(_artField(row, 'execution_time_sec'), 6),
+            _n(_artField(row, 'simulation_cpu_time_sec'), 6),
+            _n(_artField(row, 'cpu_time_sec'), 6),
             _artInt(_artField(row, 'gate_count')), _artInt(_artField(row, 'circuit_depth')),
-            row.status]),
+            row.status])),
         title: 'Execution timing',
         caption: `Wall-clock times of the timed run, n=${_artTimingSamples(results)} timing sample(s) `
             + 'per backend; a warm-up run precedes it and is not included. Total = compilation '
@@ -307,21 +386,23 @@ export function _dataPerformance(results) {
             + 'Process CPU is getrusage CPU time of the whole isolated runner process, '
             + 'including interpreter start, imports and the warm-up. Ranked by total time, '
             + 'fastest first; runs without a rank follow with the reason in Status. Gate '
-            + "count and depth are taken from each backend's transpiled QASM.",
+            + "count and depth are taken from each backend's transpiled QASM. "
+            + DEVICE_NOTE,
     };
 }
 /** Per-backend memory: ranked runs by process peak RSS, then unranked runs with the reason. */
 export function _dataResources(results) {
     return {
-        headers: ['Rank', 'Simulator', 'Process peak RSS (MiB)', 'Sim-window peak RSS (MiB)',
-            'Sim-window RSS delta (MiB)', 'Theoretical SV (MiB)', 'Precision', 'Status'],
-        rows: _artReportRows(results, 'resource_report').map(row => [row.rank,
-            _artText(row.entry.simulator),
-            _artNum(_artField(row, 'process_peak_rss_mb'), 1),
-            _artNum(_artField(row, 'process_peak_mb'), 1),
-            _artNum(_artField(row, 'memory_usage_mb')),
-            _artNum(_artField(row, 'theoretical_statevector_mb')),
-            _artText(_artField(row, 'precision')), row.status]),
+        headers: ['Rank', 'Simulator', 'Device', 'Process peak RSS (MiB)',
+            'Sim-window peak RSS (MiB)', 'Sim-window RSS delta (MiB)', 'Theoretical SV (MiB)',
+            'Precision', 'Status'],
+        rows: _formatColumns(_artReportRows(results, 'resource_report').map(row => [row.rank,
+            _artText(row.entry.simulator), _artDevice(row),
+            _n(_artField(row, 'process_peak_rss_mb'), 1),
+            _n(_artField(row, 'process_peak_mb'), 1),
+            _n(_artField(row, 'memory_usage_mb')),
+            _n(_artField(row, 'theoretical_statevector_mb')),
+            _artText(_artField(row, 'precision')), row.status])),
         title: 'Resource usage',
         caption: 'Process peak RSS is the peak resident memory of the simulating process over its '
             + 'whole life (interpreter start, imports, warm-up and timed run); method: '
@@ -331,13 +412,26 @@ export function _dataResources(results) {
             + `simulation window of the timed run; method: ${_artDistinct(results, 'memory_method')}. `
             + 'Theoretical SV is 2^n × 16 bytes for the declared qubit count. 1 MiB = 1024^2 bytes. '
             + 'For small circuits process peak RSS is dominated by the SDK import footprint; '
-            + "the sim-window RSS delta is the simulation's own allocation.",
+            + "the sim-window RSS delta is the simulation's own allocation. "
+            + `${GPU_MEMORY_NOTE} ${DEVICE_NOTE}`,
     };
 }
 /** The verdict, followed by the inconclusive reason in parentheses when one is set. */
 function _artVerdictText(st) {
     const verdict = _artText(st.verdict);
-    return st.inconclusive_reason ? `${verdict} (${st.inconclusive_reason})` : verdict;
+    let reason = st.inconclusive_reason;
+    if (!reason) return verdict;
+    if (st.resolvable_by_more_shots === false) reason += '; not resolvable by more shots';
+    return `${verdict} (${reason})`;
+}
+/** " = <alpha_used> (m = <m_pairs>)" from the first record that records them, else "". */
+function _artPowerAlphaText(recs) {
+    for (const r of recs) {
+        const pw = r.metrics.statistical_test.power || {};
+        const has = v => v !== null && v !== undefined;
+        if (has(pw.alpha_used) && has(pw.m_pairs)) return ` = ${_artNum(pw.alpha_used)} (m = ${_artInt(pw.m_pairs)})`;
+    }
+    return '';
 }
 /** Per-pair chi-square and G-test p-values, effect sizes, power and verdict. */
 export function _dataStatistical(div) {
@@ -346,23 +440,28 @@ export function _dataStatistical(div) {
         headers: ['Pair', 'Basis', 'chi2 p', 'chi2 p (BH)', 'G-test p', 'G-test p (BH)',
             'Total variation', "Cramér's V", 'Power@obs', 'Shots/backend for power',
             'Pooled outcomes', 'Verdict'],
-        rows: recs.map(r => {
+        rows: _formatColumns(recs.map(r => {
             const st = r.metrics.statistical_test, ef = st.effect_size || {}, pw = st.power || {},
                 c = st.chi2 || {}, g = st.g_test || {};
-            return [_artPairKey(r), _artText(st.basis), _artP(c.p_value), _artP(c.p_value_bh),
-                _artP(g.p_value), _artP(g.p_value_bh), _artNum(ef.total_variation), _artNum(ef.cramers_v),
-                _artNum(pw.power_to_detect_delta_at_observed_shots, 3),
+            return [_artPairKey(r), _artText(st.basis), _pn(c.p_value), _pn(c.p_value_bh),
+                _pn(g.p_value), _pn(g.p_value_bh), _n(ef.total_variation), _n(ef.cramers_v),
+                _n(pw.power_to_detect_delta_at_observed_shots, 3),
                 _artInt(pw.shots_per_backend_for_target_power), _artInt(st.pooled_outcomes),
                 _artVerdictText(st)];
-        }),
+        })),
         title: 'Shot-noise statistical test',
         caption: 'Shot-noise-aware homogeneity tests (chi-square + G-test) in the label-aligned '
             + 'basis (bit-reversed when the declared bit orders differ), with BH-corrected '
-            + 'p-values, effect size and prospective power for a total-variation gap of 0.05. '
-            + 'Outcomes with an expected count below 5 are pooled into one bin. At FDR q = 0.05 '
-            + 'the expected share of false discoveries among flagged pairs is at most q, so a '
-            + 'few flagged pairs are expected by chance. A non-significant pair with power '
-            + 'below 0.8 is inconclusive_low_shots.',
+            + 'p-values and effect size. A pair is distinguishable only when both tests are '
+            + 'significant after BH over the m comparable pairs. Power@obs is the power of the '
+            + 'chi-square test to detect a total-variation gap of 0.05 at the Bonferroni level '
+            + `alpha/m${_artPowerAlphaText(recs)}, the threshold BH applies to a single `
+            + 'discovery: a lower bound for detecting one wrong backend. Outcomes with an '
+            + 'expected count below 5 are pooled into one bin. At FDR q = 0.05 the expected '
+            + 'share of false discoveries among flagged pairs is at most q, so a few flagged '
+            + 'pairs are expected by chance; BH assumes independent or positively regression '
+            + 'dependent (PRDS) p-values, and pairs sharing a backend are dependent. A '
+            + 'non-significant pair with power below 0.8 is inconclusive_low_shots.',
     };
 }
 /** Per-backend SDK versions, ordering and sampling labels, opt level and status. */
@@ -370,13 +469,15 @@ export function _dataMetadata(results, mode) {
     const rows = (results.raw_results || []).map(r => {
         const sdk = Object.entries(r.sdk_versions || {}).map(([k, v]) => `${k}=${_artText(v)}`).join(', ') || '—';
         const status = r.dispatch_status || r.status || ((r.error !== null && r.error !== undefined) ? 'error' : 'ok');
-        return [_artText(r.simulator), sdk, _artText(r.qubit_ordering), _artText(r.sampling_method),
+        let device = _artDevice({ entry: {}, raw: r });
+        if (r.gpu_name) device += ` (${_artText(r.gpu_name)})`;
+        return [_artText(r.simulator), device, sdk, _artText(r.qubit_ordering), _artText(r.sampling_method),
             _artInt(r.optimization_level), _artText(status)];
     });
     let run = `mode=${mode}`;
     if (results.n_shots !== undefined && results.n_shots !== null) run += `, n_shots=${_artInt(results.n_shots)}`;
     if (results.seed !== undefined && results.seed !== null) run += `, seed=${_artInt(results.seed)}`;
-    return { headers: ['Simulator', 'SDK versions', 'Qubit ordering', 'Sampling method', 'Opt level', 'Status'],
+    return { headers: ['Simulator', 'Device', 'SDK versions', 'Qubit ordering', 'Sampling method', 'Opt level', 'Status'],
         rows, title: 'Run and provenance metadata',
         caption: `Run + provenance metadata (${run}). Ground-truth executed versions and endpoint labels.` };
 }
@@ -404,8 +505,8 @@ export function _txtGlossary(mode) {
     MEASUREMENT_NOTES.forEach(n => out.push(`- ${n}`));
     out.push('', 'Unranked runs in the timing and resource tables (reason):', '');
     UNRANKED_GLOSSARY.forEach(([l, d]) => out.push(`- **${l}** — ${d}`));
-    out.push('', `Default thresholds: ${THRESHOLD_DEFAULTS}. A run may override them; the values applied are recorded in each pairwise record. JS divergence is in ${JS_UNIT} (maximum ln 2).`,
-        '', 'Each label names the registered transform that explains the pair and reports its numerical effect; the per-pair records carry full provenance.');
+    out.push('', `Default thresholds: ${THRESHOLD_DEFAULTS}. A run may override them; the values applied are recorded in each pairwise record and in the divergence report's agreement_thresholds. JS divergence is in ${JS_UNIT} (maximum ln 2).`,
+        '', ANALYSIS_VERSION_NOTE, '', 'Each label names the registered transform that explains the pair and reports its numerical effect; the per-pair records carry full provenance.');
     return out.join('\n');
 }
 
@@ -456,17 +557,17 @@ export function buildArtifactCatalog(results) {
     if ((perf.ranking || []).length || (perf.unranked || []).length) {
         image('performance_time', 'Execution-time chart', 'Performance',
             'Stacked compilation + simulation wall-clock time per backend (raw), '
-            + `n=${_artTimingSamples(results)} timing sample(s) per backend; ` + unrankedNote);
+            + `n=${_artTimingSamples(results)} timing sample(s) per backend; GPU runs are labelled (GPU); ` + unrankedNote);
         table('performance', 'Execution-time table', 'Performance', () => _dataPerformance(results),
-            'Per-backend compilation, simulation and total wall-clock time, simulation and process CPU time, and status (raw).');
+            'Per-backend device, compilation, simulation and total wall-clock time, simulation and process CPU time, and status (raw).');
     }
     const res = results.resource_report || {};
     if ((res.ranking || []).length || (res.unranked || []).length) {
         image('resource_memory', 'Process peak RSS chart', 'Resources',
             "Peak RSS of each backend's simulating process over its whole life (interpreter start, imports, warm-up and timed run), in MiB; method: "
-            + `${_artDistinct(results, 'process_peak_rss_method')}. Ranked lowest first; ` + unrankedNote);
+            + `${_artDistinct(results, 'process_peak_rss_method')}. Ranked lowest first; GPU runs are labelled (GPU) and not ranked because GPU device memory is not measured; ` + unrankedNote);
         table('resources', 'Resource-usage table', 'Resources', () => _dataResources(results),
-            'Per-backend process peak RSS, sim-window peak RSS and RSS delta, theoretical statevector size, precision and status (raw).');
+            'Per-backend device, process peak RSS, sim-window peak RSS and RSS delta, theoretical statevector size, precision and status (raw).');
     }
     if (mode === 'measured') {
         if (pairwise.some(r => (r.metrics || {}).statistical_test)) {
@@ -505,7 +606,7 @@ export function buildArtifactCatalog(results) {
     }
     if ((results.raw_results || []).length) {
         table('metadata', 'Run + provenance metadata', 'Metadata', () => _dataMetadata(results, mode),
-            'Backends, SDK versions, qubit-ordering & sampling labels, opt level, run params.');
+            'Backends, device, SDK versions, qubit-ordering & sampling labels, opt level, run params.');
         (results.raw_results || []).forEach(r => {
             if (r.simulator && r.transpiled_qasm) {
                 blob(`circuit_${_artSlug(r.simulator)}`, `Executed QASM: ${r.simulator}`, 'Circuits',

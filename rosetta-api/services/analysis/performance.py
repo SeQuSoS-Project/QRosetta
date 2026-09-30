@@ -3,7 +3,8 @@
 ``ranking`` lists only backends that succeeded and report the ranking metric, in rank
 order, each with a 1-based ``rank``. Everything else is listed in ``unranked`` with a
 ``reason``, so ``ranking[0]`` is absent when no backend succeeded. A failed run's
-``status`` is its ``dispatch_status`` (error, timeout or offline).
+``status`` is its ``dispatch_status`` (error, timeout or offline). Every entry carries the
+``device`` the run reported ("CPU" when it reported none).
 """
 
 _FAILED_DISPATCH = ("error", "timeout", "offline")
@@ -17,6 +18,12 @@ def _failure_status(res):
     if res.get("error") not in (None, ""):
         return "error"
     return None
+
+
+def _device(res):
+    """The run's device, upper-cased; "CPU" when the result reports none."""
+    device = res.get("device")
+    return str(device).upper() if device not in (None, "") else "CPU"
 
 
 def _rank(entries, metric):
@@ -39,6 +46,7 @@ def create_performance_report(results_list: list) -> dict:
         if failure:
             unranked.append({
                 "simulator": sim_name,
+                "device": _device(res),
                 "status": failure,
                 "reason": "runner_error",
                 "error": res.get('error'),
@@ -48,6 +56,7 @@ def create_performance_report(results_list: list) -> dict:
         elif res.get('execution_time_sec') is None:
             unranked.append({
                 "simulator": sim_name,
+                "device": _device(res),
                 "status": "error",
                 "reason": "missing_timing",
                 "error": "Result carried no execution_time_sec.",
@@ -57,6 +66,7 @@ def create_performance_report(results_list: list) -> dict:
         else:
             ranked.append({
                 "simulator": sim_name,
+                "device": _device(res),
                 "status": "success",
                 "execution_time_sec": res['execution_time_sec'],
                 "compilation_time_sec": res.get('compilation_time_sec'),
@@ -78,7 +88,8 @@ def create_resource_report(results_list: list) -> dict:
     """Rank backends by process_peak_rss_mb, lowest first.
 
     process_peak_rss_mb is the simulating process's own peak RSS (VmHWM) over its
-    whole life: interpreter start, SDK import, warm-up and the timed run.
+    whole life: interpreter start, SDK import, warm-up and the timed run. The memory fields
+    are host RSS, so a GPU run is unranked with reason ``gpu_memory_not_measured``.
     """
     ranked = []
     unranked = []
@@ -90,6 +101,7 @@ def create_resource_report(results_list: list) -> dict:
         if failure:
             unranked.append({
                 "simulator": sim_name,
+                "device": _device(res),
                 "status": failure,
                 "reason": "runner_error",
                 "error": res.get('error'),
@@ -102,6 +114,7 @@ def create_resource_report(results_list: list) -> dict:
 
         entry = {
             "simulator": sim_name,
+            "device": _device(res),
             "status": "success",
             "process_peak_rss_mb": res.get('process_peak_rss_mb'),
             "memory_usage_mb": res.get('memory_usage_mb'),
@@ -110,6 +123,9 @@ def create_resource_report(results_list: list) -> dict:
         }
         if entry["process_peak_rss_mb"] is None:
             entry.update({"reason": "missing_process_peak_rss", "rank": None})
+            unranked.append(entry)
+        elif entry["device"] == "GPU":
+            entry.update({"reason": "gpu_memory_not_measured", "rank": None})
             unranked.append(entry)
         else:
             ranked.append(entry)

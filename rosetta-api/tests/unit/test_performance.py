@@ -107,3 +107,19 @@ def test_failed_runs_carry_their_dispatch_status_and_never_rank():
         assert [r["simulator"] for r in report["ranking"]] == ["ok"]
         assert {r["simulator"]: r["status"] for r in report["unranked"]} == {
             "slow": "timeout", "gone": "offline"}
+
+
+def test_rankings_carry_device_and_leave_gpu_runs_out_of_the_memory_ranking():
+    results = [
+        {"simulator": "cpu", "execution_time_sec": 2.0, "process_peak_rss_mb": 100.0},
+        {"simulator": "gpu", "device": "GPU", "execution_time_sec": 0.1,
+         "process_peak_rss_mb": 500.0, "memory_usage_mb": 0.01},
+    ]
+    perf = create_performance_report(results)
+    assert [(r["simulator"], r["device"]) for r in perf["ranking"]] == [("gpu", "GPU"), ("cpu", "CPU")]
+    res = create_resource_report(results)
+    assert [r["simulator"] for r in res["ranking"]] == ["cpu"]
+    assert res["ranking"][0]["device"] == "CPU"
+    gpu = res["unranked"][0]
+    assert gpu["simulator"] == "gpu" and gpu["reason"] == "gpu_memory_not_measured"
+    assert gpu["device"] == "GPU" and gpu["rank"] is None

@@ -1,6 +1,7 @@
 """Cross-backend agreement analysis: facade over the statevector, counts and statistics modules."""
 
 from .common import (
+    ANALYSIS_VERSION,
     DEFAULT_FIDELITY_TOLERANCE,
     DEFAULT_HELLINGER_THRESHOLD,
     DEFAULT_JS_THRESHOLD,
@@ -57,6 +58,7 @@ __all__ = [
     "create_counts_report",
     "parse_statevector",
     "calculate_hellinger_distance",
+    "ANALYSIS_VERSION",
     "DEFAULT_FIDELITY_TOLERANCE",
     "DEFAULT_HELLINGER_THRESHOLD",
     "DEFAULT_JS_THRESHOLD",

@@ -88,6 +88,30 @@ def _field(row: dict, key: str) -> Any:
     return row["raw"].get(key) if v is None else v
 
 
+DEVICE_NOTE = ("Device is the hardware the simulation ran on (CPU when the run reports "
+               "none). CPU runners are limited to 0.5 CPU and 1 thread each; GPU runners "
+               "execute kernels on the GPU while their host-side work is under the same 0.5-CPU "
+               "quota, so timings across devices compare different hardware.")
+GPU_MEMORY_NOTE = ("Memory fields are host RSS and do not include GPU device memory; GPU runs "
+                   "are not ranked (gpu_memory_not_measured).")
+
+
+def _device(row: dict) -> str:
+    """The row's device from the report entry, else the raw result, upper-cased; "CPU" when
+    neither records one."""
+    for src in (row.get("entry") or {}, row.get("raw") or {}):
+        v = src.get("device")
+        if v not in (None, ""):
+            return str(v).upper()
+    return "CPU"
+
+
+def _device_label(row: dict) -> str:
+    """The simulator id, with " (GPU)" appended for a GPU run."""
+    sim = _fmt_text(row["entry"].get("simulator"))
+    return f"{sim} (GPU)" if _device(row) == "GPU" else sim
+
+
 def _distinct(results: dict, key: str) -> str:
     """Distinct non-empty values of ``key`` across raw results, comma-joined, or "not recorded"."""
     seen = []
@@ -135,10 +159,15 @@ def _msb_counts(results: dict) -> dict:
     return out
 
 
+def _circuit_name(results: dict) -> str:
+    """circuit_name, else task_name, else run_name, else "unnamed circuit"."""
+    name = results.get("circuit_name") or results.get("task_name") or results.get("run_name")
+    return str(name) if name else "unnamed circuit"
+
+
 def _run_label(results: dict) -> str:
-    """"<circuit name>, <n> shots" from task_name/run_name/circuit_name and n_shots."""
-    name = results.get("task_name") or results.get("run_name") or results.get("circuit_name")
-    parts = [str(name)] if name else ["unnamed circuit"]
+    """"<circuit name>, <n> shots per backend" (see _circuit_name)."""
+    parts = [_circuit_name(results)]
     if results.get("n_shots") is not None:
         parts.append(f"{_fmt_int(results.get('n_shots'))} shots per backend")
     return ", ".join(parts)

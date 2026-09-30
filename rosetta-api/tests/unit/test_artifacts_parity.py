@@ -90,7 +90,8 @@ def _sv_edge():
              "precision": "complex128", "simulation_cpu_time_sec": 1.9,
              "transpiled_qasm": "OPENQASM 2.0;"},
             {"simulator": "s1", "optimization_level": 2.0, "sdk_versions": {},
-             "memory_method": "sampled_10ms", "precision": None},
+             "memory_method": "sampled_10ms", "precision": None, "device": "GPU",
+             "gpu_name": "NVIDIA RTX"},
             {"simulator": "s2", "error": "boom", "status": "timeout", "optimization_level": 0},
             {"simulator": "s3", "error": "", "qubit_ordering": ""},
         ],
@@ -117,12 +118,15 @@ def _measured_edge():
                                           "pooled_outcomes": [0, 3][(i * j) % 2],
                                           "inconclusive_reason": [None, None, "low_power",
                                                                   None][(i * j) % 4],
+                                          "resolvable_by_more_shots": [None, None, False,
+                                                                       None][(i * j) % 4],
                                           "verdict": [
                                               "consistent", "distinguishable",
                                               "inconclusive_low_shots", "ambiguous"][(i * j) % 4],
                                           "effect_size": {"total_variation": 0, "cramers_v": 2e-6},
                                           "power": {"power_to_detect_delta_at_observed_shots": 0.99996,
-                                                    "shots_per_backend_for_target_power": 1570.0},
+                                                    "shots_per_backend_for_target_power": 1570.0,
+                                                    "alpha_used": 0.05 / 21, "m_pairs": 21},
                                           "chi2": {"p_value": [1, 0.0, 1.65e-188][(i + j) % 3],
                                                    "p_value_bh": [0.99996, 0, 2e-300][(i + j) % 3]},
                                           "g_test": {"p_value": 3e-12, "p_value_bh": None}}}})
@@ -205,6 +209,14 @@ def test_number_formatting_matches():
     out = _js({"nums": nums, "ints": ints})
     assert out["nums"] == [_fmt_num(_py(n["v"]), n["d"]) for n in nums]
     assert out["ints"] == [_fmt_int(_py(v)) for v in ints]
+
+
+def test_full_precision_csv_text_matches():
+    from services.publication.formats import _full
+    values = [0.1, 1e-5, 1.5e-7, 123.456, 1e15, 1e16, 1.2345e20, -0.00125, 0.001, 2.0, -3.0,
+              1 / 3, 1e-300, 5e-324, 0.99996, 6.103515625e-05, 0.0009995, 999.0000001,
+              123456789.123, -7.5e-4, 1.7976931348623157e308]
+    assert _js({"fulls": values})["fulls"] == [_full(v) for v in values]
 
 
 def test_p_value_formatting_matches_and_never_prints_zero_for_tiny_values():

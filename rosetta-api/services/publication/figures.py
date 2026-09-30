@@ -11,7 +11,12 @@ from .theme import (
     MIN_OUTCOME_PROB, _VERDICT_ORDER, _blue_cmap, _prob_cmap, _rank_outcomes,
 )
 from .formats import _fmt_num
-from .selectors import COMMON_KEY_ORDER_NOTE, _field, _pairwise_records, _report_rows
+from .selectors import (
+    COMMON_KEY_ORDER_NOTE, _device, _device_label, _field, _pairwise_records, _report_rows,
+)
+
+
+_GPU_TICK = "#b45309"
 
 
 def _fig_agreement_distribution(divergence_report: dict, mode: str):
@@ -26,7 +31,7 @@ def _fig_agreement_distribution(divergence_report: dict, mode: str):
     summary = divergence_report.get("statistical_test_summary")
     has_v = bool(summary and summary.get("verdict_counts"))
     ncols = 2 if has_v else 1
-    fig, axes = plt.subplots(1, ncols, figsize=(6.5 * ncols, 4.2))
+    fig, axes = plt.subplots(1, ncols, figsize=(6.5 * ncols, 4.6), layout="constrained")
     axes = axes if has_v else [axes]
     ax = axes[0]
     bars = ax.bar(range(len(labels)), values, color=colors, width=0.72)
@@ -81,9 +86,10 @@ def _fig_heatmap(divergence_report: dict, key: str, title: str):
 
 def _fig_ranking_bar(results, report_key, value_keys, title, xlabel, subtitle=None):
     """Horizontal bars for ranked runs in rank order; unranked runs follow with no bar and
-    an annotation giving their status and reason. ``subtitle`` is a second title line."""
+    an annotation giving their status and reason. ``subtitle`` is a second title line. GPU
+    runs are labelled "<simulator> (GPU)" with an amber tick label."""
     rows = [r for r in _report_rows(results, report_key) if r["entry"].get("simulator")]
-    sims = [r["entry"]["simulator"] for r in rows]
+    sims = [_device_label(r) for r in rows]
     fig, ax = plt.subplots(figsize=(max(5.0, 0.5 * len(sims) + 2), max(2.4, 0.32 * len(sims) + 1.6)))
     y = np.arange(len(sims)); left = np.zeros(len(sims))
     for key, color, label in value_keys:
@@ -98,6 +104,8 @@ def _fig_ranking_bar(results, report_key, value_keys, title, xlabel, subtitle=No
     for tick, r in zip(ax.get_yticklabels(), rows):
         if not r["ranked"]:
             tick.set_color(_MUTED)
+        elif _device(r) == "GPU":
+            tick.set_color(_GPU_TICK)
     ax.set_xlabel(xlabel)
     if subtitle:
         ax.set_title(f"{title}\n{subtitle}", fontsize=10)

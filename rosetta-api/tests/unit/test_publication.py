@@ -330,11 +330,11 @@ def test_tables_list_unranked_runs_after_ranked_with_reason():
     rep = _report_with_failures()
     perf = render_artifact(rep, "statevector", "performance", "csv")[0].decode().splitlines()
     assert [line.split(",")[1] for line in perf[1:]] == ["s0", "s1", "s2", "s3"]
-    assert perf[3] == "—,s2,—,—,—,—,—,—,—,timeout"
+    assert perf[3] == "—,s2,CPU,—,—,—,—,—,—,—,timeout"
     assert perf[4].endswith("error (missing_timing)")
     res = render_artifact(rep, "statevector", "resources", "csv")[0].decode().splitlines()
     assert any(line.endswith("ok (missing_process_peak_rss)") for line in res)
-    assert "—,s2,—,—,—,—,—,timeout" in res
+    assert "—,s2,CPU,—,—,—,—,—,timeout" in res
 
 
 def test_ranking_figures_mark_unranked_runs_and_plot_the_ranking_metric():
@@ -406,7 +406,7 @@ def test_heatmap_masks_null_cells():
     data = render_artifact(rep, "statevector", "fidelity_heatmap", "svg")[0]
     assert _MAGIC["svg"](data)
     table = render_artifact(rep, "statevector", "matrix_fidelity", "csv")[0].decode().splitlines()
-    assert table[1] == "a,—,0.5000,—"
+    assert table[1] == "a,—,0.5,—"
 
 
 def test_count_figures_use_common_msb_key_order_and_name_the_run():
@@ -420,3 +420,38 @@ def test_count_figures_use_common_msb_key_order_and_name_the_run():
     assert _msb_counts(results) == {"q": {"100": 100}, "c": {"100": 100}, "u": {"001": 100}}
     assert _run_label(results) == "x (3q), 100 shots per backend"
     assert _run_label({}) == "unnamed circuit"
+
+
+def test_table_columns_use_one_notation_and_csv_keeps_full_precision():
+    from services.publication import _tbl_performance, _table_bytes
+    rep = {"performance_report": {"ranking": [
+        {"simulator": "a", "rank": 1, "execution_time_sec": 0.000825, "compilation_time_sec": 0.0001,
+         "simulation_time_sec": 0.000725},
+        {"simulator": "b", "rank": 2, "execution_time_sec": 0.001331123456789,
+         "compilation_time_sec": 0.0003, "simulation_time_sec": 0.001031123456789},
+    ], "unranked": []}, "raw_results": []}
+    headers, rows, title, caption = _tbl_performance(rep)
+    total = headers.index("Total (s)")
+    assert [r[total] for r in rows] == ["8.25e-04", "1.33e-03"]
+    csv = _table_bytes(headers, rows, title, caption, "csv").decode().splitlines()
+    assert csv[2].split(",")[total] == "0.001331123456789"
+    assert "GPU runners execute kernels on the GPU" in caption
+
+
+def test_figures_name_the_circuit_and_mark_gpu_runs():
+    import matplotlib.pyplot as plt
+    from services.publication import _fig_ranking_bar
+    from services.publication.selectors import _run_label
+    rep = {"circuit_name": "GHZ (3q)", "n_shots": 10, "performance_report": {"ranking": [
+        {"simulator": "cu", "device": "GPU", "rank": 1, "execution_time_sec": 0.1,
+         "compilation_time_sec": 0.0, "simulation_time_sec": 0.1}], "unranked": []},
+        "raw_results": []}
+    assert _run_label(rep).startswith("GHZ (3q)")
+    svg = render_artifact(rep, "measured", "performance_time", "svg")[0].decode()
+    assert "GHZ (3q)" in svg
+    fig = _fig_ranking_bar(rep, "performance_report",
+                           [("execution_time_sec", "#2a78d6", "total")], "t", "s")
+    try:
+        assert [t.get_text() for t in fig.axes[0].get_yticklabels()] == ["cu (GPU)"]
+    finally:
+        plt.close(fig)
