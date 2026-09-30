@@ -1,10 +1,5 @@
-// Long-lived element references shared across modules.
-//
-// These were bare top-level `let`s in app.js, readable from every other file because the
-// scripts shared one global scope. Under modules that no longer holds, so they live here
-// with explicit exports. The bindings are live: importers see the values that initDomRefs
-// assigns, without importing app.js and creating a cycle back into it.
-//
+// Long-lived element references shared across modules, assigned once by initDomRefs.
+// Importers see the live bindings without importing app.js.
 // Everything is null until initDomRefs runs on load.
 
 export let qasmInput = null;
