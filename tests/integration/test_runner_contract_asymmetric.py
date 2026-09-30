@@ -125,7 +125,6 @@ def _poll_job(job_id: str, timeout: int = 180) -> dict:
 def _run_statevector(body: str, apply_preprocessing: bool) -> dict:
     payload = {
         "qasm_string": QASM_HEADER + body,
-        "mode": "statevector",
         "target_simulators": ACTIVE_STATEVECTOR_RUNNERS,
         "timeout_seconds": 300,
         "execution_target": "local",
@@ -158,7 +157,6 @@ def test_active_runner_statevector_ordering_contract():
     print("--- Asymmetric statevector contract probe ---")
     payload = {
         "qasm_string": ONE_HOT_QASM,
-        "mode": "statevector",
         "target_simulators": ACTIVE_STATEVECTOR_RUNNERS,
         "timeout_seconds": 300,
         "execution_target": "local",
