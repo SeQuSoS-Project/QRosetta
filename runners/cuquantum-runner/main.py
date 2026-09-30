@@ -1,4 +1,8 @@
-"""cuQuantum runner: simulates OpenQASM 2.0 circuits with qiskit-aer's statevector method, on GPU when available."""
+"""cuQuantum runner: simulates OpenQASM 2.0 circuits with qiskit-aer-gpu using NVIDIA cuStateVec.
+
+Requires an NVIDIA GPU. Without one the runner reports itself unavailable and refuses runs;
+it never falls back to CPU Aer, which would duplicate the qiskit runner's engine.
+"""
 
 from fastapi import FastAPI
 from qrosetta_commons.counts import (
@@ -17,37 +21,56 @@ app = FastAPI(title="cuQuantum Runner")
 try:
     from qiskit import QuantumCircuit, transpile as qiskit_transpile
     from qiskit import qasm2
-    from qiskit_aer import AerSimulator, AerError
+    from qiskit_aer import AerSimulator
     AERSIM_AVAILABLE = True
     logger.info("qiskit-aer loaded successfully.")
 except ImportError as e:
     AERSIM_AVAILABLE = False
-    logger.warning(f"qiskit-aer import failed: {e}. Runner will return errors.")
+    logger.warning(f"qiskit-aer-gpu import failed: {e}. Runner will report itself unavailable.")
 
-_GPU_AVAILABLE = False
-if AERSIM_AVAILABLE:
+_CAPABILITIES = None
+
+
+def _gpu_name():
+    import subprocess
     try:
-        from qiskit import QuantumCircuit as _QC
-        _probe_qc = _QC(1)
-        _probe_qc.h(0)
-        _probe_qc.save_statevector()
-        _probe_sim = AerSimulator(method='statevector', device='GPU')
-        _probe_sim.run(_probe_qc).result()
-        _GPU_AVAILABLE = True
+        out = subprocess.run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                             capture_output=True, text=True, timeout=10)
+        return out.stdout.strip().splitlines()[0] if out.returncode == 0 and out.stdout.strip() else None
     except Exception:
-        _GPU_AVAILABLE = False
-    logger.info(f"GPU/cuQuantum available: {_GPU_AVAILABLE}")
+        return None
 
-def _run_safe(sim, qc, **kwargs):
-    """Run a circuit, falling back to CPU if GPU execution fails."""
+
+def capabilities() -> dict:
+    """Probe once for a GPU on which Aer runs with cuStateVec enabled."""
+    global _CAPABILITIES
+    if _CAPABILITIES is not None:
+        return _CAPABILITIES
+    if not AERSIM_AVAILABLE:
+        _CAPABILITIES = {"available": False, "reason": "qiskit-aer-gpu is not installed",
+                         "device": None, "gpu_name": None}
+        return _CAPABILITIES
     try:
-        return sim.run(qc, **kwargs).result()
-    except AerError as e:
-        if _GPU_AVAILABLE:
-            logger.warning(f"GPU run failed ({e}), retrying on CPU.")
-            cpu_sim = AerSimulator(method='statevector')
-            return cpu_sim.run(qc, **kwargs).result()
-        raise
+        probe = QuantumCircuit(1)
+        probe.h(0)
+        probe.save_statevector()
+        metadata = _simulator().run(probe).result().results[0].metadata
+        if metadata.get("device") != "GPU" or not metadata.get("cuStateVec_enable"):
+            raise RuntimeError(f"Aer ran on {metadata.get('device')} with "
+                               f"cuStateVec_enable={metadata.get('cuStateVec_enable')}")
+        _CAPABILITIES = {"available": True, "reason": None, "device": "GPU",
+                         "gpu_name": _gpu_name()}
+    except Exception as e:
+        _CAPABILITIES = {"available": False,
+                         "reason": f"requires an NVIDIA GPU with cuStateVec; none usable ({e})"[:300],
+                         "device": None, "gpu_name": None}
+    logger.info(f"cuQuantum capabilities: {_CAPABILITIES}")
+    return _CAPABILITIES
+
+
+def _unavailable_error():
+    return runner_error("cuquantum", f"cuQuantum runner unavailable: {capabilities()['reason']}")
+
 
 _AER_OPERATIONS = {}
 
@@ -93,10 +116,10 @@ _SAVE_STATEVECTOR_NOTE = (
     "is the circuit before it. Required by the adapter, applied regardless of "
     "apply_preprocessing.")
 _METHOD_NOTE = (
-    "AerSimulator(method='statevector'): the simulation method is fixed, so Aer does not "
-    "switch to its stabilizer method on Clifford circuits. The device (GPU when "
-    "qiskit-aer's cuStateVec build and a GPU are present, else CPU) is reported in the "
-    "result's device field.")
+    "AerSimulator(method='statevector', device='GPU', cuStateVec_enable=True): NVIDIA "
+    "cuStateVec on the GPU; the method is fixed, so Aer does not switch to its stabilizer "
+    "method on Clifford circuits. Memory fields are host RSS; GPU device memory is not "
+    "measured. The GPU is not under the runners' 0.5-CPU quota.")
 _COUNTS_KEY_NOTE = (
     "Counts keys: Aer's space-separated per-register fields are re-keyed to one bitstring "
     "over every declared classical bit in declaration order, flat clbit 0 rightmost.")
@@ -109,6 +132,8 @@ def _backend_fields(result, sim) -> dict:
     device = metadata.get("device", sim.options.device)
     return {
         "device": device,
+        "custatevec_enabled": bool(metadata.get("cuStateVec_enable")),
+        "gpu_name": capabilities().get("gpu_name"),
         "simulation_method": method,
         "simulator_backend": (
             f"qiskit-aer AerSimulator(method={method}, precision={sim.options.precision}, "
@@ -125,15 +150,14 @@ def _serialize(compiled) -> str:
 
 
 def _simulator():
-    return (AerSimulator(method='statevector', device='GPU') if _GPU_AVAILABLE
-            else AerSimulator(method='statevector'))
+    return AerSimulator(method='statevector', device='GPU', cuStateVec_enable=True)
 
 
 @with_sdk_versions
 def process_run(payload: dict) -> dict:
-    logger.info(f"Received statevector request (GPU={_GPU_AVAILABLE}).")
-    if not AERSIM_AVAILABLE:
-        return runner_error("cuquantum", "qiskit-aer not installed.")
+    logger.info("Received statevector request.")
+    if not capabilities()["available"]:
+        return _unavailable_error()
 
     def compile_step(payload):
         qasm, strip_notes = prepare_statevector_qasm(payload["circuit_data"])
@@ -150,7 +174,7 @@ def process_run(payload: dict) -> dict:
 
     def execute(compiled, _payload):
         sim, executed_qc, _qc = compiled.circuit
-        return _run_safe(sim, executed_qc)
+        return sim.run(executed_qc).result()
 
     def shape_statevector(result, compiled, _payload):
         backend_fields.update(_backend_fields(result, compiled.circuit[0]))
@@ -168,9 +192,9 @@ def process_run(payload: dict) -> dict:
 
 @with_sdk_versions
 def process_run_measured(payload: dict) -> dict:
-    logger.info(f"Received measurement request (GPU={_GPU_AVAILABLE}).")
-    if not AERSIM_AVAILABLE:
-        return runner_error("cuquantum", "qiskit-aer not installed.")
+    logger.info("Received measurement request.")
+    if not capabilities()["available"]:
+        return _unavailable_error()
 
     def compile_step(payload):
         sim = _simulator()
@@ -184,8 +208,8 @@ def process_run_measured(payload: dict) -> dict:
 
     def execute(compiled, payload):
         sim, qc, _qc = compiled.circuit
-        return _run_safe(sim, qc, shots=payload.get("n_shots", 1024),
-                         seed_simulator=payload.get("seed"))
+        return sim.run(qc, shots=payload.get("n_shots", 1024),
+                       seed_simulator=payload.get("seed")).result()
 
     def shape_counts(result, compiled, payload):
         """Re-key Aer counts over the circuit's declared classical bits (lsb)."""
@@ -206,6 +230,11 @@ def process_run_measured(payload: dict) -> dict:
 
 
 register_runner_endpoints(app, process_run, process_run_measured)
+
+
+@app.get("/capabilities")
+def get_capabilities():
+    return capabilities()
 
 logger.info("cuQuantum runner API instantiated and ready to receive traffic.")
 
