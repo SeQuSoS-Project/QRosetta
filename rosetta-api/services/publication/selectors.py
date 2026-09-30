@@ -109,3 +109,36 @@ def _timing_samples(results: dict) -> str:
         if v is not None and _fmt_int(v) not in vals:
             vals.append(_fmt_int(v))
     return "/".join(vals) if vals else "1"
+
+
+COMMON_KEY_ORDER_NOTE = ("keys in msb order (classical bit 0 leftmost); "
+                         "lsb-declared backends bit-reversed")
+
+
+def _msb_counts(results: dict) -> dict:
+    """Map simulator -> counts with keys in msb order (lsb-declared backends' keys reversed).
+
+    Backends without usable counts are omitted; keys of a backend without a declared
+    lsb/msb order are kept as reported.
+    """
+    out = {}
+    for r in results.get("raw_results") or []:
+        sim, counts = r.get("simulator"), r.get("counts")
+        if not (isinstance(counts, dict) and counts) or sim in out:
+            continue
+        if r.get("qubit_ordering") == "lsb":
+            flipped = {}
+            for k, v in counts.items():
+                flipped[k[::-1]] = flipped.get(k[::-1], 0) + v
+            counts = flipped
+        out[sim] = counts
+    return out
+
+
+def _run_label(results: dict) -> str:
+    """"<circuit name>, <n> shots" from task_name/run_name/circuit_name and n_shots."""
+    name = results.get("task_name") or results.get("run_name") or results.get("circuit_name")
+    parts = [str(name)] if name else ["unnamed circuit"]
+    if results.get("n_shots") is not None:
+        parts.append(f"{_fmt_int(results.get('n_shots'))} shots per backend")
+    return ", ".join(parts)

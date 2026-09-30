@@ -17,7 +17,10 @@ from .figures import (
     _fig_counts_overview_heatmap, _fig_heatmap, _fig_ranking_bar,
 )
 from .formats import _render_figure, _table_bytes, basename_slug
-from .selectors import JS_UNIT, _distinct, _heatmap_specs, _pairwise_records, _timing_samples
+from .selectors import (
+    COMMON_KEY_ORDER_NOTE, JS_UNIT, _distinct, _heatmap_specs, _msb_counts, _pairwise_records,
+    _run_label, _timing_samples,
+)
 from .tables import (
     _tbl_agreement, _tbl_matrix, _tbl_metadata, _tbl_performance, _tbl_resources,
     _tbl_statistical, _txt_executed_qasm, _txt_glossary,
@@ -54,13 +57,15 @@ def _iter_artifacts(results: dict, mode: str) -> List[dict]:
     if records:
         fig_artifact("agreement_distribution", "Agreement class distribution", "Agreement",
                      lambda: _fig_agreement_distribution(div, mode),
-                     "Bar chart of how many backend pairs fall into each explained-cause class"
+                     "Bar chart of how many backend pairs fall into each agreement label "
+                     "(transform-explained, residual or not comparable)"
                      + (" and shot-noise verdict" if mode == "measured" else "") + ".")
         table_artifact("agreement", "Pairwise agreement table", "Agreement",
                        lambda: _tbl_agreement(div, mode),
                        "One row per backend pair: explained-cause label, registered transform, key "
-                       f"metric (direct fidelity or JS divergence in {JS_UNIT}), statistical "
-                       "verdict and measured assessment (measured) and not-comparable reason.")
+                       f"metric (direct fidelity, or JS divergence in {JS_UNIT} direct and in the "
+                       "label-aligned basis), statistical verdict and measured assessment "
+                       "(measured) and not-comparable reason.")
 
     multi = len(div.get("simulators", [])) >= 2
     for key, title, base in _heatmap_specs(mode):
@@ -114,9 +119,10 @@ def _iter_artifacts(results: dict, mode: str) -> List[dict]:
         if any((r.get("metrics", {}) or {}).get("statistical_test") for r in records):
             table_artifact("statistical_test", "Statistical-test table", "Statistical",
                            lambda: _tbl_statistical(div),
-                           "Chi-square + G-test p-values (raw + BH), effect size, power per pair.")
-        raw = {r.get("simulator"): r.get("counts") for r in results.get("raw_results", [])
-               if isinstance(r.get("counts"), dict) and r.get("counts")}
+                           "Chi-square + G-test p-values (raw + BH) in the label-aligned basis, "
+                           "effect size, power and pooled outcomes per pair.")
+        raw = _msb_counts(results)
+        run_label = _run_label(results)
         missing = []
         for r in results.get("raw_results", []):
             sim = r.get("simulator")
@@ -128,14 +134,18 @@ def _iter_artifacts(results: dict, mode: str) -> List[dict]:
             order = div.get("simulators") or [r.get("simulator") for r in results.get("raw_results", [])]
             sims_order = [s for s in order if s in raw]
             fig_artifact("counts_overview", "Count overview (all backends)", "Statistical",
-                         lambda cbs=dict(raw), so=list(sims_order): _fig_counts_overview_bars(cbs, so),
-                         "Clustered bar histogram of raw measured probabilities, one colour per "
-                         "backend over the top outcomes (Qiskit plot_histogram convention); "
-                         "low-probability outcomes are folded into 'other' (disclosed in-figure)."
+                         lambda cbs=dict(raw), so=list(sims_order):
+                         _fig_counts_overview_bars(cbs, so, run_label),
+                         "Clustered bar histogram of measured probabilities, one colour per "
+                         "backend over the top outcomes (Qiskit plot_histogram convention), "
+                         f"{COMMON_KEY_ORDER_NOTE}; low-probability outcomes are folded into "
+                         "'other' (disclosed in-figure)."
                          + missing_note)
             fig_artifact("counts_overview_heatmap", "Count overview heatmap (optional)", "Statistical",
-                         lambda cbs=dict(raw), so=list(sims_order): _fig_counts_overview_heatmap(cbs, so),
-                         "Optional compact view: outcome × backend probability heatmap; a uniform "
+                         lambda cbs=dict(raw), so=list(sims_order):
+                         _fig_counts_overview_heatmap(cbs, so, run_label),
+                         "Optional compact view: outcome × backend probability heatmap, "
+                         f"{COMMON_KEY_ORDER_NOTE}; a uniform "
                          "row = agreement, a varying row = disagreement. Scales to many backends."
                          + missing_note)
         eligible = [rec for rec in records
@@ -148,8 +158,10 @@ def _iter_artifacts(results: dict, mode: str) -> List[dict]:
             a, b = rec["simulators"][0], rec["simulators"][1]
             slug = basename_slug(f"{a}_{b}")
             fig_artifact(f"histogram_{slug}", f"Count histogram: {a} vs {b}", "Statistical",
-                         lambda ca=raw[a], cb=raw[b], aa=a, bb=b: _fig_count_histogram(ca, cb, aa, bb),
-                         f"Raw measured probability distributions for {a} vs {b}." + cap_note)
+                         lambda ca=raw[a], cb=raw[b], aa=a, bb=b:
+                         _fig_count_histogram(ca, cb, aa, bb, run_label),
+                         f"Measured probability distributions for {a} vs {b}, "
+                         f"{COMMON_KEY_ORDER_NOTE}." + cap_note)
 
     if results.get("raw_results"):
         table_artifact("metadata", "Run + provenance metadata", "Metadata",

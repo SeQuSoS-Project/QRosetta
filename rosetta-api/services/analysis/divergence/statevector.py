@@ -41,9 +41,9 @@ def _normalize_statevector(sv):
 
 
 def _statevector_inner_metrics(sv_i_norm, sv_j_norm, fidelity_tolerance, phase_tolerance):
-    """Return (fidelity, relative_phase) of two normalised vectors.
+    """Return (fidelity, global phase offset arg<i|j>) of two normalised vectors.
 
-    Fidelity is |<i|j>|^2 clamped to [0, 1]; it is never rounded toward 1. A relative phase
+    Fidelity is |<i|j>|^2 clamped to [0, 1]; it is never rounded toward 1. A phase offset
     within ``phase_tolerance`` of 0 is reported as 0. ``fidelity_tolerance`` is accepted for
     signature compatibility and does not alter the returned fidelity.
     """

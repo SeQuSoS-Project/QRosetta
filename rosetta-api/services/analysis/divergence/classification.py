@@ -226,12 +226,15 @@ def _classify_counts_pair(
     hellinger_threshold,
     n_shots,
     shot_total_mismatch=None,
+    label_aligned_basis="direct",
 ):
     """Label a measured pair from its direct, bit-reversed and permuted JS/Hellinger distances.
 
     The label is a descriptive threshold check; ``metrics.statistical_test`` is added by the
-    report builder. ``shot_total_mismatch`` is recorded when an observed total differs from
-    the requested ``n_shots``.
+    report builder. ``label_aligned_basis`` ("direct" or "bit_reversal", from the declared
+    counts bit orders) is checked first, then the other basis, then qubit permutations.
+    ``shot_total_mismatch`` is recorded when an observed total differs from the requested
+    ``n_shots``.
     """
     sim_i = res_i.get("simulator", "unknown")
     sim_j = res_j.get("simulator", "unknown")
@@ -250,22 +253,28 @@ def _classify_counts_pair(
         and qubit_permutation_h <= hellinger_threshold
     )
 
-    if direct_agrees:
-        agreement = "distance_within_threshold"
-        registered_transform = "identity_threshold_check"
-        transform_effect = {
-            "js_divergence_delta": 0.0,
-            "hellinger_distance_delta": 0.0,
-        }
-    elif bit_reversal_agrees:
-        agreement = "agree_after_bit_reversal"
-        registered_transform = "bit_reversal"
-        transform_effect = {
+    direct_label = (
+        "distance_within_threshold",
+        "identity_threshold_check",
+        {"js_divergence_delta": 0.0, "hellinger_distance_delta": 0.0},
+    )
+    reversal_label = (
+        "agree_after_bit_reversal",
+        "bit_reversal",
+        {
             "js_divergence_delta": _json_float(bit_reversed_js_div - js_div),
             "hellinger_distance_delta": _json_float(bit_reversed_h_dist - h_dist),
             "js_divergence_after_transform": _json_float(bit_reversed_js_div),
             "hellinger_distance_after_transform": _json_float(bit_reversed_h_dist),
-        }
+        },
+    )
+    bases = [(direct_agrees, direct_label), (bit_reversal_agrees, reversal_label)]
+    if label_aligned_basis == "bit_reversal":
+        bases.reverse()
+    matched = next((label for agrees, label in bases if agrees), None)
+
+    if matched is not None:
+        agreement, registered_transform, transform_effect = matched
     elif qubit_permutation_agrees:
         agreement = "agree_after_qubit_permutation"
         registered_transform = "qubit_permutation"
@@ -299,6 +308,13 @@ def _classify_counts_pair(
             "hellinger_distance": _json_float(h_dist),
             "bit_reversed_js_divergence": _json_float(bit_reversed_js_div),
             "bit_reversed_hellinger_distance": _json_float(bit_reversed_h_dist),
+            "label_aligned_basis": label_aligned_basis,
+            "label_aligned_js_divergence": _json_float(
+                bit_reversed_js_div if label_aligned_basis == "bit_reversal" else js_div
+            ),
+            "label_aligned_hellinger_distance": _json_float(
+                bit_reversed_h_dist if label_aligned_basis == "bit_reversal" else h_dist
+            ),
             "qubit_permutation": {
                 "attempted": bool(qubit_permutation_metrics.get("attempted")),
                 "reason": qubit_permutation_metrics.get("reason"),

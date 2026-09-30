@@ -13,7 +13,7 @@ from .classification import (
 )
 from .counts import (
     _best_counts_qubit_permutation_metrics, _bit_reversed_counts, _counts_distance_metrics,
-    _counts_invalid_reason, _counts_probability_vector, _counts_total, _permute_counts,
+    _counts_invalid_reason, _counts_probability_vector, _counts_total,
 )
 from .statevector import (
     _best_statevector_qubit_permutation_metrics, _bit_reversed_statevector,
@@ -49,11 +49,11 @@ def create_divergence_report(results_list, thresholds=None):
     """Build the statevector divergence report: fidelity/phase matrices and pair records.
 
     Each statevector is decoded and normalised once and reused across pairs. ``thresholds``
-    may override ``fidelity_tolerance`` (default 1e-5), ``phase_tolerance`` (default 1e-12)
+    may override ``fidelity_tolerance`` (default 1e-5), ``phase_tolerance`` (default 1e-6 rad)
     and ``norm_tolerance`` (default 1e-4); an absent or None key keeps the default.
 
     Matrix cells are None for pairs that were not compared; a diagonal cell holds the
-    exact self-value (fidelity 1.0, relative phase 0.0) when that backend's statevector
+    exact self-value (fidelity 1.0, global phase offset 0.0) when that backend's statevector
     is usable, else None.
     """
 
@@ -336,8 +336,24 @@ def _shot_total_mismatch(sim_i, total_i, sim_j, total_j, n_shots):
     }
 
 
+_DECLARED_ORDERS = ("lsb", "msb")
+
+
+def _label_aligned_basis(res_i, res_j):
+    """"bit_reversal" when the two results declare different counts bit orders, else "direct"."""
+    order_i = res_i.get("qubit_ordering")
+    order_j = res_j.get("qubit_ordering")
+    if order_i in _DECLARED_ORDERS and order_j in _DECLARED_ORDERS and order_i != order_j:
+        return "bit_reversal"
+    return "direct"
+
+
 def _compare_counts_pair(res_i, res_j, is_cross_group, js_threshold, hellinger_threshold, n_shots):
-    """Return (record, statistical_test block or None, (js, hellinger) or None) for one pair."""
+    """Return (record, statistical_test block or None, distances or None) for one pair.
+
+    ``distances`` is (direct js, direct hellinger, label-aligned js, label-aligned
+    hellinger). The statistical test runs in the label-aligned basis.
+    """
     sim_i = res_i.get("simulator", "unknown")
     sim_j = res_j.get("simulator", "unknown")
     counts_i = res_i["counts"]
@@ -378,6 +394,7 @@ def _compare_counts_pair(res_i, res_j, is_cross_group, js_threshold, hellinger_t
         sim_i, _counts_total(counts_i), sim_j, _counts_total(counts_j), n_shots
     )
 
+    basis = _label_aligned_basis(res_i, res_j)
     record = _classify_counts_pair(
         res_i,
         res_j,
@@ -391,21 +408,19 @@ def _compare_counts_pair(res_i, res_j, is_cross_group, js_threshold, hellinger_t
         hellinger_threshold,
         n_shots,
         shot_total_mismatch,
+        label_aligned_basis=basis,
     )
 
-    if record["agreement"] == "agree_after_bit_reversal":
-        basis, counts_j_aligned = "bit_reversal", bit_reversed_counts_j
-    elif record["agreement"] == "agree_after_qubit_permutation":
-        basis = "qubit_permutation"
-        counts_j_aligned = _permute_counts(counts_j, record["transform_effect"]["permutation"])
-    else:
-        basis, counts_j_aligned = "direct", counts_j
-
+    counts_j_aligned = bit_reversed_counts_j if basis == "bit_reversal" else counts_j
     stat_block = _statistical_agreement_test(
         counts_i, counts_j_aligned, basis, sim_i, sim_j, res_i=res_i, res_j=res_j
     )
     record["metrics"]["statistical_test"] = stat_block
-    return record, stat_block, (js_div, h_dist)
+    metrics = record["metrics"]
+    return record, stat_block, (
+        js_div, h_dist,
+        metrics["label_aligned_js_divergence"], metrics["label_aligned_hellinger_distance"],
+    )
 
 
 def create_counts_report(results_list, n_shots, thresholds=None):
@@ -490,15 +505,16 @@ def create_counts_report(results_list, n_shots, thresholds=None):
             if distances is None:
                 continue
 
-            js_div, h_dist = distances
+            js_div, h_dist, aligned_js, aligned_h = distances
             js_matrix[i][j] = js_matrix[j][i] = float(js_div)
             hellinger_matrix[i][j] = hellinger_matrix[j][i] = float(h_dist)
-            if js_div > js_threshold or h_dist > hellinger_threshold:
+            if aligned_js > js_threshold or aligned_h > hellinger_threshold:
                 divergences_found.append({
                     "type": "Distribution Divergence",
                     "simulators": [sim_i, sim_j],
-                    "js_divergence": js_div,
-                    "hellinger_distance": h_dist,
+                    "basis": record["metrics"]["label_aligned_basis"],
+                    "js_divergence": aligned_js,
+                    "hellinger_distance": aligned_h,
                     "is_cross_group": is_cross_group,
                 })
 

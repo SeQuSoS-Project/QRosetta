@@ -32,6 +32,7 @@ from .figures import (
 )
 from .formats import (
     _fmt_int,
+    _fmt_p,
     _fmt_num,
     _fmt_text,
     _latex_escape,
@@ -85,6 +86,7 @@ __all__ = [
     "_fig_heatmap",
     "_fig_ranking_bar",
     "_fmt_int",
+    "_fmt_p",
     "_fmt_num",
     "_fmt_text",
     "_heatmap_specs",

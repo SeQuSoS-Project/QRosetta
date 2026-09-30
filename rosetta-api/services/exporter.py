@@ -66,19 +66,33 @@ def _artifact_encoding_format(path: str) -> str:
 
 def _generate_publication_artifacts(ctx: "ExportContext") -> tuple:
     """(files, descriptions) for the requested publication figures/tables; ({}, {}) when
-    none are requested. The publication engine (and matplotlib) is imported only then."""
+    none are requested. A batch report gets one set per task under figures/<task_id>/ and
+    tables/<task_id>/. The publication engine (and matplotlib) is imported only then."""
     sel = ctx.publication_artifacts
     if not sel or not sel.get("categories"):
         return {}, {}
     from services.publication import build_publication_artifacts, describe_artifact_paths
-    files = build_publication_artifacts(
-        ctx.results,
-        ctx.mode,
-        tuple(sel.get("categories", [])),
-        tuple(sel.get("figure_formats", ["svg"])),
-        tuple(sel.get("table_formats", ["csv"])),
-    )
-    return files, describe_artifact_paths(ctx.results, ctx.mode, sorted(files))
+    categories = tuple(sel.get("categories", []))
+    figure_formats = tuple(sel.get("figure_formats", ["svg"]))
+    table_formats = tuple(sel.get("table_formats", ["csv"]))
+    files: Dict[str, bytes] = {}
+    descriptions: Dict[str, str] = {}
+    for task in _iter_tasks(ctx):
+        report = task.report
+        mode = ctx.mode if task.task_id is None else infer_export_mode(report)
+        built = build_publication_artifacts(report, mode, categories, figure_formats, table_formats)
+        described = describe_artifact_paths(report, mode, sorted(built))
+        for path, data in built.items():
+            if task.task_id is None:
+                files[path] = data
+                if path in described:
+                    descriptions[path] = described[path]
+                continue
+            folder, name = path.split("/", 1)
+            scoped = f"{folder}/{task.task_id}/{name}"
+            files[scoped] = data
+            descriptions[scoped] = f"Task {task.label}. " + described.get(path, "")
+    return files, descriptions
 
 
 @dataclass
@@ -585,8 +599,9 @@ def _build_ro_crate_metadata(ctx: ExportContext,
     if lock_paths:
         contents.append("each runner's pinned environment as runners/<runner>/requirements.lock")
     if artifact_paths:
-        contents.append("publication figures and tables under figures/ and tables/, each "
-                        "described below with its legend and, for tables, its caption")
+        contents.append("publication figures and tables under figures/ and tables/"
+                        + (" (one folder per task)" if is_batch else "")
+                        + ", each described below with its legend and, for tables, its caption")
     root_entity: dict = {
         "@id": "./",
         "@type": "Dataset",
@@ -840,7 +855,7 @@ def _build_ro_crate_metadata(ctx: ExportContext,
         graph.append({
             "@id": path,
             "@type": "File",
-            "name": path.rsplit("/", 1)[-1],
+            "name": path.split("/", 1)[-1],
             "description": (
                 f"Publication-ready {kind} derived deterministically from the analysis reports. "
                 + artifact_descriptions.get(path, "")

@@ -11,7 +11,8 @@ from scipy.optimize import brentq
 
 from .common import STAT_TEST_ALPHA, STAT_TEST_DELTA_TV, STAT_TEST_TARGET_POWER
 
-POWER_MODEL = "min_cohens_w (w = delta_tv, df = observed outcomes - 1)"
+POWER_MODEL = "min_cohens_w (w = delta_tv, df = tested outcome bins - 1, at least 1)"
+MIN_EXPECTED_COUNT = 5.0
 
 
 def _shots_per_backend_for_target_power(alpha, target_power, delta_tv, df=1):
@@ -52,6 +53,49 @@ def _shared_seed(res_i, res_j):
     return bool(seed_i == seed_j)
 
 
+def _cochran_ok(expected):
+    """True when no expected count is below 1 and at most 20% are below MIN_EXPECTED_COUNT."""
+    return bool(expected.min() >= 1.0 and (expected < MIN_EXPECTED_COUNT).mean() <= 0.2)
+
+
+def _pool_rare_outcomes(row_i, row_j):
+    """Pool outcome columns with an expected count below MIN_EXPECTED_COUNT into one bin.
+
+    Returns (row_i, row_j, pooled_outcomes, ok). The pooled bin is kept when its own
+    expected counts reach MIN_EXPECTED_COUNT or the table meets Cochran's rule; otherwise
+    the smallest remaining column is merged into it while two or more columns would remain.
+    ``ok`` is False when no testable table with at least two columns and adequate expected
+    counts exists. ``pooled_outcomes`` counts the observed outcomes merged into the bin.
+    """
+    n_i, n_j = row_i.sum(), row_j.sum()
+    n_total = n_i + n_j
+    col = row_i + row_j
+    min_share = min(n_i, n_j) / n_total
+    order = [int(k) for k in np.argsort(col, kind="stable")]
+    pooled = [k for k in order if col[k] * min_share < MIN_EXPECTED_COUNT]
+    kept = [k for k in order if k not in pooled]
+
+    def table(kept_cols, pooled_cols):
+        cols_i = [row_i[k] for k in kept_cols]
+        cols_j = [row_j[k] for k in kept_cols]
+        if pooled_cols:
+            cols_i.append(sum(row_i[k] for k in pooled_cols))
+            cols_j.append(sum(row_j[k] for k in pooled_cols))
+        return np.array(cols_i), np.array(cols_j)
+
+    while True:
+        t_i, t_j = table(kept, pooled)
+        expected = np.outer([n_i, n_j], t_i + t_j) / n_total
+        if len(t_i) < 2:
+            ok = bool((expected >= MIN_EXPECTED_COUNT).all())
+            return t_i, t_j, len(pooled) if len(pooled) > 1 else 0, ok and not pooled
+        if not pooled or expected[:, -1].min() >= MIN_EXPECTED_COUNT or _cochran_ok(expected):
+            return t_i, t_j, len(pooled) if len(pooled) > 1 else 0, True
+        if len(kept) < 2:
+            return t_i, t_j, len(pooled), False
+        pooled.append(kept.pop(0))
+
+
 def _statistical_agreement_test(
     counts_i,
     counts_j,
@@ -67,7 +111,11 @@ def _statistical_agreement_test(
     """Uncorrected Pearson chi-square and G-test of homogeneity between two count vectors.
 
     ``counts_j`` is already aligned to ``basis``. Outcomes with zero counts in both rows are
-    dropped before testing. Family-wise correction and the verdict are filled in by
+    dropped; outcomes with an expected count below 5 are pooled into one bin
+    (``pooled_outcomes``). A table with a single outcome bin is tested against the empty
+    complement bin: statistic 0 on 1 degree of freedom. ``low_count_warning`` is set when no
+    pooling gives adequate expected counts. Power is evaluated on the tested table's degrees
+    of freedom. Family-wise correction and the verdict are filled in by
     ``_apply_multiple_comparison_correction``. Raises ValueError if scipy rejects the table.
     """
     outcomes = [
@@ -84,12 +132,18 @@ def _statistical_agreement_test(
     p_j = row_j / n_j
     total_variation = float(0.5 * np.abs(p_i - p_j).sum())
 
-    df = max(len(outcomes) - 1, 1)
+    t_i, t_j, pooled_outcomes, counts_ok = _pool_rare_outcomes(row_i, row_j)
+    df = max(len(t_i) - 1, 1)
+    recommended = _shots_per_backend_for_target_power(alpha, target_power, delta_tv, df)
     block = {
         "basis": basis,
+        "basis_source": "declared_qubit_ordering",
         "n_shots": {sim_i: int(round(n_i)), sim_j: int(round(n_j))},
         "alpha": alpha,
         "shared_seed": _shared_seed(res_i, res_j),
+        "observed_outcomes": len(outcomes),
+        "pooled_outcomes": int(pooled_outcomes),
+        "tested_outcome_bins": int(len(t_i)),
         "effect_size": {
             "total_variation": total_variation,
             "cramers_v": None,
@@ -100,8 +154,10 @@ def _statistical_agreement_test(
             "model": POWER_MODEL,
             "df": df,
             "power_to_detect_delta_at_observed_shots": _power_at_shots(alpha, delta_tv, df, n_total),
-            "shots_per_backend_for_target_power": _shots_per_backend_for_target_power(
-                alpha, target_power, delta_tv, df
+            "shots_per_backend_for_target_power": recommended,
+            "recommended_shots_per_backend": recommended,
+            "recommended_exceeds_actual": (
+                None if recommended is None else bool(recommended > min(n_i, n_j))
             ),
         },
         "chi2": {
@@ -120,21 +176,21 @@ def _statistical_agreement_test(
             "p_value_bonferroni": None,
             "significant_bh": None,
         },
-        "low_count_warning": False,
+        "low_count_warning": not counts_ok,
+        "inconclusive_reason": None,
         "verdict": None,
     }
 
-    if len(outcomes) < 2:
-        block["chi2"].update({"statistic": 0.0, "dof": 0, "p_value": 1.0})
-        block["g_test"].update({"statistic": 0.0, "dof": 0, "p_value": 1.0})
+    if len(t_i) < 2:
+        block["chi2"].update({"statistic": 0.0, "dof": df, "p_value": 1.0})
+        block["g_test"].update({"statistic": 0.0, "dof": df, "p_value": 1.0})
         block["effect_size"]["cramers_v"] = 0.0
         return block
 
-    table = np.vstack([row_i, row_j])
-    chi2_stat, chi2_p, dof, expected = chi2_contingency(table, correction=False)
+    table = np.vstack([t_i, t_j])
+    chi2_stat, chi2_p, dof, _ = chi2_contingency(table, correction=False)
     g_stat, g_p, _, _ = chi2_contingency(table, correction=False, lambda_="log-likelihood")
 
-    block["low_count_warning"] = bool((expected < 5).any())
     block["effect_size"]["cramers_v"] = float(np.sqrt(chi2_stat / n_total))
     block["chi2"].update({
         "statistic": float(chi2_stat),
@@ -196,12 +252,20 @@ def _apply_multiple_comparison_correction(stat_records, alpha=STAT_TEST_ALPHA):
         g_sig = rec["g_test"]["significant_bh"]
         n_sig["chi2"] += int(bool(chi2_sig))
         n_sig["g_test"] += int(bool(g_sig))
+        power = rec.get("power") or {}
+        power_at_obs = power.get("power_to_detect_delta_at_observed_shots")
+        target = power.get("target_power", STAT_TEST_TARGET_POWER)
         if rec["low_count_warning"]:
             verdict = "inconclusive_low_shots"
+            rec["inconclusive_reason"] = "low_expected_counts"
         elif chi2_sig and g_sig:
             verdict = "distinguishable"
         elif not chi2_sig and not g_sig:
-            verdict = "consistent"
+            if power_at_obs is not None and power_at_obs < target:
+                verdict = "inconclusive_low_shots"
+                rec["inconclusive_reason"] = "low_power"
+            else:
+                verdict = "consistent"
         else:
             verdict = "ambiguous"
         rec["verdict"] = verdict

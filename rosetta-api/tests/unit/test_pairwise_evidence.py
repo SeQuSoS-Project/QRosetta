@@ -381,9 +381,9 @@ def test_shots_for_target_power_reference_value():
 
 def test_statistical_test_consistent_for_identical_distributions():
     report = create_counts_report([
-        {"simulator": "a", "counts": {"00": 500, "11": 500}, "qubit_ordering": "lsb"},
-        {"simulator": "b", "counts": {"00": 500, "11": 500}, "qubit_ordering": "lsb"},
-    ], n_shots=1000)
+        {"simulator": "a", "counts": {"00": 1000, "11": 1000}, "qubit_ordering": "lsb"},
+        {"simulator": "b", "counts": {"00": 1000, "11": 1000}, "qubit_ordering": "lsb"},
+    ], n_shots=2000)
 
     evidence = _record(report, "a", "b")
     stat = evidence["metrics"]["statistical_test"]
@@ -424,12 +424,12 @@ def test_statistical_test_inconclusive_for_low_shots():
     _assert_strict_json(report)
 
 
-def test_statistical_test_uses_registered_transform_basis():
-    """The test runs on the basis the descriptive label selected (bit reversal here)."""
+def test_statistical_test_uses_label_aligned_basis():
+    """Declared lsb vs msb: the test runs on bit-reversed keys."""
     report = create_counts_report([
-        {"simulator": "lsb_backend", "counts": {"001": 1000}, "qubit_ordering": "lsb"},
-        {"simulator": "msb_backend", "counts": {"100": 1000}, "qubit_ordering": "msb"},
-    ], n_shots=1000)
+        {"simulator": "lsb_backend", "counts": {"001": 2000}, "qubit_ordering": "lsb"},
+        {"simulator": "msb_backend", "counts": {"100": 2000}, "qubit_ordering": "msb"},
+    ], n_shots=2000)
 
     evidence = _record(report, "lsb_backend", "msb_backend")
     assert evidence["agreement"] == "agree_after_bit_reversal"
@@ -486,3 +486,86 @@ def test_statevector_tolerance_is_configurable_and_recorded():
     assert _record(rep, "a", "b")["metrics"]["fidelity_tolerance"] == 1e-6
     rep0 = create_divergence_report([dict(x) for x in rows])
     assert _record(rep0, "a", "b")["metrics"]["fidelity_tolerance"] == 1e-5
+
+
+def _cu3_counts(order, shots=100000):
+    """Exact-expectation counts of h;h;cu3(pi/3,pi/5,pi/7);h;h on 2 qubits, keyed lsb or msb."""
+    probs = {(0, 0): 0.6962853291580542, (0, 1): 0.11132261253686346,
+             (1, 0): 0.08106944576821805, (1, 1): 0.11132261253686346}
+    counts = {}
+    for (q0, q1), p in probs.items():
+        key = f"{q1}{q0}" if order == "lsb" else f"{q0}{q1}"
+        counts[key] = round(p * shots)
+    return counts
+
+
+def test_cross_label_pair_is_tested_in_label_aligned_basis():
+    report = create_counts_report([
+        {"simulator": "qiskit", "counts": _cu3_counts("lsb"), "qubit_ordering": "lsb"},
+        {"simulator": "cirq", "counts": _cu3_counts("msb"), "qubit_ordering": "msb"},
+    ], n_shots=100000)
+    rec = _record(report, "qiskit", "cirq")
+    m = rec["metrics"]
+    assert m["js_divergence"] <= 0.01
+    assert m["js_divergence"] > 1e-3
+    assert m["label_aligned_basis"] == "bit_reversal"
+    assert m["label_aligned_js_divergence"] == m["bit_reversed_js_divergence"] == 0.0
+    assert rec["agreement"] == "agree_after_bit_reversal"
+    assert m["statistical_test"]["basis"] == "bit_reversal"
+    assert rec["measured_assessment"] == "consistent_within_shot_noise"
+    assert report["divergences_found"] == []
+
+
+def test_same_label_pair_is_tested_directly_even_when_reversal_is_closer():
+    report = create_counts_report([
+        {"simulator": "a", "counts": _cu3_counts("msb"), "qubit_ordering": "msb"},
+        {"simulator": "b", "counts": _cu3_counts("lsb"), "qubit_ordering": "msb"},
+    ], n_shots=100000)
+    rec = _record(report, "a", "b")
+    assert rec["metrics"]["label_aligned_basis"] == "direct"
+    assert rec["metrics"]["statistical_test"]["basis"] == "direct"
+    assert rec["measured_assessment"] == "distinguishable"
+
+
+def test_rare_outcome_pooling_and_recommendation_flag():
+    stat = _record(create_counts_report([
+        {"simulator": "a", "counts": {"0": 99998, "1": 2}},
+        {"simulator": "b", "counts": {"0": 99998, "1": 2}},
+    ], n_shots=100000), "a", "b")["metrics"]["statistical_test"]
+    assert stat["verdict"] == "inconclusive_low_shots"
+    assert stat["inconclusive_reason"] == "low_expected_counts"
+    assert stat["power"]["recommended_shots_per_backend"] == 1570
+    assert stat["power"]["recommended_exceeds_actual"] is False
+
+    stat = _record(create_counts_report([
+        {"simulator": "a", "counts": {"00": 1000, "11": 993, "01": 5, "10": 2}},
+        {"simulator": "b", "counts": {"00": 1000, "11": 996, "01": 3, "10": 1}},
+    ], n_shots=2000), "a", "b")["metrics"]["statistical_test"]
+    assert stat["pooled_outcomes"] == 2
+    assert stat["tested_outcome_bins"] == 3
+    assert stat["low_count_warning"] is False
+    assert stat["chi2"]["dof"] == stat["power"]["df"] == 2
+    assert stat["verdict"] == "consistent"
+
+
+def test_single_outcome_tables_use_one_degree_of_freedom_and_low_count_checks():
+    one = _record(create_counts_report([
+        {"simulator": "a", "counts": {"0": 1}}, {"simulator": "b", "counts": {"0": 1}},
+    ], n_shots=1), "a", "b")["metrics"]["statistical_test"]
+    assert one["low_count_warning"] is True
+    assert one["verdict"] == "inconclusive_low_shots"
+    assert one["inconclusive_reason"] == "low_expected_counts"
+
+    ten = _record(create_counts_report([
+        {"simulator": "a", "counts": {"00": 10}}, {"simulator": "b", "counts": {"00": 10}},
+    ], n_shots=10), "a", "b")["metrics"]["statistical_test"]
+    assert ten["chi2"]["dof"] == ten["power"]["df"] == 1
+    assert ten["low_count_warning"] is False
+    assert ten["verdict"] == "inconclusive_low_shots"
+    assert ten["inconclusive_reason"] == "low_power"
+    assert ten["power"]["recommended_exceeds_actual"] is True
+
+    many = _record(create_counts_report([
+        {"simulator": "a", "counts": {"00": 2048}}, {"simulator": "b", "counts": {"00": 2048}},
+    ], n_shots=2048), "a", "b")["metrics"]["statistical_test"]
+    assert many["verdict"] == "consistent"

@@ -100,6 +100,16 @@ def _fmt_num(v: Any, digits: int = 4) -> str:
     return s
 
 
+P_VALUE_FLOOR = "<1e-300"
+
+
+def _fmt_p(v: Any) -> str:
+    """Format a p-value as _fmt_num, except an exact 0 (floating-point underflow) -> "<1e-300"."""
+    if _is_number(v) and float(v) == 0:
+        return P_VALUE_FLOOR
+    return _fmt_num(v)
+
+
 def _fmt_int(v: Any) -> str:
     """Format a count-like value: integral numbers without decimals, else as _fmt_num."""
     if _is_number(v) and math.isfinite(float(v)) and float(v).is_integer() \

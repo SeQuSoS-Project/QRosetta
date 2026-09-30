@@ -1,10 +1,10 @@
 """Table builders, returning (headers, rows, title, caption), and text-blob builders."""
 
 from .theme import (
-    _AGREEMENT_GLOSSARY, _ASSESSMENT_GLOSSARY, _NOT_COMPARABLE_GLOSSARY, _THRESHOLD_DEFAULTS,
-    _UNRANKED_GLOSSARY, _VERDICT_GLOSSARY,
+    _AGREEMENT_GLOSSARY, _ASSESSMENT_GLOSSARY, _MEASUREMENT_NOTES, _NOT_COMPARABLE_GLOSSARY,
+    _THRESHOLD_DEFAULTS, _UNRANKED_GLOSSARY, _VERDICT_GLOSSARY,
 )
-from .formats import _fmt_int, _fmt_num, _fmt_text
+from .formats import _fmt_int, _fmt_num, _fmt_p, _fmt_text
 from .selectors import (
     JS_UNIT, _distinct, _field, _key_metric, _pair_key, _pairwise_records, _report_rows,
     _timing_samples,
@@ -12,14 +12,16 @@ from .selectors import (
 
 
 def _tbl_agreement(divergence_report: dict, mode: str):
-    """One row per backend pair: label, transform, key metric, verdict and assessment
+    """One row per backend pair: label, transform, key metric(s), verdict and assessment
     (measured), reason."""
     records = _pairwise_records(divergence_report)
     measured = mode == "measured"
-    headers = ["Pair", "Agreement", "Registered transform",
-               f"JS divergence ({JS_UNIT})" if measured else "Direct fidelity"]
+    headers = ["Pair", "Agreement", "Registered transform"]
     if measured:
-        headers += ["Stat verdict", "Measured assessment"]
+        headers += [f"JS, direct ({JS_UNIT})", f"JS, label-aligned basis ({JS_UNIT})",
+                    "Stat verdict", "Measured assessment"]
+    else:
+        headers.append("Direct fidelity")
     headers.append("Not-comparable reason")
     rows = []
     for r in records:
@@ -27,11 +29,14 @@ def _tbl_agreement(divergence_report: dict, mode: str):
         row = [_pair_key(r), _fmt_text(r.get("agreement")),
                _fmt_text(r.get("registered_transform")), _fmt_num(_key_metric(r))]
         if measured:
-            row += [_fmt_text((m.get("statistical_test") or {}).get("verdict")),
+            row += [_fmt_num(m.get("label_aligned_js_divergence")),
+                    _fmt_text((m.get("statistical_test") or {}).get("verdict")),
                     _fmt_text(r.get("measured_assessment"))]
         row.append(_fmt_text(m.get("reason")) if r.get("agreement") == "not_comparable" else "—")
         rows.append(row)
-    metric = (f"JS divergence is the direct (untransformed) Jensen–Shannon divergence in {JS_UNIT}"
+    metric = (f"JS, direct is the Jensen–Shannon divergence in {JS_UNIT} of the keys as "
+              "reported; JS, label-aligned basis bit-reverses the second backend's keys when the "
+              "two declared bit orders differ (lsb vs msb) and equals the direct value otherwise"
               if measured else
               "Direct fidelity is |<a|b>|^2 of the normalised vectors before any transform")
     caption = ("Classification over the registered-transform lattice; each label reports the "
@@ -91,26 +96,39 @@ def _tbl_resources(results: dict):
     return headers, rows, "Resource usage", caption
 
 
+def _verdict_text(st: dict) -> str:
+    """The verdict, followed by the inconclusive reason in parentheses when one is set."""
+    verdict = _fmt_text(st.get("verdict"))
+    reason = st.get("inconclusive_reason")
+    return f"{verdict} ({reason})" if reason else verdict
+
+
 def _tbl_statistical(divergence_report: dict):
     """Per-pair chi-square and G-test p-values, effect sizes, power and verdict."""
     records = [r for r in _pairwise_records(divergence_report)
                if (r.get("metrics", {}) or {}).get("statistical_test")]
     headers = ["Pair", "Basis", "chi2 p", "chi2 p (BH)", "G-test p", "G-test p (BH)",
-               "Total variation", "Cramér's V", "Power@obs", "Shots/backend for power", "Verdict"]
+               "Total variation", "Cramér's V", "Power@obs", "Shots/backend for power",
+               "Pooled outcomes", "Verdict"]
     rows = []
     for r in records:
         st = r["metrics"]["statistical_test"]
         ef, pw, chi2, gt = (st.get("effect_size") or {}, st.get("power") or {},
                             st.get("chi2") or {}, st.get("g_test") or {})
         rows.append([_pair_key(r), _fmt_text(st.get("basis")),
-                     _fmt_num(chi2.get("p_value")), _fmt_num(chi2.get("p_value_bh")),
-                     _fmt_num(gt.get("p_value")), _fmt_num(gt.get("p_value_bh")),
+                     _fmt_p(chi2.get("p_value")), _fmt_p(chi2.get("p_value_bh")),
+                     _fmt_p(gt.get("p_value")), _fmt_p(gt.get("p_value_bh")),
                      _fmt_num(ef.get("total_variation")), _fmt_num(ef.get("cramers_v")),
                      _fmt_num(pw.get("power_to_detect_delta_at_observed_shots"), 3),
                      _fmt_int(pw.get("shots_per_backend_for_target_power")),
-                     _fmt_text(st.get("verdict"))])
-    caption = ("Shot-noise-aware homogeneity tests (chi-square + G-test) with BH-corrected p-values, "
-               "effect size, and prospective power, reported alongside the descriptive label.")
+                     _fmt_int(st.get("pooled_outcomes")), _verdict_text(st)])
+    caption = ("Shot-noise-aware homogeneity tests (chi-square + G-test) in the label-aligned "
+               "basis (bit-reversed when the declared bit orders differ), with BH-corrected "
+               "p-values, effect size and prospective power for a total-variation gap of 0.05. "
+               "Outcomes with an expected count below 5 are pooled into one bin. At FDR q = 0.05 "
+               "the expected share of false discoveries among flagged pairs is at most q, so a "
+               "few flagged pairs are expected by chance. A non-significant pair with power "
+               "below 0.8 is inconclusive_low_shots.")
     return headers, rows, "Shot-noise statistical test", caption
 
 
@@ -168,6 +186,9 @@ def _txt_glossary(mode: str) -> str:
         lines += ["", "Measured assessment (measured_assessment, from the verdict):", ""]
         for label, desc in _ASSESSMENT_GLOSSARY:
             lines.append(f"- **{label}** — {desc}")
+    lines += ["", "Measurement notes:", ""]
+    for note in _MEASUREMENT_NOTES:
+        lines.append(f"- {note}")
     lines += ["", "Unranked runs in the timing and resource tables (reason):", ""]
     for label, desc in _UNRANKED_GLOSSARY:
         lines.append(f"- **{label}** — {desc}")

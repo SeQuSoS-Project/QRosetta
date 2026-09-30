@@ -11,7 +11,7 @@ from .theme import (
     MIN_OUTCOME_PROB, _VERDICT_ORDER, _blue_cmap, _prob_cmap, _rank_outcomes,
 )
 from .formats import _fmt_num
-from .selectors import _field, _pairwise_records, _report_rows
+from .selectors import COMMON_KEY_ORDER_NOTE, _field, _pairwise_records, _report_rows
 
 
 def _fig_agreement_distribution(divergence_report: dict, mode: str):
@@ -32,7 +32,8 @@ def _fig_agreement_distribution(divergence_report: dict, mode: str):
     bars = ax.bar(range(len(labels)), values, color=colors, width=0.72)
     ax.set_xticks(range(len(labels)))
     ax.set_xticklabels([l.replace("_", "\n") for l in labels], fontsize=8)
-    ax.set_ylabel("pair count"); ax.set_title("Explained-cause agreement classes")
+    ax.set_ylabel("pair count")
+    ax.set_title("Agreement labels per pair\n(transform-explained, residual, not comparable)", fontsize=10)
     for b, v in zip(bars, values):
         ax.text(b.get_x() + b.get_width() / 2, v, str(v), ha="center", va="bottom", fontsize=9)
     ax.margins(y=0.15)
@@ -110,8 +111,10 @@ def _fig_ranking_bar(results, report_key, value_keys, title, xlabel, subtitle=No
     return fig
 
 
-def _fig_count_histogram(counts_a, counts_b, a, b):
-    """Grouped bars of two backends' measured probabilities over the top outcomes."""
+def _fig_count_histogram(counts_a, counts_b, a, b, run_label=""):
+    """Grouped bars of two backends' measured probabilities over the top outcomes.
+
+    Counts are expected in the common msb key order (selectors._msb_counts)."""
     na, nb = sum(counts_a.values()), sum(counts_b.values())
 
     def prob(counts, n, o):
@@ -137,7 +140,7 @@ def _fig_count_histogram(counts_a, counts_b, a, b):
     ax.bar(x + 0.2, pb, width=0.38, color="#1baf7a", label=str(b))
     ax.set_xticks(x); ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=7)
     ax.set_ylabel("probability")
-    title = f"Measured distribution: {a} vs {b} (raw counts)"
+    title = f"Measured outcome probabilities: {a} vs {b}\n{run_label}; {COMMON_KEY_ORDER_NOTE}"
     if truncated:
         title += (f"\n{len(kept)} of {len(all_outcomes)} outcomes shown "
                   f"(p≥{MIN_OUTCOME_PROB:g} on either side); {len(rest)} folded into 'other'")
@@ -158,8 +161,10 @@ def _counts_probabilities(counts_by_sim: Dict[str, dict], sims_order: List[str])
     return sims, prob, all_outcomes
 
 
-def _fig_counts_overview_bars(counts_by_sim: Dict[str, dict], sims_order: List[str]):
-    """Clustered bars of every backend's raw measured probabilities over the top outcomes."""
+def _fig_counts_overview_bars(counts_by_sim: Dict[str, dict], sims_order: List[str],
+                              run_label: str = ""):
+    """Clustered bars of every backend's measured probabilities over the top outcomes, keys
+    in the common msb order."""
     sims, prob, all_outcomes = _counts_probabilities(counts_by_sim, sims_order)
     kept, rest = _rank_outcomes(all_outcomes, lambda o: max((prob(s, o) for s in sims), default=0.0),
                                 MAX_OVERVIEW_BARS)
@@ -181,7 +186,8 @@ def _fig_counts_overview_bars(counts_by_sim: Dict[str, dict], sims_order: List[s
                color=_CATEGORICAL[i % len(_CATEGORICAL)], label=str(s))
     ax.set_xticks(x); ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=8)
     ax.set_ylabel("probability")
-    title = f"Measured outcome probabilities across {M} backend(s) (raw counts)"
+    title = (f"Measured outcome probabilities across {M} backend(s)\n{run_label}; "
+             f"{COMMON_KEY_ORDER_NOTE}")
     if rest:
         title += (f"\ntop {len(kept)} of {len(all_outcomes)} outcomes "
                   f"(p≥{MIN_OUTCOME_PROB:g} on any backend); rest folded into 'other'")
@@ -191,8 +197,10 @@ def _fig_counts_overview_bars(counts_by_sim: Dict[str, dict], sims_order: List[s
     return fig
 
 
-def _fig_counts_overview_heatmap(counts_by_sim: Dict[str, dict], sims_order: List[str]):
-    """Outcome × backend heatmap of raw measured probabilities over the top outcomes."""
+def _fig_counts_overview_heatmap(counts_by_sim: Dict[str, dict], sims_order: List[str],
+                                 run_label: str = ""):
+    """Outcome × backend heatmap of measured probabilities over the top outcomes, keys in
+    the common msb order."""
     sims, prob, all_outcomes = _counts_probabilities(counts_by_sim, sims_order)
     kept, rest = _rank_outcomes(all_outcomes, lambda o: max((prob(s, o) for s in sims), default=0.0),
                                 MAX_OVERVIEW_OUTCOMES)
@@ -219,7 +227,8 @@ def _fig_counts_overview_heatmap(counts_by_sim: Dict[str, dict], sims_order: Lis
                 if v >= 0.005:
                     ax.text(j, i, _fmt_num(v, 2), ha="center", va="center", fontsize=6.5,
                             color="white" if v >= thr else _INK)
-    title = f"Measured outcome probabilities across {M} backend(s) (raw counts)"
+    title = (f"Measured outcome probabilities across {M} backend(s)\n{run_label}; "
+             f"{COMMON_KEY_ORDER_NOTE}")
     if rest:
         title += (f"\noutcomes with p≥{MIN_OUTCOME_PROB:g} on any backend shown; "
                   f"{len(rest)} folded into 'other'")

@@ -746,6 +746,25 @@ def _provenance(zip_bytes):
     return json.loads(zf.read([n for n in zf.namelist() if n.endswith("provenance.json")][0]))
 
 
+class TestBatchPublicationArtifacts:
+    def test_batch_bundles_artifacts_per_task(self):
+        ctx = _batch_ctx(publication_artifacts={
+            "categories": ["agreement", "statistical"],
+            "figure_formats": ["svg"], "table_formats": ["csv"],
+        })
+        data = build_ro_crate(ctx)
+        names = [n.split("/", 1)[1] for n in zipfile.ZipFile(io.BytesIO(data)).namelist()]
+        for task in ("bell-2q", "ghz-3q"):
+            assert f"figures/{task}/agreement_distribution.svg" in names
+            assert f"tables/{task}/agreement.csv" in names
+        assert "figures/bell-2q/counts_overview.svg" in names
+        byid = _by_id(_load_metadata(data))
+        entity = byid["tables/bell-2q/agreement.csv"]
+        assert entity["name"] == "bell-2q/agreement.csv"
+        assert "Task bell (2q)." in entity["description"]
+        assert {"@id": "tables/ghz-3q/agreement.csv"} in byid["./"]["hasPart"]
+
+
 class TestRunnerLocksAndThresholds:
     def test_runner_requirements_lock_is_bundled_and_referenced(self):
         services = {"qiskit": {"enabled": True, "base_url": "http://pytket-qiskit-runner:8000"}}
@@ -762,7 +781,7 @@ class TestRunnerLocksAndThresholds:
     def test_omitted_thresholds_export_the_effective_values(self):
         run_config = _provenance(build_ro_crate(_make_ctx()))["run_configuration"]
         assert run_config["agreement_thresholds"] == {
-            "fidelity_tolerance": 1e-5, "phase_tolerance": 1e-12, "norm_tolerance": 1e-4}
+            "fidelity_tolerance": 1e-5, "phase_tolerance": 1e-6, "norm_tolerance": 1e-4}
         assert run_config["agreement_thresholds_requested"] == "none (defaults applied)"
 
     def test_recorded_pair_thresholds_win_over_defaults(self):

@@ -407,3 +407,16 @@ def test_heatmap_masks_null_cells():
     assert _MAGIC["svg"](data)
     table = render_artifact(rep, "statevector", "matrix_fidelity", "csv")[0].decode().splitlines()
     assert table[1] == "a,—,0.5000,—"
+
+
+def test_count_figures_use_common_msb_key_order_and_name_the_run():
+    from services.publication.selectors import _msb_counts, _run_label
+    results = {"n_shots": 100, "task_name": "x (3q)", "raw_results": [
+        {"simulator": "q", "qubit_ordering": "lsb", "counts": {"001": 100}},
+        {"simulator": "c", "qubit_ordering": "msb", "counts": {"100": 100}},
+        {"simulator": "u", "counts": {"001": 100}},
+        {"simulator": "e", "error": "boom"},
+    ]}
+    assert _msb_counts(results) == {"q": {"100": 100}, "c": {"100": 100}, "u": {"001": 100}}
+    assert _run_label(results) == "x (3q), 100 shots per backend"
+    assert _run_label({}) == "unnamed circuit"

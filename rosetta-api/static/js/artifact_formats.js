@@ -8,6 +8,7 @@ const _SCI_ABOVE = 1e15;
 const _MAX_DIGITS = 17;
 export const JS_UNIT = 'nats';
 export const MAX_HISTOGRAM_PAIRS = 12;
+export const COMMON_KEY_ORDER_NOTE = 'keys in msb order (classical bit 0 leftmost); lsb-declared backends bit-reversed';
 
 /** Scientific notation with 3 significant digits and a signed 2+ digit exponent. */
 function _artSci(x) {
@@ -33,6 +34,14 @@ export function _artNum(v, d = 4) {
         s = v.toFixed(digits);
     }
     return s;
+}
+
+export const P_VALUE_FLOOR = '<1e-300';
+
+/** Format a p-value as _artNum, except an exact 0 (floating-point underflow) -> "<1e-300". */
+export function _artP(v) {
+    if (typeof v === 'number' && v === 0) return P_VALUE_FLOOR;
+    return _artNum(v);
 }
 
 /** Format a count-like value: integral numbers without decimals, else as _artNum. */
@@ -186,12 +195,12 @@ export function _artTimingSamples(results) {
 // ---- glossaries (theme.py) ----
 export const AGREEMENT_GLOSSARY = [
     ['agree_directly', 'Outputs match directly, no transform needed.'],
-    ['agree_up_to_global_phase', 'Match after removing an overall (unobservable) global phase.'],
-    ['agree_after_bit_reversal', 'Match after reversing qubit/bit order (an endianness convention).'],
+    ['agree_up_to_global_phase', 'Match after removing the global phase offset arg⟨a|b⟩ between the two states, which is unobservable. An offset within phase_tolerance is reported as 0 and the pair agrees directly.'],
+    ['agree_after_bit_reversal', 'Match after reversing qubit/bit order (an endianness convention). A measured pair whose declared bit orders differ (lsb vs msb) is checked in the bit-reversed basis first.'],
     ['agree_after_qubit_permutation', 'Match after a bounded qubit permutation (≤7 qubits).'],
     ['agree_after_normalization', 'At least one input statevector has a norm differing from 1 by more than norm_tolerance; the normalised vectors agree. metrics.normalized_agreement holds the label the normalised pair receives. The default norm_tolerance (1e-4) lies above complex64 rounding, which leaves norms about 2e-6 from 1.'],
     ['residual_disagreement', 'Statevector disagreement not explained by any registered transform.'],
-    ['distance_within_threshold', 'Measured distributions within the JS-divergence and Hellinger thresholds (descriptive, configurable; the shot-noise statistical test gives the significance verdict).'],
+    ['distance_within_threshold', 'Measured distributions within the JS-divergence and Hellinger thresholds without a bit-order transform (descriptive, configurable; the shot-noise statistical test gives the significance verdict).'],
     ['distance_exceeds_threshold', 'Measured distributions exceed the (descriptive, configurable) thresholds after registered transforms; see the statistical test for significance.'],
     ['not_comparable', 'At least one side lacks usable output; the pair cannot be compared. metrics.reason names the cause.'],
 ];
@@ -213,16 +222,16 @@ export const NOT_COMPARABLE_GLOSSARY = [
     ['comparison_error', 'The comparison raised an exception; metrics.details.error holds the message.'],
 ];
 export const VERDICT_GLOSSARY = [
-    ['consistent', 'Neither the chi-square test nor the G-test is significant after BH (FDR) correction.'],
-    ['distinguishable', 'Both tests are significant after BH (FDR) correction.'],
-    ['inconclusive_low_shots', 'Expected counts too low for a reliable test.'],
+    ['consistent', 'Neither the chi-square test nor the G-test is significant after BH (FDR) correction, and the power to detect a total-variation gap of 0.05 at the observed shots is at least 0.8.'],
+    ['distinguishable', 'Both tests are significant after BH (FDR) correction. At FDR q = 0.05 the expected share of false discoveries among flagged pairs is at most q, so a few flagged pairs are expected by chance.'],
+    ['inconclusive_low_shots', 'Expected counts stay below 5 after pooling rare outcomes (inconclusive_reason = low_expected_counts), or neither test is significant and the power to detect a total-variation gap of 0.05 is below 0.8 (inconclusive_reason = low_power). power.recommended_exceeds_actual is true when the recommended shots per backend exceed the shots used.'],
     ['ambiguous', 'Exactly one of the chi-square test and the G-test is significant after BH (FDR) correction.'],
 ];
 export const ASSESSMENT_GLOSSARY = [
-    ['consistent_within_shot_noise', 'The shot-noise verdict is consistent: neither test separates the distributions at the observed shot count, whatever the distance label.'],
-    ['distinguishable', 'The shot-noise verdict is distinguishable: the distributions differ beyond sampling noise.'],
+    ['consistent_within_shot_noise', 'The shot-noise verdict is consistent: neither test separates the distributions at a shot count with power of at least 0.8, whatever the distance label.'],
+    ['distinguishable', 'The shot-noise verdict is distinguishable: the distributions differ beyond sampling noise, subject to the FDR share of false discoveries.'],
     ['ambiguous', 'Exactly one of the two tests is significant.'],
-    ['inconclusive_low_shots', 'Expected counts too low for a reliable test; the shot count cannot separate the distributions.'],
+    ['inconclusive_low_shots', 'The shot count cannot separate the distributions: expected counts stay below 5 after pooling, or the test is not significant at power below 0.8.'],
     ['not_comparable', 'At least one side lacks usable counts.'],
 ];
 export const UNRANKED_GLOSSARY = [
@@ -230,27 +239,32 @@ export const UNRANKED_GLOSSARY = [
     ['missing_timing', 'The run returned no execution_time_sec.'],
     ['missing_process_peak_rss', 'The run returned no process_peak_rss_mb.'],
 ];
-export const THRESHOLD_DEFAULTS = 'fidelity_tolerance = 1e-5, phase_tolerance = 1e-12 rad, '
+export const MEASUREMENT_NOTES = [
+    'Global phase offset arg⟨a|b⟩: the phase of the inner product of two normalised statevectors. It is a global-phase difference between the states, not a relative phase between components of one superposition. The JSON fields relative_phase_matrix and *relative_phase* keep their names for compatibility.',
+    "Label-aligned basis: for a measured pair whose declared counts bit orders differ (lsb vs msb) the second backend's keys are bit-reversed; otherwise the keys are compared directly. The statistical tests and the label-aligned distances use this basis; the direct distances are recorded as well.",
+    'Outcomes with an expected count below 5 are pooled into one bin before the chi-square and G-tests; statistical_test.pooled_outcomes gives how many were pooled.',
+];
+export const THRESHOLD_DEFAULTS = 'fidelity_tolerance = 1e-5, phase_tolerance = 1e-6 rad, '
     + 'norm_tolerance = 1e-4, js_threshold = 0.01 nats, hellinger_threshold = 0.1';
 
 // ---- table builders (tables.py) ----
-/** One row per backend pair: label, transform, key metric, verdict and assessment (measured), reason. */
+/** One row per backend pair: label, transform, key metric(s), verdict and assessment (measured), reason. */
 export function _dataAgreement(div, mode) {
     const measured = mode === 'measured';
-    const headers = ['Pair', 'Agreement', 'Registered transform',
-        measured ? `JS divergence (${JS_UNIT})` : 'Direct fidelity'];
-    if (measured) headers.push('Stat verdict', 'Measured assessment');
+    const headers = ['Pair', 'Agreement', 'Registered transform'];
+    if (measured) headers.push(`JS, direct (${JS_UNIT})`, `JS, label-aligned basis (${JS_UNIT})`, 'Stat verdict', 'Measured assessment');
+    else headers.push('Direct fidelity');
     headers.push('Not-comparable reason');
     const rows = _artPairwise(div).map(r => {
         const m = r.metrics || {};
         const metric = r.mode === 'statevector' ? m.direct_fidelity : m.js_divergence;
         const row = [_artPairKey(r), _artText(r.agreement), _artText(r.registered_transform), _artNum(metric)];
-        if (measured) row.push(_artText((m.statistical_test || {}).verdict), _artText(r.measured_assessment));
+        if (measured) row.push(_artNum(m.label_aligned_js_divergence), _artText((m.statistical_test || {}).verdict), _artText(r.measured_assessment));
         row.push(r.agreement === 'not_comparable' ? _artText(m.reason) : '—');
         return row;
     });
     const metricNote = measured
-        ? `JS divergence is the direct (untransformed) Jensen–Shannon divergence in ${JS_UNIT}`
+        ? `JS, direct is the Jensen–Shannon divergence in ${JS_UNIT} of the keys as reported; JS, label-aligned basis bit-reverses the second backend's keys when the two declared bit orders differ (lsb vs msb) and equals the direct value otherwise`
         : 'Direct fidelity is |<a|b>|^2 of the normalised vectors before any transform';
     let caption = 'Classification over the registered-transform lattice; each label reports the '
         + `transform whose numerical effect explains the pair. ${metricNote}.`;
@@ -320,22 +334,35 @@ export function _dataResources(results) {
             + "the sim-window RSS delta is the simulation's own allocation.",
     };
 }
+/** The verdict, followed by the inconclusive reason in parentheses when one is set. */
+function _artVerdictText(st) {
+    const verdict = _artText(st.verdict);
+    return st.inconclusive_reason ? `${verdict} (${st.inconclusive_reason})` : verdict;
+}
 /** Per-pair chi-square and G-test p-values, effect sizes, power and verdict. */
 export function _dataStatistical(div) {
     const recs = _artPairwise(div).filter(r => (r.metrics || {}).statistical_test);
     return {
         headers: ['Pair', 'Basis', 'chi2 p', 'chi2 p (BH)', 'G-test p', 'G-test p (BH)',
-            'Total variation', "Cramér's V", 'Power@obs', 'Shots/backend for power', 'Verdict'],
+            'Total variation', "Cramér's V", 'Power@obs', 'Shots/backend for power',
+            'Pooled outcomes', 'Verdict'],
         rows: recs.map(r => {
             const st = r.metrics.statistical_test, ef = st.effect_size || {}, pw = st.power || {},
                 c = st.chi2 || {}, g = st.g_test || {};
-            return [_artPairKey(r), _artText(st.basis), _artNum(c.p_value), _artNum(c.p_value_bh),
-                _artNum(g.p_value), _artNum(g.p_value_bh), _artNum(ef.total_variation), _artNum(ef.cramers_v),
+            return [_artPairKey(r), _artText(st.basis), _artP(c.p_value), _artP(c.p_value_bh),
+                _artP(g.p_value), _artP(g.p_value_bh), _artNum(ef.total_variation), _artNum(ef.cramers_v),
                 _artNum(pw.power_to_detect_delta_at_observed_shots, 3),
-                _artInt(pw.shots_per_backend_for_target_power), _artText(st.verdict)];
+                _artInt(pw.shots_per_backend_for_target_power), _artInt(st.pooled_outcomes),
+                _artVerdictText(st)];
         }),
         title: 'Shot-noise statistical test',
-        caption: 'Shot-noise-aware homogeneity tests (chi-square + G-test) with BH-corrected p-values, effect size, and prospective power, reported alongside the descriptive label.',
+        caption: 'Shot-noise-aware homogeneity tests (chi-square + G-test) in the label-aligned '
+            + 'basis (bit-reversed when the declared bit orders differ), with BH-corrected '
+            + 'p-values, effect size and prospective power for a total-variation gap of 0.05. '
+            + 'Outcomes with an expected count below 5 are pooled into one bin. At FDR q = 0.05 '
+            + 'the expected share of false discoveries among flagged pairs is at most q, so a '
+            + 'few flagged pairs are expected by chance. A non-significant pair with power '
+            + 'below 0.8 is inconclusive_low_shots.',
     };
 }
 /** Per-backend SDK versions, ordering and sampling labels, opt level and status. */
@@ -373,6 +400,8 @@ export function _txtGlossary(mode) {
         out.push('', 'Measured assessment (measured_assessment, from the verdict):', '');
         ASSESSMENT_GLOSSARY.forEach(([l, d]) => out.push(`- **${l}** — ${d}`));
     }
+    out.push('', 'Measurement notes:', '');
+    MEASUREMENT_NOTES.forEach(n => out.push(`- ${n}`));
     out.push('', 'Unranked runs in the timing and resource tables (reason):', '');
     UNRANKED_GLOSSARY.forEach(([l, d]) => out.push(`- **${l}** — ${d}`));
     out.push('', `Default thresholds: ${THRESHOLD_DEFAULTS}. A run may override them; the values applied are recorded in each pairwise record. JS divergence is in ${JS_UNIT} (maximum ln 2).`,
@@ -403,9 +432,9 @@ export function buildArtifactCatalog(results) {
     const pairwise = _artPairwise(div);
     if (pairwise.length) {
         image('agreement_distribution', 'Agreement class distribution', 'Agreement',
-            'Bar chart of how many backend pairs fall into each explained-cause class' + (mode === 'measured' ? ' and shot-noise verdict' : '') + '.');
+            'Bar chart of how many backend pairs fall into each agreement label (transform-explained, residual or not comparable)' + (mode === 'measured' ? ' and shot-noise verdict' : '') + '.');
         table('agreement', 'Pairwise agreement table', 'Agreement', () => _dataAgreement(div, mode),
-            `One row per backend pair: explained-cause label, registered transform, key metric (direct fidelity or JS divergence in ${JS_UNIT}), statistical verdict and measured assessment (measured) and not-comparable reason.`);
+            `One row per backend pair: explained-cause label, registered transform, key metric (direct fidelity, or JS divergence in ${JS_UNIT} direct and in the label-aligned basis), statistical verdict and measured assessment (measured) and not-comparable reason.`);
     }
     const heat = mode === 'statevector'
         ? [['fidelity_matrix', 'Raw statevector fidelity (no transform)', 'fidelity']]
@@ -442,7 +471,7 @@ export function buildArtifactCatalog(results) {
     if (mode === 'measured') {
         if (pairwise.some(r => (r.metrics || {}).statistical_test)) {
             table('statistical_test', 'Statistical-test table', 'Statistical', () => _dataStatistical(div),
-                'Chi-square + G-test p-values (raw + BH), effect size, power per pair.');
+                'Chi-square + G-test p-values (raw + BH) in the label-aligned basis, effect size, power and pooled outcomes per pair.');
         }
         const rawCounts = {};
         (results.raw_results || []).forEach(r => {
@@ -457,9 +486,9 @@ export function buildArtifactCatalog(results) {
         const missingNote = missing.length ? ` Backends without counts are not drawn: ${missing.join(', ')}.` : '';
         if (Object.keys(rawCounts).length >= 2) {
             image('counts_overview', 'Count overview (all backends)', 'Statistical',
-                "Clustered bar histogram of raw measured probabilities, one colour per backend over the top outcomes (Qiskit plot_histogram convention); low-probability outcomes are folded into 'other' (disclosed in-figure)." + missingNote);
+                `Clustered bar histogram of measured probabilities, one colour per backend over the top outcomes (Qiskit plot_histogram convention), ${COMMON_KEY_ORDER_NOTE}; low-probability outcomes are folded into 'other' (disclosed in-figure).` + missingNote);
             image('counts_overview_heatmap', 'Count overview heatmap (optional)', 'Statistical',
-                'Optional compact view: outcome × backend probability heatmap; a uniform row = agreement, a varying row = disagreement. Scales to many backends.' + missingNote);
+                `Optional compact view: outcome × backend probability heatmap, ${COMMON_KEY_ORDER_NOTE}; a uniform row = agreement, a varying row = disagreement. Scales to many backends.` + missingNote);
         }
         const eligible = pairwise.filter(rec => {
             const [a, b] = rec.simulators || [null, null];
@@ -471,7 +500,7 @@ export function buildArtifactCatalog(results) {
         eligible.slice(0, MAX_HISTOGRAM_PAIRS).forEach(rec => {
             const [a, b] = rec.simulators;
             image(`histogram_${_artSlug(a + '_' + b)}`, `Count histogram: ${a} vs ${b}`, 'Statistical',
-                `Raw measured probability distributions for ${a} vs ${b}.` + capNote);
+                `Measured probability distributions for ${a} vs ${b}, ${COMMON_KEY_ORDER_NOTE}.` + capNote);
         });
     }
     if ((results.raw_results || []).length) {

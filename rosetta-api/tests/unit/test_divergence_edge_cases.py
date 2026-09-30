@@ -132,7 +132,7 @@ def test_none_threshold_values_keep_defaults():
         thresholds={"fidelity_tolerance": None, "phase_tolerance": None, "norm_tolerance": None},
     ), "a", "b")
     assert record["metrics"]["fidelity_tolerance"] == 1e-5
-    assert record["metrics"]["phase_tolerance"] == 1e-12
+    assert record["metrics"]["phase_tolerance"] == 1e-6
     assert record["metrics"]["norm_tolerance"] == DEFAULT_NORM_TOLERANCE
 
 
@@ -231,7 +231,9 @@ def test_zero_count_column_shared_by_both_rows_does_not_abort_report():
         {"simulator": "c", "counts": {"0": 5, "1": 5}},
     ], n_shots=10)
     assert len(report["pairwise_agreement"]) == 3
-    assert _record(report, "a", "b")["metrics"]["statistical_test"]["verdict"] == "consistent"
+    stat = _record(report, "a", "b")["metrics"]["statistical_test"]
+    assert stat["verdict"] == "inconclusive_low_shots"
+    assert stat["inconclusive_reason"] == "low_power"
     _strict_json(report)
 
 
@@ -364,7 +366,8 @@ def test_counts_permutation_search_returns_best_not_first_within_threshold():
     ], n_shots=2000), "a", "b")
     assert record["agreement"] == "agree_after_qubit_permutation"
     assert record["transform_effect"]["permutation"] == [2, 0, 1]
-    assert record["metrics"]["statistical_test"]["effect_size"]["total_variation"] == 0.0
+    assert record["metrics"]["statistical_test"]["basis"] == "direct"
+    assert record["metrics"]["statistical_test"]["verdict"] == "distinguishable"
 
 
 def test_counts_permutation_ties_keep_lexicographically_first():
@@ -405,7 +408,7 @@ def test_n_shots_must_be_positive(model, extra, shots):
 def test_agreement_threshold_defaults():
     thresholds = AgreementThresholds()
     assert thresholds.fidelity_tolerance == 1e-5
-    assert thresholds.phase_tolerance == 1e-12
+    assert thresholds.phase_tolerance == 1e-6
     assert thresholds.norm_tolerance == DEFAULT_NORM_TOLERANCE
     assert thresholds.js_threshold == 0.01
     assert thresholds.hellinger_threshold == 0.1
@@ -426,11 +429,12 @@ def test_measured_assessment_combines_distance_label_and_verdict():
     ], n_shots=10)
     ab = _record(report, "a", "b")
     assert ab["agreement"] == "distance_exceeds_threshold"
-    assert ab["metrics"]["statistical_test"]["verdict"] == "consistent"
-    assert ab["measured_assessment"] == "consistent_within_shot_noise"
+    assert ab["metrics"]["statistical_test"]["verdict"] == "inconclusive_low_shots"
+    assert ab["metrics"]["statistical_test"]["inconclusive_reason"] == "low_power"
+    assert ab["measured_assessment"] == "inconclusive_low_shots"
     assert _record(report, "a", "c")["measured_assessment"] == "not_comparable"
     assert report["statistical_test_summary"]["measured_assessment_counts"] == {
-        "consistent_within_shot_noise": 1, "not_comparable": 2}
+        "inconclusive_low_shots": 1, "not_comparable": 2}
 
 
 def test_matrices_use_null_for_uncompared_pairs_and_exact_self_values():
@@ -447,3 +451,14 @@ def test_matrices_use_null_for_uncompared_pairs_and_exact_self_values():
     assert sv["fidelity_matrix"] == [[1.0, None], [None, None]]
     assert sv["relative_phase_matrix"] == [[0.0, None], [None, None]]
     _strict_json(counts)
+
+
+def test_complex64_phase_offset_is_within_default_phase_tolerance():
+    base = np.array([0.6, 0.8], dtype=complex)
+    report = create_divergence_report([
+        {"simulator": "a", "statevector": base.tolist()},
+        {"simulator": "b", "statevector": (base * np.exp(1j * 7.93e-9)).tolist()},
+    ])
+    record = _record(report, "a", "b")
+    assert record["agreement"] == "agree_directly"
+    assert record["metrics"]["phase_tolerance"] == 1e-6

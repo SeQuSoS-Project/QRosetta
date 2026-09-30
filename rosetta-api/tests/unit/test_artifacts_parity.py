@@ -9,7 +9,7 @@ import subprocess
 
 import pytest
 
-from services.publication import _fmt_int, _fmt_num, list_artifacts, render_artifact
+from services.publication import _fmt_int, _fmt_num, _fmt_p, list_artifacts, render_artifact
 from tests.unit.test_publication import MEASURED, STATEVECTOR
 
 _NODE = shutil.which("node")
@@ -111,14 +111,20 @@ def _measured_edge():
                               "consistent_within_shot_noise", "distinguishable",
                               "inconclusive_low_shots", "ambiguous"][(i * j) % 4],
                           "metrics": {"js_divergence": [0, 5e-5, 0.69, 1e-9][(i + j) % 4],
+                                      "label_aligned_js_divergence": [None, 2e-6, 0.0, 0.5][(i + j) % 4],
                                       "statistical_test": {
-                                          "basis": "direct", "verdict": [
+                                          "basis": ["direct", "bit_reversal"][(i + j) % 2],
+                                          "pooled_outcomes": [0, 3][(i * j) % 2],
+                                          "inconclusive_reason": [None, None, "low_power",
+                                                                  None][(i * j) % 4],
+                                          "verdict": [
                                               "consistent", "distinguishable",
                                               "inconclusive_low_shots", "ambiguous"][(i * j) % 4],
                                           "effect_size": {"total_variation": 0, "cramers_v": 2e-6},
                                           "power": {"power_to_detect_delta_at_observed_shots": 0.99996,
                                                     "shots_per_backend_for_target_power": 1570.0},
-                                          "chi2": {"p_value": 1, "p_value_bh": 0.99996},
+                                          "chi2": {"p_value": [1, 0.0, 1.65e-188][(i + j) % 3],
+                                                   "p_value_bh": [0.99996, 0, 2e-300][(i + j) % 3]},
                                           "g_test": {"p_value": 3e-12, "p_value_bh": None}}}})
     for reason in _COUNT_REASONS:
         pairs.append({"simulators": ["m0", "x"], "mode": "measured", "agreement": "not_comparable",
@@ -199,6 +205,13 @@ def test_number_formatting_matches():
     out = _js({"nums": nums, "ints": ints})
     assert out["nums"] == [_fmt_num(_py(n["v"]), n["d"]) for n in nums]
     assert out["ints"] == [_fmt_int(_py(v)) for v in ints]
+
+
+def test_p_value_formatting_matches_and_never_prints_zero_for_tiny_values():
+    ps = [0, 0.0, 1.65e-188, 1e-300, 5e-324, 0.5, 1, None, "__nan__"]
+    out = _js({"ps": ps})["ps"]
+    assert out == [_fmt_p(_py(v)) for v in ps]
+    assert out[:5] == ["<1e-300", "<1e-300", "1.65e-188", "1.00e-300", "4.94e-324"]
 
 
 def test_harness_covers_expected_artifacts():

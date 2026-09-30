@@ -71,8 +71,12 @@ _CATEGORICAL = ["#2a78d6", "#1baf7a", "#e0812a", "#8b5cf6", "#e34948", "#0d9488"
 
 _AGREEMENT_GLOSSARY = [
     ("agree_directly", "Outputs match directly, no transform needed."),
-    ("agree_up_to_global_phase", "Match after removing an overall (unobservable) global phase."),
-    ("agree_after_bit_reversal", "Match after reversing qubit/bit order (an endianness convention)."),
+    ("agree_up_to_global_phase", "Match after removing the global phase offset arg⟨a|b⟩ "
+     "between the two states, which is unobservable. An offset within phase_tolerance is "
+     "reported as 0 and the pair agrees directly."),
+    ("agree_after_bit_reversal", "Match after reversing qubit/bit order (an endianness "
+     "convention). A measured pair whose declared bit orders differ (lsb vs msb) is checked "
+     "in the bit-reversed basis first."),
     ("agree_after_qubit_permutation", "Match after a bounded qubit permutation (≤7 qubits)."),
     ("agree_after_normalization", "At least one input statevector has a norm differing from 1 by "
      "more than norm_tolerance; the normalised vectors agree. metrics.normalized_agreement "
@@ -80,8 +84,8 @@ _AGREEMENT_GLOSSARY = [
      "above complex64 rounding, which leaves norms about 2e-6 from 1."),
     ("residual_disagreement", "Statevector disagreement not explained by any registered transform."),
     ("distance_within_threshold", "Measured distributions within the JS-divergence and Hellinger "
-     "thresholds (descriptive, configurable; the shot-noise statistical test gives the "
-     "significance verdict)."),
+     "thresholds without a bit-order transform (descriptive, configurable; the shot-noise "
+     "statistical test gives the significance verdict)."),
     ("distance_exceeds_threshold", "Measured distributions exceed the (descriptive, configurable) "
      "thresholds after registered transforms; see the statistical test for significance."),
     ("not_comparable", "At least one side lacks usable output; the pair cannot be compared. "
@@ -105,19 +109,28 @@ _NOT_COMPARABLE_GLOSSARY = [
     ("comparison_error", "The comparison raised an exception; metrics.details.error holds the message."),
 ]
 _VERDICT_GLOSSARY = [
-    ("consistent", "Neither the chi-square test nor the G-test is significant after BH (FDR) correction."),
-    ("distinguishable", "Both tests are significant after BH (FDR) correction."),
-    ("inconclusive_low_shots", "Expected counts too low for a reliable test."),
+    ("consistent", "Neither the chi-square test nor the G-test is significant after BH (FDR) "
+     "correction, and the power to detect a total-variation gap of 0.05 at the observed shots "
+     "is at least 0.8."),
+    ("distinguishable", "Both tests are significant after BH (FDR) correction. At FDR q = 0.05 "
+     "the expected share of false discoveries among flagged pairs is at most q, so a few "
+     "flagged pairs are expected by chance."),
+    ("inconclusive_low_shots", "Expected counts stay below 5 after pooling rare outcomes "
+     "(inconclusive_reason = low_expected_counts), or neither test is significant and the "
+     "power to detect a total-variation gap of 0.05 is below 0.8 (inconclusive_reason = "
+     "low_power). power.recommended_exceeds_actual is true when the recommended shots per "
+     "backend exceed the shots used."),
     ("ambiguous", "Exactly one of the chi-square test and the G-test is significant after BH (FDR) correction."),
 ]
 _ASSESSMENT_GLOSSARY = [
     ("consistent_within_shot_noise", "The shot-noise verdict is consistent: neither test "
-     "separates the distributions at the observed shot count, whatever the distance label."),
+     "separates the distributions at a shot count with power of at least 0.8, whatever the "
+     "distance label."),
     ("distinguishable", "The shot-noise verdict is distinguishable: the distributions differ "
-     "beyond sampling noise."),
+     "beyond sampling noise, subject to the FDR share of false discoveries."),
     ("ambiguous", "Exactly one of the two tests is significant."),
-    ("inconclusive_low_shots", "Expected counts too low for a reliable test; the shot count "
-     "cannot separate the distributions."),
+    ("inconclusive_low_shots", "The shot count cannot separate the distributions: expected "
+     "counts stay below 5 after pooling, or the test is not significant at power below 0.8."),
     ("not_comparable", "At least one side lacks usable counts."),
 ]
 _UNRANKED_GLOSSARY = [
@@ -126,7 +139,19 @@ _UNRANKED_GLOSSARY = [
     ("missing_timing", "The run returned no execution_time_sec."),
     ("missing_process_peak_rss", "The run returned no process_peak_rss_mb."),
 ]
-_THRESHOLD_DEFAULTS = ("fidelity_tolerance = 1e-5, phase_tolerance = 1e-12 rad, "
+_MEASUREMENT_NOTES = [
+    "Global phase offset arg⟨a|b⟩: the phase of the inner product of two normalised "
+    "statevectors. It is a global-phase difference between the states, not a relative phase "
+    "between components of one superposition. The JSON fields relative_phase_matrix and "
+    "*relative_phase* keep their names for compatibility.",
+    "Label-aligned basis: for a measured pair whose declared counts bit orders differ (lsb vs "
+    "msb) the second backend's keys are bit-reversed; otherwise the keys are compared "
+    "directly. The statistical tests and the label-aligned distances use this basis; the "
+    "direct distances are recorded as well.",
+    "Outcomes with an expected count below 5 are pooled into one bin before the chi-square "
+    "and G-tests; statistical_test.pooled_outcomes gives how many were pooled.",
+]
+_THRESHOLD_DEFAULTS = ("fidelity_tolerance = 1e-5, phase_tolerance = 1e-6 rad, "
                        "norm_tolerance = 1e-4, js_threshold = 0.01 nats, "
                        "hellinger_threshold = 0.1")
 
