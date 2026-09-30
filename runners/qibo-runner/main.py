@@ -3,7 +3,9 @@
 import re
 
 from fastapi import FastAPI
-from qrosetta_commons.counts import prepare_final_state_sampling, prepare_statevector_qasm
+from qrosetta_commons.counts import (
+    expand_register_broadcasts, prepare_final_state_sampling, prepare_statevector_qasm,
+)
 from qrosetta_commons.helpers import (
     CompileResult, declare_sdk_packages, get_logger, register_runner_endpoints,
     run_cli_main, run_measured_job, run_statevector_job, with_sdk_versions,
@@ -31,6 +33,7 @@ _FROM_QASM_NOTE = (
 _REMOVE_BARRIERS_NOTE = (
     "Regex removal of barrier statements: Circuit.from_qasm rejects every barrier "
     "(\"Unsupported QuantumBarrier statement\").")
+_BROADCAST_REASON = "qibo.models.Circuit.from_qasm accepts only indexed qubit operands"
 _BARRIER_RE = re.compile(r"\bbarrier\b[^;]*;")
 _FUSION_NOTE_SUFFIX = (
     " transpiled_qasm is the circuit before fusion, since fused blocks have no OpenQASM 2.0 "
@@ -69,6 +72,9 @@ def _parse(qasm_str: str, optimization_level: int = 0) -> tuple[Circuit, list[st
 
 def _compile(payload: dict, qasm: str, notes=()) -> CompileResult:
     notes = list(notes)
+    qasm, broadcast_note = expand_register_broadcasts(qasm, _BROADCAST_REASON)
+    if broadcast_note:
+        notes.append(broadcast_note)
     if payload.get("apply_preprocessing", True) and _BARRIER_RE.search(qasm):
         qasm = _BARRIER_RE.sub("", qasm)
         notes.append(_REMOVE_BARRIERS_NOTE)

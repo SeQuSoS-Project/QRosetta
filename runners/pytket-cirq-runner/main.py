@@ -6,7 +6,7 @@ import warnings
 
 from fastapi import FastAPI
 from qrosetta_commons.counts import (
-    PYTKET_QASM_MAXWIDTH,
+    PYTKET_BROADCAST_REASON, PYTKET_QASM_MAXWIDTH, expand_register_broadcasts,
     parse_measurement_layout, prepare_statevector_qasm, statevector_in_declaration_order,
     unit_pairs, unordered_qreg_note,
 )
@@ -83,8 +83,9 @@ def _compile_tket(payload: dict, qasm: str, notes=()):
     Also returns the parsed circuit's bits and qubits as ``(register, index)`` pairs in
     pytket's sorted order, which the compiled circuit's units follow position for position.
     """
+    qasm, broadcast_note = expand_register_broadcasts(qasm, PYTKET_BROADCAST_REASON)
     tk_circ = pytket.qasm.circuit_from_qasm_str(qasm, maxwidth=PYTKET_QASM_MAXWIDTH)
-    preprocessing_applied = list(notes)
+    preprocessing_applied = list(notes) + ([broadcast_note] if broadcast_note else [])
     qreg_note = unordered_qreg_note(parse_measurement_layout(qasm))
     if qreg_note:
         preprocessing_applied.append(qreg_note)

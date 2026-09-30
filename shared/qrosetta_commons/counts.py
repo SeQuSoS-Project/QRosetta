@@ -246,6 +246,79 @@ def parse_measurement_layout(qasm: str) -> MeasurementLayout:
                              has_classical_control)
 
 
+BROADCAST_NOTE = (
+    "Gate calls with a whole-register operand expanded into one call per qubit (OpenQASM 2.0 "
+    "broadcast: register operands have equal size and step together, indexed operands repeat "
+    "in every call); {reason}. The expansion leaves the "
+    "unitary unchanged. Required by the adapter, applied regardless of apply_preprocessing.")
+PYTKET_BROADCAST_REASON = (
+    "pytket's QASM parser applies a call that mixes indexed and register operands to the "
+    "register's first qubit only")
+_IF_PREFIX_RE = re.compile(r"^(if\s*\([^)]*\)\s*)(.*)$", re.S)
+_NON_GATE_RE = re.compile(r"^(qreg|creg|measure|reset|OPENQASM|include|opaque|barrier)\b")
+
+
+def _expand_call(stmt: str, qsizes: dict):
+    """Indexed calls for a gate call with register operands, or None when it has none."""
+    prefix, call = "", stmt
+    if m := _IF_PREFIX_RE.match(stmt):
+        prefix, call = m.group(1), m.group(2)
+    if _NON_GATE_RE.match(call) or not _NAME_RE.match(call):
+        return None
+    args_text = _gate_args(call)
+    head = call[:len(call) - len(args_text)].rstrip()
+    operands = [_ARG_RE.match(a.strip()) for a in args_text.split(",")]
+    if not all(operands) or any(op.group(1) not in qsizes for op in operands):
+        return None
+    sizes = {qsizes[op.group(1)] for op in operands if op.group(2) is None}
+    if not sizes:
+        return None
+    if len(sizes) > 1:
+        raise ValueError(f"register operands of different sizes in {stmt!r}")
+    size = sizes.pop()
+    return [
+        prefix + head + " " + ", ".join(
+            f"{op.group(1)}[{op.group(2) if op.group(2) is not None else i}]"
+            for op in operands) + ";"
+        for i in range(size)]
+
+
+def expand_register_broadcasts(qasm: str, reason: str):
+    """Expand gate calls on whole registers into indexed calls, per OpenQASM 2.0 broadcast.
+
+    ``reason`` completes the preprocessing note: why the adapter's parser needs it.
+    ``cx q[0], r;`` with ``qreg r[2]`` becomes ``cx q[0], r[0]; cx q[0], r[1];``. Gate
+    definitions, measure, reset and barrier statements are kept as written. Returns
+    ``(qasm, note)``; when nothing is expanded the input is returned unchanged with note None.
+    """
+    text = _strip_comments(qasm)
+    qsizes, out, changed, pos = {}, [], False, 0
+
+    def expand_segment(segment):
+        nonlocal changed
+        pieces = segment.split(";")
+        for piece in pieces[:-1]:
+            stmt = " ".join(piece.split())
+            if m := _QREG_RE.match(stmt):
+                qsizes[m.group(1)] = int(m.group(2))
+            calls = _expand_call(stmt, qsizes) if stmt else None
+            if calls is None:
+                out.append(piece + ";")
+            else:
+                changed = True
+                out.append(piece[:len(piece) - len(piece.lstrip())] + "\n".join(calls))
+        out.append(pieces[-1])
+
+    for m in _GATE_DEF_RE.finditer(text):
+        expand_segment(text[pos:m.start()])
+        out.append(m.group(0))
+        pos = m.end()
+    expand_segment(text[pos:])
+    if not changed:
+        return qasm, None
+    return "".join(out), BROADCAST_NOTE.format(reason=reason)
+
+
 def strip_measurements(qasm: str) -> str:
     """Remove every ``measure`` statement (comments are removed too)."""
     return _MEASURE_STMT_RE.sub("", _strip_comments(qasm))
@@ -313,7 +386,10 @@ def unordered_qreg_note(layout: MeasurementLayout, parser: str = "pytket"):
     if len(names) > 1 and names != sorted(names):
         return (f"{parser} QASM parser orders quantum registers alphabetically "
                 f"({', '.join(sorted(names))}) rather than in declaration order "
-                f"({', '.join(names)}); the executed circuit's qubit order follows it.")
+                f"({', '.join(names)}). The executed circuit and the recorded transpiled_qasm "
+                "list qubits in the alphabetical order, flattened into one register where the "
+                "backend compilation merges registers; the returned statevector and counts are "
+                "mapped back to declaration order.")
     return None
 
 

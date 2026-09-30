@@ -140,10 +140,12 @@ def _to_cirq_circuit(payload: dict, qasm: str, notes=()):
 
 
 def _serialize(compiled: CompileResult) -> str:
-    """OpenQASM export of the executed Cirq circuit (QASM 2.0 carries no global phase)."""
+    """OpenQASM export of the executed Cirq circuit over every declared qubit, idle ones
+    included, in the simulated qubit order (QASM 2.0 carries no global phase)."""
+    _, circ, qubits = compiled.circuit[:3]
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
-        return cirq.qasm(compiled.circuit[1])
+        return circ.to_qasm(qubit_order=qubits)
 
 
 @with_sdk_versions
@@ -183,17 +185,18 @@ def process_run_measured(payload: dict) -> dict:
             payload, payload["circuit_data"])
         key_bits = {f"{name}[{index}]": (name, index) for name, index in bits}
         return CompileResult(
-            circuit=(qsimcirq.QSimSimulator(seed=payload.get("seed")), cirq_circ, key_bits),
+            circuit=(qsimcirq.QSimSimulator(seed=payload.get("seed")), cirq_circ, qubits,
+                     key_bits),
             n_qubits=len(qubits),
             preprocessing_applied=preprocessing_applied + [_NATIVE_RUN_NOTE])
 
     def execute(compiled, payload):
-        simulator, circ, _ = compiled.circuit
+        simulator, circ, *_ = compiled.circuit
         return simulator.run(circ, repetitions=payload.get("n_shots", 1024))
 
     def shape_counts(run_result, compiled, payload):
         """Assemble per-shot keys over the declared classical bits (msb)."""
-        _, _, key_bits = compiled.circuit
+        key_bits = compiled.circuit[3]
         layout = parse_measurement_layout(payload["circuit_data"])
         index = {bit: k for k, bit in enumerate(layout.clbits)}
         table = np.zeros((payload.get("n_shots", 1024), layout.n_clbits), dtype=np.int8)

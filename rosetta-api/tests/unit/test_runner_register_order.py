@@ -21,6 +21,17 @@ def test_pytket_parsed_statevectors_follow_declaration_order():
     assert not offenders, f"pytket runners returning alphabetical register order: {offenders}"
 
 
+def test_multi_register_pytket_runners_expand_register_broadcasts():
+    """pytket runs a call mixing indexed and register operands on the register's first qubit."""
+    offenders = [
+        name for name, src in _SOURCES.items()
+        if "pytket.qasm.circuit_from_qasm_str" in src
+        and "Enable apply_preprocessing" not in src
+        and "expand_register_broadcasts(" not in src
+    ]
+    assert not offenders, f"pytket runners parsing register broadcasts unexpanded: {offenders}"
+
+
 def test_pytket_result_counts_are_not_zipped_by_position():
     """BackendResult keys cover only read-out bits, so zipping them with every bit shifts keys."""
     pattern = re.compile(r"zip\(\s*bits\s*,\s*key\s*\)")

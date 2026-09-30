@@ -7,7 +7,8 @@ import warnings
 
 from fastapi import FastAPI
 from qrosetta_commons.counts import (
-    prepare_final_state_sampling, prepare_statevector_qasm, strip_identity_gates,
+    expand_register_broadcasts, prepare_final_state_sampling, prepare_statevector_qasm,
+    strip_identity_gates,
 )
 from qrosetta_commons.helpers import (
     CompileResult, declare_sdk_packages, get_logger, register_runner_endpoints,
@@ -39,6 +40,7 @@ _STRIP_NOTE = (
     "(split on ';'), as quimb's QASM parser does not support them. On the measured path "
     "every qubit is sampled and the outcomes are re-keyed over the circuit's classical bits. "
     "Required by the adapter, applied regardless of apply_preprocessing.")
+_BROADCAST_REASON = "quimb's QASM parser accepts only indexed qubit operands"
 _P_GATE = re.compile(r"(^|[;{}])(\s*)p(\s*\()", re.M)
 _IDENTITY_NOTE = (
     "Calls to {names} removed from the QASM: qelib1 defines them as the identity and quimb's "
@@ -95,13 +97,23 @@ def _compile(payload: dict, qasm: str, notes=(), extra_notes=()) -> CompileResul
         logger.info(
             f"Quimb: optimization_level={optimization_level} requested "
             "but not applicable to tensor-network simulation; using default contraction.")
-    cleaned, removed = strip_identity_gates(_strip_unsupported_statements(qasm), ("id", "u0"))
-    gate_notes = [_IDENTITY_NOTE.format(names=" and ".join(removed))] if removed else []
+    cleaned, broadcast_note = expand_register_broadcasts(qasm, _BROADCAST_REASON)
+    cleaned, removed = strip_identity_gates(
+        _strip_unsupported_statements(cleaned), ("id", "u0"))
+    gate_notes = [broadcast_note] if broadcast_note else []
+    if removed:
+        gate_notes.append(_IDENTITY_NOTE.format(names=" and ".join(removed)))
     cleaned, rewritten = _P_GATE.subn(r"\1\2u1\3", cleaned)
     if rewritten:
         gate_notes.append(_P_NOTE)
+    try:
+        circuit = _qtn().Circuit.from_openqasm2_str(cleaned)
+    except KeyError as exc:
+        raise ValueError(
+            f"quimb's QASM parser does not recognise the qubit operand {exc.args[0]!r}; it "
+            "accepts only operands written as register[index].") from None
     return CompileResult(
-        circuit=_qtn().Circuit.from_openqasm2_str(cleaned),
+        circuit=circuit,
         preprocessing_applied=[
             *notes, _STRIP_NOTE, *gate_notes, _GATE_CONTRACT_NOTE, *extra_notes],
         transpiled_qasm=cleaned,

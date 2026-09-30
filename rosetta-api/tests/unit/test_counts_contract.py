@@ -7,7 +7,8 @@ import pytest
 
 from qrosetta_commons.counts import (
     MID_CIRCUIT_ERROR, STATEVECTOR_REORDER_NOTE, STATEVECTOR_TERMINAL_ERROR,
-    counts_from_pytket_result, counts_from_register_keys, named_bits_from_register_key,
+    counts_from_pytket_result, counts_from_register_keys, expand_register_broadcasts,
+    named_bits_from_register_key,
     parse_measurement_layout, prepare_final_state_sampling, prepare_statevector_qasm,
     reorder_statevector, statevector_in_declaration_order, strip_identity_gates,
     strip_measurements, unordered_qreg_note,
@@ -151,6 +152,42 @@ def test_unordered_qreg_note_only_when_order_changes():
     assert unordered_qreg_note(parse_measurement_layout(H + "qreg a[1]; qreg b[1];")) is None
     assert "alphabetically" in unordered_qreg_note(
         parse_measurement_layout(H + "qreg b[1]; qreg a[1];"))
+
+
+def _calls(qasm):
+    return [" ".join(s.split()) for s in qasm.split(";")
+            if s.strip() and not s.strip().startswith(("OPENQASM", "include", "qreg", "creg"))]
+
+
+def test_register_broadcast_repeats_indexed_operands():
+    qasm, note = expand_register_broadcasts(
+        H + "qreg q[1]; qreg r[2]; qreg s[2]; cx q[0],r; ccx r, q[0], s;", "the parser")
+    assert _calls(qasm) == [
+        "cx q[0], r[0]", "cx q[0], r[1]", "ccx r[0], q[0], s[0]", "ccx r[1], q[0], s[1]"]
+    assert note and "the parser" in note and "regardless of apply_preprocessing" in note
+
+
+def test_register_broadcast_expansion():
+    qasm, note = expand_register_broadcasts(
+        H + "gate g a,b { cx a,b; }\nqreg q[1]; qreg r[2]; qreg s[2]; creg c[2];\n"
+        "x q[0]; g q[0], r; cu1(pi/2) r,s; if(c==1) h s; measure r -> c; barrier r;",
+        "the parser")
+    assert note is not None
+    assert "gate g a,b { cx a,b; }" in qasm
+    assert _calls(qasm.split("}", 1)[1]) == [
+        "x q[0]", "g q[0], r[0]", "g q[0], r[1]", "cu1(pi/2) r[0], s[0]",
+        "cu1(pi/2) r[1], s[1]", "if(c==1) h s[0]", "if(c==1) h s[1]", "measure r -> c",
+        "barrier r"]
+
+
+def test_register_broadcast_leaves_indexed_circuits_unchanged():
+    text = H + "qreg q[2]; // comment\ncx q[0],q[1];"
+    assert expand_register_broadcasts(text, "the parser") == (text, None)
+
+
+def test_register_broadcast_rejects_unequal_register_sizes():
+    with pytest.raises(ValueError, match="different sizes"):
+        expand_register_broadcasts(H + "qreg a[2]; qreg b[3]; cx a,b;", "the parser")
 
 
 class _FakePytketResult:

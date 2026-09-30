@@ -14,10 +14,10 @@ import time
 import httpx
 
 from qrosetta_commons.contract_probes import (
-    CLASSICAL_BIT_PROBES, CLASSICAL_N_SHOTS, MID_CIRCUIT_QASM, N_SHOTS, ONE_HOT_QASM,
-    QASM_HEADER, STATEVECTOR_SHAPE_PROBES, SUBSET_QASM, check_classical_bits,
+    CLASSICAL_BIT_PROBES, CLASSICAL_N_SHOTS, MID_CIRCUIT_QASM, MULTI_QREG_REFUSAL, N_SHOTS,
+    ONE_HOT_QASM, QASM_HEADER, STATEVECTOR_SHAPE_PROBES, SUBSET_QASM, check_classical_bits,
     check_measured_subset, check_mid_circuit, check_one_hot_counts, check_one_hot_statevector,
-    check_statevector_shape,
+    check_statevector_shape, decode_complex128_base64,
 )
 
 
@@ -39,6 +39,11 @@ ACTIVE_STATEVECTOR_RUNNERS = [
     "quimb",
     "cuquantum",
 ]
+
+# One indexed operand with one register operand: cx q[0],r[0] and cx q[0],r[1], so every
+# qubit ends in |1> and the populated index is 7 in either ordering.
+REGISTER_BROADCAST_QASM = "qreg q[1]; qreg r[2]; x q[0]; cx q[0],r;"
+REGISTER_BROADCAST_INDEX = 7
 
 
 def _poll_job(job_id: str, timeout: int = 180) -> dict:
@@ -107,6 +112,27 @@ def test_statevector_shape_probes():
     _assert_no_failures(failures)
 
 
+def check_register_broadcast(result: dict) -> list:
+    """All weight on index 7, or the multi-register refusal."""
+    error = result.get("error")
+    if error:
+        return [] if MULTI_QREG_REFUSAL in str(error).lower() else [f"error: {error}"]
+    statevector = decode_complex128_base64(result["statevector"])
+    if len(statevector) != 8:
+        return [f"{len(statevector)} amplitudes, expected 8"]
+    if abs(abs(statevector[REGISTER_BROADCAST_INDEX]) ** 2 - 1.0) > 1e-6:
+        populated = max(range(len(statevector)), key=lambda i: abs(statevector[i]))
+        return [f"expected index {REGISTER_BROADCAST_INDEX}, got {populated}"]
+    return []
+
+
+def test_register_broadcast_without_preprocessing():
+    print("--- Register-broadcast probe (apply_preprocessing=False) ---")
+    by_runner = _run_statevector(QASM_HEADER + REGISTER_BROADCAST_QASM, False)
+    _assert_no_failures([f"{runner}: {msg}" for runner in ACTIVE_STATEVECTOR_RUNNERS
+                         for msg in check_register_broadcast(by_runner[runner])])
+
+
 def test_counts_keys_are_classical_bits():
     print("--- Classical-bit counts contract probes ---")
     failures = []
@@ -136,6 +162,7 @@ if __name__ == "__main__":
         test_active_runner_statevector_ordering_contract()
         test_active_runner_measured_ordering_contract()
         test_statevector_shape_probes()
+        test_register_broadcast_without_preprocessing()
         test_counts_keys_are_classical_bits()
         test_counts_measure_only_the_measured_qubits()
         test_mid_circuit_measurement_is_simulated_or_refused()
