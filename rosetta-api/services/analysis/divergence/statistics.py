@@ -139,33 +139,33 @@ def _pool_rare_outcomes(row_i, row_j):
     ``ok`` is False when no testable table with at least two columns and adequate expected
     counts exists. ``pooled_outcomes`` counts the observed outcomes merged into the bin.
     """
+    row_i, row_j = np.asarray(row_i), np.asarray(row_j)
     n_i, n_j = row_i.sum(), row_j.sum()
     n_total = n_i + n_j
     col = row_i + row_j
     min_share = min(n_i, n_j) / n_total
-    order = [int(k) for k in np.argsort(col, kind="stable")]
-    pooled = [k for k in order if col[k] * min_share < MIN_EXPECTED_COUNT]
-    kept = [k for k in order if k not in pooled]
-
-    def table(kept_cols, pooled_cols):
-        cols_i = [row_i[k] for k in kept_cols]
-        cols_j = [row_j[k] for k in kept_cols]
-        if pooled_cols:
-            cols_i.append(sum(row_i[k] for k in pooled_cols))
-            cols_j.append(sum(row_j[k] for k in pooled_cols))
-        return np.array(cols_i), np.array(cols_j)
+    order = np.argsort(col, kind="stable")
+    rare = col[order] * min_share < MIN_EXPECTED_COUNT
+    kept = order[~rare]
+    n_pooled = int(rare.sum())
+    pooled_i, pooled_j = row_i[order[rare]].sum(), row_j[order[rare]].sum()
+    start = 0
 
     while True:
-        t_i, t_j = table(kept, pooled)
+        t_i, t_j = row_i[kept[start:]], row_j[kept[start:]]
+        if n_pooled:
+            t_i, t_j = np.append(t_i, pooled_i), np.append(t_j, pooled_j)
         expected = np.outer([n_i, n_j], t_i + t_j) / n_total
         if len(t_i) < 2:
             ok = bool((expected >= MIN_EXPECTED_COUNT).all())
-            return t_i, t_j, len(pooled) if len(pooled) > 1 else 0, ok and not pooled
-        if not pooled or expected[:, -1].min() >= MIN_EXPECTED_COUNT or _cochran_ok(expected):
-            return t_i, t_j, len(pooled) if len(pooled) > 1 else 0, True
-        if len(kept) < 2:
-            return t_i, t_j, len(pooled), False
-        pooled.append(kept.pop(0))
+            return t_i, t_j, n_pooled if n_pooled > 1 else 0, ok and not n_pooled
+        if not n_pooled or expected[:, -1].min() >= MIN_EXPECTED_COUNT or _cochran_ok(expected):
+            return t_i, t_j, n_pooled if n_pooled > 1 else 0, True
+        if len(kept) - start < 2:
+            return t_i, t_j, n_pooled, False
+        pooled_i, pooled_j = pooled_i + row_i[kept[start]], pooled_j + row_j[kept[start]]
+        n_pooled += 1
+        start += 1
 
 
 def _statistical_agreement_test(
