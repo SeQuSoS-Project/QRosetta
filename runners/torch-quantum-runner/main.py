@@ -33,9 +33,9 @@ except ImportError as e:
     logger.warning(f"TorchQuantum import failed: {e}. Runner will return errors for all requests.")
 
 _TQ_BASIS_GATES = [
-    'h', 'x', 'y', 'z', 's', 't', 'sdg',
+    'h', 'x', 'y', 'z', 's', 't',
     'cx', 'cz', 'swap', 'ccx',
-    'rx', 'ry', 'rz', 'u2', 'u3',
+    'rx', 'ry', 'rz', 'u1', 'u2', 'u3',
 ]
 
 _PRECISION = "complex64"

@@ -19,6 +19,11 @@ app = FastAPI(title="Qibo Runner")
 
 _PRECISION = "complex128"
 
+_FROM_QASM_NOTE = (
+    "qibo.models.Circuit.from_qasm(): Qibo's own OpenQASM 2.0 parser builds the circuit; "
+    "qelib1 gates map to Qibo gates, and Qibo's U3 differs from qelib1 u3 by the global "
+    "phase e^{-i(phi+lambda)/2}, which becomes a relative phase once the gate is controlled "
+    "(cu3). Required by the adapter, applied regardless of apply_preprocessing.")
 _FUSION_NOTE_SUFFIX = (
     " transpiled_qasm is the circuit before fusion, since fused blocks have no OpenQASM 2.0 "
     "form.")
@@ -40,7 +45,7 @@ def _parse(qasm_str: str, optimization_level: int = 0) -> tuple[Circuit, list[st
     Level 2+: fuse up to 2-qubit blocks (max_qubits=2)
     """
     circuit = Circuit.from_qasm(qasm_str)
-    preprocessing_applied = []
+    preprocessing_applied = [_FROM_QASM_NOTE]
     if optimization_level >= 2:
         circuit = circuit.fuse(max_qubits=2)
         preprocessing_applied.append(

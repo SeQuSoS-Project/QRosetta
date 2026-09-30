@@ -6,7 +6,8 @@ import warnings
 
 from fastapi import FastAPI
 from qrosetta_commons.counts import (
-    parse_measurement_layout, prepare_statevector_qasm, unit_pairs, unordered_qreg_note,
+    parse_measurement_layout, prepare_statevector_qasm, statevector_in_declaration_order,
+    unit_pairs, unordered_qreg_note,
 )
 from qrosetta_commons.helpers import (
     CompileResult, get_logger, register_runner_endpoints, run_cli_main,
@@ -76,8 +77,8 @@ def _compilation_note(backend, level):
 def _compile_tket(payload: dict, qasm: str, notes=()):
     """Parse the QASM and run the preprocessing and backend compilation both endpoints share.
 
-    Also returns the parsed circuit's bits as ``(register, index)`` pairs in pytket's sorted
-    order, which the compiled circuit's bits follow position for position.
+    Also returns the parsed circuit's bits and qubits as ``(register, index)`` pairs in
+    pytket's sorted order, which the compiled circuit's units follow position for position.
     """
     tk_circ = pytket.qasm.circuit_from_qasm_str(qasm)
     preprocessing_applied = list(notes)
@@ -94,7 +95,8 @@ def _compile_tket(payload: dict, qasm: str, notes=()):
     opt_level = min(payload.get("optimization_level", 0), 2)
     compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=opt_level)
     preprocessing_applied.append(_compilation_note(backend, opt_level))
-    return compiled_circ, preprocessing_applied, unit_pairs(tk_circ.bits)
+    return (compiled_circ, preprocessing_applied, unit_pairs(tk_circ.bits),
+            unit_pairs(tk_circ.qubits))
 
 
 def _cirq_qubits(tk_circ: Circuit) -> list:
@@ -143,22 +145,29 @@ def process_run(payload: dict) -> dict:
 
     def compile_step(payload):
         qasm, strip_notes = prepare_statevector_qasm(payload["circuit_data"])
-        compiled_circ, preprocessing_applied, _ = _compile_tket(payload, qasm, strip_notes)
+        compiled_circ, preprocessing_applied, _, tk_qubits = _compile_tket(
+            payload, qasm, strip_notes)
         cirq_circ = _to_cirq_with_phase(compiled_circ)
         qubits = _cirq_qubits(compiled_circ)
         simulator = cirq.Simulator(dtype=np.complex128)
         return CompileResult(
-            circuit=(simulator, cirq_circ, qubits, compiled_circ),
+            circuit=(simulator, cirq_circ, qubits, tk_qubits, compiled_circ),
             n_qubits=compiled_circ.n_qubits,
             preprocessing_applied=preprocessing_applied)
 
     def execute(compiled, _payload):
-        simulator, cirq_circ, qubits, _ = compiled.circuit
+        simulator, cirq_circ, qubits, _, _ = compiled.circuit
         return simulator.simulate(cirq_circ, qubit_order=qubits).final_state_vector
+
+    def to_declaration_order(statevector, compiled, payload):
+        return statevector_in_declaration_order(
+            statevector, payload["circuit_data"], compiled.circuit[3], "msb",
+            compiled.preprocessing_applied)
 
     return run_statevector_job(
         simulator="cirq", payload=payload, logger=logger, compile_fn=compile_step,
-        serialize_fn=_serialize, execute_fn=execute, qubit_ordering="msb",
+        serialize_fn=_serialize, execute_fn=execute, postprocess_fn=to_declaration_order,
+        qubit_ordering="msb",
         precision="complex128")
 
 
@@ -167,7 +176,7 @@ def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for Cirq simulation.")
 
     def compile_step(payload):
-        compiled_circ, preprocessing_applied, bits = _compile_tket(
+        compiled_circ, preprocessing_applied, bits, _ = _compile_tket(
             payload, payload["circuit_data"])
         if len(compiled_circ.bits) != len(bits):
             raise ValueError("backend compilation changed the number of classical bits")

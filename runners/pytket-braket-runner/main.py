@@ -2,7 +2,8 @@
 
 from fastapi import FastAPI
 from qrosetta_commons.counts import (
-    parse_measurement_layout, prepare_statevector_qasm, unit_pairs, unordered_qreg_note,
+    counts_from_pytket_result, parse_measurement_layout, prepare_statevector_qasm,
+    statevector_in_declaration_order, unit_pairs, unordered_qreg_note,
 )
 from qrosetta_commons.helpers import (
     CompileResult, get_logger, register_runner_endpoints, run_cli_main,
@@ -70,7 +71,7 @@ def _compile(payload: dict, qasm: str, notes=()) -> CompileResult:
     preprocessing_applied.append(_DROP_PHASE_NOTE)
 
     return CompileResult(
-        circuit=(backend, compiled_circ, unit_pairs(tk_circ.bits)),
+        circuit=(backend, compiled_circ, unit_pairs(tk_circ.bits), unit_pairs(tk_circ.qubits)),
         n_qubits=tk_circ.n_qubits,
         preprocessing_applied=preprocessing_applied)
 
@@ -82,7 +83,15 @@ def _compile_statevector(payload: dict) -> CompileResult:
 
 def _compile_measured(payload: dict) -> CompileResult:
     """Compile with the circuit's own measurements; the backend samples them at the end."""
-    parse_measurement_layout(payload["circuit_data"]).require_terminal()
+    layout = parse_measurement_layout(payload["circuit_data"])
+    layout.require_terminal()
+    unwritten = [layout.clbits[c] for c in range(layout.n_clbits)
+                 if c not in layout.clbit_sources()]
+    if layout.has_measurements and unwritten:
+        raise ValueError(
+            "pytket-braket cannot return counts when a declared classical bit is never "
+            f"measured ({', '.join(f'{n}[{i}]' for n, i in unwritten)}); its result reader "
+            "fails with IndexError.")
     compiled = _compile(payload, payload["circuit_data"])
     compiled.preprocessing_applied.append(_COUNTS_KEY_NOTE)
     return compiled
@@ -97,11 +106,13 @@ def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for Braket simulation.")
 
     def execute(compiled, _payload):
-        backend, compiled_circ, _ = compiled.circuit
+        backend, compiled_circ, _, _ = compiled.circuit
         return backend.get_result(backend.process_circuit(compiled_circ))
 
-    def to_state(result, _compiled, _payload):
-        return result.get_state()
+    def to_state(result, compiled, payload):
+        return statevector_in_declaration_order(
+            result.get_state(), payload["circuit_data"], compiled.circuit[3], "msb",
+            compiled.preprocessing_applied)
 
     return run_statevector_job(
         simulator="braket", payload=payload, logger=logger, compile_fn=_compile_statevector,
@@ -114,20 +125,17 @@ def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for Braket simulation.")
 
     def execute(compiled, payload):
-        backend, compiled_circ, _ = compiled.circuit
+        backend, compiled_circ, _, _ = compiled.circuit
         handle = backend.process_circuit(
             compiled_circ, n_shots=payload.get("n_shots", 1024), seed=payload.get("seed"))
         return backend.get_result(handle)
 
     def shape_counts(result, compiled, payload):
-        """Re-key the tuples, ordered over the circuit's sorted bits, by declared clbit (msb)."""
-        _, compiled_circ, bits = compiled.circuit
-        if len(compiled_circ.bits) != len(bits):
-            raise ValueError("backend compilation changed the number of classical bits")
+        """Re-key the counts over the declared classical bits (msb)."""
+        _, compiled_circ, bits, _ = compiled.circuit
         layout = parse_measurement_layout(payload["circuit_data"])
-        counts = result.get_counts()
-        return layout.counts_from_named(
-            ((dict(zip(bits, key)), v) for key, v in counts.items()), "msb"), None
+        return counts_from_pytket_result(
+            layout, result, compiled_circ.bits, bits, "msb"), None
 
     return run_measured_job(
         simulator="braket", payload=payload, logger=logger, compile_fn=_compile_measured,

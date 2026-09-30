@@ -6,9 +6,11 @@ from pytket.extensions.qiskit import tk_to_qiskit
 from qiskit_aer import AerSimulator
 from qiskit import transpile as qiskit_transpile
 from qiskit import qasm2
+from qiskit.circuit import Instruction
+from qiskit.circuit.library import CHGate
 from qrosetta_commons.counts import (
     counts_from_register_keys, parse_measurement_layout, prepare_statevector_qasm,
-    unordered_qreg_note,
+    statevector_in_declaration_order, unordered_qreg_note,
 )
 from qrosetta_commons.helpers import (
     CompileResult, get_logger, register_runner_endpoints, run_cli_main,
@@ -42,6 +44,9 @@ def _simulator():
     return AerSimulator(method=_SIMULATION_METHOD, precision="double")
 
 
+_AER_OPERATIONS = frozenset(_simulator().target.operation_names)
+
+
 def _backend_fields(result, sim) -> dict:
     """Method and device Aer reports for the executed experiment."""
     metadata = result.results[0].metadata
@@ -56,6 +61,52 @@ def _backend_fields(result, sim) -> dict:
     }
 
 
+def _define_opaque(qiskit_circ, preprocessing_applied):
+    """Replace the definition-less instructions tk_to_qiskit emits for ch and u0.
+
+    ch becomes Qiskit's CHGate; u0 (the qelib1 identity) is dropped.
+    """
+    replaced, kept = set(), []
+    for inst in qiskit_circ.data:
+        op = inst.operation
+        name = op.name.split("(")[0]
+        if type(op) is Instruction and op.definition is None and name in ("ch", "u0"):
+            replaced.add(name)
+            if name == "u0":
+                continue
+            inst = inst.replace(operation=CHGate())
+        kept.append(inst)
+    if replaced:
+        qiskit_circ.data = kept
+        preprocessing_applied.append(
+            f"tk_to_qiskit emits {', '.join(sorted(replaced))} as instructions without a "
+            "definition; ch is replaced by qiskit.circuit.library.CHGate and u0 (the qelib1 "
+            "identity) is removed. Required by the adapter, applied regardless of "
+            "apply_preprocessing.")
+    return qiskit_circ
+
+
+def _to_aer_basis(qiskit_circ, preprocessing_applied):
+    """Decompose instructions Aer cannot execute (e.g. ch) at optimization_level 0."""
+    missing = sorted({inst.operation.name for inst in qiskit_circ.data} - _AER_OPERATIONS)
+    if not missing:
+        return qiskit_circ
+    preprocessing_applied.append(
+        f"qiskit.compiler.transpile(backend=AerSimulator, optimization_level=0): decomposes "
+        f"{', '.join(missing)}, which Aer does not execute, into gates it does. Required by "
+        "the adapter, applied regardless of apply_preprocessing.")
+    return qiskit_transpile(qiskit_circ, _simulator(), optimization_level=0)
+
+
+def _qubit_pairs(qiskit_circ) -> list:
+    """``(register, index)`` for each qubit of a Qiskit circuit, in its qubit order."""
+    pairs = []
+    for qubit in qiskit_circ.qubits:
+        register, index = qiskit_circ.find_bit(qubit).registers[0]
+        pairs.append((register.name, index))
+    return pairs
+
+
 def _to_qiskit(qasm: str, payload: dict):
     """Parse the QASM via pytket, convert to a Qiskit circuit, and apply the opt level."""
     tk_circ = pytket.qasm.circuit_from_qasm_str(qasm)
@@ -65,12 +116,14 @@ def _to_qiskit(qasm: str, payload: dict):
     qreg_note = unordered_qreg_note(parse_measurement_layout(qasm))
     if qreg_note:
         preprocessing_applied.append(qreg_note)
+    qiskit_circ = _define_opaque(qiskit_circ, preprocessing_applied)
     opt_level = payload.get("optimization_level", 0)
     if opt_level > 0:
         qiskit_circ = qiskit_transpile(qiskit_circ, optimization_level=min(opt_level, 3))
         preprocessing_applied.append(
             f"qiskit.compiler.transpile(level={min(opt_level, 3)}): Native Qiskit "
             "transpilation pass applied to optimize the circuit structure for the Aer backend.")
+    qiskit_circ = _to_aer_basis(qiskit_circ, preprocessing_applied)
     preprocessing_applied.append(_METHOD_NOTE)
 
     return tk_circ, qiskit_circ, preprocessing_applied
@@ -86,20 +139,23 @@ def process_run(payload: dict) -> dict:
         qasm, strip_notes = prepare_statevector_qasm(payload["circuit_data"])
         tk_circ, qiskit_circ, preprocessing_applied = _to_qiskit(qasm, payload)
         transpiled_qasm = qasm2.dumps(qiskit_circ)
+        backend_qubits = _qubit_pairs(qiskit_circ)
         qiskit_circ.save_statevector()
         return CompileResult(
-            circuit=(sim, qiskit_circ),
+            circuit=(sim, qiskit_circ, backend_qubits),
             n_qubits=tk_circ.n_qubits,
             preprocessing_applied=strip_notes + preprocessing_applied + [_SAVE_STATEVECTOR_NOTE],
             transpiled_qasm=transpiled_qasm)
 
     def execute(compiled, _payload):
-        backend, qiskit_circ = compiled.circuit
+        backend, qiskit_circ, _ = compiled.circuit
         return backend.run(qiskit_circ, optimization_level=0).result()
 
-    def shape_statevector(aer_result, _compiled, _payload):
+    def shape_statevector(aer_result, compiled, payload):
         backend_fields.update(_backend_fields(aer_result, sim))
-        return aer_result.get_statevector()
+        return statevector_in_declaration_order(
+            aer_result.get_statevector(), payload["circuit_data"], compiled.circuit[2], "lsb",
+            compiled.preprocessing_applied)
 
     backend_fields = {}
     result = run_statevector_job(

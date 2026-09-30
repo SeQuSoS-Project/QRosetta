@@ -6,9 +6,11 @@ import numpy as np
 import pytest
 
 from qrosetta_commons.counts import (
-    MID_CIRCUIT_ERROR, STATEVECTOR_TERMINAL_ERROR, counts_from_register_keys,
-    named_bits_from_register_key, parse_measurement_layout, prepare_final_state_sampling,
-    prepare_statevector_qasm, strip_measurements, unordered_qreg_note,
+    MID_CIRCUIT_ERROR, STATEVECTOR_REORDER_NOTE, STATEVECTOR_TERMINAL_ERROR,
+    counts_from_pytket_result, counts_from_register_keys, named_bits_from_register_key,
+    parse_measurement_layout, prepare_final_state_sampling, prepare_statevector_qasm,
+    reorder_statevector, statevector_in_declaration_order, strip_identity_gates,
+    strip_measurements, unordered_qreg_note,
 )
 
 H = 'OPENQASM 2.0;\ninclude "qelib1.inc";\n'
@@ -149,6 +151,97 @@ def test_unordered_qreg_note_only_when_order_changes():
     assert unordered_qreg_note(parse_measurement_layout(H + "qreg a[1]; qreg b[1];")) is None
     assert "alphabetically" in unordered_qreg_note(
         parse_measurement_layout(H + "qreg b[1]; qreg a[1];"))
+
+
+class _FakePytketResult:
+    """The two BackendResult members counts_from_pytket_result reads."""
+
+    def __init__(self, read_bits, counts):
+        self.c_bits = {b: k for k, b in enumerate(read_bits)}
+        self._counts = counts
+
+    def get_counts(self, cbits):
+        assert list(cbits) == list(self.c_bits)
+        return self._counts
+
+
+def test_pytket_counts_leave_an_unmeasured_clbit_at_zero():
+    qasm = H + ("qreg q[4]; creg c[2]; creg d[3]; x q[0]; measure q[0] -> d[2]; "
+                "measure q[1] -> c[0]; measure q[2] -> c[1]; measure q[3] -> d[0];")
+    layout = parse_measurement_layout(qasm)
+    compiled = ["c0", "c1", "c2", "c3", "c4"]
+    result = _FakePytketResult(["c0", "c1", "c2", "c4"], {(1, 1, 0, 1): 3, (0, 0, 1, 1): 1})
+    counts = counts_from_pytket_result(layout, result, compiled, layout.clbits, "msb")
+    assert counts == {"11001": 3, "00101": 1}
+
+
+def test_pytket_counts_reject_a_changed_bit_count():
+    layout = parse_measurement_layout(ASYMMETRIC)
+    with pytest.raises(ValueError, match="number of classical bits"):
+        counts_from_pytket_result(
+            layout, _FakePytketResult(["c0"], {(1,): 1}), ["c0"], layout.clbits, "msb")
+
+
+def test_pytket_counts_reject_a_short_key():
+    layout = parse_measurement_layout(ASYMMETRIC)
+    result = _FakePytketResult(["c0", "c1"], {(1,): 1})
+    with pytest.raises(ValueError, match="does not cover"):
+        counts_from_pytket_result(layout, result, ["c0", "c1"], layout.clbits, "msb")
+
+
+def _basis(n, index):
+    sv = np.zeros(2 ** n, dtype=complex)
+    sv[index] = 1
+    return sv
+
+
+@pytest.mark.parametrize("order", ["msb", "lsb"])
+def test_statevector_reordered_from_alphabetical_to_declaration_order(order):
+    layout = parse_measurement_layout(H + "qreg r[1]; qreg k[2]; qreg m[1];")
+    backend = sorted(layout.qubits)
+    rng = np.random.default_rng(3)
+    sv = rng.normal(size=16) + 1j * rng.normal(size=16)
+    out, moved = reorder_statevector(sv, layout, backend, order)
+    assert moved
+    back_pos = layout.qubit_positions(order, backend)
+    decl_pos = layout.qubit_positions(order)
+    for index in range(16):
+        bits = [(index >> p) & 1 for p in back_pos]
+        target = sum(b << p for b, p in zip(bits, decl_pos))
+        assert out[target] == sv[index]
+
+
+def test_statevector_reorder_is_a_no_op_for_declaration_order():
+    layout = parse_measurement_layout(H + "qreg a[1]; qreg b[2];")
+    sv = _basis(3, 5)
+    out, moved = reorder_statevector(sv, layout, layout.qubits, "msb")
+    assert not moved and np.array_equal(out, sv)
+    notes = []
+    statevector_in_declaration_order(sv, H + "qreg a[1]; qreg b[2];", layout.qubits, "msb", notes)
+    assert notes == []
+
+
+def test_statevector_reorder_note_and_length_check():
+    qasm = H + "qreg b[1]; qreg a[2]; x b[0]; x a[0];"
+    layout = parse_measurement_layout(qasm)
+    notes = []
+    alphabetical_msb = _basis(3, 0b101)
+    out = statevector_in_declaration_order(
+        alphabetical_msb, qasm, sorted(layout.qubits), "msb", notes)
+    assert np.flatnonzero(out).tolist() == [0b110]
+    assert notes == [STATEVECTOR_REORDER_NOTE]
+    with pytest.raises(ValueError, match="amplitudes"):
+        reorder_statevector(_basis(2, 0), layout, layout.qubits, "msb")
+
+
+def test_strip_identity_gates():
+    qasm = H + ("qreg q[2]; id q[0]; u0(1) q[1];\nh q[0]; // id q[1];\n"
+                "gate g a { u0(0.5) a; x a; }\nqreg idx[1]; x idx[0];")
+    text, removed = strip_identity_gates(qasm, ("id", "u0"))
+    assert removed == ["id", "u0"]
+    assert not re.search(r"\b(id|u0)\b", text)
+    assert "gate g a {  x a; }" in text and "x idx[0];" in text and "qreg idx[1];" in text
+    assert strip_identity_gates(H + "qreg q[1]; x q[0];", ("u0",))[1] == []
 
 
 _RUNNERS = Path(__file__).resolve().parents[3] / "runners"

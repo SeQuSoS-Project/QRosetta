@@ -35,6 +35,10 @@ _MERGE_ROTATIONS_NOTE = (
 _COMMUTE_CONTROLLED_NOTE = (
     "qml.transforms.commute_controlled: Pushes single-qubit gates through controlled gates "
     "to enable further cancellations.")
+_IDLE_WIRES_NOTE = (
+    "qml.Identity on each declared wire no operation touches: prepended so the tape and its "
+    "qml.state() readout span every declared qubit (a gate-free circuit has no wires "
+    "otherwise, and qml.from_qasm then also drops the readout).")
 _SERIALIZE_NOTE = (
     "transpiled_qasm is QuantumScript.to_openqasm() of the executed tape; operations "
     "outside the OpenQASM 2.0 gate set (e.g. QubitUnitary) are decomposed in the text only.")
@@ -65,6 +69,11 @@ def _compile(payload: dict, qasm: str, notes=()) -> CompileResult:
     qasm_op = qml.from_qasm(circuit_data, measurements=[qml.state()])
     tape = qml.tape.make_qscript(qasm_op)()
     notes = [*notes, _STRIP_BARRIERS_NOTE, _FROM_QASM_NOTE]
+    idle = [w for w in range(num_qubits) if w not in tape.wires]
+    if idle:
+        tape = qml.tape.QuantumScript(
+            [qml.Identity(w) for w in idle] + list(tape.operations), [qml.state()])
+        notes.append(_IDLE_WIRES_NOTE)
 
     passes, pass_notes = _optimization_pipeline(payload.get("optimization_level", 0))
     if passes:

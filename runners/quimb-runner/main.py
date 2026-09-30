@@ -6,7 +6,9 @@ import re
 import warnings
 
 from fastapi import FastAPI
-from qrosetta_commons.counts import prepare_final_state_sampling, prepare_statevector_qasm
+from qrosetta_commons.counts import (
+    prepare_final_state_sampling, prepare_statevector_qasm, strip_identity_gates,
+)
 from qrosetta_commons.helpers import (
     CompileResult, get_logger, register_runner_endpoints, run_cli_main, run_measured_job,
     run_statevector_job, runner_error, strip_qasm_comments, with_sdk_versions,
@@ -34,6 +36,15 @@ _STRIP_NOTE = (
     "(split on ';'), as quimb's QASM parser does not support them. On the measured path "
     "every qubit is sampled and the outcomes are re-keyed over the circuit's classical bits. "
     "Required by the adapter, applied regardless of apply_preprocessing.")
+_P_GATE = re.compile(r"(^|[;{}])(\s*)p(\s*\()", re.M)
+_IDENTITY_NOTE = (
+    "Calls to {names} removed from the QASM: qelib1 defines them as the identity and quimb's "
+    "QASM parser has no such gate. Required by the adapter, applied regardless of "
+    "apply_preprocessing.")
+_P_NOTE = (
+    "p(lambda) rewritten as u1(lambda), the same matrix diag(1, e^{i lambda}); quimb's QASM "
+    "parser has no p gate. Required by the adapter, applied regardless of "
+    "apply_preprocessing.")
 _GATE_CONTRACT_NOTE = (
     "quimb.tensor.Circuit(gate_contract='auto-split-gate') (quimb default): While parsing, "
     "each two-qubit gate is contracted into the network and split by SVD when that lowers "
@@ -81,10 +92,15 @@ def _compile(payload: dict, qasm: str, notes=(), extra_notes=()) -> CompileResul
         logger.info(
             f"Quimb: optimization_level={optimization_level} requested "
             "but not applicable to tensor-network simulation; using default contraction.")
-    cleaned = _strip_unsupported_statements(qasm)
+    cleaned, removed = strip_identity_gates(_strip_unsupported_statements(qasm), ("id", "u0"))
+    gate_notes = [_IDENTITY_NOTE.format(names=" and ".join(removed))] if removed else []
+    cleaned, rewritten = _P_GATE.subn(r"\1\2u1\3", cleaned)
+    if rewritten:
+        gate_notes.append(_P_NOTE)
     return CompileResult(
         circuit=_qtn().Circuit.from_openqasm2_str(cleaned),
-        preprocessing_applied=[*notes, _STRIP_NOTE, _GATE_CONTRACT_NOTE, *extra_notes],
+        preprocessing_applied=[
+            *notes, _STRIP_NOTE, *gate_notes, _GATE_CONTRACT_NOTE, *extra_notes],
         transpiled_qasm=cleaned,
         precision=_PRECISION)
 
@@ -108,7 +124,7 @@ def process_run(payload: dict) -> dict:
     return run_statevector_job(
         simulator="quimb", payload=payload, logger=logger, compile_fn=compile_step,
         pre_execute_fn=_reset_contraction_caches, execute_fn=execute,
-        postprocess_fn=shape_statevector, qubit_ordering="msb", theoretical_mb=None,
+        postprocess_fn=shape_statevector, qubit_ordering="msb",
         precision=_PRECISION)
 
 
@@ -138,7 +154,7 @@ def process_run_measured(payload: dict) -> dict:
     return run_measured_job(
         simulator="quimb", payload=payload, logger=logger, compile_fn=compile_step,
         pre_execute_fn=_reset_contraction_caches, execute_fn=execute,
-        postprocess_fn=shape_counts, qubit_ordering="msb", theoretical_mb=None,
+        postprocess_fn=shape_counts, qubit_ordering="msb",
         precision=_PRECISION)
 
 

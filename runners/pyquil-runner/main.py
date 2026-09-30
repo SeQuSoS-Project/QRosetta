@@ -4,7 +4,9 @@ The simulator has no shot sampler here, so the measured endpoint samples the sta
 """
 
 from fastapi import FastAPI
-from qrosetta_commons.counts import prepare_final_state_sampling, prepare_statevector_qasm
+from qrosetta_commons.counts import (
+    prepare_final_state_sampling, prepare_statevector_qasm, strip_identity_gates,
+)
 from qrosetta_commons.helpers import (
     CompileResult, get_logger, register_runner_endpoints, run_cli_main,
     run_measured_job, run_statevector_job, with_sdk_versions,
@@ -40,6 +42,9 @@ _PEEPHOLE_2Q_NOTE = (
 _FULL_PEEPHOLE_NOTE = (
     "pytket.passes.FullPeepholeOptimise() (optimization_level=2): single-qubit merging and "
     "KAK-based two-qubit reduction.")
+_U0_NOTE = (
+    "Calls to u0 removed from the QASM: qelib1 defines u0 as the identity and tk_to_pyquil "
+    "cannot convert it. Required by the adapter, applied regardless of apply_preprocessing.")
 _GLOBAL_PHASE_NOTE = (
     "Global phase: Quil has no global-phase instruction, so tk_to_pyquil drops the pytket "
     "circuit's phase; the returned statevector is multiplied by exp(i*pi*phase) to restore it.")
@@ -47,9 +52,15 @@ _GLOBAL_PHASE_NOTE = (
 
 def _to_quil_program(qasm_str: str, optimization_level: int = 0, apply_preprocessing: bool = True):
     """Parse QASM via pytket, apply the preprocessing and optimisation passes, convert to Quil."""
+    qasm_str, removed = strip_identity_gates(qasm_str, ("u0",))
     tk_circ = pytket.qasm.circuit_from_qasm_str(qasm_str)
+    if len(tk_circ.q_registers) > 1:
+        raise ValueError(
+            "Cannot convert circuit with multiple quantum registers to pyQuil: "
+            "tk_to_pyquil needs a single linear register. Enable apply_preprocessing so "
+            "the API merges the registers into one.")
 
-    preprocessing_applied = []
+    preprocessing_applied = [_U0_NOTE] if removed else []
     if apply_preprocessing:
         RemoveBarriers().apply(tk_circ)
         preprocessing_applied.append(_REMOVE_BARRIERS_NOTE)

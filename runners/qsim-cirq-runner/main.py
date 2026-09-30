@@ -99,6 +99,11 @@ def _to_cirq_circuit(payload: dict, qasm: str, notes=()):
     as ``(register, index)`` pairs in pytket's sorted order, and the preprocessing list.
     """
     tk_circ = pytket.qasm.circuit_from_qasm_str(qasm)
+    if len(tk_circ.q_registers) > 1:
+        raise ValueError(
+            "Cirq can only support a single linear register: pytket's tk_to_cirq cannot "
+            "convert a circuit with more than one quantum register. "
+            "Enable apply_preprocessing so the API merges the registers into one.")
     optimization_level = payload.get("optimization_level", 0)
 
     preprocessing_applied = list(notes)

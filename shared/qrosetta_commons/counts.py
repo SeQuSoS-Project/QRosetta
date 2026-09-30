@@ -25,6 +25,10 @@ FINAL_STATE_SAMPLING_NOTE = (
     "it (unmeasured classical bits read 0). Counts keys hold every declared classical bit. "
     "Applied regardless of apply_preprocessing.")
 
+STATEVECTOR_REORDER_NOTE = (
+    "Statevector reordered from pytket's alphabetical register order to declaration order, "
+    "after the timed window; the index convention (qubit_ordering) is unchanged.")
+
 IMPLICIT_MEASURE_ALL_NOTE = (
     "The circuit has no measure statements, so every qubit is read out: counts keys hold one "
     "bit per declared qubit in declaration order.")
@@ -246,6 +250,21 @@ def strip_measurements(qasm: str) -> str:
     return _MEASURE_STMT_RE.sub("", _strip_comments(qasm))
 
 
+def strip_identity_gates(qasm: str, names) -> tuple:
+    """Remove calls to the named identity gates (qelib1 ``id``, ``u0``); comments go too.
+
+    Returns ``(qasm, removed)`` with ``removed`` the names that occurred, in ``names`` order.
+    """
+    text = _strip_comments(qasm)
+    removed = []
+    for name in names:
+        pattern = re.compile(rf"(^|[;{{}}])(\s*){name}\b\s*(?:\([^)]*\))?\s*[^;{{}}]*;", re.M)
+        text, n = pattern.subn(r"\1\2", text)
+        if n:
+            removed.append(name)
+    return text, removed
+
+
 def prepare_statevector_qasm(qasm: str):
     """QASM with its terminal measurements removed, plus preprocessing notes.
 
@@ -297,12 +316,68 @@ def unordered_qreg_note(layout: MeasurementLayout, parser: str = "pytket"):
     return None
 
 
+def reorder_statevector(statevector, layout: MeasurementLayout, backend_qubits,
+                        index_order: str):
+    """Permute a statevector over ``backend_qubits`` into the declared qubit order.
+
+    ``index_order`` is the backend's convention and is kept: ``"msb"`` makes declared qubit 0
+    the most significant index bit, ``"lsb"`` the least. Returns ``(statevector, moved)``.
+    """
+    statevector = np.asarray(statevector)
+    n = layout.n_qubits
+    if statevector.size != 2 ** n:
+        raise ValueError(
+            f"statevector has {statevector.size} amplitudes; {n} declared qubits need {2 ** n}")
+    positions = layout.qubit_positions(index_order, backend_qubits)
+    targets = [n - 1 - j if index_order == "msb" else j for j in range(n)]
+    if positions == targets:
+        return statevector, False
+    axes = [0] * n
+    for source, target in zip(positions, targets):
+        axes[n - 1 - target] = n - 1 - source
+    return np.transpose(statevector.reshape([2] * n), axes).reshape(-1), True
+
+
+def statevector_in_declaration_order(statevector, qasm: str, backend_qubits,
+                                     index_order: str, notes: list):
+    """``reorder_statevector`` for ``qasm``'s registers; appends the note when it moves."""
+    statevector, moved = reorder_statevector(
+        statevector, parse_measurement_layout(qasm), backend_qubits, index_order)
+    if moved:
+        notes.append(STATEVECTOR_REORDER_NOTE)
+    return statevector
+
+
 def counts_from_register_keys(layout: MeasurementLayout, counts: dict, registers,
                               bit_order: str) -> dict:
     """Re-key counts whose keys have one space-separated field per classical register."""
     return layout.counts_from_named(
         ((named_bits_from_register_key(k, registers), v) for k, v in counts.items()),
         bit_order)
+
+
+def counts_from_pytket_result(layout: MeasurementLayout, result, compiled_bits, bits,
+                              bit_order: str) -> dict:
+    """Re-key a pytket ``BackendResult``'s counts over the declared classical bits.
+
+    ``compiled_bits`` are the executed circuit's bits and ``bits`` the parsed circuit's
+    ``(register, index)`` pairs, position for position. Only bits the result reads out are
+    requested, so an unmeasured bit reads 0 instead of shifting its neighbours.
+    """
+    compiled_bits = list(compiled_bits)
+    if len(compiled_bits) != len(bits):
+        raise ValueError(
+            f"backend compilation changed the number of classical bits "
+            f"({len(bits)} declared, {len(compiled_bits)} compiled)")
+    rename = dict(zip(compiled_bits, bits))
+    read = [b for b in compiled_bits if b in result.c_bits]
+    counts = result.get_counts(cbits=read)
+    items = []
+    for key, count in counts.items():
+        if len(key) != len(read):
+            raise ValueError(f"counts key {key} does not cover the bits read out {read}")
+        items.append(({rename[b]: v for b, v in zip(read, key)}, count))
+    return layout.counts_from_named(items, bit_order)
 
 
 def unit_pairs(units) -> list:

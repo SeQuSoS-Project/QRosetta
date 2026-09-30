@@ -3,6 +3,7 @@
 from fastapi import FastAPI
 from qrosetta_commons.counts import (
     parse_measurement_layout, prepare_final_state_sampling, prepare_statevector_qasm,
+    statevector_in_declaration_order,
 )
 from qrosetta_commons.helpers import (
     CompileResult, get_logger, register_runner_endpoints, run_cli_main,
@@ -83,12 +84,14 @@ def process_run(payload: dict) -> dict:
     def execute(compiled, _payload):
         return _qpu.submit(compiled.circuit.to_job(job_type="SAMPLE", nbshots=0))
 
-    def shape_statevector(result, compiled, _payload):
+    def shape_statevector(result, compiled, payload):
         sv = np.zeros(2 ** compiled.n_qubits, dtype=np.complex128)
         for sample in result:
             if sample.amplitude is not None:
                 sv[sample.state.int] = sample.amplitude
-        return sv
+        backend_qubits = parse_measurement_layout(compiled.transpiled_qasm).qubits
+        return statevector_in_declaration_order(
+            sv, payload["circuit_data"], backend_qubits, "msb", compiled.preprocessing_applied)
 
     return run_statevector_job(
         simulator="myqlm", payload=payload, logger=logger, compile_fn=compile_step,

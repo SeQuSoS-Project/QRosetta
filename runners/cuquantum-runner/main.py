@@ -49,7 +49,30 @@ def _run_safe(sim, qc, **kwargs):
             return cpu_sim.run(qc, **kwargs).result()
         raise
 
-def _transpile(qasm_str: str, optimization_level: int = 0):
+_AER_OPERATIONS = {}
+
+
+def _aer_operations(sim) -> frozenset:
+    """Instruction names the simulator executes, cached per device."""
+    device = sim.options.device
+    if device not in _AER_OPERATIONS:
+        _AER_OPERATIONS[device] = frozenset(sim.target.operation_names)
+    return _AER_OPERATIONS[device]
+
+
+def _to_aer_basis(qc, sim, preprocessing_applied):
+    """Decompose instructions Aer cannot execute (e.g. ch, u0) at optimization_level 0."""
+    missing = sorted({inst.operation.name for inst in qc.data} - _aer_operations(sim))
+    if not missing:
+        return qc
+    preprocessing_applied.append(
+        f"qiskit.compiler.transpile(backend=AerSimulator, optimization_level=0): decomposes "
+        f"{', '.join(missing)}, which Aer does not execute, into gates it does. Required by "
+        "the adapter, applied regardless of apply_preprocessing.")
+    return qiskit_transpile(qc, sim, optimization_level=0)
+
+
+def _transpile(qasm_str: str, optimization_level: int, sim):
     """Parse QASM 2.0 into a Qiskit QuantumCircuit and apply Qiskit transpiler passes.
 
     Level 0: no optimization
@@ -62,7 +85,7 @@ def _transpile(qasm_str: str, optimization_level: int = 0):
     if optimization_level > 0:
         qc = qiskit_transpile(qc, optimization_level=min(optimization_level, 3))
         preprocessing_applied.append(f"qiskit.compiler.transpile(level={min(optimization_level, 3)}): Native Qiskit transpilation pass applied to decompose and optimize the circuit for the Aer backend.")
-    return qc, preprocessing_applied
+    return _to_aer_basis(qc, sim, preprocessing_applied), preprocessing_applied
 
 
 _SAVE_STATEVECTOR_NOTE = (
@@ -114,10 +137,10 @@ def process_run(payload: dict) -> dict:
 
     def compile_step(payload):
         qasm, strip_notes = prepare_statevector_qasm(payload["circuit_data"])
-        qc, preprocessing_applied = _transpile(qasm, payload.get("optimization_level", 0))
+        sim = _simulator()
+        qc, preprocessing_applied = _transpile(qasm, payload.get("optimization_level", 0), sim)
         executed_qc = qc.copy()
         executed_qc.save_statevector()
-        sim = _simulator()
         return CompileResult(
             circuit=(sim, executed_qc, qc),
             n_qubits=qc.num_qubits,
@@ -150,9 +173,9 @@ def process_run_measured(payload: dict) -> dict:
         return runner_error("cuquantum", "qiskit-aer not installed.")
 
     def compile_step(payload):
-        qc, preprocessing_applied = _transpile(
-            payload["circuit_data"], payload.get("optimization_level", 0))
         sim = _simulator()
+        qc, preprocessing_applied = _transpile(
+            payload["circuit_data"], payload.get("optimization_level", 0), sim)
         return CompileResult(
             circuit=(sim, qc, qc),
             n_qubits=qc.num_qubits,

@@ -11,7 +11,7 @@ from pytket.transform import Transform
 from projectq.types._qubit import Qubit
 from qrosetta_commons.counts import (
     parse_measurement_layout, prepare_final_state_sampling, prepare_statevector_qasm,
-    unit_pairs, unordered_qreg_note,
+    statevector_in_declaration_order, unit_pairs, unordered_qreg_note,
 )
 from qrosetta_commons.helpers import (
     CompileResult, _draw_statevector_samples, get_logger,
@@ -118,8 +118,10 @@ def process_run(payload: dict) -> dict:
         backend, compiled_circ, _ = compiled.circuit
         return backend.get_result(backend.process_circuit(compiled_circ))
 
-    def to_state(result, _compiled, _payload):
-        return result.get_state()
+    def to_state(result, compiled, payload):
+        return statevector_in_declaration_order(
+            result.get_state(), payload["circuit_data"], compiled.circuit[2], "msb",
+            compiled.preprocessing_applied)
 
     return run_statevector_job(
         simulator="projectq", payload=payload, logger=logger, compile_fn=_compile_statevector,

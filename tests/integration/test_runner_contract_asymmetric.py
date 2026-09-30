@@ -8,8 +8,14 @@ returns |0...0>, mislabels its bit order, or drops idle qubits from the statevec
 
 The classical-bit probes check the counts contract: keys hold every declared classical bit
 (flat index in creg declaration order), flat clbit 0 rightmost under "lsb" and leftmost
-under "msb", and unmeasured classical bits read 0. The mid-circuit probe accepts either the
-correct distribution or an error naming mid-circuit measurement.
+under "msb", and unmeasured classical bits read 0, including one inside a creg and one in
+the creg declared first. The mid-circuit probe accepts either the correct distribution or an
+error naming mid-circuit measurement.
+
+The statevector-shape probes check that a gate-free circuit returns |0...0> over every
+declared qubit, and that with apply_preprocessing off the statevector follows register
+declaration order; a runner may instead refuse several registers with an error that says to
+enable apply_preprocessing.
 """
 
 import os
@@ -76,7 +82,23 @@ CLASSICAL_BIT_PROBES = {
     "unmeasured_creg": (
         "qreg q[2]; creg c[2]; creg d[1]; x q[0]; measure q[0] -> c[0]; measure q[1] -> c[1];",
         {"lsb": "001", "msb": "100"}),
+    "unmeasured_clbit_mid_creg": (
+        "qreg q[3]; creg c[1]; creg d[3]; x q[0]; x q[2]; "
+        "measure q[0] -> d[2]; measure q[1] -> c[0]; measure q[2] -> d[0];",
+        {"lsb": "1010", "msb": "0101"}),
+    "unmeasured_clbit_first_creg": (
+        "qreg q[2]; creg a[2]; creg b[1]; x q[1]; measure q[0] -> a[0]; measure q[1] -> b[0];",
+        {"lsb": "100", "msb": "001"}),
 }
+
+# name -> (QASM body, apply_preprocessing, n_qubits, {ordering: populated index})
+STATEVECTOR_SHAPE_PROBES = {
+    "gate_free": ("qreg q[2];", True, 2, {"lsb": 0, "msb": 0}),
+    "barrier_only": ("qreg q[2]; barrier q;", True, 2, {"lsb": 0, "msb": 0}),
+    "qreg_declaration_order": (
+        "qreg b[1]; qreg a[2]; x b[0]; x a[0];", False, 3, {"lsb": 3, "msb": 6}),
+}
+MULTI_QREG_REFUSAL = "enable apply_preprocessing"
 
 SUBSET_QASM = "qreg q[3]; creg c[1]; x q[2]; h q[0]; measure q[0] -> c[0];"
 
@@ -98,6 +120,23 @@ def _poll_job(job_id: str, timeout: int = 180) -> dict:
             raise AssertionError(f"Job failed: {data.get('error')}")
         time.sleep(1)
     raise TimeoutError(f"Job {job_id} did not complete within {timeout}s")
+
+
+def _run_statevector(body: str, apply_preprocessing: bool) -> dict:
+    payload = {
+        "qasm_string": QASM_HEADER + body,
+        "mode": "statevector",
+        "target_simulators": ACTIVE_STATEVECTOR_RUNNERS,
+        "timeout_seconds": 300,
+        "execution_target": "local",
+        "apply_preprocessing": apply_preprocessing,
+    }
+    resp = httpx.post(f"{BASE_URL}/compare", json=payload, timeout=30)
+    assert resp.status_code == 200, f"HTTP {resp.status_code}: {resp.text}"
+    by_runner = _raw_result_by_runner(_poll_job(resp.json()["job_id"]))
+    missing = [runner for runner in ACTIVE_STATEVECTOR_RUNNERS if runner not in by_runner]
+    assert not missing, f"Missing statevector results: {missing}"
+    return by_runner
 
 
 def _decode_complex128_base64(encoded: str) -> list[complex]:
@@ -200,6 +239,30 @@ def test_active_runner_measured_ordering_contract():
     print("  PASSED")
 
 
+def test_statevector_shape_probes():
+    print("--- Statevector shape probes ---")
+    failures = []
+    for name, (body, preprocessing, n_qubits, expected) in STATEVECTOR_SHAPE_PROBES.items():
+        by_runner = _run_statevector(body, preprocessing)
+        for runner in ACTIVE_STATEVECTOR_RUNNERS:
+            result = by_runner[runner]
+            error = result.get("error")
+            if error:
+                if not (name == "qreg_declaration_order" and MULTI_QREG_REFUSAL in error.lower()):
+                    failures.append(f"{name}/{runner}: error {error}")
+                continue
+            statevector = _decode_complex128_base64(result["statevector"])
+            if len(statevector) != 2 ** n_qubits:
+                failures.append(f"{name}/{runner}: {len(statevector)} amplitudes")
+                continue
+            index = expected[result.get("qubit_ordering")]
+            if not math.isclose(abs(statevector[index]) ** 2, 1.0, abs_tol=1e-6):
+                populated = max(range(len(statevector)), key=lambda i: abs(statevector[i]))
+                failures.append(f"{name}/{runner}: expected index {index}, got {populated}")
+    assert not failures, "\n".join(failures)
+    print("  PASSED")
+
+
 def _run_measured(body: str) -> dict:
     payload = {
         "qasm_string": QASM_HEADER + body,
@@ -276,6 +339,7 @@ if __name__ == "__main__":
     try:
         test_active_runner_statevector_ordering_contract()
         test_active_runner_measured_ordering_contract()
+        test_statevector_shape_probes()
         test_counts_keys_are_classical_bits()
         test_counts_measure_only_the_measured_qubits()
         test_mid_circuit_measurement_is_simulated_or_refused()
