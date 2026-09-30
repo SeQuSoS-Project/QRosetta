@@ -4,7 +4,7 @@
 import { panelElements } from './dom.js';
 import {
     STATUS_STYLES, _applyLegendDots, _chip, _cloneTemplate, _displayRunnerName, fmtInt, fmtNum, fmtPValue, fmtProb,
-    executionTags, precisionTag, queueWaitText, renderPreprocessingList,
+    executionTags, precisionTag, queueWaitText, renderPreprocessingList, throttleText, outsideProcessText,
 } from './render_helpers.js';
 import { getEnabledRunnerIds } from './config.js';
 import { parseRunnerKey } from './runner_key.js';
@@ -591,6 +591,21 @@ function _renderRunDetails(panel, data, raws) {
         }
         _kv(grid, 'dispatch group', r.dispatch_group);
         _kv(grid, 'timed runs', r.timing_samples);
+        const env = r.cpu_environment;
+        if (env) {
+            _kv(grid, 'host CPU', env.cpu_model);
+            _kv(grid, 'CPU quota', typeof env.cpu_quota_cores === 'number' ? `${fmtNum(env.cpu_quota_cores, 2)} CPU` : 'none');
+            const mhz = env.cpu_max_mhz || {};
+            if (Array.isArray(r.simulation_cpus) && r.simulation_cpus.length) {
+                _kv(grid, 'simulation CPUs', r.simulation_cpus.map(c => (mhz[c] ? `${c} (max ${fmtInt(mhz[c])} MHz)` : String(c))).join(', '));
+            }
+        }
+        if (typeof r.simulation_cgroup_cpu_time_sec === 'number') {
+            _kv(grid, 'container CPU in simulation window', outsideProcessText(r) || `${fmtNum(r.simulation_cgroup_cpu_time_sec, 4)} s (matches the process)`);
+        }
+        if (typeof r.simulation_throttled_sec === 'number') {
+            _kv(grid, 'throttled in simulation window', throttleText(r) || '0 s');
+        }
         _kv(grid, 'window memory method', r.memory_method);
         _kv(grid, 'runner code sha256', r.runner_code_sha256);
         _kv(grid, 'process peak method', r.process_peak_rss_method);

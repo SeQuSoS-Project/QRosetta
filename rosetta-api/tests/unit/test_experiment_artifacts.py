@@ -218,3 +218,34 @@ def test_manifest_json_serializable():
     m = art.build_manifest(config={"a": 1}, git_sha="g", api_base="b", requested_seed=None,
                            effective_seeds={}, circuits=[], sdk_versions={})
     json.dumps(m)  # must not raise
+
+
+def test_performance_rows_one_per_run_with_cpu_context():
+    report = {
+        "task_name": "qft_3q", "circuit_id": "000_qft-3q",
+        "input_qasm": 'OPENQASM 2.0;\nqreg a[1];\n// qreg z[9];\nqreg b[2];\n',
+        "raw_results": [
+            {"simulator": "qulacs", "dispatch_status": "ok", "device": "CPU",
+             "precision": "complex128", "timing_repeats": 3, "timing_statistic": "median",
+             "compilation_time_sec": 0.01, "simulation_time_sec": 0.2,
+             "simulation_time_samples": [0.3, 0.2, 0.1], "simulation_time_sec_stdev": 0.1,
+             "simulation_throttled_sec": 0.05, "memory_usage_mb": 1.5,
+             "simulation_cpus": [3, 20],
+             "cpu_environment": {"cpu_model": "X", "cpu_quota_cores": 1.0,
+                                 "cpu_max_mhz": {"3": 5300.0, "20": 4000.0}}},
+            {"simulator": "cirq", "dispatch_status": "timeout", "error": "TIMEOUT (10s)",
+             "simulation_time_sec": None, "memory_usage_mb": None},
+        ]}
+    rows = art.build_performance_rows("statevector_preprocOn", [report])
+    assert [r["simulator"] for r in rows] == ["qulacs", "cirq"]
+    ok, failed = rows
+    assert ok["declared_qubits"] == 3
+    assert (ok["simulation_time_sec_min"], ok["simulation_time_sec_max"]) == (0.1, 0.3)
+    assert ok["simulation_throttled_sec"] == 0.05
+    assert ok["simulation_cpus"] == "3;20" and ok["simulation_cpu_max_mhz"] == "5300.0;4000.0"
+    assert ok["cpu_quota_cores"] == 1.0
+    assert failed["status"] == "timeout"
+    assert all(failed[k] is None for k in ("simulation_time_sec", "memory_usage_mb",
+                                           "simulation_time_sec_min", "timing_repeats"))
+    text = art.csv_string(rows, art.PERFORMANCE_FIELDS)
+    assert text.splitlines()[0].split(",") == art.PERFORMANCE_FIELDS

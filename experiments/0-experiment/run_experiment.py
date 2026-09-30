@@ -6,7 +6,7 @@ Runs a set of circuits across the QRosetta simulator fleet through the existing 
 
 The artifact builders (conformance matrix, agreement prevalence, manifest, statevector
 stripping) live in `rosetta-api/services/experiment_artifacts.py` and are SHARED with the
-in-app experiment runner (T3.5), so the CLI and the UI can never drift. This driver only adds
+in-app experiment runner. This driver only adds
 the stdlib HTTP orchestration + on-disk freezing around those shared builders.
 
 Reproducibility contract
@@ -17,6 +17,7 @@ Every experiment folder is self-describing:
   * conformance_matrix.csv - circuit x simulator -> success | error(signature) | timeout,
                              plus an (initially "untriaged") column for the human triage step
   * agreement_prevalence.csv - agreement-class counts over the pairs that ran successfully
+  * performance.csv - circuit x simulator timings, memory and CPU context, one row per run
   * errors/    - per-simulator error signatures
   * README.txt - the integrity/triage gate
   * manifest.json - config + git SHA + timestamp + effective seed + gathered SDK versions
@@ -122,15 +123,18 @@ def run_axis(base_url: str, circuits: list, cfg: dict, seed, apply_preprocessing
     payload = {
         "tasks": tasks,
         "mode": cfg["mode"],
-        "n_shots": cfg.get("n_shots", 4096),
         "optimization_level": cfg.get("optimization_level", 0),
         "timeout_seconds": cfg.get("timeout_seconds", 300),
+        "timing_repeats": cfg.get("timing_repeats", 1),
+        "runner_phases": cfg.get("runner_phases", {}),
         "target_simulators": cfg.get("target_simulators", []),
         "execution_target": cfg.get("execution_target", "local"),
         "apply_preprocessing": apply_preprocessing,
         "seed": seed,
         "bypass_limits": cfg.get("bypass_limits", False),
     }
+    if cfg.get("n_shots") is not None:
+        payload["n_shots"] = cfg["n_shots"]
     if cfg.get("thresholds"):
         payload["thresholds"] = cfg["thresholds"]
 
@@ -179,7 +183,7 @@ def main() -> int:
 
     seed = cfg.get("seed", None)  # null in config => backend generates and records one
     preprocessing_modes = cfg.get("preprocessing_modes", [True])
-    conformance, prevalence = [], []
+    conformance, prevalence, performance = [], [], []
     effective_seeds, sdk_versions = {}, {}
 
     for pp in preprocessing_modes:
@@ -197,12 +201,15 @@ def main() -> int:
                 effective_seeds[axis] = report["seed"]  # the seed actually used (recorded)
         conformance += art.build_conformance_rows(axis, summary)
         prevalence += art.build_prevalence_rows(axis, summary)
+        performance += art.build_performance_rows(axis, summary)
         art.collect_sdk_versions(summary, into=sdk_versions)
 
     with open(os.path.join(out, "conformance_matrix.csv"), "w", encoding="utf-8") as fh:
         fh.write(art.csv_string(conformance, art.CONFORMANCE_FIELDS))
     with open(os.path.join(out, "agreement_prevalence.csv"), "w", encoding="utf-8") as fh:
         fh.write(art.csv_string(prevalence, art.PREVALENCE_FIELDS))
+    with open(os.path.join(out, "performance.csv"), "w", encoding="utf-8") as fh:
+        fh.write(art.csv_string(performance, art.PERFORMANCE_FIELDS))
     with open(os.path.join(out, "README.txt"), "w", encoding="utf-8") as fh:
         fh.write(art.TRIAGE_README)
 
@@ -222,6 +229,7 @@ def main() -> int:
     print(f"\nDone. {len(conformance)} (circuit x simulator) cells, {n_err} errors to triage.")
     print(f"  {os.path.join(out, 'conformance_matrix.csv')}")
     print(f"  {os.path.join(out, 'agreement_prevalence.csv')}")
+    print(f"  {os.path.join(out, 'performance.csv')}")
     print(f"  {os.path.join(out, 'manifest.json')}")
     return 0
 

@@ -196,7 +196,7 @@ export function renderConfigPanel(runners) {
     sysDiv.className = "col-span-1 p-2 bg-gray-50 rounded border border-gray-200 mb-2 flex justify-between items-center text-xs";
     sysDiv.innerHTML = `
         <span class="font-bold text-gray-500">Per runner:</span>
-        <span class="text-gray-600 font-mono">0.5 CPU, 1 thread, ${memText} memory</span>
+        <span class="text-gray-600 font-mono">1 CPU, 1 thread, ${memText} memory</span>
     `;
     grid.appendChild(sysDiv);
 

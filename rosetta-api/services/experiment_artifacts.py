@@ -10,6 +10,8 @@ Bundle outputs:
      not_comparable pairs counted in their own rows. Measured pairs are counted by
      measured_assessment (the shot-noise verdict), with the distance labels of each class
      in a secondary column; statevector pairs by agreement label.
+  C) performance table    — per (circuit x simulator) timing, memory and CPU context,
+     one row per run, for cross-circuit and cross-size comparison
 
 Error rows carry a raw signature with ``triage='untriaged'``; classification into
 adapter / SDK / by-design / resource happens during review.
@@ -20,11 +22,22 @@ import csv
 import hashlib
 import io
 import json
+import re
 
 from services.report_filters import fingerprint_statevectors
 
 CONFORMANCE_FIELDS = ["axis", "circuit", "simulator", "status", "error_signature", "triage",
                       "circuit_id"]
+PERFORMANCE_FIELDS = [
+    "axis", "circuit", "circuit_id", "declared_qubits", "simulator", "status", "device",
+    "precision", "sampling_method", "n_shots", "timing_repeats", "timing_statistic",
+    "compilation_time_sec", "simulation_time_sec", "simulation_time_sec_stdev",
+    "simulation_time_sec_min", "simulation_time_sec_max", "simulation_cpu_time_sec",
+    "simulation_cgroup_cpu_time_sec", "simulation_throttled_sec", "compilation_throttled_sec", "execution_time_sec",
+    "memory_usage_mb", "process_peak_mb", "process_peak_rss_mb",
+    "theoretical_statevector_mb", "gate_count", "circuit_depth", "queue_wait_sec",
+    "cpu_model", "cpu_quota_cores", "simulation_cpus", "simulation_cpu_max_mhz",
+]
 PREVALENCE_FIELDS = ["axis", "count_basis", "agreement_class", "pair_count", "pair_scope",
                      "distance_labels"]
 
@@ -50,6 +63,17 @@ TRIAGE_README = (
     "                             written as statevector_len);\n"
     "                             metrics, labels and provenance are kept in full\n"
     "  conformance_matrix.csv   - per (circuit x simulator) run status + error signature\n"
+    "  performance.csv          - per (circuit x simulator) timings, memory and CPU context,\n"
+    "                             one row per run. Times are medians over timing_repeats\n"
+    "                             timed runs (min/max/stdev beside them; stdev empty for one\n"
+    "                             run). simulation_throttled_sec is the part of\n"
+    "                             simulation_time_sec the CPU quota held the runner;\n"
+    "                             simulation_cgroup_cpu_time_sec above simulation_cpu_time_sec\n"
+    "                             means work ran outside the simulating process.\n"
+    "                             simulation_cpu_max_mhz is the maximum frequency of each CPU\n"
+    "                             the run was on (cores of different speeds give different\n"
+    "                             times). Failed runs have empty metric cells. Memory fields\n"
+    "                             are MiB of host RSS; see metric_scope in results/.\n"
     "  agreement_prevalence.csv - pair counts per class over compared pairs\n"
     "                             (pair_scope=compared); pairs where a side had no usable\n"
     "                             output are counted separately (pair_scope=not_comparable).\n"
@@ -149,6 +173,67 @@ def build_conformance_rows(axis_label: str, summary: list) -> list:
                          "simulator": entry.get("simulator", "?"), "status": status,
                          "error_signature": sig, "triage": "untriaged" if sig else "",
                          "circuit_id": circuit_id})
+    return rows
+
+
+_QREG_RE = re.compile(r"\bqreg\s+\w+\s*\[\s*(\d+)\s*\]\s*;")
+_COMMENT_RE = re.compile(r"//[^\n]*|/\*.*?\*/", re.DOTALL)
+
+
+def _declared_qubits(qasm):
+    """Sum of every qreg size in ``qasm``; None without QASM."""
+    if not qasm:
+        return None
+    return sum(int(n) for n in _QREG_RE.findall(_COMMENT_RE.sub("", qasm)))
+
+
+def _samples_extreme(entry: dict, pick):
+    samples = entry.get("simulation_time_samples")
+    if isinstance(samples, list) and samples and all(isinstance(v, (int, float)) for v in samples):
+        return pick(samples)
+    value = entry.get("simulation_time_sec")
+    return value if isinstance(value, (int, float)) else None
+
+
+def build_performance_rows(axis_label: str, summary: list) -> list:
+    """One row per (circuit x simulator) with the run's timing, memory and CPU context;
+    metric cells are None for a failed run."""
+    rows = []
+    for report in summary:
+        circuit = report.get("task_name", "?")
+        qubits = _declared_qubits(report.get("input_qasm"))
+        for entry in report.get("raw_results", []) or []:
+            status, _ = _runner_status(entry)
+            ok = status == "success"
+            env = entry.get("cpu_environment") or {}
+            cpus = entry.get("simulation_cpus") or []
+            mhz = env.get("cpu_max_mhz") or {}
+            row = {"axis": axis_label, "circuit": circuit,
+                   "circuit_id": report.get("circuit_id", ""), "declared_qubits": qubits,
+                   "simulator": entry.get("simulator", "?"), "status": status,
+                   "device": entry.get("device"), "precision": entry.get("precision"),
+                   "sampling_method": entry.get("sampling_method"),
+                   "n_shots": entry.get("n_shots"),
+                   "cpu_model": env.get("cpu_model"),
+                   "cpu_quota_cores": env.get("cpu_quota_cores"),
+                   "simulation_cpus": ";".join(str(c) for c in cpus),
+                   "simulation_cpu_max_mhz": ";".join(
+                       str(mhz.get(str(c))) if mhz.get(str(c)) is not None else ""
+                       for c in cpus)}
+            for key in ("timing_repeats", "timing_statistic", "compilation_time_sec",
+                        "simulation_time_sec", "simulation_time_sec_stdev",
+                        "simulation_cpu_time_sec", "simulation_cgroup_cpu_time_sec",
+                        "simulation_throttled_sec",
+                        "compilation_throttled_sec", "execution_time_sec", "memory_usage_mb",
+                        "process_peak_mb", "process_peak_rss_mb",
+                        "theoretical_statevector_mb", "gate_count", "circuit_depth",
+                        "queue_wait_sec"):
+                row[key] = entry.get(key) if ok else None
+            row["simulation_time_sec_min"] = _samples_extreme(entry, min) if ok else None
+            row["simulation_time_sec_max"] = _samples_extreme(entry, max) if ok else None
+            if ok and row["timing_repeats"] is None:
+                row["timing_repeats"] = entry.get("timing_samples")
+            rows.append(row)
     return rows
 
 
@@ -273,6 +358,7 @@ def build_manifest(*, config: dict, git_sha: str, api_base: str, requested_seed,
                                            "QROSETTA_IMAGE_DIGESTS"),
         "outputs": {"conformance_matrix": "conformance_matrix.csv",
                     "agreement_prevalence": "agreement_prevalence.csv",
+                    "performance": "performance.csv",
                     "inputs": "inputs/", "results": "results/", "errors": "errors/",
                     "readme": "README.txt"},
         "notes": notes,

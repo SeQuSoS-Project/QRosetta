@@ -70,4 +70,7 @@ def test_runner_error_shape():
         "process_peak_mb": None,
         "process_peak_rss_mb": None,
         "cpu_time_sec": None,
+        "compilation_throttled_sec": None,
+        "simulation_throttled_sec": None,
+        "simulation_cgroup_cpu_time_sec": None,
     }

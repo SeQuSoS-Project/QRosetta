@@ -88,8 +88,8 @@ def _build_job_spec(sim_name: str, hostname: str, job_id: str, endpoint_type: st
     ]
 
     resources = k8s_client.V1ResourceRequirements(
-        requests={"cpu": "100m", "memory": "256Mi"},
-        limits={"cpu": "500m",  "memory": "1Gi"},
+        requests={"cpu": "200m", "memory": "256Mi"},
+        limits={"cpu": "1000m", "memory": "1Gi"},
     )
 
     job_name = f"qrosetta-{sim_name}-{job_id[:8]}"

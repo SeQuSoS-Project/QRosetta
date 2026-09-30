@@ -130,7 +130,7 @@ _METHOD_NOTE = (
     "AerSimulator(method='statevector', device='GPU', cuStateVec_enable=True): NVIDIA "
     "cuStateVec on the GPU; the method is fixed, so Aer does not switch to its stabilizer "
     "method on Clifford circuits. Memory fields are host RSS; GPU device memory is not "
-    "measured. The GPU is not under the runners' 0.5-CPU quota.")
+    "measured. The GPU is not under the runners' CPU quota.")
 _COUNTS_KEY_NOTE = (
     "Counts keys: Aer's space-separated per-register fields are re-keyed to one bitstring "
     "over every declared classical bit in declaration order, flat clbit 0 rightmost.")

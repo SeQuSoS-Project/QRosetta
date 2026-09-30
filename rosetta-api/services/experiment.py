@@ -112,7 +112,7 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
         }
         ACTIVE_JOBS[job_id]["progress"] = progress
 
-        conformance, prevalence = [], []
+        conformance, prevalence, performance = [], [], []
         effective_seeds, sdk_versions = {}, {}
         thresholds_per_axis, runners_per_axis = {}, {}
         all_reports: list = []
@@ -162,6 +162,7 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
 
             conformance += art.build_conformance_rows(axis, summary)
             prevalence += art.build_prevalence_rows(axis, summary)
+            performance += art.build_performance_rows(axis, summary)
             art.collect_sdk_versions(summary, into=sdk_versions)
 
         progress["current_index"] = None
@@ -171,6 +172,8 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
             files[f"inputs/{c['id']}.qasm"] = art.qasm_bytes(c["qasm"])
         files["conformance_matrix.csv"] = art.csv_string(
             conformance, art.CONFORMANCE_FIELDS).encode("utf-8")
+        files["performance.csv"] = art.csv_string(
+            performance, art.PERFORMANCE_FIELDS).encode("utf-8")
         files["agreement_prevalence.csv"] = art.csv_string(
             prevalence, art.PREVALENCE_FIELDS).encode("utf-8")
         for sim, text in art.build_error_logs(conformance).items():

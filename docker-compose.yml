@@ -67,7 +67,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"
+          cpus: "1.0"
           memory: "512M"
 
   pytket_cirq_runner:
@@ -87,7 +87,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"
+          cpus: "1.0"
           memory: "512M"
 
   pytket_qulacs_runner:
@@ -107,7 +107,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"
+          cpus: "1.0"
           memory: "512M"
 
   pytket_braket_runner:
@@ -127,7 +127,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"
+          cpus: "1.0"
           memory: "512M"
 
   pytket_projectq_runner:
@@ -147,7 +147,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"
+          cpus: "1.0"
           memory: "512M"
 
   pytket_quest_runner:
@@ -167,7 +167,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"
+          cpus: "1.0"
           memory: "512M"
 
   pennylane_lightning_runner:
@@ -187,7 +187,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"
+          cpus: "1.0"
           memory: "512M"
 
   pennylane_default_runner:
@@ -207,7 +207,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"
+          cpus: "1.0"
           memory: "512M"
 
   qibo_runner:
@@ -227,7 +227,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"
+          cpus: "1.0"
           memory: "512M"
 
   qrisp_runner:
@@ -247,7 +247,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"
+          cpus: "1.0"
           memory: "512M"
 
   myqlm_runner:
@@ -267,7 +267,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"
+          cpus: "1.0"
           memory: "512M"
 
   pyquil_runner:
@@ -287,7 +287,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"
+          cpus: "1.0"
           memory: "512M"
 
   qsim_cirq_runner:
@@ -307,7 +307,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"
+          cpus: "1.0"
           memory: "512M"
 
   torch_quantum_runner:
@@ -327,7 +327,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"
+          cpus: "1.0"
           memory: "1G"
 
   quimb_runner:
@@ -347,7 +347,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"
+          cpus: "1.0"
           memory: "512M"
 
   cuquantum_runner:
@@ -367,7 +367,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"
+          cpus: "1.0"
           memory: "512M"
 
 # --- NETWORK DEFINITIONS ---

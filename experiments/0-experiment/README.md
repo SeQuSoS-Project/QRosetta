@@ -44,6 +44,7 @@ experiment-N/
   results/<axis>/*.json    per-circuit reports (statevectors stripped to a sha256 unless --keep-sv)
   conformance_matrix.csv   output A (+ triage column)
   agreement_prevalence.csv output B
+  performance.csv          per circuit x simulator timings, memory and CPU context
   errors/<sim>.log         per-simulator error signatures
 ```
 
@@ -75,7 +76,9 @@ some SDKs — e.g. TorchQuantum — cannot run raw QASM without a basis-decompos
 |---|---|
 | `base_url` | QRosetta API root |
 | `mode` | `measured` or `statevector` |
-| `n_shots` | shots (measured mode) |
+| `n_shots` | shots (measured mode); omitted = server default (8192) |
+| `timing_repeats` | timed runs per backend after one warm-up (1–10); times are medians |
+| `runner_phases` | runner id → phase number; phases run one after another, so backends in different phases do not compete for CPU |
 | `seed` | fixed seed, or `null` → generated-and-recorded |
 | `target_simulators` | `[]` = all enabled, else a subset |
 | `optimization_level` | global opt level |

@@ -234,7 +234,7 @@ export function deviceTitle(r) {
     if (!isGpuRun(r)) return `Device the simulation ran on: ${r?.device}`;
     const parts = [`Simulated on a GPU${r.gpu_name ? `: ${r.gpu_name}` : ''}.`];
     if (typeof r.custatevec_enabled === 'boolean') parts.push(`cuStateVec ${r.custatevec_enabled ? 'enabled' : 'not enabled'}.`);
-    parts.push('Host-side work runs under the same 0.5-CPU quota as the CPU runners; GPU device memory is not measured.');
+    parts.push('Host-side work runs under the same CPU quota as the CPU runners; GPU device memory is not measured.');
     return parts.join(' ');
 }
 
@@ -259,6 +259,45 @@ export function executionTags(r, { device = true } = {}) {
         tags.push(_tag(String(r.simulation_method), TAG_GRAY, `Simulation method: ${r.simulation_method}`));
     }
     return tags;
+}
+
+/** Time the CPU quota held a run during its simulation window, as a note, or null when none was recorded. */
+export function throttleText(r) {
+    const t = r?.simulation_throttled_sec;
+    if (typeof t !== 'number' || !(t > 0)) return null;
+    const sim = r?.simulation_time_sec;
+    const share = typeof sim === 'number' && sim > 0 ? ` (${fmtNum(100 * t / sim, 0)}% of the simulation window)` : '';
+    return `the CPU quota held this runner for ${fmtNum(t, 4)} s${share}; that wait is part of simulation_time_sec`;
+}
+
+/** Smallest gap between container and process CPU time over the simulation window that the UI reports. */
+export const OUTSIDE_PROCESS_SHOWN_SEC = 0.005;
+
+/** Note for a run whose container used more CPU than its simulating process during the window, or null. */
+export function outsideProcessText(r) {
+    const cg = r?.simulation_cgroup_cpu_time_sec;
+    const own = r?.simulation_cpu_time_sec;
+    if (typeof cg !== 'number' || typeof own !== 'number') return null;
+    const gap = cg - own;
+    if (!(gap >= OUTSIDE_PROCESS_SHOWN_SEC && gap >= 0.1 * cg)) return null;
+    return `the runner container used ${fmtNum(cg, 4)} s of CPU during the simulation window, `
+        + `the simulating process ${fmtNum(own, 4)} s: ${fmtNum(gap, 4)} s of work ran outside the measured process, `
+        + 'so its CPU time and memory fields leave that work out';
+}
+
+/** The distinct CPU quotas (cores) reported by the runs, as a readable phrase, or null when none reported one. */
+export function cpuQuotaPhrase(results) {
+    const quotas = new Set();
+    let unlimited = false;
+    (results || []).forEach(r => {
+        const env = r?.cpu_environment;
+        if (!env || !('cpu_quota_cores' in env)) return;
+        if (typeof env.cpu_quota_cores === 'number') quotas.add(env.cpu_quota_cores);
+        else unlimited = true;
+    });
+    const parts = [...quotas].sort((a, b) => a - b).map(q => `${fmtNum(q, 2)} CPU`);
+    if (unlimited) parts.push('no CPU quota');
+    return parts.length ? parts.join(' / ') : null;
 }
 
 /** Shortest queue wait the UI reports; shorter waits are dispatch overhead. */

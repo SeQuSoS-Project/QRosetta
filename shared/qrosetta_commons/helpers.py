@@ -22,6 +22,7 @@ from pathlib import Path
 
 import numpy as np
 
+from qrosetta_commons.cpu import WindowProbe, cpu_environment
 from qrosetta_commons.memory import MemoryMonitor, lifetime_peak_rss
 
 MAX_QUBITS_STATEVECTOR = int(os.getenv("MAX_QUBITS_STATEVECTOR", "18"))
@@ -32,7 +33,8 @@ THREAD_ENV_VARS = ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
 
 UNMEASURED_METRICS = ("execution_time_sec", "compilation_time_sec", "simulation_time_sec",
                       "simulation_cpu_time_sec", "memory_usage_mb", "process_peak_mb",
-                      "process_peak_rss_mb", "cpu_time_sec")
+                      "process_peak_rss_mb", "cpu_time_sec", "compilation_throttled_sec",
+                      "simulation_throttled_sec", "simulation_cgroup_cpu_time_sec")
 
 
 def unmeasured_metrics() -> dict:
@@ -47,6 +49,22 @@ METRIC_SCOPE = {
     "simulation_cpu_time_sec": "process CPU time (all threads), t2..t3; median over the timed "
                                "runs (simulation_cpu_time_samples)",
     "execution_time_sec": "compilation_time_sec + simulation_time_sec",
+    "simulation_throttled_sec": "time the runner's cgroup was held by its CPU quota "
+                                "(cpu.stat throttled_usec) between reads just before t2 and "
+                                "just after t3; part of simulation_time_sec, not simulation; "
+                                "median over the timed runs (simulation_throttled_samples); "
+                                "None when the cgroup file is unreadable",
+    "compilation_throttled_sec": "as simulation_throttled_sec, for t0..t1",
+    "simulation_cgroup_cpu_time_sec": "CPU time of every process in the runner's cgroup "
+                                      "(cpu.stat usage_usec) between reads just before t2 "
+                                      "and just after t3; above simulation_cpu_time_sec when "
+                                      "work ran outside the simulating process; median over "
+                                      "the timed runs; None when the cgroup file is "
+                                      "unreadable",
+    "simulation_cpus": "logical CPUs the process was on at t2 and at t3, over every timed "
+                       "run; cpu_environment.cpu_max_mhz gives each one's maximum frequency",
+    "simulation_involuntary_switches_samples": "involuntary context switches of the process "
+                                               "between t2 and t3, per timed run",
     "memory_usage_mb": "peak RSS minus RSS at monitor entry, pre_execute + t2..t3 of the "
                        "first timed run",
     "process_peak_mb": "peak RSS, pre_execute + t2..t3 of the first timed run",
@@ -54,6 +72,9 @@ METRIC_SCOPE = {
                     "imports, warm-up and all timed runs",
     "process_peak_rss_mb": "peak RSS over the whole runner process: interpreter start, "
                            "imports, warm-up and all timed runs",
+    "cpu_environment": "host CPU model (/proc/cpuinfo), the runner cgroup's CPU quota in "
+                       "cores (None = no quota), the process's CPU affinity and the maximum "
+                       "frequency of each CPU in simulation_cpus",
     "queue_wait_sec": "wall clock the request waited for this runner's execution slot "
                       "before its process was spawned; 0 on the Kubernetes path",
     "theoretical_statevector_mb": "2^N x bytes per amplitude / 1024^2, N = qubits declared "
@@ -312,7 +333,8 @@ MAX_TIMING_REPEATS = 10
 
 TIMING_STATISTIC = "median"
 
-_TIMED_SERIES = ("compilation_time", "simulation_time", "simulation_cpu_time")
+_TIMED_SERIES = ("compilation_time", "simulation_time", "simulation_cpu_time",
+                 "simulation_cgroup_cpu_time", "compilation_throttled", "simulation_throttled")
 
 
 def timing_repeats_of(payload) -> int:
@@ -339,6 +361,10 @@ def _summarise_timings(result: dict, timed_results: list) -> None:
     comp, sim = result.get("compilation_time_sec"), result.get("simulation_time_sec")
     if isinstance(comp, (int, float)) and isinstance(sim, (int, float)):
         result["execution_time_sec"] = comp + sim
+    result["simulation_involuntary_switches_samples"] = [
+        r.get("simulation_involuntary_switches") for r in timed_results]
+    result["simulation_cpus"] = sorted({c for r in timed_results
+                                        for c in (r.get("simulation_cpus") or [])})
     result["timing_repeats"] = len(timed_results)
     result["timing_statistic"] = TIMING_STATISTIC
 
@@ -390,6 +416,7 @@ def run_with_uniform_measurement(func, payload):
         result["process_peak_rss_mb"] = peak_mb
         result["process_peak_rss_method"] = peak_method
         result["cpu_time_sec"] = usage.ru_utime + usage.ru_stime
+        result["cpu_environment"] = cpu_environment(result.get("simulation_cpus") or [])
         result["metric_scope"] = dict(METRIC_SCOPE)
 
         if "n_shots" in payload:
@@ -598,15 +625,19 @@ def _timed_job(*, simulator, logger, payload, max_qubits, compile_fn, execute_fn
                                                                          (simulation_time)
       postprocess_fn                                                     (outside both windows)
 
-    Any failure becomes a ``runner_error``.
+    A ``WindowProbe`` read just outside each window records the cgroup CPU-quota throttling
+    during it and, for the simulation window, involuntary context switches and the CPUs the
+    process was on at t2 and t3. Any failure becomes a ``runner_error``.
     """
     try:
         check_qubits_limit(payload["circuit_data"], max_qubits)
         declared_qubits = get_num_qubits_from_qasm(payload["circuit_data"])
 
+        compile_probe = WindowProbe().start()
         t0 = time.perf_counter()
         compiled = compile_fn(payload)
         t1 = time.perf_counter()
+        compile_probe.stop()
         compilation_time = t1 - t0
 
         transpiled_qasm = compiled.transpiled_qasm
@@ -619,11 +650,13 @@ def _timed_job(*, simulator, logger, payload, max_qubits, compile_fn, execute_fn
             if pre_execute_fn is not None:
                 pre_execute_fn(compiled, payload)
 
+            sim_probe = WindowProbe().start()
             c2 = time.process_time()
             t2 = time.perf_counter()
             executed = execute_fn(compiled, payload)
             t3 = time.perf_counter()
             c3 = time.process_time()
+            sim_probe.stop()
             simulation_time = t3 - t2
 
         if postprocess_fn is not None:
@@ -634,12 +667,20 @@ def _timed_job(*, simulator, logger, payload, max_qubits, compile_fn, execute_fn
                 f"{simulator} simulation successful "
                 f"(Comp: {compilation_time:.4f}s, Sim: {simulation_time:.4f}s)."
             )
-        return build_result(
+        result = build_result(
             executed=executed, compiled=compiled, monitor=monitor,
             compilation_time=compilation_time, simulation_time=simulation_time,
             transpiled_qasm=transpiled_qasm, simulation_cpu_time=c3 - c2,
             declared_qubits=declared_qubits,
         )
+        result.update({
+            "compilation_throttled_sec": compile_probe.throttled_sec,
+            "simulation_throttled_sec": sim_probe.throttled_sec,
+            "simulation_cgroup_cpu_time_sec": sim_probe.cgroup_cpu_sec,
+            "simulation_involuntary_switches": sim_probe.involuntary_switches,
+            "simulation_cpus": sim_probe.cpus,
+        })
+        return result
     except Exception as exc:
         if logger is not None:
             logger.error(f"Error during {simulator} simulation: {exc}", exc_info=True)

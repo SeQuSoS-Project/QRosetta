@@ -66,6 +66,7 @@ def test_experiment_completes_and_freezes_bundle(monkeypatch):
     assert "results/measured_preprocOn/000_bell.json" in files
     assert "results/measured_preprocOff/000_bell.json" in files
     assert "conformance_matrix.csv" in files
+    assert "performance.csv" in files
     assert "agreement_prevalence.csv" in files
     assert "manifest.json" in files
     assert "README.txt" in files

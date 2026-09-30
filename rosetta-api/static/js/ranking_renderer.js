@@ -3,7 +3,7 @@
 
 import {
     QUEUE_WAIT_SHOWN_SEC, TAG_AMBER, TAG_GRAY, _applyLegendDots, _cloneTemplate, _displayRunnerName,
-    _makeStatusCell, _tag, deviceTitle, executionTags, fmtInt, fmtNum, getOptBadge, isGpuRun, precisionTag, queueWaitText,
+    _makeStatusCell, _tag, cpuQuotaPhrase, deviceTitle, executionTags, fmtInt, fmtNum, getOptBadge, isGpuRun, outsideProcessText, precisionTag, queueWaitText, throttleText,
     renderTooltip,
 } from './render_helpers.js';
 import { RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, runnerStatus, userFacingError } from './run_status.js';
@@ -66,6 +66,10 @@ function _fillSimulatorCell(td, simulatorName, config, raw, { memory = false } =
     executionTags(raw, { device: false }).forEach(tag => td.appendChild(tag));
     const wait = queueWaitText(raw);
     if (wait) td.appendChild(_tag('queued', TAG_AMBER, wait.charAt(0).toUpperCase() + wait.slice(1)));
+    const throttled = throttleText(raw);
+    if (throttled) td.appendChild(_tag('throttled', TAG_AMBER, throttled.charAt(0).toUpperCase() + throttled.slice(1)));
+    const outside = outsideProcessText(raw);
+    if (outside) td.appendChild(_tag('outside process', TAG_AMBER, outside.charAt(0).toUpperCase() + outside.slice(1)));
     if (memory && raw?.memory_method && raw.memory_method !== 'vmhwm') {
         td.appendChild(_tag(raw.memory_method, TAG_AMBER,
             `Window memory measured by ${raw.memory_method} RSS polling instead of the kernel high-water mark; short peaks can be missed.`));
@@ -86,10 +90,16 @@ function _timingNote(rawResults) {
         : `Timed runs per backend: ${[...samples].sort((a, b) => a - b).join(', ')}, after one discarded warm-up run. `
             + 'With more than one, a value is the median of the timed runs ± their sample standard deviation, with n; '
             + 'the per-run samples are in the raw JSON.';
+    const quota = cpuQuotaPhrase(ok);
+    const limit = quota ? `${quota} (cgroup quota) and 1 thread` : '1 thread (quota not reported)';
     note += ok.some(isGpuRun)
-        ? ' CPU runners: 0.5 CPU, 1 thread each, so wall time can exceed CPU time. GPU runners run kernels on the GPU with '
-            + 'host-side work under the same 0.5-CPU quota; times across devices compare different hardware.'
-        : ' Each runner is limited to 0.5 CPU and 1 thread, so wall time can exceed CPU time.';
+        ? ` CPU runners: ${limit} each. GPU runners run kernels on the GPU with `
+            + 'host-side work under the same quota; times across devices compare different hardware.'
+        : ` Each runner is limited to ${limit}.`;
+    const throttled = ok.filter(r => throttleText(r)).length;
+    const outside = ok.filter(r => outsideProcessText(r)).length;
+    if (outside) note += ` ${outside} run(s) did part of their simulation work outside the measured process (tag "outside process").`;
+    if (throttled) note += ` ${throttled} run(s) were held by the CPU quota during the simulation window (tag "throttled"); that wait is in their timings.`;
     const waited = (rawResults || []).filter(r => typeof r?.queue_wait_sec === 'number' && r.queue_wait_sec >= QUEUE_WAIT_SHOWN_SEC).length;
     if (waited) note += ` ${waited} run(s) waited ${QUEUE_WAIT_SHOWN_SEC} s or more for their runner to finish another run (tag "queued"); the wait is not in these timings.`;
     return note;

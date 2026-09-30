@@ -91,9 +91,10 @@ def _field(row: dict, key: str) -> Any:
 
 
 DEVICE_NOTE = ("Device is the hardware the simulation ran on (CPU when the run reports "
-               "none). CPU runners are limited to 0.5 CPU and 1 thread each; GPU runners "
-               "execute kernels on the GPU while their host-side work is under the same 0.5-CPU "
-               "quota, so timings across devices compare different hardware.")
+               "none). Each runner runs 1 thread under its own CPU quota "
+               "(cpu_environment.cpu_quota_cores in the raw results); GPU runners execute "
+               "kernels on the GPU while their host-side work is under the same quota, so "
+               "timings across devices compare different hardware.")
 GPU_MEMORY_NOTE = ("Memory fields are host RSS and do not include GPU device memory; GPU runs "
                    "are not ranked (gpu_memory_not_measured).")
 

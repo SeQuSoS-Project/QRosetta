@@ -208,7 +208,7 @@
                     an NVIDIA GPU it is listed as unavailable in the Config drawer, with the reason the server
                     gives, and it is not dispatched; it never falls back to the CPU. Its kernels run on the
                     GPU, while its host-side work (parsing, launching kernels, copying results back,
-                    sampling) runs under the same 0.5-CPU quota as the other runners (see
+                    sampling) runs under the same CPU quota as the other runners (see
                     <a href="#resources">Resources, queueing and timeouts</a>). A time comparison between
                     cuQuantum and a CPU backend therefore compares different hardware.
                 </p>
@@ -736,9 +736,24 @@
                         allocation, the cuStateVec kernels and the copy of the result from device to host.
                         CUDA context initialisation happens in the warm-up run, outside the window; it shows
                         up in <code>cpu_time_sec</code>, which covers the whole process.</li>
+                    <li><strong>quimb's timed window.</strong> quimb's <code>simulation_time_sec</code> includes the
+                        search for a contraction path (cotengra's <code>auto-hq</code> optimiser, repeated each run with
+                        its caches cleared) as well as the contraction. The search is randomised, so quimb's times vary
+                        between timed runs more than a state-vector backend's. It runs in the simulating process, with
+                        cotengra's worker pool turned off.</li>
                     <li><strong>CPU time.</strong> <code>simulation_cpu_time_sec</code> is process CPU time
                         (all threads) over t2..t3 only. <code>cpu_time_sec</code> covers the whole isolated
                         runner process: interpreter start, SDK import, warm-up and every timed run.</li>
+                    <li><strong>What wall clock includes.</strong> Timings are wall clock, so they include
+                        time the process was not running: waits imposed by the CPU quota (recorded per window
+                        as <code>simulation_throttled_sec</code> and <code>compilation_throttled_sec</code>),
+                        preemption by other processes (counted in
+                        <code>simulation_involuntary_switches_samples</code>), and contention with the other
+                        backends of the same comparison, which run at the same time unless runner phases or
+                        the Sequential ordering stage them. For timings meant for a performance comparison,
+                        use several <code>timing_repeats</code>, stage the backends one at a time, and check
+                        that <code>simulation_throttled_sec</code> is zero and <code>cpu_max_mhz</code> names
+                        the same kind of core for every backend.</li>
                     <li><strong>Threads.</strong> Every runner is started with five thread variables set to
                         1: <code>OMP_NUM_THREADS</code>, <code>MKL_NUM_THREADS</code>,
                         <code>OPENBLAS_NUM_THREADS</code>, <code>NUMEXPR_NUM_THREADS</code> and
@@ -783,15 +798,30 @@
             <section id="resources">
                 <h2>Resources, queueing and timeouts</h2>
                 <ul>
-                    <li><strong>CPU and memory quota.</strong> Each runner is limited to 0.5 CPU, and its
-                        math libraries run one thread. Memory limits: in local mode 512 MiB per runner
+                    <li><strong>CPU and memory quota.</strong> Each runner is limited to 1 CPU (a cgroup CPU
+                        quota), and its math libraries run one thread. Memory limits: in local mode 512 MiB per runner
                         container, except TorchQuantum with 1 GiB (the <code>docker-compose.yml</code>
-                        limits); in Kubernetes mode 1 GiB per runner Job. A process that needs a full core is throttled
-                        under this quota, so wall-clock <code>simulation_time_sec</code> can exceed
-                        <code>simulation_cpu_time_sec</code>. The cuQuantum runner's container has the same
-                        quota: its kernels run on the GPU, but its host-side work (circuit conversion, kernel
-                        launches, synchronisation, the device-to-host copy and sampling) is throttled like any
-                        other runner's.</li>
+                        limits); in Kubernetes mode 1 GiB per runner Job. A process that uses more than one core
+                        (an SDK thread pool the thread variables do not control) is throttled by the quota: the kernel
+                        stops it until the next 100 ms period, and that wait falls inside the timed window. Every
+                        result records the throttled time as <code>simulation_throttled_sec</code> and
+                        <code>compilation_throttled_sec</code> (read from the cgroup's <code>cpu.stat</code> just outside
+                        each window; null when the file is unreadable), and the Performance table tags such runs
+                        "throttled". The cuQuantum runner's container has the same quota: its kernels run on the GPU, but
+                        its host-side work (circuit conversion, kernel launches, synchronisation, the device-to-host copy
+                        and sampling) is throttled like any other runner's.</li>
+                    <li><strong>CPU context.</strong> Each result carries <code>cpu_environment</code>: the host CPU
+                        model, the quota in cores (<code>cpu_quota_cores</code>, null for none), the process's CPU affinity,
+                        and <code>cpu_max_mhz</code> for the logical CPUs the process was on at the start and end of each
+                        simulation window (<code>simulation_cpus</code>). On a host with cores of different speeds (for
+                        example Intel P- and E-cores) the same run can take different times depending on the core the
+                        operating system chose; <code>cpu_max_mhz</code> shows which kind it was.
+                        <code>simulation_involuntary_switches_samples</code> counts how often the process was preempted
+                        during each simulation window. <code>simulation_cgroup_cpu_time_sec</code> is the CPU time of every
+                        process in the runner's container over the simulation window; when it exceeds
+                        <code>simulation_cpu_time_sec</code>, part of the work ran outside the simulating process (for example
+                        in a worker pool), so the CPU time and memory fields leave that work out. The Performance table tags
+                        such runs "outside process".</li>
                     <li><strong>One run at a time per runner.</strong> A runner executes one run at a time.
                         When several jobs, yours or other users', target the same runner, later runs wait for
                         it. The wait is recorded as <code>queue_wait_sec</code> and is not part of any timing.
