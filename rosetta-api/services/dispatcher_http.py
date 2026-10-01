@@ -1,6 +1,6 @@
 """HTTP dispatcher for runners running as long-lived Docker Compose services."""
 
-from services.run_registry import REGISTRY
+from services.run_registry import DISPATCH_TOKEN, REGISTRY
 import time
 import httpx
 import asyncio
@@ -91,7 +91,7 @@ async def dispatch_http_local(runner_urls: dict, runner_payload: dict, timeout_s
 
     specs = expand_runner_jobs(runner_urls, runner_payload)
     phase_groups = group_specs_by_phase(specs)
-    token = object()
+    token = DISPATCH_TOKEN.get() or object()
 
     def _http_timeout(queue_budget):
         return httpx.Timeout(

@@ -8,6 +8,8 @@ import threading
 import time
 
 EXCLUSIVE = contextvars.ContextVar("qrosetta_exclusive", default=False)
+DISPATCH_TOKEN = contextvars.ContextVar("qrosetta_dispatch_token", default=None)
+GATE_HELD = contextvars.ContextVar("qrosetta_gate_held", default=None)
 
 _KEEP_SEC = 3600.0
 
@@ -145,3 +147,30 @@ def release_exclusive(job_id: str) -> None:
     with _OWNERS_LOCK:
         for client in [c for c, j in _EXCLUSIVE_OWNERS.items() if j == job_id]:
             del _EXCLUSIVE_OWNERS[client]
+
+
+class circuit_section:
+    """Async context for dispatching one circuit: its runs share one registry token, and in an
+    exclusive job the gate is held for the whole circuit. ``waited`` is the seconds spent
+    waiting for exclusive admission (None when not exclusive)."""
+
+    def __init__(self, max_wait: float = None):
+        self.max_wait = max_wait
+        self.waited = None
+        self._exclusive = False
+        self._tokens = []
+
+    async def __aenter__(self):
+        self._tokens.append(DISPATCH_TOKEN.set(object()))
+        self._exclusive = bool(EXCLUSIVE.get())
+        if self._exclusive:
+            self.waited = await GATE.acquire(True, self.max_wait)
+            self._tokens.append(GATE_HELD.set(self.waited))
+        return self
+
+    async def __aexit__(self, *exc):
+        if self._exclusive:
+            GATE_HELD.reset(self._tokens.pop())
+            await GATE.release(True)
+        DISPATCH_TOKEN.reset(self._tokens.pop())
+        return False

@@ -610,6 +610,8 @@ function _renderRunDetails(panel, data, raws) {
         _kv(grid, 'dispatch group', r.dispatch_group);
         if (typeof r.concurrent_runs === 'number') _kv(grid, 'dispatched with', `${r.concurrent_runs - 1} other run(s) in the same phase (phase ${r.dispatch_phase ?? 1})`);
         if (typeof r.overlapping_runs === 'number') _kv(grid, 'overlapped with', `${r.overlapping_runs} other run(s) of this job while it ran`);
+        if (typeof r.server_overlapping_runs === 'number') _kv(grid, 'other jobs', `${r.server_overlapping_runs} run(s) of other jobs in flight (dispatched or queued) while it ran`);
+        if (r.exclusive === true) _kv(grid, 'exclusive', `yes; waited ${fmtNum(r.exclusive_wait_sec ?? 0, 1)} s for the server to be idle`);
         _kv(grid, 'timed runs', r.timing_samples);
         const env = r.cpu_environment;
         if (env) {

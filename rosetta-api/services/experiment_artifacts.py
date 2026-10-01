@@ -40,7 +40,7 @@ PERFORMANCE_FIELDS = [
     "exclusive", "exclusive_wait_sec",
     "cpu_model", "cpu_quota_cores", "cpu_affinity_setting", "memory_limit_mib",
     "simulation_cpus", "simulation_cpu_max_mhz", "simulation_time_samples",
-    "simulation_cpus_samples",
+    "simulation_cpus_samples", "compilation_time_sec_stdev", "compilation_time_samples",
 ]
 PREVALENCE_FIELDS = ["axis", "count_basis", "agreement_class", "pair_count", "pair_scope",
                      "distance_labels"]
@@ -251,6 +251,10 @@ def build_performance_rows(axis_label: str, summary: list) -> list:
             samples = entry.get("simulation_time_samples")
             row["simulation_time_samples"] = (
                 ";".join(repr(v) for v in samples) if ok and isinstance(samples, list) else None)
+            row["compilation_time_sec_stdev"] = entry.get("compilation_time_sec_stdev") if ok else None
+            comp = entry.get("compilation_time_samples")
+            row["compilation_time_samples"] = (
+                ";".join(repr(v) for v in comp) if ok and isinstance(comp, list) else None)
             cpu_samples = entry.get("simulation_cpus_samples")
             row["simulation_cpus_samples"] = (
                 "|".join(";".join(str(c) for c in (run or [])) for run in cpu_samples)

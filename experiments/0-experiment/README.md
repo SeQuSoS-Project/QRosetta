@@ -70,6 +70,17 @@ Only the Python standard library is required. `mode` may be `measured` or `state
 some SDKs — e.g. TorchQuantum — cannot run raw QASM without a basis-decomposition pass, so
 `false` is not uniformly meaningful; the per-runner `preprocessing_applied` is recorded).
 
+## Figures from a bundle
+
+```bash
+python plot_scaling.py experiment_bundle.zip --out figures   # needs matplotlib
+```
+
+Writes one scaling figure per circuit family and axis (median simulation time against declared
+qubits, min–max of the timed runs as error bars) from `performance.csv`, and prints the run
+conditions and the agreement classes from `agreement_prevalence.csv`. Nothing is fetched from
+the server.
+
 ## Config fields
 
 | field | meaning |

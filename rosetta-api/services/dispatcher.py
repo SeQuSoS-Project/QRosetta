@@ -3,7 +3,7 @@
 Routes each dispatch to the HTTP (Docker Compose) or Kubernetes Jobs backend.
 """
 
-from services.run_registry import EXCLUSIVE, GATE
+from services.run_registry import EXCLUSIVE, GATE, GATE_HELD
 from datetime import datetime, timezone
 
 from config import settings
@@ -239,14 +239,21 @@ async def dispatch_to_runners(runner_urls: dict, runner_payload: dict, timeout_s
     if exclusive:
         runner_payload = {**runner_payload, "runner_phases": {
             name: i + 1 for i, name in enumerate(sorted(runner_urls))}}
-    waited = await GATE.acquire(exclusive, settings.EXCLUSIVE_MAX_WAIT_SEC if exclusive else None)
+    held = GATE_HELD.get()
+    gated = held is None
+    if exclusive and runner_statuses is not None and gated:
+        for name in runner_urls:
+            runner_statuses.setdefault(name, "queued")
+    waited = (await GATE.acquire(exclusive, settings.EXCLUSIVE_MAX_WAIT_SEC if exclusive else None)
+              if gated else held)
     try:
         if EXECUTION_MODE == "kubernetes":
             results = await dispatch_kubernetes_jobs(runner_urls, runner_payload, timeout_seconds, runner_statuses)
         else:
             results = await dispatch_http_local(runner_urls, runner_payload, timeout_seconds, runner_statuses)
     finally:
-        await GATE.release(exclusive)
+        if gated:
+            await GATE.release(exclusive)
     for r in results:
         if isinstance(r, dict):
             r["exclusive"] = exclusive

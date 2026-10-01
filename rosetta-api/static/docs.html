@@ -832,15 +832,23 @@
                         other users' runs on a shared server are not counted). Concurrent runs share cores,
                         hyperthreads and memory bandwidth: on a 20-qubit measured QFT testers saw 2.3–3.3× longer times
                         than with the Sequential ordering, and the order of backends changed. For timings meant for a performance comparison,
-                        use an exclusive run (the "Exclusive timing run" box, API field <code>exclusive</code>): the
+                        follow this protocol, which testers found repeatable on this host (medians within 0–3% between
+                        jobs for 13 of 14 backends, quimb excepted): run the comparison as at least three separate
+                        exclusive jobs, spaced apart, each with <code>timing_repeats</code> of at least 5; report the median
+                        of the job medians and the range between jobs; treat backends within about 3% of each other as
+                        tied; report quimb with its full range. The ≈ mark next to a rank (<code>overlaps_next</code>) means
+                        this backend's slowest timed run took at least as long as the next backend's fastest in the same
+                        job; it reflects the spread within one job only, so ranks without it can still swap between jobs.
+                        The "unstable" tag marks a run whose slowest timed run took more than 1.3× its fastest, from
+                        competing load or the backend's own variation. Use an exclusive run (the "Exclusive timing run" box, API field <code>exclusive</code>): the
                         backends run one at a time and only while no other run is in flight on this server, and
                         each result records <code>exclusive</code> and the wait (<code>exclusive_wait_sec</code>).
                         Otherwise every local result records <code>server_overlapping_runs</code>, the runs of
-                        other jobs that were in flight at some time it was. On a host with hyperthreads, a run whose
+                        other jobs that were in flight (dispatched, including waiting in a runner's queue) at some time
+                        it was. On a host with hyperthreads, a run whose
                         sibling thread is busy can be 1.5–2× slower with every other check passing, so a
                         non-exclusive comparison is not reliable. Also use at least three
-                        <code>timing_repeats</code> (one backend, qibo, was about 17% slower on its first timed run
-                        at 18 qubits), stage the backends one at a time, and check
+                        <code>timing_repeats</code> (qibo's first timed run at 18 qubits was 14–17% slower in some jobs), stage the backends one at a time, and check
                         that <code>simulation_throttled_sec</code> is zero and <code>cpu_max_mhz</code> names
                         the same kind of core for every backend.</li>
                     <li><strong>Threads.</strong> Every runner is started with five thread variables set to

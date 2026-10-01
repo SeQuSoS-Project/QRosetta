@@ -12,7 +12,7 @@ import time
 from fastapi import HTTPException
 from services.availability import filter_available
 from services.job_store import JOB_NOT_FOUND, JobTable, full_report
-from services.run_registry import EXCLUSIVE, claim_exclusive, releases_exclusive
+from services.run_registry import EXCLUSIVE, circuit_section, claim_exclusive, releases_exclusive
 from services.validator import validate_request
 from services.dispatcher import (
     STATEVECTOR_RUNNER_URLS,
@@ -20,6 +20,7 @@ from services.dispatcher import (
     SAMPLED_SV_URLS,
     SEED_DERIVATION,
     EXECUTION_MODE,
+    annotate_overlaps,
     dispatch_to_runners,
     timeout_scope,
     utc_now_iso,
@@ -182,12 +183,14 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
         filtered_urls = STATEVECTOR_RUNNER_URLS
     filtered_urls, skipped = await filter_available(filtered_urls, target_simulators)
 
-    aggregated_results = await dispatch_to_runners(
-        runner_urls=filtered_urls,
-        runner_payload=runner_payload,
-        timeout_seconds=timeout_seconds,
-        runner_statuses=runner_statuses,
-    )
+    _queue_for_exclusive(runner_statuses, filtered_urls)
+    async with circuit_section(settings.EXCLUSIVE_MAX_WAIT_SEC):
+        aggregated_results = await dispatch_to_runners(
+            runner_urls=filtered_urls,
+            runner_payload=runner_payload,
+            timeout_seconds=timeout_seconds,
+            runner_statuses=runner_statuses,
+        )
     _apply_api_preprocessing(aggregated_results, "statevector", circuit)
 
     try:
@@ -255,10 +258,19 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
     filtered_sampled, skipped_sampled = await filter_available(filtered_sampled, target_simulators)
     filtered_native, skipped_native = await filter_available(filtered_native, target_simulators)
 
-    results_sampled, results_native = await asyncio.gather(
-        dispatch_to_runners(filtered_sampled, payload_for("measured_sampled"), timeout_seconds, runner_statuses),
-        dispatch_to_runners(filtered_native, payload_for("measured_native"), timeout_seconds, runner_statuses),
-    )
+    _queue_for_exclusive(runner_statuses, {**filtered_sampled, **filtered_native})
+    async with circuit_section(settings.EXCLUSIVE_MAX_WAIT_SEC):
+        if EXCLUSIVE.get():
+            results_sampled = await dispatch_to_runners(
+                filtered_sampled, payload_for("measured_sampled"), timeout_seconds, runner_statuses)
+            results_native = await dispatch_to_runners(
+                filtered_native, payload_for("measured_native"), timeout_seconds, runner_statuses)
+        else:
+            results_sampled, results_native = await asyncio.gather(
+                dispatch_to_runners(filtered_sampled, payload_for("measured_sampled"), timeout_seconds, runner_statuses),
+                dispatch_to_runners(filtered_native, payload_for("measured_native"), timeout_seconds, runner_statuses),
+            )
+    annotate_overlaps(results_sampled + results_native)
     _apply_api_preprocessing(results_sampled, "measured_sampled", circuits["measured_sampled"])
     _apply_api_preprocessing(results_native, "measured_native", circuits["measured_native"])
     aggregated_results = results_native + results_sampled
@@ -331,6 +343,13 @@ def _failed_job(target: str, error: str, runner_statuses: dict, report: dict = N
         if keep_full:
             job["full_results"] = report
     return job
+
+
+def _queue_for_exclusive(runner_statuses, urls) -> None:
+    """Show an exclusive job's runners as queued while it waits for the server to be idle."""
+    if EXCLUSIVE.get() and runner_statuses is not None:
+        for name in urls:
+            runner_statuses.setdefault(name, "queued")
 
 
 def require_exclusive_slot(payload, client: str, job_id: str) -> None:

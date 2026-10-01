@@ -325,8 +325,8 @@ export function unstableText(r) {
     if (s.length < 3) return null;
     const lo = Math.min(...s), hi = Math.max(...s);
     if (!(lo > 0) || hi / lo <= UNSTABLE_SPREAD) return null;
-    return `its timed runs ranged from ${fmtNum(lo, 4)} to ${fmtNum(hi, 4)} s (${fmtNum(hi / lo, 2)}×), so something else on the host `
-        + 'probably competed with some of them; the median is less reliable than its n suggests';
+    return `its timed runs ranged from ${fmtNum(lo, 4)} to ${fmtNum(hi, 4)} s (${fmtNum(hi / lo, 2)}×), from competing load or the `
+        + 'backend\'s own run-to-run variation (quimb\'s randomised path search, for example); the median is less reliable than its n suggests';
 }
 
 /** The distinct CPU quotas (cores) reported by the runs, as a readable phrase, or null when none reported one. */

@@ -296,7 +296,8 @@ export function renderRankingTable(report, key, unit, panel, config = {}, rawRes
         rankTd.textContent = String(r.rank ?? i + 1);
         if (r.overlaps_next === true && ranked[i + 1]) {
             rankTd.appendChild(_tag('≈', TAG_AMBER, `Overlaps rank ${i + 2} (${_displayRunnerName(ranked[i + 1].simulator)}): `
-                + 'this backend\'s slowest timed run took at least as long as that backend\'s fastest, so these runs do not separate the two.'));
+                + 'this backend\'s slowest timed run took at least as long as that backend\'s fastest, so these runs do not separate the two. '
+                + 'It reflects the spread within this job only: medians also move between jobs (about 3% on this host), so ranks without ≈ can still swap.'));
         }
         tr.appendChild(rankTd);
         const simTd = document.createElement('td');
