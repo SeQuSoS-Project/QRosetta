@@ -193,6 +193,13 @@ run them; see the README there.
 See `CONTRIBUTING.md` for the full guide to adding a simulator backend or an algorithm
 template.
 
+## Versions
+
+The tag `stable-pre-compilers` marks the last stable version before compile-only backends and
+the Compiler Explorer view were added: 14 simulator backends, with the circuit each backend
+executed recorded but not displayed side by side. Check it out to reproduce results produced
+before that work.
+
 ## Citing
 
 See `CITATION.cff`.
