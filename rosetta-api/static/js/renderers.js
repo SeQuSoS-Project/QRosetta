@@ -5,6 +5,7 @@ import { backButtonContainer, jsonOutput, panelElements, tabNav, welcomeMessage 
 
 import { BASE_URL, apiDetailText, getAuthHeaders } from './api.js';
 import { renderArtifactsPanel } from './artifacts_renderer.js';
+import { renderCircuitExplorer } from './circuit_explorer_renderer.js';
 import { renderRankingTable, splitRanking } from './ranking_renderer.js';
 import {
     TAG_AMBER, TAG_GRAY, _applyLegendDots, _cloneTemplate, _displayRunnerName, _makeStatusBadge, _tag, deviceTitle, isGpuRun,
@@ -133,7 +134,7 @@ function _updateExportNotices(data) {
 }
 
 export function renderDetailReport(data, title, config = getState().currentRunnerConfig) {
-    renderTabs(['summary', 'performance', 'resources', 'divergence', 'agreement', 'artifacts', 'raw']);
+    renderTabs(['summary', 'performance', 'resources', 'divergence', 'agreement', 'circuits', 'artifacts', 'raw']);
     _setRawTabData(data);
     _updateExportNotices(data);
 
@@ -147,6 +148,7 @@ export function renderDetailReport(data, title, config = getState().currentRunne
         if (data.divergence_report) renderAgreementPanel(data.divergence_report, panelElements.agreement, optMap);
         renderArtifactsPanel(data, panelElements.artifacts);
     }
+    renderCircuitExplorer(data, panelElements.circuits);
 
     showTab('summary');
 }

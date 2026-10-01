@@ -33,6 +33,7 @@ export function initDomRefs() {
         'resources': document.getElementById('resources-panel'),
         'divergence': document.getElementById('divergence-panel'),
         'agreement': document.getElementById('agreement-panel'),
+        'circuits': document.getElementById('circuits-panel'),
         'artifacts': document.getElementById('artifacts-panel'),
         'raw': document.getElementById('raw-panel'),
         'suite-summary': document.getElementById('suite-summary-panel'),
