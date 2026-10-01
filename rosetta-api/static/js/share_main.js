@@ -31,7 +31,7 @@ function _ownerText(value, fallback) {
     return typeof value === 'string' && value ? visibleFormatCharacters(value).text : fallback;
 }
 
-function _render(root, data) {
+function _render(root, data, startTask = 0) {
     const header = _el('header', 'space-y-1');
     header.appendChild(_el('p', 'text-xs text-gray-500', "Run name, as given by the link's owner:"));
     header.appendChild(_el('h1', 'text-lg font-semibold text-gray-900 break-words', _ownerText(data.run_name, 'Shared run')));
@@ -56,11 +56,17 @@ function _render(root, data) {
             option.value = String(i);
             select.appendChild(option);
         });
-        select.onchange = () => _showTask(panel, data, Number(select.value));
+        const first = Number.isInteger(startTask) && startTask >= 0 && startTask < tasks.length ? startTask : 0;
+        select.value = String(first);
+        select.onchange = () => {
+            _showTask(panel, data, Number(select.value));
+            const [token] = window.location.hash.slice(1).split('&');
+            history.replaceState(null, '', `#${token}&task=${select.value}`);
+        };
         label.appendChild(select);
         root.appendChild(label);
         root.appendChild(panel);
-        if (tasks.length) _showTask(panel, data, 0);
+        if (tasks.length) _showTask(panel, data, first);
         else panel.appendChild(_el('p', 'text-sm text-gray-500', 'This run has no circuits.'));
         return;
     }
@@ -74,7 +80,8 @@ async function main() {
     const request = ++_request;
     const root = document.getElementById('share-root');
     root.replaceChildren(_el('p', 'text-sm text-gray-500', 'Loading…'));
-    const token = window.location.hash.slice(1);
+    const [token, ...params] = window.location.hash.slice(1).split('&');
+    const taskParam = params.map(p => p.split('=')).find(([key]) => key === 'task');
     if (!token) {
         root.replaceChildren(_el('p', 'text-sm text-gray-600', 'This page needs the link you were given, including the part after #.'));
         return;
@@ -95,7 +102,7 @@ async function main() {
         const data = await res.json();
         if (request !== _request) return;
         root.replaceChildren();
-        _render(root, data);
+        _render(root, data, taskParam ? Number(taskParam[1]) : 0);
     } catch (err) {
         root.replaceChildren(_el('p', 'text-sm text-red-700', err.message));
     }

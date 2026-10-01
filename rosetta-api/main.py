@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from routers import frontend, generation, benchmark, auth, history, export, publication, experiment, share
 from routers.errors import register_error_handlers
 import db.models as models
-from db.database import engine
+from db.database import add_missing_nullable_columns, engine
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import JSONResponse
@@ -53,6 +53,8 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Quantum Rosetta API", version=settings.PLATFORM_VERSION, lifespan=lifespan)
 
 models.Base.metadata.create_all(bind=engine)
+for _column in add_missing_nullable_columns(models.Base.metadata, engine):
+    logger.info(f"Added missing column {_column}")
 
 app.state.limiter = limiter
 register_error_handlers(app)

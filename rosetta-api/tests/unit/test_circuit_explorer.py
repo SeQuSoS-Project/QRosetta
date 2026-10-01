@@ -219,3 +219,18 @@ def test_header_option_removes_a_one_line_header_but_not_comments():
 def test_line_break_only_differences_are_detected():
     crlf, same = _call(("differOnlyInLineBreaks", "a\r\nb", "a\nb"), ("differOnlyInLineBreaks", "a\nb", "a\nb"))
     assert crlf is True and same is False
+
+
+def test_angle_option_compares_parameters_by_value_only():
+    lines = _call(*[("canonicalAngles", line) for line in (
+        "rz(pi/4) q[0];", "rz(0.25*pi) q[0];", "rz(0.7853981633974483) q[0];", "rz(0.78) q[0];",
+        "rx(t/2) a;", "if(c==1) x q[0];", "u3(-pi/2,0,2^-1*pi) q[1];", "rz(sin(pi/2)) q;")])
+    assert lines[0] == lines[1] == lines[2] == "rz(0.785398163397) q[0];"
+    assert lines[3] == "rz(0.78) q[0];"
+    assert lines[4] == "rx(t/2) a;" and lines[5] == "if(c==1) x q[0];"
+    assert lines[6] == "u3(-1.57079632679, 0, 1.57079632679) q[1];"
+    assert lines[7] == "rz(1) q;"
+    bad = _call(("evaluateAngle", "2*"), ("evaluateAngle", "pi pi"), ("evaluateAngle", "1/0"))
+    assert bad == [None, None, None]
+    (combined,) = _call(("comparableLines", "rz( pi/4 ) q[0]; // c", {"angles": True, "whitespace": True, "comments": True}))
+    assert combined == ["rz(0.785398163397) q[0];"]

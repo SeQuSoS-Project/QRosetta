@@ -42,11 +42,16 @@ def _path(job_id) -> str:
 
 
 class JobTable(dict):
-    """dict of job_id -> job whose ``full_results`` dicts are written to disk on assignment."""
+    """dict of job_id -> job whose ``full_results`` dicts are written to disk on assignment.
+    A job's ``owner_user_id`` survives every later assignment that does not set it."""
 
     _lock = threading.Lock()
 
     def __setitem__(self, job_id, job):
+        previous = dict.get(self, job_id)
+        if (isinstance(job, dict) and isinstance(previous, dict) and "owner_user_id" in previous
+                and "owner_user_id" not in job):
+            job = {**job, "owner_user_id": previous["owner_user_id"]}
         if isinstance(job, dict) and isinstance(job.get("full_results"), dict):
             path = _path(job_id)
             tmp = f"{path}.{threading.get_ident()}.tmp"

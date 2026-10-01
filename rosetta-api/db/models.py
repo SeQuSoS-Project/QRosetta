@@ -44,3 +44,4 @@ class ShareLink(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     expires_at = Column(DateTime(timezone=True), nullable=False)
     revoked_at = Column(DateTime(timezone=True), nullable=True)
+    label = Column(String(100), nullable=True)

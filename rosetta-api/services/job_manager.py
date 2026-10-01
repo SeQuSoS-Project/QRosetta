@@ -331,9 +331,10 @@ def job_targets(requested_target: str = None) -> dict:
     return targets
 
 
-def new_job(requested_target: str = None) -> dict:
-    """ACTIVE_JOBS entry for a job that has been accepted but not started."""
-    return {"status": "pending", **job_targets(requested_target)}
+def new_job(requested_target: str = None, owner_user_id: int = None) -> dict:
+    """ACTIVE_JOBS entry for a job that has been accepted but not started. ``owner_user_id``
+    is the signed-in account that submitted it (None for an anonymous submission)."""
+    return {"status": "pending", **job_targets(requested_target), "owner_user_id": owner_user_id}
 
 
 def _completed_job(target: str, full_report: dict, runner_statuses: dict, **extra) -> dict:
@@ -392,11 +393,19 @@ def all_runners_failed(report: dict):
     return f"all {len(results)} runners failed"
 
 
-def task_label(algorithm, qubits: int) -> str:
-    """``"<name> (<n>q)"``; a name already ending in ``(<n>q)`` is kept as it is."""
+_SOURCE_TAGS = {"mqt": "MQT Bench", "qasmbench": "QASMBench"}
+
+
+def task_label(algorithm, qubits: int, source: str = None) -> str:
+    """``"<name> (<n>q)"``, plus ``" [MQT Bench]"`` or ``" [QASMBench]"`` for a bundled
+    benchmark circuit so it is not mistaken for a preset of the same name. A name already
+    ending in ``(<n>q)`` keeps it; an unknown qubit count (0 or None) adds no count."""
     name = str(algorithm or "circuit").strip()
-    suffix = f"({qubits}q)"
-    return name if name.endswith(suffix) else f"{name} {suffix}"
+    if qubits:
+        suffix = f"({qubits}q)"
+        name = name if name.endswith(suffix) else f"{name} {suffix}"
+    tag = _SOURCE_TAGS.get(source)
+    return f"{name} [{tag}]" if tag else name
 
 
 def task_qubits(task, qasm_string: str = None) -> int:
@@ -509,7 +518,7 @@ async def run_batch_tasks(payload: BatchPayload, runner_statuses: dict, progress
 
     for idx, task in enumerate(payload.tasks):
         gi = task_offset + idx
-        task_name = task_label(task.algorithm, task_qubits(task))
+        task_name = task_label(task.algorithm, task_qubits(task), task.source)
         logger.info(f"--- Running task: {task_name} ---")
         if progress is not None:
             progress["current_index"] = gi
@@ -518,7 +527,7 @@ async def run_batch_tasks(payload: BatchPayload, runner_statuses: dict, progress
             qasm_string = resolve_circuit_qasm(
                 task.source, task.algorithm, task.qubits, task.qasm_string, mode=payload.mode
             )
-            task_name = task_label(task.algorithm, task_qubits(task, qasm_string))
+            task_name = task_label(task.algorithm, task_qubits(task, qasm_string), task.source)
             if progress is not None:
                 axis = progress["tasks"][gi].get("axis")
                 progress["tasks"][gi]["name"] = task_name + (f" · {axis}" if axis else "")
@@ -571,7 +580,7 @@ async def worker_batch_suite(job_id: str, payload: BatchPayload):
         "total": len(payload.tasks),
         "completed": 0,
         "current_index": None,
-        "tasks": [{"name": task_label(t.algorithm, task_qubits(t)), "status": "queued"}
+        "tasks": [{"name": task_label(t.algorithm, task_qubits(t), t.source), "status": "queued"}
                   for t in payload.tasks],
     }
     ACTIVE_JOBS[job_id]["progress"] = progress

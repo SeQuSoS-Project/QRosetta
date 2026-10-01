@@ -21,7 +21,7 @@ _PRIVATE_HEADERS = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer
 def _response(link, **extra) -> dict:
     return {"id": link.id, "run_id": link.run_id, "created_at": link.created_at,
             "expires_at": link.expires_at, "revoked_at": link.revoked_at,
-            "active": share_links.is_active(link), **extra}
+            "active": share_links.is_active(link), "label": link.label, **extra}
 
 
 @router.post("/history/runs/{run_id}/share-links", response_model=ShareLinkCreated,
@@ -33,9 +33,9 @@ def create_share_link(request: Request, run_id: str, response: Response,
     """Create a read-only link to the circuit texts of one of your saved runs. The token is
     in this response only. 404 if the run is not yours; 409 when the run already has the
     maximum number of active links."""
-    days = (body or ShareLinkCreate()).expires_in_days
+    body = body or ShareLinkCreate()
     try:
-        link, token = share_links.create_link(db, current_user.id, run_id, days)
+        link, token = share_links.create_link(db, current_user.id, run_id, body.expires_in_days, body.label)
     except share_links.RunNotFound:
         raise HTTPException(status_code=404, detail="Run history not found")
     except share_links.TooManyLinks:

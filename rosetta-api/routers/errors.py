@@ -24,6 +24,7 @@ _REPR_RE = re.compile(r"<[^<>]*\bat 0x[0-9a-f]+>")
 
 ERROR_RESPONSES = {
     400: {"description": "The request is well formed but cannot be run (e.g. the circuit does not parse, or names an unknown or unavailable runner). Body: {\"detail\": str}."},
+    403: {"description": "The resource belongs to another account. Body: {\"detail\": str}."},
     404: {"description": "Unknown or expired job id. Body: {\"detail\": str}."},
     409: {"description": "The job exists but is in the wrong state or of the wrong kind for this request. Body: {\"detail\": str}."},
     413: {"description": "Request body over the upload limit, or circuit text over MAX_QASM_SIZE. Body: {\"detail\": str}."},

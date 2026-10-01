@@ -249,3 +249,11 @@ def test_manifest_records_the_job_id(monkeypatch):
     assert manifest["job_id"] == job_id
     assert manifest["circuits"][0]["qubits"] == 2
     assert job["kind"] == "experiment"
+
+
+def test_task_label_names_the_benchmark_suite_and_omits_unknown_qubit_counts():
+    from services.job_manager import task_label
+    assert task_label("ghz", 4) == "ghz (4q)"
+    assert task_label("ghz", 4, "mqt") == "ghz (4q) [MQT Bench]"
+    assert task_label("adder_n4.qasm", 0, "qasmbench") == "adder_n4.qasm [QASMBench]"
+    assert task_label("ghz", 4, "preset") == "ghz (4q)"

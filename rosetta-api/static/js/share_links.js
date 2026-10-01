@@ -2,8 +2,15 @@
 // tab. The page they open is share.html; its token sits in the URL fragment.
 
 import { BASE_URL, formatApiError, getAuthHeaders } from './api.js';
-import { getState } from './state.js';
+import { dispatch, getState } from './state.js';
 import { makeCopyIconButton } from './utils.js';
+
+let _saveRun = null;
+
+/** Set the function that saves a finished job to history: (jobId) => saved run id or null. */
+export function setRunSaver(save) {
+    _saveRun = save;
+}
 
 const EXPIRY_CHOICES = [[1, '1 day'], [7, '7 days'], [30, '30 days'], [90, '90 days']];
 const DEFAULT_EXPIRY_DAYS = 30;
@@ -37,6 +44,7 @@ function _linkRow(link, onRevoked) {
     const row = _el('li', 'flex flex-wrap items-center gap-2 text-xs text-gray-700');
     const state = link.active ? `expires ${_when(link.expires_at)}`
         : link.revoked_at ? `revoked ${_when(link.revoked_at)}` : `expired ${_when(link.expires_at)}`;
+    if (link.label) row.appendChild(_el('span', 'font-medium', link.label));
     row.appendChild(_el('span', link.active ? '' : 'text-gray-400', `Created ${_when(link.created_at)}, ${state}`));
     if (link.active) {
         const revoke = _el('button', 'text-xs text-red-700 hover:text-red-900 underline', 'Revoke');
@@ -83,19 +91,49 @@ function _createdNotice(token, expiresAt) {
     return box;
 }
 
-/** Add the share-link controls for the run being viewed to `container`. */
-export function renderShareControls(container) {
-    const section = _el('section', 'space-y-2 p-3 border border-gray-200 rounded-md bg-gray-50');
-    section.appendChild(_el('h3', 'text-sm font-semibold text-gray-900', 'Read-only link'));
-    if (!getState().authToken) {
-        section.appendChild(_el('p', 'text-xs text-gray-600',
-            'Sign in and save this run to your history to create a link that shows these circuit texts to anyone who has it.'));
-        container.appendChild(section);
-        return;
+/**
+ * The saved run id of the report on screen, saving its job first when it is not yet in
+ * history; null (with a message in `notice`) when that is not possible.
+ */
+async function _savedRunId(notice) {
+    const { authToken, currentHistoryRunId, currentJobId } = getState();
+    if (!authToken) {
+        notice.replaceChildren(_el('p', 'text-xs text-gray-700',
+            'Sign in first (Login / Register at the top of the page). A run started without signing in can still be saved while the server keeps it, at least 30 minutes after it finished.'));
+        return null;
     }
+    if (currentHistoryRunId) return currentHistoryRunId;
+    if (!currentJobId || !_saveRun) {
+        notice.replaceChildren(_el('p', 'text-xs text-gray-700',
+            'This report did not come from a job run in this session, so it cannot be saved from here. Open a saved run from History to share it.'));
+        return null;
+    }
+    const runId = await _saveRun(currentJobId);
+    if (!runId) {
+        notice.replaceChildren(_el('p', 'text-xs text-red-700',
+            'The run could not be saved (see the notice above the results). The server keeps a job for at least 30 minutes after it finishes.'));
+        return null;
+    }
+    if (getState().currentJobId === currentJobId) dispatch('SET_HISTORY_RUN_ID', runId);
+    return runId;
+}
+
+function _taskIndex(report) {
+    const summary = getState().currentSuiteData?.benchmark_summary;
+    const index = Array.isArray(summary) ? summary.indexOf(report) : -1;
+    return index >= 0 ? index : null;
+}
+
+/** Add the share-link controls for the run being viewed to `container`. */
+export function renderShareControls(container, report = null) {
+    const section = _el('section', 'space-y-2 p-3 border border-gray-200 rounded-md bg-gray-50');
+    section.appendChild(_el('h3', 'text-sm font-semibold text-gray-900', 'Save and share'));
     section.appendChild(_el('p', 'text-xs text-gray-600',
-        'A link opens a page with the circuit texts of this saved run: the submitted, dispatched and executed circuits, the compiler input and compiled circuits when there are any, with their transforms and SDK versions. It shows no results, timings or errors. Anyone who has the link can open it until it expires, so share it like a password and revoke it when it is no longer needed.'));
+        'A read-only link opens a page with the circuit texts of this saved run: the submitted, dispatched and executed circuits, the compiler input and compiled circuits when there are any, with their transforms and SDK versions. It shows no results, timings or errors. Anyone who has the link can open it until it expires, so share it like a password and revoke it when it is no longer needed.'));
     const controls = _el('div', 'flex flex-wrap items-center gap-2');
+    const save = _el('button', 'text-xs font-medium bg-white hover:bg-gray-100 text-gray-800 border border-gray-300 rounded-md px-3 py-1', 'Save to history');
+    save.type = 'button';
+    controls.appendChild(save);
     const label = _el('label', 'inline-flex items-center gap-1 text-xs text-gray-700', 'Expires after');
     const expiry = /** @type {HTMLSelectElement} */ (_el('select', 'border border-gray-300 rounded px-1 py-0.5 text-xs'));
     EXPIRY_CHOICES.forEach(([days, text]) => {
@@ -106,6 +144,11 @@ export function renderShareControls(container) {
     });
     label.appendChild(expiry);
     controls.appendChild(label);
+    const linkLabel = /** @type {HTMLInputElement} */ (_el('input', 'border border-gray-300 rounded px-2 py-0.5 text-xs w-44'));
+    linkLabel.placeholder = 'Label for your list (optional)';
+    linkLabel.maxLength = 100;
+    linkLabel.setAttribute('aria-label', 'Label for this link, shown only in your list of links');
+    controls.appendChild(linkLabel);
     const create = _el('button', 'text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-md px-3 py-1', 'Create link');
     create.type = 'button';
     controls.appendChild(create);
@@ -114,20 +157,32 @@ export function renderShareControls(container) {
     section.appendChild(notice);
     const list = _el('ul', 'space-y-1');
     section.appendChild(list);
-    create.onclick = async () => {
-        const runId = getState().currentHistoryRunId;
+    save.onclick = async () => {
+        save.disabled = true;
         notice.replaceChildren();
-        if (!runId) {
-            notice.appendChild(_el('p', 'text-xs text-gray-700',
-                'This run is not in your history yet. Runs started from this page while you are signed in are saved when they finish; otherwise open a saved run from History.'));
-            return;
-        }
-        create.disabled = true;
         try {
+            const runId = await _savedRunId(notice);
+            if (runId) {
+                notice.replaceChildren(_el('p', 'text-xs text-green-800', 'Saved to your history.'));
+                _paintLinks(list, runId);
+            }
+        } finally {
+            save.disabled = false;
+        }
+    };
+    create.onclick = async () => {
+        create.disabled = true;
+        notice.replaceChildren();
+        try {
+            const runId = await _savedRunId(notice);
+            if (!runId) return;
+            const body = { expires_in_days: Number(expiry.value) };
+            if (linkLabel.value.trim()) body.label = linkLabel.value.trim();
             const link = await _request(`/history/runs/${encodeURIComponent(runId)}/share-links`, {
-                method: 'POST', body: JSON.stringify({ expires_in_days: Number(expiry.value) }),
+                method: 'POST', body: JSON.stringify(body),
             });
-            notice.replaceChildren(_createdNotice(link.token, link.expires_at));
+            const task = report ? _taskIndex(report) : null;
+            notice.replaceChildren(_createdNotice(link.token + (task === null ? '' : `&task=${task}`), link.expires_at));
             _paintLinks(list, runId);
         } catch (err) {
             notice.replaceChildren(_el('p', 'text-xs text-red-700', err.message));
@@ -136,6 +191,6 @@ export function renderShareControls(container) {
         }
     };
     const runId = getState().currentHistoryRunId;
-    if (runId) _paintLinks(list, runId);
+    if (runId && getState().authToken) _paintLinks(list, runId);
     container.appendChild(section);
 }

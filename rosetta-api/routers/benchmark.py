@@ -1,8 +1,8 @@
 """Benchmark job routes: start single, measured and batch runs; poll and fetch job reports."""
 
 from services.job_manager import require_exclusive_slot
-from services.security import client_address
-from fastapi import APIRouter, HTTPException, Request, BackgroundTasks
+from services.security import client_address, get_optional_user
+from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from fastapi.responses import JSONResponse
 import uuid
 from routers.errors import responses
@@ -71,7 +71,7 @@ async def get_job_full_report(request: Request, job_id: str):
 
 @router.post("/compare", response_model=JobStatusResponse, responses=responses(400, 413, 422))
 @limiter.limit(settings.RUN_RATE_LIMIT)
-async def compare_circuits_endpoint(request: Request, payload: QasmPayload, background_tasks: BackgroundTasks):
+async def compare_circuits_endpoint(request: Request, payload: QasmPayload, background_tasks: BackgroundTasks, user=Depends(get_optional_user)):
     """Dispatch one OpenQASM 2.0 circuit for an exact statevector comparison across the
     simulator fleet. Runs in the background; poll GET /jobs/{job_id} for the result, which
     includes the fidelity/phase agreement matrices, per-backend performance/resource data, and
@@ -91,7 +91,7 @@ async def compare_circuits_endpoint(request: Request, payload: QasmPayload, back
     job_id = str(uuid.uuid4())
     require_exclusive_slot(payload, client_address(request), job_id)
 
-    ACTIVE_JOBS[job_id] = new_job(payload.execution_target)
+    ACTIVE_JOBS[job_id] = new_job(payload.execution_target, user.id if user else None)
     thresholds = effective_thresholds(payload.thresholds)
     background_tasks.add_task(worker_compare, job_id, payload.qasm_string, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, payload.execution_target, payload.runner_phases, payload.apply_preprocessing, thresholds, payload.bypass_limits, payload.timing_repeats, exclusive=payload.exclusive, compilers=payload.compilers)
 
@@ -99,7 +99,7 @@ async def compare_circuits_endpoint(request: Request, payload: QasmPayload, back
 
 @router.post("/compare_measured", response_model=JobStatusResponse, responses=responses(400, 413, 422))
 @limiter.limit(settings.RUN_RATE_LIMIT)
-async def compare_measured_circuits_endpoint(request: Request, payload: MeasuredQasmPayload, background_tasks: BackgroundTasks):
+async def compare_measured_circuits_endpoint(request: Request, payload: MeasuredQasmPayload, background_tasks: BackgroundTasks, user=Depends(get_optional_user)):
     """Dispatch one OpenQASM 2.0 circuit for a shot-based measurement comparison across the
     simulator fleet. Runs in the background; poll GET /jobs/{job_id} for the result, which
     includes the divergence matrices, the explained-cause pairwise agreement classification,
@@ -117,7 +117,7 @@ async def compare_measured_circuits_endpoint(request: Request, payload: Measured
     job_id = str(uuid.uuid4())
     require_exclusive_slot(payload, client_address(request), job_id)
 
-    ACTIVE_JOBS[job_id] = new_job(payload.execution_target)
+    ACTIVE_JOBS[job_id] = new_job(payload.execution_target, user.id if user else None)
     thresholds = effective_thresholds(payload.thresholds)
     background_tasks.add_task(worker_compare_measured, job_id, payload.qasm_string, payload.n_shots, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, payload.execution_target, payload.runner_phases, payload.apply_preprocessing, payload.seed, thresholds, payload.bypass_limits, payload.timing_repeats, exclusive=payload.exclusive, compilers=payload.compilers)
 
@@ -125,7 +125,7 @@ async def compare_measured_circuits_endpoint(request: Request, payload: Measured
 
 @router.post("/run_batch_suite", response_model=JobStatusResponse, responses=responses(400, 413, 422))
 @limiter.limit(settings.RUN_RATE_LIMIT)
-async def run_batch_suite_endpoint(request: Request, payload: BatchPayload, background_tasks: BackgroundTasks):
+async def run_batch_suite_endpoint(request: Request, payload: BatchPayload, background_tasks: BackgroundTasks, user=Depends(get_optional_user)):
     """Dispatch a list of circuits (presets, bundled benchmark circuits, or user-supplied
     QASM) across the simulator fleet in a single job, in either statevector or measured mode.
     Runs in the background; poll GET /jobs/{job_id} for progress and the per-task results.
@@ -151,7 +151,7 @@ async def run_batch_suite_endpoint(request: Request, payload: BatchPayload, back
     job_id = str(uuid.uuid4())
     require_exclusive_slot(payload, client_address(request), job_id)
 
-    ACTIVE_JOBS[job_id] = new_job(payload.execution_target)
+    ACTIVE_JOBS[job_id] = new_job(payload.execution_target, user.id if user else None)
     background_tasks.add_task(worker_batch_suite, job_id, payload)
 
     return _job_envelope(job_id)

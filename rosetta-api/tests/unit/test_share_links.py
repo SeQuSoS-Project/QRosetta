@@ -249,3 +249,28 @@ def test_share_page_has_its_headers_on_every_path_the_api_serves_it_from():
         assert r.status_code == 200
         assert "frame-ancestors 'none'" in r.headers["content-security-policy"]
         assert r.headers["x-frame-options"] == "DENY" and r.headers["x-content-type-options"] == "nosniff"
+
+
+def test_link_label_is_listed_for_the_owner_and_never_shared(app_client):
+    client, _ = app_client
+    owner = _login(client, "label@example.org")
+    run_id = _saved_run(client, owner)
+    created = client.post(f"/history/runs/{run_id}/share-links", json={"label": "Lecture 3"}, headers=owner).json()
+    assert created["label"] == "Lecture 3"
+    assert client.get(f"/history/runs/{run_id}/share-links", headers=owner).json()[0]["label"] == "Lecture 3"
+    assert "Lecture 3" not in _read(client, created["token"]).text
+    for bad in ("x" * 101, "a‮b"):
+        assert client.post(f"/history/runs/{run_id}/share-links", json={"label": bad}, headers=owner).status_code == 422
+
+
+def test_missing_nullable_columns_are_added_to_existing_tables():
+    from sqlalchemy import inspect, text
+    from db.database import add_missing_nullable_columns
+    engine = create_engine("sqlite://")
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE share_links (id VARCHAR(36) PRIMARY KEY, token_hash VARCHAR(64), "
+                          "user_id INTEGER, run_id VARCHAR(36), created_at DATETIME, expires_at DATETIME, "
+                          "revoked_at DATETIME)"))
+    assert add_missing_nullable_columns(Base.metadata, engine) == ["share_links.label"]
+    assert "label" in {c["name"] for c in inspect(engine).get_columns("share_links")}
+    assert add_missing_nullable_columns(Base.metadata, engine) == []

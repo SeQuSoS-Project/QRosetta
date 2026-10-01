@@ -109,6 +109,20 @@ import db.models as models
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
 
+_optional_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token", auto_error=False)
+
+
+def get_optional_user(token: str | None = Depends(_optional_oauth2_scheme), db: Session = Depends(get_db)):
+    """The signed-in account when the request carries a valid bearer token, else None (an
+    absent, invalid or expired token makes the request anonymous rather than failing it)."""
+    if not token:
+        return None
+    try:
+        return get_current_user(token, db)
+    except HTTPException:
+        return None
+
+
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     """The account a bearer token was issued to. 401 for an invalid or expired token, one
     whose ``uid`` is not the account now registered under its email, or one issued before

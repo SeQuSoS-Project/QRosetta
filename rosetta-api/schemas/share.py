@@ -1,10 +1,13 @@
 # Pydantic request/response models for the read-only share-link endpoints.
 
-from typing import Optional
+from typing import Annotated, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
+from schemas.benchmark import Label
 from schemas.timestamps import UtcDatetime
+
+ShareLabel = Annotated[Label, Field(max_length=100)]
 from services.share_links import DEFAULT_EXPIRY_DAYS, MAX_EXPIRY_DAYS, MIN_EXPIRY_DAYS
 
 
@@ -14,6 +17,7 @@ class ShareLinkCreate(BaseModel):
 
     expires_in_days: StrictInt = Field(DEFAULT_EXPIRY_DAYS, ge=MIN_EXPIRY_DAYS, le=MAX_EXPIRY_DAYS,
                                  description="Days until the link stops working.")
+    label: Optional[ShareLabel] = Field(None, description="Your own name for the link, shown only in your list of links, never to its recipients.")
 
 
 class ShareLinkResponse(BaseModel):
@@ -24,6 +28,7 @@ class ShareLinkResponse(BaseModel):
     expires_at: UtcDatetime = Field(..., description="When the link stops working, UTC ISO 8601 ending in 'Z'.")
     revoked_at: Optional[UtcDatetime] = Field(None, description="When the owner revoked it; null while not revoked.")
     active: bool = Field(..., description="True while the link is unexpired and not revoked.")
+    label: Optional[str] = Field(None, description="The owner's label for the link, if any.")
 
     model_config = ConfigDict(from_attributes=True)
 

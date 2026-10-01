@@ -12,6 +12,7 @@ import {
     loadRunners, runnerSelectionProblem, updateContextBar,
 } from './config.js';
 import { clearHistoryState, saveRunToHistory, showHistoryNotice } from './history.js';
+import { setRunSaver } from './share_links.js';
 import { clearReport, renderDetailReport, renderSuiteSummary } from './renderers.js';
 import { initDomRefs, qasmInput, setAllButtons, welcomeMessage } from './dom.js';
 import { shotsRange, showRunErrors, timeoutRange, validateRunInputs } from './run_inputs.js';
@@ -159,6 +160,7 @@ window.onload = async () => {
         }
         loadRunners();
         loadCompilers();
+        setRunSaver(jobId => saveRunToHistory(jobId));
 
         const select = document.getElementById('algo-select');
         select.innerHTML = '';

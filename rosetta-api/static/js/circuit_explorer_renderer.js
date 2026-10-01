@@ -27,6 +27,7 @@ const NORMALISATION_OPTIONS = [
     ['whitespace', 'Ignore whitespace and line breaks', 'Compare one statement per line, with single spaces between tokens.'],
     ['comments', 'Ignore comments', "Drop // and /* */ comments, blank lines and trailing spaces before comparing. QMAP's '// i' and '// o' layout lines are kept, because they say which qubit is which."],
     ['header', 'Ignore OPENQASM and include lines', 'Drop the version statement and include statements (qelib1.inc, hqslib1.inc, ...) before comparing.'],
+    ['angles', 'Compare angles by value', 'Evaluate each gate parameter that has no variables (pi/4, 0.25*pi, 0.7853981633974483) and compare it in radians rounded to 12 significant digits. Parameters with variables, as in gate bodies, are compared as written.'],
 ];
 
 function _el(tag, className, text) {
@@ -254,7 +255,7 @@ function _renderDiff(out, a, b, options) {
         out.appendChild(_el('p', 'text-xs text-gray-600', 'The two texts differ in too many lines for a line diff here. Compare the panes side by side, or download both and diff them locally.'));
         return;
     }
-    const normalised = options.whitespace || options.comments || options.header;
+    const normalised = options.whitespace || options.comments || options.header || options.angles;
     const summary = _el('p', 'text-xs text-gray-600 mb-1');
     summary.appendChild(_el('span', '', `${result.deleted} line${result.deleted === 1 ? '' : 's'} only in A, ${result.inserted} only in B`));
     summary.appendChild(document.createTextNode(normalised ? ' (normalised text).' : ' (raw text).'));
@@ -278,7 +279,7 @@ function _diffSection(panes) {
     const section = _el('section', 'space-y-2');
     section.appendChild(_el('h3', 'text-sm font-semibold text-gray-900', 'Diff'));
     section.appendChild(_el('p', 'text-xs text-gray-500',
-        "A line diff compares text only. Two texts can differ in every line and still describe the same circuit (gates rewritten, angles written as pi/4 or 0.785…, qubits relabelled), so the counts below say nothing about whether the circuits are equivalent."));
+        "A line diff compares text only. Two texts can differ in every line and still describe the same circuit (gates rewritten, angles written differently, qubits relabelled), so the counts below say nothing about whether the circuits are equivalent."));
     if (withText.length < 2) {
         section.appendChild(_el('p', 'text-xs text-gray-500', 'This run recorded fewer than two circuit texts.'));
         return section;
@@ -324,7 +325,7 @@ function _crateNote(report, sharePage) {
 }
 
 /**
- * Render the Circuits view of `report` into `panel`. Options: `extraControls(container)`
+ * Render the Circuits view of `report` into `panel`. Options: `extraControls(container, report)`
  * adds controls under the introduction (the share link); `uploaded` words every note as
  * the uploaded report's claim; `sharePage` leaves out exporting hints; `filePrefix` starts
  * download names (a batch task's slug).
@@ -337,7 +338,7 @@ export function renderCircuitExplorer(report, panel, { extraControls = null, upl
         'The circuit texts this run recorded: the circuit as submitted, the circuit the API sent to each dispatch group, the circuit each backend executed and, when compile-only services were selected, their input and output.' + _crateNote(report, sharePage)));
     if (extraControls) {
         const host = _el('div');
-        extraControls(host);
+        extraControls(host, report);
         root.appendChild(host);
     }
     if (!panes.length) {

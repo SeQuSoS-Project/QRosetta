@@ -190,3 +190,29 @@ def test_client_supplied_report_is_validated(client, body):
 ])
 def test_valid_client_reports_are_stored(client, body):
     assert client.post("/history/runs", json=body).status_code == 201
+
+
+def test_owner_survives_completion_and_only_the_owner_can_save(client):
+    other = TestClient(client.app)
+    other.post("/auth/register", json={"email": "thief@example.org", "password": "testpass123"})
+    token = other.post("/auth/token", data={"username": "thief@example.org", "password": "testpass123"}).json()["access_token"]
+    other.headers.update({"Authorization": f"Bearer {token}"})
+    owner_id = client.get("/auth/me").json()["id"]
+    job_manager.ACTIVE_JOBS["owned-job-1"] = job_manager.new_job("local", owner_id)
+    job_manager.ACTIVE_JOBS["owned-job-1"] = job_manager._completed_job("local", {"raw_results": []}, {})
+    try:
+        assert job_manager.ACTIVE_JOBS["owned-job-1"]["owner_user_id"] == owner_id
+        r = other.post("/history/runs/from_job/owned-job-1")
+        assert r.status_code == 403 and "another signed-in account" in r.json()["detail"]
+        assert client.post("/history/runs/from_job/owned-job-1").status_code == 201
+    finally:
+        del job_manager.ACTIVE_JOBS["owned-job-1"]
+
+
+def test_an_anonymous_job_can_be_saved_by_any_account(client):
+    job_manager.ACTIVE_JOBS["anon-job-1"] = job_manager.new_job("local", None)
+    job_manager.ACTIVE_JOBS["anon-job-1"] = job_manager._completed_job("local", {"raw_results": []}, {})
+    try:
+        assert client.post("/history/runs/from_job/anon-job-1").status_code == 201
+    finally:
+        del job_manager.ACTIVE_JOBS["anon-job-1"]

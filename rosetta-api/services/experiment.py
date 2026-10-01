@@ -110,7 +110,7 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
         axis_labels = [_axis_label(payload.mode, bool(pp)) for pp in axes]
         progress = {
             "total": cells, "completed": 0, "current_index": None,
-            "tasks": [{"name": f"{task_label(c['algorithm'], c['qubits'])} · {lbl}", "axis": lbl, "status": "queued"}
+            "tasks": [{"name": f"{task_label(c['algorithm'], c['qubits'], c.get('source'))} · {lbl}", "axis": lbl, "status": "queued"}
                       for lbl in axis_labels for c in resolved],
         }
         ACTIVE_JOBS[job_id]["progress"] = progress

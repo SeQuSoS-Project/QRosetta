@@ -112,14 +112,124 @@ function _canonical(statement) {
     return out;
 }
 
+const _FUNCTIONS = { sin: Math.sin, cos: Math.cos, tan: Math.tan, exp: Math.exp, ln: Math.log, sqrt: Math.sqrt };
+const _EXPR_TOKEN = /\s*(?:(\d+\.?\d*(?:[eE][-+]?\d+)?|\.\d+(?:[eE][-+]?\d+)?)|([A-Za-z_][A-Za-z0-9_]*)|(.))/y;
+
+/** The value of an OpenQASM 2.0 parameter expression with no variables, or null. */
+export function evaluateAngle(expression) {
+    const tokens = [];
+    _EXPR_TOKEN.lastIndex = 0;
+    const text = String(expression).trim();
+    while (_EXPR_TOKEN.lastIndex < text.length) {
+        const m = _EXPR_TOKEN.exec(text);
+        if (!m) return null;
+        if (m[1] !== undefined) tokens.push({ num: Number(m[1]) });
+        else if (m[2] !== undefined) tokens.push({ name: m[2] });
+        else if (m[3] !== undefined && m[3].trim()) tokens.push({ op: m[3] });
+    }
+    let i = 0;
+    const peek = () => tokens[i];
+    const take = op => (tokens[i] && tokens[i].op === op ? (i++, true) : false);
+    const primary = () => {
+        const t = tokens[i++];
+        if (!t) throw new Error('end');
+        if (t.num !== undefined) return t.num;
+        if (t.name === 'pi') return Math.PI;
+        if (t.name !== undefined && _FUNCTIONS[t.name] && take('(')) {
+            const v = sum();
+            if (!take(')')) throw new Error(')');
+            return _FUNCTIONS[t.name](v);
+        }
+        if (t.op === '(') {
+            const v = sum();
+            if (!take(')')) throw new Error(')');
+            return v;
+        }
+        if (t.op === '-') return -power();
+        if (t.op === '+') return power();
+        throw new Error('token');
+    };
+    const power = () => {
+        const base = primary();
+        return take('^') ? Math.pow(base, power()) : base;
+    };
+    const product = () => {
+        let v = power();
+        for (;;) {
+            if (take('*')) v *= power();
+            else if (take('/')) v /= power();
+            else return v;
+        }
+    };
+    const sum = () => {
+        let v = product();
+        for (;;) {
+            if (take('+')) v += product();
+            else if (take('-')) v -= product();
+            else return v;
+        }
+    };
+    try {
+        const value = sum();
+        return i === tokens.length && Number.isFinite(value) ? value : null;
+    } catch (_) {
+        return null;
+    }
+}
+
+const ANGLE_DIGITS = 12;
+
+function _canonicalAngle(value) {
+    const rounded = Number.parseFloat(value.toPrecision(ANGLE_DIGITS));
+    return String(Object.is(rounded, -0) ? 0 : rounded);
+}
+
+function _splitArguments(text) {
+    const parts = [];
+    let depth = 0, current = '';
+    for (const ch of text) {
+        if (ch === ',' && depth === 0) {
+            parts.push(current);
+            current = '';
+            continue;
+        }
+        if (ch === '(') depth++;
+        if (ch === ')') depth--;
+        current += ch;
+    }
+    parts.push(current);
+    return parts;
+}
+
+const _PARAMETER_LIST = /\b([A-Za-z_][A-Za-z0-9_]*)\s*\(((?:[^()]|\((?:[^()]|\([^()]*\))*\))*)\)/g;
+const _NOT_GATES = new Set(['if', ...Object.keys(_FUNCTIONS)]);
+
+/**
+ * `line` with every gate parameter that evaluates to a number (no variables) written as
+ * that number in radians to 12 significant digits, so pi/4, 0.25*pi and
+ * 0.7853981633974483 read the same. Parameters with variables are kept as written.
+ */
+export function canonicalAngles(line) {
+    return line.replace(_PARAMETER_LIST, (whole, name, args) => {
+        if (_NOT_GATES.has(name)) return whole;
+        const rewritten = _splitArguments(args).map(arg => {
+            const value = evaluateAngle(arg);
+            return value === null ? arg.trim() : _canonicalAngle(value);
+        });
+        return `${name}(${rewritten.join(', ')})`;
+    });
+}
+
 /**
  * Lines to compare for `text`. `comments` drops // and block comments, blank lines and
  * trailing whitespace; `header` drops the OPENQASM version and include statements;
  * `whitespace` puts one statement per line with single spaces, and each kept comment on a
- * line of its own. With no option set this is splitLines(text).
+ * line of its own; `angles` rewrites numeric gate parameters with canonicalAngles. With no
+ * option set this is splitLines(text).
  */
-export function comparableLines(text, { comments = false, header = false, whitespace = false } = {}) {
+export function comparableLines(text, { comments = false, header = false, whitespace = false, angles = false } = {}) {
     if (typeof text !== 'string') return [];
+    if (angles) return comparableLines(text, { comments, header, whitespace }).map(canonicalAngles);
     let source = comments ? stripComments(text) : text;
     if (header) {
         source = _segments(source).map(seg => seg.comment ? seg.text

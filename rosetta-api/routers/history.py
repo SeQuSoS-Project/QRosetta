@@ -83,7 +83,7 @@ def save_run(
 
 
 @router.post("/runs/from_job/{job_id}", response_model=schemas.RunHistoryResponse,
-             status_code=status.HTTP_201_CREATED, responses=responses(404, 409, 422))
+             status_code=status.HTTP_201_CREATED, responses=responses(403, 404, 409, 422))
 def save_run_from_job(
     job_id: str,
     response: Response,
@@ -97,8 +97,14 @@ def save_run_from_job(
     ``statevector_storage="removed_before_storage"``. Returns the saved run; its ``id`` is
     the run id (201). Saving a job the current user already saved returns that run (200)
     and stores nothing new, renaming it when a different run_name is given. 404 if the job id is unknown or expired; 409 if the job has not
-    finished, failed before any runner ran, or is an experiment."""
+    finished, failed before any runner ran, or is an experiment; 403 if another signed-in
+    account started it. A job submitted without a sign-in can be saved by any account that
+    holds its id."""
     report = job_report_or_error(job_id, "save")
+    owner = ACTIVE_JOBS[job_id].get("owner_user_id")
+    if owner is not None and owner != current_user.id:
+        raise HTTPException(status_code=403, detail=(
+            "This job was started by another signed-in account; only that account can save it."))
     with _job_save_lock(job_id):
         saved_runs = ACTIVE_JOBS[job_id].setdefault("saved_runs", {})
         existing = history_service.find_run(db, current_user.id, saved_runs.get(current_user.id))

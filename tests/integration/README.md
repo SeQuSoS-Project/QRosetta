@@ -18,6 +18,7 @@ The unit suite, which CI does run on every push, lives in `rosetta-api/tests/uni
 | `test_runner_contract_asymmetric.py` | **The important one.** Runs a deliberately asymmetric circuit through every enabled runner and checks the statevector and counts against the expected result. A symmetric smoke test (Bell, GHZ) passes even when a runner returns the all-zeros state or has its bit-order label backwards; this one does not. |
 | `integration_test_live.py` | End-to-end smoke test through nginx: the stack is up and a comparison completes. |
 | `test_opt_levels.py` | Each runner accepts its advertised optimization levels and reports the level it actually ran at. |
+| `test_compilers_live.py` | Every compile-only service is available and its image's `--self-test` passes; through the API every level compiles each self-test probe into text with the input's qubit count, text-counted metrics and, with Qiskit installed, the compile input's unitary (QMAP through its layout lines). Run it after any compiler version bump. |
 | `test_<sdk>_runner.py` | Per-backend checks for runners whose adapters needed particular attention. |
 
 `ACTIVE_STATEVECTOR_RUNNERS` in `test_runner_contract_asymmetric.py` must list exactly the

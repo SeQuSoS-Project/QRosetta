@@ -69,7 +69,7 @@ def _active_links(db: Session, user_id: int, run_id: str) -> list:
     return [link for link in links if is_active(link, now)]
 
 
-def create_link(db: Session, user_id: int, run_id: str, expires_in_days: int):
+def create_link(db: Session, user_id: int, run_id: str, expires_in_days: int, label: str = None):
     """``(link, token)`` for a new link to one of ``user_id``'s runs. RunNotFound for a run
     that is not theirs; TooManyLinks past the per-run limit."""
     if not MIN_EXPIRY_DAYS <= expires_in_days <= MAX_EXPIRY_DAYS:
@@ -80,7 +80,7 @@ def create_link(db: Session, user_id: int, run_id: str, expires_in_days: int):
         raise TooManyLinks(run_id)
     token = secrets.token_urlsafe(TOKEN_BYTES)
     link = models.ShareLink(token_hash=_hash(token), user_id=user_id, run_id=run_id,
-                            expires_at=_now() + timedelta(days=expires_in_days))
+                            expires_at=_now() + timedelta(days=expires_in_days), label=label)
     db.add(link)
     db.commit()
     db.refresh(link)
