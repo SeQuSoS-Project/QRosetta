@@ -31,7 +31,8 @@ class Settings(BaseSettings):
     CIRQ_COMPILER_URL: str = "http://cirq-compiler:8000"
     STAQ_COMPILER_URL: str = "http://staq-compiler:8000"
     QSYNTH_COMPILER_URL: str = "http://qsynth-compiler:8000"
-    MAX_COMPILE_JOBS: int = 14
+    QUARTZ_COMPILER_URL: str = "http://quartz-compiler:8000"
+    MAX_COMPILE_JOBS: int = 15
 
     PLATFORM_VERSION: str = os.getenv("QROSETTA_VERSION", "1.0.0")
 
@@ -331,6 +332,14 @@ class Settings(BaseSettings):
                 "optimization_levels": {
                     0: "Decompose to u3+cx (Qiskit), then SAT peephole synthesis of each CNOT slice for the fewest CNOTs",
                     1: "Decompose to u3+cx (Qiskit), then SAT peephole synthesis of each CNOT slice for the smallest CNOT depth",
+                },
+            },
+            "quartz": {
+                "base_url": self.QUARTZ_COMPILER_URL,
+                "name": "Quartz",
+                "enabled": True,
+                "optimization_levels": {
+                    0: "Decompose to h+x+rz+cx (Qiskit), then greedy rewriting with a generated ECC set until no rewrite lowers the gate count",
                 },
             },
         }

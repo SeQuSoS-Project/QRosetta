@@ -50,6 +50,7 @@ COMPILERS=(
   "cirq_compiler"
   "staq_compiler"
   "qsynth_compiler"
+  "quartz_compiler"
 )
 
 echo ">>> Starting Graceful Build..."

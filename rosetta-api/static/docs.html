@@ -1001,7 +1001,7 @@
                     comparison: compiled circuits are kept in the report's <code>compiled_circuits</code>,
                     apart from <code>raw_results</code>. Tick levels under <strong>Config → Compile-only
                     services</strong>, or send <code>compilers</code> (compiler id → list of distinct levels,
-                    at most 14 compiles per circuit) with <code>/compare</code>, <code>/compare_measured</code>
+                    at most 15 compiles per circuit) with <code>/compare</code>, <code>/compare_measured</code>
                     or <code>/run_batch_suite</code>; <code>GET /compilers</code> lists them.
                 </p>
                 <p>
@@ -1113,6 +1113,25 @@
                             python-sat 1.8.dev13, which PyPI no longer offers, so the image uses 1.8.dev14 and
                             installs its lock without dependency resolution. Up to 10 qubits every output is
                             checked against the input with Qiskit.</td></tr>
+                        <tr><td>Quartz 0.3.2</td><td>0</td><td>Qiskit translates the circuit to
+                            <code>h</code>, <code>x</code>, <code>rz</code> and <code>cx</code> (Nam's gate set);
+                            then <code>Graph::greedy_optimize</code> applies every rewrite from Quartz's ECC set
+                            that lowers the gate count, until none applies. The ECC set (equivalent
+                            subcircuits on 3 qubits with 2 symbolic parameters, up to 3 gates) is generated and
+                            verified by Quartz when the image is built, and the build fails unless its sha256
+                            matches the recorded one; the 4-gate set took 15 minutes on 32 cores and removed no
+                            more gates on eight test circuits. Quartz's search (<code>Graph::optimize</code>) is
+                            not offered, because it stops on wall-clock time, nor is its rotation merging (see
+                            the known issue below). Angles go to Quartz as exact fractions of π and come back
+                            the same way; the output keeps Quartz's gate lines with the input's registers,
+                            declarations and final measurements. Barriers are removed first, since Quartz
+                            rewrites across them; mid-circuit measurement, <code>reset</code> and
+                            <code>if</code> are refused, since Quartz drops measurements. The library is built
+                            with one fix to its big-integer code (see the known issue below). Compile time grows
+                            about with the square of the gate count after translation: 8 s for a 16-qubit QFT (3361
+                            gates), about 50 s for 8000 gates; a compile past the job's timeout is recorded as
+                            a timeout. Up to 10 qubits every output is checked against the input with
+                            Qiskit.</td></tr>
                     </tbody>
                 </table>
                 <p>
@@ -1367,6 +1386,32 @@
                                 differ from the input after about the eighth significant digit.</td>
                             <td><code>qreg q[1]; rz(0.3) q[0];</code> with <code>staq -O1</code> prints
                                 <code>rz(0.300000011920929) q[0];</code>.</td></tr>
+                        <tr><td>Quartz 0.3.2 (compile-only), big integers</td>
+                            <td>Angles are exact rationals (multiples of π) held in Quartz's own big-integer
+                                type. Shifting a zero by a whole number of 9-digit limbs left a leading zero
+                                limb, so the zero was not recognised and <code>gcd</code> recursed until the
+                                stack overflowed (segmentation fault, 6 of 400 random circuits). The image
+                                applies a one-line fix (<code>shift10-normalise.patch</code>: normalise after
+                                every shift); with it, 0 of 400 crashed or changed the unitary.</td>
+                            <td><code>quartz::Unsigned</code>: <code>1250000000000 % 625000000000</code> returns
+                                a zero stored as two limbs, and <code>gcd(1875000000000, 1250000000000)</code>
+                                never ends.</td></tr>
+                        <tr><td>Quartz 0.3.2 (compile-only), rotation merging</td>
+                            <td><code>Graph::rotation_merging(rz)</code> moves an <code>rz</code> past an
+                                <code>x</code> without negating its angle, which changes the unitary. 79 of 303
+                                random circuits changed when it ran before greedy rewriting. The Quartz compiler
+                                does not use it.</td>
+                            <td><code>qreg q[2]; rz(pi/2) q[1]; x q[1]; rz(-pi/4) q[1]; cx q[0],q[1];</code>
+                                becomes <code>x q[1]; rz(pi/4) q[1]; cx q[0],q[1];</code>; the angle should be
+                                −3π/4.</td></tr>
+                        <tr><td>Quartz 0.3.2 (compile-only), measurements and barriers</td>
+                            <td>Quartz's QASM reader drops <code>measure</code> statements and rewrites across
+                                barriers, both without a message. The Quartz compiler removes final measurements
+                                and barriers itself, adds the measurements back after rewriting and refuses
+                                mid-circuit measurement.</td>
+                            <td><code>qreg q[1]; creg c[1]; h q[0]; measure q[0] -&gt; c[0];</code> comes back
+                                as <code>h q[0];</code>; <code>h q[0]; barrier q[0]; h q[0];</code> comes back
+                                empty.</td></tr>
                         <tr><td>TorchQuantum</td>
                             <td>Rejects a circuit with more than one <code>qreg</code> when preprocessing is
                                 off (an Error, not a wrong result). With preprocessing on the API merges the
