@@ -80,7 +80,7 @@ export const _RUNNER_NAMES = {
     "qrisp": "Qrisp", "myqlm": "myQLM", "pyquil": "PyQuil",
     "torchquantum": "TorchQuantum", "quimb": "Quimb", "cuquantum": "cuQuantum",
     "bqskit": "BQSKit (compile)", "pyzx": "PyZX (compile)", "qmap": "QMAP (compile)",
-    "cirq-transformers": "Cirq (compile)", "staq": "staq (compile)",
+    "cirq-transformers": "Cirq (compile)", "staq": "staq (compile)", "qsynth": "Q-Synth (compile)",
 };
 
 export let _runnerPhases = {};

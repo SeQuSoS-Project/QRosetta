@@ -1001,7 +1001,7 @@
                     comparison: compiled circuits are kept in the report's <code>compiled_circuits</code>,
                     apart from <code>raw_results</code>. Tick levels under <strong>Config → Compile-only
                     services</strong>, or send <code>compilers</code> (compiler id → list of distinct levels,
-                    at most 12 compiles per circuit) with <code>/compare</code>, <code>/compare_measured</code>
+                    at most 14 compiles per circuit) with <code>/compare</code>, <code>/compare_measured</code>
                     or <code>/run_batch_suite</code>; <code>GET /compilers</code> lists them.
                 </p>
                 <p>
@@ -1103,6 +1103,16 @@
                             Registers, <code>creg</code> declarations and gate definitions are kept. staq reads
                             numbers in single precision (see the known issue below). Up to 10 qubits every
                             output is checked against the input with Qiskit.</td></tr>
+                        <tr><td>Q-Synth 5.1 (Aarhus University)</td><td>0, 1</td><td>Qiskit translates the
+                            circuit to <code>u3</code> and <code>cx</code>, the gate set Q-Synth takes; then
+                            <code>peephole_synthesis(slicing='cnot')</code> resynthesises each CNOT slice
+                            exactly with a SAT solver (CaDiCaL 1.9 through python-sat): the fewest CNOTs at
+                            level 0, the smallest CNOT depth at level 1. The output keeps the circuit's
+                            registers. A compile that reaches Q-Synth's 240 s solver limit is recorded as an
+                            error, because a partial result would depend on machine speed. Q-Synth 5.1 pins
+                            python-sat 1.8.dev13, which PyPI no longer offers, so the image uses 1.8.dev14 and
+                            installs its lock without dependency resolution. Up to 10 qubits every output is
+                            checked against the input with Qiskit.</td></tr>
                     </tbody>
                 </table>
                 <p>

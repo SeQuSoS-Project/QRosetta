@@ -70,7 +70,7 @@ def test_every_enabled_compiler_is_available():
 
 
 @pytest.mark.skipif(CONTAINER_RUNTIME is None, reason="no container runtime to reach the images")
-@pytest.mark.parametrize("compiler", ["bqskit", "pyzx", "qmap", "cirq", "staq"])
+@pytest.mark.parametrize("compiler", ["bqskit", "pyzx", "qmap", "cirq", "staq", "qsynth"])
 def test_image_self_test_passes(compiler):
     result = subprocess.run([CONTAINER_RUNTIME, "exec", f"{compiler}-compiler", "python", "main.py", "--self-test"],
                             capture_output=True, text=True, timeout=900)

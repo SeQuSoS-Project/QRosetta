@@ -517,6 +517,28 @@ services:
           cpus: "1.0"
           memory: "512M"
 
+  qsynth_compiler:
+    build:
+      context: .
+      dockerfile: ./compilers/qsynth-compiler/Dockerfile
+      args:
+        - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+    container_name: qsynth-compiler
+    environment:
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
+      - NUMBA_NUM_THREADS=1
+      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+    networks:
+      - isolated_net
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: "512M"
+
 # --- NETWORK DEFINITIONS ---
 networks:
   public_net:

@@ -30,7 +30,8 @@ class Settings(BaseSettings):
     QMAP_COMPILER_URL: str = "http://qmap-compiler:8000"
     CIRQ_COMPILER_URL: str = "http://cirq-compiler:8000"
     STAQ_COMPILER_URL: str = "http://staq-compiler:8000"
-    MAX_COMPILE_JOBS: int = 12
+    QSYNTH_COMPILER_URL: str = "http://qsynth-compiler:8000"
+    MAX_COMPILE_JOBS: int = 14
 
     PLATFORM_VERSION: str = os.getenv("QROSETTA_VERSION", "1.0.0")
 
@@ -321,6 +322,15 @@ class Settings(BaseSettings):
                     1: "staq -O1: rotation folding and simplification",
                     2: "staq -O2: inline gates, simplification, rotation folding",
                     3: "staq -O3: -O2 plus CNOT resynthesis",
+                },
+            },
+            "qsynth": {
+                "base_url": self.QSYNTH_COMPILER_URL,
+                "name": "Q-Synth",
+                "enabled": True,
+                "optimization_levels": {
+                    0: "Decompose to u3+cx (Qiskit), then SAT peephole synthesis of each CNOT slice for the fewest CNOTs",
+                    1: "Decompose to u3+cx (Qiskit), then SAT peephole synthesis of each CNOT slice for the smallest CNOT depth",
                 },
             },
         }
