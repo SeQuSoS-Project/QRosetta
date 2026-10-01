@@ -84,7 +84,7 @@ items:
           resources:
             limits:
               cpu: "0.5"
-              memory: "512Mi"
+              memory: "2Gi"
             requests:
               cpu: "100m"
               memory: "256Mi"

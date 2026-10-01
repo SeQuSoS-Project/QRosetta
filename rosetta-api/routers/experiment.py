@@ -12,6 +12,7 @@ from qrosetta_commons.helpers import get_logger
 from schemas import ExperimentPayload, JobStatusResponse
 from routers.errors import responses
 from services.availability import require_available
+from services.job_store import JOB_NOT_FOUND
 from services.security import limiter
 from services.job_manager import ACTIVE_JOBS, new_job
 from services.experiment import worker_experiment, build_bundle_zip
@@ -69,7 +70,7 @@ async def download_experiment_bundle(job_id: str):
     has not finished or failed."""
     job = ACTIVE_JOBS.get(job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail=JOB_NOT_FOUND)
     if job.get("kind") != "experiment" and "bundle_files" not in job:
         raise HTTPException(status_code=404, detail="This job is not an experiment and has no bundle; use GET /jobs/{job_id}/report or POST /jobs/{job_id}/export.")
     if job.get("status") == "failed":

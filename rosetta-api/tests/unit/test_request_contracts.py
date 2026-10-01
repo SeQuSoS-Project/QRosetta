@@ -232,9 +232,10 @@ def test_batch_literal_task_is_validated_up_front(client):
 
 
 def test_unknown_job_is_404_with_detail(client):
+    from services.job_store import JOB_NOT_FOUND
     for r in (client.get("/jobs/nope"), client.get("/jobs/nope/report"),
               client.post("/jobs/nope/export", json={}), client.get("/experiments/nope/bundle")):
-        assert r.status_code == 404 and r.json() == {"detail": "Job not found"}
+        assert r.status_code == 404 and r.json() == {"detail": JOB_NOT_FOUND}
 
 
 def test_every_runner_failed_is_a_failed_job_with_results(client, monkeypatch):

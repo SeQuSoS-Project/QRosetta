@@ -31,13 +31,13 @@ def client(monkeypatch):
     return c
 
 
-@pytest.mark.parametrize("value", [{"optimization_level": 1}, "1", True, [0, "x"], 9, [0, 7]])
+@pytest.mark.parametrize("value", [{"optimization_level": 1}, "1", True, [0, "x"], 9, [0, 7], []])
 def test_malformed_runner_config_is_a_readable_422(client, value):
     r = client.post("/compare", json={"qasm_string": QASM, "runner_config": {"qiskit": value}})
     assert r.status_code == 422, r.text
     detail = r.json()["detail"]
     assert detail == [{"loc": ["body", "runner_config", "qiskit"],
-                       "msg": "runner_config values must be an int 0–3 or a list of ints 0–3",
+                       "msg": "runner_config values must be an int 0–3 or a non-empty list of ints 0–3",
                        "type": "value_error"}]
     assert "0x" not in r.text and "function" not in r.text
 
@@ -157,3 +157,21 @@ def test_annotation_records_requested_level_and_timeout_kind():
     assert queued["dispatch_status"] == "timeout" and queued["timeout_kind"] == "queue"
     ran = annotate_result({"error": "TIMEOUT (60s): x", "timed_out": True}, specs[0], {}, "t")
     assert ran["timeout_kind"] == "run"
+
+
+def test_runner_config_outside_target_simulators_is_400(client):
+    r = client.post("/compare", json={"qasm_string": QASM, "target_simulators": ["qulacs"],
+                                      "runner_config": {"qiskit": 0}})
+    assert r.status_code == 400 and "not in target_simulators: qiskit" in r.json()["detail"]
+
+
+@pytest.mark.parametrize("field,value", [("label", "a\x00b"), ("label", "x" * 201)])
+def test_experiment_label_rejects_control_characters_and_long_text(client, field, value):
+    body = {"circuits": [{"source": "preset", "algorithm": "bell", "qubits": 2}], field: value}
+    assert client.post("/experiments", json=body).status_code == 422
+
+
+def test_non_finite_and_huge_parameters_are_400(client):
+    for param in ("1e308", "1e7", "nan", "1/0"):
+        r = client.post("/compare", json={"qasm_string": QASM.replace("h q[0];", f"rx({param}) q[0];")})
+        assert r.status_code == 400 and r.json()["detail"].startswith("Invalid gate parameter:"), (param, r.text)

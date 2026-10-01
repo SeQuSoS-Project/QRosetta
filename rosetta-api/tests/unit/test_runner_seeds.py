@@ -97,3 +97,19 @@ def test_job_keeps_full_copy_and_serves_display_copy():
     assert shown["statevector_omitted_for_display"] is True
     batch = job_manager.display_report({"benchmark_summary": [report]})
     assert batch["benchmark_summary"][0]["raw_results"][0]["statevector_omitted_for_display"]
+
+
+def test_job_table_keeps_the_full_report_on_disk(tmp_path, monkeypatch):
+    from services import job_store
+    monkeypatch.setattr(job_store, "SPILL_DIR", str(tmp_path))
+    big = "A" * (job_manager._MAX_DISPLAY_STATEVECTOR_B64_CHARS + 1)
+    report = {"raw_results": [{"simulator": "qiskit", "statevector": big, "x": 1.5}]}
+    table = job_store.JobTable()
+    table["j1"] = job_manager._completed_job("t", report, {})
+    stored = dict.__getitem__(table, "j1")
+    assert isinstance(stored["full_results"], job_store.SpilledReport)
+    assert job_store.full_report(table["j1"]) == report
+    assert list(tmp_path.iterdir())
+    table.pop("j1", None)
+    assert not list(tmp_path.iterdir())
+    assert table.pop("missing", None) is None

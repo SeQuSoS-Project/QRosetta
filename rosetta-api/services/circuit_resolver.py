@@ -377,6 +377,35 @@ def _evaluated_statement(stmt: str) -> str:
     return f"{head[:open_at]}({', '.join(values)}){args}"
 
 
+MAX_PARAMETER_MAGNITUDE = 1e6
+
+
+def statement_parameters(stmt: str) -> list:
+    """The parameter expressions of a gate statement (``rx(pi/2) q[0];`` -> ["pi/2"]), [] for
+    a statement without a parameter list or for a definition."""
+    if _GATE_NAME_RE.match(stmt):
+        return []
+    op, head, _args = _split_op(stmt)
+    if op is None:
+        return []
+    open_at = head.find("(", _OP_RE.match(head).end())
+    if open_at < 0 or not head.endswith(")"):
+        return []
+    return [p for p in _split_params(head[open_at + 1:-1]) if p.strip()]
+
+
+def check_parameter_value(text: str) -> float:
+    """Value of a constant gate parameter; ParameterExpressionError when it is not a finite
+    constant expression or its magnitude exceeds MAX_PARAMETER_MAGNITUDE."""
+    value = evaluate_constant_expression(text)
+    if abs(value) > MAX_PARAMETER_MAGNITUDE:
+        raise ParameterExpressionError(
+            f"|{value:g}| exceeds {MAX_PARAMETER_MAGNITUDE:g}: at that size a double "
+            f"cannot hold the angle modulo 2*pi precisely, and the SDKs reduce it in "
+            f"different ways")
+    return value
+
+
 def evaluate_caret_parameters(qasm: str):
     """Replace every parameter of a top-level gate statement that contains '^' with its
     value, for pytket's parser, which rejects '^'.

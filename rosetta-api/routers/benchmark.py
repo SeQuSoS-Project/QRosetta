@@ -11,6 +11,7 @@ from services.validator import (
 from schemas import QasmPayload, MeasuredQasmPayload, BatchPayload, JobStatusResponse
 from services.security import limiter
 from services.availability import require_available
+from services.job_store import JOB_NOT_FOUND
 from config import settings
 from services.job_manager import (
     ACTIVE_JOBS,
@@ -37,7 +38,7 @@ async def get_job_status(job_id: str):
     """Poll the status of any background job started by /compare, /compare_measured,
     /run_batch_suite, or /experiments. 404 if the job id is unknown."""
     if job_id not in ACTIVE_JOBS:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail=JOB_NOT_FOUND)
 
     job_data = ACTIVE_JOBS[job_id]
     return {

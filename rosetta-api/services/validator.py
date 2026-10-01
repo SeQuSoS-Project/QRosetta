@@ -8,8 +8,9 @@ from config import settings
 from qrosetta_commons.counts import parse_measurement_layout
 from qrosetta_commons.helpers import get_num_qubits_from_qasm
 from services.circuit_resolver import (
-    ParameterExpressionError, StatevectorIncompatible, evaluate_caret_parameters,
-    split_statements, strip_terminal_measurements,
+    ParameterExpressionError, StatevectorIncompatible, check_parameter_value,
+    evaluate_caret_parameters, split_statements, statement_parameters,
+    strip_terminal_measurements,
 )
 from services.reserved_gate_names import reserved_gate_reason
 
@@ -66,6 +67,13 @@ def validate_runner_ids(target_simulators=None, runner_config=None, runner_phase
     unknown = sorted({name for name in named if name not in services})
     disabled = sorted({name for name in (target_simulators or [])
                        if name in services and not services[name].get("enabled", True)})
+    outside = sorted({name for name in list(runner_config or {}) + list(runner_phases or {})
+                      if target_simulators and name in services and name not in target_simulators})
+    if outside and not unknown and not disabled:
+        raise HTTPException(
+            status_code=400,
+            detail=(f"runner_config or runner_phases names runner(s) not in target_simulators: "
+                    f"{', '.join(outside)}. Add them to target_simulators or remove them."))
     if not unknown and not disabled:
         return
     parts = []
@@ -181,6 +189,18 @@ def check_parameter_expressions(qasm: str) -> None:
         _bad_request(f"Invalid gate parameter: {exc}.")
 
 
+def check_parameter_values(qasm: str, statements: list = None) -> None:
+    """400 for a top-level gate parameter that is not a finite constant expression or whose
+    magnitude exceeds MAX_PARAMETER_MAGNITUDE (``check_parameter_value``)."""
+    statements = split_statements(qasm) if statements is None else statements
+    for stmt in statements:
+        for param in statement_parameters(stmt):
+            try:
+                check_parameter_value(param)
+            except ParameterExpressionError as exc:
+                _bad_request(f"Invalid gate parameter: '{param.strip()}' in '{stmt.strip()}': {exc}.")
+
+
 def validate_request(qasm: str, mode: str = "statevector", bypass_limits: bool = False,
                      apply_preprocessing: bool = True, check_reserved_names: bool = True):
     """Raise HTTPException for an oversized, too-complex, malformed, qubit-less or too-wide
@@ -211,6 +231,7 @@ def validate_request(qasm: str, mode: str = "statevector", bypass_limits: bool =
     check_qasm_syntax(qasm)
     if check_reserved_names:
         check_gate_names(qasm, statements)
+    check_parameter_values(qasm, statements)
     if apply_preprocessing:
         check_parameter_expressions(qasm)
     qubit_count = get_num_qubits_from_qasm(qasm)

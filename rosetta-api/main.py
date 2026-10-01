@@ -12,6 +12,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import JSONResponse
 from services.security import limiter
 from services.job_manager import ACTIVE_JOBS
+from services.job_store import reset_spill_dir
 from config import settings
 from qrosetta_commons.helpers import get_logger
 from contextlib import asynccontextmanager
@@ -44,6 +45,7 @@ async def _cleanup_old_jobs():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    reset_spill_dir()
     cleanup_task = asyncio.create_task(_cleanup_old_jobs())
     yield
     cleanup_task.cancel()

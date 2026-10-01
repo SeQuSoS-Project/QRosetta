@@ -20,7 +20,7 @@ Int = Annotated[int, BeforeValidator(_reject_bool)]
 Seed = Annotated[StrictInt, Field(ge=0)]
 OptimizationLevel = Annotated[Int, Field(ge=0, le=3)]
 
-RUNNER_CONFIG_MESSAGE = "runner_config values must be an int 0–3 or a list of ints 0–3"
+RUNNER_CONFIG_MESSAGE = "runner_config values must be an int 0–3 or a non-empty list of ints 0–3"
 
 
 def _is_level(value) -> bool:
@@ -30,7 +30,7 @@ def _is_level(value) -> bool:
 def _runner_config_value(value):
     if _is_level(value):
         return value
-    if isinstance(value, list) and all(_is_level(v) for v in value):
+    if isinstance(value, list) and value and all(_is_level(v) for v in value):
         return list(value)
     raise ValueError(RUNNER_CONFIG_MESSAGE)
 
@@ -42,6 +42,15 @@ RunnerConfigValue = Annotated[
                               {"type": "array", "items": {"type": "integer", "minimum": 0, "maximum": 3}}]}),
 ]
 RunnerConfig = Dict[str, RunnerConfigValue]
+
+
+def _printable_text(value):
+    if isinstance(value, str) and any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise ValueError("must not contain control characters")
+    return value
+
+
+Label = Annotated[str, BeforeValidator(_printable_text), Field(max_length=200)]
 TimingRepeats = Annotated[Int, Field(ge=1, le=settings.MAX_TIMING_REPEATS)]
 RunnerPhases = Dict[str, Int]
 ExecutionTarget = Literal["local", "kubernetes"]
@@ -172,7 +181,7 @@ class GenerateCircuitPayload(_Request):
 
 class BenchmarkTask(_Request):
     """One circuit within a batch run (POST /run_batch_suite)."""
-    algorithm: Optional[str] = Field(None, description="Circuit identifier: a preset family name, or the file name for a bundled benchmark circuit. Required unless qasm_string is given, where it is only a label.")
+    algorithm: Optional[Label] = Field(None, description="Circuit identifier: a preset family name, or the file name for a bundled benchmark circuit. Required unless qasm_string is given, where it is only a label.")
     qubits: Optional[Int] = Field(None, ge=0, description="Number of qubits for a generated preset or MQT Bench circuit; required for those sources. Optional and ignored for QASMBench and literal circuits, whose qubit count is read from the QASM.")
     qasm_string: Optional[str] = Field(None, description="User-supplied OpenQASM 2.0 text. When present, this is run as-is and algorithm/qubits/source are ignored.")
     source: Optional[CircuitSource] = Field(None, description="Where to resolve the circuit from when qasm_string is absent: None or 'preset' generates it from the built-in circuit library; 'qasmbench' or 'mqt' loads it from the corresponding bundled benchmark suite; 'qasm' requires qasm_string.")
@@ -213,10 +222,10 @@ class ExperimentCircuit(_Request):
              "qasm"      -> user-supplied OpenQASM in qasm_string
     """
     source: CircuitSource = Field("preset", description="Where to resolve this circuit from: 'preset', 'qasmbench', 'mqt', or 'qasm'.")
-    algorithm: Optional[str] = Field(None, description="Circuit identifier for the 'preset', 'qasmbench', or 'mqt' sources.")
+    algorithm: Optional[Label] = Field(None, description="Circuit identifier for the 'preset', 'qasmbench', or 'mqt' sources.")
     qubits: Int = Field(0, ge=0, description="Number of qubits, for the 'preset' and 'mqt' sources. For 'qasmbench' and 'qasm' the count is read from the QASM.")
     qasm_string: Optional[str] = Field(None, description="User-supplied OpenQASM 2.0 text, for source='qasm'.")
-    name: Optional[str] = Field(None, description="Display label for this circuit in the frozen bundle; defaults to a name derived from algorithm/qubits.")
+    name: Optional[Label] = Field(None, description="Display label for this circuit in the frozen bundle; defaults to a name derived from algorithm/qubits.")
 
 class ExperimentPayload(_Request):
     """Request body for POST /experiments — run a fixed set of circuits across the fleet
@@ -237,7 +246,7 @@ class ExperimentPayload(_Request):
     seed: Optional[Seed] = Field(None, description=_SEED_DESCRIPTION + " One master seed covers every circuit and axis and is recorded in the manifest.")
     thresholds: Optional[AgreementThresholds] = Field(None, description="Override the default agreement thresholds for this experiment.")
     keep_statevectors: StrictBool = Field(False, description="Keep full statevectors in the frozen results bundle. Default strips them to a sha256 hash + length to keep the bundle small; the live report is unaffected either way.")
-    label: Optional[str] = Field(None, description="Human-readable name for this experiment, recorded in the manifest.")
+    label: Optional[Label] = Field(None, description="Human-readable name for this experiment, recorded in the manifest.")
 
     @field_validator("preprocessing_modes")
     @classmethod
@@ -306,7 +315,7 @@ class ExportPayload(_Request):
     """Options for exporting a completed report as a citable artifact."""
     format: Literal["ro-crate"] = Field("ro-crate", description="Export format. Only 'ro-crate' (an RO-Crate 1.1 archive conforming to the Process Run Crate profile) is accepted.")
     include_statevectors: StrictBool = Field(False, description="Include full statevectors in the export. Default strips them to keep the archive small.")
-    author_name: Optional[str] = Field(None, description="Author name recorded in the crate's metadata.")
+    author_name: Optional[Label] = Field(None, description="Author name recorded in the crate's metadata.")
     author_affiliation: Optional[str] = Field(None, description="Author affiliation recorded in the crate's metadata.")
     publication_artifacts: Optional[PublicationArtifactsSelection] = Field(None, description="Optionally bundle publication-ready figures/tables into the crate alongside the raw results.")
 

@@ -11,6 +11,7 @@ import random
 import time
 from fastapi import HTTPException
 from services.availability import filter_available
+from services.job_store import JOB_NOT_FOUND, JobTable, full_report
 from services.validator import validate_request
 from services.dispatcher import (
     STATEVECTOR_RUNNER_URLS,
@@ -35,7 +36,7 @@ from services.circuit_resolver import (
 
 logger = get_logger("rosetta-job-manager")
 
-ACTIVE_JOBS = {}
+ACTIVE_JOBS = JobTable()
 
 SEED_MAX = 2**31 - 1
 
@@ -393,14 +394,14 @@ def job_report_or_error(job_id: str, action: str) -> dict:
     experiment job, an unfinished job, or a job with no report (failed before dispatch)."""
     job = ACTIVE_JOBS.get(job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail=JOB_NOT_FOUND)
     if is_experiment_job(job):
         raise HTTPException(status_code=409, detail=experiment_report_detail(job_id))
     if job.get("status") not in ("completed", "failed"):
         raise HTTPException(status_code=409, detail=f"The job has not finished yet (status: {job.get('status')}); poll GET /jobs/{job_id}.")
     if not job.get("full_results"):
         raise HTTPException(status_code=409, detail=f"This job failed before any runner ran and has no report to {action}: {job.get('error')}")
-    return job["full_results"]
+    return full_report(job)
 
 
 async def _run_single_job(job_id: str, execution_target: str, runner_statuses: dict, run_coro):

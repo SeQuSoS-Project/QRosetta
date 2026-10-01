@@ -46,7 +46,7 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: "512M"
+          memory: "2G"
 
   # --- Services 3-10: The Runners ( The Hands ) ---
 
