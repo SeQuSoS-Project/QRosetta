@@ -31,8 +31,12 @@ timed (1 to 10, default 1). With one timed run every timing is a single sample
 (`timing_samples = 1`); with more, the time fields are medians and the per-run samples, mean
 and standard deviation are recorded beside them. Every runner is started with five thread
 variables set to 1: `OMP_NUM_THREADS`, `MKL_NUM_THREADS`, `OPENBLAS_NUM_THREADS`,
-`NUMEXPR_NUM_THREADS` and `NUMBA_NUM_THREADS`. Each runner has 0.5 CPU and, locally, 512 MiB of
-memory (TorchQuantum 1 GiB). `memory_method` and `process_peak_rss_method` record `vmhwm`, or the fallback used
+`NUMEXPR_NUM_THREADS` and `NUMBA_NUM_THREADS`. Each runner has a 1-CPU quota and, locally, 512 MiB of
+memory (TorchQuantum 1 GiB). Every run records the CPU-quota throttling and container CPU time over
+its simulation window, the CPUs it ran on, and how many other runs overlapped it. For timings meant
+for comparison, use exclusive runs (`exclusive: true`, one backend at a time with no other run on the
+server), at least three jobs with `timing_repeats` of 5; the manual's "Timing and memory
+methodology" section gives the protocol. `memory_method` and `process_peak_rss_method` record `vmhwm`, or the fallback used
 (`sampled_10ms`, `getrusage`) where the kernel counter is unavailable.
 
 Across backends, per run, every pair gets an agreement label, computed in the basis the two
@@ -93,7 +97,7 @@ The web UI runs every enabled backend unless you deselect some in the Config dra
 cuQuantum runner is qiskit-aer-gpu 0.15.1 with cuStateVec enabled, on an NVIDIA GPU. On a host
 without one, `GET /runners` marks it unavailable with a reason, the Config drawer shows it
 greyed out, and it is not dispatched. Its kernels run on the GPU; its host-side work runs under
-the same 0.5-CPU quota as the other runners, so its times compare different hardware. Memory
+the same CPU quota as the other runners, so its times compare different hardware. Memory
 fields are host RSS: GPU device memory is not measured, and GPU runs are not ranked by memory.
 
 Braket and ProjectQ ship with the stack but are disabled in `rosetta-api/config.py` because of

@@ -104,7 +104,13 @@ The instrument runs, in order: the qubit-limit check; `compile_fn` between t0 an
 RNG) under the memory monitor but outside the clock; `execute_fn` between t2 and t3
 (`simulation_time_sec` and `simulation_cpu_time_sec`); and `postprocess_fn` outside the
 window. If `compile_fn` mutates the circuit (adds `save_statevector`, rebases in place), set
-`CompileResult.transpiled_qasm` yourself so the captured text matches what ran.
+`CompileResult.transpiled_qasm` yourself so the captured text matches what ran, or mutate a copy
+and serialise the original in `serialize_fn`. Gate count and depth come from `transpiled_qasm`;
+if that text does not reflect what executes (PennyLane decomposes `QubitUnitary` only in the text),
+pass `gate_metrics_fn(compiled)` returning `(gate_count, depth, basis)`. Keep every thread and process
+inside the simulating process: work in a worker pool escapes the CPU and memory measurement, and the
+results flag it (`simulation_cgroup_cpu_time_sec` above `simulation_cpu_time_sec`). Build the SDK's
+executable object in `compile_fn` where the SDK allows it.
 
 Return values:
 
@@ -331,7 +337,7 @@ my_sdk_runner:
   deploy:
     resources:
       limits:
-        cpus: "0.5"
+        cpus: "1.0"
         memory: "512M"
 ```
 

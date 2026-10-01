@@ -916,7 +916,8 @@
                     <li><strong>Rankings</strong> include only successful runs. Failed runs, and GPU runs in
                         the memory ranking, are listed under <code>unranked</code> with a reason, and the UI
                         shows them after the ranked rows. The Performance and Resources tables have a Device
-                        column, and the batch summary tags the device of each Fastest and Lightest backend.</li>
+                        column, and the batch summary tags the device of the backend in its "Fastest (total time)" and
+                        "Lowest process peak RSS" columns.</li>
                 </ul>
             </section>
 
@@ -1077,8 +1078,10 @@
                     <li><strong>Permutation search is bounded.</strong> Exhaustive qubit-permutation matching is
                         capped at 7 qubits. Larger cases report <code>too_many_qubits</code> instead of
                         searching.</li>
-                    <li><strong>Timings are single samples by default.</strong> One warm-up and one timed run
-                        per backend unless Timing repeats is set above 1 (at most 10).</li>
+                    <li><strong>Default timings are not a benchmark.</strong> By default each backend has one
+                        timed run and all backends run at the same time, competing for the host. Use the protocol in
+                        "Timing and memory methodology" (exclusive runs, several repeats and jobs) for comparisons.
+                        Results hold for one host, a 1-CPU quota and one thread.</li>
                     <li><strong>Pairwise flags can concentrate on one backend.</strong> Every pair that
                         shares a backend reuses its sample, so one unusual sample can make several of that
                         backend's pairs distinguishable at once. When all the flags of a run involve one
