@@ -3,6 +3,7 @@
 from fastapi import HTTPException
 
 from schemas.benchmark import has_control_characters
+from services.export_compiled import compiler_keys
 from services.exporter import invalid_runner_keys
 
 
@@ -28,6 +29,12 @@ def report_problems(results) -> list:
                              or has_control_characters(name)):
         problems.append("run_name must be text of at most 200 characters without control "
                         "characters or line separators")
+    for report in reports:
+        keys = compiler_keys(report) if isinstance(report, dict) else []
+        repeated = sorted({k for k in keys if keys.count(k) > 1})
+        if repeated:
+            problems.append("compiled_circuits repeats compiler key(s) " + ", ".join(repr(k) for k in repeated[:5]))
+            break
     if not problems:
         bad = invalid_runner_keys(results)
         if bad:

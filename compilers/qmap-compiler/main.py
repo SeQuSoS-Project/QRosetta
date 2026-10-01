@@ -4,10 +4,7 @@ qubit count, after Qiskit decomposes it to u3 and cx, the gate set QMAP maps."""
 from fastapi import FastAPI
 from mqt.core import load
 from mqt.qmap.sc import Architecture, Configuration, Method, map_
-import itertools
-
 from qiskit import QuantumCircuit, qasm2, transpile
-from qiskit.circuit.library import PermutationGate
 from qiskit.quantum_info import Operator
 
 from qrosetta_commons.compile_service import (
@@ -37,6 +34,12 @@ def _decompose(qasm: str) -> str:
                         - {"barrier"})
     if unexpected:
         raise ValueError(f"decomposition left gates QMAP cannot map: {unexpected}")
+    used = {circuit.find_bit(q).index for inst in circuit.data if inst.operation.name != "barrier"
+            for q in inst.qubits}
+    idle = sorted(set(range(circuit.num_qubits)) - used)
+    if idle:
+        raise ValueError(f"qubit(s) {idle} have no gates; QMAP 3.10 then records a qubit layout "
+                         f"that does not match its output, so the circuit is not mapped")
     return qasm2.dumps(circuit)
 
 
@@ -70,14 +73,33 @@ PIPELINES = {
 }
 
 
+def _layout(output_qasm: str, tag: str) -> list:
+    line = next(line for line in output_qasm.splitlines() if line.startswith(f"// {tag} "))
+    return [int(x) for x in line.split()[2:]]
+
+
 def equivalent(input_qasm: str, output_qasm: str) -> bool:
-    """Output unitary equal to the input's up to a qubit relabelling at input and at output
-    (the layouts QMAP chose), compared by Qiskit; for small probe circuits only."""
-    target = Operator(QuantumCircuit.from_qasm_str(input_qasm))
-    mapped = Operator(QuantumCircuit.from_qasm_str(output_qasm))
-    labels = list(itertools.permutations(range(target.num_qubits)))
-    return any((Operator(PermutationGate(list(after))) @ mapped @ Operator(PermutationGate(list(before))))
-               .equiv(target, atol=1e-8) for before in labels for after in labels)
+    """The output, read through its '// i' and '// o' layout lines (entry k is the physical
+    qubit holding logical qubit k), has the input's unitary; compared by Qiskit."""
+    source = QuantumCircuit.from_qasm_str(input_qasm)
+    mapped = QuantumCircuit.from_qasm_str(output_qasm)
+    start, end = _layout(output_qasm, "i"), _layout(output_qasm, "o")
+    n = source.num_qubits
+    if sorted(start) != list(range(n)) or sorted(end) != list(range(n)):
+        return False
+    logical = QuantumCircuit(n)
+    wire_of_physical = {physical: k for k, physical in enumerate(start)}
+    logical.compose(mapped.remove_final_measurements(inplace=False),
+                    qubits=[wire_of_physical[p] for p in range(n)], inplace=True)
+    holds = [None] * n
+    for k, physical in enumerate(end):
+        holds[wire_of_physical[physical]] = k
+    for wire in range(n):
+        while holds[wire] != wire:
+            other = holds[wire]
+            logical.swap(wire, other)
+            holds[wire], holds[other] = holds[other], holds[wire]
+    return Operator(logical).equiv(Operator(source), atol=1e-8)
 
 
 @with_sdk_versions

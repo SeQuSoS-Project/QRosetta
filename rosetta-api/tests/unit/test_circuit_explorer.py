@@ -98,8 +98,8 @@ def test_each_option_removes_only_what_it_names():
         ("comparableLines", text, {"comments": True}),
         ("comparableLines", text, {"header": True}),
         ("comparableLines", "h  q[0] ; x q[1];", {"whitespace": True}))
-    assert comments == ['OPENQASM 2.0;', 'include "a//b.inc"; ', 'h q[0];']
-    assert header == ['include "a//b.inc"; // note', 'h q[0];']
+    assert comments == ['OPENQASM 2.0;', 'include "a//b.inc";', 'h q[0];']
+    assert header == ['// note', 'h q[0];']
     assert whitespace == ["h q[0];", "x q[1];"]
 
 
@@ -190,3 +190,32 @@ def test_compile_input_and_compiled_panes_follow_the_executed_ones():
     assert qmap["text"] is None and qmap["status"] == "skipped" and qmap["compilerName"] is None
     (source,) = _call(("sourcePaneId", pyzx, panes))
     assert source == "compile-input"
+
+
+def test_comment_removal_leaves_no_trailing_whitespace():
+    a, b = _call(("comparableLines", "h q[0]; // c\n", {"comments": True}),
+                 ("comparableLines", "h q[0];\n", {"comments": True}))
+    assert a == b == ["h q[0];"]
+
+
+def test_whitespace_mode_keeps_comments_on_their_own_lines():
+    text = "qreg q[3];\n// bell pair then {\nh q[0];\ncx q[0],q[1]; // entangle\ngate g a { h a; } // x\n"
+    (lines,) = _call(("comparableLines", text, {"whitespace": True}))
+    assert lines == ["qreg q[3];", "// bell pair then {", "h q[0];", "cx q[0], q[1];", "// entangle",
+                     "gate g a {", "h a;", "}", "// x"]
+    edited = text.replace("bell pair then", "bell pair, then")
+    (other,) = _call(("comparableLines", edited, {"whitespace": True}))
+    assert [x for x in lines if x not in other] == ["// bell pair then {"]
+
+
+def test_header_option_removes_a_one_line_header_but_not_comments():
+    one_line, commented = _call(
+        ("comparableLines", 'OPENQASM 2.0; include "qelib1.inc";\nh q[0];', {"header": True}),
+        ("comparableLines", '// include "x.inc";\nh q;', {"header": True}))
+    assert one_line == ["h q[0];"]
+    assert commented == ['// include "x.inc";', "h q;"]
+
+
+def test_line_break_only_differences_are_detected():
+    crlf, same = _call(("differOnlyInLineBreaks", "a\r\nb", "a\nb"), ("differOnlyInLineBreaks", "a\nb", "a\nb"))
+    assert crlf is True and same is False

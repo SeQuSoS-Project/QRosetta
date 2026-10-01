@@ -7,17 +7,18 @@ import sys
 from qrosetta_commons.cpu import apply_cpu_affinity
 from qrosetta_commons.helpers import (
     GATE_METRICS_FROM_QASM, MAX_QUBITS_MEASURED, ExecutionSlots, _stamp_code_sha,
-    check_qubits_limit, count_qasm_gates_and_depth, run_cli_job,
+    check_qubits_limit, count_qasm_gates_and_depth, get_num_qubits_from_qasm, run_cli_job,
 )
 
 COMPILE_MAX_QUBITS = MAX_QUBITS_MEASURED
 
 _PROBE_HEADER = 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[3];\n'
 SELF_TEST_PROBES = {
-    "pauli_then_rotation": "x q[0];\nrx(0.7) q[0];\ns q[1];\nry(0.4) q[1];\n",
+    "pauli_then_rotation": "x q[0];\nrx(0.7) q[0];\ns q[1];\nry(0.4) q[1];\nh q[2];\n",
     "controlled_rotations": "h q[0];\ncu3(0.3,0.2,0.1) q[0],q[1];\ncu1(0.25*pi) q[1],q[2];\ncrz(0.6) q[0],q[2];\n",
     "swap_and_toffoli": "h q[0];\nswap q[0],q[2];\nccx q[0],q[1],q[2];\nt q[1];\n",
     "entangle_far_qubits": "h q[0];\ncx q[0],q[2];\nrz(1.1) q[2];\ncx q[2],q[1];\nh q[1];\n",
+    "classical_register_declared": "creg c[3];\nh q[0];\ncx q[0],q[1];\nry(0.3) q[2];\n",
 }
 
 
@@ -69,9 +70,9 @@ def register_compiler_endpoint(app, process_compile, max_concurrent=None) -> Non
 
 
 def run_compiler_self_test(process_compile, levels, equivalent, out=None) -> int:
-    """Compile every SELF_TEST_PROBES circuit at every level and check the output with
-    ``equivalent(input_qasm, output_qasm)``. Prints ``PASS``/``FAIL`` per case and returns
-    the number of failures."""
+    """Compile every SELF_TEST_PROBES circuit at every level and check that the output
+    declares as many qubits as the input and passes ``equivalent(input_qasm, output_qasm)``.
+    Prints ``PASS``/``FAIL`` per case and returns the number of failures."""
     out = out or sys.stdout
     failed = 0
     for name, body in SELF_TEST_PROBES.items():
@@ -80,6 +81,9 @@ def run_compiler_self_test(process_compile, levels, equivalent, out=None) -> int
             result = process_compile({"circuit_data": qasm, "optimization_level": level})
             if result.get("error"):
                 reason = result["error"]
+            elif get_num_qubits_from_qasm(result["transpiled_qasm"]) != get_num_qubits_from_qasm(qasm):
+                reason = (f"output declares {get_num_qubits_from_qasm(result['transpiled_qasm'])} "
+                          f"qubits, input {get_num_qubits_from_qasm(qasm)}")
             else:
                 try:
                     reason = None if equivalent(qasm, result["transpiled_qasm"]) else "output unitary differs from the input"

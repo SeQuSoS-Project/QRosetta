@@ -42,8 +42,10 @@ _IDLE_WIRES_NOTE = (
     "qml.state() readout span every declared qubit (a gate-free circuit has no wires "
     "otherwise, and qml.from_qasm then also drops the readout).")
 _SERIALIZE_NOTE = (
-    "transpiled_qasm is QuantumScript.to_openqasm() of the executed tape; operations "
-    "outside the OpenQASM 2.0 gate set (e.g. QubitUnitary) are decomposed in the text only.")
+    "transpiled_qasm is QuantumScript.to_openqasm() of the executed tape's operations; "
+    "operations outside the OpenQASM 2.0 gate set (e.g. QubitUnitary) are decomposed in the "
+    "text only. The tape's qml.state() readout is not written as measure statements, and "
+    "the creg that to_openqasm always declares holds nothing.")
 
 
 def _optimization_pipeline(level: int):
@@ -112,7 +114,7 @@ def _compile_sampled(payload: dict):
 
 def _serialize(compiled) -> str:
     dev, tapes, _config, _post = compiled.circuit
-    return tapes[0].to_openqasm(wires=dev.wires, measure_all=False)
+    return qml.tape.QuantumScript(tapes[0].operations).to_openqasm(wires=dev.wires, measure_all=False)
 
 
 _GATE_METRICS_BASIS = ("operations of the executed tape after Device.preprocess(), without the "

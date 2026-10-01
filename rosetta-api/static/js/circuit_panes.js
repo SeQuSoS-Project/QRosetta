@@ -52,6 +52,7 @@ function _compiledPane(record, index) {
         text: typeof record.transpiled_qasm === 'string' ? record.transpiled_qasm : null,
         status: typeof record.dispatch_status === 'string' ? record.dispatch_status : null,
         passes: _strings(record.passes_applied),
+        reason: typeof record.error === 'string' ? record.error : null,
         gateCount: typeof record.gate_count === 'number' ? record.gate_count : null,
         depth: typeof record.circuit_depth === 'number' ? record.circuit_depth : null,
         metrics: metricsSource(record),

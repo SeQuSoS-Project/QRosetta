@@ -1000,16 +1000,30 @@
                     statevector circuit. A measured-mode circuit with mid-circuit measurement, reset or
                     classical control is not compiled; each requested compile is then recorded with
                     <code>dispatch_status</code> <code>skipped</code> and the reason. Compilers run after the
-                    run's simulators have finished, through the same dispatch, queue and timeout as runners,
-                    so a compile never overlaps a timed run of its own job; in an exclusive run they also
-                    wait for the server to be free.
+                    run's simulators have finished, through the same queue and timeout as runners, so a
+                    compile never overlaps a timed run of its own job. They always run as a shared, not an
+                    exclusive, dispatch (they are not timed): an exclusive run of another client waits for
+                    them, and other jobs count a running compile in <code>server_overlapping_runs</code>.
+                    The report is complete only when every compile has finished or timed out, so a slow
+                    compile (BQSKit level 3 beyond a few qubits) or a compile queued behind another
+                    client's delays it; the live status grid lists each compile while it runs. A compile
+                    that fails or times out is recorded with its status and reason and does not affect the
+                    simulator results.
                 </p>
                 <p>
-                    Each record holds the output text (<code>transpiled_qasm</code>), the passes that produced
-                    it (<code>passes_applied</code>), gate count and depth counted from that text, the SDK
+                    Each record's key is <code>&lt;compiler&gt;~opt&lt;level&gt;~run1</code>. It holds the
+                    output text (<code>transpiled_qasm</code>), the passes that produced it
+                    (<code>passes_applied</code>), gate count and depth counted from that text, the SDK
                     versions and the compiler's code hash. The Circuits tab shows the compiler input and each
                     output; the RO-Crate holds them as <code>compile_input.qasm</code> and
-                    <code>compiled_circuits/&lt;key&gt;.qasm</code> (per task in a batch).
+                    <code>compiled_circuits/&lt;key&gt;.qasm</code>, in a batch as
+                    <code>compile_inputs/&lt;task&gt;.qasm</code> and
+                    <code>compiled_circuits/&lt;task&gt;/&lt;key&gt;.qasm</code>. Each compile is a
+                    CreateAction from the compile input to its output in
+                    <code>ro-crate-metadata.json</code>, <code>provenance.json</code> lists every compile
+                    record under <code>compile_only_services</code>, and
+                    <code>compilers/&lt;name&gt;/requirements.lock</code> is included for a compiler that
+                    produced output when its pins match the SDK versions the run recorded.
                 </p>
                 <table>
                     <thead><tr><th>Compiler</th><th>Levels</th><th>What runs</th></tr></thead>
@@ -1021,7 +1035,8 @@
                             match the input within <code>synthesis_epsilon</code>, so the output approximates
                             the input unitary. Level 4 is not offered: it took 195 s on a 4-qubit, 6-gate
                             circuit with one worker.</td></tr>
-                        <tr><td>PyZX 0.10.6</td><td>1, 2</td><td>Level 1: <code>full_reduce</code> of the
+                        <tr><td>PyZX 0.10.6</td><td>1, 2</td><td><code>creg</code> declarations are removed first
+                            (PyZX would read each classical bit as an extra qubit). Level 1: <code>full_reduce</code> of the
                             ZX-diagram, then <code>extract_circuit</code>. Level 2: level 1, then
                             <code>basic_optimization</code> of the extracted circuit. PyZX's
                             <code>basic_optimization</code> on the input itself is not offered (see the known
@@ -1032,15 +1047,27 @@
                             count, qubit i coupled to i + 1 in both directions: heuristic (A*) at level 0, exact
                             (SAT) at level 1, with QMAP's default pre- and post-mapping optimizations. The
                             output's <code>// i</code> and <code>// o</code> lines give the physical qubit of each
-                            logical qubit at input and output.</td></tr>
+                            logical qubit at input and output. A circuit with a qubit that has no gates is not
+                            mapped (see the known issue below). QMAP's post-mapping optimizations can rewrite
+                            single-qubit sequences, so the output can contain gates such as <code>h</code>.</td></tr>
                     </tbody>
                 </table>
                 <p>
                     Each compiler image has a self-test (<code>python main.py --self-test</code>) that compiles
                     four probe circuits at every level and checks the output unitary against the input with
                     the image's own SDK (BQSKit's unitary distance, PyZX's tensor comparison, Qiskit's
-                    operator equality up to QMAP's qubit layouts). The probes include the circuits of both
-                    known issues below.
+                    operator equality with the circuit rebuilt from QMAP's <code>// i</code> and
+                    <code>// o</code> lines), and that the output declares as many qubits as the input. The
+                    probes include the circuits of the known issues below and a circuit with a
+                    <code>creg</code>.
+                </p>
+                <p>
+                    With preprocessing on, compilers receive the pytket-rewritten circuit (see
+                    <a href="#preprocessing">Circuit preprocessing</a>); to see how a compiler treats your own
+                    text, run with preprocessing off. Two compilers then reject some valid OpenQASM 2.0:
+                    PyZX rejects parameters in scientific notation (<code>rz(1.25e-1)</code>) and BQSKit
+                    rejects register broadcasts (<code>h q;</code>); each is recorded as that compile's
+                    error.
                 </p>
             </section>
 
@@ -1125,7 +1152,7 @@
                     <code>/share.html#&lt;token&gt;</code> address that expires after 1, 7, 30 or 90 days.
                     Anyone with the address sees the run's name and save time and its circuit texts: the
                     submitted circuit, the dispatched circuits and each backend's executed circuit with
-                    its transforms, SDK versions, gate count and depth, plus the compiler input and compiled circuits when the run had any. The page shows no results,
+                    its transforms, SDK versions, gate count and depth, plus the compiler input and compiled circuits when the run had any. A report that its owner uploaded (<code>POST /history/runs</code>) instead of saving it from this server's job is marked as uploaded on the page. The page shows no results,
                     timings, error messages or account details. The token is shown once; the server
                     stores only its SHA-256, and the token sits after <code>#</code>, so browsers do not
                     send it in requests or referrers. Revoke a link in the same tab. Deleting the run or
@@ -1249,6 +1276,14 @@
                             <td><code>qreg q[3]; h q[0]; cu3(0.3,0.2,0.1) q[0],q[1]; cu1(pi/4) q[1],q[2];</code>
                                 mapped onto a 3-qubit line: the output holds <code>h</code>, <code>cx q[0],q[1]</code>
                                 and <code>cx q[1],q[2]</code> only.</td></tr>
+                        <tr><td>MQT QMAP 3.10.0 (compile-only), idle qubits</td>
+                            <td>When a qubit has no gates, <code>map_</code> reuses its wire and still writes the
+                                identity layout in <code>// i</code> and <code>// o</code> (and in
+                                <code>initial_layout</code>), so the layout lines do not describe the output. The
+                                QMAP compiler therefore does not map such circuits.</td>
+                            <td><code>qreg q[3]; h q[0]; cx q[0],q[2];</code> on a 3-qubit line: output
+                                <code>cx q[0],q[1]</code> with <code>// i 0 1 2</code> and
+                                <code>// o 0 1</code>.</td></tr>
                         <tr><td>TorchQuantum</td>
                             <td>Rejects a circuit with more than one <code>qreg</code> when preprocessing is
                                 off (an Error, not a wrong result). With preprocessing on the API merges the

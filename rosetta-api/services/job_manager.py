@@ -194,7 +194,7 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
             runner_statuses=runner_statuses,
         )
     _apply_api_preprocessing(aggregated_results, "statevector", circuit)
-    compiled = await compile_circuit(qasm_string, apply_preprocessing, compilers, timeout_seconds)
+    compiled = await compile_circuit(qasm_string, apply_preprocessing, compilers, timeout_seconds, runner_statuses)
 
     try:
         divergence_report, performance_report, resource_report = await compile_comparison_reports(aggregated_results, thresholds)
@@ -279,7 +279,7 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
     _apply_api_preprocessing(results_sampled, "measured_sampled", circuits["measured_sampled"])
     _apply_api_preprocessing(results_native, "measured_native", circuits["measured_native"])
     aggregated_results = results_native + results_sampled
-    compiled = await compile_circuit(qasm_string, apply_preprocessing, compilers, timeout_seconds)
+    compiled = await compile_circuit(qasm_string, apply_preprocessing, compilers, timeout_seconds, runner_statuses)
 
     api_notes = []
     for group in ("measured_native", "measured_sampled"):

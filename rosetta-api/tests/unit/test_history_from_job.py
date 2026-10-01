@@ -141,7 +141,7 @@ def test_concurrent_saves_of_one_job_store_one_run(monkeypatch):
 
     stored = {}
 
-    def slow_save(db, user_id, payload, circuit_id=None):
+    def slow_save(db, user_id, payload, circuit_id=None, saved_from=None):
         time.sleep(0.2)
         run = SimpleNamespace(id=f"run-{len(stored)}", user_id=user_id, run_name=payload["run_name"],
                               created_at=datetime.now(timezone.utc))

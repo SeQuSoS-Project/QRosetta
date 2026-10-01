@@ -82,19 +82,18 @@ function _createdNotice(token, expiresAt) {
     return box;
 }
 
-/** Add the share-link controls for the saved run being viewed to `container`. */
+/** Add the share-link controls for the run being viewed to `container`. */
 export function renderShareControls(container) {
     const section = _el('section', 'space-y-2 p-3 border border-gray-200 rounded-md bg-gray-50');
     section.appendChild(_el('h3', 'text-sm font-semibold text-gray-900', 'Read-only link'));
-    const { authToken, currentHistoryRunId } = getState();
-    if (!authToken || !currentHistoryRunId) {
+    if (!getState().authToken) {
         section.appendChild(_el('p', 'text-xs text-gray-600',
-            'Save this run to your history, then open it from History, to create a link that shows these circuit texts to anyone who has it.'));
+            'Sign in and save this run to your history to create a link that shows these circuit texts to anyone who has it.'));
         container.appendChild(section);
         return;
     }
     section.appendChild(_el('p', 'text-xs text-gray-600',
-        'A link opens a page with the circuit texts of this saved run: the submitted, dispatched and executed circuits, with their transforms and SDK versions. It shows no results, timings or errors.'));
+        'A link opens a page with the circuit texts of this saved run: the submitted, dispatched and executed circuits, the compiler input and compiled circuits when there are any, with their transforms and SDK versions. It shows no results, timings or errors. Anyone who has the link can open it until it expires, so share it like a password and revoke it when it is no longer needed.'));
     const controls = _el('div', 'flex flex-wrap items-center gap-2');
     const label = _el('label', 'inline-flex items-center gap-1 text-xs text-gray-700', 'Expires after');
     const expiry = /** @type {HTMLSelectElement} */ (_el('select', 'border border-gray-300 rounded px-1 py-0.5 text-xs'));
@@ -115,20 +114,27 @@ export function renderShareControls(container) {
     const list = _el('ul', 'space-y-1');
     section.appendChild(list);
     create.onclick = async () => {
-        create.disabled = true;
+        const runId = getState().currentHistoryRunId;
         notice.replaceChildren();
+        if (!runId) {
+            notice.appendChild(_el('p', 'text-xs text-gray-700',
+                'This run is not in your history yet. Runs started from this page while you are signed in are saved when they finish; otherwise open a saved run from History.'));
+            return;
+        }
+        create.disabled = true;
         try {
-            const link = await _request(`/history/runs/${encodeURIComponent(currentHistoryRunId)}/share-links`, {
+            const link = await _request(`/history/runs/${encodeURIComponent(runId)}/share-links`, {
                 method: 'POST', body: JSON.stringify({ expires_in_days: Number(expiry.value) }),
             });
             notice.replaceChildren(_createdNotice(link.token, link.expires_at));
-            _paintLinks(list, currentHistoryRunId);
+            _paintLinks(list, runId);
         } catch (err) {
             notice.replaceChildren(_el('p', 'text-xs text-red-700', err.message));
         } finally {
             create.disabled = false;
         }
     };
-    _paintLinks(list, currentHistoryRunId);
+    const runId = getState().currentHistoryRunId;
+    if (runId) _paintLinks(list, runId);
     container.appendChild(section);
 }

@@ -14,6 +14,8 @@ export const METRIC_DEFINITIONS = {
     "circuit_depth": "<b>Depth:</b> Greedy-layering depth of the circuit this backend executed (its transpiled_qasm).",
     "executed_gate_count": "<b>Gates:</b> The runner's gate_count for the circuit this backend executed. How it was counted is its gate_metrics_basis, given in the pane's note: from this text for most backends, from the executed tape for PennyLane.",
     "executed_depth": "<b>Depth:</b> The runner's circuit_depth for the circuit this backend executed, counted the same way as Gates.",
+    "compiled_gate_count": "<b>Gates:</b> Number of top-level gate statements in this compiled circuit's text.",
+    "compiled_depth": "<b>Depth:</b> Greedy-layering depth of this compiled circuit's text.",
     "proc_peak_rss": "<b>Process Peak RSS:</b> Peak RSS of the simulating process over its whole life: interpreter start, SDK import, warm-up and every timed run. Kernel high-water mark (VmHWM); a getrusage badge marks the ru_maxrss fallback. Resources are ranked by this column.",
     "mem_delta": "<b>Mem Delta:</b> Peak RSS minus baseline RSS during the simulation window (pre-execute setup plus t2..t3 of the first timed run). Memory the warm-up freed but the process kept can be reused, so a state smaller than the SDK's cached memory can read near 0. Kernel high-water mark (VmHWM, reset when the window opens); a sampled badge marks 10 ms RSS polling, which can miss short peaks.",
     "proc_peak": "<b>Window Peak:</b> Absolute peak RSS during the simulation window of the first timed run, measured the same way as Mem Delta.",

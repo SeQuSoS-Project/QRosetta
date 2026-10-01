@@ -135,6 +135,8 @@ def resolve(db: Session, token) -> dict:
     except Exception:
         logger.error(f"Stored report missing for shared run {run.id}", exc_info=True)
         raise ShareNotFound()
+    source = report.get("saved_from") if isinstance(report, dict) else None
     return {**circuit_texts(report), "run_name": run.run_name,
+            "report_source": source if source in ("server_job", "upload") else "not_recorded",
             "saved_at": utc_iso(run.created_at) if run.created_at else None,
             "link_expires_at": utc_iso(_as_utc(link.expires_at))}

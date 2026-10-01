@@ -3,7 +3,7 @@
 // Shows recorded text only.
 
 import { circuitPanes, sourcePaneId } from './circuit_panes.js';
-import { comparableLines, endsWithNewline, splitLines } from './qasm_text.js';
+import { comparableLines, differOnlyInLineBreaks, endsWithNewline, splitLines } from './qasm_text.js';
 import { _displayRunnerName, fmtInt, renderTooltip } from './render_helpers.js';
 import { diffHunks, diffLines } from './text_diff.js';
 import { downloadBlob, makeCopyIconButton } from './utils.js';
@@ -64,7 +64,7 @@ function _noteList(summary, notes) {
     return details;
 }
 
-function _metricLine(pane) {
+function _metricLine(pane, keys = ['executed_gate_count', 'executed_depth']) {
     const row = _el('div', 'flex flex-wrap gap-x-4 text-xs text-gray-700');
     const add = (key, label, value) => {
         const item = _el('span');
@@ -72,8 +72,8 @@ function _metricLine(pane) {
         item.appendChild(document.createTextNode(`: ${fmtInt(value)}`));
         row.appendChild(item);
     };
-    add('executed_gate_count', 'Gates', pane.gateCount);
-    add('executed_depth', 'Depth', pane.depth);
+    add(keys[0], 'Gates', pane.gateCount);
+    add(keys[1], 'Depth', pane.depth);
     return row;
 }
 
@@ -83,7 +83,10 @@ function _sourceNote(pane) {
         return 'The circuit every compile-only service received: the submitted circuit as the API prepares it for statevector runners.';
     }
     if (pane.kind === 'compiled') {
-        return 'The output of a compile-only service. It was not simulated and is not part of the pairwise comparison. Gate count and depth are counted from this text.';
+        const layout = pane.compilerId === 'qmap'
+            ? " The lines '// i' and '// o' list, for logical qubits 0, 1, 2, ..., the physical qubit of the chain that holds each one at the start and at the end."
+            : '';
+        return `The output of a compile-only service. It was not simulated and is not part of the pairwise comparison. Gate count and depth are counted from this text.${layout}`;
     }
     if (pane.kind === 'dispatched') {
         const names = pane.runners.map(_displayRunnerName).join(', ');
@@ -116,7 +119,7 @@ function _paneCard(pane) {
             if (versions.length) head.appendChild(_noteList('SDK versions', versions));
         }
     } else if (pane.kind === 'compiled') {
-        head.appendChild(_metricLine(pane));
+        if (pane.text !== null) head.appendChild(_metricLine(pane, ['compiled_gate_count', 'compiled_depth']));
         if (pane.passes.length) head.appendChild(_noteList('Passes', pane.passes));
         if (pane.sdkVersions) {
             const versions = Object.entries(pane.sdkVersions).map(([name, v]) => `${name} ${v}`);
@@ -132,6 +135,9 @@ function _paneCard(pane) {
         const what = pane.kind === 'compiled' ? 'No output circuit was recorded for this compiler'
             : 'No executed circuit was recorded for this backend';
         card.appendChild(_el('p', 'p-3 text-xs text-gray-500 italic', `${what}${status}.`));
+        if (pane.kind === 'compiled' && pane.reason) {
+            card.appendChild(_el('p', 'px-3 pb-3 text-xs text-gray-700 break-words', pane.reason));
+        }
         return card;
     }
     const lines = splitLines(pane.text).length;
@@ -226,6 +232,9 @@ function _renderDiff(out, a, b, options) {
     counts.style.textDecoration = 'underline dotted';
     summary.appendChild(counts);
     summary.appendChild(document.createTextNode(normalised ? ' (normalised text).' : ' (raw text).'));
+    if (!normalised && differOnlyInLineBreaks(a.text, b.text)) {
+        summary.appendChild(document.createTextNode(' The texts differ only in their line-break characters (CRLF or LF).'));
+    }
     if (!normalised && endsWithNewline(a.text) !== endsWithNewline(b.text)) {
         summary.appendChild(document.createTextNode(` Only ${endsWithNewline(a.text) ? 'A' : 'B'} ends with a line break.`));
     }

@@ -14,7 +14,8 @@ from services.security import get_current_user, limiter
 router = APIRouter(tags=["share"])
 
 _NOT_FOUND = "This link does not exist, has expired or was revoked."
-_PRIVATE_HEADERS = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
+_PRIVATE_HEADERS = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
+                    "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY"}
 
 
 def _response(link, **extra) -> dict:

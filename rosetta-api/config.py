@@ -200,8 +200,8 @@ class Settings(BaseSettings):
                 "honours_seed": True,
                 "optimization_levels": {
                     0: "No optimization",
-                    1: "Gate fusion: merge runs of single-qubit gates into one unitary",
-                    2: "Gate fusion: merge up to 2-qubit blocks into one unitary",
+                    1: "Gate fusion of single-qubit runs: merge runs of single-qubit gates into one unitary",
+                    2: "Gate fusion of 2-qubit blocks: merge up to 2-qubit blocks into one unitary",
                 }
             },
             "qrisp": {

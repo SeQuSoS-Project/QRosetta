@@ -96,7 +96,8 @@ def test_owner_creates_a_link_that_serves_circuit_texts_only(app_client):
                       "circuit_depth": 1, "preprocessing_applied": ["API: round trip"],
                       "sdk_versions": {"qiskit": "1.4.4"}}
     assert set(body) == {"input_qasm", "dispatched_circuits", "raw_results", "run_name", "saved_at",
-                         "link_expires_at"}
+                         "link_expires_at", "report_source"}
+    assert body["report_source"] == "upload"
     assert "Traceback" not in shared.text and "job-123" not in shared.text and "owner@" not in shared.text
     assert shared.headers["referrer-policy"] == "no-referrer"
 
@@ -194,7 +195,7 @@ def test_expiry_is_bounded_and_active_links_are_capped(app_client, monkeypatch):
     client, _ = app_client
     owner = _login(client, "cap@example.org")
     run_id = _saved_run(client, owner)
-    for days in (0, 91):
+    for days in (0, 91, True, 1.0, "7"):
         assert client.post(f"/history/runs/{run_id}/share-links", json={"expires_in_days": days},
                            headers=owner).status_code == 422
     assert client.post(f"/history/runs/{run_id}/share-links", json={"token": "mine"},
@@ -222,3 +223,19 @@ def test_reading_is_rate_limited(app_client):
     client, _ = app_client
     codes = [_read(client, "x").status_code for _ in range(31)]
     assert codes[:30] == [404] * 30 and codes[30] == 429
+
+
+def test_a_report_saved_from_a_job_is_marked_and_an_upload_cannot_claim_it(app_client):
+    import services.job_manager as job_manager
+    client, _ = app_client
+    owner = _login(client, "source@example.org")
+    job_manager.ACTIVE_JOBS["source-job-1"] = job_manager._completed_job("local", dict(REPORT), {})
+    try:
+        run_id = client.post("/history/runs/from_job/source-job-1", headers=owner).json()["id"]
+    finally:
+        del job_manager.ACTIVE_JOBS["source-job-1"]
+    from_job = client.post(f"/history/runs/{run_id}/share-links", headers=owner).json()["token"]
+    forged = client.post(f"/history/runs/{_saved_run(client, owner, {**REPORT, 'saved_from': 'server_job'})}/share-links",
+                         headers=owner).json()["token"]
+    assert _read(client, from_job).json()["report_source"] == "server_job"
+    assert _read(client, forged).json()["report_source"] == "upload"

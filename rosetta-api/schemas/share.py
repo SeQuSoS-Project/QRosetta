@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from schemas.timestamps import UtcDatetime
 from services.share_links import DEFAULT_EXPIRY_DAYS, MAX_EXPIRY_DAYS, MIN_EXPIRY_DAYS
@@ -12,7 +12,7 @@ class ShareLinkCreate(BaseModel):
     """Request body for POST /history/runs/{run_id}/share-links."""
     model_config = ConfigDict(extra="forbid")
 
-    expires_in_days: int = Field(DEFAULT_EXPIRY_DAYS, ge=MIN_EXPIRY_DAYS, le=MAX_EXPIRY_DAYS,
+    expires_in_days: StrictInt = Field(DEFAULT_EXPIRY_DAYS, ge=MIN_EXPIRY_DAYS, le=MAX_EXPIRY_DAYS,
                                  description="Days until the link stops working.")
 
 

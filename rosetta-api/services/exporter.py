@@ -14,7 +14,8 @@ from typing import Any, Dict, List, Optional
 from config import settings
 from qrosetta_commons.helpers import get_logger
 from services.export_compiled import (
-    compiled_circuit_files, compiler_keys, compiler_lock_entity, compiler_lock_files, strip_compiled_text,
+    compile_actions, compile_provenance, compiled_circuit_files, compiler_applications, compiler_keys,
+    compiler_lock_entity, compiler_lock_files, strip_compiled_text,
 )
 from services.analysis.divergence.common import (
     ANALYSIS_VERSION, DEFAULT_FIDELITY_TOLERANCE, DEFAULT_HELLINGER_THRESHOLD,
@@ -640,6 +641,9 @@ def _build_provenance(ctx: ExportContext) -> dict:
         provenance["circuit_features"] = ctx.circuit_features
     if ctx.hardware_anchor:
         provenance["hardware_anchor"] = ctx.hardware_anchor
+    compiles = compile_provenance([(t.task_id, t.report) for t in tasks])
+    if compiles:
+        provenance["compile_only_services"] = compiles
     return provenance
 
 
@@ -837,6 +841,10 @@ def _build_ro_crate_metadata(ctx: ExportContext,
                           "description": f["description"], "encodingFormat": "text/x-qasm",
                           "programmingLanguage": {"@id": "#openqasm2"}})
             root_entity["hasPart"].append({"@id": f["path"]})
+        for action in compile_actions(task.report, task.task_id, task.label, compiled[id(task)]):
+            graph.append(action)
+            root_entity["mentions"].append({"@id": action["@id"]})
+    graph.extend(compiler_applications([t.report for t in tasks]))
     for lock_path in sorted(p for p in lock_paths if p.startswith("compilers/")):
         graph.append(compiler_lock_entity(lock_path))
         root_entity["hasPart"].append({"@id": lock_path})
@@ -1012,7 +1020,7 @@ def _build_ro_crate_metadata(ctx: ExportContext,
         graph.append(analysis)
         run_action_refs.append({"@id": "#agreement-analysis"})
 
-    root_entity["mentions"] = run_action_refs
+    root_entity["mentions"] = run_action_refs + root_entity["mentions"]
 
     seen_runner_ids = set()
     for runner in _extract_runners_used(ctx):

@@ -12,6 +12,7 @@ import services.compilation as compilation
 import services.job_manager as job_manager
 from schemas import ExportPayload
 from services.circuit_texts import circuit_texts
+from services.run_registry import EXCLUSIVE
 from services.exporter import build_export_context, build_ro_crate, invalid_runner_keys
 
 QASM = 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[2];\ncreg c[2];\nh q[0];\ncx q[0],q[1];\nmeasure q -> c;\n'
@@ -39,8 +40,8 @@ def _runner_result(name):
     return {"simulator": name, "transpiled_qasm": "h q[0];", "dispatch_status": "ok"}
 
 
-def _compile_result(key):
-    return {"simulator": key, "optimization_level": 1, "transpiled_qasm": "OPENQASM 2.0;\nqreg q[2];\nh q[0];\n",
+def _compile_result(key, level):
+    return {"simulator": key, "optimization_level": level, "transpiled_qasm": "OPENQASM 2.0;\nqreg q[2];\nh q[0];\n",
             "passes_applied": ["pass A"], "gate_count": 1, "circuit_depth": 1,
             "gate_metrics_basis": "basis", "sdk_versions": {"pyzx": "0.10.6"}, "dispatch_status": "ok",
             "runner_code_sha256": "abc", "timing_samples": 1, "timing_statistic": "median",
@@ -55,7 +56,8 @@ def fake_dispatch(monkeypatch):
         calls.append((dict(runner_urls), dict(runner_payload or {})))
         if all(url.endswith("/compile") for url in runner_urls.values()):
             config = runner_payload["runner_config"]
-            return [_compile_result(cid if len(levels) == 1 else f"{cid}~opt{lvl}~run1")
+            calls[-1][1]["exclusive_during_dispatch"] = EXCLUSIVE.get()
+            return [_compile_result(cid if len(levels) == 1 else f"{cid}~opt{lvl}~run1", lvl)
                     for cid, levels in config.items() for lvl in levels]
         return [_runner_result(name) for name in runner_urls]
 
@@ -100,7 +102,8 @@ def test_measured_circuit_with_mid_circuit_measurement_is_not_compiled(fake_disp
         mid, 100, target_simulators=["qiskit"], compilers={"qmap": [0]}))
     assert report["compile_input"] is None
     (record,) = report["compiled_circuits"]
-    assert record["dispatch_status"] == "skipped" and record["error"].startswith("Not compiled:")
+    assert record["dispatch_status"] == "skipped" and record["compiler"] == "qmap~opt0~run1"
+    assert "mid-circuit measurement" in record["error"] and "measured mode instead" not in record["error"]
     assert all(not url.endswith("/compile") for urls, _ in fake_dispatch for url in urls.values())
 
 
@@ -112,14 +115,23 @@ def test_crate_holds_compile_input_and_outputs_but_results_json_does_not(fake_di
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
         names = {n.split("/", 1)[1]: n for n in zf.namelist()}
         assert zf.read(names["compile_input.qasm"]).decode() == report["compile_input"]["qasm"]
-        assert zf.read(names["compiled_circuits/pyzx.qasm"]).decode() == report["compiled_circuits"][0]["transpiled_qasm"]
+        assert zf.read(names["compiled_circuits/pyzx~opt1~run1.qasm"]).decode() == report["compiled_circuits"][0]["transpiled_qasm"]
         results = json.loads(zf.read(names["results.json"]))
         zf_lock = zf.read(names["compilers/pyzx-compiler/requirements.lock"]).decode()
+        zf_provenance = zf.read(names["provenance.json"])
         metadata = json.loads(zf.read(names["ro-crate-metadata.json"]))
     assert "qasm" not in results["compile_input"]
     assert "transpiled_qasm" not in results["compiled_circuits"][0]
     ids = {entity["@id"] for entity in metadata["@graph"]}
-    assert {"compile_input.qasm", "compiled_circuits/pyzx.qasm",
+    action = next(e for e in metadata["@graph"] if e["@id"] == "#compile-pyzx~opt1~run1")
+    assert action["object"] == {"@id": "compile_input.qasm"}
+    assert action["result"] == {"@id": "compiled_circuits/pyzx~opt1~run1.qasm"}
+    assert action["instrument"] == {"@id": "#compiler-pyzx"} and "#compiler-pyzx" in ids
+    root = next(e for e in metadata["@graph"] if e["@id"] == "./")
+    assert {"@id": "#compile-pyzx~opt1~run1"} in root["mentions"]
+    provenance = json.loads(zf_provenance)
+    assert provenance["compile_only_services"][0]["compiler"] == "pyzx~opt1~run1"
+    assert {"compile_input.qasm", "compiled_circuits/pyzx~opt1~run1.qasm",
             "compilers/pyzx-compiler/requirements.lock"} <= ids
     assert "pyzx==0.10.6" in zf_lock
 
@@ -145,3 +157,59 @@ def client():
     from fastapi.testclient import TestClient
     from main import app
     return TestClient(app)
+
+
+def test_a_single_level_key_still_names_the_level(fake_dispatch):
+    pytest.importorskip("pytket")
+    report = asyncio.run(job_manager.run_single_circuit_comparison(
+        QASM, target_simulators=["qiskit"], compilers={"bqskit": [2]}))
+    assert [c["compiler"] for c in report["compiled_circuits"]] == ["bqskit~opt2~run1"]
+
+
+def test_compiles_of_an_exclusive_job_take_the_shared_gate(fake_dispatch):
+    pytest.importorskip("pytket")
+    token = EXCLUSIVE.set(True)
+    try:
+        asyncio.run(job_manager.run_single_circuit_comparison(
+            QASM, target_simulators=["qiskit"], compilers={"pyzx": [1]}))
+    finally:
+        EXCLUSIVE.reset(token)
+    compile_payload = fake_dispatch[-1][1]
+    assert compile_payload["exclusive_during_dispatch"] is False
+
+
+def test_a_failing_compile_dispatch_keeps_the_simulator_results(monkeypatch):
+    pytest.importorskip("pytket")
+
+    async def dispatch(runner_urls, runner_payload=None, timeout_seconds=None, runner_statuses=None):
+        if all(url.endswith("/compile") for url in runner_urls.values()):
+            raise TimeoutError("gate wait expired")
+        return [_runner_result(name) for name in runner_urls]
+
+    monkeypatch.setattr(job_manager, "dispatch_to_runners", dispatch)
+    monkeypatch.setattr(compilation, "dispatch_to_runners", dispatch)
+    report = asyncio.run(job_manager.run_single_circuit_comparison(
+        QASM, target_simulators=["qiskit", "cirq"], compilers={"pyzx": [1, 2]}))
+    assert [r["simulator"] for r in report["raw_results"]] == ["qiskit", "cirq"]
+    assert [(c["compiler"], c["dispatch_status"]) for c in report["compiled_circuits"]] == [
+        ("pyzx~opt1~run1", "error"), ("pyzx~opt2~run1", "error")]
+    assert "TimeoutError" in report["compiled_circuits"][0]["error"]
+
+
+def test_lock_is_left_out_when_it_does_not_match_the_recorded_versions(fake_dispatch):
+    pytest.importorskip("pytket")
+    report = asyncio.run(job_manager.run_single_circuit_comparison(
+        QASM, target_simulators=["qiskit"], compilers={"pyzx": [1]}))
+    report["compiled_circuits"][0]["sdk_versions"] = {"pyzx": "0.8.0"}
+    with zipfile.ZipFile(io.BytesIO(build_ro_crate(build_export_context(report, ExportPayload())))) as zf:
+        assert not any(n.endswith("compilers/pyzx-compiler/requirements.lock") for n in zf.namelist())
+    report["compiled_circuits"][0].update(sdk_versions={"pyzx": "0.10.6"}, dispatch_status="error")
+    with zipfile.ZipFile(io.BytesIO(build_ro_crate(build_export_context(report, ExportPayload())))) as zf:
+        assert not any(n.endswith("requirements.lock") and "compilers/" in n for n in zf.namelist())
+
+
+def test_client_report_with_repeated_compiler_keys_is_rejected():
+    from services.report_validation import report_problems
+    record = {"compiler": "pyzx~opt1~run1", "transpiled_qasm": "h q[0];"}
+    assert report_problems({"raw_results": [], "compiled_circuits": [record, dict(record)]})
+    assert report_problems({"raw_results": [], "compiled_circuits": [record]}) == []

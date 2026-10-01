@@ -33,6 +33,8 @@ def _compiled_texts(record: dict) -> dict:
     versions = record.get("sdk_versions")
     if isinstance(versions, dict):
         out["sdk_versions"] = {k: v for k, v in versions.items() if isinstance(k, str) and isinstance(v, str)}
+    if record.get("dispatch_status") == "skipped" and isinstance(record.get("error"), str):
+        out["error"] = record["error"]
     return out
 
 

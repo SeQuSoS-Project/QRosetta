@@ -55,11 +55,18 @@ def find_run(db: Session, user_id: int, run_id: str | None):
         return None
 
 
+SAVED_FROM_JOB = "server_job"
+SAVED_FROM_UPLOAD = "upload"
+
+
 def save_run(db: Session, user_id: int, run_payload: dict,
-             circuit_id: str | None = None) -> models.RunHistory:
+             circuit_id: str | None = None, saved_from: str = SAVED_FROM_UPLOAD) -> models.RunHistory:
     """Store the report, then record it. The row is only committed once the report is
-    stored, so history never references a report that does not exist."""
+    stored, so history never references a report that does not exist. The stored report's
+    ``saved_from`` is set here, never taken from the payload: ``server_job`` for a report
+    copied from this server's job, ``upload`` for one a client supplied."""
     run_id = str(uuid.uuid4())
+    run_payload = {**run_payload, "saved_from": saved_from}
     run_name = run_payload.get("run_name", run_id[:8])
     try:
         s3_key = save_run_report(user_id, run_id, run_payload)

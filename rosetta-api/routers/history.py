@@ -111,7 +111,8 @@ def save_run_from_job(
         name = (body.run_name if body else None) or history_service.default_run_name(report, job_id)
         try:
             run = history_service.save_run(
-                db, current_user.id, {**report, "run_name": name, "job_id": job_id})
+                db, current_user.id, {**report, "run_name": name, "job_id": job_id},
+                saved_from=history_service.SAVED_FROM_JOB)
         except Exception:
             raise HTTPException(status_code=500, detail="Failed to save run history")
         saved_runs[current_user.id] = run.id

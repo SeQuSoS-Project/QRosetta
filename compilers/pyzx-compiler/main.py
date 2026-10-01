@@ -1,6 +1,8 @@
 """PyZX compiler: converts the circuit to a ZX-diagram, simplifies it with full_reduce and
 extracts a circuit, optionally followed by PyZX's gate-level basic_optimization."""
 
+import re
+
 from fastapi import FastAPI
 import pyzx as zx
 
@@ -14,6 +16,11 @@ declare_sdk_packages("pyzx")
 app = FastAPI(title="PyZX Compiler")
 
 _PARSE_NOTE = "pyzx.Circuit.from_qasm(): PyZX's OpenQASM 2.0 parser."
+_CREG_NOTE = ("creg declarations removed before parsing, required by the adapter: PyZX reads each "
+              "classical bit as an extra qubit wire. The compile input has no measurement, reset "
+              "or classical control, so no operation is dropped.")
+_CREG_RE = re.compile(r"\bcreg\s+\w+\s*\[\s*\d+\s*\]\s*;")
+_CLASSICAL_RE = re.compile(r"\b(measure|reset)\b|\bif\s*\(")
 _REDUCE_NOTE = ("circuit.to_graph(), pyzx.full_reduce(graph), pyzx.extract_circuit(graph): "
                 "ZX-calculus simplification and circuit extraction.")
 _BASIC_NOTE = ("pyzx.basic_optimization(extracted.to_basic_gates()): gate cancellation and "
@@ -23,6 +30,15 @@ _BASIC_NOTE = ("pyzx.basic_optimization(extracted.to_basic_gates()): gate cancel
 _ENCODE_NOTE = "Circuit.to_qasm(): the output circuit as OpenQASM 2.0, one register q."
 
 
+def _quantum_only(qasm: str):
+    """``(qasm without creg declarations, notes)``; ValueError for a circuit with classical
+    operations, which PyZX cannot represent."""
+    if _CLASSICAL_RE.search(qasm):
+        raise ValueError("PyZX compiles unitary circuits only; this circuit has measure, reset or if")
+    stripped = _CREG_RE.sub("", qasm)
+    return stripped, ([_CREG_NOTE] if stripped != qasm else [])
+
+
 def _extract(qasm: str):
     graph = zx.Circuit.from_qasm(qasm).to_graph()
     zx.full_reduce(graph)
@@ -30,12 +46,14 @@ def _extract(qasm: str):
 
 
 def _full_reduce(qasm: str):
-    return _extract(qasm).to_qasm(), [_PARSE_NOTE, _REDUCE_NOTE, _ENCODE_NOTE]
+    unitary, notes = _quantum_only(qasm)
+    return _extract(unitary).to_qasm(), notes + [_PARSE_NOTE, _REDUCE_NOTE, _ENCODE_NOTE]
 
 
 def _full_reduce_then_basic(qasm: str):
-    circuit = zx.basic_optimization(_extract(qasm).to_basic_gates())
-    return circuit.to_qasm(), [_PARSE_NOTE, _REDUCE_NOTE, _BASIC_NOTE, _ENCODE_NOTE]
+    unitary, notes = _quantum_only(qasm)
+    circuit = zx.basic_optimization(_extract(unitary).to_basic_gates())
+    return circuit.to_qasm(), notes + [_PARSE_NOTE, _REDUCE_NOTE, _BASIC_NOTE, _ENCODE_NOTE]
 
 
 PIPELINES = {1: _full_reduce, 2: _full_reduce_then_basic}
@@ -43,8 +61,8 @@ PIPELINES = {1: _full_reduce, 2: _full_reduce_then_basic}
 
 def equivalent(input_qasm: str, output_qasm: str) -> bool:
     """PyZX's tensor comparison of the two circuits, up to a global scalar."""
-    return zx.compare_tensors(zx.Circuit.from_qasm(input_qasm), zx.Circuit.from_qasm(output_qasm),
-                              preserve_scalar=False)
+    return zx.compare_tensors(zx.Circuit.from_qasm(_quantum_only(input_qasm)[0]),
+                              zx.Circuit.from_qasm(output_qasm), preserve_scalar=False)
 
 
 @with_sdk_versions
