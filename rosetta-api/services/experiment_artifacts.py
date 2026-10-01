@@ -36,8 +36,11 @@ PERFORMANCE_FIELDS = [
     "simulation_cgroup_cpu_time_sec", "simulation_throttled_sec", "compilation_throttled_sec", "execution_time_sec",
     "memory_usage_mb", "process_peak_mb", "process_peak_rss_mb",
     "theoretical_statevector_mb", "gate_count", "circuit_depth", "queue_wait_sec",
-    "concurrent_runs",
-    "cpu_model", "cpu_quota_cores", "simulation_cpus", "simulation_cpu_max_mhz",
+    "concurrent_runs", "overlapping_runs", "server_overlapping_runs", "dispatch_phase",
+    "exclusive", "exclusive_wait_sec",
+    "cpu_model", "cpu_quota_cores", "cpu_affinity_setting", "memory_limit_mib",
+    "simulation_cpus", "simulation_cpu_max_mhz", "simulation_time_samples",
+    "simulation_cpus_samples",
 ]
 PREVALENCE_FIELDS = ["axis", "count_basis", "agreement_class", "pair_count", "pair_scope",
                      "distance_labels"]
@@ -75,8 +78,15 @@ TRIAGE_README = (
     "                             the run was on (cores of different speeds give different\n"
     "                             times). Failed runs have empty metric cells. Memory fields\n"
     "                             are MiB of host RSS; see metric_scope in results/.\n"
-    "                             concurrent_runs is the number of runs dispatched at the\n"
-    "                             same time as this one (itself included); runs that share\n"
+    "                             simulation_time_samples lists every timed run (';'), and\n"
+    "                             simulation_cpus_samples the CPUs of each ('|' between runs).\n"
+    "                             exclusive is true when the job ran one backend at a time\n"
+    "                             with no other run on the server; server_overlapping_runs\n"
+    "                             counts runs of other jobs that overlapped this one.\n"
+    "                             concurrent_runs is the number of runs dispatched in the\n"
+    "                             same phase (itself included); overlapping_runs counts the\n"
+    "                             other runs of the job that were running at some time this\n"
+    "                             one was (other users' runs are not counted). Runs that share\n"
     "                             the host's cores and memory bandwidth are slower.\n"
     "  agreement_prevalence.csv - pair counts per class over compared pairs\n"
     "                             (pair_scope=compared); pairs where a side had no usable\n"
@@ -233,7 +243,18 @@ def build_performance_rows(axis_label: str, summary: list) -> list:
                         "theoretical_statevector_mb", "gate_count", "circuit_depth"):
                 row[key] = entry.get(key) if ok else None
             row["queue_wait_sec"] = entry.get("queue_wait_sec")
-            row["concurrent_runs"] = entry.get("concurrent_runs")
+            for key in ("concurrent_runs", "overlapping_runs", "server_overlapping_runs",
+                        "dispatch_phase", "exclusive", "exclusive_wait_sec"):
+                row[key] = entry.get(key)
+            row["cpu_affinity_setting"] = env.get("cpu_affinity_setting")
+            row["memory_limit_mib"] = env.get("memory_limit_mib")
+            samples = entry.get("simulation_time_samples")
+            row["simulation_time_samples"] = (
+                ";".join(repr(v) for v in samples) if ok and isinstance(samples, list) else None)
+            cpu_samples = entry.get("simulation_cpus_samples")
+            row["simulation_cpus_samples"] = (
+                "|".join(";".join(str(c) for c in (run or [])) for run in cpu_samples)
+                if ok and isinstance(cpu_samples, list) else None)
             row["simulation_time_sec_min"] = _samples_extreme(entry, min) if ok else None
             row["simulation_time_sec_max"] = _samples_extreme(entry, max) if ok else None
             if ok and row["timing_repeats"] is None:

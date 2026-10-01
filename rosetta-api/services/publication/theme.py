@@ -157,8 +157,9 @@ _ASSESSMENT_GLOSSARY = [
     ("not_comparable", "At least one side lacks usable counts."),
 ]
 _UNRANKED_GLOSSARY = [
-    ("runner_error", "The run failed; Status gives the dispatch status (error, timeout or "
-     "offline) and its metrics are shown as —."),
+    ("runner_error", "The run returned an error; its metrics are shown as —."),
+    ("runner_timeout", "The run exceeded its time budget; its metrics are shown as —."),
+    ("runner_offline", "The runner could not be reached; its metrics are shown as —."),
     ("missing_timing", "The run returned no execution_time_sec."),
     ("missing_process_peak_rss", "The run returned no process_peak_rss_mb."),
     ("gpu_memory_not_measured", "The run executed on a GPU. The memory fields are host RSS "

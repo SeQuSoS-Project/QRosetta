@@ -322,15 +322,23 @@ def _eval_node(node):
                                    "sin/cos/tan/exp/ln/sqrt are allowed")
 
 
+_NON_QASM_NUMBER_RE = re.compile(r"\b0[xXoObB]|\d_|_\d|\d[jJ]\b")
+
+
 def evaluate_constant_expression(text: str) -> float:
     """Value of an OpenQASM 2.0 constant expression (numbers, pi, + - * / ^, unary minus,
     sin cos tan exp ln sqrt), computed in floating point. Raises
     ParameterExpressionError for anything else or a non-finite value."""
+    if "**" in text or _NON_QASM_NUMBER_RE.search(text):
+        raise ParameterExpressionError(
+            "only OpenQASM 2.0 numbers (decimal, optional exponent) and '^' for powers are allowed")
     try:
         tree = ast.parse(text.replace("^", "**").strip(), mode="eval")
         value = _eval_node(tree)
     except ParameterExpressionError:
         raise
+    except RecursionError:
+        raise ParameterExpressionError("the expression is nested too deeply")
     except OverflowError:
         raise ParameterExpressionError("the value is too large")
     except ZeroDivisionError:
@@ -380,6 +388,23 @@ def _evaluated_statement(stmt: str) -> str:
 MAX_PARAMETER_MAGNITUDE = 1e6
 
 
+def gate_body_statements(stmt: str) -> list:
+    """The statements inside a ``gate`` definition's body, [] for any other statement."""
+    if not _GATE_NAME_RE.match(stmt) or "{" not in stmt:
+        return []
+    body = stmt[stmt.index("{") + 1:stmt.rindex("}")] if "}" in stmt else ""
+    return [part.strip() + ";" for part in body.split(";") if part.strip()]
+
+
+def gate_parameter_names(stmt: str) -> set:
+    """The parameter names of a ``gate`` definition (``gate g(a, b) q { ... }`` -> {a, b})."""
+    head = stmt.split("{", 1)[0]
+    if "(" not in head:
+        return set()
+    inner = head[head.index("(") + 1:head.rindex(")")] if ")" in head else ""
+    return {p.strip() for p in inner.split(",") if p.strip()}
+
+
 def statement_parameters(stmt: str) -> list:
     """The parameter expressions of a gate statement (``rx(pi/2) q[0];`` -> ["pi/2"]), [] for
     a statement without a parameter list or for a definition."""
@@ -400,7 +425,7 @@ def check_parameter_value(text: str) -> float:
     value = evaluate_constant_expression(text)
     if abs(value) > MAX_PARAMETER_MAGNITUDE:
         raise ParameterExpressionError(
-            f"|{value:g}| exceeds {MAX_PARAMETER_MAGNITUDE:g}: at that size a double "
+            f"|{value!r}| exceeds {MAX_PARAMETER_MAGNITUDE:g}: at that size a double "
             f"cannot hold the angle modulo 2*pi precisely, and the SDKs reduce it in "
             f"different ways")
     return value

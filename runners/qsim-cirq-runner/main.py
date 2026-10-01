@@ -54,6 +54,10 @@ _LEVEL_2_NOTE = (
     "cirq.eject_z, cirq.eject_phased_paulis, cirq.merge_single_qubit_gates_to_phxz, "
     "cirq.drop_empty_moments (optimization_level=2): rewrite single-qubit gates into "
     "PhasedXZ form; the circuit is preserved up to global phase.")
+_FUSION_NOTE = (
+    "qsimcirq.QSimSimulator() default options (max_fused_gate_size 2): qsim fuses neighbouring "
+    "gates into gates on up to two qubits inside its simulation, at every optimization level; "
+    "transpiled_qasm is the circuit before fusion.")
 _NATIVE_RUN_NOTE = (
     "qsimcirq.QSimSimulator(seed).run(): the circuit's own measurements, one Cirq "
     "measurement key per classical bit, are sampled by qsim, including mid-circuit "
@@ -161,7 +165,7 @@ def process_run(payload: dict) -> dict:
         return CompileResult(
             circuit=(qsimcirq.QSimSimulator(), cirq_circ, qubits),
             n_qubits=len(qubits),
-            preprocessing_applied=preprocessing_applied)
+            preprocessing_applied=preprocessing_applied + [_FUSION_NOTE])
 
     def execute(compiled, _payload):
         simulator, circ, qubits = compiled.circuit
@@ -188,7 +192,7 @@ def process_run_measured(payload: dict) -> dict:
             circuit=(qsimcirq.QSimSimulator(seed=payload.get("seed")), cirq_circ, qubits,
                      key_bits),
             n_qubits=len(qubits),
-            preprocessing_applied=preprocessing_applied + [_NATIVE_RUN_NOTE])
+            preprocessing_applied=preprocessing_applied + [_FUSION_NOTE, _NATIVE_RUN_NOTE])
 
     def execute(compiled, payload):
         simulator, circ, *_ = compiled.circuit

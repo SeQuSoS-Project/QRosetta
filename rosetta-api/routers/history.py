@@ -1,5 +1,6 @@
 """Saved-circuit and run-history routes, all scoped to the authenticated user."""
 
+from services.report_validation import reject_invalid_report
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 from typing import List
@@ -74,6 +75,7 @@ def save_run(
     if problems:
         raise HTTPException(status_code=422, detail=[
             {"loc": loc, "msg": msg, "type": "value_error"} for loc, msg in problems])
+    reject_invalid_report(run_payload)
     try:
         return history_service.save_run(db, current_user.id, run_payload, circuit_id)
     except Exception:
@@ -94,7 +96,7 @@ def save_run_from_job(
     Statevectors are removed before storage and the stored report is marked
     ``statevector_storage="removed_before_storage"``. Returns the saved run; its ``id`` is
     the run id (201). Saving a job the current user already saved returns that run (200)
-    and stores nothing new. 404 if the job id is unknown or expired; 409 if the job has not
+    and stores nothing new, renaming it when a different run_name is given. 404 if the job id is unknown or expired; 409 if the job has not
     finished, failed before any runner ran, or is an experiment."""
     report = job_report_or_error(job_id, "save")
     with _job_save_lock(job_id):
@@ -102,6 +104,8 @@ def save_run_from_job(
         existing = history_service.find_run(db, current_user.id, saved_runs.get(current_user.id))
         if existing is not None:
             response.status_code = status.HTTP_200_OK
+            if body and body.run_name and body.run_name != existing.run_name:
+                existing = history_service.rename_run(db, current_user.id, existing.id, body.run_name)
             existing.job_id = job_id
             return existing
         name = (body.run_name if body else None) or history_service.default_run_name(report, job_id)

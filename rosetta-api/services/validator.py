@@ -9,7 +9,8 @@ from qrosetta_commons.counts import parse_measurement_layout
 from qrosetta_commons.helpers import get_num_qubits_from_qasm
 from services.circuit_resolver import (
     ParameterExpressionError, StatevectorIncompatible, check_parameter_value,
-    evaluate_caret_parameters, split_statements, statement_parameters,
+    evaluate_caret_parameters, gate_body_statements, gate_parameter_names, split_statements,
+    statement_parameters,
     strip_terminal_measurements,
 )
 from services.reserved_gate_names import reserved_gate_reason
@@ -22,6 +23,7 @@ _BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 _LINE_COMMENT_RE = re.compile(r"//[^\n]*")
 _QASM3_MESSAGE = "OpenQASM 3 is not supported; submit OpenQASM 2.0 (header 'OPENQASM 2.0;')."
 _DEFINITION_RE = re.compile(r"^\s*(?:gate|opaque)\s+([A-Za-z_]\w*)")
+_NAME_RE = re.compile(r"[A-Za-z_]\w*")
 _NON_OPERATION_RE = re.compile(r"^\s*(?:OPENQASM|include|qreg|creg|gate|opaque)\b")
 
 
@@ -189,16 +191,26 @@ def check_parameter_expressions(qasm: str) -> None:
         _bad_request(f"Invalid gate parameter: {exc}.")
 
 
+def _clip(text: str, limit: int = 80) -> str:
+    text = text.strip()
+    return text if len(text) <= limit else text[:limit] + "…"
+
+
 def check_parameter_values(qasm: str, statements: list = None) -> None:
     """400 for a top-level gate parameter that is not a finite constant expression or whose
     magnitude exceeds MAX_PARAMETER_MAGNITUDE (``check_parameter_value``)."""
     statements = split_statements(qasm) if statements is None else statements
     for stmt in statements:
-        for param in statement_parameters(stmt):
+        checks = [(param, stmt) for param in statement_parameters(stmt)]
+        names = gate_parameter_names(stmt)
+        for inner in gate_body_statements(stmt):
+            checks += [(param, inner) for param in statement_parameters(inner)
+                       if not _NAME_RE.findall(param) or not set(_NAME_RE.findall(param)) & names]
+        for param, where in checks:
             try:
                 check_parameter_value(param)
             except ParameterExpressionError as exc:
-                _bad_request(f"Invalid gate parameter: '{param.strip()}' in '{stmt.strip()}': {exc}.")
+                _bad_request(f"Invalid gate parameter: '{_clip(param)}' in '{_clip(where)}': {exc}.")
 
 
 def validate_request(qasm: str, mode: str = "statevector", bypass_limits: bool = False,

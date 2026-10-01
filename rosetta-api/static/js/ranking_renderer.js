@@ -3,7 +3,7 @@
 
 import {
     QUEUE_WAIT_SHOWN_SEC, TAG_AMBER, TAG_GRAY, _applyLegendDots, _cloneTemplate, _displayRunnerName,
-    _makeStatusCell, _tag, cpuQuotaPhrase, deviceTitle, executionTags, fmtInt, fmtNum, getOptBadge, isGpuRun, mixedCoresText, outsideProcessText, precisionTag, simulationCoreSpeeds, queueWaitText, throttleText,
+    _makeStatusCell, _tag, cpuQuotaPhrase, deviceTitle, executionTags, fmtInt, fmtNum, getOptBadge, isGpuRun, coreClasses, mixedCoresText, outsideProcessText, precisionTag, simulationCoreSpeeds, unstableText, queueWaitText, throttleText,
     renderTooltip,
 } from './render_helpers.js';
 import { RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, runnerStatus, userFacingError } from './run_status.js';
@@ -21,6 +21,8 @@ const MISSING_METRIC_REASON = {
 
 const UNRANKED_REASON_TEXT = {
     runner_error: 'the run returned an error',
+    runner_timeout: 'the run timed out',
+    runner_offline: 'the runner was unreachable',
     missing_timing: 'the run returned no execution_time_sec',
     missing_process_peak_rss: 'the run returned no process_peak_rss_mb',
     gpu_memory_not_measured: 'it ran on a GPU, whose device memory is not measured',
@@ -68,6 +70,8 @@ function _fillSimulatorCell(td, simulatorName, config, raw, { memory = false } =
     if (wait) td.appendChild(_tag('queued', TAG_AMBER, wait.charAt(0).toUpperCase() + wait.slice(1)));
     const throttled = throttleText(raw);
     if (throttled) td.appendChild(_tag('throttled', TAG_AMBER, throttled.charAt(0).toUpperCase() + throttled.slice(1)));
+    const unstable = unstableText(raw);
+    if (unstable) td.appendChild(_tag('unstable', TAG_AMBER, unstable.charAt(0).toUpperCase() + unstable.slice(1)));
     const mixed = mixedCoresText(raw);
     if (mixed) td.appendChild(_tag('mixed cores', TAG_AMBER, mixed.charAt(0).toUpperCase() + mixed.slice(1)));
     const outside = outsideProcessText(raw);
@@ -83,6 +87,8 @@ function _fillSimulatorCell(td, simulatorName, config, raw, { memory = false } =
     const badge = getOptBadge(simulatorName, config);
     if (badge) td.appendChild(badge);
 }
+
+const UNSTABLE_LABEL = '1.3×';
 
 function _timingNote(rawResults) {
     const ok = (rawResults || []).filter(r => r && !r.error);
@@ -101,15 +107,23 @@ function _timingNote(rawResults) {
         : ` Each runner is limited to ${limit}.`;
     const throttled = ok.filter(r => throttleText(r)).length;
     if (!(samples.size === 1 && samples.has(1))) note += ' A ≈ next to a rank means its per-run totals overlap those of the next rank.';
-    const speeds = new Set(ok.flatMap(simulationCoreSpeeds));
-    if (speeds.size > 1) {
-        note += ` The simulation windows ran on CPUs with different maximum frequencies (${[...speeds].sort((a, b) => a - b).map(s => `${fmtInt(s)} MHz`).join(', ')}), `
+    const classes = coreClasses(new Set(ok.flatMap(simulationCoreSpeeds)));
+    if (classes.length > 1) {
+        note += ` The simulation windows ran on CPUs of different speed classes (maximum ${classes.map(c => c.map(s => fmtInt(s)).join('/') + ' MHz').join(' vs ')}), `
             + 'so part of a difference between backends can be the core they ran on (tag "mixed cores" when one backend\'s own runs mixed them).';
     }
-    const concurrent = Math.max(0, ...ok.map(r => (typeof r.concurrent_runs === 'number' ? r.concurrent_runs : 0)));
-    if (concurrent > 1) {
-        note += ` Up to ${concurrent} runs were dispatched at the same time and competed for the host's cores and memory bandwidth, `
-            + 'which can slow some backends more than others; for timings meant for comparison, use the Sequential ordering.';
+    if (ok.length && ok.every(r => r.exclusive === true)) {
+        note += ' Exclusive run: the backends ran one at a time with no other run in flight on this server.';
+    } else {
+        const others = ok.filter(r => typeof r.server_overlapping_runs === 'number' && r.server_overlapping_runs > 0).length;
+        if (others) note += ` ${others} run(s) overlapped with runs of other jobs on this server (server_overlapping_runs); for timings meant for comparison, use an exclusive run.`;
+    }
+    const unstableRuns = ok.filter(r => unstableText(r)).length;
+    if (unstableRuns) note += ` ${unstableRuns} run(s) had timed runs spreading by more than ${UNSTABLE_LABEL} (tag "unstable").`;
+    const overlapping = Math.max(0, ...ok.map(r => (typeof r.overlapping_runs === 'number' ? r.overlapping_runs : 0)));
+    if (overlapping > 0) {
+        note += ` Runs overlapped in time (up to ${overlapping} other run(s) of this job while one was running) and competed for the host's cores and memory bandwidth, `
+            + 'which can slow some backends more than others; for timings meant for comparison, use the Sequential ordering. Runs of other users are not counted.';
     }
     const outside = ok.filter(r => outsideProcessText(r)).length;
     if (outside) note += ` ${outside} run(s) did part of their simulation work outside the measured process (tag "outside process").`;

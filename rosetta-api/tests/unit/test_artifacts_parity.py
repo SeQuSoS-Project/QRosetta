@@ -165,9 +165,26 @@ def _repeated_timing():
     return rep
 
 
+def _overlapping():
+    """_repeated_timing with recorded overlap counts on the successful runs."""
+    rep = _repeated_timing()
+    rep["raw_results"][0].update({"overlapping_runs": 3, "server_overlapping_runs": 0})
+    rep["raw_results"][1].update({"overlapping_runs": 1.0, "server_overlapping_runs": 2})
+    return rep
+
+
+def _exclusive():
+    """_sv_edge where every successful run was exclusive."""
+    rep = _sv_edge()
+    for r in rep["raw_results"]:
+        r["exclusive"] = True
+    return rep
+
+
 _CASES = [("measured", MEASURED), ("statevector", STATEVECTOR),
           ("statevector", _sv_edge()), ("measured", _measured_edge()),
-          ("statevector", _repeated_timing())]
+          ("statevector", _repeated_timing()), ("statevector", _overlapping()),
+          ("statevector", _exclusive())]
 
 
 def _js(payload):

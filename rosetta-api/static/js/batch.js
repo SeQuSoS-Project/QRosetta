@@ -92,8 +92,14 @@ export function addToBatch() {
     const selectorQubits = parseInt(document.getElementById('algo-qubits').value);
     const currentQasm = qasmInput.value.trim();
 
+    const selEl = /** @type {HTMLSelectElement} */ (document.getElementById('algo-select'));
+    const selLabel = selEl.selectedIndex >= 0 ? selEl.options[selEl.selectedIndex].text : '';
+    const loadedName = getState().currentAlgoName || '';
+    const editorHoldsOtherPreset = !!algoId && !isNaN(selectorQubits) && /\(\d+q\)$/.test(loadedName)
+        && loadedName !== `${selLabel} (${selectorQubits}q)`;
+
     let newItem;
-    if (currentQasm) {
+    if (currentQasm && !editorHoldsOtherPreset) {
         const qubits = _parseQasmStats(currentQasm).qubits;
         const typed = bareCircuitName(document.getElementById('ctx-algo-name').value);
         const sel = /** @type {HTMLSelectElement} */ (document.getElementById('algo-select'));

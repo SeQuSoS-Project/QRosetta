@@ -73,7 +73,7 @@ def _report_rows(results: dict, report_key: str) -> List[dict]:
             rank = "—"
             if ranked:
                 rank = _fmt_int(e.get("rank") if e.get("rank") is not None else i + 1)
-            elif e.get("reason") and e.get("reason") != "runner_error":
+            elif e.get("reason") and not str(e.get("reason")).startswith("runner_"):
                 status = f"{status} ({e.get('reason')})"
             elif not failed:
                 status = f"{status} ({e.get('reason') or 'unranked'})"

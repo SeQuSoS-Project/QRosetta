@@ -8,6 +8,7 @@ two.
 import csv
 import io
 import math
+import re
 import numbers
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Context, Decimal
@@ -287,6 +288,21 @@ def _render_markdown(headers, rows, title, caption) -> str:
 _FIXED_XLSX_EPOCH = datetime(2020, 1, 1, 0, 0, 0)
 
 
+def _xlsx_value(cell):
+    """A cell as an XLSX value: the full-precision number when its CSV text is a finite
+    number (an int when integral text), else its display text ('' for None)."""
+    if cell is None:
+        return ""
+    text = str(getattr(cell, "csv", cell))
+    try:
+        if re.fullmatch(r"[+-]?\d+", text):
+            return int(text)
+        value = float(text)
+    except ValueError:
+        return str(cell)
+    return value if math.isfinite(value) else str(cell)
+
+
 def _render_xlsx(headers, rows, title, caption) -> bytes:
     """Render a XLSX workbook with fixed timestamps."""
     wb = Workbook()
@@ -299,7 +315,7 @@ def _render_xlsx(headers, rows, title, caption) -> bytes:
     ws.append([caption])
     ws.append(headers)
     for r in rows:
-        ws.append([("" if c is None else c) for c in r])
+        ws.append([_xlsx_value(c) for c in r])
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()

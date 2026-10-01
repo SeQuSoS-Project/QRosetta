@@ -212,7 +212,7 @@ export function _artReportRows(results, reportKey) {
             const failed = !ranked && _FAILED_STATUSES.includes(status);
             let rank = '—';
             if (ranked) rank = _artInt((e.rank !== null && e.rank !== undefined) ? e.rank : i + 1);
-            else if (e.reason && e.reason !== 'runner_error') status = `${status} (${e.reason})`;
+            else if (e.reason && !String(e.reason).startsWith('runner_')) status = `${status} (${e.reason})`;
             else if (!failed) status = `${status} (${e.reason || 'unranked'})`;
             rows.push({ entry: e, raw: r, ranked, failed, rank, status });
         });
@@ -387,7 +387,9 @@ export const ASSESSMENT_GLOSSARY = [
     ['not_comparable', 'At least one side lacks usable counts.'],
 ];
 export const UNRANKED_GLOSSARY = [
-    ['runner_error', 'The run failed; Status gives the dispatch status (error, timeout or offline) and its metrics are shown as —.'],
+    ['runner_error', 'The run returned an error; its metrics are shown as —.'],
+    ['runner_timeout', 'The run exceeded its time budget; its metrics are shown as —.'],
+    ['runner_offline', 'The runner could not be reached; its metrics are shown as —.'],
     ['missing_timing', 'The run returned no execution_time_sec.'],
     ['missing_process_peak_rss', 'The run returned no process_peak_rss_mb.'],
     ['gpu_memory_not_measured', 'The run executed on a GPU. The memory fields are host RSS and do not include GPU device memory, so the run is not ranked by memory.'],
@@ -471,9 +473,24 @@ export function _dataPerformance(results) {
             + 'Process CPU is getrusage CPU time of the whole isolated runner process, '
             + 'including interpreter start, imports and the warm-up. Ranked by total time, '
             + 'fastest first; runs without a rank follow with the reason in Status. Gate '
-            + "count and depth are taken from each backend's transpiled QASM. "
-            + DEVICE_NOTE,
+            + 'count and depth describe the circuit each backend executed (gate_metrics_basis).'
+            + `${_artRunConditions(results)} ${DEVICE_NOTE}`,
     };
+}
+/** Caption sentence on whether the successful runs ran exclusively or overlapped others (tables.py _run_conditions). */
+function _artRunConditions(results) {
+    const raws = (results.raw_results || []).filter(r => r && typeof r === 'object' && !r.error);
+    if (!raws.length) return '';
+    if (raws.every(r => r.exclusive === true)) {
+        return ' Exclusive run: the backends ran one at a time with no other run in flight on '
+            + 'the server.';
+    }
+    const most = key => Math.max(0, ...raws.filter(r => typeof r[key] === 'number').map(r => Math.trunc(r[key])));
+    const own = most('overlapping_runs'), other = most('server_overlapping_runs');
+    if (!own && !other) return '';
+    return ` Runs overlapped in time with up to ${own} other run(s) of this job and ${other} `
+        + 'run(s) of other jobs (overlapping_runs, server_overlapping_runs); overlapping runs '
+        + 'share cores and memory bandwidth.';
 }
 /** _dataPerformance with median stage times and the spread of total time. */
 function _dataPerformanceRepeated(results) {
@@ -506,8 +523,8 @@ function _dataPerformanceRepeated(results) {
             + 'timed runs of process CPU time from t2 to t3; process CPU is getrusage CPU '
             + 'time of the whole isolated runner process, including interpreter start, '
             + 'imports, the warm-up and every timed run. Ranked by median total time, fastest first; runs without a rank '
-            + 'follow with the reason in Status. Gate count and depth are taken from each '
-            + `backend's transpiled QASM. ${DEVICE_NOTE}`,
+            + 'follow with the reason in Status. Gate count and depth describe the circuit each '
+            + `backend executed (gate_metrics_basis).${_artRunConditions(results)} ${DEVICE_NOTE}`,
     };
 }
 /** Per-backend memory: ranked runs by process peak RSS, then unranked runs with the reason. */
@@ -525,14 +542,14 @@ export function _dataResources(results) {
             _artText(_artField(row, 'precision')), row.status])),
         title: 'Resource usage',
         caption: 'Process peak RSS is the peak resident memory of the simulating process over its '
-            + 'whole life (interpreter start, imports, warm-up and timed run); method: '
+            + 'whole life (interpreter start, imports, warm-up and every timed run); method: '
             + `${_artDistinct(results, 'process_peak_rss_method')}. Rows are ranked by it, lowest `
             + 'first; runs without a rank follow with the reason in Status. Sim-window peak RSS '
             + 'and RSS delta (peak minus RSS at monitor entry) cover the pre-execute step and '
-            + `simulation window of the timed run; method: ${_artDistinct(results, 'memory_method')}. `
-            + 'Theoretical SV is 2^n × 16 bytes for the declared qubit count. 1 MiB = 1024^2 bytes. '
+            + `simulation window of the first timed run; method: ${_artDistinct(results, 'memory_method')}. `
+            + 'Theoretical SV is 2^n × 16 bytes (8 for complex64) for the declared qubit count. 1 MiB = 1024^2 bytes. '
             + 'For small circuits process peak RSS is dominated by the SDK import footprint; '
-            + "the sim-window RSS delta is the simulation's own allocation. "
+            + "the sim-window RSS delta is the memory the simulation window added, near 0 when it reuses memory the warm-up freed. "
             + `${GPU_MEMORY_NOTE} ${DEVICE_NOTE}`,
     };
 }
@@ -691,7 +708,7 @@ export function buildArtifactCatalog(results) {
     const res = results.resource_report || {};
     if ((res.ranking || []).length || (res.unranked || []).length) {
         image('resource_memory', 'Process peak RSS chart', 'Resources',
-            "Peak RSS of each backend's simulating process over its whole life (interpreter start, imports, warm-up and timed run), in MiB; method: "
+            "Peak RSS of each backend's simulating process over its whole life (interpreter start, imports, warm-up and every timed run), in MiB; method: "
             + `${_artDistinct(results, 'process_peak_rss_method')}. Ranked lowest first; GPU runs are labelled (GPU) and not ranked because GPU device memory is not measured; ` + unrankedNote);
         table('resources', 'Resource-usage table', 'Resources', () => _dataResources(results),
             'Per-backend device, process peak RSS, sim-window peak RSS and RSS delta, theoretical statevector size, precision and status (raw).');

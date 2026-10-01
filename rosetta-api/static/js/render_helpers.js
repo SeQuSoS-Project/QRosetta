@@ -261,11 +261,15 @@ export function executionTags(r, { device = true } = {}) {
     return tags;
 }
 
-/** Time the CPU quota held a run during its simulation window, as a note, or null when none was recorded. */
+/** Smallest share of the simulation window held by the CPU quota that the UI tags. */
+export const THROTTLE_SHOWN_SHARE = 0.01;
+
+/** Time the CPU quota held a run during its simulation window, as a note, or null when under THROTTLE_SHOWN_SHARE of the window. */
 export function throttleText(r) {
     const t = r?.simulation_throttled_sec;
     if (typeof t !== 'number' || !(t > 0)) return null;
     const sim = r?.simulation_time_sec;
+    if (typeof sim === 'number' && sim > 0 && t < THROTTLE_SHOWN_SHARE * sim) return null;
     const share = typeof sim === 'number' && sim > 0 ? ` (${fmtNum(100 * t / sim, 0)}% of the simulation window)` : '';
     return `the CPU quota held this runner for ${fmtNum(t, 4)} s${share}; that wait is part of simulation_time_sec`;
 }
@@ -293,12 +297,36 @@ export function simulationCoreSpeeds(r) {
     return [...speeds].sort((a, b) => a - b);
 }
 
-/** Note for a run whose timed runs were on CPUs of different maximum frequency, or null. */
+/** Maximum frequencies grouped into core classes: a class starts where a frequency exceeds the previous one by more than 10%. */
+export function coreClasses(speeds) {
+    const classes = [];
+    [...speeds].sort((a, b) => a - b).forEach(s => {
+        const last = classes[classes.length - 1];
+        if (last && s <= last[last.length - 1] * 1.1) last.push(s);
+        else classes.push([s]);
+    });
+    return classes;
+}
+
+/** Note for a run whose timed runs were on CPUs of different core classes (see coreClasses), or null. */
 export function mixedCoresText(r) {
-    const speeds = simulationCoreSpeeds(r);
-    if (speeds.length < 2) return null;
-    return `its timed runs were on CPUs with different maximum frequencies (${speeds.map(s => `${fmtInt(s)} MHz`).join(', ')}), `
-        + 'so its samples mix fast and slow cores; simulation_cpus_samples in the raw JSON gives the CPUs of each run';
+    const classes = coreClasses(simulationCoreSpeeds(r));
+    if (classes.length < 2) return null;
+    return `its timed runs were on CPUs of different speed classes (maximum ${classes.map(c => c.map(s => `${fmtInt(s)}`).join('/') + ' MHz').join(' vs ')}), `
+        + 'so its samples mix faster and slower cores; simulation_cpus_samples in the raw JSON gives the CPUs of each run';
+}
+
+/** Ratio of the slowest to the fastest simulation sample above which the UI marks a run's repeats as unstable. */
+export const UNSTABLE_SPREAD = 1.3;
+
+/** Note for a run with three or more timed runs whose simulation times spread by more than UNSTABLE_SPREAD, or null. */
+export function unstableText(r) {
+    const s = Array.isArray(r?.simulation_time_samples) ? r.simulation_time_samples.filter(v => typeof v === 'number') : [];
+    if (s.length < 3) return null;
+    const lo = Math.min(...s), hi = Math.max(...s);
+    if (!(lo > 0) || hi / lo <= UNSTABLE_SPREAD) return null;
+    return `its timed runs ranged from ${fmtNum(lo, 4)} to ${fmtNum(hi, 4)} s (${fmtNum(hi / lo, 2)}×), so something else on the host `
+        + 'probably competed with some of them; the median is less reliable than its n suggests';
 }
 
 /** The distinct CPU quotas (cores) reported by the runs, as a readable phrase, or null when none reported one. */

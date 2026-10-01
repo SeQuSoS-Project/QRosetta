@@ -82,9 +82,29 @@ def _tbl_performance(results: dict):
                "Process CPU is getrusage CPU time of the whole isolated runner process, "
                "including interpreter start, imports and the warm-up. Ranked by total time, "
                "fastest first; runs without a rank follow with the reason in Status. Gate "
-               "count and depth are taken from each backend's transpiled QASM. "
-               f"{DEVICE_NOTE}")
+               "count and depth describe the circuit each backend executed (gate_metrics_basis)."
+               f"{_run_conditions(results)} {DEVICE_NOTE}")
     return headers, rows, "Execution timing", caption
+
+
+def _run_conditions(results: dict) -> str:
+    """Caption sentence on whether the successful runs ran exclusively or overlapped others."""
+    raws = [r for r in results.get("raw_results") or [] if isinstance(r, dict) and not r.get("error")]
+    if not raws:
+        return ""
+    if all(r.get("exclusive") is True for r in raws):
+        return (" Exclusive run: the backends ran one at a time with no other run in flight on "
+                "the server.")
+
+    def most(key):
+        return max([int(r[key]) for r in raws if isinstance(r.get(key), (int, float))
+                    and not isinstance(r.get(key), bool)] or [0])
+    own, other = most("overlapping_runs"), most("server_overlapping_runs")
+    if not own and not other:
+        return ""
+    return (f" Runs overlapped in time with up to {own} other run(s) of this job and {other} "
+            f"run(s) of other jobs (overlapping_runs, server_overlapping_runs); overlapping runs "
+            f"share cores and memory bandwidth.")
 
 
 def _tbl_performance_repeated(results: dict):
@@ -117,8 +137,8 @@ def _tbl_performance_repeated(results: dict):
                "timed runs of process CPU time from t2 to t3; process CPU is getrusage CPU "
                "time of the whole isolated runner process, including interpreter start, "
                "imports, the warm-up and every timed run. Ranked by median total time, fastest first; runs without a rank "
-               "follow with the reason in Status. Gate count and depth are taken from each "
-               f"backend's transpiled QASM. {DEVICE_NOTE}")
+               "follow with the reason in Status. Gate count and depth describe the circuit each "
+               f"backend executed (gate_metrics_basis).{_run_conditions(results)} {DEVICE_NOTE}")
     return headers, rows, "Execution timing", caption
 
 
@@ -136,14 +156,14 @@ def _tbl_resources(results: dict):
              _fmt_text(_field(row, "precision")), row["status"]]
             for row in _report_rows(results, "resource_report")])
     caption = ("Process peak RSS is the peak resident memory of the simulating process over its "
-               "whole life (interpreter start, imports, warm-up and timed run); method: "
+               "whole life (interpreter start, imports, warm-up and every timed run); method: "
                f"{_distinct(results, 'process_peak_rss_method')}. Rows are ranked by it, lowest "
                "first; runs without a rank follow with the reason in Status. Sim-window peak RSS "
                "and RSS delta (peak minus RSS at monitor entry) cover the pre-execute step and "
-               f"simulation window of the timed run; method: {_distinct(results, 'memory_method')}. "
-               "Theoretical SV is 2^n × 16 bytes for the declared qubit count. 1 MiB = 1024^2 bytes. "
+               f"simulation window of the first timed run; method: {_distinct(results, 'memory_method')}. "
+               "Theoretical SV is 2^n × 16 bytes (8 for complex64) for the declared qubit count. 1 MiB = 1024^2 bytes. "
                "For small circuits process peak RSS is dominated by the SDK import footprint; "
-               "the sim-window RSS delta is the simulation's own allocation. "
+               "the sim-window RSS delta is the memory the simulation window added, near 0 when it reuses memory the warm-up freed. "
                f"{GPU_MEMORY_NOTE} {DEVICE_NOTE}")
     return headers, rows, "Resource usage", caption
 

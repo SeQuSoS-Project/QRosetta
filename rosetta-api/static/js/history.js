@@ -353,9 +353,8 @@ export async function loadHistoricalRun(runId, runName, createdAt) {
         historyBanner.append(title, closeBtn);
 
         const tabNav = document.getElementById('tab-nav');
-        if (!document.getElementById('history-active-banner')) {
-            tabNav.parentNode.insertBefore(historyBanner, tabNav);
-        }
+        document.getElementById('history-active-banner')?.remove();
+        tabNav.parentNode.insertBefore(historyBanner, tabNav);
 
         const isBatch = !!data.benchmark_summary;
         if (isBatch) {

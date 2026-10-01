@@ -184,7 +184,10 @@ function _testText(p) {
     const st = p.metrics?.statistical_test;
     if (!st) return '';
     const c = correctionName(st);
-    return `; χ² p (${c}) ${fmtPValue(adjustedPValue(st.chi2))}, G-test p (${c}) ${fmtPValue(adjustedPValue(st.g_test))}`;
+    const weak = st.verdict === 'distinguishable' && st.significant_fwer === false
+        ? '; significant under BY only, not under Holm\'s family-wise correction: other pairs\' discoveries lowered the bar for this one'
+        : '';
+    return `; χ² p (${c}) ${fmtPValue(adjustedPValue(st.chi2))}, G-test p (${c}) ${fmtPValue(adjustedPValue(st.g_test))}${weak}`;
 }
 
 function _powerText(p) {
@@ -310,12 +313,24 @@ function _renderStatevectorBlocks(panel, pairs, tol) {
 function _inconclusiveBlocks(panel, pairs) {
     const target = pairs[0]?.metrics?.statistical_test?.power?.target_power ?? 0.8;
     const reason = p => p.metrics?.statistical_test?.inconclusive_reason;
-    const lowPower = pairs.filter(p => reason(p) === 'low_power');
-    const rest = pairs.filter(p => reason(p) !== 'low_power');
+    const uncharacterised = pairs.filter(p => p.metrics?.statistical_test?.support_characterised === false);
+    const characterised = pairs.filter(p => p.metrics?.statistical_test?.support_characterised !== false);
+    const lowPower = characterised.filter(p => reason(p) === 'low_power');
+    const rest = characterised.filter(p => reason(p) !== 'low_power');
     const tooRare = rest.filter(p => resolvableByMoreShots(p) === false);
     const lowCounts = rest.filter(p => resolvableByMoreShots(p) !== false);
     const pooling = rest.some(p => p.metrics?.statistical_test?.pooled_outcomes !== undefined) ? ' even after pooling rare outcomes' : '';
 
+    if (uncharacterised.length) {
+        const unseen = Math.max(...uncharacterised.map(p => p.metrics.statistical_test.unseen_mass_good_turing ?? 0));
+        const block = _block(`Inconclusive, the sample does not yet show the outcome distribution (${uncharacterised.length})`, 'offline',
+            uncharacterised.map(p => _measuredItem(p)));
+        _note(block, `Outcomes seen only once carry up to ${fmtProb(unseen)} of the shots (Good–Turing estimate of the probability of `
+            + 'outcomes not yet seen), so the outcome distribution is spread over more outcomes than the sample covers. No shot '
+            + 'count can be recommended from it, and the number needed may exceed the platform maximum. Measuring fewer qubits '
+            + '(only the ones of interest) gives the test a distribution it can resolve.');
+        panel.appendChild(block);
+    }
     if (lowPower.length) {
         const rec = recommendedShots(lowPower);
         const pooledPairs = lowPower.some(p => (p.metrics?.statistical_test?.power?.pooled_probability ?? 0) > 0);
@@ -593,7 +608,8 @@ function _renderRunDetails(panel, data, raws) {
             _kv(grid, 'seed honoured', 'no: this backend ignores the seed, so its counts are not reproducible');
         }
         _kv(grid, 'dispatch group', r.dispatch_group);
-        if (typeof r.concurrent_runs === 'number') _kv(grid, 'dispatched with', `${r.concurrent_runs - 1} other run(s) at the same time (phase ${r.dispatch_phase ?? 1})`);
+        if (typeof r.concurrent_runs === 'number') _kv(grid, 'dispatched with', `${r.concurrent_runs - 1} other run(s) in the same phase (phase ${r.dispatch_phase ?? 1})`);
+        if (typeof r.overlapping_runs === 'number') _kv(grid, 'overlapped with', `${r.overlapping_runs} other run(s) of this job while it ran`);
         _kv(grid, 'timed runs', r.timing_samples);
         const env = r.cpu_environment;
         if (env) {
@@ -608,7 +624,7 @@ function _renderRunDetails(panel, data, raws) {
             _kv(grid, 'container CPU in simulation window', outsideProcessText(r) || `${fmtNum(r.simulation_cgroup_cpu_time_sec, 4)} s (matches the process)`);
         }
         if (typeof r.simulation_throttled_sec === 'number') {
-            _kv(grid, 'throttled in simulation window', throttleText(r) || '0 s');
+            _kv(grid, 'throttled in simulation window', throttleText(r) || `${fmtNum(r.simulation_throttled_sec, 4)} s`);
         }
         _kv(grid, 'window memory method', r.memory_method);
         _kv(grid, 'runner code sha256', r.runner_code_sha256);

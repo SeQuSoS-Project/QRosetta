@@ -31,6 +31,11 @@ _PARSE_NOTE = (
     "parser, not Qiskit's, and converted to a Qiskit circuit; gate definitions the pytket "
     "parser rejects fail here when apply_preprocessing is False. Required by the adapter, "
     "applied regardless of apply_preprocessing.")
+_FUSION_NOTE = (
+    "Aer gate fusion (AerSimulator default fusion_enable=True): above Aer's qubit threshold "
+    "Aer fuses neighbouring gates inside its simulation, at every optimization level; "
+    "gate_fusion records what Aer reported for the run, and transpiled_qasm is the circuit "
+    "before fusion.")
 _METHOD_NOTE = (
     "AerSimulator(method='statevector'): the simulation method is fixed, so Aer does not "
     "switch to its stabilizer method on Clifford circuits.")
@@ -50,6 +55,14 @@ def _simulator():
 _AER_OPERATIONS = frozenset(_simulator().target.operation_names)
 
 
+def _fusion(metadata) -> dict:
+    """Aer's gate-fusion report for the experiment: whether fusion was applied, the qubit
+    threshold above which it is enabled and the largest fused gate."""
+    fusion = metadata.get("fusion") or {}
+    return {"source": "Aer result metadata",
+            **{k: fusion.get(k) for k in ("enabled", "applied", "threshold", "max_fused_qubits")}}
+
+
 def _backend_fields(result, sim) -> dict:
     """Method and device Aer reports for the executed experiment."""
     metadata = result.results[0].metadata
@@ -58,6 +71,7 @@ def _backend_fields(result, sim) -> dict:
     return {
         "device": device,
         "simulation_method": method,
+        "gate_fusion": _fusion(metadata),
         "simulator_backend": (
             f"qiskit-aer AerSimulator(method={method}, precision={sim.options.precision}, "
             f"device={device})"),
@@ -129,7 +143,7 @@ def _to_qiskit(qasm: str, payload: dict):
             f"qiskit.compiler.transpile(level={min(opt_level, 3)}): Native Qiskit "
             "transpilation pass applied to optimize the circuit structure for the Aer backend.")
     qiskit_circ = _to_aer_basis(qiskit_circ, preprocessing_applied)
-    preprocessing_applied.append(_METHOD_NOTE)
+    preprocessing_applied.extend([_METHOD_NOTE, _FUSION_NOTE])
 
     return tk_circ, qiskit_circ, preprocessing_applied
 

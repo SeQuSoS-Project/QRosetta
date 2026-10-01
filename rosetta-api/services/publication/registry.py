@@ -116,7 +116,7 @@ def _iter_artifacts(results: dict, mode: str) -> List[dict]:
                                               "includes interpreter start, SDK import and warm-up; "
                                               "SDK import dominates for small circuits"),
                      "Peak RSS of each backend's simulating process over its whole life "
-                     "(interpreter start, imports, warm-up and timed run), in MiB; method: "
+                     "(interpreter start, imports, warm-up and every timed run), in MiB; method: "
                      f"{_distinct(results, 'process_peak_rss_method')}. Ranked lowest first; GPU "
                      "runs are labelled (GPU) and not ranked because GPU device memory is not "
                      "measured; " + unranked_note)

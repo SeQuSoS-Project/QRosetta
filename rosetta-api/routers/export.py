@@ -11,6 +11,7 @@ import schemas
 from routers.errors import responses
 from services.security import limiter
 from services.exporter import build_export_context, build_ro_crate
+from services.report_validation import reject_invalid_report
 from services.job_manager import job_report_or_error, report_failed_before_dispatch
 from qrosetta_commons.helpers import get_logger
 
@@ -46,6 +47,7 @@ async def export_ro_crate(request: Request, payload: schemas.ExportRequest):
         raise HTTPException(status_code=400, detail="No results provided to export")
     if report_failed_before_dispatch(payload.results):
         raise HTTPException(status_code=409, detail=f"This run failed before dispatch and has no results to export: {payload.results['error']}")
+    reject_invalid_report(payload.results)
     return await _crate_response(payload.results, payload)
 
 

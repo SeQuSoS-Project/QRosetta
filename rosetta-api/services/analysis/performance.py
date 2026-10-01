@@ -12,6 +12,8 @@ the IQR and stdev of the per-run totals, and is ranked by the median total.
 from .timing import stage_median, timing_samples, timing_summary
 
 _FAILED_DISPATCH = ("error", "timeout", "offline")
+_FAILURE_REASON = {"error": "runner_error", "timeout": "runner_timeout",
+                   "offline": "runner_offline"}
 
 
 def _failure_status(res):
@@ -55,7 +57,7 @@ def create_performance_report(results_list: list) -> dict:
                 "simulator": sim_name,
                 "device": _device(res),
                 "status": failure,
-                "reason": "runner_error",
+                "reason": _FAILURE_REASON[failure],
                 "error": res.get('error'),
                 "execution_time_sec": None,
                 "rank": None,
@@ -136,7 +138,7 @@ def create_resource_report(results_list: list) -> dict:
                 "simulator": sim_name,
                 "device": _device(res),
                 "status": failure,
-                "reason": "runner_error",
+                "reason": _FAILURE_REASON[failure],
                 "error": res.get('error'),
                 "process_peak_rss_mb": res.get('process_peak_rss_mb'),
                 "memory_usage_mb": None,

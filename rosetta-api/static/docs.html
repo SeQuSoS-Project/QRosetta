@@ -277,6 +277,15 @@
                         <code>timing_statistic: "median"</code>; the Performance tab shows the median ±
                         the sample standard deviation with n. All repeats and the warm-up share one
                         timeout.</li>
+                    <li><strong>Exclusive timing run</strong> (<code>exclusive</code>, default off). Every backend
+                        runs in its own phase, one after another, and the job runs only while no other run is in
+                        flight on this server: it waits for running jobs, and jobs submitted meanwhile wait for it.
+                        Results record <code>exclusive</code> and <code>exclusive_wait_sec</code>. It overrides
+                        <code>runner_phases</code>. It cannot hold back other programs on the host, and in Kubernetes
+                        mode it covers only this server's runner Jobs.</li>
+                    <li><strong>Shots</strong> (<code>n_shots</code>, measured mode, default 8200): enough for the power
+                        model to reach 0.8 on circuits with up to 16 outcomes and 14 backends (8199 needed). Circuits
+                        with more outcomes need more; the Summary tab recommends a count when it can.</li>
                     <li><strong>Multi-run mode (self-comparison).</strong> Runs one backend several times,
                         at the same or different optimization levels, and compares the runs with each other
                         like separate backends. In the API, a list in <code>runner_config</code> runs that
@@ -544,7 +553,13 @@
                 <ul>
                     <li><strong>Pearson chi-square</strong>: <code>χ² = Σ (O − E)² / E</code>, no
                         continuity correction, <code>df = K − 1</code>.</li>
-                    <li><strong>G-test</strong>: <code>G = 2 Σ O ln(O / E)</code>, same df.</li>
+                    <li><strong>G-test</strong>: <code>G = 2 Σ O ln(O / E)</code> divided by Williams'
+                        correction <code>q = 1 + (N Σ 1/Rᵢ − 1)(N Σ 1/Cⱼ − 1) / (6 N (rows − 1)(K − 1))</code>,
+                        same df (<code>g_test.statistic</code>; the uncorrected value is
+                        <code>statistic_uncorrected</code> and q is <code>williams_q</code>). Without it the
+                        G-test rejects far too often on tables with many bins of small expected counts: in
+                        simulation with no real difference, 95% of 65,536-bin tables at 10<sup>6</sup> shots were
+                        rejected at α = 0.05, 15% with the correction.</li>
                     <li><strong>Cramér's V</strong>: <code>√(χ² / N)</code>.</li>
                     <li><strong>Multiple comparisons</strong>, over the m tested pairs of the run, separately
                         for each test. Benjamini–Yekutieli (<code>correction: "BY"</code>): with p-values
@@ -558,7 +573,13 @@
                         with many can be false discoveries, and one unusual sample of one backend can flag
                         several of its pairs at once. The Benjamini–Hochberg (<code>p_value_bh</code>) and
                         Bonferroni (<code>min(1, m p)</code>, <code>p_value_bonferroni</code>) adjusted
-                        p-values are recorded for reference. A p-value that underflows to 0 is shown as
+                        p-values are recorded for reference, and so are Holm's step-down adjusted p-values
+                        (<code>p_value_holm</code>, <code>significant_holm</code>), which control the family-wise
+                        error rate. A distinguishable pair carries <code>significant_fwer</code>: true when both
+                        tests also pass Holm. Under BY, genuine discoveries in other pairs lower the bar for every
+                        pair, so with one wrong backend among 14, a pair of two correct backends is flagged in about
+                        8–9% of runs; the Summary marks a distinguishable pair that fails Holm as significant under
+                        BY only. A p-value that underflows to 0 is shown as
                         <code>&lt;1e-300</code>, and values below 1e-3 in scientific notation.</li>
                     <li><strong>Verdict</strong>: <code>inconclusive_low_shots</code>
                         (<code>low_expected_counts</code>) if no pooling gives adequate expected counts; else
@@ -567,7 +588,14 @@
                         observed shots, computed at α/(m·c_m), is at least 0.8 and
                         <code>inconclusive_low_shots</code> (<code>low_power</code>) otherwise.
                         <code>resolvable_by_more_shots</code>, beside <code>inconclusive_reason</code>, says
-                        whether more shots can turn an inconclusive pair into a verdict.</li>
+                        whether more shots can turn an inconclusive pair into a verdict. It is null, and no shot
+                        count is recommended, when the sample does not show the outcome distribution:
+                        <code>unseen_mass_good_turing</code>, the share of shots in outcomes seen exactly once
+                        (the Good–Turing estimate of the probability of outcomes not yet seen), exceeds δ/2 for
+                        either backend (<code>support_characterised: false</code>). That happens when the circuit
+                        spreads its outcomes over more basis states than the shots cover, for example a
+                        20-qubit uniform superposition; measuring only the qubits of interest gives the test a
+                        distribution it can resolve.</li>
                     <li><strong>Power model</strong>: the effect size is Cohen's
                         <code>w = δ<sub>tested</sub></code>, the smallest w any distribution pair at total
                         variation δ = 0.05 can have on the table the test sees (w ≥ TV). Pooling rare outcomes
@@ -753,6 +781,16 @@
                         inside its <code>simulation_time_sec</code> and memory window, so its time and memory grow with the
                         number of non-zero amplitudes rather than with 2<sup>N</sup> alone: a GHZ state is fast, a dense
                         state slow.</li>
+                    <li><strong>Measured mode, statevector sampling.</strong> Backends that sample from a
+                        statevector (<code>sampling_method: "sv_sample"</code>) read the state from the SDK and draw
+                        the shots inside <code>simulation_time_sec</code>, because the shots need the state; in
+                        statevector mode, converting the SDK's result object into the reported array is outside
+                        the window.</li>
+                    <li><strong>Gate fusion.</strong> Qiskit Aer (qiskit and cuQuantum) and qsim fuse neighbouring
+                        gates inside their simulation at every optimization level: Aer above its qubit threshold
+                        (recorded per run as <code>gate_fusion</code>), qsim into gates on up to two qubits. The
+                        reported gate counts are those of the circuit before fusion. This is part of how those
+                        simulators run and is listed in their <code>preprocessing_applied</code>.</li>
                     <li><strong>quimb's timed window.</strong> quimb's <code>simulation_time_sec</code> includes the
                         search for a contraction path (cotengra's <code>auto-hq</code> optimiser, repeated each run with
                         its caches cleared) as well as the contraction. The search is randomised, so quimb's times vary
@@ -768,10 +806,20 @@
                         <code>simulation_involuntary_switches_samples</code>), and contention with the other
                         backends of the same comparison, which run at the same time unless runner phases or
                         the Sequential ordering stage them (each result records <code>concurrent_runs</code>, the number
-                        of runs dispatched with it, and <code>dispatch_phase</code>). Concurrent runs share cores,
+                        of runs dispatched in its phase, <code>dispatch_phase</code>, and <code>overlapping_runs</code>, the
+                        number of other runs of the same job that were in their runner process at some time this one was;
+                        other users' runs on a shared server are not counted). Concurrent runs share cores,
                         hyperthreads and memory bandwidth: on a 20-qubit measured QFT testers saw 2.3–3.3× longer times
                         than with the Sequential ordering, and the order of backends changed. For timings meant for a performance comparison,
-                        use several <code>timing_repeats</code>, stage the backends one at a time, and check
+                        use an exclusive run (the "Exclusive timing run" box, API field <code>exclusive</code>): the
+                        backends run one at a time and only while no other run is in flight on this server, and
+                        each result records <code>exclusive</code> and the wait (<code>exclusive_wait_sec</code>).
+                        Otherwise every local result records <code>server_overlapping_runs</code>, the runs of
+                        other jobs that were in flight at some time it was. On a host with hyperthreads, a run whose
+                        sibling thread is busy can be 1.5–2× slower with every other check passing, so a
+                        non-exclusive comparison is not reliable. Also use at least three
+                        <code>timing_repeats</code> (one backend, qibo, was about 17% slower on its first timed run
+                        at 18 qubits), stage the backends one at a time, and check
                         that <code>simulation_throttled_sec</code> is zero and <code>cpu_max_mhz</code> names
                         the same kind of core for every backend.</li>
                     <li><strong>Threads.</strong> Every runner is started with five thread variables set to
@@ -780,6 +828,13 @@
                         <code>NUMBA_NUM_THREADS</code>; the values each run saw are in
                         <code>thread_env</code>. <code>RUNNER_MAX_CONCURRENT</code> (default 1) sets how many
                         runs one runner executes at once; further runs queue.</li>
+                    <li><strong>Memory the warm-up left behind.</strong> The warm-up run allocates and frees the
+                        same memory the timed run needs, and the allocator usually keeps it. The timed run can
+                        then reuse it without raising the high-water mark, so <code>memory_usage_mb</code> can read
+                        near 0 for a statevector of a few MiB (seen for PennyLane at 16 qubits and qibo at 18). Read
+                        it as the memory the simulation window added, not as the memory the simulation used. A fixed
+                        allocator threshold that would expose every allocation slowed some backends by more than 3×,
+                        so it is not used.</li>
                     <li><strong>Memory.</strong> Memory is read from the kernel high-water mark
                         (<code>VmHWM</code>). <code>memory_usage_mb</code> (Sim-window RSS delta) is the peak
                         RSS minus the baseline RSS over the simulation window (pre-execute setup plus t2..t3;
@@ -794,6 +849,10 @@
                         is not measured, so a GPU run's memory fields do not include its statevector on the
                         GPU. GPU runs are not ranked by memory; they are listed under <code>unranked</code>
                         with reason <code>gpu_memory_not_measured</code>, and the Resources tab says so.</li>
+                    <li><strong>RSS and the container limit.</strong> RSS counts the shared libraries a process
+                        has mapped, such as the CUDA runtime, so <code>process_peak_rss_mb</code> can exceed the
+                        container's <code>memory_limit_mib</code> (cuQuantum and quimb read about 545 and 610 MiB under
+                        a 512 MiB limit) without the process being out of memory.</li>
                     <li><strong>Units.</strong> Every memory field ending in <code>_mb</code> is in MiB
                         (2<sup>20</sup> bytes).</li>
                     <li><strong>What dominates memory.</strong> For small circuits,
@@ -834,7 +893,7 @@
                         stops it until the next 100 ms period, and that wait falls inside the timed window. Every
                         result records the throttled time as <code>simulation_throttled_sec</code> and
                         <code>compilation_throttled_sec</code> (read from the cgroup's <code>cpu.stat</code> just outside
-                        each window; null when the file is unreadable), and the Performance table tags such runs
+                        each window; null when the file is unreadable), and the Performance table tags runs held for at least 1% of the window
                         "throttled". The cuQuantum runner's container has the same quota: its kernels run on the GPU, but
                         its host-side work (circuit conversion, kernel launches, synchronisation, the device-to-host copy
                         and sampling) is throttled like any other runner's.</li>

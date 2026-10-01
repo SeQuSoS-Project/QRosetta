@@ -126,6 +126,11 @@ _SAVE_STATEVECTOR_NOTE = (
     "qiskit_aer save_statevector(): appended so Aer returns the final state; transpiled_qasm "
     "is the circuit before it. Required by the adapter, applied regardless of "
     "apply_preprocessing.")
+_FUSION_NOTE = (
+    "Aer gate fusion (AerSimulator default fusion_enable=True): above Aer's qubit threshold "
+    "Aer fuses neighbouring gates inside its simulation, at every optimization level; "
+    "gate_fusion records what Aer reported for the run, and transpiled_qasm is the circuit "
+    "before fusion.")
 _METHOD_NOTE = (
     "AerSimulator(method='statevector', device='GPU', cuStateVec_enable=True): NVIDIA "
     "cuStateVec on the GPU; the method is fixed, so Aer does not switch to its stabilizer "
@@ -134,6 +139,14 @@ _METHOD_NOTE = (
 _COUNTS_KEY_NOTE = (
     "Counts keys: Aer's space-separated per-register fields are re-keyed to one bitstring "
     "over every declared classical bit in declaration order, flat clbit 0 rightmost.")
+
+
+def _fusion(metadata) -> dict:
+    """Aer's gate-fusion report for the experiment: whether fusion was applied, the qubit
+    threshold above which it is enabled and the largest fused gate."""
+    fusion = metadata.get("fusion") or {}
+    return {"source": "Aer result metadata",
+            **{k: fusion.get(k) for k in ("enabled", "applied", "threshold", "max_fused_qubits")}}
 
 
 def _backend_fields(result, sim) -> dict:
@@ -146,6 +159,7 @@ def _backend_fields(result, sim) -> dict:
         "custatevec_enabled": bool(metadata.get("cuStateVec_enable")),
         "gpu_name": capabilities().get("gpu_name"),
         "simulation_method": method,
+        "gate_fusion": _fusion(metadata),
         "simulator_backend": (
             f"qiskit-aer AerSimulator(method={method}, precision={sim.options.precision}, "
             f"device={device})"),
@@ -180,7 +194,7 @@ def process_run(payload: dict) -> dict:
             circuit=(sim, executed_qc, qc),
             n_qubits=qc.num_qubits,
             preprocessing_applied=(strip_notes + preprocessing_applied
-                                   + [_METHOD_NOTE, _SAVE_STATEVECTOR_NOTE]),
+                                   + [_METHOD_NOTE, _FUSION_NOTE, _SAVE_STATEVECTOR_NOTE]),
             precision=_precision(sim))
 
     def execute(compiled, _payload):
@@ -214,7 +228,7 @@ def process_run_measured(payload: dict) -> dict:
         return CompileResult(
             circuit=(sim, qc, qc),
             n_qubits=qc.num_qubits,
-            preprocessing_applied=preprocessing_applied + [_METHOD_NOTE, _COUNTS_KEY_NOTE],
+            preprocessing_applied=preprocessing_applied + [_METHOD_NOTE, _FUSION_NOTE, _COUNTS_KEY_NOTE],
             precision=_precision(sim))
 
     def execute(compiled, payload):

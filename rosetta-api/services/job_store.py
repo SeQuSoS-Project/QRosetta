@@ -1,11 +1,16 @@
 """Job table for ACTIVE_JOBS: each job's untruncated report (``full_results``) is kept in a
-file on local disk rather than in the worker's memory, and deleted with the job."""
+file on local disk rather than in the worker's memory (in memory when the write fails), and
+deleted with the job."""
 
 import os
 import pickle
 import shutil
 import tempfile
 import threading
+
+from qrosetta_commons.helpers import get_logger
+
+logger = get_logger("rosetta-job-store")
 
 SPILL_DIR = os.getenv("QROSETTA_JOB_SPILL_DIR", os.path.join(tempfile.gettempdir(), "qrosetta-jobs"))
 
@@ -43,13 +48,20 @@ class JobTable(dict):
 
     def __setitem__(self, job_id, job):
         if isinstance(job, dict) and isinstance(job.get("full_results"), dict):
-            os.makedirs(SPILL_DIR, exist_ok=True)
             path = _path(job_id)
             tmp = f"{path}.{threading.get_ident()}.tmp"
-            with open(tmp, "wb") as fh:
-                pickle.dump(job["full_results"], fh, protocol=pickle.HIGHEST_PROTOCOL)
-            os.replace(tmp, path)
-            job = {**job, "full_results": SpilledReport(path)}
+            try:
+                os.makedirs(SPILL_DIR, exist_ok=True)
+                with open(tmp, "wb") as fh:
+                    pickle.dump(job["full_results"], fh, protocol=pickle.HIGHEST_PROTOCOL)
+                os.replace(tmp, path)
+                job = {**job, "full_results": SpilledReport(path)}
+            except OSError as exc:
+                logger.warning(f"Keeping the report of job {job_id} in memory: {exc}")
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
         super().__setitem__(job_id, job)
 
     def pop(self, job_id, *default):

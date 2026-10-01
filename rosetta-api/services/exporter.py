@@ -171,8 +171,44 @@ def _circuit_path(task: _TaskView) -> str:
     return "circuit.qasm" if task.task_id is None else f"circuits/{task.task_id}.qasm"
 
 
+RUNNER_KEY_RE = re.compile(r"^[a-z0-9][a-z0-9-]*(~opt\d+~run\d+)?$")
+
+
+def _file_stem(sim: str) -> str:
+    """``sim`` with every character outside [A-Za-z0-9~_-] replaced, safe as a file name."""
+    return re.sub(r"[^A-Za-z0-9~_-]+", "-", str(sim)).strip("-") or "runner"
+
+
+def invalid_runner_keys(results: dict) -> list:
+    """Simulator keys in a report (single or batch) that are not runner ids or
+    ``<id>~opt<L>~run<N>`` self-comparison keys."""
+    reports = results.get("benchmark_summary") if isinstance(results.get("benchmark_summary"), list) else [results]
+    bad = []
+    for report in reports:
+        if not isinstance(report, dict):
+            continue
+        for r in report.get("raw_results") or []:
+            sim = r.get("simulator") if isinstance(r, dict) else None
+            if sim is not None and not RUNNER_KEY_RE.match(str(sim)):
+                bad.append(str(sim))
+        for record in report.get("dispatched_circuits") or []:
+            for sim in (record.get("runners") or []) if isinstance(record, dict) else []:
+                if not RUNNER_KEY_RE.match(str(sim)):
+                    bad.append(str(sim))
+    return sorted(set(bad))
+
+
 def _task_scoped_path(folder: str, task: _TaskView, sim: str) -> str:
-    return f"{folder}/{sim}.qasm" if task.task_id is None else f"{folder}/{task.task_id}/{sim}.qasm"
+    stem = _file_stem(sim)
+    return f"{folder}/{stem}.qasm" if task.task_id is None else f"{folder}/{task.task_id}/{stem}.qasm"
+
+
+def _member(dir_name: str, rel_path: str) -> str:
+    """``dir_name/rel_path``; ValueError for a path that is absolute or has a '..' part."""
+    parts = str(rel_path).replace("\\", "/").split("/")
+    if str(rel_path).startswith("/") or any(p in ("", ".", "..") for p in parts):
+        raise ValueError(f"unsafe path in export: {rel_path!r}")
+    return f"{dir_name}/{rel_path}"
 
 
 def _shared_scalar(ctx: "ExportContext", key: str):
@@ -680,7 +716,7 @@ def _build_ro_crate_metadata(ctx: ExportContext,
         ),
         "datePublished": ctx.timestamp,
         "license": {"@id": "#license"},
-        "hasPart": [{"@id": _circuit_path(t)} for t in tasks] + [
+        "hasPart": [{"@id": _circuit_path(t)} for t in tasks if t.input_qasm] + [
             {"@id": "results.json"},
             {"@id": "provenance.json"},
         ],
@@ -708,6 +744,8 @@ def _build_ro_crate_metadata(ctx: ExportContext,
     })
 
     for task in tasks:
+        if not task.input_qasm:
+            continue
         graph.append({
             "@id": _circuit_path(task),
             "@type": "File",
@@ -837,7 +875,7 @@ def _build_ro_crate_metadata(ctx: ExportContext,
     output_refs: List[dict] = []
     for task in tasks:
         task_suffix = f"-{task.task_id}" if task.task_id else ""
-        circuit_ref = {"@id": _circuit_path(task)}
+        circuit_ref = {"@id": _circuit_path(task)} if task.input_qasm else None
         circuit_phrase = "the input circuit" if not task.task_id else f"'{task.label}'"
         dispatched_by_sim = {f["sim"]: f["path"] for f in dispatched[id(task)]}
 
@@ -848,7 +886,7 @@ def _build_ro_crate_metadata(ctx: ExportContext,
             runner_id = _canonical_sim_id(runner)
             frag = _entity_ref_id(runner) + task_suffix
 
-            obj_refs = [circuit_ref] + list(shared_param_refs)
+            obj_refs = ([circuit_ref] if circuit_ref else []) + list(shared_param_refs)
             opt_level = raw.get("optimization_level")
             if opt_level is not None:
                 opt_param_id = f"#param-optlevel-{frag}"
@@ -1062,11 +1100,12 @@ def build_ro_crate(ctx: ExportContext) -> bytes:
             json.dumps(metadata, indent=2, ensure_ascii=False),
         )
         for rel_path, data in publication_files.items():
-            zf.writestr(f"{dir_name}/{rel_path}", data)
+            zf.writestr(_member(dir_name, rel_path), data)
         for rel_path, data in lock_files.items():
-            zf.writestr(f"{dir_name}/{rel_path}", data)
+            zf.writestr(_member(dir_name, rel_path), data)
         for task in _iter_tasks(ctx):
-            zf.writestr(f"{dir_name}/{_circuit_path(task)}", task.input_qasm)
+            if task.input_qasm:
+                zf.writestr(_member(dir_name, _circuit_path(task)), task.input_qasm)
         zf.writestr(
             f"{dir_name}/results.json",
             json.dumps(results_data, indent=2, ensure_ascii=False),
@@ -1077,7 +1116,7 @@ def build_ro_crate(ctx: ExportContext) -> bytes:
         )
         for task in _iter_tasks(ctx):
             for f in _dispatched_circuit_files(task) + _transpiled_circuit_files(task):
-                zf.writestr(f"{dir_name}/{f['path']}", f["qasm"])
+                zf.writestr(_member(dir_name, f["path"]), f["qasm"])
 
     logger.info(f"Built RO-Crate ZIP: {dir_name} ({buf.tell()} bytes)")
     return buf.getvalue()

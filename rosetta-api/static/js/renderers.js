@@ -287,7 +287,18 @@ export function renderSuiteSummary(data, title) {
             const timeRanked = splitRanking(item.performance_report, 'execution_time_sec').ranked;
             const fastest = timeRanked[0];
             const lightest = splitRanking(item.resource_report, 'process_peak_rss_mb').ranked[0];
-            _fillWinnerCell(rowFrag.querySelector('.tpl-fastest'), fastest, item.raw_results, timeRanked[1]);
+            const fastestCell = rowFrag.querySelector('.tpl-fastest');
+            _fillWinnerCell(fastestCell, fastest, item.raw_results, timeRanked[1]);
+            const rawOf = e => (item.raw_results || []).find(r => r && r.simulator === e.simulator) || e;
+            if (fastest && fastestCell && isGpuRun(rawOf(fastest))) {
+                const cpu = timeRanked.find(e => !isGpuRun(rawOf(e)));
+                if (cpu) {
+                    const sub = document.createElement('div');
+                    sub.className = 'text-[11px] text-gray-500';
+                    sub.textContent = `fastest CPU: ${_displayRunnerName(cpu.simulator)}`;
+                    fastestCell.appendChild(sub);
+                }
+            }
             _fillWinnerCell(rowFrag.querySelector('.tpl-lightest'), lightest, item.raw_results);
 
             const detailsBtn = rowFrag.querySelector('.tpl-details-btn');

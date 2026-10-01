@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 import schemas
 from services.security import limiter
 from services.publication import render_artifact
+from services.report_validation import reject_invalid_report
 from qrosetta_commons.helpers import get_logger
 
 logger = get_logger("rosetta-publication-api")
@@ -27,6 +28,7 @@ async def publication_render(request: Request, payload: schemas.PublicationRende
     results = payload.results
     if not results:
         raise HTTPException(status_code=400, detail="No results provided")
+    reject_invalid_report(results)
 
     mode = "measured" if "n_shots" in results else "statevector"
     try:
