@@ -213,3 +213,71 @@ def test_client_report_with_repeated_compiler_keys_is_rejected():
     record = {"compiler": "pyzx~opt1~run1", "transpiled_qasm": "h q[0];"}
     assert report_problems({"raw_results": [], "compiled_circuits": [record, dict(record)]})
     assert report_problems({"raw_results": [], "compiled_circuits": [record]}) == []
+
+
+def test_block_comments_survive_preprocessing_without_a_measurement():
+    pytest.importorskip("pytket")
+    from services.circuit_resolver import prepare_statevector_dispatch
+    text = 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[1];\ncreg c[1];\n/* note */ h q[0];\n'
+    prepared = prepare_statevector_dispatch(text, True)
+    assert "h q[0];" in prepared["qasm"] and "note" not in prepared["qasm"]
+
+
+@pytest.mark.parametrize("name", ["‮detaler", "zero​width", "bom﻿"])
+def test_names_with_invisible_formatting_characters_are_rejected(name):
+    from services.report_validation import report_problems
+    assert report_problems({"raw_results": [], "run_name": name})
+    assert report_problems({"benchmark_summary": [{"task_name": name, "raw_results": []}]})
+
+
+def test_reports_nested_too_deep_are_rejected_without_recursion():
+    from services.report_validation import MAX_REPORT_DEPTH, report_problems
+    deep = leaf = {}
+    for _ in range(5000):
+        leaf["x"] = {}
+        leaf = leaf["x"]
+    problems = report_problems({"raw_results": [], "extra": deep})
+    assert any(f"at most {MAX_REPORT_DEPTH}" in p for p in problems)
+
+
+def _crate_json(report, route, name):
+    zip_bytes = build_ro_crate(build_export_context(report, ExportPayload(), route))
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        member = next(n for n in zf.namelist() if n.endswith("/" + name))
+        return json.loads(zf.read(member))
+
+
+def test_crate_records_how_the_exporter_obtained_the_report():
+    forged = {"raw_results": [], "input_qasm": QASM, "saved_from": "server_job", "git_sha": "deadbeef"}
+    client = _crate_json(forged, "client_request", "provenance.json")
+    assert client["report_source"] == "client_supplied"
+    assert "did not produce or check" in client["report_source_meaning"]
+    assert "saved_from" not in _crate_json(forged, "client_request", "results.json")
+    metadata = _crate_json(forged, "client_request", "ro-crate-metadata.json")
+    root = next(e for e in metadata["@graph"] if e["@id"] == "./")
+    assert "supplied in the export request" in root["description"]
+    assert _crate_json({**forged, "saved_from": "upload"}, "saved_run", "provenance.json")["report_source"] == "upload"
+    assert _crate_json({"raw_results": []}, "saved_run", "provenance.json")["report_source"] == "not_recorded"
+    assert _crate_json({"raw_results": []}, "server_job", "provenance.json")["report_source"] == "server_job"
+
+
+def test_malformed_compile_records_do_not_break_exports():
+    from services.report_validation import report_problems
+    record = {"compiler": "pyzx~opt1~run1", "compiler_id": "pyzx", "transpiled_qasm": "h q[0];",
+              "dispatch_status": "ok", "sdk_versions": "pyzx 0.10.6"}
+    report = {"raw_results": [], "compiled_circuits": [record]}
+    assert report_problems(report) == []
+    zip_bytes = build_ro_crate(build_export_context(report, ExportPayload()))
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        assert not any("compilers/" in n and n.endswith("requirements.lock") for n in zf.namelist())
+    assert report_problems({"raw_results": [], "compiled_circuits": [{"transpiled_qasm": "x"}, {"transpiled_qasm": "y"}]})
+
+
+def test_compile_requests_are_recorded_and_queued_under_dispatch_keys(fake_dispatch):
+    pytest.importorskip("pytket")
+    statuses = {}
+    compilation.queue_compile_statuses(statuses, {"pyzx": [1, 2], "bqskit": [1]})
+    assert statuses == {"pyzx~opt1~run1": "queued", "pyzx~opt2~run1": "queued", "bqskit": "queued"}
+    report = asyncio.run(job_manager.run_single_circuit_comparison(
+        QASM, target_simulators=["qiskit"], compilers={"pyzx": [1]}))
+    assert report["compilers_requested"] == {"pyzx": [1]}

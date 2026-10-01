@@ -42,6 +42,7 @@ function _linkRow(link, onRevoked) {
         const revoke = _el('button', 'text-xs text-red-700 hover:text-red-900 underline', 'Revoke');
         revoke.type = 'button';
         revoke.onclick = async () => {
+            if (!window.confirm('Revoke this link? Anyone who has it will no longer be able to open it.')) return;
             revoke.disabled = true;
             try {
                 await _request(`/history/share-links/${encodeURIComponent(link.id)}`, { method: 'DELETE' });

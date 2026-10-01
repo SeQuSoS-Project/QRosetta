@@ -79,6 +79,7 @@ export const _RUNNER_NAMES = {
     "pennylane-default": "PL Default", "qsim-cirq": "qsim-Cirq", "qibo": "Qibo",
     "qrisp": "Qrisp", "myqlm": "myQLM", "pyquil": "PyQuil",
     "torchquantum": "TorchQuantum", "quimb": "Quimb", "cuquantum": "cuQuantum",
+    "bqskit": "BQSKit (compile)", "pyzx": "PyZX (compile)", "qmap": "QMAP (compile)",
 };
 
 export let _runnerPhases = {};

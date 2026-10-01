@@ -76,7 +76,29 @@ class LimitUploadSize(BaseHTTPMiddleware):
                     return JSONResponse(status_code=413, content={"detail": f"Request body exceeds the upload limit of {self.max_upload_size} bytes"})
         return await call_next(request)
 
+SHARE_PAGE_HEADERS = {
+    "Content-Security-Policy": ("default-src 'self'; script-src 'self'; style-src 'self'; "
+                                "img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; "
+                                "form-action 'none'"),
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Cache-Control": "no-store",
+}
+
+
+class SharePageHeaders(BaseHTTPMiddleware):
+    """The read-only share page gets its security headers on every path that serves it."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        if request.url.path.endswith("/share.html"):
+            response.headers.update(SHARE_PAGE_HEADERS)
+        return response
+
+
 app.add_middleware(LimitUploadSize, max_upload_size=settings.MAX_UPLOAD_BYTES)
+app.add_middleware(SharePageHeaders)
 
 app.add_middleware(
     CORSMiddleware,

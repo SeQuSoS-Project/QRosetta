@@ -3,7 +3,7 @@
 // Shows recorded text only.
 
 import { circuitPanes, sourcePaneId } from './circuit_panes.js';
-import { comparableLines, differOnlyInLineBreaks, endsWithNewline, splitLines } from './qasm_text.js';
+import { comparableLines, differOnlyInLineBreaks, endsWithNewline, splitLines, visibleFormatCharacters } from './qasm_text.js';
 import { _displayRunnerName, fmtInt, renderTooltip } from './render_helpers.js';
 import { diffHunks, diffLines } from './text_diff.js';
 import { downloadBlob, makeCopyIconButton } from './utils.js';
@@ -25,7 +25,7 @@ const KIND_CHIP = {
 
 const NORMALISATION_OPTIONS = [
     ['whitespace', 'Ignore whitespace and line breaks', 'Compare one statement per line, with single spaces between tokens.'],
-    ['comments', 'Ignore comments', 'Drop // and /* */ comments and blank lines before comparing.'],
+    ['comments', 'Ignore comments', "Drop // and /* */ comments, blank lines and trailing spaces before comparing. QMAP's '// i' and '// o' layout lines are kept, because they say which qubit is which."],
     ['header', 'Ignore OPENQASM and include lines', 'Drop the version statement and include statements (qelib1.inc, hqslib1.inc, ...) before comparing.'],
 ];
 
@@ -47,11 +47,11 @@ export function paneTitle(pane) {
     return `Executed · ${_displayRunnerName(pane.key)}`;
 }
 
-function _fileName(pane) {
-    const base = pane.kind === 'input' ? 'circuit'
+function _fileName(pane, prefix) {
+    const base = (prefix ? `${prefix}_` : '') + (pane.kind === 'input' ? 'circuit'
         : pane.kind === 'dispatched' ? `dispatched_${pane.group}`
         : pane.kind === 'compile-input' ? 'compile_input'
-        : pane.kind === 'compiled' ? `compiled_${pane.key}` : `executed_${pane.key}`;
+        : pane.kind === 'compiled' ? `compiled_${pane.key}` : `executed_${pane.key}`);
     return `${base.replace(/[^A-Za-z0-9_.-]+/g, '_')}.qasm`;
 }
 
@@ -77,10 +77,18 @@ function _metricLine(pane, keys = ['executed_gate_count', 'executed_depth']) {
     return row;
 }
 
-function _sourceNote(pane) {
+function _sourceNote(pane, uploaded) {
+    const note = _recordedNote(pane);
+    return uploaded ? `According to the uploaded report: ${note.charAt(0).toLowerCase()}${note.slice(1)}` : note;
+}
+
+function _recordedNote(pane) {
     if (pane.kind === 'input') return 'The circuit as submitted, before any change by the API.';
     if (pane.kind === 'compile-input') {
         return 'The circuit every compile-only service received: the submitted circuit as the API prepares it for statevector runners.';
+    }
+    if (pane.kind === 'compiled' && pane.text === null) {
+        return 'A compile-only service was asked for this level and returned no circuit. It is not part of the pairwise comparison.';
     }
     if (pane.kind === 'compiled') {
         const layout = pane.compilerId === 'qmap'
@@ -93,6 +101,7 @@ function _sourceNote(pane) {
         return `The circuit the API sent to the ${pane.group} group${names ? `: ${names}` : ''}.`;
     }
     const group = pane.group ? ` Received the ${pane.group} circuit.` : '';
+    if (pane.text === null) return `This backend returned no circuit text.${group}`;
     if (pane.metrics.fromText === true) {
         return `The circuit this backend executed, as its runner recorded it. Gate count and depth are counted from this text.${group}`;
     }
@@ -102,14 +111,14 @@ function _sourceNote(pane) {
     return `The circuit this backend executed, as its runner recorded it.${group}`;
 }
 
-function _paneCard(pane) {
+function _paneCard(pane, context) {
     const card = _el('section', 'flex-shrink-0 w-[26rem] max-w-full flex flex-col border border-gray-200 rounded-md bg-white');
     const head = _el('header', 'p-2 border-b border-gray-200 space-y-1');
     const titleRow = _el('div', 'flex items-center gap-2');
     titleRow.appendChild(_el('span', `text-[10px] uppercase tracking-wider border rounded px-1.5 py-0.5 ${KIND_CHIP[pane.kind]}`, KIND_LABEL[pane.kind]));
     titleRow.appendChild(_el('h4', 'text-sm font-semibold text-gray-900 truncate', paneTitle(pane)));
     head.appendChild(titleRow);
-    head.appendChild(_el('p', 'text-xs text-gray-500 leading-snug', _sourceNote(pane)));
+    head.appendChild(_el('p', 'text-xs text-gray-500 leading-snug', _sourceNote(pane, context.uploaded)));
     if (pane.kind === 'executed') {
         head.appendChild(_metricLine(pane));
         if (pane.apiNotes.length) head.appendChild(_noteList('API changes', pane.apiNotes));
@@ -141,15 +150,20 @@ function _paneCard(pane) {
         return card;
     }
     const lines = splitLines(pane.text).length;
+    const shown = visibleFormatCharacters(pane.text);
     const bar = _el('div', 'flex items-center gap-2 px-2 py-1 border-b border-gray-100 text-xs text-gray-500');
     bar.appendChild(_el('span', 'flex-1', `${lines} line${lines === 1 ? '' : 's'}${endsWithNewline(pane.text) ? '' : ', no final line break'}`));
+    if (shown.count) {
+        card.appendChild(_el('p', 'px-2 py-1 text-xs text-amber-900 bg-amber-50 border-b border-amber-200',
+            `This text holds ${shown.count} invisible formatting character${shown.count === 1 ? '' : 's'} (such as a direction override), shown below as ⟨U+…⟩. Copy and download keep the original text.`));
+    }
     bar.appendChild(makeCopyIconButton(() => pane.text, 'Copy this circuit'));
     const download = _el('button', 'text-xs text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-md px-2 py-1', '⬇ .qasm');
     download.type = 'button';
-    download.onclick = () => downloadBlob(new Blob([pane.text], { type: 'text/plain' }), _fileName(pane));
+    download.onclick = () => downloadBlob(new Blob([pane.text], { type: 'text/plain' }), _fileName(pane, context.filePrefix));
     bar.appendChild(download);
     card.appendChild(bar);
-    card.appendChild(_el('pre', 'max-h-[60vh] overflow-auto p-2 text-xs font-mono whitespace-pre text-gray-800', pane.text));
+    card.appendChild(_el('pre', 'max-h-[60vh] overflow-auto p-2 text-xs font-mono whitespace-pre text-gray-800', shown.text));
     return card;
 }
 
@@ -157,19 +171,33 @@ function _defaultShown(panes) {
     const shown = new Set(panes.filter(p => p.kind === 'input' || p.kind === 'dispatched').map(p => p.id));
     panes.filter(p => p.kind === 'executed' && p.text !== null)
         .slice(0, DEFAULT_EXECUTED_SHOWN).forEach(p => shown.add(p.id));
-    panes.filter(p => p.kind === 'compiled' && p.text !== null)
-        .slice(0, DEFAULT_COMPILED_SHOWN).forEach(p => shown.add(p.id));
+    const compiled = panes.filter(p => p.kind === 'compiled' && p.text !== null).slice(0, DEFAULT_COMPILED_SHOWN);
+    compiled.forEach(p => shown.add(p.id));
+    if (compiled.length) panes.filter(p => p.kind === 'compile-input').forEach(p => shown.add(p.id));
     return shown;
 }
 
 function _panePicker(panes, shown, onChange) {
     const box = _el('fieldset', 'flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-700');
     box.appendChild(_el('legend', 'text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1', 'Panes'));
+    const inputs = [];
+    const setAll = (checked) => {
+        panes.forEach(pane => { if (checked) shown.add(pane.id); else shown.delete(pane.id); });
+        inputs.forEach(input => { input.checked = checked; });
+        onChange();
+    };
+    for (const [text, checked] of [['All', true], ['None', false]]) {
+        const button = _el('button', 'text-xs text-blue-700 hover:underline', text);
+        button.type = 'button';
+        button.onclick = () => setAll(checked);
+        box.appendChild(button);
+    }
     panes.forEach(pane => {
         const label = _el('label', 'inline-flex items-center gap-1 cursor-pointer');
         const input = /** @type {HTMLInputElement} */ (_el('input', 'h-3.5 w-3.5'));
         input.type = 'checkbox';
         input.checked = shown.has(pane.id);
+        inputs.push(input);
         input.onchange = () => {
             if (input.checked) shown.add(pane.id); else shown.delete(pane.id);
             onChange();
@@ -181,8 +209,9 @@ function _panePicker(panes, shown, onChange) {
     return box;
 }
 
-function _paneSelect(panes, selectedId, label) {
+function _paneSelect(panes, selectedId, label, accessibleName) {
     const wrap = _el('label', 'inline-flex items-center gap-1 text-xs text-gray-700');
+    wrap.title = accessibleName;
     wrap.appendChild(document.createTextNode(label));
     const select = /** @type {HTMLSelectElement} */ (_el('select', 'border border-gray-300 rounded px-1 py-0.5 text-xs max-w-[16rem]'));
     panes.forEach(pane => {
@@ -191,6 +220,7 @@ function _paneSelect(panes, selectedId, label) {
         option.selected = pane.id === selectedId;
         select.appendChild(option);
     });
+    select.setAttribute('aria-label', accessibleName);
     wrap.appendChild(select);
     return [wrap, select];
 }
@@ -203,7 +233,7 @@ function _diffRow(op, aLines, bLines) {
     row.appendChild(_el('span', 'text-right pr-2 text-gray-400 select-none', op.a === null ? '' : String(op.a + 1)));
     row.appendChild(_el('span', 'text-right pr-2 text-gray-400 select-none', op.b === null ? '' : String(op.b + 1)));
     row.appendChild(_el('span', 'select-none', sign));
-    row.appendChild(_el('span', 'whitespace-pre', op.type === 'insert' ? bLines[op.b] : aLines[op.a]));
+    row.appendChild(_el('span', 'whitespace-pre', visibleFormatCharacters(op.type === 'insert' ? bLines[op.b] : aLines[op.a]).text));
     return row;
 }
 
@@ -226,11 +256,7 @@ function _renderDiff(out, a, b, options) {
     }
     const normalised = options.whitespace || options.comments || options.header;
     const summary = _el('p', 'text-xs text-gray-600 mb-1');
-    const counts = _el('span', '', `${result.deleted} line${result.deleted === 1 ? '' : 's'} only in A, ${result.inserted} only in B`);
-    counts.title = 'Lines the line diff marks as removed (A) or added (B). The counts depend on the options above and say nothing about whether the circuits are equivalent.';
-    counts.style.cursor = 'help';
-    counts.style.textDecoration = 'underline dotted';
-    summary.appendChild(counts);
+    summary.appendChild(_el('span', '', `${result.deleted} line${result.deleted === 1 ? '' : 's'} only in A, ${result.inserted} only in B`));
     summary.appendChild(document.createTextNode(normalised ? ' (normalised text).' : ' (raw text).'));
     if (!normalised && differOnlyInLineBreaks(a.text, b.text)) {
         summary.appendChild(document.createTextNode(' The texts differ only in their line-break characters (CRLF or LF).'));
@@ -251,6 +277,8 @@ function _diffSection(panes) {
     const withText = panes.filter(p => p.text !== null);
     const section = _el('section', 'space-y-2');
     section.appendChild(_el('h3', 'text-sm font-semibold text-gray-900', 'Diff'));
+    section.appendChild(_el('p', 'text-xs text-gray-500',
+        "A line diff compares text only. Two texts can differ in every line and still describe the same circuit (gates rewritten, angles written as pi/4 or 0.785…, qubits relabelled), so the counts below say nothing about whether the circuits are equivalent."));
     if (withText.length < 2) {
         section.appendChild(_el('p', 'text-xs text-gray-500', 'This run recorded fewer than two circuit texts.'));
         return section;
@@ -259,8 +287,8 @@ function _diffSection(panes) {
     const bId = (firstExecuted || withText[withText.length - 1]).id;
     const aId = sourcePaneId(withText.find(p => p.id === bId), withText) || withText[0].id;
     const controls = _el('div', 'flex flex-wrap items-center gap-3');
-    const [aWrap, aSelect] = _paneSelect(withText, aId, 'A');
-    const [bWrap, bSelect] = _paneSelect(withText, bId, 'B');
+    const [aWrap, aSelect] = _paneSelect(withText, aId, 'A', 'Diff side A (lines shown with −)');
+    const [bWrap, bSelect] = _paneSelect(withText, bId, 'B', 'Diff side B (lines shown with +)');
     controls.appendChild(aWrap);
     controls.appendChild(bWrap);
     const toggles = {};
@@ -276,6 +304,7 @@ function _diffSection(panes) {
     });
     section.appendChild(controls);
     const out = _el('div');
+    out.setAttribute('aria-live', 'polite');
     section.appendChild(out);
     const paint = () => {
         const options = Object.fromEntries(Object.entries(toggles).map(([key, box]) => [key, box.checked]));
@@ -286,16 +315,26 @@ function _diffSection(panes) {
     return section;
 }
 
+function _crateNote(report, sharePage) {
+    if (sharePage) return '';
+    const batch = typeof report.task_name === 'string';
+    return batch
+        ? ' The RO-Crate holds the same texts for this task as circuits/<task>.qasm, dispatched_circuits/<task>/, transpiled_circuits/<task>/, compile_inputs/<task>.qasm and compiled_circuits/<task>/.'
+        : ' The RO-Crate holds the same texts as circuit.qasm, dispatched_circuits/, transpiled_circuits/, compile_input.qasm and compiled_circuits/.';
+}
+
 /**
- * Render the Circuits view of `report` into `panel`. `extraControls`, when given, is
- * called with a container to add controls under the introduction (the share link).
+ * Render the Circuits view of `report` into `panel`. Options: `extraControls(container)`
+ * adds controls under the introduction (the share link); `uploaded` words every note as
+ * the uploaded report's claim; `sharePage` leaves out exporting hints; `filePrefix` starts
+ * download names (a batch task's slug).
  */
-export function renderCircuitExplorer(report, panel, extraControls = null) {
+export function renderCircuitExplorer(report, panel, { extraControls = null, uploaded = false, sharePage = false, filePrefix = '' } = {}) {
     panel.replaceChildren();
     const panes = circuitPanes(report);
     const root = _el('div', 'space-y-4');
     root.appendChild(_el('p', 'text-xs text-gray-600 leading-snug',
-        'The circuit texts this run recorded: the circuit as submitted, the circuit the API sent to each dispatch group, the circuit each backend executed and, when compile-only services were selected, their input and output. The RO-Crate holds the same texts as circuit.qasm, dispatched_circuits/, transpiled_circuits/, compile_input.qasm and compiled_circuits/.'));
+        'The circuit texts this run recorded: the circuit as submitted, the circuit the API sent to each dispatch group, the circuit each backend executed and, when compile-only services were selected, their input and output.' + _crateNote(report, sharePage)));
     if (extraControls) {
         const host = _el('div');
         extraControls(host);
@@ -307,8 +346,9 @@ export function renderCircuitExplorer(report, panel, extraControls = null) {
         return;
     }
     const shown = _defaultShown(panes);
+    const context = { uploaded, filePrefix: String(filePrefix).replace(/[^A-Za-z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '') };
     const grid = _el('div', 'flex gap-3 overflow-x-auto pb-2 items-start');
-    const paintGrid = () => grid.replaceChildren(...panes.filter(p => shown.has(p.id)).map(_paneCard));
+    const paintGrid = () => grid.replaceChildren(...panes.filter(p => shown.has(p.id)).map(p => _paneCard(p, context)));
     root.appendChild(_panePicker(panes, shown, paintGrid));
     root.appendChild(grid);
     root.appendChild(_diffSection(panes));

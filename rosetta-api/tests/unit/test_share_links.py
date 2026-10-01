@@ -239,3 +239,13 @@ def test_a_report_saved_from_a_job_is_marked_and_an_upload_cannot_claim_it(app_c
                          headers=owner).json()["token"]
     assert _read(client, from_job).json()["report_source"] == "server_job"
     assert _read(client, forged).json()["report_source"] == "upload"
+
+
+def test_share_page_has_its_headers_on_every_path_the_api_serves_it_from():
+    from main import app
+    client = TestClient(app)
+    for path in ("/static/share.html",):
+        r = client.get(path)
+        assert r.status_code == 200
+        assert "frame-ancestors 'none'" in r.headers["content-security-policy"]
+        assert r.headers["x-frame-options"] == "DENY" and r.headers["x-content-type-options"] == "nosniff"

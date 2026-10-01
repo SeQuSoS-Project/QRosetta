@@ -25,8 +25,8 @@ COMPILE_INPUT_DERIVATION = (
 
 _COPIED_FIELDS = ("optimization_level", "transpiled_qasm", "passes_applied", "gate_count",
                   "circuit_depth", "gate_metrics_basis", "sdk_versions", "dispatch_status",
-                  "error", "queue_wait_sec", "gate_wait_sec", "runner_image", "dispatched_at",
-                  "completed_at")
+                  "error", "queue_wait_sec", "gate_wait_sec", "runner_image", "image_git_sha",
+                  "runtime_environment", "dispatched_at", "completed_at")
 
 
 def enabled_compilers() -> dict:
@@ -78,6 +78,17 @@ def _unrun(compilers: dict, status: str, reason: str) -> list:
             for cid, levels in compilers.items() for lvl in levels]
 
 
+def queue_compile_statuses(runner_statuses: dict, compilers: dict) -> None:
+    """Mark every requested compile as queued in the live status map, under the keys the
+    dispatch reports (``<id>`` for one level, ``<id>~opt<L>~run1`` for several)."""
+    if runner_statuses is None:
+        return
+    for cid, levels in (compilers or {}).items():
+        keys = [cid] if len(levels) == 1 else [f"{cid}~opt{lvl}~run1" for lvl in levels]
+        for key in keys:
+            runner_statuses[key] = "queued"
+
+
 async def compile_circuit(qasm_string: str, apply_preprocessing: bool, compilers: dict,
                           timeout_seconds: int, runner_statuses: dict = None) -> dict:
     """``{"compile_input", "compiled_circuits"}`` for the report, or ``{}`` when no compiler
@@ -90,12 +101,14 @@ async def compile_circuit(qasm_string: str, apply_preprocessing: bool, compilers
     try:
         prepared = prepare_statevector_dispatch(qasm_string, apply_preprocessing)
     except StatevectorIncompatible:
-        return {"compile_input": None, "compiled_circuits": _unrun(compilers, "skipped", (
+        return {"compilers_requested": {cid: list(levels) for cid, levels in compilers.items()},
+                "compile_input": None, "compiled_circuits": _unrun(compilers, "skipped", (
             "Not compiled: compile-only services take the unitary part of a circuit, and this "
             "circuit has a mid-circuit measurement, reset or classical control."))}
     except Exception as exc:
         logger.error("Preparing the compile input failed", exc_info=True)
-        return {"compile_input": None, "compiled_circuits": _unrun(
+        return {"compilers_requested": {cid: list(levels) for cid, levels in compilers.items()},
+                "compile_input": None, "compiled_circuits": _unrun(
             compilers, "error", f"Not compiled: the compile input could not be prepared ({type(exc).__name__}).")}
     urls = {cid: f"{COMPILER_SERVICES[cid]['base_url']}/compile" for cid in compilers}
     payload = {"circuit_data": prepared["qasm"], "optimization_level": 0,
@@ -108,9 +121,11 @@ async def compile_circuit(qasm_string: str, apply_preprocessing: bool, compilers
         results = await dispatch_to_runners(urls, payload, timeout_seconds, runner_statuses)
     except Exception as exc:
         logger.error("Compile dispatch failed", exc_info=True)
-        return {"compile_input": compile_input, "compiled_circuits": _unrun(
+        return {"compilers_requested": {cid: list(levels) for cid, levels in compilers.items()},
+                "compile_input": compile_input, "compiled_circuits": _unrun(
             compilers, "error", f"Not compiled: the compile dispatch failed ({type(exc).__name__}).")}
     finally:
         EXCLUSIVE.reset(token)
-    return {"compile_input": compile_input,
+    return {"compilers_requested": {cid: list(levels) for cid, levels in compilers.items()},
+            "compile_input": compile_input,
             "compiled_circuits": [_record(r) for r in results if isinstance(r, dict)]}

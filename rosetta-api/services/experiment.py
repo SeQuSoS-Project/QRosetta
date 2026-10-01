@@ -110,7 +110,7 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
         axis_labels = [_axis_label(payload.mode, bool(pp)) for pp in axes]
         progress = {
             "total": cells, "completed": 0, "current_index": None,
-            "tasks": [{"name": f"{task_label(c['algorithm'], c['qubits'])} · {lbl}", "status": "queued"}
+            "tasks": [{"name": f"{task_label(c['algorithm'], c['qubits'])} · {lbl}", "axis": lbl, "status": "queued"}
                       for lbl in axis_labels for c in resolved],
         }
         ACTIVE_JOBS[job_id]["progress"] = progress
@@ -133,6 +133,7 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
                 target_simulators=payload.target_simulators,
                 execution_target=payload.execution_target, bypass_limits=payload.bypass_limits,
                 apply_preprocessing=bool(pp), seed=exp_seed, thresholds=payload.thresholds,
+                compilers=payload.compilers,
             )
             summary, _ = await run_batch_tasks(batch_payload, runner_statuses, progress,
                                                batch_seed=exp_seed, task_offset=offset)

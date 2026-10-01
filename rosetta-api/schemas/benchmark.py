@@ -46,13 +46,15 @@ RunnerConfig = Dict[str, RunnerConfigValue]
 
 
 def has_control_characters(value: str) -> bool:
-    """True when ``value`` holds a control character or a line or paragraph separator."""
-    return any(unicodedata.category(ch) in ("Cc", "Zl", "Zp") for ch in value)
+    """True when ``value`` holds a control character, a format character (bidirectional
+    overrides, zero-width characters) or a line or paragraph separator."""
+    return any(unicodedata.category(ch) in ("Cc", "Cf", "Zl", "Zp") for ch in value)
 
 
 def _printable_text(value):
     if isinstance(value, str) and has_control_characters(value):
-        raise ValueError("must not contain control characters or line separators")
+        raise ValueError("must not contain control characters, invisible formatting characters "
+                         "(such as direction overrides) or line separators")
     return value
 
 
@@ -289,6 +291,7 @@ class ExperimentPayload(_Request):
     preprocessing_modes: List[StrictBool] = Field(default_factory=lambda: [True], min_length=1, max_length=2, description="The preprocessing axis: the whole circuit set runs once per value in this list (True = preprocessing applied, False = raw circuit). One or both of true and false, each at most once.")
     seed: Optional[Seed] = Field(None, description=_SEED_DESCRIPTION + " One master seed covers every circuit and axis and is recorded in the manifest.")
     thresholds: Optional[AgreementThresholds] = Field(None, description="Override the default agreement thresholds for this experiment.")
+    compilers: Compilers = Field(default_factory=dict, description=_COMPILERS_DESCRIPTION + " Applied to every circuit on every axis.")
     keep_statevectors: StrictBool = Field(False, description="Keep full statevectors in the frozen results bundle. Default strips them to a sha256 hash + length to keep the bundle small; the live report is unaffected either way.")
     label: Optional[Label] = Field(None, description="Human-readable name for this experiment, recorded in the manifest.")
 

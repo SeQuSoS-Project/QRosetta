@@ -1,6 +1,7 @@
 """Experiment routes: POST /experiments starts a sweep (poll GET /jobs/{id});
 GET /experiments/{id}/bundle streams the finished bundle as an in-memory ZIP."""
 
+from services.compilation import validate_compilers
 from services.job_manager import require_exclusive_slot
 from services.security import client_address
 from config import settings
@@ -40,6 +41,7 @@ async def start_experiment(request: Request, payload: ExperimentPayload, backgro
 
     validate_runner_ids(payload.target_simulators, payload.runner_config, payload.runner_phases)
     validate_runner_config(payload.runner_config)
+    validate_compilers(payload.compilers)
     for index, circuit in enumerate(payload.circuits):
         if circuit.qasm_string:
             label = circuit.name or circuit.algorithm or f"circuit {index}"

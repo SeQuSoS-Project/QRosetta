@@ -1,6 +1,22 @@
 // OpenQASM text as diffable lines, raw or normalised (comments, header, whitespace).
 // Pure, no imports.
 
+const _FORMAT_CHARACTER = /\p{Cf}/gu;
+
+/**
+ * `text` with every invisible formatting character (direction overrides, zero-width
+ * characters) replaced by a visible marker such as ⟨U+202E⟩, and how many were replaced.
+ */
+export function visibleFormatCharacters(text) {
+    if (typeof text !== 'string') return { text, count: 0 };
+    let count = 0;
+    const shown = text.replace(_FORMAT_CHARACTER, ch => {
+        count += 1;
+        return `⟨U+${ch.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}⟩`;
+    });
+    return { text: shown, count };
+}
+
 /** Lines of `text`; a final line break does not start another line. */
 export function splitLines(text) {
     if (typeof text !== 'string' || text === '') return [];
@@ -47,9 +63,15 @@ function _segments(text) {
     return segments;
 }
 
-/** `text` with // and block comments removed (a block comment keeps its line breaks). */
+const _LAYOUT_COMMENT = /^\/\/ [io](?: \d+)+\s*$/;
+
+/**
+ * `text` with // and block comments removed (a block comment keeps its line breaks). A
+ * QMAP layout line ('// i 0 2 1', '// o ...') is kept: it says which qubit is which.
+ */
 export function stripComments(text) {
-    return _segments(text).map(seg => seg.comment ? seg.text.replace(/[^\r\n]/g, '') : seg.text).join('');
+    return _segments(text).map(seg => !seg.comment ? seg.text
+        : _LAYOUT_COMMENT.test(seg.text) ? seg.text : seg.text.replace(/[^\r\n]/g, '')).join('');
 }
 
 const _HEADER = /^\s*(OPENQASM\s+[0-9.]+\s*;|include\s+"[^"]*"\s*;)\s*$/;

@@ -197,7 +197,7 @@ def export_run_as_ro_crate(
         logger.error(f"Failed to fetch run report for export, run_id={run_id}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch run history for export")
 
-    ctx = build_export_context(report_data, payload)
+    ctx = build_export_context(report_data, payload, "saved_run")
 
     try:
         zip_bytes = build_ro_crate(ctx)

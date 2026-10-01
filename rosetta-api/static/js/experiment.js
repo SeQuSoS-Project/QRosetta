@@ -5,6 +5,7 @@
 // GET /experiments/{id}/bundle. The "Run Experiment" button routes here; "Run Batch" is
 // separate. The conformance and prevalence outputs are reported separately.
 
+import { getCompilerSelection } from './compilers_config.js';
 import { BASE_URL, formatApiError, getAuthHeaders, pollJobStatus } from './api.js';
 import { bareCircuitName } from './batch.js';
 import { closeDrawers } from './drawers.js';
@@ -95,6 +96,7 @@ export async function runExperiment() {
         preprocessing_modes: axes,
         seed: getSeed(),                 // null => backend generates + records one shared seed
         thresholds: getAgreementThresholds(),
+        compilers: getCompilerSelection(),
         label,
     };
 

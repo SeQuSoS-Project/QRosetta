@@ -11,7 +11,7 @@ import random
 import time
 from fastapi import HTTPException
 from services.availability import filter_available
-from services.compilation import compile_circuit
+from services.compilation import compile_circuit, queue_compile_statuses
 from services.job_store import JOB_NOT_FOUND, JobTable, full_report
 from services.run_registry import EXCLUSIVE, circuit_section, claim_exclusive, releases_exclusive
 from services.validator import validate_request
@@ -170,6 +170,7 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
     except Exception as e:
         return {"input_qasm": qasm_string, "error": str(e), **context}
 
+    queue_compile_statuses(runner_statuses, compilers)
     runner_payload = {
         "circuit_data": circuit["qasm"],
         "optimization_level": optimization_level,
@@ -241,6 +242,8 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
         circuits = prepare_measured_dispatch(qasm_string, apply_preprocessing)
     except Exception as e:
         return {"input_qasm": qasm_string, **seed_fields, **context, "error": str(e)}
+
+    queue_compile_statuses(runner_statuses, compilers)
 
     def payload_for(group):
         return {
@@ -517,8 +520,8 @@ async def run_batch_tasks(payload: BatchPayload, runner_statuses: dict, progress
             )
             task_name = task_label(task.algorithm, task_qubits(task, qasm_string))
             if progress is not None:
-                _, sep, axis = progress["tasks"][gi]["name"].partition(" · ")
-                progress["tasks"][gi]["name"] = task_name + (sep + axis if sep else "")
+                axis = progress["tasks"][gi].get("axis")
+                progress["tasks"][gi]["name"] = task_name + (f" · {axis}" if axis else "")
 
             validate_request(qasm_string, mode=payload.mode, bypass_limits=payload.bypass_limits,
                              apply_preprocessing=payload.apply_preprocessing,

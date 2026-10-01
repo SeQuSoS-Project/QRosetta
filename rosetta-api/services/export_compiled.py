@@ -15,11 +15,18 @@ def compile_input_path(task_id) -> str:
 
 
 def _records(report: dict) -> list:
-    return [r for r in report.get("compiled_circuits") or [] if isinstance(r, dict)]
+    records = report.get("compiled_circuits") if isinstance(report, dict) else None
+    return [r for r in records if isinstance(r, dict)] if isinstance(records, list) else []
 
 
-def _label(record: dict) -> str:
-    name = record.get("compiler_name") or record.get("compiler_id") or record.get("compiler")
+def _versions(record: dict) -> dict:
+    versions = record.get("sdk_versions")
+    return {str(k): str(v) for k, v in versions.items()} if isinstance(versions, dict) else {}
+
+
+def _label(record: dict, services: dict = None) -> str:
+    registered = (services or {}).get(record.get("compiler_id"), {}).get("name")
+    name = registered or record.get("compiler_id") or record.get("compiler")
     return f"{name} at optimization level {record.get('optimization_level')}"
 
 
@@ -57,7 +64,7 @@ def compiled_circuit_files(report: dict, task_id, label, scoped_path) -> list:
     return files
 
 
-def compile_actions(report: dict, task_id, label, files: list) -> list:
+def compile_actions(report: dict, task_id, label, files: list, services: dict = None) -> list:
     """One CreateAction per compile record, from the compile input to its output file (or
     failed, with the reason), with the compiler as instrument."""
     suffix = f" for task '{label}' ({task_id})" if task_id is not None else ""
@@ -71,7 +78,7 @@ def compile_actions(report: dict, task_id, label, files: list) -> list:
         action = {
             "@id": f"#compile-{frag}{key}",
             "@type": "CreateAction",
-            "name": f"Compilation by {_label(record)}{suffix}",
+            "name": f"Compilation by {_label(record, services)}{suffix}",
             "instrument": {"@id": f"#compiler-{record.get('compiler_id')}"},
             "actionStatus": ACTION_COMPLETED if output else ACTION_FAILED,
         }
@@ -88,16 +95,16 @@ def compile_actions(report: dict, task_id, label, files: list) -> list:
     return actions
 
 
-def compiler_applications(reports: list) -> list:
-    """One SoftwareApplication per compiler used, with the SDK versions and code hashes its
-    records report."""
+def compiler_applications(reports: list, services: dict = None) -> list:
+    """One SoftwareApplication per compiler used, named from the exporting server's
+    registry, with the SDK versions and code hashes its records report."""
     seen = {}
     for report in reports:
         for record in _records(report):
             cid = record.get("compiler_id")
-            entry = seen.setdefault(cid, {"name": record.get("compiler_name") or cid,
+            entry = seen.setdefault(cid, {"name": (services or {}).get(cid, {}).get("name") or cid,
                                           "versions": set(), "hashes": set()})
-            for pkg, ver in (record.get("sdk_versions") or {}).items():
+            for pkg, ver in _versions(record).items():
                 entry["versions"].add(f"{pkg}=={ver}")
             if record.get("compiler_code_sha256"):
                 entry["hashes"].add(record["compiler_code_sha256"])
@@ -121,8 +128,8 @@ def compile_provenance(reports_by_task: list) -> list:
 
 
 def compiler_keys(report: dict) -> list:
-    return [str(r.get("compiler")) for r in report.get("compiled_circuits") or []
-            if isinstance(r, dict) and r.get("compiler") is not None]
+    """The ``compiler`` key of every compiled record, ``""`` for a record without a string key."""
+    return [r.get("compiler") if isinstance(r.get("compiler"), str) else "" for r in _records(report)]
 
 
 def strip_compiled_text(report: dict) -> None:
@@ -156,8 +163,10 @@ def compiler_lock_files(reports: list, compiler_services: dict) -> dict:
     used = {}
     for report in reports:
         for record in _records(report):
-            if record.get("dispatch_status") == "ok" and record.get("compiler_id") in compiler_services:
-                used.setdefault(record["compiler_id"], []).append(record.get("sdk_versions") or {})
+            versions = _versions(record)
+            if (record.get("dispatch_status") == "ok" and versions
+                    and record.get("compiler_id") in compiler_services):
+                used.setdefault(record["compiler_id"], []).append(versions)
     out = {}
     for cid, version_sets in used.items():
         name = _compiler_dir(compiler_services[cid]["base_url"])
@@ -180,5 +189,5 @@ def compiler_lock_entity(crate_path: str) -> dict:
     return {"@id": crate_path, "@type": "File", "name": "requirements.lock",
             "description": (f"Full pinned Python environment (pip freeze) of the {name} image, as "
                             "committed in the exporting server's source tree; included because "
-                            "its pins match the SDK versions the run recorded."),
+                            "its pins match the SDK versions recorded in the report."),
             "encodingFormat": "text/plain"}

@@ -245,11 +245,40 @@ def infer_export_mode(results: dict) -> str:
     return "statevector"
 
 
-def build_export_context(results: dict, payload) -> "ExportContext":
-    """Assemble an ExportContext from a report and an ExportPayload (every export route)."""
+REPORT_SOURCES = {
+    "server_job": ("This crate was built from the server's own copy of a job it ran."),
+    "upload": ("This crate was built from a saved run whose report its owner uploaded; its "
+               "contents are as the owner supplied them, not produced by this server's run."),
+    "not_recorded": ("This crate was built from a saved run stored before the server recorded "
+                     "where saved reports come from."),
+    "client_supplied": ("This crate was built from a report supplied in the export request. Its "
+                        "contents, including any git SHA, platform version, SDK versions and "
+                        "circuit texts, are as the requester supplied them; this server did not "
+                        "produce or check them."),
+}
+
+
+def _report_source(results: dict, route: str) -> str:
+    if route == "server_job":
+        return "server_job"
+    if route == "saved_run":
+        saved = results.get("saved_from")
+        return saved if saved in ("server_job", "upload") else "not_recorded"
+    return "client_supplied"
+
+
+def build_export_context(results: dict, payload, route: str = "client_request") -> "ExportContext":
+    """Assemble an ExportContext from a report and an ExportPayload. ``route`` is how the
+    export obtained the report: ``server_job`` (the server's copy of a job), ``saved_run``
+    (a run from history) or ``client_request`` (the request body); it decides the crate's
+    recorded report_source, which no report field can override."""
+    source = _report_source(results, route)
+    results = {**{k: v for k, v in results.items() if k != "saved_from"},
+               **({"saved_from": source} if source in ("server_job", "upload") else {})}
     return ExportContext(
         qasm_string=results.get("input_qasm", results.get("qasm_string", "")),
         results=results,
+        report_source=source,
         mode=infer_export_mode(results),
         runner_services=settings.get_runner_services(),
         include_statevectors=payload.include_statevectors,
@@ -284,6 +313,7 @@ class ExportContext:
     results: dict
     mode: str
     runner_services: Dict[str, Any]
+    report_source: str = "client_supplied"
     timestamp: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat(timespec="milliseconds")
     )
@@ -641,6 +671,8 @@ def _build_provenance(ctx: ExportContext) -> dict:
         provenance["circuit_features"] = ctx.circuit_features
     if ctx.hardware_anchor:
         provenance["hardware_anchor"] = ctx.hardware_anchor
+    provenance["report_source"] = ctx.report_source
+    provenance["report_source_meaning"] = REPORT_SOURCES[ctx.report_source]
     compiles = compile_provenance([(t.task_id, t.report) for t in tasks])
     if compiles:
         provenance["compile_only_services"] = compiles
@@ -731,7 +763,7 @@ def _build_ro_crate_metadata(ctx: ExportContext,
         "description": (
             "Quantum simulator benchmark results exported from Quantum Rosetta. Contains "
             + "; ".join(contents) + ". Each backend execution is recorded as a "
-            "CreateAction per the Process Run Crate profile."
+            "CreateAction per the Process Run Crate profile. " + REPORT_SOURCES[ctx.report_source]
         ),
         "datePublished": ctx.timestamp,
         "license": {"@id": "#license"},
@@ -841,10 +873,11 @@ def _build_ro_crate_metadata(ctx: ExportContext,
                           "description": f["description"], "encodingFormat": "text/x-qasm",
                           "programmingLanguage": {"@id": "#openqasm2"}})
             root_entity["hasPart"].append({"@id": f["path"]})
-        for action in compile_actions(task.report, task.task_id, task.label, compiled[id(task)]):
+        for action in compile_actions(task.report, task.task_id, task.label, compiled[id(task)],
+                                      settings.get_compiler_services()):
             graph.append(action)
             root_entity["mentions"].append({"@id": action["@id"]})
-    graph.extend(compiler_applications([t.report for t in tasks]))
+    graph.extend(compiler_applications([t.report for t in tasks], settings.get_compiler_services()))
     for lock_path in sorted(p for p in lock_paths if p.startswith("compilers/")):
         graph.append(compiler_lock_entity(lock_path))
         root_entity["hasPart"].append({"@id": lock_path})

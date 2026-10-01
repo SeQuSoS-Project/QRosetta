@@ -546,6 +546,7 @@ def _pytket_round_trip(qasm: str, remove_barriers: bool):
     import pytket.qasm
     from pytket.passes import DecomposeBoxes, RemoveBarriers
 
+    qasm = strip_qasm_comments(qasm)
     maxwidth = _classical_width(qasm)
     circ = pytket.qasm.circuit_from_qasm_str(qasm, maxwidth=maxwidth)
     check_round_trip_integrity(circ, qasm)

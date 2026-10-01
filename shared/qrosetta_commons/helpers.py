@@ -264,6 +264,8 @@ def _module_code_sha256(func) -> str:
 
 DEFAULT_DEVICE = "CPU"
 
+IMAGE_GIT_SHA = os.getenv("QROSETTA_IMAGE_GIT_SHA") or "not recorded"
+
 
 @functools.lru_cache(maxsize=None)
 def runtime_environment() -> dict:
@@ -277,7 +279,8 @@ def with_sdk_versions(func):
     """Decorator for ``process_run`` / ``process_run_measured``.
 
     Adds ``sdk_versions`` (the ``declare_sdk_packages`` registry), ``runner_code_sha256``
-    (computed when the runner module is imported) and ``device`` to every result dict.
+    (computed when the runner module is imported), ``image_git_sha`` (the commit the image
+    was built from, QROSETTA_IMAGE_GIT_SHA) and ``device`` to every result dict.
     ``device`` keeps a value the runner set, else is ``"CPU"``, and is None on an error
     result the runner did not label.
     """
@@ -289,6 +292,7 @@ def with_sdk_versions(func):
         if isinstance(result, dict):
             result.setdefault("sdk_versions", get_sdk_versions())
             result.setdefault("runner_code_sha256", code_sha)
+            result.setdefault("image_git_sha", IMAGE_GIT_SHA)
             result.setdefault("runtime_environment", runtime_environment())
             if result.get("device") is None:
                 result["device"] = None if result.get("error") else DEFAULT_DEVICE

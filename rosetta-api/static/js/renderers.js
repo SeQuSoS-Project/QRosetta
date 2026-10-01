@@ -149,7 +149,10 @@ export function renderDetailReport(data, title, config = getState().currentRunne
         if (data.divergence_report) renderAgreementPanel(data.divergence_report, panelElements.agreement, optMap);
         renderArtifactsPanel(data, panelElements.artifacts);
     }
-    renderCircuitExplorer(data, panelElements.circuits, renderShareControls);
+    renderCircuitExplorer(data, panelElements.circuits, {
+        extraControls: renderShareControls,
+        filePrefix: typeof data.task_name === 'string' ? data.task_name : '',
+    });
 
     showTab('summary');
 }

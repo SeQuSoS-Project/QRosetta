@@ -719,12 +719,18 @@
                     <li><strong>Run configuration.</strong> Reports record the agreement thresholds sent, the
                         timeout and its scope, the optimization levels, <code>apply_preprocessing</code>, the
                         API-side preprocessing, the dispatched circuits, <code>started_at</code> /
-                        <code>finished_at</code> and the git commit (<code>git_sha</code>). The divergence
+                        <code>finished_at</code> and the git commit the API image was built from
+                        (<code>git_sha</code>; a "-dirty" suffix marks uncommitted changes). The divergence
                         report records <code>analysis_version</code>, the version of the classification and
                         test rules. Runner image digests are recorded only when the deployment sets
                         <code>QROSETTA_IMAGE_DIGESTS</code>; in local mode the report says "not recorded".
-                        Each result carries <code>runner_code_sha256</code>, the sha256 of the runner's
-                        code, which identifies the adapter that produced it.</li>
+                        Each result carries <code>image_git_sha</code>, the commit its runner or compiler
+                        image was built from, and <code>runner_code_sha256</code> (for compilers
+                        <code>compiler_code_sha256</code>): sha256 over the bytes of the image's
+                        <code>main.py</code> followed by the bytes of every <code>.py</code> file of the
+                        installed <code>qrosetta_commons</code> package, in order of relative path. It identifies
+                        the adapter that produced the result; recompute it from a checkout with the same
+                        concatenation, not from <code>main.py</code> alone.</li>
                     <li><strong>Statevector hashes.</strong> A report stored or exported without
                         statevectors (history, RO-Crates with <code>include_statevectors</code> false,
                         experiment bundles) keeps <code>statevector_sha256</code> and
@@ -750,12 +756,14 @@
                         because an empty list means every runner enabled at the time; and
                         <code>n_shots</code>, <code>apply_preprocessing</code>,
                         <code>optimization_level</code>, <code>runner_config</code>,
-                        <code>runner_phases</code>, <code>timing_repeats</code> and
-                        <code>timeout_seconds</code>. The experiment manifest's <code>effective_config</code>
+                        <code>runner_phases</code>, <code>timing_repeats</code>,
+                        <code>timeout_seconds</code> and, when the run used compile-only services,
+                        <code>compilers</code> from the report's <code>compilers_requested</code>. The experiment manifest's <code>effective_config</code>
                         records presets by name; replay them from the <code>inputs/*.qasm</code> files as
                         literal QASM, as in step 1.</li>
                     <li>Compare in this order: <code>runner_seed</code> per backend; the dispatched and
-                        transpiled circuits; counts, byte for byte; statevectors by fidelity (this needs
+                        transpiled circuits, and <code>compile_input.qasm</code> and
+                        <code>compiled_circuits/</code>; counts, byte for byte; statevectors by fidelity (this needs
                         the statevectors, so export with <code>include_statevectors</code> or use
                         <code>GET /jobs/{job_id}/report</code>; from hashes alone only a bit-identical replay
                         can be confirmed); then the verdicts.</li>
@@ -1011,7 +1019,8 @@
                     simulator results.
                 </p>
                 <p>
-                    Each record's key is <code>&lt;compiler&gt;~opt&lt;level&gt;~run1</code>. It holds the
+                    The report records the request as <code>compilers_requested</code>. Each record's key is
+                    <code>&lt;compiler&gt;~opt&lt;level&gt;~run1</code>. It holds the
                     output text (<code>transpiled_qasm</code>), the passes that produced it
                     (<code>passes_applied</code>), gate count and depth counted from that text, the SDK
                     versions and the compiler's code hash. The Circuits tab shows the compiler input and each
@@ -1023,7 +1032,21 @@
                     <code>ro-crate-metadata.json</code>, <code>provenance.json</code> lists every compile
                     record under <code>compile_only_services</code>, and
                     <code>compilers/&lt;name&gt;/requirements.lock</code> is included for a compiler that
-                    produced output when its pins match the SDK versions the run recorded.
+                    produced output when its pins match the SDK versions the run recorded. Every crate's
+                    <code>provenance.json</code> records <code>report_source</code>: <code>server_job</code>
+                    for the server's copy of a job, <code>upload</code> or <code>not_recorded</code> for a
+                    saved run by how it was saved, and <code>client_supplied</code> for
+                    <code>POST /export</code>, whose contents (git commit, versions, circuit texts) are as the
+                    requester sent them. A field in the report cannot change it.
+                </p>
+                <p>
+                    Outputs are deterministic on a given image: the same circuit, level and image give the
+                    same text in every job. BQSKit's numerical resynthesis is not portable beyond the image:
+                    on another Python or BLAS build its angles can differ in the last digits, while gate
+                    counts and two-qubit counts match. Each record keeps the image's
+                    <code>runtime_environment</code> and <code>image_git_sha</code>; cite gate counts, and
+                    the record's text, rather than a regenerated text. Compile-only services also run in
+                    experiments (<code>compilers</code> on <code>POST /experiments</code>).
                 </p>
                 <table>
                     <thead><tr><th>Compiler</th><th>Levels</th><th>What runs</th></tr></thead>
@@ -1048,13 +1071,18 @@
                             (SAT) at level 1, with QMAP's default pre- and post-mapping optimizations. The
                             output's <code>// i</code> and <code>// o</code> lines give the physical qubit of each
                             logical qubit at input and output. A circuit with a qubit that has no gates is not
-                            mapped (see the known issue below). QMAP's post-mapping optimizations can rewrite
+                            mapped (see the known issue below). Every output is checked when it is produced:
+                            both layout lines must be permutations of all the qubits, and up to 10 qubits the
+                            output read through them must have the input's unitary (Qiskit operator equality
+                            up to global phase); a compile that fails either check is recorded as an error,
+                            never as output. Gates QMAP's own optimizations remove, such as <code>id</code>,
+                            can leave a qubit idle and are caught by this check. QMAP's post-mapping optimizations can rewrite
                             single-qubit sequences, so the output can contain gates such as <code>h</code>.</td></tr>
                     </tbody>
                 </table>
                 <p>
                     Each compiler image has a self-test (<code>python main.py --self-test</code>) that compiles
-                    four probe circuits at every level and checks the output unitary against the input with
+                    five probe circuits at every level and checks the output unitary against the input with
                     the image's own SDK (BQSKit's unitary distance, PyZX's tensor comparison, Qiskit's
                     operator equality with the circuit rebuilt from QMAP's <code>// i</code> and
                     <code>// o</code> lines), and that the output declares as many qubits as the input. The
@@ -1080,7 +1108,7 @@
                         <tr><td>Performance / Resources</td><td>Ranked successful runs, then the unranked runs with their status and reason, with a Device column (GPU runs name the GPU). With Timing repeats above 1, each time cell shows the median ± the sample standard deviation and n. Tooltips on each column give the measurement window. When a GPU run is present, the Performance note says that times across devices compare different hardware and the Resources note says that GPU device memory is not measured.</td></tr>
                         <tr><td>Divergence</td><td>The N×N fidelity, global phase offset arg⟨a|b⟩, JS-divergence (nats) and Hellinger matrices. The fidelity matrix holds the direct fidelity, before any bit reversal, so an <code>lsb</code>×<code>msb</code> pair that agrees after the declared reversal can show a low value here; the Agreement tab and the Summary give the label-aligned value. A cell is green when it is within the tolerance recorded with that pair; OFF, ERR and T/O mark failed runs, n/c a pair that is not comparable (<code>null</code> in the report; a report that stores −1 for such a pair shows n/c too). The diagonal holds each backend compared with itself (fidelity 1, JS 0, phase 0). Cells are rounded for display: four decimals, more for a fidelity that would otherwise round to 1, and three significant digits in scientific notation below 1e-3. Hover a cell for the unrounded value; the report stores it unrounded.</td></tr>
                         <tr><td>Agreement</td><td>The label per backend pair, with the metrics, the tolerances used, the statistical test and provenance (seeds, ordering, SDK versions, preprocessing) per pair.</td></tr>
-                        <tr><td>Circuits</td><td>The circuit texts the run recorded, side by side: the circuit as submitted, the circuit the API sent to each dispatch group (with the API's changes) and the circuit each backend executed (its <code>transpiled_qasm</code>, with the backend's transforms, SDK versions, gate count and depth). Each executed pane says where its gate count and depth come from (<code>gate_metrics_basis</code>): counted from that text for most backends, from the executed tape for PennyLane, whose recorded text decomposes <code>QubitUnitary</code> although the tape does not. A line diff compares any two panes, raw or with whitespace and line breaks, comments, or the OPENQASM and include lines ignored; the raw text stays in the panes. The diff stops at about 4,000 changed lines. The tab shows text only and draws no conclusion from a difference: two texts can differ line by line and describe the same unitary. When the run used compile-only services, the compiler input and each compiled circuit are panes too (see <a href="#compilers">Compile-only services</a>). A saved run opened from history also offers a read-only link (see <a href="#accounts">Accounts, history &amp; autosave</a>).</td></tr>
+                        <tr><td>Circuits</td><td>The circuit texts the run recorded, side by side: the circuit as submitted, the circuit the API sent to each dispatch group (with the API's changes) and the circuit each backend executed (its <code>transpiled_qasm</code>, with the backend's transforms, SDK versions, gate count and depth). Each executed pane says where its gate count and depth come from (<code>gate_metrics_basis</code>): counted from that text for most backends, from the executed tape for PennyLane, whose recorded text decomposes <code>QubitUnitary</code> although the tape does not. A line diff compares any two panes, raw or with whitespace and line breaks, comments, or the OPENQASM and include lines ignored; the raw text stays in the panes. The diff stops at about 4,000 changed lines. No option makes equal angles written differently (<code>pi/4</code>, <code>0.25*pi</code>, <code>0.7853981633974483</code>) compare equal, and pytket rewrites angles as multiples of π, so such lines show as changed. The Cirq pane holds pytket's serialisation of the circuit the Cirq adapter built: <code>include "hqslib1.inc"</code> and <code>U1q</code> come from pytket's gate set, not from Cirq. The tab shows text only and draws no conclusion from a difference: two texts can differ line by line and describe the same unitary. When the run used compile-only services, the compiler input and each compiled circuit are panes too (see <a href="#compilers">Compile-only services</a>). A saved run opened from history also offers a read-only link (see <a href="#accounts">Accounts, history &amp; autosave</a>).</td></tr>
                         <tr><td>Artifacts</td><td>Publication figures and tables, scoped to any subset of backends in the browser. The browser offers figures as SVG, PNG or PDF and tables as LaTeX, CSV, HTML or Markdown. The RO-Crate export renders figures as SVG, PNG or PDF and tables as LaTeX, CSV, HTML or XLSX (<code>publication_artifacts</code> in the export body).</td></tr>
                         <tr><td>Exports</td><td>The JSON report held in the browser, the full report from the server, and the RO-Crate export (see <a href="#endpoints">Reports and exports</a>).</td></tr>
                     </tbody>
@@ -1120,7 +1148,7 @@
                         <tr><td><code>POST /history/runs/{run_id}/share-links</code></td><td>Creates a read-only link to one of the signed-in user's saved runs (body, optional: <code>{"expires_in_days": 1..90}</code>, default 30). 201 with the link's id, expiry and token; the token appears only in this response. 404 if the run is not yours; 409 when the run already has 10 active links.</td></tr>
                         <tr><td><code>GET /history/runs/{run_id}/share-links</code></td><td>The links to one of your saved runs, with creation, expiry and revocation times, without tokens.</td></tr>
                         <tr><td><code>DELETE /history/share-links/{link_id}</code></td><td>Revokes one of your links; it stops working at once.</td></tr>
-                        <tr><td><code>POST /shared/circuits</code></td><td>The circuit texts a link reads (body: <code>{"token": "..."}</code>); no sign-in. 404 for a token that is unknown, expired or revoked, whose owner's account is deactivated, or whose run was deleted. Limited to 30 requests a minute per client.</td></tr>
+                        <tr><td><code>POST /shared/circuits</code></td><td>The circuit texts a link reads (body: <code>{"token": "..."}</code>), with the run's name, save time, the link's expiry and <code>report_source</code> (<code>server_job</code>, <code>upload</code> or <code>not_recorded</code>); no sign-in. 404 for a token that is unknown, expired or revoked, whose owner's account is deactivated, or whose run was deleted. Limited to 30 requests a minute per client.</td></tr>
                         <tr><td><code>POST /export</code></td><td>An RO-Crate ZIP built from a report in the request body, limited by the 1,048,576-byte request-body limit. Used for runs loaded from history and when the server copy has expired; it cannot include statevectors the browser copy does not hold.</td></tr>
                     </tbody>
                 </table>

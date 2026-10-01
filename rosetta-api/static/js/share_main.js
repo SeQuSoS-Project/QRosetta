@@ -3,6 +3,7 @@
 
 import { BASE_URL, formatApiError } from './api.js';
 import { renderCircuitExplorer } from './circuit_explorer_renderer.js';
+import { visibleFormatCharacters } from './qasm_text.js';
 
 function _el(tag, className, text) {
     const node = document.createElement(tag);
@@ -16,13 +17,24 @@ function _when(iso) {
     return Number.isNaN(date.getTime()) ? '' : date.toLocaleString();
 }
 
-function _showTask(panel, tasks, index) {
-    renderCircuitExplorer(tasks[index], panel);
+function _options(data, task) {
+    return { uploaded: data.report_source !== 'server_job', sharePage: true,
+             filePrefix: task && typeof task.task_name === 'string' ? task.task_name : '' };
+}
+
+function _showTask(panel, data, index) {
+    const task = data.benchmark_summary[index];
+    renderCircuitExplorer(task, panel, _options(data, task));
+}
+
+function _ownerText(value, fallback) {
+    return typeof value === 'string' && value ? visibleFormatCharacters(value).text : fallback;
 }
 
 function _render(root, data) {
     const header = _el('header', 'space-y-1');
-    header.appendChild(_el('h1', 'text-lg font-semibold text-gray-900', data.run_name || 'Shared run'));
+    header.appendChild(_el('p', 'text-xs text-gray-500', "Run name, as given by the link's owner:"));
+    header.appendChild(_el('h1', 'text-lg font-semibold text-gray-900 break-words', _ownerText(data.run_name, 'Shared run')));
     const saved = _when(data.saved_at);
     const expires = _when(data.link_expires_at);
     header.appendChild(_el('p', 'text-xs text-gray-500',
@@ -37,23 +49,23 @@ function _render(root, data) {
     const panel = _el('div', 'mt-4');
     if (Array.isArray(data.benchmark_summary)) {
         const tasks = data.benchmark_summary;
-        const label = _el('label', 'inline-flex items-center gap-2 text-sm text-gray-700 mt-3', 'Circuit');
+        const label = _el('label', 'inline-flex items-center gap-2 text-sm text-gray-700 mt-3', "Circuit (names as given by the link's owner)");
         const select = /** @type {HTMLSelectElement} */ (_el('select', 'border border-gray-300 rounded px-2 py-1 text-sm'));
         tasks.forEach((task, i) => {
-            const option = /** @type {HTMLOptionElement} */ (_el('option', '', task.task_name || `Task ${i + 1}`));
+            const option = /** @type {HTMLOptionElement} */ (_el('option', '', `${i + 1}. ${_ownerText(task.task_name, `Task ${i + 1}`)}`));
             option.value = String(i);
             select.appendChild(option);
         });
-        select.onchange = () => _showTask(panel, tasks, Number(select.value));
+        select.onchange = () => _showTask(panel, data, Number(select.value));
         label.appendChild(select);
         root.appendChild(label);
         root.appendChild(panel);
-        if (tasks.length) _showTask(panel, tasks, 0);
+        if (tasks.length) _showTask(panel, data, 0);
         else panel.appendChild(_el('p', 'text-sm text-gray-500', 'This run has no circuits.'));
         return;
     }
     root.appendChild(panel);
-    renderCircuitExplorer(data, panel);
+    renderCircuitExplorer(data, panel, _options(data, null));
 }
 
 let _request = 0;

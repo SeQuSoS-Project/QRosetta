@@ -20,9 +20,9 @@ logger = get_logger("rosetta-export")
 router = APIRouter()
 
 
-async def _crate_response(results: dict, payload) -> StreamingResponse:
+async def _crate_response(results: dict, payload, route: str) -> StreamingResponse:
     """Build the RO-Crate ZIP off the event loop and stream it as an attachment."""
-    ctx = build_export_context(results, payload)
+    ctx = build_export_context(results, payload, route)
     try:
         zip_bytes = await asyncio.to_thread(build_ro_crate, ctx)
     except Exception:
@@ -48,7 +48,7 @@ async def export_ro_crate(request: Request, payload: schemas.ExportRequest):
     if report_failed_before_dispatch(payload.results):
         raise HTTPException(status_code=409, detail=f"This run failed before dispatch and has no results to export: {payload.results['error']}")
     reject_invalid_report(payload.results)
-    return await _crate_response(payload.results, payload)
+    return await _crate_response(payload.results, payload, "client_request")
 
 
 @router.post("/jobs/{job_id}/export", responses=responses(404, 409, 422))
@@ -59,4 +59,4 @@ async def export_job_ro_crate(request: Request, job_id: str, payload: schemas.Ex
     With ``include_statevectors=true`` it carries every statevector the runners returned.
     404 if the job id is unknown or expired; 409 if the job has not finished, failed before
     any runner ran, or is an experiment (use GET /experiments/{job_id}/bundle)."""
-    return await _crate_response(job_report_or_error(job_id, "export"), payload)
+    return await _crate_response(job_report_or_error(job_id, "export"), payload, "server_job")

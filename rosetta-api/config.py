@@ -308,8 +308,13 @@ settings = Settings()
 
 
 def server_git_sha() -> str:
-    """Git SHA injected at build time via QROSETTA_GIT_SHA (or GIT_SHA); 'unknown' if unset."""
-    return (os.getenv("QROSETTA_GIT_SHA") or os.getenv("GIT_SHA") or "").strip() or "unknown"
+    """The commit the API image was built from (QROSETTA_IMAGE_GIT_SHA, set at build time),
+    else QROSETTA_GIT_SHA or GIT_SHA from the environment; 'unknown' if none is set."""
+    for name in ("QROSETTA_IMAGE_GIT_SHA", "QROSETTA_GIT_SHA", "GIT_SHA"):
+        value = (os.getenv(name) or "").strip()
+        if value and value != "unknown":
+            return value
+    return "unknown"
 
 
 def server_image_digests() -> dict:
