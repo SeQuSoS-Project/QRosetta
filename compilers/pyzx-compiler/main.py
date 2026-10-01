@@ -1,0 +1,58 @@
+"""PyZX compiler: converts the circuit to a ZX-diagram, simplifies it with full_reduce and
+extracts a circuit, optionally followed by PyZX's gate-level basic_optimization."""
+
+from fastapi import FastAPI
+import pyzx as zx
+
+from qrosetta_commons.compile_service import (
+    register_compiler_endpoint, run_compile_job, run_compiler_cli_main,
+)
+from qrosetta_commons.helpers import declare_sdk_packages, with_sdk_versions
+
+declare_sdk_packages("pyzx")
+
+app = FastAPI(title="PyZX Compiler")
+
+_PARSE_NOTE = "pyzx.Circuit.from_qasm(): PyZX's OpenQASM 2.0 parser."
+_REDUCE_NOTE = ("circuit.to_graph(), pyzx.full_reduce(graph), pyzx.extract_circuit(graph): "
+                "ZX-calculus simplification and circuit extraction.")
+_BASIC_NOTE = ("pyzx.basic_optimization(extracted.to_basic_gates()): gate cancellation and "
+               "commutation on the extracted circuit only. PyZX 0.10.6's basic_optimization "
+               "changes the unitary of some input circuits (an X or S followed by an X or Y "
+               "rotation), so it is never applied to the input directly.")
+_ENCODE_NOTE = "Circuit.to_qasm(): the output circuit as OpenQASM 2.0, one register q."
+
+
+def _extract(qasm: str):
+    graph = zx.Circuit.from_qasm(qasm).to_graph()
+    zx.full_reduce(graph)
+    return zx.extract_circuit(graph.copy())
+
+
+def _full_reduce(qasm: str):
+    return _extract(qasm).to_qasm(), [_PARSE_NOTE, _REDUCE_NOTE, _ENCODE_NOTE]
+
+
+def _full_reduce_then_basic(qasm: str):
+    circuit = zx.basic_optimization(_extract(qasm).to_basic_gates())
+    return circuit.to_qasm(), [_PARSE_NOTE, _REDUCE_NOTE, _BASIC_NOTE, _ENCODE_NOTE]
+
+
+PIPELINES = {1: _full_reduce, 2: _full_reduce_then_basic}
+
+
+def equivalent(input_qasm: str, output_qasm: str) -> bool:
+    """PyZX's tensor comparison of the two circuits, up to a global scalar."""
+    return zx.compare_tensors(zx.Circuit.from_qasm(input_qasm), zx.Circuit.from_qasm(output_qasm),
+                              preserve_scalar=False)
+
+
+@with_sdk_versions
+def process_compile(payload: dict) -> dict:
+    return run_compile_job(compiler="pyzx", payload=payload, pipelines=PIPELINES)
+
+
+register_compiler_endpoint(app, process_compile)
+
+if __name__ == "__main__":
+    run_compiler_cli_main(app, process_compile, "PyZX", levels=sorted(PIPELINES), equivalent=equivalent)

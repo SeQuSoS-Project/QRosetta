@@ -3,6 +3,7 @@
 import { BASE_URL, apiDetailText, formatApiError, getAuthHeaders, pollJobStatus } from './api.js';
 import { updateAuthUI, verifySession } from './auth.js';
 import { autosaveRun, initAutosave } from './autosave.js';
+import { getCompilerSelection, loadCompilers } from './compilers_config.js';
 import { renderBatchQueue, toBatchTask } from './batch.js';
 import { closeDrawers } from './drawers.js';
 import { bmLoadChecklist, populateBenchmarkSelectors } from './benchmarks_select.js';
@@ -157,6 +158,7 @@ window.onload = async () => {
             }
         }
         loadRunners();
+        loadCompilers();
 
         const select = document.getElementById('algo-select');
         select.innerHTML = '';
@@ -412,7 +414,8 @@ export async function runComparison(type) {
         execution_target: _executionTarget(),
         bypass_limits: bypassLimits,
         apply_preprocessing: applyPreprocessing,
-        thresholds: getAgreementThresholds()
+        thresholds: getAgreementThresholds(),
+        compilers: getCompilerSelection()
     };
 
     if (type === 'measured') {
@@ -484,7 +487,8 @@ export async function runBatchQueue() {
         bypass_limits: bypassLimits,
         apply_preprocessing: applyPreprocessing,
         thresholds: getAgreementThresholds(),
-        seed: getSeed()
+        seed: getSeed(),
+        compilers: getCompilerSelection()
     };
     if (mode === 'measured') payload.n_shots = v.shots;
 

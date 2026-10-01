@@ -36,3 +36,13 @@ class MeasuredCircuitPayload(BaseModel):
     hard_timeout_seconds: Optional[int] = None
     max_queue_wait_seconds: Optional[float] = None
     timing_repeats: int = _timing_repeats()
+
+
+class CompilePayload(BaseModel):
+    """``/compile`` payload of a compile-only service. ``optimization_level`` picks one of
+    the service's documented pipelines; the hard timeout and queue wait are as for
+    ``CircuitPayload``."""
+    circuit_data: str
+    optimization_level: int = 0
+    hard_timeout_seconds: Optional[int] = None
+    max_queue_wait_seconds: Optional[float] = None

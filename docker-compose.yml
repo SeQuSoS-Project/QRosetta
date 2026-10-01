@@ -370,6 +370,68 @@ services:
           cpus: "1.0"
           memory: "512M"
 
+# --- Compile-only services: circuit text in, circuit text out, never simulated ---
+
+  bqskit_compiler:
+    build:
+      context: .
+      dockerfile: ./compilers/bqskit-compiler/Dockerfile
+    container_name: bqskit-compiler
+    environment:
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
+      - NUMBA_NUM_THREADS=1
+      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+    networks:
+      - isolated_net
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: "1G"
+
+  pyzx_compiler:
+    build:
+      context: .
+      dockerfile: ./compilers/pyzx-compiler/Dockerfile
+    container_name: pyzx-compiler
+    environment:
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
+      - NUMBA_NUM_THREADS=1
+      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+    networks:
+      - isolated_net
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: "512M"
+
+  qmap_compiler:
+    build:
+      context: .
+      dockerfile: ./compilers/qmap-compiler/Dockerfile
+    container_name: qmap-compiler
+    environment:
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
+      - NUMBA_NUM_THREADS=1
+      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+    networks:
+      - isolated_net
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: "512M"
+
 # --- NETWORK DEFINITIONS ---
 networks:
   public_net:

@@ -1,0 +1,147 @@
+"""Compile-only services in a run: validated requests, dispatch after the simulators, a
+recorded compile input, compiled records kept apart from raw_results, and their crate files."""
+import asyncio
+import io
+import json
+import zipfile
+
+import pytest
+from fastapi import HTTPException
+
+import services.compilation as compilation
+import services.job_manager as job_manager
+from schemas import ExportPayload
+from services.circuit_texts import circuit_texts
+from services.exporter import build_export_context, build_ro_crate, invalid_runner_keys
+
+QASM = 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[2];\ncreg c[2];\nh q[0];\ncx q[0],q[1];\nmeasure q -> c;\n'
+
+
+def test_unknown_compilers_and_levels_are_rejected():
+    compilation.validate_compilers({"pyzx": [1, 2], "qmap": [0]})
+    with pytest.raises(HTTPException) as unknown:
+        compilation.validate_compilers({"qiskit": [0]})
+    assert unknown.value.status_code == 400 and "qiskit" in unknown.value.detail
+    with pytest.raises(HTTPException) as level:
+        compilation.validate_compilers({"bqskit": [0]})
+    assert "no optimization level 0" in level.value.detail
+
+
+def test_compile_request_shapes_are_rejected_by_the_schema(client):
+    for bad in ({"pyzx": []}, {"pyzx": [1, 1]}, {"pyzx": [True]}, {"pyzx": "1"}):
+        r = client.post("/compare", json={"qasm_string": QASM, "compilers": bad})
+        assert r.status_code == 422, bad
+    r = client.post("/compare", json={"qasm_string": QASM, "compilers": {"nope": [0]}})
+    assert r.status_code == 400 and "nope" in r.json()["detail"]
+
+
+def _runner_result(name):
+    return {"simulator": name, "transpiled_qasm": "h q[0];", "dispatch_status": "ok"}
+
+
+def _compile_result(key):
+    return {"simulator": key, "optimization_level": 1, "transpiled_qasm": "OPENQASM 2.0;\nqreg q[2];\nh q[0];\n",
+            "passes_applied": ["pass A"], "gate_count": 1, "circuit_depth": 1,
+            "gate_metrics_basis": "basis", "sdk_versions": {"pyzx": "0.10.6"}, "dispatch_status": "ok",
+            "runner_code_sha256": "abc", "timing_samples": 1, "timing_statistic": "median",
+            "device": "CPU", "exclusive": False, "simulation_time_sec": None}
+
+
+@pytest.fixture
+def fake_dispatch(monkeypatch):
+    calls = []
+
+    async def dispatch(runner_urls, runner_payload=None, timeout_seconds=None, runner_statuses=None):
+        calls.append((dict(runner_urls), dict(runner_payload or {})))
+        if all(url.endswith("/compile") for url in runner_urls.values()):
+            config = runner_payload["runner_config"]
+            return [_compile_result(cid if len(levels) == 1 else f"{cid}~opt{lvl}~run1")
+                    for cid, levels in config.items() for lvl in levels]
+        return [_runner_result(name) for name in runner_urls]
+
+    monkeypatch.setattr(job_manager, "dispatch_to_runners", dispatch)
+    monkeypatch.setattr(compilation, "dispatch_to_runners", dispatch)
+    return calls
+
+
+def test_compilers_run_after_the_simulators_and_are_recorded_apart(fake_dispatch):
+    pytest.importorskip("pytket")
+    report = asyncio.run(job_manager.run_single_circuit_comparison(
+        QASM, target_simulators=["qiskit"], compilers={"pyzx": [1, 2]}))
+    (runner_urls, _), (compile_urls, compile_payload) = fake_dispatch
+    assert list(runner_urls) == ["qiskit"]
+    assert compile_urls == {"pyzx": "http://pyzx-compiler:8000/compile"}
+    assert compile_payload["runner_config"] == {"pyzx": [1, 2]}
+    assert compile_payload["circuit_data"] == report["compile_input"]["qasm"]
+    assert "measure" not in report["compile_input"]["qasm"]
+    assert report["compile_input"]["qasm"] == report["dispatched_circuits"][0]["qasm"]
+    assert [r["simulator"] for r in report["raw_results"]] == ["qiskit"]
+    keys = [c["compiler"] for c in report["compiled_circuits"]]
+    assert keys == ["pyzx~opt1~run1", "pyzx~opt2~run1"]
+    record = report["compiled_circuits"][0]
+    assert record["compiler_id"] == "pyzx" and record["compiler_name"] == "PyZX"
+    assert record["compiler_code_sha256"] == "abc"
+    for absent in ("timing_samples", "timing_statistic", "device", "exclusive", "simulation_time_sec", "simulator"):
+        assert absent not in record
+
+
+def test_no_compilers_means_no_compile_fields(fake_dispatch):
+    pytest.importorskip("pytket")
+    report = asyncio.run(job_manager.run_single_circuit_comparison(QASM, target_simulators=["qiskit"]))
+    assert len(fake_dispatch) == 1
+    assert "compile_input" not in report and "compiled_circuits" not in report
+
+
+def test_measured_circuit_with_mid_circuit_measurement_is_not_compiled(fake_dispatch):
+    pytest.importorskip("pytket")
+    mid = ('OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[1];\ncreg c[1];\nmeasure q[0] -> c[0];\n'
+           'h q[0];\nmeasure q[0] -> c[0];\n')
+    report = asyncio.run(job_manager.run_single_circuit_measurement(
+        mid, 100, target_simulators=["qiskit"], compilers={"qmap": [0]}))
+    assert report["compile_input"] is None
+    (record,) = report["compiled_circuits"]
+    assert record["dispatch_status"] == "skipped" and record["error"].startswith("Not compiled:")
+    assert all(not url.endswith("/compile") for urls, _ in fake_dispatch for url in urls.values())
+
+
+def test_crate_holds_compile_input_and_outputs_but_results_json_does_not(fake_dispatch):
+    pytest.importorskip("pytket")
+    report = asyncio.run(job_manager.run_single_circuit_comparison(
+        QASM, target_simulators=["qiskit"], compilers={"pyzx": [1]}))
+    zip_bytes = build_ro_crate(build_export_context(report, ExportPayload()))
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        names = {n.split("/", 1)[1]: n for n in zf.namelist()}
+        assert zf.read(names["compile_input.qasm"]).decode() == report["compile_input"]["qasm"]
+        assert zf.read(names["compiled_circuits/pyzx.qasm"]).decode() == report["compiled_circuits"][0]["transpiled_qasm"]
+        results = json.loads(zf.read(names["results.json"]))
+        zf_lock = zf.read(names["compilers/pyzx-compiler/requirements.lock"]).decode()
+        metadata = json.loads(zf.read(names["ro-crate-metadata.json"]))
+    assert "qasm" not in results["compile_input"]
+    assert "transpiled_qasm" not in results["compiled_circuits"][0]
+    ids = {entity["@id"] for entity in metadata["@graph"]}
+    assert {"compile_input.qasm", "compiled_circuits/pyzx.qasm",
+            "compilers/pyzx-compiler/requirements.lock"} <= ids
+    assert "pyzx==0.10.6" in zf_lock
+
+
+def test_share_texts_carry_compile_records_without_extra_fields(fake_dispatch):
+    pytest.importorskip("pytket")
+    report = asyncio.run(job_manager.run_single_circuit_comparison(
+        QASM, target_simulators=["qiskit"], compilers={"pyzx": [1]}))
+    texts = circuit_texts(report)
+    assert texts["compile_input"]["qasm"] == report["compile_input"]["qasm"]
+    (record,) = texts["compiled_circuits"]
+    assert set(record) == {"compiler", "compiler_id", "compiler_name", "transpiled_qasm", "gate_metrics_basis",
+                           "dispatch_status", "optimization_level", "gate_count", "circuit_depth",
+                           "passes_applied", "sdk_versions"}
+
+
+def test_client_report_with_a_bad_compiler_key_is_rejected():
+    assert invalid_runner_keys({"raw_results": [], "compiled_circuits": [{"compiler": "../x"}]}) == ["../x"]
+
+
+@pytest.fixture
+def client():
+    from fastapi.testclient import TestClient
+    from main import app
+    return TestClient(app)

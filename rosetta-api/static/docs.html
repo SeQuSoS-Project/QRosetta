@@ -62,6 +62,7 @@
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#reproducibility">Reproducibility</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#methodology">Timing/memory methodology</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#resources">Resources, queueing, timeouts</a></li>
+                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#compilers">Compile-only services</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#reading">Reading results</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#endpoints">Reports and exports</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#accounts">Accounts, history &amp; autosave</a></li>
@@ -981,6 +982,68 @@
                 </ul>
             </section>
 
+            <section id="compilers">
+                <h2>Compile-only services</h2>
+                <p>
+                    A compile-only service turns the run's circuit into another circuit and records the
+                    text. Its output is never simulated, has no timings, and is not part of the agreement
+                    comparison: compiled circuits are kept in the report's <code>compiled_circuits</code>,
+                    apart from <code>raw_results</code>. Tick levels under <strong>Config → Compile-only
+                    services</strong>, or send <code>compilers</code> (compiler id → list of distinct levels,
+                    at most 8 compiles per circuit) with <code>/compare</code>, <code>/compare_measured</code>
+                    or <code>/run_batch_suite</code>; <code>GET /compilers</code> lists them.
+                </p>
+                <p>
+                    Every compiler receives the same circuit, recorded as <code>compile_input</code>: the
+                    submitted circuit as the API prepares it for statevector runners (terminal measurements
+                    removed, then the run's API preprocessing). In statevector mode this is the dispatched
+                    statevector circuit. A measured-mode circuit with mid-circuit measurement, reset or
+                    classical control is not compiled; each requested compile is then recorded with
+                    <code>dispatch_status</code> <code>skipped</code> and the reason. Compilers run after the
+                    run's simulators have finished, through the same dispatch, queue and timeout as runners,
+                    so a compile never overlaps a timed run of its own job; in an exclusive run they also
+                    wait for the server to be free.
+                </p>
+                <p>
+                    Each record holds the output text (<code>transpiled_qasm</code>), the passes that produced
+                    it (<code>passes_applied</code>), gate count and depth counted from that text, the SDK
+                    versions and the compiler's code hash. The Circuits tab shows the compiler input and each
+                    output; the RO-Crate holds them as <code>compile_input.qasm</code> and
+                    <code>compiled_circuits/&lt;key&gt;.qasm</code> (per task in a batch).
+                </p>
+                <table>
+                    <thead><tr><th>Compiler</th><th>Levels</th><th>What runs</th></tr></thead>
+                    <tbody>
+                        <tr><td>BQSKit 1.2.1</td><td>1, 2, 3</td><td><code>bqskit.compile</code> at that
+                            optimization level with <code>max_synthesis_size=3</code>,
+                            <code>synthesis_epsilon=1e-8</code>, <code>seed=0</code>, one worker and no machine
+                            model (all-to-all connectivity, BQSKit's default gate set). Resynthesised blocks
+                            match the input within <code>synthesis_epsilon</code>, so the output approximates
+                            the input unitary. Level 4 is not offered: it took 195 s on a 4-qubit, 6-gate
+                            circuit with one worker.</td></tr>
+                        <tr><td>PyZX 0.10.6</td><td>1, 2</td><td>Level 1: <code>full_reduce</code> of the
+                            ZX-diagram, then <code>extract_circuit</code>. Level 2: level 1, then
+                            <code>basic_optimization</code> of the extracted circuit. PyZX's
+                            <code>basic_optimization</code> on the input itself is not offered (see the known
+                            issue below).</td></tr>
+                        <tr><td>MQT QMAP 3.10.0</td><td>0, 1</td><td>Qiskit 2.5.2 translates the circuit to
+                            <code>u3</code> and <code>cx</code> (<code>optimization_level=0</code>, basis
+                            translation only), then QMAP maps it onto a linear chain of the circuit's qubit
+                            count, qubit i coupled to i + 1 in both directions: heuristic (A*) at level 0, exact
+                            (SAT) at level 1, with QMAP's default pre- and post-mapping optimizations. The
+                            output's <code>// i</code> and <code>// o</code> lines give the physical qubit of each
+                            logical qubit at input and output.</td></tr>
+                    </tbody>
+                </table>
+                <p>
+                    Each compiler image has a self-test (<code>python main.py --self-test</code>) that compiles
+                    four probe circuits at every level and checks the output unitary against the input with
+                    the image's own SDK (BQSKit's unitary distance, PyZX's tensor comparison, Qiskit's
+                    operator equality up to QMAP's qubit layouts). The probes include the circuits of both
+                    known issues below.
+                </p>
+            </section>
+
             <section id="reading">
                 <h2>Reading the results</h2>
                 <table>
@@ -990,7 +1053,7 @@
                         <tr><td>Performance / Resources</td><td>Ranked successful runs, then the unranked runs with their status and reason, with a Device column (GPU runs name the GPU). With Timing repeats above 1, each time cell shows the median ± the sample standard deviation and n. Tooltips on each column give the measurement window. When a GPU run is present, the Performance note says that times across devices compare different hardware and the Resources note says that GPU device memory is not measured.</td></tr>
                         <tr><td>Divergence</td><td>The N×N fidelity, global phase offset arg⟨a|b⟩, JS-divergence (nats) and Hellinger matrices. The fidelity matrix holds the direct fidelity, before any bit reversal, so an <code>lsb</code>×<code>msb</code> pair that agrees after the declared reversal can show a low value here; the Agreement tab and the Summary give the label-aligned value. A cell is green when it is within the tolerance recorded with that pair; OFF, ERR and T/O mark failed runs, n/c a pair that is not comparable (<code>null</code> in the report; a report that stores −1 for such a pair shows n/c too). The diagonal holds each backend compared with itself (fidelity 1, JS 0, phase 0). Cells are rounded for display: four decimals, more for a fidelity that would otherwise round to 1, and three significant digits in scientific notation below 1e-3. Hover a cell for the unrounded value; the report stores it unrounded.</td></tr>
                         <tr><td>Agreement</td><td>The label per backend pair, with the metrics, the tolerances used, the statistical test and provenance (seeds, ordering, SDK versions, preprocessing) per pair.</td></tr>
-                        <tr><td>Circuits</td><td>The circuit texts the run recorded, side by side: the circuit as submitted, the circuit the API sent to each dispatch group (with the API's changes) and the circuit each backend executed (its <code>transpiled_qasm</code>, with the backend's transforms, SDK versions, gate count and depth). Each executed pane says where its gate count and depth come from (<code>gate_metrics_basis</code>): counted from that text for most backends, from the executed tape for PennyLane, whose recorded text decomposes <code>QubitUnitary</code> although the tape does not. A line diff compares any two panes, raw or with whitespace and line breaks, comments, or the OPENQASM and include lines ignored; the raw text stays in the panes. The diff stops at about 4,000 changed lines. The tab shows text only and draws no conclusion from a difference: two texts can differ line by line and describe the same unitary. A saved run opened from history also offers a read-only link (see <a href="#accounts">Accounts, history &amp; autosave</a>).</td></tr>
+                        <tr><td>Circuits</td><td>The circuit texts the run recorded, side by side: the circuit as submitted, the circuit the API sent to each dispatch group (with the API's changes) and the circuit each backend executed (its <code>transpiled_qasm</code>, with the backend's transforms, SDK versions, gate count and depth). Each executed pane says where its gate count and depth come from (<code>gate_metrics_basis</code>): counted from that text for most backends, from the executed tape for PennyLane, whose recorded text decomposes <code>QubitUnitary</code> although the tape does not. A line diff compares any two panes, raw or with whitespace and line breaks, comments, or the OPENQASM and include lines ignored; the raw text stays in the panes. The diff stops at about 4,000 changed lines. The tab shows text only and draws no conclusion from a difference: two texts can differ line by line and describe the same unitary. When the run used compile-only services, the compiler input and each compiled circuit are panes too (see <a href="#compilers">Compile-only services</a>). A saved run opened from history also offers a read-only link (see <a href="#accounts">Accounts, history &amp; autosave</a>).</td></tr>
                         <tr><td>Artifacts</td><td>Publication figures and tables, scoped to any subset of backends in the browser. The browser offers figures as SVG, PNG or PDF and tables as LaTeX, CSV, HTML or Markdown. The RO-Crate export renders figures as SVG, PNG or PDF and tables as LaTeX, CSV, HTML or XLSX (<code>publication_artifacts</code> in the export body).</td></tr>
                         <tr><td>Exports</td><td>The JSON report held in the browser, the full report from the server, and the RO-Crate export (see <a href="#endpoints">Reports and exports</a>).</td></tr>
                     </tbody>
@@ -1026,6 +1089,7 @@
                         <tr><td><code>GET /jobs/{job_id}/report</code></td><td>The untruncated report as JSON (the <em>Download full report</em> button). 404 if the job is unknown or expired, 409 if it has not completed.</td></tr>
                         <tr><td><code>POST /jobs/{job_id}/export</code></td><td>An RO-Crate ZIP built from the server copy; body: <code>include_statevectors</code>, <code>author_name</code>, <code>author_affiliation</code>, <code>publication_artifacts</code>. Same 404 and 409 cases.</td></tr>
                         <tr><td><code>POST /history/runs/from_job/{job_id}</code></td><td>Saves a finished single or batch job to the signed-in user's history from the server copy (body, optional: <code>{"run_name": "..."}</code>). 201 with the saved run; saving the same job again returns that run with 200. 404 if the job is unknown or expired; 409 if it has not finished or is an experiment.</td></tr>
+                        <tr><td><code>GET /compilers</code></td><td>The compile-only services: id, name, enabled and available state, and a description of each optimization level.</td></tr>
                         <tr><td><code>POST /history/runs/{run_id}/share-links</code></td><td>Creates a read-only link to one of the signed-in user's saved runs (body, optional: <code>{"expires_in_days": 1..90}</code>, default 30). 201 with the link's id, expiry and token; the token appears only in this response. 404 if the run is not yours; 409 when the run already has 10 active links.</td></tr>
                         <tr><td><code>GET /history/runs/{run_id}/share-links</code></td><td>The links to one of your saved runs, with creation, expiry and revocation times, without tokens.</td></tr>
                         <tr><td><code>DELETE /history/share-links/{link_id}</code></td><td>Revokes one of your links; it stops working at once.</td></tr>
@@ -1061,7 +1125,7 @@
                     <code>/share.html#&lt;token&gt;</code> address that expires after 1, 7, 30 or 90 days.
                     Anyone with the address sees the run's name and save time and its circuit texts: the
                     submitted circuit, the dispatched circuits and each backend's executed circuit with
-                    its transforms, SDK versions, gate count and depth. The page shows no results,
+                    its transforms, SDK versions, gate count and depth, plus the compiler input and compiled circuits when the run had any. The page shows no results,
                     timings, error messages or account details. The token is shown once; the server
                     stores only its SHA-256, and the token sits after <code>#</code>, so browsers do not
                     send it in requests or referrers. Revoke a link in the same tab. Deleting the run or
@@ -1165,6 +1229,26 @@
                             <td>Measured, 20000 shots: <code>qreg q[2]; creg c[2]; x q[0]; h q[1];
                                 cu3(0.7,0.3,0.1) q[0],q[1]; measure q -&gt; c;</code>. The exact P(q[1] = 1) is
                                 0.82; Qrisp returns about 0.19.</td></tr>
+                        <tr><td>PyZX 0.10.6 (compile-only)</td>
+                            <td><code>basic_optimization(circuit.to_basic_gates())</code> changes the unitary when
+                                an X, S or swap is followed by an X- or Y-rotation on the same qubit. In random
+                                3-qubit circuits of 10 gates (150 for each of three gate sets) it changed the
+                                unitary of 31% to 90%, depending on the gate set; <code>full_reduce</code> with <code>extract_circuit</code>, with or
+                                without a final <code>basic_optimization</code>, changed none of 450. The PyZX
+                                compiler therefore never applies <code>basic_optimization</code> to its input.</td>
+                            <td><code>qreg q[1]; x q[0]; rx(0.7) q[0];</code> through
+                                <code>pyzx.basic_optimization(pyzx.Circuit.from_qasm(text).to_basic_gates())</code>
+                                returns <code>h; rz(0.777…π); h</code>, which is not X·RX(0.7).</td></tr>
+                        <tr><td>MQT QMAP 3.10.0 (compile-only)</td>
+                            <td><code>mqt.qmap.sc.map_</code> maps singly-controlled gates other than
+                                <code>cx</code> (<code>cu3</code>, <code>cp</code>) as plain <code>cx</code> without
+                                an error, also with pre- and post-mapping optimizations off; gates with two
+                                controls and <code>swap</code> are rejected with an error asking for a decomposed
+                                circuit. The QMAP compiler therefore decomposes to <code>u3</code> and
+                                <code>cx</code> first.</td>
+                            <td><code>qreg q[3]; h q[0]; cu3(0.3,0.2,0.1) q[0],q[1]; cu1(pi/4) q[1],q[2];</code>
+                                mapped onto a 3-qubit line: the output holds <code>h</code>, <code>cx q[0],q[1]</code>
+                                and <code>cx q[1],q[2]</code> only.</td></tr>
                         <tr><td>TorchQuantum</td>
                             <td>Rejects a circuit with more than one <code>qreg</code> when preprocessing is
                                 off (an Error, not a wrong result). With preprocessing on the API merges the

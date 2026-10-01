@@ -14,6 +14,7 @@ from schemas import QasmPayload, MeasuredQasmPayload, BatchPayload, JobStatusRes
 from services.security import limiter
 from services.availability import require_available
 from services.job_store import JOB_NOT_FOUND
+from services.compilation import validate_compilers
 from config import settings
 from services.job_manager import (
     ACTIVE_JOBS,
@@ -84,6 +85,7 @@ async def compare_circuits_endpoint(request: Request, payload: QasmPayload, back
     check_statevector_circuit(payload.qasm_string)
     validate_runner_ids(payload.target_simulators, payload.runner_config, payload.runner_phases)
     validate_runner_config(payload.runner_config)
+    validate_compilers(payload.compilers)
     await require_available(payload.target_simulators)
     timeout = clamp_timeout(payload.timeout_seconds)
     job_id = str(uuid.uuid4())
@@ -91,7 +93,7 @@ async def compare_circuits_endpoint(request: Request, payload: QasmPayload, back
 
     ACTIVE_JOBS[job_id] = new_job(payload.execution_target)
     thresholds = effective_thresholds(payload.thresholds)
-    background_tasks.add_task(worker_compare, job_id, payload.qasm_string, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, payload.execution_target, payload.runner_phases, payload.apply_preprocessing, thresholds, payload.bypass_limits, payload.timing_repeats, exclusive=payload.exclusive)
+    background_tasks.add_task(worker_compare, job_id, payload.qasm_string, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, payload.execution_target, payload.runner_phases, payload.apply_preprocessing, thresholds, payload.bypass_limits, payload.timing_repeats, exclusive=payload.exclusive, compilers=payload.compilers)
 
     return _job_envelope(job_id)
 
@@ -109,6 +111,7 @@ async def compare_measured_circuits_endpoint(request: Request, payload: Measured
                      apply_preprocessing=payload.apply_preprocessing)
     validate_runner_ids(payload.target_simulators, payload.runner_config, payload.runner_phases)
     validate_runner_config(payload.runner_config)
+    validate_compilers(payload.compilers)
     await require_available(payload.target_simulators)
     timeout = clamp_timeout(payload.timeout_seconds)
     job_id = str(uuid.uuid4())
@@ -116,7 +119,7 @@ async def compare_measured_circuits_endpoint(request: Request, payload: Measured
 
     ACTIVE_JOBS[job_id] = new_job(payload.execution_target)
     thresholds = effective_thresholds(payload.thresholds)
-    background_tasks.add_task(worker_compare_measured, job_id, payload.qasm_string, payload.n_shots, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, payload.execution_target, payload.runner_phases, payload.apply_preprocessing, payload.seed, thresholds, payload.bypass_limits, payload.timing_repeats, exclusive=payload.exclusive)
+    background_tasks.add_task(worker_compare_measured, job_id, payload.qasm_string, payload.n_shots, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, payload.execution_target, payload.runner_phases, payload.apply_preprocessing, payload.seed, thresholds, payload.bypass_limits, payload.timing_repeats, exclusive=payload.exclusive, compilers=payload.compilers)
 
     return _job_envelope(job_id)
 
@@ -134,6 +137,7 @@ async def run_batch_suite_endpoint(request: Request, payload: BatchPayload, back
         raise HTTPException(status_code=400, detail="No tasks given.")
     validate_runner_ids(payload.target_simulators, payload.runner_config, payload.runner_phases)
     validate_runner_config(payload.runner_config)
+    validate_compilers(payload.compilers)
     for index, task in enumerate(payload.tasks):
         if task.qasm_string:
             try:

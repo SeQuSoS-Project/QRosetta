@@ -14,8 +14,9 @@ RUN pip install /tmp/shared-src
 
 COPY rosetta-api/ .
 
-# services/exporter.py reads runners/*/requirements.txt.
+# services/exporter.py reads runners/*/requirements.txt and compilers/*/requirements.lock.
 COPY runners/ ./runners/
+COPY compilers/ ./compilers/
 
 RUN mkdir -p /home/appuser/app/data
 

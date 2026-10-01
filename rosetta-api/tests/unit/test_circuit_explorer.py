@@ -170,3 +170,23 @@ def test_malformed_report_fields_are_skipped():
                                        "raw_results": [None, {"simulator": "x", "transpiled_qasm": 3}]}))
     assert [p["id"] for p in panes] == ["executed:x"]
     assert panes[0]["text"] is None
+
+
+def test_compile_input_and_compiled_panes_follow_the_executed_ones():
+    report = {**_REPORT,
+              "compile_input": {"qasm": "OPENQASM 2.0;\nqreg q[2];\nh q[0];\n", "api_preprocessing_applied": ["API: x"]},
+              "compiled_circuits": [
+                  {"compiler": "pyzx~opt1~run1", "compiler_id": "pyzx", "compiler_name": "PyZX",
+                   "optimization_level": 1, "transpiled_qasm": "h q[0];", "passes_applied": ["full_reduce"],
+                   "gate_count": 1, "circuit_depth": 1, "gate_metrics_basis": GATE_METRICS_FROM_QASM,
+                   "dispatch_status": "ok"},
+                  {"compiler": "qmap", "compiler_id": "qmap", "optimization_level": 0,
+                   "dispatch_status": "skipped"}]}
+    (panes,) = _call(("circuitPanes", report))
+    assert [p["id"] for p in panes][-3:] == ["compile-input", "compiled:pyzx~opt1~run1", "compiled:qmap"]
+    pyzx, qmap = panes[-2:]
+    assert pyzx["compilerName"] == "PyZX" and pyzx["level"] == 1 and pyzx["passes"] == ["full_reduce"]
+    assert pyzx["metrics"]["fromText"] is True
+    assert qmap["text"] is None and qmap["status"] == "skipped" and qmap["compilerName"] is None
+    (source,) = _call(("sourcePaneId", pyzx, panes))
+    assert source == "compile-input"

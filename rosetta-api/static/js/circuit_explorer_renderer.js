@@ -1,5 +1,6 @@
-// Circuits tab: the submitted, dispatched and executed circuit texts of one run side by
-// side, and a line diff between any two of them. Shows recorded text only.
+// Circuits tab: the submitted, dispatched and executed circuit texts of one run, and any
+// compile-only input and outputs, side by side, with a line diff between any two of them.
+// Shows recorded text only.
 
 import { circuitPanes, sourcePaneId } from './circuit_panes.js';
 import { comparableLines, endsWithNewline, splitLines } from './qasm_text.js';
@@ -8,12 +9,18 @@ import { diffHunks, diffLines } from './text_diff.js';
 import { downloadBlob, makeCopyIconButton } from './utils.js';
 
 const DEFAULT_EXECUTED_SHOWN = 2;
+const DEFAULT_COMPILED_SHOWN = 2;
 
-const KIND_LABEL = { input: 'Submitted', dispatched: 'Dispatched', executed: 'Executed' };
+const KIND_LABEL = {
+    input: 'Submitted', dispatched: 'Dispatched', executed: 'Executed',
+    'compile-input': 'Compiler input', compiled: 'Compiled',
+};
 const KIND_CHIP = {
     input: 'bg-gray-100 text-gray-700 border-gray-300',
     dispatched: 'bg-blue-50 text-blue-800 border-blue-200',
     executed: 'bg-indigo-50 text-indigo-800 border-indigo-200',
+    'compile-input': 'bg-teal-50 text-teal-800 border-teal-200',
+    compiled: 'bg-teal-50 text-teal-800 border-teal-200',
 };
 
 const NORMALISATION_OPTIONS = [
@@ -32,12 +39,19 @@ function _el(tag, className, text) {
 export function paneTitle(pane) {
     if (pane.kind === 'input') return 'Submitted circuit';
     if (pane.kind === 'dispatched') return `Dispatched · ${pane.group}`;
+    if (pane.kind === 'compile-input') return 'Compiler input';
+    if (pane.kind === 'compiled') {
+        const level = pane.level === null ? '' : ` · level ${pane.level}`;
+        return `Compiled · ${pane.compilerName || pane.compilerId}${level}`;
+    }
     return `Executed · ${_displayRunnerName(pane.key)}`;
 }
 
 function _fileName(pane) {
     const base = pane.kind === 'input' ? 'circuit'
-        : pane.kind === 'dispatched' ? `dispatched_${pane.group}` : `executed_${pane.key}`;
+        : pane.kind === 'dispatched' ? `dispatched_${pane.group}`
+        : pane.kind === 'compile-input' ? 'compile_input'
+        : pane.kind === 'compiled' ? `compiled_${pane.key}` : `executed_${pane.key}`;
     return `${base.replace(/[^A-Za-z0-9_.-]+/g, '_')}.qasm`;
 }
 
@@ -65,6 +79,12 @@ function _metricLine(pane) {
 
 function _sourceNote(pane) {
     if (pane.kind === 'input') return 'The circuit as submitted, before any change by the API.';
+    if (pane.kind === 'compile-input') {
+        return 'The circuit every compile-only service received: the submitted circuit as the API prepares it for statevector runners.';
+    }
+    if (pane.kind === 'compiled') {
+        return 'The output of a compile-only service. It was not simulated and is not part of the pairwise comparison. Gate count and depth are counted from this text.';
+    }
     if (pane.kind === 'dispatched') {
         const names = pane.runners.map(_displayRunnerName).join(', ');
         return `The circuit the API sent to the ${pane.group} group${names ? `: ${names}` : ''}.`;
@@ -95,14 +115,23 @@ function _paneCard(pane) {
             const versions = Object.entries(pane.sdkVersions).map(([name, v]) => `${name} ${v}`);
             if (versions.length) head.appendChild(_noteList('SDK versions', versions));
         }
-    } else if (pane.kind === 'dispatched' && pane.apiNotes.length) {
+    } else if (pane.kind === 'compiled') {
+        head.appendChild(_metricLine(pane));
+        if (pane.passes.length) head.appendChild(_noteList('Passes', pane.passes));
+        if (pane.sdkVersions) {
+            const versions = Object.entries(pane.sdkVersions).map(([name, v]) => `${name} ${v}`);
+            if (versions.length) head.appendChild(_noteList('SDK versions', versions));
+        }
+    } else if ((pane.kind === 'dispatched' || pane.kind === 'compile-input') && pane.apiNotes.length) {
         head.appendChild(_noteList('API changes', pane.apiNotes));
     }
     card.appendChild(head);
 
     if (pane.text === null) {
-        const status = pane.status ? ` (run status: ${pane.status})` : '';
-        card.appendChild(_el('p', 'p-3 text-xs text-gray-500 italic', `No executed circuit was recorded for this backend${status}.`));
+        const status = pane.status ? ` (status: ${pane.status})` : '';
+        const what = pane.kind === 'compiled' ? 'No output circuit was recorded for this compiler'
+            : 'No executed circuit was recorded for this backend';
+        card.appendChild(_el('p', 'p-3 text-xs text-gray-500 italic', `${what}${status}.`));
         return card;
     }
     const lines = splitLines(pane.text).length;
@@ -119,9 +148,11 @@ function _paneCard(pane) {
 }
 
 function _defaultShown(panes) {
-    const shown = new Set(panes.filter(p => p.kind !== 'executed').map(p => p.id));
+    const shown = new Set(panes.filter(p => p.kind === 'input' || p.kind === 'dispatched').map(p => p.id));
     panes.filter(p => p.kind === 'executed' && p.text !== null)
         .slice(0, DEFAULT_EXECUTED_SHOWN).forEach(p => shown.add(p.id));
+    panes.filter(p => p.kind === 'compiled' && p.text !== null)
+        .slice(0, DEFAULT_COMPILED_SHOWN).forEach(p => shown.add(p.id));
     return shown;
 }
 
@@ -255,7 +286,7 @@ export function renderCircuitExplorer(report, panel, extraControls = null) {
     const panes = circuitPanes(report);
     const root = _el('div', 'space-y-4');
     root.appendChild(_el('p', 'text-xs text-gray-600 leading-snug',
-        'The circuit texts this run recorded: the circuit as submitted, the circuit the API sent to each dispatch group, and the circuit each backend executed. The RO-Crate holds the same texts as circuit.qasm, dispatched_circuits/ and transpiled_circuits/.'));
+        'The circuit texts this run recorded: the circuit as submitted, the circuit the API sent to each dispatch group, the circuit each backend executed and, when compile-only services were selected, their input and output. The RO-Crate holds the same texts as circuit.qasm, dispatched_circuits/, transpiled_circuits/, compile_input.qasm and compiled_circuits/.'));
     if (extraControls) {
         const host = _el('div');
         extraControls(host);

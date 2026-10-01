@@ -1,4 +1,4 @@
-# Adding a new simulator backend
+# Adding a new simulator backend or compile-only service
 
 QRosetta dispatches one OpenQASM 2.0 circuit to a fleet of "runners" — one small FastAPI service
 per simulator SDK — and compares what comes back. Adding a simulator means adding one more
@@ -395,3 +395,33 @@ The unit suite and the self-test do not catch everything. Check these by hand:
 - Provenance. `transpiled_qasm` must be the circuit that ran, every transform must appear in
   `preprocessing_applied`, `precision` must name the dtype the backend simulated in, and
   `declare_sdk_packages` must name every package whose version changes results.
+
+## Adding a compile-only service
+
+A compile-only service returns circuit text, never a simulation result, so it is not a
+runner: it lives in `compilers/<name>-compiler/`, is registered in `config.py`
+`get_compiler_services()`, and its output goes to the report's `compiled_circuits`, which the
+comparison never reads. `compilers/pyzx-compiler/main.py` is a short complete example.
+
+`main.py` holds:
+
+- one function per optimization level, `pipeline(qasm) -> (output_qasm, passes_applied)`,
+  collected in `PIPELINES = {level: pipeline}`. `passes_applied` names every call that changed
+  the circuit, with its arguments, including transforms the adapter needs before the
+  compiler can run (QMAP's decomposition to `u3` and `cx`);
+- `process_compile(payload)`, decorated with `@with_sdk_versions`, returning
+  `run_compile_job(compiler="<id>", payload=payload, pipelines=PIPELINES)`;
+- `equivalent(input_qasm, output_qasm) -> bool`, an independent check of the output unitary
+  for the small self-test probes, using the image's own SDK;
+- `register_compiler_endpoint(app, process_compile)` and, under `__main__`,
+  `run_compiler_cli_main(app, process_compile, "<Name>", levels=sorted(PIPELINES), equivalent=equivalent)`.
+
+Then add the service to `docker-compose.yml` (isolated network, no ports, the thread
+variables, a CPU and memory limit), to the `COMPILERS` array of `scripts/safe_boot.sh` and to
+`SERVICE_MAP` in `scripts/rahti_push.sh`; `tests/unit/test_runner_registry_sync.py` fails until
+all of them agree with `config.py`. Pin `requirements.txt` and generate `requirements.lock` in
+the base image the Dockerfile uses.
+
+Before offering a level, run `python main.py --self-test` in the image and compile random
+circuits through it with an independent equivalence check. Do not offer a pipeline that
+changes the unitary of an input beyond its stated tolerance; record why in the manual's known issues instead.

@@ -32,6 +32,9 @@ declare -A SERVICE_MAP=(
     ["torch-quantum-runner"]="torch_quantum_runner"
     ["quimb-runner"]="quimb_runner"
     ["cuquantum-runner"]="cuquantum_runner"
+    ["bqskit-compiler"]="bqskit_compiler"
+    ["pyzx-compiler"]="pyzx_compiler"
+    ["qmap-compiler"]="qmap_compiler"
 )
 
 if [ $# -gt 0 ]; then

@@ -124,6 +124,32 @@ _PREPROCESSING_DESCRIPTION = (
     "result's preprocessing_applied.")
 
 
+_COMPILERS_DESCRIPTION = (
+    "Compile-only services to run after the simulators, as compiler id -> list of distinct "
+    "optimization levels (GET /compilers lists them). Each compiles the circuit the API "
+    "prepares for statevector runners (recorded as compile_input) and returns only circuit "
+    "text, recorded in compiled_circuits; compilers are not simulated and are not part of "
+    "the pairwise comparison. Empty runs none.")
+
+
+def _check_compilers(value):
+    if not isinstance(value, dict):
+        raise ValueError("compilers must map compiler ids to lists of optimization levels")
+    total = 0
+    for name, levels in value.items():
+        if not isinstance(levels, list) or not levels or not all(_is_level(lvl) for lvl in levels):
+            raise ValueError(f"compilers[{name!r}] must be a non-empty list of ints 0–3")
+        if len(set(levels)) != len(levels):
+            raise ValueError(f"compilers[{name!r}] repeats a level; compilation is deterministic")
+        total += len(levels)
+    if total > settings.MAX_COMPILE_JOBS:
+        raise ValueError(f"at most {settings.MAX_COMPILE_JOBS} compile jobs per circuit")
+    return value
+
+
+Compilers = Annotated[Dict[str, List[int]], BeforeValidator(_check_compilers)]
+
+
 class _Request(BaseModel):
     """Request body base: unknown fields are rejected."""
     model_config = ConfigDict(extra="forbid")
@@ -166,6 +192,7 @@ class QasmPayload(_Request):
     bypass_limits: StrictBool = Field(False, description=_BYPASS_DESCRIPTION)
     apply_preprocessing: StrictBool = Field(True, description=_PREPROCESSING_DESCRIPTION)
     thresholds: Optional[AgreementThresholds] = Field(None, description="Override the default agreement thresholds for this run. Omit to use the defaults.")
+    compilers: Compilers = Field(default_factory=dict, description=_COMPILERS_DESCRIPTION)
 
 class MeasuredQasmPayload(_Request):
     """Request body for POST /compare_measured — a shot-based measurement comparison of one
@@ -184,6 +211,7 @@ class MeasuredQasmPayload(_Request):
     apply_preprocessing: StrictBool = Field(True, description=_PREPROCESSING_DESCRIPTION)
     seed: Optional[Seed] = Field(None, description=_SEED_DESCRIPTION)
     thresholds: Optional[AgreementThresholds] = Field(None, description="Override the default agreement thresholds for this run.")
+    compilers: Compilers = Field(default_factory=dict, description=_COMPILERS_DESCRIPTION)
 
 class GenerateCircuitPayload(_Request):
     """Request body for POST /generate_circuit — build one preset circuit's OpenQASM text
@@ -225,6 +253,7 @@ class BatchPayload(_Request):
     apply_preprocessing: StrictBool = Field(True, description=_PREPROCESSING_DESCRIPTION)
     seed: Optional[Seed] = Field(None, description=_SEED_DESCRIPTION + " One master seed covers every task; used only when mode is 'measured'.")
     thresholds: Optional[AgreementThresholds] = Field(None, description="Override the default agreement thresholds for this run.")
+    compilers: Compilers = Field(default_factory=dict, description=_COMPILERS_DESCRIPTION + " Applied to every task.")
 
 class ExperimentCircuit(_Request):
     """One circuit to include in an experiment (POST /experiments), from any of the wired

@@ -1,6 +1,7 @@
 // The circuit texts one run recorded, as panes for the Circuits view: the submitted
-// circuit, each dispatch group's circuit and each backend's executed circuit. Pure, no
-// imports beyond the runner-key parser.
+// circuit, each dispatch group's circuit, each backend's executed circuit and, when the run
+// had compile-only services, their input and outputs. Pure, no imports beyond the
+// runner-key parser.
 
 import { parseRunnerKey } from './runner_key.js';
 
@@ -39,7 +40,29 @@ function _executedPane(result, index) {
     };
 }
 
-/** Panes in display order: submitted, dispatched (per group), executed (per result key). */
+function _compiledPane(record, index) {
+    const key = typeof record.compiler === 'string' ? record.compiler : `compiler ${index + 1}`;
+    return {
+        id: `compiled:${key}`,
+        kind: 'compiled',
+        key,
+        compilerId: typeof record.compiler_id === 'string' ? record.compiler_id : parseRunnerKey(key).simId,
+        compilerName: typeof record.compiler_name === 'string' ? record.compiler_name : null,
+        level: typeof record.optimization_level === 'number' ? record.optimization_level : null,
+        text: typeof record.transpiled_qasm === 'string' ? record.transpiled_qasm : null,
+        status: typeof record.dispatch_status === 'string' ? record.dispatch_status : null,
+        passes: _strings(record.passes_applied),
+        gateCount: typeof record.gate_count === 'number' ? record.gate_count : null,
+        depth: typeof record.circuit_depth === 'number' ? record.circuit_depth : null,
+        metrics: metricsSource(record),
+        sdkVersions: record.sdk_versions && typeof record.sdk_versions === 'object' ? record.sdk_versions : null,
+    };
+}
+
+/**
+ * Panes in display order: submitted, dispatched (per group), executed (per result key),
+ * then the compile input and each compiled circuit.
+ */
 export function circuitPanes(report) {
     if (!report || typeof report !== 'object') return [];
     const panes = [];
@@ -61,11 +84,23 @@ export function circuitPanes(report) {
     (Array.isArray(report.raw_results) ? report.raw_results : []).forEach((result, index) => {
         if (result && typeof result === 'object') panes.push(_executedPane(result, index));
     });
+    const compileInput = report.compile_input;
+    if (compileInput && typeof compileInput === 'object' && typeof compileInput.qasm === 'string') {
+        panes.push({ id: 'compile-input', kind: 'compile-input', key: null, group: null, text: compileInput.qasm,
+                     apiNotes: _strings(compileInput.api_preprocessing_applied) });
+    }
+    (Array.isArray(report.compiled_circuits) ? report.compiled_circuits : []).forEach((record, index) => {
+        if (record && typeof record === 'object') panes.push(_compiledPane(record, index));
+    });
     return panes;
 }
 
-/** The pane a pane's text was derived from: dispatched for executed, submitted for dispatched. */
+/**
+ * The pane a pane's text was derived from: dispatched for executed, the compile input for
+ * compiled, submitted for dispatched and for the compile input.
+ */
 export function sourcePaneId(pane, panes) {
+    if (pane.kind === 'compiled' && panes.some(p => p.id === 'compile-input')) return 'compile-input';
     if (pane.kind === 'executed' && pane.group) {
         const id = `dispatched:${pane.group}`;
         if (panes.some(p => p.id === id)) return id;

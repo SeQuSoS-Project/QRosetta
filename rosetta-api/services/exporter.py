@@ -13,6 +13,9 @@ from typing import Any, Dict, List, Optional
 
 from config import settings
 from qrosetta_commons.helpers import get_logger
+from services.export_compiled import (
+    compiled_circuit_files, compiler_keys, compiler_lock_entity, compiler_lock_files, strip_compiled_text,
+)
 from services.analysis.divergence.common import (
     ANALYSIS_VERSION, DEFAULT_FIDELITY_TOLERANCE, DEFAULT_HELLINGER_THRESHOLD,
     DEFAULT_JS_THRESHOLD, DEFAULT_NORM_TOLERANCE, DEFAULT_PHASE_TOLERANCE,
@@ -195,7 +198,13 @@ def invalid_runner_keys(results: dict) -> list:
             for sim in (record.get("runners") or []) if isinstance(record, dict) else []:
                 if not RUNNER_KEY_RE.match(str(sim)):
                     bad.append(str(sim))
+        bad += [key for key in compiler_keys(report) if not RUNNER_KEY_RE.match(key)]
     return sorted(set(bad))
+
+
+def _compiled_files(task: _TaskView) -> List[dict]:
+    return compiled_circuit_files(task.report, task.task_id, task.label,
+                                  lambda folder, key: _task_scoped_path(folder, task, key))
 
 
 def _task_scoped_path(folder: str, task: _TaskView, sim: str) -> str:
@@ -677,6 +686,7 @@ def _build_ro_crate_metadata(ctx: ExportContext,
     transpiled = {id(t): _transpiled_circuit_files(t) for t in tasks}
     has_dispatched = any(dispatched.values())
     has_transpiled = any(transpiled.values())
+    compiled = {id(t): _compiled_files(t) for t in tasks}
     platform_version = _shared_scalar(ctx, "platform_version") or settings.PLATFORM_VERSION
 
     graph.append({
@@ -691,12 +701,17 @@ def _build_ro_crate_metadata(ctx: ExportContext,
         contents.append("the exact circuit text dispatched to each backend")
     if has_transpiled:
         contents.append("the transpiled circuit each backend reported executing")
+    if any(compiled.values()):
+        contents.append("the input and output circuit of each compile-only service (not simulated)")
     contents.append("results.json (cross-simulator analysis, performance and resource reports, "
                     "and per-runner raw results)")
     contents.append("provenance.json (run configuration, runner registry, SDK versions, seeds, "
                     "and the git SHA and runner image references where recorded)")
-    if lock_paths:
+    if any(p.startswith("runners/") for p in lock_paths):
         contents.append("each runner's pinned environment as runners/<runner>/requirements.lock")
+    if any(p.startswith("compilers/") for p in lock_paths):
+        contents.append("each compile-only service's pinned environment as "
+                        "compilers/<compiler>/requirements.lock")
     if artifact_paths:
         contents.append("publication figures and tables under figures/ and tables/"
                         + (" (one folder per task)" if is_batch else "")
@@ -817,6 +832,14 @@ def _build_ro_crate_metadata(ctx: ExportContext,
                 "programmingLanguage": {"@id": "#openqasm2"},
             })
             root_entity["hasPart"].append({"@id": f["path"]})
+        for f in compiled[id(task)]:
+            graph.append({"@id": f["path"], "@type": "File", "name": f["name"],
+                          "description": f["description"], "encodingFormat": "text/x-qasm",
+                          "programmingLanguage": {"@id": "#openqasm2"}})
+            root_entity["hasPart"].append({"@id": f["path"]})
+    for lock_path in sorted(p for p in lock_paths if p.startswith("compilers/")):
+        graph.append(compiler_lock_entity(lock_path))
+        root_entity["hasPart"].append({"@id": lock_path})
 
     graph.append({
         "@id": "https://w3id.org/ro/crate/1.1",
@@ -1073,6 +1096,7 @@ def _results_json_data(ctx: ExportContext) -> dict:
         for record in report.get("dispatched_circuits", []) or []:
             if isinstance(record, dict):
                 record.pop("qasm", None)
+        strip_compiled_text(report)
 
     clean(data)
     for task_result in data.get("benchmark_summary", []) or []:
@@ -1089,7 +1113,8 @@ def build_ro_crate(ctx: ExportContext) -> bytes:
     results_data = _results_json_data(ctx)
     provenance_data = _build_provenance(ctx)
     publication_files, artifact_descriptions = _generate_publication_artifacts(ctx)
-    lock_files = _runner_lock_files(ctx)
+    lock_files = {**_runner_lock_files(ctx),
+                  **compiler_lock_files([t.report for t in _iter_tasks(ctx)], settings.get_compiler_services())}
     metadata = _build_ro_crate_metadata(ctx, sorted(publication_files), artifact_descriptions,
                                         sorted(lock_files))
 
@@ -1115,7 +1140,7 @@ def build_ro_crate(ctx: ExportContext) -> bytes:
             json.dumps(provenance_data, indent=2, ensure_ascii=False),
         )
         for task in _iter_tasks(ctx):
-            for f in _dispatched_circuit_files(task) + _transpiled_circuit_files(task):
+            for f in _dispatched_circuit_files(task) + _transpiled_circuit_files(task) + _compiled_files(task):
                 zf.writestr(_member(dir_name, f["path"]), f["qasm"])
 
     logger.info(f"Built RO-Crate ZIP: {dir_name} ({buf.tell()} bytes)")

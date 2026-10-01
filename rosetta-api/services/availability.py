@@ -64,10 +64,11 @@ async def _probe(client: httpx.AsyncClient, svc: dict) -> dict:
             "device": str(body["device"]) if body.get("device") else None}
 
 
-async def runner_availability(names=None) -> dict:
+async def runner_availability(names=None, services=None) -> dict:
     """``{runner_id: {available, reason, device}}`` for the enabled runners in ``names``
-    (default: every enabled runner)."""
-    services = settings.get_runner_services()
+    (default: every enabled runner). ``services`` replaces the runner registry, e.g. with
+    the compiler registry."""
+    services = services if services is not None else settings.get_runner_services()
     wanted = [n for n in (names if names is not None else services)
               if n in services and services[n].get("enabled", True)]
     if settings.EXECUTION_MODE != "local":

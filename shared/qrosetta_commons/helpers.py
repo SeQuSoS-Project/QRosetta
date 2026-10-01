@@ -446,12 +446,12 @@ def run_with_uniform_measurement(func, payload):
     return result
 
 
-def _isolated_target(result_q, module_name, func_name, payload):
+def _isolated_target(result_q, module_name, func_name, payload, measured=True):
     try:
         apply_cpu_affinity()
         module = _importlib.import_module(module_name)
         func = getattr(module, func_name)
-        result_q.put(("ok", run_with_uniform_measurement(func, payload)))
+        result_q.put(("ok", run_with_uniform_measurement(func, payload) if measured else func(payload)))
     except Exception as e:
         result_q.put(("err", f"{type(e).__name__}: {e}"))
 
@@ -463,12 +463,13 @@ def _isolated_error(message, timed_out=False):
     return result
 
 
-def _run_isolated_blocking(module_name, func_name, payload, timeout_s):
+def _run_isolated_blocking(module_name, func_name, payload, timeout_s, measured=True):
     """Run the processor in a spawned child; poll every 0.2 s for a result, a dead child
-    or the deadline."""
+    or the deadline. ``measured`` runs it through run_with_uniform_measurement; otherwise
+    it is called once, directly."""
     result_q = _SPAWN_CTX.Queue()
     proc = _SPAWN_CTX.Process(
-        target=_isolated_target, args=(result_q, module_name, func_name, payload))
+        target=_isolated_target, args=(result_q, module_name, func_name, payload, measured))
     proc.start()
 
     deadline = time.monotonic() + timeout_s
@@ -489,9 +490,11 @@ def _run_isolated_blocking(module_name, func_name, payload, timeout_s):
             if proc.is_alive():
                 proc.kill()
                 proc.join()
+            scope = ("spawn, SDK import, warm-up and every timed run" if measured
+                     else "spawn, SDK import and the call")
             return _isolated_error(
-                f"TIMEOUT ({timeout_s}s): the runner process (spawn, SDK import, warm-up and "
-                f"every timed run) exceeded {timeout_s} s and was terminated.", timed_out=True)
+                f"TIMEOUT ({timeout_s}s): the runner process ({scope}) exceeded {timeout_s} s "
+                f"and was terminated.", timed_out=True)
         return _isolated_error(
             f"The runner process was terminated (exit code {proc.exitcode}) before returning "
             f"a result, most likely out of memory. Server operators can see details in the "
@@ -504,18 +507,20 @@ def _run_isolated_blocking(module_name, func_name, payload, timeout_s):
     return value if status == "ok" else _isolated_error(value)
 
 
-async def run_isolated(func, payload, default_timeout=None):
+async def run_isolated(func, payload, default_timeout=None, measured=True):
     """Await a runner processor in a killable spawned child process.
 
     The wall-clock budget is ``payload['hard_timeout_seconds']``, else ``default_timeout``,
-    else RUNNER_HARD_TIMEOUT_SEC.
+    else RUNNER_HARD_TIMEOUT_SEC. ``measured=False`` calls ``func`` once without the
+    warm-up and timing of run_with_uniform_measurement (compile-only services).
     """
     if default_timeout is None:
         default_timeout = DEFAULT_HARD_TIMEOUT_SEC
     timeout_s = payload.get("hard_timeout_seconds") or default_timeout
     loop = _asyncio.get_event_loop()
     return await loop.run_in_executor(
-        None, _run_isolated_blocking, func.__module__, func.__name__, payload, int(timeout_s))
+        None, _run_isolated_blocking, func.__module__, func.__name__, payload, int(timeout_s),
+        measured)
 
 
 _UNSET = object()
@@ -803,7 +808,7 @@ class ExecutionSlots:
         self.waiting = 0
         self.running = 0
 
-    async def run(self, func, payload):
+    async def run(self, func, payload, measured=True):
         ahead = self.waiting + self.running
         budget = payload.get("max_queue_wait_seconds")
         t0 = time.monotonic()
@@ -829,7 +834,7 @@ class ExecutionSlots:
         waited = time.monotonic() - t0
         self.running += 1
         try:
-            result = await run_isolated(func, payload)
+            result = await run_isolated(func, payload, measured=measured)
         finally:
             self.running -= 1
             self._semaphore.release()
@@ -949,7 +954,6 @@ def run_cli_main(app, process_run, process_run_measured, cli_name,
         return
 
     import argparse
-    import json
     parser = argparse.ArgumentParser(description=f"{cli_name} runner CLI")
     parser.add_argument("--endpoint", choices=["run", "run_measured"], default=None,
                         help="Which endpoint to invoke")
@@ -976,6 +980,14 @@ def run_cli_main(app, process_run, process_run_measured, cli_name,
             _stamp_code_sha(result, func)
         return result
 
+    run_cli_job(_process, args, parser)
+
+
+def run_cli_job(process, args, parser) -> None:
+    """Run ``process`` on one payload: from QROSETTA_PAYLOAD (else the S3 pending key) with
+    the result uploaded to ``jobs/completed/<id>.json`` when ``args.s3_job_id`` is set,
+    else from ``args.payload`` with the result printed as JSON."""
+    import json
     if args.s3_job_id:
         import boto3
         s3 = boto3.client(
@@ -993,7 +1005,7 @@ def run_cli_main(app, process_run, process_run_measured, cli_name,
             obj = s3.get_object(Bucket=bucket, Key=f"jobs/pending/{args.s3_job_id}.json")
             payload_dict = json.loads(obj["Body"].read())
 
-        result = _process(payload_dict)
+        result = process(payload_dict)
         result_bytes = json.dumps(result).encode()
         s3.put_object(Bucket=bucket, Key=f"jobs/completed/{args.s3_job_id}.json",
                       Body=result_bytes, ContentLength=len(result_bytes))
@@ -1001,4 +1013,4 @@ def run_cli_main(app, process_run, process_run_measured, cli_name,
     else:
         if args.payload is None:
             parser.error("--payload is required when --s3-job-id is not provided")
-        print(json.dumps(_process(json.loads(args.payload))))
+        print(json.dumps(process(json.loads(args.payload))))

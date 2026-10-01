@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from config import settings
 from schemas import AgreementThresholds
 from services.availability import runner_availability
+from services.compilation import COMPILER_SERVICES
 
 router = APIRouter()
 
@@ -90,3 +91,25 @@ async def get_config():
                       "max_wait_sec": settings.EXCLUSIVE_MAX_WAIT_SEC,
                       **GATE.status()},
     })
+
+
+@router.get("/compilers")
+async def get_compilers():
+    """Compile-only services: id, display name, enabled and available state, and the
+    description of each optimization level. A compiler turns a run's circuit into circuit
+    text only; it is never simulated or compared (see the compilers field of the run
+    payloads)."""
+    availability = await runner_availability(services=COMPILER_SERVICES)
+    result = []
+    for cid, svc in COMPILER_SERVICES.items():
+        enabled = svc.get("enabled", True)
+        info = availability.get(cid) or {"available": False, "reason": "disabled"}
+        result.append({
+            "id": cid,
+            "name": svc["name"],
+            "enabled": enabled,
+            "available": bool(enabled and info["available"]),
+            "unavailable_reason": None if (enabled and info["available"]) else (info["reason"] or "unavailable"),
+            "optimization_levels": {str(k): v for k, v in svc["optimization_levels"].items()},
+        })
+    return JSONResponse(content=result)

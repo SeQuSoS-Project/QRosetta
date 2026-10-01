@@ -11,6 +11,7 @@ import random
 import time
 from fastapi import HTTPException
 from services.availability import filter_available
+from services.compilation import compile_circuit
 from services.job_store import JOB_NOT_FOUND, JobTable, full_report
 from services.run_registry import EXCLUSIVE, circuit_section, claim_exclusive, releases_exclusive
 from services.validator import validate_request
@@ -156,8 +157,9 @@ def _dispatched_circuit_record(group: str, circuit: dict, results: list) -> dict
     }
 
 
-async def run_single_circuit_comparison(qasm_string: str, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = settings.DEFAULT_TIMEOUT_SEC, target_simulators: list = None, runner_statuses: dict = None, runner_phases: dict = None, apply_preprocessing: bool = True, thresholds: dict = None, bypass_limits: bool = False, timing_repeats: int = 1, exclusive: bool = False):
-    """Run one circuit on the statevector fleet and return the full (untruncated) report."""
+async def run_single_circuit_comparison(qasm_string: str, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = settings.DEFAULT_TIMEOUT_SEC, target_simulators: list = None, runner_statuses: dict = None, runner_phases: dict = None, apply_preprocessing: bool = True, thresholds: dict = None, bypass_limits: bool = False, timing_repeats: int = 1, exclusive: bool = False, compilers: dict = None):
+    """Run one circuit on the statevector fleet, then any requested compilers, and return
+    the full (untruncated) report."""
     started_at = utc_now_iso()
     thresholds = effective_thresholds(thresholds)
     context = _run_context(optimization_level, runner_config, timeout_seconds,
@@ -192,6 +194,7 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
             runner_statuses=runner_statuses,
         )
     _apply_api_preprocessing(aggregated_results, "statevector", circuit)
+    compiled = await compile_circuit(qasm_string, apply_preprocessing, compilers, timeout_seconds)
 
     try:
         divergence_report, performance_report, resource_report = await compile_comparison_reports(aggregated_results, thresholds)
@@ -206,6 +209,7 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
         **context,
         "api_preprocessing_applied": list(circuit["api_preprocessing_applied"]),
         "dispatched_circuits": [_dispatched_circuit_record("statevector", circuit, aggregated_results)],
+        **compiled,
         "resolved_runners": resolved_runners(target_simulators, filtered_urls, skipped),
         "skipped_runners": skipped,
         "started_at": started_at,
@@ -217,8 +221,9 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
     }
 
 
-async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = settings.DEFAULT_TIMEOUT_SEC, target_simulators: list = None, runner_statuses: dict = None, runner_phases: dict = None, apply_preprocessing: bool = True, seed: int = None, thresholds: dict = None, bypass_limits: bool = False, timing_repeats: int = 1, exclusive: bool = False):
-    """Run one circuit on the sampling fleet and return the full report.
+async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = settings.DEFAULT_TIMEOUT_SEC, target_simulators: list = None, runner_statuses: dict = None, runner_phases: dict = None, apply_preprocessing: bool = True, seed: int = None, thresholds: dict = None, bypass_limits: bool = False, timing_repeats: int = 1, exclusive: bool = False, compilers: dict = None):
+    """Run one circuit on the sampling fleet, then any requested compilers, and return the
+    full report.
 
     ``seed`` is the master seed (generated when None); each runner receives a seed
     derived from it and its result key.
@@ -274,6 +279,7 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
     _apply_api_preprocessing(results_sampled, "measured_sampled", circuits["measured_sampled"])
     _apply_api_preprocessing(results_native, "measured_native", circuits["measured_native"])
     aggregated_results = results_native + results_sampled
+    compiled = await compile_circuit(qasm_string, apply_preprocessing, compilers, timeout_seconds)
 
     api_notes = []
     for group in ("measured_native", "measured_sampled"):
@@ -288,6 +294,7 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
             _dispatched_circuit_record("measured_native", circuits["measured_native"], results_native),
             _dispatched_circuit_record("measured_sampled", circuits["measured_sampled"], results_sampled),
         ],
+        **compiled,
         "resolved_runners": resolved_runners(
             target_simulators, {**filtered_native, **filtered_sampled},
             skipped_native + skipped_sampled),
@@ -463,21 +470,21 @@ async def _run_single_job(job_id: str, execution_target: str, runner_statuses: d
 
 
 @releases_exclusive
-async def worker_compare(job_id: str, qasm_string: str, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str, runner_phases: dict = None, apply_preprocessing: bool = True, thresholds: dict = None, bypass_limits: bool = False, timing_repeats: int = 1, exclusive: bool = False):
+async def worker_compare(job_id: str, qasm_string: str, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str, runner_phases: dict = None, apply_preprocessing: bool = True, thresholds: dict = None, bypass_limits: bool = False, timing_repeats: int = 1, exclusive: bool = False, compilers: dict = None):
     """Background task for POST /compare."""
     EXCLUSIVE.set(exclusive)
     runner_statuses = {}
     await _run_single_job(job_id, execution_target, runner_statuses,
-        run_single_circuit_comparison(qasm_string, optimization_level, runner_config, timeout, target_simulators, runner_statuses, runner_phases, apply_preprocessing, thresholds, bypass_limits, timing_repeats))
+        run_single_circuit_comparison(qasm_string, optimization_level, runner_config, timeout, target_simulators, runner_statuses, runner_phases, apply_preprocessing, thresholds, bypass_limits, timing_repeats, compilers=compilers))
 
 
 @releases_exclusive
-async def worker_compare_measured(job_id: str, qasm_string: str, n_shots: int, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str, runner_phases: dict = None, apply_preprocessing: bool = True, seed: int = None, thresholds: dict = None, bypass_limits: bool = False, timing_repeats: int = 1, exclusive: bool = False):
+async def worker_compare_measured(job_id: str, qasm_string: str, n_shots: int, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str, runner_phases: dict = None, apply_preprocessing: bool = True, seed: int = None, thresholds: dict = None, bypass_limits: bool = False, timing_repeats: int = 1, exclusive: bool = False, compilers: dict = None):
     """Background task for POST /compare_measured."""
     EXCLUSIVE.set(exclusive)
     runner_statuses = {}
     await _run_single_job(job_id, execution_target, runner_statuses,
-        run_single_circuit_measurement(qasm_string, n_shots, optimization_level, runner_config, timeout, target_simulators, runner_statuses, runner_phases, apply_preprocessing, seed, thresholds, bypass_limits, timing_repeats))
+        run_single_circuit_measurement(qasm_string, n_shots, optimization_level, runner_config, timeout, target_simulators, runner_statuses, runner_phases, apply_preprocessing, seed, thresholds, bypass_limits, timing_repeats, compilers=compilers))
 
 
 async def run_batch_tasks(payload: BatchPayload, runner_statuses: dict, progress: dict = None,
@@ -518,9 +525,9 @@ async def run_batch_tasks(payload: BatchPayload, runner_statuses: dict, progress
                              check_reserved_names=is_user_circuit(task))
             timeout = clamp_timeout(payload.timeout_seconds)
             if payload.mode == 'statevector':
-                report = await run_single_circuit_comparison(qasm_string, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, runner_statuses, payload.runner_phases, payload.apply_preprocessing, batch_thresholds, payload.bypass_limits, payload.timing_repeats)
+                report = await run_single_circuit_comparison(qasm_string, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, runner_statuses, payload.runner_phases, payload.apply_preprocessing, batch_thresholds, payload.bypass_limits, payload.timing_repeats, compilers=payload.compilers)
             elif payload.mode == 'measured':
-                report = await run_single_circuit_measurement(qasm_string, payload.n_shots, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, runner_statuses, payload.runner_phases, payload.apply_preprocessing, batch_seed, batch_thresholds, payload.bypass_limits, payload.timing_repeats)
+                report = await run_single_circuit_measurement(qasm_string, payload.n_shots, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, runner_statuses, payload.runner_phases, payload.apply_preprocessing, batch_seed, batch_thresholds, payload.bypass_limits, payload.timing_repeats, compilers=payload.compilers)
             else:
                 raise ValueError(f"Unknown mode: {payload.mode}")
 

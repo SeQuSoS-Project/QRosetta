@@ -1,5 +1,6 @@
 """The runner lists in docker-compose.yml, safe_boot.sh, rahti_push.sh, runners/ and the
-contract test must match config.py's registry (see CONTRIBUTING.md).
+contract test must match config.py's registry (see CONTRIBUTING.md); the compile-only
+services in compilers/ must match its compiler registry in the same files.
 """
 import ast
 import re
@@ -28,6 +29,11 @@ def _infra_name(base_url: str) -> str:
 def _registry() -> dict:
     """Canonical id -> service entry from config.py."""
     return settings.get_runner_services()
+
+
+def _compilers() -> dict:
+    """Compiler id -> service entry from config.py."""
+    return settings.get_compiler_services()
 
 
 def _compose_services() -> set:
@@ -81,9 +87,10 @@ def test_safe_boot_builds_every_registered_runner():
     assert _bash_array(_SAFE_BOOT, "RUNNERS") == expected
 
 
-def test_rahti_push_maps_every_registered_runner():
-    """rahti_push.sh SERVICE_MAP matches the registry plus rosetta-api."""
-    expected = {_infra_name(e["base_url"]) for e in _registry().values()} | {"rosetta-api"}
+def test_rahti_push_maps_every_registered_runner_and_compiler():
+    """rahti_push.sh SERVICE_MAP matches the runner and compiler registries plus rosetta-api."""
+    expected = ({_infra_name(e["base_url"]) for e in _registry().values()}
+                | {_infra_name(e["base_url"]) for e in _compilers().values()} | {"rosetta-api"})
     assert _service_map_keys() == expected
 
 
@@ -167,3 +174,44 @@ def test_compose_runner_blocks_pin_threads_and_concurrency():
         if missing:
             problems.append(f"{canonical_id}: {missing}")
     assert not problems, "compose environment missing: " + "; ".join(problems)
+
+
+def test_every_registered_compiler_has_a_source_directory():
+    for compiler_id, entry in _compilers().items():
+        directory = _REPO / "compilers" / _infra_name(entry["base_url"])
+        for name in ("main.py", "Dockerfile", "requirements.txt", "requirements.lock"):
+            assert (directory / name).is_file(), f"{compiler_id}: no {name} in {directory}"
+
+
+def test_every_compiler_directory_is_registered():
+    registered = {_infra_name(e["base_url"]) for e in _compilers().values()}
+    on_disk = {d.name for d in (_REPO / "compilers").iterdir() if d.is_dir()}
+    assert on_disk == registered, f"unregistered compiler directories: {on_disk - registered}"
+
+
+def test_compilers_are_built_and_defined_like_runners():
+    services = yaml.safe_load(_COMPOSE.read_text()).get("services", {})
+    expected = {_infra_name(e["base_url"]).replace("-", "_") for e in _compilers().values()}
+    assert _bash_array(_SAFE_BOOT, "COMPILERS") == expected
+    for name in expected:
+        service = services.get(name)
+        assert service, f"no '{name}' service in docker-compose.yml"
+        assert "ports" not in service and service.get("networks") == ["isolated_net"], name
+        env = {str(v).split("=", 1)[0] for v in service.get("environment") or []}
+        assert set(_RUNNER_ENV) <= env, f"{name}: compose environment missing thread pins"
+
+
+def test_compiler_ids_are_distinct_from_runner_ids_and_valid_keys():
+    from services.exporter import RUNNER_KEY_RE
+    assert not set(_compilers()) & set(_registry())
+    assert all(RUNNER_KEY_RE.match(cid) for cid in _compilers())
+
+
+@pytest.mark.parametrize("compiler_id", sorted(settings.get_compiler_services()))
+def test_compiler_declares_its_sdk_packages_from_its_requirements(compiler_id):
+    directory = _REPO / "compilers" / _infra_name(_compilers()[compiler_id]["base_url"])
+    declared = _declared_sdk_packages(directory / "main.py")
+    assert declared, f"{directory.name}/main.py never calls declare_sdk_packages"
+    pinned = _requirement_names(directory / "requirements.txt") | _requirement_names(directory / "requirements.lock")
+    unpinned = [name for name in declared if _normalise(name) not in pinned]
+    assert not unpinned, f"{directory.name}: declared but not pinned: {unpinned}"

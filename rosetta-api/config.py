@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     QUIMB_RUNNER_URL: str = "http://quimb-runner:8000"
     CUQUANTUM_RUNNER_URL: str = "http://cuquantum-runner:8000"
 
+    BQSKIT_COMPILER_URL: str = "http://bqskit-compiler:8000"
+    PYZX_COMPILER_URL: str = "http://pyzx-compiler:8000"
+    QMAP_COMPILER_URL: str = "http://qmap-compiler:8000"
+    MAX_COMPILE_JOBS: int = 8
+
     PLATFORM_VERSION: str = os.getenv("QROSETTA_VERSION", "1.0.0")
 
     RUN_RATE_LIMIT: str = os.getenv("QROSETTA_RUN_RATE_LIMIT", "10/minute")
@@ -262,6 +267,41 @@ class Settings(BaseSettings):
                     3: "Qiskit transpiler level 3: heavy optimization, fewest gates (slowest compile)",
                 }
             }
+        }
+
+    def get_compiler_services(self):
+        """Canonical compile-only service id -> base_url, display name, enabled flag and
+        optimization levels. Compilers produce circuit text only: they are not runners,
+        are never simulated and never enter the pairwise comparison."""
+        return {
+            "bqskit": {
+                "base_url": self.BQSKIT_COMPILER_URL,
+                "name": "BQSKit",
+                "enabled": True,
+                "optimization_levels": {
+                    1: "bqskit.compile level 1: partition into 3-qubit blocks and resynthesise each numerically",
+                    2: "bqskit.compile level 2: level 1 with more resynthesis passes",
+                    3: "bqskit.compile level 3: heavier resynthesis (slow beyond a few qubits)",
+                },
+            },
+            "pyzx": {
+                "base_url": self.PYZX_COMPILER_URL,
+                "name": "PyZX",
+                "enabled": True,
+                "optimization_levels": {
+                    1: "ZX-calculus full_reduce, then circuit extraction",
+                    2: "Level 1, then PyZX basic_optimization of the extracted circuit",
+                },
+            },
+            "qmap": {
+                "base_url": self.QMAP_COMPILER_URL,
+                "name": "MQT QMAP",
+                "enabled": True,
+                "optimization_levels": {
+                    0: "Decompose to u3+cx (Qiskit), then heuristic (A*) mapping onto a linear qubit chain",
+                    1: "Decompose to u3+cx (Qiskit), then exact (SAT) mapping onto a linear qubit chain (small circuits only)",
+                },
+            },
         }
 
 settings = Settings()

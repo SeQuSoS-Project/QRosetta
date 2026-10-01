@@ -202,6 +202,22 @@
                         </div>
                     </details>
 
+                    <!-- Group: Compile-only services -->
+                    <details class="bg-white rounded shadow-sm border border-teal-100 p-3 mt-3">
+                        <summary class="cursor-pointer select-none text-xs font-semibold uppercase tracking-wide text-teal-700">
+                            Compile-only services
+                        </summary>
+                        <p class="text-xs text-gray-500 mt-2">
+                            Each ticked level compiles the run's circuit after the simulators have finished and
+                            records the output circuit, shown in the Circuits tab and written to the RO-Crate.
+                            Compiled circuits are not simulated and are not part of the agreement comparison.
+                            Hover a level for what it runs.
+                        </p>
+                        <div id="compiler-grid" class="grid grid-cols-1 gap-2 mt-3">
+                            <!-- Populated by JS -->
+                        </div>
+                    </details>
+
                     <!-- Group: Agreement thresholds -->
                     <details class="bg-white rounded shadow-sm border border-indigo-100 p-3 mt-3">
                         <summary class="cursor-pointer select-none text-xs font-semibold uppercase tracking-wide text-indigo-700">

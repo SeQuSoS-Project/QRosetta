@@ -1,0 +1,11 @@
+bqskit==1.2.1
+bqskitrs==0.4.1
+numpy==2.2.6
+scipy==1.15.3
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+psutil==6.0.0
+gunicorn==23.0.0
+
+boto3==1.35.99
+botocore==1.35.99

@@ -42,6 +42,13 @@ RUNNERS=(
   "cuquantum_runner"
 )
 
+# Compile-only services; a build failure skips that compiler, as for runners.
+COMPILERS=(
+  "bqskit_compiler"
+  "pyzx_compiler"
+  "qmap_compiler"
+)
+
 echo ">>> Starting Graceful Build..."
 
 echo "[INFO] Building Core Services: ${CORE_SERVICES[*]}"
@@ -64,6 +71,17 @@ for runner in "${RUNNERS[@]}"; do
     SUCCESSFUL_RUNNERS+=("$runner")
   else
     echo "     [!WARNING!] Skipping $runner due to build failure."
+  fi
+done
+
+echo "[BUILD] Building Compilers..."
+for compiler in "${COMPILERS[@]}"; do
+  echo "   - Attempting to build $compiler..."
+  if docker compose build "$compiler"; then
+    echo "     [SUCCESS] $compiler built."
+    SUCCESSFUL_RUNNERS+=("$compiler")
+  else
+    echo "     [!WARNING!] Skipping $compiler due to build failure."
   fi
 done
 
