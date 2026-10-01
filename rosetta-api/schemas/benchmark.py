@@ -4,6 +4,7 @@ from pydantic import (
     BaseModel, BeforeValidator, ConfigDict, Field, PlainValidator, StrictBool, StrictInt,
     WithJsonSchema, field_validator, model_validator,
 )
+import unicodedata
 from typing import Annotated, List, Dict, Any, Literal, Optional, Union
 
 from config import settings
@@ -44,9 +45,14 @@ RunnerConfigValue = Annotated[
 RunnerConfig = Dict[str, RunnerConfigValue]
 
 
+def has_control_characters(value: str) -> bool:
+    """True when ``value`` holds a control character or a line or paragraph separator."""
+    return any(unicodedata.category(ch) in ("Cc", "Zl", "Zp") for ch in value)
+
+
 def _printable_text(value):
-    if isinstance(value, str) and any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
-        raise ValueError("must not contain control characters")
+    if isinstance(value, str) and has_control_characters(value):
+        raise ValueError("must not contain control characters or line separators")
     return value
 
 

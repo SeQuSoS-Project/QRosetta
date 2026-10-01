@@ -233,7 +233,8 @@ async def dispatch_to_runners(runner_urls: dict, runner_payload: dict, timeout_s
     ``annotate_overlaps``). In an exclusive job (``run_registry.EXCLUSIVE``) every runner
     gets its own phase and the dispatch is admitted only when no other dispatch is running
     on this server, holding new ones back until it ends; each result records ``exclusive``
-    and ``exclusive_wait_sec``. Local results also record ``server_overlapping_runs``, the
+    and ``exclusive_wait_sec``; every result records ``gate_wait_sec``, the time the dispatch
+    waited for the gate (behind an exclusive run, for a shared one). Local results also record ``server_overlapping_runs``, the
     runs of other jobs that were in flight at some time this run was."""
     exclusive = bool(EXCLUSIVE.get())
     if exclusive:
@@ -241,7 +242,8 @@ async def dispatch_to_runners(runner_urls: dict, runner_payload: dict, timeout_s
             name: i + 1 for i, name in enumerate(sorted(runner_urls))}}
     held = GATE_HELD.get()
     gated = held is None
-    if exclusive and runner_statuses is not None and gated:
+    gate_busy = GATE.status()["exclusive_running"] or GATE.status()["exclusive_waiting"]
+    if (exclusive or gate_busy) and runner_statuses is not None and gated:
         for name in runner_urls:
             runner_statuses.setdefault(name, "queued")
     waited = (await GATE.acquire(exclusive, settings.EXCLUSIVE_MAX_WAIT_SEC if exclusive else None)
@@ -258,5 +260,6 @@ async def dispatch_to_runners(runner_urls: dict, runner_payload: dict, timeout_s
         if isinstance(r, dict):
             r["exclusive"] = exclusive
             r["exclusive_wait_sec"] = waited if exclusive else None
+            r["gate_wait_sec"] = waited
             r.setdefault("server_overlapping_runs", None)
     return annotate_overlaps(results)

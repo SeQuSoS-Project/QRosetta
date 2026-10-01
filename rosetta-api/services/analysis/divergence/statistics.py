@@ -99,6 +99,7 @@ def _shots_per_backend_with_pooling(alpha, target_power, delta_tv, p_i, p_j):
 
 
 UNSEEN_MASS_LIMIT = 0.5
+LOWER_BOUND_UNSEEN_MASS = 0.5 * STAT_TEST_DELTA_TV
 
 
 def _good_turing_unseen(row):
@@ -279,7 +280,7 @@ def _statistical_agreement_test(
     df = max(len(t_i) - 1, 1)
     gap, pooled_share = _tested_gap(t_i, t_j, pooled_outcomes, delta_tv)
     unseen = max(_good_turing_unseen(row_i), _good_turing_unseen(row_j))
-    characterised = unseen <= UNSEEN_MASS_LIMIT * delta_tv
+    characterised = unseen <= UNSEEN_MASS_LIMIT
     block = {
         "basis": basis,
         "basis_source": "declared_qubit_ordering",
@@ -322,6 +323,7 @@ def _statistical_agreement_test(
         "low_count_warning": not counts_ok,
         "unseen_mass_good_turing": unseen,
         "support_characterised": characterised,
+        "recommendation_is_lower_bound": bool(characterised and unseen > LOWER_BOUND_UNSEEN_MASS),
         "shots_per_backend_for_expected_counts": (
             None if counts_ok or not characterised
             else _shots_per_backend_for_expected_counts(row_i, row_j)),

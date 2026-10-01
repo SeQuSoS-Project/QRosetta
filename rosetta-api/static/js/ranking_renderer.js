@@ -112,6 +112,8 @@ function _timingNote(rawResults) {
         note += ` The simulation windows ran on CPUs of different speed classes (maximum ${classes.map(c => c.map(s => fmtInt(s)).join('/') + ' MHz').join(' vs ')}), `
             + 'so part of a difference between backends can be the core they ran on (tag "mixed cores" when one backend\'s own runs mixed them).';
     }
+    const heldBack = Math.max(0, ...ok.filter(r => r.exclusive !== true).map(r => (typeof r.gate_wait_sec === 'number' ? r.gate_wait_sec : 0)));
+    if (heldBack >= 1) note += ` This job waited ${fmtNum(heldBack, 1)} s while an exclusive run held the server (gate_wait_sec); the wait is not in the timings.`;
     if (ok.length && ok.every(r => r.exclusive === true)) {
         note += ' Exclusive run: the backends ran one at a time with no other run in flight on this server.';
     } else {
@@ -123,7 +125,7 @@ function _timingNote(rawResults) {
     const overlapping = Math.max(0, ...ok.map(r => (typeof r.overlapping_runs === 'number' ? r.overlapping_runs : 0)));
     if (overlapping > 0) {
         note += ` Runs overlapped in time (up to ${overlapping} other run(s) of this job while one was running) and competed for the host's cores and memory bandwidth, `
-            + 'which can slow some backends more than others; for timings meant for comparison, use the Sequential ordering. Runs of other users are not counted.';
+            + 'which can slow some backends more than others; for timings meant for comparison, use the Sequential ordering or an exclusive run.';
     }
     const outside = ok.filter(r => outsideProcessText(r)).length;
     if (outside) note += ` ${outside} run(s) did part of their simulation work outside the measured process (tag "outside process").`;

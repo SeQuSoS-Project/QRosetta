@@ -2,6 +2,7 @@
 
 from fastapi import HTTPException
 
+from schemas.benchmark import has_control_characters
 from services.exporter import invalid_runner_keys
 
 
@@ -22,6 +23,11 @@ def report_problems(results) -> list:
                                 or not all(isinstance(r, dict) for r in raw)):
             problems.append("raw_results must be a list of result objects")
             break
+    name = results.get("run_name")
+    if name is not None and (not isinstance(name, str) or len(name) > 200
+                             or has_control_characters(name)):
+        problems.append("run_name must be text of at most 200 characters without control "
+                        "characters or line separators")
     if not problems:
         bad = invalid_runner_keys(results)
         if bad:

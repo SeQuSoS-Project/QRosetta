@@ -91,7 +91,7 @@ class Settings(BaseSettings):
                 "enabled": True,
                 "honours_seed": True,
                 "optimization_levels": {
-                    0: "No optimization",
+                    0: "No transpiler optimization (Aer still fuses gates during simulation; see gate_fusion)",
                     1: "Aer transpiler level 1: basic gate cancellation",
                     2: "Aer transpiler level 2: unitary synthesis + gate cancellation",
                     3: "Aer transpiler level 3: heavy optimization, fewest gates (slowest compile)",
@@ -183,7 +183,7 @@ class Settings(BaseSettings):
                 "enabled": True,
                 "honours_seed": True,
                 "optimization_levels": {
-                    0: "No optimization",
+                    0: "No optimization pass (qsim still fuses gates into 2-qubit blocks during simulation)",
                     1: "Drop empty moments + align left",
                     2: "Eject Z/phased-Paulis, merge single-qubit gates to PhasedXZ",
                 }
@@ -256,7 +256,7 @@ class Settings(BaseSettings):
                 "honours_seed": True,
                 "requires_gpu": True,
                 "optimization_levels": {
-                    0: "No optimization",
+                    0: "No transpiler optimization (Aer still fuses gates during simulation; see gate_fusion)",
                     1: "Qiskit transpiler level 1: basic gate cancellation, 1Q consolidation",
                     2: "Qiskit transpiler level 2: unitary synthesis + gate cancellation",
                     3: "Qiskit transpiler level 3: heavy optimization, fewest gates (slowest compile)",

@@ -297,27 +297,35 @@ _QASM_FUNCTIONS = {"sin": math.sin, "cos": math.cos, "tan": math.tan, "exp": mat
 _BINARY_OPS = {ast.Add: lambda a, b: a + b, ast.Sub: lambda a, b: a - b,
                ast.Mult: lambda a, b: a * b, ast.Div: lambda a, b: a / b,
                ast.Pow: lambda a, b: a ** b}
-_CARET_NOTE = ("API: evaluated constant gate parameters (pytket's parser does not accept '^'): "
-               "each parameter of a top-level gate statement containing '^' was replaced by its "
-               "value in full double precision")
+_CARET_NOTE = ("API: evaluated constant gate parameters (pytket's parser does not accept '^' "
+               "or exp()): each parameter of a top-level gate statement containing either was "
+               "replaced by its value in full double precision")
+_EXP_RE = re.compile(r"\bexp\s*\(")
 
 
-def _eval_node(node):
+def _needs_evaluation(text: str) -> bool:
+    """True when ``text`` uses '^' or exp(), which pytket's QASM parser rejects."""
+    return "^" in text or bool(_EXP_RE.search(text))
+
+
+def _eval_node(node, env=None):
     if isinstance(node, ast.Expression):
-        return _eval_node(node.body)
+        return _eval_node(node.body, env)
+    if isinstance(node, ast.Name) and env and node.id in env:
+        return env[node.id]
     if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) \
             and not isinstance(node.value, bool):
         return float(node.value)
     if isinstance(node, ast.Name) and node.id == "pi":
         return math.pi
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
-        value = _eval_node(node.operand)
+        value = _eval_node(node.operand, env)
         return -value if isinstance(node.op, ast.USub) else value
     if isinstance(node, ast.BinOp) and type(node.op) in _BINARY_OPS:
-        return _BINARY_OPS[type(node.op)](_eval_node(node.left), _eval_node(node.right))
+        return _BINARY_OPS[type(node.op)](_eval_node(node.left, env), _eval_node(node.right, env))
     if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
             and node.func.id in _QASM_FUNCTIONS and len(node.args) == 1 and not node.keywords):
-        return _QASM_FUNCTIONS[node.func.id](_eval_node(node.args[0]))
+        return _QASM_FUNCTIONS[node.func.id](_eval_node(node.args[0], env))
     raise ParameterExpressionError("only numbers, pi, + - * / ^, unary minus and "
                                    "sin/cos/tan/exp/ln/sqrt are allowed")
 
@@ -325,7 +333,7 @@ def _eval_node(node):
 _NON_QASM_NUMBER_RE = re.compile(r"\b0[xXoObB]|\d_|_\d|\d[jJ]\b")
 
 
-def evaluate_constant_expression(text: str) -> float:
+def evaluate_constant_expression(text: str, env: dict = None) -> float:
     """Value of an OpenQASM 2.0 constant expression (numbers, pi, + - * / ^, unary minus,
     sin cos tan exp ln sqrt), computed in floating point. Raises
     ParameterExpressionError for anything else or a non-finite value."""
@@ -334,7 +342,7 @@ def evaluate_constant_expression(text: str) -> float:
             "only OpenQASM 2.0 numbers (decimal, optional exponent) and '^' for powers are allowed")
     try:
         tree = ast.parse(text.replace("^", "**").strip(), mode="eval")
-        value = _eval_node(tree)
+        value = _eval_node(tree, env)
     except ParameterExpressionError:
         raise
     except RecursionError:
@@ -369,12 +377,12 @@ def _split_params(text: str) -> list:
 def _evaluated_statement(stmt: str) -> str:
     op, head, args = _split_op(stmt)
     open_at = head.find("(", _OP_RE.match(head).end()) if op is not None else -1
-    if open_at < 0 or "^" not in head[open_at:]:
-        raise ParameterExpressionError(f"'^' outside a gate parameter list in '{stmt}'")
+    if open_at < 0 or not _needs_evaluation(head[open_at:]):
+        raise ParameterExpressionError(f"'^' or exp() outside a gate parameter list in '{stmt}'")
     inner = head[open_at + 1:-1]
     values = []
     for param in _split_params(inner):
-        if "^" not in param:
+        if not _needs_evaluation(param):
             values.append(param.strip())
             continue
         try:
@@ -419,10 +427,11 @@ def statement_parameters(stmt: str) -> list:
     return [p for p in _split_params(head[open_at + 1:-1]) if p.strip()]
 
 
-def check_parameter_value(text: str) -> float:
-    """Value of a constant gate parameter; ParameterExpressionError when it is not a finite
-    constant expression or its magnitude exceeds MAX_PARAMETER_MAGNITUDE."""
-    value = evaluate_constant_expression(text)
+def check_parameter_value(text: str, env: dict = None) -> float:
+    """Value of a gate parameter (constant, or in terms of ``env``'s names); raises
+    ParameterExpressionError when it is not finite or its magnitude exceeds
+    MAX_PARAMETER_MAGNITUDE."""
+    value = evaluate_constant_expression(text, env)
     if abs(value) > MAX_PARAMETER_MAGNITUDE:
         raise ParameterExpressionError(
             f"|{value!r}| exceeds {MAX_PARAMETER_MAGNITUDE:g}: at that size a double "
@@ -441,19 +450,19 @@ def evaluate_caret_parameters(qasm: str):
     expression is symbolic, or for a parameter that is not a constant expression.
     """
     statements = split_statements(qasm)
-    if not any("^" in stmt for stmt in statements):
+    if not any(_needs_evaluation(stmt) for stmt in statements):
         return qasm, None
     out = []
     for stmt in statements:
-        if "^" not in stmt:
+        if not _needs_evaluation(stmt):
             out.append(stmt)
             continue
         name = _GATE_NAME_RE.match(stmt)
         if name:
             raise ParameterExpressionError(
-                f"gate definition '{name.group(1)}' uses '^' in its body, which pytket's parser "
-                f"does not accept; write the power as a product (e.g. theta*theta) or run with "
-                f"apply_preprocessing=false")
+                f"gate definition '{name.group(1)}' uses '^' or exp() in its body, which pytket's "
+                f"parser does not accept; write the power as a product (e.g. theta*theta) or run "
+                f"with apply_preprocessing=false")
         out.append(_evaluated_statement(stmt))
     return "\n".join(out) + "\n", _CARET_NOTE
 

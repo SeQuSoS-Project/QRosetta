@@ -333,7 +333,8 @@ function _inconclusiveBlocks(panel, pairs) {
     }
     if (lowPower.length) {
         const rec = recommendedShots(lowPower);
-        const pooledPairs = lowPower.some(p => (p.metrics?.statistical_test?.power?.pooled_probability ?? 0) > 0);
+        const pooledPairs = lowPower.some(p => (p.metrics?.statistical_test?.power?.pooled_probability ?? 0) > 0
+            || p.metrics?.statistical_test?.recommendation_is_lower_bound === true);
         const advice = rec ? `: more shots would help: ${pooledPairs ? 'at least ' : ''}~${fmtInt(rec)} per backend` : '';
         const block = _block(`Inconclusive, test power below ${target} (${lowPower.length})${advice}`, 'offline',
             lowPower.map(p => _measuredItem(p)));

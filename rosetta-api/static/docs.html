@@ -280,7 +280,10 @@
                     <li><strong>Exclusive timing run</strong> (<code>exclusive</code>, default off). Every backend
                         runs in its own phase, one after another, and the job runs only while no other run is in
                         flight on this server: it waits for running jobs, and jobs submitted meanwhile wait for it.
-                        Results record <code>exclusive</code> and <code>exclusive_wait_sec</code>. It overrides
+                        Results record <code>exclusive</code> and <code>exclusive_wait_sec</code>; every result records
+                        <code>gate_wait_sec</code>, so a job held back by another user's exclusive run shows how long it
+                        waited, and its runners show as queued meanwhile. When an exclusive run ends, the jobs it held
+                        start together and overlap each other (<code>server_overlapping_runs</code>). It overrides
                         <code>runner_phases</code>. It cannot hold back other programs on the host, and in Kubernetes
                         mode it covers only this server's runner Jobs. Each client may have one unfinished exclusive
                         job (another returns 429). An exclusive circuit that cannot start within the server's wait cap
@@ -598,11 +601,14 @@
                         whether more shots can turn an inconclusive pair into a verdict. It is null, and no shot
                         count is recommended, when the sample does not show the outcome distribution:
                         <code>unseen_mass_good_turing</code>, the share of shots in outcomes seen exactly once
-                        (the Good–Turing estimate of the probability of outcomes not yet seen), exceeds δ/2 for
+                        (the Good–Turing estimate of the probability of outcomes not yet seen), exceeds 0.5 for
                         either backend (<code>support_characterised: false</code>). That happens when the circuit
-                        spreads its outcomes over more basis states than the shots cover, for example a
-                        20-qubit uniform superposition; measuring only the qubits of interest gives the test a
-                        distribution it can resolve.</li>
+                        spreads its outcomes over far more basis states than the shots cover, for example a 22-qubit
+                        dense state at 8,200 shots; measuring only the qubits of interest gives the test a distribution
+                        it can resolve. When the unseen mass is between δ/2 and 0.5, the recommendation is given as a
+                        lower bound (<code>recommendation_is_lower_bound</code>): new outcomes appear with more shots and
+                        can raise it. For a 12-qubit QFT at 8,200 shots it recommended 84,838, and at 100,000 shots every
+                        pair was consistent.</li>
                     <li><strong>Power model</strong>: the effect size is Cohen's
                         <code>w = δ<sub>tested</sub></code>, the smallest w any distribution pair at total
                         variation δ = 0.05 can have on the table the test sees (w ≥ TV). Pooling rare outcomes

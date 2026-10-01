@@ -183,7 +183,7 @@ def check_gate_names(qasm: str, statements: list = None) -> None:
 
 def check_parameter_expressions(qasm: str) -> None:
     """400 for a '^' the API cannot evaluate before the pytket round-trip."""
-    if "^" not in qasm:
+    if "^" not in qasm and "exp" not in qasm:
         return
     try:
         evaluate_caret_parameters(qasm)
@@ -196,7 +196,54 @@ def _clip(text: str, limit: int = 80) -> str:
     return text if len(text) <= limit else text[:limit] + "…"
 
 
-def check_parameter_values(qasm: str, statements: list = None) -> None:
+def _check_call_parameters(statements: list) -> None:
+    """400 for a gate application whose parameters, after substituting the values a call
+    passes into its definition, are not finite or exceed MAX_PARAMETER_MAGNITUDE."""
+    gates = {}
+    for stmt in statements:
+        m = _DEF_HEAD_RE.match(stmt)
+        if m:
+            gates[m.group(1)] = (
+                [p.strip() for p in (stmt.split("{", 1)[0].split("(", 1)[1].rsplit(")", 1)[0].split(",")
+                                     if "(" in stmt.split("{", 1)[0] else []) if p.strip()],
+                gate_body_statements(stmt))
+    seen = set()
+
+    def visit(name, values, where, depth):
+        key = (name, tuple(values))
+        if name not in gates or key in seen or depth > 64:
+            return
+        seen.add(key)
+        names, body = gates[name]
+        env = dict(zip(names, values))
+        for inner in body:
+            op = _NAME_RE.match(inner.strip())
+            inner_values = []
+            for param in statement_parameters(inner):
+                try:
+                    inner_values.append(check_parameter_value(param, env))
+                except ParameterExpressionError as exc:
+                    _bad_request(f"Invalid gate parameter: '{_clip(param)}' in '{_clip(inner)}' "
+                                 f"(gate {name}, called as '{_clip(where)}'): {exc}.")
+            if op:
+                visit(op.group(0), inner_values, where, depth + 1)
+
+    for stmt in statements:
+        if _DEF_HEAD_RE.match(stmt) or _NON_OPERATION_RE.match(stmt):
+            continue
+        text = stmt.strip()
+        if text.startswith("if") and ")" in text:
+            text = text[text.index(")") + 1:].strip()
+        op = _NAME_RE.match(text)
+        if op and op.group(0) in gates:
+            try:
+                values = [check_parameter_value(p) for p in statement_parameters(text)]
+            except ParameterExpressionError:
+                continue
+            visit(op.group(0), values, stmt, 0)
+
+
+def check_parameter_values(qasm: str, statements: list = None, check_calls: bool = True) -> None:
     """400 for a top-level gate parameter that is not a finite constant expression or whose
     magnitude exceeds MAX_PARAMETER_MAGNITUDE (``check_parameter_value``)."""
     statements = split_statements(qasm) if statements is None else statements
@@ -211,6 +258,8 @@ def check_parameter_values(qasm: str, statements: list = None) -> None:
                 check_parameter_value(param)
             except ParameterExpressionError as exc:
                 _bad_request(f"Invalid gate parameter: '{_clip(param)}' in '{_clip(where)}': {exc}.")
+    if check_calls:
+        _check_call_parameters(statements)
 
 
 _DEF_HEAD_RE = re.compile(r"^\s*gate\s+([A-Za-z_]\w*)")
@@ -296,7 +345,7 @@ def validate_request(qasm: str, mode: str = "statevector", bypass_limits: bool =
                     detail=(f"Circuit too complex: it expands to {expanded} gate applications "
                             f"through its gate definitions and register broadcasts, above the "
                             f"limit of {settings.MAX_EXPANDED_GATES}."))
-    check_parameter_values(qasm, statements)
+    check_parameter_values(qasm, statements, check_calls=check_reserved_names)
     if apply_preprocessing:
         check_parameter_expressions(qasm)
     qubit_count = get_num_qubits_from_qasm(qasm)

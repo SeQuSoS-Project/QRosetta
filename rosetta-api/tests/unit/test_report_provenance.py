@@ -138,3 +138,48 @@ def test_experiment_manifest_records_the_effective_config(monkeypatch):
         {"id": "cuquantum", "reason": "no GPU"}]
     assert result["task_request"] == {"source": "qasm", "algorithm": None, "qubits": 0,
                                       "literal_qasm": True}
+
+
+def _timed_fleet(monkeypatch, log):
+    _fake_fleet(monkeypatch)
+
+    async def slow_request(client, url, payload, sim_name, timeout_s, http_timeout=None):
+        log.append(("start", sim_name))
+        await asyncio.sleep(0.01)
+        log.append(("end", sim_name))
+        return {"counts": {"00": 1}, "preprocessing_applied": []}
+    monkeypatch.setattr(dispatcher_http, "safe_request", slow_request)
+
+
+def _max_concurrent(log):
+    running = best = 0
+    for kind, _ in log:
+        running += 1 if kind == "start" else -1
+        best = max(best, running)
+    return best
+
+
+def test_exclusive_measured_job_runs_one_backend_at_a_time(monkeypatch):
+    from services.run_registry import EXCLUSIVE
+    log = []
+    _timed_fleet(monkeypatch, log)
+
+    async def run():
+        EXCLUSIVE.set(True)
+        return await job_manager.run_single_circuit_measurement(
+            H + "qreg q[2];\nh q[0];\n", 16, target_simulators=["qiskit", "qulacs", "quest", "cirq"])
+
+    report = asyncio.run(run())
+    assert report["exclusive"] is True
+    assert _max_concurrent(log) == 1
+    assert all(r["overlapping_runs"] == 0 and r["exclusive"] for r in report["raw_results"])
+
+
+def test_overlaps_span_both_measured_groups(monkeypatch):
+    log = []
+    _timed_fleet(monkeypatch, log)
+    report = asyncio.run(job_manager.run_single_circuit_measurement(
+        H + "qreg q[2];\nh q[0];\n", 16, target_simulators=["qiskit", "qulacs", "quest", "cirq"]))
+    assert _max_concurrent(log) == 4
+    assert all(r["overlapping_runs"] == 3 for r in report["raw_results"])
+    assert all(r["server_overlapping_runs"] == 0 for r in report["raw_results"])

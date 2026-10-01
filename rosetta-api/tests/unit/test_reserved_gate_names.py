@@ -101,7 +101,7 @@ def test_caret_is_left_alone_without_preprocessing():
 
 def test_caret_in_a_gate_body_is_400_with_preprocessing():
     qasm = HEADER + "gate g(t) a { rx(t^2) a; }\nqreg q[1];\ng(0.5) q[0];\n"
-    assert "uses '^' in its body" in _detail(qasm)
+    assert "uses '^' or exp() in its body" in _detail(qasm)
     validate_request(qasm, apply_preprocessing=False)
 
 
@@ -125,3 +125,14 @@ def test_gate_limit_counts_gate_statements_only(monkeypatch):
     validate_request(qasm)
     monkeypatch.setattr(settings, "MAX_QASM_GATES", 4)
     assert "5 gate statements exceeds the limit of 4" in _detail(qasm)
+
+
+def test_exp_is_evaluated_before_the_round_trip():
+    qasm = HEADER + "qreg q[1];\nrx(exp(0.5)) q[0];\n"
+    out = cr.prepare_statevector_dispatch(qasm, apply_preprocessing=True)
+    assert any("exp()" in n for n in out["api_preprocessing_applied"])
+
+
+def test_called_gate_parameters_are_checked_with_the_call_values():
+    qasm = HEADER + "gate g(t) a { rx(t*1e308) a; }\nqreg q[1];\ng(1) q[0];\n"
+    assert "gate g, called as" in _detail(qasm)
