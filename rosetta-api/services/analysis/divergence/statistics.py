@@ -98,6 +98,16 @@ def _shots_per_backend_with_pooling(alpha, target_power, delta_tv, p_i, p_j):
     return int(lo)
 
 
+UNSEEN_MASS_LIMIT = 0.5
+
+
+def _good_turing_unseen(row):
+    """Good-Turing estimate of the probability of outcomes not yet observed: the share of
+    shots in outcomes seen exactly once."""
+    n = row.sum()
+    return float((row == 1).sum() / n) if n else 1.0
+
+
 def _set_power(block, alpha, m_pairs):
     """Fill ``block["power"]`` for a family of ``m_pairs`` tests at alpha/(m_pairs*c_m).
 
@@ -112,7 +122,9 @@ def _set_power(block, alpha, m_pairs):
     n_total = float(sum(n_shots))
     gap = power.get("delta_tv_tested", power["delta_tv"])
     proportions = block.get("_observed_proportions")
-    if power.get("pooled_probability") and proportions is not None:
+    if block.get("support_characterised") is False:
+        recommended = None
+    elif power.get("pooled_probability") and proportions is not None:
         recommended = _shots_per_backend_with_pooling(
             alpha_used, power["target_power"], power["delta_tv"], *proportions)
     else:
@@ -266,6 +278,8 @@ def _statistical_agreement_test(
     t_i, t_j, pooled_outcomes, counts_ok = _pool_rare_outcomes(row_i, row_j)
     df = max(len(t_i) - 1, 1)
     gap, pooled_share = _tested_gap(t_i, t_j, pooled_outcomes, delta_tv)
+    unseen = max(_good_turing_unseen(row_i), _good_turing_unseen(row_j))
+    characterised = unseen <= UNSEEN_MASS_LIMIT * delta_tv
     block = {
         "basis": basis,
         "basis_source": "declared_qubit_ordering",
@@ -306,8 +320,11 @@ def _statistical_agreement_test(
             "significant_by": None,
         },
         "low_count_warning": not counts_ok,
+        "unseen_mass_good_turing": unseen,
+        "support_characterised": characterised,
         "shots_per_backend_for_expected_counts": (
-            None if counts_ok else _shots_per_backend_for_expected_counts(row_i, row_j)),
+            None if counts_ok or not characterised
+            else _shots_per_backend_for_expected_counts(row_i, row_j)),
         "inconclusive_reason": None,
         "resolvable_by_more_shots": None,
         "verdict": None,
@@ -359,6 +376,19 @@ def _step_up_adjust(pvalues, scale):
     return adjusted.tolist()
 
 
+def _holm_adjust(pvalues):
+    """Holm step-down adjusted p-values, clipped to 1, in input order."""
+    m = len(pvalues)
+    if m == 0:
+        return []
+    pvals = np.asarray(pvalues, dtype=float)
+    order = np.argsort(pvals)
+    ranked = np.maximum.accumulate(pvals[order] * (m - np.arange(m)))
+    adjusted = np.empty(m)
+    adjusted[order] = np.clip(ranked, 0.0, 1.0)
+    return adjusted.tolist()
+
+
 def _bh_adjust(pvalues):
     """Benjamini-Hochberg step-up adjusted p-values, aligned to input order."""
     return _step_up_adjust(pvalues, 1.0)
@@ -386,7 +416,10 @@ def _apply_multiple_comparison_correction(stat_records, alpha=STAT_TEST_ALPHA):
         "c_m": c_m,
         "power_alpha": alpha / (m * c_m) if m else None,
         "power_model": POWER_MODEL,
-        "adjusted_p_values": ["benjamini_yekutieli", "benjamini_hochberg", "bonferroni"],
+        "adjusted_p_values": ["benjamini_yekutieli", "benjamini_hochberg", "holm", "bonferroni"],
+        "fwer_note": ("significant_fwer on a distinguishable pair: both tests also pass Holm's "
+                      "family-wise correction, so the flag does not rely on other pairs' "
+                      "discoveries raising the BY threshold"),
         "fdr_dependence_note": FDR_DEPENDENCE_NOTE,
     }
     if m == 0:
@@ -400,9 +433,12 @@ def _apply_multiple_comparison_correction(stat_records, alpha=STAT_TEST_ALPHA):
         raw = [rec[test]["p_value"] for rec in stat_records]
         by = _by_adjust(raw)
         bh = _bh_adjust(raw)
-        for rec, p_raw, p_by, p_bh in zip(stat_records, raw, by, bh):
+        holm = _holm_adjust(raw)
+        for rec, p_raw, p_by, p_bh, p_holm in zip(stat_records, raw, by, bh, holm):
             rec[test]["p_value_by"] = float(p_by)
             rec[test]["p_value_bh"] = float(p_bh)
+            rec[test]["p_value_holm"] = float(p_holm)
+            rec[test]["significant_holm"] = bool(p_holm < alpha)
             rec[test]["p_value_bonferroni"] = float(min(p_raw * m, 1.0))
             rec[test]["significant_by"] = bool(p_by < alpha)
 
@@ -416,19 +452,25 @@ def _apply_multiple_comparison_correction(stat_records, alpha=STAT_TEST_ALPHA):
         power = rec.get("power") or {}
         power_at_obs = power.get("power_to_detect_delta_at_observed_shots")
         target = power.get("target_power", STAT_TEST_TARGET_POWER)
+        uncharacterised = rec.get("support_characterised") is False
         if rec["low_count_warning"]:
             verdict = "inconclusive_low_shots"
             rec["inconclusive_reason"] = "low_expected_counts"
-            rec["resolvable_by_more_shots"] = rec.get("shots_per_backend_for_expected_counts") is not None
+            rec["resolvable_by_more_shots"] = (
+                None if uncharacterised
+                else rec.get("shots_per_backend_for_expected_counts") is not None)
         elif chi2_sig and g_sig:
             verdict = "distinguishable"
+            rec["significant_fwer"] = bool(
+                rec["chi2"]["significant_holm"] and rec["g_test"]["significant_holm"])
         elif not chi2_sig and not g_sig:
             if power_at_obs is not None and power_at_obs < target:
                 verdict = "inconclusive_low_shots"
                 rec["inconclusive_reason"] = "low_power"
                 recommended = power.get("recommended_shots_per_backend")
-                rec["resolvable_by_more_shots"] = bool(
-                    recommended is not None and recommended <= _max_shots_per_backend())
+                rec["resolvable_by_more_shots"] = (
+                    None if uncharacterised else bool(
+                        recommended is not None and recommended <= _max_shots_per_backend()))
             else:
                 verdict = "consistent"
         else:

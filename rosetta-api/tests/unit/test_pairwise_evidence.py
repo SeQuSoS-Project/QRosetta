@@ -454,7 +454,7 @@ def test_statistical_test_summary_and_fdr_across_family():
     assert summary["alpha"] == 0.05
     assert summary["correction"] == "BY"
     assert summary["c_m"] == 1 + 1 / 2 + 1 / 3
-    assert summary["adjusted_p_values"] == ["benjamini_yekutieli", "benjamini_hochberg", "bonferroni"]
+    assert summary["adjusted_p_values"] == ["benjamini_yekutieli", "benjamini_hochberg", "holm", "bonferroni"]
     for pair in report["pairwise_agreement"]:
         stat = pair["metrics"]["statistical_test"]
         assert stat["correction"] == "BY"
@@ -670,3 +670,25 @@ def test_a_gap_hidden_in_the_pooled_bin_is_not_called_consistent():
     assert stat["power"]["delta_tv_tested"] <= 0
     assert stat["verdict"] != "consistent"
     assert "_observed_proportions" not in stat
+
+
+def test_holm_adjustment_matches_step_down_definition():
+    from services.analysis.divergence.statistics import _holm_adjust
+    assert _holm_adjust([0.01, 0.04, 0.03]) == pytest.approx([0.03, 0.06, 0.06])
+
+
+def test_sparse_samples_get_no_shot_recommendation():
+    import numpy as np
+    rng = np.random.default_rng(1)
+
+    def sample():
+        values, counts = np.unique(rng.integers(0, 2 ** 16, 2000), return_counts=True)
+        return {format(int(v), "016b"): int(c) for v, c in zip(values, counts)}
+
+    stat = _record(create_counts_report([
+        {"simulator": "a", "counts": sample()}, {"simulator": "b", "counts": sample()},
+    ], n_shots=2000), "a", "b")["metrics"]["statistical_test"]
+    assert stat["support_characterised"] is False
+    assert stat["unseen_mass_good_turing"] > 0.9
+    assert stat["power"]["recommended_shots_per_backend"] is None
+    assert stat["resolvable_by_more_shots"] is None
