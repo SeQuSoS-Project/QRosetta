@@ -6,7 +6,8 @@ import glob
 from functools import lru_cache
 
 from fastapi import HTTPException
-from qrosetta_commons.helpers import get_logger
+from qrosetta_commons.counts import parse_measurement_layout
+from qrosetta_commons.helpers import get_logger, strip_qasm_comments
 
 logger = get_logger("benchmark-library")
 
@@ -28,6 +29,18 @@ def _require_safe_name(name: str) -> str:
     return name
 
 
+def invalid_qasm_reason(qasm: str):
+    """Why a bundled file is not valid OpenQASM 2.0 (no header, or a measure into an
+    undeclared register), or None."""
+    if not re.search(r"^\s*OPENQASM\s+2\.0\s*;", strip_qasm_comments(qasm), re.MULTILINE):
+        return "it has no 'OPENQASM 2.0;' header"
+    try:
+        parse_measurement_layout(qasm)
+    except (KeyError, ValueError) as exc:
+        return f"its measurements do not match its registers ({exc})"
+    return None
+
+
 def _read_bundled_qasm(base_dir: str, file_name: str, label: str) -> str:
     """Read a bundled .qasm file, guarding against path traversal."""
     file_path = os.path.realpath(os.path.join(base_dir, file_name))
@@ -41,8 +54,11 @@ def _read_bundled_qasm(base_dir: str, file_name: str, label: str) -> str:
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             qasm_str = f.read()
-        if "OPENQASM" not in qasm_str:
-            raise ValueError("File is not a valid OpenQASM file.")
+        reason = invalid_qasm_reason(qasm_str)
+        if reason:
+            raise HTTPException(status_code=422, detail=(
+                f"The bundled {label} file {file_name} is not valid OpenQASM 2.0 as distributed "
+                f"upstream: {reason}."))
         return qasm_str
     except HTTPException:
         raise
@@ -58,16 +74,25 @@ def get_qasmbench_circuit(circuit_name: str) -> str:
     return _read_bundled_qasm(_QASMBENCH_DIR, f"{circuit_name}.qasm", "QASMBench")
 
 
+def _valid_file(path: str) -> bool:
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return invalid_qasm_reason(fh.read()) is None
+    except OSError:
+        return False
+
+
 @lru_cache(maxsize=1)
 def _qasmbench_names() -> tuple:
     return tuple(sorted(
         os.path.splitext(os.path.basename(p))[0]
-        for p in glob.glob(os.path.join(_QASMBENCH_DIR, "*.qasm"))
+        for p in glob.glob(os.path.join(_QASMBENCH_DIR, "*.qasm")) if _valid_file(p)
     ))
 
 
 def list_qasmbench() -> list[str]:
-    """Return the sorted names of all bundled QASMBench circuits (no extension)."""
+    """Return the sorted names of the bundled QASMBench circuits that are valid OpenQASM 2.0
+    (no extension); see ``invalid_qasm_reason``."""
     return list(_qasmbench_names())
 
 

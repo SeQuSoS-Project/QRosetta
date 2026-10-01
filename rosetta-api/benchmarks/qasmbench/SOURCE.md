@@ -10,3 +10,8 @@ the API would reject them anyway.
 
 These are served as static files by services/benchmark_library.py — the API has no
 quantum-SDK dependency for benchmark loading.
+
+Three bundled files are not valid OpenQASM 2.0 as distributed upstream and are not listed:
+`sat_n11` (no `OPENQASM 2.0;` header) and `vqe_uccsd_n4`, `vqe_uccsd_n6` (they measure
+`q[...]` while declaring only `qreg reg[...]` and no classical register). Fetching one returns
+422 with that reason.
