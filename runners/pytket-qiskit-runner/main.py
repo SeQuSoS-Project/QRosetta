@@ -154,21 +154,24 @@ def process_run(payload: dict) -> dict:
     sim = _simulator()
 
     def compile_step(payload):
-        """Capture the QASM before save_statevector() appends an Aer-only instruction."""
+        """Run save_statevector() on a copy, so the circuit serialised after t1 is the one
+        without the Aer-only instruction."""
         qasm, strip_notes = prepare_statevector_qasm(payload["circuit_data"])
         tk_circ, qiskit_circ, preprocessing_applied = _to_qiskit(qasm, payload)
-        transpiled_qasm = qasm2.dumps(qiskit_circ)
         backend_qubits = _qubit_pairs(qiskit_circ)
-        qiskit_circ.save_statevector()
+        executed_circ = qiskit_circ.copy()
+        executed_circ.save_statevector()
         return CompileResult(
-            circuit=(sim, qiskit_circ, backend_qubits),
+            circuit=(sim, executed_circ, backend_qubits, qiskit_circ),
             n_qubits=tk_circ.n_qubits,
-            preprocessing_applied=strip_notes + preprocessing_applied + [_SAVE_STATEVECTOR_NOTE],
-            transpiled_qasm=transpiled_qasm)
+            preprocessing_applied=strip_notes + preprocessing_applied + [_SAVE_STATEVECTOR_NOTE])
+
+    def serialize_statevector_circuit(compiled):
+        return qasm2.dumps(compiled.circuit[3])
 
     def execute(compiled, _payload):
-        backend, qiskit_circ, _ = compiled.circuit
-        return backend.run(qiskit_circ, optimization_level=0).result()
+        backend, executed_circ, *_ = compiled.circuit
+        return backend.run(executed_circ, optimization_level=0).result()
 
     def shape_statevector(aer_result, compiled, payload):
         backend_fields.update(_backend_fields(aer_result, sim))
@@ -179,7 +182,8 @@ def process_run(payload: dict) -> dict:
     backend_fields = {}
     result = run_statevector_job(
         simulator="qiskit", payload=payload, logger=logger, compile_fn=compile_step,
-        execute_fn=execute, postprocess_fn=shape_statevector, qubit_ordering="lsb",
+        serialize_fn=serialize_statevector_circuit, execute_fn=execute,
+        postprocess_fn=shape_statevector, qubit_ordering="lsb",
         precision="complex128")
     if "error" not in result:
         result.update(backend_fields)

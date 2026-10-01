@@ -5,7 +5,7 @@ import { RUNNER_DISPLAY_NAMES, getRunnerOptInfo } from './config.js';
 import { formatRunnerLabel, parseRunnerKey } from './runner_key.js';
 
 export const METRIC_DEFINITIONS = {
-    "compilation": "<b>Compilation Time:</b> Wall clock from t0 to t1 of a timed run: parse the QASM, apply this backend's transforms and build its native circuit. After one discarded warm-up run; with Timing repeats above 1, the median of the timed runs, with their spread and n.",
+    "compilation": "<b>Compilation Time:</b> Wall clock from t0 to t1 of a timed run: parse the QASM, apply this backend's transforms and build its native circuit (Qulacs, QuEST, qsim and Qiskit Aer convert the circuit into their own form inside the simulation call instead; see the manual). After one discarded warm-up run; with Timing repeats above 1, the median of the timed runs, with their spread and n.",
     "simulation": "<b>Simulation Time:</b> Wall clock from t2 to t3 of a timed run: execute the circuit and return the statevector or draw the shots. Building the counts histogram from drawn shots is outside this window. After one discarded warm-up run; with Timing repeats above 1, the median of the timed runs, with their spread and n.",
     "total_time": "<b>Total:</b> Compilation + Simulation. With Timing repeats above 1, median compilation + median simulation, ± the standard deviation of the per-run totals. Backends are ranked by this column.",
     "cpu_time": "<b>CPU Time:</b> User+system CPU time of the whole isolated runner process: interpreter start, SDK import, warm-up and every timed run, so it grows with Timing repeats. It covers more than the wall-clock columns.",

@@ -775,7 +775,7 @@
                         the seed the repeats draw the same shots and only the timings differ. <code>cpu_time_sec</code> and
                         <code>process_peak_rss_mb</code> cover every run, so they grow with the number of repeats.</li>
                     <li><strong>Timing windows.</strong> <code>compilation_time_sec</code> is wall clock from
-                        t0 to t1 (parse, transpile, build the native circuit); <code>simulation_time_sec</code>
+                        t0 to t1 (parse, transpile and, where the SDK allows, build the native circuit; see "Where circuit conversion falls"); <code>simulation_time_sec</code>
                         is wall clock from t2 to t3 (execute, return the statevector or draw the shots).
                         Building a counts histogram from drawn shots is outside the window.</li>
                     <li><strong>cuQuantum's timed window.</strong> cuQuantum's <code>simulation_time_sec</code>
@@ -788,6 +788,20 @@
                         inside its <code>simulation_time_sec</code> and memory window, so its time and memory grow with the
                         number of non-zero amplitudes rather than with 2<sup>N</sup> alone: a GHZ state is fast, a dense
                         state slow.</li>
+                    <li><strong>Where circuit conversion falls.</strong> Compilation covers parsing, rebasing and
+                        optimisation passes, and building the executable object where the SDK lets the adapter build it
+                        separately (the PennyLane tape and device preprocessing, the myQLM and qibo circuit objects).
+                        Qulacs and QuEST (through pytket's <code>process_circuits</code>), qsim (which translates the
+                        Cirq circuit inside <code>simulate</code>) and Qiskit Aer, qiskit and cuQuantum (which convert
+                        the circuit inside <code>run</code>), convert the circuit into their own form inside the
+                        simulation call, so that conversion is in their <code>simulation_time_sec</code>. Testers measured
+                        about 10–13 µs per gate for it, against 2.7 µs per gate in total for PennyLane-Lightning's
+                        simulation, which runs a pre-built tape: for a long circuit on few qubits this conversion can be
+                        most of the simulation time (about 65% for qsim on a 16-qubit, 2,200-gate circuit).</li>
+                    <li><strong>Different gate counts for the same circuit.</strong> Each backend executes the circuit
+                        after its own rebase, so the gate counts differ: at 18 qubits one circuit ran as 318, 750 or
+                        1,158 gates depending on the backend. Simulation times compare those workloads; the Gate count
+                        column shows each one.</li>
                     <li><strong>Measured mode, statevector sampling.</strong> Backends that sample from a
                         statevector (<code>sampling_method: "sv_sample"</code>) read the state from the SDK and draw
                         the shots inside <code>simulation_time_sec</code>, because the shots need the state; in
@@ -839,7 +853,9 @@
                         same memory the timed run needs, and the allocator usually keeps it. The timed run can
                         then reuse it without raising the high-water mark, so <code>memory_usage_mb</code> can read
                         near 0 for a statevector of a few MiB (seen for PennyLane at 16 qubits and qibo at 18). Read
-                        it as the memory the simulation window added, not as the memory the simulation used. A fixed
+                        it as the memory the simulation window added, not as the memory the simulation used.
+                        PennyLane-Lightning allocates its statevector when the device is created, during compilation,
+                        so its memory window holds only the copy read out at the end. A fixed
                         allocator threshold that would expose every allocation slowed some backends by more than 3×,
                         so it is not used.</li>
                     <li><strong>Memory.</strong> Memory is read from the kernel high-water mark
@@ -874,7 +890,8 @@
                         reflect their libraries, not their simulation algorithms.</li>
                     <li><strong>Benchmark circuits and structure.</strong> The <code>qft</code> preset applies the QFT
                         to |0…0⟩, so every controlled phase has its control in |0⟩ and the output is a uniform product
-                        state. Backends that exploit structure (tensor networks, sparse or decision-diagram methods) run it
+                        state. Backends that exploit structure (tensor networks such as quimb, Qrisp's factorised state
+                        and gate grouping, sparse or decision-diagram methods) run it
                         much faster than a dense statevector would suggest. For scaling studies, include circuits whose
                         state is entangled and dense, such as <code>random</code>.</li>
                     <li><strong>Gate count and depth</strong> come from the circuit each backend executed: by default the

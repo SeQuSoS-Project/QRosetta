@@ -39,9 +39,14 @@ _TDG_NOTE = (
     "(D-T); u1(-pi/4) = diag(1, e^{-i pi/4}) is the identical matrix. Required by the "
     "adapter, applied when apply_preprocessing is False.")
 _SAMPLING_NOTE = (
-    "PyLinalg SAMPLE job: returns per-state frequencies over every qubit; counts are rebuilt "
-    "as round(frequency * n_shots) after the timed window and re-keyed over the circuit's "
-    "classical bits.")
+    "PyLinalg SAMPLE job: PyLinalg draws the shots and aggregates them into per-state "
+    "frequencies over every qubit inside submit(), so that tally is inside "
+    "simulation_time_sec; the runner rebuilds integer counts as round(frequency * n_shots) "
+    "after the timed window and re-keys them over the circuit's classical bits.")
+_RESULT_NOTE = (
+    "PyLinalg SAMPLE job with nbshots=0: submit() returns one Python Sample object per "
+    "non-zero amplitude, and building them is inside simulation_time_sec and its memory "
+    "window, so time and memory grow with the number of non-zero amplitudes.")
 
 
 def _preprocess_qasm(qasm_str: str, apply_preprocessing: bool) -> tuple[str, list[str]]:
@@ -84,7 +89,7 @@ def process_run(payload: dict) -> dict:
 
     def compile_step(payload):
         qasm, notes = prepare_statevector_qasm(payload["circuit_data"])
-        return _compile(payload, qasm, leading_notes=notes)
+        return _compile(payload, qasm, leading_notes=notes, extra_notes=(_RESULT_NOTE,))
 
     def execute(compiled, _payload):
         return _qpu.submit(compiled.circuit.to_job(job_type="SAMPLE", nbshots=0))
