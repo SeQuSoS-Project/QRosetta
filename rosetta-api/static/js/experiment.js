@@ -88,6 +88,7 @@ export async function runExperiment() {
         runner_phases: getRunnerPhases(),
         timeout_seconds: timeout,
         timing_repeats: v.timingRepeats,
+        exclusive: /** @type {HTMLInputElement | null} */ (document.getElementById('exclusive-checkbox'))?.checked || false,
         target_simulators: targetSims,
         execution_target: executionTarget,
         bypass_limits: bypassLimits,

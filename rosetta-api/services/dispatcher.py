@@ -3,6 +3,7 @@
 Routes each dispatch to the HTTP (Docker Compose) or Kubernetes Jobs backend.
 """
 
+from services.run_registry import EXCLUSIVE, GATE
 from datetime import datetime, timezone
 
 from config import settings
@@ -200,8 +201,55 @@ SAMPLED_SV_URLS = {
 }
 
 
+def _run_interval(result: dict):
+    """(start, end) in seconds of a run's time in its runner process: dispatch time plus
+    queue wait, to completion; None without both timestamps."""
+    try:
+        start = datetime.fromisoformat(result["dispatched_at"]).timestamp()
+        end = datetime.fromisoformat(result["completed_at"]).timestamp()
+    except (KeyError, TypeError, ValueError):
+        return None
+    wait = result.get("queue_wait_sec")
+    return (start + (wait if isinstance(wait, (int, float)) else 0.0), end)
+
+
+def annotate_overlaps(results: list) -> list:
+    """Set ``overlapping_runs`` on each result: how many other runs of this job were in
+    their runner process (spawn, warm-up and timed runs) at some time this run was. Runs of
+    other jobs on the same server are not counted."""
+    intervals = [_run_interval(r) if isinstance(r, dict) else None for r in results]
+    for i, r in enumerate(results):
+        if not isinstance(r, dict):
+            continue
+        mine = intervals[i]
+        r["overlapping_runs"] = None if mine is None else sum(
+            1 for j, other in enumerate(intervals)
+            if j != i and other is not None and other[0] < mine[1] and mine[0] < other[1])
+    return results
+
+
 async def dispatch_to_runners(runner_urls: dict, runner_payload: dict, timeout_seconds: int = settings.RUNNER_TIMEOUT_SEC, runner_statuses: dict = None) -> list:
-    """Run every job for ``runner_urls`` and return the annotated results."""
-    if EXECUTION_MODE == "kubernetes":
-        return await dispatch_kubernetes_jobs(runner_urls, runner_payload, timeout_seconds, runner_statuses)
-    return await dispatch_http_local(runner_urls, runner_payload, timeout_seconds, runner_statuses)
+    """Run every job for ``runner_urls`` and return the annotated results (with
+    ``annotate_overlaps``). In an exclusive job (``run_registry.EXCLUSIVE``) every runner
+    gets its own phase and the dispatch is admitted only when no other dispatch is running
+    on this server, holding new ones back until it ends; each result records ``exclusive``
+    and ``exclusive_wait_sec``. Local results also record ``server_overlapping_runs``, the
+    runs of other jobs that were in flight at some time this run was."""
+    exclusive = bool(EXCLUSIVE.get())
+    if exclusive:
+        runner_payload = {**runner_payload, "runner_phases": {
+            name: i + 1 for i, name in enumerate(sorted(runner_urls))}}
+    waited = await GATE.acquire(exclusive)
+    try:
+        if EXECUTION_MODE == "kubernetes":
+            results = await dispatch_kubernetes_jobs(runner_urls, runner_payload, timeout_seconds, runner_statuses)
+        else:
+            results = await dispatch_http_local(runner_urls, runner_payload, timeout_seconds, runner_statuses)
+    finally:
+        await GATE.release(exclusive)
+    for r in results:
+        if isinstance(r, dict):
+            r["exclusive"] = exclusive
+            r["exclusive_wait_sec"] = waited if exclusive else None
+            r.setdefault("server_overlapping_runs", None)
+    return annotate_overlaps(results)

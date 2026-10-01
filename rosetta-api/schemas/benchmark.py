@@ -60,6 +60,11 @@ FigureFormat = Literal["svg", "png", "pdf"]
 TableFormat = Literal["latex", "csv", "html", "xlsx"]
 PublicationCategory = Literal["agreement", "heatmaps", "performance", "statistical"]
 
+_EXCLUSIVE_DESCRIPTION = ("Run for timing: every backend in its own phase, one after another, and "
+                          "only while no other run is in flight on this server (other jobs wait, "
+                          "and this job waits for running ones; the wait is recorded as "
+                          "exclusive_wait_sec). Local mode isolates the server's own runs only; "
+                          "it cannot hold back other processes on the host.")
 _OPT_LEVEL_DESCRIPTION = ("Requested transpiler/optimization level, 0-3; each backend runs at "
                           "the nearest level it supports (at most its max_level in /runners). "
                           "Each result records optimization_level_requested and the applied "
@@ -149,6 +154,7 @@ class QasmPayload(_Request):
     runner_phases: RunnerPhases = Field({}, description="Maps runner id to a phase number. Runners sharing a phase run concurrently; phases execute in ascending order. Absent/empty means every runner executes concurrently.")
     timeout_seconds: Int = Field(settings.DEFAULT_TIMEOUT_SEC, ge=settings.MIN_TIMEOUT_SEC, description=_TIMEOUT_DESCRIPTION)
     timing_repeats: TimingRepeats = Field(1, description=_TIMING_REPEATS_DESCRIPTION)
+    exclusive: StrictBool = Field(False, description=_EXCLUSIVE_DESCRIPTION)
     target_simulators: List[str] = Field(default_factory=list, description="Which runner ids to dispatch to. Empty means every enabled runner.")
     execution_target: ExecutionTarget = Field(default_factory=_default_execution_target, description=_TARGET_DESCRIPTION)
     bypass_limits: StrictBool = Field(False, description=_BYPASS_DESCRIPTION)
@@ -165,6 +171,7 @@ class MeasuredQasmPayload(_Request):
     runner_phases: RunnerPhases = Field({}, description="Maps runner id to a phase number. Runners sharing a phase run concurrently; phases execute in ascending order.")
     timeout_seconds: Int = Field(settings.DEFAULT_TIMEOUT_SEC, ge=settings.MIN_TIMEOUT_SEC, description=_TIMEOUT_DESCRIPTION)
     timing_repeats: TimingRepeats = Field(1, description=_TIMING_REPEATS_DESCRIPTION)
+    exclusive: StrictBool = Field(False, description=_EXCLUSIVE_DESCRIPTION)
     target_simulators: List[str] = Field(default_factory=list, description="Which runner ids to dispatch to. Empty means every enabled runner.")
     execution_target: ExecutionTarget = Field(default_factory=_default_execution_target, description=_TARGET_DESCRIPTION)
     bypass_limits: StrictBool = Field(False, description=_BYPASS_DESCRIPTION)
@@ -205,6 +212,7 @@ class BatchPayload(_Request):
     runner_phases: RunnerPhases = Field({}, description="Maps runner id to a phase number for staged concurrent execution, same semantics as in QasmPayload.")
     timeout_seconds: Int = Field(settings.DEFAULT_TIMEOUT_SEC, ge=settings.MIN_TIMEOUT_SEC, description=_TIMEOUT_DESCRIPTION)
     timing_repeats: TimingRepeats = Field(1, description=_TIMING_REPEATS_DESCRIPTION)
+    exclusive: StrictBool = Field(False, description=_EXCLUSIVE_DESCRIPTION)
     target_simulators: List[str] = Field(default_factory=list, description="Which runner ids to dispatch to. Empty means every enabled runner.")
     execution_target: ExecutionTarget = Field(default_factory=_default_execution_target, description=_TARGET_DESCRIPTION)
     bypass_limits: StrictBool = Field(False, description=_BYPASS_DESCRIPTION)
@@ -239,6 +247,7 @@ class ExperimentPayload(_Request):
     runner_phases: RunnerPhases = Field({}, description="Maps runner id to a phase number for staged concurrent execution.")
     timeout_seconds: Int = Field(settings.DEFAULT_TIMEOUT_SEC, ge=settings.MIN_TIMEOUT_SEC, description=_TIMEOUT_DESCRIPTION)
     timing_repeats: TimingRepeats = Field(1, description=_TIMING_REPEATS_DESCRIPTION)
+    exclusive: StrictBool = Field(False, description=_EXCLUSIVE_DESCRIPTION)
     target_simulators: List[str] = Field(default_factory=list, description="Which runner ids to include. Empty means every enabled runner.")
     execution_target: ExecutionTarget = Field(default_factory=_default_execution_target, description=_TARGET_DESCRIPTION)
     bypass_limits: StrictBool = Field(False, description=_BYPASS_DESCRIPTION + " For experiments it also lifts the circuit-axis cell cap.")

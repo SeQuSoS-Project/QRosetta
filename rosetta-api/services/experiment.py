@@ -17,6 +17,7 @@ from config import server_git_sha, server_image_digests
 from schemas import BatchPayload, BenchmarkTask, ExperimentPayload
 from services import experiment_artifacts as art
 from services.dispatcher import SEED_DERIVATION
+from services.run_registry import EXCLUSIVE
 from services.job_manager import (
     ACTIVE_JOBS, _resolve_seed, effective_thresholds, run_batch_tasks, task_label, task_qubits,
 )
@@ -85,6 +86,7 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
     stores the bundle files in ``ACTIVE_JOBS[job_id]["bundle_files"]``. The number of
     circuit-axis cells is capped at MAX_EXPERIMENT_CELLS unless bypass_limits is set.
     """
+    EXCLUSIVE.set(payload.exclusive)
     runner_statuses = {}
     ACTIVE_JOBS[job_id]["status"] = "processing"
     ACTIVE_JOBS[job_id]["runner_statuses"] = runner_statuses
@@ -126,7 +128,7 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
                 optimization_level=payload.optimization_level,
                 runner_config=payload.runner_config, runner_phases=payload.runner_phases,
                 timeout_seconds=payload.timeout_seconds,
-                timing_repeats=payload.timing_repeats,
+                timing_repeats=payload.timing_repeats, exclusive=payload.exclusive,
                 target_simulators=payload.target_simulators,
                 execution_target=payload.execution_target, bypass_limits=payload.bypass_limits,
                 apply_preprocessing=bool(pp), seed=exp_seed, thresholds=payload.thresholds,

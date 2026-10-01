@@ -1,5 +1,6 @@
 """HTTP dispatcher for runners running as long-lived Docker Compose services."""
 
+from services.run_registry import REGISTRY
 import time
 import httpx
 import asyncio
@@ -90,6 +91,7 @@ async def dispatch_http_local(runner_urls: dict, runner_payload: dict, timeout_s
 
     specs = expand_runner_jobs(runner_urls, runner_payload)
     phase_groups = group_specs_by_phase(specs)
+    token = object()
 
     def _http_timeout(queue_budget):
         return httpx.Timeout(
@@ -102,13 +104,19 @@ async def dispatch_http_local(runner_urls: dict, runner_payload: dict, timeout_s
         if runner_statuses is not None:
             runner_statuses[key] = "running"
         dispatched_at = utc_now_iso()
-        result = await safe_request(client, spec["url"], local_payload, key, timeout_seconds,
-                                    _http_timeout(local_payload["max_queue_wait_seconds"]))
+        run_id = REGISTRY.start(token)
+        try:
+            result = await safe_request(client, spec["url"], local_payload, key, timeout_seconds,
+                                        _http_timeout(local_payload["max_queue_wait_seconds"]))
+        finally:
+            other_job_runs = REGISTRY.finish(run_id)
+        result["server_overlapping_runs"] = other_job_runs
         annotate_result(result, spec, local_payload, dispatched_at,
                         dispatch_status=result.pop("dispatch_status", None),
                         runner_image=LOCAL_RUNNER_IMAGE)
         if runner_statuses is not None:
-            runner_statuses[key] = "error" if "error" in result else "done"
+            runner_statuses[key] = {"ok": "done", "timeout": "timeout"}.get(
+                result.get("dispatch_status"), "error")
         return result
 
     if runner_statuses is not None:

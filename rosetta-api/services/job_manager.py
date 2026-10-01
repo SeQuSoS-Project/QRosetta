@@ -12,6 +12,7 @@ import time
 from fastapi import HTTPException
 from services.availability import filter_available
 from services.job_store import JOB_NOT_FOUND, JobTable, full_report
+from services.run_registry import EXCLUSIVE
 from services.validator import validate_request
 from services.dispatcher import (
     STATEVECTOR_RUNNER_URLS,
@@ -116,6 +117,7 @@ def _run_context(optimization_level, runner_config, timeout_seconds, apply_prepr
         "timeout_scope": timeout_scope(),
         "agreement_thresholds": thresholds,
         "bypass_limits": bool(bypass_limits),
+        "exclusive": bool(EXCLUSIVE.get()),
         "runner_registry": runner_registry_snapshot(),
     }
     analysis_version = getattr(analysis, "ANALYSIS_VERSION", None)
@@ -153,7 +155,7 @@ def _dispatched_circuit_record(group: str, circuit: dict, results: list) -> dict
     }
 
 
-async def run_single_circuit_comparison(qasm_string: str, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = settings.DEFAULT_TIMEOUT_SEC, target_simulators: list = None, runner_statuses: dict = None, runner_phases: dict = None, apply_preprocessing: bool = True, thresholds: dict = None, bypass_limits: bool = False, timing_repeats: int = 1):
+async def run_single_circuit_comparison(qasm_string: str, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = settings.DEFAULT_TIMEOUT_SEC, target_simulators: list = None, runner_statuses: dict = None, runner_phases: dict = None, apply_preprocessing: bool = True, thresholds: dict = None, bypass_limits: bool = False, timing_repeats: int = 1, exclusive: bool = False):
     """Run one circuit on the statevector fleet and return the full (untruncated) report."""
     started_at = utc_now_iso()
     thresholds = effective_thresholds(thresholds)
@@ -212,7 +214,7 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
     }
 
 
-async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = settings.DEFAULT_TIMEOUT_SEC, target_simulators: list = None, runner_statuses: dict = None, runner_phases: dict = None, apply_preprocessing: bool = True, seed: int = None, thresholds: dict = None, bypass_limits: bool = False, timing_repeats: int = 1):
+async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = settings.DEFAULT_TIMEOUT_SEC, target_simulators: list = None, runner_statuses: dict = None, runner_phases: dict = None, apply_preprocessing: bool = True, seed: int = None, thresholds: dict = None, bypass_limits: bool = False, timing_repeats: int = 1, exclusive: bool = False):
     """Run one circuit on the sampling fleet and return the full report.
 
     ``seed`` is the master seed (generated when None); each runner receives a seed
@@ -427,15 +429,17 @@ async def _run_single_job(job_id: str, execution_target: str, runner_statuses: d
         ACTIVE_JOBS[job_id] = _failed_job(execution_target, str(e), runner_statuses)
 
 
-async def worker_compare(job_id: str, qasm_string: str, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str, runner_phases: dict = None, apply_preprocessing: bool = True, thresholds: dict = None, bypass_limits: bool = False, timing_repeats: int = 1):
+async def worker_compare(job_id: str, qasm_string: str, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str, runner_phases: dict = None, apply_preprocessing: bool = True, thresholds: dict = None, bypass_limits: bool = False, timing_repeats: int = 1, exclusive: bool = False):
     """Background task for POST /compare."""
+    EXCLUSIVE.set(exclusive)
     runner_statuses = {}
     await _run_single_job(job_id, execution_target, runner_statuses,
         run_single_circuit_comparison(qasm_string, optimization_level, runner_config, timeout, target_simulators, runner_statuses, runner_phases, apply_preprocessing, thresholds, bypass_limits, timing_repeats))
 
 
-async def worker_compare_measured(job_id: str, qasm_string: str, n_shots: int, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str, runner_phases: dict = None, apply_preprocessing: bool = True, seed: int = None, thresholds: dict = None, bypass_limits: bool = False, timing_repeats: int = 1):
+async def worker_compare_measured(job_id: str, qasm_string: str, n_shots: int, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str, runner_phases: dict = None, apply_preprocessing: bool = True, seed: int = None, thresholds: dict = None, bypass_limits: bool = False, timing_repeats: int = 1, exclusive: bool = False):
     """Background task for POST /compare_measured."""
+    EXCLUSIVE.set(exclusive)
     runner_statuses = {}
     await _run_single_job(job_id, execution_target, runner_statuses,
         run_single_circuit_measurement(qasm_string, n_shots, optimization_level, runner_config, timeout, target_simulators, runner_statuses, runner_phases, apply_preprocessing, seed, thresholds, bypass_limits, timing_repeats))
@@ -511,6 +515,7 @@ async def run_batch_tasks(payload: BatchPayload, runner_statuses: dict, progress
 
 async def worker_batch_suite(job_id: str, payload: BatchPayload):
     """Background task for POST /run_batch_suite, with live per-task progress."""
+    EXCLUSIVE.set(payload.exclusive)
     runner_statuses = {}
     ACTIVE_JOBS[job_id]["status"] = "processing"
     ACTIVE_JOBS[job_id]["runner_statuses"] = runner_statuses
