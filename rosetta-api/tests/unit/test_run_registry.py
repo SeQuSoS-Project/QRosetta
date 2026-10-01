@@ -43,3 +43,36 @@ def test_exclusive_waits_for_shared_and_blocks_new_shared():
         return order
 
     assert asyncio.run(scenario()) == ["exclusive", "late shared"]
+
+
+def test_exclusive_wait_cap_raises_and_leaves_gate_usable():
+    from services.run_registry import ExclusiveWaitTimeout
+
+    async def scenario():
+        gate = ExclusiveGate()
+        await gate.acquire(False)
+        try:
+            await gate.acquire(True, max_wait=0.05)
+        except ExclusiveWaitTimeout:
+            pass
+        else:
+            raise AssertionError("expected a timeout")
+        assert gate.status()["exclusive_waiting"] == 0
+        await gate.acquire(False)
+        await gate.release(False)
+        await gate.release(False)
+        await gate.acquire(True, max_wait=0.05)
+        await gate.release(True)
+
+    asyncio.run(scenario())
+
+
+def test_one_exclusive_job_per_client():
+    from services.run_registry import claim_exclusive, release_exclusive
+    assert claim_exclusive("1.2.3.4", "job-a") is None
+    assert claim_exclusive("1.2.3.4", "job-b") == "job-a"
+    assert claim_exclusive("5.6.7.8", "job-c") is None
+    release_exclusive("job-a")
+    release_exclusive("job-c")
+    assert claim_exclusive("1.2.3.4", "job-b") is None
+    release_exclusive("job-b")

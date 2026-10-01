@@ -12,7 +12,7 @@ import time
 from fastapi import HTTPException
 from services.availability import filter_available
 from services.job_store import JOB_NOT_FOUND, JobTable, full_report
-from services.run_registry import EXCLUSIVE
+from services.run_registry import EXCLUSIVE, claim_exclusive, releases_exclusive
 from services.validator import validate_request
 from services.dispatcher import (
     STATEVECTOR_RUNNER_URLS,
@@ -333,6 +333,20 @@ def _failed_job(target: str, error: str, runner_statuses: dict, report: dict = N
     return job
 
 
+def require_exclusive_slot(payload, client: str, job_id: str) -> None:
+    """For an exclusive request: 400 when the server disables exclusive runs, 429 when this
+    client already has an exclusive job that has not finished."""
+    if not getattr(payload, "exclusive", False):
+        return
+    if not settings.EXCLUSIVE_ENABLED:
+        raise HTTPException(status_code=400, detail="Exclusive runs are disabled on this server.")
+    held = claim_exclusive(client, job_id)
+    if held is not None:
+        raise HTTPException(status_code=429, detail=(
+            f"You already have an exclusive job ({held}) that has not finished; one exclusive "
+            f"job per client runs at a time."))
+
+
 def report_failed_before_dispatch(report: dict) -> bool:
     """True for a report whose circuit never reached a runner (top-level error, no results)."""
     return isinstance(report, dict) and bool(report.get("error")) and "raw_results" not in report
@@ -429,6 +443,7 @@ async def _run_single_job(job_id: str, execution_target: str, runner_statuses: d
         ACTIVE_JOBS[job_id] = _failed_job(execution_target, str(e), runner_statuses)
 
 
+@releases_exclusive
 async def worker_compare(job_id: str, qasm_string: str, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str, runner_phases: dict = None, apply_preprocessing: bool = True, thresholds: dict = None, bypass_limits: bool = False, timing_repeats: int = 1, exclusive: bool = False):
     """Background task for POST /compare."""
     EXCLUSIVE.set(exclusive)
@@ -437,6 +452,7 @@ async def worker_compare(job_id: str, qasm_string: str, optimization_level: int,
         run_single_circuit_comparison(qasm_string, optimization_level, runner_config, timeout, target_simulators, runner_statuses, runner_phases, apply_preprocessing, thresholds, bypass_limits, timing_repeats))
 
 
+@releases_exclusive
 async def worker_compare_measured(job_id: str, qasm_string: str, n_shots: int, optimization_level: int, runner_config: dict, timeout: int, target_simulators: list, execution_target: str, runner_phases: dict = None, apply_preprocessing: bool = True, seed: int = None, thresholds: dict = None, bypass_limits: bool = False, timing_repeats: int = 1, exclusive: bool = False):
     """Background task for POST /compare_measured."""
     EXCLUSIVE.set(exclusive)
@@ -513,6 +529,7 @@ async def run_batch_tasks(payload: BatchPayload, runner_statuses: dict, progress
     return benchmark_summary, batch_seed
 
 
+@releases_exclusive
 async def worker_batch_suite(job_id: str, payload: BatchPayload):
     """Background task for POST /run_batch_suite, with live per-task progress."""
     EXCLUSIVE.set(payload.exclusive)

@@ -1,5 +1,6 @@
 """Frontend routes: the index page, the runner registry, and client-facing limits."""
 
+from services.run_registry import GATE
 from fastapi import APIRouter
 from fastapi.responses import FileResponse, JSONResponse
 from config import settings
@@ -80,8 +81,12 @@ async def get_config():
             "timeout_default": settings.DEFAULT_TIMEOUT_SEC,
             "timing_repeats_max": settings.MAX_TIMING_REPEATS,
             "max_qasm_gate_statements": settings.MAX_QASM_GATES,
+            "max_expanded_gates": settings.MAX_EXPANDED_GATES,
             "shots_min": settings.MIN_SHOTS,
             "shots_max": settings.MAX_SHOTS,
             "shots_default": settings.DEFAULT_SHOTS,
         },
+        "exclusive": {"enabled": settings.EXCLUSIVE_ENABLED,
+                      "max_wait_sec": settings.EXCLUSIVE_MAX_WAIT_SEC,
+                      **GATE.status()},
     })

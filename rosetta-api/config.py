@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     MIN_TIMEOUT_SEC: int = 10
     DEFAULT_TIMEOUT_SEC: int = 60
     MAX_TIMING_REPEATS: int = 10
+    MAX_EXPANDED_GATES: int = int(os.getenv("QROSETTA_MAX_EXPANDED_GATES", "200000"))
+    EXCLUSIVE_ENABLED: bool = os.getenv("QROSETTA_EXCLUSIVE_ENABLED", "true").lower() == "true"
+    EXCLUSIVE_MAX_WAIT_SEC: float = float(os.getenv("QROSETTA_EXCLUSIVE_MAX_WAIT_SEC", "600"))
     MIN_SHOTS: int = 1
     MAX_SHOTS: int = 1_000_000
     DEFAULT_SHOTS: int = 8200

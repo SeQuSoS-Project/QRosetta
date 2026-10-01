@@ -1,5 +1,7 @@
 """Benchmark job routes: start single, measured and batch runs; poll and fetch job reports."""
 
+from services.job_manager import require_exclusive_slot
+from services.security import client_address
 from fastapi import APIRouter, HTTPException, Request, BackgroundTasks
 from fastapi.responses import JSONResponse
 import uuid
@@ -85,6 +87,7 @@ async def compare_circuits_endpoint(request: Request, payload: QasmPayload, back
     await require_available(payload.target_simulators)
     timeout = clamp_timeout(payload.timeout_seconds)
     job_id = str(uuid.uuid4())
+    require_exclusive_slot(payload, client_address(request), job_id)
 
     ACTIVE_JOBS[job_id] = new_job(payload.execution_target)
     thresholds = effective_thresholds(payload.thresholds)
@@ -109,6 +112,7 @@ async def compare_measured_circuits_endpoint(request: Request, payload: Measured
     await require_available(payload.target_simulators)
     timeout = clamp_timeout(payload.timeout_seconds)
     job_id = str(uuid.uuid4())
+    require_exclusive_slot(payload, client_address(request), job_id)
 
     ACTIVE_JOBS[job_id] = new_job(payload.execution_target)
     thresholds = effective_thresholds(payload.thresholds)
@@ -141,6 +145,7 @@ async def run_batch_suite_endpoint(request: Request, payload: BatchPayload, back
                 raise HTTPException(status_code=exc.status_code, detail=f"Task {index} ({task.algorithm or 'qasm'}): {exc.detail}")
     await require_available(payload.target_simulators)
     job_id = str(uuid.uuid4())
+    require_exclusive_slot(payload, client_address(request), job_id)
 
     ACTIVE_JOBS[job_id] = new_job(payload.execution_target)
     background_tasks.add_task(worker_batch_suite, job_id, payload)

@@ -282,7 +282,11 @@
                         flight on this server: it waits for running jobs, and jobs submitted meanwhile wait for it.
                         Results record <code>exclusive</code> and <code>exclusive_wait_sec</code>. It overrides
                         <code>runner_phases</code>. It cannot hold back other programs on the host, and in Kubernetes
-                        mode it covers only this server's runner Jobs.</li>
+                        mode it covers only this server's runner Jobs. Each client may have one unfinished exclusive
+                        job (another returns 429). An exclusive circuit that cannot start within the server's wait cap
+                        (<code>exclusive.max_wait_sec</code> in <code>GET /config</code>, default 600 s) fails with that
+                        reason; <code>GET /config</code> also shows whether an exclusive run is running or waiting.
+                        Operators can turn the option off (<code>QROSETTA_EXCLUSIVE_ENABLED=false</code>).</li>
                     <li><strong>Shots</strong> (<code>n_shots</code>, measured mode, default 8200): enough for the power
                         model to reach 0.8 on circuits with up to 16 outcomes and 14 backends (8199 needed). Circuits
                         with more outcomes need more; the Summary tab recommends a count when it can.</li>
@@ -320,10 +324,13 @@
                     <li>The QASM text may hold at most 1,000,000 characters (HTTP 413 above that). This is
                         separate from the request-body limit of 1,048,576 bytes (1 MiB) that applies to every
                         request, including <code>POST /export</code>.</li>
-                    <li>At most 10,000 statements (<code>max_qasm_gates</code> in <code>GET /config</code>),
-                        counted as the number of <code>;</code> after comments are removed. The header,
-                        the <code>include</code> line and the register declarations count too, so a circuit
-                        of 10,000 gates on one register is rejected as 10,004 statements.</li>
+                    <li>At most 10,000 top-level operation statements (gates, <code>measure</code>,
+                        <code>reset</code>, <code>barrier</code>, <code>if</code>; <code>max_qasm_gates</code> in
+                        <code>GET /config</code>). The header, the <code>include</code> line, register declarations and
+                        gate definitions are not counted.</li>
+                    <li>At most 200,000 gate applications after expanding user gate definitions and register
+                        broadcasts (<code>limits.max_expanded_gates</code>), so a short circuit of nested gate
+                        definitions cannot expand to millions of gates. The bundled benchmark circuits are exempt.</li>
                     <li>A custom <code>gate</code> definition with a name pytket's QASM parser treats
                         specially is rejected with HTTP 400, and the message names the gate. pytket turns
                         some names (<code>sleep</code>, <code>order2</code>…<code>order20</code>,

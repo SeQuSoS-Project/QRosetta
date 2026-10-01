@@ -1,6 +1,8 @@
 """Experiment routes: POST /experiments starts a sweep (poll GET /jobs/{id});
 GET /experiments/{id}/bundle streams the finished bundle as an in-memory ZIP."""
 
+from services.job_manager import require_exclusive_slot
+from services.security import client_address
 from config import settings
 import io
 import uuid
@@ -51,6 +53,7 @@ async def start_experiment(request: Request, payload: ExperimentPayload, backgro
     await require_available(payload.target_simulators)
 
     job_id = str(uuid.uuid4())
+    require_exclusive_slot(payload, client_address(request), job_id)
     ACTIVE_JOBS[job_id] = {**new_job(payload.execution_target), "kind": "experiment"}
     requested_target = ACTIVE_JOBS[job_id].get("requested_target")
     payload.execution_target = settings.EXECUTION_MODE

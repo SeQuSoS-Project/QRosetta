@@ -239,7 +239,7 @@ async def dispatch_to_runners(runner_urls: dict, runner_payload: dict, timeout_s
     if exclusive:
         runner_payload = {**runner_payload, "runner_phases": {
             name: i + 1 for i, name in enumerate(sorted(runner_urls))}}
-    waited = await GATE.acquire(exclusive)
+    waited = await GATE.acquire(exclusive, settings.EXCLUSIVE_MAX_WAIT_SEC if exclusive else None)
     try:
         if EXECUTION_MODE == "kubernetes":
             results = await dispatch_kubernetes_jobs(runner_urls, runner_payload, timeout_seconds, runner_statuses)

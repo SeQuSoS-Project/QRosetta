@@ -49,6 +49,10 @@ class RunRegistry:
 REGISTRY = RunRegistry()
 
 
+class ExclusiveWaitTimeout(RuntimeError):
+    """An exclusive dispatch waited longer than its cap for the server to become idle."""
+
+
 class ExclusiveGate:
     """Shared/exclusive admission for dispatches: an exclusive dispatch waits until no other
     dispatch is running and holds new ones back until it ends."""
@@ -64,17 +68,30 @@ class ExclusiveGate:
             self._cond = asyncio.Condition()
         return self._cond
 
-    async def acquire(self, exclusive: bool) -> float:
-        """Wait for admission; return the seconds waited."""
+    def status(self) -> dict:
+        """Dispatches running and waiting at this moment."""
+        return {"exclusive_running": self._exclusive, "exclusive_waiting": self._waiting_exclusive,
+                "shared_running": self._shared}
+
+    async def acquire(self, exclusive: bool, max_wait: float = None) -> float:
+        """Wait for admission; return the seconds waited. An exclusive dispatch that is not
+        admitted within ``max_wait`` seconds raises ExclusiveWaitTimeout."""
         started = time.monotonic()
         cond = self._condition()
         async with cond:
             if exclusive:
                 self._waiting_exclusive += 1
                 try:
-                    await cond.wait_for(lambda: not self._exclusive and self._shared == 0)
+                    await asyncio.wait_for(
+                        cond.wait_for(lambda: not self._exclusive and self._shared == 0),
+                        timeout=max_wait)
+                except asyncio.TimeoutError:
+                    raise ExclusiveWaitTimeout(
+                        f"exclusive run not started: other runs kept the server busy for "
+                        f"{max_wait:g} s (the exclusive wait cap); submit it again later") from None
                 finally:
                     self._waiting_exclusive -= 1
+                    cond.notify_all()
                 self._exclusive = True
             else:
                 await cond.wait_for(lambda: not self._exclusive and self._waiting_exclusive == 0)
@@ -92,3 +109,39 @@ class ExclusiveGate:
 
 
 GATE = ExclusiveGate()
+
+
+def releases_exclusive(worker):
+    """Decorator for a background job worker whose first argument is the job id: forget the
+    job's exclusive claim when the worker ends."""
+    import functools
+
+    @functools.wraps(worker)
+    async def wrapper(job_id, *args, **kwargs):
+        try:
+            return await worker(job_id, *args, **kwargs)
+        finally:
+            release_exclusive(job_id)
+    return wrapper
+
+
+_EXCLUSIVE_OWNERS: dict = {}
+_OWNERS_LOCK = threading.Lock()
+
+
+def claim_exclusive(client: str, job_id: str) -> str:
+    """Record ``job_id`` as ``client``'s exclusive job; return the job id the client already
+    holds instead, if any."""
+    with _OWNERS_LOCK:
+        held = _EXCLUSIVE_OWNERS.get(client)
+        if held is not None:
+            return held
+        _EXCLUSIVE_OWNERS[client] = job_id
+        return None
+
+
+def release_exclusive(job_id: str) -> None:
+    """Forget ``job_id`` as an exclusive job."""
+    with _OWNERS_LOCK:
+        for client in [c for c, j in _EXCLUSIVE_OWNERS.items() if j == job_id]:
+            del _EXCLUSIVE_OWNERS[client]

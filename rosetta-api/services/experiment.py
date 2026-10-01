@@ -17,7 +17,7 @@ from config import server_git_sha, server_image_digests
 from schemas import BatchPayload, BenchmarkTask, ExperimentPayload
 from services import experiment_artifacts as art
 from services.dispatcher import SEED_DERIVATION
-from services.run_registry import EXCLUSIVE
+from services.run_registry import EXCLUSIVE, releases_exclusive
 from services.job_manager import (
     ACTIVE_JOBS, _resolve_seed, effective_thresholds, run_batch_tasks, task_label, task_qubits,
 )
@@ -79,6 +79,7 @@ def _axis_label(mode: str, pp: bool) -> str:
     return f"{mode}_preproc{'On' if pp else 'Off'}"
 
 
+@releases_exclusive
 async def worker_experiment(job_id: str, payload: ExperimentPayload):
     """Background task for POST /experiments.
 

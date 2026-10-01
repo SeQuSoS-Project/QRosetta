@@ -175,3 +175,10 @@ def test_non_finite_and_huge_parameters_are_400(client):
     for param in ("1e308", "1e7", "nan", "1/0"):
         r = client.post("/compare", json={"qasm_string": QASM.replace("h q[0];", f"rx({param}) q[0];")})
         assert r.status_code == 400 and r.json()["detail"].startswith("Invalid gate parameter:"), (param, r.text)
+
+
+def test_nested_gate_expansion_is_bounded(client):
+    body = "gate g0 a { x a; }\n" + "".join(f"gate g{i} a {{ g{i-1} a; g{i-1} a; }}\n" for i in range(1, 21))
+    qasm = 'OPENQASM 2.0;\ninclude "qelib1.inc";\n' + body + "qreg q[1];\ng20 q[0];\n"
+    r = client.post("/compare", json={"qasm_string": qasm})
+    assert r.status_code == 400 and "expands to 1048576" in r.json()["detail"]

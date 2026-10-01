@@ -213,6 +213,51 @@ def check_parameter_values(qasm: str, statements: list = None) -> None:
                 _bad_request(f"Invalid gate parameter: '{_clip(param)}' in '{_clip(where)}': {exc}.")
 
 
+_DEF_HEAD_RE = re.compile(r"^\s*gate\s+([A-Za-z_]\w*)")
+_BARE_REG_RE = re.compile(r"(?<![\w\[])([A-Za-z_]\w*)(?!\s*\[)")
+
+
+def expanded_gate_count(qasm: str, statements: list = None) -> int:
+    """Gate applications the circuit expands to: each top-level operation counts the gates of
+    its definition (recursively through user gate definitions; built-in gates count 1),
+    times the size of the largest register it is broadcast over."""
+    statements = split_statements(qasm) if statements is None else statements
+    sizes = {name: int(size) for name, size in re.findall(r"\bqreg\s+(\w+)\s*\[\s*(\d+)\s*\]", qasm)}
+    cost = {}
+    for stmt in statements:
+        m = _DEF_HEAD_RE.match(stmt)
+        if not m:
+            continue
+        total = 0
+        for inner in gate_body_statements(stmt):
+            op = _NAME_RE.match(inner.strip())
+            total += cost.get(op.group(0), 1) if op else 0
+        cost[m.group(1)] = max(total, 1)
+    count = 0
+    for stmt in statements:
+        if _NON_OPERATION_RE.match(stmt):
+            continue
+        text = stmt.strip()
+        if text.startswith("if"):
+            text = text[text.index(")") + 1:].strip() if ")" in text else text
+        op = _NAME_RE.match(text)
+        if not op:
+            continue
+        rest = text[op.end():]
+        if rest.lstrip().startswith("("):
+            depth, end = 0, 0
+            for k, ch in enumerate(rest):
+                depth += ch == "("
+                depth -= ch == ")"
+                if depth == 0 and ch == ")":
+                    end = k + 1
+                    break
+            rest = rest[end:]
+        width = max([sizes.get(name, 1) for name in _BARE_REG_RE.findall(rest)] or [1])
+        count += cost.get(op.group(0), 1) * width
+    return count
+
+
 def validate_request(qasm: str, mode: str = "statevector", bypass_limits: bool = False,
                      apply_preprocessing: bool = True, check_reserved_names: bool = True):
     """Raise HTTPException for an oversized, too-complex, malformed, qubit-less or too-wide
@@ -243,6 +288,14 @@ def validate_request(qasm: str, mode: str = "statevector", bypass_limits: bool =
     check_qasm_syntax(qasm)
     if check_reserved_names:
         check_gate_names(qasm, statements)
+        if not (bypass_limits and settings.EXECUTION_MODE == "local"):
+            expanded = expanded_gate_count(qasm, statements)
+            if expanded > settings.MAX_EXPANDED_GATES:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(f"Circuit too complex: it expands to {expanded} gate applications "
+                            f"through its gate definitions and register broadcasts, above the "
+                            f"limit of {settings.MAX_EXPANDED_GATES}."))
     check_parameter_values(qasm, statements)
     if apply_preprocessing:
         check_parameter_expressions(qasm)
