@@ -49,7 +49,7 @@ pairs. A measured pair is consistent only when neither test is significant and t
 detect a total-variation gap of 0.05, computed at α/(m·c_m) for m tested pairs
 (c_m = 1 + 1/2 + … + 1/m), is at least 0.8. The shots this needs grow with the number of
 outcomes and backends; the report computes the power for every pair and recommends a shot
-count when it falls short. The default is 8192 shots per backend (`default_n_shots` in
+count when it falls short. The default is 8200 shots per backend, enough for up to 16 outcomes with 14 backends (8199 needed) (`default_n_shots` in
 `GET /config`).
 
 The tool reports disagreements; it does not decide which backend is wrong. The manual

@@ -551,7 +551,11 @@ def test_rare_outcome_pooling_and_recommendation_flag():
     assert stat["tested_outcome_bins"] == 3
     assert stat["low_count_warning"] is False
     assert stat["chi2"]["dof"] == stat["power"]["df"] == 2
-    assert stat["verdict"] == "consistent"
+    assert stat["power"]["pooled_probability"] == 0.002
+    assert abs(stat["power"]["delta_tv_tested"] - 0.048) < 1e-12
+    assert stat["verdict"] == "inconclusive_low_shots"
+    assert stat["inconclusive_reason"] == "low_power"
+    assert stat["power"]["recommended_shots_per_backend"] == 2091
 
 
 def test_single_outcome_tables_use_one_degree_of_freedom_and_low_count_checks():
@@ -645,3 +649,24 @@ def test_low_expected_counts_reports_whether_more_shots_can_resolve_it():
     ], n_shots=10), "a", "b")["metrics"]["statistical_test"]
     assert low_power["inconclusive_reason"] == "low_power"
     assert low_power["resolvable_by_more_shots"] is True
+
+
+def test_a_gap_hidden_in_the_pooled_bin_is_not_called_consistent():
+    import numpy as np
+
+    rng = np.random.default_rng(3)
+
+    def sample(p_top):
+        low = rng.integers(0, 2 ** 12, 4000)
+        top = (rng.random(4000) < p_top).astype(int)
+        values, counts = np.unique(low + top * 2 ** 12, return_counts=True)
+        return {format(int(v), "013b"): int(c) for v, c in zip(values, counts)}
+
+    stat = _record(create_counts_report([
+        {"simulator": "a", "counts": sample(0.4)}, {"simulator": "b", "counts": sample(0.0)},
+    ], n_shots=4000), "a", "b")["metrics"]["statistical_test"]
+    assert stat["effect_size"]["total_variation"] > 0.3
+    assert stat["power"]["pooled_probability"] > 0.9
+    assert stat["power"]["delta_tv_tested"] <= 0
+    assert stat["verdict"] != "consistent"
+    assert "_observed_proportions" not in stat

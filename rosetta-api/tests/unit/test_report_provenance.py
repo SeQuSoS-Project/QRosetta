@@ -61,7 +61,7 @@ def test_qubits_is_optional_for_qasmbench_and_literal_tasks():
 
 
 def test_default_shots_can_reach_the_consistent_verdict():
-    assert MeasuredQasmPayload(qasm_string=H).n_shots == settings.DEFAULT_SHOTS == 8192
+    assert MeasuredQasmPayload(qasm_string=H).n_shots == settings.DEFAULT_SHOTS == 8200
     description = MeasuredQasmPayload.model_fields["n_shots"].description
     assert "Benjamini-Yekutieli" in description and "recommended_shots_per_backend" in description
 

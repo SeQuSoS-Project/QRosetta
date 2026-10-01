@@ -12,7 +12,10 @@ from scipy.optimize import brentq
 from .common import STAT_TEST_ALPHA, STAT_TEST_DELTA_TV, STAT_TEST_TARGET_POWER
 
 POWER_MODEL = (
-    "min_cohens_w at alpha/(m*c_m) (w = delta_tv; df = tested outcome bins - 1, at least 1; "
+    "min_cohens_w at alpha/(m*c_m) on the tested table (w = delta_tv_tested = delta_tv minus "
+    "the smaller of the two backends' probabilities in the pooled rare-outcome bin, the most "
+    "total variation pooling can hide; power is alpha/(m*c_m) when delta_tv_tested "
+    "<= 0; df = tested outcome bins - 1, at least 1; "
     "m = comparable pairs in the report, the family BY corrects over; c_m = sum_{i=1..m} 1/i). "
     "alpha/(m*c_m) is the threshold Benjamini-Yekutieli applies to a single discovery, so the "
     "power is a lower bound for detecting one wrong backend under the rule that both tests "
@@ -60,23 +63,68 @@ def _power_at_shots(alpha, delta_tv, df, n_total):
     return float(1 - ncx2.cdf(crit, df, n_total * (delta_tv ** 2)))
 
 
+def _tested_gap(t_i, t_j, pooled_outcomes, delta_tv):
+    """(delta_tv minus the smaller pooled-bin probability, that probability) for a tested
+    table whose last column pools ``pooled_outcomes`` outcomes; a bin holding one outcome
+    hides nothing."""
+    if pooled_outcomes < 2 or len(t_i) == 0:
+        return float(delta_tv), 0.0
+    share = float(min(t_i[-1] / t_i.sum(), t_j[-1] / t_j.sum()))
+    return float(delta_tv) - share, share
+
+
+def _power_on_pooled_table(alpha, delta_tv, p_i, p_j, shots):
+    """Power at ``shots`` per backend for the table the observed proportions pool into."""
+    t_i, t_j, pooled, _ok = _pool_rare_outcomes(p_i * shots, p_j * shots)
+    gap, _share = _tested_gap(t_i, t_j, pooled, delta_tv)
+    if gap <= 0:
+        return 0.0
+    return _power_at_shots(alpha, gap, max(len(t_i) - 1, 1), 2.0 * shots)
+
+
+def _shots_per_backend_with_pooling(alpha, target_power, delta_tv, p_i, p_j):
+    """Smallest shots per backend at which the power on the pooled table of the observed
+    proportions reaches ``target_power``; None when MAX_SHOTS does not suffice."""
+    hi = _max_shots_per_backend()
+    if _power_on_pooled_table(alpha, delta_tv, p_i, p_j, hi) < target_power:
+        return None
+    lo = 1
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if _power_on_pooled_table(alpha, delta_tv, p_i, p_j, mid) >= target_power:
+            hi = mid
+        else:
+            lo = mid + 1
+    return int(lo)
+
+
 def _set_power(block, alpha, m_pairs):
-    """Fill ``block["power"]`` for a family of ``m_pairs`` tests at alpha/(m_pairs*c_m)."""
+    """Fill ``block["power"]`` for a family of ``m_pairs`` tests at alpha/(m_pairs*c_m).
+
+    Power is evaluated at ``delta_tv_tested``. When rare outcomes were pooled, the
+    recommended shots come from pooling the observed proportions at each candidate count
+    (``_shots_per_backend_with_pooling``), since pooling changes with the shot count."""
     power = block["power"]
     m = max(int(m_pairs), 1)
     c_m = _by_constant(m)
     alpha_used = alpha / (m * c_m)
     n_shots = list(block["n_shots"].values())
     n_total = float(sum(n_shots))
-    recommended = _shots_per_backend_for_target_power(
-        alpha_used, power["target_power"], power["delta_tv"], power["df"])
+    gap = power.get("delta_tv_tested", power["delta_tv"])
+    proportions = block.get("_observed_proportions")
+    if power.get("pooled_probability") and proportions is not None:
+        recommended = _shots_per_backend_with_pooling(
+            alpha_used, power["target_power"], power["delta_tv"], *proportions)
+    else:
+        recommended = _shots_per_backend_for_target_power(
+            alpha_used, power["target_power"], gap, power["df"])
     power.update({
         "alpha_used": alpha_used,
         "m_pairs": int(m_pairs),
         "c_m": c_m,
         "correction": CORRECTION,
-        "power_to_detect_delta_at_observed_shots": _power_at_shots(
-            alpha_used, power["delta_tv"], power["df"], n_total),
+        "power_to_detect_delta_at_observed_shots": (
+            _power_at_shots(alpha_used, gap, power["df"], n_total) if gap > 0 else alpha_used),
         "shots_per_backend_for_target_power": recommended,
         "recommended_shots_per_backend": recommended,
         "recommended_exceeds_actual": (
@@ -168,6 +216,16 @@ def _pool_rare_outcomes(row_i, row_j):
         start += 1
 
 
+def _williams_q(table):
+    """Williams' correction divisor for the G statistic of an R x C contingency table:
+    q = 1 + (N sum 1/r_i - 1)(N sum 1/c_j - 1) / (6 N (R-1)(C-1))."""
+    n = table.sum()
+    rows, cols = table.sum(axis=1), table.sum(axis=0)
+    r, c = table.shape
+    return float(1.0 + (n * np.sum(1.0 / rows) - 1.0) * (n * np.sum(1.0 / cols) - 1.0)
+                 / (6.0 * n * (r - 1) * (c - 1)))
+
+
 def _statistical_agreement_test(
     counts_i,
     counts_j,
@@ -180,7 +238,8 @@ def _statistical_agreement_test(
     res_i=None,
     res_j=None,
 ):
-    """Uncorrected Pearson chi-square and G-test of homogeneity between two count vectors.
+    """Pearson chi-square and G-test (with Williams' correction) of homogeneity between two
+    count vectors.
 
     ``counts_j`` is already aligned to ``basis``. Outcomes with zero counts in both rows are
     dropped; outcomes with an expected count below 5 are pooled into one bin
@@ -206,6 +265,7 @@ def _statistical_agreement_test(
 
     t_i, t_j, pooled_outcomes, counts_ok = _pool_rare_outcomes(row_i, row_j)
     df = max(len(t_i) - 1, 1)
+    gap, pooled_share = _tested_gap(t_i, t_j, pooled_outcomes, delta_tv)
     block = {
         "basis": basis,
         "basis_source": "declared_qubit_ordering",
@@ -221,6 +281,8 @@ def _statistical_agreement_test(
         },
         "power": {
             "delta_tv": delta_tv,
+            "delta_tv_tested": gap,
+            "pooled_probability": pooled_share,
             "target_power": target_power,
             "model": POWER_MODEL,
             "df": df,
@@ -249,6 +311,7 @@ def _statistical_agreement_test(
         "inconclusive_reason": None,
         "resolvable_by_more_shots": None,
         "verdict": None,
+        "_observed_proportions": (p_i, p_j),
     }
     _set_power(block, alpha, 1)
 
@@ -260,7 +323,10 @@ def _statistical_agreement_test(
 
     table = np.vstack([t_i, t_j])
     chi2_stat, chi2_p, dof, _ = chi2_contingency(table, correction=False)
-    g_stat, g_p, _, _ = chi2_contingency(table, correction=False, lambda_="log-likelihood")
+    g_raw, _g_p_raw, _, _ = chi2_contingency(table, correction=False, lambda_="log-likelihood")
+    q = _williams_q(table)
+    g_stat = g_raw / q
+    g_p = float(_chi2_dist.sf(g_stat, dof))
 
     block["effect_size"]["cramers_v"] = float(np.sqrt(chi2_stat / n_total))
     block["chi2"].update({
@@ -269,6 +335,8 @@ def _statistical_agreement_test(
         "p_value": float(chi2_p),
     })
     block["g_test"].update({
+        "statistic_uncorrected": float(g_raw),
+        "williams_q": float(q),
         "statistic": float(g_stat),
         "dof": int(dof),
         "p_value": float(g_p),
@@ -366,6 +434,7 @@ def _apply_multiple_comparison_correction(stat_records, alpha=STAT_TEST_ALPHA):
         else:
             verdict = "ambiguous"
         rec["verdict"] = verdict
+        rec.pop("_observed_proportions", None)
         verdict_counts[verdict] = verdict_counts.get(verdict, 0) + 1
 
     return {**summary, "verdict_counts": verdict_counts, "n_significant_by": n_sig}

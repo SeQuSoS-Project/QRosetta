@@ -278,7 +278,8 @@ def test_distance_metrics_propagate_nan():
     assert math.isnan(js)
 
 
-def test_g_test_is_uncorrected_at_one_degree_of_freedom():
+def test_g_test_applies_williams_correction():
+    from scipy.stats import chi2 as chi2_dist
     counts_a = {"0": 30, "1": 10}
     counts_b = {"0": 20, "1": 20}
     stat = _record(create_counts_report([
@@ -290,7 +291,12 @@ def test_g_test_is_uncorrected_at_one_degree_of_freedom():
     g_manual = 2 * float((observed * np.log(observed / expected)).sum())
     chi2_manual = float(((observed - expected) ** 2 / expected).sum())
     assert stat["g_test"]["dof"] == 1
-    assert stat["g_test"]["statistic"] == pytest.approx(g_manual)
+    n, rows, cols = observed.sum(), observed.sum(1), observed.sum(0)
+    q = 1 + (n * (1 / rows).sum() - 1) * (n * (1 / cols).sum() - 1) / (6 * n)
+    assert stat["g_test"]["statistic_uncorrected"] == pytest.approx(g_manual)
+    assert stat["g_test"]["williams_q"] == pytest.approx(q)
+    assert stat["g_test"]["statistic"] == pytest.approx(g_manual / q)
+    assert stat["g_test"]["p_value"] == pytest.approx(float(chi2_dist.sf(g_manual / q, 1)))
     assert stat["chi2"]["statistic"] == pytest.approx(chi2_manual)
 
 
