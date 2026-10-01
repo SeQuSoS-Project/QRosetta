@@ -1001,7 +1001,7 @@
                     comparison: compiled circuits are kept in the report's <code>compiled_circuits</code>,
                     apart from <code>raw_results</code>. Tick levels under <strong>Config → Compile-only
                     services</strong>, or send <code>compilers</code> (compiler id → list of distinct levels,
-                    at most 8 compiles per circuit) with <code>/compare</code>, <code>/compare_measured</code>
+                    at most 12 compiles per circuit) with <code>/compare</code>, <code>/compare_measured</code>
                     or <code>/run_batch_suite</code>; <code>GET /compilers</code> lists them.
                 </p>
                 <p>
@@ -1049,7 +1049,10 @@
                     counts and two-qubit counts match. Each record keeps the image's
                     <code>runtime_environment</code> and <code>image_git_sha</code>; cite gate counts, and
                     the record's text, rather than a regenerated text. Compile-only services also run in
-                    experiments (<code>compilers</code> on <code>POST /experiments</code>).
+                    experiments (<code>compilers</code> on <code>POST /experiments</code>). GUOQ (wisq) is not
+                    offered: its search stops on wall-clock time only (its seed covers resynthesis
+                    partitions), so its output would depend on machine load rather than on the circuit
+                    and settings.
                 </p>
                 <table>
                     <thead><tr><th>Compiler</th><th>Levels</th><th>What runs</th></tr></thead>
@@ -1081,6 +1084,25 @@
                             never as output. Gates QMAP's own optimizations remove, such as <code>id</code>,
                             can leave a qubit idle and are caught by this check. QMAP's post-mapping optimizations can rewrite
                             single-qubit sequences, so the output can contain gates such as <code>h</code>.</td></tr>
+                        <tr><td>Cirq (cirq-core 1.7.0)</td><td>0, 1</td><td>Cirq's own OpenQASM 2.0 parser
+                            (<code>circuit_from_qasm</code>), then <code>optimize_for_target_gateset</code> to the CZ
+                            target gate set (CZ and PhasedXZ gates, neighbouring operations merged); level 1 adds
+                            <code>eject_phased_paulis</code>, <code>eject_z</code> and the cleanups that drop
+                            negligible operations and empty moments. Written back with
+                            <code>to_qasm(precision=16)</code> as one register <code>q</code> in declaration
+                            order. This is Cirq's optimiser; the Cirq runner compiles through pytket instead. A
+                            <code>cu3</code> that Cirq would import wrongly is refused (see the known issue
+                            below), and up to 10 qubits every output is checked against the input with Qiskit
+                            and refused when it differs. The sqrt-iSWAP target gate set is not offered: OpenQASM
+                            2.0 has no such gate, so the text would show only its <code>cx</code>
+                            decomposition.</td></tr>
+                        <tr><td>staq 3.5 (softwareQ)</td><td>1, 2, 3</td><td>The staq command-line compiler,
+                            built from the checksum-pinned v3.5 source with Qiskit's qelib1 gate definitions:
+                            <code>-O1</code> (rotation folding, simplification), <code>-O2</code> (inline all
+                            gates, then the same), <code>-O3</code> (adds CNOT resynthesis); no device mapping.
+                            Registers, <code>creg</code> declarations and gate definitions are kept. staq reads
+                            numbers in single precision (see the known issue below). Up to 10 qubits every
+                            output is checked against the input with Qiskit.</td></tr>
                     </tbody>
                 </table>
                 <p>
@@ -1318,6 +1340,23 @@
                             <td><code>qreg q[3]; h q[0]; cx q[0],q[2];</code> on a 3-qubit line: output
                                 <code>cx q[0],q[1]</code> with <code>// i 0 1 2</code> and
                                 <code>// o 0 1</code>.</td></tr>
+                        <tr><td>Cirq 1.7.0 (compile-only)</td>
+                            <td><code>circuit_from_qasm</code> imports <code>cu3(θ,φ,λ)</code> with the wrong
+                                unitary when θ mod 4π lies in [2π, 4π), for example any small negative θ: the
+                                controlled operation gets a phase of −1 on the control's |1⟩ branch. Every other
+                                qelib1 gate and parameter range tested imports correctly. The Cirq compiler
+                                refuses such a <code>cu3</code>; the Cirq and qsim runners are not affected,
+                                since they build their circuits through pytket.</td>
+                            <td><code>qreg q[2]; cu3(-0.4,0.4,-1.1) q[0],q[1];</code> imported by
+                                <code>cirq.contrib.qasm_import.circuit_from_qasm</code> and compared with
+                                Qiskit's operator: not equal; θ = 0.4 or θ = −0.4 + 4π: equal.</td></tr>
+                        <tr><td>staq 3.5 (compile-only)</td>
+                            <td>The lexer reads every real literal with <code>std::stof</code>, so each angle
+                                is rounded to single precision before any pass runs. Outputs stay equivalent
+                                (infidelity below 1e-14 on 360 random 3–4 qubit outputs), but their angles
+                                differ from the input after about the eighth significant digit.</td>
+                            <td><code>qreg q[1]; rz(0.3) q[0];</code> with <code>staq -O1</code> prints
+                                <code>rz(0.300000011920929) q[0];</code>.</td></tr>
                         <tr><td>TorchQuantum</td>
                             <td>Rejects a circuit with more than one <code>qreg</code> when preprocessing is
                                 off (an Error, not a wrong result). With preprocessing on the API merges the

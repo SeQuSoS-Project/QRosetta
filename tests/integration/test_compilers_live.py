@@ -70,7 +70,7 @@ def test_every_enabled_compiler_is_available():
 
 
 @pytest.mark.skipif(CONTAINER_RUNTIME is None, reason="no container runtime to reach the images")
-@pytest.mark.parametrize("compiler", ["bqskit", "pyzx", "qmap"])
+@pytest.mark.parametrize("compiler", ["bqskit", "pyzx", "qmap", "cirq", "staq"])
 def test_image_self_test_passes(compiler):
     result = subprocess.run([CONTAINER_RUNTIME, "exec", f"{compiler}-compiler", "python", "main.py", "--self-test"],
                             capture_output=True, text=True, timeout=900)
@@ -92,3 +92,26 @@ def test_every_level_compiles_each_probe_through_the_api(probe):
         assert (record["gate_count"], record["circuit_depth"]) == count_qasm_gates_and_depth(text)
         assert _equivalent(compile_input, record), record["compiler"]
     assert [r["simulator"] for r in report["raw_results"]] == ["qiskit"]
+
+
+def test_cirq_refuses_a_cu3_it_would_import_wrongly():
+    qasm = _PROBE_HEADER + "h q[0];\ncu3(-0.4,0.4,-1.1) q[0],q[1];\nh q[2];\n"
+    (record,) = _run(qasm, {"cirq-transformers": [0]})["compiled_circuits"]
+    assert record["dispatch_status"] == "error" and "cirq-core 1.7.0 imports cu3" in record["error"]
+
+
+def test_staq_keeps_registers_and_custom_gates():
+    qasm = ('OPENQASM 2.0;\ninclude "qelib1.inc";\ngate g(t) a,b { cu1(t) a,b; h b; }\n'
+            'qreg a[2];\nqreg b[1];\nh a[0];\ng(pi/4) a[0],b[0];\ncx a[1],b[0];\n')
+    report = httpx.post(f"{BASE_URL}/compare", json={"qasm_string": qasm, "apply_preprocessing": False,
+                                                     "target_simulators": ["qiskit"], "compilers": {"staq": [1]},
+                                                     "execution_target": "local"}, timeout=30)
+    assert report.status_code == 200, report.text
+    job_id = report.json()["job_id"]
+    for _ in range(150):
+        if httpx.get(f"{BASE_URL}/jobs/{job_id}", timeout=30).json()["status"] in ("completed", "failed"):
+            break
+        time.sleep(2)
+    (record,) = httpx.get(f"{BASE_URL}/jobs/{job_id}/report", timeout=60).json()["compiled_circuits"]
+    assert record["dispatch_status"] == "ok", record.get("error")
+    assert "qreg a[2];" in record["transpiled_qasm"] and "qreg b[1];" in record["transpiled_qasm"]

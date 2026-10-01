@@ -47,6 +47,8 @@ COMPILERS=(
   "bqskit_compiler"
   "pyzx_compiler"
   "qmap_compiler"
+  "cirq_compiler"
+  "staq_compiler"
 )
 
 echo ">>> Starting Graceful Build..."

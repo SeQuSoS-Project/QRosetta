@@ -28,7 +28,9 @@ class Settings(BaseSettings):
     BQSKIT_COMPILER_URL: str = "http://bqskit-compiler:8000"
     PYZX_COMPILER_URL: str = "http://pyzx-compiler:8000"
     QMAP_COMPILER_URL: str = "http://qmap-compiler:8000"
-    MAX_COMPILE_JOBS: int = 8
+    CIRQ_COMPILER_URL: str = "http://cirq-compiler:8000"
+    STAQ_COMPILER_URL: str = "http://staq-compiler:8000"
+    MAX_COMPILE_JOBS: int = 12
 
     PLATFORM_VERSION: str = os.getenv("QROSETTA_VERSION", "1.0.0")
 
@@ -300,6 +302,25 @@ class Settings(BaseSettings):
                 "optimization_levels": {
                     0: "Decompose to u3+cx (Qiskit), then heuristic (A*) mapping onto a linear qubit chain",
                     1: "Decompose to u3+cx (Qiskit), then exact (SAT) mapping onto a linear qubit chain (small circuits only)",
+                },
+            },
+            "cirq-transformers": {
+                "base_url": self.CIRQ_COMPILER_URL,
+                "name": "Cirq",
+                "enabled": True,
+                "optimization_levels": {
+                    0: "optimize_for_target_gateset to the CZ target gate set (CZ + PhasedXZ, merged)",
+                    1: "Level 0, then eject_phased_paulis, eject_z and the drop-negligible/empty cleanups",
+                },
+            },
+            "staq": {
+                "base_url": self.STAQ_COMPILER_URL,
+                "name": "staq",
+                "enabled": True,
+                "optimization_levels": {
+                    1: "staq -O1: rotation folding and simplification",
+                    2: "staq -O2: inline gates, simplification, rotation folding",
+                    3: "staq -O3: -O2 plus CNOT resynthesis",
                 },
             },
         }

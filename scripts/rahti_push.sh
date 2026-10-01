@@ -35,6 +35,8 @@ declare -A SERVICE_MAP=(
     ["bqskit-compiler"]="bqskit_compiler"
     ["pyzx-compiler"]="pyzx_compiler"
     ["qmap-compiler"]="qmap_compiler"
+    ["cirq-compiler"]="cirq_compiler"
+    ["staq-compiler"]="staq_compiler"
 )
 
 if [ $# -gt 0 ]; then

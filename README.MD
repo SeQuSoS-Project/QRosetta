@@ -11,7 +11,7 @@ the metrics, the counts (statevectors on request; otherwise their sha256 and len
 configuration and seeds, and the SDK versions that produced them.
 
 The Circuits tab shows those circuit texts side by side with a line diff between any two of
-them. A run can also send its circuit to compile-only services (BQSKit, PyZX, MQT QMAP), which
+them. A run can also send its circuit to compile-only services (BQSKit, PyZX, MQT QMAP, Cirq, staq), which
 return circuit text only: their output is recorded, shown and exported, but never simulated or
 compared. A saved run can be shared through a read-only link that expires after 1 to 90 days; the
 link shows the circuit texts only, and its owner can revoke it.

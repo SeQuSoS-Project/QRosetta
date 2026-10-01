@@ -158,8 +158,9 @@ def _pins(lock_bytes: bytes) -> dict:
 def compiler_lock_files(reports: list, compiler_services: dict) -> dict:
     """``{crate path: bytes}`` of requirements.lock for each compiler that produced output
     in the reports, read from compilers/<name>/ beside the API source. A lock is left out
-    when it pins a version other than one the compiler's records report, since it would
-    then not describe the environment that ran."""
+    when it pins a recorded package at a version other than the one the compiler's records
+    report, since it would then not describe the environment that ran; a recorded tool the
+    lock does not list (a binary such as staq) does not decide it."""
     used = {}
     for report in reports:
         for record in _records(report):
@@ -177,7 +178,7 @@ def compiler_lock_files(reports: list, compiler_services: dict) -> dict:
             with open(path, "rb") as fh:
                 data = fh.read()
             pins = _pins(data)
-            if all(pins.get(re.sub(r"[-_.]+", "-", pkg).lower()) == ver
+            if all(pins.get(re.sub(r"[-_.]+", "-", pkg).lower(), ver) == ver
                    for versions in version_sets for pkg, ver in versions.items()):
                 out[f"compilers/{name}/requirements.lock"] = data
             break
