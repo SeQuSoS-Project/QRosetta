@@ -55,6 +55,7 @@ RUN chown -R appuser:appuser /home/appuser/app && \
     chmod -R g=u /home/appuser
 ARG QROSETTA_GIT_SHA=unknown
 ENV QROSETTA_IMAGE_GIT_SHA=${QROSETTA_GIT_SHA}
+ENV PYTHONHASHSEED=0
 ENV QUARTZ_VERSION=${QUARTZ_VERSION} \
     QUARTZ_ECC_SET=/usr/local/share/quartz/Nam_complete_ECC_set.json \
     QUARTZ_ECC_MAX_GATES=${ECC_MAX_GATES} \

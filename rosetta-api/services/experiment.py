@@ -9,14 +9,16 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import time
 import zipfile
 from datetime import datetime, timezone
 
-from config import server_git_sha, server_image_digests
+from config import server_git_sha, server_image_digests, settings
 from schemas import BatchPayload, BenchmarkTask, ExperimentPayload
 from services import experiment_artifacts as art
 from services.dispatcher import SEED_DERIVATION
+from services.export_compiled import compiled_metrics_csv, compiler_lock_files
 from services.run_registry import EXCLUSIVE, releases_exclusive
 from services.job_manager import (
     ACTIVE_JOBS, _resolve_seed, effective_thresholds, run_batch_tasks, task_label, task_qubits,
@@ -28,6 +30,25 @@ logger = get_logger("rosetta-experiment")
 
 MAX_EXPERIMENT_CELLS = 200
 
+
+
+def _compiled_files(compiled_reports: list) -> dict:
+    """compiled_circuits/<axis>/<circuit>/<key>.qasm for every compiled text,
+    compiled_circuits.csv with one row per compile record, and the lock file of each
+    compiler that produced output; empty when nothing was compiled."""
+    files, paths = {}, {}
+    for task, report in compiled_reports:
+        for record in report.get("compiled_circuits") or []:
+            if isinstance(record, dict) and isinstance(record.get("transpiled_qasm"), str):
+                stem = re.sub(r"[^A-Za-z0-9~_-]+", "-", str(record.get("compiler"))).strip("-") or "compiler"
+                path = f"compiled_circuits/{task}/{stem}.qasm"
+                files[path] = art.qasm_bytes(record["transpiled_qasm"])
+                paths[(task, record.get("compiler"))] = path
+    if not any(report.get("compiled_circuits") for _, report in compiled_reports):
+        return {}
+    files["compiled_circuits.csv"] = compiled_metrics_csv(compiled_reports, paths).encode("utf-8")
+    files.update(compiler_lock_files([r for _, r in compiled_reports], settings.get_compiler_services()))
+    return files
 
 def resolve_circuits(payload: ExperimentPayload) -> tuple:
     """Resolve every configured circuit to a frozen QASM string.
@@ -120,6 +141,7 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
         thresholds_per_axis, runners_per_axis = {}, {}
         all_reports: list = []
         result_files: dict = {}
+        compiled_reports: list = []
         offset = 0
         for pp, axis in zip(axes, axis_labels):
             batch_payload = BatchPayload(
@@ -161,6 +183,7 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
                     report = art.strip_statevectors(report)
                 result_files[f"results/{axis}/{circuit['id']}.json"] = json.dumps(
                     report, indent=2, default=str).encode("utf-8")
+                compiled_reports.append((f"{axis}/{circuit['id']}", report))
                 if report.get("seed") is not None:
                     effective_seeds[axis] = report["seed"]
 
@@ -172,6 +195,7 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
         progress["current_index"] = None
 
         files: dict = dict(result_files)
+        files.update(_compiled_files(compiled_reports))
         for c in resolved:
             files[f"inputs/{c['id']}.qasm"] = art.qasm_bytes(c["qasm"])
         files["conformance_matrix.csv"] = art.csv_string(

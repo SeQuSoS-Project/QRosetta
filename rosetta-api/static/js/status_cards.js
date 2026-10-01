@@ -67,7 +67,8 @@ export function renderBatchProgress(progress) {
 export const _STATUS_CFG = {
     queued:   { color: 'bg-gray-300',    text: 'text-gray-400',   label: 'QUEUED',    pulse: false, terminal: false },
     spawning: { color: 'bg-amber-400',   text: 'text-amber-600',  label: 'SPAWNING',  pulse: true,  terminal: false },
-    running:  { color: 'bg-blue-500',    text: 'text-blue-600',   label: 'RUNNING',   pulse: true,  terminal: false },
+    running:  { color: 'bg-blue-500',    text: 'text-blue-600',   label: 'SENT',      pulse: true,  terminal: false,
+                hint: 'Sent to the backend. Each backend runs one request at a time, so this includes any wait behind another job; the wait is recorded as queue_wait_sec.' },
     done:     { color: 'bg-green-500',   text: 'text-green-700',  label: 'DONE',      pulse: false, terminal: true  },
     error:    { color: 'bg-red-500',     text: 'text-red-600',    label: 'ERROR',     pulse: false, terminal: true  },
     timeout:  { color: 'bg-orange-400',  text: 'text-orange-500', label: 'TIMEOUT',   pulse: false, terminal: true  },
@@ -148,7 +149,7 @@ export function updateRunnerStatuses(statuses) {
             card.innerHTML = `
                 <span class="w-2 h-2 rounded-full flex-shrink-0 ${cfg.color}${cfg.pulse ? ' animate-pulse' : ''}"></span>
                 <span class="flex-1 text-gray-700 truncate">${name}</span>
-                <span class="font-semibold tracking-widest text-[10px] ${cfg.text} mr-1">${cfg.label}</span>
+                <span class="font-semibold tracking-widest text-[10px] ${cfg.text} mr-1"${cfg.hint ? ` title="${cfg.hint}"` : ''}>${cfg.label}</span>
                 <span class="text-gray-400 text-[10px] w-7 text-right">${elapsedDisplay}</span>
             `;
         }

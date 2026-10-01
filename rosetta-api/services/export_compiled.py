@@ -2,6 +2,9 @@
 compiler's output circuit, one CreateAction per compile, and the pinned environment of
 each compiler that ran."""
 
+import csv
+import io
+import json
 import os
 import re
 
@@ -116,15 +119,40 @@ def compiler_applications(reports: list, services: dict = None) -> list:
 
 
 def compile_provenance(reports_by_task: list) -> list:
-    """``[{task, compiler, compiler_id, optimization_level, dispatch_status, sdk_versions,
-    compiler_code_sha256, passes_applied, error}]`` for provenance.json."""
+    """``[{task, compiler, compiler_id, optimization_level, dispatch_status, gate metrics,
+    sdk_versions, image_git_sha, compiler_code_sha256, passes_applied, error}]`` for
+    provenance.json."""
     rows = []
     for task, report in reports_by_task:
         for record in _records(report):
             rows.append({"task": task, **{field: record.get(field) for field in (
-                "compiler", "compiler_id", "optimization_level", "dispatch_status", "sdk_versions",
-                "compiler_code_sha256", "passes_applied", "error")}})
+                "compiler", "compiler_id", "optimization_level", "dispatch_status", "gate_count",
+                "multi_qubit_gate_count", "circuit_depth", "gate_counts", "gate_metrics_basis",
+                "sdk_versions", "image_git_sha", "compiler_code_sha256", "passes_applied", "error")}})
     return rows
+
+
+COMPILED_METRICS_PATH = "tables/compiled_circuits.csv"
+_METRIC_FIELDS = ("task", "compiler", "compiler_id", "optimization_level", "dispatch_status",
+                  "gate_count", "multi_qubit_gate_count", "circuit_depth", "gate_counts", "file")
+
+
+def compiled_metrics_csv(reports_by_task: list, file_paths: dict) -> str:
+    """One CSV row per compile record; ``gate_counts`` as sorted-key JSON, ``file`` the
+    crate path of its output (``file_paths[(task, compiler key)]``), empty when it has none."""
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=_METRIC_FIELDS, lineterminator="\n")
+    writer.writeheader()
+    for task, report in reports_by_task:
+        for record in _records(report):
+            counts = record.get("gate_counts")
+            writer.writerow({
+                "task": "" if task is None else task,
+                **{field: record.get(field, "") for field in _METRIC_FIELDS[1:8]},
+                "gate_counts": json.dumps(counts, sort_keys=True) if isinstance(counts, dict) else "",
+                "file": file_paths.get((task, record.get("compiler")), ""),
+            })
+    return buf.getvalue()
 
 
 def compiler_keys(report: dict) -> list:

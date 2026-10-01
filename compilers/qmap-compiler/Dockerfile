@@ -19,6 +19,7 @@ RUN chown -R appuser:appuser /home/appuser/app && \
 ENV HOME=/home/appuser
 ARG QROSETTA_GIT_SHA=unknown
 ENV QROSETTA_IMAGE_GIT_SHA=${QROSETTA_GIT_SHA}
+ENV PYTHONHASHSEED=0
 USER appuser
 
 CMD ["sh", "-c", "gunicorn main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000} --timeout 330 --access-logfile -"]

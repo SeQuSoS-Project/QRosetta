@@ -18,7 +18,16 @@ def test_success_carries_text_passes_and_text_counted_metrics():
     result = fx.process_compile({"circuit_data": QASM, "optimization_level": 0})
     assert result == {"compiler": "fixture", "optimization_level": 0, "transpiled_qasm": QASM,
                       "passes_applied": ["identity"], "gate_count": 2, "circuit_depth": 2,
+                      "gate_counts": {"cx": 1, "h": 1}, "multi_qubit_gate_count": 1,
                       "gate_metrics_basis": GATE_METRICS_FROM_QASM}
+
+
+def test_gate_counts_by_name_count_statements_and_multi_qubit_ones():
+    from qrosetta_commons.helpers import count_qasm_gates_by_name
+    text = ('OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[3];\ncreg c[3];\ngate g a,b { cx a,b; }\n'
+            'ccx q[0],q[1],q[2];\nrz(0.1) q[0];\nbarrier q;\ng q[0],q[1];\ncx q[1],q[1];\n'
+            'measure q[0] -> c[0];\n')
+    assert count_qasm_gates_by_name(text) == ({"ccx": 1, "cx": 1, "g": 1, "rz": 1}, 2)
 
 
 def test_unknown_level_and_oversized_circuits_are_errors():

@@ -343,6 +343,29 @@ def count_qasm_gates_and_depth(qasm_str: str) -> tuple:
     return gate_count, max(depth_by_qubit.values(), default=0)
 
 
+def count_qasm_gates_by_name(qasm_str: str) -> tuple:
+    """Return ``({gate name: count}, multi_qubit_count)`` over the same top-level gate
+    statements ``count_qasm_gates_and_depth`` counts; ``multi_qubit_count`` is the number of
+    statements acting on two or more distinct qubits."""
+    counts = {}
+    multi_qubit = 0
+    no_braces = re.sub(r'//.*', '', qasm_str).replace('{', ' ').replace('}', ' ')
+    for stmt in no_braces.split(';'):
+        stmt = stmt.strip()
+        if not stmt:
+            continue
+        words = stmt.split('(', 1)[0].split()
+        if not words or words[0].lower() in _QASM_NON_GATE_KEYWORDS:
+            continue
+        qubits = {f"{reg}[{idx}]" for reg, idx in _QASM_QUBIT_REF_RE.findall(stmt)}
+        if not qubits:
+            continue
+        counts[words[0]] = counts.get(words[0], 0) + 1
+        if len(qubits) >= 2:
+            multi_qubit += 1
+    return dict(sorted(counts.items())), multi_qubit
+
+
 GATE_METRICS_FROM_QASM = ("top-level gate statements of transpiled_qasm; depth by greedy "
                           "layering")
 

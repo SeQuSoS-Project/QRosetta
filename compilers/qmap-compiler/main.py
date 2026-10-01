@@ -4,13 +4,13 @@ qubit count, after Qiskit decomposes it to u3 and cx, the gate set QMAP maps."""
 from fastapi import FastAPI
 from mqt.core import load
 from mqt.qmap.sc import Architecture, Configuration, Method, map_
-from qiskit import QuantumCircuit, qasm2, transpile
-from qiskit.quantum_info import Operator
+from qiskit import QuantumCircuit, qasm2
 
 from qrosetta_commons.compile_service import (
-    register_compiler_endpoint, run_compile_job, run_compiler_cli_main,
+    TRANSLATION_PROBES, register_compiler_endpoint, run_compile_job, run_compiler_cli_main,
 )
 from qrosetta_commons.helpers import declare_sdk_packages, with_sdk_versions
+from qrosetta_commons.qiskit_circuits import translate_to_basis, translation_note, unitary_of
 
 declare_sdk_packages("mqt.qmap", "mqt.core", "qiskit")
 
@@ -19,18 +19,16 @@ app = FastAPI(title="MQT QMAP Compiler")
 DECOMPOSITION_BASIS = ("u3", "cx")
 CHECKED_UP_TO_QUBITS = 10
 
-_DECOMPOSE_NOTE = ("qiskit.transpile(basis_gates=['u3', 'cx'], optimization_level=0): basis "
-                   "translation only, required by the adapter. QMAP 3.10 rejects gates with "
-                   "more than one control and turns other controlled two-qubit gates (cu3, "
-                   "cp) into cx without an error, so it never receives them.")
+_DECOMPOSE_NOTE = (translation_note(DECOMPOSITION_BASIS) + " QMAP 3.10 rejects gates with more "
+                   "than one control and turns other controlled two-qubit gates (cu3, cp) into cx "
+                   "without an error, so it never receives them.")
 _ENCODE_NOTE = ("QuantumComputation.qasm2_str(): the mapped circuit as OpenQASM 2.0. Its "
                 "'// i' and '// o' comment lines give the physical qubit holding each logical "
                 "qubit at input and at output.")
 
 
 def _decompose(qasm: str) -> str:
-    circuit = transpile(QuantumCircuit.from_qasm_str(qasm), basis_gates=list(DECOMPOSITION_BASIS),
-                        optimization_level=0)
+    circuit = translate_to_basis(QuantumCircuit.from_qasm_str(qasm), DECOMPOSITION_BASIS)
     unexpected = sorted({inst.operation.name for inst in circuit.data} - set(DECOMPOSITION_BASIS)
                         - {"barrier"})
     if unexpected:
@@ -127,7 +125,7 @@ def equivalent(input_qasm: str, output_qasm: str) -> bool:
             other = holds[wire]
             logical.swap(wire, other)
             holds[wire], holds[other] = holds[other], holds[wire]
-    return Operator(logical).equiv(Operator(source), atol=1e-8)
+    return unitary_of(logical).equiv(unitary_of(source), atol=1e-8)
 
 
 @with_sdk_versions
@@ -138,4 +136,5 @@ def process_compile(payload: dict) -> dict:
 register_compiler_endpoint(app, process_compile)
 
 if __name__ == "__main__":
-    run_compiler_cli_main(app, process_compile, "MQT QMAP", levels=sorted(PIPELINES), equivalent=equivalent)
+    run_compiler_cli_main(app, process_compile, "MQT QMAP", levels=sorted(PIPELINES), equivalent=equivalent,
+                          extra_probes=TRANSLATION_PROBES)

@@ -1047,8 +1047,21 @@
                     same text in every job. BQSKit's numerical resynthesis is not portable beyond the image:
                     on another Python or BLAS build its angles can differ in the last digits, while gate
                     counts and two-qubit counts match. Each record keeps the image's
-                    <code>runtime_environment</code> and <code>image_git_sha</code>; cite gate counts, and
-                    the record's text, rather than a regenerated text. Compile-only services also run in
+                    <code>runtime_environment</code>, <code>image_git_sha</code> and
+                    <code>compiler_code_sha256</code>; cite the record's text rather than a regenerated text.
+                </p>
+                <p>
+                    <code>gate_count</code> is the number of top-level gate statements in the output text and
+                    <code>circuit_depth</code> its greedy layering, one statement per layer slot whatever the
+                    gate; barriers are neither counted nor treated as aligning the wires, so the depth can be
+                    lower than Qiskit's <code>depth()</code> of the same text. The compilers write different
+                    gate sets: staq keeps <code>ccx</code>, <code>cu1</code> and <code>swap</code> as single
+                    statements, Quartz writes <code>h</code>, <code>x</code>, <code>rz</code> and
+                    <code>cx</code>, Cirq <code>cz</code> and single-qubit gates. A smaller
+                    <code>gate_count</code> therefore does not mean a smaller circuit across compilers. Each
+                    record also has <code>multi_qubit_gate_count</code> (statements on two or more qubits) and
+                    <code>gate_counts</code> (statements per gate name); to compare compilers, translate the
+                    outputs to one gate set and count there. Compile-only services also run in
                     experiments (<code>compilers</code> on <code>POST /experiments</code>). GUOQ (wisq) is not
                     offered: its search stops on wall-clock time only (its seed covers resynthesis
                     partitions), so its output would depend on machine load rather than on the circuit
@@ -1091,40 +1104,62 @@
                             negligible operations and empty moments. Written back with
                             <code>to_qasm(precision=16)</code> as one register <code>q</code> in declaration
                             order. This is Cirq's optimiser; the Cirq runner compiles through pytket instead. A
-                            <code>cu3</code> that Cirq would import wrongly is refused (see the known issue
-                            below), and up to 10 qubits every output is checked against the input with Qiskit
-                            and refused when it differs. The sqrt-iSWAP target gate set is not offered: OpenQASM
+                            <code>cu3</code> that Cirq would import wrongly is refused, at top level or inside a
+                            gate definition and at any qubit count (see the known issue below), and up to 10
+                            qubits every output is checked against the input with Qiskit and refused when it
+                            differs. The image fixes <code>PYTHONHASHSEED</code>, without which Cirq writes the
+                            gates of a moment in a different order in each process. The sqrt-iSWAP target gate set is not offered: OpenQASM
                             2.0 has no such gate, so the text would show only its <code>cx</code>
                             decomposition.</td></tr>
                         <tr><td>staq 3.5 (softwareQ)</td><td>1, 2, 3</td><td>The staq command-line compiler,
-                            built from the checksum-pinned v3.5 source with Qiskit's qelib1 gate definitions:
-                            <code>-O1</code> (rotation folding, simplification), <code>-O2</code> (inline all
-                            gates, then the same), <code>-O3</code> (adds CNOT resynthesis); no device mapping.
-                            Registers, <code>creg</code> declarations and gate definitions are kept. staq reads
-                            numbers in single precision (see the known issue below). Up to 10 qubits every
-                            output is checked against the input with Qiskit.</td></tr>
+                            built from the checksum-pinned v3.5 source with <code>USE_OPENQASM2_SPECS=false</code>:
+                            <code>-O1</code> (rotation folding, simplification), <code>-O2</code> (inlines every
+                            gate except <code>x</code>, <code>y</code>, <code>z</code>, <code>h</code>,
+                            <code>s</code>, <code>sdg</code>, <code>t</code>, <code>tdg</code>, <code>rx</code>,
+                            <code>ry</code>, <code>rz</code>, <code>cz</code>, <code>cy</code>,
+                            <code>swap</code>, <code>cx</code> and <code>u1</code>, then the same),
+                            <code>-O3</code> (adds CNOT resynthesis, which can raise the CNOT count); no device
+                            mapping. Registers, <code>creg</code> declarations and gate definitions are kept.
+                            staq's gate library is the OpenQASM 2.0 <code>qelib1.inc</code> plus <code>r</code>
+                            and <code>cswap</code>; for any other gate of Qiskit's <code>qelib1.inc</code> the
+                            circuit uses (<code>sx</code>, <code>p</code>, <code>u</code>, <code>cp</code>,
+                            <code>rzz</code>, <code>c3x</code> and so on), Qiskit's definition is added to the
+                            circuit given to staq and listed in the passes. A register or gate named
+                            <code>r</code> or <code>cswap</code> is refused, because staq rejects it. staq reads
+                            numbers in single precision (see the known issue below); a literal that would change
+                            by more than 1e-6 is refused before staq runs. Up to 10 qubits every output is
+                            checked with Qiskit: its process infidelity to the input must be at most 1e-8, and
+                            the measured value is in the passes.</td></tr>
                         <tr><td>Q-Synth 5.1 (Aarhus University)</td><td>0, 1</td><td>Qiskit translates the
                             circuit to <code>u3</code> and <code>cx</code>, the gate set Q-Synth takes; then
                             <code>peephole_synthesis(slicing='cnot')</code> resynthesises each CNOT slice
                             exactly with a SAT solver (CaDiCaL 1.9 through python-sat): the fewest CNOTs at
-                            level 0, the smallest CNOT depth at level 1. The output keeps the circuit's
-                            registers. A compile that reaches Q-Synth's 240 s solver limit is recorded as an
-                            error, because a partial result would depend on machine speed. Q-Synth 5.1 pins
+                            level 0, the smallest CNOT depth at level 1. Q-Synth is given the qubits as one
+                            register <code>q</code>; the output is composed back onto the circuit's registers
+                            with its final measurements. Q-Synth splits its 240 s solver budget over the slices
+                            and keeps a slice's original gates when its solver call times out; a compile in which
+                            any slice was still timed out at the end, or the budget ran out, is recorded as an
+                            error, because the result would depend on machine speed. The job's timeout (at most
+                            300 s, including process start) ends a compile first when it is shorter. Q-Synth 5.1 pins
                             python-sat 1.8.dev13, which PyPI no longer offers, so the image uses 1.8.dev14 and
                             installs its lock without dependency resolution. Up to 10 qubits every output is
                             checked against the input with Qiskit.</td></tr>
                         <tr><td>Quartz 0.3.2</td><td>0</td><td>Qiskit translates the circuit to
                             <code>h</code>, <code>x</code>, <code>rz</code> and <code>cx</code> (Nam's gate set);
                             then <code>Graph::greedy_optimize</code> applies every rewrite from Quartz's ECC set
-                            that lowers the gate count, until none applies. The ECC set (equivalent
+                            that lowers the gate count, until none applies. It does not move gates past each other
+                            first, so a merge that needs such a move is missed: <code>rz(a) q[0]; cx q[0],q[1];
+                            rz(b) q[0];</code> stays three gates. The ECC set (equivalent
                             subcircuits on 3 qubits with 2 symbolic parameters, up to 3 gates) is generated and
                             verified by Quartz when the image is built, and the build fails unless its sha256
                             matches the recorded one; the 4-gate set took 15 minutes on 32 cores and removed no
                             more gates on eight test circuits. Quartz's search (<code>Graph::optimize</code>) is
                             not offered, because it stops on wall-clock time, nor is its rotation merging (see
                             the known issue below). Angles go to Quartz as exact fractions of π and come back
-                            the same way; the output keeps Quartz's gate lines with the input's registers,
-                            declarations and final measurements. Barriers are removed first, since Quartz
+                            the same way, so an angle such as 0.3 appears as
+                            <code>pi*238732414637843/2500000000000000</code>; the output keeps Quartz's gate lines
+                            with the input's registers, declarations and any final measurements. Barriers are
+                            removed first, since Quartz
                             rewrites across them; mid-circuit measurement, <code>reset</code> and
                             <code>if</code> are refused, since Quartz drops measurements. The library is built
                             with one fix to its big-integer code (see the known issue below). Compile time grows
@@ -1136,7 +1171,9 @@
                 </table>
                 <p>
                     Each compiler image has a self-test (<code>python main.py --self-test</code>) that compiles
-                    five probe circuits at every level and checks the output unitary against the input with
+                    five probe circuits at every level (six for QMAP, Q-Synth and Quartz, which also compile
+                    a <code>c3x</code> followed by a qubit first used after it) and checks the output unitary
+                    against the input with
                     the image's own SDK (BQSKit's unitary distance, PyZX's tensor comparison, Qiskit's
                     operator equality with the circuit rebuilt from QMAP's <code>// i</code> and
                     <code>// o</code> lines), and that the output declares as many qubits as the input. The
@@ -1146,10 +1183,14 @@
                 <p>
                     With preprocessing on, compilers receive the pytket-rewritten circuit (see
                     <a href="#preprocessing">Circuit preprocessing</a>); to see how a compiler treats your own
-                    text, run with preprocessing off. Two compilers then reject some valid OpenQASM 2.0:
-                    PyZX rejects parameters in scientific notation (<code>rz(1.25e-1)</code>) and BQSKit
-                    rejects register broadcasts (<code>h q;</code>); each is recorded as that compile's
-                    error.
+                    text, run with preprocessing off. Several compilers then reject some valid OpenQASM 2.0,
+                    each recorded as that compile's error: PyZX rejects parameters in scientific notation
+                    (<code>rz(1.25e-1)</code>), BQSKit rejects register broadcasts (<code>h q;</code>), Cirq
+                    rejects <code>barrier</code>, the 4-parameter <code>cu</code> and <code>rc3x</code>, and
+                    Cirq, Q-Synth and Quartz reject <code>u0</code>, which Qiskit's reader does not take.
+                    Qiskit's translation for QMAP, Q-Synth and Quartz runs with
+                    <code>qubits_initially_zero=False</code>, so a multi-controlled gate is never decomposed
+                    with an unused qubit as a clean ancilla.
                 </p>
             </section>
 
@@ -1289,9 +1330,10 @@
             <section id="known-issues">
                 <h2>Known backend issues</h2>
                 <p>
-                    The discrepancies below come from the SDKs or their QASM importers, not from QRosetta,
-                    and the report shows them as disagreements (statevector) or distinguishable pairs
-                    (measured). QRosetta does not decide which side of a disagreement is wrong. Testers
+                    The discrepancies below come from the SDKs or their QASM importers, not from QRosetta.
+                    For simulators, the report shows them as disagreements (statevector) or distinguishable
+                    pairs (measured). For compile-only services, the rows say what the compiler's adapter
+                    does instead: refuse the circuit, avoid the defective call, or apply a recorded fix. QRosetta does not decide which side of a disagreement is wrong. Testers
                     checked each case below against an independent exact simulator written from the
                     <code>qelib1.inc</code> gate definitions; the table names the backend that differed from
                     it. Check your own circuits the same way before attributing a disagreement. Every
@@ -1386,6 +1428,31 @@
                                 differ from the input after about the eighth significant digit.</td>
                             <td><code>qreg q[1]; rz(0.3) q[0];</code> with <code>staq -O1</code> prints
                                 <code>rz(0.300000011920929) q[0];</code>.</td></tr>
+                        <tr><td>pytket 1.33.0 (API preprocessing)</td>
+                            <td><code>circuit_to_qasm_str</code> writes every multi-controlled X as
+                                <code>c4x</code>, whatever its number of qubits, so a <code>c3x</code> came back as
+                                a <code>c4x</code> with four operands, which is not valid OpenQASM 2.0 and which 8 of
+                                14 simulators and every compiler rejected. The API renames each such call by its
+                                operand count (<code>cx</code>, <code>ccx</code>, <code>c3x</code>, <code>c4x</code>)
+                                and records it as an <code>API:</code> change.</td>
+                            <td><code>qreg q[4]; h q[0]; c3x q[0],q[1],q[2],q[3];</code> through
+                                <code>circuit_from_qasm_str</code> and <code>circuit_to_qasm_str</code> gives
+                                <code>c4x q[0],q[1],q[2],q[3];</code>.</td></tr>
+                        <tr><td>Q-Synth 5.1 (compile-only), time-outs</td>
+                            <td><code>peephole_synthesis</code> gives each CNOT slice a share of the time budget,
+                                retries timed-out slices with the time left, and keeps a slice's original gates
+                                when the retry also times out; the result's <code>timed_out</code> stays false.
+                                The Q-Synth compiler records every slice's last solver call and reports such a
+                                compile as an error.</td>
+                            <td>A 9-qubit circuit of 80 CNOTs with the 240 s budget returned the 80 CNOTs
+                                reordered, with <code>timed_out</code> false.</td></tr>
+                        <tr><td>staq 3.5 (compile-only), names</td>
+                            <td>With <code>USE_OPENQASM2_SPECS=false</code> staq's library adds <code>r</code> and
+                                <code>cswap</code> to <code>qelib1.inc</code>, and OpenQASM 2.0 gates and registers
+                                share one namespace, so staq rejects a register or gate declared under either
+                                name. The staq compiler refuses such circuits with that reason.</td>
+                            <td><code>qreg q[1]; qreg r[1]; h r[0];</code>: staq reports
+                                <code>Identifier "r" previously declared</code>.</td></tr>
                         <tr><td>Quartz 0.3.2 (compile-only), big integers</td>
                             <td>Angles are exact rationals (multiples of π) held in Quartz's own big-integer
                                 type. Shifting a zero by a whole number of 9-digit limbs left a leading zero

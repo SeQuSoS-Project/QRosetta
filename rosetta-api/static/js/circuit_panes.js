@@ -40,6 +40,11 @@ function _executedPane(result, index) {
     };
 }
 
+function _gateCounts(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+    return Object.entries(value).filter(([name, n]) => typeof name === 'string' && Number.isInteger(n));
+}
+
 function _compiledPane(record, index) {
     const key = typeof record.compiler === 'string' ? record.compiler : `compiler ${index + 1}`;
     return {
@@ -55,6 +60,8 @@ function _compiledPane(record, index) {
         reason: typeof record.error === 'string' ? record.error : null,
         gateCount: typeof record.gate_count === 'number' ? record.gate_count : null,
         depth: typeof record.circuit_depth === 'number' ? record.circuit_depth : null,
+        multiQubitGateCount: typeof record.multi_qubit_gate_count === 'number' ? record.multi_qubit_gate_count : null,
+        gateCounts: _gateCounts(record.gate_counts),
         metrics: metricsSource(record),
         sdkVersions: record.sdk_versions && typeof record.sdk_versions === 'object' ? record.sdk_versions : null,
     };

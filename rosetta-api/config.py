@@ -321,7 +321,7 @@ class Settings(BaseSettings):
                 "enabled": True,
                 "optimization_levels": {
                     1: "staq -O1: rotation folding and simplification",
-                    2: "staq -O2: inline gates, simplification, rotation folding",
+                    2: "staq -O2: inline gates other than staq's basic ones (x, h, s, t, rz, cx, swap, ...), simplification, rotation folding",
                     3: "staq -O3: -O2 plus CNOT resynthesis",
                 },
             },

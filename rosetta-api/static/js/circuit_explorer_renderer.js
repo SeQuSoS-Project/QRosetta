@@ -129,7 +129,19 @@ function _paneCard(pane, context) {
             if (versions.length) head.appendChild(_noteList('SDK versions', versions));
         }
     } else if (pane.kind === 'compiled') {
-        if (pane.text !== null) head.appendChild(_metricLine(pane, ['compiled_gate_count', 'compiled_depth']));
+        if (pane.text !== null) {
+            const line = _metricLine(pane, ['compiled_gate_count', 'compiled_depth']);
+            if (pane.multiQubitGateCount !== null) {
+                const item = _el('span');
+                item.appendChild(renderTooltip('compiled_multi_qubit_gate_count', 'On 2+ qubits'));
+                item.appendChild(document.createTextNode(`: ${fmtInt(pane.multiQubitGateCount)}`));
+                line.appendChild(item);
+            }
+            head.appendChild(line);
+            if (pane.gateCounts.length) {
+                head.appendChild(_noteList('Gates by name', pane.gateCounts.map(([name, n]) => `${name}: ${n}`)));
+            }
+        }
         if (pane.passes.length) head.appendChild(_noteList('Passes', pane.passes));
         if (pane.sdkVersions) {
             const versions = Object.entries(pane.sdkVersions).map(([name, v]) => `${name} ${v}`);

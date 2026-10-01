@@ -27,8 +27,13 @@ _COMPILED_TEXT_FIELDS = ("compiler", "compiler_id", "compiler_name", "transpiled
 
 def _compiled_texts(record: dict) -> dict:
     out = {key: record[key] for key in _COMPILED_TEXT_FIELDS if isinstance(record.get(key), str)}
-    out.update({key: record[key] for key in ("optimization_level",) + _RESULT_NUMBER_FIELDS
+    numbers = ("optimization_level", "multi_qubit_gate_count") + _RESULT_NUMBER_FIELDS
+    out.update({key: record[key] for key in numbers
                 if isinstance(record.get(key), int) and not isinstance(record.get(key), bool)})
+    counts = record.get("gate_counts")
+    if isinstance(counts, dict):
+        out["gate_counts"] = {k: v for k, v in counts.items() if isinstance(k, str) and isinstance(v, int)
+                              and not isinstance(v, bool)}
     out["passes_applied"] = _strings(record.get("passes_applied"))
     versions = record.get("sdk_versions")
     if isinstance(versions, dict):

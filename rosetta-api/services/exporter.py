@@ -14,8 +14,9 @@ from typing import Any, Dict, List, Optional
 from config import settings
 from qrosetta_commons.helpers import get_logger
 from services.export_compiled import (
-    compile_actions, compile_provenance, compiled_circuit_files, compiler_applications, compiler_keys,
-    compiler_lock_entity, compiler_lock_files, strip_compiled_text,
+    COMPILED_METRICS_PATH, compile_actions, compile_provenance, compiled_circuit_files,
+    compiled_metrics_csv, compiler_applications, compiler_keys, compiler_lock_entity,
+    compiler_lock_files, strip_compiled_text,
 )
 from services.analysis.divergence.common import (
     ANALYSIS_VERSION, DEFAULT_FIDELITY_TOLERANCE, DEFAULT_HELLINGER_THRESHOLD,
@@ -1146,6 +1147,21 @@ def _results_json_data(ctx: ExportContext) -> dict:
     return data
 
 
+def _add_compiled_metrics_table(ctx: ExportContext, files: dict, descriptions: dict) -> None:
+    """tables/compiled_circuits.csv when any task has compile records."""
+    tasks = list(_iter_tasks(ctx))
+    reports = [(t.task_id, t.report) for t in tasks]
+    if not compile_provenance(reports):
+        return
+    paths = {(t.task_id, f["record"].get("compiler")): f["path"]
+             for t in tasks for f in _compiled_files(t) if f["record"] is not None}
+    files[COMPILED_METRICS_PATH] = compiled_metrics_csv(reports, paths).encode()
+    descriptions[COMPILED_METRICS_PATH] = (
+        "One row per compile-only record: status, gate_count (top-level statements), "
+        "multi_qubit_gate_count, circuit_depth, gate_counts per gate name and the output file. "
+        "Compilers write different gate sets, so gate_count is not comparable across them.")
+
+
 def build_ro_crate(ctx: ExportContext) -> bytes:
     """Build the RO-Crate 1.1 ZIP bundle for ``ctx`` and return its bytes."""
     ts_slug = ctx.timestamp.replace(":", "-").replace("+", "p")
@@ -1154,6 +1170,7 @@ def build_ro_crate(ctx: ExportContext) -> bytes:
     results_data = _results_json_data(ctx)
     provenance_data = _build_provenance(ctx)
     publication_files, artifact_descriptions = _generate_publication_artifacts(ctx)
+    _add_compiled_metrics_table(ctx, publication_files, artifact_descriptions)
     lock_files = {**_runner_lock_files(ctx),
                   **compiler_lock_files([t.report for t in _iter_tasks(ctx)], settings.get_compiler_services())}
     metadata = _build_ro_crate_metadata(ctx, sorted(publication_files), artifact_descriptions,

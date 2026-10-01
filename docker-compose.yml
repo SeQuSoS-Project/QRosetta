@@ -449,7 +449,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: "512M"
+          memory: "1G"
 
   qmap_compiler:
     build:
@@ -471,7 +471,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: "512M"
+          memory: "1G"
 
   cirq_compiler:
     build:
@@ -493,7 +493,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: "512M"
+          memory: "1G"
 
   staq_compiler:
     build:
@@ -515,7 +515,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: "512M"
+          memory: "1G"
 
   qsynth_compiler:
     build:
@@ -537,7 +537,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: "512M"
+          memory: "1G"
 
   quartz_compiler:
     build:
@@ -559,7 +559,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: "512M"
+          memory: "1G"
 
 # --- NETWORK DEFINITIONS ---
 networks:

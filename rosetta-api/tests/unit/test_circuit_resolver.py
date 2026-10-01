@@ -66,3 +66,28 @@ def test_preset_uses_the_measured_cap_in_measured_mode(monkeypatch):
         with pytest.raises(ValueError, match="exceeds limit of 24"):
             resolve_circuit_qasm("preset", "ghz", 30, mode="measured")
     gen.assert_not_called()
+
+
+def test_pytket_cnx_calls_are_renamed_by_operand_count():
+    from services.circuit_resolver import _name_cnx_by_size
+    text = ("c4x q[0],q[1],q[2],q[3];\nc4x q[0],q[1],q[2],q[3],q[4];\nc4x q[0],q[1],q[2];\n"
+            "if(c==1) c4x q[0],q[1];\n")
+    renamed, names = _name_cnx_by_size(text)
+    assert renamed == ("c3x q[0],q[1],q[2],q[3];\nc4x q[0],q[1],q[2],q[3],q[4];\nccx q[0],q[1],q[2];\n"
+                       "if(c==1) cx q[0],q[1];\n")
+    assert names == ["c3x", "ccx", "cx"]
+
+
+def test_pytket_cnx_wider_than_qelib1_is_refused():
+    from services.circuit_resolver import RoundTripIntegrityError, _name_cnx_by_size
+    with pytest.raises(RoundTripIntegrityError, match="6 qubits"):
+        _name_cnx_by_size("c4x q[0],q[1],q[2],q[3],q[4],q[5];\n")
+
+
+def test_c3x_survives_the_preprocessing_round_trip():
+    pytest.importorskip("pytket")
+    from services.circuit_resolver import prepare_statevector_dispatch
+    qasm = 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[4];\nh q[0];\nc3x q[0],q[1],q[2],q[3];\n'
+    out = prepare_statevector_dispatch(qasm, apply_preprocessing=True)
+    assert "c3x q[0],q[1],q[2],q[3];" in out["qasm"]
+    assert "c4x" not in out["qasm"]

@@ -7,7 +7,8 @@ import sys
 from qrosetta_commons.cpu import apply_cpu_affinity
 from qrosetta_commons.helpers import (
     GATE_METRICS_FROM_QASM, MAX_QUBITS_MEASURED, ExecutionSlots, _stamp_code_sha,
-    check_qubits_limit, count_qasm_gates_and_depth, get_num_qubits_from_qasm, run_cli_job,
+    check_qubits_limit, count_qasm_gates_and_depth, count_qasm_gates_by_name,
+    get_num_qubits_from_qasm, run_cli_job,
 )
 
 COMPILE_MAX_QUBITS = MAX_QUBITS_MEASURED
@@ -20,11 +21,15 @@ SELF_TEST_PROBES = {
     "entangle_far_qubits": "h q[0];\ncx q[0],q[2];\nrz(1.1) q[2];\ncx q[2],q[1];\nh q[1];\n",
     "classical_register_declared": "creg c[3];\nh q[0];\ncx q[0],q[1];\nry(0.3) q[2];\n",
 }
+TRANSLATION_PROBES = {
+    "multi_controlled_before_fresh_qubit": "qreg b[2];\nh q[0];\nh q[1];\nh q[2];\nc3x q[0],q[1],q[2],b[0];\nh b[1];\n",
+}
 
 
 def compiled_result(*, compiler: str, qasm: str, passes_applied, optimization_level: int) -> dict:
     """``/compile`` success: the output circuit with gate metrics counted from its text."""
     gate_count, circuit_depth = count_qasm_gates_and_depth(qasm)
+    gate_counts, multi_qubit_gate_count = count_qasm_gates_by_name(qasm)
     return {
         "compiler": compiler,
         "optimization_level": optimization_level,
@@ -32,6 +37,8 @@ def compiled_result(*, compiler: str, qasm: str, passes_applied, optimization_le
         "passes_applied": list(passes_applied),
         "gate_count": gate_count,
         "circuit_depth": circuit_depth,
+        "gate_counts": gate_counts,
+        "multi_qubit_gate_count": multi_qubit_gate_count,
         "gate_metrics_basis": GATE_METRICS_FROM_QASM,
     }
 
@@ -69,13 +76,13 @@ def register_compiler_endpoint(app, process_compile, max_concurrent=None) -> Non
         return await slots.run(process_compile, payload.model_dump(), measured=False)
 
 
-def run_compiler_self_test(process_compile, levels, equivalent, out=None) -> int:
+def run_compiler_self_test(process_compile, levels, equivalent, out=None, extra_probes=None) -> int:
     """Compile every SELF_TEST_PROBES circuit at every level and check that the output
     declares as many qubits as the input and passes ``equivalent(input_qasm, output_qasm)``.
     Prints ``PASS``/``FAIL`` per case and returns the number of failures."""
     out = out or sys.stdout
     failed = 0
-    for name, body in SELF_TEST_PROBES.items():
+    for name, body in {**SELF_TEST_PROBES, **(extra_probes or {})}.items():
         qasm = _PROBE_HEADER + body
         for level in levels:
             result = process_compile({"circuit_data": qasm, "optimization_level": level})
@@ -98,7 +105,8 @@ def run_compiler_self_test(process_compile, levels, equivalent, out=None) -> int
     return failed
 
 
-def run_compiler_cli_main(app, process_compile, cli_name: str, levels=(), equivalent=None) -> None:
+def run_compiler_cli_main(app, process_compile, cli_name: str, levels=(), equivalent=None,
+                          extra_probes=None) -> None:
     """Compiler entrypoint: with no args serve ``app``; with ``--endpoint compile`` run one
     job from ``--payload`` or ``--s3-job-id`` (the Kubernetes path); with ``--self-test``
     run ``run_compiler_self_test`` and exit non-zero on a failure."""
@@ -117,7 +125,8 @@ def run_compiler_cli_main(app, process_compile, cli_name: str, levels=(), equiva
                         help="S3 job ID: upload the result to jobs/completed/<id>.json")
     args = parser.parse_args()
     if args.self_test:
-        sys.exit(1 if run_compiler_self_test(process_compile, levels, equivalent) else 0)
+        sys.exit(1 if run_compiler_self_test(process_compile, levels, equivalent,
+                                             extra_probes=extra_probes) else 0)
     if args.endpoint is None:
         parser.error("--endpoint is required unless --self-test is given")
 

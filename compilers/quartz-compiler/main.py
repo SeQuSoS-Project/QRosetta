@@ -11,13 +11,15 @@ import subprocess
 from fractions import Fraction
 
 from fastapi import FastAPI
-from qiskit import QuantumCircuit, transpile
-from qiskit.quantum_info import Operator
+from qiskit import QuantumCircuit
 
 from qrosetta_commons.compile_service import (
-    register_compiler_endpoint, run_compile_job, run_compiler_cli_main,
+    TRANSLATION_PROBES, register_compiler_endpoint, run_compile_job, run_compiler_cli_main,
 )
 from qrosetta_commons.helpers import declare_sdk_packages, get_sdk_versions, with_sdk_versions
+from qrosetta_commons.qiskit_circuits import (
+    split_final_measurements, translate_to_basis, translation_note, unitary_of,
+)
 
 declare_sdk_packages("qiskit")
 
@@ -30,12 +32,8 @@ ECC_MAX_GATES = os.getenv("QUARTZ_ECC_MAX_GATES", "not recorded")
 ECC_SHA256 = os.getenv("QUARTZ_ECC_SHA256", "not recorded")
 DECOMPOSITION_BASIS = ("h", "x", "rz", "cx")
 CHECKED_UP_TO_QUBITS = 10
-_CONTROL_FLOW = {"if_else", "while_loop", "for_loop", "switch_case", "box"}
 _QUARTZ_GATE = re.compile(r"^(h|x|cx|rz\(pi\*-?\d+(?:/\d+)?\)|rz\(0\)) q\[(\d+)\](?:,q\[(\d+)\])?;$")
 
-_DECOMPOSE_NOTE = ("qiskit.transpile(basis_gates=['h', 'x', 'rz', 'cx'], optimization_level=0): "
-                   "basis translation only, required by the adapter, since Quartz rewrites "
-                   "circuits in the gate set of its ECC set.")
 _BARRIER_NOTE = ("Barriers removed before Quartz, which reads them but rewrites across them; "
                  "the output has none.")
 _ANGLE_NOTE = ("Each rz angle given to Quartz as an exact fraction times pi (the shortest decimal "
@@ -43,7 +41,9 @@ _ANGLE_NOTE = ("Each rz angle given to Quartz as an exact fraction times pi (the
                "rationals and writes its angles the same way, so the output angles are exact.")
 _ENCODE_NOTE = ("Output: Quartz's gate lines as Quartz wrote them, its qubits q[i] renamed to the "
                 "input's registers in declaration order, with the input's qreg and creg "
-                "declarations and its final measurements in their original order.")
+                "declarations.")
+_MEASURE_NOTE = ("Final measurements removed before Quartz, whose reader drops them, and written "
+                 "back after its gate lines in their original order.")
 
 
 def _build_note() -> str:
@@ -58,34 +58,6 @@ def _greedy_note() -> str:
     return ("quartz::Graph::greedy_optimize with the ECC set: every rewrite that lowers the gate "
             "count is applied until none applies; no search, so the output depends only on the "
             "input and the ECC set. Quartz's time-bounded search (Graph::optimize) is not offered.")
-
-
-def _split_final_measurements(circuit: QuantumCircuit):
-    """(circuit without its final measurements, [(qubit, clbit), ...] in circuit order).
-    ValueError for a measurement followed by a gate on its qubit, reset or classical control."""
-    later = set()
-    finals = []
-    body = []
-    for inst in reversed(circuit.data):
-        name = inst.operation.name
-        qubits = [circuit.find_bit(q).index for q in inst.qubits]
-        if name in _CONTROL_FLOW:
-            raise ValueError("classically controlled operations are refused; Quartz rewrites unitary circuits")
-        if name == "reset":
-            raise ValueError("reset is refused; Quartz rewrites unitary circuits")
-        if name == "measure":
-            if qubits[0] in later:
-                raise ValueError("mid-circuit measurement is refused; Quartz would drop it")
-            finals.append((qubits[0], circuit.find_bit(inst.clbits[0]).index))
-            later.add(qubits[0])
-            continue
-        if name != "barrier":
-            later.update(qubits)
-        body.append(inst)
-    unitary = circuit.copy_empty_like()
-    for inst in reversed(body):
-        unitary.append(inst.operation, inst.qubits, inst.clbits)
-    return unitary, list(reversed(finals))
 
 
 def _quartz_input(circuit: QuantumCircuit) -> str:
@@ -122,11 +94,11 @@ def _quartz(text: str) -> str:
 def equivalent(input_qasm: str, output_qasm: str) -> bool:
     """The output has the input's unitary up to global phase and the same final measurements,
     both read by Qiskit."""
-    source, source_measures = _split_final_measurements(QuantumCircuit.from_qasm_str(input_qasm))
-    output, output_measures = _split_final_measurements(QuantumCircuit.from_qasm_str(output_qasm))
+    source, source_measures = split_final_measurements(QuantumCircuit.from_qasm_str(input_qasm), "Quartz")
+    output, output_measures = split_final_measurements(QuantumCircuit.from_qasm_str(output_qasm), "Quartz")
     if source_measures != output_measures:
         return False
-    return Operator(output).equiv(Operator(source), atol=1e-8)
+    return unitary_of(output).equiv(unitary_of(source), atol=1e-8)
 
 
 def _register_names(circuit: QuantumCircuit):
@@ -169,12 +141,14 @@ def _encode(original: QuantumCircuit, quartz_output: str, measures) -> str:
 
 def _compile(qasm: str):
     original = QuantumCircuit.from_qasm_str(qasm)
-    unitary, measures = _split_final_measurements(original)
-    decomposed = transpile(unitary, basis_gates=list(DECOMPOSITION_BASIS), optimization_level=0)
+    unitary, measures = split_final_measurements(original, "Quartz")
+    decomposed = translate_to_basis(unitary, DECOMPOSITION_BASIS)
     text = _encode(original, _quartz(_quartz_input(decomposed)), measures)
-    notes = [_DECOMPOSE_NOTE, _build_note(), _ANGLE_NOTE, _greedy_note()]
+    notes = [translation_note(DECOMPOSITION_BASIS), _build_note(), _ANGLE_NOTE, _greedy_note()]
     if any(inst.operation.name == "barrier" for inst in original.data):
         notes.append(_BARRIER_NOTE)
+    if measures:
+        notes.append(_MEASURE_NOTE)
     notes.append(_ENCODE_NOTE)
     if original.num_qubits > CHECKED_UP_TO_QUBITS:
         notes.append(f"The output's unitary is not checked above {CHECKED_UP_TO_QUBITS} qubits.")
@@ -182,7 +156,7 @@ def _compile(qasm: str):
         raise ValueError("Quartz's output does not have the input's unitary, so it is not reported")
     else:
         notes.append("Checked: the output has the input's unitary (Qiskit Operator equality up to "
-                     "global phase) and the same final measurements.")
+                     "global phase)" + (" and the same final measurements." if measures else "."))
     return text, notes
 
 
@@ -200,4 +174,5 @@ def process_compile(payload: dict) -> dict:
 register_compiler_endpoint(app, process_compile)
 
 if __name__ == "__main__":
-    run_compiler_cli_main(app, process_compile, "Quartz", levels=sorted(PIPELINES), equivalent=equivalent)
+    run_compiler_cli_main(app, process_compile, "Quartz", levels=sorted(PIPELINES), equivalent=equivalent,
+                          extra_probes=TRANSLATION_PROBES)

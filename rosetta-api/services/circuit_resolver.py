@@ -67,6 +67,8 @@ _MEASURE_RE = re.compile(r"\bmeasure\b")
 _BARRIER_RE = re.compile(r"\bbarrier\b")
 _PASSTHROUGH_OPS = {"OPENQASM", "include", "qreg", "creg", "gate", "opaque"}
 _IF_RE = re.compile(r"^\s*if\s*\(")
+_PYTKET_CNX_RE = re.compile(r"^(\s*(?:if\s*\([^)]*\)\s*)?)c4x(\s+)([^;]*);", re.MULTILINE)
+_CNX_NAMES = {2: "cx", 3: "ccx", 4: "c3x", 5: "c4x"}
 
 _USE_MEASURED_MODE = ("Statevector mode reports the pre-measurement state of a unitary "
                       "circuit; run this circuit in measured mode instead.")
@@ -565,8 +567,30 @@ def _pytket_round_trip(qasm: str, remove_barriers: bool):
     if remove_barriers and has_barriers(qasm):
         RemoveBarriers().apply(circ)
         notes.append("API: removed barrier statements (pytket RemoveBarriers)")
-    emitted = pytket.qasm.circuit_to_qasm_str(circ, maxwidth=maxwidth)
+    emitted, renamed = _name_cnx_by_size(pytket.qasm.circuit_to_qasm_str(circ, maxwidth=maxwidth))
+    if renamed:
+        notes.append(f"API: pytket writes every multi-controlled X as c4x; calls with fewer qubits "
+                     f"renamed to {', '.join(renamed)} by their operand count")
     return _restore_register_order(emitted, qasm), notes
+
+
+def _name_cnx_by_size(emitted: str):
+    """(text, renamed): pytket 1.33/1.34 writes every multi-controlled X as ``c4x``; each such
+    call is renamed by its operand count to the qelib1 gate with that many qubits."""
+    renamed = []
+
+    def rename(match):
+        operands = [o for o in match.group(3).split(",") if o.strip()]
+        name = _CNX_NAMES.get(len(operands))
+        if name is None:
+            raise RoundTripIntegrityError(
+                f"pytket wrote a multi-controlled X on {len(operands)} qubits, which qelib1.inc "
+                f"has no gate for")
+        if name != "c4x":
+            renamed.append(name)
+        return f"{match.group(1)}{name}{match.group(2)}{match.group(3)};"
+
+    return _PYTKET_CNX_RE.sub(rename, emitted), sorted(set(renamed))
 
 
 def _preprocessed_base(qasm: str):

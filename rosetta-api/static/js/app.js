@@ -160,7 +160,11 @@ window.onload = async () => {
         }
         loadRunners();
         loadCompilers();
-        setRunSaver(jobId => saveRunToHistory(jobId));
+        setRunSaver(jobId => {
+            const data = getState().currentSuiteData;
+            const name = data && getState().currentJobId === jobId && typeof data.run_name === 'string' ? data.run_name : null;
+            return saveRunToHistory(jobId, name);
+        });
 
         const select = document.getElementById('algo-select');
         select.innerHTML = '';
