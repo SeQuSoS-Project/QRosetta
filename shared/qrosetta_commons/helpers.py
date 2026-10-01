@@ -22,7 +22,7 @@ from pathlib import Path
 
 import numpy as np
 
-from qrosetta_commons.cpu import WindowProbe, cpu_environment
+from qrosetta_commons.cpu import WindowProbe, apply_cpu_affinity, cpu_environment
 from qrosetta_commons.memory import MemoryMonitor, lifetime_peak_rss
 
 MAX_QUBITS_STATEVECTOR = int(os.getenv("MAX_QUBITS_STATEVECTOR", "18"))
@@ -63,6 +63,7 @@ METRIC_SCOPE = {
                                       "unreadable",
     "simulation_cpus": "logical CPUs the process was on at t2 and at t3, over every timed "
                        "run; cpu_environment.cpu_max_mhz gives each one's maximum frequency",
+    "simulation_cpus_samples": "simulation_cpus of each timed run, in run order",
     "simulation_involuntary_switches_samples": "involuntary context switches of the process "
                                                "between t2 and t3, per timed run",
     "memory_usage_mb": "peak RSS minus RSS at monitor entry, pre_execute + t2..t3 of the "
@@ -264,6 +265,14 @@ def _module_code_sha256(func) -> str:
 DEFAULT_DEVICE = "CPU"
 
 
+@functools.lru_cache(maxsize=None)
+def runtime_environment() -> dict:
+    """Python, numpy and kernel versions of this process."""
+    import platform
+    return {"python": platform.python_version(), "numpy": np.__version__,
+            "kernel": platform.release(), "machine": platform.machine()}
+
+
 def with_sdk_versions(func):
     """Decorator for ``process_run`` / ``process_run_measured``.
 
@@ -280,6 +289,7 @@ def with_sdk_versions(func):
         if isinstance(result, dict):
             result.setdefault("sdk_versions", get_sdk_versions())
             result.setdefault("runner_code_sha256", code_sha)
+            result.setdefault("runtime_environment", runtime_environment())
             if result.get("device") is None:
                 result["device"] = None if result.get("error") else DEFAULT_DEVICE
         return result
@@ -329,6 +339,9 @@ def count_qasm_gates_and_depth(qasm_str: str) -> tuple:
     return gate_count, max(depth_by_qubit.values(), default=0)
 
 
+GATE_METRICS_FROM_QASM = ("top-level gate statements of transpiled_qasm; depth by greedy "
+                          "layering")
+
 MAX_TIMING_REPEATS = 10
 
 TIMING_STATISTIC = "median"
@@ -363,6 +376,7 @@ def _summarise_timings(result: dict, timed_results: list) -> None:
         result["execution_time_sec"] = comp + sim
     result["simulation_involuntary_switches_samples"] = [
         r.get("simulation_involuntary_switches") for r in timed_results]
+    result["simulation_cpus_samples"] = [r.get("simulation_cpus") for r in timed_results]
     result["simulation_cpus"] = sorted({c for r in timed_results
                                         for c in (r.get("simulation_cpus") or [])})
     result["timing_repeats"] = len(timed_results)
@@ -404,7 +418,7 @@ def run_with_uniform_measurement(func, payload):
         result["process_peak_rss_method"] = None
         result["metric_scope"] = {"on_error": METRIC_SCOPE_ON_ERROR}
         result["timing_repeats"] = repeats
-        if failed:
+        if failed is not None:
             result["failed_timing_repeat"] = failed + 1
         return result
 
@@ -423,16 +437,18 @@ def run_with_uniform_measurement(func, payload):
             result["n_shots"] = payload["n_shots"]
 
         transpiled_qasm = result.get("transpiled_qasm")
-        if transpiled_qasm:
+        if transpiled_qasm and "gate_count" not in result:
             gate_count, circuit_depth = count_qasm_gates_and_depth(transpiled_qasm)
             result["gate_count"] = gate_count
             result["circuit_depth"] = circuit_depth
+            result["gate_metrics_basis"] = GATE_METRICS_FROM_QASM
 
     return result
 
 
 def _isolated_target(result_q, module_name, func_name, payload):
     try:
+        apply_cpu_affinity()
         module = _importlib.import_module(module_name)
         func = getattr(module, func_name)
         result_q.put(("ok", run_with_uniform_measurement(func, payload)))
@@ -538,9 +554,14 @@ def statevector_result(*, simulator, statevector, compilation_time, simulation_t
                        precision=None, device=None):
     """Assemble a statevector result; ``statevector`` is encoded to Base64 here.
 
-    Raises ValueError when the vector does not hold ``2**n_qubits`` amplitudes.
+    Raises ValueError when the vector does not hold ``2**n_qubits`` amplitudes or holds a
+    NaN or infinity.
     """
     amplitudes = np.asarray(statevector).ravel()
+    if not np.all(np.isfinite(amplitudes)):
+        raise ValueError(
+            f"backend returned {int(np.count_nonzero(~np.isfinite(amplitudes)))} non-finite "
+            f"amplitudes (NaN or infinity)")
     if n_qubits is not None and amplitudes.size != 2 ** int(n_qubits):
         raise ValueError(
             f"backend returned {amplitudes.size} amplitudes for {int(n_qubits)} qubits "
@@ -616,11 +637,11 @@ def _serialize(serialize_fn, compiled):
 
 def _timed_job(*, simulator, logger, payload, max_qubits, compile_fn, execute_fn,
                serialize_fn, monitor_interval, build_result, pre_execute_fn=None,
-               postprocess_fn=None):
+               postprocess_fn=None, gate_metrics_fn=None):
     """The shared measurement instrument for one runner call::
 
       check_qubits_limit -> t0 -> compile_fn -> t1                       (compilation_time)
-      serialize_fn                                                       (outside both windows)
+      serialize_fn, gate_metrics_fn                                      (outside both windows)
       MemoryMonitor + gc.collect() -> pre_execute_fn -> t2 -> execute_fn -> t3
                                                                          (simulation_time)
       postprocess_fn                                                     (outside both windows)
@@ -643,6 +664,7 @@ def _timed_job(*, simulator, logger, payload, max_qubits, compile_fn, execute_fn
         transpiled_qasm = compiled.transpiled_qasm
         if transpiled_qasm is None and serialize_fn is not None:
             transpiled_qasm = _serialize(serialize_fn, compiled)
+        gate_metrics = gate_metrics_fn(compiled) if gate_metrics_fn is not None else None
 
         with MemoryMonitor(interval=monitor_interval) as monitor:
             gc.collect()
@@ -673,6 +695,10 @@ def _timed_job(*, simulator, logger, payload, max_qubits, compile_fn, execute_fn
             transpiled_qasm=transpiled_qasm, simulation_cpu_time=c3 - c2,
             declared_qubits=declared_qubits,
         )
+        if gate_metrics is not None:
+            gate_count, circuit_depth, basis = gate_metrics
+            result.update({"gate_count": gate_count, "circuit_depth": circuit_depth,
+                           "gate_metrics_basis": basis})
         result.update({
             "compilation_throttled_sec": compile_probe.throttled_sec,
             "simulation_throttled_sec": sim_probe.throttled_sec,
@@ -689,7 +715,7 @@ def _timed_job(*, simulator, logger, payload, max_qubits, compile_fn, execute_fn
 
 def run_statevector_job(*, simulator, payload, compile_fn, execute_fn, qubit_ordering,
                         logger=None, serialize_fn=None, pre_execute_fn=None,
-                        postprocess_fn=None, max_qubits=None,
+                        postprocess_fn=None, max_qubits=None, gate_metrics_fn=None,
                         monitor_interval=0.01, theoretical_mb=_UNSET, precision=None,
                         device=None):
     """Run one statevector call through ``_timed_job``.
@@ -715,12 +741,13 @@ def run_statevector_job(*, simulator, payload, compile_fn, execute_fn, qubit_ord
         max_qubits=MAX_QUBITS_STATEVECTOR if max_qubits is None else max_qubits,
         compile_fn=compile_fn, execute_fn=execute_fn, serialize_fn=serialize_fn,
         pre_execute_fn=pre_execute_fn, postprocess_fn=postprocess_fn,
+        gate_metrics_fn=gate_metrics_fn,
         monitor_interval=monitor_interval, build_result=build_result)
 
 
 def run_measured_job(*, simulator, payload, compile_fn, execute_fn, qubit_ordering,
                      logger=None, serialize_fn=None, pre_execute_fn=None,
-                     postprocess_fn=None, max_qubits=None,
+                     postprocess_fn=None, max_qubits=None, gate_metrics_fn=None,
                      monitor_interval=0.01, theoretical_mb=_UNSET, precision=None,
                      device=None):
     """Run one measured call through ``_timed_job``.
@@ -747,6 +774,7 @@ def run_measured_job(*, simulator, payload, compile_fn, execute_fn, qubit_orderi
         max_qubits=MAX_QUBITS_MEASURED if max_qubits is None else max_qubits,
         compile_fn=compile_fn, execute_fn=execute_fn, serialize_fn=serialize_fn,
         pre_execute_fn=pre_execute_fn, postprocess_fn=postprocess_fn,
+        gate_metrics_fn=gate_metrics_fn,
         monitor_interval=monitor_interval, build_result=build_result)
 
 
@@ -941,6 +969,7 @@ def run_cli_main(app, process_run, process_run_measured, cli_name,
 
     def _process(payload_dict):
         func = process_run if args.endpoint == "run" else process_run_measured
+        apply_cpu_affinity()
         result = run_with_uniform_measurement(func, payload_dict)
         if isinstance(result, dict):
             result["queue_wait_sec"] = 0.0

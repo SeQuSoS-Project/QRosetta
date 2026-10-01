@@ -123,3 +123,19 @@ def test_rankings_carry_device_and_leave_gpu_runs_out_of_the_memory_ranking():
     gpu = res["unranked"][0]
     assert gpu["simulator"] == "gpu" and gpu["reason"] == "gpu_memory_not_measured"
     assert gpu["device"] == "GPU" and gpu["rank"] is None
+
+
+def test_overlapping_per_run_totals_are_marked():
+    def run(name, sims):
+        return {"simulator": name, "execution_time_sec": sum(sims) / len(sims),
+                "compilation_time_sec": 0.0, "simulation_time_sec": sorted(sims)[1],
+                "compilation_time_samples": [0.0] * len(sims), "simulation_time_samples": sims}
+    report = create_performance_report([
+        run("a", [1.0, 1.1, 1.2]), run("b", [1.15, 1.3, 1.4]), run("c", [2.0, 2.1, 2.2]),
+        {"simulator": "d", "execution_time_sec": 3.0}])
+    by = {e["simulator"]: e for e in report["ranking"]}
+    assert [e["simulator"] for e in report["ranking"]] == ["a", "b", "c", "d"]
+    assert by["a"]["overlaps_next"] is True
+    assert by["b"]["overlaps_next"] is False
+    assert by["c"]["overlaps_next"] is None and by["d"]["overlaps_next"] is None
+    assert "overlaps_next" in report["overlap_rule"]

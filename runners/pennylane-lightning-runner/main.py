@@ -115,6 +115,18 @@ def _serialize(compiled) -> str:
     return tapes[0].to_openqasm(wires=dev.wires, measure_all=False)
 
 
+_GATE_METRICS_BASIS = ("operations of the executed tape after Device.preprocess(), without the "
+                       "Identity operations added for idle wires; depth from the tape's specs")
+
+
+def _gate_metrics(compiled):
+    """(gate count, depth, basis) of the tape the device executes."""
+    _dev, tapes, _config, _post = compiled.circuit
+    ops = [op for op in tapes[0].operations if op.name != "Identity"]
+    depth = qml.tape.QuantumScript(ops).specs["resources"].depth if ops else 0
+    return len(ops), depth, _GATE_METRICS_BASIS
+
+
 def _execute_tapes(compiled):
     dev, tapes, config, _post = compiled.circuit
     return dev.execute(tapes, config)
@@ -137,7 +149,7 @@ def process_run(payload: dict) -> dict:
 
     return run_statevector_job(
         simulator=_SIMULATOR, payload=payload, logger=logger, compile_fn=_compile_statevector,
-        serialize_fn=_serialize, execute_fn=execute, postprocess_fn=shape_statevector,
+        serialize_fn=_serialize, gate_metrics_fn=_gate_metrics, execute_fn=execute, postprocess_fn=shape_statevector,
         qubit_ordering="msb", precision=_PRECISION)
 
 
@@ -164,7 +176,7 @@ def process_run_measured(payload: dict) -> dict:
     layouts = []
     return run_measured_job(
         simulator=_SIMULATOR, payload=payload, logger=logger, compile_fn=compile_step,
-        serialize_fn=_serialize, execute_fn=execute, postprocess_fn=shape_counts,
+        serialize_fn=_serialize, gate_metrics_fn=_gate_metrics, execute_fn=execute, postprocess_fn=shape_counts,
         qubit_ordering="msb", precision=_PRECISION)
 
 

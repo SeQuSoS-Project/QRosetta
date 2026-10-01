@@ -207,6 +207,7 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
         manifest["resolved_runners_per_axis"] = resolved_runners
         manifest["job_id"] = job_id
         manifest["runner_images"] = art.collect_runner_images(all_reports)
+        manifest["host_environment"] = art.collect_host_environment(all_reports)
         manifest["label"] = payload.label
         manifest["created_utc"] = datetime.now(timezone.utc).isoformat()
         manifest["mode"] = payload.mode

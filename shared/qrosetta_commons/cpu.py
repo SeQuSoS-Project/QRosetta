@@ -94,6 +94,51 @@ def host_cpu_model():
     return None
 
 
+AFFINITY_ENV = "QROSETTA_CPU_AFFINITY"
+
+
+def parse_cpu_list(text):
+    """CPU ids from a list such as ``"0-7,16"``; ValueError on malformed input."""
+    cpus = set()
+    for part in str(text).split(","):
+        part = part.strip()
+        if not part:
+            continue
+        lo, _, hi = part.partition("-")
+        start, end = int(lo), int(hi or lo)
+        if start < 0 or end < start:
+            raise ValueError(f"bad CPU range {part!r}")
+        cpus.update(range(start, end + 1))
+    if not cpus:
+        raise ValueError("empty CPU list")
+    return cpus
+
+
+def apply_cpu_affinity():
+    """Restrict this process to the CPUs in ``QROSETTA_CPU_AFFINITY`` when it is set."""
+    text = os.getenv(AFFINITY_ENV)
+    if text:
+        os.sched_setaffinity(0, parse_cpu_list(text))
+
+
+def cgroup_memory_limit_mib():
+    """Memory limit of this process's cgroup in MiB (v2 ``memory.max``, v1
+    ``memory.limit_in_bytes``); None when unlimited or unreadable."""
+    for path in (f"{_CGROUP}/memory.max", f"{_CGROUP}/memory/memory.limit_in_bytes"):
+        text = _read(path)
+        if text is None:
+            continue
+        text = text.strip()
+        if text == "max":
+            return None
+        try:
+            value = int(text)
+        except ValueError:
+            return None
+        return None if value >= 2 ** 60 else value / 2 ** 20
+    return None
+
+
 def cpu_environment(cpus_used=()):
     """Process-level CPU context: host CPU model, cgroup quota, CPU affinity and the
     maximum frequency of each CPU in ``cpus_used``."""
@@ -104,7 +149,9 @@ def cpu_environment(cpus_used=()):
     return {
         "cpu_model": host_cpu_model(),
         "cpu_quota_cores": cgroup_cpu_quota_cores(),
+        "memory_limit_mib": cgroup_memory_limit_mib(),
         "cpu_affinity": affinity,
+        "cpu_affinity_setting": os.getenv(AFFINITY_ENV) or None,
         "cpu_max_mhz": {str(c): cpu_max_mhz(c) for c in sorted(set(cpus_used))
                         if c is not None},
     }

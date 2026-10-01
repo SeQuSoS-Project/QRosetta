@@ -502,10 +502,10 @@ function _dataPerformanceRepeated(results) {
             + 'median + simulation median, the reported execution_time_sec. Total IQR is the '
             + 'interquartile range (Q3 - Q1, linear interpolation) and Total stdev the sample '
             + 'standard deviation (n - 1) of the per-run totals (compilation + simulation); '
-            + 'both are — for a backend with one run. Simulation CPU and process CPU '
-            + 'are from the last timed run; process CPU is getrusage CPU time of the whole '
-            + 'isolated runner process, including interpreter start, imports and the '
-            + 'warm-up. Ranked by median total time, fastest first; runs without a rank '
+            + 'both are — for a backend with one run. Simulation CPU is the median over the '
+            + 'timed runs of process CPU time from t2 to t3; process CPU is getrusage CPU '
+            + 'time of the whole isolated runner process, including interpreter start, '
+            + 'imports, the warm-up and every timed run. Ranked by median total time, fastest first; runs without a rank '
             + 'follow with the reason in Status. Gate count and depth are taken from each '
             + `backend's transpiled QASM. ${DEVICE_NOTE}`,
     };

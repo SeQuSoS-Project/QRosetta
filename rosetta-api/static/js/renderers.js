@@ -152,7 +152,7 @@ export function renderDetailReport(data, title, config = getState().currentRunne
 }
 
 /** A suite Fastest/Lightest cell: the backend name and its device tag. */
-function _fillWinnerCell(td, entry, rawResults) {
+function _fillWinnerCell(td, entry, rawResults, next = null) {
     if (!td) return;
     if (!entry) {
         td.textContent = '-';
@@ -160,6 +160,10 @@ function _fillWinnerCell(td, entry, rawResults) {
     }
     td.textContent = _displayRunnerName(entry.simulator);
     const raw = (Array.isArray(rawResults) ? rawResults : []).find(r => r && r.simulator === entry.simulator);
+    if (typeof entry.timing_samples === 'number') td.appendChild(document.createTextNode(` (n=${entry.timing_samples})`));
+    if (entry.overlaps_next === true && next) {
+        td.appendChild(_tag('≈', TAG_AMBER, `Not separated from ${_displayRunnerName(next.simulator)}: their per-run totals overlap.`));
+    }
     const device = raw?.device ?? entry.device;
     if (device) {
         const run = raw || entry;
@@ -280,9 +284,10 @@ export function renderSuiteSummary(data, title) {
                 statusCell.appendChild(badge);
             });
 
-            const fastest = splitRanking(item.performance_report, 'execution_time_sec').ranked[0];
+            const timeRanked = splitRanking(item.performance_report, 'execution_time_sec').ranked;
+            const fastest = timeRanked[0];
             const lightest = splitRanking(item.resource_report, 'process_peak_rss_mb').ranked[0];
-            _fillWinnerCell(rowFrag.querySelector('.tpl-fastest'), fastest, item.raw_results);
+            _fillWinnerCell(rowFrag.querySelector('.tpl-fastest'), fastest, item.raw_results, timeRanked[1]);
             _fillWinnerCell(rowFrag.querySelector('.tpl-lightest'), lightest, item.raw_results);
 
             const detailsBtn = rowFrag.querySelector('.tpl-details-btn');

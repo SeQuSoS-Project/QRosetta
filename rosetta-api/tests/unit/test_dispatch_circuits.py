@@ -127,3 +127,10 @@ def test_statevector_dispatch_without_measurements_is_unchanged():
 def test_statevector_dispatch_rejects_non_unitary_circuits(body):
     with pytest.raises(StatevectorIncompatible, match="measured mode"):
         prepare_statevector_dispatch(HEADER + body, apply_preprocessing=False)
+
+
+def test_waves_record_how_many_runs_share_them():
+    from services.dispatcher import group_specs_by_phase
+    specs = [{"key": "a", "phase": 1}, {"key": "b", "phase": 1}, {"key": "c", "phase": 2}]
+    waves = group_specs_by_phase(specs)
+    assert [[s["concurrent_runs"] for s in w] for w in waves] == [[2, 2], [1]]

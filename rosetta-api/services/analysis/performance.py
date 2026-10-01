@@ -9,7 +9,7 @@ samples also carries its median total time (median compilation + median simulati
 the IQR and stdev of the per-run totals, and is ranked by the median total.
 """
 
-from .timing import stage_median, timing_summary
+from .timing import stage_median, timing_samples, timing_summary
 
 _FAILED_DISPATCH = ("error", "timeout", "offline")
 
@@ -86,14 +86,35 @@ def create_performance_report(results_list: list) -> dict:
             ranked.append(entry)
 
     repeated = any("execution_time_sec_median" in e for e in ranked)
+    ordered = _rank(ranked, lambda e: e.get("execution_time_sec_median", e["execution_time_sec"]))
+    _mark_overlaps(ordered, {r.get("simulator"): r for r in results_list})
     return {
-        "summary": ("Median execution time in seconds over the timed runs (fastest first)."
+        "summary": ("Execution time in seconds: median compilation + median simulation over "
+                    "the timed runs (fastest first)."
                     if repeated else "Execution time in seconds (fastest first)."),
         "ranking_metric": "execution_time_sec_median" if repeated else "execution_time_sec",
-        "ranking": _rank(ranked, lambda e: e.get("execution_time_sec_median",
-                                                 e["execution_time_sec"])),
+        "ranking": ordered,
+        "overlap_rule": OVERLAP_RULE,
         "unranked": unranked,
     }
+
+
+OVERLAP_RULE = ("overlaps_next is true when this backend's slowest per-run total time is at "
+                "least the next-ranked backend's fastest per-run total, so these runs do not "
+                "separate the two; None when either has fewer than two timed runs.")
+
+
+def _mark_overlaps(ordered, raw_by_simulator):
+    """Set ``overlaps_next`` on each ranked entry (see OVERLAP_RULE); None for the last."""
+    totals = [timing_samples(raw_by_simulator.get(e["simulator"]) or {}, "execution_time")
+              for e in ordered]
+    for i, entry in enumerate(ordered):
+        nxt = totals[i + 1] if i + 1 < len(ordered) else None
+        mine = totals[i]
+        if nxt is None or mine is None or len(mine) < 2 or len(nxt) < 2:
+            entry["overlaps_next"] = None
+        else:
+            entry["overlaps_next"] = bool(max(mine) >= min(nxt))
 
 
 def create_resource_report(results_list: list) -> dict:

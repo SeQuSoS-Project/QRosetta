@@ -7,14 +7,14 @@ import { formatRunnerLabel, parseRunnerKey } from './runner_key.js';
 export const METRIC_DEFINITIONS = {
     "compilation": "<b>Compilation Time:</b> Wall clock from t0 to t1 of a timed run: parse the QASM, apply this backend's transforms and build its native circuit. After one discarded warm-up run; with Timing repeats above 1, the median of the timed runs, with their spread and n.",
     "simulation": "<b>Simulation Time:</b> Wall clock from t2 to t3 of a timed run: execute the circuit and return the statevector or draw the shots. Building the counts histogram from drawn shots is outside this window. After one discarded warm-up run; with Timing repeats above 1, the median of the timed runs, with their spread and n.",
-    "total_time": "<b>Total:</b> Compilation + Simulation (medians when Timing repeats is above 1). Backends are ranked by this column.",
-    "cpu_time": "<b>CPU Time:</b> User+system CPU time of the whole isolated runner process: interpreter start, SDK import, warm-up and the timed run. It covers more than the wall-clock columns.",
-    "sim_cpu_time": "<b>Simulation CPU:</b> Process CPU time (all threads) from t2 to t3 of the timed run only. Every runner is started with OMP_NUM_THREADS, MKL_NUM_THREADS, OPENBLAS_NUM_THREADS, NUMEXPR_NUM_THREADS and NUMBA_NUM_THREADS set to 1 (see thread_env in the raw JSON).",
+    "total_time": "<b>Total:</b> Compilation + Simulation. With Timing repeats above 1, median compilation + median simulation, ± the standard deviation of the per-run totals. Backends are ranked by this column.",
+    "cpu_time": "<b>CPU Time:</b> User+system CPU time of the whole isolated runner process: interpreter start, SDK import, warm-up and every timed run, so it grows with Timing repeats. It covers more than the wall-clock columns.",
+    "sim_cpu_time": "<b>Simulation CPU:</b> Process CPU time (all threads) from t2 to t3; with Timing repeats above 1, the median of the timed runs. Every runner is started with OMP_NUM_THREADS, MKL_NUM_THREADS, OPENBLAS_NUM_THREADS, NUMEXPR_NUM_THREADS and NUMBA_NUM_THREADS set to 1 (see thread_env in the raw JSON).",
     "gate_count": "<b>Gate Count:</b> Number of gate statements in the circuit this backend executed (its transpiled_qasm).",
     "circuit_depth": "<b>Depth:</b> Greedy-layering depth of the circuit this backend executed (its transpiled_qasm).",
-    "proc_peak_rss": "<b>Process Peak RSS:</b> Peak RSS of the simulating process over its whole life: interpreter start, SDK import, warm-up and the timed run. Kernel high-water mark (VmHWM); a getrusage badge marks the ru_maxrss fallback. Resources are ranked by this column.",
-    "mem_delta": "<b>Mem Delta:</b> Peak RSS minus baseline RSS during the simulation window (pre-execute setup plus t2..t3 of the timed run). Kernel high-water mark (VmHWM, reset when the window opens); a sampled badge marks 10 ms RSS polling, which can miss short peaks.",
-    "proc_peak": "<b>Window Peak:</b> Absolute peak RSS during the simulation window of the timed run, measured the same way as Mem Delta.",
+    "proc_peak_rss": "<b>Process Peak RSS:</b> Peak RSS of the simulating process over its whole life: interpreter start, SDK import, warm-up and every timed run. Kernel high-water mark (VmHWM); a getrusage badge marks the ru_maxrss fallback. Resources are ranked by this column.",
+    "mem_delta": "<b>Mem Delta:</b> Peak RSS minus baseline RSS during the simulation window (pre-execute setup plus t2..t3 of the first timed run). Memory the warm-up freed but the process kept can be reused, so a state smaller than the SDK's cached memory can read near 0. Kernel high-water mark (VmHWM, reset when the window opens); a sampled badge marks 10 ms RSS polling, which can miss short peaks.",
+    "proc_peak": "<b>Window Peak:</b> Absolute peak RSS during the simulation window of the first timed run, measured the same way as Mem Delta.",
     "theoretical_sv": "<b>Theoretical SV:</b> Size of a dense statevector for the declared qubits: 2^N × 16 bytes for complex128 backends, 2^N × 8 bytes for complex64 backends. quimb (tensor network) holds no dense statevector; its value is computed the same way from the precision it reports, for comparison.",
     "fidelity_matrix": "<b>Fidelity Matrix:</b> |⟨ψi|ψj⟩|² between the normalised statevectors, unrounded. Green when F ≥ 1 − the fidelity tolerance recorded with the pair. A value other than 1 is printed with enough decimals to differ from 1.",
     "relative_phase_matrix": "<b>Global phase offset arg⟨a|b⟩:</b> arg⟨ψi|ψj⟩ in radians. Green when |phase| ≤ the phase tolerance recorded with the pair. A non-zero value with fidelity at 1 means the two states differ only by a global phase.",
@@ -283,6 +283,22 @@ export function outsideProcessText(r) {
     return `the runner container used ${fmtNum(cg, 4)} s of CPU during the simulation window, `
         + `the simulating process ${fmtNum(own, 4)} s: ${fmtNum(gap, 4)} s of work ran outside the measured process, `
         + 'so its CPU time and memory fields leave that work out';
+}
+
+/** Distinct maximum frequencies (MHz) of the CPUs a run's simulation windows were on, ascending. */
+export function simulationCoreSpeeds(r) {
+    const mhz = r?.cpu_environment?.cpu_max_mhz || {};
+    const speeds = new Set((Array.isArray(r?.simulation_cpus) ? r.simulation_cpus : [])
+        .map(c => mhz[c]).filter(v => typeof v === 'number'));
+    return [...speeds].sort((a, b) => a - b);
+}
+
+/** Note for a run whose timed runs were on CPUs of different maximum frequency, or null. */
+export function mixedCoresText(r) {
+    const speeds = simulationCoreSpeeds(r);
+    if (speeds.length < 2) return null;
+    return `its timed runs were on CPUs with different maximum frequencies (${speeds.map(s => `${fmtInt(s)} MHz`).join(', ')}), `
+        + 'so its samples mix fast and slow cores; simulation_cpus_samples in the raw JSON gives the CPUs of each run';
 }
 
 /** The distinct CPU quotas (cores) reported by the runs, as a readable phrase, or null when none reported one. */

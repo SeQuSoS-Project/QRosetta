@@ -3,7 +3,7 @@
 
 import {
     QUEUE_WAIT_SHOWN_SEC, TAG_AMBER, TAG_GRAY, _applyLegendDots, _cloneTemplate, _displayRunnerName,
-    _makeStatusCell, _tag, cpuQuotaPhrase, deviceTitle, executionTags, fmtInt, fmtNum, getOptBadge, isGpuRun, outsideProcessText, precisionTag, queueWaitText, throttleText,
+    _makeStatusCell, _tag, cpuQuotaPhrase, deviceTitle, executionTags, fmtInt, fmtNum, getOptBadge, isGpuRun, mixedCoresText, outsideProcessText, precisionTag, simulationCoreSpeeds, queueWaitText, throttleText,
     renderTooltip,
 } from './render_helpers.js';
 import { RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, runnerStatus, userFacingError } from './run_status.js';
@@ -68,6 +68,8 @@ function _fillSimulatorCell(td, simulatorName, config, raw, { memory = false } =
     if (wait) td.appendChild(_tag('queued', TAG_AMBER, wait.charAt(0).toUpperCase() + wait.slice(1)));
     const throttled = throttleText(raw);
     if (throttled) td.appendChild(_tag('throttled', TAG_AMBER, throttled.charAt(0).toUpperCase() + throttled.slice(1)));
+    const mixed = mixedCoresText(raw);
+    if (mixed) td.appendChild(_tag('mixed cores', TAG_AMBER, mixed.charAt(0).toUpperCase() + mixed.slice(1)));
     const outside = outsideProcessText(raw);
     if (outside) td.appendChild(_tag('outside process', TAG_AMBER, outside.charAt(0).toUpperCase() + outside.slice(1)));
     if (memory && raw?.memory_method && raw.memory_method !== 'vmhwm') {
@@ -89,7 +91,8 @@ function _timingNote(rawResults) {
         ? 'Each value is one timed run (n=1) after one discarded warm-up run.'
         : `Timed runs per backend: ${[...samples].sort((a, b) => a - b).join(', ')}, after one discarded warm-up run. `
             + 'With more than one, a value is the median of the timed runs ± their sample standard deviation, with n; '
-            + 'the per-run samples are in the raw JSON.';
+            + 'Total is median compilation + median simulation (execution_time_sec) ± the standard deviation of the per-run totals. '
+            + 'Memory fields and outputs come from the first timed run; the per-run samples are in the raw JSON.';
     const quota = cpuQuotaPhrase(ok);
     const limit = quota ? `${quota} (cgroup quota) and 1 thread` : '1 thread (quota not reported)';
     note += ok.some(isGpuRun)
@@ -97,6 +100,17 @@ function _timingNote(rawResults) {
             + 'host-side work under the same quota; times across devices compare different hardware.'
         : ` Each runner is limited to ${limit}.`;
     const throttled = ok.filter(r => throttleText(r)).length;
+    if (!(samples.size === 1 && samples.has(1))) note += ' A ≈ next to a rank means its per-run totals overlap those of the next rank.';
+    const speeds = new Set(ok.flatMap(simulationCoreSpeeds));
+    if (speeds.size > 1) {
+        note += ` The simulation windows ran on CPUs with different maximum frequencies (${[...speeds].sort((a, b) => a - b).map(s => `${fmtInt(s)} MHz`).join(', ')}), `
+            + 'so part of a difference between backends can be the core they ran on (tag "mixed cores" when one backend\'s own runs mixed them).';
+    }
+    const concurrent = Math.max(0, ...ok.map(r => (typeof r.concurrent_runs === 'number' ? r.concurrent_runs : 0)));
+    if (concurrent > 1) {
+        note += ` Up to ${concurrent} runs were dispatched at the same time and competed for the host's cores and memory bandwidth, `
+            + 'which can slow some backends more than others; for timings meant for comparison, use the Sequential ordering.';
+    }
     const outside = ok.filter(r => outsideProcessText(r)).length;
     if (outside) note += ` ${outside} run(s) did part of their simulation work outside the measured process (tag "outside process").`;
     if (throttled) note += ` ${throttled} run(s) were held by the CPU quota during the simulation window (tag "throttled"); that wait is in their timings.`;
@@ -183,7 +197,9 @@ function _timingValue(r, raw, stage) {
     if (n <= 1) return fmtNum(value, 6);
     const samples = _stageSamples(raw, stage);
     const pick = (...keys) => keys.map(k => raw?.[k]).find(v => typeof v === 'number');
-    const median = pick(`${stage}_time_sec_median`, `${stage}_time_median_sec`) ?? (samples ? _median(samples) : value);
+    const median = stage === 'execution'
+        ? (r.execution_time_sec_median ?? value)
+        : pick(`${stage}_time_sec_median`, `${stage}_time_median_sec`) ?? (samples ? _median(samples) : value);
     const sd = pick(`${stage}_time_sec_stdev`, `${stage}_time_stdev_sec`) ?? (samples ? _stdev(samples) : null);
     return `${fmtNum(median, 6)}${sd !== null ? ` ± ${fmtNum(sd, 6)}` : ''} (n=${n})`;
 }
@@ -192,7 +208,7 @@ const TIME_COLUMNS = [
     { key: 'compilation', label: 'Compilation (s)', value: (r, raw) => _timingValue(r, raw, 'compilation') },
     { key: 'simulation', label: 'Simulation (s)', value: (r, raw) => _timingValue(r, raw, 'simulation') },
     { key: 'total_time', label: 'Total (s)', value: (r, raw) => _timingValue(r, raw, 'execution'), strong: true },
-    { key: 'sim_cpu_time', label: 'Sim CPU (s)', value: (r, raw) => fmtNum(raw?.simulation_cpu_time_sec, 6) },
+    { key: 'sim_cpu_time', label: 'Sim CPU (s)', value: (r, raw) => _timingValue({}, raw, 'simulation_cpu') },
     { key: 'cpu_time', label: 'CPU, whole process (s)', value: (r, raw) => fmtNum(r.cpu_time_sec ?? raw?.cpu_time_sec, 6) },
     { key: 'gate_count', label: 'Gate Count', value: (r, raw) => fmtInt(r.gate_count ?? raw?.gate_count) },
     { key: 'circuit_depth', label: 'Depth', value: (r, raw) => fmtInt(r.circuit_depth ?? raw?.circuit_depth) },
@@ -264,6 +280,10 @@ export function renderRankingTable(report, key, unit, panel, config = {}, rawRes
         const rankTd = document.createElement('td');
         rankTd.className = 'px-4 py-3 text-sm text-gray-500';
         rankTd.textContent = String(r.rank ?? i + 1);
+        if (r.overlaps_next === true && ranked[i + 1]) {
+            rankTd.appendChild(_tag('≈', TAG_AMBER, `Overlaps rank ${i + 2} (${_displayRunnerName(ranked[i + 1].simulator)}): `
+                + 'this backend\'s slowest timed run took at least as long as that backend\'s fastest, so these runs do not separate the two.'));
+        }
         tr.appendChild(rankTd);
         const simTd = document.createElement('td');
         simTd.className = 'px-4 py-3 text-sm font-medium text-gray-900';

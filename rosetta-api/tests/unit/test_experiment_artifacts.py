@@ -249,3 +249,17 @@ def test_performance_rows_one_per_run_with_cpu_context():
                                            "simulation_time_sec_min", "timing_repeats"))
     text = art.csv_string(rows, art.PERFORMANCE_FIELDS)
     assert text.splitlines()[0].split(",") == art.PERFORMANCE_FIELDS
+
+
+def test_host_environment_summarises_every_run():
+    reports = [{"raw_results": [
+        {"cpu_environment": {"cpu_model": "X", "cpu_quota_cores": 1.0, "cpu_affinity_setting": None},
+         "runtime_environment": {"python": "3.11.9", "numpy": "1.26.4"}},
+        {"cpu_environment": {"cpu_model": "X", "cpu_quota_cores": None, "cpu_affinity_setting": "0-15"},
+         "runtime_environment": {"python": "3.10.14", "numpy": "1.26.4"}},
+        {"error": "boom"}]}]
+    env = art.collect_host_environment(reports)
+    assert env["cpu_models"] == ["X"]
+    assert env["cpu_quota_cores"] == [1.0, None]
+    assert env["cpu_affinity_settings"] == ["0-15", None]
+    assert len(env["runtime_environments"]) == 2

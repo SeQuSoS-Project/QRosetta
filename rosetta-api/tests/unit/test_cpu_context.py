@@ -112,3 +112,53 @@ def test_repeats_summarise_throttling_and_cpu_environment(tmp_path, monkeypatch)
     assert env["cpu_quota_cores"] == 1.0
     assert set(env["cpu_max_mhz"]) == {str(c) for c in r["simulation_cpus"]}
     assert "simulation_throttled_sec" in r["metric_scope"]
+
+
+def test_parse_cpu_list():
+    assert cpu.parse_cpu_list("0-3,8") == {0, 1, 2, 3, 8}
+    for bad in ("", "3-1", "x", "-2"):
+        with pytest.raises(ValueError):
+            cpu.parse_cpu_list(bad)
+
+
+def test_affinity_setting_restricts_the_process(monkeypatch):
+    original = os.sched_getaffinity(0)
+    target = min(original)
+    monkeypatch.setenv(cpu.AFFINITY_ENV, str(target))
+    try:
+        cpu.apply_cpu_affinity()
+        assert os.sched_getaffinity(0) == {target}
+        assert cpu.cpu_environment()["cpu_affinity_setting"] == str(target)
+    finally:
+        os.sched_setaffinity(0, original)
+
+
+def test_cpus_of_each_repeat_are_kept(tmp_path, monkeypatch):
+    _cgroup(tmp_path, monkeypatch, cpu_stat="throttled_usec 0\n")
+
+    def proc(payload):
+        return run_statevector_job(simulator="t", payload=payload, compile_fn=fx._compile,
+                                   execute_fn=fx._execute_alloc, qubit_ordering="msb")
+
+    r = run_with_uniform_measurement(proc, {"circuit_data": fx.QASM_2Q, "timing_repeats": 2})
+    assert len(r["simulation_cpus_samples"]) == 2
+    assert set(r["simulation_cpus"]) == {c for s in r["simulation_cpus_samples"] for c in s}
+
+
+def test_memory_limit_from_cgroup(tmp_path, monkeypatch):
+    monkeypatch.setattr(cpu, "_CGROUP", str(tmp_path))
+    (tmp_path / "memory.max").write_text("536870912\n")
+    assert cpu.cgroup_memory_limit_mib() == 512
+    (tmp_path / "memory.max").write_text("max\n")
+    assert cpu.cgroup_memory_limit_mib() is None
+
+
+def test_non_finite_amplitudes_are_an_error():
+    import numpy as np
+
+    def nan_state(compiled, payload):
+        return np.array([np.nan, 0, 0, 0], dtype=complex)
+
+    r = run_statevector_job(simulator="t", payload={"circuit_data": fx.QASM_2Q},
+                            compile_fn=fx._compile, execute_fn=nan_state, qubit_ordering="msb")
+    assert "non-finite amplitudes" in r["error"]

@@ -98,7 +98,8 @@ def annotate_result(result: dict, spec: dict, sent_payload: dict, dispatched_at:
     Fields: simulator, optimization_level (applied), optimization_level_requested,
     dispatch_status, timeout_kind (``"queue"`` for a run that never left the runner's
     queue, ``"run"`` otherwise; only on timeouts), dispatched_at, completed_at,
-    timing_samples, timing_statistic, runner_image, and for seeded runs runner_seed, seed,
+    timing_samples, timing_statistic, runner_image, dispatch_phase, concurrent_runs (runs
+    dispatched in the same phase, this one included), and for seeded runs runner_seed, seed,
     seed_honoured. ``seed_honoured`` is None for a failed run, which sampled nothing.
     """
     result["simulator"] = spec["key"]
@@ -112,6 +113,8 @@ def annotate_result(result: dict, spec: dict, sent_payload: dict, dispatched_at:
     result["timing_samples"] = int(result.get("timing_repeats") or 1)
     result.setdefault("timing_statistic", TIMING_STATISTIC)
     result["runner_image"] = runner_image or "not recorded"
+    result["dispatch_phase"] = spec.get("phase", 1)
+    result["concurrent_runs"] = spec.get("concurrent_runs", 1)
     seed = sent_payload.get("seed")
     if seed is not None:
         result["runner_seed"] = seed
@@ -172,10 +175,14 @@ def expand_runner_jobs(runner_urls: dict, runner_payload: dict) -> list:
 
 
 def group_specs_by_phase(specs: list) -> list:
-    """Group job specs into phase waves in ascending order; each wave runs concurrently."""
+    """Group job specs into phase waves in ascending order; each wave runs concurrently.
+    Each spec gets ``concurrent_runs``, the number of runs in its wave."""
     by_phase = {}
     for spec in specs:
         by_phase.setdefault(spec["phase"], []).append(spec)
+    for wave in by_phase.values():
+        for spec in wave:
+            spec["concurrent_runs"] = len(wave)
     return [by_phase[p] for p in sorted(by_phase.keys())]
 
 

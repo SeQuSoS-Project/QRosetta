@@ -569,8 +569,13 @@
                         <code>resolvable_by_more_shots</code>, beside <code>inconclusive_reason</code>, says
                         whether more shots can turn an inconclusive pair into a verdict.</li>
                     <li><strong>Power model</strong>: the effect size is Cohen's
-                        <code>w = δ</code> with δ = 0.05, the smallest w any distribution pair at total
-                        variation δ can have (w ≥ TV). The chi-square statistic then follows a noncentral
+                        <code>w = δ<sub>tested</sub></code>, the smallest w any distribution pair at total
+                        variation δ = 0.05 can have on the table the test sees (w ≥ TV). Pooling rare outcomes
+                        into one bin can hide up to min(P, Q) of the total variation, where P and Q are the two
+                        backends' probabilities in the pooled bin, so <code>δ<sub>tested</sub> = δ − min(P, Q)</code>
+                        (recorded as <code>power.delta_tv_tested</code> and <code>power.pooled_probability</code>).
+                        When δ<sub>tested</sub> ≤ 0 a gap of δ could sit entirely inside the pooled bin, the power is
+                        α′ and the pair is inconclusive, however small its p-values. The chi-square statistic then follows a noncentral
                         χ² with <code>df = K − 1</code> and noncentrality <code>λ = N w²</code>.
                         <code>power_to_detect_delta_at_observed_shots = 1 − F(χ²₁₋α′,df ; df, λ)</code> with
                         α′ = α/(m·c_m), the level BY applies to a single discovery among the m tested pairs
@@ -583,7 +588,9 @@
                         than assuming the default shot count is enough.
                         <code>recommended_shots_per_backend</code> (also recorded as
                         <code>shots_per_backend_for_target_power</code>) is ⌈N*/2⌉, where N* is the
-                        total giving power 0.8 at α/(m·c_m). <code>recommended_exceeds_actual</code> says whether that is
+                        total giving power 0.8 at α/(m·c_m); when outcomes were pooled, it is the smallest count at
+                        which the observed proportions, scaled to that count, pool into a table with that power.
+                        <code>recommended_exceeds_actual</code> says whether that is
                         more than the shots either backend used; the Summary tab recommends more shots only
                         then. Because df uses the observed outcomes, the recommendation
                         can be too small when the true support is larger.</li>
@@ -726,7 +733,12 @@
                         (<code>timing_samples = 1</code>) and run-to-run variation is not measured. With
                         more, <code>compilation_time_sec</code> and <code>simulation_time_sec</code> are
                         medians (<code>timing_statistic: "median"</code>), and the per-run samples, mean and
-                        standard deviation are recorded beside them.</li>
+                        standard deviation are recorded beside them. <code>execution_time_sec</code> is the median
+                        compilation time plus the median simulation time; its IQR and standard deviation are those
+                        of the per-run totals. The statevector or counts and the memory fields come from the first
+                        timed run. In measured mode every timed run uses the same runner seed, so on a backend that honours
+                        the seed the repeats draw the same shots and only the timings differ. <code>cpu_time_sec</code> and
+                        <code>process_peak_rss_mb</code> cover every run, so they grow with the number of repeats.</li>
                     <li><strong>Timing windows.</strong> <code>compilation_time_sec</code> is wall clock from
                         t0 to t1 (parse, transpile, build the native circuit); <code>simulation_time_sec</code>
                         is wall clock from t2 to t3 (execute, return the statevector or draw the shots).
@@ -736,6 +748,11 @@
                         allocation, the cuStateVec kernels and the copy of the result from device to host.
                         CUDA context initialisation happens in the warm-up run, outside the window; it shows
                         up in <code>cpu_time_sec</code>, which covers the whole process.</li>
+                    <li><strong>myQLM's timed window.</strong> myQLM returns a statevector as one Python
+                        object per non-zero amplitude (<code>SAMPLE nbshots=0</code>), and building that result is
+                        inside its <code>simulation_time_sec</code> and memory window, so its time and memory grow with the
+                        number of non-zero amplitudes rather than with 2<sup>N</sup> alone: a GHZ state is fast, a dense
+                        state slow.</li>
                     <li><strong>quimb's timed window.</strong> quimb's <code>simulation_time_sec</code> includes the
                         search for a contraction path (cotengra's <code>auto-hq</code> optimiser, repeated each run with
                         its caches cleared) as well as the contraction. The search is randomised, so quimb's times vary
@@ -750,7 +767,10 @@
                         preemption by other processes (counted in
                         <code>simulation_involuntary_switches_samples</code>), and contention with the other
                         backends of the same comparison, which run at the same time unless runner phases or
-                        the Sequential ordering stage them. For timings meant for a performance comparison,
+                        the Sequential ordering stage them (each result records <code>concurrent_runs</code>, the number
+                        of runs dispatched with it, and <code>dispatch_phase</code>). Concurrent runs share cores,
+                        hyperthreads and memory bandwidth: on a 20-qubit measured QFT testers saw 2.3–3.3× longer times
+                        than with the Sequential ordering, and the order of backends changed. For timings meant for a performance comparison,
                         use several <code>timing_repeats</code>, stage the backends one at a time, and check
                         that <code>simulation_throttled_sec</code> is zero and <code>cpu_max_mhz</code> names
                         the same kind of core for every backend.</li>
@@ -786,8 +806,16 @@
                         backend, holds no dense statevector; its value is computed the same way from the
                         precision it reports, for comparison. Differences between backends at small n
                         reflect their libraries, not their simulation algorithms.</li>
-                    <li><strong>Gate count and depth</strong> come from the circuit each backend executed
-                        (its <code>transpiled_qasm</code>), using greedy layering for depth.</li>
+                    <li><strong>Benchmark circuits and structure.</strong> The <code>qft</code> preset applies the QFT
+                        to |0…0⟩, so every controlled phase has its control in |0⟩ and the output is a uniform product
+                        state. Backends that exploit structure (tensor networks, sparse or decision-diagram methods) run it
+                        much faster than a dense statevector would suggest. For scaling studies, include circuits whose
+                        state is entangled and dense, such as <code>random</code>.</li>
+                    <li><strong>Gate count and depth</strong> come from the circuit each backend executed: by default the
+                        top-level gate statements of its <code>transpiled_qasm</code>, with depth by greedy layering. The
+                        PennyLane runners count the operations of the tape the device executes instead, because their
+                        <code>transpiled_qasm</code> text decomposes operations such as <code>QubitUnitary</code> into gates
+                        that were not executed as such. <code>gate_metrics_basis</code> states which.</li>
                     <li><strong>Rankings</strong> include only successful runs. Failed runs, and GPU runs in
                         the memory ranking, are listed under <code>unranked</code> with a reason, and the UI
                         shows them after the ranked rows. The Performance and Resources tables have a Device
@@ -815,7 +843,10 @@
                         and <code>cpu_max_mhz</code> for the logical CPUs the process was on at the start and end of each
                         simulation window (<code>simulation_cpus</code>). On a host with cores of different speeds (for
                         example Intel P- and E-cores) the same run can take different times depending on the core the
-                        operating system chose; <code>cpu_max_mhz</code> shows which kind it was.
+                        operating system chose; <code>cpu_max_mhz</code> shows which kind it was. A server operator can
+                        restrict every runner process to chosen CPUs with the <code>QROSETTA_CPU_AFFINITY</code> environment
+                        variable (for example <code>0-15</code>), recorded as <code>cpu_environment.cpu_affinity_setting</code>;
+                        <code>memory_limit_mib</code> records the runner container's memory limit.
                         <code>simulation_involuntary_switches_samples</code> counts how often the process was preempted
                         during each simulation window. <code>simulation_cgroup_cpu_time_sec</code> is the CPU time of every
                         process in the runner's container over the simulation window; when it exceeds
@@ -976,6 +1007,16 @@
                 <table>
                     <thead><tr><th>Backend</th><th>Behaviour</th><th>Circuit to reproduce</th></tr></thead>
                     <tbody>
+                        <tr><td>Qrisp (measured mode)</td>
+                            <td>Qrisp 0.5's <code>QuantumCircuit.run()</code> returns every shot as |0…0⟩ on
+                                circuits of 12 or more qubits whose outcome spreads over many basis states, while
+                                <code>statevector_array()</code> of the same circuit is correct. Seen on the circuit
+                                to the right from n = 12 (correct up to n = 11) and on chains of controlled
+                                rotations from 12–13 qubits. The measured report marks Qrisp distinguishable from
+                                every other backend.</td>
+                            <td><code>qreg q[12]; creg c[12]; h q[0];</code> then <code>ch q[0],q[k];</code> for
+                                k = 1…11, then <code>measure q[i] -> c[i];</code> for every i. Expected: |0…0⟩ with
+                                probability 0.5; Qrisp: 1.0.</td></tr>
                         <tr><td>PennyLane (lightning and default.qubit)</td>
                             <td>pennylane-qiskit's <code>from_qasm</code> converts some gates to
                                 <code>QubitUnitary</code> with control and target swapped: <code>cu3</code>,

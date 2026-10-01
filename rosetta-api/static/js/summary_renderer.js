@@ -318,12 +318,15 @@ function _inconclusiveBlocks(panel, pairs) {
 
     if (lowPower.length) {
         const rec = recommendedShots(lowPower);
-        const advice = rec ? `: more shots would help: ~${fmtInt(rec)} per backend` : '';
+        const pooledPairs = lowPower.some(p => (p.metrics?.statistical_test?.power?.pooled_probability ?? 0) > 0);
+        const advice = rec ? `: more shots would help: ${pooledPairs ? 'at least ' : ''}~${fmtInt(rec)} per backend` : '';
         const block = _block(`Inconclusive, test power below ${target} (${lowPower.length})${advice}`, 'offline',
             lowPower.map(p => _measuredItem(p)));
         _note(block, 'Neither test finds a significant difference, but the power to detect the target gap is below '
             + `${target}, so these pairs are neither consistent nor in disagreement. ${_powerLevelText(lowPower)}`
-            + (rec ? ` The power model reaches ${target} at about ${fmtInt(rec)} shots per backend.` : ''));
+            + (rec ? ` The power model reaches ${target} at about ${fmtInt(rec)} shots per backend.` : '')
+            + (pooledPairs ? ' Rare outcomes were pooled for some of these pairs; the recommendation assumes the outcomes seen so far '
+                + 'are all there are, so with more shots new outcomes can appear and raise it.' : ''));
         panel.appendChild(block);
     }
     if (lowCounts.length) {
@@ -590,6 +593,7 @@ function _renderRunDetails(panel, data, raws) {
             _kv(grid, 'seed honoured', 'no: this backend ignores the seed, so its counts are not reproducible');
         }
         _kv(grid, 'dispatch group', r.dispatch_group);
+        if (typeof r.concurrent_runs === 'number') _kv(grid, 'dispatched with', `${r.concurrent_runs - 1} other run(s) at the same time (phase ${r.dispatch_phase ?? 1})`);
         _kv(grid, 'timed runs', r.timing_samples);
         const env = r.cpu_environment;
         if (env) {

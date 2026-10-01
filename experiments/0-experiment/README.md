@@ -76,7 +76,7 @@ some SDKs — e.g. TorchQuantum — cannot run raw QASM without a basis-decompos
 |---|---|
 | `base_url` | QRosetta API root |
 | `mode` | `measured` or `statevector` |
-| `n_shots` | shots (measured mode); omitted = server default (8192) |
+| `n_shots` | shots (measured mode); omitted = server default (8200) |
 | `timing_repeats` | timed runs per backend after one warm-up (1–10); times are medians |
 | `runner_phases` | runner id → phase number; phases run one after another, so backends in different phases do not compete for CPU |
 | `seed` | fixed seed, or `null` → generated-and-recorded |

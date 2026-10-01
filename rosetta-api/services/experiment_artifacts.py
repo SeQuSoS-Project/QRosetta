@@ -36,6 +36,7 @@ PERFORMANCE_FIELDS = [
     "simulation_cgroup_cpu_time_sec", "simulation_throttled_sec", "compilation_throttled_sec", "execution_time_sec",
     "memory_usage_mb", "process_peak_mb", "process_peak_rss_mb",
     "theoretical_statevector_mb", "gate_count", "circuit_depth", "queue_wait_sec",
+    "concurrent_runs",
     "cpu_model", "cpu_quota_cores", "simulation_cpus", "simulation_cpu_max_mhz",
 ]
 PREVALENCE_FIELDS = ["axis", "count_basis", "agreement_class", "pair_count", "pair_scope",
@@ -74,6 +75,9 @@ TRIAGE_README = (
     "                             the run was on (cores of different speeds give different\n"
     "                             times). Failed runs have empty metric cells. Memory fields\n"
     "                             are MiB of host RSS; see metric_scope in results/.\n"
+    "                             concurrent_runs is the number of runs dispatched at the\n"
+    "                             same time as this one (itself included); runs that share\n"
+    "                             the host's cores and memory bandwidth are slower.\n"
     "  agreement_prevalence.csv - pair counts per class over compared pairs\n"
     "                             (pair_scope=compared); pairs where a side had no usable\n"
     "                             output are counted separately (pair_scope=not_comparable).\n"
@@ -226,9 +230,10 @@ def build_performance_rows(axis_label: str, summary: list) -> list:
                         "simulation_throttled_sec",
                         "compilation_throttled_sec", "execution_time_sec", "memory_usage_mb",
                         "process_peak_mb", "process_peak_rss_mb",
-                        "theoretical_statevector_mb", "gate_count", "circuit_depth",
-                        "queue_wait_sec"):
+                        "theoretical_statevector_mb", "gate_count", "circuit_depth"):
                 row[key] = entry.get(key) if ok else None
+            row["queue_wait_sec"] = entry.get("queue_wait_sec")
+            row["concurrent_runs"] = entry.get("concurrent_runs")
             row["simulation_time_sec_min"] = _samples_extreme(entry, min) if ok else None
             row["simulation_time_sec_max"] = _samples_extreme(entry, max) if ok else None
             if ok and row["timing_repeats"] is None:
@@ -324,6 +329,27 @@ def collect_runner_images(reports: list) -> dict:
             if image and not str(image).startswith("not recorded"):
                 images[str(result.get("simulator"))] = image
     return images
+
+
+def collect_host_environment(reports: list) -> dict:
+    """Distinct CPU models, CPU quotas, affinity settings and runtime environments
+    recorded by the runs of every report."""
+    models, quotas, affinity, runtimes = set(), set(), set(), set()
+    for report in reports:
+        for entry in (report or {}).get("raw_results", []) or []:
+            env = entry.get("cpu_environment") or {}
+            if env.get("cpu_model"):
+                models.add(env["cpu_model"])
+            if "cpu_quota_cores" in env:
+                quotas.add(env["cpu_quota_cores"])
+            if "cpu_affinity_setting" in env:
+                affinity.add(env["cpu_affinity_setting"])
+            if entry.get("runtime_environment"):
+                runtimes.add(json.dumps(entry["runtime_environment"], sort_keys=True))
+    return {"cpu_models": sorted(models),
+            "cpu_quota_cores": sorted(quotas, key=lambda q: (q is None, q or 0)),
+            "cpu_affinity_settings": sorted(affinity, key=lambda a: (a is None, a or "")),
+            "runtime_environments": [json.loads(r) for r in sorted(runtimes)]}
 
 
 def build_manifest(*, config: dict, git_sha: str, api_base: str, requested_seed,

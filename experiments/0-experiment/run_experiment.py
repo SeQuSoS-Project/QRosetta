@@ -184,11 +184,13 @@ def main() -> int:
     seed = cfg.get("seed", None)  # null in config => backend generates and records one
     preprocessing_modes = cfg.get("preprocessing_modes", [True])
     conformance, prevalence, performance = [], [], []
+    all_summaries = []
     effective_seeds, sdk_versions = {}, {}
 
     for pp in preprocessing_modes:
         axis = f"{cfg['mode']}_preproc{'On' if pp else 'Off'}"
         summary = run_axis(base_url, circuits, cfg, seed, apply_preprocessing=bool(pp))
+        all_summaries += summary
         axis_dir = os.path.join(results_dir, axis)
         os.makedirs(axis_dir, exist_ok=True)
         for report in summary:
@@ -222,6 +224,7 @@ def main() -> int:
         config=cfg, git_sha=_git_sha(), api_base=base_url, requested_seed=seed,
         effective_seeds=effective_seeds, circuits=circuits, sdk_versions=sdk_versions)
     manifest["created_utc"] = datetime.now(timezone.utc).isoformat()
+    manifest["host_environment"] = art.collect_host_environment(all_summaries)
     with open(os.path.join(out, "manifest.json"), "w", encoding="utf-8") as fh:
         json.dump(manifest, fh, indent=2, default=str)
 
