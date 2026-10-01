@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 import db.models as models
 from qrosetta_commons.helpers import get_logger
 from schemas.timestamps import utc_iso
+from services.share_links import delete_links
 from services.storage import delete_run_reports, fetch_run_report, save_run_report
 
 logger = get_logger("rosetta-history")
@@ -167,6 +168,7 @@ def delete_runs(db: Session, user_id: int, run_ids: list) -> int:
         return 0
 
     delete_run_reports([run.s3_object_key for run in runs])
+    delete_links(db, [run.id for run in runs])
     for run in runs:
         db.delete(run)
     db.commit()

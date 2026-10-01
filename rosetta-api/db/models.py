@@ -33,3 +33,14 @@ class RunHistory(Base):
     s3_object_key = Column(String, nullable=False, unique=True, index=True)
     run_name = Column(String, nullable=False, default="Unknown")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class ShareLink(Base):
+    __tablename__ = "share_links"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), index=True)
+    token_hash = Column(String(64), nullable=False, unique=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    run_id = Column(String(36), ForeignKey("run_histories.id"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    revoked_at = Column(DateTime(timezone=True), nullable=True)

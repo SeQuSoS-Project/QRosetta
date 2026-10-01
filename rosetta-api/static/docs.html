@@ -990,6 +990,7 @@
                         <tr><td>Performance / Resources</td><td>Ranked successful runs, then the unranked runs with their status and reason, with a Device column (GPU runs name the GPU). With Timing repeats above 1, each time cell shows the median ± the sample standard deviation and n. Tooltips on each column give the measurement window. When a GPU run is present, the Performance note says that times across devices compare different hardware and the Resources note says that GPU device memory is not measured.</td></tr>
                         <tr><td>Divergence</td><td>The N×N fidelity, global phase offset arg⟨a|b⟩, JS-divergence (nats) and Hellinger matrices. The fidelity matrix holds the direct fidelity, before any bit reversal, so an <code>lsb</code>×<code>msb</code> pair that agrees after the declared reversal can show a low value here; the Agreement tab and the Summary give the label-aligned value. A cell is green when it is within the tolerance recorded with that pair; OFF, ERR and T/O mark failed runs, n/c a pair that is not comparable (<code>null</code> in the report; a report that stores −1 for such a pair shows n/c too). The diagonal holds each backend compared with itself (fidelity 1, JS 0, phase 0). Cells are rounded for display: four decimals, more for a fidelity that would otherwise round to 1, and three significant digits in scientific notation below 1e-3. Hover a cell for the unrounded value; the report stores it unrounded.</td></tr>
                         <tr><td>Agreement</td><td>The label per backend pair, with the metrics, the tolerances used, the statistical test and provenance (seeds, ordering, SDK versions, preprocessing) per pair.</td></tr>
+                        <tr><td>Circuits</td><td>The circuit texts the run recorded, side by side: the circuit as submitted, the circuit the API sent to each dispatch group (with the API's changes) and the circuit each backend executed (its <code>transpiled_qasm</code>, with the backend's transforms, SDK versions, gate count and depth). Each executed pane says where its gate count and depth come from (<code>gate_metrics_basis</code>): counted from that text for most backends, from the executed tape for PennyLane, whose recorded text decomposes <code>QubitUnitary</code> although the tape does not. A line diff compares any two panes, raw or with whitespace and line breaks, comments, or the OPENQASM and include lines ignored; the raw text stays in the panes. The diff stops at about 4,000 changed lines. The tab shows text only and draws no conclusion from a difference: two texts can differ line by line and describe the same unitary. A saved run opened from history also offers a read-only link (see <a href="#accounts">Accounts, history &amp; autosave</a>).</td></tr>
                         <tr><td>Artifacts</td><td>Publication figures and tables, scoped to any subset of backends in the browser. The browser offers figures as SVG, PNG or PDF and tables as LaTeX, CSV, HTML or Markdown. The RO-Crate export renders figures as SVG, PNG or PDF and tables as LaTeX, CSV, HTML or XLSX (<code>publication_artifacts</code> in the export body).</td></tr>
                         <tr><td>Exports</td><td>The JSON report held in the browser, the full report from the server, and the RO-Crate export (see <a href="#endpoints">Reports and exports</a>).</td></tr>
                     </tbody>
@@ -1025,6 +1026,10 @@
                         <tr><td><code>GET /jobs/{job_id}/report</code></td><td>The untruncated report as JSON (the <em>Download full report</em> button). 404 if the job is unknown or expired, 409 if it has not completed.</td></tr>
                         <tr><td><code>POST /jobs/{job_id}/export</code></td><td>An RO-Crate ZIP built from the server copy; body: <code>include_statevectors</code>, <code>author_name</code>, <code>author_affiliation</code>, <code>publication_artifacts</code>. Same 404 and 409 cases.</td></tr>
                         <tr><td><code>POST /history/runs/from_job/{job_id}</code></td><td>Saves a finished single or batch job to the signed-in user's history from the server copy (body, optional: <code>{"run_name": "..."}</code>). 201 with the saved run; saving the same job again returns that run with 200. 404 if the job is unknown or expired; 409 if it has not finished or is an experiment.</td></tr>
+                        <tr><td><code>POST /history/runs/{run_id}/share-links</code></td><td>Creates a read-only link to one of the signed-in user's saved runs (body, optional: <code>{"expires_in_days": 1..90}</code>, default 30). 201 with the link's id, expiry and token; the token appears only in this response. 404 if the run is not yours; 409 when the run already has 10 active links.</td></tr>
+                        <tr><td><code>GET /history/runs/{run_id}/share-links</code></td><td>The links to one of your saved runs, with creation, expiry and revocation times, without tokens.</td></tr>
+                        <tr><td><code>DELETE /history/share-links/{link_id}</code></td><td>Revokes one of your links; it stops working at once.</td></tr>
+                        <tr><td><code>POST /shared/circuits</code></td><td>The circuit texts a link reads (body: <code>{"token": "..."}</code>); no sign-in. 404 for a token that is unknown, expired or revoked, whose owner's account is deactivated, or whose run was deleted. Limited to 30 requests a minute per client.</td></tr>
                         <tr><td><code>POST /export</code></td><td>An RO-Crate ZIP built from a report in the request body, limited by the 1,048,576-byte request-body limit. Used for runs loaded from history and when the server copy has expired; it cannot include statevectors the browser copy does not hold.</td></tr>
                     </tbody>
                 </table>
@@ -1049,6 +1054,18 @@
                     <code>statevector_sha256</code> and <code>statevector_length</code> are kept), or
                     delete them (singly or in bulk). Without an account, results exist only in your
                     browser for that session.
+                </p>
+                <p>
+                    A saved run opened from history can be shared read-only from its
+                    <strong>Circuits</strong> tab: <strong>Create link</strong> gives a
+                    <code>/share.html#&lt;token&gt;</code> address that expires after 1, 7, 30 or 90 days.
+                    Anyone with the address sees the run's name and save time and its circuit texts: the
+                    submitted circuit, the dispatched circuits and each backend's executed circuit with
+                    its transforms, SDK versions, gate count and depth. The page shows no results,
+                    timings, error messages or account details. The token is shown once; the server
+                    stores only its SHA-256, and the token sits after <code>#</code>, so browsers do not
+                    send it in requests or referrers. Revoke a link in the same tab. Deleting the run or
+                    the account deletes its links, and a deactivated account's links stop working.
                 </p>
                 <p>
                     A session lasts 30 minutes. If it expires before a run finishes, the page says the run

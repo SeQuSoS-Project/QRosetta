@@ -3,7 +3,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
-from routers import frontend, generation, benchmark, auth, history, export, publication, experiment
+from routers import frontend, generation, benchmark, auth, history, export, publication, experiment, share
 from routers.errors import register_error_handlers
 import db.models as models
 from db.database import engine
@@ -100,3 +100,4 @@ app.include_router(history.router)
 app.include_router(export.router)
 app.include_router(publication.router)
 app.include_router(experiment.router)
+app.include_router(share.router)

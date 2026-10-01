@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 import db.models as models
 from qrosetta_commons.helpers import get_logger
 from services.security import get_password_hash, verify_password
+from services.share_links import delete_links
 from services.storage import delete_run_reports
 
 logger = get_logger("rosetta-accounts")
@@ -87,6 +88,7 @@ def delete_account(db: Session, user: models.User) -> None:
             raise StoredReportsNotDeleted(str(exc)) from exc
 
     try:
+        delete_links(db, [r.id for r in runs])
         for run in runs:
             db.delete(run)
 

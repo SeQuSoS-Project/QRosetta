@@ -10,6 +10,10 @@ circuit, the circuit the API dispatched to each backend, the circuit each backen
 the metrics, the counts (statevectors on request; otherwise their sha256 and length), the run
 configuration and seeds, and the SDK versions that produced them.
 
+The Circuits tab shows those circuit texts side by side with a line diff between any two of
+them. A saved run can be shared through a read-only link that expires after 1 to 90 days; the
+link shows the circuit texts only, and its owner can revoke it.
+
 ## What it measures
 
 For each backend, per run:
