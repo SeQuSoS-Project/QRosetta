@@ -54,3 +54,36 @@ def unitary_of(circuit: QuantumCircuit):
     definitions are flattened first."""
     from qiskit.quantum_info import Operator
     return Operator(translate_to_basis(circuit, ("u3", "cx")))
+
+
+def qasm_real(value: float) -> str:
+    """Shortest text that reads back as ``value``, always with a decimal point (OpenQASM 2.0
+    real literals need one)."""
+    text = repr(float(value))
+    mantissa, _, exponent = text.partition("e")
+    if "." not in mantissa:
+        mantissa += ".0"
+    return mantissa + ("e" + exponent if exponent else "")
+
+
+def exact_qasm2_dumps(circuit: QuantumCircuit) -> str:
+    """``qiskit.qasm2.dumps`` with every numeric gate parameter written as ``qasm_real``.
+    Qiskit's exporter formats parameters with ``pi_check(eps=1e-12)``, which writes a
+    magnitude below 1e-12 as 0 and a value within 1e-12 of a simple multiple of pi as that
+    multiple; symbolic parameters (inside gate definitions) keep Qiskit's formatting."""
+    import math
+    from qiskit import qasm2
+    from qiskit.qasm2 import export
+
+    original = export.pi_check
+
+    def exact(value, *args, **kwargs):
+        if isinstance(value, (int, float)) and math.isfinite(float(value)):
+            return qasm_real(value)
+        return original(value, *args, **kwargs)
+
+    export.pi_check = exact
+    try:
+        return qasm2.dumps(circuit)
+    finally:
+        export.pi_check = original

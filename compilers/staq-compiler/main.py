@@ -18,6 +18,7 @@ from qrosetta_commons.helpers import (
     declare_sdk_packages, get_num_qubits_from_qasm, strip_qasm_comments,
     with_sdk_versions,
 )
+from qrosetta_commons.qelib1 import add_qelib1_definitions, qelib1_definitions
 from qrosetta_commons.qiskit_circuits import unitary_of
 
 declare_sdk_packages("qiskit")
@@ -38,10 +39,7 @@ STAQ_GATES = frozenset({
     "u3", "u2", "u1", "cx", "id", "u0", "x", "y", "z", "h", "s", "sdg", "t", "tdg", "r", "rx",
     "ry", "rz", "cz", "cy", "swap", "ch", "ccx", "cswap", "crz", "cu1", "cu3", "U", "CX",
 })
-_KEYWORDS = frozenset({"OPENQASM", "include", "qreg", "creg", "gate", "opaque", "measure",
-                       "barrier", "reset", "if"})
 _GATE_DEF = re.compile(r"gate\s+(\w+)\s*(?:\([^)]*\))?\s*[^{]*\{([^}]*)\}")
-_STATEMENT_NAME = re.compile(r"(?:^|[;{}])\s*(?:if\s*\([^)]*\)\s*)?([A-Za-z_]\w*)")
 _NUMBER = re.compile(r"(?<![\w.])(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
 
 _LEVEL_NOTES = {
@@ -75,44 +73,11 @@ def equivalent(input_qasm: str, output_qasm: str) -> bool:
     return process_infidelity(input_qasm, output_qasm) <= MAX_PROCESS_INFIDELITY
 
 
-def _qiskit_qelib1() -> dict:
-    """Gate name -> definition text, from the qelib1.inc shipped with Qiskit."""
-    import qiskit
-    path = os.path.join(os.path.dirname(qiskit.__file__), "qasm", "libs", "qelib1.inc")
-    with open(path) as fh:
-        text = strip_qasm_comments(fh.read())
-    return {m.group(1): m.group(0) for m in _GATE_DEF.finditer(text)}
-
-
-def _called_names(text: str) -> set:
-    return {name for name in _STATEMENT_NAME.findall(text) if name not in _KEYWORDS}
-
-
 def _add_missing_qelib1_definitions(qasm: str):
     """(qasm, names): the circuit with Qiskit's qelib1.inc definitions of the gates it calls
     that staq's library lacks, and of the gates those definitions call, inserted after the
     include line."""
-    text = strip_qasm_comments(qasm)
-    defined = {m.group(1) for m in _GATE_DEF.finditer(text)}
-    library = _qiskit_qelib1()
-    order = []
-
-    def visit(name):
-        if name in order or name in defined or name in STAQ_GATES or name not in library:
-            return
-        for dependency in sorted(_called_names(library[name].split("{", 1)[1])):
-            visit(dependency)
-        order.append(name)
-
-    for name in sorted(_called_names(text)):
-        visit(name)
-    if not order:
-        return qasm, []
-    definitions = "\n".join(library[name] for name in order)
-    match = re.search(r'include\s+"qelib1\.inc"\s*;', qasm)
-    if match is None:
-        return qasm, []
-    return qasm[:match.end()] + "\n" + definitions + qasm[match.end():], sorted(order)
+    return add_qelib1_definitions(qasm, set(qelib1_definitions()) - STAQ_GATES)
 
 
 def _refuse_library_name_clashes(qasm: str) -> None:

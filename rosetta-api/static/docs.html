@@ -244,7 +244,9 @@
                         The pytket round-trip inlines custom <code>gate</code> definitions, rewrites gates
                         into pytket's QASM gate set (for example <code>u</code> becomes <code>u3</code> and
                         <code>cp</code> becomes <code>cu1</code>, with angles as multiples of π) and expands
-                        register broadcasts.
+                        register broadcasts. tket sets a parameter within 1e-11 half-turns of a multiple of
+                        π/4 to that multiple; when that happens the <code>API:</code> entries list each moved
+                        parameter (see <a href="#known-issues">Known backend issues</a>).
                         In measured mode the native group also receives a measure-all when the circuit has no
                         measurements; this happens with preprocessing off too. With preprocessing off there is
                         no register merge and no pytket round-trip in any group; statevector mode still removes
@@ -252,7 +254,16 @@
                         were in which group.</li>
                     <li><strong>Runner-side</strong>. Each backend's own passes (gate rebasing, barrier
                         stripping, the backend's default compilation pass at every optimization level).
-                        Passes the adapter needs regardless of the setting say so in their text.</li>
+                        Passes the adapter needs regardless of the setting say so in their text. The qibo and
+                        quimb parsers lack some <code>qelib1.inc</code> gates (<code>ch</code>,
+                        <code>cswap</code>, <code>c3x</code>, <code>c4x</code>, <code>rccx</code>,
+                        <code>rc3x</code>, <code>c3sqrtx</code>, <code>u0</code> for qibo; <code>u</code>,
+                        <code>p</code>, <code>ch</code>, <code>csx</code>, <code>cp</code>, <code>cu</code>,
+                        <code>rccx</code>, <code>c3x</code>, <code>c3sqrtx</code>, <code>rc3x</code>,
+                        <code>c4x</code> for quimb); with preprocessing on, their adapters insert Qiskit 2.5.2's
+                        <code>qelib1.inc</code> definitions of the ones a circuit uses (for quimb with the
+                        builtin <code>U</code> written as <code>u3</code>, which <code>qelib1.inc</code> defines as
+                        <code>U</code>) and list them. With preprocessing off those gates are rejected.</li>
                 </ul>
                 <p>
                     The RO-Crate stores the original circuit (<code>circuit.qasm</code>), the circuit the API
@@ -1108,7 +1119,9 @@
                             ZX-diagram, then <code>extract_circuit</code>. Level 2: level 1, then
                             <code>basic_optimization</code> of the extracted circuit. PyZX's
                             <code>basic_optimization</code> on the input itself is not offered (see the known
-                            issue below).</td></tr>
+                            issue below). Numbers in scientific notation are rewritten as plain decimals first, and
+                            the passes give the largest angle change from PyZX's rational phases (see the known
+                            issues).</td></tr>
                         <tr><td>MQT QMAP 3.10.0</td><td>0, 1</td><td>Qiskit 2.5.2 translates the circuit to
                             <code>u3</code> and <code>cx</code> (<code>optimization_level=0</code>, basis
                             translation only), then QMAP maps it onto a linear chain of the circuit's qubit
@@ -1210,8 +1223,7 @@
                     With preprocessing on, compilers receive the pytket-rewritten circuit (see
                     <a href="#preprocessing">Circuit preprocessing</a>); to see how a compiler treats your own
                     text, run with preprocessing off. Several compilers then reject some valid OpenQASM 2.0,
-                    each recorded as that compile's error: PyZX rejects parameters in scientific notation
-                    (<code>rz(1.25e-1)</code>), BQSKit rejects register broadcasts (<code>h q;</code>), Cirq
+                    each recorded as that compile's error: BQSKit rejects register broadcasts (<code>h q;</code>), Cirq
                     rejects <code>barrier</code>, the 4-parameter <code>cu</code> and <code>rc3x</code>, and
                     Cirq, Q-Synth and Quartz reject <code>u0</code>, which Qiskit's reader does not take.
                     Qiskit's translation for QMAP, Q-Synth and Quartz runs with
@@ -1229,7 +1241,7 @@
                         <tr><td>Performance / Resources</td><td>Ranked successful runs, then the unranked runs with their status and reason, with a Device column (GPU runs name the GPU). With Timing repeats above 1, each time cell shows the median ± the sample standard deviation and n. Tooltips on each column give the measurement window. When a GPU run is present, the Performance note says that times across devices compare different hardware and the Resources note says that GPU device memory is not measured.</td></tr>
                         <tr><td>Divergence</td><td>The N×N fidelity, global phase offset arg⟨a|b⟩, JS-divergence (nats) and Hellinger matrices. The fidelity matrix holds the direct fidelity, before any bit reversal, so an <code>lsb</code>×<code>msb</code> pair that agrees after the declared reversal can show a low value here; the Agreement tab and the Summary give the label-aligned value. A cell is green when it is within the tolerance recorded with that pair; OFF, ERR and T/O mark failed runs, n/c a pair that is not comparable (<code>null</code> in the report; a report that stores −1 for such a pair shows n/c too). The diagonal holds each backend compared with itself (fidelity 1, JS 0, phase 0). Cells are rounded for display: four decimals, more for a fidelity that would otherwise round to 1, and three significant digits in scientific notation below 1e-3. Hover a cell for the unrounded value; the report stores it unrounded.</td></tr>
                         <tr><td>Agreement</td><td>The label per backend pair, with the metrics, the tolerances used, the statistical test and provenance (seeds, ordering, SDK versions, preprocessing) per pair.</td></tr>
-                        <tr><td>Circuits</td><td>The circuit texts the run recorded, side by side: the circuit as submitted, the circuit the API sent to each dispatch group (with the API's changes) and the circuit each backend executed (its <code>transpiled_qasm</code>, with the backend's transforms, SDK versions, gate count and depth). Each executed pane says where its gate count and depth come from (<code>gate_metrics_basis</code>): counted from that text for most backends, from the executed tape for PennyLane, whose recorded text decomposes <code>QubitUnitary</code> although the tape does not. A line diff compares any two panes, raw or with whitespace and line breaks, comments, or the OPENQASM and include lines ignored; the raw text stays in the panes. The diff stops at about 4,000 changed lines. pytket rewrites angles as multiples of π, so the same angle can be written <code>pi/4</code>, <code>0.25*pi</code> or <code>0.7853981633974483</code>; <strong>Compare angles by value</strong> evaluates every gate parameter without variables and compares it in radians to 12 significant digits, so those read the same (parameters with variables, as in gate bodies, are compared as written). The Cirq pane holds pytket's serialisation of the circuit the Cirq adapter built: <code>include "hqslib1.inc"</code> and <code>U1q</code> come from pytket's gate set, not from Cirq. The tab shows text only and draws no conclusion from a difference: two texts can differ line by line and describe the same unitary. When the run used compile-only services, the compiler input and each compiled circuit are panes too (see <a href="#compilers">Compile-only services</a>). A saved run opened from history also offers a read-only link (see <a href="#accounts">Accounts, history &amp; autosave</a>).</td></tr>
+                        <tr><td>Circuits</td><td>The circuit texts the run recorded, side by side: the circuit as submitted, the circuit the API sent to each dispatch group (with the API's changes) and the circuit each backend executed (its <code>transpiled_qasm</code>, with the backend's transforms, SDK versions, gate count and depth). Each executed pane says where its gate count and depth come from (<code>gate_metrics_basis</code>): counted from that text for most backends, from the executed tape for PennyLane, whose recorded text decomposes <code>QubitUnitary</code> although the tape does not. A line diff compares any two panes, raw or with whitespace and line breaks, comments, or the OPENQASM and include lines ignored; the raw text stays in the panes. The diff stops at about 4,000 changed lines. pytket rewrites angles as multiples of π, so the same angle can be written <code>pi/4</code>, <code>0.25*pi</code> or <code>0.7853981633974483</code>; <strong>Compare angles by value</strong> evaluates every gate parameter without variables and compares it in radians to 12 significant digits, so those read the same (parameters with variables, as in gate bodies, are compared as written). The Cirq pane holds pytket's serialisation of the circuit the Cirq adapter built: <code>include "hqslib1.inc"</code> and <code>U1q</code> come from pytket's gate set, not from Cirq. Texts written with Qiskit (the Qiskit, cuQuantum and TorchQuantum panes, QMAP's input and Q-Synth's output) give every angle as the shortest literal that reads back as the same double; Qiskit's own <code>qasm2.dumps</code> would write an angle below 1e-12 as 0 and one within 1e-12 of a simple multiple of π as that multiple. The qsim pane is Cirq's <code>to_qasm</code> with angles as multiples of π to 16 decimal places. The tab shows text only and draws no conclusion from a difference: two texts can differ line by line and describe the same unitary. When the run used compile-only services, the compiler input and each compiled circuit are panes too (see <a href="#compilers">Compile-only services</a>). A saved run opened from history also offers a read-only link (see <a href="#accounts">Accounts, history &amp; autosave</a>).</td></tr>
                         <tr><td>Artifacts</td><td>Publication figures and tables, scoped to any subset of backends in the browser. The browser offers figures as SVG, PNG or PDF and tables as LaTeX, CSV, HTML or Markdown. The RO-Crate export renders figures as SVG, PNG or PDF and tables as LaTeX, CSV, HTML or XLSX (<code>publication_artifacts</code> in the export body).</td></tr>
                         <tr><td>Exports</td><td>The JSON report held in the browser, the full report from the server, and the RO-Crate export (see <a href="#endpoints">Reports and exports</a>).</td></tr>
                     </tbody>
@@ -1462,6 +1474,36 @@
                                 differ from the input after about the eighth significant digit.</td>
                             <td><code>qreg q[1]; rz(0.3) q[0];</code> with <code>staq -O1</code> prints
                                 <code>rz(0.300000011920929) q[0];</code>.</td></tr>
+                        <tr><td>pytket 1.33.0 (tket), angles</td>
+                            <td>When tket builds a circuit it sets every gate parameter within 1e-11 half-turns
+                                (about 3.1e-11 rad) of a multiple of π/4 to that multiple, so an angle below
+                                about 3.1e-11 rad becomes 0. This happens in the pytket round-trip (preprocessing
+                                on) and in the runners that build their circuit with tket (Qiskit, Cirq, Qulacs,
+                                QuEST, qsim, PyQuil) with preprocessing on or off. When it moves a parameter the
+                                result lists which, by how much, and where (an <code>API:</code> entry for the
+                                round-trip, otherwise an entry on each of those runners).</td>
+                            <td><code>qreg q[1]; rz(1.3e-13) q[0];</code> and <code>rz(3.14159265359) q[0];</code>
+                                through <code>circuit_from_qasm_str</code>: the parameters are 0 and exactly 1
+                                half-turn.</td></tr>
+                        <tr><td>qibo 0.3.1, two-qubit gate definitions with parameters</td>
+                            <td><code>Circuit.from_qasm</code> accepts a user <code>gate</code> definition on two
+                                or more qubits whose body uses its parameters, but executing the circuit raises
+                                <code>TypeError: can't multiply sequence by non-int of type 'complex'</code>.
+                                One-qubit definitions and definitions without parameters run. With preprocessing
+                                on the API inlines every definition first, so only runs with preprocessing off
+                                are affected.</td>
+                            <td><code>gate g(t) a,b { rz(t) a; rz(t) b; } qreg q[2]; g(0.3) q[0],q[1];</code>,
+                                then <code>circuit()</code>.</td></tr>
+                        <tr><td>PyZX 0.10.6 (compile-only), angles</td>
+                            <td>The QASM parser reads a number in scientific notation (<code>1.25e-1</code>) as an
+                                expression with a variable <code>e</code> and rejects it, and pytket writes small
+                                angles that way (<code>3.18e-06*pi</code>). The PyZX compiler rewrites such numbers
+                                as plain decimals with the same value and lists the rewrite. PyZX keeps every
+                                phase as a fraction of π with denominator at most 1,048,576, which moves a generic
+                                angle by up to about 3e-8 rad; each compile's passes give the largest change for
+                                its circuit.</td>
+                            <td><code>qreg q[1]; rz(0.123456789012345678) q[0];</code>: PyZX stores 40942/1041847
+                                half-turns, 1.1e-9 rad from the literal.</td></tr>
                         <tr><td>pytket 1.33.0 (API preprocessing)</td>
                             <td><code>circuit_to_qasm_str</code> writes every multi-controlled X as
                                 <code>c4x</code>, whatever its number of qubits, so a <code>c3x</code> came back as

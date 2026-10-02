@@ -8,14 +8,15 @@ text each runner group receives, and return every change made to it as a list of
 ``StatevectorIncompatible`` for circuits statevector mode cannot represent.
 """
 
-import ast
-import math
 import re
 
 from config import settings
 import services.benchmark_library as benchmark_library
 import services.circuit_library as circuit_library
 from qrosetta_commons.helpers import strip_qasm_comments
+from qrosetta_commons.qasm_expressions import (
+    ParameterExpressionError, evaluate_constant_expression, tket_parameter_note,
+)
 
 
 def resolve_circuit_qasm(
@@ -290,15 +291,6 @@ def strip_terminal_measurements(qasm: str):
 
 # --- '^' in gate parameters ------------------------------------------------------------
 
-class ParameterExpressionError(ValueError):
-    """A gate parameter expression the API cannot evaluate before the pytket round-trip."""
-
-
-_QASM_FUNCTIONS = {"sin": math.sin, "cos": math.cos, "tan": math.tan, "exp": math.exp,
-                   "ln": math.log, "sqrt": math.sqrt}
-_BINARY_OPS = {ast.Add: lambda a, b: a + b, ast.Sub: lambda a, b: a - b,
-               ast.Mult: lambda a, b: a * b, ast.Div: lambda a, b: a / b,
-               ast.Pow: lambda a, b: a ** b}
 _CARET_NOTE = ("API: evaluated constant gate parameters (pytket's parser does not accept '^' "
                "or exp()): each parameter of a top-level gate statement containing either was "
                "replaced by its value in full double precision")
@@ -308,56 +300,6 @@ _EXP_RE = re.compile(r"\bexp\s*\(")
 def _needs_evaluation(text: str) -> bool:
     """True when ``text`` uses '^' or exp(), which pytket's QASM parser rejects."""
     return "^" in text or bool(_EXP_RE.search(text))
-
-
-def _eval_node(node, env=None):
-    if isinstance(node, ast.Expression):
-        return _eval_node(node.body, env)
-    if isinstance(node, ast.Name) and env and node.id in env:
-        return env[node.id]
-    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) \
-            and not isinstance(node.value, bool):
-        return float(node.value)
-    if isinstance(node, ast.Name) and node.id == "pi":
-        return math.pi
-    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
-        value = _eval_node(node.operand, env)
-        return -value if isinstance(node.op, ast.USub) else value
-    if isinstance(node, ast.BinOp) and type(node.op) in _BINARY_OPS:
-        return _BINARY_OPS[type(node.op)](_eval_node(node.left, env), _eval_node(node.right, env))
-    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-            and node.func.id in _QASM_FUNCTIONS and len(node.args) == 1 and not node.keywords):
-        return _QASM_FUNCTIONS[node.func.id](_eval_node(node.args[0], env))
-    raise ParameterExpressionError("only numbers, pi, + - * / ^, unary minus and "
-                                   "sin/cos/tan/exp/ln/sqrt are allowed")
-
-
-_NON_QASM_NUMBER_RE = re.compile(r"\b0[xXoObB]|\d_|_\d|\d[jJ]\b")
-
-
-def evaluate_constant_expression(text: str, env: dict = None) -> float:
-    """Value of an OpenQASM 2.0 constant expression (numbers, pi, + - * / ^, unary minus,
-    sin cos tan exp ln sqrt), computed in floating point. Raises
-    ParameterExpressionError for anything else or a non-finite value."""
-    if "**" in text or _NON_QASM_NUMBER_RE.search(text):
-        raise ParameterExpressionError(
-            "only OpenQASM 2.0 numbers (decimal, optional exponent) and '^' for powers are allowed")
-    try:
-        tree = ast.parse(text.replace("^", "**").strip(), mode="eval")
-        value = _eval_node(tree, env)
-    except ParameterExpressionError:
-        raise
-    except RecursionError:
-        raise ParameterExpressionError("the expression is nested too deeply")
-    except OverflowError:
-        raise ParameterExpressionError("the value is too large")
-    except ZeroDivisionError:
-        raise ParameterExpressionError("division by zero")
-    except (SyntaxError, ValueError) as exc:
-        raise ParameterExpressionError(str(exc) or type(exc).__name__)
-    if not math.isfinite(value):
-        raise ParameterExpressionError("the value is not finite")
-    return value
 
 
 def _split_params(text: str) -> list:
@@ -602,8 +544,9 @@ def _preprocessed_base(qasm: str):
     text, note = evaluate_caret_parameters(text)
     if note:
         notes.append(note)
+    tket_note = tket_parameter_note(text, "API: tket, in the pytket round-trip,")
     text, rt_notes = _pytket_round_trip(text, remove_barriers=True)
-    return text, notes + rt_notes
+    return text, notes + rt_notes + ([tket_note] if tket_note else [])
 
 
 def prepare_statevector_dispatch(qasm: str, apply_preprocessing: bool) -> dict:

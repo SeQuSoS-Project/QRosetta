@@ -149,7 +149,7 @@ def _serialize(compiled: CompileResult) -> str:
     _, circ, qubits = compiled.circuit[:3]
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
-        return circ.to_qasm(qubit_order=qubits)
+        return circ.to_qasm(qubit_order=qubits, precision=16)
 
 
 @with_sdk_versions

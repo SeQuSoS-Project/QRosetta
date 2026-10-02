@@ -10,6 +10,7 @@ from qrosetta_commons.helpers import (
     CompileResult, declare_sdk_packages, get_logger, register_runner_endpoints,
     run_cli_main, run_measured_job, run_statevector_job, with_sdk_versions,
 )
+from qrosetta_commons.qelib1 import QELIB1_SOURCE, add_qelib1_definitions
 import numpy as np
 
 from qibo.models import Circuit
@@ -35,6 +36,11 @@ _REMOVE_BARRIERS_NOTE = (
     "(\"Unsupported QuantumBarrier statement\").")
 _BROADCAST_REASON = "qibo.models.Circuit.from_qasm accepts only indexed qubit operands"
 _BARRIER_RE = re.compile(r"\bbarrier\b[^;]*;")
+_PARSER_LACKS = frozenset({"u0", "ch", "cswap", "rccx", "c3x", "c3sqrtx", "rc3x", "c4x"})
+_QELIB1_NOTE = (
+    "Definitions of {names} from " + QELIB1_SOURCE + " inserted after the include line: "
+    "Circuit.from_qasm has no built-in for these qelib1 gates and parses gate definitions. "
+    "Applied when apply_preprocessing is True; with it False these gates are rejected.")
 _FUSION_NOTE_SUFFIX = (
     " transpiled_qasm is the circuit before fusion, since fused blocks have no OpenQASM 2.0 "
     "form.")
@@ -78,6 +84,10 @@ def _compile(payload: dict, qasm: str, notes=()) -> CompileResult:
     if payload.get("apply_preprocessing", True) and _BARRIER_RE.search(qasm):
         qasm = _BARRIER_RE.sub("", qasm)
         notes.append(_REMOVE_BARRIERS_NOTE)
+    if payload.get("apply_preprocessing", True):
+        qasm, added = add_qelib1_definitions(qasm, _PARSER_LACKS)
+        if added:
+            notes.append(_QELIB1_NOTE.format(names=", ".join(added)))
     circuit, preprocessing_applied = _parse(qasm, payload.get("optimization_level", 0))
     return CompileResult(
         circuit=circuit,

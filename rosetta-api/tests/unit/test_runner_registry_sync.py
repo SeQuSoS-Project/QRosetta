@@ -228,3 +228,13 @@ def test_every_compiler_image_records_its_build_files():
         assert f"compilers/{name}/Dockerfile" in sources and f"compilers/{name}/requirements.lock" in sources
         for source in sources:
             assert (_REPO / source).is_file(), f"{source} does not exist"
+
+
+def test_builds_with_tket_marks_exactly_the_runners_that_parse_with_pytket():
+    # myqlm builds with tket only with preprocessing on, after the API's round-trip has
+    # already moved the parameters.
+    only_after_round_trip = {"myqlm"}
+    for cid, entry in _registry().items():
+        source = (_REPO / "runners" / _infra_name(entry["base_url"]) / "main.py").read_text()
+        parses = "circuit_from_qasm_str" in source and cid not in only_after_round_trip
+        assert bool(entry.get("builds_with_tket")) == parses, cid

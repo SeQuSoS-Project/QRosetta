@@ -1,16 +1,22 @@
 """PyZX compiler: converts the circuit to a ZX-diagram, simplifies it with full_reduce and
 extracts a circuit, optionally followed by PyZX's gate-level basic_optimization."""
 
+import math
 import re
+from decimal import Decimal
 
 from fastapi import FastAPI
 import pyzx as zx
+from pyzx.circuit.qasmparser import QASMParser
 
 from qrosetta_commons.compile_errors import CompileRefused
 from qrosetta_commons.compile_service import (
     register_compiler_endpoint, run_compile_job, run_compiler_cli_main,
 )
 from qrosetta_commons.helpers import declare_sdk_packages, strip_qasm_comments, with_sdk_versions
+from qrosetta_commons.qasm_expressions import (
+    ParameterExpressionError, evaluate_constant_expression, gate_parameter_lists,
+)
 
 declare_sdk_packages("pyzx")
 
@@ -30,6 +36,42 @@ _BASIC_NOTE = ("pyzx.basic_optimization(extracted.to_basic_gates()): gate cancel
                "changes the unitary of some input circuits (an X or S followed by an X or Y "
                "rotation), so it is never applied to the input directly.")
 _ENCODE_NOTE = "Circuit.to_qasm(): the output circuit as OpenQASM 2.0, one register q."
+_EXPONENT_RE = re.compile(r"(?<![\w.])(?:\d+\.?\d*|\.\d+)[eE][-+]?\d+")
+_EXPONENT_NOTE = ("Numbers in scientific notation rewritten as plain decimals with the same value "
+                  "({examples}), required by the adapter: PyZX 0.10.6's parser reads the e as a "
+                  "variable and rejects the circuit.")
+
+
+def _phase_note(qasm: str) -> str:
+    """How far PyZX's rational phases move the circuit's constant angles, read through
+    PyZX's own parameter parser."""
+    parser = QASMParser()
+    worst = 0.0
+    for _name, params in gate_parameter_lists(qasm):
+        for text in params:
+            try:
+                value = evaluate_constant_expression(text)
+                stored = float(parser.parse_phase_arg(text)) * math.pi
+            except (ParameterExpressionError, TypeError):
+                continue
+            worst = max(worst, abs(stored - value))
+    return (f"PyZX stores each phase as a fraction of pi with denominator at most "
+            f"{zx.settings.float_to_fraction_max_denominator} "
+            f"(pyzx.settings.float_to_fraction_max_denominator); the largest change to a constant "
+            f"angle of this circuit is {worst:.3g} rad.")
+
+
+def _plain_decimals(qasm: str):
+    """``(qasm, examples)`` with every number in scientific notation written as a plain decimal."""
+    examples = []
+
+    def plain(match):
+        text = format(Decimal(match.group(0)), "f")
+        if len(examples) < 3:
+            examples.append(f"{match.group(0)} -> {text}")
+        return text
+
+    return _EXPONENT_RE.sub(plain, qasm), examples
 
 
 def _quantum_only(qasm: str):
@@ -40,7 +82,11 @@ def _quantum_only(qasm: str):
         raise CompileRefused("PyZX compiles unitary circuits only; this circuit has measure, reset or if")
     stripped = _CREG_RE.sub("", code)
     notes = [_COMMENTS_NOTE] if code != qasm else []
-    return stripped, notes + ([_CREG_NOTE] if stripped != code else [])
+    notes += [_CREG_NOTE] if stripped != code else []
+    stripped, examples = _plain_decimals(stripped)
+    if examples:
+        notes.append(_EXPONENT_NOTE.format(examples=", ".join(examples)))
+    return stripped, notes
 
 
 def _extract(qasm: str):
@@ -51,13 +97,13 @@ def _extract(qasm: str):
 
 def _full_reduce(qasm: str):
     unitary, notes = _quantum_only(qasm)
-    return _extract(unitary).to_qasm(), notes + [_PARSE_NOTE, _REDUCE_NOTE, _ENCODE_NOTE]
+    return _extract(unitary).to_qasm(), notes + [_PARSE_NOTE, _phase_note(unitary), _REDUCE_NOTE, _ENCODE_NOTE]
 
 
 def _full_reduce_then_basic(qasm: str):
     unitary, notes = _quantum_only(qasm)
     circuit = zx.basic_optimization(_extract(unitary).to_basic_gates())
-    return circuit.to_qasm(), notes + [_PARSE_NOTE, _REDUCE_NOTE, _BASIC_NOTE, _ENCODE_NOTE]
+    return circuit.to_qasm(), notes + [_PARSE_NOTE, _phase_note(unitary), _REDUCE_NOTE, _BASIC_NOTE, _ENCODE_NOTE]
 
 
 PIPELINES = {1: _full_reduce, 2: _full_reduce_then_basic}

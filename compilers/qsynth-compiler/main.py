@@ -10,7 +10,7 @@ import tempfile
 import time
 
 from fastapi import FastAPI
-from qiskit import QuantumCircuit, QuantumRegister, qasm2
+from qiskit import QuantumCircuit, QuantumRegister
 from qsynth.api import peephole_synthesis
 
 from qrosetta_commons.compile_errors import CompileRefused, OutputRejected
@@ -19,7 +19,7 @@ from qrosetta_commons.compile_service import (
 )
 from qrosetta_commons.helpers import declare_sdk_packages, with_sdk_versions
 from qrosetta_commons.qiskit_circuits import (
-    split_final_measurements, translate_to_basis, translation_note, unitary_of,
+    exact_qasm2_dumps, split_final_measurements, translate_to_basis, translation_note, unitary_of,
 )
 
 declare_sdk_packages("q-synth", "python-sat", "qiskit")
@@ -39,9 +39,9 @@ _INSTALL_NOTE = ("Q-Synth 5.1 pins python-sat 1.8.dev13, which is no longer on P
 _REGISTER_NOTE = ("Q-Synth is given the qubits as one register q in declaration order; its output "
                   "is composed back onto the input's registers, with the input's final "
                   "measurements in their original order.")
-_ENCODE_NOTE = ("qiskit.qasm2.dumps(): the output as OpenQASM 2.0. It writes an angle below 1e-12 "
-                "in magnitude as 0 and an angle within 1e-12 of a simple multiple of pi as that "
-                "multiple.")
+_ENCODE_NOTE = ("qrosetta_commons.qiskit_circuits.exact_qasm2_dumps(): the output as OpenQASM "
+                "2.0, every numeric angle written as the shortest literal that reads back as "
+                "the same double.")
 
 
 def equivalent(input_qasm: str, output_qasm: str) -> bool:
@@ -105,7 +105,7 @@ def _pipeline(level: int):
         output_circuit.compose(synthesised, qubits=list(range(original.num_qubits)), inplace=True)
         for qubit, clbit in measures:
             output_circuit.measure(qubit, clbit)
-        output = qasm2.dumps(output_circuit)
+        output = exact_qasm2_dumps(output_circuit)
         if original.num_qubits <= CHECKED_UP_TO_QUBITS:
             if not equivalent(qasm, output):
                 raise OutputRejected("Q-Synth's output does not have the input's unitary, so it is not reported")

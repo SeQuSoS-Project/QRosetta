@@ -16,6 +16,7 @@ from qrosetta_commons.helpers import (
     run_cli_main, run_measured_job, run_statevector_job, runner_error, strip_qasm_comments,
     with_sdk_versions,
 )
+from qrosetta_commons.qelib1 import QELIB1_SOURCE, add_qelib1_definitions
 import numpy as np
 
 warnings.filterwarnings("ignore", message=".*kahypar.*", category=UserWarning)
@@ -24,6 +25,14 @@ warnings.filterwarnings("ignore", message=".*cmaes.*", category=UserWarning)
 warnings.filterwarnings("ignore", message=".*nevergrad.*", category=UserWarning)
 
 declare_sdk_packages("quimb", "autoray", "cotengra")
+
+_PARSER_LACKS = frozenset({"u", "p", "ch", "csx", "cp", "cu", "rccx", "c3x", "c3sqrtx", "rc3x", "c4x"})
+_QELIB1_NOTE = (
+    "Definitions of {names} from " + QELIB1_SOURCE + " inserted after the include line, "
+    "with the builtin U written as u3 (qelib1 defines u3 as U): "
+    "Circuit.from_openqasm2_str has neither these qelib1 gates nor U, and parses gate "
+    "definitions. Applied when apply_preprocessing is True; with it False these gates are "
+    "rejected.")
 
 logger = get_logger("quimb-runner")
 
@@ -125,6 +134,10 @@ def _compile(payload: dict, qasm: str, notes=(), extra_notes=()) -> CompileResul
     cleaned, rewritten = _P_GATE.subn(r"\1\2u1\3", cleaned)
     if rewritten:
         gate_notes.append(_P_NOTE)
+    if payload.get("apply_preprocessing", True):
+        cleaned, added = add_qelib1_definitions(cleaned, _PARSER_LACKS, builtin_rewrites={"U": "u3"})
+        if added:
+            gate_notes.append(_QELIB1_NOTE.format(names=", ".join(added)))
     try:
         circuit = _qtn().Circuit.from_openqasm2_str(cleaned)
     except KeyError as exc:

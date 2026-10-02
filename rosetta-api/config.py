@@ -97,6 +97,7 @@ class Settings(BaseSettings):
 
             "qiskit": {
                 "base_url": self.PYTKET_QISKIT_RUNNER_URL,
+                "builds_with_tket": True,
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": True,
                 "honours_seed": True,
@@ -109,6 +110,7 @@ class Settings(BaseSettings):
             },
             "cirq":   {
                 "base_url": self.PYTKET_CIRQ_RUNNER_URL,
+                "builds_with_tket": True,
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": True,
                 "honours_seed": True,
@@ -120,6 +122,7 @@ class Settings(BaseSettings):
             },
             "qulacs": {
                 "base_url": self.PYTKET_QULACS_RUNNER_URL,
+                "builds_with_tket": True,
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": True,
                 "honours_seed": True,
@@ -131,6 +134,7 @@ class Settings(BaseSettings):
             },
             "braket": {
                 "base_url": self.PYTKET_BRAKET_RUNNER_URL,
+                "builds_with_tket": True,
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": False,
                 "honours_seed": False,
@@ -143,6 +147,7 @@ class Settings(BaseSettings):
 
             "projectq": {
                 "base_url": self.PYTKET_PROJECTQ_RUNNER_URL,
+                "builds_with_tket": True,
                 "capabilities": ["statevector", "measured_sampled"],
                 "enabled": False,
                 "honours_seed": True,
@@ -154,6 +159,7 @@ class Settings(BaseSettings):
             },
             "quest":  {
                 "base_url": self.PYTKET_QUEST_RUNNER_URL,
+                "builds_with_tket": True,
                 "capabilities": ["statevector", "measured_sampled"],
                 "enabled": True,
                 "honours_seed": True,
@@ -189,6 +195,7 @@ class Settings(BaseSettings):
             },
             "qsim-cirq": {
                 "base_url": self.QSIM_CIRQ_RUNNER_URL,
+                "builds_with_tket": True,
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": True,
                 "honours_seed": True,
@@ -229,6 +236,7 @@ class Settings(BaseSettings):
             },
             "pyquil": {
                 "base_url": self.PYQUIL_RUNNER_URL,
+                "builds_with_tket": True,
                 # NumpyWavefunctionSimulator has no shot sampler; the runner samples the statevector.
                 "capabilities": ["statevector", "measured_sampled"],
                 "enabled": True,

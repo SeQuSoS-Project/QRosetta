@@ -21,7 +21,7 @@ try:
     import torchquantum.functional as tqf
     from torchquantum.plugin import qiskit2tq
     from qiskit import QuantumCircuit as QiskitCircuit, transpile as qiskit_transpile
-    from qiskit import qasm2
+    from qrosetta_commons.qiskit_circuits import exact_qasm2_dumps
 
     # torchquantum 0.1.8 gate modules reference an unimported `mat_dict`
     # (mit-han-lab/torchquantum#226); alias the package-level dict into each. import_module
@@ -79,7 +79,7 @@ def _compile(payload: dict, qasm: str, notes=()) -> CompileResult:
 
 
 def _serialize(compiled) -> str:
-    return qasm2.dumps(compiled.circuit[1])
+    return exact_qasm2_dumps(compiled.circuit[1])
 
 
 def _run_sv(tq_module, n_qubits: int):

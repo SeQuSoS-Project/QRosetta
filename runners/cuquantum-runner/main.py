@@ -25,7 +25,7 @@ app = FastAPI(title="cuQuantum Runner")
 
 try:
     from qiskit import QuantumCircuit, transpile as qiskit_transpile
-    from qiskit import qasm2
+    from qrosetta_commons.qiskit_circuits import exact_qasm2_dumps
     from qiskit_aer import AerSimulator
     AERSIM_AVAILABLE = True
     logger.info("qiskit-aer loaded successfully.")
@@ -171,7 +171,7 @@ def _precision(sim) -> str:
 
 
 def _serialize(compiled) -> str:
-    return qasm2.dumps(compiled.circuit[2])
+    return exact_qasm2_dumps(compiled.circuit[2])
 
 
 def _simulator():

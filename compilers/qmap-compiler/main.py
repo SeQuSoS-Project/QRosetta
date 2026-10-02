@@ -4,14 +4,14 @@ qubit count, after Qiskit decomposes it to u3 and cx, the gate set QMAP maps."""
 from fastapi import FastAPI
 from mqt.core import load
 from mqt.qmap.sc import Architecture, Configuration, Method, map_
-from qiskit import QuantumCircuit, qasm2
+from qiskit import QuantumCircuit
 
 from qrosetta_commons.compile_errors import CompileRefused, OutputRejected
 from qrosetta_commons.compile_service import (
     TRANSLATION_PROBES, register_compiler_endpoint, run_compile_job, run_compiler_cli_main,
 )
 from qrosetta_commons.helpers import declare_sdk_packages, with_sdk_versions
-from qrosetta_commons.qiskit_circuits import translate_to_basis, translation_note, unitary_of
+from qrosetta_commons.qiskit_circuits import exact_qasm2_dumps, translate_to_basis, translation_note, unitary_of
 
 declare_sdk_packages("mqt.qmap", "mqt.core", "qiskit")
 
@@ -40,7 +40,7 @@ def _decompose(qasm: str) -> str:
     if idle:
         raise CompileRefused(f"qubit(s) {idle} have no gates; QMAP 3.10 then records a qubit layout "
                          f"that does not match its output, so the circuit is not mapped")
-    return qasm2.dumps(circuit)
+    return exact_qasm2_dumps(circuit)
 
 
 def _check_output(decomposed: str, output: str, n_qubits: int) -> str:

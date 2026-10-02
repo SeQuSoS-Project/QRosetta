@@ -5,7 +5,6 @@ import pytket.qasm
 from pytket.extensions.qiskit import tk_to_qiskit
 from qiskit_aer import AerSimulator
 from qiskit import transpile as qiskit_transpile
-from qiskit import qasm2
 from qiskit.circuit import Instruction
 from qiskit.circuit.library import CHGate
 from qrosetta_commons.counts import (
@@ -13,6 +12,7 @@ from qrosetta_commons.counts import (
     counts_from_register_keys, parse_measurement_layout, prepare_statevector_qasm,
     statevector_in_declaration_order, unordered_qreg_note,
 )
+from qrosetta_commons.qiskit_circuits import exact_qasm2_dumps
 from qrosetta_commons.helpers import (
     CompileResult, declare_sdk_packages, get_logger, register_runner_endpoints,
     run_cli_main, run_measured_job, run_statevector_job, with_sdk_versions,
@@ -167,7 +167,7 @@ def process_run(payload: dict) -> dict:
             preprocessing_applied=strip_notes + preprocessing_applied + [_SAVE_STATEVECTOR_NOTE])
 
     def serialize_statevector_circuit(compiled):
-        return qasm2.dumps(compiled.circuit[3])
+        return exact_qasm2_dumps(compiled.circuit[3])
 
     def execute(compiled, _payload):
         backend, executed_circ, *_ = compiled.circuit
@@ -203,7 +203,7 @@ def process_run_measured(payload: dict) -> dict:
             preprocessing_applied=preprocessing_applied + [_COUNTS_KEY_NOTE])
 
     def serialize(compiled):
-        return qasm2.dumps(compiled.circuit[1])
+        return exact_qasm2_dumps(compiled.circuit[1])
 
     def execute(compiled, payload):
         backend, qiskit_circ = compiled.circuit

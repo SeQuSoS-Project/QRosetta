@@ -31,6 +31,7 @@ from config import settings, server_git_sha, server_image_digests, runner_regist
 from services.aggregator import compile_comparison_reports, compile_measurement_reports
 import services.analysis as analysis
 from qrosetta_commons.helpers import TIMING_STATISTIC, get_logger, get_num_qubits_from_qasm
+from qrosetta_commons.qasm_expressions import tket_parameter_note
 from services.circuit_resolver import (
     resolve_circuit_qasm,
     prepare_measured_dispatch,
@@ -136,9 +137,19 @@ def resolved_runners(target_simulators, dispatched_urls: dict, skipped: list) ->
             "skipped": list(skipped)}
 
 
+_TKET_RUNNERS = frozenset(cid for cid, svc in settings.get_runner_services().items()
+                          if svc.get("builds_with_tket"))
+
+
 def _apply_api_preprocessing(results: list, group: str, circuit: dict) -> None:
-    """Prepend the API-side transforms to each result's ``preprocessing_applied`` and
-    record which dispatched circuit it received."""
+    """Prepend the API-side transforms to each result's ``preprocessing_applied``, record
+    which dispatched circuit it received, and, for a runner that builds its circuit with
+    tket, append the gate parameters tket moves in the dispatched text (none after the
+    pytket round-trip, which has already moved them)."""
+    tket_note = None
+    if any(isinstance(r, dict) and str(r.get("simulator", "")).split("~", 1)[0] in _TKET_RUNNERS
+           for r in results):
+        tket_note = tket_parameter_note(circuit["qasm"], "tket, which builds this backend's circuit,")
     for result in results:
         if not isinstance(result, dict):
             continue
@@ -146,6 +157,8 @@ def _apply_api_preprocessing(results: list, group: str, circuit: dict) -> None:
         notes = circuit["api_preprocessing_applied"]
         if notes:
             result["preprocessing_applied"] = list(notes) + list(result.get("preprocessing_applied") or [])
+        if tket_note and str(result.get("simulator", "")).split("~", 1)[0] in _TKET_RUNNERS:
+            result["preprocessing_applied"] = list(result.get("preprocessing_applied") or []) + [tket_note]
 
 
 def _dispatched_circuit_record(group: str, circuit: dict, results: list) -> dict:
