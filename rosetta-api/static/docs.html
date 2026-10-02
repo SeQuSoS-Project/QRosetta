@@ -924,7 +924,8 @@
                         top-level gate statements of its <code>transpiled_qasm</code>, with depth by greedy layering. The
                         PennyLane runners count the operations of the tape the device executes instead, because their
                         <code>transpiled_qasm</code> text decomposes operations such as <code>QubitUnitary</code> into gates
-                        that were not executed as such. <code>gate_metrics_basis</code> states which.</li>
+                        that were not executed as such (a <code>QubitUnitary</code> on three or more wires is written as
+                        an <code>opaque</code> gate with its matrix in comments). <code>gate_metrics_basis</code> states which.</li>
                     <li><strong>Rankings</strong> include only successful runs. Failed runs, and GPU runs in
                         the memory ranking, are listed under <code>unranked</code> with a reason, and the UI
                         shows them after the ranked rows. The Performance and Resources tables have a Device
@@ -981,7 +982,8 @@
                         cap, independent of the timeout (see the previous item). In Kubernetes mode it runs
                         from Job creation and also covers pod scheduling, image pull and the result upload.
                         The report records the scope that applied. A backend that exceeds it ends with status
-                        <code>timeout</code> and <code>timeout_kind: "run"</code>; a queue timeout (previous
+                        <code>timeout</code> and <code>timeout_kind: "run"</code>; its process and every process
+                        it started (such as a compiler binary) are killed. A queue timeout (previous
                         item) has <code>timeout_kind: "queue"</code>. The value in the field is sent with every
                         run from the page; API calls that omit <code>timeout_seconds</code> use the schema
                         default shown in the Swagger UI (60 s for single runs and batches, 300 s for
@@ -1353,11 +1355,19 @@
                                 k = 1…11, then <code>measure q[i] -> c[i];</code> for every i. Expected: |0…0⟩ with
                                 probability 0.5; Qrisp: 1.0.</td></tr>
                         <tr><td>PennyLane (lightning and default.qubit)</td>
-                            <td>pennylane-qiskit's <code>from_qasm</code> converts some gates to
-                                <code>QubitUnitary</code> with control and target swapped: <code>cu3</code>,
-                                <code>cu</code>, <code>csx</code> and custom gates. <code>cu1</code>,
-                                <code>crz</code>, <code>ch</code>, <code>cy</code>, <code>crx</code>,
-                                <code>cry</code>, <code>cswap</code> and <code>ccx</code> are correct. Happens with
+                            <td>pennylane-qiskit's <code>from_qasm</code> converts some gates to a
+                                <code>QubitUnitary</code> of Qiskit's matrix, which lists the first operand as least
+                                significant, and applies it to the wires in written order, where PennyLane treats
+                                the first wire as most significant: the gate acts with its operand order reversed
+                                (for a two-qubit gate, control and target swapped). Affected: <code>cu3</code>,
+                                <code>cu</code>, <code>csx</code>, <code>c3x</code>, <code>c4x</code>,
+                                <code>c3sqrtx</code>, <code>rccx</code>, <code>rc3x</code> and custom gates.
+                                <code>cu1</code>, <code>cp</code>, <code>crz</code>, <code>ch</code>, <code>cy</code>,
+                                <code>cz</code>, <code>crx</code>, <code>cry</code>, <code>swap</code>,
+                                <code>rxx</code>, <code>rzz</code>, <code>cswap</code> and <code>ccx</code> are
+                                correct. A <code>QubitUnitary</code> on three or more wires appears in the executed
+                                text as an <code>opaque</code> gate with its matrix in comments, so the reversal
+                                can be read there. Happens with
                                 preprocessing on and off: the pytket round-trip keeps <code>cu3</code>. On some
                                 circuits the swapped output equals the bit-reversed correct one, and the pair is
                                 then a disagreement with <code>unaligned_basis_match</code>.</td>

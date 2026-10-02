@@ -44,8 +44,10 @@ _IDLE_WIRES_NOTE = (
 _SERIALIZE_NOTE = (
     "transpiled_qasm is QuantumScript.to_openqasm() of the executed tape's operations; "
     "operations outside the OpenQASM 2.0 gate set (e.g. QubitUnitary) are decomposed in the "
-    "text only. The tape's qml.state() readout is not written as measure statements, and "
-    "the creg that to_openqasm always declares holds nothing.")
+    "text only. An operation to_openqasm cannot decompose (a QubitUnitary on three or more "
+    "wires, e.g. from c3x) is written as an opaque gate applied to its wires, preceded by "
+    "comments holding its exact matrix. The tape's qml.state() readout is not written as "
+    "measure statements, and the creg that to_openqasm always declares holds nothing.")
 
 
 def _optimization_pipeline(level: int):
@@ -112,9 +114,42 @@ def _compile_sampled(payload: dict):
     return _compile(payload, qasm, notes), layout
 
 
+def _op_lines(op, wires, opaque_names: dict) -> list:
+    """QASM lines for one operation; an opaque gate with its matrix in comments if needed."""
+    try:
+        text = qml.tape.QuantumScript([op]).to_openqasm(wires=wires, measure_all=False)
+        return [line for line in text.splitlines()
+                if not line.startswith(("OPENQASM", "include", "qreg", "creg"))]
+    except ValueError:
+        pass
+    targets = ",".join(f"q[{wires.index(w)}]" for w in op.wires)
+    matrix = np.asarray(qml.matrix(op, wire_order=op.wires), dtype=complex)
+    key = (len(op.wires), matrix.tobytes())
+    if key in opaque_names:
+        return [f"{opaque_names[key]} {targets};"]
+    name = f"pl_unitary_{len(opaque_names)}"
+    opaque_names[key] = name
+    lines = [f"// {name} is a {op.name} with this matrix (one row per line, first operand "
+             "most significant, entries re,im):"]
+    lines += ["// " + " ".join(f"{z.real!r},{z.imag!r}" for z in row) for row in matrix]
+    lines.append(f"opaque {name} " + ",".join(f"a{i}" for i in range(len(op.wires))) + ";")
+    lines.append(f"{name} {targets};")
+    return lines
+
+
 def _serialize(compiled) -> str:
     dev, tapes, _config, _post = compiled.circuit
-    return qml.tape.QuantumScript(tapes[0].operations).to_openqasm(wires=dev.wires, measure_all=False)
+    ops = tapes[0].operations
+    try:
+        return qml.tape.QuantumScript(ops).to_openqasm(wires=dev.wires, measure_all=False)
+    except ValueError:
+        pass
+    lines = ['OPENQASM 2.0;', 'include "qelib1.inc";',
+             f"qreg q[{len(dev.wires)}];", f"creg c[{len(dev.wires)}];"]
+    opaque_names = {}
+    for op in ops:
+        lines += _op_lines(op, dev.wires, opaque_names)
+    return "\n".join(lines) + "\n"
 
 
 _GATE_METRICS_BASIS = ("operations of the executed tape after Device.preprocess(), without the "
