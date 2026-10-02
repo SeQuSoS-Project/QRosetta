@@ -15,8 +15,8 @@ from config import settings
 from qrosetta_commons.helpers import get_logger
 from services.export_compiled import (
     COMPILED_METRICS_PATH, compile_actions, compile_provenance, compiled_circuit_files,
-    compiled_metrics_csv, compiler_applications, compiler_keys, compiler_lock_entity,
-    compiler_lock_files, strip_compiled_text,
+    compiled_metrics_csv, compiler_applications, compiler_keys, compiler_build_entity,
+    compiler_build_files, strip_compiled_text,
 )
 from services.analysis.divergence.common import (
     ANALYSIS_VERSION, DEFAULT_FIDELITY_TOLERANCE, DEFAULT_HELLINGER_THRESHOLD,
@@ -880,7 +880,7 @@ def _build_ro_crate_metadata(ctx: ExportContext,
             root_entity["mentions"].append({"@id": action["@id"]})
     graph.extend(compiler_applications([t.report for t in tasks], settings.get_compiler_services()))
     for lock_path in sorted(p for p in lock_paths if p.startswith("compilers/")):
-        graph.append(compiler_lock_entity(lock_path))
+        graph.append(compiler_build_entity(lock_path))
         root_entity["hasPart"].append({"@id": lock_path})
 
     graph.append({
@@ -1172,7 +1172,7 @@ def build_ro_crate(ctx: ExportContext) -> bytes:
     publication_files, artifact_descriptions = _generate_publication_artifacts(ctx)
     _add_compiled_metrics_table(ctx, publication_files, artifact_descriptions)
     lock_files = {**_runner_lock_files(ctx),
-                  **compiler_lock_files([t.report for t in _iter_tasks(ctx)], settings.get_compiler_services())}
+                  **compiler_build_files([t.report for t in _iter_tasks(ctx)], settings.get_compiler_services())}
     metadata = _build_ro_crate_metadata(ctx, sorted(publication_files), artifact_descriptions,
                                         sorted(lock_files))
 

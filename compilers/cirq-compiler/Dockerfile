@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir -r requirements.lock
 COPY shared /tmp/shared-src
 RUN pip install /tmp/shared-src
 
+COPY compilers/cirq-compiler/Dockerfile compilers/cirq-compiler/requirements.lock /usr/local/share/qrosetta-build/
 COPY compilers/cirq-compiler/main.py .
 
 RUN chown -R appuser:appuser /home/appuser/app && \

@@ -10,11 +10,12 @@ import numpy as np
 from fastapi import FastAPI
 from qiskit import QuantumCircuit
 
+from qrosetta_commons.compile_errors import CompileRefused, OutputRejected
 from qrosetta_commons.compile_service import (
-    register_compiler_endpoint, run_compile_job, run_compiler_cli_main,
+    declare_native_component, register_compiler_endpoint, run_compile_job, run_compiler_cli_main,
 )
 from qrosetta_commons.helpers import (
-    declare_sdk_packages, get_num_qubits_from_qasm, get_sdk_versions, strip_qasm_comments,
+    declare_sdk_packages, get_num_qubits_from_qasm, strip_qasm_comments,
     with_sdk_versions,
 )
 from qrosetta_commons.qiskit_circuits import unitary_of
@@ -25,6 +26,11 @@ app = FastAPI(title="staq Compiler")
 
 STAQ_BINARY = "/usr/local/bin/staq"
 STAQ_VERSION = os.getenv("STAQ_VERSION", "not recorded")
+declare_native_component(
+    "staq", STAQ_VERSION,
+    source_url=f"https://github.com/softwareQinc/staq/archive/refs/tags/v{STAQ_VERSION}.tar.gz",
+    source_sha256=os.getenv("STAQ_SHA256", "not recorded"),
+    compiler_flags=os.getenv("STAQ_CXXFLAGS", "not recorded"))
 CHECKED_UP_TO_QUBITS = 10
 MAX_PROCESS_INFIDELITY = 1e-8
 MAX_LITERAL_ROUNDING = 1e-6
@@ -117,7 +123,7 @@ def _refuse_library_name_clashes(qasm: str) -> None:
     declared |= {m.group(1) for m in _GATE_DEF.finditer(text)}
     clashes = sorted(declared & {"r", "cswap"})
     if clashes:
-        raise ValueError(f"{', '.join(clashes)} names a gate in staq's library, and staq rejects a "
+        raise CompileRefused(f"{', '.join(clashes)} names a gate in staq's library, and staq rejects a "
                          f"register or gate declared under that name")
 
 
@@ -128,10 +134,10 @@ def _refuse_single_precision_losses(qasm: str) -> None:
         value = float(literal)
         single = float(np.float32(value))
         if value != 0 and abs(value) < np.finfo(np.float32).tiny:
-            raise ValueError(f"the literal {literal} is below single precision's smallest normal "
+            raise CompileRefused(f"the literal {literal} is below single precision's smallest normal "
                              f"number; staq 3.5 reads literals with std::stof and cannot take it")
         if abs(single - value) > MAX_LITERAL_ROUNDING:
-            raise ValueError(f"staq 3.5 reads literals in single precision, which would change "
+            raise CompileRefused(f"staq 3.5 reads literals in single precision, which would change "
                              f"{literal} by {abs(single - value):.2g}; literals that change by more "
                              f"than {MAX_LITERAL_ROUNDING:g} are refused")
 
@@ -161,7 +167,7 @@ def _pipeline(level: int):
         else:
             infidelity = process_infidelity(qasm, output)
             if infidelity > MAX_PROCESS_INFIDELITY:
-                raise ValueError(f"staq's output has process infidelity {infidelity:.2g} to the input "
+                raise OutputRejected(f"staq's output has process infidelity {infidelity:.2g} to the input "
                                  f"(more than {MAX_PROCESS_INFIDELITY:g}), so it is not reported")
             check = (f"Checked with Qiskit: process infidelity to the input {infidelity:.2g} "
                      f"(at most {MAX_PROCESS_INFIDELITY:g} accepted, for single-precision angles).")
@@ -178,10 +184,7 @@ PIPELINES = {level: _pipeline(level) for level in (1, 2, 3)}
 
 @with_sdk_versions
 def process_compile(payload: dict) -> dict:
-    result = run_compile_job(compiler="staq", payload=payload, pipelines=PIPELINES)
-    if isinstance(result, dict):
-        result["sdk_versions"] = {**get_sdk_versions(), "staq": STAQ_VERSION}
-    return result
+    return run_compile_job(compiler="staq", payload=payload, pipelines=PIPELINES)
 
 
 register_compiler_endpoint(app, process_compile)

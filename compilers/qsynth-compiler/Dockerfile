@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir --no-deps -r requirements.lock
 COPY shared /tmp/shared-src
 RUN pip install /tmp/shared-src
 
+COPY compilers/qsynth-compiler/Dockerfile compilers/qsynth-compiler/requirements.lock /usr/local/share/qrosetta-build/
 COPY compilers/qsynth-compiler/main.py .
 
 RUN chown -R appuser:appuser /home/appuser/app && \

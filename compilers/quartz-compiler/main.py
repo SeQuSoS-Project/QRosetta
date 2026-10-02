@@ -13,10 +13,12 @@ from fractions import Fraction
 from fastapi import FastAPI
 from qiskit import QuantumCircuit
 
+from qrosetta_commons.compile_errors import CompileRefused, OutputRejected
 from qrosetta_commons.compile_service import (
-    TRANSLATION_PROBES, register_compiler_endpoint, run_compile_job, run_compiler_cli_main,
+    TRANSLATION_PROBES, declare_native_component, register_compiler_endpoint, run_compile_job,
+    run_compiler_cli_main,
 )
-from qrosetta_commons.helpers import declare_sdk_packages, get_sdk_versions, with_sdk_versions
+from qrosetta_commons.helpers import declare_sdk_packages, with_sdk_versions
 from qrosetta_commons.qiskit_circuits import (
     split_final_measurements, translate_to_basis, translation_note, unitary_of,
 )
@@ -30,6 +32,14 @@ QUARTZ_VERSION = os.getenv("QUARTZ_VERSION", "not recorded")
 ECC_SET = os.getenv("QUARTZ_ECC_SET", "/usr/local/share/quartz/Nam_complete_ECC_set.json")
 ECC_MAX_GATES = os.getenv("QUARTZ_ECC_MAX_GATES", "not recorded")
 ECC_SHA256 = os.getenv("QUARTZ_ECC_SHA256", "not recorded")
+declare_native_component(
+    "quartz", QUARTZ_VERSION,
+    source_url=f"https://github.com/quantum-compiler/quartz/archive/refs/tags/v{QUARTZ_VERSION}.tar.gz",
+    source_sha256=os.getenv("QUARTZ_SHA256", "not recorded"),
+    patches=["shift10-normalise.patch"],
+    built_with=["gen_nam_ecc.cpp", "quartz_greedy.cpp"],
+    ecc_set="Nam_complete_ECC_set.json", ecc_set_sha256=ECC_SHA256,
+    ecc_set_max_gates=ECC_MAX_GATES)
 DECOMPOSITION_BASIS = ("h", "x", "rz", "cx")
 CHECKED_UP_TO_QUBITS = 10
 _QUARTZ_GATE = re.compile(r"^(h|x|cx|rz\(pi\*-?\d+(?:/\d+)?\)|rz\(0\)) q\[(\d+)\](?:,q\[(\d+)\])?;$")
@@ -67,7 +77,7 @@ def _quartz_input(circuit: QuantumCircuit) -> str:
         if name == "barrier":
             continue
         if name not in DECOMPOSITION_BASIS:
-            raise ValueError(f"decomposition left a gate Quartz cannot take: {name}")
+            raise CompileRefused(f"decomposition left a gate Quartz cannot take: {name}")
         wires = ",".join(f"q[{circuit.find_bit(q).index}]" for q in inst.qubits)
         if name == "rz":
             turns = Fraction(repr(float(inst.operation.params[0]) / math.pi))
@@ -153,7 +163,7 @@ def _compile(qasm: str):
     if original.num_qubits > CHECKED_UP_TO_QUBITS:
         notes.append(f"The output's unitary is not checked above {CHECKED_UP_TO_QUBITS} qubits.")
     elif not equivalent(qasm, text):
-        raise ValueError("Quartz's output does not have the input's unitary, so it is not reported")
+        raise OutputRejected("Quartz's output does not have the input's unitary, so it is not reported")
     else:
         notes.append("Checked: the output has the input's unitary (Qiskit Operator equality up to "
                      "global phase)" + (" and the same final measurements." if measures else "."))
@@ -165,10 +175,7 @@ PIPELINES = {0: _compile}
 
 @with_sdk_versions
 def process_compile(payload: dict) -> dict:
-    result = run_compile_job(compiler="quartz", payload=payload, pipelines=PIPELINES)
-    if isinstance(result, dict):
-        result["sdk_versions"] = {**get_sdk_versions(), "quartz": QUARTZ_VERSION}
-    return result
+    return run_compile_job(compiler="quartz", payload=payload, pipelines=PIPELINES)
 
 
 register_compiler_endpoint(app, process_compile)

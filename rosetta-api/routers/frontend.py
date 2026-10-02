@@ -83,6 +83,7 @@ async def get_config():
             "timing_repeats_max": settings.MAX_TIMING_REPEATS,
             "max_qasm_gate_statements": settings.MAX_QASM_GATES,
             "max_expanded_gates": settings.MAX_EXPANDED_GATES,
+            "max_expanded_gate_calls": settings.MAX_EXPANDED_GATE_CALLS,
             "shots_min": settings.MIN_SHOTS,
             "shots_max": settings.MAX_SHOTS,
             "shots_default": settings.DEFAULT_SHOTS,
@@ -95,10 +96,12 @@ async def get_config():
 
 @router.get("/compilers")
 async def get_compilers():
-    """Compile-only services: id, display name, enabled and available state, and the
-    description of each optimization level. A compiler turns a run's circuit into circuit
-    text only; it is never simulated or compared (see the compilers field of the run
-    payloads)."""
+    """Compile-only services: id, display name, enabled and available state, the
+    description of each optimization level, and ``versions`` as the running image reports
+    them (pip SDK versions, native components built from source, build-file sha256, image
+    commit; null when no long-lived service answered, as in Kubernetes mode). A compiler
+    turns a run's circuit into circuit text only; it is never simulated or compared (see
+    the compilers field of the run payloads)."""
     availability = await runner_availability(services=COMPILER_SERVICES)
     result = []
     for cid, svc in COMPILER_SERVICES.items():
@@ -111,5 +114,6 @@ async def get_compilers():
             "available": bool(enabled and info["available"]),
             "unavailable_reason": None if (enabled and info["available"]) else (info["reason"] or "unavailable"),
             "optimization_levels": {str(k): v for k, v in svc["optimization_levels"].items()},
+            "versions": info.get("versions"),
         })
     return JSONResponse(content=result)

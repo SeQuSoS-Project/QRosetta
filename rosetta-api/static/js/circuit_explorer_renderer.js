@@ -147,6 +147,10 @@ function _paneCard(pane, context) {
             const versions = Object.entries(pane.sdkVersions).map(([name, v]) => `${name} ${v}`);
             if (versions.length) head.appendChild(_noteList('SDK versions', versions));
         }
+        if (pane.nativeComponents.length) {
+            head.appendChild(_noteList('Built from source', pane.nativeComponents.map(c =>
+                `${c.name} ${c.version}${c.sourceSha256 ? ` (source sha256 ${c.sourceSha256.slice(0, 12)}…)` : ''}`)));
+        }
     } else if ((pane.kind === 'dispatched' || pane.kind === 'compile-input') && pane.apiNotes.length) {
         head.appendChild(_noteList('API changes', pane.apiNotes));
     }
@@ -158,7 +162,9 @@ function _paneCard(pane, context) {
             : 'No executed circuit was recorded for this backend';
         card.appendChild(_el('p', 'p-3 text-xs text-gray-500 italic', `${what}${status}.`));
         if (pane.kind === 'compiled' && pane.reason) {
-            card.appendChild(_el('p', 'px-3 pb-3 text-xs text-gray-700 break-words', pane.reason));
+            const label = pane.refusalKind === 'input' ? 'Refused: '
+                : pane.refusalKind === 'output_check' ? 'Output rejected by the check: ' : '';
+            card.appendChild(_el('p', 'px-3 pb-3 text-xs text-gray-700 break-words', `${label}${pane.reason}`));
         }
         return card;
     }

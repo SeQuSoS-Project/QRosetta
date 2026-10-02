@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir -r requirements.lock
 COPY shared /tmp/shared-src
 RUN pip install /tmp/shared-src
 
+COPY compilers/bqskit-compiler/Dockerfile compilers/bqskit-compiler/requirements.lock /usr/local/share/qrosetta-build/
 COPY compilers/bqskit-compiler/main.py .
 
 RUN chown -R appuser:appuser /home/appuser/app && \

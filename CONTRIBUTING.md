@@ -414,7 +414,18 @@ comparison never reads. `compilers/pyzx-compiler/main.py` is a short complete ex
 - `equivalent(input_qasm, output_qasm) -> bool`, an independent check of the output unitary
   for the small self-test probes, using the image's own SDK;
 - `register_compiler_endpoint(app, process_compile)` and, under `__main__`,
-  `run_compiler_cli_main(app, process_compile, "<Name>", levels=sorted(PIPELINES), equivalent=equivalent)`.
+  `run_compiler_cli_main(app, process_compile, "<Name>", levels=sorted(PIPELINES), equivalent=equivalent)`;
+- `raise CompileRefused(...)` (`qrosetta_commons.compile_errors`) for an input the adapter will not
+  compile, and `raise OutputRejected(...)` when the output fails the adapter's own check. Their
+  messages are shown on share links, so they describe the circuit, never the server; any other
+  exception is an error kept out of share links;
+- for a program built from source rather than installed with pip, one
+  `declare_native_component(name, version, source_url, source_sha256, ...)` call with the build's
+  flags or patches (see `compilers/staq-compiler/main.py`).
+
+The Dockerfile copies itself, `requirements.lock` and any patch, build source or generated data
+the build uses to `/usr/local/share/qrosetta-build/`; each record carries their sha256, and a
+crate includes the server's copy of a file only when the hashes match.
 
 Then add the service to `docker-compose.yml` (isolated network, no ports, the thread
 variables, a CPU and memory limit), to the `COMPILERS` array of `scripts/safe_boot.sh` and to

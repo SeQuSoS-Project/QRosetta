@@ -281,3 +281,48 @@ def test_compile_requests_are_recorded_and_queued_under_dispatch_keys(fake_dispa
     report = asyncio.run(job_manager.run_single_circuit_comparison(
         QASM, target_simulators=["qiskit"], compilers={"pyzx": [1]}))
     assert report["compilers_requested"] == {"pyzx": [1]}
+
+
+def _crate_names_and_graph(report):
+    with zipfile.ZipFile(io.BytesIO(build_ro_crate(build_export_context(report, ExportPayload())))) as zf:
+        names = zf.namelist()
+        meta = next(n for n in names if n.endswith("ro-crate-metadata.json"))
+        return names, json.loads(zf.read(meta))["@graph"]
+
+
+def test_build_files_are_included_only_when_their_hash_matches_the_image(fake_dispatch):
+    import hashlib
+    from pathlib import Path
+    pytest.importorskip("pytket")
+    report = asyncio.run(job_manager.run_single_circuit_comparison(
+        QASM, target_simulators=["qiskit"], compilers={"quartz": [0]}))
+    source = Path(__file__).resolve().parents[3] / "compilers" / "quartz-compiler"
+    sha = {name: hashlib.sha256((source / name).read_bytes()).hexdigest()
+           for name in ("Dockerfile", "shift10-normalise.patch", "Nam_complete_ECC_set.json")}
+    record = report["compiled_circuits"][0]
+    record.update(dispatch_status="ok", transpiled_qasm=QASM, build_files={**sha, "Dockerfile": "0" * 64},
+                  native_components=[{"name": "quartz", "version": "0.3.2", "source_url": "https://x/q.tar.gz",
+                                      "source_sha256": "ab" * 32, "patches": ["shift10-normalise.patch"]}],
+                  sdk_versions={"qiskit": "2.5.2", "quartz": "0.3.2"})
+    names, graph = _crate_names_and_graph(report)
+    assert any(n.endswith("compilers/quartz-compiler/shift10-normalise.patch") for n in names)
+    assert any(n.endswith("compilers/quartz-compiler/Nam_complete_ECC_set.json") for n in names)
+    assert not any(n.endswith("compilers/quartz-compiler/Dockerfile") for n in names)
+    app = next(e for e in graph if e["@id"] == "#compiler-quartz")
+    assert "qiskit==2.5.2" in app["softwareRequirements"]
+    assert not any(isinstance(r, str) and r.startswith("quartz==") for r in app["softwareRequirements"])
+    native = next(e for e in graph if e["@id"] == "#native-quartz-0.3.2")
+    assert native["softwareVersion"] == "0.3.2" and native["identifier"] == "sha256:" + "ab" * 32
+    assert {"@id": "#native-quartz-0.3.2"} in app["softwareRequirements"]
+
+
+def test_a_refusal_reaches_the_share_texts_but_other_errors_do_not():
+    from services.circuit_texts import single_circuit_texts
+    report = {"compiled_circuits": [
+        {"compiler": "staq~opt1~run1", "compiler_id": "staq", "dispatch_status": "error",
+         "error": "CompileRefused: r names a gate", "refusal": "r names a gate", "refusal_kind": "input"},
+        {"compiler": "staq~opt2~run1", "compiler_id": "staq", "dispatch_status": "error",
+         "error": "ValueError: staq exited with status 1: /tmp/x"}]}
+    refused, failed = single_circuit_texts(report)["compiled_circuits"]
+    assert refused["refusal"] == "r names a gate" and refused["refusal_kind"] == "input"
+    assert "error" not in refused and "error" not in failed and "refusal" not in failed

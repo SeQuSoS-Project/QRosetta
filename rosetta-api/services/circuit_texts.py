@@ -22,7 +22,7 @@ def _result_texts(result: dict) -> dict:
 
 
 _COMPILED_TEXT_FIELDS = ("compiler", "compiler_id", "compiler_name", "transpiled_qasm",
-                         "gate_metrics_basis", "dispatch_status")
+                         "gate_metrics_basis", "dispatch_status", "refusal", "refusal_kind")
 
 
 def _compiled_texts(record: dict) -> dict:
@@ -38,6 +38,11 @@ def _compiled_texts(record: dict) -> dict:
     versions = record.get("sdk_versions")
     if isinstance(versions, dict):
         out["sdk_versions"] = {k: v for k, v in versions.items() if isinstance(k, str) and isinstance(v, str)}
+    components = record.get("native_components")
+    if isinstance(components, list):
+        out["native_components"] = [
+            {k: v for k, v in entry.items() if isinstance(k, str) and isinstance(v, str)}
+            for entry in components if isinstance(entry, dict)]
     if record.get("dispatch_status") == "skipped" and isinstance(record.get("error"), str):
         out["error"] = record["error"]
     return out

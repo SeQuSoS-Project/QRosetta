@@ -34,7 +34,23 @@ function _row(compiler) {
         levels.appendChild(label);
     }
     row.appendChild(levels);
+    const versions = _versionText(compiler.versions);
+    if (versions) row.appendChild(_el('p', 'text-[11px] text-gray-500 mt-1 break-words', versions));
     return row;
+}
+
+/** One line: the versions the running compiler image reports, native components first. */
+function _versionText(versions) {
+    if (!versions || typeof versions !== 'object') return '';
+    const parts = [];
+    for (const c of Array.isArray(versions.native_components) ? versions.native_components : []) {
+        if (c && typeof c.name === 'string' && typeof c.version === 'string') parts.push(`${c.name} ${c.version} (built from source)`);
+    }
+    const sdk = versions.sdk_versions && typeof versions.sdk_versions === 'object' ? versions.sdk_versions : {};
+    for (const [name, version] of Object.entries(sdk)) {
+        if (typeof version === 'string') parts.push(`${name} ${version}`);
+    }
+    return parts.join(', ');
 }
 
 /** Fetch GET /compilers and render one row per compiler, with a checkbox per level. */

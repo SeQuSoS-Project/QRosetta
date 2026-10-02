@@ -6,6 +6,7 @@ import re
 from fastapi import FastAPI
 import pyzx as zx
 
+from qrosetta_commons.compile_errors import CompileRefused
 from qrosetta_commons.compile_service import (
     register_compiler_endpoint, run_compile_job, run_compiler_cli_main,
 )
@@ -36,7 +37,7 @@ def _quantum_only(qasm: str):
     operations, which PyZX cannot represent."""
     code = strip_qasm_comments(qasm)
     if _CLASSICAL_RE.search(code):
-        raise ValueError("PyZX compiles unitary circuits only; this circuit has measure, reset or if")
+        raise CompileRefused("PyZX compiles unitary circuits only; this circuit has measure, reset or if")
     stripped = _CREG_RE.sub("", code)
     notes = [_COMMENTS_NOTE] if code != qasm else []
     return stripped, notes + ([_CREG_NOTE] if stripped != code else [])

@@ -6,6 +6,7 @@ from mqt.core import load
 from mqt.qmap.sc import Architecture, Configuration, Method, map_
 from qiskit import QuantumCircuit, qasm2
 
+from qrosetta_commons.compile_errors import CompileRefused, OutputRejected
 from qrosetta_commons.compile_service import (
     TRANSLATION_PROBES, register_compiler_endpoint, run_compile_job, run_compiler_cli_main,
 )
@@ -32,12 +33,12 @@ def _decompose(qasm: str) -> str:
     unexpected = sorted({inst.operation.name for inst in circuit.data} - set(DECOMPOSITION_BASIS)
                         - {"barrier"})
     if unexpected:
-        raise ValueError(f"decomposition left gates QMAP cannot map: {unexpected}")
+        raise CompileRefused(f"decomposition left gates QMAP cannot map: {unexpected}")
     used = {circuit.find_bit(q).index for inst in circuit.data if inst.operation.name != "barrier"
             for q in inst.qubits}
     idle = sorted(set(range(circuit.num_qubits)) - used)
     if idle:
-        raise ValueError(f"qubit(s) {idle} have no gates; QMAP 3.10 then records a qubit layout "
+        raise CompileRefused(f"qubit(s) {idle} have no gates; QMAP 3.10 then records a qubit layout "
                          f"that does not match its output, so the circuit is not mapped")
     return qasm2.dumps(circuit)
 
@@ -50,15 +51,15 @@ def _check_output(decomposed: str, output: str, n_qubits: int) -> str:
         try:
             layout = _layout(output, tag)
         except StopIteration:
-            raise ValueError(f"QMAP's output has no '// {tag}' layout line")
+            raise OutputRejected(f"QMAP's output has no '// {tag}' layout line")
         if sorted(layout) != list(range(n_qubits)):
-            raise ValueError(f"QMAP's '// {tag}' layout line {layout} is not a permutation of the "
+            raise OutputRejected(f"QMAP's '// {tag}' layout line {layout} is not a permutation of the "
                              f"{n_qubits} qubits, so the output's qubit layout is unknown")
     if n_qubits > CHECKED_UP_TO_QUBITS:
         return (f"Layout lines checked to be permutations of the qubits; the unitary is not checked "
                 f"above {CHECKED_UP_TO_QUBITS} qubits.")
     if not equivalent(decomposed, output):
-        raise ValueError("QMAP's output, read through its layout lines, does not have the input's "
+        raise OutputRejected("QMAP's output, read through its layout lines, does not have the input's "
                          "unitary, so it is not reported")
     return ("Checked: the output, read through its '// i' and '// o' lines, has the input's "
             "unitary (Qiskit Operator equality up to global phase).")
@@ -75,7 +76,7 @@ def _pipeline(method: Method, description: str):
         computation = load(decomposed)
         n_qubits = computation.num_qubits
         if n_qubits < 2:
-            raise ValueError("QMAP maps circuits of two or more qubits")
+            raise CompileRefused("QMAP maps circuits of two or more qubits")
         config = Configuration()
         config.method = method
         config.add_measurements_to_mapped_circuit = False

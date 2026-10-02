@@ -70,3 +70,43 @@ def test_compile_endpoint_runs_the_processor_once_in_a_child(monkeypatch):
     assert calls == [False]
     assert result["transpiled_qasm"] == QASM and result["queue_wait_sec"] >= 0
     assert "timing_samples" not in result and "compilation_time_sec" not in result
+
+
+def test_refusals_and_rejected_outputs_are_marked():
+    from qrosetta_commons.compile_errors import CompileRefused, OutputRejected
+    refused = compile_service.compiler_error("x", CompileRefused("reset is refused"))
+    assert refused["refusal"] == "reset is refused" and refused["refusal_kind"] == "input"
+    rejected = compile_service.compiler_error("x", OutputRejected("unitary differs"))
+    assert rejected["refusal_kind"] == "output_check"
+    assert "refusal" not in compile_service.compiler_error("x", ValueError("exit status 1"))
+
+
+def test_native_components_and_build_files_are_reported(monkeypatch):
+    monkeypatch.setattr(compile_service, "_NATIVE_COMPONENTS", [])
+    monkeypatch.setattr(compile_service, "BUILD_FILES", {"Dockerfile": "ab" * 32})
+    compile_service.declare_native_component("tool", "1.0", "https://x/t.tar.gz", "cd" * 32, patches=["a.patch"])
+    result = fx.process_compile({"circuit_data": QASM, "optimization_level": 0})
+    assert result["native_components"] == [{"name": "tool", "version": "1.0", "source_url": "https://x/t.tar.gz",
+                                            "source_sha256": "cd" * 32, "patches": ["a.patch"]}]
+    assert result["build_files"] == {"Dockerfile": "ab" * 32}
+    app = FastAPI()
+    compile_service.register_compiler_endpoint(app, fx.process_compile)
+    body = TestClient(app).get("/capabilities").json()
+    assert body["available"] is True and body["native_components"][0]["name"] == "tool"
+    assert body["build_files"] == {"Dockerfile": "ab" * 32} and "sdk_versions" in body
+
+
+def test_build_file_hashes_cover_every_file_in_the_directory(tmp_path, monkeypatch):
+    import hashlib
+    (tmp_path / "Dockerfile").write_bytes(b"FROM x\n")
+    monkeypatch.setattr(compile_service, "BUILD_FILES_DIR", tmp_path)
+    assert compile_service._build_file_hashes() == {"Dockerfile": hashlib.sha256(b"FROM x\n").hexdigest()}
+
+
+def test_committed_quartz_ecc_set_is_the_one_the_image_build_checks():
+    import hashlib
+    import re
+    from pathlib import Path
+    source = Path(__file__).resolve().parents[3] / "compilers" / "quartz-compiler"
+    pinned = re.search(r"^ARG ECC_SHA256=([0-9a-f]{64})$", (source / "Dockerfile").read_text(), re.M).group(1)
+    assert hashlib.sha256((source / "Nam_complete_ECC_set.json").read_bytes()).hexdigest() == pinned

@@ -182,3 +182,21 @@ def test_nested_gate_expansion_is_bounded(client):
     qasm = 'OPENQASM 2.0;\ninclude "qelib1.inc";\n' + body + "qreg q[1];\ng20 q[0];\n"
     r = client.post("/compare", json={"qasm_string": qasm})
     assert r.status_code == 400 and "expands to 1048576" in r.json()["detail"]
+
+
+def _binary_nest(depth):
+    body = "gate g0 a,b { cx a,b; t b; }\n" + "".join(
+        f"gate g{i} a,b {{ g{i-1} a,b; g{i-1} b,a; }}\n" for i in range(1, depth + 1))
+    return 'OPENQASM 2.0;\ninclude "qelib1.inc";\n' + body + f"qreg q[2];\nh q[0];\ng{depth} q[0],q[1];\n"
+
+
+def test_user_gate_applications_are_counted_through_definitions():
+    from services.validator import expanded_counts
+    assert expanded_counts(_binary_nest(12)) == (8193, 8191)
+    flat = 'OPENQASM 2.0;\ninclude "qelib1.inc";\ngate g a,b { cx a,b; }\nqreg q[2];\nqreg r[3];\ng q[0],q[1];\ng r,r;\n'
+    assert expanded_counts(flat) == (4, 4)
+
+
+def test_too_many_user_gate_applications_are_400(client):
+    r = client.post("/compare", json={"qasm_string": _binary_nest(13)})
+    assert r.status_code == 400 and "16383 applications of user-defined gates" in r.json()["detail"]

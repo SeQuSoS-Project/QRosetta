@@ -1,8 +1,9 @@
 """RO-Crate entries for compile-only output: the circuit the compilers received, each
-compiler's output circuit, one CreateAction per compile, and the pinned environment of
-each compiler that ran."""
+compiler's output circuit, one CreateAction per compile, the native components each
+compiler image built from source, and the build files of each compiler that ran."""
 
 import csv
+import hashlib
 import io
 import json
 import os
@@ -98,24 +99,65 @@ def compile_actions(report: dict, task_id, label, files: list, services: dict = 
     return actions
 
 
+def _native_components(record: dict) -> list:
+    components = record.get("native_components")
+    if not isinstance(components, list):
+        return []
+    out = []
+    for entry in components:
+        if not isinstance(entry, dict) or not all(isinstance(entry.get(k), str) for k in ("name", "version")):
+            continue
+        out.append({str(k): (v if isinstance(v, str) else [str(x) for x in v])
+                    for k, v in entry.items() if isinstance(v, str) or isinstance(v, list)})
+    return out
+
+
+def _native_id(component: dict) -> str:
+    return f"#native-{re.sub(r'[^A-Za-z0-9._-]+', '-', component['name'])}-{re.sub(r'[^A-Za-z0-9._-]+', '-', component['version'])}"
+
+
+def _native_entity(component: dict) -> dict:
+    details = {k: v for k, v in component.items()
+               if k not in ("name", "version", "source_url", "source_sha256")}
+    entity = {"@id": _native_id(component), "@type": "SoftwareApplication",
+              "name": component["name"], "softwareVersion": component["version"],
+              "description": ("Built from source in the compiler image"
+                              + "".join(f"; {k.replace('_', ' ')}: "
+                                        f"{', '.join(v) if isinstance(v, list) else v}"
+                                        for k, v in sorted(details.items())) + ".")}
+    if component.get("source_url"):
+        entity["downloadUrl"] = component["source_url"]
+    if component.get("source_sha256"):
+        entity["identifier"] = f"sha256:{component['source_sha256']}"
+    return entity
+
+
 def compiler_applications(reports: list, services: dict = None) -> list:
     """One SoftwareApplication per compiler used, named from the exporting server's
-    registry, with the SDK versions and code hashes its records report."""
-    seen = {}
+    registry, with the pip SDK versions and code hashes its records report and a reference
+    to each native component (built from source), which gets its own entity."""
+    seen, natives = {}, {}
     for report in reports:
         for record in _records(report):
             cid = record.get("compiler_id")
             entry = seen.setdefault(cid, {"name": (services or {}).get(cid, {}).get("name") or cid,
-                                          "versions": set(), "hashes": set()})
+                                          "versions": set(), "hashes": set(), "natives": set()})
+            native_names = set()
+            for component in _native_components(record):
+                natives.setdefault(_native_id(component), component)
+                entry["natives"].add(_native_id(component))
+                native_names.add(component["name"])
             for pkg, ver in _versions(record).items():
-                entry["versions"].add(f"{pkg}=={ver}")
+                if pkg not in native_names:
+                    entry["versions"].add(f"{pkg}=={ver}")
             if record.get("compiler_code_sha256"):
                 entry["hashes"].add(record["compiler_code_sha256"])
-    return [{"@id": f"#compiler-{cid}", "@type": "SoftwareApplication",
+    apps = [{"@id": f"#compiler-{cid}", "@type": "SoftwareApplication",
              "name": f"{entry['name']} compile-only service",
-             "softwareRequirements": sorted(entry["versions"]),
+             "softwareRequirements": sorted(entry["versions"]) + [{"@id": n} for n in sorted(entry["natives"])],
              **({"identifier": sorted(entry["hashes"])} if entry["hashes"] else {})}
             for cid, entry in seen.items()]
+    return apps + [_native_entity(natives[n]) for n in sorted(natives)]
 
 
 def compile_provenance(reports_by_task: list) -> list:
@@ -183,40 +225,81 @@ def _pins(lock_bytes: bytes) -> dict:
     return pins
 
 
-def compiler_lock_files(reports: list, compiler_services: dict) -> dict:
-    """``{crate path: bytes}`` of requirements.lock for each compiler that produced output
-    in the reports, read from compilers/<name>/ beside the API source. A lock is left out
-    when it pins a recorded package at a version other than the one the compiler's records
-    report, since it would then not describe the environment that ran; a recorded tool the
-    lock does not list (a binary such as staq) does not decide it."""
-    used = {}
+def _build_hashes(record: dict) -> dict:
+    files = record.get("build_files")
+    return ({str(k): str(v) for k, v in files.items() if isinstance(v, str)}
+            if isinstance(files, dict) else {})
+
+
+def _source_file(name: str, filename: str):
+    if "/" in filename or filename in ("", ".", ".."):
+        return None
+    for base in (os.getcwd(), os.path.join(os.getcwd(), "..")):
+        path = os.path.join(base, "compilers", name, filename)
+        if os.path.isfile(path):
+            with open(path, "rb") as fh:
+                return fh.read()
+    return None
+
+
+def compiler_build_files(reports: list, compiler_services: dict) -> dict:
+    """``{crate path: bytes}`` of the build files (Dockerfile, requirements.lock, patches,
+    build sources, generated data) of each compiler that produced output, read from
+    compilers/<name>/ beside the API source. A file is included only when its sha256
+    equals the one every successful record of that compiler reports for its image. Records
+    from images that report no build files fall back to the lock file, included when it
+    pins each recorded package at the recorded version."""
+    hashed, legacy = {}, {}
     for report in reports:
         for record in _records(report):
-            versions = _versions(record)
-            if (record.get("dispatch_status") == "ok" and versions
-                    and record.get("compiler_id") in compiler_services):
-                used.setdefault(record["compiler_id"], []).append(versions)
-    out = {}
-    for cid, version_sets in used.items():
-        name = _compiler_dir(compiler_services[cid]["base_url"])
-        for base in (os.getcwd(), os.path.join(os.getcwd(), "..")):
-            path = os.path.join(base, "compilers", name, "requirements.lock")
-            if not os.path.isfile(path):
+            cid = record.get("compiler_id")
+            if record.get("dispatch_status") != "ok" or cid not in compiler_services:
                 continue
-            with open(path, "rb") as fh:
-                data = fh.read()
-            pins = _pins(data)
-            if all(pins.get(re.sub(r"[-_.]+", "-", pkg).lower(), ver) == ver
-                   for versions in version_sets for pkg, ver in versions.items()):
-                out[f"compilers/{name}/requirements.lock"] = data
-            break
+            if _build_hashes(record):
+                hashed.setdefault(cid, []).append(_build_hashes(record))
+            elif _versions(record):
+                legacy.setdefault(cid, []).append(_versions(record))
+    out = {}
+    for cid, hash_sets in hashed.items():
+        name = _compiler_dir(compiler_services[cid]["base_url"])
+        for filename in sorted({f for hashes in hash_sets for f in hashes}):
+            reported = {hashes.get(filename) for hashes in hash_sets}
+            data = _source_file(name, filename)
+            if data is not None and reported == {hashlib.sha256(data).hexdigest()}:
+                out[f"compilers/{name}/{filename}"] = data
+    for cid, version_sets in legacy.items():
+        name = _compiler_dir(compiler_services[cid]["base_url"])
+        path = f"compilers/{name}/requirements.lock"
+        data = None if path in out else _source_file(name, "requirements.lock")
+        if data is None:
+            continue
+        pins = _pins(data)
+        if all(pins.get(re.sub(r"[-_.]+", "-", pkg).lower(), ver) == ver
+               for versions in version_sets for pkg, ver in versions.items()):
+            out[path] = data
     return out
 
 
-def compiler_lock_entity(crate_path: str) -> dict:
-    name = crate_path.split("/")[1]
-    return {"@id": crate_path, "@type": "File", "name": "requirements.lock",
-            "description": (f"Full pinned Python environment (pip freeze) of the {name} image, as "
-                            "committed in the exporting server's source tree; included because "
-                            "its pins match the SDK versions recorded in the report."),
-            "encodingFormat": "text/plain"}
+_BUILD_FILE_DESCRIPTIONS = (
+    ("requirements.lock", "text/plain", "Full pinned Python environment (pip freeze) of the {name} image"),
+    ("Dockerfile", "text/plain", "Dockerfile the {name} image was built from"),
+    (".patch", "text/x-diff", "Patch applied to the native component's source when the {name} image was built"),
+    (".cpp", "text/x-c++src", "C++ source compiled into the {name} image"),
+    (".json", "application/json", "Data file generated when the {name} image was built (for Quartz, the ECC set it rewrites with)"),
+)
+
+
+def compiler_build_entity(crate_path: str) -> dict:
+    name, filename = crate_path.split("/")[1], crate_path.split("/")[-1]
+    fmt, text = "text/plain", "Build file of the {name} image"
+    for suffix, suffix_fmt, suffix_text in _BUILD_FILE_DESCRIPTIONS:
+        if filename.endswith(suffix):
+            fmt, text = suffix_fmt, suffix_text
+            break
+    return {"@id": crate_path, "@type": "File", "name": filename,
+            "description": (text.format(name=name) + ", as committed in the exporting server's "
+                            "source tree; included because its sha256 matches the one the "
+                            "compiler's records report for the image that ran (for records "
+                            "without build-file hashes, a lock file whose pins match the "
+                            "recorded SDK versions)."),
+            "encodingFormat": fmt}

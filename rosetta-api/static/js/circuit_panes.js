@@ -45,6 +45,12 @@ function _gateCounts(value) {
     return Object.entries(value).filter(([name, n]) => typeof name === 'string' && Number.isInteger(n));
 }
 
+function _nativeComponents(value) {
+    if (!Array.isArray(value)) return [];
+    return value.filter(c => c && typeof c === 'object' && typeof c.name === 'string' && typeof c.version === 'string')
+        .map(c => ({ name: c.name, version: c.version, sourceSha256: typeof c.source_sha256 === 'string' ? c.source_sha256 : null }));
+}
+
 function _compiledPane(record, index) {
     const key = typeof record.compiler === 'string' ? record.compiler : `compiler ${index + 1}`;
     return {
@@ -57,7 +63,10 @@ function _compiledPane(record, index) {
         text: typeof record.transpiled_qasm === 'string' ? record.transpiled_qasm : null,
         status: typeof record.dispatch_status === 'string' ? record.dispatch_status : null,
         passes: _strings(record.passes_applied),
-        reason: typeof record.error === 'string' ? record.error : null,
+        reason: typeof record.refusal === 'string' ? record.refusal
+            : typeof record.error === 'string' ? record.error : null,
+        refusalKind: record.refusal_kind === 'input' || record.refusal_kind === 'output_check' ? record.refusal_kind : null,
+        nativeComponents: _nativeComponents(record.native_components),
         gateCount: typeof record.gate_count === 'number' ? record.gate_count : null,
         depth: typeof record.circuit_depth === 'number' ? record.circuit_depth : null,
         multiQubitGateCount: typeof record.multi_qubit_gate_count === 'number' ? record.multi_qubit_gate_count : null,

@@ -266,23 +266,28 @@ _DEF_HEAD_RE = re.compile(r"^\s*gate\s+([A-Za-z_]\w*)")
 _BARE_REG_RE = re.compile(r"(?<![\w\[])([A-Za-z_]\w*)(?!\s*\[)")
 
 
-def expanded_gate_count(qasm: str, statements: list = None) -> int:
-    """Gate applications the circuit expands to: each top-level operation counts the gates of
-    its definition (recursively through user gate definitions; built-in gates count 1),
-    times the size of the largest register it is broadcast over."""
+def expanded_counts(qasm: str, statements: list = None) -> tuple:
+    """(gate applications, user-gate applications) the circuit expands to. Each top-level
+    operation counts the gates of its definition (recursively through user gate
+    definitions; built-in gates count 1) and the user-gate applications in that expansion
+    (itself and every nested call), times the size of the largest register it is broadcast
+    over."""
     statements = split_statements(qasm) if statements is None else statements
     sizes = {name: int(size) for name, size in re.findall(r"\bqreg\s+(\w+)\s*\[\s*(\d+)\s*\]", qasm)}
-    cost = {}
+    cost, calls = {}, {}
     for stmt in statements:
         m = _DEF_HEAD_RE.match(stmt)
         if not m:
             continue
-        total = 0
+        total, nested = 0, 0
         for inner in gate_body_statements(stmt):
             op = _NAME_RE.match(inner.strip())
-            total += cost.get(op.group(0), 1) if op else 0
+            if op:
+                total += cost.get(op.group(0), 1)
+                nested += calls.get(op.group(0), 0)
         cost[m.group(1)] = max(total, 1)
-    count = 0
+        calls[m.group(1)] = 1 + nested
+    count, call_count = 0, 0
     for stmt in statements:
         if _NON_OPERATION_RE.match(stmt):
             continue
@@ -304,7 +309,12 @@ def expanded_gate_count(qasm: str, statements: list = None) -> int:
             rest = rest[end:]
         width = max([sizes.get(name, 1) for name in _BARE_REG_RE.findall(rest)] or [1])
         count += cost.get(op.group(0), 1) * width
-    return count
+        call_count += calls.get(op.group(0), 0) * width
+    return count, call_count
+
+
+def expanded_gate_count(qasm: str, statements: list = None) -> int:
+    return expanded_counts(qasm, statements)[0]
 
 
 def validate_request(qasm: str, mode: str = "statevector", bypass_limits: bool = False,
@@ -338,13 +348,20 @@ def validate_request(qasm: str, mode: str = "statevector", bypass_limits: bool =
     if check_reserved_names:
         check_gate_names(qasm, statements)
         if not (bypass_limits and settings.EXECUTION_MODE == "local"):
-            expanded = expanded_gate_count(qasm, statements)
+            expanded, user_calls = expanded_counts(qasm, statements)
             if expanded > settings.MAX_EXPANDED_GATES:
                 raise HTTPException(
                     status_code=400,
                     detail=(f"Circuit too complex: it expands to {expanded} gate applications "
                             f"through its gate definitions and register broadcasts, above the "
                             f"limit of {settings.MAX_EXPANDED_GATES}."))
+            if user_calls > settings.MAX_EXPANDED_GATE_CALLS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(f"Circuit too complex: it expands to {user_calls} applications of "
+                            f"user-defined gates (counting calls inside gate definitions), above "
+                            f"the limit of {settings.MAX_EXPANDED_GATE_CALLS}. Parsers that keep "
+                            f"a copy of the definition per application need memory for each."))
     check_parameter_values(qasm, statements, check_calls=check_reserved_names)
     if apply_preprocessing:
         check_parameter_expressions(qasm)

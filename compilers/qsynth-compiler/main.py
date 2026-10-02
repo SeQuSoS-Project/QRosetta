@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from qiskit import QuantumCircuit, QuantumRegister, qasm2
 from qsynth.api import peephole_synthesis
 
+from qrosetta_commons.compile_errors import CompileRefused, OutputRejected
 from qrosetta_commons.compile_service import (
     TRANSLATION_PROBES, register_compiler_endpoint, run_compile_job, run_compiler_cli_main,
 )
@@ -95,7 +96,7 @@ def _pipeline(level: int):
         translated = translate_to_basis(unitary, DECOMPOSITION_BASIS)
         unexpected = sorted({i.operation.name for i in translated.data} - set(DECOMPOSITION_BASIS) - {"barrier"})
         if unexpected:
-            raise ValueError(f"decomposition left gates Q-Synth cannot take: {unexpected}")
+            raise CompileRefused(f"decomposition left gates Q-Synth cannot take: {unexpected}")
         flat = QuantumCircuit(QuantumRegister(original.num_qubits, "q"))
         flat.compose(translated, qubits=list(range(original.num_qubits)), inplace=True)
         synthesised = _synthesise(flat, metric)
@@ -107,7 +108,7 @@ def _pipeline(level: int):
         output = qasm2.dumps(output_circuit)
         if original.num_qubits <= CHECKED_UP_TO_QUBITS:
             if not equivalent(qasm, output):
-                raise ValueError("Q-Synth's output does not have the input's unitary, so it is not reported")
+                raise OutputRejected("Q-Synth's output does not have the input's unitary, so it is not reported")
             check = "Checked: the output has the input's unitary (Qiskit Operator equality up to global phase)."
         else:
             check = f"The output's unitary is not checked above {CHECKED_UP_TO_QUBITS} qubits."

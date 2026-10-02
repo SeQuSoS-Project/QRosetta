@@ -3,12 +3,14 @@ basis translation that makes no assumption about the qubits' initial state."""
 
 from qiskit import QuantumCircuit, transpile
 
+from qrosetta_commons.compile_errors import CompileRefused
+
 _CONTROL_FLOW = {"if_else", "while_loop", "for_loop", "switch_case", "box"}
 
 
 def split_final_measurements(circuit: QuantumCircuit, compiler: str):
     """(circuit without its final measurements, [(qubit, clbit), ...] in circuit order).
-    ValueError for a measurement followed by a gate on its qubit, reset or classical control."""
+    CompileRefused for a measurement followed by a gate on its qubit, reset or classical control."""
     later = set()
     finals = []
     body = []
@@ -16,12 +18,12 @@ def split_final_measurements(circuit: QuantumCircuit, compiler: str):
         name = inst.operation.name
         qubits = [circuit.find_bit(q).index for q in inst.qubits]
         if name in _CONTROL_FLOW:
-            raise ValueError(f"classically controlled operations are refused; {compiler} rewrites unitary circuits")
+            raise CompileRefused(f"classically controlled operations are refused; {compiler} rewrites unitary circuits")
         if name == "reset":
-            raise ValueError(f"reset is refused; {compiler} rewrites unitary circuits")
+            raise CompileRefused(f"reset is refused; {compiler} rewrites unitary circuits")
         if name == "measure":
             if qubits[0] in later:
-                raise ValueError(f"mid-circuit measurement is refused; {compiler} rewrites unitary circuits")
+                raise CompileRefused(f"mid-circuit measurement is refused; {compiler} rewrites unitary circuits")
             finals.append((qubits[0], circuit.find_bit(inst.clbits[0]).index))
             later.add(qubits[0])
             continue

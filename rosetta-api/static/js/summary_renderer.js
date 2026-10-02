@@ -1,5 +1,5 @@
 // Summary tab of a single-circuit report: which backends ran, failed runs by status, what
-// the pairwise agreement records show, and per-backend run details.
+// the pairwise agreement records show, the outcome of each compile, and per-backend run details.
 
 import { panelElements } from './dom.js';
 import {
@@ -8,6 +8,7 @@ import {
 } from './render_helpers.js';
 import { getEnabledRunnerIds } from './config.js';
 import { parseRunnerKey } from './runner_key.js';
+import { circuitPanes } from './circuit_panes.js';
 import {
     RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, adjustedPValue, correctionLongName, correctionName, effectiveAgreement,
     measuredAssessment, pairPower, pairPowerLevel, recommendedShots, resolvableByMoreShots, runnerStatus,
@@ -530,6 +531,39 @@ function _renderFailures(panel, raws) {
     });
 }
 
+function _compileItem(pane) {
+    const frag = document.createDocumentFragment();
+    const b = document.createElement('b');
+    b.textContent = `${pane.compilerName || pane.compilerId}${pane.level !== null ? ` level ${pane.level}` : ''}`;
+    frag.appendChild(b);
+    let text;
+    if (pane.text !== null) {
+        const parts = [];
+        if (pane.gateCount !== null) parts.push(`${fmtInt(pane.gateCount)} gates`);
+        if (pane.multiQubitGateCount !== null) parts.push(`${fmtInt(pane.multiQubitGateCount)} on 2+ qubits`);
+        if (pane.depth !== null) parts.push(`depth ${fmtInt(pane.depth)}`);
+        text = `compiled${parts.length ? `: ${parts.join(', ')}` : ''}`;
+    } else if (pane.refusalKind === 'input') {
+        text = `refused: ${pane.reason}`;
+    } else if (pane.refusalKind === 'output_check') {
+        text = `output rejected by the check: ${pane.reason}`;
+    } else if (pane.status === 'skipped') {
+        text = `not run: ${pane.reason || 'skipped'}`;
+    } else {
+        text = `${pane.status || 'no output'}${pane.reason ? `: ${userFacingError(pane.reason)}` : ''}`;
+    }
+    frag.appendChild(document.createTextNode(`: ${text}`));
+    return frag;
+}
+
+function _renderCompiles(panel, data) {
+    const panes = circuitPanes(data).filter(p => p.kind === 'compiled');
+    if (!panes.length) return;
+    const block = _block(`Compile-only services (${panes.length})`, 'offline', panes.map(_compileItem));
+    _note(block, 'Compiled circuits are text: they are not simulated, timed or compared. Gate counts use each compiler\'s own gate set, so they are not comparable across compilers. The Circuits tab shows each output with its passes.');
+    panel.appendChild(block);
+}
+
 function _kv(parent, key, value) {
     if (value === undefined || value === null || value === '') return;
     const row = document.createElement('div');
@@ -682,5 +716,6 @@ export function renderSummaryPanel(data, title) {
     _renderCoverage(panel, raws);
     _renderFailures(panel, raws);
     _renderAgreementBlocks(panel, data, raws.filter(r => runnerStatus(r) === 'ok').length);
+    _renderCompiles(panel, data);
     _renderRunDetails(panel, data, raws);
 }

@@ -59,9 +59,35 @@ async def _probe(client: httpx.AsyncClient, svc: dict) -> dict:
         return {"available": True, "reason": None, "device": None}
     available = bool(body.get("available", True))
     reason = body.get("reason")
-    return {"available": available,
+    info = {"available": available,
             "reason": (str(reason) if reason else None) if not available else None,
             "device": str(body["device"]) if body.get("device") else None}
+    versions = _reported_versions(body)
+    if versions:
+        info["versions"] = versions
+    return info
+
+
+def _string_map(value) -> dict:
+    return ({str(k): v for k, v in value.items() if isinstance(v, str)}
+            if isinstance(value, dict) else {})
+
+
+def _reported_versions(body: dict) -> dict:
+    """The version fields a compile-only service's /capabilities reports, type-checked."""
+    out = {}
+    if isinstance(body.get("sdk_versions"), dict):
+        out["sdk_versions"] = _string_map(body["sdk_versions"])
+    if isinstance(body.get("native_components"), list):
+        out["native_components"] = [
+            {str(k): v for k, v in entry.items()
+             if isinstance(v, str) or (isinstance(v, list) and all(isinstance(x, str) for x in v))}
+            for entry in body["native_components"] if isinstance(entry, dict)]
+    if isinstance(body.get("build_files"), dict):
+        out["build_files"] = _string_map(body["build_files"])
+    if isinstance(body.get("image_git_sha"), str):
+        out["image_git_sha"] = body["image_git_sha"]
+    return out
 
 
 async def runner_availability(names=None, services=None) -> dict:

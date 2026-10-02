@@ -24,8 +24,8 @@ COMPILE_INPUT_DERIVATION = (
     "measurements removed, then the run's API preprocessing (see api_preprocessing_applied).")
 
 _COPIED_FIELDS = ("optimization_level", "transpiled_qasm", "passes_applied", "gate_count",
-                  "circuit_depth", "gate_counts", "multi_qubit_gate_count", "gate_metrics_basis", "sdk_versions", "dispatch_status",
-                  "error", "queue_wait_sec", "gate_wait_sec", "runner_image", "image_git_sha",
+                  "circuit_depth", "gate_counts", "multi_qubit_gate_count", "gate_metrics_basis", "sdk_versions", "native_components", "build_files", "dispatch_status",
+                  "error", "refusal", "refusal_kind", "queue_wait_sec", "gate_wait_sec", "runner_image", "image_git_sha",
                   "runtime_environment", "dispatched_at", "completed_at")
 
 

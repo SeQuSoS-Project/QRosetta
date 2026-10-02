@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from qiskit import QuantumCircuit
 from qiskit.circuit.library import get_standard_gate_name_mapping
 
+from qrosetta_commons.compile_errors import CompileRefused, OutputRejected
 from qrosetta_commons.compile_service import (
     register_compiler_endpoint, run_compile_job, run_compiler_cli_main,
 )
@@ -49,11 +50,11 @@ def _cu3_thetas(circuit: QuantumCircuit):
 
 
 def _refuse_misimported_cu3(qasm: str) -> None:
-    """ValueError for a cu3, at top level or in a gate body, that cirq-core 1.7.0 imports with
+    """CompileRefused for a cu3, at top level or in a gate body, that cirq-core 1.7.0 imports with
     the wrong unitary: theta with floor(theta / 2 pi) odd, for example any small negative theta."""
     for theta in _cu3_thetas(QuantumCircuit.from_qasm_str(qasm)):
         if math.floor(theta / (2 * math.pi)) % 2 == 1:
-            raise ValueError(
+            raise CompileRefused(
                 f"the compile input has a cu3 with theta = {theta:g}; cirq-core 1.7.0 imports cu3 "
                 f"with theta mod 4 pi in [2 pi, 4 pi) as a different unitary (a phase of -1 on the "
                 f"control's |1> branch), so the circuit is not compiled")
@@ -75,7 +76,7 @@ def _check(qasm: str, output: str, n_qubits: int) -> str:
     if n_qubits > CHECKED_UP_TO_QUBITS:
         return f"The output's unitary is not checked above {CHECKED_UP_TO_QUBITS} qubits."
     if not equivalent(qasm, output):
-        raise ValueError("Cirq's output does not have the input's unitary, so it is not reported")
+        raise OutputRejected("Cirq's output does not have the input's unitary, so it is not reported")
     return ("Checked: the output has the input's unitary (Qiskit Operator equality up to "
             "global phase).")
 

@@ -1,14 +1,19 @@
 """Compile-only services: ``POST /compile`` turns a dispatched OpenQASM 2.0 circuit into the
 output circuit of one compiler pipeline. Nothing is simulated or timed; a result is the
-output text, the passes that produced it, its gate metrics and the SDK versions."""
+output text, the passes that produced it, its gate metrics, the SDK versions and the native
+components (programs built from source rather than installed with pip)."""
 
+import hashlib
+import os
 import sys
+from pathlib import Path
 
+from qrosetta_commons.compile_errors import CompileRefused, OutputRejected
 from qrosetta_commons.cpu import apply_cpu_affinity
 from qrosetta_commons.helpers import (
-    GATE_METRICS_FROM_QASM, MAX_QUBITS_MEASURED, ExecutionSlots, _stamp_code_sha,
+    GATE_METRICS_FROM_QASM, IMAGE_GIT_SHA, MAX_QUBITS_MEASURED, ExecutionSlots, _stamp_code_sha,
     check_qubits_limit, count_qasm_gates_and_depth, count_qasm_gates_by_name,
-    get_num_qubits_from_qasm, run_cli_job,
+    get_num_qubits_from_qasm, get_sdk_versions, run_cli_job,
 )
 
 COMPILE_MAX_QUBITS = MAX_QUBITS_MEASURED
@@ -24,6 +29,44 @@ SELF_TEST_PROBES = {
 TRANSLATION_PROBES = {
     "multi_controlled_before_fresh_qubit": "qreg b[2];\nh q[0];\nh q[1];\nh q[2];\nc3x q[0],q[1],q[2],b[0];\nh b[1];\n",
 }
+
+
+_NATIVE_COMPONENTS: list = []
+BUILD_FILES_DIR = Path(os.getenv("QROSETTA_BUILD_FILES_DIR", "/usr/local/share/qrosetta-build"))
+
+
+def _build_file_hashes() -> dict:
+    """sha256 of each file the image copied into BUILD_FILES_DIR (its Dockerfile, lock file
+    and any patches, build sources or generated data); empty when the directory is absent."""
+    if not BUILD_FILES_DIR.is_dir():
+        return {}
+    return {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in sorted(BUILD_FILES_DIR.iterdir()) if path.is_file()}
+
+
+BUILD_FILES = _build_file_hashes()
+
+
+def declare_native_component(name: str, version: str, source_url: str, source_sha256: str,
+                             **details) -> None:
+    """Record a program the image builds from source (name, version, the source archive and
+    its sha256, and further string or list-of-string details such as patches)."""
+    entry = {"name": name, "version": version, "source_url": source_url,
+             "source_sha256": source_sha256}
+    for key, value in details.items():
+        entry[key] = list(value) if isinstance(value, (list, tuple)) else str(value)
+    _NATIVE_COMPONENTS.append(entry)
+
+
+def native_components() -> list:
+    return [dict(entry) for entry in _NATIVE_COMPONENTS]
+
+
+def compiler_versions() -> dict:
+    """What this compiler image reports about itself: pip SDK versions, native components,
+    build-file hashes and the image commit."""
+    return {"sdk_versions": get_sdk_versions(), "native_components": native_components(),
+            "build_files": dict(BUILD_FILES), "image_git_sha": IMAGE_GIT_SHA}
 
 
 def compiled_result(*, compiler: str, qasm: str, passes_applied, optimization_level: int) -> dict:
@@ -44,7 +87,13 @@ def compiled_result(*, compiler: str, qasm: str, passes_applied, optimization_le
 
 
 def compiler_error(compiler: str, exc) -> dict:
-    return {"compiler": compiler, "error": f"{type(exc).__name__}: {exc}"}
+    """``/compile`` failure. A CompileRefused or OutputRejected also sets ``refusal`` (its
+    message) and ``refusal_kind`` (``input`` or ``output_check``)."""
+    result = {"compiler": compiler, "error": f"{type(exc).__name__}: {exc}"}
+    if isinstance(exc, (CompileRefused, OutputRejected)):
+        result["refusal"] = str(exc)
+        result["refusal_kind"] = "input" if isinstance(exc, CompileRefused) else "output_check"
+    return result
 
 
 def run_compile_job(*, compiler: str, payload: dict, pipelines: dict) -> dict:
@@ -58,18 +107,35 @@ def run_compile_job(*, compiler: str, payload: dict, pipelines: dict) -> dict:
             raise ValueError(f"{compiler} has no optimization level {level}; "
                              f"it has {sorted(pipelines)}")
         output, passes = pipelines[level](qasm)
-        return compiled_result(compiler=compiler, qasm=output, passes_applied=passes,
-                               optimization_level=level)
+        return _with_build_record(compiled_result(
+            compiler=compiler, qasm=output, passes_applied=passes, optimization_level=level))
     except Exception as exc:
-        return compiler_error(compiler, exc)
+        return _with_build_record(compiler_error(compiler, exc))
+
+
+def _with_build_record(result):
+    if isinstance(result, dict):
+        if _NATIVE_COMPONENTS:
+            result["native_components"] = native_components()
+        if BUILD_FILES:
+            result["build_files"] = dict(BUILD_FILES)
+    return result
 
 
 def register_compiler_endpoint(app, process_compile, max_concurrent=None) -> None:
-    """Register ``POST /compile``. Requests share one ``ExecutionSlots`` queue and each runs
-    in a killable spawned process, as runner requests do, without the timing instrument."""
+    """Register ``POST /compile`` and ``GET /capabilities`` (available, with
+    ``compiler_versions()``). Compile requests share one ``ExecutionSlots`` queue of
+    ``COMPILER_MAX_CONCURRENT`` slots (default 2; compiles are not timed) and each runs in a
+    killable spawned process, as runner requests do, without the timing instrument."""
     from qrosetta_commons.models import CompilePayload
 
+    if max_concurrent is None:
+        max_concurrent = int(os.getenv("COMPILER_MAX_CONCURRENT", "2"))
     slots = ExecutionSlots(max_concurrent)
+
+    @app.get("/capabilities")
+    async def compiler_capabilities():
+        return {"available": True, "reason": None, "device": None, **compiler_versions()}
 
     @app.post("/compile")
     async def compile_circuit(payload: CompilePayload):

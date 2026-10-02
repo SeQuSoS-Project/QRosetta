@@ -73,7 +73,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: "512M"
+          memory: "1G"
 
   pytket_cirq_runner:
     build:
@@ -95,7 +95,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: "512M"
+          memory: "1G"
 
   pytket_qulacs_runner:
     build:
@@ -117,7 +117,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: "512M"
+          memory: "1G"
 
   pytket_braket_runner:
     build:
@@ -139,7 +139,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: "512M"
+          memory: "1G"
 
   pytket_projectq_runner:
     build:
@@ -161,7 +161,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: "512M"
+          memory: "1G"
 
   pytket_quest_runner:
     build:
@@ -183,7 +183,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: "512M"
+          memory: "1G"
 
   pennylane_lightning_runner:
     build:
@@ -205,7 +205,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: "512M"
+          memory: "1G"
 
   pennylane_default_runner:
     build:
@@ -227,7 +227,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: "512M"
+          memory: "1G"
 
   qibo_runner:
     build:
@@ -249,7 +249,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: "512M"
+          memory: "1G"
 
   qrisp_runner:
     build:
@@ -271,7 +271,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: "512M"
+          memory: "1G"
 
   myqlm_runner:
     build:
@@ -293,7 +293,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: "512M"
+          memory: "1G"
 
   pyquil_runner:
     build:
@@ -315,7 +315,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: "512M"
+          memory: "1G"
 
   qsim_cirq_runner:
     build:
@@ -337,7 +337,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: "512M"
+          memory: "1G"
 
   torch_quantum_runner:
     build:
@@ -381,7 +381,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: "512M"
+          memory: "1G"
 
   cuquantum_runner:
     build:
@@ -403,7 +403,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: "512M"
+          memory: "1G"
 
 # --- Compile-only services: circuit text in, circuit text out, never simulated ---
 
@@ -420,14 +420,14 @@ services:
       - OPENBLAS_NUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
-      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+      - COMPILER_MAX_CONCURRENT=${COMPILER_MAX_CONCURRENT:-2}
     networks:
       - isolated_net
     deploy:
       resources:
         limits:
-          cpus: "1.0"
-          memory: "1G"
+          cpus: "2.0"
+          memory: "2G"
 
   pyzx_compiler:
     build:
@@ -442,14 +442,14 @@ services:
       - OPENBLAS_NUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
-      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+      - COMPILER_MAX_CONCURRENT=${COMPILER_MAX_CONCURRENT:-2}
     networks:
       - isolated_net
     deploy:
       resources:
         limits:
-          cpus: "1.0"
-          memory: "1G"
+          cpus: "2.0"
+          memory: "2G"
 
   qmap_compiler:
     build:
@@ -464,14 +464,14 @@ services:
       - OPENBLAS_NUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
-      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+      - COMPILER_MAX_CONCURRENT=${COMPILER_MAX_CONCURRENT:-2}
     networks:
       - isolated_net
     deploy:
       resources:
         limits:
-          cpus: "1.0"
-          memory: "1G"
+          cpus: "2.0"
+          memory: "2G"
 
   cirq_compiler:
     build:
@@ -486,14 +486,14 @@ services:
       - OPENBLAS_NUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
-      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+      - COMPILER_MAX_CONCURRENT=${COMPILER_MAX_CONCURRENT:-2}
     networks:
       - isolated_net
     deploy:
       resources:
         limits:
-          cpus: "1.0"
-          memory: "1G"
+          cpus: "2.0"
+          memory: "2G"
 
   staq_compiler:
     build:
@@ -508,14 +508,14 @@ services:
       - OPENBLAS_NUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
-      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+      - COMPILER_MAX_CONCURRENT=${COMPILER_MAX_CONCURRENT:-2}
     networks:
       - isolated_net
     deploy:
       resources:
         limits:
-          cpus: "1.0"
-          memory: "1G"
+          cpus: "2.0"
+          memory: "2G"
 
   qsynth_compiler:
     build:
@@ -530,14 +530,14 @@ services:
       - OPENBLAS_NUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
-      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+      - COMPILER_MAX_CONCURRENT=${COMPILER_MAX_CONCURRENT:-2}
     networks:
       - isolated_net
     deploy:
       resources:
         limits:
-          cpus: "1.0"
-          memory: "1G"
+          cpus: "2.0"
+          memory: "2G"
 
   quartz_compiler:
     build:
@@ -552,14 +552,14 @@ services:
       - OPENBLAS_NUM_THREADS=1
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
-      - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+      - COMPILER_MAX_CONCURRENT=${COMPILER_MAX_CONCURRENT:-2}
     networks:
       - isolated_net
     deploy:
       resources:
         limits:
-          cpus: "1.0"
-          memory: "1G"
+          cpus: "2.0"
+          memory: "2G"
 
 # --- NETWORK DEFINITIONS ---
 networks:

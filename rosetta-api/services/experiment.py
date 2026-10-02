@@ -18,7 +18,7 @@ from config import server_git_sha, server_image_digests, settings
 from schemas import BatchPayload, BenchmarkTask, ExperimentPayload
 from services import experiment_artifacts as art
 from services.dispatcher import SEED_DERIVATION
-from services.export_compiled import compiled_metrics_csv, compiler_lock_files
+from services.export_compiled import compiled_metrics_csv, compiler_build_files
 from services.run_registry import EXCLUSIVE, releases_exclusive
 from services.job_manager import (
     ACTIVE_JOBS, _resolve_seed, effective_thresholds, run_batch_tasks, task_label, task_qubits,
@@ -47,7 +47,7 @@ def _compiled_files(compiled_reports: list) -> dict:
     if not any(report.get("compiled_circuits") for _, report in compiled_reports):
         return {}
     files["compiled_circuits.csv"] = compiled_metrics_csv(compiled_reports, paths).encode("utf-8")
-    files.update(compiler_lock_files([r for _, r in compiled_reports], settings.get_compiler_services()))
+    files.update(compiler_build_files([r for _, r in compiled_reports], settings.get_compiler_services()))
     return files
 
 def resolve_circuits(payload: ExperimentPayload) -> tuple:

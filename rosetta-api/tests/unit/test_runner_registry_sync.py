@@ -198,7 +198,8 @@ def test_compilers_are_built_and_defined_like_runners():
         assert service, f"no '{name}' service in docker-compose.yml"
         assert "ports" not in service and service.get("networks") == ["isolated_net"], name
         env = {str(v).split("=", 1)[0] for v in service.get("environment") or []}
-        assert set(_RUNNER_ENV) <= env, f"{name}: compose environment missing thread pins"
+        expected_env = {v for v in _RUNNER_ENV if v != "RUNNER_MAX_CONCURRENT"} | {"COMPILER_MAX_CONCURRENT"}
+        assert expected_env <= env, f"{name}: compose environment missing thread pins or COMPILER_MAX_CONCURRENT"
 
 
 def test_compiler_ids_are_distinct_from_runner_ids_and_valid_keys():
@@ -215,3 +216,15 @@ def test_compiler_declares_its_sdk_packages_from_its_requirements(compiler_id):
     pinned = _requirement_names(directory / "requirements.txt") | _requirement_names(directory / "requirements.lock")
     unpinned = [name for name in declared if _normalise(name) not in pinned]
     assert not unpinned, f"{directory.name}: declared but not pinned: {unpinned}"
+
+
+def test_every_compiler_image_records_its_build_files():
+    for cid, svc in settings.get_compiler_services().items():
+        name = _infra_name(svc["base_url"])
+        dockerfile = (_REPO / "compilers" / name / "Dockerfile").read_text()
+        copy = re.search(r"^COPY (.+) /usr/local/share/qrosetta-build/$", dockerfile, re.M)
+        assert copy, f"{name}/Dockerfile does not copy its build files"
+        sources = copy.group(1).split()
+        assert f"compilers/{name}/Dockerfile" in sources and f"compilers/{name}/requirements.lock" in sources
+        for source in sources:
+            assert (_REPO / source).is_file(), f"{source} does not exist"
