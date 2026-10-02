@@ -5,6 +5,7 @@
 import { circuitPanes, sourcePaneId } from './circuit_panes.js';
 import { comparableLines, differOnlyInLineBreaks, endsWithNewline, splitLines, visibleFormatCharacters } from './qasm_text.js';
 import { _displayRunnerName, fmtInt, renderTooltip } from './render_helpers.js';
+import { userFacingError } from './run_status.js';
 import { diffHunks, diffLines } from './text_diff.js';
 import { downloadBlob, makeCopyIconButton } from './utils.js';
 
@@ -149,7 +150,8 @@ function _paneCard(pane, context) {
         }
         if (pane.nativeComponents.length) {
             head.appendChild(_noteList('Built from source', pane.nativeComponents.map(c =>
-                `${c.name} ${c.version}${c.sourceSha256 ? ` (source sha256 ${c.sourceSha256.slice(0, 12)}…)` : ''}`)));
+                `${c.name} ${c.version}${c.sourceSha256 ? ` (source sha256 ${c.sourceSha256.slice(0, 12)}…)` : ''}`
+                + (c.patches.length ? `, patched with ${c.patches.join(', ')}` : ''))));
         }
     } else if ((pane.kind === 'dispatched' || pane.kind === 'compile-input') && pane.apiNotes.length) {
         head.appendChild(_noteList('API changes', pane.apiNotes));
@@ -157,10 +159,15 @@ function _paneCard(pane, context) {
     card.appendChild(head);
 
     if (pane.text === null) {
-        const status = pane.status ? ` (status: ${pane.status})` : '';
+        const status = pane.refusalKind === 'input' ? ' (refused)'
+            : pane.refusalKind === 'output_check' ? ' (output rejected)'
+            : pane.status ? ` (status: ${pane.status})` : '';
         const what = pane.kind === 'compiled' ? 'No output circuit was recorded for this compiler'
             : 'No executed circuit was recorded for this backend';
         card.appendChild(_el('p', 'p-3 text-xs text-gray-500 italic', `${what}${status}.`));
+        if (pane.kind === 'executed' && pane.reason) {
+            card.appendChild(_el('p', 'px-3 pb-3 text-xs text-gray-700 break-words', userFacingError(pane.reason)));
+        }
         if (pane.kind === 'compiled' && pane.reason) {
             const label = pane.refusalKind === 'input' ? 'Refused: '
                 : pane.refusalKind === 'output_check' ? 'Output rejected by the check: ' : '';
@@ -192,6 +199,7 @@ function _defaultShown(panes) {
         .slice(0, DEFAULT_EXECUTED_SHOWN).forEach(p => shown.add(p.id));
     const compiled = panes.filter(p => p.kind === 'compiled' && p.text !== null).slice(0, DEFAULT_COMPILED_SHOWN);
     compiled.forEach(p => shown.add(p.id));
+    panes.filter(p => p.kind === 'compiled' && p.text === null && p.refusalKind).forEach(p => shown.add(p.id));
     if (compiled.length) panes.filter(p => p.kind === 'compile-input').forEach(p => shown.add(p.id));
     return shown;
 }

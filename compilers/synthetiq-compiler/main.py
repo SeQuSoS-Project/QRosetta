@@ -1,7 +1,9 @@
 """Synthetiq compiler: Qiskit translates the circuit exactly to h, rz and cx; when every rz
 angle is a multiple of pi/4 the circuit is Clifford+T, and Synthetiq synthesises a new
-Clifford+T circuit for its unitary by simulated annealing (one thread, seeded by run
-number, at most a fixed number of annealing runs per level)."""
+Clifford+T circuit for its unitary by simulated annealing (one thread, one random stream
+seeded with 0, at most a fixed number of annealing runs per level)."""
+
+import time
 
 import math
 import os
@@ -34,7 +36,7 @@ TIME_CAP_SEC = 280
 CIRCUITS_PER_LEVEL = {0: 1, 1: 5}
 MAX_RUNS_PER_LEVEL = {0: 1000, 1: 2000}
 DECOMPOSITION_BASIS = ("h", "rz", "cx")
-ANGLE_TOLERANCE = 1e-9
+ANGLE_TOLERANCE = 1e-12
 _T_POWERS = {0: [], 1: ["t"], 2: ["s"], 3: ["s", "t"], 4: ["s", "s"], 5: ["s", "s", "t"],
              6: ["sdg"], 7: ["tdg"]}
 _OUTPUT_GATE = re.compile(r"^(h|s|sdg|t|tdg|cx) qubits\[(\d+)\](?:, qubits\[(\d+)\])?;$")
@@ -59,14 +61,21 @@ _REGISTER_NOTE = ("Synthetiq is given the qubits as one register in declaration 
 
 def _search_note(level: int) -> str:
     found, max_runs = CIRCUITS_PER_LEVEL[level], MAX_RUNS_PER_LEVEL[level]
-    which = "the first circuit found" if found == 1 else f"the lowest-cost of the first {found} circuits found"
+    if found == 1:
+        which = ("the first circuit found. Annealing minimises the distance to the target unitary, "
+                 "and Synthetiq's resynthesis then lowers the circuit's cost; level 0 does not "
+                 "minimise the T-count and can return more T gates than the input")
+    else:
+        which = (f"the lowest-cost of the circuits found, up to {found}, by Synthetiq's cost (T and "
+                 f"T-dagger 1, CX 0.1, H, S, S-dagger 0.01); when the run cap ends the search with "
+                 f"fewer, the cheapest of those")
     return (f"synthetiq <input>.qasm --gate-set CliffordT --threads 1 --circuits {found} "
             f"--max-runs {max_runs} --time {TIME_CAP_SEC}: simulated annealing over Clifford+T "
-            f"circuits for the input's unitary, then Synthetiq's resynthesis; {which}, by "
-            f"Synthetiq's cost (T and T-dagger 1, CX 0.1, H, S, S-dagger 0.01). Annealing run r "
-            f"is seeded with r, so the output, or the failure to find {found} circuit(s) within "
-            f"{max_runs} runs, depends only on the input; the time cap or the job's timeout can "
-            f"only end a search early, which is reported as an error.")
+            f"circuits for the input's unitary, then Synthetiq's resynthesis; {which}. With one "
+            f"thread Synthetiq draws the whole search from one mt19937 stream seeded with 0 "
+            f"(seed = thread + outer run x threads), so the output, or the failure to find a "
+            f"circuit within {max_runs} runs, depends only on the input; the time cap or the job's "
+            f"timeout can only end a search early, which is reported as an error.")
 
 
 def equivalent(input_qasm: str, output_qasm: str) -> bool:
@@ -77,14 +86,15 @@ def equivalent(input_qasm: str, output_qasm: str) -> bool:
     return source_measures == output_measures and unitary_of(output).equiv(unitary_of(source), atol=1e-8)
 
 
-def _clifford_t_lines(circuit: QuantumCircuit) -> list:
-    """Synthetiq input lines for an h/rz/cx circuit; CompileRefused for an rz angle that is
-    not a multiple of pi/4."""
-    lines = []
+def _clifford_t_lines(circuit: QuantumCircuit):
+    """(Synthetiq input lines, largest change to an angle in rad, barriers seen) for an
+    h/rz/cx circuit; CompileRefused for an rz angle that is not a multiple of pi/4."""
+    lines, largest, barriers = [], 0.0, False
     for inst in circuit.data:
         name = inst.operation.name
         wires = [circuit.find_bit(q).index for q in inst.qubits]
         if name == "barrier":
+            barriers = True
             continue
         if name == "h":
             lines.append(f"h q[{wires[0]}];")
@@ -99,25 +109,29 @@ def _clifford_t_lines(circuit: QuantumCircuit) -> list:
                     f"Synthetiq is offered for Clifford+T circuits only: after translation to "
                     f"h, rz and cx this circuit has rz({angle!r}), which is not a multiple of "
                     f"pi/4")
+            largest = max(largest, abs(angle - k * math.pi / 4))
             lines += [f"{g} q[{wires[0]}];" for g in _T_POWERS[k % 8]]
         else:
             raise CompileRefused(f"decomposition left a gate Synthetiq cannot take: {name}")
-    return lines
+    return lines, largest, barriers
 
 
 def _synthesise(n_qubits: int, lines: list, circuits: int, max_runs: int) -> str:
-    """Synthetiq's chosen output file text; ValueError when it found none."""
+    """(Synthetiq's chosen output file text, circuits found); ValueError when it found none, or
+    fewer than asked when the time cap ended the search."""
     with tempfile.TemporaryDirectory() as workdir:
         os.makedirs(os.path.join(workdir, "data", "input"))
         os.makedirs(os.path.join(workdir, "data", "output"))
         os.symlink(GATES_DIR, os.path.join(workdir, "data", "gates"))
         with open(os.path.join(workdir, "data", "input", "c.qasm"), "w") as fh:
             fh.write("\n".join(['OPENQASM 2.0;', 'include "qelib1.inc";', f"qreg q[{n_qubits}];", *lines]) + "\n")
+        started = time.monotonic()
         run = subprocess.run(
             [SYNTHETIQ_BINARY, "c.qasm", "--gate-set", "CliffordT", "--threads", "1",
              "--circuits", str(circuits), "--max-runs", str(max_runs), "--time", str(TIME_CAP_SEC)],
             capture_output=True, text=True, cwd=workdir, timeout=None,
             env={**os.environ, "OMP_NUM_THREADS": "1"})
+        elapsed = time.monotonic() - started
         if run.returncode != 0:
             raise ValueError(f"Synthetiq exited with status {run.returncode}")
         folder = os.path.join(workdir, "data", "output", "c")
@@ -126,12 +140,15 @@ def _synthesise(n_qubits: int, lines: list, circuits: int, max_runs: int) -> str
             match = _FILE_NAME.match(name)
             if match:
                 found.append((float(match.group(1)), int(match.group(5)), name))
-        if len(found) < circuits:
+        stopped_by_time = elapsed >= TIME_CAP_SEC - 5
+        if len(found) < circuits and (stopped_by_time or not found):
+            limit = (f"its {TIME_CAP_SEC} s time cap ({elapsed:.0f} s; depends on machine load)"
+                     if stopped_by_time else f"{max_runs} annealing runs ({elapsed:.0f} s)")
             raise ValueError(
-                f"Synthetiq found {len(found)} of the {circuits} circuit(s) asked for within "
-                f"{max_runs} annealing runs or its {TIME_CAP_SEC} s cap, so none is reported")
+                f"Synthetiq found {len(found)} of the {circuits} circuit(s) asked for when it "
+                f"stopped at {limit}, so none is reported")
         with open(os.path.join(folder, min(found)[2])) as fh:
-            return fh.read()
+            return fh.read(), len(found)
 
 
 def _register_names(circuit: QuantumCircuit) -> list:
@@ -181,12 +198,26 @@ def _pipeline(level: int):
                 f"most {MAX_QUBITS} qubits, and this one has {original.num_qubits}")
         unitary, measures = split_final_measurements(original, "Synthetiq")
         translated = translate_to_basis(unitary, DECOMPOSITION_BASIS)
-        lines = _clifford_t_lines(translated)
-        output = _encode(original, _synthesise(original.num_qubits, lines, CIRCUITS_PER_LEVEL[level],
-                                               MAX_RUNS_PER_LEVEL[level]), measures)
+        lines, largest, barriers = _clifford_t_lines(translated)
+        if lines:
+            text, n_found = _synthesise(original.num_qubits, lines, CIRCUITS_PER_LEVEL[level],
+                                        MAX_RUNS_PER_LEVEL[level])
+            search = [_search_note(level)]
+            if n_found < CIRCUITS_PER_LEVEL[level]:
+                search.append(f"Synthetiq found {n_found} of {CIRCUITS_PER_LEVEL[level]} circuits within "
+                              f"{MAX_RUNS_PER_LEVEL[level]} runs; the cheapest of those is returned.")
+        else:
+            text = "\n".join(["OPENQASM 2.0;", 'include "qelib1.inc";', f"qreg qubits[{original.num_qubits}];"])
+            search = ["The circuit has no gates after translation (the identity), so it is returned "
+                      "with none and Synthetiq is not run."]
+        output = _encode(original, text, measures)
         if not equivalent(qasm, output):
             raise OutputRejected("Synthetiq's output does not have the input's unitary, so it is not reported")
-        notes = [translation_note(DECOMPOSITION_BASIS), _ANGLE_NOTE, _BUILD_NOTE, _search_note(level),
+        angle_note = _ANGLE_NOTE + (f" The largest change to an angle in this circuit is {largest:.3g} rad "
+                                    f"(angles within {ANGLE_TOLERANCE:g} of a multiple of pi/4, in units "
+                                    f"of pi/4, are taken as that multiple)." if largest else "")
+        notes = [translation_note(DECOMPOSITION_BASIS), angle_note, _BUILD_NOTE, *search,
+                 *(["Barriers removed: Synthetiq synthesises the circuit's whole unitary."] if barriers else []),
                  _REGISTER_NOTE,
                  "Checked: the output has the input's unitary (Qiskit Operator equality up to global phase)."]
         return output, notes
@@ -201,6 +232,7 @@ CLIFFORD_T_PROBES = {
     "swap_and_toffoli": "h q[0];\nswap q[0],q[2];\nccx q[0],q[1],q[2];\nt q[1];\n",
     "angles_past_two_pi": "h q[0];\nrz(9*pi/4) q[0];\nrz(-pi/2) q[1];\nh q[2];\nu1(3*pi/4) q[2];\ncx q[0],q[2];\n",
     "classical_register_declared": "creg c[3];\nh q[0];\ncx q[0],q[1];\ntdg q[2];\n",
+    "identity_after_translation": "h q[0];\nh q[0];\nrz(2*pi) q[1];\nbarrier q;\n",
 }
 
 

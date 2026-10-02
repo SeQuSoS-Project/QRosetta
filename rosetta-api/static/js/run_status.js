@@ -113,6 +113,7 @@ export function statevectorGroup(p) {
 /** True when the pair's outputs disagree by the evidence the report records. */
 export function isDisagreement(p) {
     if (p?.mode === 'measured') {
+        if (p.marginal_assessment === 'marginal_distinguishable') return true;
         const a = measuredAssessment(p);
         if (a) return a === 'distinguishable';
         return p.agreement === 'distance_exceeds_threshold';

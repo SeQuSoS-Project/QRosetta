@@ -39,7 +39,8 @@ declare_native_component(
     patches=["shift10-normalise.patch"],
     built_with=["gen_nam_ecc.cpp", "quartz_greedy.cpp"],
     ecc_set="Nam_complete_ECC_set.json", ecc_set_sha256=ECC_SHA256,
-    ecc_set_max_gates=ECC_MAX_GATES)
+    ecc_set_max_gates=ECC_MAX_GATES,
+    compiler_flags=os.getenv("QUARTZ_BUILD_FLAGS", "not recorded"))
 DECOMPOSITION_BASIS = ("h", "x", "rz", "cx")
 CHECKED_UP_TO_QUBITS = 10
 _QUARTZ_GATE = re.compile(r"^(h|x|cx|rz\(pi\*-?\d+(?:/\d+)?\)|rz\(0\)) q\[(\d+)\](?:,q\[(\d+)\])?;$")

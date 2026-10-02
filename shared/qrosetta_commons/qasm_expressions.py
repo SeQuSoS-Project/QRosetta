@@ -106,21 +106,66 @@ def gate_parameter_lists(qasm: str):
         yield m.group(1), [p.strip() for p in params if p.strip()]
 
 
+_GATE_DEF_RE = re.compile(r"gate\s+([A-Za-z_]\w*)\s*(?:\(([^)]*)\))?[^{]*\{([^}]*)\}")
+
+
+def _moved(name, text, value, out):
+    half_turns = value / math.pi
+    nearest = round(4 * half_turns) / 4
+    if 0 < abs(half_turns - nearest) < TKET_PARAMETER_EPS:
+        out.append((name, text, value, nearest * math.pi))
+
+
 def tket_rounded_parameters(qasm: str) -> list:
-    """[(gate, parameter text, value in rad, value tket stores in rad)] for every constant
-    gate parameter tket moves when it builds the circuit. Parameters written in terms of a
-    gate definition's arguments are not evaluated."""
-    moved = []
-    for name, params in gate_parameter_lists(qasm):
+    """[(gate, parameter text, value in rad, value tket stores in rad)] for every gate
+    parameter tket moves when it builds the circuit: constant parameters at top level, and
+    parameters inside user gate definitions with the values each call passes. Parameters
+    tket derives itself while rebasing (such as the half-angles of cu1 or crz) are not
+    predicted."""
+    code = strip_qasm_comments(qasm)
+    definitions = {}
+    for m in _GATE_DEF_RE.finditer(code):
+        names = [p.strip() for p in (m.group(2) or "").split(",") if p.strip()]
+        definitions[m.group(1)] = (names, m.group(3))
+    top_level = _GATE_DEF_RE.sub("", code)
+    moved, seen = [], set()
+
+    def visit(name, values, depth):
+        key = (name, tuple(values))
+        if name not in definitions or key in seen or depth > 64 or len(seen) > 10000:
+            return
+        seen.add(key)
+        names, body = definitions[name]
+        env = dict(zip(names, values))
+        for inner, params in gate_parameter_lists(body):
+            inner_values = []
+            for text in params:
+                try:
+                    value = evaluate_constant_expression(text, env)
+                except ParameterExpressionError:
+                    inner_values = None
+                    break
+                _moved(inner, text, value, moved)
+                inner_values.append(value)
+            if inner_values is not None:
+                visit(inner, inner_values, depth + 1)
+        for call in re.findall(r"(?:^|;)\s*([A-Za-z_]\w*)\s+[A-Za-z_]", body):
+            visit(call, [], depth + 1)
+
+    for name, params in gate_parameter_lists(top_level):
+        values = []
         for text in params:
             try:
                 value = evaluate_constant_expression(text)
             except ParameterExpressionError:
-                continue
-            half_turns = value / math.pi
-            nearest = round(4 * half_turns) / 4
-            if 0 < abs(half_turns - nearest) < TKET_PARAMETER_EPS:
-                moved.append((name, text, value, nearest * math.pi))
+                values = None
+                break
+            _moved(name, text, value, moved)
+            values.append(value)
+        if values is not None:
+            visit(name, values, 0)
+    for call in re.findall(r"(?:^|;)\s*([A-Za-z_]\w*)\s+[A-Za-z_]", top_level):
+        visit(call, [], 0)
     return moved
 
 
@@ -135,4 +180,6 @@ def tket_parameter_note(qasm: str, who: str, limit: int = 5):
     more = f", and {len(moved) - limit} more" if len(moved) > limit else ""
     return (f"{who} sets a gate parameter within {TKET_PARAMETER_EPS:g} half-turns "
             f"(about {TKET_PARAMETER_EPS * math.pi:.2g} rad) of a multiple of pi/4 to that "
-            f"multiple when it builds the circuit: {shown}{more}.")
+            f"multiple when it builds the circuit: {shown}{more}. Parameters tket derives while "
+            f"rebasing (such as the half-angles of cu1 or crz) are rounded the same way and are "
+            f"not listed.")

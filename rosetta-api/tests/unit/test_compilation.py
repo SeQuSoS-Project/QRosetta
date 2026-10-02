@@ -111,7 +111,7 @@ def test_crate_holds_compile_input_and_outputs_but_results_json_does_not(fake_di
     pytest.importorskip("pytket")
     report = asyncio.run(job_manager.run_single_circuit_comparison(
         QASM, target_simulators=["qiskit"], compilers={"pyzx": [1]}))
-    zip_bytes = build_ro_crate(build_export_context(report, ExportPayload()))
+    zip_bytes = build_ro_crate(build_export_context(report, ExportPayload(), route="server_job"))
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
         names = {n.split("/", 1)[1]: n for n in zf.namelist()}
         assert zf.read(names["compile_input.qasm"]).decode() == report["compile_input"]["qasm"]
@@ -201,10 +201,13 @@ def test_lock_is_left_out_when_it_does_not_match_the_recorded_versions(fake_disp
     report = asyncio.run(job_manager.run_single_circuit_comparison(
         QASM, target_simulators=["qiskit"], compilers={"pyzx": [1]}))
     report["compiled_circuits"][0]["sdk_versions"] = {"pyzx": "0.8.0"}
-    with zipfile.ZipFile(io.BytesIO(build_ro_crate(build_export_context(report, ExportPayload())))) as zf:
+    with zipfile.ZipFile(io.BytesIO(build_ro_crate(build_export_context(report, ExportPayload(), route="server_job")))) as zf:
+        assert not any(n.endswith("compilers/pyzx-compiler/requirements.lock") for n in zf.namelist())
+    report["compiled_circuits"][0]["sdk_versions"] = {"pyzx": "0.10.6", "not-a-package": "9.9"}
+    with zipfile.ZipFile(io.BytesIO(build_ro_crate(build_export_context(report, ExportPayload(), route="server_job")))) as zf:
         assert not any(n.endswith("compilers/pyzx-compiler/requirements.lock") for n in zf.namelist())
     report["compiled_circuits"][0].update(sdk_versions={"pyzx": "0.10.6"}, dispatch_status="error")
-    with zipfile.ZipFile(io.BytesIO(build_ro_crate(build_export_context(report, ExportPayload())))) as zf:
+    with zipfile.ZipFile(io.BytesIO(build_ro_crate(build_export_context(report, ExportPayload(), route="server_job")))) as zf:
         assert not any(n.endswith("requirements.lock") and "compilers/" in n for n in zf.namelist())
 
 
@@ -283,8 +286,8 @@ def test_compile_requests_are_recorded_and_queued_under_dispatch_keys(fake_dispa
     assert report["compilers_requested"] == {"pyzx": [1]}
 
 
-def _crate_names_and_graph(report):
-    with zipfile.ZipFile(io.BytesIO(build_ro_crate(build_export_context(report, ExportPayload())))) as zf:
+def _crate_names_and_graph(report, route="server_job"):
+    with zipfile.ZipFile(io.BytesIO(build_ro_crate(build_export_context(report, ExportPayload(), route=route)))) as zf:
         names = zf.namelist()
         meta = next(n for n in names if n.endswith("ro-crate-metadata.json"))
         return names, json.loads(zf.read(meta))["@graph"]
@@ -300,7 +303,8 @@ def test_build_files_are_included_only_when_their_hash_matches_the_image(fake_di
     sha = {name: hashlib.sha256((source / name).read_bytes()).hexdigest()
            for name in ("Dockerfile", "shift10-normalise.patch", "Nam_complete_ECC_set.json")}
     record = report["compiled_circuits"][0]
-    record.update(dispatch_status="ok", transpiled_qasm=QASM, build_files={**sha, "Dockerfile": "0" * 64},
+    main_sha = hashlib.sha256((source / "main.py").read_bytes()).hexdigest()
+    record.update(dispatch_status="ok", transpiled_qasm=QASM, build_files={**sha, "Dockerfile": "0" * 64, "main.py": main_sha},
                   native_components=[{"name": "quartz", "version": "0.3.2", "source_url": "https://x/q.tar.gz",
                                       "source_sha256": "ab" * 32, "patches": ["shift10-normalise.patch"]}],
                   sdk_versions={"qiskit": "2.5.2", "quartz": "0.3.2"})
@@ -308,12 +312,20 @@ def test_build_files_are_included_only_when_their_hash_matches_the_image(fake_di
     assert any(n.endswith("compilers/quartz-compiler/shift10-normalise.patch") for n in names)
     assert any(n.endswith("compilers/quartz-compiler/Nam_complete_ECC_set.json") for n in names)
     assert not any(n.endswith("compilers/quartz-compiler/Dockerfile") for n in names)
+    assert not any(n.endswith("compilers/quartz-compiler/main.py") for n in names)
+    patch = next(e for e in graph if e["@id"] == "compilers/quartz-compiler/shift10-normalise.patch")
+    assert patch["sha256"] == sha["shift10-normalise.patch"]
     app = next(e for e in graph if e["@id"] == "#compiler-quartz")
+    assert {"@id": "compilers/quartz-compiler/shift10-normalise.patch"} in app["hasPart"]
     assert "qiskit==2.5.2" in app["softwareRequirements"]
     assert not any(isinstance(r, str) and r.startswith("quartz==") for r in app["softwareRequirements"])
     native = next(e for e in graph if e["@id"] == "#native-quartz-0.3.2")
     assert native["softwareVersion"] == "0.3.2" and native["identifier"] == "sha256:" + "ab" * 32
     assert {"@id": "#native-quartz-0.3.2"} in app["softwareRequirements"]
+    names, graph = _crate_names_and_graph(report, route="client_request")
+    assert not any("/compilers/" in n for n in names)
+    native = next(e for e in graph if e["@id"] == "#native-quartz-0.3.2")
+    assert "as the supplied report states" in native["description"]
 
 
 def test_a_refusal_reaches_the_share_texts_but_other_errors_do_not():

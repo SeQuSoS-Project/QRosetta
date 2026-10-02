@@ -116,12 +116,14 @@ def _native_id(component: dict) -> str:
     return f"#native-{re.sub(r'[^A-Za-z0-9._-]+', '-', component['name'])}-{re.sub(r'[^A-Za-z0-9._-]+', '-', component['version'])}"
 
 
-def _native_entity(component: dict) -> dict:
+def _native_entity(component: dict, trusted: bool = True) -> dict:
     details = {k: v for k, v in component.items()
                if k not in ("name", "version", "source_url", "source_sha256")}
+    lead = ("Built from source in the compiler image, as the image's compile records report" if trusted
+            else "Built from source in the compiler image, as the supplied report states (not checked by this server)")
     entity = {"@id": _native_id(component), "@type": "SoftwareApplication",
               "name": component["name"], "softwareVersion": component["version"],
-              "description": ("Built from source in the compiler image"
+              "description": (lead
                               + "".join(f"; {k.replace('_', ' ')}: "
                                         f"{', '.join(v) if isinstance(v, list) else v}"
                                         for k, v in sorted(details.items())) + ".")}
@@ -132,10 +134,12 @@ def _native_entity(component: dict) -> dict:
     return entity
 
 
-def compiler_applications(reports: list, services: dict = None) -> list:
+def compiler_applications(reports: list, services: dict = None, trusted: bool = True,
+                          build_paths=()) -> list:
     """One SoftwareApplication per compiler used, named from the exporting server's
-    registry, with the pip SDK versions and code hashes its records report and a reference
-    to each native component (built from source), which gets its own entity."""
+    registry, with the pip SDK versions and code hashes its records report, a reference to
+    each native component (built from source, its own entity) and ``hasPart`` links to the
+    crate's build files of that compiler (``build_paths``)."""
     seen, natives = {}, {}
     for report in reports:
         for record in _records(report):
@@ -152,12 +156,18 @@ def compiler_applications(reports: list, services: dict = None) -> list:
                     entry["versions"].add(f"{pkg}=={ver}")
             if record.get("compiler_code_sha256"):
                 entry["hashes"].add(record["compiler_code_sha256"])
+    def parts(cid):
+        svc = (services or {}).get(cid) or {}
+        prefix = f"compilers/{_compiler_dir(svc['base_url'])}/" if svc.get("base_url") else None
+        return [{"@id": p} for p in sorted(build_paths) if prefix and p.startswith(prefix)]
+
     apps = [{"@id": f"#compiler-{cid}", "@type": "SoftwareApplication",
              "name": f"{entry['name']} compile-only service",
              "softwareRequirements": sorted(entry["versions"]) + [{"@id": n} for n in sorted(entry["natives"])],
-             **({"identifier": sorted(entry["hashes"])} if entry["hashes"] else {})}
+             **({"identifier": sorted(entry["hashes"])} if entry["hashes"] else {}),
+             **({"hasPart": parts(cid)} if parts(cid) else {})}
             for cid, entry in seen.items()]
-    return apps + [_native_entity(natives[n]) for n in sorted(natives)]
+    return apps + [_native_entity(natives[n], trusted) for n in sorted(natives)]
 
 
 def compile_provenance(reports_by_task: list) -> list:
@@ -170,7 +180,8 @@ def compile_provenance(reports_by_task: list) -> list:
             rows.append({"task": task, **{field: record.get(field) for field in (
                 "compiler", "compiler_id", "optimization_level", "dispatch_status", "gate_count",
                 "multi_qubit_gate_count", "circuit_depth", "gate_counts", "gate_metrics_basis",
-                "sdk_versions", "image_git_sha", "compiler_code_sha256", "passes_applied", "error")}})
+                "sdk_versions", "native_components", "build_files", "image_git_sha",
+                "compiler_code_sha256", "passes_applied", "error", "refusal", "refusal_kind")}})
     return rows
 
 
@@ -242,31 +253,49 @@ def _source_file(name: str, filename: str):
     return None
 
 
-def compiler_build_files(reports: list, compiler_services: dict) -> dict:
-    """``{crate path: bytes}`` of the build files (Dockerfile, requirements.lock, patches,
-    build sources, generated data) of each compiler that produced output, read from
-    compilers/<name>/ beside the API source. A file is included only when its sha256
-    equals the one every successful record of that compiler reports for its image. Records
-    from images that report no build files fall back to the lock file, included when it
-    pins each recorded package at the recorded version."""
+_BUILD_COPY = re.compile(r"^COPY\s+(?:--from=\S+\s+)?(.+?)\s+/usr/local/share/qrosetta-build/\s*$", re.M)
+
+
+def _known_build_files(name: str) -> set:
+    """The file names the server's copy of the compiler's Dockerfile puts in its build-files
+    directory."""
+    dockerfile = _source_file(name, "Dockerfile")
+    if dockerfile is None:
+        return set()
+    return {os.path.basename(src) for line in _BUILD_COPY.findall(dockerfile.decode("utf-8", "replace"))
+            for src in line.split()}
+
+
+def compiler_build_files(reports: list, compiler_services: dict, trusted: bool = True) -> dict:
+    """``{crate path: (bytes, check)}`` of the build files (Dockerfile, requirements.lock,
+    patches, build sources, generated data) of each compiler whose image ran a compile of
+    the reports (refusals included), read from compilers/<name>/ beside the API source.
+    ``check`` is ``sha256`` when the file's sha256 equals the one every record of that
+    compiler reports for its image and its name is one the server's Dockerfile copies, or
+    ``lock_pins`` when records report no build files and the lock pins every recorded
+    package at the recorded version. Nothing is included unless ``trusted`` (the report is
+    the server's own job)."""
+    if not trusted:
+        return {}
     hashed, legacy = {}, {}
     for report in reports:
         for record in _records(report):
             cid = record.get("compiler_id")
-            if record.get("dispatch_status") != "ok" or cid not in compiler_services:
+            if cid not in compiler_services:
                 continue
             if _build_hashes(record):
                 hashed.setdefault(cid, []).append(_build_hashes(record))
-            elif _versions(record):
+            elif record.get("dispatch_status") == "ok" and _versions(record):
                 legacy.setdefault(cid, []).append(_versions(record))
     out = {}
     for cid, hash_sets in hashed.items():
         name = _compiler_dir(compiler_services[cid]["base_url"])
-        for filename in sorted({f for hashes in hash_sets for f in hashes}):
+        known = _known_build_files(name)
+        for filename in sorted({f for hashes in hash_sets for f in hashes} & known):
             reported = {hashes.get(filename) for hashes in hash_sets}
             data = _source_file(name, filename)
             if data is not None and reported == {hashlib.sha256(data).hexdigest()}:
-                out[f"compilers/{name}/{filename}"] = data
+                out[f"compilers/{name}/{filename}"] = (data, "sha256")
     for cid, version_sets in legacy.items():
         name = _compiler_dir(compiler_services[cid]["base_url"])
         path = f"compilers/{name}/requirements.lock"
@@ -274,22 +303,29 @@ def compiler_build_files(reports: list, compiler_services: dict) -> dict:
         if data is None:
             continue
         pins = _pins(data)
-        if all(pins.get(re.sub(r"[-_.]+", "-", pkg).lower(), ver) == ver
+        if all(pins.get(re.sub(r"[-_.]+", "-", pkg).lower()) == ver
                for versions in version_sets for pkg, ver in versions.items()):
-            out[path] = data
+            out[path] = (data, "lock_pins")
     return out
 
 
 _BUILD_FILE_DESCRIPTIONS = (
     ("requirements.lock", "text/plain", "Full pinned Python environment (pip freeze) of the {name} image"),
+    ("build-requirements.txt", "text/plain", "Python packages installed in the build stage of the {name} image"),
     ("Dockerfile", "text/plain", "Dockerfile the {name} image was built from"),
-    (".patch", "text/x-diff", "Patch applied to the native component's source when the {name} image was built"),
-    (".cpp", "text/x-c++src", "C++ source compiled into the {name} image"),
+    (".patch", "text/x-diff", "Patch applied to a native component's source when the {name} image was built"),
+    (".cpp", "text/x-c++src", "C++ source compiled in the build stage of the {name} image"),
     (".json", "application/json", "Data file generated when the {name} image was built (for Quartz, the ECC set it rewrites with)"),
 )
+_CHECKS = {
+    "sha256": ("included because its sha256 equals the one the compiler's records report for the "
+               "image that ran"),
+    "lock_pins": ("included because the compiler's records (from an image that reports no build-file "
+                  "hashes) list SDK versions that this lock pins exactly"),
+}
 
 
-def compiler_build_entity(crate_path: str) -> dict:
+def compiler_build_entity(crate_path: str, data: bytes, check: str) -> dict:
     name, filename = crate_path.split("/")[1], crate_path.split("/")[-1]
     fmt, text = "text/plain", "Build file of the {name} image"
     for suffix, suffix_fmt, suffix_text in _BUILD_FILE_DESCRIPTIONS:
@@ -298,8 +334,6 @@ def compiler_build_entity(crate_path: str) -> dict:
             break
     return {"@id": crate_path, "@type": "File", "name": filename,
             "description": (text.format(name=name) + ", as committed in the exporting server's "
-                            "source tree; included because its sha256 matches the one the "
-                            "compiler's records report for the image that ran (for records "
-                            "without build-file hashes, a lock file whose pins match the "
-                            "recorded SDK versions)."),
+                            f"source tree; {_CHECKS[check]}."),
+            "sha256": hashlib.sha256(data).hexdigest(),
             "encodingFormat": fmt}

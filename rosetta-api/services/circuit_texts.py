@@ -41,7 +41,8 @@ def _compiled_texts(record: dict) -> dict:
     components = record.get("native_components")
     if isinstance(components, list):
         out["native_components"] = [
-            {k: v for k, v in entry.items() if isinstance(k, str) and isinstance(v, str)}
+            {k: v for k, v in entry.items() if isinstance(k, str) and (
+                isinstance(v, str) or (isinstance(v, list) and all(isinstance(x, str) for x in v)))}
             for entry in components if isinstance(entry, dict)]
     if record.get("dispatch_status") == "skipped" and isinstance(record.get("error"), str):
         out["error"] = record["error"]

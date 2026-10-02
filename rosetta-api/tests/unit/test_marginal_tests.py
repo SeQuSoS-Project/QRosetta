@@ -39,7 +39,7 @@ def test_a_dense_wide_distribution_with_one_wrong_bit_is_found_by_its_marginal()
         if "wrong" in record["simulators"]:
             assert record["metrics"]["marginal_test"]["differing_clbits"] == [20]
     summary = report["statistical_test_summary"]["marginal_test_summary"]
-    assert summary["family_size"] == 6 * 21 and summary["correction"] == "BY"
+    assert summary["family_size"] <= 6 * 21 and summary["correction"] == "Holm"
     json.dumps(report, allow_nan=False)
 
 
@@ -71,3 +71,18 @@ def test_backends_sampling_one_distribution_are_rarely_flagged():
         report = _report(results)
         flagged += any(r["marginal_assessment"] == "marginal_distinguishable" for r in report["pairwise_agreement"])
     assert flagged <= 4
+
+
+def test_constant_bits_are_not_tested_and_correct_pairs_are_not_flagged_beside_a_wrong_backend():
+    rng = np.random.default_rng(4)
+    good = [0.0, 0.3, 0.5, 0.7, 0.2, 0.6]
+    bad = [0.0, 0.42, 0.62, 0.82, 0.32, 0.72]
+    results = [{"simulator": f"s{k}", "qubit_ordering": "msb", "counts": _counts(rng, good, 8200)} for k in range(6)]
+    results.append({"simulator": "wrong", "qubit_ordering": "msb", "counts": _counts(rng, bad, 8200)})
+    report = _report(results)
+    for record in report["pairwise_agreement"]:
+        bit0 = record["metrics"]["marginal_test"]["bits"][0]
+        assert not bit0["tested"] and bit0["not_tested_reason"] == "constant_in_both"
+        expected = "marginal_distinguishable" if "wrong" in record["simulators"] else "no_marginal_difference_detected"
+        assert record["marginal_assessment"] == expected, record["simulators"]
+    assert report["statistical_test_summary"]["marginal_test_summary"]["family_size"] == 21 * 5

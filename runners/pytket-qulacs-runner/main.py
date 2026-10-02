@@ -36,8 +36,14 @@ _CONVERT_NOTE = (
     "pytket QulacsBackend's circuit checks and tk_to_qulacs(reverse_index=True, "
     "replace_implicit_swaps=True) run after the default compilation pass, inside "
     "compilation_time; the timed run applies the converted circuit to a fresh |0...0> "
-    "QuantumState, as QulacsBackend.process_circuits does, and reads the result. The global "
-    "phase of the pytket circuit is restored after the timed run.")
+    "QuantumState, as QulacsBackend.process_circuits does, and reads the result. In "
+    "statevector mode the global phase of the pytket circuit is restored after the timed run.")
+
+_MEASURED_NOTE = (
+    "Measured mode: which qubits the circuit's measurements read (through the circuit's "
+    "implicit wire permutation, as QulacsBackend.process_circuits finds them) is worked out in "
+    "compilation_time; the timed run applies the converted circuit and draws the shots with "
+    "QuantumState.sampling, seeded as QulacsBackend does with a given seed (seed 0 included).")
 
 _COUNTS_KEY_NOTE = (
     "Counts keys: BackendResult.get_counts() tuples are re-keyed to one bitstring over every "
@@ -128,6 +134,8 @@ def _compile_measured(payload: dict) -> CompileResult:
     """Compile with the circuit's own measurements; the backend samples them at the end."""
     parse_measurement_layout(payload["circuit_data"]).require_terminal()
     compiled = _compile(payload, payload["circuit_data"])
+    compiled.circuit = (*compiled.circuit, _measured_bits(compiled.circuit[1]))
+    compiled.preprocessing_applied.append(_MEASURED_NOTE)
     compiled.preprocessing_applied.append(_COUNTS_KEY_NOTE)
     return compiled
 
@@ -165,7 +173,7 @@ def process_run_measured(payload: dict) -> dict:
     def execute(compiled, payload):
         """Sample the final state as QulacsBackend.process_circuits does (seed 0 honoured)."""
         n_shots = payload.get("n_shots", 1024)
-        if _measured_bits(compiled.circuit[1])[0] is None:
+        if compiled.circuit[5][0] is None:
             return None
         state = _final_state(compiled)
         seed = payload.get("seed")
@@ -175,8 +183,7 @@ def process_run_measured(payload: dict) -> dict:
 
     def shape_counts(samples, compiled, payload):
         """Re-key the counts over the declared classical bits (msb)."""
-        _, compiled_circ, bits, _, _ = compiled.circuit
-        measured, positions = _measured_bits(compiled_circ)
+        _, compiled_circ, bits, _, _, (measured, positions) = compiled.circuit
         if measured is None:
             measured = compiled_circ.bits
             shots = OutcomeArray.from_ints([0] * payload.get("n_shots", 1024), len(measured))

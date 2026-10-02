@@ -34,9 +34,10 @@ _CONVERT_NOTE = (
     "pytket QuESTBackend's circuit checks and tk_to_quest(reverse_index=True, "
     "replace_implicit_swaps=True) run after the default compilation pass, inside "
     "compilation_time; the timed run applies the converted circuit to a fresh QuEST "
-    "register, as QuESTBackend.process_circuits does, and reads the amplitudes. The global "
-    "phase of the pytket circuit is restored after the timed run (before sampling, in "
-    "measured mode).")
+    "register, as QuESTBackend.process_circuits does, and reads the amplitudes. In statevector "
+    "mode the global phase of the pytket circuit is restored after the timed run; in measured "
+    "mode the phase is applied, the state read as BackendResult.get_state() and the shots "
+    "drawn inside the timed run.")
 
 _PASS_NOTES = {}
 

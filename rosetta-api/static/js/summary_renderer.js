@@ -367,11 +367,22 @@ function _inconclusiveBlocks(panel, pairs) {
  * group; the descriptive distance label is shown as detail. Only "distinguishable" is a
  * disagreement.
  */
-function _marginalItem(p) {
+/** Register-qualified names of the flat classical-bit indices, from the circuit's creg declarations. */
+function _clbitNames(qasm) {
+    const names = [];
+    const text = typeof qasm === 'string' ? qasm.replace(/\/\/[^\n]*/g, '') : '';
+    for (const m of text.matchAll(/\bcreg\s+([A-Za-z_]\w*)\s*\[\s*(\d+)\s*\]/g)) {
+        for (let i = 0; i < Number(m[2]); i++) names.push(`${m[1]}[${i}]`);
+    }
+    return names;
+}
+
+function _marginalItem(p, names) {
     const block = p.metrics?.marginal_test || {};
     const bits = (block.bits || []).filter(b => b.differs);
-    const detail = bits.map(b => `clbit ${b.clbit}: P(1) ${fmtNum(b.p_one?.[0])} vs ${fmtNum(b.p_one?.[1])} `
-        + `(adjusted p ${fmtPValue(Math.max(b.chi2_p_value_by ?? 1, b.g_p_value_by ?? 1))})`).join('; ');
+    const label = b => (names[b.clbit] ? `${names[b.clbit]} (clbit ${b.clbit})` : `clbit ${b.clbit}`);
+    const detail = bits.map(b => `${label(b)}: P(1) ${fmtNum(b.p_one?.[0])} vs ${fmtNum(b.p_one?.[1])} `
+        + `(adjusted p ${fmtPValue(Math.max(b.chi2_p_value_holm ?? 1, b.g_p_value_holm ?? 1))})`).join('; ');
     return _pairItem(p, detail);
 }
 
@@ -380,12 +391,15 @@ function _renderMarginalBlock(panel, pairs, data, alpha) {
     const flagged = pairs.filter(p => p.marginal_assessment === 'marginal_distinguishable');
     if (!flagged.length) return;
     const summary = data.divergence_report?.statistical_test_summary?.marginal_test_summary || {};
-    const block = _block(`Single-bit marginals differ (${flagged.length})`, 'anomaly', flagged.map(_marginalItem));
+    const names = _clbitNames(data.input_qasm);
+    const block = _block(`Single-bit marginals differ (${flagged.length})`, 'anomaly', flagged.map(p => _marginalItem(p, names)));
     _note(block, `For each classical bit, the two backends' counts of that bit being 0 and 1 are compared (chi-square and `
-        + `G-test, Benjamini–Yekutieli over all ${summary.family_size ?? '—'} bit tests at q = ${alpha ?? '—'}, both required). `
-        + 'Equal distributions have equal marginals, so a differing bit shows the two distributions differ, also where '
-        + 'the full-distribution test has too few shots. Pairs not listed may still differ: equal marginals do not show '
-        + 'agreement. The shot-noise assessments below are unchanged by this test.');
+        + `G-test, both required, Holm-corrected over all ${summary.family_size ?? '—'} bit tests at α = ${alpha ?? '—'}, so the `
+        + `chance of any false flag in this list is at most α). Equal distributions have equal marginals, so a differing bit `
+        + 'shows the two distributions differ, also where the full-distribution test has too few shots, and a pair can be '
+        + 'listed here and also under its shot-noise assessment below (that test looks at the whole distribution with a '
+        + 'total-variation threshold). Pairs not listed may still differ: equal marginals do not show agreement. This test '
+        + 'and the full-distribution test are separate families, each at α.');
     panel.appendChild(block);
 }
 
@@ -426,7 +440,7 @@ function _renderMeasuredBlocks(panel, pairs, tol, data, alpha) {
     if (groups.ambiguous.length) parts.push(`${groups.ambiguous.length} inconclusive (the two tests disagree)`);
     if (groups.untested.length) parts.push(`${groups.untested.length} without a shot-noise test`);
     ov.textContent = `Of ${pairs.length} pairs: ${parts.join(', ')}; ${pairs.length - comparable.length} not comparable (${test}). `
-        + 'Each pair is listed once, under its shot-noise assessment; the JS/Hellinger distance label is shown beside it.';
+        + 'Each pair is listed once under its shot-noise assessment, with its JS/Hellinger distance label beside it; pairs whose single-bit marginals differ are also listed in their own block.';
     panel.appendChild(ov);
     _renderMarginalBlock(panel, pairs, data, alpha);
 
@@ -474,6 +488,10 @@ function _renderMeasuredBlocks(panel, pairs, tol, data, alpha) {
             notes.push(`Test power ${range} to detect a total-variation gap of `
                 + `${consistent[0].metrics?.statistical_test?.power?.delta_tv ?? '—'}; power is the chance the test would flag a gap of that size. `
                 + _powerLevelText(consistent));
+        }
+        const marginalFlags = consistent.filter(p => p.marginal_assessment === 'marginal_distinguishable').length;
+        if (marginalFlags) {
+            notes.push(`${marginalFlags} of these pairs have a single-bit marginal that differs (listed above): the shot-noise test finds no total-variation gap of the stated size, but the distributions are not equal.`);
         }
         if (aboveThreshold) {
             notes.push(`${aboveThreshold} of these do not meet the descriptive JS ≤ ${tol.js} / Hellinger ≤ ${tol.hellinger} thresholds in the label-aligned basis; those thresholds depend on the shot count, and the test finds no difference beyond shot noise.`);

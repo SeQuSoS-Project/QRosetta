@@ -272,6 +272,9 @@ def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for qsim-Cirq simulation.")
 
     def compile_step(payload):
+        if parse_measurement_layout(payload["circuit_data"]).has_classical_control:
+            raise ValueError("classically controlled operations ('if') are not supported by this "
+                             "adapter: pytket's tk_to_cirq does not convert them")
         cirq_circ, qubits, bits, preprocessing_applied = _to_cirq_circuit(
             payload, payload["circuit_data"])
         if not cirq_circ.has_measurements():

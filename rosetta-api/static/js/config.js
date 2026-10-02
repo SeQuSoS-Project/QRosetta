@@ -190,7 +190,7 @@ export function renderConfigPanel(runners) {
     grid.appendChild(globalDiv);
 
     const mode = getState().executionMode;
-    const localMem = '512 MiB (TorchQuantum 1 GiB)';
+    const localMem = '1 GiB';
     const memText = mode === 'local' ? localMem : mode === 'kubernetes' ? '1 GiB' : `${localMem} locally, 1 GiB on Kubernetes`;
     const sysDiv = document.createElement('div');
     sysDiv.className = "col-span-1 p-2 bg-gray-50 rounded border border-gray-200 mb-2 flex justify-between items-center text-xs";

@@ -491,9 +491,12 @@ def _build_pairwise_agreement_summary(ctx: ExportContext) -> Optional[dict]:
         "by_registered_transform": {},
         "by_statistical_verdict": {},
         "by_measured_assessment": {},
+        "by_marginal_assessment": {},
         "description": (
             "Counts of agreement labels, registered transforms, and (for measured "
-            "mode) shot-noise statistical verdicts and measured assessments. The full "
+            "mode) shot-noise statistical verdicts, measured assessments and single-bit "
+            "marginal assessments (marginal_distinguishable: a classical bit's marginal "
+            "differs after Holm's correction, so the distributions differ). The full "
             "per-pair metrics and provenance records are preserved in results.json."
         ),
     }
@@ -510,8 +513,11 @@ def _build_pairwise_agreement_summary(ctx: ExportContext) -> Optional[dict]:
         if record.get("measured_assessment"):
             _increment_nested_count(summary["by_measured_assessment"], mode,
                                     record["measured_assessment"])
+        if record.get("marginal_assessment"):
+            _increment_nested_count(summary["by_marginal_assessment"], mode,
+                                    record["marginal_assessment"])
 
-    for key in ("by_statistical_verdict", "by_measured_assessment"):
+    for key in ("by_statistical_verdict", "by_measured_assessment", "by_marginal_assessment"):
         if not summary[key]:
             del summary[key]
     return summary
@@ -709,12 +715,15 @@ def _statevector_description(ctx: ExportContext) -> str:
 def _build_ro_crate_metadata(ctx: ExportContext,
                              artifact_paths: Optional[List[str]] = None,
                              artifact_descriptions: Optional[Dict[str, str]] = None,
-                             lock_paths: Optional[List[str]] = None) -> dict:
-    """Build the RO-Crate 1.1 metadata descriptor (JSON-LD)."""
+                             lock_paths: Optional[List[str]] = None,
+                             compiler_files: Optional[Dict[str, tuple]] = None) -> dict:
+    """Build the RO-Crate 1.1 metadata descriptor (JSON-LD). ``compiler_files`` maps each
+    compiler build file's crate path to (bytes, check), as ``compiler_build_files`` returns."""
     graph: List[dict] = []
     artifact_paths = artifact_paths or []
     artifact_descriptions = artifact_descriptions or {}
-    lock_paths = set(lock_paths or [])
+    compiler_files = compiler_files or {}
+    lock_paths = set(lock_paths or []) | set(compiler_files)
     agent_ref: Optional[dict] = None
 
     tasks = _iter_tasks(ctx)
@@ -746,9 +755,10 @@ def _build_ro_crate_metadata(ctx: ExportContext,
                     "and the git SHA and runner image references where recorded)")
     if any(p.startswith("runners/") for p in lock_paths):
         contents.append("each runner's pinned environment as runners/<runner>/requirements.lock")
-    if any(p.startswith("compilers/") for p in lock_paths):
-        contents.append("each compile-only service's pinned environment as "
-                        "compilers/<compiler>/requirements.lock")
+    if compiler_files:
+        contents.append("the build files of each compile-only service whose image ran (Dockerfile, "
+                        "pinned environment, patches, build sources, generated data) under "
+                        "compilers/<compiler>/, each with the check that admitted it")
     if artifact_paths:
         contents.append("publication figures and tables under figures/ and tables/"
                         + (" (one folder per task)" if is_batch else "")
@@ -878,10 +888,13 @@ def _build_ro_crate_metadata(ctx: ExportContext,
                                       settings.get_compiler_services()):
             graph.append(action)
             root_entity["mentions"].append({"@id": action["@id"]})
-    graph.extend(compiler_applications([t.report for t in tasks], settings.get_compiler_services()))
-    for lock_path in sorted(p for p in lock_paths if p.startswith("compilers/")):
-        graph.append(compiler_build_entity(lock_path))
-        root_entity["hasPart"].append({"@id": lock_path})
+    graph.extend(compiler_applications([t.report for t in tasks], settings.get_compiler_services(),
+                                       trusted=ctx.report_source == "server_job",
+                                       build_paths=list(compiler_files)))
+    for path in sorted(compiler_files):
+        data, check = compiler_files[path]
+        graph.append(compiler_build_entity(path, data, check))
+        root_entity["hasPart"].append({"@id": path})
 
     graph.append({
         "@id": "https://w3id.org/ro/crate/1.1",
@@ -1171,10 +1184,11 @@ def build_ro_crate(ctx: ExportContext) -> bytes:
     provenance_data = _build_provenance(ctx)
     publication_files, artifact_descriptions = _generate_publication_artifacts(ctx)
     _add_compiled_metrics_table(ctx, publication_files, artifact_descriptions)
-    lock_files = {**_runner_lock_files(ctx),
-                  **compiler_build_files([t.report for t in _iter_tasks(ctx)], settings.get_compiler_services())}
+    compiler_files = compiler_build_files([t.report for t in _iter_tasks(ctx)], settings.get_compiler_services(),
+                                          trusted=ctx.report_source == "server_job")
+    lock_files = {**_runner_lock_files(ctx), **{p: data for p, (data, _) in compiler_files.items()}}
     metadata = _build_ro_crate_metadata(ctx, sorted(publication_files), artifact_descriptions,
-                                        sorted(lock_files))
+                                        sorted(_runner_lock_files(ctx)), compiler_files)
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:

@@ -107,7 +107,8 @@ _TARGET_DESCRIPTION = ("'local' or 'kubernetes'. Defaults to the server's EXECUT
                        "value.")
 _BYPASS_DESCRIPTION = ("Skip the MAX_QASM_SIZE and MAX_QASM_GATES checks when the server's "
                        "EXECUTION_MODE is 'local'; ignored otherwise. The qubit limits, the "
-                       "syntax checks and the measurement checks still apply.")
+                       "expanded-gate and nested-gate-call limits, the syntax checks and the "
+                       "measurement checks still apply.")
 _SEED_DESCRIPTION = ("Master seed, a non-negative integer. Each runner result receives its own "
                      "seed derived from it and the result key (see the report's "
                      "seed_derivation and each result's runner_seed), so a replay with the "

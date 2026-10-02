@@ -319,6 +319,7 @@
                         CPU quota.</li>
                     <li><strong>Bypass API Safety Limits</strong> (<code>bypass_limits</code>, local mode
                         only). Skips the QASM size limit and the statement-count limit. The qubit limits,
+                        the expanded-gate and nested-gate-call limits (which protect the runners' memory),
                         the syntax checks and the measurement checks still apply, and the server ignores
                         the flag outside local mode. The report records it.</li>
                     <li><strong>Apply SDK Preprocessing</strong> (<code>apply_preprocessing</code>): see
@@ -726,19 +727,25 @@
                     seen a few times. As a second, separate analysis every pair whose keys have two or more
                     bits is also compared bit by bit: for each classical bit, the two backends' counts of
                     that bit being 0 and 1 form a 2&times;2 table, tested with the same chi-square and G-test.
-                    All bit tests of all pairs form one Benjamini–Yekutieli family at α&nbsp;=&nbsp;0.05, and
-                    a bit differs when both tests are significant. A bit with an expected count below 5 is
-                    not tested. Equal distributions have equal marginals, so a differing bit shows that the
-                    two distributions differ; marginals that do not differ do not show that they agree.
-                    Each pair records <code>marginal_assessment</code>
+                    All bit tests of all pairs form one family under Holm's correction at α&nbsp;=&nbsp;0.05,
+                    so the chance of any false flag in a report is at most α however many backends really
+                    differ, and a bit differs when both tests are significant. A bit with an expected count
+                    below 5, or constant in both samples, is not tested. Equal distributions have equal
+                    marginals, so a differing bit shows that the two distributions differ; marginals that do
+                    not differ do not show that they agree. The full-distribution tests and the marginal tests
+                    are two families, each at α. Each pair records <code>marginal_assessment</code>
                     (<code>marginal_distinguishable</code>, <code>no_marginal_difference_detected</code>,
                     <code>not_tested</code> or <code>not_applicable</code>) and
-                    <code>metrics.marginal_test</code> (each bit's P(1) on both sides, raw and adjusted
-                    p-values); <code>measured_assessment</code> is not changed by it. The Summary lists
-                    pairs whose marginals differ in their own block. In a simulation with 14 backends sampling
-                    the same distribution over 16 independent bits at 8,200 shots, 0 of 60 runs had a
-                    differing marginal; with one backend's bit off by 0.05 in P(1), 99.7% of its pairs were
-                    flagged.
+                    <code>metrics.marginal_test</code> (each bit's P(1) on both sides, raw and Holm-adjusted
+                    p-values); <code>measured_assessment</code> is not changed by it, so a pair can be
+                    <code>consistent_within_shot_noise</code> (no total-variation gap of 0.05 found) and still
+                    have a differing marginal. The Summary lists such pairs in their own block, the Agreement
+                    tab marks them "marginal differs", batch badges count them as an anomaly, and crates and
+                    experiment bundles count them by <code>marginal_assessment</code>. In a simulation with 14
+                    backends over 16 independent bits at 8,200 shots, 1 of 40 runs had a false flag when all
+                    backends sampled the same distribution, 1 of 40 had one on a pair of correct backends when
+                    one backend was off by 0.05 in P(1) on four bits, and every pair with the wrong backend
+                    was flagged.
                 </p>
             </section>
 
@@ -945,7 +952,7 @@
                     <li><strong>RSS and the container limit.</strong> RSS counts the shared libraries a process
                         has mapped, such as the CUDA runtime, so <code>process_peak_rss_mb</code> can exceed the
                         container's <code>memory_limit_mib</code> (cuQuantum and quimb read about 545 and 610 MiB under
-                        a 512 MiB limit) without the process being out of memory.</li>
+                        what was then a 512 MiB limit) without the process being out of memory.</li>
                     <li><strong>Units.</strong> Every memory field ending in <code>_mb</code> is in MiB
                         (2<sup>20</sup> bytes).</li>
                     <li><strong>What dominates memory.</strong> For small circuits,
@@ -982,9 +989,9 @@
                 <h2>Resources, queueing and timeouts</h2>
                 <ul>
                     <li><strong>CPU and memory quota.</strong> Each runner is limited to 1 CPU (a cgroup CPU
-                        quota), and its math libraries run one thread. Memory limits: in local mode 512 MiB per runner
-                        container, except TorchQuantum with 1 GiB (the <code>docker-compose.yml</code>
-                        limits); in Kubernetes mode 1 GiB per runner Job. A process that uses more than one core
+                        quota), and its math libraries run one thread. Memory limits: 1 GiB per runner container in local
+                        mode (the <code>docker-compose.yml</code> limits) and per runner Job in Kubernetes
+                        mode; each result records the limit that applied as <code>memory_limit_mib</code>. A process that uses more than one core
                         (an SDK thread pool the thread variables do not control) is throttled by the quota: the kernel
                         stops it until the next 100 ms period, and that wait falls inside the timed window. Every
                         result records the throttled time as <code>simulation_throttled_sec</code> and
@@ -1083,7 +1090,7 @@
                     output text (<code>transpiled_qasm</code>), the passes that produced it
                     (<code>passes_applied</code>), gate count and depth counted from that text, the pip SDK
                     versions (<code>sdk_versions</code>), the programs the image built from source
-                    (<code>native_components</code>: staq and Quartz, with the source archive's URL and
+                    (<code>native_components</code>: staq, Quartz and Synthetiq, with the source archive's URL and
                     sha256, compiler flags or patches, and Quartz's ECC set hash), the sha256 of the image's
                     build files (<code>build_files</code>) and the compiler's code hash. The Circuits tab shows the compiler input and each
                     output; the RO-Crate holds them as <code>compile_input.qasm</code> and
@@ -1237,18 +1244,23 @@
                         <tr><td>Synthetiq (commit 59a0cc6)</td><td>0, 1</td><td>For Clifford+T circuits of up to 3
                             qubits. Qiskit translates the circuit exactly to <code>h</code>, <code>rz</code> and
                             <code>cx</code>; a circuit is refused unless every <code>rz</code> angle is a multiple of
-                            π/4 (so a circuit whose other angles cancel is refused too). Synthetiq then synthesises a
-                            new Clifford+T circuit for the circuit's unitary by simulated annealing and simplifies it,
-                            minimising its cost (T and T† 1, CX 0.1, H, S, S† 0.01). Level 0 returns the first
-                            circuit found within 1,000 annealing runs, level 1 the cheapest of the first 5 within
-                            2,000. It runs on one thread and annealing run r is seeded with r, so the output, or the
-                            failure to find one within the runs, depends only on the input; the image adds a
-                            <code>--max-runs</code> option to Synthetiq (<code>max-runs.patch</code>) for that, since
-                            Synthetiq itself stops on wall-clock time. A 3-qubit run takes about 80 ms, so a hard
-                            circuit can take a few minutes and then ends at the job's timeout. Built without
-                            <code>-march=native</code> or <code>-ffast-math</code>. Every output is checked against
-                            the input with Qiskit; final measurements are kept, mid-circuit measurement is
-                            refused.</td></tr>
+                            π/4 to within 1e-12 in units of π/4 (a circuit whose other angles cancel is refused too; any
+                            angle change is listed). Synthetiq then searches by simulated annealing for a new
+                            Clifford+T circuit with the circuit's unitary (the annealing minimises the distance to
+                            the unitary) and simplifies what it finds with its resynthesis pass. Level 0 returns
+                            the first circuit found within 1,000 annealing runs; it does not minimise the T-count
+                            and can return more T gates than the input. Level 1 returns the lowest-cost circuit
+                            (T and T† 1, CX 0.1, H, S, S† 0.01) of up to 5 found within 2,000 runs. On one thread
+                            Synthetiq draws the whole search from one random stream seeded with 0, so the output,
+                            or the failure to find a circuit within the runs, depends only on the input; the image
+                            adds a <code>--max-runs</code> option (<code>max-runs.patch</code>) for that, since
+                            Synthetiq itself stops on wall-clock time. A 3-qubit run takes about 80 ms, so a level 1
+                            search can take nearly 3 minutes; the error then says whether the runs, the 280 s cap or
+                            the job's timeout ended it (only the run limit gives the same outcome on any machine).
+                            A circuit with no gates after translation is returned empty without running
+                            Synthetiq. Barriers are removed (listed). Built without <code>-march=native</code> or
+                            <code>-ffast-math</code>. Every output is checked against the input with Qiskit;
+                            final measurements are kept, mid-circuit measurement is refused.</td></tr>
                     </tbody>
                 </table>
                 <p>
@@ -1447,7 +1459,10 @@
                                 correct. A <code>QubitUnitary</code> on three or more wires appears in the executed
                                 text as an <code>opaque</code> gate with its matrix in comments, so the reversal
                                 can be read there. Happens with
-                                preprocessing on and off: the pytket round-trip keeps <code>cu3</code>. On some
+                                preprocessing on and off for the gates the pytket round-trip keeps
+                                (<code>cu3</code>, <code>csx</code>, <code>c3x</code>, <code>c4x</code>); with preprocessing
+                                on, the round-trip decomposes <code>cu</code>, <code>rccx</code>, <code>rc3x</code> and
+                                <code>c3sqrtx</code>, and those then agree. On some
                                 circuits the swapped output equals the bit-reversed correct one, and the pair is
                                 then a disagreement with <code>unaligned_basis_match</code>.</td>
                             <td>Statevector: <code>qreg q[2]; x q[0]; cu3(0.7,0.3,0.1) q[0],q[1];</code>. The
@@ -1466,6 +1481,17 @@
                                 <code>cp</code> to <code>cu1</code>, so circuits written with <code>cp</code> hit
                                 this with preprocessing on.</td>
                             <td>Statevector: <code>qreg q[2]; h q[0]; x q[1]; cu1(0.9) q[0],q[1];</code>.</td></tr>
+                        <tr><td>Qrisp 0.5, measured mode, wider circuits</td>
+                            <td>On a 16-qubit circuit of <code>h</code>, <code>ry</code>, <code>rz</code>,
+                                <code>rx</code> and <code>cx</code> only, Qrisp's sampled single-bit frequencies differ
+                                from the circuit's exact marginals by up to 0.02 (|z| up to 12.7 at 30,000 shots),
+                                while Qrisp's statevector for the same circuit is right (fidelity 1 − 1e-13 with
+                                Qiskit). The full-distribution test is often inconclusive on such circuits; the
+                                single-bit marginal test flags Qrisp's pairs.</td>
+                            <td><code>rosetta-api/circuits/qrisp_measured_bias_16q.qasm</code> in the source
+                                (<code>h</code> on every qubit, then fixed-angle <code>ry</code>, <code>cx</code>,
+                                <code>rz</code> and <code>rx</code> layers, <code>measure q -&gt; c</code>), 30,000 shots:
+                                P(clbit 13 = 1) 0.040 from Qrisp, 0.0579 from Qiskit's samples, 0.0572 exact.</td></tr>
                         <tr><td>Qrisp, measured mode only</td>
                             <td>Counts are wrong on <code>cu3</code> while Qrisp's statevector for the same
                                 circuit is right.</td>
@@ -1524,7 +1550,11 @@
                                 on) and in the runners that build their circuit with tket (Qiskit, Cirq, Qulacs,
                                 QuEST, qsim, PyQuil) with preprocessing on or off. When it moves a parameter the
                                 result lists which, by how much, and where (an <code>API:</code> entry for the
-                                round-trip, otherwise an entry on each of those runners).</td>
+                                round-trip, otherwise an entry on each of those runners), for parameters as
+                                written and inside called gate definitions with each call's values. Parameters tket
+                                derives itself while rebasing, such as the half-angles of <code>cu1</code> or
+                                <code>crz</code>, are rounded the same way and not listed: <code>cu1(4e-11)</code>
+                                runs as a <code>cu1</code> whose half-angle rotations are 0.</td>
                             <td><code>qreg q[1]; rz(1.3e-13) q[0];</code> and <code>rz(3.14159265359) q[0];</code>
                                 through <code>circuit_from_qasm_str</code>: the parameters are 0 and exactly 1
                                 half-turn.</td></tr>

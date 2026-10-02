@@ -44,12 +44,16 @@ function _versionText(versions) {
     if (!versions || typeof versions !== 'object') return '';
     const parts = [];
     for (const c of Array.isArray(versions.native_components) ? versions.native_components : []) {
-        if (c && typeof c.name === 'string' && typeof c.version === 'string') parts.push(`${c.name} ${c.version} (built from source)`);
+        if (c && typeof c.name === 'string' && typeof c.version === 'string') {
+            const patches = Array.isArray(c.patches) && c.patches.length ? `, patched with ${c.patches.join(', ')}` : '';
+            parts.push(`${c.name} ${c.version} (built from source${patches})`);
+        }
     }
     const sdk = versions.sdk_versions && typeof versions.sdk_versions === 'object' ? versions.sdk_versions : {};
     for (const [name, version] of Object.entries(sdk)) {
         if (typeof version === 'string') parts.push(`${name} ${version}`);
     }
+    if (typeof versions.image_git_sha === 'string') parts.push(`image commit ${versions.image_git_sha}`);
     return parts.join(', ');
 }
 

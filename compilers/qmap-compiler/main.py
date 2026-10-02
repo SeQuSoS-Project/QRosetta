@@ -25,7 +25,9 @@ _DECOMPOSE_NOTE = (translation_note(DECOMPOSITION_BASIS) + " QMAP 3.10 rejects g
                    "without an error, so it never receives them.")
 _ENCODE_NOTE = ("QuantumComputation.qasm2_str(): the mapped circuit as OpenQASM 2.0. Its "
                 "'// i' and '// o' comment lines give the physical qubit holding each logical "
-                "qubit at input and at output.")
+                "qubit at input and at output. The writer prints each angle with 15 significant "
+                "digits (rz(0.123456789012345678) is written rz(0.123456789012346)), so an angle "
+                "can move by up to about 5e-16 of its size.")
 
 
 def _decompose(qasm: str) -> str:

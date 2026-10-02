@@ -203,3 +203,8 @@ def test_too_many_user_gate_applications_are_400(client):
     assert client.post("/compare", json={"qasm_string": _binary_nest(12)}).status_code == 400
     r = client.post("/compare", json={"qasm_string": _binary_nest(12)})
     assert "8190 applications of user-defined gates from inside gate definitions" in r.json()["detail"]
+
+
+def test_bypass_limits_does_not_lift_the_expansion_caps(client):
+    r = client.post("/compare", json={"qasm_string": _binary_nest(12), "bypass_limits": True})
+    assert r.status_code == 400 and "from inside gate definitions" in r.json()["detail"]

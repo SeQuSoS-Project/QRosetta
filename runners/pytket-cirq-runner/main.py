@@ -182,6 +182,9 @@ def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for Cirq simulation.")
 
     def compile_step(payload):
+        if parse_measurement_layout(payload["circuit_data"]).has_classical_control:
+            raise ValueError("classically controlled operations ('if') are not supported by this "
+                             "adapter: pytket's tk_to_cirq does not convert them")
         compiled_circ, preprocessing_applied, bits, _ = _compile_tket(
             payload, payload["circuit_data"])
         if len(compiled_circ.bits) != len(bits):

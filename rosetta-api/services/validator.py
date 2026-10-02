@@ -348,21 +348,20 @@ def validate_request(qasm: str, mode: str = "statevector", bypass_limits: bool =
     check_qasm_syntax(qasm)
     if check_reserved_names:
         check_gate_names(qasm, statements)
-        if not (bypass_limits and settings.EXECUTION_MODE == "local"):
-            expanded, user_calls = expanded_counts(qasm, statements)
-            if expanded > settings.MAX_EXPANDED_GATES:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(f"Circuit too complex: it expands to {expanded} gate applications "
-                            f"through its gate definitions and register broadcasts, above the "
-                            f"limit of {settings.MAX_EXPANDED_GATES}."))
-            if user_calls > settings.MAX_NESTED_GATE_CALLS:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(f"Circuit too complex: its expansion makes {user_calls} applications "
-                            f"of user-defined gates from inside gate definitions, above the limit "
-                            f"of {settings.MAX_NESTED_GATE_CALLS}. Parsers that keep a copy of each "
-                            f"nested definition per application need memory for every one."))
+        expanded, user_calls = expanded_counts(qasm, statements)
+        if expanded > settings.MAX_EXPANDED_GATES:
+            raise HTTPException(
+                status_code=400,
+                detail=(f"Circuit too complex: it expands to {expanded} gate applications "
+                        f"through its gate definitions and register broadcasts, above the "
+                        f"limit of {settings.MAX_EXPANDED_GATES}."))
+        if user_calls > settings.MAX_NESTED_GATE_CALLS:
+            raise HTTPException(
+                status_code=400,
+                detail=(f"Circuit too complex: its expansion makes {user_calls} applications "
+                        f"of user-defined gates from inside gate definitions, above the limit "
+                        f"of {settings.MAX_NESTED_GATE_CALLS}. Parsers that keep a copy of each "
+                        f"nested definition per application need memory for every one."))
     check_parameter_values(qasm, statements, check_calls=check_reserved_names)
     if apply_preprocessing:
         check_parameter_expressions(qasm)

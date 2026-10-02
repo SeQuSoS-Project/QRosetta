@@ -47,7 +47,8 @@ def _compiled_files(compiled_reports: list) -> dict:
     if not any(report.get("compiled_circuits") for _, report in compiled_reports):
         return {}
     files["compiled_circuits.csv"] = compiled_metrics_csv(compiled_reports, paths).encode("utf-8")
-    files.update(compiler_build_files([r for _, r in compiled_reports], settings.get_compiler_services()))
+    files.update({path: data for path, (data, _) in compiler_build_files(
+        [r for _, r in compiled_reports], settings.get_compiler_services()).items()})
     return files
 
 def resolve_circuits(payload: ExperimentPayload) -> tuple:

@@ -456,6 +456,11 @@ export function _agreementSummaryStrip(report, pairs) {
             strip.appendChild(_chip(STATUS_STYLES[ASSESSMENT_STYLE[a] || 'offline'].badge,
                 `${a} · ${n}`, `Shot-noise assessment${st ? ` (α=${st.alpha}, ${[].concat(st.correction || []).join('+')})` : ''}`));
         });
+        const marginal = pairs.filter(p => p.marginal_assessment === 'marginal_distinguishable').length;
+        if (marginal) {
+            strip.appendChild(_chip(STATUS_STYLES.anomaly.badge, `marginal differs · ${marginal}`,
+                'Pairs whose single-bit marginals differ (Holm-corrected over every bit of every pair)'));
+        }
     } else if (st && st.verdict_counts) {
         const sep = document.createElement('span');
         sep.className = 'w-px bg-gray-200 mx-1';
@@ -626,6 +631,11 @@ export function _agreementPairTable(pairs) {
         } else if (st && st.verdict) {
             vslot.appendChild(_chip(STATUS_STYLES[VERDICT_STYLE[st.verdict] || 'offline'].badge,
                 st.verdict, 'Shot-noise statistical verdict'));
+        }
+        if (p.marginal_assessment === 'marginal_distinguishable') {
+            const clbits = (p.metrics?.marginal_test?.differing_clbits || []).join(', ');
+            vslot.appendChild(_chip(STATUS_STYLES.anomaly.badge, 'marginal differs',
+                `Single-bit marginal test (Holm-corrected): clbit ${clbits} differs, so the distributions differ`));
         }
         sum.appendChild(vslot);
         det.appendChild(sum);

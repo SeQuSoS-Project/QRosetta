@@ -106,7 +106,11 @@ TRIAGE_README = (
     "                             descriptive distance labels within each class as\n"
     "                             label:count; statevector pairs are counted by agreement\n"
     "                             label. A distance label such as agree_after_bit_reversal\n"
-    "                             on a distinguishable pair is not an agreement.\n"
+    "                             on a distinguishable pair is not an agreement. Rows with\n"
+    "                             count_basis=marginal_assessment count the same measured\n"
+    "                             pairs again by the single-bit marginal test; a\n"
+    "                             marginal_distinguishable pair differs whatever its\n"
+    "                             measured_assessment.\n"
     "  errors/*.log             - per-simulator error signatures\n"
     "  manifest.json            - config as requested (nulls mean server defaults) and\n"
     "                             effective_config (the seed, agreement thresholds and runner\n"
@@ -318,6 +322,14 @@ def build_prevalence_rows(axis_label: str, summary: list) -> list:
     rows = [row(k, v, "compared") for k, v in sorted(counts.items())]
     if not_comparable:
         rows.append(row(NOT_COMPARABLE, not_comparable, NOT_COMPARABLE))
+    marginal: dict = {}
+    for report in summary:
+        for rec in (report.get("divergence_report") or {}).get("pairwise_agreement", []) or []:
+            if rec.get("marginal_assessment") and rec.get("agreement") != NOT_COMPARABLE:
+                marginal[rec["marginal_assessment"]] = marginal.get(rec["marginal_assessment"], 0) + 1
+    rows += [{"axis": axis_label, "count_basis": "marginal_assessment", "agreement_class": k,
+              "pair_count": v, "pair_scope": "compared", "distance_labels": ""}
+             for k, v in sorted(marginal.items())]
     return rows
 
 

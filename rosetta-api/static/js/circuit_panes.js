@@ -31,6 +31,7 @@ function _executedPane(result, index) {
         group: typeof result.dispatch_group === 'string' ? result.dispatch_group : null,
         text: typeof result.transpiled_qasm === 'string' ? result.transpiled_qasm : null,
         status: typeof result.dispatch_status === 'string' ? result.dispatch_status : null,
+        reason: typeof result.error === 'string' ? result.error : null,
         apiNotes: notes.filter(note => API_NOTE.test(note)),
         runnerNotes: notes.filter(note => !API_NOTE.test(note)),
         gateCount: typeof result.gate_count === 'number' ? result.gate_count : null,
@@ -48,7 +49,11 @@ function _gateCounts(value) {
 function _nativeComponents(value) {
     if (!Array.isArray(value)) return [];
     return value.filter(c => c && typeof c === 'object' && typeof c.name === 'string' && typeof c.version === 'string')
-        .map(c => ({ name: c.name, version: c.version, sourceSha256: typeof c.source_sha256 === 'string' ? c.source_sha256 : null }));
+        .map(c => ({
+            name: c.name, version: c.version,
+            sourceSha256: typeof c.source_sha256 === 'string' ? c.source_sha256 : null,
+            patches: Array.isArray(c.patches) ? c.patches.filter(p => typeof p === 'string') : [],
+        }));
 }
 
 function _compiledPane(record, index) {

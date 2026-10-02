@@ -17,9 +17,12 @@ def test_parameters_tket_moves_are_found_and_others_are_not():
     assert stored["3.14159265359"] == math.pi and stored["1.3e-13"] == 0
 
 
-def test_constant_parameters_inside_definitions_count_and_arguments_do_not():
-    qasm = HEAD + "gate g(a) x { rz(a) x; rz(2e-12) x; }\ng(1e-13) q[0];\n"
-    assert [text for _n, text, _v, _s in tket_rounded_parameters(qasm)] == ["2e-12", "1e-13"]
+def test_parameters_inside_called_definitions_are_evaluated_with_the_call_values():
+    qasm = HEAD + "gate g(a) x { rz(a) x; rz(2e-12) x; }\ngate k x { g(3e-12) x; }\ng(1e-13) q[0];\nk q[1];\n"
+    moved = [(text, value) for _n, text, value, _s in tket_rounded_parameters(qasm)]
+    assert moved == [("1e-13", 1e-13), ("a", 1e-13), ("2e-12", 2e-12), ("3e-12", 3e-12), ("a", 3e-12), ("2e-12", 2e-12)]
+    uncalled = HEAD + "gate g(a) x { rz(a*1e-13) x; }\nh q[0];\n"
+    assert tket_rounded_parameters(uncalled) == []
 
 
 def test_note_names_the_parameters_and_is_none_without_any():
