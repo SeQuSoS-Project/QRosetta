@@ -83,6 +83,7 @@ export const _RUNNER_NAMES = {
     "bqskit": "BQSKit (compile)", "pyzx": "PyZX (compile)", "qmap": "QMAP (compile)",
     "cirq-transformers": "Cirq (compile)", "staq": "staq (compile)", "qsynth": "Q-Synth (compile)",
     "quartz": "Quartz (compile)",
+    "synthetiq": "Synthetiq (compile)",
 };
 
 export let _runnerPhases = {};

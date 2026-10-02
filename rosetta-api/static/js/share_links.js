@@ -133,6 +133,10 @@ export function renderShareControls(container, report = null) {
     const controls = _el('div', 'flex flex-wrap items-center gap-2');
     const save = _el('button', 'text-xs font-medium bg-white hover:bg-gray-100 text-gray-800 border border-gray-300 rounded-md px-3 py-1', 'Save to history');
     save.type = 'button';
+    const markSaved = () => {
+        save.textContent = 'Saved to history';
+        save.disabled = true;
+    };
     controls.appendChild(save);
     const label = _el('label', 'inline-flex items-center gap-1 text-xs text-gray-700', 'Expires after');
     const expiry = /** @type {HTMLSelectElement} */ (_el('select', 'border border-gray-300 rounded px-1 py-0.5 text-xs'));
@@ -163,12 +167,14 @@ export function renderShareControls(container, report = null) {
         try {
             const runId = await _savedRunId(notice);
             if (runId) {
-                notice.replaceChildren(_el('p', 'text-xs text-green-800', 'Saved to your history.'));
+                markSaved();
                 _paintLinks(list, runId);
+                return;
             }
-        } finally {
-            save.disabled = false;
+        } catch (err) {
+            notice.replaceChildren(_el('p', 'text-xs text-red-700', err.message));
         }
+        save.disabled = false;
     };
     create.onclick = async () => {
         create.disabled = true;
@@ -176,6 +182,7 @@ export function renderShareControls(container, report = null) {
         try {
             const runId = await _savedRunId(notice);
             if (!runId) return;
+            markSaved();
             const body = { expires_in_days: Number(expiry.value) };
             if (linkLabel.value.trim()) body.label = linkLabel.value.trim();
             const link = await _request(`/history/runs/${encodeURIComponent(runId)}/share-links`, {
@@ -191,6 +198,9 @@ export function renderShareControls(container, report = null) {
         }
     };
     const runId = getState().currentHistoryRunId;
-    if (runId && getState().authToken) _paintLinks(list, runId);
+    if (runId && getState().authToken) {
+        markSaved();
+        _paintLinks(list, runId);
+    }
     container.appendChild(section);
 }
