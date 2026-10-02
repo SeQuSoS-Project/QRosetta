@@ -31,3 +31,14 @@ def with_qasm(payload):
 
 def returns_error(payload):
     return {"simulator": "t", "error": "bad gate", "execution_time_sec": None}
+
+
+def starts_subprocess(payload):
+    """Starts a long-running subprocess, records its pid, then outlives the budget."""
+    import subprocess
+    child = subprocess.Popen(["sleep", "120"])
+    with open(payload["pid_file"], "w") as fh:
+        fh.write(str(child.pid))
+    if payload.get("return_early"):
+        return {"result": "ok"}
+    time.sleep(60)

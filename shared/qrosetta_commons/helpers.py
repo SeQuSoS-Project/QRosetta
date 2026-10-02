@@ -14,6 +14,7 @@ import os
 import queue as _queue
 import re
 import resource as _resource
+import signal
 import statistics as _statistics
 import sys
 import time
@@ -475,6 +476,7 @@ def run_with_uniform_measurement(func, payload):
 
 def _isolated_target(result_q, module_name, func_name, payload, measured=True):
     try:
+        os.setpgid(0, 0)
         apply_cpu_affinity()
         module = _importlib.import_module(module_name)
         func = getattr(module, func_name)
@@ -490,10 +492,19 @@ def _isolated_error(message, timed_out=False):
     return result
 
 
+def _kill_process_group(proc) -> None:
+    """SIGKILL whatever is left of the child's process group (subprocesses it started)."""
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
 def _run_isolated_blocking(module_name, func_name, payload, timeout_s, measured=True):
     """Run the processor in a spawned child; poll every 0.2 s for a result, a dead child
     or the deadline. ``measured`` runs it through run_with_uniform_measurement; otherwise
-    it is called once, directly."""
+    it is called once, directly. The child leads its own process group, which is killed
+    when the child ends, so a subprocess it started cannot outlive it."""
     result_q = _SPAWN_CTX.Queue()
     proc = _SPAWN_CTX.Process(
         target=_isolated_target, args=(result_q, module_name, func_name, payload, measured))
@@ -517,11 +528,13 @@ def _run_isolated_blocking(module_name, func_name, payload, timeout_s, measured=
             if proc.is_alive():
                 proc.kill()
                 proc.join()
+            _kill_process_group(proc)
             scope = ("spawn, SDK import, warm-up and every timed run" if measured
                      else "spawn, SDK import and the call")
             return _isolated_error(
                 f"TIMEOUT ({timeout_s}s): the runner process ({scope}) exceeded {timeout_s} s "
                 f"and was terminated.", timed_out=True)
+        _kill_process_group(proc)
         return _isolated_error(
             f"The runner process was terminated (exit code {proc.exitcode}) before returning "
             f"a result, most likely out of memory. Server operators can see details in the "
@@ -530,6 +543,7 @@ def _run_isolated_blocking(module_name, func_name, payload, timeout_s, measured=
     proc.join(5)
     if proc.is_alive():
         proc.terminate()
+    _kill_process_group(proc)
     status, value = outcome
     return value if status == "ok" else _isolated_error(value)
 

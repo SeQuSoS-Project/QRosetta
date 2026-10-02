@@ -6,6 +6,8 @@ fails fast, and an in-sim exception is surfaced. Driven with asyncio.run.
 import asyncio
 import time
 
+import pytest
+
 from qrosetta_commons.helpers import run_isolated
 from tests.unit import _isolated_fixture as fx
 
@@ -29,6 +31,28 @@ def test_runaway_is_killed_at_the_budget():
     assert "SDK import" in r["error"]
     assert elapsed < 10, f"kill took too long: {elapsed:.1f}s"  # not the full 60s
     assert r["execution_time_sec"] is None and r["memory_usage_mb"] is None
+
+
+def _wait_until_gone(pid, seconds=5.0):
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        try:
+            with open(f"/proc/{pid}/stat") as fh:
+                if fh.read().split(") ", 1)[1].startswith("Z"):
+                    return True
+        except FileNotFoundError:
+            return True
+        time.sleep(0.05)
+    return False
+
+
+@pytest.mark.parametrize("return_early", [False, True])
+def test_a_subprocess_of_the_child_does_not_outlive_it(tmp_path, return_early):
+    pid_file = tmp_path / "pid"
+    r = _call(fx.starts_subprocess, {"pid_file": str(pid_file), "hard_timeout_seconds": 2,
+                                     "return_early": return_early})
+    assert ("error" in r) is not return_early
+    assert _wait_until_gone(int(pid_file.read_text())), "subprocess still running"
 
 
 def test_crash_fails_fast_not_at_deadline():
