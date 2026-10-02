@@ -184,8 +184,10 @@
                     operations, a <code>reset</code>, or an <code>if</code> is rejected with HTTP 400 in
                     statevector mode, because it has no single output statevector; run it in measured mode.
                     In measured mode these operations are passed to every backend; adapters that cannot
-                    simulate mid-circuit measurement, reset or classical control return an error for that
-                    backend.
+                    simulate them return an error for that backend. Qiskit and cuQuantum (Aer) run
+                    mid-circuit measurement, <code>reset</code> and <code>if</code>; Qrisp runs mid-circuit
+                    measurement and <code>if</code>; Cirq and qsim run mid-circuit measurement; the other
+                    backends refuse all three.
                 </p>
                 <p>
                     Statevector runs are limited to 18 qubits and measured runs to 24 (the server reports
@@ -861,10 +863,20 @@
                         <code>tk_to_quest</code>, <code>translate_cirq_to_qsim</code>, Aer's
                         <code>assemble_circuits</code> and run configuration) is in <code>compilation_time_sec</code>,
                         and the timed run applies the converted circuit with the same routine, options and seeds as
-                        the SDK call. Old and new paths gave identical statevectors (bit for bit) and identical
-                        counts under the same seed on over 1,500 random circuits per backend; on a 4-qubit,
-                        2,200-gate circuit, simulation time fell from 28–37 ms to 1.3–2.3 ms (Qulacs, QuEST, qsim,
-                        Qiskit; cuQuantum 50 to 13 ms) while the total stayed within 3%. Each adapter refuses to
+                        the SDK call. Old and new paths gave identical statevector bytes, identical counts under
+                        the same seed and identical executed texts in every case compared
+                        (<code>scripts/adapter_paths/compare_paths.py</code>): 1,080 to 2,200 cases per backend
+                        (a case is one circuit at one optimization level, with preprocessing on or off; a
+                        refusal counts only when both versions refused it the same way) from about 350
+                        random circuits of up to 40 gates and 10 qubits, plus 24 statevector and 16 measured
+                        cases per backend from circuits of 500–3,000 gates on up to 16 qubits. On a
+                        4-qubit, 2,200-gate circuit, simulation time fell from 28–37 ms to 1.3–2.3 ms in
+                        statevector mode (Qulacs, QuEST, qsim, Qiskit; cuQuantum 50 to 13 ms) and from
+                        30–103 ms to 1.9–8.6 ms in measured mode (cuQuantum 47 to 18 ms), with totals
+                        within 3%. Two measured totals fell further: qsim's by up to 24%, because assembling
+                        its per-shot records from qsim's raw samples now follows the timed run, and Qulacs's
+                        by 17% on QFT-16, because the old call also copied and phase-corrected the whole
+                        statevector, which sampling does not use. Each adapter refuses to
                         load with another version of the SDK whose call it reproduces. The disabled Braket and
                         ProjectQ runners still convert inside the call.</li>
                     <li><strong>Different gate counts for the same circuit.</strong> Each backend executes the circuit

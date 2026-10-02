@@ -101,7 +101,7 @@ def _compile(payload: dict, qasm: str, notes=()) -> CompileResult:
 
 def _final_state(compiled):
     """Apply the converted circuit to a fresh |0...0> state (QulacsBackend.process_circuits)."""
-    backend, compiled_circ, _, _, qulacs_circ = compiled.circuit
+    backend, compiled_circ, qulacs_circ = compiled.circuit[0], compiled.circuit[1], compiled.circuit[4]
     state = backend._sim(compiled_circ.n_qubits)
     state.set_zero_state()
     qulacs_circ.update_quantum_state(state)

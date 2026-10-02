@@ -18,3 +18,7 @@ podman exec $C sh -c 'cd /home/appuser/app && python compare_paths.py 200 measur
 Set `SINGLE_REGISTER=1` for adapters that need one quantum register when called without the
 API's register merge (qsim). Copy changed `shared/qrosetta_commons` files into the
 container's site-packages first if the image predates them.
+
+Options for `compare_paths.py` (environment variables): `MIN_GATES`/`MAX_GATES` (default 1/40),
+`MAX_QUBITS` (default 10), `TERMINAL_ONLY=1` (no mid-circuit measurement), `SINGLE_REGISTER=1`.
+`time_paths.py measured` times the measured endpoint (8200 shots, seed 1).

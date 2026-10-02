@@ -2,7 +2,6 @@
 
 Usage (inside the container): python compare_paths.py <n_circuits> [measured] [levels]
 main_old.py and main.py must sit in the working directory."""
-import base64
 import json
 import random
 import sys
@@ -27,8 +26,9 @@ def angle(rng):
 
 def random_circuit(rng, measured):
     import os
-    regs = ([rng.randint(1, 10)] if os.environ.get("SINGLE_REGISTER")
-            else rng.choice([[rng.randint(1, 8)], [rng.randint(1, 4), rng.randint(1, 4)]]))
+    max_qubits = int(os.environ.get("MAX_QUBITS", "10"))
+    regs = ([rng.randint(1, max_qubits)] if os.environ.get("SINGLE_REGISTER")
+            else rng.choice([[rng.randint(1, min(8, max_qubits))], [rng.randint(1, 4), rng.randint(1, 4)]]))
     names = ["q", "r"][:len(regs)]
     wires = [(n, i) for n, size in zip(names, regs) for i in range(size)]
     idle = set(rng.sample(wires, k=min(len(wires) - 1, rng.randint(0, 1)))) if len(wires) > 1 else set()
@@ -36,7 +36,8 @@ def random_circuit(rng, measured):
     lines = ['OPENQASM 2.0;', 'include "qelib1.inc";'] + [f"qreg {n}[{s}];" for n, s in zip(names, regs)]
     if measured:
         lines.append(f"creg c[{len(wires)}];")
-    for _ in range(rng.randint(1, 40)):
+    min_gates = int(os.environ.get("MIN_GATES", "1"))
+    for _ in range(rng.randint(min_gates, max(min_gates, int(os.environ.get("MAX_GATES", "40"))))):
         k = rng.choice([1, 1, 2, 2, 3]) if len(live) >= 3 else (rng.choice([1, 2]) if len(live) >= 2 else 1)
         ws = rng.sample(live, k)
         args = ",".join(f"{n}[{i}]" for n, i in ws)
@@ -49,7 +50,7 @@ def random_circuit(rng, measured):
         else:
             g = rng.choice(THREE)
         lines.append(f"{g} {args};")
-        if measured and rng.random() < 0.04:
+        if measured and not os.environ.get("TERMINAL_ONLY") and rng.random() < 0.04:
             n, i = rng.choice(live)
             lines.append(f"measure {n}[{i}] -> c[{rng.randrange(len(wires))}];")
     if measured:
