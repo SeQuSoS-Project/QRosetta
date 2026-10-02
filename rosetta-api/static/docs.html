@@ -1066,7 +1066,8 @@
                     them, and other jobs count a running compile in <code>server_overlapping_runs</code>.
                     The report is complete only when every compile has finished or timed out, so a slow
                     compile (BQSKit level 3 beyond a few qubits) delays it. Each compiler service runs two
-                    compiles at a time (each single-threaded, with its own CPU); a third waits in that
+                    compiles at a time (each single-threaded, with its own CPU; BQSKit one, since its runtime
+                    binds fixed ports); a third waits in that
                     service's queue, so a busy service can delay another client's compile; the live status grid lists each compile while it runs. A compile
                     that fails or times out is recorded with its status and reason and does not affect the
                     simulator results. A compile the adapter refuses (an input it cannot compile correctly,

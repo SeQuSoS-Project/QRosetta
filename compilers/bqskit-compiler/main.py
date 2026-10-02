@@ -52,12 +52,16 @@ def equivalent(input_qasm: str, output_qasm: str) -> bool:
     return distance < 1e-6
 
 
+# bqskit.compiler.Compiler binds fixed ports (7472 and 7474) for its runtime server and
+# workers, so two compiles in one container collide.
+SINGLE_COMPILE = 1
+
 @with_sdk_versions
 def process_compile(payload: dict) -> dict:
     return run_compile_job(compiler="bqskit", payload=payload, pipelines=PIPELINES)
 
 
-register_compiler_endpoint(app, process_compile)
+register_compiler_endpoint(app, process_compile, max_concurrent=SINGLE_COMPILE)
 
 if __name__ == "__main__":
     run_compiler_cli_main(app, process_compile, "BQSKit", levels=sorted(PIPELINES), equivalent=equivalent)
