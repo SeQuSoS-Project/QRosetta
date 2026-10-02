@@ -1,0 +1,51 @@
+diff -u a/algo.cpp b/algo.cpp
+--- a/synthetiq/algo.cpp
++++ b/synthetiq/algo.cpp
+@@ -42,6 +42,8 @@
+             save_times = true;
+         } else if (std::string(argv[arg]) == "--time" || std::string(argv[arg]) == "-t") {
+                 time_allowed = std::stod(argv[arg + 1]);
++        } else if (std::string(argv[arg]) == "--max-runs") {
++                max_runs = std::stoi(argv[arg + 1]);
+         } else if (std::string(argv[arg]) == "--circuits" || std::string(argv[arg]) == "-c") {
+                 n_found_stop = std::stoi(argv[arg + 1]);
+         } else if (std::string(argv[arg]) == "--gates"  || std::string(argv[arg]) == "-g") {
+@@ -154,6 +156,7 @@
+     std::cout << "Optimal gate count: " << optimal_gatecount << std::endl;
+     std::cout << "Cost required: " << cost_required << std::endl;
+     std::cout << "Time allowed: " << time_allowed << std::endl;
++    std::cout << "Max runs: " << max_runs << std::endl;
+     std::cout << "Start temp base: " << start_temp_base << std::endl;
+     std::cout << "Epsilon: " << epsilon << std::endl;
+     std::cout << "Beta: " << gateScheme.getBeta() << std::endl;
+@@ -304,7 +307,8 @@
+         algo2.set_exact_eq_comp(exact_comp);
+         Mutator mutator = Mutator(parser.pid, parser.pcomp);
+         algo2.set_mutator(std::make_shared<Mutator>(mutator));
+-        while (time_taken_total < parser.time_allowed && n_found_so_far < parser.n_found_stop && !stop_inner) {
++        while (time_taken_total < parser.time_allowed && n_found_so_far < parser.n_found_stop && !stop_inner
++               && (parser.max_runs < 0 || n_runs < parser.max_runs)) {
+             n_runs += 1;
+             std::shared_ptr<GateCircuit> circ_init;
+             int startGates = parser.gateScheme.getStartGates(random_helper);
+@@ -418,7 +422,8 @@
+  */
+ void Algorithm::run() {
+     int run = 0;
+-    while (time_taken_total < parser.time_allowed && n_found_so_far < parser.n_found_stop) {
++    while (time_taken_total < parser.time_allowed && n_found_so_far < parser.n_found_stop
++           && (parser.max_runs < 0 || n_runs < parser.max_runs)) {
+         std::shared_ptr<QubitIndependentPartialMatrix> matrix = initMatrix();
+         run_inner_loop(matrix, run);
+         t2_total = std::chrono::high_resolution_clock::now();
+diff -u a/algo.h b/algo.h
+--- a/synthetiq/algo.h
++++ b/synthetiq/algo.h
+@@ -36,6 +36,7 @@
+         double cost_required = -1;
+         
+         double time_allowed = 100.0;
++        int max_runs = -1;
+         double start_temp_base = 0.1;
+         double epsilon = 1e-6;
+ 

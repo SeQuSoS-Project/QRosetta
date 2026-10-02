@@ -1233,6 +1233,21 @@
                             gates), about 50 s for 8000 gates; a compile past the job's timeout is recorded as
                             a timeout. Up to 10 qubits every output is checked against the input with
                             Qiskit.</td></tr>
+                        <tr><td>Synthetiq (commit 59a0cc6)</td><td>0, 1</td><td>For Clifford+T circuits of up to 3
+                            qubits. Qiskit translates the circuit exactly to <code>h</code>, <code>rz</code> and
+                            <code>cx</code>; a circuit is refused unless every <code>rz</code> angle is a multiple of
+                            π/4 (so a circuit whose other angles cancel is refused too). Synthetiq then synthesises a
+                            new Clifford+T circuit for the circuit's unitary by simulated annealing and simplifies it,
+                            minimising its cost (T and T† 1, CX 0.1, H, S, S† 0.01). Level 0 returns the first
+                            circuit found within 1,000 annealing runs, level 1 the cheapest of the first 5 within
+                            2,000. It runs on one thread and annealing run r is seeded with r, so the output, or the
+                            failure to find one within the runs, depends only on the input; the image adds a
+                            <code>--max-runs</code> option to Synthetiq (<code>max-runs.patch</code>) for that, since
+                            Synthetiq itself stops on wall-clock time. A 3-qubit run takes about 80 ms, so a hard
+                            circuit can take a few minutes and then ends at the job's timeout. Built without
+                            <code>-march=native</code> or <code>-ffast-math</code>. Every output is checked against
+                            the input with Qiskit; final measurements are kept, mid-circuit measurement is
+                            refused.</td></tr>
                     </tbody>
                 </table>
                 <p>

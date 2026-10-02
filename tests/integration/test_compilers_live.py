@@ -70,7 +70,7 @@ def test_every_enabled_compiler_is_available():
 
 
 @pytest.mark.skipif(CONTAINER_RUNTIME is None, reason="no container runtime to reach the images")
-@pytest.mark.parametrize("compiler", ["bqskit", "pyzx", "qmap", "cirq", "staq", "qsynth", "quartz"])
+@pytest.mark.parametrize("compiler", ["bqskit", "pyzx", "qmap", "cirq", "staq", "qsynth", "quartz", "synthetiq"])
 def test_image_self_test_passes(compiler):
     result = subprocess.run([CONTAINER_RUNTIME, "exec", f"{compiler}-compiler", "python", "main.py", "--self-test"],
                             capture_output=True, text=True, timeout=900)
@@ -78,9 +78,13 @@ def test_image_self_test_passes(compiler):
     assert result.returncode == 0 and not failures, failures or result.stderr[-500:]
 
 
+CLIFFORD_T_ONLY = {"synthetiq"}
+
+
 @pytest.mark.parametrize("probe", sorted(SELF_TEST_PROBES))
 def test_every_level_compiles_each_probe_through_the_api(probe):
-    compilers = {c["id"]: [int(level) for level in c["optimization_levels"]] for c in _compilers()}
+    compilers = {c["id"]: [int(level) for level in c["optimization_levels"]] for c in _compilers()
+                 if c["id"] not in CLIFFORD_T_ONLY}
     report = _run(_PROBE_HEADER + SELF_TEST_PROBES[probe], compilers)
     compile_input = report["compile_input"]["qasm"]
     records = report["compiled_circuits"]
@@ -92,6 +96,17 @@ def test_every_level_compiles_each_probe_through_the_api(probe):
         assert (record["gate_count"], record["circuit_depth"]) == count_qasm_gates_and_depth(text)
         assert _equivalent(compile_input, record), record["compiler"]
     assert [r["simulator"] for r in report["raw_results"]] == ["qiskit"]
+
+
+def test_synthetiq_compiles_a_clifford_t_circuit_and_refuses_other_angles():
+    qasm = _PROBE_HEADER + "h q[0];\ncu1(pi/2) q[0],q[1];\nccx q[0],q[1],q[2];\ntdg q[2];\n"
+    report = _run(qasm, {"synthetiq": [0, 1]})
+    for record in report["compiled_circuits"]:
+        assert record["dispatch_status"] == "ok", record.get("error")
+        assert _equivalent(report["compile_input"]["qasm"], record), record["compiler"]
+        assert [c["name"] for c in record["native_components"]] == ["synthetiq"]
+    (refused,) = _run(_PROBE_HEADER + "rx(0.3) q[0];\n", {"synthetiq": [0]})["compiled_circuits"]
+    assert refused["refusal_kind"] == "input" and "multiple of pi/4" in refused["refusal"]
 
 
 def test_cirq_refuses_a_cu3_it_would_import_wrongly():

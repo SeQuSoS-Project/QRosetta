@@ -39,6 +39,7 @@ declare -A SERVICE_MAP=(
     ["staq-compiler"]="staq_compiler"
     ["qsynth-compiler"]="qsynth_compiler"
     ["quartz-compiler"]="quartz_compiler"
+    ["synthetiq-compiler"]="synthetiq_compiler"
 )
 
 if [ $# -gt 0 ]; then

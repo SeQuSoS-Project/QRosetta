@@ -142,13 +142,15 @@ def register_compiler_endpoint(app, process_compile, max_concurrent=None) -> Non
         return await slots.run(process_compile, payload.model_dump(), measured=False)
 
 
-def run_compiler_self_test(process_compile, levels, equivalent, out=None, extra_probes=None) -> int:
-    """Compile every SELF_TEST_PROBES circuit at every level and check that the output
-    declares as many qubits as the input and passes ``equivalent(input_qasm, output_qasm)``.
-    Prints ``PASS``/``FAIL`` per case and returns the number of failures."""
+def run_compiler_self_test(process_compile, levels, equivalent, out=None, extra_probes=None,
+                           probes=None) -> int:
+    """Compile every probe circuit (``probes``, default SELF_TEST_PROBES, plus
+    ``extra_probes``) at every level and check that the output declares as many qubits as
+    the input and passes ``equivalent(input_qasm, output_qasm)``. Prints ``PASS``/``FAIL``
+    per case and returns the number of failures."""
     out = out or sys.stdout
     failed = 0
-    for name, body in {**SELF_TEST_PROBES, **(extra_probes or {})}.items():
+    for name, body in {**(SELF_TEST_PROBES if probes is None else probes), **(extra_probes or {})}.items():
         qasm = _PROBE_HEADER + body
         for level in levels:
             result = process_compile({"circuit_data": qasm, "optimization_level": level})
@@ -172,7 +174,7 @@ def run_compiler_self_test(process_compile, levels, equivalent, out=None, extra_
 
 
 def run_compiler_cli_main(app, process_compile, cli_name: str, levels=(), equivalent=None,
-                          extra_probes=None) -> None:
+                          extra_probes=None, probes=None) -> None:
     """Compiler entrypoint: with no args serve ``app``; with ``--endpoint compile`` run one
     job from ``--payload`` or ``--s3-job-id`` (the Kubernetes path); with ``--self-test``
     run ``run_compiler_self_test`` and exit non-zero on a failure."""
@@ -192,7 +194,7 @@ def run_compiler_cli_main(app, process_compile, cli_name: str, levels=(), equiva
     args = parser.parse_args()
     if args.self_test:
         sys.exit(1 if run_compiler_self_test(process_compile, levels, equivalent,
-                                             extra_probes=extra_probes) else 0)
+                                             extra_probes=extra_probes, probes=probes) else 0)
     if args.endpoint is None:
         parser.error("--endpoint is required unless --self-test is given")
 

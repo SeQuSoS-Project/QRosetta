@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     STAQ_COMPILER_URL: str = "http://staq-compiler:8000"
     QSYNTH_COMPILER_URL: str = "http://qsynth-compiler:8000"
     QUARTZ_COMPILER_URL: str = "http://quartz-compiler:8000"
+    SYNTHETIQ_COMPILER_URL: str = "http://synthetiq-compiler:8000"
     MAX_COMPILE_JOBS: int = 15
 
     PLATFORM_VERSION: str = os.getenv("QROSETTA_VERSION", "1.0.0")
@@ -349,6 +350,15 @@ class Settings(BaseSettings):
                 "enabled": True,
                 "optimization_levels": {
                     0: "Decompose to h+x+rz+cx (Qiskit), then greedy rewriting with a generated ECC set until no rewrite lowers the gate count",
+                },
+            },
+            "synthetiq": {
+                "base_url": self.SYNTHETIQ_COMPILER_URL,
+                "name": "Synthetiq",
+                "enabled": True,
+                "optimization_levels": {
+                    0: "Clifford+T circuits of up to 3 qubits: Synthetiq synthesises a new Clifford+T circuit for the unitary (simulated annealing, first circuit found within 1000 runs)",
+                    1: "As level 0, the lowest-cost of the first 5 circuits found within 2000 runs",
                 },
             },
         }

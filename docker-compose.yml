@@ -561,6 +561,28 @@ services:
           cpus: "2.0"
           memory: "2G"
 
+  synthetiq_compiler:
+    build:
+      context: .
+      dockerfile: ./compilers/synthetiq-compiler/Dockerfile
+      args:
+        - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+    container_name: synthetiq-compiler
+    environment:
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
+      - NUMBA_NUM_THREADS=1
+      - COMPILER_MAX_CONCURRENT=${COMPILER_MAX_CONCURRENT:-2}
+    networks:
+      - isolated_net
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: "2G"
+
 # --- NETWORK DEFINITIONS ---
 networks:
   public_net:
