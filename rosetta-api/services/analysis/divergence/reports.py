@@ -21,6 +21,7 @@ from .statevector import (
     _normalize_statevector, _statevector_inner_metrics,
     _statevector_invalid_reason, parse_statevector,
 )
+from .marginals import apply_marginal_correction, marginal_block
 from .statistics import (
     _apply_multiple_comparison_correction,
     _statistical_agreement_test,
@@ -462,6 +463,8 @@ def _compare_counts_pair(res_i, res_j, is_cross_group, js_threshold, hellinger_t
         counts_i, counts_j_aligned, basis, sim_i, sim_j, res_i=res_i, res_j=res_j
     )
     record["metrics"]["statistical_test"] = stat_block
+    record["metrics"]["marginal_test"] = marginal_block(
+        counts_i, counts_j_aligned, res_i.get("qubit_ordering"))
     metrics = record["metrics"]
     return record, stat_block, (
         js_div, h_dist,
@@ -575,6 +578,11 @@ def create_counts_report(results_list, n_shots, thresholds=None):
         assessment_counts[record["measured_assessment"]] = (
             assessment_counts.get(record["measured_assessment"], 0) + 1)
     statistical_test_summary["measured_assessment_counts"] = assessment_counts
+    marginal_blocks = [b for b in ((r.get("metrics") or {}).get("marginal_test") for r in pairwise_agreement) if b]
+    statistical_test_summary["marginal_test_summary"] = apply_marginal_correction(marginal_blocks)
+    for record in pairwise_agreement:
+        block = (record.get("metrics") or {}).get("marginal_test")
+        record["marginal_assessment"] = block["assessment"] if block else "not_applicable"
 
     ordering_map = {res.get('simulator'): res.get('qubit_ordering') for res in results_list if "qubit_ordering" in res}
     return {

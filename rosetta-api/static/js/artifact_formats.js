@@ -400,7 +400,7 @@ export const MEASUREMENT_NOTES = [
     'Outcomes with an expected count below 5 are pooled into one bin before the chi-square and G-tests; statistical_test.pooled_outcomes gives how many were pooled.',
     'Benjamini-Yekutieli controls the false discovery rate at q = alpha under arbitrary dependence between the p-values; pairs that share a backend reuse its sample and are dependent. Its threshold is alpha·i/(m·c_m) with c_m = 1 + 1/2 + ... + 1/m. BH-adjusted p-values are recorded for reference (p_value_bh) and do not set the verdict.',
 ];
-export const ANALYSIS_VERSION = 'divergence-2026.09.30.2';
+export const ANALYSIS_VERSION = 'divergence-2026.10.02.1';
 export const ANALYSIS_VERSION_NOTE = `Analysis version ${ANALYSIS_VERSION} (analysis_version in each divergence report). The `
     + 'labels and verdicts are a function of the outputs and of the analysis rules; verdicts '
     + 'computed under different analysis versions may differ for identical counts.';

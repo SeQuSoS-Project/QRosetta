@@ -720,6 +720,26 @@
                     backends never draw the same shot sequence; <code>shared_seed</code> records whether a
                     pair's runner seeds were equal.
                 </p>
+                <p>
+                    <strong>Single-bit marginals.</strong> A circuit with many outcomes (256 or more) often
+                    gets <code>inconclusive_low_shots</code> at the default shots, because most outcomes are
+                    seen a few times. As a second, separate analysis every pair whose keys have two or more
+                    bits is also compared bit by bit: for each classical bit, the two backends' counts of
+                    that bit being 0 and 1 form a 2&times;2 table, tested with the same chi-square and G-test.
+                    All bit tests of all pairs form one Benjamini–Yekutieli family at α&nbsp;=&nbsp;0.05, and
+                    a bit differs when both tests are significant. A bit with an expected count below 5 is
+                    not tested. Equal distributions have equal marginals, so a differing bit shows that the
+                    two distributions differ; marginals that do not differ do not show that they agree.
+                    Each pair records <code>marginal_assessment</code>
+                    (<code>marginal_distinguishable</code>, <code>no_marginal_difference_detected</code>,
+                    <code>not_tested</code> or <code>not_applicable</code>) and
+                    <code>metrics.marginal_test</code> (each bit's P(1) on both sides, raw and adjusted
+                    p-values); <code>measured_assessment</code> is not changed by it. The Summary lists
+                    pairs whose marginals differ in their own block. In a simulation with 14 backends sampling
+                    the same distribution over 16 independent bits at 8,200 shots, 0 of 60 runs had a
+                    differing marginal; with one backend's bit off by 0.05 in P(1), 99.7% of its pairs were
+                    flagged.
+                </p>
             </section>
 
             <section id="reproducibility">

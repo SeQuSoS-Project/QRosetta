@@ -367,6 +367,28 @@ function _inconclusiveBlocks(panel, pairs) {
  * group; the descriptive distance label is shown as detail. Only "distinguishable" is a
  * disagreement.
  */
+function _marginalItem(p) {
+    const block = p.metrics?.marginal_test || {};
+    const bits = (block.bits || []).filter(b => b.differs);
+    const detail = bits.map(b => `clbit ${b.clbit}: P(1) ${fmtNum(b.p_one?.[0])} vs ${fmtNum(b.p_one?.[1])} `
+        + `(adjusted p ${fmtPValue(Math.max(b.chi2_p_value_by ?? 1, b.g_p_value_by ?? 1))})`).join('; ');
+    return _pairItem(p, detail);
+}
+
+/** Pairs whose single-bit marginals differ: a secondary test with its own BY family. */
+function _renderMarginalBlock(panel, pairs, data, alpha) {
+    const flagged = pairs.filter(p => p.marginal_assessment === 'marginal_distinguishable');
+    if (!flagged.length) return;
+    const summary = data.divergence_report?.statistical_test_summary?.marginal_test_summary || {};
+    const block = _block(`Single-bit marginals differ (${flagged.length})`, 'anomaly', flagged.map(_marginalItem));
+    _note(block, `For each classical bit, the two backends' counts of that bit being 0 and 1 are compared (chi-square and `
+        + `G-test, Benjamini–Yekutieli over all ${summary.family_size ?? '—'} bit tests at q = ${alpha ?? '—'}, both required). `
+        + 'Equal distributions have equal marginals, so a differing bit shows the two distributions differ, also where '
+        + 'the full-distribution test has too few shots. Pairs not listed may still differ: equal marginals do not show '
+        + 'agreement. The shot-noise assessments below are unchanged by this test.');
+    panel.appendChild(block);
+}
+
 function _renderMeasuredBlocks(panel, pairs, tol, data, alpha) {
     const groups = { consistent_within_shot_noise: [], inconclusive_low_shots: [], distinguishable: [], ambiguous: [], untested: [] };
     pairs.forEach(p => {
@@ -382,7 +404,8 @@ function _renderMeasuredBlocks(panel, pairs, tol, data, alpha) {
 
     const allConsistent = comparable.length === pairs.length
         && groups.consistent_within_shot_noise.length === pairs.length
-        && pairs.every(_agreesInLabelAlignedBasis);
+        && pairs.every(_agreesInLabelAlignedBasis)
+        && !pairs.some(p => p.marginal_assessment === 'marginal_distinguishable');
     if (allConsistent) {
         const frag = _cloneTemplate('tpl-summary-success-banner');
         frag.querySelector('.tpl-msg').textContent = `All ${pairs.length} pairs are consistent within shot noise (${test}) `
@@ -405,6 +428,7 @@ function _renderMeasuredBlocks(panel, pairs, tol, data, alpha) {
     ov.textContent = `Of ${pairs.length} pairs: ${parts.join(', ')}; ${pairs.length - comparable.length} not comparable (${test}). `
         + 'Each pair is listed once, under its shot-noise assessment; the JS/Hellinger distance label is shown beside it.';
     panel.appendChild(ov);
+    _renderMarginalBlock(panel, pairs, data, alpha);
 
     if (groups.distinguishable.length) {
         const block = _block(`Distinguishable beyond shot noise (${groups.distinguishable.length})`, 'anomaly',
