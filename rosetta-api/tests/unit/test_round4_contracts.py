@@ -192,11 +192,14 @@ def _binary_nest(depth):
 
 def test_user_gate_applications_are_counted_through_definitions():
     from services.validator import expanded_counts
-    assert expanded_counts(_binary_nest(12)) == (8193, 8191)
+    assert expanded_counts(_binary_nest(11)) == (4097, 4094)
     flat = 'OPENQASM 2.0;\ninclude "qelib1.inc";\ngate g a,b { cx a,b; }\nqreg q[2];\nqreg r[3];\ng q[0],q[1];\ng r,r;\n'
-    assert expanded_counts(flat) == (4, 4)
+    assert expanded_counts(flat) == (4, 0)
+    fan = 'OPENQASM 2.0;\ninclude "qelib1.inc";\ngate g a { x a; }\ngate f a { g a; g a; g a; }\nqreg q[2];\nf q;\n'
+    assert expanded_counts(fan) == (6, 6)
 
 
 def test_too_many_user_gate_applications_are_400(client):
-    r = client.post("/compare", json={"qasm_string": _binary_nest(13)})
-    assert r.status_code == 400 and "16383 applications of user-defined gates" in r.json()["detail"]
+    assert client.post("/compare", json={"qasm_string": _binary_nest(12)}).status_code == 400
+    r = client.post("/compare", json={"qasm_string": _binary_nest(12)})
+    assert "8190 applications of user-defined gates from inside gate definitions" in r.json()["detail"]

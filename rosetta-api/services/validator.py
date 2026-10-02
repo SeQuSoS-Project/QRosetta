@@ -267,11 +267,11 @@ _BARE_REG_RE = re.compile(r"(?<![\w\[])([A-Za-z_]\w*)(?!\s*\[)")
 
 
 def expanded_counts(qasm: str, statements: list = None) -> tuple:
-    """(gate applications, user-gate applications) the circuit expands to. Each top-level
-    operation counts the gates of its definition (recursively through user gate
-    definitions; built-in gates count 1) and the user-gate applications in that expansion
-    (itself and every nested call), times the size of the largest register it is broadcast
-    over."""
+    """(gate applications, nested user-gate applications) the circuit expands to. Each
+    top-level operation counts the gates of its definition (recursively through user gate
+    definitions; built-in gates count 1) and the applications of user-defined gates made from
+    inside gate definitions in that expansion, times the size of the largest register it is
+    broadcast over."""
     statements = split_statements(qasm) if statements is None else statements
     sizes = {name: int(size) for name, size in re.findall(r"\bqreg\s+(\w+)\s*\[\s*(\d+)\s*\]", qasm)}
     cost, calls = {}, {}
@@ -284,9 +284,10 @@ def expanded_counts(qasm: str, statements: list = None) -> tuple:
             op = _NAME_RE.match(inner.strip())
             if op:
                 total += cost.get(op.group(0), 1)
-                nested += calls.get(op.group(0), 0)
+                if op.group(0) in calls:
+                    nested += 1 + calls[op.group(0)]
         cost[m.group(1)] = max(total, 1)
-        calls[m.group(1)] = 1 + nested
+        calls[m.group(1)] = nested
     count, call_count = 0, 0
     for stmt in statements:
         if _NON_OPERATION_RE.match(stmt):
@@ -355,13 +356,13 @@ def validate_request(qasm: str, mode: str = "statevector", bypass_limits: bool =
                     detail=(f"Circuit too complex: it expands to {expanded} gate applications "
                             f"through its gate definitions and register broadcasts, above the "
                             f"limit of {settings.MAX_EXPANDED_GATES}."))
-            if user_calls > settings.MAX_EXPANDED_GATE_CALLS:
+            if user_calls > settings.MAX_NESTED_GATE_CALLS:
                 raise HTTPException(
                     status_code=400,
-                    detail=(f"Circuit too complex: it expands to {user_calls} applications of "
-                            f"user-defined gates (counting calls inside gate definitions), above "
-                            f"the limit of {settings.MAX_EXPANDED_GATE_CALLS}. Parsers that keep "
-                            f"a copy of the definition per application need memory for each."))
+                    detail=(f"Circuit too complex: its expansion makes {user_calls} applications "
+                            f"of user-defined gates from inside gate definitions, above the limit "
+                            f"of {settings.MAX_NESTED_GATE_CALLS}. Parsers that keep a copy of each "
+                            f"nested definition per application need memory for every one."))
     check_parameter_values(qasm, statements, check_calls=check_reserved_names)
     if apply_preprocessing:
         check_parameter_expressions(qasm)
