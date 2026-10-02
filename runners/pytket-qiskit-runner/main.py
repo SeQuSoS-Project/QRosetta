@@ -13,6 +13,7 @@ from qrosetta_commons.counts import (
     statevector_in_declaration_order, unordered_qreg_note,
 )
 from qrosetta_commons.qiskit_circuits import exact_qasm2_dumps
+from qrosetta_commons import aer_split
 from qrosetta_commons.helpers import (
     CompileResult, declare_sdk_packages, get_logger, register_runner_endpoints,
     run_cli_main, run_measured_job, run_statevector_job, with_sdk_versions,
@@ -46,6 +47,9 @@ _SAVE_STATEVECTOR_NOTE = (
     "qiskit_aer save_statevector(): appended so Aer returns the final state; transpiled_qasm "
     "is the circuit before it. Required by the adapter, applied regardless of "
     "apply_preprocessing.")
+
+
+aer_split.require_aer("qiskit-aer")
 
 
 def _simulator():
@@ -161,19 +165,22 @@ def process_run(payload: dict) -> dict:
         backend_qubits = _qubit_pairs(qiskit_circ)
         executed_circ = qiskit_circ.copy()
         executed_circ.save_statevector()
+        prepared = aer_split.prepare(sim, executed_circ, optimization_level=0)
         return CompileResult(
-            circuit=(sim, executed_circ, backend_qubits, qiskit_circ),
+            circuit=(sim, prepared, backend_qubits, qiskit_circ),
             n_qubits=tk_circ.n_qubits,
-            preprocessing_applied=strip_notes + preprocessing_applied + [_SAVE_STATEVECTOR_NOTE])
+            preprocessing_applied=strip_notes + preprocessing_applied
+            + [_SAVE_STATEVECTOR_NOTE, aer_split.PREPARE_NOTE])
 
     def serialize_statevector_circuit(compiled):
         return exact_qasm2_dumps(compiled.circuit[3])
 
     def execute(compiled, _payload):
-        backend, executed_circ, *_ = compiled.circuit
-        return backend.run(executed_circ, optimization_level=0).result()
+        backend, prepared, *_ = compiled.circuit
+        return aer_split.execute(backend, prepared)
 
-    def shape_statevector(aer_result, compiled, payload):
+    def shape_statevector(output, compiled, payload):
+        aer_result = aer_split.format_result(sim, compiled.circuit[1], output)
         backend_fields.update(_backend_fields(aer_result, sim))
         return statevector_in_declaration_order(
             aer_result.get_statevector(), payload["circuit_data"], compiled.circuit[2], "lsb",
@@ -197,22 +204,24 @@ def process_run_measured(payload: dict) -> dict:
 
     def compile_step(payload):
         tk_circ, qiskit_circ, preprocessing_applied = _to_qiskit(payload["circuit_data"], payload)
+        prepared = aer_split.prepare(
+            sim, qiskit_circ, optimization_level=0, shots=payload.get("n_shots", 1024),
+            seed_simulator=payload.get("seed"))
         return CompileResult(
-            circuit=(sim, qiskit_circ),
+            circuit=(sim, qiskit_circ, prepared),
             n_qubits=tk_circ.n_qubits,
-            preprocessing_applied=preprocessing_applied + [_COUNTS_KEY_NOTE])
+            preprocessing_applied=preprocessing_applied + [_COUNTS_KEY_NOTE, aer_split.PREPARE_NOTE])
 
     def serialize(compiled):
         return exact_qasm2_dumps(compiled.circuit[1])
 
-    def execute(compiled, payload):
-        backend, qiskit_circ = compiled.circuit
-        return backend.run(
-            qiskit_circ, optimization_level=0, shots=payload.get("n_shots", 1024),
-            seed_simulator=payload.get("seed")).result()
+    def execute(compiled, _payload):
+        backend, _qiskit_circ, prepared = compiled.circuit
+        return aer_split.execute(backend, prepared)
 
-    def shape_counts(aer_result, compiled, payload):
+    def shape_counts(output, compiled, payload):
         """Re-key Aer counts over the circuit's declared classical bits (lsb)."""
+        aer_result = aer_split.format_result(sim, compiled.circuit[2], output)
         backend_fields.update(_backend_fields(aer_result, sim))
         registers = [(reg.name, reg.size) for reg in compiled.circuit[1].cregs]
         layout = parse_measurement_layout(payload["circuit_data"])

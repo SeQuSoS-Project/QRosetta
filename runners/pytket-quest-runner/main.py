@@ -4,21 +4,24 @@ QuEST has no shot sampler here, so the measured endpoint samples the computed st
 """
 
 from fastapi import FastAPI
+import numpy as np
 import pytket.qasm
-from pytket.extensions.quest import QuESTBackend
+from pytket.backends.backendresult import BackendResult
+from pytket.extensions.quest import QuESTBackend, tk_to_quest
 from qrosetta_commons.counts import (
     PYTKET_BROADCAST_REASON, PYTKET_QASM_MAXWIDTH, expand_register_broadcasts,
     parse_measurement_layout, prepare_final_state_sampling, prepare_statevector_qasm,
     statevector_in_declaration_order, unit_pairs, unordered_qreg_note,
 )
 from qrosetta_commons.helpers import (
-    CompileResult, _draw_statevector_samples, declare_sdk_packages, get_logger,
-    register_runner_endpoints, run_cli_main, run_measured_job, run_statevector_job,
-    with_sdk_versions,
+    CompileResult, declare_sdk_packages, _draw_statevector_samples, get_logger,
+    register_runner_endpoints, require_distribution_version, run_cli_main, run_measured_job,
+    run_statevector_job, with_sdk_versions,
 )
 from pytket.passes import RemoveBarriers
 
 declare_sdk_packages("pytket", "pytket-quest", "pyquest")
+require_distribution_version("pytket-quest", "0.1.0", "QuESTBackend.process_circuits")
 
 app = FastAPI(title="QuEST Runner")
 logger = get_logger("pytket-quest-runner")
@@ -26,6 +29,14 @@ logger = get_logger("pytket-quest-runner")
 _REMOVE_BARRIERS_NOTE = (
     "pytket.passes.RemoveBarriers(): Removes barrier instructions from the circuit to "
     "prevent parsing failures in the QuEST backend adapter.")
+
+_CONVERT_NOTE = (
+    "pytket QuESTBackend's circuit checks and tk_to_quest(reverse_index=True, "
+    "replace_implicit_swaps=True) run after the default compilation pass, inside "
+    "compilation_time; the timed run applies the converted circuit to a fresh QuEST "
+    "register, as QuESTBackend.process_circuits does, and reads the amplitudes. The global "
+    "phase of the pytket circuit is restored after the timed run (before sampling, in "
+    "measured mode).")
 
 _PASS_NOTES = {}
 
@@ -66,9 +77,12 @@ def _compile(payload: dict, qasm: str, notes) -> CompileResult:
     opt_level = min(payload.get("optimization_level", 0), 2)
     compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=opt_level)
     preprocessing_applied.append(_compilation_note(backend, opt_level))
+    backend._check_all_circuits([compiled_circ], nomeasure_warn=False)
+    quest_circ = tk_to_quest(compiled_circ, reverse_index=True, replace_implicit_swaps=True)
+    preprocessing_applied.append(_CONVERT_NOTE)
 
     return CompileResult(
-        circuit=(backend, compiled_circ, unit_pairs(tk_circ.qubits)),
+        circuit=(backend, (compiled_circ, quest_circ), unit_pairs(tk_circ.qubits)),
         n_qubits=tk_circ.n_qubits,
         preprocessing_applied=preprocessing_applied)
 
@@ -87,8 +101,22 @@ def _compile_sampled(payload: dict) -> CompileResult:
     return compiled
 
 
+def _final_amplitudes(compiled):
+    """Apply the converted circuit to a fresh register (QuESTBackend.process_circuits)."""
+    backend, (compiled_circ, quest_circ) = compiled.circuit[:2]
+    register = backend._sim(compiled_circ.n_qubits, backend._density_matrix)
+    register.apply_circuit(quest_circ)
+    return register[:]
+
+
+def _state(amplitudes, compiled_circ):
+    """The statevector with the pytket circuit's global phase, as BackendResult.get_state()."""
+    amplitudes = amplitudes * np.exp(float(compiled_circ.phase) * np.pi * 1j)
+    return BackendResult(state=amplitudes, q_bits=sorted(compiled_circ.qubits, reverse=False)).get_state()
+
+
 def _serialize(compiled: CompileResult) -> str:
-    circ = compiled.circuit[1]
+    circ = compiled.circuit[1][0]
     return pytket.qasm.circuit_to_qasm_str(circ, maxwidth=max(32, len(circ.bits)))
 
 
@@ -97,13 +125,12 @@ def process_run(payload: dict) -> dict:
     logger.info("Received circuit data for QuEST simulation.")
 
     def execute(compiled, _payload):
-        backend, compiled_circ, _ = compiled.circuit
-        return backend.get_result(backend.process_circuit(compiled_circ))
+        return _final_amplitudes(compiled)
 
-    def to_state(result, compiled, payload):
+    def to_state(amplitudes, compiled, payload):
         return statevector_in_declaration_order(
-            result.get_state(), payload["circuit_data"], compiled.circuit[2], "msb",
-            compiled.preprocessing_applied)
+            _state(amplitudes, compiled.circuit[1][0]), payload["circuit_data"],
+            compiled.circuit[2], "msb", compiled.preprocessing_applied)
 
     return run_statevector_job(
         simulator="quest", payload=payload, logger=logger, compile_fn=_compile_statevector,
@@ -116,9 +143,7 @@ def process_run_measured(payload: dict) -> dict:
     logger.info("Received measured circuit data for QuEST (statevector sampling).")
 
     def execute(compiled, payload):
-        backend, compiled_circ, _layout, _qubits = compiled.circuit
-        handle = backend.process_circuit(compiled_circ)
-        statevector = backend.get_result(handle).get_state()
+        statevector = _state(_final_amplitudes(compiled), compiled.circuit[1][0])
         return _draw_statevector_samples(
             statevector, payload.get("n_shots", 1024), payload.get("seed"))
 

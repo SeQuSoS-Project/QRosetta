@@ -14,7 +14,8 @@ from qrosetta_commons.counts import (
 )
 from qrosetta_commons.helpers import (
     CompileResult, declare_sdk_packages, get_logger, register_runner_endpoints,
-    run_cli_main, run_measured_job, run_statevector_job, runner_error, with_sdk_versions,
+    require_distribution_version, run_cli_main, run_measured_job, run_statevector_job,
+    runner_error, with_sdk_versions,
 )
 import pytket.qasm
 from pytket.circuit import Circuit, OpType
@@ -26,6 +27,10 @@ import numpy as np
 
 try:
     import qsimcirq
+    import qsimcirq.qsim_circuit as qsimc
+    from qsimcirq.qsim_simulator import _needs_trajectories
+    require_distribution_version(
+        "qsimcirq", "0.22.0", "QSimSimulator._simulate_impl and _sample_measure_results")
     QSIM_AVAILABLE = True
 except ImportError:
     QSIM_AVAILABLE = False
@@ -143,6 +148,79 @@ def _to_cirq_circuit(payload: dict, qasm: str, notes=()):
     return circ, _cirq_qubits(tk_circ), unit_pairs(tk_circ.bits), preprocessing_applied
 
 
+_TRANSLATE_NOTE = (
+    "qsimcirq.QSimCircuit(circuit).translate_cirq_to_qsim(qubit order) runs after the Cirq "
+    "conversion, inside compilation_time; the timed run calls qsim's own simulation routine "
+    "with that translated circuit and the simulator's options, as QSimSimulator.simulate / "
+    "run do (qsim_simulate_fullstate for the statevector; qsim_sample_final, or one "
+    "qsim_sample per shot when a measurement is not terminal or there is one shot, for "
+    "counts). Wrapping the output into Cirq's result objects follows the timed run.")
+
+
+def _translated(simulator, circuit, qubit_order):
+    """(options with the translated circuit, qsim order) as QSimSimulator._simulate_impl /
+    _sample_measure_results build them; the caller sets options["s"] per run."""
+    program = qsimc.QSimCircuit(circuit)
+    if _needs_trajectories(program):
+        raise ValueError("the circuit needs qsim's trajectory simulator, which this adapter does not run")
+    order = cirq.QubitOrder.as_qubit_order(qubit_order).order_for(program.all_qubits())
+    solved = cirq.resolve_parameters(program, cirq.ParamResolver({}))
+    options = dict(simulator.qsim_options)
+    options["c"], _ = solved.translate_cirq_to_qsim(order)
+    return options, order
+
+
+def _sampling_plan(simulator, circuit, repetitions):
+    """What QSimSimulator._sample_measure_results computes before sampling, for ``circuit``."""
+    solved = cirq.resolve_parameters(circuit, cirq.ParamResolver({}))
+    all_qubits = solved.all_qubits()
+    program = qsimc.QSimCircuit(solved)
+    if _needs_trajectories(program):
+        raise ValueError("the circuit needs qsim's trajectory simulator, which this adapter does not run")
+    ordered = cirq.QubitOrder.DEFAULT.order_for(all_qubits)
+    qubit_map = {qubit: index for index, qubit in enumerate(ordered)}
+    meas_ops, n_by_key, infos, num_bits = {}, {}, [], 0
+    for _, op, _ in program.findall_operations_with_gate_type(cirq.MeasurementGate):
+        key = cirq.measurement_key_name(op.gate)
+        meas_ops.setdefault(key, [])
+        index = len(meas_ops[key])
+        meas_ops[key].append(op)
+        n = len(op.qubits)
+        if key in n_by_key and n != n_by_key[key]:
+            raise ValueError(f"repeated key {key!r} with different numbers of qubits")
+        n_by_key.setdefault(key, n)
+        infos.append((key, index, op.gate.full_invert_mask(), num_bits, num_bits + n))
+        num_bits += n
+    final = program.are_all_measurements_terminal() and repetitions > 1
+    if final:
+        for i in range(len(program.moments)):
+            program.moments[i] = cirq.Moment(
+                op if not isinstance(op.gate, cirq.MeasurementGate)
+                else [cirq.IdentityGate(1).on(q) for q in op.qubits]
+                for op in program.moments[i])
+    options = dict(simulator.qsim_options)
+    options["c"], _ = program.translate_cirq_to_qsim(cirq.QubitOrder.DEFAULT)
+    return {"final": final, "options": options, "n_qubits": len(ordered), "qubit_map": qubit_map,
+            "meas_ops": meas_ops, "n_by_key": n_by_key, "infos": infos, "num_bits": num_bits}
+
+
+def _records(raw, plan, repetitions):
+    """Measurement records from qsim's raw samples, as _sample_measure_results assembles them."""
+    results = {key: np.ndarray(shape=(repetitions, len(plan["meas_ops"][key]), n), dtype=int)
+               for key, n in plan["n_by_key"].items()}
+    if plan["final"]:
+        n_qubits = plan["n_qubits"]
+        full = np.array([[bool(r & (1 << q)) for q in reversed(range(n_qubits))] for r in raw])
+        for key, oplist in plan["meas_ops"].items():
+            for i, op in enumerate(oplist):
+                indices = [plan["qubit_map"][qubit] for qubit in op.qubits]
+                results[key][:, i, :] = full[:, indices] ^ op.gate.full_invert_mask()
+    else:
+        for key, index, mask, start, end in plan["infos"]:
+            results[key][:, index, :] = raw[:, start:end] ^ mask
+    return results
+
+
 def _serialize(compiled: CompileResult) -> str:
     """OpenQASM export of the executed Cirq circuit over every declared qubit, idle ones
     included, in the simulated qubit order (QASM 2.0 carries no global phase)."""
@@ -162,19 +240,28 @@ def process_run(payload: dict) -> dict:
     def compile_step(payload):
         qasm, strip_notes = prepare_statevector_qasm(payload["circuit_data"])
         cirq_circ, qubits, _, preprocessing_applied = _to_cirq_circuit(payload, qasm, strip_notes)
+        simulator = qsimcirq.QSimSimulator()
+        options, order = _translated(simulator, cirq_circ, qubits)
         return CompileResult(
-            circuit=(qsimcirq.QSimSimulator(), cirq_circ, qubits),
+            circuit=(simulator, cirq_circ, qubits, options, order),
             n_qubits=len(qubits),
-            preprocessing_applied=preprocessing_applied + [_FUSION_NOTE])
+            preprocessing_applied=preprocessing_applied + [_FUSION_NOTE, _TRANSLATE_NOTE])
 
     def execute(compiled, _payload):
-        simulator, circ, qubits = compiled.circuit
-        return simulator.simulate(circ, qubit_order=qubits).final_state_vector
+        simulator, _circ, _qubits, options, _order = compiled.circuit
+        options["s"] = simulator.get_seed()
+        return simulator._sim_module.qsim_simulate_fullstate(options, 0)
+
+    def to_state(raw, compiled, _payload):
+        order = compiled.circuit[4]
+        final = cirq.StateVectorSimulationState(initial_state=raw.view(np.complex64), qubits=order)
+        return cirq.StateVectorTrialResult(params=cirq.ParamResolver({}), measurements={},
+                                           final_simulator_state=final).final_state_vector
 
     return run_statevector_job(
         simulator="qsim-cirq", payload=payload, logger=logger, compile_fn=compile_step,
-        serialize_fn=_serialize, execute_fn=execute, qubit_ordering="msb",
-        precision="complex64")
+        serialize_fn=_serialize, execute_fn=execute, postprocess_fn=to_state,
+        qubit_ordering="msb", precision="complex64")
 
 
 @with_sdk_versions
@@ -187,19 +274,35 @@ def process_run_measured(payload: dict) -> dict:
     def compile_step(payload):
         cirq_circ, qubits, bits, preprocessing_applied = _to_cirq_circuit(
             payload, payload["circuit_data"])
+        if not cirq_circ.has_measurements():
+            raise ValueError("Circuit has no measurements to sample.")
         key_bits = {f"{name}[{index}]": (name, index) for name, index in bits}
+        simulator = qsimcirq.QSimSimulator(seed=payload.get("seed"))
+        plan = _sampling_plan(simulator, cirq_circ, payload.get("n_shots", 1024))
         return CompileResult(
-            circuit=(qsimcirq.QSimSimulator(seed=payload.get("seed")), cirq_circ, qubits,
-                     key_bits),
+            circuit=(simulator, cirq_circ, qubits, key_bits, plan),
             n_qubits=len(qubits),
-            preprocessing_applied=preprocessing_applied + [_FUSION_NOTE, _NATIVE_RUN_NOTE])
+            preprocessing_applied=preprocessing_applied + [_FUSION_NOTE, _NATIVE_RUN_NOTE,
+                                                           _TRANSLATE_NOTE])
 
     def execute(compiled, payload):
-        simulator, circ, *_ = compiled.circuit
-        return simulator.run(circ, repetitions=payload.get("n_shots", 1024))
+        simulator, plan = compiled.circuit[0], compiled.circuit[4]
+        repetitions = payload.get("n_shots", 1024)
+        options = plan["options"]
+        if plan["final"]:
+            options["s"] = simulator.get_seed()
+            return simulator._sim_module.qsim_sample_final(options, repetitions)
+        measurements = np.empty(shape=(repetitions, plan["num_bits"]), dtype=int)
+        for i in range(repetitions):
+            options["s"] = simulator.get_seed()
+            measurements[i] = simulator._sim_module.qsim_sample(options)
+        return measurements
 
-    def shape_counts(run_result, compiled, payload):
+    def shape_counts(raw, compiled, payload):
         """Assemble per-shot keys over the declared classical bits (msb)."""
+        run_result = cirq.ResultDict(
+            params=cirq.ParamResolver({}),
+            records=_records(raw, compiled.circuit[4], payload.get("n_shots", 1024)))
         key_bits = compiled.circuit[3]
         layout = parse_measurement_layout(payload["circuit_data"])
         index = {bit: k for k, bit in enumerate(layout.clbits)}

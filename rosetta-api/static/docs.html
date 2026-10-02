@@ -814,8 +814,9 @@
                         is wall clock from t2 to t3 (execute, return the statevector or draw the shots).
                         Building a counts histogram from drawn shots is outside the window.</li>
                     <li><strong>cuQuantum's timed window.</strong> cuQuantum's <code>simulation_time_sec</code>
-                        covers <code>sim.run(qc).result()</code>: Aer's conversion of the circuit, GPU memory
-                        allocation, the cuStateVec kernels and the copy of the result from device to host.
+                        covers Aer's native execution of the assembled circuit: GPU memory allocation, the
+                        cuStateVec kernels and the copy of the result from device to host (Aer's conversion of
+                        the circuit is in compilation; see the next items).
                         CUDA context initialisation happens in the warm-up run, outside the window; it shows
                         up in <code>cpu_time_sec</code>, which covers the whole process.</li>
                     <li><strong>myQLM's timed window.</strong> myQLM returns a statevector as one Python
@@ -826,13 +827,19 @@
                     <li><strong>Where circuit conversion falls.</strong> Compilation covers parsing, rebasing and
                         optimisation passes, and building the executable object where the SDK lets the adapter build it
                         separately (the PennyLane tape and device preprocessing, the myQLM and qibo circuit objects).
-                        Qulacs and QuEST (through pytket's <code>process_circuits</code>), qsim (which translates the
-                        Cirq circuit inside <code>simulate</code>) and Qiskit Aer, qiskit and cuQuantum (which convert
-                        the circuit inside <code>run</code>), convert the circuit into their own form inside the
-                        simulation call, so that conversion is in their <code>simulation_time_sec</code>. Testers measured
-                        about 10–13 µs per gate for it, against 2.7 µs per gate in total for PennyLane-Lightning's
-                        simulation, which runs a pre-built tape: for a long circuit on few qubits this conversion can be
-                        most of the simulation time (about 65% for qsim on a 16-qubit, 2,200-gate circuit).</li>
+                        For Qulacs, QuEST, qsim, Qiskit and cuQuantum the SDK's own call would convert the circuit
+                        inside the simulation (pytket's <code>process_circuits</code>, qsimcirq's
+                        <code>simulate</code> and <code>run</code>, Aer's <code>run</code>), so their adapters split
+                        that call at the native routine: the conversion (<code>tk_to_qulacs</code>,
+                        <code>tk_to_quest</code>, <code>translate_cirq_to_qsim</code>, Aer's
+                        <code>assemble_circuits</code> and run configuration) is in <code>compilation_time_sec</code>,
+                        and the timed run applies the converted circuit with the same routine, options and seeds as
+                        the SDK call. Old and new paths gave identical statevectors (bit for bit) and identical
+                        counts under the same seed on over 1,500 random circuits per backend; on a 4-qubit,
+                        2,200-gate circuit, simulation time fell from 28–37 ms to 1.3–2.3 ms (Qulacs, QuEST, qsim,
+                        Qiskit; cuQuantum 50 to 13 ms) while the total stayed within 3%. Each adapter refuses to
+                        load with another version of the SDK whose call it reproduces. The disabled Braket and
+                        ProjectQ runners still convert inside the call.</li>
                     <li><strong>Different gate counts for the same circuit.</strong> Each backend executes the circuit
                         after its own rebase, so the gate counts differ: at 18 qubits one circuit ran as 318, 750 or
                         1,158 gates depending on the backend. Simulation times compare those workloads; the Gate count

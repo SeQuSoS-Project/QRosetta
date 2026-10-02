@@ -1,5 +1,8 @@
-"""Qiskit helpers for compile-only adapters: final measurements split off and restored, and
-basis translation that makes no assumption about the qubits' initial state."""
+"""Qiskit helpers: final measurements split off and restored and basis translation that makes
+no assumption about the qubits' initial state (compile-only adapters), and OpenQASM 2.0
+export that keeps every angle (``exact_qasm2_dumps``)."""
+
+import re
 
 from qiskit import QuantumCircuit, transpile
 
@@ -67,7 +70,8 @@ def qasm_real(value: float) -> str:
 
 
 def exact_qasm2_dumps(circuit: QuantumCircuit) -> str:
-    """``qiskit.qasm2.dumps`` with every numeric gate parameter written as ``qasm_real``.
+    """``qiskit.qasm2.dumps`` with every numeric gate parameter written as ``qasm_real`` and
+    generated gate names numbered (``_numbered_generated_names``).
     Qiskit's exporter formats parameters with ``pi_check(eps=1e-12)``, which writes a
     magnitude below 1e-12 as 0 and a value within 1e-12 of a simple multiple of pi as that
     multiple; symbolic parameters (inside gate definitions) keep Qiskit's formatting."""
@@ -84,6 +88,24 @@ def exact_qasm2_dumps(circuit: QuantumCircuit) -> str:
 
     export.pi_check = exact
     try:
-        return qasm2.dumps(circuit)
+        text = qasm2.dumps(circuit)
     finally:
         export.pi_check = original
+    return _numbered_generated_names(text)
+
+
+_GENERATED_NAME = re.compile(r"\b([A-Za-z_]\w*?)_(\d{9,})\b")
+
+
+def _numbered_generated_names(text: str) -> str:
+    """Qiskit names a gate it defines ``<name>_<id(operation)>``, a memory address that
+    differs between processes; number those suffixes by first appearance instead."""
+    numbers = {}
+
+    def number(match):
+        key = match.group(0)
+        if key not in numbers:
+            numbers[key] = f"{match.group(1)}_q{len(numbers)}"
+        return numbers[key]
+
+    return _GENERATED_NAME.sub(number, text)

@@ -218,6 +218,18 @@ def declared_sdk_packages() -> tuple:
     return tuple(_DECLARED_SDK_PACKAGES)
 
 
+def require_distribution_version(distribution: str, version: str, reproduces: str) -> None:
+    """RuntimeError unless ``distribution`` is installed at ``version``: the adapter
+    reproduces ``reproduces`` from that version's source, so a different version needs its
+    run path checked and its outputs compared before the pin moves."""
+    installed = importlib.metadata.version(distribution)
+    if installed != version:
+        raise RuntimeError(
+            f"{distribution} {installed} is installed; this adapter reproduces {reproduces} "
+            f"of {distribution} {version}. Check that code in the new version and compare "
+            f"outputs with the SDK's own call before changing the pin.")
+
+
 def get_sdk_versions() -> dict:
     """``{name: version}`` for every declared package, read from the installed distribution
     metadata; ``"not installed"`` for a declared name with no installed distribution."""

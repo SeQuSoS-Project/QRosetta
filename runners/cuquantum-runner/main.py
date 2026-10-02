@@ -26,6 +26,8 @@ app = FastAPI(title="cuQuantum Runner")
 try:
     from qiskit import QuantumCircuit, transpile as qiskit_transpile
     from qrosetta_commons.qiskit_circuits import exact_qasm2_dumps
+    from qrosetta_commons import aer_split
+    aer_split.require_aer("qiskit-aer-gpu")
     from qiskit_aer import AerSimulator
     AERSIM_AVAILABLE = True
     logger.info("qiskit-aer loaded successfully.")
@@ -191,17 +193,19 @@ def process_run(payload: dict) -> dict:
         executed_qc = qc.copy()
         executed_qc.save_statevector()
         return CompileResult(
-            circuit=(sim, executed_qc, qc),
+            circuit=(sim, aer_split.prepare(sim, executed_qc), qc),
             n_qubits=qc.num_qubits,
             preprocessing_applied=(strip_notes + preprocessing_applied
-                                   + [_METHOD_NOTE, _FUSION_NOTE, _SAVE_STATEVECTOR_NOTE]),
+                                   + [_METHOD_NOTE, _FUSION_NOTE, _SAVE_STATEVECTOR_NOTE,
+                                      aer_split.PREPARE_NOTE]),
             precision=_precision(sim))
 
     def execute(compiled, _payload):
-        sim, executed_qc, _qc = compiled.circuit
-        return sim.run(executed_qc).result()
+        sim, prepared, _qc = compiled.circuit
+        return aer_split.execute(sim, prepared)
 
-    def shape_statevector(result, compiled, _payload):
+    def shape_statevector(output, compiled, _payload):
+        result = aer_split.format_result(compiled.circuit[0], compiled.circuit[1], output)
         backend_fields.update(_backend_fields(result, compiled.circuit[0]))
         return np.asarray(result.get_statevector())
 
@@ -225,20 +229,23 @@ def process_run_measured(payload: dict) -> dict:
         sim = _simulator()
         qc, preprocessing_applied = _transpile(
             payload["circuit_data"], payload.get("optimization_level", 0), sim)
+        prepared = aer_split.prepare(sim, qc, shots=payload.get("n_shots", 1024),
+                                     seed_simulator=payload.get("seed"))
         return CompileResult(
-            circuit=(sim, qc, qc),
+            circuit=(sim, prepared, qc),
             n_qubits=qc.num_qubits,
-            preprocessing_applied=preprocessing_applied + [_METHOD_NOTE, _FUSION_NOTE, _COUNTS_KEY_NOTE],
+            preprocessing_applied=preprocessing_applied + [_METHOD_NOTE, _FUSION_NOTE, _COUNTS_KEY_NOTE,
+                                                           aer_split.PREPARE_NOTE],
             precision=_precision(sim))
 
-    def execute(compiled, payload):
-        sim, qc, _qc = compiled.circuit
-        return sim.run(qc, shots=payload.get("n_shots", 1024),
-                       seed_simulator=payload.get("seed")).result()
+    def execute(compiled, _payload):
+        sim, prepared, _qc = compiled.circuit
+        return aer_split.execute(sim, prepared)
 
-    def shape_counts(result, compiled, payload):
+    def shape_counts(output, compiled, payload):
         """Re-key Aer counts over the circuit's declared classical bits (lsb)."""
-        sim, qc, _qc = compiled.circuit
+        sim, prepared, qc = compiled.circuit
+        result = aer_split.format_result(sim, prepared, output)
         backend_fields.update(_backend_fields(result, sim))
         registers = [(reg.name, reg.size) for reg in qc.cregs]
         layout = parse_measurement_layout(payload["circuit_data"])
