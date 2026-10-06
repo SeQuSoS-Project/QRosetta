@@ -208,6 +208,14 @@ the Compiler Explorer view were added: 14 simulator backends, with the circuit e
 executed recorded but not displayed side by side. Check it out to reproduce results produced
 before that work.
 
+Two later tags mark stable versions of the web interface:
+
+- `stable-pre-ui-redesign` (3dd0884): the last version with the Config, Batch, Bench and
+  Experiment drawers and eight result tabs.
+- `stable-ui-workspace` (0a7d863): after the first redesign step. The left column is one
+  workspace (Generate Circuits, Editor, Playlist, a Run footer, Configuration); the Summary tab
+  opens with a headline naming the backends that differ; results have five tabs.
+
 ## Citing
 
 See `CITATION.cff`.
