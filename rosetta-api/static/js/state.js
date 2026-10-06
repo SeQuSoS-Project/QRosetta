@@ -19,6 +19,9 @@ export const Store = {
         executionMode: null,
         timeoutMin: 10,
         timeoutMax: 300,
+        timeoutDefault: 60,
+        timingRepeatsMax: 10,
+        exclusiveEnabled: true,
         shotsMin: 1,
         shotsMax: null,
         thresholdDefaults: null,
@@ -71,6 +74,9 @@ export const Store = {
                 this.state.timeoutMax = num(limits.timeout_max) ?? this.state.timeoutMax;
                 this.state.shotsMin = num(limits.shots_min) ?? this.state.shotsMin;
                 this.state.shotsMax = num(limits.shots_max) ?? this.state.shotsMax;
+                this.state.timeoutDefault = num(limits.timeout_default) ?? this.state.timeoutDefault;
+                this.state.timingRepeatsMax = num(limits.timing_repeats_max) ?? this.state.timingRepeatsMax;
+                if (typeof payload.exclusive?.enabled === 'boolean') this.state.exclusiveEnabled = payload.exclusive.enabled;
                 if (payload.agreement_threshold_defaults && typeof payload.agreement_threshold_defaults === 'object') {
                     this.state.thresholdDefaults = { ...payload.agreement_threshold_defaults };
                 }

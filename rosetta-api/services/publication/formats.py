@@ -213,8 +213,14 @@ def _fmt_text(v: Any) -> str:
 _LATEX_ESCAPE = {
     "\\": r"\textbackslash{}", "&": r"\&", "%": r"\%", "$": r"\$", "#": r"\#",
     "_": r"\_", "{": r"\{", "}": r"\}", "~": r"\textasciitilde{}",
-    "^": r"\textasciicircum{}",
+    "^": r"\textasciicircum{}", "<": r"\textless{}", ">": r"\textgreater{}", "|": r"\textbar{}",
+    "\u2265": r"$\geq$", "\u2264": r"$\leq$", "\u27e8": r"$\langle$", "\u27e9": r"$\rangle$",
+    "\u2212": r"$-$", "\u2248": r"$\approx$", "\u03b1": r"$\alpha$", "\u03b4": r"$\delta$",
+    "\u2192": r"$\rightarrow$",
 }
+
+LATEX_PACKAGES = "booktabs,adjustbox,longtable"
+LATEX_LONG_TABLE_ROWS = 40
 
 
 def _latex_escape(text: Any) -> str:
@@ -227,20 +233,38 @@ def basename_slug(text: str) -> str:
     return "".join(ch if ch.isalnum() else "-" for ch in text.lower()).strip("-")
 
 
+def _latex_column_spec(rows, n_cols) -> str:
+    """'r' for a column whose cells are all numbers (or '—'), else 'l'."""
+    spec = ""
+    for c in range(n_cols):
+        cells = [r[c] for r in rows if c < len(r)]
+        numeric = any(isinstance(x, _Cell) for x in cells) and all(isinstance(x, _Cell) or x == "—" for x in cells)
+        spec += "r" if numeric else "l"
+    return spec
+
+
 def _render_latex(headers, rows, title, caption) -> str:
-    """Render a booktabs LaTeX table."""
-    col_spec = "l" * len(headers)
-    lines = [
-        "% Requires \\usepackage{booktabs}",
-        "\\begin{table}[htbp]", "  \\centering",
-        f"  \\caption{{{_latex_escape(title)}. {_latex_escape(caption)}}}",
-        f"  \\label{{tab:{basename_slug(title)}}}",
-        f"  \\begin{{tabular}}{{{col_spec}}}", "    \\toprule",
-        "    " + " & ".join(_latex_escape(h) for h in headers) + " \\\\", "    \\midrule",
-    ]
-    for r in rows:
-        lines.append("    " + " & ".join(_latex_escape(c) for c in r) + " \\\\")
-    lines += ["    \\bottomrule", "  \\end{tabular}", "\\end{table}", ""]
+    """Render a booktabs LaTeX table: scaled down to the line width when it is wider, a
+    longtable above LATEX_LONG_TABLE_ROWS rows, the caption text as a note below."""
+    spec = _latex_column_spec(rows, len(headers))
+    head = "    " + " & ".join(_latex_escape(h) for h in headers) + " \\\\"
+    body = ["    " + " & ".join(_latex_escape(c) for c in r) + " \\\\" for r in rows]
+    short, label = _latex_escape(title), f"tab:{basename_slug(title)}"
+    note = f"{{\\footnotesize {_latex_escape(caption)}\\par}}"
+    lines = [f"% Requires \\usepackage{{{LATEX_PACKAGES}}}"]
+    if len(rows) > LATEX_LONG_TABLE_ROWS:
+        lines += ["{\\footnotesize\\setlength{\\tabcolsep}{3pt}", f"\\begin{{longtable}}{{{spec}}}",
+                  f"  \\caption[{short}]{{{short}}}\\label{{{label}}}\\\\",
+                  "    \\toprule", head, "    \\midrule", "  \\endfirsthead",
+                  "    \\toprule", head, "    \\midrule", "  \\endhead",
+                  "    \\bottomrule", "  \\endfoot",
+                  *body, "\\end{longtable}}", note, ""]
+    else:
+        lines += ["\\begin{table}[htbp]", "  \\centering", f"  \\caption[{short}]{{{short}}}",
+                  f"  \\label{{{label}}}", "  \\begin{adjustbox}{max width=\\linewidth}",
+                  f"  \\begin{{tabular}}{{{spec}}}", "    \\toprule", head, "    \\midrule",
+                  *body, "    \\bottomrule", "  \\end{tabular}", "  \\end{adjustbox}",
+                  "  \\par\\smallskip", f"  {note}", "\\end{table}", ""]
     return "\n".join(lines)
 
 

@@ -1,8 +1,9 @@
 // localStorage records that survive a page reload: the job submitted last (until its
-// results are shown) and the circuit in the editor. Leaf module: no imports.
+// results are shown), the circuit in the editor and the batch queue. Leaf module: no imports.
 
 const PENDING_KEY = 'rosetta_pending_job';
 const EDITOR_KEY = 'rosetta_editor_circuit';
+const BATCH_KEY = 'rosetta_batch_queue';
 const PENDING_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
 function _read(key) {
@@ -14,11 +15,15 @@ function _read(key) {
     }
 }
 
+/** @returns {boolean} false when the browser refused to store the value */
 function _write(key, value) {
     try {
         if (value === null) localStorage.removeItem(key);
         else localStorage.setItem(key, JSON.stringify(value));
-    } catch (_) { /* storage full or unavailable */ }
+        return true;
+    } catch (_) {
+        return false;
+    }
 }
 
 /**
@@ -59,4 +64,15 @@ export function loadEditorCircuit() {
     const v = _read(EDITOR_KEY);
     if (!v || typeof v.qasm !== 'string' || v.qasm.trim() === '') return null;
     return { qasm: v.qasm, name: typeof v.name === 'string' ? v.name : 'Custom / Modified' };
+}
+
+/** @param {Array<object>} queue @returns {boolean} false when the queue could not be stored */
+export function saveBatchQueue(queue) {
+    return _write(BATCH_KEY, queue.length ? { queue, saved_at: Date.now() } : null);
+}
+
+/** @returns {Array<object>} the stored batch queue, or [] */
+export function loadBatchQueue() {
+    const v = _read(BATCH_KEY);
+    return v && Array.isArray(v.queue) ? v.queue.filter(item => item && typeof item === 'object') : [];
 }

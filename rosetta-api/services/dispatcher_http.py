@@ -115,7 +115,7 @@ async def dispatch_http_local(runner_urls: dict, runner_payload: dict, timeout_s
                         dispatch_status=result.pop("dispatch_status", None),
                         runner_image=LOCAL_RUNNER_IMAGE)
         if runner_statuses is not None:
-            runner_statuses[key] = {"ok": "done", "timeout": "timeout"}.get(
+            runner_statuses[key] = {"ok": "done", "timeout": "timeout", "offline": "offline"}.get(
                 result.get("dispatch_status"), "error")
         return result
 

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request, HTTPException
 from qrosetta_commons.helpers import get_logger
 import services.circuit_library as library
 import services.benchmark_library as benchmark_library
+import services.examples as examples
 from schemas import GenerateCircuitPayload, QasmPayload, VisualizerResponse
 from services.validator import validate_request
 from services.quirk_converter import QuirkCompiler
@@ -29,6 +30,22 @@ async def get_algorithms():
         }
         for algo in algorithms.values()
     ]
+
+@router.get("/examples")
+async def get_examples():
+    """List the bundled example circuits: file name, title, description, the mode each is
+    meant for, and its qubit count."""
+    return examples.list_examples()
+
+
+@router.get("/examples/{name}")
+async def get_example(name: str):
+    """One bundled example circuit's OpenQASM 2.0 text. 404 for a name that is not one."""
+    qasm = examples.read_example(name)
+    if qasm is None:
+        raise HTTPException(status_code=404, detail="No bundled example circuit has that name.")
+    return {"name": name, "qasm": qasm}
+
 
 @router.post("/generate_circuit")
 @limiter.limit(settings.RUN_RATE_LIMIT)

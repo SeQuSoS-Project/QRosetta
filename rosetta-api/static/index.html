@@ -5,7 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quantum Rosetta</title>
-    <link rel="stylesheet" href="css/tailwind.css?v=1.0.29">
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="css/tailwind.css?v=1.0.38">
     <style>
         .loader {
             border-top-color: #3b82f6;
@@ -48,6 +49,7 @@
                         <span class="ml-3 text-3xl font-extrabold text-indigo-600">Quantum Rosetta</span>
                     </div>
                     <div class="flex items-center space-x-4">
+                        <span id="run-save-note" class="hidden lg:inline text-xs text-gray-500"></span>
                         <div id="auth-container" class="flex items-center gap-2">
                             <a href="docs.html" target="_blank" rel="noopener"
                                 class="text-sm font-medium text-gray-600 hover:text-indigo-700 bg-white px-3 py-1.5 rounded-md border border-gray-200 transition-colors">Docs</a>
@@ -72,188 +74,166 @@
 
         <main class="flex-1 flex flex-col md:flex-row min-h-0">
 
-            <div
-                class="w-full md:w-1/2 p-4 sm:p-6 lg:p-8 flex flex-col border-r border-gray-200 overflow-y-auto bg-white space-y-6">
+            <div class="w-full md:w-1/2 flex flex-col min-h-0 border-r border-gray-200 bg-white">
+            <div id="workspace-scroll" class="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-6">
 
-                <!-- === BLOCK 1: GENERATOR === -->
-                <div class="p-4 border rounded-lg bg-gray-50">
-                    <h2 class="text-lg font-semibold text-gray-800 mb-3">Generate Circuits</h2>
-                    <div class="space-y-3">
-                        <div>
-                            <label for="algo-select" class="block text-sm font-medium text-gray-700">Quantum
-                                Algorithms</label>
-                            <select id="algo-select"
+                <!-- === GENERATE CIRCUITS === -->
+                <section aria-labelledby="ws-generate" class="p-4 border rounded-lg bg-gray-50 space-y-2">
+                    <h2 id="ws-generate" class="text-lg font-semibold text-gray-800">Generate Circuits</h2>
+                    <div class="flex flex-wrap items-end gap-2">
+                        <div class="flex-1 min-w-[12rem]">
+                            <label for="algo-select" class="block text-xs font-medium text-gray-600">Quantum Algorithms</label>
+                            <select id="algo-select" aria-describedby="algo-description"
                                 class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"></select>
                         </div>
-                        <div>
-                            <label for="algo-qubits" class="block text-sm font-medium text-gray-700">Qubits</label>
-                            <input type="number" id="algo-qubits" value="3" min="2" max="20"
-                                class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        <div class="w-20">
+                            <label for="algo-qubits" class="block text-xs font-medium text-gray-600">Qubits</label>
+                            <input type="number" id="algo-qubits" value="3" min="2" max="20" class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                         </div>
+                        <button type="button" onclick="generateCircuit()" title="Put the selected circuit in the editor"
+                            class="py-2 px-4 rounded-md text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">Load</button>
+                        <button type="button" onclick="addToBatch()" title="Add the selected circuit to the playlist"
+                            class="py-2 px-4 rounded-md text-sm font-medium text-indigo-700 bg-indigo-100 hover:bg-indigo-200">+ Add</button>
+                        <button type="button" onclick="toggleBenchPanel()" title="Browse the MQT Bench and QASMBench suites"
+                            class="py-2 px-4 rounded-md text-sm font-medium text-emerald-700 bg-emerald-50 border border-emerald-300 hover:bg-emerald-100">Bench</button>
+                    </div>
+                    <p id="algo-description" class="text-xs text-gray-500"></p>
+                </section>
 
-                        <div class="grid grid-cols-5 gap-2">
-                            <button onclick="generateCircuit()"
-                                class="col-span-1 flex justify-center py-2 px-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none">
-                                Load
-                            </button>
-                            <button onclick="addToBatch()" title="Adds the circuit in the editor to the batch. With an empty editor, or when the editor holds a generated circuit for a different selection, adds the selected preset and qubit count."
-                                class="col-span-1 flex justify-center py-2 px-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none">
-                                + Add
-                            </button>
-                            <button onclick="togglePlaylist()"
-                                class="col-span-1 flex justify-center py-2 px-2 border border-yellow-300 rounded-md shadow-sm text-sm font-medium text-yellow-700 bg-yellow-50 hover:bg-yellow-100 focus:outline-none">
-                                Batch
-                            </button>
-                            <button onclick="toggleBenchPanel()"
-                                class="col-span-1 flex justify-center py-2 px-2 border border-emerald-300 rounded-md shadow-sm text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 focus:outline-none">
-                                Bench
-                            </button>
-                            <button onclick="toggleConfigPanel()"
-                                class="col-span-1 flex justify-center py-2 px-2 border border-indigo-300 rounded-md shadow-sm text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 focus:outline-none">
-                                Config
-                            </button>
+                <!-- === EDITOR === -->
+                <section aria-labelledby="ws-editor" class="p-4 border rounded-lg bg-gray-50 space-y-2">
+                    <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                        <h2 id="ws-editor" class="text-lg font-semibold text-gray-800">Editor</h2>
+                        <div class="flex items-baseline gap-2 min-w-0 flex-1 justify-end">
+                            <input type="text" id="ctx-algo-name" value="No Circuit Loaded" aria-label="Circuit name" title="The circuit's name, used for + Add to Playlist and in reports"
+                                class="text-sm text-gray-800 bg-transparent border-b border-dashed border-gray-400 focus:outline-none focus:border-blue-500 min-w-0 flex-1 text-right">
+                            <span id="ctx-circuit-stats" class="text-xs text-gray-500 whitespace-nowrap"></span>
+                            <span id="ctx-opt-level" class="hidden">Opt Level: 0</span>
                         </div>
                     </div>
-                </div>
+                    <div id="editor-context-bar" class="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                        <button type="button" onclick="document.getElementById('qasm-upload').click()" class="text-blue-600 hover:text-blue-800 font-medium">⬆ Import QASM</button>
+                        <button type="button" onclick="exportQasm()" class="text-blue-600 hover:text-blue-800 font-medium">⬇ Export QASM</button>
+                        <button type="button" onclick="copyCircuitQasm(this)" title="Copy circuit QASM" class="text-gray-600 hover:text-gray-900 font-medium">⧉ Copy</button>
+                        <button type="button" onclick="generateAndVisualize()" id="btn-visualize" class="text-purple-600 hover:text-purple-800 font-medium">📊 Visualize</button>
+                        <button type="button" onclick="addEditorToPlaylist()" title="Add the circuit in the editor to the playlist" class="text-yellow-700 hover:text-yellow-900 font-medium">+ Add to Playlist</button>
+                        <input type="file" id="qasm-upload" class="hidden" accept=".qasm,.txt" onchange="importQasm(this)">
+                    </div>
+                    <label for="qasm-input" class="sr-only">OpenQASM 2.0 editor</label>
+                    <textarea id="qasm-input" spellcheck="false"
+                        class="w-full p-3 font-mono text-sm text-gray-800 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+                        style="height: 38vh; min-height: 200px;"></textarea>
+                </section>
 
-                <!-- Shared backdrop for all slide-over drawers -->
-                <div id="drawer-backdrop" class="hidden fixed inset-0 bg-black/40 z-40 !mt-0"></div>
-
-                <!-- === CONFIG DRAWER === -->
-                <div id="config-panel"
-                    class="translate-x-full fixed top-0 right-0 z-50 h-full w-full sm:max-w-md !mt-0 bg-indigo-50 shadow-2xl overflow-y-auto transform transition-transform duration-300 ease-in-out p-4">
-                    <div class="flex items-center justify-between mb-4">
-                        <h2 class="text-lg font-semibold text-indigo-900">Configuration</h2>
-                        <button onclick="closeDrawers()" aria-label="Close"
-                            class="text-indigo-400 hover:text-indigo-700 text-2xl leading-none">&times;</button>
-                    </div>
-
-                    <!-- Group: Execution -->
-                    <h3 class="text-xs font-semibold uppercase tracking-wide text-indigo-700 mb-2">Execution</h3>
-                    <div class="flex flex-col mb-3 bg-white p-3 rounded shadow-sm border border-indigo-100">
-                        <label class="block text-sm font-medium text-indigo-900 mb-1" for="execution-target-select">Execution Environment</label>
-                        <select id="execution-target-select"
-                            class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
-                            <option value="">Server default</option>
-                        </select>
-                        <span id="execution-target-help" class="text-xs text-gray-500 mt-1">The server runs every job in its configured mode; the report records it as the execution target.</span>
-                    </div>
-                    <div class="flex flex-col mb-4 bg-white p-3 rounded shadow-sm border border-indigo-100">
-                        <label class="block text-sm font-medium text-indigo-900 mb-1" for="timeout-input">Timeout per backend (seconds)</label>
-                        <input type="number" id="timeout-input" value="300" min="10" max="300" step="1"
-                            class="block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                        <span id="timeout-help" class="text-xs text-gray-500 mt-1">This value is sent with every run from this page. It covers process start, SDK import, the warm-up run and the timed runs of each backend. Allowed: 10–300 s.</span>
-                    </div>
-                    <div class="flex flex-col mb-4 bg-white p-3 rounded shadow-sm border border-indigo-100">
-                        <label class="block text-sm font-medium text-indigo-900 mb-1" for="timing-repeats-input">Timing repeats</label>
-                        <input type="number" id="timing-repeats-input" value="1" min="1" max="10" step="1"
-                            class="block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                        <span class="text-xs text-gray-500 mt-1">Timed runs per backend after the one discarded warm-up run, sent with every run from this page (single, batch and experiment). Above 1, the timing columns show the median ± sample standard deviation and n; the per-run samples are in the raw JSON. All repeats share the timeout above. Allowed: 1–10.</span>
-                    </div>
-                    <div class="flex flex-col mb-4 bg-white p-3 rounded shadow-sm border border-indigo-100">
-                        <label class="flex items-center gap-2 text-sm font-medium text-indigo-900" for="exclusive-checkbox">
-                            <input type="checkbox" id="exclusive-checkbox" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                            Exclusive timing run
-                        </label>
-                        <span class="text-xs text-gray-500 mt-1">Runs the backends one at a time, and only while no other run is in flight on this server: other users' runs wait, and this run waits for theirs (recorded as exclusive_wait_sec). Use it for timings you will compare or publish. It overrides the runner ordering below and cannot hold back other programs on the host.</span>
-                    </div>
-                    <div class="flex flex-col mb-4 bg-white p-3 rounded shadow-sm border border-indigo-100">
-                        <label class="block text-sm font-medium text-indigo-900 mb-1" for="seed-input">Sampling seed (measured)</label>
-                        <input type="number" id="seed-input" placeholder="leave empty → random, recorded" min="0" step="1"
-                            class="block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                        <span class="text-xs text-gray-500 mt-1">Measured runs only. Empty: the API generates a master seed and records it in the report. Each backend receives its own seed derived from the master seed and its runner key (sha256), recorded as runner_seed. Statevector runs use no seed.</span>
-                    </div>
-
-                    <!-- Group: Circuit Preprocessing -->
-                    <h3 class="text-xs font-semibold uppercase tracking-wide text-indigo-700 mb-2">Circuit Preprocessing</h3>
-                    <div class="flex flex-col mb-3 bg-white p-3 rounded shadow-sm border border-indigo-100">
-                        <label class="flex items-center space-x-2">
-                            <input type="checkbox" id="apply-preprocessing-checkbox" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded" checked>
-                            <span class="text-sm font-medium text-indigo-900">Apply SDK Preprocessing</span>
-                        </label>
-                        <span class="text-xs text-gray-500 mt-1">On: before dispatch the API merges multiple quantum registers in declaration order and round-trips the circuit of every dispatch group (statevector, measured native, measured sampled) through pytket, which inlines custom gate definitions and removes barriers; each runner then applies its own passes. Off: no register merge and no pytket round-trip; statevector mode still removes terminal measurements, and measured mode appends measure-all for natively sampling backends when the circuit has none. Every change is listed in each backend's preprocessing, API changes tagged API.</span>
-                    </div>
-                    <div id="bypass-limits-container" class="flex flex-col mb-4 bg-white p-3 rounded shadow-sm border border-indigo-100">
-                        <label class="flex items-center space-x-2">
-                            <input type="checkbox" id="bypass-limits-checkbox" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
-                            <span class="text-sm font-medium text-indigo-900">Bypass API Safety Limits</span>
-                        </label>
-                        <span class="text-xs text-gray-500 mt-1">Local mode only — skips API gate/size guards. Runner qubit caps still apply.</span>
-                    </div>
-
-                    <!-- Group: Backends and optimization levels -->
-                    <details open class="bg-white rounded shadow-sm border border-indigo-100 p-3">
-                        <summary class="cursor-pointer select-none text-xs font-semibold uppercase tracking-wide text-indigo-700">
-                            Backends and optimization levels
-                        </summary>
-                        <div class="flex items-center gap-2 mt-3 mb-3">
-                            <label class="text-xs text-indigo-900">Set all to</label>
-                            <select id="opt-set-all" class="text-xs border-indigo-300 rounded p-1">
-                                <option value="0">0</option>
-                                <option value="1">1</option>
-                                <option value="2">2</option>
-                                <option value="3">3</option>
+                <!-- === PLAYLIST === -->
+                <section aria-labelledby="ws-playlist" class="p-4 border border-yellow-200 rounded-lg bg-yellow-50 space-y-2">
+                    <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+                        <h2 id="ws-playlist" class="text-lg font-semibold text-yellow-900">Playlist (<span id="queue-count">0</span>)</h2>
+                        <div class="flex items-center gap-2 flex-1 min-w-[16rem]">
+                            <label for="preset-select" class="text-xs font-medium text-yellow-800 whitespace-nowrap">Quick Load:</label>
+                            <select id="preset-select" class="flex-1 min-w-0 text-xs border-yellow-300 bg-white rounded p-1">
+                                <option value="each">Sanity Check (every algorithm, 5 qubits)</option>
+                                <option value="scaling">Scaling Test (GHZ, 5 qubits to the statevector limit)</option>
+                                <option value="largest">Memory Stress (Random, BV and VQE at the statevector limit)</option>
                             </select>
-                            <button onclick="setAllOptLevels(parseInt(document.getElementById('opt-set-all').value, 10))"
-                                class="text-xs bg-indigo-100 text-indigo-700 hover:bg-indigo-200 rounded px-2 py-1">Apply</button>
+                            <button type="button" onclick="applyPreset()" class="text-xs font-medium py-1 px-2 rounded border border-yellow-300 bg-white text-yellow-700 hover:bg-yellow-100">Apply</button>
+                            <button type="button" onclick="openGeneratorModal()" title="Add circuits of chosen algorithms at random qubit counts"
+                                class="text-xs font-medium py-1 px-2 rounded border border-yellow-300 bg-white text-yellow-700 hover:bg-yellow-100">Auto-Gen</button>
                         </div>
-                        <div id="config-grid" class="grid grid-cols-1 gap-3">
-                            <!-- Populated by JS -->
+                        <div class="flex gap-3 text-xs">
+                            <button type="button" onclick="document.getElementById('playlist-upload').click()" class="text-yellow-800 hover:text-yellow-900 font-medium">⬆ Import JSON</button>
+                            <button type="button" onclick="exportPlaylist()" class="text-yellow-800 hover:text-yellow-900 font-medium">⬇ Export JSON</button>
+                            <input type="file" id="playlist-upload" class="hidden" accept=".json" onchange="importPlaylist(this)">
+                            <button type="button" onclick="clearBatch()" class="text-red-600 hover:text-red-800">Clear</button>
                         </div>
-                    </details>
+                    </div>
+                    <p id="playlist-empty-hint" class="text-xs text-yellow-800">Playlist is empty. Use + Add, Quick Load or Auto-Gen to collect circuits to run together as a batch.</p>
+                    <ul id="queue-list" class="hidden space-y-1 max-h-48 overflow-y-auto text-sm text-gray-700"></ul>
+                </section>
 
-                    <!-- Group: Compile-only services -->
-                    <details class="bg-white rounded shadow-sm border border-teal-100 p-3 mt-3">
-                        <summary class="cursor-pointer select-none text-xs font-semibold uppercase tracking-wide text-teal-700">
-                            Compile-only services
-                        </summary>
-                        <p class="text-xs text-gray-500 mt-2">
-                            Each ticked level compiles the run's circuit after the simulators have finished and
-                            records the output circuit, shown in the Circuits tab and written to the RO-Crate.
-                            Compiled circuits are not simulated and are not part of the agreement comparison.
-                            Hover a level for what it runs.
-                        </p>
-                        <div id="compiler-grid" class="grid grid-cols-1 gap-2 mt-3">
-                            <!-- Populated by JS -->
-                        </div>
-                    </details>
+                <!-- === CONFIG === -->
+                <details id="advanced-settings" class="p-4 border border-indigo-200 rounded-lg bg-indigo-50">
+                    <summary class="cursor-pointer select-none text-lg font-semibold text-indigo-900">Configuration <span id="advanced-changed" class="ml-1 text-xs font-normal text-gray-500"></span></summary>
+                    <div class="mt-3 space-y-3">
+                        <p class="text-xs text-gray-600">Each setting applies to every run from this page. Details: <a href="docs.html#run-options" target="_blank" rel="noopener" class="underline">Run options</a>.</p>
 
-                    <!-- Group: Agreement thresholds -->
-                    <details class="bg-white rounded shadow-sm border border-indigo-100 p-3 mt-3">
-                        <summary class="cursor-pointer select-none text-xs font-semibold uppercase tracking-wide text-indigo-700">
-                            Agreement Thresholds
-                        </summary>
-                        <p class="text-xs text-gray-500 mt-2">
-                            Sent with every run and recorded in each pair's agreement record, which is where they
-                            are applied. A statevector pair agrees when fidelity ≥ 1 − fidelity tol; a relative
-                            phase within phase tol (radians) counts as 0. The measured JS (nats) and Hellinger
-                            cut-offs are descriptive and depend on the shot count; the shot-noise statistical test
-                            gives the significance verdict. A statevector whose norm differs from 1 by more than
-                            the norm tol is flagged; its pair is labelled agree_after_normalization if it agrees.
-                        </p>
-                        <div class="grid grid-cols-2 gap-2 mt-3">
-                            <label class="text-xs text-indigo-900">Statevector fidelity tol
-                                <input type="number" id="th-fidelity" value="1e-5" step="any" min="0"
-                                    class="mt-1 block w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-indigo-500 focus:border-indigo-500"></label>
-                            <label class="text-xs text-indigo-900">Statevector phase tol (rad)
-                                <input type="number" id="th-phase" value="1e-6" step="any" min="0"
-                                    class="mt-1 block w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-indigo-500 focus:border-indigo-500"></label>
-                            <label class="text-xs text-indigo-900">Measured JS threshold (nats)
-                                <input type="number" id="th-js" value="0.01" step="any" min="0"
-                                    class="mt-1 block w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-indigo-500 focus:border-indigo-500"></label>
-                            <label class="text-xs text-indigo-900">Measured Hellinger threshold
-                                <input type="number" id="th-hellinger" value="0.1" step="any" min="0"
-                                    class="mt-1 block w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-indigo-500 focus:border-indigo-500"></label>
-                            <label class="text-xs text-indigo-900">Statevector norm tol
-                                <input type="number" id="th-norm" value="1e-4" step="any" min="0"
-                                    class="mt-1 block w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-indigo-500 focus:border-indigo-500"></label>
+                        <h3 class="text-xs font-semibold uppercase tracking-wide text-indigo-700">Execution</h3>
+                        <div class="bg-white p-3 rounded shadow-sm border border-indigo-100">
+                            <label class="block text-sm font-medium text-indigo-900 mb-1" for="timeout-input">Timeout per backend (seconds)</label>
+                            <input type="number" id="timeout-input" value="60" min="10" max="300" step="1" class="block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                            <span id="timeout-help" class="block text-xs text-gray-500 mt-1">Covers process start, the warm-up run and every timed run.</span>
                         </div>
-                        <button type="button" onclick="resetAgreementThresholds()"
-                            class="mt-2 text-xs text-indigo-600 hover:text-indigo-800 hover:underline">Reset to defaults</button>
-                    </details>
+                        <div class="bg-white p-3 rounded shadow-sm border border-indigo-100">
+                            <label class="block text-sm font-medium text-indigo-900 mb-1" for="timing-repeats-input">Timing repeats</label>
+                            <input type="number" id="timing-repeats-input" value="1" min="1" max="10" step="1" class="block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                            <span class="block text-xs text-gray-500 mt-1">After one warm-up, compile and simulate this many times in the same process; times are the median. Each backend still gives one result. To compare separate runs of a backend with each other, use Multi-run mode under Backends.</span>
+                        </div>
+                        <div id="exclusive-container" class="bg-white p-3 rounded shadow-sm border border-indigo-100">
+                            <label class="flex items-center gap-2 text-sm font-medium text-indigo-900" for="exclusive-checkbox">
+                                <input type="checkbox" id="exclusive-checkbox" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                Exclusive timing run
+                            </label>
+                            <span class="block text-xs text-gray-500 mt-1">Backends run one at a time, and only while no other run is in flight on this server. Use it for timings you will compare or publish.</span>
+                        </div>
 
+                        <h3 class="text-xs font-semibold uppercase tracking-wide text-indigo-700">Circuit Preprocessing</h3>
+                        <fieldset class="bg-white p-3 rounded shadow-sm border border-indigo-100 text-sm text-indigo-900">
+                            <legend class="text-sm font-medium text-indigo-900 mb-1">Apply SDK Preprocessing</legend>
+                            <label class="flex items-center gap-2"><input type="radio" name="preprocessing" value="on" checked onchange="updateWorkspace()"> On</label>
+                            <label class="flex items-center gap-2"><input type="radio" name="preprocessing" value="off" onchange="updateWorkspace()"> Off (raw SDK behaviour; some backends will reject some gates)</label>
+                            <label class="flex items-center gap-2"><input type="radio" name="preprocessing" value="both" onchange="updateWorkspace()"> Both, as an experiment (results per setting and a downloadable bundle)</label>
+                            <span class="block text-xs text-gray-500 mt-1">On: the API merges quantum registers and round-trips the circuit through pytket, and each backend applies its own passes. Every change is listed per backend. <a href="docs.html#preprocessing" target="_blank" rel="noopener" class="underline">Details</a></span>
+                        </fieldset>
+                        <div id="bypass-limits-container" class="bg-white p-3 rounded shadow-sm border border-indigo-100">
+                            <label class="flex items-center gap-2 text-sm font-medium text-indigo-900">
+                                <input type="checkbox" id="bypass-limits-checkbox" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
+                                Bypass API Safety Limits
+                            </label>
+                            <span class="block text-xs text-gray-500 mt-1">Local servers only: skips the size and statement-count limits. Qubit limits still apply.</span>
+                        </div>
+
+                                                <div class="bg-white p-3 rounded shadow-sm border border-indigo-100">
+                            <label class="block text-sm font-medium text-indigo-900 mb-1" for="seed-input">Sampling seed (measured)</label>
+                            <input type="number" id="seed-input" placeholder="empty: a random seed, recorded in the report" min="0" step="1" class="block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                            <span class="block text-xs text-gray-500 mt-1">Each backend gets its own seed derived from this one.</span>
+                        </div>
+
+                        <details id="advanced-backends" open class="bg-white p-3 rounded shadow-sm border border-indigo-100">
+                            <summary class="cursor-pointer select-none text-xs font-semibold uppercase tracking-wide text-indigo-700">Backends and optimization levels</summary>
+                            <div id="config-grid" class="grid grid-cols-1 gap-3 mt-3"></div>
+                        </details>
+
+                        <details id="advanced-compilers" class="bg-white p-3 rounded shadow-sm border border-indigo-100">
+                            <summary class="cursor-pointer select-none text-xs font-semibold uppercase tracking-wide text-indigo-700">Compile-only services</summary>
+                            <p class="text-xs text-gray-500 mt-1">Used when Compile-only services is ticked under Mode. Each ticked level compiles the run's circuit after the simulators finish; outputs are in the Circuits tab and are not simulated or compared. Hover a level for what it runs.</p>
+                            <div id="compiler-grid" class="grid grid-cols-1 gap-2 mt-3"></div>
+                        </details>
+
+                        <details class="bg-white p-3 rounded shadow-sm border border-indigo-100">
+                            <summary class="cursor-pointer select-none text-xs font-semibold uppercase tracking-wide text-indigo-700">Agreement Thresholds</summary>
+                            <p class="text-xs text-gray-500 mt-1">A statevector pair agrees when fidelity ≥ 1 − fidelity tolerance; a phase within the phase tolerance counts as 0. The JS and Hellinger cut-offs are descriptive; the shot-noise test decides measured agreement. <a href="docs.html#stat" target="_blank" rel="noopener" class="underline">Details</a></p>
+                            <div class="grid grid-cols-2 gap-2 mt-3">
+                                <label class="text-xs text-indigo-900">Statevector fidelity tol
+                                    <input type="number" id="th-fidelity" value="1e-5" step="any" min="0" class="mt-1 block w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-indigo-500 focus:border-indigo-500"></label>
+                                <label class="text-xs text-indigo-900">Statevector phase tol (rad)
+                                    <input type="number" id="th-phase" value="1e-6" step="any" min="0" class="mt-1 block w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-indigo-500 focus:border-indigo-500"></label>
+                                <label class="text-xs text-indigo-900">Measured JS threshold (nats)
+                                    <input type="number" id="th-js" value="0.01" step="any" min="0" class="mt-1 block w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-indigo-500 focus:border-indigo-500"></label>
+                                <label class="text-xs text-indigo-900">Measured Hellinger threshold
+                                    <input type="number" id="th-hellinger" value="0.1" step="any" min="0" class="mt-1 block w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-indigo-500 focus:border-indigo-500"></label>
+                                <label class="text-xs text-indigo-900">Statevector norm tol
+                                    <input type="number" id="th-norm" value="1e-4" step="any" min="0" class="mt-1 block w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-indigo-500 focus:border-indigo-500"></label>
+                            </div>
+                            <button type="button" onclick="resetAgreementThresholds()" class="mt-2 text-xs text-indigo-600 hover:text-indigo-800 hover:underline">Reset to defaults</button>
+                        </details>
+
+                        <div class="bg-white p-3 rounded shadow-sm border border-indigo-100">
+                            <label class="block text-sm font-medium text-indigo-900 mb-1" for="execution-target-select">Execution Environment</label>
+                            <select id="execution-target-select" class="block w-full pl-3 pr-10 py-2 text-sm border-gray-300 rounded-md"><option value="">Server default</option></select>
+                            <span id="execution-target-help" class="block text-xs text-gray-500 mt-1">The report records where it ran.</span>
+                        </div>
                     <!-- Group: Auto-save to a local folder -->
-                    <div id="autosave-card" class="flex flex-col mb-4 mt-3 bg-white p-3 rounded shadow-sm border border-indigo-100">
+                    <div id="autosave-card" class="flex flex-col mt-3 bg-white p-3 rounded shadow-sm border border-indigo-100">
                         <label class="flex items-center space-x-2">
                             <input type="checkbox" id="autosave-toggle" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
                             <span class="text-sm font-medium text-indigo-900">Auto-save results to a folder</span>
@@ -261,15 +241,63 @@
                         <div id="autosave-detail" class="hidden mt-2">
                             <div class="flex items-center gap-2 flex-wrap">
                                 <button type="button" id="autosave-choose"
-                                    class="text-xs bg-indigo-100 text-indigo-700 hover:bg-indigo-200 rounded px-2 py-1">Choose folder…</button>
+                                    class="text-xs bg-indigo-100 text-indigo-700 hover:bg-indigo-200 rounded px-2 py-1">Choose folder</button>
                                 <span id="autosave-folder" class="text-xs text-gray-600">no folder chosen</span>
                             </div>
-                            <p class="text-[11px] text-gray-500 mt-1">Each completed run is written as a JSON file to a folder on your computer — nothing is uploaded.</p>
+                            <p class="text-[11px] text-gray-500 mt-1">Each completed run is written as a JSON file to a folder on this computer.</p>
                             <p id="autosave-status" class="text-[11px] mt-1"></p>
                         </div>
                         <p id="autosave-unsupported" class="hidden text-[11px] text-amber-600 mt-1">Saving to a folder needs Chrome or Edge (the File System Access API); this browser isn't supported.</p>
                     </div>
-                </div>
+                    </div>
+                </details>
+
+            </div>
+
+                <!-- === RUN (the footer of the left column, always visible) === -->
+                <section aria-label="Run" class="flex-shrink-0 px-4 sm:px-6 lg:px-8 py-3 bg-white border-t border-gray-200 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] space-y-2">
+                    <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-gray-700">
+                        <fieldset id="run-source-fieldset" class="flex items-center gap-2">
+                            <legend class="sr-only">Run</legend>
+                            <span class="font-medium text-gray-700" aria-hidden="true">Run</span>
+                            <div class="inline-flex rounded-md border border-gray-300 overflow-hidden text-sm">
+                                <label class="cursor-pointer"><input type="radio" name="run-source" value="editor" checked onchange="updateWorkspace()" class="peer sr-only">
+                                    <span class="block px-3 py-1 bg-white text-gray-700 peer-checked:bg-blue-600 peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500">Editor code</span></label>
+                                <label class="cursor-pointer border-l border-gray-300"><input type="radio" name="run-source" value="list" onchange="updateWorkspace()" class="peer sr-only">
+                                    <span id="run-source-list-label" class="block px-3 py-1 bg-white text-gray-700 peer-checked:bg-yellow-600 peer-checked:text-white peer-disabled:opacity-50 peer-disabled:cursor-not-allowed peer-focus-visible:ring-2 peer-focus-visible:ring-yellow-500">Playlist (<span id="run-source-count">0</span>)</span></label>
+                            </div>
+                        </fieldset>
+                        <fieldset class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <legend class="sr-only">Mode</legend>
+                            <span class="font-medium text-gray-700" aria-hidden="true">Mode</span>
+                            <label class="inline-flex items-center" title="Every backend returns its final statevector; pairs are compared by fidelity."><input type="checkbox" id="mode-statevector" checked onchange="updateWorkspace()"><span class="ml-1.5">Statevector</span></label>
+                            <label class="inline-flex items-center" title="Every backend samples measurement outcomes; pairs are compared with a shot-noise test."><input type="checkbox" id="mode-measured" onchange="updateWorkspace()"><span class="ml-1.5">Measured</span></label>
+                            <label class="inline-flex items-center" title="Compile-only services rewrite the circuit; their outputs are shown in the Circuits tab and are not simulated."><input type="checkbox" id="mode-compilers" onchange="updateWorkspace()"><span class="ml-1.5">Compile-only services</span></label>
+                        </fieldset>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-600">
+                        <div id="shots-container-single" class="hidden flex items-center gap-1">
+                            <label for="shots-single" class="font-medium text-gray-700">Shots</label>
+                            <input type="number" id="shots-single" value="8200" min="1" step="1" class="w-24 border border-gray-300 rounded px-2 py-1 text-xs" aria-describedby="shots-hint-single">
+                            <span id="shots-hint-single" class="sr-only">When the shots are too few for a reliable comparison, the result says so and recommends a count.</span>
+                        </div>
+                        <span id="compilers-line" class="hidden"><span id="compilers-summary">No compile-only service selected.</span>
+                            <button type="button" onclick="openAdvanced('advanced-compilers')" class="ml-1 text-indigo-600 hover:text-indigo-800 underline">choose</button></span>
+                        <span><span class="backend-selection-summary"></span>
+                            <button type="button" onclick="openAdvanced('advanced-backends')" class="ml-1 text-indigo-600 hover:text-indigo-800 underline">change</button></span>
+                        <label class="flex items-center gap-1 flex-1 min-w-[12rem]"><span class="font-medium text-gray-700 whitespace-nowrap">Run Name (Optional)</span>
+                            <input type="text" id="single-run-name" maxlength="200" placeholder="E.g., GHZ Final Opt" class="flex-1 min-w-0 border border-gray-300 rounded px-2 py-1 text-xs"></label>
+                    </div>
+                    <p id="run-limit-warning" role="status" class="hidden text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1"></p>
+                    <div id="single-validation-msg" role="alert" class="hidden p-2 text-xs text-red-800 bg-red-50 border border-red-200 rounded"></div>
+                    <button onclick="runWorkspace()" id="btn-run"
+                        class="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                        Run Editor Code
+                    </button>
+                </section>
+
+                <!-- Shared backdrop for the slide-over drawer -->
+                <div id="drawer-backdrop" class="hidden fixed inset-0 bg-black/40 z-40 !mt-0"></div>
 
                 <!-- === BENCHMARKS DRAWER === -->
                 <div id="benchmarks-panel"
@@ -326,10 +354,19 @@
                             </button>
                             <button onclick="addBenchmarkToBatch()"
                                 class="col-span-1 flex justify-center py-2 px-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-emerald-700 bg-emerald-100 hover:bg-emerald-200 focus:outline-none">
-                                + Add to Batch
+                                + Add to Playlist
                             </button>
                         </div>
                         <div id="bench-error" class="hidden text-xs text-red-600 mt-2"></div>
+                        <div class="border-t border-emerald-200 pt-3 mt-3">
+                            <span class="block text-sm font-medium text-emerald-800 mb-1">Add a whole suite</span>
+                            <div class="flex space-x-2">
+                                <input type="number" id="bench-all-max-qubits" min="1" placeholder="≤ qubits"
+                                    class="w-24 text-xs border border-emerald-300 rounded px-2 py-1 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
+                                <button type="button" onclick="bmAddAllOfCurrentSuite()"
+                                    class="flex-1 text-xs font-medium py-1 px-2 rounded border border-emerald-300 text-emerald-800 bg-white hover:bg-emerald-50">+ Add whole suite to Playlist</button>
+                            </div>
+                        </div>
 
                         <div class="border-t border-emerald-200 pt-3 mt-3">
                             <div class="flex items-center justify-between mb-1">
@@ -338,7 +375,7 @@
                                     <input type="checkbox" id="bench-select-all" onchange="bmToggleSelectAll()" class="mr-1">Select all</label>
                             </div>
                             <div class="flex space-x-2 mb-2">
-                                <input type="text" id="bench-filter" oninput="bmRenderChecklist()" placeholder="filter…"
+                                <input type="text" id="bench-filter" oninput="bmRenderChecklist()" placeholder="filter"
                                     class="flex-1 text-xs border border-emerald-300 rounded px-2 py-1 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
                                 <input type="number" id="bench-max-qubits" min="1" oninput="bmRenderChecklist()" placeholder="≤ qubits"
                                     class="w-24 text-xs border border-emerald-300 rounded px-2 py-1 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
@@ -347,213 +384,9 @@
                                 class="max-h-48 overflow-y-auto border border-emerald-200 rounded p-2 bg-white text-xs space-y-1"></div>
                             <button onclick="bmAddSelectedToBatch()"
                                 class="mt-2 w-full flex justify-center py-2 px-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-emerald-700 bg-emerald-100 hover:bg-emerald-200 focus:outline-none">
-                                + Add selected to Batch (<span id="bench-selected-count">0</span>)
+                                + Add selected to Playlist (<span id="bench-selected-count">0</span>)
                             </button>
                         </div>
-                    </div>
-                </div>
-
-                <!-- === BATCH DRAWER === -->
-                <div id="playlist-section"
-                    class="translate-x-full fixed top-0 right-0 z-50 h-full w-full sm:max-w-md !mt-0 bg-yellow-50 shadow-2xl overflow-y-auto transform transition-transform duration-300 ease-in-out p-4">
-                    <div class="flex justify-between items-center mb-3">
-                        <h2 class="text-lg font-semibold text-yellow-900">Batch (<span id="queue-count">0</span>)</h2>
-                        <div class="flex items-center gap-3">
-                            <button onclick="clearBatch()"
-                                class="text-xs text-red-600 hover:text-red-800 font-medium">Clear</button>
-                            <button onclick="closeDrawers()" aria-label="Close"
-                                class="text-yellow-500 hover:text-yellow-700 text-2xl leading-none">&times;</button>
-                        </div>
-                    </div>
-
-                    <!-- Playlist Management -->
-                    <div class="flex space-x-2 mb-3">
-                        <button onclick="exportPlaylist()"
-                            class="flex-1 bg-white border border-yellow-300 text-yellow-700 hover:bg-yellow-50 text-xs font-medium py-1 px-2 rounded shadow-sm">
-                            ⬇ Export JSON
-                        </button>
-                        <button onclick="document.getElementById('playlist-upload').click()"
-                            class="flex-1 bg-white border border-yellow-300 text-yellow-700 hover:bg-yellow-50 text-xs font-medium py-1 px-2 rounded shadow-sm">
-                            ⬆ Import JSON
-                        </button>
-                        <input type="file" id="playlist-upload" class="hidden" accept=".json"
-                            onchange="importPlaylist(this)">
-                        <button onclick="openGeneratorModal()"
-                            class="flex-1 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs font-medium py-1 px-2 rounded shadow-sm">✨
-                            Auto-Gen</button>
-                    </div>
-                    <div class="mb-3">
-                        <label class="block text-xs font-medium text-yellow-800 mb-1">Quick Load:</label>
-                        <div class="flex space-x-2">
-                            <select id="preset-select"
-                                class="flex-1 text-xs border-yellow-300 bg-white rounded shadow-sm focus:ring-yellow-500 focus:border-yellow-500 p-1">
-                                <option value="sanity">Sanity Check (All Algos)</option>
-                                <option value="scaling">Scaling Test (GHZ 5–18)</option>
-                                <option value="stress">Memory Stress (20q)</option>
-                            </select>
-                            <button onclick="applyPreset()"
-                                class="bg-white border border-yellow-300 text-yellow-700 hover:bg-yellow-50 text-xs font-medium py-1 px-2 rounded shadow-sm">Apply</button>
-                        </div>
-                    </div>
-
-                    <!-- Playlist controls -->
-                    <div class="space-y-3 border-t border-yellow-200 pt-3">
-                        <div>
-                            <label class="block text-sm font-medium text-yellow-800">Mode</label>
-                            <div class="mt-1 flex space-x-4">
-                                <label class="flex items-center">
-                                    <input type="radio" name="mode-batch" value="statevector" checked
-                                        onchange="toggleBatchMode()">
-                                    <span class="ml-2 text-sm text-yellow-900">Statevector</span>
-                                </label>
-                                <label class="flex items-center">
-                                    <input type="radio" name="mode-batch" value="measured" onchange="toggleBatchMode()">
-                                    <span class="ml-2 text-sm text-yellow-900">Measured</span>
-                                </label>
-                            </div>
-                        </div>
-                        <div id="shots-container-batch" class="hidden">
-                            <label for="shots-batch" class="block text-sm font-medium text-yellow-800">Shots</label>
-                            <input type="number" id="shots-batch" value="8200" min="1" step="1"
-                                class="mt-1 block w-full border border-yellow-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm">
-                            <p id="shots-hint-batch" class="text-xs text-yellow-800 mt-1">A pair is called consistent only when the test has power 0.8 to detect a total-variation gap of 0.05 at α/(m·c_m), where m is the number of backend pairs and c_m the Benjamini–Yekutieli constant. The shots needed grow with the number of outcomes and backends; when they are not enough, the report marks the pairs inconclusive and recommends a shot count.</p>
-                        </div>
-                    </div>
-
-                    <ul id="queue-list"
-                        class="my-4 space-y-2 max-h-40 overflow-y-auto text-sm text-gray-700 border-t border-b border-yellow-200 py-2">
-                    </ul>
-                    <div class="mb-3">
-                        <label for="batch-run-name" class="block text-sm font-medium text-yellow-800">Run Name
-                            (Optional)</label>
-                        <input type="text" id="batch-run-name" placeholder="E.g., Baseline Test"
-                            class="mt-1 block w-full border border-yellow-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm">
-                    </div>
-                    <p class="backend-selection-summary text-xs text-yellow-900 mb-1"></p>
-                    <button id="btn-batch-run" onclick="runBatchQueue()"
-                        class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
-                        Run Batch
-                    </button>
-                    <div id="batch-validation-msg" role="alert" class="hidden mt-2 p-2 text-xs text-red-800 bg-red-50 border border-red-200 rounded"></div>
-
-                    <!-- Reproducible experiment: runs this batch over preprocessing axes into one bundle -->
-                    <div class="mt-3 border-t border-yellow-200 pt-3">
-                        <label class="flex items-center cursor-pointer">
-                            <input type="checkbox" id="experiment-toggle" onchange="toggleExperimentMode()">
-                            <span class="ml-2 text-sm font-medium text-yellow-900">Freeze as reproducible experiment</span>
-                        </label>
-                        <div id="experiment-controls" class="hidden mt-2 space-y-2">
-                            <p class="text-[11px] text-yellow-900 bg-yellow-100 border border-yellow-300 rounded p-2 leading-snug">
-                                Runs this batch over the chosen preprocessing axes and freezes inputs, per-circuit
-                                results, a conformance matrix, an agreement-prevalence table and a provenance
-                                manifest into one downloadable bundle. Each error signature is recorded with a
-                                triage='untriaged' marker for classification as
-                                adapter&nbsp;/&nbsp;SDK&nbsp;/&nbsp;by-design&nbsp;/&nbsp;resource.
-                            </p>
-                            <div>
-                                <label for="experiment-name" class="block text-xs font-medium text-yellow-800 mb-1">Experiment name</label>
-                                <input type="text" id="experiment-name" placeholder="E.g., QASMBench conformance sweep"
-                                    class="block w-full border border-yellow-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm">
-                            </div>
-                            <div>
-                                <span class="block text-xs font-medium text-yellow-800 mb-1">Add a whole benchmark suite</span>
-                                <div class="flex space-x-2">
-                                    <select id="exp-bench-suite"
-                                        class="flex-1 text-xs border-yellow-300 bg-white rounded shadow-sm focus:ring-yellow-500 focus:border-yellow-500 p-1">
-                                        <option value="qasmbench">QASMBench</option>
-                                        <option value="mqt">MQT Bench</option>
-                                    </select>
-                                    <input type="number" id="exp-bench-max-qubits" min="1" placeholder="≤ qubits"
-                                        class="w-24 text-xs border border-yellow-300 rounded px-2 py-1 shadow-sm focus:ring-yellow-500 focus:border-yellow-500">
-                                    <button type="button" onclick="bmAddAllOfSuite(document.getElementById('exp-bench-suite').value, parseInt(document.getElementById('exp-bench-max-qubits').value))"
-                                        class="bg-white border border-yellow-300 text-yellow-700 hover:bg-yellow-50 text-xs font-medium py-1 px-2 rounded shadow-sm">Add all to batch</button>
-                                </div>
-                                <span class="block text-[11px] text-yellow-700 mt-1">Set ≤ qubits to skip large circuits. Or pick specific circuits in the Benchmarks panel.</span>
-                            </div>
-                            <div>
-                                <span class="block text-xs font-medium text-yellow-800 mb-1">Preprocessing axis (runs once per checked value)</span>
-                                <label class="inline-flex items-center mr-4 text-sm text-yellow-900">
-                                    <input type="checkbox" id="exp-axis-on" checked><span class="ml-1">on</span></label>
-                                <label class="inline-flex items-center text-sm text-yellow-900">
-                                    <input type="checkbox" id="exp-axis-off"><span class="ml-1">off</span></label>
-                            </div>
-                            <button id="btn-experiment-run" onclick="runExperiment()"
-                                class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
-                                Run Experiment
-                            </button>
-                            <div id="experiment-result" class="hidden space-y-2">
-                                <div id="experiment-summary-line" class="text-xs text-yellow-900 bg-white border border-yellow-200 rounded p-2"></div>
-                                <button id="btn-experiment-download" onclick="downloadExperimentBundle()"
-                                    class="w-full flex justify-center py-2 px-4 border border-yellow-300 rounded-md shadow-sm text-sm font-medium text-yellow-800 bg-white hover:bg-yellow-50">
-                                    ⬇ Download bundle (ZIP)
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- === BLOCK 3: EDITOR (SINGLE RUN) === -->
-                <div class="p-4 border rounded-lg bg-gray-50 flex-1 flex flex-col">
-                    <h2 class="text-lg font-semibold text-gray-800 mb-3">Editor (Single Run)</h2>
-
-                    <div id="editor-context-bar"
-                        class="flex justify-between items-center text-xs text-gray-500 mb-2 px-1">
-                        <input type="text" id="ctx-algo-name" value="No Circuit Loaded"
-                            class="text-xs text-gray-700 bg-transparent border-b border-dashed border-gray-400 focus:outline-none focus:border-blue-500 w-1/2">
-                        <div class="flex space-x-2 items-center">
-                            <button onclick="document.getElementById('qasm-upload').click()"
-                                class="text-blue-600 hover:text-blue-800 font-medium">⬆ Import QASM</button>
-                            <button onclick="exportQasm()" class="text-blue-600 hover:text-blue-800 font-medium">⬇
-                                Export QASM</button>
-                            <button onclick="copyCircuitQasm(this)" title="Copy circuit QASM"
-                                class="text-gray-500 hover:text-gray-800 font-medium">⧉ Copy</button>
-                            <button onclick="generateAndVisualize()" id="btn-visualize"
-                                class="text-purple-600 hover:text-purple-800 font-medium ml-2">📊 Visualize</button>
-                            <input type="file" id="qasm-upload" class="hidden" accept=".qasm"
-                                onchange="importQasm(this)">
-                            <span id="ctx-circuit-stats" class="text-gray-500"></span>
-                            <span id="ctx-opt-level">Opt Level: 0</span>
-                        </div>
-                    </div>
-                    <textarea id="qasm-input"
-                        class="flex-1 w-full p-3 font-mono text-sm text-gray-800 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        style="min-height: 200px;"></textarea>
-
-                    <div class="space-y-4 mt-4 pt-4 border-t border-gray-200">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">Mode</label>
-                            <div class="mt-2 flex space-x-4">
-                                <label class="flex items-center">
-                                    <input type="radio" name="mode-single" value="statevector" checked
-                                        onchange="toggleSingleMode()">
-                                    <span class="ml-2 text-sm text-gray-700">Statevector</span>
-                                </label>
-                                <label class="flex items-center">
-                                    <input type="radio" name="mode-single" value="measured"
-                                        onchange="toggleSingleMode()">
-                                    <span class="ml-2 text-sm text-gray-700">Measured</span>
-                                </label>
-                            </div>
-                        </div>
-                        <div id="shots-container-single" class="hidden">
-                            <label for="shots-single" class="block text-sm font-medium text-gray-700">Shots</label>
-                            <input type="number" id="shots-single" value="8200" min="1" step="1"
-                                class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                            <p id="shots-hint-single" class="text-xs text-gray-500 mt-1">A pair is called consistent only when the test has power 0.8 to detect a total-variation gap of 0.05 at α/(m·c_m), where m is the number of backend pairs and c_m the Benjamini–Yekutieli constant. The shots needed grow with the number of outcomes and backends; when they are not enough, the report marks the pairs inconclusive and recommends a shot count.</p>
-                        </div>
-                        <div class="mt-2">
-                            <label for="single-run-name" class="block text-sm font-medium text-gray-700">Run Name
-                                (Optional)</label>
-                            <input type="text" id="single-run-name" placeholder="E.g., GHZ Final Opt"
-                                class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                        </div>
-                        <p class="text-xs text-gray-600"><span class="backend-selection-summary"></span>
-                            <button type="button" onclick="toggleConfigPanel()" class="ml-1 text-indigo-600 hover:text-indigo-800 underline">change</button></p>
-                        <button onclick="handleRun()" id="btn-run"
-                            class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                            Run Editor Code
-                        </button>
-                        <div id="single-validation-msg" role="alert" class="hidden p-2 text-xs text-red-800 bg-red-50 border border-red-200 rounded"></div>
                     </div>
                 </div>
 
@@ -574,6 +407,8 @@
                             <div id="runner-status-grid" class="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2 content-start overflow-y-auto"></div>
                             <div class="mt-4 pt-3 border-t border-indigo-100 flex-shrink-0 text-center">
                                 <span id="loader-elapsed" class="font-mono text-xs text-indigo-300">0s elapsed</span>
+                                <button type="button" id="btn-stop-waiting" onclick="stopWaiting()" title="The job keeps running on the server; reopen this page to see its results."
+                                    class="ml-3 text-xs text-indigo-600 hover:text-indigo-800 underline">Stop waiting</button>
                             </div>
                         </div>
                     </div>
@@ -584,6 +419,7 @@
                             Summary</button>
                     </div>
 
+                    <div id="run-switcher" class="hidden flex flex-wrap items-center gap-2 px-4 pt-3 text-xs" role="group" aria-label="Runs from the last press of Run"></div>
                     <nav class="flex flex-wrap border-b border-gray-200 flex-shrink-0" id="tab-nav"></nav>
 
                     <div id="resume-job-banner" role="status" class="hidden p-3 border-b border-amber-200 bg-amber-50 text-sm text-amber-900 flex flex-wrap items-center gap-2">
@@ -593,17 +429,20 @@
                     </div>
 
                     <div class="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden" id="tab-content">
-                        <div id="welcome-message" class="p-4 text-gray-500 block">Select an algorithm on the left to
-                            begin.</div>
+                        <div id="welcome-message" class="p-4 text-gray-600 block">
+                            <p class="font-medium text-gray-800">The editor on the left holds a circuit, ready to run.</p>
+                            <p class="mt-1">The Run Editor Code button at the bottom of the left column sends it to every selected backend and compares their outputs pair by pair; the result appears here, starting with which backends differ from the others.</p>
+                            <p class="mt-1">To use another circuit, Load one under Generate Circuits, open Bench, or Import QASM. To run several circuits in one job, add them to the Playlist.</p>
+                        </div>
 
                         <div id="summary-panel" class="p-4 hidden"></div>
                         <div id="performance-panel" class="p-4 hidden"></div>
                         <div id="resources-panel" class="p-4 hidden"></div>
-                        <div id="divergence-panel" class="p-4 hidden"></div>
                         <div id="agreement-panel" class="p-4 hidden"></div>
+                        <div id="divergence-panel" class="p-4 hidden"></div>
                         <div id="circuits-panel" class="p-4 hidden"></div>
-                        <div id="artifacts-panel" class="p-4 hidden"></div>
                         <div id="suite-summary-panel" class="p-4 hidden"></div>
+                        <div id="experiment-panel" class="p-4 hidden"></div>
 
                         <div id="visualizer-panel" class="p-0 hidden h-full w-full relative overflow-hidden bg-white">
                             <button onclick="closeVisualizer()"
@@ -617,7 +456,7 @@
                             </div>
                         </div>
 
-                        <div id="raw-panel" class="p-0 hidden flex flex-col h-full min-h-0 min-w-0">
+                        <div id="raw-panel" class="p-0 hidden flex flex-col min-w-0">
                             <div id="truncation-warning"
                                 class="hidden p-2 bg-yellow-100 text-yellow-800 text-xs border-b border-yellow-200">
                                 <span class="tpl-truncation-text">Statevectors of circuits over 14 qubits are not in this browser copy.</span>
@@ -626,7 +465,7 @@
                             <div class="flex flex-wrap items-center gap-2 p-2 border-b border-gray-200 bg-gray-50 flex-shrink-0">
                                 <button id="download-btn" onclick="downloadFullReport()" title="The server's untruncated report of this job, kept for 30 minutes after it completes"
                                     class="hidden bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium py-1 px-3 rounded-md transition-all">Download full report</button>
-                                <button onclick="downloadRawJson()" title="The JSON shown below, as held in this browser"
+                                <button onclick="downloadRawJson()" title="The report as held in this browser, including any statevectors it holds"
                                     class="bg-green-600 hover:bg-green-700 text-white text-xs font-medium py-1 px-3 rounded-md transition-all">Download displayed JSON</button>
                                 <button id="btn-export-rocrate" onclick="exportRoCrate()" title="Built from the server copy of this job while it is kept (30 minutes), otherwise from the copy in this browser"
                                     class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium py-1 px-3 rounded-md transition-all">📦 Export RO-Crate</button>
@@ -643,9 +482,9 @@
                                         class="h-3.5 w-3.5 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded">
                                     <span>Include raw statevectors</span>
                                 </label>
-                                <input type="text" id="export-author-name" placeholder="Author name (optional)" autocomplete="new-password"
+                                <input type="text" id="export-author-name" placeholder="Author name (optional)" autocomplete="name"
                                     class="border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 flex-1 min-w-[140px]">
-                                <input type="text" id="export-author-affiliation" placeholder="Affiliation (optional)" autocomplete="new-password"
+                                <input type="text" id="export-author-affiliation" placeholder="Affiliation (optional)" autocomplete="organization"
                                     class="border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 flex-1 min-w-[140px]">
                             </div>
                             <!-- Publication artifacts bundled into the RO-Crate -->
@@ -678,9 +517,17 @@
                                     </div>
                                 </div>
                             </div>
-                            <pre id="json-output"
-                                class="flex-1 min-h-0 p-4 overflow-auto text-xs text-gray-700 whitespace-pre-wrap break-words bg-gray-50 rounded-b-lg"></pre>
+                            <details id="json-output-details" class="border-b border-gray-200 bg-white">
+                                <summary class="cursor-pointer select-none p-2 text-xs font-semibold text-gray-600">Report JSON, as held in this browser</summary>
+                                <label class="flex items-center gap-2 px-2 pb-2 text-xs text-gray-600 cursor-pointer">
+                                    <input type="checkbox" id="json-show-sv" class="h-3.5 w-3.5 rounded border-gray-300">
+                                    Show statevector amplitudes (hidden by default; they can be hundreds of thousands of lines)
+                                </label>
+                                <pre id="json-output"
+                                    class="max-h-[60vh] p-4 overflow-auto text-xs text-gray-700 whitespace-pre-wrap break-words bg-gray-50"></pre>
+                            </details>
                         </div>
+                        <div id="artifacts-panel" class="p-4 hidden"></div>
                     </div>
                 </div>
             </div>
@@ -741,7 +588,6 @@
                 </div>
             </div>
         </div>
-    </div>
     </div>
 
     <!-- === AUTH MODAL === -->
@@ -887,29 +733,60 @@
         </div>
     </template>
 
-    <!-- Legend: summary and suite panels -->
-    <template id="tpl-legend-suite">
+    <!-- Legend: Summary, statevector runs -->
+    <template id="tpl-legend-statevector">
         <div class="flex flex-wrap justify-start items-center gap-x-4 gap-y-1 text-xs text-gray-600 mb-4 p-2 bg-gray-50 rounded-lg border">
             <span class="font-bold">Legend:</span>
-            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-success"></span>Agree</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-success"></span>Agree (directly or up to a global phase)</span>
             <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-divergence"></span>Agree after the bit reversal the declared orderings imply</span>
-            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-anomaly"></span>Anomaly (disagreement or distinguishable)</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-anomaly"></span>Disagree</span>
             <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-error"></span>Error</span>
             <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-timeout"></span>Timeout</span>
             <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-offline"></span>Offline / not comparable</span>
         </div>
     </template>
 
-    <!-- Legend: divergence matrices -->
-    <template id="tpl-legend-divergence">
+    <!-- Legend: Summary, measured runs -->
+    <template id="tpl-legend-measured">
         <div class="flex flex-wrap justify-start items-center gap-x-4 gap-y-1 text-xs text-gray-600 mb-4 p-2 bg-gray-50 rounded-lg border">
             <span class="font-bold">Legend:</span>
-            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-success"></span>Within the recorded tolerance</span>
-            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-divergence"></span>Outside the recorded tolerance</span>
-            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-offline"></span>OFF offline / n/c not comparable</span>
-            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-error"></span>ERR error</span>
-            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-timeout"></span>T/O timeout</span>
-            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full bg-white border border-dashed border-gray-300 mr-1.5"></span>Self</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-success"></span>Consistent within shot noise (no difference found; not proof of equality)</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-anomaly"></span>Distinguishable, or a single-bit marginal differs</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-inconclusive"></span>Inconclusive (too few shots, or the two tests disagree)</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-error"></span>Error</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-timeout"></span>Timeout</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-offline"></span>Offline / not comparable</span>
+        </div>
+    </template>
+
+    <!-- Legend: batch suite panel -->
+    <template id="tpl-legend-suite">
+        <div class="flex flex-wrap justify-start items-center gap-x-4 gap-y-1 text-xs text-gray-600 mb-4 p-2 bg-gray-50 rounded-lg border">
+            <span class="font-bold">Legend:</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-success"></span>All pairs agree / consistent within shot noise</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-anomaly"></span>Anomaly: the backends that differ from others</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-inconclusive"></span>Inconclusive</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-divergence"></span>Other agreement labels</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-error"></span>Error</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-timeout"></span>Timeout</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-offline"></span>Offline / not compared</span>
+        </div>
+    </template>
+
+    <!-- Legend: divergence matrices -->
+    <template id="tpl-legend-divergence">
+        <div class="text-xs text-gray-600 mb-4 p-2 bg-gray-50 rounded-lg border space-y-1">
+            <div class="flex flex-wrap justify-start items-center gap-x-4 gap-y-1">
+                <span class="font-bold">Colour = the pair's verdict, as in the Summary:</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-success"></span>Agree / consistent within shot noise</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-divergence"></span>Agree after the bit reversal the declared orderings imply</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-anomaly"></span>Disagree / distinguishable</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-inconclusive"></span>Inconclusive</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-offline"></span>OFF offline / n/c not comparable</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-error"></span>ERR error</span>
+                <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-timeout"></span>T/O timeout</span>
+            </div>
+            <p>Numbers are the direct values, without bit reversal. Where a pair is compared after the bit reversal its declared orderings imply, the value in that basis is shown below with ↺.</p>
         </div>
     </template>
 
@@ -1008,7 +885,7 @@
     </template>
 
     <!-- Single entry point; the module graph pulls in the rest. -->
-    <script type="module" src="js/main.js?v=1.0.29"></script>
+    <script type="module" src="js/main.js?v=1.0.38"></script>
 
 </body>
 

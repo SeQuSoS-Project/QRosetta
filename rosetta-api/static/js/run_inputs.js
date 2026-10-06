@@ -13,7 +13,6 @@ const THRESHOLD_LABELS = {
 };
 
 const TIMING_REPEATS_MIN = 1;
-const TIMING_REPEATS_MAX = 10;
 
 const INVALID_CLASSES = ['border-red-500', 'ring-1', 'ring-red-500'];
 
@@ -104,9 +103,9 @@ export function validateRunInputs({ shotsId, measured = false } = {}) {
     let timingRepeats = 1;
     const rEl = _input('timing-repeats-input');
     if (rEl) {
-        timingRepeats = _integerIn(rEl.value, TIMING_REPEATS_MIN, TIMING_REPEATS_MAX);
+        timingRepeats = _integerIn(rEl.value, TIMING_REPEATS_MIN, getState().timingRepeatsMax);
         const msg = timingRepeats === null
-            ? `Timing repeats must be ${_rangeText(TIMING_REPEATS_MIN, TIMING_REPEATS_MAX)}.` : null;
+            ? `Timing repeats must be ${_rangeText(TIMING_REPEATS_MIN, getState().timingRepeatsMax)}.` : null;
         _setFieldError(rEl, msg);
         if (msg) errors.push(`Config → ${msg}`);
     }

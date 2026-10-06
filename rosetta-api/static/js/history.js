@@ -121,7 +121,7 @@ export async function openHistoryModal() {
             list.innerHTML = '<li class="py-4 text-center text-sm text-gray-500">Your session has expired. Sign in again to view your history.</li>';
             return;
         }
-        if (!response.ok) throw new Error("Failed to fetch history");
+        if (!response.ok) throw new Error(await formatApiError(response));
 
         const runs = await response.json();
         if (runs.length === 0) {
@@ -254,13 +254,13 @@ export async function saveRunName(runId) {
             headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ run_name: newName })
         });
-        if (!res.ok) throw new Error("Failed to update run name");
+        if (!res.ok) throw new Error(await formatApiError(res));
 
         document.getElementById(`run-name-text-${runId}`).textContent = newName;
         cancelEditRunName(runId, newName);
     } catch (e) {
         console.error(e);
-        alert("Failed to save run name.");
+        alert("The run name was not saved. " + e.message);
     }
 }
 
@@ -276,11 +276,11 @@ export async function deleteSelectedHistory() {
             headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ run_ids: runIds })
         });
-        if (!res.ok) throw new Error("Failed to delete runs");
+        if (!res.ok) throw new Error(await formatApiError(res));
         openHistoryModal();
     } catch (e) {
         console.error(e);
-        alert("Failed to delete runs.");
+        alert("The runs were not deleted. " + e.message);
     }
 }
 
@@ -291,14 +291,18 @@ export async function downloadSelectedHistory() {
 
     setLoading(true, "Downloading histories...");
     try {
-        const fetches = runIds.map(id => fetch(`${BASE_URL}/history/runs/${id}`, { headers: getAuthHeaders() }).then(res => res.json()));
+        const fetches = runIds.map(async id => {
+            const res = await fetch(`${BASE_URL}/history/runs/${id}`, { headers: getAuthHeaders() });
+            if (!res.ok) throw new Error(await formatApiError(res));
+            return res.json();
+        });
         const results = await Promise.all(fetches);
 
         downloadBlob(new Blob([JSON.stringify(results, null, 2)], { type: 'application/json' }),
             `qrosetta_runs_batch_${Date.now()}.json`);
     } catch (e) {
         console.error(e);
-        alert("Failed to download runs.");
+        alert("The runs were not downloaded. " + e.message);
     } finally {
         setLoading(false);
     }
@@ -318,7 +322,7 @@ export async function loadHistoricalRun(runId, runName, createdAt) {
         const response = await fetch(`${BASE_URL}/history/runs/${runId}`, {
             headers: getAuthHeaders()
         });
-        if (!response.ok) throw new Error("Failed to load historical run details.");
+        if (!response.ok) throw new Error(await formatApiError(response));
 
         const data = await response.json();
         dispatch('SET_JOB_ID', null);

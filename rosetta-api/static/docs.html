@@ -49,12 +49,12 @@
             <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">On this page</p>
             <ul class="space-y-1 text-sm border-l border-gray-200">
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#what">Overview</a></li>
-                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#quickstart">Quickstart</a></li>
+                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#quickstart">Quickstart: your first run</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#circuits">Circuit sources</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#modes">Run modes</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#preprocessing">Circuit preprocessing</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#run-options">Run options</a></li>
-                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#batch">Batch runs and experiments</a></li>
+                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#batch">Several circuits and experiments</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#taxonomy">Agreement classification</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#formulas">Metric formulas</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#bitorder">Bit order per backend</a></li>
@@ -112,49 +112,34 @@
                 </p>
             </section>
 
-            <section id="quickstart">
-                <h2>Quickstart</h2>
+                        <section id="quickstart">
+                <h2>Quickstart: your first run</h2>
+                <p>The page opens with a three-qubit GHZ circuit in the editor, Statevector ticked and every backend the server offers selected.</p>
                 <ol class="list-decimal pl-5 space-y-1 mb-4 text-gray-700">
-                    <li>Enter an OpenQASM&nbsp;2.0 circuit, or generate a preset (GHZ, Bell, QFT, Grover,
-                        Bernstein–Vazirani, VQE, random) or pull one from a benchmark suite.</li>
-                    <li>Every backend the server has enabled runs by default; the line above the run button
-                        says how many are selected. Open the <strong>Config</strong> drawer to deselect backends
-                        (the choice is remembered in this browser) or to set the timeout, timing repeats,
-                        optimization level, sampling seed and agreement thresholds.</li>
-                    <li>Pick a <strong>run mode</strong>, statevector or measured, and run.</li>
-                    <li>Read the report tabs: Summary, Performance, Resources, Divergence, Agreement,
-                        Artifacts, and Exports.</li>
+                    <li>Press <strong>Run Editor Code</strong>, at the bottom of the left column, where Run, Mode, the backends line and Run Name always stay in view. The button label says what will run, for example "Run Editor Code · Statevector · 14 backends". While the run is in progress, a card per backend shows its state.</li>
+                    <li>Read the <strong>Summary</strong> tab. Its first line says how many backends returned a result; the next line names any backend that differs from the others, for example "Qrisp differs from 13 of 13". A GHZ circuit should read "Every comparable pair of backends agrees". The Backends table gives one row per backend: its status, how many others it differs from, its bit order, precision, time and peak memory. Below it, <strong>Evidence</strong> lists the pairs grouped by verdict.</li>
+                    <li>For a measured run, choose <em>Sampler bias, 16 qubits</em> in the <strong>Examples</strong> group of the Quantum Algorithms menu and press <strong>Load</strong>. This ticks Measured. In <strong>Configuration</strong> set a <strong>Sampling seed</strong> (for example 42) so a rerun draws the same shots, then press Run Editor Code. Expect the full-distribution test to call most pairs inconclusive (16 qubits have 65,536 outcomes, far more than 8,200 shots cover; the Summary gives the shots the test would need) and the single-bit marginal test to name Qrisp, whose sampler is biased on this circuit (see <a href="#known-issues">Known backend issues</a>).</li>
+                    <li>Open the other tabs when you need them: <strong>Agreement</strong> (a heatmap of every pair, the evidence per pair, and the raw matrices), <strong>Performance</strong> (times and memory), <strong>Circuits</strong> (what each backend executed), <strong>Exports</strong> (report files, RO-Crate, publication tables and figures).</li>
                 </ol>
                 <p>
                     Inputs are checked before a run is submitted: a shot count, timeout, seed or threshold
                     that is out of range is marked next to the field and the run is not sent. Requests the
-                    server rejects (an empty circuit, an unknown or disabled backend, an optimization level
-                    outside 0–3, a timeout below the minimum) are shown with the server's message.
-                    If the page is reloaded while a run is in progress, the page offers to show that run's
-                    results when it loads again, and the editor keeps the last circuit.
+                    server rejects are shown with the server's message. If the page is reloaded while a run
+                    is in progress, the page offers to show that run's results when it loads again; the
+                    editor and the playlist are kept in this browser.
                 </p>
-                <div class="callout callout-tip">
-                    <strong>Tip.</strong> The <strong>Batch</strong> panel lets you queue several circuits and
-                    run them together in one job; you can export/import the queue as a JSON "playlist" file for
-                    repeatable suites.
-                </div>
             </section>
 
-            <section id="circuits">
+                        <section id="circuits">
                 <h2>Circuit sources</h2>
-                <p>A circuit can come from any of four places:</p>
+                <p>Each panel on the left has one job: <strong>Generate Circuits</strong> chooses a ready-made circuit, the <strong>Editor</strong> holds the circuit you are working on, and the <strong>Playlist</strong> holds circuits to run together.</p>
                 <ul>
-                    <li><strong>Manual entry.</strong> Paste or type OpenQASM 2.0 directly into the editor.</li>
-                    <li><strong>Presets.</strong> The circuit generator builds a preset family (GHZ, Bell, QFT,
-                        Bernstein–Vazirani, Grover, and others) at a qubit count you choose.</li>
-                    <li><strong>QASMBench.</strong> A bundled suite of fixed-size circuits, selected by name.</li>
-                    <li><strong>MQT Bench</strong> (Munich Quantum Toolkit). A bundled suite of algorithm-level
-                        circuits, selected by algorithm and qubit count.</li>
+                    <li><strong>Generate Circuits.</strong> The <strong>Quantum Algorithms</strong> menu lists the generated algorithms (GHZ, Bell, QFT, Bernstein–Vazirani, Grover, VQE ansatz, random, bit-order probe), built at the qubit count you choose, and below them an <strong>Examples</strong> group of bundled circuits with a fixed size (<code>GET /examples</code>). The line under the menu describes the selection; for an example it names the mode it is meant for. <strong>Load</strong> puts the selection in the editor (asking first when that replaces your edits; loading an example ticks its mode); <strong>+ Add</strong> adds it to the playlist. <strong>Bench</strong> opens the Benchmarks picker for QASMBench (fixed-size circuits, by name) and MQT Bench (by algorithm and qubit count): load one circuit, add one, tick several with a name filter and a qubit cap, or add a whole suite.</li>
+                    <li><strong>Editor.</strong> Paste or type OpenQASM 2.0; <strong>Import QASM</strong> reads a file into it and <strong>Export QASM</strong> saves it; <strong>+ Add to Playlist</strong> adds the editor's circuit to the playlist under the name above the editor.</li>
+                    <li><strong>Playlist.</strong> <strong>Quick Load</strong> fills it with a ready-made set (one of each algorithm, a GHZ scaling series, or the largest statevector circuits); <strong>Auto-Gen</strong> adds circuits of chosen algorithms at random qubit counts.</li>
                 </ul>
                 <p>
-                    The <strong>Benchmarks</strong> drawer covers the last two: pick a suite, then either load one
-                    circuit into the editor, add it to the batch queue, or use the bulk-select list (with a name
-                    filter and a qubit-count cap) to add many circuits to the batch queue at once.
+                    In the run section at the bottom of the left column, <strong>Run</strong> switches between <strong>Editor code</strong> and <strong>Playlist</strong>; a warning appears there when a circuit has more qubits than a ticked mode allows. Loading a circuit into the editor selects the editor; adding to the playlist selects the playlist. The playlist can be exported to and imported from a JSON file.
                 </p>
             </section>
 
@@ -203,12 +188,12 @@
                 <p>
                     Each result can also report <code>device</code> (CPU or GPU),
                     <code>simulator_backend</code> (the library that executed the circuit) and
-                    <code>simulation_method</code>. The Summary tab's per-backend details and the
-                    Performance and Resources tables show them as tags. Qiskit runs on qiskit-aer's
+                    <code>simulation_method</code>. The Summary's per-backend details and the
+                    Performance tables show them as tags. Qiskit runs on qiskit-aer's
                     <code>AerSimulator</code> with <code>method="statevector"</code>. The cuQuantum runner is
                     qiskit-aer-gpu 0.15.1 with cuStateVec enabled, running on an NVIDIA GPU; its results
                     also carry <code>gpu_name</code> and <code>custatevec_enabled</code>. On a server without
-                    an NVIDIA GPU it is listed as unavailable in the Config drawer, with the reason the server
+                    an NVIDIA GPU it is listed as unavailable under Configuration → Backends, with the reason the server
                     gives, and it is not dispatched; it never falls back to the CPU. Its kernels run on the
                     GPU, while its host-side work (parsing, launching kernels, copying results back,
                     sampling) runs under the same CPU quota as the other runners (see
@@ -278,12 +263,12 @@
             <section id="run-options">
                 <h2>Run options</h2>
                 <p>
-                    These controls sit in the Config drawer and apply to single runs, batches and
+                    These controls sit under Configuration and apply to single runs, runs of the playlist and
                     experiments alike. Each has an API field of the same meaning, listed in the Swagger UI
                     at <code>/docs</code>.
                 </p>
                 <ul>
-                    <li><strong>Timing repeats</strong> (<code>timing_repeats</code>, 1–10, default 1).
+                    <li><strong>Timing repeats</strong> (<code>timing_repeats</code>, 1–10, default 1). All repetitions run in one process and give one result per backend; to compare separate runs of a backend with each other, use Multi-run mode (below).
                         The number of timed runs per backend after the one discarded warm-up run. With
                         more than one, each result carries <code>compilation_time_samples</code> and
                         <code>simulation_time_samples</code>, their mean, median and standard deviation,
@@ -306,15 +291,15 @@
                         Operators can turn the option off (<code>QROSETTA_EXCLUSIVE_ENABLED=false</code>).</li>
                     <li><strong>Shots</strong> (<code>n_shots</code>, measured mode, default 8200): enough for the power
                         model to reach 0.8 on circuits with up to 16 outcomes and 14 backends (8199 needed). Circuits
-                        with more outcomes need more; the Summary tab recommends a count when it can.</li>
-                    <li><strong>Multi-run mode (self-comparison).</strong> Runs one backend several times,
+                        with more outcomes need more; the Summary recommends a count when it can.</li>
+                    <li><strong>Multi-run mode (self-comparison)</strong>, under Backends. Runs one backend several times, each in its own process,
                         at the same or different optimization levels, and compares the runs with each other
                         like separate backends. In the API, a list in <code>runner_config</code> runs that
                         backend once per element, for example <code>{"qiskit": [0, 0, 1]}</code>. Each run
                         gets the key <code>&lt;runner&gt;~opt&lt;L&gt;~run&lt;N&gt;</code>, and the key is
                         part of its seed derivation. A request may ask for at most 16 runs of one backend and
                         48 runs in total; more is rejected with HTTP 422.</li>
-                    <li><strong>Custom ordering (phases)</strong> (<code>runner_phases</code>). Assigns each
+                    <li><strong>Custom ordering (phases)</strong> (<code>runner_phases</code>), under Backends. Assigns each
                         backend a phase number: backends with the same number run at the same time, and
                         phases run in ascending order. Without phases every backend runs at once. Phases
                         change which backends compete for the host at the same moment, not the per-runner
@@ -324,7 +309,7 @@
                         the expanded-gate and nested-gate-call limits (which protect the runners' memory),
                         the syntax checks and the measurement checks still apply, and the server ignores
                         the flag outside local mode. The report records it.</li>
-                    <li><strong>Apply SDK Preprocessing</strong> (<code>apply_preprocessing</code>): see
+                    <li><strong>Apply SDK Preprocessing</strong>: on or off (<code>apply_preprocessing</code>), or both, which runs an experiment (<a href="#batch">Several circuits, several runs, and experiments</a>); see
                         <a href="#preprocessing">Circuit preprocessing</a>.</li>
                 </ul>
                 <h3>Presets worth knowing</h3>
@@ -374,27 +359,34 @@
                 </p>
             </section>
 
-            <section id="batch">
-                <h2>Batch runs and experiments</h2>
+                        <section id="batch">
+                <h2>Several circuits, several runs, and experiments</h2>
                 <p>
-                    The <strong>Batch</strong> panel queues several circuits and runs them together as a
-                    single job, in either statevector or measured mode. Circuits can be added manually, from
-                    the generator, or from the Benchmarks drawer, including a whole suite at once capped by
-                    qubit count. A progress indicator shows which queued circuits are done, running, or
-                    still queued. The queue can be exported to a JSON file and re-imported later. A batch
+                    One press of the run button can start more than one job:
+                </p>
+                <table>
+                    <thead><tr><th>Choice under Run and Mode</th><th>Request</th></tr></thead>
+                    <tbody>
+                        <tr><td>Editor code, Statevector or Measured</td><td><code>POST /compare</code> or <code>POST /compare_measured</code></td></tr>
+                        <tr><td>The playlist</td><td><code>POST /run_batch_suite</code>, one job for every circuit</td></tr>
+                        <tr><td>Statevector and Measured both ticked</td><td>Two jobs, run one after the other; compile-only services go with the first</td></tr>
+                        <tr><td>Compile-only services only (neither Statevector nor Measured ticked)</td><td>The same endpoint with <code>simulate: false</code>: only the compile-only services run, and the report records <code>simulated: false</code></td></tr>
+                        <tr><td>Configuration → Apply SDK Preprocessing → Both</td><td><code>POST /experiments</code>, below</td></tr>
+                    </tbody>
+                </table>
+                <p>
+                    When there are two jobs, a row above the tabs switches between their results. A batch
                     shares one master seed, and because a backend's <code>runner_seed</code> is derived from
                     the master seed and its runner key only, each backend receives the same
-                    <code>runner_seed</code> in every task of the batch. Each task is named
-                    <code>&lt;circuit&gt; (&lt;n&gt;q)</code>; a bundled benchmark circuit adds its suite, as
-                    in <code>ghz (4q) [MQT Bench]</code> or <code>adder_n4.qasm [QASMBench]</code>, so it is
-                    not confused with a preset of the same name.
+                    <code>runner_seed</code> in every task. Each task is named after its circuit
+                    (<code>name</code> in the request, else the preset or file name) and qubit count; a
+                    bundled benchmark circuit adds its suite, as in <code>ghz (4q) [MQT Bench]</code>, so it
+                    is not confused with a preset of the same name.
                 </p>
-                <h3>Freezing a batch as a reproducible experiment</h3>
+                <h3>Experiments: preprocessing on and off</h3>
                 <p>
-                    Checking <strong>"Freeze as reproducible experiment"</strong> inside the Batch panel
-                    runs the same queued circuits over one or more <em>preprocessing axes</em> (each
-                    backend's preprocessing on, off, or both) and packages the result into one ZIP bundle
-                    containing:
+                    With <strong>Both</strong> selected, the circuits run once with each backend's
+                    preprocessing on and once with it off, and the result is one ZIP bundle containing:
                 </p>
                 <ul>
                     <li>The input QASM for every circuit, frozen at run time.</li>
@@ -410,11 +402,10 @@
                 </ul>
                 <p>
                     In the API the experiment is <code>POST /experiments</code> with a list of
-                    <code>circuits</code> and <code>preprocessing_modes</code>, a list of booleans naming
-                    the axes to run (<code>[true]</code>, <code>[false]</code> or <code>[true, false]</code>).
-                    The bundle is <code>GET /experiments/{job_id}/bundle</code>. Nothing is stored on the
-                    server beyond the job's retention time, and experiments are not saved to the run
-                    history.
+                    <code>circuits</code> and <code>preprocessing_modes</code> (<code>[true]</code>,
+                    <code>[false]</code> or <code>[true, false]</code>); the bundle is
+                    <code>GET /experiments/{job_id}/bundle</code>. Nothing is stored on the server beyond the
+                    job's retention time (30 minutes), and experiments are not saved to the run history.
                 </p>
             </section>
 
@@ -432,7 +423,7 @@
                     <code>fidelity_tolerance = 1e-5</code>, <code>phase_tolerance = 1e-6</code> rad,
                     <code>norm_tolerance = 1e-4</code>, <code>js_threshold = 0.01</code> nats and
                     <code>hellinger_threshold = 0.1</code> (the server reports its defaults at
-                    <code>GET /config</code>). They can be changed in the Config drawer; the
+                    <code>GET /config</code>). They can be changed under Configuration → Agreement Thresholds; the
                     values sent are recorded in the report's run configuration and in every pair record, and
                     the pair record's values are the ones the label was computed with. The phase tolerance
                     of 1e-6 rad sits above single-precision rounding (about 1e-8 rad for
@@ -483,7 +474,7 @@
                     <tbody>
                         <tr><td><code>consistent_within_shot_noise</code></td><td>Neither test is significant after Benjamini–Yekutieli (BY) correction, and the power to detect a total-variation gap of 0.05, computed at α/(m·c_m), is at least 0.8. This holds even when the label is <code>distance_exceeds_threshold</code>. It is a failure to find a difference at that power, not a demonstration that the distributions are equal.</td></tr>
                         <tr><td><code>inconclusive_low_shots</code></td><td>Either some expected counts are below 5 after rare outcomes are pooled (<code>inconclusive_reason: low_expected_counts</code>), or neither test is significant but the power to detect the target gap, computed at α/(m·c_m), is below 0.8 (<code>low_power</code>). <code>resolvable_by_more_shots</code> records whether more shots can resolve the pair; it is false when the outcomes are too rare for the test at any practical shot count. The pair is neither consistent nor in disagreement; the Summary tab groups these pairs by cause and gives the shot count the power model recommends when it exceeds the shots used.</td></tr>
-                        <tr><td><code>distinguishable</code></td><td>Both tests are significant after BY correction. This is the only measured outcome the Summary tab counts as a disagreement.</td></tr>
+                        <tr><td><code>distinguishable</code></td><td>Both tests are significant after BY correction. Together with a differing single-bit marginal, this is what the Summary counts as a measured disagreement.</td></tr>
                         <tr><td><code>ambiguous</code></td><td>Exactly one of the two tests is significant. Treated as inconclusive, not as a disagreement.</td></tr>
                         <tr><td><code>not_comparable</code></td><td>The pair has no usable counts on at least one side.</td></tr>
                     </tbody>
@@ -500,7 +491,7 @@
                     <strong>Transforms are an analysis step on top of the stored data.</strong> When a pair
                     is labelled "after bit reversal", the report shows both the direct metric and the
                     post-transform metric. Each backend's output is stored as that backend returned it,
-                    and the Divergence tab's fidelity matrix holds the direct fidelity, before any
+                    and the fidelity matrix in the Agreement tab holds the direct fidelity, before any
                     reversal.
                 </div>
             </section>
@@ -544,7 +535,7 @@
                     <code>unaligned_basis_match</code>; else <code>agree_after_qubit_permutation</code> if
                     the permutation fidelity is ≥ 1 − ε; else <code>residual_disagreement</code>. An
                     agreeing pair with <code>unnormalized_input</code> is relabelled
-                    <code>agree_after_normalization</code>. The Summary tab quotes the fidelity under the
+                    <code>agree_after_normalization</code>. The Summary quotes the fidelity under the
                     transform the label names, with the direct fidelity beside it.
                 </p>
                 <h3>Counts</h3>
@@ -656,7 +647,7 @@
                         total giving power 0.8 at α/(m·c_m); when outcomes were pooled, it is the smallest count at
                         which the observed proportions, scaled to that count, pool into a table with that power.
                         <code>recommended_exceeds_actual</code> says whether that is
-                        more than the shots either backend used; the Summary tab recommends more shots only
+                        more than the shots either backend used; the Summary recommends more shots only
                         then. Because df uses the observed outcomes, the recommendation
                         can be too small when the true support is larger.</li>
                 </ul>
@@ -755,7 +746,7 @@
                 <h2>Reproducibility</h2>
                 <ul>
                     <li><strong>Seeds.</strong> Every measured run has a master seed: the one you set in the
-                        Config drawer, or one the API generates and records at <code>seed</code>. Each backend
+                        Configuration, or one the API generates and records at <code>seed</code>. Each backend
                         receives <code>runner_seed</code> = the first 4 bytes of
                         <code>sha256("&lt;master seed&gt;:&lt;runner key&gt;")</code>, read big-endian, top bit
                         cleared; the runner key includes any <code>~opt&lt;L&gt;~run&lt;N&gt;</code> suffix.
@@ -960,7 +951,7 @@
                     <li><strong>Host memory only.</strong> Every memory field is host RSS. GPU device memory
                         is not measured, so a GPU run's memory fields do not include its statevector on the
                         GPU. GPU runs are not ranked by memory; they are listed under <code>unranked</code>
-                        with reason <code>gpu_memory_not_measured</code>, and the Resources tab says so.</li>
+                        with reason <code>gpu_memory_not_measured</code>, and the Performance tab says so.</li>
                     <li><strong>RSS and the container limit.</strong> RSS counts the shared libraries a process
                         has mapped, such as the CUDA runtime, so <code>process_peak_rss_mb</code> can exceed the
                         container's <code>memory_limit_mib</code> (cuQuantum and quimb read about 545 and 610 MiB under
@@ -991,7 +982,7 @@
                         an <code>opaque</code> gate with its matrix in comments). <code>gate_metrics_basis</code> states which.</li>
                     <li><strong>Rankings</strong> include only successful runs. Failed runs, and GPU runs in
                         the memory ranking, are listed under <code>unranked</code> with a reason, and the UI
-                        shows them after the ranked rows. The Performance and Resources tables have a Device
+                        shows them after the ranked rows. The Performance tab's tables have a Device
                         column, and the batch summary tags the device of the backend in its "Fastest (total time)" and
                         "Lowest process peak RSS" columns.</li>
                 </ul>
@@ -1031,13 +1022,13 @@
                         When several jobs, yours or other users', target the same runner, later runs wait for
                         it. The wait is recorded as <code>queue_wait_sec</code> and is not part of any timing.
                         Waits of 0.5 s or more are shown in the per-backend details and as a "queued" tag in
-                        the Performance and Resources tables; shorter values are dispatch overhead. In local
+                        the Performance tables; shorter values are dispatch overhead. In local
                         mode a run may wait at most the server-wide cap <code>RUNNER_QUEUE_MAX_WAIT_SEC</code> (default
                         1800 s, recorded in the report as <code>queue_max_wait_sec</code>); a run still queued
                         at the cap is not started. It ends with status <code>timeout</code>,
                         <code>timeout_kind: "queue"</code> and <code>never_started: true</code>, and the Summary
                         tab says it never started.</li>
-                    <li><strong>Timeout scope.</strong> The timeout set in the Config drawer (the server's
+                    <li><strong>Timeout scope.</strong> The timeout set under Configuration (the server's
                         allowed range is shown under the field) applies to each backend separately and covers
                         starting the isolated runner process, importing the SDK, the warm-up run and the timed
                         run. In local mode the budget starts when the run leaves the runner's queue, so time
@@ -1049,8 +1040,8 @@
                         it started (such as a compiler binary) are killed. A queue timeout (previous
                         item) has <code>timeout_kind: "queue"</code>. The value in the field is sent with every
                         run from the page; API calls that omit <code>timeout_seconds</code> use the schema
-                        default shown in the Swagger UI (60 s for single runs and batches, 300 s for
-                        experiments).</li>
+                        default shown in the Swagger UI (60 s for every run type). The field on the page starts
+                        at the same default.</li>
                     <li><strong>Timing samples.</strong> With the default of one timed run, a difference
                         between two backends smaller than the run-to-run variation of either cannot be read
                         from one report. Set <strong>Timing repeats</strong> above 1 to get a median and a
@@ -1092,7 +1083,7 @@
                     simulator results. A compile the adapter refuses (an input it cannot compile correctly,
                     such as a <code>cu3</code> Cirq would import wrongly) or whose output fails the adapter's
                     check has <code>refusal</code> (the reason) and <code>refusal_kind</code>
-                    (<code>input</code> or <code>output_check</code>); the Summary tab lists every compile with
+                    (<code>input</code> or <code>output_check</code>); the Summary lists every compile with
                     its gate counts or reason, and a share link shows refusal reasons but no other error
                     text.
                 </p>
@@ -1304,27 +1295,27 @@
                 <table>
                     <thead><tr><th>Tab</th><th>What it shows</th></tr></thead>
                     <tbody>
-                        <tr><td>Summary</td><td>How many of the server's enabled backends ran and which were not part of the run; failed runs grouped as Offline, Timed out and Errors; then what the pair records show. Statevector pairs are counted in the three label groups of <a href="#taxonomy">Agreement classification</a>. The Disagree block lists every disagreeing pair once with its reason: no registered transform explains it, it agrees only after an undeclared qubit permutation, or it matches only in the basis the declared orderings do not imply. Agreeing pairs follow: after the bit reversal their declared orderings imply (with each side's ordering and the bit-reversed fidelity), up to a global phase offset (with its value), after normalising a slightly unnormalised vector; then pairs that are not comparable, with the reason. Measured pairs are grouped only by <code>measured_assessment</code>, so each pair appears once, with its JS/Hellinger distance label as detail (a pair of an <code>lsb</code> and an <code>msb</code> backend reads "agree in the label-aligned (bit-reversed) basis"): distinguishable (the only measured disagreement); inconclusive, split into low power (with the recommended shots per backend when it exceeds the shots used), expected counts more shots can raise, and outcomes too rare for the test at any practical shot count; inconclusive because the two tests disagree; consistent within shot noise; and not comparable. Power is shown to three decimals, as "&gt; 0.999" or "&lt; 0.001" at the extremes, with the α/(m·c_m), m and c_m it was computed at. The distinguishable group carries a note on expected false discoveries under the BY correction. The success banner appears only when at least two backends succeeded and every pair agrees (statevector: directly, up to a global phase or after the declared bit reversal; measured: consistent within shot noise and within the thresholds in the label-aligned basis); it states the tolerance or α that was tested. A collapsible section lists the analysis version and git commit, then per-backend device (with the GPU name and cuStateVec state for a GPU run), simulator backend, precision, seeds, queue wait, number of timed runs, memory method, runner code hash, thread settings and preprocessing. The report title is the run name when you gave one.</td></tr>
-                        <tr><td>Performance / Resources</td><td>Ranked successful runs, then the unranked runs with their status and reason, with a Device column (GPU runs name the GPU). With Timing repeats above 1, each time cell shows the median ± the sample standard deviation and n. Tooltips on each column give the measurement window. When a GPU run is present, the Performance note says that times across devices compare different hardware and the Resources note says that GPU device memory is not measured.</td></tr>
-                        <tr><td>Divergence</td><td>The N×N fidelity, global phase offset arg⟨a|b⟩, JS-divergence (nats) and Hellinger matrices. The fidelity matrix holds the direct fidelity, before any bit reversal, so an <code>lsb</code>×<code>msb</code> pair that agrees after the declared reversal can show a low value here; the Agreement tab and the Summary give the label-aligned value. A cell is green when it is within the tolerance recorded with that pair; OFF, ERR and T/O mark failed runs, n/c a pair that is not comparable (<code>null</code> in the report; a report that stores −1 for such a pair shows n/c too). The diagonal holds each backend compared with itself (fidelity 1, JS 0, phase 0). Cells are rounded for display: four decimals, more for a fidelity that would otherwise round to 1, and three significant digits in scientific notation below 1e-3. Hover a cell for the unrounded value; the report stores it unrounded.</td></tr>
-                        <tr><td>Agreement</td><td>The label per backend pair, with the metrics, the tolerances used, the statistical test and provenance (seeds, ordering, SDK versions, preprocessing) per pair.</td></tr>
-                        <tr><td>Circuits</td><td>The circuit texts the run recorded, side by side: the circuit as submitted, the circuit the API sent to each dispatch group (with the API's changes) and the circuit each backend executed (its <code>transpiled_qasm</code>, with the backend's transforms, SDK versions, gate count and depth). Each executed pane says where its gate count and depth come from (<code>gate_metrics_basis</code>): counted from that text for most backends, from the executed tape for PennyLane, whose recorded text decomposes <code>QubitUnitary</code> although the tape does not. A line diff compares any two panes, raw or with whitespace and line breaks, comments, or the OPENQASM and include lines ignored; the raw text stays in the panes. The diff stops at about 4,000 changed lines. pytket rewrites angles as multiples of π, so the same angle can be written <code>pi/4</code>, <code>0.25*pi</code> or <code>0.7853981633974483</code>; <strong>Compare angles by value</strong> evaluates every gate parameter without variables and compares it in radians to 12 significant digits, so those read the same (parameters with variables, as in gate bodies, are compared as written). The Cirq pane holds pytket's serialisation of the circuit the Cirq adapter built: <code>include "hqslib1.inc"</code> and <code>U1q</code> come from pytket's gate set, not from Cirq. Texts written with Qiskit (the Qiskit, cuQuantum and TorchQuantum panes, QMAP's input and Q-Synth's output) give every angle as the shortest literal that reads back as the same double; Qiskit's own <code>qasm2.dumps</code> would write an angle below 1e-12 as 0 and one within 1e-12 of a simple multiple of π as that multiple. The qsim pane is Cirq's <code>to_qasm</code> with angles as multiples of π to 16 decimal places. The tab shows text only and draws no conclusion from a difference: two texts can differ line by line and describe the same unitary. When the run used compile-only services, the compiler input and each compiled circuit are panes too (see <a href="#compilers">Compile-only services</a>). A saved run opened from history also offers a read-only link (see <a href="#accounts">Accounts, history &amp; autosave</a>).</td></tr>
-                        <tr><td>Artifacts</td><td>Publication figures and tables, scoped to any subset of backends in the browser. The browser offers figures as SVG, PNG or PDF and tables as LaTeX, CSV, HTML or Markdown. The RO-Crate export renders figures as SVG, PNG or PDF and tables as LaTeX, CSV, HTML or XLSX (<code>publication_artifacts</code> in the export body).</td></tr>
-                        <tr><td>Exports</td><td>The JSON report held in the browser, the full report from the server, and the RO-Crate export (see <a href="#endpoints">Reports and exports</a>).</td></tr>
+                        <tr><td>Summary</td><td>A headline, then a Backends table, then the evidence. The headline says how many backends returned a result, names failed ones as Offline, Error or Timeout, and names each backend that differs from every backend it was compared with ("Qrisp differs from 13 of 13"); further differing pairs are listed by name. It uses the same rule as the pair badges: a statevector pair differs when it disagrees (<a href="#taxonomy">Agreement classification</a>); a measured pair differs when it is distinguishable beyond shot noise or a single-bit marginal differs. In measured mode the full-distribution and marginal counts are given apart, and the number of inconclusive pairs with the shots the power model asks for. A pair that differs shows that one of the two is wrong; the report does not decide which. The Backends table gives per backend its status, how many backends it differs from (hover for the names), in measured mode how many it is inconclusive with, its declared bit order, precision, total time and peak memory. <strong>Evidence</strong> follows, with a legend for the mode: statevector pairs in the three label groups; measured pairs grouped only by <code>measured_assessment</code>, each pair once with its JS/Hellinger distance label as detail; pairs whose single-bit marginals differ in their own block; inconclusive pairs split by cause; not comparable pairs with the reason. Lists of differing pairs are never folded and are ordered by the backend they share; lists of agreeing pairs over twelve items are folded. Power is shown to three decimals with the α/(m·c_m), m and c_m it was computed at. A collapsible section lists the analysis version and git commit, then per-backend run details. A compile-only run (<code>simulated: false</code>) shows only its compile records.</td></tr>
+                        <tr><td>Performance</td><td>Times, then memory: ranked successful runs, then the unranked runs with their status and reason, with a Device column (GPU runs name the GPU). The header names conditions in this run that can bias a comparison (backends ran at the same time, other jobs on the server, throttling, unstable repetitions, CPUs of different speeds, one timed run per backend); "How these times are measured" gives the details. With Timing repeats above 1, each time cell shows the median ± the sample standard deviation and n. Tooltips on each column give the measurement window; they open on hover, keyboard focus or tap.</td></tr>
+                        
+                        <tr><td>Agreement</td><td>Counts per label, a heatmap with one cell per pair (coloured by the same verdict as the Summary; click a cell to open its evidence), and the evidence per pair: label, metrics, tolerances, statistical test and provenance (seeds, ordering, SDK versions, preprocessing). Labels are shown in words with the recorded code in the tooltip; the pair list can be filtered by verdict and by backend. <strong>Divergence matrices</strong> (collapsed) hold the N×N fidelity, global phase offset arg⟨a|b⟩, JS-divergence (nats) and Hellinger values. Each number is the direct value, before any bit reversal; for a pair compared after the bit reversal its declared orderings imply, the value in that basis is shown below it with ↺. Cells are coloured by the pair's verdict, not by the number, so an <code>lsb</code>×<code>msb</code> pair that agrees after the declared reversal is coloured as agreeing although its direct fidelity is low. OFF, ERR and T/O mark failed runs, n/c a pair that is not comparable. Cells are rounded for display: four decimals, more for a fidelity that would otherwise round to 1, and three significant digits in scientific notation below 1e-3. Hover a cell for the unrounded value.</td></tr>
+                        <tr><td>Circuits</td><td>A table of the circuit texts the run recorded, one row per distinct text: rows that list several backends are byte-for-byte the same text with the same recorded gate count and depth. Each row gives the lines, gates, depth and the lines added and removed against the text it was derived from; View shows that text below the table, with its notes. The texts are: the circuit as submitted, the circuit the API sent to each dispatch group (with the API's changes) and the circuit each backend executed (its <code>transpiled_qasm</code>, with the backend's transforms, SDK versions, gate count and depth). Each executed pane says where its gate count and depth come from (<code>gate_metrics_basis</code>): counted from that text for most backends, from the executed tape for PennyLane, whose recorded text decomposes <code>QubitUnitary</code> although the tape does not. A line diff compares any two texts, raw or with whitespace and line breaks, comments, or the OPENQASM and include lines ignored; the raw text stays in the panes. The diff stops at about 4,000 changed lines. pytket rewrites angles as multiples of π, so the same angle can be written <code>pi/4</code>, <code>0.25*pi</code> or <code>0.7853981633974483</code>; <strong>Compare angles by value</strong> evaluates every gate parameter without variables and compares it in radians to 12 significant digits, so those read the same (parameters with variables, as in gate bodies, are compared as written). The Cirq pane holds pytket's serialisation of the circuit the Cirq adapter built: <code>include "hqslib1.inc"</code> and <code>U1q</code> come from pytket's gate set, not from Cirq. Texts written with Qiskit (the Qiskit, cuQuantum and TorchQuantum panes, QMAP's input and Q-Synth's output) give every angle as the shortest literal that reads back as the same double; Qiskit's own <code>qasm2.dumps</code> would write an angle below 1e-12 as 0 and one within 1e-12 of a simple multiple of π as that multiple. The qsim pane is Cirq's <code>to_qasm</code> with angles as multiples of π to 16 decimal places. The tab shows text only and draws no conclusion from a difference: two texts can differ line by line and describe the same unitary. When the run used compile-only services, the compiler input and each compiled circuit are panes too (see <a href="#compilers">Compile-only services</a>). A saved run opened from history also offers a read-only link (see <a href="#accounts">Accounts, history &amp; autosave</a>).</td></tr>
+                        
+                        <tr><td>Exports</td><td>The full report from the server, the browser copy as JSON, and the RO-Crate export (see <a href="#endpoints">Reports and exports</a>); the browser copy can be read on the page, with statevector amplitudes hidden unless you ask for them. Below: publication figures and tables, scoped to any subset of backends. Figures come as SVG, PNG or PDF; tables as LaTeX, CSV, HTML or Markdown. A LaTeX table needs <code>\usepackage{booktabs,adjustbox,longtable}</code>: it is scaled down to the line width when it is wider, set as a <code>longtable</code> above 40 rows so it breaks across pages, and carries its explanation as a note below the table. <strong>Standalone .tex</strong> downloads a complete document that compiles as it is, for example as a new Overleaf project. The RO-Crate export renders figures as SVG, PNG or PDF and tables as LaTeX, CSV, HTML or XLSX (<code>publication_artifacts</code> in the export body).</td></tr>
                     </tbody>
                 </table>
                 <p>
-                    A batch or experiment run shows a suite summary and the Exports tab. The suite summary
+                    A run of the playlist shows a suite summary and the Exports tab. The suite summary
                     gives each circuit an agreement badge plus one badge per failed-run status, and the
                     fastest and lightest successful backends, each tagged with its device. A measured task
-                    is badged by <code>measured_assessment</code>: Anomaly when any pair is distinguishable,
+                    is badged by <code>measured_assessment</code>: Differs, naming the backends, when any pair is distinguishable or a single-bit marginal differs,
                     All pairs consistent when every pair is consistent within shot noise, otherwise
-                    Inconclusive. A statevector task is badged by label group: Anomaly when any pair
-                    disagrees, All pairs agree, or All pairs agree (bit order as declared) when some pairs
+                    Inconclusive. A statevector task is badged by label group: Differs when any pair
+                    disagrees (Differs, naming the backends), All pairs agree, or All pairs agree (bit order as declared) when some pairs
                     agree after the declared bit reversal. Not compared means fewer than two backends
-                    returned a result. An experiment shows a summary line with its pair counts, by
-                    assessment in measured mode and by label group in statevector mode, and the bundle
-                    download.
+                    returned a result; Compile only marks a task of a compile-only run. An experiment shows
+                    its pair counts, by assessment in measured mode and by label group in statevector mode,
+                    and the bundle download.
                 </p>
             </section>
 
@@ -1397,7 +1388,7 @@
                     and circuits; a session token issued before the deletion stops working.
                 </p>
                 <p>
-                    Separately, and independent of an account, the Config drawer offers
+                    Separately, and independent of an account, Configuration offers
                     <strong>autosave to a local folder</strong>: each completed run is written as a JSON file
                     directly to a folder on your computer, with nothing uploaded anywhere. This needs the
                     File System Access API (Chromium-based browsers such as Chrome and Edge) and degrades gracefully

@@ -116,7 +116,13 @@ export function _artText(v) {
 export const _ART_LATEX_ESC = {
     '\\': '\\textbackslash{}', '&': '\\&', '%': '\\%', '$': '\\$', '#': '\\#',
     '_': '\\_', '{': '\\{', '}': '\\}', '~': '\\textasciitilde{}', '^': '\\textasciicircum{}',
+    '<': '\\textless{}', '>': '\\textgreater{}', '|': '\\textbar{}',
+    '\u2265': '$\\geq$', '\u2264': '$\\leq$', '\u27e8': '$\\langle$', '\u27e9': '$\\rangle$',
+    '\u2212': '$-$', '\u2248': '$\\approx$', '\u03b1': '$\\alpha$', '\u03b4': '$\\delta$',
+    '\u2192': '$\\rightarrow$',
 };
+export const ART_LATEX_PACKAGES = 'booktabs,adjustbox,longtable';
+export const ART_LATEX_LONG_TABLE_ROWS = 40;
 /** Escape LaTeX special characters. */
 export function _artLatexEscape(s) {
     return String(s).split('').map(c => _ART_LATEX_ESC[c] || c).join('');
@@ -131,15 +137,39 @@ export function _artSlug(s) {
     return String(s).toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/^-+|-+$/g, '');
 }
 
-/** booktabs LaTeX table. */
+/** 'r' for a column whose cells are all numbers (or '—'), else 'l'. */
+function _artLatexSpec(rows, nCols) {
+    let spec = '';
+    for (let c = 0; c < nCols; c++) {
+        const cells = rows.filter(r => c < r.length).map(r => r[c]);
+        const numeric = cells.some(x => x instanceof _ArtCell) && cells.every(x => x instanceof _ArtCell || x === '—');
+        spec += numeric ? 'r' : 'l';
+    }
+    return spec;
+}
+/** booktabs LaTeX table: scaled down to the line width when it is wider, a longtable above
+ * ART_LATEX_LONG_TABLE_ROWS rows, the caption text as a note below (_render_latex). */
 export function _artLatex({ headers, rows, title, caption }) {
-    const spec = 'l'.repeat(headers.length);
-    const lines = ['% Requires \\usepackage{booktabs}', '\\begin{table}[htbp]', '  \\centering',
-        `  \\caption{${_artLatexEscape(title)}. ${_artLatexEscape(caption)}}`,
-        `  \\label{tab:${_artSlug(title)}}`, `  \\begin{tabular}{${spec}}`, '    \\toprule',
-        '    ' + headers.map(_artLatexEscape).join(' & ') + ' \\\\', '    \\midrule'];
-    rows.forEach(r => lines.push('    ' + r.map(_artLatexEscape).join(' & ') + ' \\\\'));
-    lines.push('    \\bottomrule', '  \\end{tabular}', '\\end{table}', '');
+    const spec = _artLatexSpec(rows, headers.length);
+    const head = '    ' + headers.map(_artLatexEscape).join(' & ') + ' \\\\';
+    const body = rows.map(r => '    ' + r.map(_artLatexEscape).join(' & ') + ' \\\\');
+    const short = _artLatexEscape(title), label = `tab:${_artSlug(title)}`;
+    const note = `{\\footnotesize ${_artLatexEscape(caption)}\\par}`;
+    const lines = [`% Requires \\usepackage{${ART_LATEX_PACKAGES}}`];
+    if (rows.length > ART_LATEX_LONG_TABLE_ROWS) {
+        lines.push('{\\footnotesize\\setlength{\\tabcolsep}{3pt}', `\\begin{longtable}{${spec}}`,
+            `  \\caption[${short}]{${short}}\\label{${label}}\\\\`,
+            '    \\toprule', head, '    \\midrule', '  \\endfirsthead',
+            '    \\toprule', head, '    \\midrule', '  \\endhead',
+            '    \\bottomrule', '  \\endfoot',
+            ...body, '\\end{longtable}}', note, '');
+    } else {
+        lines.push('\\begin{table}[htbp]', '  \\centering', `  \\caption[${short}]{${short}}`,
+            `  \\label{${label}}`, '  \\begin{adjustbox}{max width=\\linewidth}',
+            `  \\begin{tabular}{${spec}}`, '    \\toprule', head, '    \\midrule',
+            ...body, '    \\bottomrule', '  \\end{tabular}', '  \\end{adjustbox}',
+            '  \\par\\smallskip', `  ${note}`, '\\end{table}', '');
+    }
     return lines.join('\n');
 }
 /** CSV with CRLF rows (Python csv module defaults). */

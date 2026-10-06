@@ -70,8 +70,10 @@ export const _STATUS_CFG = {
     running:  { color: 'bg-blue-500',    text: 'text-blue-600',   label: 'SENT',      pulse: true,  terminal: false,
                 hint: 'Sent to the backend. Each backend runs one request at a time, so this includes any wait behind another job; the wait is recorded as queue_wait_sec.' },
     done:     { color: 'bg-green-500',   text: 'text-green-700',  label: 'DONE',      pulse: false, terminal: true  },
-    error:    { color: 'bg-red-500',     text: 'text-red-600',    label: 'ERROR',     pulse: false, terminal: true  },
-    timeout:  { color: 'bg-orange-400',  text: 'text-orange-500', label: 'TIMEOUT',   pulse: false, terminal: true  },
+    error:    { color: 'bg-orange-500',  text: 'text-orange-700', label: 'ERROR',     pulse: false, terminal: true  },
+    timeout:  { color: 'bg-purple-500',  text: 'text-purple-700', label: 'TIMEOUT',   pulse: false, terminal: true  },
+    offline:  { color: 'bg-gray-400',    text: 'text-gray-500',   label: 'OFFLINE',   pulse: false, terminal: true,
+                hint: 'The backend could not be reached.' },
 };
 
 export const _RUNNER_NAMES = {

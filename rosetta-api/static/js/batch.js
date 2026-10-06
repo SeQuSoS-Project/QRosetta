@@ -3,67 +3,35 @@
 import { qasmInput, queueCount, queueList } from './dom.js';
 import { BASE_URL, fetchMQTBench, fetchQASMBench, getAuthHeaders } from './api.js';
 import { _parseQasmStats, updateContextBar } from './config.js';
-import { closeDrawers, isDrawerOpen, openDrawer } from './drawers.js';
+import { exampleForValue, fetchExampleQasm } from './examples.js';
+import { saveBatchQueue } from './session_store.js';
 import { dispatch, getState } from './state.js';
 import { setLoading } from './utils.js';
 
-export const PRESETS = {
-    "sanity": [
-        { algorithm: "bell", qubits: 2, name: "Bell State (Simple)" },
-        { algorithm: "ghz", qubits: 5, name: "GHZ State (Entanglement)" },
-        { algorithm: "qft", qubits: 5, name: "Quantum Fourier Transform" },
-        { algorithm: "grover", qubits: 5, name: "Grover Search (Oracle)" },
-        { algorithm: "random", qubits: 5, name: "Random Circuit" }
-    ],
-    "scaling": [
-        { algorithm: "ghz", qubits: 5, name: "GHZ State (Entanglement)" },
-        { algorithm: "ghz", qubits: 10, name: "GHZ State (Entanglement)" },
-        { algorithm: "ghz", qubits: 15, name: "GHZ State (Entanglement)" },
-        { algorithm: "ghz", qubits: 18, name: "GHZ State (Entanglement)" }
-    ],
-    "stress": [
-        { algorithm: "random", qubits: 18, name: "Random Circuit" },
-        { algorithm: "bv", qubits: 18, name: "Bernstein-Vazirani" },
-        { algorithm: "vqe", qubits: 18, name: "VQE Ansatz" }
-    ]
-};
+/** Quick Load sets as preset references; the server generates each circuit when the batch runs. */
+export function presetItems(key, algorithms, cap) {
+    const meta = id => algorithms.find(a => a.id === id) || { id, name: id };
+    const item = (id, qubits) => {
+        const m = meta(id);
+        const lo = m.min_qubits ?? 1;
+        const hi = Math.min(m.max_qubits ?? cap, cap);
+        return { algorithm: id, qubits: Math.max(lo, Math.min(qubits, hi)), name: m.name || id };
+    };
+    if (key === 'each') return algorithms.map(a => item(a.id, 5));
+    if (key === 'scaling') return [...new Set([5, 10, 15, cap])].filter(q => q <= cap).map(q => item('ghz', q));
+    if (key === 'largest') return ['random', 'bv', 'vqe'].map(id => item(id, cap));
+    return [];
+}
 
-export async function applyPreset() {
+export function applyPreset() {
     const val = document.getElementById('preset-select').value;
-    if (PRESETS[val]) {
-        if (getState().batchQueue.length > 0 && !confirm("This will replace your current playlist. Continue?")) return;
-
-        const cap = getState().maxQubitsStatevector;
-        const selectedPreset = JSON.parse(JSON.stringify(PRESETS[val]))
-            .map(item => ({ ...item, qubits: Math.min(item.qubits, cap) }));
-
-        setLoading(true, `Loading Preset: ${val}...`, { overlay: false });
-        try {
-            for (let i = 0; i < selectedPreset.length; i++) {
-                const item = selectedPreset[i];
-                let qasmText = null;
-                const response = await fetch(`${BASE_URL}/generate_circuit`, {
-                    method: 'POST',
-                    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-                    body: JSON.stringify({ algorithm: item.algorithm, qubits: item.qubits })
-                });
-                if (response.ok) {
-                    const data = await response.json();
-                    qasmText = data.qasm;
-                } else {
-                    console.warn(`Failed to pre-generate QASM for ${item.name}`);
-                }
-                item.qasm_string = qasmText;
-            }
-            dispatch('SET_BATCH_QUEUE', selectedPreset);
-            renderBatchQueue();
-        } catch (e) {
-            console.error("Preset loading failed", e);
-            alert("Preset loading failed: " + e.message);
-        } finally {
-            setLoading(false);
-        }
-    }
+    const st = getState();
+    const items = presetItems(val, st.allAlgorithms || [], st.maxQubitsStatevector);
+    if (!items.length) return;
+    if (st.batchQueue.length > 0 && !confirm("This will replace your current playlist. Continue?")) return;
+    dispatch('SET_BATCH_QUEUE', items);
+    renderBatchQueue();
+    document.dispatchEvent(new Event('circuit-list-added'));
 }
 
 const _PLACEHOLDER_NAMES = new Set(['', 'no circuit loaded', 'custom / modified', 'custom circuit']);
@@ -82,59 +50,63 @@ export function batchItemLabel(item) {
 /** A queue item as a BenchmarkTask: only the fields the server defines. */
 export function toBatchTask(item) {
     const task = { algorithm: String(item.algorithm || 'custom'), qubits: parseInt(item.qubits) || 0 };
+    const name = bareCircuitName(item.name);
+    if (name && name !== task.algorithm) task.name = name.slice(0, 200);
     if (item.qasm_string) task.qasm_string = item.qasm_string;
     if (item.source) task.source = item.source;
     return task;
 }
 
-export function addToBatch() {
-    const algoId = document.getElementById('algo-select').value;
-    const selectorQubits = parseInt(document.getElementById('algo-qubits').value);
-    const currentQasm = qasmInput.value.trim();
-
-    const selEl = /** @type {HTMLSelectElement} */ (document.getElementById('algo-select'));
-    const selLabel = selEl.selectedIndex >= 0 ? selEl.options[selEl.selectedIndex].text : '';
-    const loadedName = getState().currentAlgoName || '';
-    const editorHoldsOtherPreset = !!algoId && !isNaN(selectorQubits) && /\(\d+q\)$/.test(loadedName)
-        && loadedName !== `${selLabel} (${selectorQubits}q)`;
-
-    let newItem;
-    if (currentQasm && !editorHoldsOtherPreset) {
-        const qubits = _parseQasmStats(currentQasm).qubits;
-        const typed = bareCircuitName(document.getElementById('ctx-algo-name').value);
-        const sel = /** @type {HTMLSelectElement} */ (document.getElementById('algo-select'));
-        const algoLabel = sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex].text : '';
-        const fromGenerator = !!algoId && getState().currentAlgoName === `${algoLabel} (${qubits}q)`;
-        const userName = _PLACEHOLDER_NAMES.has(typed.toLowerCase()) ? '' : typed;
-        newItem = fromGenerator
-            ? { algorithm: algoId, qubits, name: algoLabel, qasm_string: currentQasm }
-            : { algorithm: userName || 'custom', qubits, name: userName || 'custom', qasm_string: currentQasm };
+/** + Add: the selected algorithm (at the chosen qubit count) or example, added to the playlist. */
+export async function addToBatch() {
+    const sel = /** @type {HTMLSelectElement} */ (document.getElementById('algo-select'));
+    const value = sel.value;
+    if (!value) return;
+    const example = exampleForValue(value);
+    let item;
+    if (example) {
+        try {
+            item = { algorithm: example.name.replace(/\.qasm$/, ''), qubits: example.qubits, name: example.title,
+                     qasm_string: await fetchExampleQasm(example) };
+        } catch (e) {
+            alert(`The example was not added. ${e.message}`);
+            return;
+        }
     } else {
-        if (!algoId || isNaN(selectorQubits)) return;
-        const sel = /** @type {HTMLSelectElement} */ (document.getElementById('algo-select'));
-        newItem = { algorithm: algoId, qubits: selectorQubits, name: sel.options[sel.selectedIndex].text, qasm_string: null };
+        const qubits = parseInt(/** @type {HTMLInputElement} */ (document.getElementById('algo-qubits')).value);
+        if (isNaN(qubits)) return;
+        item = { algorithm: value, qubits, name: sel.options[sel.selectedIndex].text, qasm_string: null };
     }
-    dispatch('SET_BATCH_QUEUE', [...getState().batchQueue, newItem]);
+    dispatch('SET_BATCH_QUEUE', [...getState().batchQueue, item]);
     renderBatchQueue();
-    openDrawer('playlist-section');
+    document.dispatchEvent(new Event('circuit-list-added'));
 }
 
-export function togglePlaylist() {
-    if (isDrawerOpen('playlist-section')) closeDrawers();
-    else openDrawer('playlist-section');
+/** + Add to Playlist in the Editor: the circuit in the editor, under its name. */
+export function addEditorToPlaylist() {
+    const qasm = qasmInput.value.trim();
+    if (!qasm) { alert('The editor is empty.'); return; }
+    const typed = bareCircuitName(/** @type {HTMLInputElement} */ (document.getElementById('ctx-algo-name')).value);
+    const name = _PLACEHOLDER_NAMES.has(typed.toLowerCase()) ? 'custom' : typed;
+    const item = { algorithm: name, qubits: _parseQasmStats(qasm).qubits, name, qasm_string: qasm };
+    dispatch('SET_BATCH_QUEUE', [...getState().batchQueue, item]);
+    renderBatchQueue();
+    document.dispatchEvent(new Event('circuit-list-added'));
 }
 
 export function renderBatchQueue() {
+    const stored = saveBatchQueue(getState().batchQueue);
+    document.dispatchEvent(new Event('workspace-change'));
     if (queueCount) {
         queueCount.textContent = getState().batchQueue.length;
     }
     if (queueList) {
         queueList.innerHTML = '';
 
-        if (getState().batchQueue.length === 0) {
-            queueList.innerHTML = '<li class="text-gray-400 italic text-center py-2 text-xs">Playlist is empty.</li>';
-            return;
-        }
+        const empty = getState().batchQueue.length === 0;
+        queueList.classList.toggle('hidden', empty);
+        document.getElementById('playlist-empty-hint')?.classList.toggle('hidden', !empty);
+        if (empty) return;
 
         getState().batchQueue.forEach((item, index) => {
             const li = document.createElement('li');
@@ -146,13 +118,14 @@ export function renderBatchQueue() {
             actions.className = 'flex space-x-1 ml-2';
             const view = document.createElement('button');
             view.type = 'button';
-            view.title = 'Load QASM to Editor';
-            view.className = 'text-blue-600 hover:text-blue-800 font-bold px-1';
-            view.textContent = '{ }';
+            view.title = 'Show this circuit in the editor';
+            view.className = 'text-xs text-blue-600 hover:text-blue-800 px-1';
+            view.textContent = 'Open';
             view.addEventListener('click', () => viewBatchItem(index));
             const remove = document.createElement('button');
             remove.type = 'button';
-            remove.title = 'Remove';
+            remove.title = 'Remove from the playlist';
+            remove.setAttribute('aria-label', `Remove ${batchItemLabel(item)} from the playlist`);
             remove.className = 'text-yellow-700 hover:text-red-600 font-bold px-1';
             remove.textContent = '\u00d7';
             remove.addEventListener('click', () => removeFromBatch(index));
@@ -160,6 +133,12 @@ export function renderBatchQueue() {
             li.append(label, actions);
             queueList.appendChild(li);
         });
+        if (!stored) {
+            const note = document.createElement('li');
+            note.className = 'text-xs text-amber-700 py-1';
+            note.textContent = 'This browser could not store the batch, so it will be empty after a reload.';
+            queueList.appendChild(note);
+        }
     }
 }
 
@@ -307,7 +286,7 @@ export function closeGeneratorModal() {
     document.getElementById('gen-modal').classList.add('hidden');
 }
 
-export async function runAutoGeneration() {
+export function runAutoGeneration() {
     const checkboxes = document.querySelectorAll('#gen-algo-list input:checked');
     const selectedAlgos = Array.from(checkboxes).map(cb => cb.value);
     const minQ = parseInt(document.getElementById('gen-min').value);
@@ -317,45 +296,25 @@ export async function runAutoGeneration() {
     if (selectedAlgos.length === 0) { alert("Select at least one algorithm."); return; }
     if (minQ > maxQ) { alert("Min qubits cannot be greater than Max qubits."); return; }
 
-    setLoading(true, `Generating ${count} Circuits for Playlist...`, { overlay: false });
-    try {
-        for (let i = 0; i < count; i++) {
-            const algoId = selectedAlgos[Math.floor(Math.random() * selectedAlgos.length)];
-            const algoMeta = getState().allAlgorithms.find(a => a.id === algoId);
-
-            const safeMin = Math.max(minQ, algoMeta.min_qubits || 2);
-            const safeMax = Math.min(maxQ, algoMeta.max_qubits || 20);
-
-            if (safeMin <= safeMax) {
-                const q = Math.floor(Math.random() * (safeMax - safeMin + 1)) + safeMin;
-
-                let qasmText = null;
-                const response = await fetch(`${BASE_URL}/generate_circuit`, {
-                    method: 'POST',
-                    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-                    body: JSON.stringify({ algorithm: algoId, qubits: q })
-                });
-                if (response.ok) {
-                    const data = await response.json();
-                    qasmText = data.qasm;
-                } else {
-                    console.warn(`Failed to pre-generate QASM for ${algoMeta.name} (${q}q)`);
-                }
-                const newItem = {
-                    algorithm: algoId,
-                    qubits: q,
-                    name: algoMeta.name,
-                    qasm_string: qasmText
-                };
-                dispatch('SET_BATCH_QUEUE', [...getState().batchQueue, newItem]);
-            }
+    const st = getState();
+    const measured = !(/** @type {HTMLInputElement|null} */ (document.getElementById('mode-statevector'))?.checked);
+    const cap = measured ? st.maxQubitsMeasured : st.maxQubitsStatevector;
+    const added = [];
+    for (let i = 0; i < count; i++) {
+        const algoId = selectedAlgos[Math.floor(Math.random() * selectedAlgos.length)];
+        const algoMeta = st.allAlgorithms.find(a => a.id === algoId);
+        const safeMin = Math.max(minQ, algoMeta.min_qubits || 2);
+        const safeMax = Math.min(maxQ, algoMeta.max_qubits || cap, cap);
+        if (safeMin <= safeMax) {
+            const q = Math.floor(Math.random() * (safeMax - safeMin + 1)) + safeMin;
+            added.push({ algorithm: algoId, qubits: q, name: algoMeta.name });
         }
-        renderBatchQueue();
-        closeGeneratorModal();
-    } catch (e) {
-        console.error("Auto-generation failed", e);
-        alert("Auto-generation failed: " + e.message);
-    } finally {
-        setLoading(false);
     }
+    if (added.length < count) {
+        alert(`${count - added.length} of ${count} circuits were not added: no qubit count in ${minQ}–${maxQ} fits the chosen algorithm and the ${cap}-qubit limit.`);
+    }
+    dispatch('SET_BATCH_QUEUE', [...st.batchQueue, ...added]);
+    renderBatchQueue();
+    closeGeneratorModal();
+    if (added.length) document.dispatchEvent(new Event('circuit-list-added'));
 }

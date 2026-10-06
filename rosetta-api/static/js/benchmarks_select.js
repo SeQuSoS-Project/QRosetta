@@ -10,11 +10,13 @@ import { qasmInput } from './dom.js';
 import { fetchMQTBench, fetchMQTList, fetchQASMBench, fetchQASMBenchList } from './api.js';
 import { renderBatchQueue } from './batch.js';
 import { updateContextBar } from './config.js';
-import { closeDrawers, openDrawer } from './drawers.js';
+import { closeDrawers } from './drawers.js';
 import { dispatch, getState } from './state.js';
 import { _escapeHtml, setLoading } from './utils.js';
 
 export const _bmEntriesCache = {};   // suite -> normalized entries (fetched once)
+const _bmSelected = new Set();         // keys of ticked entries; kept across filter changes
+const _bmEntryKey = e => `${e.suite}:${e.algorithm}:${e.qubits}`;
 
 export function bmCurrentSuite() {
     return document.querySelector('input[name="bench-suite"]:checked')?.value || 'mqt';
@@ -125,27 +127,36 @@ export function bmRenderChecklist() {
             `<input type="checkbox" class="bm-check" data-suite="${_escapeHtml(e.suite)}" data-algo="${_escapeHtml(e.algorithm)}" `
             + `data-qubits="${_escapeHtml(e.qubits)}" data-label="${_escapeHtml(e.label)}" id="${_escapeHtml(id)}">`
             + `<span class="font-mono truncate">${_escapeHtml(e.label)}</span>`;
-        row.querySelector('input').addEventListener('change', bmUpdateSelectedCount);
+        const box = row.querySelector('input');
+        box.checked = _bmSelected.has(_bmEntryKey(e));
+        box.addEventListener('change', () => {
+            if (box.checked) _bmSelected.add(_bmEntryKey(e)); else _bmSelected.delete(_bmEntryKey(e));
+            bmUpdateSelectedCount();
+        });
         list.appendChild(row);
     }
     bmUpdateSelectedCount();
 }
 
 export function bmSelectedItems() {
-    return Array.from(document.querySelectorAll('.bm-check:checked')).map(cb => ({
-        source: cb.dataset.suite, algorithm: cb.dataset.algo,
-        qubits: parseInt(cb.dataset.qubits) || 0, name: cb.dataset.label, qasm_string: null,
-    }));
+    return Object.values(_bmEntriesCache).flat()
+        .filter(e => _bmSelected.has(_bmEntryKey(e)))
+        .map(bmEntryToQueueItem);
 }
 
 export function bmUpdateSelectedCount() {
     const el = document.getElementById('bench-selected-count');
-    if (el) el.textContent = String(document.querySelectorAll('.bm-check:checked').length);
+    if (el) el.textContent = String(_bmSelected.size);
 }
 
 export function bmToggleSelectAll() {
     const on = document.getElementById('bench-select-all')?.checked;
-    document.querySelectorAll('.bm-check').forEach(cb => { cb.checked = on; });
+    document.querySelectorAll('.bm-check').forEach(cb => {
+        const box = /** @type {HTMLInputElement} */ (cb);
+        box.checked = on;
+        const key = `${box.dataset.suite}:${box.dataset.algo}:${box.dataset.qubits}`;
+        if (on) _bmSelected.add(key); else _bmSelected.delete(key);
+    });
     bmUpdateSelectedCount();
 }
 
@@ -153,9 +164,13 @@ export function bmAddSelectedToBatch() {
     const items = bmSelectedItems();
     if (items.length === 0) { alert('Select at least one benchmark circuit.'); return; }
     const added = bmAddToQueue(items);
-    openDrawer('playlist-section');
+    _bmSelected.clear();
+    const all = /** @type {HTMLInputElement|null} */ (document.getElementById('bench-select-all'));
+    if (all) all.checked = false;
+    bmRenderChecklist();
+    if (added) document.dispatchEvent(new Event('circuit-list-added'));
     if (added < items.length) {
-        // some were already queued
+        alert(`${items.length - added} of ${items.length} selected circuits were already in the playlist and were not added again.`);
     }
 }
 
@@ -167,12 +182,19 @@ export async function bmAddAllOfSuite(suite, maxQubits) {
         const entries = (await bmSuiteEntries(suite)).filter(e => _bmWithinCap(e, maxQ));
         const added = bmAddToQueue(entries.map(bmEntryToQueueItem));
         renderBatchQueue();
+        if (added) document.dispatchEvent(new Event('circuit-list-added'));
         const cap = Number.isFinite(maxQ) ? ` (≤ ${maxQ}q)` : '';
-        alert(`Added ${added} ${suite === 'mqt' ? 'MQT Bench' : 'QASMBench'}${cap} circuit(s) to the batch`
+        alert(`Added ${added} ${suite === 'mqt' ? 'MQT Bench' : 'QASMBench'}${cap} circuit(s) to the playlist`
             + (added === 0 ? ' (all already present or above the cap).' : '.'));
     } catch (e) {
         alert(e.message);
     }
+}
+
+/** Add every circuit of the suite chosen in the picker, up to the qubit cap typed beside the button. */
+export function bmAddAllOfCurrentSuite() {
+    const cap = parseInt(/** @type {HTMLInputElement|null} */ (document.getElementById('bench-all-max-qubits'))?.value || '', 10);
+    return bmAddAllOfSuite(bmCurrentSuite(), cap);
 }
 
 // --- Benchmarks panel: selectors, single fetch, load-to-editor ----------------------
@@ -279,6 +301,7 @@ export async function loadBenchmark() {
         dispatch('SET_CURRENT_ALGO_NAME', result.title);
         updateContextBar();
         closeDrawers();
+        document.dispatchEvent(new Event('editor-loaded'));
     }
 }
 
@@ -296,6 +319,6 @@ export function addBenchmarkToBatch() {
         if (!circuit) return;
         item = { source: 'qasmbench', algorithm: circuit, qubits: _bmParseQubits(circuit), name: circuit, qasm_string: null };
     }
-    bmAddToQueue([item]);
-    openDrawer('playlist-section');
+    if (bmAddToQueue([item])) document.dispatchEvent(new Event('circuit-list-added'));
+    else alert('That circuit is already in the playlist.');
 }

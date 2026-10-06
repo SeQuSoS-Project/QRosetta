@@ -101,6 +101,17 @@ def test_batch_tasks_record_their_request(monkeypatch):
     assert "error" in summary[1]
 
 
+def test_batch_task_name_labels_the_task(monkeypatch):
+    _fake_fleet(monkeypatch)
+    payload = BatchPayload(mode="measured", n_shots=16, target_simulators=["qiskit"],
+                           tasks=[BenchmarkTask(name="Bell State (Simple)", algorithm="mine",
+                                                qasm_string=CUSTOM_GATE)])
+    summary, _ = asyncio.run(job_manager.run_batch_tasks(payload, {}))
+    assert summary[0]["task_name"].startswith("Bell State (Simple)")
+    assert summary[0]["task_request"]["name"] == "Bell State (Simple)"
+    assert summary[0]["task_request"]["algorithm"] == "mine"
+
+
 def test_experiment_manifest_records_the_effective_config(monkeypatch):
     pytest.importorskip("kubernetes")
     import services.experiment as exp

@@ -13,6 +13,8 @@ logger = get_logger("rosetta-circuit-library")
 
 _ALGORITHMS_CACHE: Dict[str, Any] = {}
 
+PRESET_ORDER = ["ghz", "bell", "qft", "bv", "grover", "vqe", "random", "bitorder"]
+
 _EXEC_GLOBALS: Dict[str, Any] = {"__builtins__": __builtins__}
 
 def load_algorithms() -> Dict[str, Any]:
@@ -28,7 +30,7 @@ def load_algorithms() -> Dict[str, Any]:
         logger.warning(f"Algorithms directory not found at {algorithms_dir}")
         return loaded
 
-    for filename in os.listdir(algorithms_dir):
+    for filename in sorted(os.listdir(algorithms_dir)):
         if filename.endswith(".json"):
             filepath = os.path.join(algorithms_dir, filename)
             try:
@@ -39,7 +41,8 @@ def load_algorithms() -> Dict[str, Any]:
             except Exception as e:
                 logger.error(f"Failed to load algorithm data from {filename}: {e}")
 
-    _ALGORITHMS_CACHE = loaded
+    rank = {aid: i for i, aid in enumerate(PRESET_ORDER)}
+    _ALGORITHMS_CACHE = dict(sorted(loaded.items(), key=lambda kv: (rank.get(kv[0], len(rank)), kv[0])))
     return _ALGORITHMS_CACHE
 
 def generate_circuit(algorithm_id: str, n_qubits: int, seed: int = None) -> str:

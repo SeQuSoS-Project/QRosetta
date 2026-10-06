@@ -2,15 +2,12 @@
 // compile-only input and outputs, side by side, with a line diff between any two of them.
 // Shows recorded text only.
 
-import { circuitPanes, sourcePaneId } from './circuit_panes.js';
+import { circuitPanes, groupPanes, sourcePaneId } from './circuit_panes.js';
 import { comparableLines, differOnlyInLineBreaks, endsWithNewline, splitLines, visibleFormatCharacters } from './qasm_text.js';
 import { _displayRunnerName, fmtInt, renderTooltip } from './render_helpers.js';
 import { userFacingError } from './run_status.js';
 import { diffHunks, diffLines } from './text_diff.js';
 import { downloadBlob, makeCopyIconButton } from './utils.js';
-
-const DEFAULT_EXECUTED_SHOWN = 2;
-const DEFAULT_COMPILED_SHOWN = 2;
 
 const KIND_LABEL = {
     input: 'Submitted', dispatched: 'Dispatched', executed: 'Executed',
@@ -114,7 +111,7 @@ function _recordedNote(pane) {
 }
 
 function _paneCard(pane, context) {
-    const card = _el('section', 'flex-shrink-0 w-[26rem] max-w-full flex flex-col border border-gray-200 rounded-md bg-white');
+    const card = _el('section', 'w-full flex flex-col border border-gray-200 rounded-md bg-white');
     const head = _el('header', 'p-2 border-b border-gray-200 space-y-1');
     const titleRow = _el('div', 'flex items-center gap-2');
     titleRow.appendChild(_el('span', `text-[10px] uppercase tracking-wider border rounded px-1.5 py-0.5 ${KIND_CHIP[pane.kind]}`, KIND_LABEL[pane.kind]));
@@ -193,47 +190,67 @@ function _paneCard(pane, context) {
     return card;
 }
 
-function _defaultShown(panes) {
-    const shown = new Set(panes.filter(p => p.kind === 'input' || p.kind === 'dispatched').map(p => p.id));
-    panes.filter(p => p.kind === 'executed' && p.text !== null)
-        .slice(0, DEFAULT_EXECUTED_SHOWN).forEach(p => shown.add(p.id));
-    const compiled = panes.filter(p => p.kind === 'compiled' && p.text !== null).slice(0, DEFAULT_COMPILED_SHOWN);
-    compiled.forEach(p => shown.add(p.id));
-    panes.filter(p => p.kind === 'compiled' && p.text === null && p.refusalKind).forEach(p => shown.add(p.id));
-    if (compiled.length) panes.filter(p => p.kind === 'compile-input').forEach(p => shown.add(p.id));
-    return shown;
+function _changeText(group, panes) {
+    if (!group.change) return '—';
+    const source = panes.find(p => p.id === group.change.sourceId);
+    const what = source ? KIND_LABEL[source.kind].toLowerCase() : 'source';
+    if (!group.change.complete) return `differs in many lines from ${what}`;
+    if (!group.change.added && !group.change.removed) return `same as ${what}`;
+    return `+${group.change.added} −${group.change.removed} lines vs ${what}`;
 }
 
-function _panePicker(panes, shown, onChange) {
-    const box = _el('fieldset', 'flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-700');
-    box.appendChild(_el('legend', 'text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1', 'Panes'));
-    const inputs = [];
-    const setAll = (checked) => {
-        panes.forEach(pane => { if (checked) shown.add(pane.id); else shown.delete(pane.id); });
-        inputs.forEach(input => { input.checked = checked; });
-        onChange();
-    };
-    for (const [text, checked] of [['All', true], ['None', false]]) {
-        const button = _el('button', 'text-xs text-blue-700 hover:underline', text);
-        button.type = 'button';
-        button.onclick = () => setAll(checked);
-        box.appendChild(button);
+function _groupTitle(group) {
+    const first = paneTitle(group.panes[0]);
+    if (group.panes.length === 1) return first;
+    if (group.kind === 'executed') {
+        return `Executed · ${group.panes.map(p => _displayRunnerName(p.key)).join(', ')}`;
     }
-    panes.forEach(pane => {
-        const label = _el('label', 'inline-flex items-center gap-1 cursor-pointer');
-        const input = /** @type {HTMLInputElement} */ (_el('input', 'h-3.5 w-3.5'));
-        input.type = 'checkbox';
-        input.checked = shown.has(pane.id);
-        inputs.push(input);
-        input.onchange = () => {
-            if (input.checked) shown.add(pane.id); else shown.delete(pane.id);
-            onChange();
-        };
-        label.appendChild(input);
-        label.appendChild(document.createTextNode(paneTitle(pane)));
-        box.appendChild(label);
+    if (group.kind === 'dispatched') return `Dispatched · ${group.panes.map(p => p.group).join(', ')}`;
+    return `${first} and ${group.panes.length - 1} more`;
+}
+
+/** One row per distinct text: kind, which panes share it, size, change against its source, and a View button. */
+function _groupTable(groups, panes, selected, onSelect) {
+    const wrap = _el('div', 'overflow-x-auto border border-gray-200 rounded-md');
+    const table = _el('table', 'min-w-full text-xs');
+    table.appendChild(_el('caption', 'text-left px-2 py-1 bg-gray-50 text-gray-600',
+        `${panes.length} recorded texts, ${groups.length} distinct. Rows that list several backends are byte-for-byte the same text.`));
+    const head = _el('tr');
+    ['Kind', 'Circuit', 'Lines', 'Gates', 'Depth', 'Change', ''].forEach(t => {
+        const th = _el('th', 'px-2 py-1 text-left font-medium text-gray-600 whitespace-nowrap', t);
+        th.scope = 'col';
+        head.appendChild(th);
     });
-    return box;
+    const thead = _el('thead');
+    thead.appendChild(head);
+    table.appendChild(thead);
+    const tbody = _el('tbody');
+    groups.forEach(group => {
+        const first = group.panes[0];
+        const tr = _el('tr', `border-t ${group.id === selected ? 'bg-indigo-50' : ''}`);
+        const kind = _el('td', 'px-2 py-1');
+        kind.appendChild(_el('span', `text-[10px] uppercase tracking-wider border rounded px-1.5 py-0.5 ${KIND_CHIP[group.kind]}`, KIND_LABEL[group.kind]));
+        const name = _el('td', 'px-2 py-1 text-gray-900', _groupTitle(group));
+        if (group.text === null) name.appendChild(_el('span', 'ml-1 text-gray-500 italic', first.refusalKind ? '(refused)' : '(no text recorded)'));
+        const gates = first.gateCount ?? null;
+        const depth = first.depth ?? null;
+        const view = _el('td', 'px-2 py-1 text-right');
+        const button = _el('button', 'text-xs text-blue-700 hover:underline', group.id === selected ? 'Shown' : 'View');
+        button.type = 'button';
+        button.setAttribute('aria-pressed', String(group.id === selected));
+        button.onclick = () => onSelect(group.id);
+        view.appendChild(button);
+        tr.append(kind, name,
+            _el('td', 'px-2 py-1 font-mono', group.text === null ? '—' : fmtInt(group.lines)),
+            _el('td', 'px-2 py-1 font-mono', gates === null ? '—' : fmtInt(gates)),
+            _el('td', 'px-2 py-1 font-mono', depth === null ? '—' : fmtInt(depth)),
+            _el('td', 'px-2 py-1 text-gray-600 whitespace-nowrap', _changeText(group, panes)),
+            view);
+        tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    return wrap;
 }
 
 function _paneSelect(panes, selectedId, label, accessibleName) {
@@ -372,13 +389,24 @@ export function renderCircuitExplorer(report, panel, { extraControls = null, upl
         panel.appendChild(root);
         return;
     }
-    const shown = _defaultShown(panes);
     const context = { uploaded, filePrefix: String(filePrefix).replace(/[^A-Za-z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '') };
-    const grid = _el('div', 'flex gap-3 overflow-x-auto pb-2 items-start');
-    const paintGrid = () => grid.replaceChildren(...panes.filter(p => shown.has(p.id)).map(p => _paneCard(p, context)));
-    root.appendChild(_panePicker(panes, shown, paintGrid));
-    root.appendChild(grid);
+    const groups = groupPanes(panes);
+    let selected = groups[0].id;
+    const tableHost = _el('div');
+    const viewer = _el('div', 'space-y-1');
+    const paint = () => {
+        tableHost.replaceChildren(_groupTable(groups, panes, selected, id => { selected = id; paint(); }));
+        const group = groups.find(g => g.id === selected) || groups[0];
+        const items = [];
+        if (group.panes.length > 1) {
+            items.push(_el('p', 'text-xs text-gray-600', `The same text was recorded for: ${group.panes.map(paneTitle).join('; ')}. Notes below are for ${paneTitle(group.panes[0])}.`));
+        }
+        items.push(_paneCard(group.panes[0], context));
+        viewer.replaceChildren(...items);
+    };
+    root.appendChild(tableHost);
+    root.appendChild(viewer);
+    paint();
     root.appendChild(_diffSection(panes));
-    paintGrid();
     panel.appendChild(root);
 }

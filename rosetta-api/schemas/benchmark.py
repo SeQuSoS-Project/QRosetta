@@ -180,6 +180,25 @@ class AgreementThresholds(BaseModel):
     js_threshold: float = Field(0.01, ge=0, description="Jensen-Shannon divergence (nats) between two backends' measured distributions above this is 'distance_exceeds_threshold'.")
     hellinger_threshold: float = Field(0.1, ge=0, description="Hellinger distance between two backends' measured distributions above this is 'distance_exceeds_threshold'.")
 
+_SIMULATE_DESCRIPTION = (
+    "false runs only the requested compile-only services on the circuit (compilers must not be "
+    "empty) and no simulator; the report then has no simulator results and records simulated: false. "
+    "runner_config, runner_phases and target_simulators must then be empty."
+)
+
+
+def _check_compile_only(payload):
+    """A compile-only request names compilers and no simulator settings."""
+    if payload.simulate:
+        return payload
+    if not payload.compilers:
+        raise ValueError("simulate=false needs at least one compile-only service in compilers")
+    named = [f for f in ("runner_config", "runner_phases", "target_simulators") if getattr(payload, f)]
+    if named:
+        raise ValueError(f"simulate=false runs no simulator; leave {', '.join(named)} empty")
+    return payload
+
+
 class QasmPayload(_Request):
     """Request body for POST /compare — an exact statevector comparison of one OpenQASM 2.0
     circuit across the simulator fleet."""
@@ -196,6 +215,11 @@ class QasmPayload(_Request):
     apply_preprocessing: StrictBool = Field(True, description=_PREPROCESSING_DESCRIPTION)
     thresholds: Optional[AgreementThresholds] = Field(None, description="Override the default agreement thresholds for this run. Omit to use the defaults.")
     compilers: Compilers = Field(default_factory=dict, description=_COMPILERS_DESCRIPTION)
+    simulate: StrictBool = Field(True, description=_SIMULATE_DESCRIPTION)
+
+    @model_validator(mode="after")
+    def _compile_only(self):
+        return _check_compile_only(self)
 
 class MeasuredQasmPayload(_Request):
     """Request body for POST /compare_measured — a shot-based measurement comparison of one
@@ -225,6 +249,7 @@ class GenerateCircuitPayload(_Request):
 
 class BenchmarkTask(_Request):
     """One circuit within a batch run (POST /run_batch_suite)."""
+    name: Optional[Label] = Field(None, description="Display name for this circuit in the report and progress list. Omit to use algorithm.")
     algorithm: Optional[Label] = Field(None, description="Circuit identifier: a preset family name, or the file name for a bundled benchmark circuit. Required unless qasm_string is given, where it is only a label.")
     qubits: Optional[Int] = Field(None, ge=0, description="Number of qubits for a generated preset or MQT Bench circuit; required for those sources. Optional and ignored for QASMBench and literal circuits, whose qubit count is read from the QASM.")
     qasm_string: Optional[str] = Field(None, description="User-supplied OpenQASM 2.0 text. When present, this is run as-is and algorithm/qubits/source are ignored.")
@@ -257,6 +282,11 @@ class BatchPayload(_Request):
     seed: Optional[Seed] = Field(None, description=_SEED_DESCRIPTION + " One master seed covers every task; used only when mode is 'measured'.")
     thresholds: Optional[AgreementThresholds] = Field(None, description="Override the default agreement thresholds for this run.")
     compilers: Compilers = Field(default_factory=dict, description=_COMPILERS_DESCRIPTION + " Applied to every task.")
+    simulate: StrictBool = Field(True, description=_SIMULATE_DESCRIPTION + " Applies to every task.")
+
+    @model_validator(mode="after")
+    def _compile_only(self):
+        return _check_compile_only(self)
 
 class ExperimentCircuit(_Request):
     """One circuit to include in an experiment (POST /experiments), from any of the wired

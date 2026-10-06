@@ -181,7 +181,20 @@ def _exclusive():
     return rep
 
 
-_CASES = [("measured", MEASURED), ("statevector", STATEVECTOR),
+def _many_pairs():
+    """Ten backends, 45 pairs: the pairwise tables take the longtable form."""
+    rep = _sv_edge()
+    sims = [f"s{i}" for i in range(10)]
+    pairs = [{"simulators": [a, b], "mode": "statevector", "agreement": "agree_directly",
+              "registered_transform": "identity",
+              "metrics": {"direct_fidelity": 1 - 1e-13 * (i + j), "label_aligned_fidelity": 1.0}}
+             for i, a in enumerate(sims) for j, b in enumerate(sims) if i < j]
+    rep["divergence_report"] = {"simulators": sims, "pairwise_agreement": pairs,
+                                "fidelity_matrix": [[1.0] * 10 for _ in sims]}
+    return rep
+
+
+_CASES = [("measured", MEASURED), ("statevector", STATEVECTOR), ("statevector", _many_pairs()),
           ("statevector", _sv_edge()), ("measured", _measured_edge()),
           ("statevector", _repeated_timing()), ("statevector", _overlapping()),
           ("statevector", _exclusive())]

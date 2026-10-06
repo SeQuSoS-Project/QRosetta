@@ -8,7 +8,6 @@ export let tabNav = null;
 export let welcomeMessage = null;
 export let backButtonContainer = null;
 export let jsonOutput = null;
-export let playlistSection = null;
 export let queueList = null;
 export let queueCount = null;
 export let panelElements = {};
@@ -23,7 +22,6 @@ export function initDomRefs() {
     backButtonContainer = document.getElementById('back-button-container');
     jsonOutput = document.getElementById('json-output');
 
-    playlistSection = document.getElementById('playlist-section');
     queueList = document.getElementById('queue-list');
     queueCount = document.getElementById('queue-count');
 
@@ -37,6 +35,7 @@ export function initDomRefs() {
         'artifacts': document.getElementById('artifacts-panel'),
         'raw': document.getElementById('raw-panel'),
         'suite-summary': document.getElementById('suite-summary-panel'),
+        'experiment': document.getElementById('experiment-panel'),
         'visualizer': document.getElementById('visualizer-panel'),
     };
 }

@@ -1,8 +1,7 @@
-// Slide-over drawer controller (Config / Benchmarks / Batch panels).
+// Slide-over drawer controller (the benchmark-suite picker).
 // Panels are fixed off-canvas (translate-x-full) and slide in when opened; only one is
-// open at a time. A click on the shared backdrop closes the drawer and is passed on to
-// the control underneath it; Escape also closes.
-export const DRAWER_IDS = ['config-panel', 'benchmarks-panel', 'playlist-section'];
+// open at a time. A click on the shared backdrop or Escape closes it.
+export const DRAWER_IDS = ['benchmarks-panel'];
 
 export function openDrawer(panelId) {
     DRAWER_IDS.forEach(id => {
@@ -27,13 +26,7 @@ export function isDrawerOpen(panelId) {
     return !!el && !el.classList.contains('translate-x-full');
 }
 
-document.getElementById('drawer-backdrop')?.addEventListener('click', (e) => {
-    closeDrawers();
-    const target = document.elementFromPoint(e.clientX, e.clientY);
-    const control = target instanceof HTMLElement
-        ? target.closest('button, a, input, select, label, [role="tab"]') : null;
-    if (control instanceof HTMLElement) control.click();
-});
+document.getElementById('drawer-backdrop')?.addEventListener('click', closeDrawers);
 
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeDrawers();

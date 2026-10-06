@@ -15,6 +15,7 @@ import {
     statevectorGroup, unalignedBasis, unalignedBasisMatch, userFacingError,
 } from './run_status.js';
 import { thresholdDefaults } from './utils.js';
+import { renderBackendTable, renderHeadline } from './overview_renderer.js';
 
 const FAILURE_HEADINGS = {
     offline: { heading: 'Offline', text: 'runner unreachable' },
@@ -31,6 +32,8 @@ function _block(heading, styleKey, items) {
         error: 'bg-orange-50 text-orange-900 border-orange-200',
         timeout: 'bg-purple-50 text-purple-900 border-purple-200',
         offline: 'bg-gray-50 text-gray-700 border-gray-200',
+        inconclusive: 'bg-sky-50 text-sky-900 border-sky-200',
+        neutral: 'bg-white text-gray-800 border-gray-200',
     }[styleKey];
     wrap.className = `p-4 border rounded mb-4 ${colors}`;
     const h3 = document.createElement('h3');
@@ -46,7 +49,7 @@ function _block(heading, styleKey, items) {
             else li.appendChild(item);
             ul.appendChild(li);
         });
-        if (items.length > 12) {
+        if (items.length > 12 && styleKey !== 'anomaly') {
             const det = document.createElement('details');
             det.className = 'mt-2 text-sm';
             const sum = document.createElement('summary');
@@ -60,6 +63,15 @@ function _block(heading, styleKey, items) {
         }
     }
     return wrap;
+}
+
+/** Pairs ordered so that those sharing the backend named in most of them come first. */
+function _byBackend(pairs) {
+    const count = {};
+    pairs.forEach(p => (p.simulators || []).forEach(k => { count[k] = (count[k] || 0) + 1; }));
+    const weight = p => Math.max(...(p.simulators || []).map(k => count[k] || 0));
+    const lead = p => [...(p.simulators || [])].sort((a, b) => (count[b] || 0) - (count[a] || 0))[0] || '';
+    return [...pairs].sort((a, b) => weight(b) - weight(a) || lead(a).localeCompare(lead(b)));
 }
 
 function _pairItem(p, detail) {
@@ -280,7 +292,7 @@ function _renderStatevectorBlocks(panel, pairs, tol) {
     }
 
     if (disagree.length) {
-        const block = _block(`Disagree (${disagree.length})`, 'anomaly', disagree.map(p => _pairItem(p, _disagreementText(p))));
+        const block = _block(`Disagree (${disagree.length})`, 'anomaly', _byBackend(disagree).map(p => _pairItem(p, _disagreementText(p))));
         _note(block, 'A pair disagrees when no registered transform explains the difference, when it agrees only after an '
             + 'undeclared qubit permutation, or when it matches only in the basis the declared qubit orderings do not imply. '
             + 'The report does not decide which backend is wrong; check against an independent reference.');
@@ -324,7 +336,7 @@ function _inconclusiveBlocks(panel, pairs) {
 
     if (uncharacterised.length) {
         const unseen = Math.max(...uncharacterised.map(p => p.metrics.statistical_test.unseen_mass_good_turing ?? 0));
-        const block = _block(`Inconclusive, the sample does not yet show the outcome distribution (${uncharacterised.length})`, 'offline',
+        const block = _block(`Inconclusive, the sample does not yet show the outcome distribution (${uncharacterised.length})`, 'inconclusive',
             uncharacterised.map(p => _measuredItem(p)));
         _note(block, `Outcomes seen only once carry up to ${fmtProb(unseen)} of the shots (Good–Turing estimate of the probability of `
             + 'outcomes not yet seen), so the outcome distribution is spread over more outcomes than the sample covers. No shot '
@@ -337,7 +349,7 @@ function _inconclusiveBlocks(panel, pairs) {
         const pooledPairs = lowPower.some(p => (p.metrics?.statistical_test?.power?.pooled_probability ?? 0) > 0
             || p.metrics?.statistical_test?.recommendation_is_lower_bound === true);
         const advice = rec ? `: more shots would help: ${pooledPairs ? 'at least ' : ''}~${fmtInt(rec)} per backend` : '';
-        const block = _block(`Inconclusive, test power below ${target} (${lowPower.length})${advice}`, 'offline',
+        const block = _block(`Inconclusive, test power below ${target} (${lowPower.length})${advice}`, 'inconclusive',
             lowPower.map(p => _measuredItem(p)));
         _note(block, 'Neither test finds a significant difference, but the power to detect the target gap is below '
             + `${target}, so these pairs are neither consistent nor in disagreement. ${_powerLevelText(lowPower)}`
@@ -347,14 +359,14 @@ function _inconclusiveBlocks(panel, pairs) {
         panel.appendChild(block);
     }
     if (lowCounts.length) {
-        const block = _block(`Inconclusive, expected counts below 5${pooling} (${lowCounts.length}): more shots would help`, 'offline',
+        const block = _block(`Inconclusive, expected counts below 5${pooling} (${lowCounts.length}): more shots would help`, 'inconclusive',
             lowCounts.map(p => _measuredItem(p)));
         _note(block, 'Some outcomes are too rare in this sample for the chi-square and G-test to be reliable, so the tests '
             + 'cannot decide either way.');
         panel.appendChild(block);
     }
     if (tooRare.length) {
-        const block = _block(`Inconclusive, outcomes too rare for the test at any practical shot count (${tooRare.length})`, 'offline',
+        const block = _block(`Inconclusive, outcomes too rare for the test at any practical shot count (${tooRare.length})`, 'inconclusive',
             tooRare.map(p => _measuredItem(p)));
         _note(block, `Expected counts stay below 5${pooling}, and the report records that more shots would not change `
             + 'this at a practical shot count. The distance label and the metrics are the available evidence for these pairs.');
@@ -392,7 +404,7 @@ function _renderMarginalBlock(panel, pairs, data, alpha) {
     if (!flagged.length) return;
     const summary = data.divergence_report?.statistical_test_summary?.marginal_test_summary || {};
     const names = _clbitNames(data.input_qasm);
-    const block = _block(`Single-bit marginals differ (${flagged.length})`, 'anomaly', flagged.map(p => _marginalItem(p, names)));
+    const block = _block(`Single-bit marginals differ (${flagged.length})`, 'anomaly', _byBackend(flagged).map(p => _marginalItem(p, names)));
     _note(block, `For each classical bit, the two backends' counts of that bit being 0 and 1 are compared (chi-square and `
         + `G-test, both required, Holm-corrected over all ${summary.family_size ?? '—'} bit tests at α = ${alpha ?? '—'}, so the `
         + `chance of any false flag in this list is at most α). Equal distributions have equal marginals, so a differing bit `
@@ -446,7 +458,7 @@ function _renderMeasuredBlocks(panel, pairs, tol, data, alpha) {
 
     if (groups.distinguishable.length) {
         const block = _block(`Distinguishable beyond shot noise (${groups.distinguishable.length})`, 'anomaly',
-            groups.distinguishable.map(p => _measuredItem(p, { power: false })));
+            _byBackend(groups.distinguishable).map(p => _measuredItem(p, { power: false })));
         _note(block, corr === 'BY'
             ? `The Benjamini–Yekutieli correction controls the false discovery rate at q = ${alpha ?? '—'} under any dependence `
                 + 'between the tests, including pairs that share a backend and so share its sample. On average up to that '
@@ -458,7 +470,7 @@ function _renderMeasuredBlocks(panel, pairs, tol, data, alpha) {
         panel.appendChild(block);
     }
     if (groups.ambiguous.length) {
-        panel.appendChild(_block(`Inconclusive: the chi-square and G-test disagree (${groups.ambiguous.length})`, 'offline',
+        panel.appendChild(_block(`Inconclusive: the chi-square and G-test disagree (${groups.ambiguous.length})`, 'inconclusive',
             groups.ambiguous.map(p => _measuredItem(p, { power: false }))));
     }
     if (groups.untested.length) {
@@ -530,13 +542,28 @@ function _renderAgreementBlocks(panel, data, nOk) {
     else _renderStatevectorBlocks(panel, pairs, tol);
 }
 
-/** "N of M enabled backends ran", with the enabled backends that were not part of the run. */
-function _renderCoverage(panel, raws) {
+/** Which backends this run dispatched and which returned a result, from the report's
+ * resolved_runners; reports without it are compared with the backends enabled now. */
+function _renderCoverage(panel, raws, data) {
     const ranIds = [...new Set(raws.map(r => parseRunnerKey(r.simulator).simId))];
     const okIds = new Set(raws.filter(r => runnerStatus(r) === 'ok').map(r => parseRunnerKey(r.simulator).simId));
-    const enabled = getEnabledRunnerIds();
     const p = document.createElement('p');
     p.className = 'text-sm text-gray-700 mb-3';
+    const resolved = data?.resolved_runners;
+    if (resolved && Array.isArray(resolved.dispatched)) {
+        const scope = Array.isArray(resolved.requested) && resolved.requested.length
+            ? 'the requested backends' : 'every enabled backend';
+        let text = `This run dispatched ${resolved.dispatched.length} backend(s) (${scope}); ${okIds.size} returned a result.`;
+        const skipped = Array.isArray(resolved.skipped) ? resolved.skipped : [];
+        if (!skipped.length) return;
+        if (skipped.length) {
+            text += ` Not run: ${skipped.map(sk => `${_displayRunnerName(sk.id)}${sk.reason ? ` (${sk.reason})` : ''}`).join('; ')}.`;
+        }
+        p.textContent = text;
+        panel.appendChild(p);
+        return;
+    }
+    const enabled = getEnabledRunnerIds();
     if (enabled.length === 0) {
         p.textContent = `${ranIds.length} backend(s) ran; ${okIds.size} returned a result.`;
         panel.appendChild(p);
@@ -601,7 +628,7 @@ function _compileItem(pane) {
 function _renderCompiles(panel, data) {
     const panes = circuitPanes(data).filter(p => p.kind === 'compiled');
     if (!panes.length) return;
-    const block = _block(`Compile-only services (${panes.length})`, 'offline', panes.map(_compileItem));
+    const block = _block(`Compile-only services (${panes.length})`, 'neutral', panes.map(_compileItem));
     _note(block, 'Compiled circuits are text: they are not simulated, timed or compared. Gate counts use each compiler\'s own gate set, so they are not comparable across compilers. The Circuits tab shows each output with its passes.');
     panel.appendChild(block);
 }
@@ -740,10 +767,6 @@ export function renderSummaryPanel(data, title) {
     h2.textContent = title;
     panel.appendChild(h2);
 
-    const legendFrag = _cloneTemplate('tpl-legend-suite');
-    _applyLegendDots(legendFrag);
-    panel.appendChild(legendFrag);
-
     if (data.error) {
         const errFrag = _cloneTemplate('tpl-summary-api-error');
         errFrag.querySelector('.tpl-error-text').textContent = userFacingError(data.error);
@@ -751,11 +774,34 @@ export function renderSummaryPanel(data, title) {
         return;
     }
 
+    if (data.simulated === false) {
+        const records = Array.isArray(data.compiled_circuits) ? data.compiled_circuits : [];
+        const ok = records.filter(r => r && r.dispatch_status === 'ok').length;
+        const card = document.createElement('section');
+        card.className = 'p-4 mb-4 border-l-4 rounded bg-gray-50 border-gray-300 text-sm text-gray-800';
+        card.textContent = `Compile only: no simulator was run. ${ok} of ${records.length} compile-only level${records.length === 1 ? '' : 's'} returned a circuit; `
+            + 'the outputs and their passes are in the Circuits tab.';
+        panel.appendChild(card);
+        _renderCompiles(panel, data);
+        return;
+    }
+
+    const { verdicts } = renderHeadline(panel, data);
+    renderBackendTable(panel, data, verdicts);
+
+    const evidence = document.createElement('h3');
+    evidence.className = 'text-base font-semibold text-gray-900 mt-6 mb-2';
+    evidence.textContent = 'Evidence';
+    panel.appendChild(evidence);
+    const legendFrag = _cloneTemplate(verdicts.mode === 'measured' ? 'tpl-legend-measured' : 'tpl-legend-statevector');
+    _applyLegendDots(legendFrag);
+    panel.appendChild(legendFrag);
+
     if (data.job_error) {
         panel.appendChild(_block('The job failed', 'anomaly', [userFacingError(data.job_error)]));
     }
     const raws = Array.isArray(data.raw_results) ? data.raw_results : [];
-    _renderCoverage(panel, raws);
+    _renderCoverage(panel, raws, data);
     _renderFailures(panel, raws);
     _renderAgreementBlocks(panel, data, raws.filter(r => runnerStatus(r) === 'ok').length);
     _renderCompiles(panel, data);

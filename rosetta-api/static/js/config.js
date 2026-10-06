@@ -1,13 +1,12 @@
 // Frontend logic for config functionality.
 
 import { BASE_URL } from './api.js';
-import { closeDrawers, isDrawerOpen, openDrawer } from './drawers.js';
 import { getState } from './state.js';
 import { _escapeHtml } from './utils.js';
 
 export function getDynamicMaxQubits() {
-    const mode = document.querySelector('input[name="mode-single"]:checked')?.value || 'statevector';
-    return mode === 'statevector' ? getState().maxQubitsStatevector : getState().maxQubitsMeasured;
+    const statevector = /** @type {HTMLInputElement|null} */ (document.getElementById('mode-statevector'))?.checked ?? true;
+    return statevector ? getState().maxQubitsStatevector : getState().maxQubitsMeasured;
 }
 
 export let _runnerOptInfo = {};
@@ -95,7 +94,7 @@ export function runnerSelectionProblem() {
         return `The backend list could not be loaded from the server${_runnersLoadError ? ` (${_runnersLoadError})` : ''}. Reload the page to try again.`;
     }
     if (getTargetSimulators().length === 0) {
-        return 'No backend is selected. Open Config → Backends and check at least one.';
+        return 'No backend is selected. Open Configuration → Backends and check at least one.';
     }
     return null;
 }
@@ -115,6 +114,7 @@ export function updateBackendSelectionSummary() {
         text = `Backends: ${selected.length} of ${enabled.length} enabled backends selected`;
     }
     document.querySelectorAll('.backend-selection-summary').forEach(el => { el.textContent = text; });
+    document.dispatchEvent(new Event('workspace-change'));
 }
 
 export function _buildOptTooltip(optLevels) {
@@ -149,8 +149,9 @@ export function renderConfigPanel(runners) {
             <span class="text-xs font-bold text-indigo-800 uppercase">Multi-run mode (self-comparison)</span>
         </label>
         <p id="multirun-note" class="text-xs text-indigo-600 pl-5 ${_multiRunEnabled ? '' : 'hidden'}">
-            Set a run count per optimization level below — each count spawns one independent run.
-            Selection is driven by counts; the checkboxes above are ignored. Runners with all-zero counts do not run.
+            Each count below is one separate run in its own process, compared with every other run like another
+            backend. The counts decide what runs; a backend with all counts 0 does not run. For a more stable time
+            within one run, use Timing repeats instead.
         </p>
         <label class="flex items-center space-x-2 cursor-pointer pt-1 border-t border-indigo-50">
             <input type="checkbox" id="ordering-toggle" ${_orderingEnabled ? 'checked' : ''}
@@ -180,13 +181,13 @@ export function renderConfigPanel(runners) {
     const globalDiv = document.createElement('div');
     globalDiv.className = "col-span-1 p-2 bg-indigo-100 rounded border border-indigo-200 mb-2";
     globalDiv.innerHTML = `
-        <label class="block text-xs font-bold text-indigo-800 uppercase mb-1">Global Optimization Level</label>
+        <label class="block text-xs font-bold text-indigo-800 uppercase mb-1" for="opt-global">Global Optimization Level</label>
         <select id="opt-global" class="block w-full text-xs border-indigo-300 rounded p-1 focus:ring-indigo-500 focus:border-indigo-500">
             ${globalOpts}
         </select>
         <p class="text-xs text-indigo-600 mt-1">Applied to all runners — each runner uses the nearest level it supports. Override per-runner below.</p>
     `;
-    globalDiv.querySelector('#opt-global').addEventListener('change', updateContextBar);
+    globalDiv.querySelector('#opt-global').addEventListener('change', () => { updateContextBar(); document.dispatchEvent(new Event('workspace-change')); });
     grid.appendChild(globalDiv);
 
     const mode = getState().executionMode;
@@ -311,7 +312,22 @@ export function applyConfigModes() {
 
 export function toggleMultiRunMode(cb) {
     _multiRunEnabled = cb.checked;
+    if (_multiRunEnabled) _seedRunCounts();
     applyConfigModes();
+}
+
+/** On entering independent-runs mode, give each ticked backend with no counts one run at its current level. */
+function _seedRunCounts() {
+    const globalLevel = parseInt(/** @type {HTMLSelectElement|null} */ (document.getElementById('opt-global'))?.value || '0', 10);
+    document.querySelectorAll('.sim-checkbox:checked:not([data-locked])').forEach(node => {
+        const sim = /** @type {HTMLElement} */ (node).dataset.sim;
+        const counts = Array.from(document.querySelectorAll(`.runner-count-input[data-runner="${sim}"]`));
+        if (!counts.length || counts.some(c => parseInt(/** @type {HTMLInputElement} */ (c).value, 10) > 0)) return;
+        const select = /** @type {HTMLSelectElement|null} */ (document.querySelector(`.runner-opt-select[data-runner="${sim}"]`));
+        const chosen = select && parseInt(select.value, 10) >= 0 ? parseInt(select.value, 10) : globalLevel;
+        const level = Math.min(chosen, counts.length - 1);
+        /** @type {HTMLInputElement} */ (counts[level]).value = '1';
+    });
 }
 
 export function toggleOrderingMode(cb) {
@@ -331,24 +347,6 @@ export function setOrderingSequential() {
     });
 }
 
-export async function toggleConfigPanel() {
-    if (isDrawerOpen('config-panel')) { closeDrawers(); return; }
-    openDrawer('config-panel');
-    const grid = document.getElementById('config-grid');
-    if (grid && Object.keys(_runnerOptInfo).length === 0) await loadRunners();
-}
-
-// Bulk-set every runner's optimization level (clamped to each runner's available
-// options) from the "Set all to" control in the Config drawer.
-export function setAllOptLevels(level) {
-    document.querySelectorAll('#config-grid select').forEach(sel => {
-        const opt = Array.from(sel.options).find(o => parseInt(o.value, 10) === level);
-        if (opt) {
-            sel.value = String(level);
-            sel.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-    });
-}
 
 export function getRunnerConfig() {
     const config = {};
@@ -468,8 +466,8 @@ export function updateContextBar() {
         if (qasm) {
             const { qubits, gates } = _parseQasmStats(qasm);
             const maxQ = getDynamicMaxQubits();
-            statsSpan.textContent = `${qubits}q / ${gates} gates`;
-            statsSpan.className = qubits > maxQ ? 'text-red-600 font-semibold' : 'text-gray-500';
+            statsSpan.textContent = `${qubits} qubits · ${gates} gates`;
+            statsSpan.className = `text-xs whitespace-nowrap ${qubits > maxQ ? 'text-red-600 font-semibold' : 'text-gray-500'}`;
         } else {
             statsSpan.textContent = '';
         }

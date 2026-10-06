@@ -1,9 +1,10 @@
 // The circuit texts one run recorded, as panes for the Circuits view: the submitted
 // circuit, each dispatch group's circuit, each backend's executed circuit and, when the run
-// had compile-only services, their input and outputs. Pure, no imports beyond the
-// runner-key parser.
+// had compile-only services, their input and outputs. Pure; imports only other pure modules.
 
+import { splitLines } from './qasm_text.js';
 import { parseRunnerKey } from './runner_key.js';
+import { diffLines } from './text_diff.js';
 
 export const GATE_METRICS_FROM_QASM = 'top-level gate statements of transpiled_qasm; depth by greedy layering';
 
@@ -129,4 +130,40 @@ export function sourcePaneId(pane, panes) {
     }
     if (pane.kind !== 'input' && panes.some(p => p.id === 'input')) return 'input';
     return null;
+}
+
+/**
+ * Panes grouped by kind, identical text (byte for byte) and identical recorded gate count
+ * and depth, in pane order. Each group has
+ * the panes, the shared text (null for a pane without text, which is never grouped), its
+ * line count, and the lines added and removed against the pane it was derived from
+ * (`change` is null without a source, `{complete: false}` when the texts differ too much
+ * to count).
+ */
+export function groupPanes(panes) {
+    const groups = [];
+    const byText = new Map();
+    panes.forEach(pane => {
+        const key = pane.text === null ? null
+            : `${pane.kind}\u0000${pane.gateCount ?? ''}\u0000${pane.depth ?? ''}\u0000${pane.text}`;
+        if (key !== null && byText.has(key)) {
+            byText.get(key).panes.push(pane);
+            return;
+        }
+        const group = { id: pane.id, kind: pane.kind, text: pane.text, panes: [pane],
+                        lines: pane.text === null ? 0 : splitLines(pane.text).length, change: null };
+        if (key !== null) byText.set(key, group);
+        groups.push(group);
+    });
+    groups.forEach(group => {
+        if (group.text === null) return;
+        const sourceId = sourcePaneId(group.panes[0], panes);
+        const source = panes.find(p => p.id === sourceId);
+        if (!source || source.text === null) return;
+        const result = diffLines(splitLines(source.text), splitLines(group.text));
+        group.change = result.complete
+            ? { complete: true, sourceId, added: result.inserted, removed: result.deleted }
+            : { complete: false, sourceId };
+    });
+    return groups;
 }

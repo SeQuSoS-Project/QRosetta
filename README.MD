@@ -11,7 +11,7 @@ the metrics, the counts (statevectors on request; otherwise their sha256 and len
 configuration and seeds, and the SDK versions that produced them.
 
 The Circuits tab shows those circuit texts side by side with a line diff between any two of
-them. A run can also send its circuit to compile-only services (BQSKit, PyZX, MQT QMAP, Cirq, staq), which
+them. A run can also send its circuit to compile-only services (BQSKit, PyZX, MQT QMAP, Cirq, staq, Q-Synth, Quartz, Synthetiq), which
 return circuit text only: their output is recorded, shown and exported, but never simulated or
 compared. A saved run can be shared through a read-only link that expires after 1 to 90 days; the
 link shows the circuit texts only, and its owner can revoke it.
@@ -37,8 +37,8 @@ timed (1 to 10, default 1). With one timed run every timing is a single sample
 (`timing_samples = 1`); with more, the time fields are medians and the per-run samples, mean
 and standard deviation are recorded beside them. Every runner is started with five thread
 variables set to 1: `OMP_NUM_THREADS`, `MKL_NUM_THREADS`, `OPENBLAS_NUM_THREADS`,
-`NUMEXPR_NUM_THREADS` and `NUMBA_NUM_THREADS`. Each runner has a 1-CPU quota and, locally, 512 MiB of
-memory (TorchQuantum 1 GiB). Every run records the CPU-quota throttling and container CPU time over
+`NUMEXPR_NUM_THREADS` and `NUMBA_NUM_THREADS`. Each runner has a 1-CPU quota and 1 GiB of
+memory. Every run records the CPU-quota throttling and container CPU time over
 its simulation window, the CPUs it ran on, and how many other runs overlapped it. For timings meant
 for comparison, use exclusive runs (`exclusive: true`, one backend at a time with no other run on the
 server), at least three jobs with `timing_repeats` of 5; the manual's "Timing and memory
@@ -99,9 +99,9 @@ and returns the same set of fields.
 | Qiskit Aer, Cirq, Qulacs, QuEST | PennyLane Lightning, PennyLane Default |
 | qsim-Cirq, Qibo, Qrisp, myQLM | PyQuil, TorchQuantum, Quimb, cuQuantum |
 
-The web UI runs every enabled backend unless you deselect some in the Config drawer. The
+The web UI runs every enabled backend unless you deselect some under Configuration → Backends. The
 cuQuantum runner is qiskit-aer-gpu 0.15.1 with cuStateVec enabled, on an NVIDIA GPU. On a host
-without one, `GET /runners` marks it unavailable with a reason, the Config drawer shows it
+without one, `GET /runners` marks it unavailable with a reason, the backend list shows it
 greyed out, and it is not dispatched. Its kernels run on the GPU; its host-side work runs under
 the same CPU quota as the other runners, so its times compare different hardware. Memory
 fields are host RSS: GPU device memory is not measured, and GPU runs are not ranked by memory.
@@ -123,13 +123,15 @@ Requires Docker Engine 20.10+ and Docker Compose v2.
 ```bash
 git clone https://github.com/SeQuSoS-Project/qrosetta.git
 cd qrosetta
-cp .env.example .env      # then fill in your credentials
+cp .env.example .env      # the cloud credentials in it are needed only for deployment
 ./scripts/safe_boot.sh    # or: docker compose up --build
 ```
 
 The first build takes a while: it compiles dependencies for 16 separate containers.
 
-- Web UI — http://localhost
+- Web UI — http://localhost. The page opens with a GHZ circuit ready; press **Run**, then
+  read the Summary tab. The guide's Quickstart (`docs.html#quickstart`) walks through a first
+  statevector and a first measured run.
 - API reference — http://localhost/docs (Swagger) and `docs.html` for the written guide
 
 `SECRET_KEY` must be set whenever `EXECUTION_MODE` is not `local`; the API refuses to start

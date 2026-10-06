@@ -3,6 +3,7 @@
 
 import { RUNNER_DISPLAY_NAMES, getRunnerOptInfo } from './config.js';
 import { formatRunnerLabel, parseRunnerKey } from './runner_key.js';
+import { setTip } from './tooltip.js';
 
 export const METRIC_DEFINITIONS = {
     "compilation": "<b>Compilation Time:</b> Wall clock from t0 to t1 of a timed run: parse the QASM, apply this backend's transforms and build its native circuit (Qulacs, QuEST, qsim and Qiskit Aer convert the circuit into their own form inside the simulation call instead; see the manual). After one discarded warm-up run; with Timing repeats above 1, the median of the timed runs, with their spread and n.",
@@ -62,6 +63,11 @@ export const STATUS_STYLES = {
         cell: "bg-gray-100 text-gray-400 italic",
         legendDot: "bg-gray-100 border-gray-300"
     },
+    inconclusive: {
+        badge: "bg-sky-50 text-sky-800 border-sky-300",
+        cell: "bg-sky-50 text-gray-900",
+        legendDot: "bg-sky-50 border-sky-300"
+    },
     neutral: {
         cell: "bg-white text-gray-900"
     }
@@ -81,6 +87,7 @@ export function _applyLegendDots(fragment) {
         'tpl-dot-anomaly': STATUS_STYLES.anomaly.legendDot,
         'tpl-dot-error': STATUS_STYLES.error.legendDot,
         'tpl-dot-timeout': STATUS_STYLES.timeout.legendDot,
+        'tpl-dot-inconclusive': STATUS_STYLES.inconclusive.legendDot,
     };
     for (const [placeholder, classes] of Object.entries(dotMap)) {
         fragment.querySelectorAll(`.${placeholder}`).forEach(el => {
@@ -97,9 +104,8 @@ export function renderTooltip(key, label) {
         const span = document.createElement('span');
         span.style.cursor = 'help';
         span.style.textDecoration = 'underline dotted';
-        span.title = plainText;
         span.textContent = label;
-        return span;
+        return setTip(span, plainText);
     }
     return document.createTextNode(label);
 }
@@ -197,7 +203,7 @@ export function _makeStatusCell(styleKey, text, title) {
     const span = document.createElement('span');
     STATUS_STYLES[styleKey].cell.split(' ').forEach(c => span.classList.add(c));
     span.textContent = text;
-    if (title) span.title = title;
+    if (title) setTip(span, title);
     return span;
 }
 
@@ -206,7 +212,7 @@ export function _chip(badgeClasses, text, title) {
     span.className = 'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border';
     badgeClasses.split(' ').forEach(c => span.classList.add(c));
     span.textContent = text;
-    if (title) span.title = title;
+    if (title) setTip(span, title);
     return span;
 }
 
@@ -215,7 +221,7 @@ export function _tag(text, colorClasses, title) {
     const span = document.createElement('span');
     span.className = `ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${colorClasses}`;
     span.textContent = text;
-    if (title) span.title = title;
+    if (title) setTip(span, title);
     return span;
 }
 

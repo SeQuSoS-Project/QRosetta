@@ -2,12 +2,13 @@
 // artifacts are built in the browser; figures are rendered by POST /publication/render
 // from the statevector-stripped report.
 
-import { BASE_URL, getAuthHeaders } from './api.js';
-import { _artHtmlEscape, _artBackends, _subsetResults, buildArtifactCatalog } from './artifact_formats.js';
+import { BASE_URL, formatApiError, getAuthHeaders } from './api.js';
+import { ART_LATEX_PACKAGES, _artHtmlEscape, _artBackends, _subsetResults, buildArtifactCatalog } from './artifact_formats.js';
+import { _displayRunnerName } from './render_helpers.js';
 import { COPY_ICON_SVG, _stripStatevectors, copyImageToClipboard, downloadBlob, makeCopyIconButton } from './utils.js';
 
-export const ARTIFACT_SCALES = [1, 2, 3, 5];
-export const ARTIFACT_SCALE_LABELS = ['Screen (1×)', 'High (2×)', 'Print (3×)', 'Very High (5×)'];
+export const ARTIFACT_SCALES = [1, 2, 3, 4];
+export const ARTIFACT_SCALE_LABELS = ['Screen (1×)', 'High (2×)', 'Print (3×)', 'Very High (4×)'];
 export const _TEXT_EXT = { latex: 'tex', csv: 'csv', html: 'html', markdown: 'md', qasm: 'qasm', text: 'txt' };
 export const _IMG_MIME = { svg: 'image/svg+xml', png: 'image/png', pdf: 'application/pdf' };
 
@@ -18,10 +19,7 @@ export async function _fetchFigureBlob(stripped, id, fmt, scale) {
         headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ results: stripped, artifact_id: id, format: fmt, scale }),
     });
-    if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ detail: `HTTP ${resp.status}` }));
-        throw new Error(err.detail || `HTTP ${resp.status}`);
-    }
+    if (!resp.ok) throw new Error(await formatApiError(resp));
     return await resp.blob();
 }
 
@@ -63,7 +61,7 @@ export function _renderTextViewer(container, art) {
     pre.className = 'text-xs bg-gray-50 border border-gray-200 rounded p-3 overflow-auto max-h-[52vh] whitespace-pre-wrap break-words';
     pre.setAttribute('readonly', 'true');
 
-    const paint = () => { pre.textContent = art.getText(state.fmt); };
+    let paint = () => { pre.textContent = art.getText(state.fmt); };
     const swHost = document.createElement('div');
     _mountFmtSwitcher(swHost, art.formats, () => state.fmt, f => { state.fmt = f; paint(); });
     bar.appendChild(swHost);
@@ -76,11 +74,34 @@ export function _renderTextViewer(container, art) {
     dl.onclick = () => downloadBlob(new Blob([pre.textContent], { type: 'text/plain' }),
         `${art.id}.${_TEXT_EXT[state.fmt] || 'txt'}`);
     bar.appendChild(dl);
+    const standalone = document.createElement('button');
+    standalone.type = 'button';
+    standalone.className = dl.className;
+    standalone.textContent = '⬇ Standalone .tex';
+    standalone.title = 'A complete LaTeX document (article class and the packages the table needs) that compiles as it is, e.g. as a new Overleaf project.';
+    standalone.onclick = () => downloadBlob(new Blob([latexStandalone(pre.textContent)], { type: 'text/plain' }), `${art.id}_standalone.tex`);
+    bar.appendChild(standalone);
+    const paintBar = () => { standalone.classList.toggle('hidden', state.fmt !== 'latex'); };
 
     container.appendChild(bar);
     container.appendChild(pre);
+    if (art.formats.includes('latex')) {
+        const hint = document.createElement('p');
+        hint.className = 'text-xs text-gray-500 mt-1 latex-hint';
+        hint.textContent = `To paste the LaTeX table into your own document, add \\usepackage{${ART_LATEX_PACKAGES}} to its preamble.`;
+        container.appendChild(hint);
+    }
     container.appendChild(_legendLine(art.legend));
+    const repaint = paint;
+    paint = () => { repaint(); paintBar(); container.querySelector('.latex-hint')?.classList.toggle('hidden', state.fmt !== 'latex'); };
     paint();
+}
+
+/** A complete LaTeX document around one table snippet. */
+export function latexStandalone(snippet) {
+    return ['\\documentclass{article}', '\\usepackage[T1]{fontenc}', '\\usepackage[utf8]{inputenc}',
+        `\\usepackage{${ART_LATEX_PACKAGES}}`, '\\usepackage[margin=2cm]{geometry}', '\\begin{document}', '',
+        snippet.trimEnd(), '', '\\end{document}', ''].join('\n');
 }
 
 /** Figure viewer: SVG preview plus format, resolution, download and copy controls. */
@@ -273,6 +294,7 @@ export function _backendSelector(allBackends, selected, onChange) {
     const paint = () => {
         Array.from(chips.children).forEach(chip => {
             const on = selected.has(chip.dataset.sim);
+            chip.setAttribute('aria-pressed', String(on));
             chip.className = 'px-2 py-0.5 rounded-full text-xs border transition-all ' + (on
                 ? 'bg-indigo-600 text-white border-indigo-600'
                 : 'bg-white text-gray-500 border-gray-300 hover:bg-gray-100');
@@ -280,8 +302,10 @@ export function _backendSelector(allBackends, selected, onChange) {
     };
     allBackends.forEach(sim => {
         const chip = document.createElement('button');
+        chip.type = 'button';
         chip.dataset.sim = sim;
-        chip.textContent = sim;
+        chip.textContent = _displayRunnerName(sim);
+        chip.title = sim;
         chip.onclick = () => {
             if (selected.has(sim)) selected.delete(sim); else selected.add(sim);
             paint(); onChange();

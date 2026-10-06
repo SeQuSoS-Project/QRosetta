@@ -175,9 +175,12 @@ export function recommendedShots(pairs) {
 
 /** @type {Array<[RegExp, string]>} */
 const OPERATOR_HINTS = [
-    [/\s*Check the \S+ container logs( to confirm)?\.?/gi, ' If it happens again, report it to the administrator of this server.'],
-    [/\s*Check container logs in your Kubernetes cluster\.?/gi, ' If it happens again, report it to the administrator of this server.'],
-    [/\s*Check that its container is running\.?/gi, ' The runner may be restarting; try again in a minute.'],
+    [/\s*Server operators can check whether its service is running\.?/gi, ' The backend may be restarting; try again in a minute. If it keeps happening, tell the administrator of this server.'],
+    [/\s*Server operators can see details in the runner( pod)? logs\.?/gi, ' If it happens again, tell the administrator of this server.'],
+    [/raise the timeout\./g, 'raise the timeout in Config.'],
+    [/\s*Check the \S+ container logs( to confirm)?\.?/gi, ' If it happens again, tell the administrator of this server.'],
+    [/\s*Check container logs in your Kubernetes cluster\.?/gi, ' If it happens again, tell the administrator of this server.'],
+    [/\s*Check that its container is running\.?/gi, ' The backend may be restarting; try again in a minute.'],
 ];
 
 /** A runner error message with server-operator instructions replaced by ones a UI user can act on. */

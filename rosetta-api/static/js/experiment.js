@@ -1,137 +1,11 @@
-// Reproducible experiment runner — front end.
-//
-// Runs the batch queue (presets / benchmarks / uploaded QASM) over one or more preprocessing
-// axes via POST /experiments, then downloads the frozen artifact bundle from
-// GET /experiments/{id}/bundle. The "Run Experiment" button routes here; "Run Batch" is
-// separate. The conformance and prevalence outputs are reported separately.
+// Results of an experiment run (the circuit list run with preprocessing on and off through
+// POST /experiments): counts across both settings, errors to triage, and the bundle download
+// from GET /experiments/{id}/bundle.
 
-import { getCompilerSelection } from './compilers_config.js';
-import { BASE_URL, formatApiError, getAuthHeaders, pollJobStatus } from './api.js';
-import { bareCircuitName } from './batch.js';
-import { closeDrawers } from './drawers.js';
-import { checkRunCountLimits, getRunnerConfig, getRunnerPhases, getTargetSimulators, loadRunners, runnerSelectionProblem } from './config.js';
-import { showRunErrors, validateRunInputs } from './run_inputs.js';
-import { clearReport } from './renderers.js';
-import { dispatch, getState } from './state.js';
+import { BASE_URL, formatApiError, getAuthHeaders } from './api.js';
+import { labelText } from './labels.js';
 import { statevectorGroup } from './run_status.js';
-import { downloadBlob, getAgreementThresholds, getSeed, setLoading } from './utils.js';
-
-export let _lastExperimentJobId = null;
-export let _lastExperimentName = 'experiment';
-
-export function toggleExperimentMode() {
-    const on = document.getElementById('experiment-toggle')?.checked;
-    const controls = document.getElementById('experiment-controls');
-    if (controls) controls.classList.toggle('hidden', !on);
-}
-
-// Map a batch-queue item to an ExperimentCircuit. Items are benchmark refs
-// ({source:'mqt'|'qasmbench', algorithm, qubits}), literal QASM ({qasm_string}/{qasm}), or
-// presets ({algorithm, qubits}). Benchmark refs stay references so the server resolves them.
-export function _queueItemToCircuit(item) {
-    if (item.source === 'mqt' || item.source === 'qasmbench') {
-        return {
-            source: item.source, algorithm: item.algorithm,
-            qubits: parseInt(item.qubits) || 0, name: bareCircuitName(item.name) || item.algorithm,
-        };
-    }
-    const qasm = item.qasm_string || item.qasm;
-    if (qasm) {
-        return {
-            source: 'qasm', qasm_string: qasm,
-            name: bareCircuitName(item.name) || item.algorithm || 'circuit',
-            qubits: parseInt(item.qubits) || 0,
-        };
-    }
-    return {
-        source: 'preset', algorithm: item.algorithm,
-        qubits: parseInt(item.qubits) || 0, name: bareCircuitName(item.name) || null,
-    };
-}
-
-export async function runExperiment() {
-    if (getState().isProcessing) return;
-    const queue = getState().batchQueue || [];
-    if (queue.length === 0) { alert('Add circuits to the batch queue first.'); return; }
-
-    const axes = [];
-    if (document.getElementById('exp-axis-on')?.checked) axes.push(true);
-    if (document.getElementById('exp-axis-off')?.checked) axes.push(false);
-    if (axes.length === 0) { alert('Select at least one preprocessing axis.'); return; }
-
-    const mode = document.querySelector('input[name="mode-batch"]:checked').value;
-    const v = validateRunInputs({ shotsId: 'shots-batch', measured: mode === 'measured' });
-    if (!v.ok) { showRunErrors('batch-validation-msg', v.errors); return; }
-    await loadRunners();
-    const problem = runnerSelectionProblem();
-    if (problem) { showRunErrors('batch-validation-msg', [problem]); return; }
-    showRunErrors('batch-validation-msg', []);
-
-    const targetSims = getTargetSimulators();
-    const shots = mode === 'measured' ? v.shots : undefined;
-    const globalOpt = parseInt(document.getElementById('opt-global')?.value || 0);
-    const timeout = v.timeout;
-    const executionTarget = /** @type {HTMLSelectElement|null} */ (document.getElementById('execution-target-select'))?.value
-        || getState().executionMode || undefined;
-    const bypassLimits = document.getElementById('bypass-limits-checkbox')?.checked || false;
-    const label = document.getElementById('experiment-name')?.value.trim() || null;
-
-    dispatch('SET_RUNNER_CONFIG', getRunnerConfig());
-    if (!checkRunCountLimits(getState().currentRunnerConfig)) return;
-
-    const circuits = queue.map(_queueItemToCircuit);
-    const payload = {
-        circuits,
-        mode,
-        n_shots: shots,
-        optimization_level: globalOpt,
-        runner_config: getState().currentRunnerConfig,
-        runner_phases: getRunnerPhases(),
-        timeout_seconds: timeout,
-        timing_repeats: v.timingRepeats,
-        exclusive: /** @type {HTMLInputElement | null} */ (document.getElementById('exclusive-checkbox'))?.checked || false,
-        target_simulators: targetSims,
-        execution_target: executionTarget,
-        bypass_limits: bypassLimits,
-        preprocessing_modes: axes,
-        seed: getSeed(),                 // null => backend generates + records one shared seed
-        thresholds: getAgreementThresholds(),
-        compilers: getCompilerSelection(),
-        label,
-    };
-
-    _lastExperimentName = label ? label.replace(/[^A-Za-z0-9_-]+/g, '_') : 'experiment';
-    _hideExperimentResult();
-    closeDrawers();
-    setLoading(true, `Running experiment: ${circuits.length} circuit(s) × ${axes.length} axis(es)…`);
-    clearReport();
-
-    try {
-        dispatch('SET_PROCESSING', true);
-        const res = await fetch(`${BASE_URL}/experiments`, {
-            method: 'POST',
-            headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-            body: JSON.stringify(payload),
-        });
-        if (!res.ok) throw new Error(await formatApiError(res));
-        const jobData = await res.json();
-        if (jobData.status === 'failed') throw new Error(jobData.error);
-
-        const results = await pollJobStatus(jobData.job_id);
-        _lastExperimentJobId = jobData.job_id;
-        renderExperimentResult(results);
-    } catch (e) {
-        console.error(e);
-        alert(`Experiment failed: ${e.message}`);
-    } finally {
-        dispatch('SET_PROCESSING', false);
-        setLoading(false);
-    }
-}
-
-export function _hideExperimentResult() {
-    document.getElementById('experiment-result')?.classList.add('hidden');
-}
+import { downloadBlob } from './utils.js';
 
 const ASSESSMENTS = ['consistent_within_shot_noise', 'inconclusive_low_shots', 'ambiguous', 'distinguishable'];
 
@@ -162,7 +36,7 @@ function _prevalenceText(summary) {
         if (keys.every(k => ASSESSMENTS.includes(k))) {
             return {
                 heading: 'Pairs by shot-noise assessment',
-                text: ASSESSMENTS.filter(k => counts[k]).map(k => `${k}: ${counts[k]}`).join(' · ') + tail,
+                text: ASSESSMENTS.filter(k => counts[k]).map(k => `${labelText(k)}: ${counts[k]}`).join(' · ') + tail,
             };
         }
         return {
@@ -185,8 +59,8 @@ function _prevalenceText(summary) {
 }
 
 function _line(parent, heading, text, className = '') {
-    const div = document.createElement('div');
-    if (className) div.className = className;
+    const div = document.createElement('p');
+    div.className = `text-sm ${className}`;
     if (heading) {
         const b = document.createElement('span');
         b.className = 'font-medium';
@@ -197,41 +71,47 @@ function _line(parent, heading, text, className = '') {
     parent.appendChild(div);
 }
 
-export function renderExperimentResult(results) {
+/** Render an experiment's summary and bundle download into `panel`. */
+export function renderExperimentResult(results, panel, { jobId, name, title }) {
+    panel.replaceChildren();
     const summary = results && results.experiment_summary;
-    const box = document.getElementById('experiment-result');
-    const line = document.getElementById('experiment-summary-line');
-    if (!summary || !box || !line) return;
-
+    const h2 = document.createElement('h2');
+    h2.className = 'text-xl font-semibold text-gray-900 mb-3';
+    h2.textContent = title || 'Experiment';
+    panel.appendChild(h2);
+    if (!summary) {
+        _line(panel, null, 'The experiment returned no summary.', 'text-red-700');
+        return;
+    }
     const nCircuits = (summary.circuits || []).length;
     const nAxes = (summary.axes || []).length;
     const nErr = summary.error_count || 0;
     const nResolve = (summary.resolution_errors || []).length;
     const prev = _prevalenceText(summary);
-
-    line.innerHTML = '';
-    _line(line, null, `Experiment complete: ${summary.cells} circuit-axis run(s), ${nCircuits} circuit(s) × ${nAxes} axis(es).`,
-        'font-medium mb-1');
-    _line(line, prev.heading, prev.text);
-    _line(line, 'Errors to triage', `${nErr}${nResolve ? ` · resolution errors: ${nResolve}` : ''}`);
-    _line(line, null, "Each error signature carries a triage='untriaged' marker; classify it as adapter / SDK / by-design / resource.",
-        'text-[11px] text-yellow-700 mt-1');
-    box.classList.remove('hidden');
+    const card = document.createElement('section');
+    card.className = 'p-4 mb-4 border-l-4 rounded bg-gray-50 border-gray-300 space-y-1';
+    _line(card, null, `${summary.cells} runs: ${nCircuits} circuit${nCircuits === 1 ? '' : 's'} × ${nAxes} preprocessing setting${nAxes === 1 ? '' : 's'}.`, 'font-semibold');
+    _line(card, prev.heading, prev.text);
+    _line(card, 'Errors to classify', `${nErr}${nResolve ? `; circuits that could not be resolved: ${nResolve}` : ''}`);
+    panel.appendChild(card);
+    _line(panel, null, 'The bundle holds the inputs, every per-circuit result, a conformance matrix, an agreement-prevalence '
+        + 'table and a provenance manifest. Each error signature is marked untriaged, for you to classify as adapter, SDK, '
+        + 'by design or resource. The server keeps the bundle for 30 minutes.', 'text-gray-600 mb-3');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'py-2 px-4 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700';
+    button.textContent = '⬇ Download bundle (ZIP)';
+    button.onclick = () => downloadExperimentBundle(jobId, name);
+    panel.appendChild(button);
 }
 
-export async function downloadExperimentBundle() {
-    if (!_lastExperimentJobId) { alert('Run an experiment first.'); return; }
+export async function downloadExperimentBundle(jobId, name) {
     try {
-        const res = await fetch(`${BASE_URL}/experiments/${_lastExperimentJobId}/bundle`, {
-            headers: getAuthHeaders(),
-        });
-        if (!res.ok) {
-            throw new Error(`Download failed: ${res.status}. ${await res.text()}`);
-        }
-        downloadBlob(await res.blob(), `${_lastExperimentName || 'experiment'}.zip`);
+        const res = await fetch(`${BASE_URL}/experiments/${encodeURIComponent(jobId)}/bundle`, { headers: getAuthHeaders() });
+        if (!res.ok) throw new Error(await formatApiError(res));
+        downloadBlob(await res.blob(), `${String(name || 'experiment').replace(/[^A-Za-z0-9_-]+/g, '_')}.zip`);
     } catch (e) {
         console.error(e);
-        alert(e.message);
+        alert(`The bundle was not downloaded. ${e.message}`);
     }
 }
-

@@ -338,3 +338,40 @@ def test_a_refusal_reaches_the_share_texts_but_other_errors_do_not():
     refused, failed = single_circuit_texts(report)["compiled_circuits"]
     assert refused["refusal"] == "r names a gate" and refused["refusal_kind"] == "input"
     assert "error" not in refused and "error" not in failed and "refusal" not in failed
+
+
+def test_compile_only_run_dispatches_no_simulator_and_exports(fake_dispatch):
+    pytest.importorskip("pytket")
+    report = asyncio.run(job_manager.run_compile_only(QASM, compilers={"pyzx": [1]}))
+    assert len(fake_dispatch) == 1
+    (compile_urls, _), = fake_dispatch
+    assert all(url.endswith("/compile") for url in compile_urls.values())
+    assert report["simulated"] is False and report["raw_results"] == []
+    assert [c["compiler"] for c in report["compiled_circuits"]] == ["pyzx~opt1~run1"]
+    assert report["compile_input"]["qasm"]
+    assert job_manager.all_runners_failed(report) is None
+    assert not job_manager.report_failed_before_dispatch(report)
+    zip_bytes = build_ro_crate(build_export_context(report, ExportPayload(), route="server_job"))
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        assert any(n.endswith("compile_input.qasm") for n in zf.namelist())
+
+
+def test_compile_only_requests_need_compilers_and_no_simulator_settings(client):
+    r = client.post("/compare", json={"qasm_string": QASM, "simulate": False})
+    assert r.status_code == 422 and "compilers" in r.text
+    r = client.post("/compare", json={"qasm_string": QASM, "simulate": False, "compilers": {"pyzx": [1]},
+                                      "target_simulators": ["qiskit"]})
+    assert r.status_code == 422 and "target_simulators" in r.text
+    r = client.post("/run_batch_suite", json={"tasks": [{"algorithm": "ghz", "qubits": 2}], "mode": "statevector",
+                                              "simulate": False, "runner_config": {"qiskit": 0}, "compilers": {"pyzx": [1]}})
+    assert r.status_code == 422 and "runner_config" in r.text
+
+
+def test_compile_only_batch_runs_each_task_without_simulators(fake_dispatch):
+    pytest.importorskip("pytket")
+    from schemas import BatchPayload, BenchmarkTask
+    payload = BatchPayload(mode="statevector", simulate=False, compilers={"pyzx": [1]},
+                           tasks=[BenchmarkTask(algorithm="mine", qasm_string=QASM)])
+    summary, _ = asyncio.run(job_manager.run_batch_tasks(payload, {}))
+    assert summary[0]["simulated"] is False and summary[0]["raw_results"] == []
+    assert all(url.endswith("/compile") for urls, _ in fake_dispatch for url in urls.values())

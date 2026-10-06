@@ -1,6 +1,6 @@
 // Frontend logic for auth functionality.
 
-import { BASE_URL, apiDetailText, getAuthHeaders } from './api.js';
+import { BASE_URL, apiDetailText, formatApiError, getAuthHeaders } from './api.js';
 import { dispatch, getState } from './state.js';
 import { setLoading } from './utils.js';
 
@@ -56,11 +56,12 @@ export function updateAuthUI() {
         if (userProfile) userProfile.classList.add('hidden');
         if (emailDisplay) emailDisplay.textContent = '';
     }
+    document.dispatchEvent(new Event('workspace-change'));
 }
 
 export async function handleLoginSubmit() {
     const email = document.getElementById('login-email').value.trim();
-    const password = document.getElementById('login-password').value.trim();
+    const password = document.getElementById('login-password').value;
     const errorDiv = document.getElementById('login-error');
 
     if (!email || !password) {
@@ -73,17 +74,16 @@ export async function handleLoginSubmit() {
     errorDiv.classList.add('hidden');
 
     try {
-        const formData = new URLSearchParams();
-        formData.append('username', email);
-        formData.append('password', password);
-
-        const res = await fetch(`${BASE_URL}/auth/token`, {
+        const requestToken = (pw) => fetch(`${BASE_URL}/auth/token`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: formData.toString()
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ username: email, password: pw }).toString(),
         });
+        let res = await requestToken(password);
+        // Accounts registered before passwords were sent untrimmed hold the trimmed password.
+        if (res.status === 401 && password.trim() !== password && password.trim()) {
+            res = await requestToken(password.trim());
+        }
 
         const data = await res.json();
 
@@ -109,7 +109,7 @@ export async function handleLoginSubmit() {
 
 export async function handleRegisterSubmit() {
     const email = document.getElementById('register-email').value.trim();
-    const password = document.getElementById('register-password').value.trim();
+    const password = document.getElementById('register-password').value;
     const errorDiv = document.getElementById('register-error');
 
     if (!email || !password) {
@@ -180,9 +180,7 @@ export async function handleDeleteAccount() {
             headers: getAuthHeaders()
         });
 
-        if (!res.ok) {
-            throw new Error("Failed to delete account");
-        }
+        if (!res.ok) throw new Error(await formatApiError(res));
 
         alert("Your account has been securely deleted.");
         handleLogout();

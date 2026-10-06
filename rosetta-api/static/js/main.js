@@ -8,13 +8,12 @@
 // tests/unit/test_inline_handlers.py, so a renamed or deleted handler fails the suite
 // instead of becoming a button that silently does nothing.
 
-import { generateCircuit, handleRun, runBatchQueue, toggleBatchMode, toggleSingleMode } from './app.js';
+import { generateCircuit } from './app.js';
 import { closeAuthModal, handleDeleteAccount, handleLoginSubmit, handleLogout, handleRegisterSubmit, openAuthModal, toggleAuthMode } from './auth.js';
-import { addToBatch, applyPreset, clearBatch, closeGeneratorModal, importPlaylist, openGeneratorModal, runAutoGeneration, togglePlaylist } from './batch.js';
-import { addBenchmarkToBatch, bmAddAllOfSuite, bmAddSelectedToBatch, bmRenderChecklist, bmToggleSelectAll, loadBenchmark, toggleBenchSuite } from './benchmarks_select.js';
-import { setAllOptLevels, toggleConfigPanel } from './config.js';
+import { addEditorToPlaylist, addToBatch, applyPreset, clearBatch, closeGeneratorModal, importPlaylist, openGeneratorModal, runAutoGeneration } from './batch.js';
+import { addBenchmarkToBatch, bmAddAllOfCurrentSuite, bmAddSelectedToBatch, bmRenderChecklist, bmToggleSelectAll, loadBenchmark, toggleBenchSuite } from './benchmarks_select.js';
 import { closeDrawers, toggleBenchPanel } from './drawers.js';
-import { downloadExperimentBundle, runExperiment, toggleExperimentMode } from './experiment.js';
+import { openAdvanced, runWorkspace, stopWaiting, updateWorkspace } from './workspace.js';
 import { closeHistoryModal, deleteSelectedHistory, downloadSelectedHistory, openHistoryModal, toggleSelectAllHistory } from './history.js';
 import { closeVisualizer, copyRawJson, downloadRawJson, generateAndVisualize, renderSuiteSummary } from './renderers.js';
 import { copyCircuitQasm, downloadFullReport, exportPlaylist, exportQasm, exportRoCrate, importQasm, resetAgreementThresholds, togglePublicationOptions } from './utils.js';
@@ -25,14 +24,13 @@ import './artifacts_renderer.js';
 import './autosave.js';
 import './state.js';
 import './tables_renderer.js';
+import { initTooltips } from './tooltip.js';
+
+initTooltips();
 
 Object.assign(window, {
     // app.js
     generateCircuit,
-    handleRun,
-    runBatchQueue,
-    toggleBatchMode,
-    toggleSingleMode,
     // auth.js
     closeAuthModal,
     handleDeleteAccount,
@@ -42,6 +40,7 @@ Object.assign(window, {
     openAuthModal,
     toggleAuthMode,
     // batch.js
+    addEditorToPlaylist,
     addToBatch,
     applyPreset,
     clearBatch,
@@ -49,25 +48,17 @@ Object.assign(window, {
     importPlaylist,
     openGeneratorModal,
     runAutoGeneration,
-    togglePlaylist,
     // benchmarks_select.js
     addBenchmarkToBatch,
-    bmAddAllOfSuite,
+    bmAddAllOfCurrentSuite,
     bmAddSelectedToBatch,
     bmRenderChecklist,
     bmToggleSelectAll,
     loadBenchmark,
     toggleBenchSuite,
-    // config.js
-    setAllOptLevels,
-    toggleConfigPanel,
     // drawers.js
     closeDrawers,
     toggleBenchPanel,
-    // experiment.js
-    downloadExperimentBundle,
-    runExperiment,
-    toggleExperimentMode,
     // history.js
     closeHistoryModal,
     deleteSelectedHistory,
@@ -89,4 +80,9 @@ Object.assign(window, {
     importQasm,
     resetAgreementThresholds,
     togglePublicationOptions,
+    // workspace.js
+    openAdvanced,
+    runWorkspace,
+    stopWaiting,
+    updateWorkspace,
 });

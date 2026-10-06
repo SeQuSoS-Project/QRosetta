@@ -47,7 +47,7 @@ def test_index_input_values_match_schema():
 def test_index_shots_values_match_schema_default():
     html = _INDEX.read_text()
     default = MeasuredQasmPayload.model_fields["n_shots"].default
-    for element_id in ("shots-single", "shots-batch"):
+    for element_id in ("shots-single",):
         m = re.search(rf'id="{element_id}"\s+value="([^"]+)"', html)
         assert m, f"index.html has no value for #{element_id}"
         assert int(m.group(1)) == default, f"#{element_id}={m.group(1)}, schema n_shots default {default}"

@@ -46,12 +46,24 @@ export async function formatApiError(res) {
     return `${kind} (HTTP ${res.status}): ${message || res.statusText}`;
 }
 
+let _stopPolling = false;
+
+/** Make the poll in progress stop at its next check, rejecting with `stopped: true`; the job keeps running. */
+export function stopPolling() {
+    _stopPolling = true;
+}
+
 export async function pollJobStatus(jobId) {
+    _stopPolling = false;
     return new Promise((resolve, reject) => {
         let networkErrorCount = 0;
         const MAX_NETWORK_ERRORS = 4;
 
         const checkStatus = async () => {
+            if (_stopPolling) {
+                reject(Object.assign(new Error('Stopped waiting. The job keeps running on the server.'), { stopped: true }));
+                return;
+            }
             try {
                 const res = await fetch(`${BASE_URL}/jobs/${jobId}`, {
                     headers: getAuthHeaders()

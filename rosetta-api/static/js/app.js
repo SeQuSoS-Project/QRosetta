@@ -1,24 +1,22 @@
-// Page bootstrap, single-circuit and batch run orchestration, and circuit generation.
+// Page bootstrap: server limits and defaults, the preset list, circuit generation, and the
+// offer to resume a job after a reload.
 
-import { BASE_URL, apiDetailText, formatApiError, getAuthHeaders, pollJobStatus } from './api.js';
+import { BASE_URL, apiDetailText, getAuthHeaders } from './api.js';
 import { updateAuthUI, verifySession } from './auth.js';
-import { autosaveRun, initAutosave } from './autosave.js';
-import { getCompilerSelection, loadCompilers } from './compilers_config.js';
-import { renderBatchQueue, toBatchTask } from './batch.js';
-import { closeDrawers } from './drawers.js';
+import { initAutosave } from './autosave.js';
+import { loadCompilers } from './compilers_config.js';
+import { renderBatchQueue } from './batch.js';
 import { bmLoadChecklist, populateBenchmarkSelectors } from './benchmarks_select.js';
-import {
-    checkRunCountLimits, getDynamicMaxQubits, getRunnerConfig, getRunnerPhases, getTargetSimulators,
-    loadRunners, runnerSelectionProblem, updateContextBar,
-} from './config.js';
-import { clearHistoryState, saveRunToHistory, showHistoryNotice } from './history.js';
+import { getDynamicMaxQubits, loadRunners, updateContextBar } from './config.js';
+import { saveRunToHistory, showHistoryNotice } from './history.js';
 import { setRunSaver } from './share_links.js';
-import { clearReport, renderDetailReport, renderSuiteSummary } from './renderers.js';
 import { initDomRefs, qasmInput, setAllButtons, welcomeMessage } from './dom.js';
-import { shotsRange, showRunErrors, timeoutRange, validateRunInputs } from './run_inputs.js';
-import { clearPendingJob, loadEditorCircuit, loadPendingJob, saveEditorCircuit, savePendingJob } from './session_store.js';
+import { shotsRange, timeoutRange } from './run_inputs.js';
+import { clearPendingJob, loadBatchQueue, loadEditorCircuit, loadPendingJob, saveEditorCircuit } from './session_store.js';
 import { dispatch, getState } from './state.js';
-import { getAgreementThresholds, getSeed, resetAgreementThresholds, setLoading } from './utils.js';
+import { resetAgreementThresholds, setLoading } from './utils.js';
+import { EXAMPLE_PREFIX, exampleForValue, fetchExampleQasm, loadExamples } from './examples.js';
+import { resumeJob, updateWorkspace } from './workspace.js';
 
 const EXECUTION_MODE_LABELS = {
     local: 'This server: local runner services',
@@ -44,20 +42,30 @@ function _applyServerConfig(config) {
     if (tInput) {
         tInput.min = String(tMin);
         tInput.max = String(tMax);
+        const dflt = getState().timeoutDefault;
+        if (tInput.value === tInput.defaultValue && Number.isFinite(dflt)) {
+            tInput.value = String(dflt);
+            tInput.defaultValue = String(dflt);
+        }
         const current = Number(tInput.value);
         if (!Number.isFinite(current) || current > tMax) tInput.value = String(tMax);
     }
+    const rInput = /** @type {HTMLInputElement|null} */ (document.getElementById('timing-repeats-input'));
+    if (rInput) rInput.max = String(getState().timingRepeatsMax);
+    if (!getState().exclusiveEnabled) {
+        const exclusiveBox = /** @type {HTMLInputElement|null} */ (document.getElementById('exclusive-checkbox'));
+        if (exclusiveBox) exclusiveBox.checked = false;
+        document.getElementById('exclusive-container')?.classList.add('hidden');
+    }
     const tHelp = document.getElementById('timeout-help');
     if (tHelp) {
-        tHelp.textContent = `This value is sent with every run from this page. It covers process start, SDK import, `
-            + `the warm-up run and the timed runs of each backend. Allowed: ${tMin}–${tMax} s.`
+        tHelp.textContent = `Covers process start, the warm-up run and every timed run. Allowed: ${tMin}–${tMax} s.`
             + (typeof config?.queue_max_wait_sec === 'number' && mode === 'local'
-                ? ` Time spent waiting for a busy runner is not part of it; a run waits at most ${config.queue_max_wait_sec} s to start.`
-                : '');
+                ? ` Waiting for a busy backend is not counted (at most ${config.queue_max_wait_sec} s).` : '');
     }
 
     const { min: sMin, max: sMax } = shotsRange();
-    ['shots-single', 'shots-batch'].forEach(id => {
+    ['shots-single'].forEach(id => {
         const el = /** @type {HTMLInputElement|null} */ (document.getElementById(id));
         if (!el) return;
         el.min = String(sMin);
@@ -70,18 +78,6 @@ function _applyServerConfig(config) {
     });
 
     if (config.agreement_threshold_defaults) resetAgreementThresholds();
-}
-
-/** The execution target to send: the server's mode, or undefined when it is not known. */
-function _executionTarget() {
-    const v = /** @type {HTMLSelectElement|null} */ (document.getElementById('execution-target-select'))?.value;
-    return v || getState().executionMode || undefined;
-}
-
-/** Name of the circuit in the editor for report figures, or null for an unnamed custom circuit. */
-function _editorCircuitName() {
-    const name = getState().currentAlgoName;
-    return name && !/^Custom\b/.test(name) ? name : null;
 }
 
 let _editorSaveTimer = null;
@@ -110,15 +106,15 @@ function _offerPendingJob() {
     const banner = document.getElementById('resume-job-banner');
     if (!job || !banner) return;
     const when = new Date(job.submitted_at).toLocaleTimeString();
-    const what = job.kind === 'batch' ? 'A batch run' : 'A run';
     const text = document.getElementById('resume-job-text');
-    if (text) text.textContent = `${what} submitted at ${when} (${job.run_name || job.title}) had not finished loading when the page was closed.`;
+    const notStarted = Array.isArray(job.remaining) && job.remaining.length
+        ? ` Not started: ${job.remaining.join('; ')}.` : '';
+    if (text) text.textContent = `A run submitted at ${when} (${job.run_name || job.title}) had not finished loading when the page was closed.${notStarted}`;
     banner.classList.remove('hidden');
     document.getElementById('resume-job-btn')?.addEventListener('click', () => {
         _hideResumeBanner();
         if (getState().isProcessing) return;
-        if (job.kind === 'batch') _finishBatchRun(job);
-        else _finishSingleRun(job);
+        resumeJob(job);
     }, { once: true });
     document.getElementById('resume-job-discard')?.addEventListener('click', () => {
         clearPendingJob(job.job_id);
@@ -130,10 +126,10 @@ window.onload = async () => {
 
     initDomRefs();
     document.getElementById('history-save-notice-close')?.addEventListener('click', () => showHistoryNotice(''));
-    setAllButtons([
-        document.getElementById('btn-run'),
-        document.getElementById('btn-batch-run')
-    ]);
+    const launchers = ['generateCircuit()', 'addToBatch()', 'applyPreset()', 'loadBenchmark()',
+        'bmAddSelectedToBatch()', 'runAutoGeneration()', 'clearBatch()', 'addEditorToPlaylist()']
+        .flatMap(call => Array.from(document.querySelectorAll(`button[onclick="${call}"]`)));
+    setAllButtons([document.getElementById('btn-run'), ...launchers]);
 
     updateAuthUI();
     verifySession();
@@ -167,13 +163,22 @@ window.onload = async () => {
         });
 
         const select = document.getElementById('algo-select');
-        select.innerHTML = '';
-        getState().allAlgorithms.forEach(algo => {
-            const option = document.createElement('option');
-            option.value = algo.id;
-            option.textContent = algo.name;
-            select.appendChild(option);
-        });
+        const examples = await loadExamples();
+        const group = (label, items) => {
+            const g = document.createElement('optgroup');
+            g.label = label;
+            items.forEach(([value, text]) => {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = text;
+                g.appendChild(option);
+            });
+            return g;
+        };
+        select.replaceChildren(group('Algorithms', getState().allAlgorithms.map(a => [a.id, a.name])));
+        if (examples.length) {
+            select.appendChild(group('Examples', examples.map(ex => [`${EXAMPLE_PREFIX}${ex.name}`, `${ex.title} (${ex.qubits}q)`])));
+        }
 
         select.addEventListener('change', updateQubitConstraints);
         updateQubitConstraints();
@@ -182,6 +187,7 @@ window.onload = async () => {
             dispatch('SET_CURRENT_ALGO_NAME', "Custom / Modified");
             updateContextBar();
             _saveEditorSoon();
+            document.dispatchEvent(new Event('workspace-change'));
         });
         restored = _restoreEditorCircuit();
         updateContextBar();
@@ -192,50 +198,85 @@ window.onload = async () => {
         welcomeMessage.classList.remove('text-gray-500');
     }
 
-    toggleSingleMode();
-    toggleBatchMode();
     populateBenchmarkSelectors();
     if (typeof bmLoadChecklist === 'function') bmLoadChecklist();
 
     if (!restored && getState().allAlgorithms.length > 0) {
         generateCircuit();
     }
+    dispatch('SET_BATCH_QUEUE', loadBatchQueue());
     renderBatchQueue();
     if (typeof initAutosave === 'function') initAutosave();
+    updateWorkspace();
     _offerPendingJob();
 };
 
 export function updateQubitConstraints(e) {
     const algoId = document.getElementById('algo-select').value;
     const selectedAlgo = getState().allAlgorithms.find(a => a.id === algoId);
-    const input = document.getElementById('algo-qubits');
+    const input = /** @type {HTMLInputElement} */ (document.getElementById('algo-qubits'));
+    const example = exampleForValue(algoId);
+    if (example) {
+        input.value = String(example.qubits);
+        input.disabled = true;
+        input.title = `${example.title} is a fixed ${example.qubits}-qubit circuit.`;
+        const desc = document.getElementById('algo-description');
+        if (desc) desc.textContent = `${example.description} For ${example.mode} mode: Load ticks ${example.mode === 'measured' ? 'Measured' : 'Statevector'}.`.trim();
+        return;
+    }
 
     if (selectedAlgo) {
-        if (selectedAlgo.min_qubits !== undefined) input.min = selectedAlgo.min_qubits;
-        input.max = Math.min(selectedAlgo.max_qubits || 24, getDynamicMaxQubits());
-        
+        const min = selectedAlgo.min_qubits ?? 1;
+        const max = Math.min(selectedAlgo.max_qubits || 24, getDynamicMaxQubits());
+        input.min = String(min);
+        input.max = String(max);
         const isAlgoChange = e && e.type === 'change';
         if (isAlgoChange || !input.value) {
-            if (selectedAlgo.default_qubits !== undefined) input.value = selectedAlgo.default_qubits;
+            if (selectedAlgo.default_qubits !== undefined) input.value = String(selectedAlgo.default_qubits);
         } else {
-            let val = parseInt(input.value);
-            if (!isNaN(val)) {
-                if (val > input.max) input.value = input.max;
-                if (val < input.min) input.value = input.min;
-            }
+            const val = parseInt(input.value, 10);
+            if (!isNaN(val)) input.value = String(Math.min(max, Math.max(min, val)));
         }
 
-        if (selectedAlgo.min_qubits === selectedAlgo.max_qubits) {
-            input.disabled = true;
-        } else {
-            input.disabled = false;
-        }
+        input.disabled = selectedAlgo.min_qubits === selectedAlgo.max_qubits;
+        input.title = input.disabled ? `${selectedAlgo.name} is defined for ${selectedAlgo.min_qubits} qubits only.` : '';
+        const desc = document.getElementById('algo-description');
+        if (desc) desc.textContent = selectedAlgo.description || '';
     }
 }
 
+/** True when the editor holds text the user typed or changed, which Load would replace. */
+function _editorHasEdits() {
+    return qasmInput.value.trim() !== '' && /^Custom\b/.test(getState().currentAlgoName || '');
+}
+
+/** Put an example in the editor and tick the mode it is meant for. */
+async function _loadExample(example) {
+    const qasm = await fetchExampleQasm(example);
+    qasmInput.value = qasm;
+    dispatch('SET_CURRENT_ALGO_NAME', `${example.title} (${example.qubits}q)`);
+    const sv = /** @type {HTMLInputElement|null} */ (document.getElementById('mode-statevector'));
+    const ms = /** @type {HTMLInputElement|null} */ (document.getElementById('mode-measured'));
+    if (sv && ms) { sv.checked = example.mode === 'statevector'; ms.checked = example.mode === 'measured'; }
+    updateContextBar();
+    saveEditorCircuit(qasmInput.value, getState().currentAlgoName);
+    document.dispatchEvent(new Event('editor-loaded'));
+}
+
+/** Load: the selected algorithm or example into the editor, asking first when that replaces edits. */
 export async function generateCircuit() {
     if (getState().isProcessing) return;
+    if (_editorHasEdits() && !confirm('Load replaces the circuit in the editor, which you have edited. Continue?')) return;
     const algoId = document.getElementById('algo-select').value;
+    const example = exampleForValue(algoId);
+    if (example) {
+        try {
+            await _loadExample(example);
+        } catch (e) {
+            alert(`The example was not loaded. ${e.message}`);
+        }
+        return;
+    }
     const qubits = parseInt(document.getElementById('algo-qubits').value);
 
     if (!algoId || isNaN(qubits)) {
@@ -259,6 +300,7 @@ export async function generateCircuit() {
             dispatch('SET_CURRENT_ALGO_NAME', selectElement.options[selectElement.selectedIndex].text + ` (${qubits}q)`);
             updateContextBar();
             saveEditorCircuit(qasmInput.value, getState().currentAlgoName);
+            document.dispatchEvent(new Event('editor-loaded'));
         } else {
             throw new Error(apiDetailText(data.detail) || data.error || "Failed to generate circuit.");
         }
@@ -269,256 +311,4 @@ export async function generateCircuit() {
         setLoading(false);
         dispatch('SET_PROCESSING', false);
     }
-}
-
-export function toggleSingleMode() {
-    const mode = document.querySelector('input[name="mode-single"]:checked').value;
-    const shotsContainer = document.getElementById('shots-container-single');
-    if (mode === 'measured') {
-        shotsContainer.classList.remove('hidden');
-    } else {
-        shotsContainer.classList.add('hidden');
-    }
-    updateQubitConstraints();
-}
-
-export function toggleBatchMode() {
-    const mode = document.querySelector('input[name="mode-batch"]:checked').value;
-    const shotsContainer = document.getElementById('shots-container-batch');
-    const batchBtn = document.getElementById('btn-batch-run');
-
-    if (mode === 'measured') {
-        shotsContainer.classList.remove('hidden');
-        batchBtn.textContent = "Run Batch (Measured)";
-    } else {
-        shotsContainer.classList.add('hidden');
-        batchBtn.textContent = "Run Batch (Statevector)";
-    }
-}
-
-export function handleRun() {
-    const mode = document.querySelector('input[name="mode-single"]:checked').value;
-    runComparison(mode);
-}
-
-/** Validate the inputs and the backend selection; shows the problems next to the run button. */
-async function _checkBeforeRun(messageId, shotsId, measured) {
-    const v = validateRunInputs({ shotsId, measured });
-    if (!v.ok) {
-        showRunErrors(messageId, v.errors);
-        return null;
-    }
-    await loadRunners();
-    const problem = runnerSelectionProblem();
-    if (problem) {
-        showRunErrors(messageId, [problem]);
-        return null;
-    }
-    showRunErrors(messageId, []);
-    return v;
-}
-
-async function _finishSingleRun(job) {
-    setLoading(true, "Running Simulation...", { startedAt: job.submitted_at });
-    clearReport();
-    dispatch('SET_PROCESSING', true);
-    dispatch('SET_JOB_ID', job.job_id);
-    try {
-        const results = await pollJobStatus(job.job_id);
-        clearPendingJob(job.job_id);
-        if (job.run_name) results.run_name = job.run_name;
-        if (job.circuit_name && !results.circuit_name) results.circuit_name = job.circuit_name;
-        dispatch('SET_SUITE_DATA', results);
-        renderDetailReport(results, job.title, job.runner_config || {});
-
-        const historyRunId = await saveRunToHistory(job.job_id, job.run_name || null);
-        dispatch('SET_HISTORY_RUN_ID', historyRunId);
-        if (typeof autosaveRun === 'function') autosaveRun(results, job.run_name || job.title);
-    } catch (e) {
-        console.error(e);
-        if (e && e.terminal) clearPendingJob(job.job_id);
-        dispatch('SET_JOB_ID', null);
-        renderDetailReport({ error: e.message }, "Error");
-    } finally {
-        setLoading(false);
-        dispatch('SET_PROCESSING', false);
-    }
-}
-
-async function _finishBatchRun(job) {
-    setLoading(true, 'Running Batch...', { startedAt: job.submitted_at });
-    clearReport();
-    dispatch('SET_PROCESSING', true);
-    dispatch('SET_JOB_ID', job.job_id);
-    try {
-        const results = await pollJobStatus(job.job_id);
-        clearPendingJob(job.job_id);
-        if (job.run_name) results.run_name = job.run_name;
-        dispatch('SET_SUITE_DATA', results);
-        dispatch('SET_SUITE_TITLE', job.title);
-        renderSuiteSummary(results, getState().currentSuiteTitle);
-
-        const historyRunId = await saveRunToHistory(job.job_id, job.run_name || null);
-        dispatch('SET_HISTORY_RUN_ID', historyRunId);
-        if (typeof autosaveRun === 'function') autosaveRun(results, job.run_name || 'batch');
-    } catch (e) {
-        console.error(e);
-        if (e && e.terminal) clearPendingJob(job.job_id);
-        dispatch('SET_JOB_ID', null);
-        renderSuiteSummary({ error: e.message }, "Batch Error");
-    } finally {
-        setLoading(false);
-        dispatch('SET_PROCESSING', false);
-    }
-}
-
-/** POST a run; returns the job id, or throws with the server's error text. */
-async function _submit(endpoint, payload) {
-    const res = await fetch(`${BASE_URL}${endpoint}`, {
-        method: 'POST',
-        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify(payload)
-    });
-    if (!res.ok) throw new Error(await formatApiError(res));
-    const jobData = await res.json();
-    if (jobData.status === "failed") throw new Error(jobData.error || 'The server rejected the job without an error message.');
-    return jobData.job_id;
-}
-
-export async function runComparison(type) {
-    clearHistoryState();
-    if (getState().isProcessing) return;
-    const qasm = qasmInput.value.trim();
-    if (!qasm) {
-        showRunErrors('single-validation-msg', ['The editor is empty. Enter or generate an OpenQASM 2.0 circuit.']);
-        return;
-    }
-
-    const v = await _checkBeforeRun('single-validation-msg', 'shots-single', type === 'measured');
-    if (!v) return;
-
-    const globalOpt = parseInt(document.getElementById('opt-global')?.value || 0);
-    const runNameInput = document.getElementById('single-run-name')?.value.trim();
-    dispatch('SET_RUNNER_CONFIG', getRunnerConfig());
-
-    const endpoint = type === 'statevector' ? '/compare' : '/compare_measured';
-    const targetSims = getTargetSimulators();
-    const bypassLimits = document.getElementById('bypass-limits-checkbox')?.checked || false;
-    const applyPreprocessing = document.getElementById('apply-preprocessing-checkbox')?.checked ?? true;
-
-    if (!checkRunCountLimits(getState().currentRunnerConfig)) return;
-
-    const payload = {
-        qasm_string: qasm,
-        optimization_level: globalOpt,
-        timeout_seconds: v.timeout,
-        timing_repeats: v.timingRepeats,
-        exclusive: /** @type {HTMLInputElement | null} */ (document.getElementById('exclusive-checkbox'))?.checked || false,
-        runner_config: getState().currentRunnerConfig,
-        runner_phases: getRunnerPhases(),
-        target_simulators: targetSims,
-        execution_target: _executionTarget(),
-        bypass_limits: bypassLimits,
-        apply_preprocessing: applyPreprocessing,
-        thresholds: getAgreementThresholds(),
-        compilers: getCompilerSelection()
-    };
-
-    if (type === 'measured') {
-        payload.n_shots = v.shots;
-        payload.seed = getSeed();
-    }
-
-    const modeText = type === 'statevector' ? 'Statevector' : `Measured, ${v.shots} shots`;
-    const title = `${runNameInput || 'Editor Run'} (${modeText})`;
-    saveEditorCircuit(qasmInput.value, getState().currentAlgoName);
-    _hideResumeBanner();
-    closeDrawers();
-
-    setLoading(true, "Running Simulation...");
-    clearReport();
-    dispatch('SET_JOB_ID', null);
-
-    let jobId;
-    try {
-        dispatch('SET_PROCESSING', true);
-        jobId = await _submit(endpoint, payload);
-    } catch (e) {
-        console.error(e);
-        renderDetailReport({ error: e.message }, "Error");
-        setLoading(false);
-        dispatch('SET_PROCESSING', false);
-        return;
-    }
-    const job = {
-        job_id: jobId, kind: /** @type {'single'} */ ('single'), title, run_name: runNameInput || null,
-        circuit_name: _editorCircuitName(), runner_config: getState().currentRunnerConfig, submitted_at: Date.now(),
-    };
-    savePendingJob(job);
-    await _finishSingleRun(job);
-}
-
-export async function runBatchQueue() {
-    clearHistoryState();
-    if (getState().isProcessing) return;
-    if (getState().batchQueue.length === 0) {
-        showRunErrors('batch-validation-msg', ['The batch queue is empty. Add circuits first.']);
-        return;
-    }
-
-    const mode = document.querySelector('input[name="mode-batch"]:checked').value;
-    const v = await _checkBeforeRun('batch-validation-msg', 'shots-batch', mode === 'measured');
-    if (!v) return;
-
-    const globalOpt = parseInt(document.getElementById('opt-global')?.value || 0);
-    const runNameInput = document.getElementById('batch-run-name')?.value.trim();
-    dispatch('SET_RUNNER_CONFIG', getRunnerConfig());
-    const targetSims = getTargetSimulators();
-    const bypassLimits = document.getElementById('bypass-limits-checkbox')?.checked || false;
-    const applyPreprocessing = document.getElementById('apply-preprocessing-checkbox')?.checked ?? true;
-
-    if (!checkRunCountLimits(getState().currentRunnerConfig)) return;
-
-    const payload = {
-        tasks: getState().batchQueue.map(toBatchTask),
-        mode: mode,
-        optimization_level: globalOpt,
-        timeout_seconds: v.timeout,
-        timing_repeats: v.timingRepeats,
-        exclusive: /** @type {HTMLInputElement | null} */ (document.getElementById('exclusive-checkbox'))?.checked || false,
-        runner_config: getState().currentRunnerConfig,
-        runner_phases: getRunnerPhases(),
-        target_simulators: targetSims,
-        execution_target: _executionTarget(),
-        bypass_limits: bypassLimits,
-        apply_preprocessing: applyPreprocessing,
-        thresholds: getAgreementThresholds(),
-        seed: getSeed(),
-        compilers: getCompilerSelection()
-    };
-    if (mode === 'measured') payload.n_shots = v.shots;
-
-    _hideResumeBanner();
-    closeDrawers();
-    setLoading(true, `Running Batch of ${getState().batchQueue.length} Circuits...`);
-    clearReport();
-    dispatch('SET_JOB_ID', null);
-
-    let jobId;
-    try {
-        dispatch('SET_PROCESSING', true);
-        jobId = await _submit('/run_batch_suite', payload);
-    } catch (e) {
-        console.error(e);
-        renderSuiteSummary({ error: e.message }, "Batch Error");
-        setLoading(false);
-        dispatch('SET_PROCESSING', false);
-        return;
-    }
-    const job = {
-        job_id: jobId, kind: /** @type {'batch'} */ ('batch'), title: runNameInput || 'Playlist Batch Report',
-        run_name: runNameInput || null, runner_config: getState().currentRunnerConfig, submitted_at: Date.now(),
-    };
-    savePendingJob(job);
-    await _finishBatchRun(job);
 }

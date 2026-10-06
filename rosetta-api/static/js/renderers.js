@@ -6,6 +6,8 @@ import { backButtonContainer, jsonOutput, panelElements, tabNav, welcomeMessage 
 import { BASE_URL, apiDetailText, getAuthHeaders } from './api.js';
 import { renderArtifactsPanel } from './artifacts_renderer.js';
 import { renderCircuitExplorer } from './circuit_explorer_renderer.js';
+import { circuitPanes } from './circuit_panes.js';
+import { backendVerdicts, headlineModel } from './backend_verdicts.js';
 import { renderShareControls } from './share_links.js';
 import { renderRankingTable, splitRanking } from './ranking_renderer.js';
 import {
@@ -17,7 +19,7 @@ import {
 import { getState } from './state.js';
 import { renderSummaryPanel } from './summary_renderer.js';
 import { renderAgreementPanel, renderDivergenceTables } from './tables_renderer.js';
-import { copyText, downloadBlob } from './utils.js';
+import { _stripStatevectors, copyText, downloadBlob } from './utils.js';
 
 export function clearReport() {
     welcomeMessage.classList.add('hidden');
@@ -62,39 +64,75 @@ export function _setRawTabData(data) {
 
 export function _renderRawTabIfNeeded() {
     if (_rawTabRendered || !_rawTabData || !jsonOutput) return;
-    jsonOutput.textContent = JSON.stringify(_rawTabData, null, 2);
+    if (!/** @type {HTMLDetailsElement|null} */ (document.getElementById('json-output-details'))?.open) return;
+    const withVectors = /** @type {HTMLInputElement|null} */ (document.getElementById('json-show-sv'))?.checked;
+    jsonOutput.textContent = JSON.stringify(withVectors ? _rawTabData : _stripStatevectors(_rawTabData), null, 2);
     _rawTabRendered = true;
 }
+
+document.getElementById('json-output-details')?.addEventListener('toggle', _renderRawTabIfNeeded);
+document.getElementById('json-show-sv')?.addEventListener('change', () => {
+    _rawTabRendered = false;
+    _renderRawTabIfNeeded();
+});
+
+/** Panels each tab shows, in order, and the tab's label. */
+const TAB_PANELS = {
+    summary: ['summary'], agreement: ['agreement', 'divergence'], performance: ['performance', 'resources'],
+    circuits: ['circuits'], export: ['raw', 'artifacts'], raw: ['raw'], 'suite-summary': ['suite-summary'],
+};
+const TAB_LABELS = {
+    summary: 'Summary', agreement: 'Agreement', performance: 'Performance', circuits: 'Circuits',
+    export: 'Exports', raw: 'Exports', 'suite-summary': 'Suite Summary',
+};
 
 export function showTab(tabName) {
     welcomeMessage.classList.add('hidden');
     Object.values(panelElements).forEach(panel => { if (panel) panel.classList.add('hidden') });
 
-    if (tabName === 'raw') _renderRawTabIfNeeded();
+    const panels = TAB_PANELS[tabName] || [tabName];
+    if (panels.includes('raw')) _renderRawTabIfNeeded();
+    panels.forEach(key => panelElements[key]?.classList.remove('hidden'));
 
-    const panel = panelElements[tabName];
-    if (panel) panel.classList.remove('hidden');
-
-    tabNav.querySelectorAll('button').forEach(btn => {
-        btn.classList.remove('border-blue-600', 'text-blue-600');
-        btn.classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-700');
+    tabNav.querySelectorAll('[role="tab"]').forEach(btn => {
+        const active = btn.getAttribute('data-tab') === tabName;
+        btn.setAttribute('aria-selected', String(active));
+        btn.tabIndex = active ? 0 : -1;
+        btn.classList.toggle('border-blue-600', active);
+        btn.classList.toggle('text-blue-600', active);
+        btn.classList.toggle('border-transparent', !active);
+        btn.classList.toggle('text-gray-500', !active);
+        btn.classList.toggle('hover:text-gray-700', !active);
     });
-    const activeBtn = tabNav.querySelector(`[data-tab="${tabName}"]`);
-    if (activeBtn) {
-        activeBtn.classList.add('border-blue-600', 'text-blue-600');
-        activeBtn.classList.remove('border-transparent', 'text-gray-500', 'hover:text-gray-700');
-    }
 }
 
 export function renderTabs(tabList) {
     tabNav.innerHTML = '';
+    tabNav.setAttribute('role', 'tablist');
+    tabNav.setAttribute('aria-label', 'Result views');
     tabList.forEach(tabName => {
         const button = document.createElement('button');
+        button.type = 'button';
         button.className = 'ml-4 px-3 py-3 font-medium text-sm border-b-2 border-transparent text-gray-500 hover:text-gray-700';
-        button.textContent = tabName.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase());
-        if (tabName === 'raw') button.textContent = "Exports";
+        button.textContent = TAB_LABELS[tabName] || tabName;
         button.dataset.tab = tabName;
+        button.id = `tab-${tabName}`;
+        button.setAttribute('role', 'tab');
+        button.setAttribute('aria-selected', 'false');
+        button.setAttribute('aria-controls', (TAB_PANELS[tabName] || [tabName]).map(k => panelElements[k]?.id).filter(Boolean).join(' '));
+        button.tabIndex = -1;
         button.onclick = () => showTab(tabName);
+        button.addEventListener('keydown', e => {
+            const tabs = Array.from(tabNav.querySelectorAll('[role="tab"]'));
+            const i = tabs.indexOf(button);
+            const next = e.key === 'ArrowRight' ? tabs[(i + 1) % tabs.length]
+                : e.key === 'ArrowLeft' ? tabs[(i - 1 + tabs.length) % tabs.length]
+                : e.key === 'Home' ? tabs[0] : e.key === 'End' ? tabs[tabs.length - 1] : null;
+            if (!next) return;
+            e.preventDefault();
+            next.focus();
+            showTab(next.getAttribute('data-tab'));
+        });
         tabNav.appendChild(button);
     });
 }
@@ -135,7 +173,10 @@ function _updateExportNotices(data) {
 }
 
 export function renderDetailReport(data, title, config = getState().currentRunnerConfig) {
-    renderTabs(['summary', 'performance', 'resources', 'divergence', 'agreement', 'circuits', 'artifacts', 'raw']);
+    const hasCircuits = circuitPanes(data).length > 0;
+    renderTabs(data.error ? ['summary', ...(hasCircuits ? ['circuits'] : []), 'raw']
+        : data.simulated === false ? ['summary', 'circuits', 'raw']
+        : ['summary', 'agreement', 'performance', 'circuits', 'export']);
     _setRawTabData(data);
     _updateExportNotices(data);
 
@@ -186,7 +227,7 @@ function _agreementBadge(comparable) {
             return _makeStatusBadge('success', 'All pairs consistent');
         }
         if (assessments.some(a => a === 'inconclusive_low_shots' || a === 'ambiguous')) {
-            return _makeStatusBadge('offline', 'Inconclusive');
+            return _makeStatusBadge('inconclusive', 'Inconclusive');
         }
         return _makeStatusBadge('offline', 'No shot-noise test');
     }
@@ -201,6 +242,7 @@ function _agreementBadge(comparable) {
 /** Status badges for one batch task: its agreement outcome plus one badge per failed-run status. */
 function _taskBadges(item) {
     if (item.error) return [_makeStatusBadge('error', 'Error')];
+    if (item.simulated === false) return [_makeStatusBadge('offline', 'Compile only')];
     const raws = item.raw_results || [];
     const failures = {};
     raws.forEach(r => {
@@ -218,7 +260,10 @@ function _taskBadges(item) {
         const n = item.divergence_report?.divergences_found?.length || 0;
         badges.push(n ? _makeStatusBadge('divergence', `${n} divergence(s)`) : _makeStatusBadge('offline', 'No pair records'));
     } else if (comparable.some(isDisagreement)) {
-        badges.push(_makeStatusBadge('anomaly', 'Anomaly'));
+        const h = headlineModel(backendVerdicts(item));
+        const lead = (h.outliers.length ? h.outliers : h.differing).slice(0, 2).map(b => _displayRunnerName(b.key));
+        const more = (h.outliers.length ? h.outliers : h.differing).length - lead.length;
+        badges.push(_makeStatusBadge('anomaly', `Anomaly: ${lead.join(', ')}${more > 0 ? ` +${more}` : ''}`));
     } else if (!comparable.length) {
         badges.push(_makeStatusBadge('offline', 'Not comparable'));
     } else {
@@ -330,18 +375,16 @@ export function viewDetail(index) {
 }
 
 export function copyRawJson(btn) {
-    _renderRawTabIfNeeded();
-    copyText(jsonOutput.textContent, btn);
+    if (!_rawTabData) return;
+    copyText(JSON.stringify(_rawTabData, null, 2), btn);
 }
 
 export function downloadRawJson() {
-    _renderRawTabIfNeeded();
-    const jsonString = jsonOutput.textContent;
-    if (!jsonString || jsonString.trim() === '') {
+    if (!_rawTabData) {
         alert("No JSON content to download.");
         return;
     }
-    downloadBlob(new Blob([jsonString], { type: 'application/json' }), "rosetta_raw_report.json");
+    downloadBlob(new Blob([JSON.stringify(_rawTabData, null, 2)], { type: 'application/json' }), "rosetta_raw_report.json");
 }
 
 export function showVisualizerTab() {

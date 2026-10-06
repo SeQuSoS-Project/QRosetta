@@ -82,3 +82,5 @@ export function getCompilerSelection() {
     });
     return selection;
 }
+
+document.getElementById(GRID_ID)?.addEventListener('change', () => document.dispatchEvent(new Event('workspace-change')));

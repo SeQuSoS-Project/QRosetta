@@ -90,6 +90,20 @@ function _fillSimulatorCell(td, simulatorName, config, raw, { memory = false } =
 
 const UNSTABLE_LABEL = '1.3×';
 
+/** Conditions in this run that can bias a timing comparison, as short phrases. */
+function _timingCaveats(rawResults) {
+    const ok = (rawResults || []).filter(r => r && !r.error);
+    const caveats = [];
+    if (ok.some(r => typeof r.overlapping_runs === 'number' && r.overlapping_runs > 0)) caveats.push('backends ran at the same time');
+    if (!ok.every(r => r.exclusive === true) && ok.some(r => typeof r.server_overlapping_runs === 'number' && r.server_overlapping_runs > 0)) caveats.push('other jobs ran on the server');
+    if (ok.some(r => throttleText(r))) caveats.push('some runs were throttled by the CPU quota');
+    if (ok.some(r => unstableText(r))) caveats.push('some timed runs were unstable');
+    if (coreClasses(new Set(ok.flatMap(simulationCoreSpeeds))).length > 1) caveats.push('runs used CPUs of different speeds');
+    if (ok.some(r => outsideProcessText(r))) caveats.push('some work ran outside the measured process');
+    if (ok.length && ok.every(r => _timingCount(r) === 1)) caveats.push('one timed run per backend (n=1)');
+    return caveats;
+}
+
 function _timingNote(rawResults) {
     const ok = (rawResults || []).filter(r => r && !r.error);
     const samples = new Set(ok.map(_timingCount));
@@ -262,12 +276,27 @@ export function renderRankingTable(report, key, unit, panel, config = {}, rawRes
     const { ranked, unranked } = splitRanking(report, metric);
 
     const hFrag = _cloneTemplate('tpl-ranking-section-header');
-    const note = isMemory ? _memoryNote(rawResults, unranked) : ` ${_timingNote(rawResults)}`;
+    const note = isMemory ? _memoryNote(rawResults, unranked) : _timingNote(rawResults);
     const otherUnranked = isMemory ? unranked.filter(r => r.reason !== 'gpu_memory_not_measured') : unranked;
-    hFrag.querySelector('.tpl-summary-text').textContent = `${report.summary || ''}${note}`
+    const caveats = isMemory ? [] : _timingCaveats(rawResults);
+    hFrag.querySelector('.tpl-summary-text').textContent = `${report.summary || ''}`
+        + (caveats.length ? ` Before comparing times: ${caveats.join('; ')}.` : '')
         + (otherUnranked.length ? ` ${otherUnranked.length} ${otherUnranked.length === 1 ? 'run is' : 'runs are'} not ranked; `
             + `${otherUnranked.length === 1 ? 'it is' : 'they are'} listed after the ranked runs.` : '');
     panel.appendChild(hFrag);
+    if (note.trim()) {
+        const how = document.createElement('details');
+        how.className = 'mb-4 text-sm text-gray-700';
+        const sum = document.createElement('summary');
+        sum.className = 'cursor-pointer select-none text-xs font-semibold text-gray-600';
+        sum.textContent = isMemory ? 'About these memory values' : 'How these times are measured, and what affected them in this run';
+        how.appendChild(sum);
+        const p = document.createElement('p');
+        p.className = 'mt-1 text-xs leading-snug';
+        p.textContent = note.trim();
+        how.appendChild(p);
+        panel.appendChild(how);
+    }
 
     const legendFrag = _cloneTemplate('tpl-legend-ranking');
     _applyLegendDots(legendFrag);

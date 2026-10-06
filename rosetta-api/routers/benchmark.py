@@ -93,7 +93,7 @@ async def compare_circuits_endpoint(request: Request, payload: QasmPayload, back
 
     ACTIVE_JOBS[job_id] = new_job(payload.execution_target, user.id if user else None)
     thresholds = effective_thresholds(payload.thresholds)
-    background_tasks.add_task(worker_compare, job_id, payload.qasm_string, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, payload.execution_target, payload.runner_phases, payload.apply_preprocessing, thresholds, payload.bypass_limits, payload.timing_repeats, exclusive=payload.exclusive, compilers=payload.compilers)
+    background_tasks.add_task(worker_compare, job_id, payload.qasm_string, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, payload.execution_target, payload.runner_phases, payload.apply_preprocessing, thresholds, payload.bypass_limits, payload.timing_repeats, exclusive=payload.exclusive, compilers=payload.compilers, simulate=payload.simulate)
 
     return _job_envelope(job_id)
 

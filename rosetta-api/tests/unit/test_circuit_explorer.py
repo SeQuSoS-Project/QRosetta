@@ -234,3 +234,26 @@ def test_angle_option_compares_parameters_by_value_only():
     assert bad == [None, None, None]
     (combined,) = _call(("comparableLines", "rz( pi/4 ) q[0]; // c", {"angles": True, "whitespace": True, "comments": True}))
     assert combined == ["rz(0.785398163397) q[0];"]
+
+
+def test_identical_texts_with_equal_metrics_share_one_group():
+    report = {
+        "input_qasm": "OPENQASM 2.0;\nqreg q[1];\nh q[0];\n",
+        "dispatched_circuits": [{"group": "statevector", "qasm": "OPENQASM 2.0;\nqreg q[1];\nh q[0];\n",
+                                 "runners": ["a", "b", "c", "d"]}],
+        "raw_results": [
+            {"simulator": "a", "dispatch_group": "statevector", "transpiled_qasm": "h q[0];\n", "gate_count": 1, "circuit_depth": 1},
+            {"simulator": "b", "dispatch_group": "statevector", "transpiled_qasm": "h q[0];\n", "gate_count": 1, "circuit_depth": 1},
+            {"simulator": "c", "dispatch_group": "statevector", "transpiled_qasm": "h q[0];\n", "gate_count": 3, "circuit_depth": 1},
+            {"simulator": "d", "dispatch_group": "statevector", "dispatch_status": "error", "error": "boom"},
+        ],
+    }
+    (panes,) = _call(("circuitPanes", report))
+    (groups,) = _call(("groupPanes", panes))
+    members = [[p["id"] for p in g["panes"]] for g in groups]
+    assert members == [["input"], ["dispatched:statevector"], ["executed:a", "executed:b"],
+                       ["executed:c"], ["executed:d"]]
+    assert groups[1]["change"] == {"complete": True, "sourceId": "input", "added": 0, "removed": 0}
+    assert groups[2]["change"]["sourceId"] == "dispatched:statevector"
+    assert groups[2]["change"]["removed"] == 2 and groups[2]["change"]["added"] == 0
+    assert groups[4]["text"] is None and groups[4]["change"] is None

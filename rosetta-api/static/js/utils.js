@@ -69,15 +69,34 @@ export const COPY_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="h-4
 export function _flashCopied(btn) {
     if (!btn) return;
     const old = btn.innerHTML;
-    btn.innerHTML = '<span class="text-xs font-medium">✓ Copied</span>';
+    btn.style.minWidth = `${btn.offsetWidth}px`;
+    btn.innerHTML = '<span class="font-medium">Copied</span>';
     btn.disabled = true;
-    setTimeout(() => { btn.innerHTML = old; btn.disabled = false; }, 1500);
+    setTimeout(() => { btn.innerHTML = old; btn.disabled = false; btn.style.minWidth = ''; }, 1500);
+}
+
+/** Copy through a hidden text area, for pages served over plain http, where navigator.clipboard is absent. */
+function _copyWithTextArea(text) {
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
+    area.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+    area.remove();
+    return ok;
 }
 
 export function copyText(text, btn) {
-    navigator.clipboard.writeText(text)
-        .then(() => _flashCopied(btn))
-        .catch(err => { console.error(err); alert('Copy failed.'); });
+    const fallback = () => {
+        if (_copyWithTextArea(text)) _flashCopied(btn);
+        else alert('This browser did not allow copying. Select the text and copy it with Ctrl+C.');
+    };
+    if (!navigator.clipboard?.writeText) { fallback(); return; }
+    navigator.clipboard.writeText(text).then(() => _flashCopied(btn)).catch(err => { console.error(err); fallback(); });
 }
 
 export async function copyImageToClipboard(blob, btn) {
@@ -175,13 +194,13 @@ function _filenameFrom(response, fallback) {
 export async function downloadFullReport() {
     const jobId = _liveJobId();
     if (!jobId) {
-        alert(`This report was not produced by a job in this session, so the server holds no full copy of it. Use "Download displayed JSON". ${_browserCopyText(getState().currentSuiteData)}`);
+        alert(`This report was not produced by a job in this session, so the server holds no full copy of it. Use "Download browser copy (JSON)". ${_browserCopyText(getState().currentSuiteData)}`);
         return;
     }
     try {
         const res = await fetch(`${BASE_URL}/jobs/${encodeURIComponent(jobId)}/report`, { headers: getAuthHeaders() });
         if (res.status === 404) {
-            alert(`${EXPIRED_TEXT} Use "Download displayed JSON" instead. ${_browserCopyText(getState().currentSuiteData)}`);
+            alert(`${EXPIRED_TEXT} Use "Download browser copy (JSON)" instead. ${_browserCopyText(getState().currentSuiteData)}`);
             return;
         }
         if (res.status === 409) {
@@ -215,7 +234,8 @@ async function _exportBrowserCopy(results, options) {
 }
 
 /** Export the report as an RO-Crate ZIP: from the server copy for a live job
- * (POST /jobs/{id}/export), else from the browser copy (POST /export). */
+ * (POST /jobs/{id}/export), else from the saved run (POST /history/runs/{id}/export),
+ * else from the browser copy (POST /export). */
 export async function exportRoCrate() {
     const results = getState().currentSuiteData;
     if (!results) {
@@ -253,6 +273,18 @@ export async function exportRoCrate() {
                     ? EXPIRED_TEXT
                     : `The server has no exportable copy of this job: ${await _errorDetail(response)}`;
                 if (!confirm(`${why}\n\nExport the copy held in this browser instead? ${_browserCopyText(results)}`)) return;
+                response = null;
+            }
+        }
+        const { currentHistoryRunId: runId, authToken } = getState();
+        if (!response && !jobId && runId && authToken) {
+            response = await fetch(`${BASE_URL}/history/runs/${encodeURIComponent(runId)}/export`, {
+                method: 'POST',
+                headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify({ ...options, include_statevectors: false }),
+            });
+            if (response.status === 404) {
+                if (!confirm(`This saved run is no longer on the server.\n\nExport the copy held in this browser instead? ${_browserCopyText(results)}`)) return;
                 response = null;
             }
         }
@@ -370,6 +402,7 @@ export function importQasm(inputElement) {
         document.getElementById('ctx-algo-name').value = fileName;
         dispatch('SET_CURRENT_ALGO_NAME', fileName);
         inputElement.value = '';
+        document.dispatchEvent(new Event('editor-loaded'));
     };
     reader.readAsText(file);
 }
