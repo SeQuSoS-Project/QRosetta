@@ -3,23 +3,37 @@
 @tailwind utilities;
 
 /* Popover anatomy, shared by every popover (settings chips, Bench):
-   .qr-popover > .qr-popover-header (.qr-popover-title, optional actions) + .qr-popover-body
-   + optional .qr-popover-footer (actions), the body made of .qr-section blocks. The header and
-   footer stay put; the body scrolls. */
+   .qr-popover > .qr-popover-header (.qr-popover-title, optional .qr-action buttons and
+   .qr-header-link docs links) + .qr-popover-body + optional .qr-popover-footer (actions).
+   The header and footer stay put; the body scrolls and is made of .qr-section blocks.
+   Inside a section: .qr-label + control + .qr-help, a .qr-field (label and a short control on
+   one line), or a .qr-choices list of .qr-option rows. */
 @layer components {
   .qr-popover { @apply flex flex-col bg-white border border-indigo-200 rounded-lg shadow-xl overflow-hidden; }
   .qr-popover-header { @apply flex flex-shrink-0 items-center justify-between gap-2 px-3 py-2 bg-indigo-50 border-b border-indigo-100; }
   .qr-popover-title { @apply text-sm font-semibold text-indigo-900; }
+  .qr-header-link { @apply text-xs text-indigo-700 underline hover:text-indigo-900; }
   .qr-popover-body { @apply flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 divide-y divide-gray-100; }
   .qr-popover-footer { @apply flex flex-shrink-0 flex-wrap gap-2 px-3 py-2 bg-gray-50 border-t border-gray-200; }
-  .qr-section { @apply py-2.5 space-y-1.5; }
+  .qr-section { @apply py-3 space-y-1.5; }
   .qr-section-title { @apply text-[11px] font-semibold uppercase tracking-wide text-indigo-700; }
   .qr-label { @apply block text-sm font-medium text-gray-800; }
   .qr-help { @apply text-xs leading-snug text-gray-500; }
+  .qr-field { @apply flex items-center justify-between gap-3; }
+  .qr-field > .qr-label { @apply flex-1; }
+  .qr-field > .qr-input { @apply w-24 flex-shrink-0; }
+  .qr-choices { @apply space-y-2; }
   .qr-input { @apply block w-full rounded-md border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500; }
-  .qr-input-small { @apply rounded border border-gray-300 px-1 py-0.5 text-center text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500; }
+  .qr-input-small { @apply rounded border border-gray-300 px-1 py-0.5 text-center text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500; appearance: textfield; -moz-appearance: textfield; }
+  .qr-input-small::-webkit-inner-spin-button, .qr-input-small::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  .qr-cell { @apply w-full min-w-0; }
   .qr-option { @apply flex cursor-pointer items-start gap-2 text-sm text-gray-800; }
   .qr-option > input { @apply mt-0.5 flex-shrink-0; }
-  .qr-option-help { @apply block text-xs text-gray-500; }
+  .qr-option-help { @apply mt-0.5 block text-xs leading-snug text-gray-500; }
   .qr-action { @apply rounded border border-indigo-200 bg-white px-2 py-0.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50; }
+
+  /* A button whose popover is open. */
+  button[aria-haspopup="dialog"][aria-expanded="true"] { @apply ring-2 ring-indigo-500 ring-offset-1; }
+  .settings-chip::after { content: " \25BE"; }
+  .settings-chip[aria-expanded="true"]::after { content: " \25B4"; }
 }

@@ -1,9 +1,9 @@
 // Non-modal popovers anchored to a button. The button toggles the panel and reports it in
-// aria-expanded; Escape or a click outside closes it and returns focus to the button; one
-// popover is open at a time. A panel follows the .qr-popover anatomy (header, scrolling body;
-// see css/tailwind.src.css). It opens on the side of the button with more room, its height is
-// capped at that room, and it is placed again whenever its content, the window or a scroll
-// position changes, so content that grows while it is open stays reachable. Leaf module.
+// aria-haspopup and aria-expanded (CSS styles an open popover's button from it); Escape or a
+// click outside closes it and returns focus to the button; one popover is open at a time. A
+// panel follows the .qr-popover anatomy (see css/tailwind.src.css). It opens on the side of the
+// button with more room, its height is capped at that room, and it is placed again whenever its
+// content, the window or a scroll position changes. Leaf module.
 
 const GAP = 6;
 const MARGIN = 8;
@@ -52,6 +52,7 @@ export function closePopover(restoreFocus = false) {
  * `focusSelector` names the element inside the panel that takes focus on opening.
  */
 export function bindPopover(button, panel, { onOpen = null, focusSelector = null } = {}) {
+    button.setAttribute('aria-haspopup', 'dialog');
     button.setAttribute('aria-expanded', 'false');
     button.setAttribute('aria-controls', panel.id);
     button.addEventListener('click', () => {

@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quantum Rosetta</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="css/tailwind.css?v=1.0.47">
+    <link rel="stylesheet" href="css/tailwind.css?v=1.0.49">
     <style>
         .loader {
             border-top-color: #3b82f6;
@@ -247,13 +247,17 @@
                     </div>
                     <div class="qr-popover-body">
                         <div class="qr-section">
-                            <label class="qr-label" for="timeout-input">Timeout per backend (seconds)</label>
-                            <input type="number" id="timeout-input" value="60" min="10" max="300" step="1" class="qr-input">
+                            <div class="qr-field">
+                                <label class="qr-label" for="timeout-input">Timeout per backend (seconds)</label>
+                                <input type="number" id="timeout-input" value="60" min="10" max="300" step="1" class="qr-input">
+                            </div>
                             <p id="timeout-help" class="qr-help">Covers process start, the warm-up run and every timed run.</p>
                         </div>
                         <div class="qr-section">
-                            <label class="qr-label" for="timing-repeats-input">Timing repeats</label>
-                            <input type="number" id="timing-repeats-input" value="1" min="1" max="10" step="1" class="qr-input">
+                            <div class="qr-field">
+                                <label class="qr-label" for="timing-repeats-input">Timing repeats</label>
+                                <input type="number" id="timing-repeats-input" value="1" min="1" max="10" step="1" class="qr-input">
+                            </div>
                             <p class="qr-help">After one warm-up, compile and simulate this many times in the same process; times are the median. Each backend still gives one result. To compare separate runs of a backend with each other, use Multi-run mode in Backends.</p>
                         </div>
                         <div id="exclusive-container" class="qr-section">
@@ -282,18 +286,20 @@
                 <div id="pop-preprocessing" role="dialog" aria-labelledby="pop-preprocessing-title" class="qr-popover hidden w-[min(24rem,calc(100vw-1rem))]">
                     <div class="qr-popover-header">
                         <h3 id="pop-preprocessing-title" class="qr-popover-title">Circuit Preprocessing</h3>
+                        <a href="docs.html#preprocessing" target="_blank" rel="noopener" class="qr-header-link">How preprocessing works</a>
                     </div>
                     <div class="qr-popover-body">
-                        <fieldset class="qr-section">
-                            <legend class="qr-section-title mb-1">Apply SDK Preprocessing</legend>
-                            <label class="qr-option"><input type="radio" name="preprocessing" value="on" checked onchange="updateWorkspace()">
-                                <span>On<span class="qr-option-help">The API merges quantum registers and round-trips the circuit through pytket; each backend applies its own passes. Every change is listed per backend.</span></span></label>
-                            <label class="qr-option"><input type="radio" name="preprocessing" value="off" onchange="updateWorkspace()">
-                                <span>Off<span class="qr-option-help">Raw SDK behaviour; some backends will reject some gates.</span></span></label>
-                            <label class="qr-option"><input type="radio" name="preprocessing" value="both" onchange="updateWorkspace()">
-                                <span>Both, as an experiment<span class="qr-option-help">Runs with it on and off; results per setting and a downloadable bundle.</span></span></label>
-                            <p class="qr-help"><a href="docs.html#preprocessing" target="_blank" rel="noopener" class="underline">How preprocessing works</a></p>
-                        </fieldset>
+                        <div class="qr-section" role="radiogroup" aria-labelledby="preprocessing-label">
+                            <p id="preprocessing-label" class="qr-label">Apply SDK Preprocessing</p>
+                            <div class="qr-choices">
+                                <label class="qr-option"><input type="radio" name="preprocessing" value="on" checked onchange="updateWorkspace()">
+                                    <span>On<span class="qr-option-help">The API merges quantum registers and round-trips the circuit through pytket; each backend applies its own passes. Every change is listed per backend.</span></span></label>
+                                <label class="qr-option"><input type="radio" name="preprocessing" value="off" onchange="updateWorkspace()">
+                                    <span>Off<span class="qr-option-help">Raw SDK behaviour; some backends will reject some gates.</span></span></label>
+                                <label class="qr-option"><input type="radio" name="preprocessing" value="both" onchange="updateWorkspace()">
+                                    <span>Both, as an experiment<span class="qr-option-help">Runs with it on and off; results per setting and a downloadable bundle.</span></span></label>
+                            </div>
+                        </div>
                         <div id="bypass-limits-container" class="qr-section">
                             <label class="qr-option"><input type="checkbox" id="bypass-limits-checkbox">
                                 <span>Bypass API Safety Limits<span class="qr-option-help">Local servers only: skips the size and statement-count limits. Qubit limits still apply.</span></span></label>
@@ -303,24 +309,28 @@
                 <div id="pop-compilers" role="dialog" aria-labelledby="pop-compilers-title" class="qr-popover hidden w-[min(28rem,calc(100vw-1rem))]">
                     <div class="qr-popover-header">
                         <h3 id="pop-compilers-title" class="qr-popover-title">Compile-only services</h3>
+                        <button type="button" id="compilers-toggle-all" class="qr-action">Toggle All</button>
                     </div>
                     <div class="qr-popover-body">
                         <div class="qr-section">
                             <p class="qr-help">Each ticked level compiles the run's circuit after the simulators finish; outputs are in the Circuits tab and are not simulated or compared. With none ticked, no compile-only service runs; with Statevector and Measured both unticked, only these run. Hover a level for what it runs.</p>
                         </div>
-                        <div id="compiler-grid" class="divide-y divide-gray-100"></div>
+                        <div id="compiler-grid" role="table" aria-label="Compile-only services" class="qr-section divide-y divide-gray-100 space-y-0"></div>
                     </div>
                 </div>
                 <div id="pop-thresholds" role="dialog" aria-labelledby="pop-thresholds-title" class="qr-popover hidden w-[min(24rem,calc(100vw-1rem))]">
                     <div class="qr-popover-header">
                         <h3 id="pop-thresholds-title" class="qr-popover-title">Agreement Thresholds</h3>
-                        <button type="button" onclick="resetAgreementThresholds()" class="qr-action">Reset to defaults</button>
+                        <div class="flex items-center gap-3">
+                            <a href="docs.html#stat" target="_blank" rel="noopener" class="qr-header-link">Details</a>
+                            <button type="button" onclick="resetAgreementThresholds()" class="qr-action">Reset to defaults</button>
+                        </div>
                     </div>
                     <div class="qr-popover-body">
                         <div class="qr-section">
-                            <p class="qr-help">A statevector pair agrees when fidelity ≥ 1 − fidelity tolerance; a phase within the phase tolerance counts as 0. The JS and Hellinger cut-offs are descriptive; the shot-noise test decides measured agreement. <a href="docs.html#stat" target="_blank" rel="noopener" class="underline">Details</a></p>
+                            <p class="qr-help">A statevector pair agrees when fidelity ≥ 1 − fidelity tolerance; a phase within the phase tolerance counts as 0. The JS and Hellinger cut-offs are descriptive; the shot-noise test decides measured agreement.</p>
                         </div>
-                        <div class="qr-section grid grid-cols-2 gap-2 space-y-0">
+                        <div class="qr-section grid grid-cols-2 gap-x-3 gap-y-2 space-y-0">
                             <label class="text-xs text-gray-800">Statevector fidelity tol
                                 <input type="number" id="th-fidelity" value="1e-5" step="any" min="0" class="qr-input mt-0.5"></label>
                             <label class="text-xs text-gray-800">Statevector phase tol (rad)
@@ -841,7 +851,7 @@
     </template>
 
     <!-- Single entry point; the module graph pulls in the rest. -->
-    <script type="module" src="js/main.js?v=1.0.47"></script>
+    <script type="module" src="js/main.js?v=1.0.49"></script>
 
 </body>
 

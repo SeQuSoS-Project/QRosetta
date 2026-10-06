@@ -132,6 +132,9 @@ function _section() {
     return div;
 }
 
+const ROW_CLASS = 'flex items-center gap-2';
+const LEVEL_COLUMN = 'w-40 flex-shrink-0';
+
 /** The popover header's Toggle All button, wired to this render. */
 function _toggleAllButton() {
     const button = document.createElement('button');
@@ -212,6 +215,23 @@ export function renderConfigPanel(runners) {
         ...orderedIds.filter(id => runnerMap[id]).map(id => runnerMap[id]),
         ...runners.filter(r => !orderedIds.includes(r.id))
     ];
+    const levelColumns = Math.max(1, ...orderedRunners.map(r => (r.max_level ?? 0) + 1));
+
+    const table = document.createElement('div');
+    table.setAttribute('role', 'table');
+    table.setAttribute('aria-label', 'Backends');
+    table.className = 'text-xs';
+    const levelHeads = Array.from({ length: levelColumns }, (_, i) => `<span class="qr-cell text-center">L${i}</span>`).join('');
+    table.innerHTML = `
+        <div role="row" class="${ROW_CLASS} sticky top-0 z-10 bg-white border-b border-gray-200 py-1 text-[11px] font-medium text-gray-500">
+            <span role="columnheader" class="flex-1">Backend</span>
+            <span role="columnheader" class="runner-phase-wrap hidden w-12 text-center">Phase</span>
+            <span role="columnheader" class="opt-single-wrap ${LEVEL_COLUMN}">Optimization level</span>
+            <span role="columnheader" class="multi-run-wrap hidden ${LEVEL_COLUMN}" title="Runs at each optimization level">
+                <span class="grid grid-cols-4 gap-1">${levelHeads}</span></span>
+        </div>`;
+    list.appendChild(table);
+    let anyLocked = false;
 
     orderedRunners.forEach(r => {
         const max = r.max_level ?? 0;
@@ -219,8 +239,9 @@ export function renderConfigPanel(runners) {
         const tooltip = _buildOptTooltip(r.optimization_levels);
         const isUnavailable = r.enabled !== false && r.available === false;
         const isDisabled = r.enabled === false || isUnavailable;
-        const lockedNote = r.enabled === false ? ' (disabled on this server)'
-            : isUnavailable ? ` (unavailable${r.unavailable_reason ? `: ${r.unavailable_reason}` : ' on this server'})` : '';
+        const lockedNote = r.enabled === false ? 'Disabled on this server'
+            : isUnavailable ? `Unavailable${r.unavailable_reason ? `: ${r.unavailable_reason}` : ' on this server'}` : '';
+        if (isDisabled) anyLocked = true;
         const isDefaultChecked = !deselected.has(r.id);
 
         let optionsHtml = '<option value="-1">Use Global</option>';
@@ -234,37 +255,43 @@ export function renderConfigPanel(runners) {
         }
 
         let countsHtml = '';
-        for (let i = 0; i <= max; i++) {
+        for (let i = 0; i < levelColumns; i++) {
             const desc = r.optimization_levels?.[String(i)] || '';
-            countsHtml += `
-                <label class="inline-flex items-center gap-0.5 text-[11px] text-gray-500" title="${_escapeHtml(desc || ('Optimization level ' + i))}">L${i}
-                    <input type="number" class="runner-count-input qr-input-small w-8" aria-label="${_escapeHtml(name)}: runs at level ${i}"
-                           data-runner="${_escapeHtml(r.id)}" data-level="${i}" value="0" min="0" max="8" ${isDisabled ? 'disabled' : ''}></label>`;
+            countsHtml += i > max ? '<span class="qr-cell"></span>' : `
+                <input type="number" class="runner-count-input qr-input-small qr-cell" title="${_escapeHtml(desc || ('Optimization level ' + i))}"
+                       aria-label="${_escapeHtml(name)}: runs at level ${i}" data-runner="${_escapeHtml(r.id)}" data-level="${i}"
+                       value="0" min="0" max="8" ${isDisabled ? 'disabled' : ''}>`;
         }
 
         const row = document.createElement('div');
-        row.className = "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 py-0.5";
+        row.setAttribute('role', 'row');
+        row.className = `${ROW_CLASS} py-0.5 rounded hover:bg-gray-50`;
         row.innerHTML = `
-            <label class="qr-option text-xs min-w-0 items-center ${isDisabled ? 'cursor-not-allowed text-gray-400' : ''}" title="${_escapeHtml(name + lockedNote)}">
-                <input type="checkbox" class="sim-checkbox mt-0"
+            <label role="cell" class="qr-option text-xs flex-1 min-w-0 items-center ${isDisabled ? 'cursor-not-allowed text-gray-400' : ''}" title="${_escapeHtml(lockedNote || name)}">
+                <input type="checkbox" class="sim-checkbox mt-0" aria-label="Run ${_escapeHtml(name)}"
                        data-sim="${_escapeHtml(r.id)}" ${isDefaultChecked && !isDisabled ? 'checked' : ''} ${isDisabled ? 'disabled data-locked="1"' : ''}>
-                <span class="truncate ${r.enabled === false ? 'line-through' : ''}">${_escapeHtml(name)}${lockedNote ? `<span class="text-[11px] text-gray-400">${_escapeHtml(lockedNote)}</span>` : ''}</span>
+                <span class="truncate ${isDisabled ? 'line-through' : ''}">${_escapeHtml(name)}</span>
             </label>
-            <div class="flex items-center justify-end gap-2">
-                <label class="runner-phase-wrap hidden inline-flex items-center gap-1 text-[11px] text-gray-500">Phase
-                    <input type="number" class="runner-phase-input qr-input-small w-10" aria-label="${_escapeHtml(name)}: phase"
-                           data-runner="${_escapeHtml(r.id)}" value="1" min="1" ${isDisabled ? 'disabled' : ''}></label>
-                <div class="opt-single-wrap">
-                    <select data-runner="${_escapeHtml(r.id)}" class="runner-opt-select qr-input w-40 py-0.5 text-xs" aria-label="${_escapeHtml(name)}: optimization level"
-                            title="${_escapeHtml(tooltip)}" ${max === 0 || isDisabled ? 'disabled' : ''}>
-                        ${optionsHtml}
-                    </select>
-                </div>
-                <div class="multi-run-wrap hidden grid grid-cols-4 gap-1.5">${countsHtml}</div>
-            </div>
+            <span role="cell" class="runner-phase-wrap hidden w-12">
+                <input type="number" class="runner-phase-input qr-input-small w-full" aria-label="${_escapeHtml(name)}: phase"
+                       data-runner="${_escapeHtml(r.id)}" value="1" min="1" ${isDisabled ? 'disabled' : ''}></span>
+            <span role="cell" class="opt-single-wrap ${LEVEL_COLUMN}">
+                <select data-runner="${_escapeHtml(r.id)}" class="runner-opt-select qr-input py-0.5 text-xs" aria-label="${_escapeHtml(name)}: optimization level"
+                        title="${_escapeHtml(tooltip)}" ${max === 0 || isDisabled ? 'disabled' : ''}>
+                    ${optionsHtml}
+                </select>
+            </span>
+            <span role="cell" class="multi-run-wrap hidden ${LEVEL_COLUMN}"><span class="grid grid-cols-4 gap-1">${countsHtml}</span></span>
         `;
-        list.appendChild(row);
+        table.appendChild(row);
     });
+
+    if (anyLocked) {
+        const note = document.createElement('p');
+        note.className = 'qr-help pt-1';
+        note.textContent = 'Struck through: disabled or unavailable on this server; hover a name for the reason.';
+        list.appendChild(note);
+    }
 
     grid.querySelectorAll('.sim-checkbox').forEach(cb => cb.addEventListener('change', () => {
         _saveDeselected();
@@ -287,6 +314,7 @@ export function applyConfigModes() {
         cb.disabled = _multiRunEnabled;
         cb.classList.toggle('invisible', _multiRunEnabled);
     });
+    document.getElementById('backends-toggle-all')?.classList.toggle('hidden', _multiRunEnabled);
     const presets = document.getElementById('ordering-presets');
     if (presets) presets.classList.toggle('hidden', !_orderingEnabled);
     updateBackendSelectionSummary();
@@ -398,6 +426,7 @@ export function toggleAllSimulators() {
     checkboxes.forEach(cb => cb.checked = !allChecked);
     _saveDeselected();
     updateBackendSelectionSummary();
+    document.dispatchEvent(new Event('workspace-change'));
 }
 
 export function getTargetSimulators() {

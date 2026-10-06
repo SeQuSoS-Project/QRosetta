@@ -61,7 +61,7 @@ export function updateSettingsChips() {
     Object.entries(_summaries()).forEach(([id, [text, changed]]) => {
         const chip = document.getElementById(id);
         if (!chip) return;
-        chip.textContent = `${text} ▾`;
+        chip.textContent = text;
         chip.title = changed ? `${text} (changed from the default)` : text;
         (changed ? PLAIN : CHANGED).forEach(c => chip.classList.remove(c));
         (changed ? CHANGED : PLAIN).forEach(c => chip.classList.add(c));
@@ -74,7 +74,6 @@ export function initSettingsBar() {
         const chip = /** @type {HTMLElement} */ (node);
         const panel = document.getElementById(chip.dataset.popover || '');
         if (!panel) return;
-        chip.setAttribute('aria-haspopup', 'dialog');
         bindPopover(chip, panel, { focusSelector: 'input, select, button' });
         panel.addEventListener('input', updateSettingsChips);
         panel.addEventListener('change', () => {
