@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quantum Rosetta</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="css/tailwind.css?v=1.0.49">
+    <link rel="stylesheet" href="css/tailwind.css?v=1.0.50">
     <style>
         .loader {
             border-top-color: #3b82f6;
@@ -395,11 +395,7 @@
                     </div>
 
                     <div class="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden" id="tab-content">
-                        <div id="welcome-message" class="p-4 text-gray-600 block">
-                            <p class="font-medium text-gray-800">The editor on the left holds a circuit, ready to run.</p>
-                            <p class="mt-1">The Run Editor Code button at the bottom of the left column sends it to every selected backend and compares their outputs pair by pair; the result appears here, starting with which backends differ from the others.</p>
-                            <p class="mt-1">To use another circuit, Load one under Generate Circuits, open Bench, or Import QASM. To run several circuits in one job, add them to the Playlist.</p>
-                        </div>
+                        <div id="welcome-message" class="block"><div id="empty-state"></div></div>
 
                         <div id="summary-panel" class="p-4 hidden"></div>
                         <div id="performance-panel" class="p-4 hidden"></div>
@@ -851,7 +847,7 @@
     </template>
 
     <!-- Single entry point; the module graph pulls in the rest. -->
-    <script type="module" src="js/main.js?v=1.0.49"></script>
+    <script type="module" src="js/main.js?v=1.0.50"></script>
 
 </body>
 

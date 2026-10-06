@@ -20,6 +20,11 @@ export async function loadCircuitSources() {
     _qasmbench = Array.isArray(qasmbench) ? qasmbench : [];
 }
 
+/** The bundled examples as menu values and labels: title, qubit count and intended mode. */
+export function exampleOptions() {
+    return _examples.map(ex => ({ value: `example:${ex.name}`, label: `${ex.title} (${ex.mode})` }));
+}
+
 /** Qubit count encoded in a QASMBench file name (`adder_n10` → 10), or 0. */
 export function qasmbenchQubits(name) {
     const m = String(name).match(/_n(\d+)$/);

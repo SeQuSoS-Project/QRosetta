@@ -6,7 +6,7 @@ import { BASE_URL, formatApiError, getAuthHeaders, pollJobStatus, stopPolling } 
 import { autosaveRun } from './autosave.js';
 import { getCompilerSelection } from './compilers_config.js';
 import {
-    _parseQasmStats, checkRunCountLimits, getRunnerConfig, getRunnerPhases, getTargetSimulators, loadRunners,
+    _parseQasmStats, checkRunCountLimits, getEnabledRunnerIds, getRunnerConfig, getRunnerPhases, getTargetSimulators, loadRunners,
     runnerSelectionProblem, updateContextBar,
 } from './config.js';
 import { qasmInput } from './dom.js';
@@ -18,7 +18,10 @@ import { showRunErrors, validateRunInputs } from './run_inputs.js';
 import { clearPendingJob, saveEditorCircuit, savePendingJob } from './session_store.js';
 import { dispatch, getState } from './state.js';
 import { getAgreementThresholds, getSeed, setLoading } from './utils.js';
-import { renderBatchQueue } from './batch.js';
+import { batchItemLabel, renderBatchQueue } from './batch.js';
+import { exampleOptions } from './circuit_sources.js';
+import { emptyStateModel, renderEmptyState } from './empty_state.js';
+import { _displayRunnerName } from './render_helpers.js';
 
 const _checked = id => !!/** @type {HTMLInputElement|null} */ (document.getElementById(id))?.checked;
 const _radio = name => /** @type {HTMLInputElement|null} */ (document.querySelector(`input[name="${name}"]:checked`))?.value;
@@ -97,6 +100,25 @@ export function updateWorkspace() {
             : 'Not signed in: results are kept for 30 minutes.';
     }
     _showLimitWarning(ws);
+    _renderEmptyState(ws);
+}
+
+/** The results area before a result: what Run will do and the table it will fill. */
+function _renderEmptyState(ws) {
+    const model = emptyStateModel({
+        source: ws.source,
+        circuitName: ws.editor.name,
+        playlist: ws.list.map(batchItemLabel),
+        modes: ws.modes,
+        preprocessing: ws.preprocessing,
+        compilerCount: Object.values(ws.compilers).reduce((n, levels) => n + levels.length, 0),
+        backends: [...ws.common.target_simulators].sort().map(_displayRunnerName),
+        backendsLoaded: getEnabledRunnerIds().length > 0,
+        examples: exampleOptions(),
+    });
+    renderEmptyState(document.getElementById('empty-state'), model, {
+        onExample: value => document.dispatchEvent(new CustomEvent('open-circuit', { detail: value })),
+    });
 }
 
 /** Warn before a run when the circuits exceed a ticked mode's qubit limit. */

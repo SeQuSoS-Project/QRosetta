@@ -292,6 +292,17 @@ async function _loadSelection(sel, qubits) {
 }
 
 /** Load: the selected circuit into the editor, asking first when that replaces edits. */
+/** Select `value` in the Quantum Algorithms menu and load it into the editor. */
+async function _openCircuit(value) {
+    const select = /** @type {HTMLSelectElement|null} */ (document.getElementById('algo-select'));
+    if (!select || ![...select.options].some(o => o.value === value)) return;
+    select.value = value;
+    select.dispatchEvent(new Event('change'));
+    await generateCircuit();
+}
+
+document.addEventListener('open-circuit', e => { _openCircuit(/** @type {CustomEvent} */ (e).detail); });
+
 export async function generateCircuit() {
     if (getState().isProcessing) return;
     if (_editorHasEdits() && !confirm('Load replaces the circuit in the editor, which you have edited. Continue?')) return;
