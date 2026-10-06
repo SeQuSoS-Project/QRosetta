@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quantum Rosetta</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="css/tailwind.css?v=1.0.38">
+    <link rel="stylesheet" href="css/tailwind.css?v=1.0.39">
     <style>
         .loader {
             border-top-color: #3b82f6;
@@ -81,10 +81,16 @@
                 <section aria-labelledby="ws-generate" class="p-4 border rounded-lg bg-gray-50 space-y-2">
                     <h2 id="ws-generate" class="text-lg font-semibold text-gray-800">Generate Circuits</h2>
                     <div class="flex flex-wrap items-end gap-2">
-                        <div class="flex-1 min-w-[12rem]">
-                            <label for="algo-select" class="block text-xs font-medium text-gray-600">Quantum Algorithms</label>
-                            <select id="algo-select" aria-describedby="algo-description"
-                                class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"></select>
+                        <div class="flex-1 min-w-[12rem] relative">
+                            <label for="algo-search" class="block text-xs font-medium text-gray-600">Quantum Algorithms</label>
+                            <input id="algo-search" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false"
+                                aria-controls="algo-listbox" aria-describedby="algo-description" autocomplete="off" spellcheck="false"
+                                placeholder="Type to search algorithms, examples, MQT Bench, QASMBench"
+                                class="mt-1 block w-full pl-3 pr-8 py-2 sm:text-sm border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <span class="pointer-events-none absolute right-2.5 bottom-2.5 text-gray-400 text-xs" aria-hidden="true">▾</span>
+                            <div id="algo-listbox" role="listbox" aria-label="Circuits"
+                                class="hidden absolute z-30 mt-1 w-full max-h-72 overflow-y-auto bg-white border border-gray-200 rounded-md shadow-lg py-1"></div>
+                            <select id="algo-select" class="hidden" aria-hidden="true" tabindex="-1"></select>
                         </div>
                         <div class="w-20">
                             <label for="algo-qubits" class="block text-xs font-medium text-gray-600">Qubits</label>
@@ -885,7 +891,7 @@
     </template>
 
     <!-- Single entry point; the module graph pulls in the rest. -->
-    <script type="module" src="js/main.js?v=1.0.38"></script>
+    <script type="module" src="js/main.js?v=1.0.39"></script>
 
 </body>
 

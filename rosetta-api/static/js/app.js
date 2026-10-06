@@ -15,7 +15,8 @@ import { shotsRange, timeoutRange } from './run_inputs.js';
 import { clearPendingJob, loadBatchQueue, loadEditorCircuit, loadPendingJob, saveEditorCircuit } from './session_store.js';
 import { dispatch, getState } from './state.js';
 import { resetAgreementThresholds, setLoading } from './utils.js';
-import { EXAMPLE_PREFIX, exampleForValue, fetchExampleQasm, loadExamples } from './examples.js';
+import { fetchSelection, loadCircuitSources, menuGroups, nearestSize, selectionFor } from './circuit_sources.js';
+import { initCircuitPicker } from './circuit_picker.js';
 import { resumeJob, updateWorkspace } from './workspace.js';
 
 const EXECUTION_MODE_LABELS = {
@@ -162,8 +163,8 @@ window.onload = async () => {
             return saveRunToHistory(jobId, name);
         });
 
-        const select = document.getElementById('algo-select');
-        const examples = await loadExamples();
+        const select = /** @type {HTMLSelectElement} */ (document.getElementById('algo-select'));
+        await loadCircuitSources();
         const group = (label, items) => {
             const g = document.createElement('optgroup');
             g.label = label;
@@ -175,12 +176,15 @@ window.onload = async () => {
             });
             return g;
         };
-        select.replaceChildren(group('Algorithms', getState().allAlgorithms.map(a => [a.id, a.name])));
-        if (examples.length) {
-            select.appendChild(group('Examples', examples.map(ex => [`${EXAMPLE_PREFIX}${ex.name}`, `${ex.title} (${ex.qubits}q)`])));
-        }
+        select.replaceChildren(...menuGroups(getState().allAlgorithms).map(([label, items]) => group(label, items)));
+        initCircuitPicker({
+            input: /** @type {HTMLInputElement} */ (document.getElementById('algo-search')),
+            listbox: /** @type {HTMLElement} */ (document.getElementById('algo-listbox')),
+            select,
+        });
 
         select.addEventListener('change', updateQubitConstraints);
+        document.getElementById('algo-qubits')?.addEventListener('change', _snapBenchSize);
         updateQubitConstraints();
 
         qasmInput.addEventListener('input', () => {
@@ -211,17 +215,39 @@ window.onload = async () => {
     _offerPendingJob();
 };
 
+/** For an MQT Bench algorithm, move the Qubits field to the nearest size the suite has. */
+function _snapBenchSize() {
+    const sel = selectionFor(/** @type {HTMLSelectElement} */ (document.getElementById('algo-select')).value);
+    if (sel.kind !== 'mqt') return;
+    const input = /** @type {HTMLInputElement} */ (document.getElementById('algo-qubits'));
+    input.value = String(nearestSize(sel.sizes, parseInt(input.value, 10) || sel.sizes[0]));
+}
+
 export function updateQubitConstraints(e) {
-    const algoId = document.getElementById('algo-select').value;
+    const algoId = /** @type {HTMLSelectElement} */ (document.getElementById('algo-select')).value;
     const selectedAlgo = getState().allAlgorithms.find(a => a.id === algoId);
     const input = /** @type {HTMLInputElement} */ (document.getElementById('algo-qubits'));
-    const example = exampleForValue(algoId);
-    if (example) {
-        input.value = String(example.qubits);
+    const desc = document.getElementById('algo-description');
+    const sel = selectionFor(algoId);
+    if (sel.kind === 'example' || sel.kind === 'qasmbench') {
+        input.value = String(sel.qubits || '');
         input.disabled = true;
-        input.title = `${example.title} is a fixed ${example.qubits}-qubit circuit.`;
-        const desc = document.getElementById('algo-description');
-        if (desc) desc.textContent = `${example.description} For ${example.mode} mode: Load ticks ${example.mode === 'measured' ? 'Measured' : 'Statevector'}.`.trim();
+        input.title = `A fixed ${sel.qubits}-qubit circuit.`;
+        if (desc) {
+            desc.textContent = sel.kind === 'example'
+                ? `${sel.example?.description || ''} For ${sel.example?.mode} mode: Load ticks ${sel.example?.mode === 'measured' ? 'Measured' : 'Statevector'}.`.trim()
+                : `QASMBench circuit, ${sel.qubits} qubits.`;
+        }
+        return;
+    }
+    if (sel.kind === 'mqt') {
+        input.disabled = false;
+        input.title = '';
+        input.min = String(sel.sizes[0] ?? 1);
+        input.max = String(sel.sizes[sel.sizes.length - 1] ?? 1);
+        const current = parseInt(input.value, 10);
+        input.value = String(nearestSize(sel.sizes, Number.isFinite(current) ? current : sel.sizes[0]));
+        if (desc) desc.textContent = `MQT Bench algorithm. Sizes in the suite: ${sel.sizes[0]}–${sel.sizes[sel.sizes.length - 1]} qubits; the Qubits field picks one.`;
         return;
     }
 
@@ -240,7 +266,6 @@ export function updateQubitConstraints(e) {
 
         input.disabled = selectedAlgo.min_qubits === selectedAlgo.max_qubits;
         input.title = input.disabled ? `${selectedAlgo.name} is defined for ${selectedAlgo.min_qubits} qubits only.` : '';
-        const desc = document.getElementById('algo-description');
         if (desc) desc.textContent = selectedAlgo.description || '';
     }
 }
@@ -250,30 +275,37 @@ function _editorHasEdits() {
     return qasmInput.value.trim() !== '' && /^Custom\b/.test(getState().currentAlgoName || '');
 }
 
-/** Put an example in the editor and tick the mode it is meant for. */
-async function _loadExample(example) {
-    const qasm = await fetchExampleQasm(example);
+/** Put an example or benchmark circuit in the editor; an example also ticks the mode it is meant for. */
+async function _loadSelection(sel, qubits) {
+    const { qasm, title } = await fetchSelection(sel, qubits);
     qasmInput.value = qasm;
-    dispatch('SET_CURRENT_ALGO_NAME', `${example.title} (${example.qubits}q)`);
-    const sv = /** @type {HTMLInputElement|null} */ (document.getElementById('mode-statevector'));
-    const ms = /** @type {HTMLInputElement|null} */ (document.getElementById('mode-measured'));
-    if (sv && ms) { sv.checked = example.mode === 'statevector'; ms.checked = example.mode === 'measured'; }
+    dispatch('SET_CURRENT_ALGO_NAME', title);
+    if (sel.kind === 'example') {
+        const sv = /** @type {HTMLInputElement|null} */ (document.getElementById('mode-statevector'));
+        const ms = /** @type {HTMLInputElement|null} */ (document.getElementById('mode-measured'));
+        if (sv && ms) { sv.checked = sel.example?.mode === 'statevector'; ms.checked = sel.example?.mode === 'measured'; }
+    }
     updateContextBar();
     saveEditorCircuit(qasmInput.value, getState().currentAlgoName);
     document.dispatchEvent(new Event('editor-loaded'));
 }
 
-/** Load: the selected algorithm or example into the editor, asking first when that replaces edits. */
+/** Load: the selected circuit into the editor, asking first when that replaces edits. */
 export async function generateCircuit() {
     if (getState().isProcessing) return;
     if (_editorHasEdits() && !confirm('Load replaces the circuit in the editor, which you have edited. Continue?')) return;
-    const algoId = document.getElementById('algo-select').value;
-    const example = exampleForValue(algoId);
-    if (example) {
+    const algoId = /** @type {HTMLSelectElement} */ (document.getElementById('algo-select')).value;
+    const sel = selectionFor(algoId);
+    if (sel.kind !== 'algorithm') {
+        dispatch('SET_PROCESSING', true);
+        setLoading(true, 'Loading circuit...', { overlay: false });
         try {
-            await _loadExample(example);
+            await _loadSelection(sel, parseInt(/** @type {HTMLInputElement} */ (document.getElementById('algo-qubits')).value, 10));
         } catch (e) {
-            alert(`The example was not loaded. ${e.message}`);
+            alert(`The circuit was not loaded. ${e.message}`);
+        } finally {
+            setLoading(false);
+            dispatch('SET_PROCESSING', false);
         }
         return;
     }

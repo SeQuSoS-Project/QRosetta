@@ -3,7 +3,7 @@
 import { qasmInput, queueCount, queueList } from './dom.js';
 import { BASE_URL, fetchMQTBench, fetchQASMBench, getAuthHeaders } from './api.js';
 import { _parseQasmStats, updateContextBar } from './config.js';
-import { exampleForValue, fetchExampleQasm } from './examples.js';
+import { playlistItemFor, selectionFor } from './circuit_sources.js';
 import { saveBatchQueue } from './session_store.js';
 import { dispatch, getState } from './state.js';
 import { setLoading } from './utils.js';
@@ -57,25 +57,24 @@ export function toBatchTask(item) {
     return task;
 }
 
-/** + Add: the selected algorithm (at the chosen qubit count) or example, added to the playlist. */
+/** + Add: the selected circuit (an algorithm or MQT Bench algorithm at the chosen qubit count, an example or a QASMBench circuit) added to the playlist. */
 export async function addToBatch() {
-    const sel = /** @type {HTMLSelectElement} */ (document.getElementById('algo-select'));
-    const value = sel.value;
+    const menu = /** @type {HTMLSelectElement} */ (document.getElementById('algo-select'));
+    const value = menu.value;
     if (!value) return;
-    const example = exampleForValue(value);
+    const sel = selectionFor(value);
+    const qubits = parseInt(/** @type {HTMLInputElement} */ (document.getElementById('algo-qubits')).value, 10);
     let item;
-    if (example) {
+    if (sel.kind === 'algorithm') {
+        if (isNaN(qubits)) return;
+        item = { algorithm: value, qubits, name: menu.options[menu.selectedIndex].text, qasm_string: null };
+    } else {
         try {
-            item = { algorithm: example.name.replace(/\.qasm$/, ''), qubits: example.qubits, name: example.title,
-                     qasm_string: await fetchExampleQasm(example) };
+            item = await playlistItemFor(sel, qubits);
         } catch (e) {
-            alert(`The example was not added. ${e.message}`);
+            alert(`The circuit was not added. ${e.message}`);
             return;
         }
-    } else {
-        const qubits = parseInt(/** @type {HTMLInputElement} */ (document.getElementById('algo-qubits')).value);
-        if (isNaN(qubits)) return;
-        item = { algorithm: value, qubits, name: sel.options[sel.selectedIndex].text, qasm_string: null };
     }
     dispatch('SET_BATCH_QUEUE', [...getState().batchQueue, item]);
     renderBatchQueue();
@@ -142,18 +141,26 @@ export function renderBatchQueue() {
     }
 }
 
+/** Show a playlist item's source in the Quantum Algorithms menu when the menu has it. */
+function _selectInMenu(item) {
+    const menu = /** @type {HTMLSelectElement} */ (document.getElementById('algo-select'));
+    const value = item.source === 'mqt' ? `mqt:${item.algorithm}`
+        : item.source === 'qasmbench' ? `qasmbench:${item.algorithm}` : String(item.algorithm);
+    if (!Array.from(menu.options).some(o => o.value === value)) return;
+    menu.value = value;
+    menu.dispatchEvent(new Event('change'));
+    const qubits = /** @type {HTMLInputElement} */ (document.getElementById('algo-qubits'));
+    if (!qubits.disabled && item.qubits) qubits.value = String(item.qubits);
+}
+
 export async function viewBatchItem(index) {
     if (getState().isProcessing) return;
     const item = getState().batchQueue[index];
     if (!item) return;
 
+    _selectInMenu(item);
     if (item.qasm_string) {
         qasmInput.value = item.qasm_string;
-        const sel = document.getElementById('algo-select');
-        if (sel.querySelector(`option[value="${item.algorithm}"]`)) {
-            sel.value = item.algorithm;
-            document.getElementById('algo-qubits').value = item.qubits;
-        }
 
         document.getElementById('ctx-algo-name').value = batchItemLabel(item);
         dispatch('SET_CURRENT_ALGO_NAME', batchItemLabel(item));
