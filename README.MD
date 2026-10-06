@@ -215,6 +215,9 @@ Two later tags mark stable versions of the web interface:
 - `stable-ui-workspace` (0a7d863): after the first redesign step. The left column is one
   workspace (Generate Circuits, Editor, Playlist, a Run footer, a Configuration panel); the Summary tab
   opens with a headline naming the backends that differ; results have five tabs.
+- `stable-ui-left-column` (258b0f2): the left column after the second redesign step. Single
+  circuits come from the searchable Quantum Algorithms menu, bulk adding from the Playlist's
+  Bench popover, and the settings are chips in the Run footer, each opening a popover.
 
 ## Citing
 
