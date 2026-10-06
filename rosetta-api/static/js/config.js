@@ -125,6 +125,24 @@ export function _buildOptTooltip(optLevels) {
         .join('\n');
 }
 
+/** One .qr-section block of the Backends popover. */
+function _section() {
+    const div = document.createElement('div');
+    div.className = 'qr-section';
+    return div;
+}
+
+/** The popover header's Toggle All button, wired to this render. */
+function _toggleAllButton() {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.id = 'backends-toggle-all';
+    button.className = 'qr-action';
+    button.textContent = 'Toggle All';
+    button.addEventListener('click', toggleAllSimulators);
+    return button;
+}
+
 export function renderConfigPanel(runners) {
     const grid = document.getElementById('config-grid');
     if (!grid) return;
@@ -134,43 +152,28 @@ export function renderConfigPanel(runners) {
     _runnerOptInfo = {};
     runners.forEach(r => { _runnerOptInfo[r.id] = r; });
 
-    const btnDiv = document.createElement('div');
-    btnDiv.className = "col-span-1 flex justify-end space-x-2 mb-2 border-b border-indigo-200 pb-2";
-    btnDiv.innerHTML = `<button type="button" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium bg-indigo-100 px-3 py-1 rounded border border-indigo-300 shadow-sm transition-colors duration-200">Toggle All</button>`;
-    btnDiv.querySelector('button').addEventListener('click', toggleAllSimulators);
-    grid.appendChild(btnDiv);
+    document.getElementById('backends-toggle-all')?.replaceWith(_toggleAllButton());
 
-    const modesDiv = document.createElement('div');
-    modesDiv.className = "col-span-1 p-2 bg-white rounded border border-indigo-200 mb-2 space-y-2";
-    modesDiv.innerHTML = `
-        <label class="flex items-center space-x-2 cursor-pointer">
-            <input type="checkbox" id="multirun-toggle" ${_multiRunEnabled ? 'checked' : ''}
-                   class="h-3 w-3 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500">
-            <span class="text-xs font-bold text-indigo-800 uppercase">Multi-run mode (self-comparison)</span>
-        </label>
-        <p id="multirun-note" class="text-xs text-indigo-600 pl-5 ${_multiRunEnabled ? '' : 'hidden'}">
-            Each count below is one separate run in its own process, compared with every other run like another
+    const modes = _section();
+    modes.innerHTML = `
+        <label class="qr-option"><input type="checkbox" id="multirun-toggle" ${_multiRunEnabled ? 'checked' : ''}>
+            <span>Multi-run mode (self-comparison)<span id="multirun-note" class="qr-option-help">Each count is one separate run in its own process, compared with every other run like another
             backend. The counts decide what runs; a backend with all counts 0 does not run. For a more stable time
-            within one run, use Timing repeats instead.
-        </p>
-        <label class="flex items-center space-x-2 cursor-pointer pt-1 border-t border-indigo-50">
-            <input type="checkbox" id="ordering-toggle" ${_orderingEnabled ? 'checked' : ''}
-                   class="h-3 w-3 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500">
-            <span class="text-xs font-bold text-indigo-800 uppercase">Custom ordering (phases)</span>
-        </label>
-        <div id="ordering-presets" class="pl-5 space-x-2 ${_orderingEnabled ? '' : 'hidden'}">
-            <span class="text-xs text-indigo-600">Lower phase number runs first; same number runs together.</span>
-            <button type="button" data-ordering="concurrent" class="text-xs text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">All concurrent</button>
-            <button type="button" data-ordering="sequential" class="text-xs text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">Sequential</button>
+            within one run, use Timing repeats instead.</span></span></label>
+        <label class="qr-option"><input type="checkbox" id="ordering-toggle" ${_orderingEnabled ? 'checked' : ''}>
+            <span>Custom ordering (phases)<span class="qr-option-help">Lower phase number runs first; the same number runs together.</span></span></label>
+        <div id="ordering-presets" class="pl-6 flex gap-2 ${_orderingEnabled ? '' : 'hidden'}">
+            <button type="button" data-ordering="concurrent" class="qr-action">All concurrent</button>
+            <button type="button" data-ordering="sequential" class="qr-action">Sequential</button>
         </div>
     `;
-    const multiRunToggle = /** @type {HTMLInputElement} */ (modesDiv.querySelector('#multirun-toggle'));
-    const orderingToggle = /** @type {HTMLInputElement} */ (modesDiv.querySelector('#ordering-toggle'));
+    const multiRunToggle = /** @type {HTMLInputElement} */ (modes.querySelector('#multirun-toggle'));
+    const orderingToggle = /** @type {HTMLInputElement} */ (modes.querySelector('#ordering-toggle'));
     multiRunToggle.addEventListener('change', () => toggleMultiRunMode(multiRunToggle));
     orderingToggle.addEventListener('change', () => toggleOrderingMode(orderingToggle));
-    modesDiv.querySelector('[data-ordering="concurrent"]').addEventListener('click', setOrderingConcurrent);
-    modesDiv.querySelector('[data-ordering="sequential"]').addEventListener('click', setOrderingSequential);
-    grid.appendChild(modesDiv);
+    modes.querySelector('[data-ordering="concurrent"]').addEventListener('click', setOrderingConcurrent);
+    modes.querySelector('[data-ordering="sequential"]').addEventListener('click', setOrderingSequential);
+    grid.appendChild(modes);
 
     const maxGlobal = Math.max(...runners.map(r => r.max_level ?? 0), 0);
     let globalOpts = '';
@@ -178,40 +181,28 @@ export function renderConfigPanel(runners) {
     for (let i = 0; i <= Math.min(maxGlobal, 3); i++) {
         globalOpts += `<option value="${i}">${i} — ${GLOBAL_LABELS[i] ?? i}</option>`;
     }
-    const globalDiv = document.createElement('div');
-    globalDiv.className = "col-span-1 p-2 bg-indigo-100 rounded border border-indigo-200 mb-2";
-    globalDiv.innerHTML = `
-        <label class="block text-xs font-bold text-indigo-800 uppercase mb-1" for="opt-global">Global Optimization Level</label>
-        <select id="opt-global" class="block w-full text-xs border-indigo-300 rounded p-1 focus:ring-indigo-500 focus:border-indigo-500">
-            ${globalOpts}
-        </select>
-        <p class="text-xs text-indigo-600 mt-1">Applied to all runners — each runner uses the nearest level it supports. Override per-runner below.</p>
-    `;
-    globalDiv.querySelector('#opt-global').addEventListener('change', () => { updateContextBar(); document.dispatchEvent(new Event('workspace-change')); });
-    grid.appendChild(globalDiv);
-
     const mode = getState().executionMode;
-    const localMem = '1 GiB';
-    const memText = mode === 'local' ? localMem : mode === 'kubernetes' ? '1 GiB' : `${localMem} locally, 1 GiB on Kubernetes`;
-    const sysDiv = document.createElement('div');
-    sysDiv.className = "col-span-1 p-2 bg-gray-50 rounded border border-gray-200 mb-2 flex justify-between items-center text-xs";
-    sysDiv.innerHTML = `
-        <span class="font-bold text-gray-500">Per runner:</span>
-        <span class="text-gray-600 font-mono">1 CPU, 1 thread, ${memText} memory</span>
+    const memText = mode === 'local' || mode === 'kubernetes' ? '1 GiB' : '1 GiB locally, 1 GiB on Kubernetes';
+    const global = _section();
+    global.innerHTML = `
+        <label class="qr-label" for="opt-global">Global Optimization Level</label>
+        <select id="opt-global" class="qr-input">${globalOpts}</select>
+        <p class="qr-help">Applied to all runners — each runner uses the nearest level it supports. Override per runner below. Each runner has 1 CPU, 1 thread and ${memText} memory.</p>
     `;
-    grid.appendChild(sysDiv);
+    global.querySelector('#opt-global').addEventListener('change', () => { updateContextBar(); document.dispatchEvent(new Event('workspace-change')); });
+    grid.appendChild(global);
 
-    const selHead = document.createElement('div');
-    selHead.className = "col-span-1 flex items-center justify-between border-b border-indigo-200 pb-1";
-    selHead.innerHTML = `<span class="text-xs font-bold text-indigo-800 uppercase">Backends (checked ones run)</span>
-        <span class="backend-selection-summary text-xs text-indigo-700"></span>`;
-    grid.appendChild(selHead);
+    const list = _section();
+    list.innerHTML = `<div class="flex items-center justify-between gap-2">
+        <span class="qr-section-title">Backends (checked ones run)</span>
+        <span class="backend-selection-summary text-xs text-gray-500"></span></div>`;
+    grid.appendChild(list);
 
     if (runners.length === 0) {
         const p = document.createElement('p');
         p.className = 'text-xs text-red-700';
         p.textContent = 'The backend list could not be loaded from the server. Reload the page to try again.';
-        grid.appendChild(p);
+        list.appendChild(p);
     }
 
     const deselected = _loadDeselected();
@@ -246,39 +237,33 @@ export function renderConfigPanel(runners) {
         for (let i = 0; i <= max; i++) {
             const desc = r.optimization_levels?.[String(i)] || '';
             countsHtml += `
-                <label class="inline-flex flex-col items-center mr-1 mb-1" title="${_escapeHtml(desc || ('Optimization level ' + i))}">
-                    <span class="text-[10px] text-gray-400">L${i}</span>
-                    <input type="number" class="runner-count-input w-9 text-xs border-gray-300 rounded p-0.5 text-center"
-                           data-runner="${_escapeHtml(r.id)}" data-level="${i}" value="0" min="0" max="8" ${isDisabled ? 'disabled' : ''}>
-                </label>`;
+                <label class="inline-flex items-center gap-0.5 text-[11px] text-gray-500" title="${_escapeHtml(desc || ('Optimization level ' + i))}">L${i}
+                    <input type="number" class="runner-count-input qr-input-small w-8" aria-label="${_escapeHtml(name)}: runs at level ${i}"
+                           data-runner="${_escapeHtml(r.id)}" data-level="${i}" value="0" min="0" max="8" ${isDisabled ? 'disabled' : ''}></label>`;
         }
 
-        const div = document.createElement('div');
-        div.className = "grid grid-cols-[minmax(0,1fr)_11rem] items-center gap-x-2 gap-y-1";
-        div.innerHTML = `
-            <div class="flex items-center justify-between min-w-0">
-                <label class="flex items-center space-x-2 cursor-pointer ${r.enabled === false ? 'opacity-40 cursor-not-allowed line-through text-red-400' : isUnavailable ? 'opacity-40 cursor-not-allowed' : ''}"${isUnavailable && r.unavailable_reason ? ` title="${_escapeHtml(r.unavailable_reason)}"` : ''}>
-                    <input type="checkbox" class="sim-checkbox h-3 w-3 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
-                           data-sim="${_escapeHtml(r.id)}" ${isDefaultChecked && !isDisabled ? 'checked' : ''} ${isDisabled ? 'disabled' : ''} ${isDisabled ? 'data-locked="1"' : ''}>
-                    <span class="block text-xs font-medium text-gray-600">${_escapeHtml(name)}${_escapeHtml(lockedNote)}</span>
-                </label>
-                <label class="runner-phase-wrap hidden flex items-center space-x-1 text-[10px] text-gray-400">
-                    <span>Phase</span>
-                    <input type="number" class="runner-phase-input w-9 text-xs border-gray-300 rounded p-0.5 text-center"
-                           data-runner="${_escapeHtml(r.id)}" value="1" min="1" ${isDisabled ? 'disabled' : ''}>
-                </label>
-            </div>
-            <div class="opt-single-wrap">
-                <select data-runner="${_escapeHtml(r.id)}" class="runner-opt-select block w-full text-xs border-gray-300 rounded p-1 shadow-sm"
-                        title="${_escapeHtml(tooltip)}" ${max === 0 || isDisabled ? 'disabled' : ''}>
-                    ${optionsHtml}
-                </select>
-            </div>
-            <div class="multi-run-wrap hidden flex flex-wrap col-span-2">
-                ${countsHtml}
+        const row = document.createElement('div');
+        row.className = "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 py-0.5";
+        row.innerHTML = `
+            <label class="qr-option text-xs min-w-0 items-center ${isDisabled ? 'cursor-not-allowed text-gray-400' : ''}" title="${_escapeHtml(name + lockedNote)}">
+                <input type="checkbox" class="sim-checkbox mt-0"
+                       data-sim="${_escapeHtml(r.id)}" ${isDefaultChecked && !isDisabled ? 'checked' : ''} ${isDisabled ? 'disabled data-locked="1"' : ''}>
+                <span class="truncate ${r.enabled === false ? 'line-through' : ''}">${_escapeHtml(name)}${lockedNote ? `<span class="text-[11px] text-gray-400">${_escapeHtml(lockedNote)}</span>` : ''}</span>
+            </label>
+            <div class="flex items-center justify-end gap-2">
+                <label class="runner-phase-wrap hidden inline-flex items-center gap-1 text-[11px] text-gray-500">Phase
+                    <input type="number" class="runner-phase-input qr-input-small w-10" aria-label="${_escapeHtml(name)}: phase"
+                           data-runner="${_escapeHtml(r.id)}" value="1" min="1" ${isDisabled ? 'disabled' : ''}></label>
+                <div class="opt-single-wrap">
+                    <select data-runner="${_escapeHtml(r.id)}" class="runner-opt-select qr-input w-40 py-0.5 text-xs" aria-label="${_escapeHtml(name)}: optimization level"
+                            title="${_escapeHtml(tooltip)}" ${max === 0 || isDisabled ? 'disabled' : ''}>
+                        ${optionsHtml}
+                    </select>
+                </div>
+                <div class="multi-run-wrap hidden grid grid-cols-4 gap-1.5">${countsHtml}</div>
             </div>
         `;
-        grid.appendChild(div);
+        list.appendChild(row);
     });
 
     grid.querySelectorAll('.sim-checkbox').forEach(cb => cb.addEventListener('change', () => {
@@ -295,16 +280,13 @@ export function applyConfigModes() {
     document.querySelectorAll('.multi-run-wrap').forEach(el => el.classList.toggle('hidden', !_multiRunEnabled));
     document.querySelectorAll('.runner-phase-wrap').forEach(el => el.classList.toggle('hidden', !_orderingEnabled));
 
-    // In multi-run mode the per-level counts decide what runs, so the include
-    // checkboxes are disabled (genuinely-disabled runners stay locked off).
-    document.querySelectorAll('.sim-checkbox:not([data-locked])').forEach(cb => {
+    // In multi-run mode the per-level counts decide what runs, so the include checkboxes are
+    // hidden (backends the server disabled stay locked off).
+    document.querySelectorAll('.sim-checkbox:not([data-locked])').forEach(node => {
+        const cb = /** @type {HTMLInputElement} */ (node);
         cb.disabled = _multiRunEnabled;
-        const label = cb.closest('label');
-        if (label) label.classList.toggle('opacity-40', _multiRunEnabled);
+        cb.classList.toggle('invisible', _multiRunEnabled);
     });
-
-    const note = document.getElementById('multirun-note');
-    if (note) note.classList.toggle('hidden', !_multiRunEnabled);
     const presets = document.getElementById('ordering-presets');
     if (presets) presets.classList.toggle('hidden', !_orderingEnabled);
     updateBackendSelectionSummary();
