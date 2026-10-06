@@ -12,7 +12,7 @@ import { generateCircuit } from './app.js';
 import { closeAuthModal, handleDeleteAccount, handleLoginSubmit, handleLogout, handleRegisterSubmit, openAuthModal, toggleAuthMode } from './auth.js';
 import { addEditorToPlaylist, addToBatch, applyPreset, clearBatch, closeGeneratorModal, importPlaylist, openGeneratorModal, runAutoGeneration } from './batch.js';
 import { bmAddAllShown, bmAddSelectedToBatch, bmRenderChecklist, bmToggleSelectAll, toggleBenchSuite } from './benchmarks_select.js';
-import { openAdvanced, runWorkspace, stopWaiting, updateWorkspace } from './workspace.js';
+import { runWorkspace, stopWaiting, updateWorkspace } from './workspace.js';
 import { closeHistoryModal, deleteSelectedHistory, downloadSelectedHistory, openHistoryModal, toggleSelectAllHistory } from './history.js';
 import { closeVisualizer, copyRawJson, downloadRawJson, generateAndVisualize, renderSuiteSummary } from './renderers.js';
 import { copyCircuitQasm, downloadFullReport, exportPlaylist, exportQasm, exportRoCrate, importQasm, resetAgreementThresholds, togglePublicationOptions } from './utils.js';
@@ -75,7 +75,6 @@ Object.assign(window, {
     resetAgreementThresholds,
     togglePublicationOptions,
     // workspace.js
-    openAdvanced,
     runWorkspace,
     stopWaiting,
     updateWorkspace,

@@ -94,7 +94,7 @@ export function runnerSelectionProblem() {
         return `The backend list could not be loaded from the server${_runnersLoadError ? ` (${_runnersLoadError})` : ''}. Reload the page to try again.`;
     }
     if (getTargetSimulators().length === 0) {
-        return 'No backend is selected. Open Configuration → Backends and check at least one.';
+        return 'No backend is selected. Open the Backends chip above the run button and check at least one.';
     }
     return null;
 }
@@ -254,9 +254,9 @@ export function renderConfigPanel(runners) {
         }
 
         const div = document.createElement('div');
-        div.className = "space-y-1";
+        div.className = "grid grid-cols-[minmax(0,1fr)_11rem] items-center gap-x-2 gap-y-1";
         div.innerHTML = `
-            <div class="flex items-center justify-between mb-1">
+            <div class="flex items-center justify-between min-w-0">
                 <label class="flex items-center space-x-2 cursor-pointer ${r.enabled === false ? 'opacity-40 cursor-not-allowed line-through text-red-400' : isUnavailable ? 'opacity-40 cursor-not-allowed' : ''}"${isUnavailable && r.unavailable_reason ? ` title="${_escapeHtml(r.unavailable_reason)}"` : ''}>
                     <input type="checkbox" class="sim-checkbox h-3 w-3 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
                            data-sim="${_escapeHtml(r.id)}" ${isDefaultChecked && !isDisabled ? 'checked' : ''} ${isDisabled ? 'disabled' : ''} ${isDisabled ? 'data-locked="1"' : ''}>
@@ -274,7 +274,7 @@ export function renderConfigPanel(runners) {
                     ${optionsHtml}
                 </select>
             </div>
-            <div class="multi-run-wrap hidden flex flex-wrap">
+            <div class="multi-run-wrap hidden flex flex-wrap col-span-2">
                 ${countsHtml}
             </div>
         `;

@@ -99,7 +99,7 @@ and returns the same set of fields.
 | Qiskit Aer, Cirq, Qulacs, QuEST | PennyLane Lightning, PennyLane Default |
 | qsim-Cirq, Qibo, Qrisp, myQLM | PyQuil, TorchQuantum, Quimb, cuQuantum |
 
-The web UI runs every enabled backend unless you deselect some under Configuration → Backends. The
+The web UI runs every enabled backend unless you deselect some in the Backends chip above the run button. The
 cuQuantum runner is qiskit-aer-gpu 0.15.1 with cuStateVec enabled, on an NVIDIA GPU. On a host
 without one, `GET /runners` marks it unavailable with a reason, the backend list shows it
 greyed out, and it is not dispatched. Its kernels run on the GPU; its host-side work runs under
@@ -213,7 +213,7 @@ Two later tags mark stable versions of the web interface:
 - `stable-pre-ui-redesign` (3dd0884): the last version with the Config, Batch, Bench and
   Experiment drawers and eight result tabs.
 - `stable-ui-workspace` (0a7d863): after the first redesign step. The left column is one
-  workspace (Generate Circuits, Editor, Playlist, a Run footer, Configuration); the Summary tab
+  workspace (Generate Circuits, Editor, Playlist, a Run footer, a Configuration panel); the Summary tab
   opens with a headline naming the backends that differ; results have five tabs.
 
 ## Citing

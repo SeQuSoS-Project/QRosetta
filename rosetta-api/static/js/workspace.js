@@ -37,7 +37,7 @@ function _editorCircuitName() {
 
 /** The workspace as planRuns() reads it; `shots` and `timeout` come from validated inputs. */
 export function readWorkspace(validated = null) {
-    const compilers = _checked('mode-compilers') ? getCompilerSelection() : {};
+    const compilers = getCompilerSelection();
     return {
         source: /** @type {'list'|'editor'} */ (_radio('run-source') === 'list' ? 'list' : 'editor'),
         editor: { qasm: qasmInput?.value || '', name: getState().currentAlgoName || '' },
@@ -63,32 +63,6 @@ export function readWorkspace(validated = null) {
     };
 }
 
-/** @type {Array<[string, string|boolean, string]>} */
-const _ADVANCED_DEFAULTS = [
-    ['timing-repeats-input', '1', 'timing repeats'], ['exclusive-checkbox', false, 'exclusive timing run'],
-    ['seed-input', '', 'seed'], ['bypass-limits-checkbox', false, 'limits bypassed'],
-];
-
-/** Short list of Configuration settings that differ from their defaults, shown on the closed section. */
-function _changedSettings() {
-    const changed = [];
-    _ADVANCED_DEFAULTS.forEach(([id, dflt, label]) => {
-        const el = /** @type {HTMLInputElement|null} */ (document.getElementById(id));
-        if (!el) return;
-        const value = typeof dflt === 'boolean' ? el.checked : el.value.trim();
-        if (value !== dflt) changed.push(label);
-    });
-    const timeout = /** @type {HTMLInputElement|null} */ (document.getElementById('timeout-input'));
-    if (timeout && timeout.value !== timeout.defaultValue) changed.push(`timeout ${timeout.value} s`);
-    const pre = _radio('preprocessing');
-    if (pre && pre !== 'on') changed.push(`preprocessing ${pre}`);
-    const opt = /** @type {HTMLSelectElement|null} */ (document.getElementById('opt-global'))?.value;
-    if (opt && opt !== '0') changed.push(`global opt level ${opt}`);
-    if (document.getElementById('multirun-toggle') instanceof HTMLInputElement
-        && /** @type {HTMLInputElement} */ (document.getElementById('multirun-toggle')).checked) changed.push('multi-run mode');
-    return changed;
-}
-
 /** Run button colours, as the separate run buttons had them: editor blue, batch yellow, experiment emerald. */
 const RUN_THEMES = {
     editor: ['bg-blue-600', 'hover:bg-blue-700', 'focus:ring-blue-500'],
@@ -100,10 +74,6 @@ const RUN_THEMES = {
 export function updateWorkspace() {
     const ws = readWorkspace({ shots: 1 });
     document.getElementById('shots-container-single')?.classList.toggle('hidden', !ws.modes.measured);
-    document.getElementById('compilers-line')?.classList.toggle('hidden', !_checked('mode-compilers'));
-    const nCompilers = Object.values(getCompilerSelection()).reduce((n, levels) => n + levels.length, 0);
-    const summary = document.getElementById('compilers-summary');
-    if (summary) summary.textContent = nCompilers ? `${nCompilers} compile-only level${nCompilers === 1 ? '' : 's'} selected.` : 'No compile-only service selected.';
     const count = document.getElementById('run-source-count');
     if (count) count.textContent = String(ws.list.length);
     const listRadio = /** @type {HTMLInputElement|null} */ (document.querySelector('input[name="run-source"][value="list"]'));
@@ -127,9 +97,6 @@ export function updateWorkspace() {
             : 'Not signed in: results are kept for 30 minutes.';
     }
     _showLimitWarning(ws);
-    const changed = _changedSettings();
-    const marker = document.getElementById('advanced-changed');
-    if (marker) marker.textContent = changed.length ? `(changed: ${changed.join(', ')})` : '';
 }
 
 /** Warn before a run when the circuits exceed a ticked mode's qubit limit. */
@@ -146,17 +113,6 @@ function _showLimitWarning(ws) {
     if (ws.modes.measured && qubits > ms) notes.push(`measured runs allow ${ms}`);
     box.textContent = notes.length ? `${what}; ${notes.join(' and ')}.` : '';
     box.classList.toggle('hidden', !notes.length);
-}
-
-/** Open the Configuration section, and the sub-section with id `sectionId`, and scroll to it. */
-export function openAdvanced(sectionId) {
-    const advanced = /** @type {HTMLDetailsElement|null} */ (document.getElementById('advanced-settings'));
-    if (advanced) advanced.open = true;
-    const section = /** @type {HTMLDetailsElement|null} */ (document.getElementById(sectionId));
-    if (section) {
-        section.open = true;
-        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
 }
 
 /** Select the playlist as what runs, once it has circuits. */
@@ -306,10 +262,6 @@ export async function runWorkspace() {
         if (!checkRunCountLimits(getState().currentRunnerConfig)) return;
     }
     const ws = readWorkspace(v);
-    if (_checked('mode-compilers') && !Object.keys(ws.compilers).length) {
-        showRunErrors('single-validation-msg', ['Compile-only services is ticked but no level is selected. Choose one under Configuration → Compile-only services, or untick it.']);
-        return;
-    }
     const { runs, error } = planRuns(ws);
     if (error) { showRunErrors('single-validation-msg', [error]); return; }
     showRunErrors('single-validation-msg', []);
@@ -346,5 +298,4 @@ document.addEventListener('editor-loaded', () => {
     updateContextBar();
     updateWorkspace();
 });
-['timing-repeats-input', 'exclusive-checkbox', 'seed-input', 'bypass-limits-checkbox', 'timeout-input']
-    .forEach(id => document.getElementById(id)?.addEventListener('change', () => updateWorkspace()));
+

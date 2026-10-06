@@ -116,9 +116,9 @@
                 <h2>Quickstart: your first run</h2>
                 <p>The page opens with a three-qubit GHZ circuit in the editor, Statevector ticked and every backend the server offers selected.</p>
                 <ol class="list-decimal pl-5 space-y-1 mb-4 text-gray-700">
-                    <li>Press <strong>Run Editor Code</strong>, at the bottom of the left column, where Run, Mode, the backends line and Run Name always stay in view. The button label says what will run, for example "Run Editor Code · Statevector · 14 backends". While the run is in progress, a card per backend shows its state.</li>
+                    <li>Press <strong>Run Editor Code</strong>, at the bottom of the left column, where Run, Mode, Run Name and the settings chips always stay in view. The button label says what will run, for example "Run Editor Code · Statevector · 14 backends". While the run is in progress, a card per backend shows its state.</li>
                     <li>Read the <strong>Summary</strong> tab. Its first line says how many backends returned a result; the next line names any backend that differs from the others, for example "Qrisp differs from 13 of 13". A GHZ circuit should read "Every comparable pair of backends agrees". The Backends table gives one row per backend: its status, how many others it differs from, its bit order, precision, time and peak memory. Below it, <strong>Evidence</strong> lists the pairs grouped by verdict.</li>
-                    <li>For a measured run, choose <em>Sampler bias, 16 qubits</em> in the <strong>Examples</strong> group of the Quantum Algorithms menu and press <strong>Load</strong>. This ticks Measured. In <strong>Configuration</strong> set a <strong>Sampling seed</strong> (for example 42) so a rerun draws the same shots, then press Run Editor Code. Expect the full-distribution test to call most pairs inconclusive (16 qubits have 65,536 outcomes, far more than 8,200 shots cover; the Summary gives the shots the test would need) and the single-bit marginal test to name Qrisp, whose sampler is biased on this circuit (see <a href="#known-issues">Known backend issues</a>).</li>
+                    <li>For a measured run, choose <em>Sampler bias, 16 qubits</em> in the <strong>Examples</strong> group of the Quantum Algorithms menu and press <strong>Load</strong>. This ticks Measured. Open the <strong>Seed</strong> chip above the run button and set a <strong>Sampling seed</strong> (for example 42) so a rerun draws the same shots, then press Run Editor Code. Expect the full-distribution test to call most pairs inconclusive (16 qubits have 65,536 outcomes, far more than 8,200 shots cover; the Summary gives the shots the test would need) and the single-bit marginal test to name Qrisp, whose sampler is biased on this circuit (see <a href="#known-issues">Known backend issues</a>).</li>
                     <li>Open the other tabs when you need them: <strong>Agreement</strong> (a heatmap of every pair, the evidence per pair, and the raw matrices), <strong>Performance</strong> (times and memory), <strong>Circuits</strong> (what each backend executed), <strong>Exports</strong> (report files, RO-Crate, publication tables and figures).</li>
                 </ol>
                 <p>
@@ -193,7 +193,7 @@
                     <code>AerSimulator</code> with <code>method="statevector"</code>. The cuQuantum runner is
                     qiskit-aer-gpu 0.15.1 with cuStateVec enabled, running on an NVIDIA GPU; its results
                     also carry <code>gpu_name</code> and <code>custatevec_enabled</code>. On a server without
-                    an NVIDIA GPU it is listed as unavailable under Configuration → Backends, with the reason the server
+                    an NVIDIA GPU it is listed as unavailable in the Backends chip's list, with the reason the server
                     gives, and it is not dispatched; it never falls back to the CPU. Its kernels run on the
                     GPU, while its host-side work (parsing, launching kernels, copying results back,
                     sampling) runs under the same CPU quota as the other runners (see
@@ -263,7 +263,7 @@
             <section id="run-options">
                 <h2>Run options</h2>
                 <p>
-                    These controls sit under Configuration and apply to single runs, runs of the playlist and
+                    These controls sit in the settings chips above the run button (Backends, Execution, SDK Preprocessing, Compile-only services, Agreement Thresholds, Seed); each chip shows its current value, is highlighted when that differs from the default, and opens its controls beside it. They apply to single runs, runs of the playlist and
                     experiments alike. Each has an API field of the same meaning, listed in the Swagger UI
                     at <code>/docs</code>.
                 </p>
@@ -370,8 +370,8 @@
                         <tr><td>Editor code, Statevector or Measured</td><td><code>POST /compare</code> or <code>POST /compare_measured</code></td></tr>
                         <tr><td>The playlist</td><td><code>POST /run_batch_suite</code>, one job for every circuit</td></tr>
                         <tr><td>Statevector and Measured both ticked</td><td>Two jobs, run one after the other; compile-only services go with the first</td></tr>
-                        <tr><td>Compile-only services only (neither Statevector nor Measured ticked)</td><td>The same endpoint with <code>simulate: false</code>: only the compile-only services run, and the report records <code>simulated: false</code></td></tr>
-                        <tr><td>Configuration → Apply SDK Preprocessing → Both</td><td><code>POST /experiments</code>, below</td></tr>
+                        <tr><td>Compile-only services chosen in their chip, with neither Statevector nor Measured ticked</td><td>The same endpoint with <code>simulate: false</code>: only the compile-only services run, and the report records <code>simulated: false</code></td></tr>
+                        <tr><td>SDK Preprocessing chip → Both</td><td><code>POST /experiments</code>, below</td></tr>
                     </tbody>
                 </table>
                 <p>
@@ -423,7 +423,7 @@
                     <code>fidelity_tolerance = 1e-5</code>, <code>phase_tolerance = 1e-6</code> rad,
                     <code>norm_tolerance = 1e-4</code>, <code>js_threshold = 0.01</code> nats and
                     <code>hellinger_threshold = 0.1</code> (the server reports its defaults at
-                    <code>GET /config</code>). They can be changed under Configuration → Agreement Thresholds; the
+                    <code>GET /config</code>). They can be changed in the Agreement Thresholds chip; the
                     values sent are recorded in the report's run configuration and in every pair record, and
                     the pair record's values are the ones the label was computed with. The phase tolerance
                     of 1e-6 rad sits above single-precision rounding (about 1e-8 rad for
@@ -746,7 +746,7 @@
                 <h2>Reproducibility</h2>
                 <ul>
                     <li><strong>Seeds.</strong> Every measured run has a master seed: the one you set in the
-                        Configuration, or one the API generates and records at <code>seed</code>. Each backend
+                        the Seed chip, or one the API generates and records at <code>seed</code>. Each backend
                         receives <code>runner_seed</code> = the first 4 bytes of
                         <code>sha256("&lt;master seed&gt;:&lt;runner key&gt;")</code>, read big-endian, top bit
                         cleared; the runner key includes any <code>~opt&lt;L&gt;~run&lt;N&gt;</code> suffix.
@@ -1028,7 +1028,7 @@
                         at the cap is not started. It ends with status <code>timeout</code>,
                         <code>timeout_kind: "queue"</code> and <code>never_started: true</code>, and the Summary
                         tab says it never started.</li>
-                    <li><strong>Timeout scope.</strong> The timeout set under Configuration (the server's
+                    <li><strong>Timeout scope.</strong> The timeout set in the Execution chip (the server's
                         allowed range is shown under the field) applies to each backend separately and covers
                         starting the isolated runner process, importing the SDK, the warm-up run and the timed
                         run. In local mode the budget starts when the run leaves the runner's queue, so time
@@ -1388,7 +1388,7 @@
                     and circuits; a session token issued before the deletion stops working.
                 </p>
                 <p>
-                    Separately, and independent of an account, Configuration offers
+                    Separately, and independent of an account, the Execution chip offers
                     <strong>autosave to a local folder</strong>: each completed run is written as a JSON file
                     directly to a folder on your computer, with nothing uploaded anywhere. This needs the
                     File System Access API (Chromium-based browsers such as Chrome and Edge) and degrades gracefully

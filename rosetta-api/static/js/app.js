@@ -18,6 +18,7 @@ import { resetAgreementThresholds, setLoading } from './utils.js';
 import { fetchSelection, loadCircuitSources, menuGroups, nearestSize, selectionFor } from './circuit_sources.js';
 import { initCircuitPicker } from './circuit_picker.js';
 import { resumeJob, updateWorkspace } from './workspace.js';
+import { initSettingsBar } from './settings_bar.js';
 
 const EXECUTION_MODE_LABELS = {
     local: 'This server: local runner services',
@@ -203,6 +204,7 @@ window.onload = async () => {
     }
 
     initBenchPopover();
+    initSettingsBar();
 
     if (!restored && getState().allAlgorithms.length > 0) {
         generateCircuit();
