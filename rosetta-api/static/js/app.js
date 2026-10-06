@@ -6,7 +6,7 @@ import { updateAuthUI, verifySession } from './auth.js';
 import { initAutosave } from './autosave.js';
 import { loadCompilers } from './compilers_config.js';
 import { renderBatchQueue } from './batch.js';
-import { bmLoadChecklist, populateBenchmarkSelectors } from './benchmarks_select.js';
+import { initBenchPopover } from './benchmarks_select.js';
 import { getDynamicMaxQubits, loadRunners, updateContextBar } from './config.js';
 import { saveRunToHistory, showHistoryNotice } from './history.js';
 import { setRunSaver } from './share_links.js';
@@ -127,7 +127,7 @@ window.onload = async () => {
 
     initDomRefs();
     document.getElementById('history-save-notice-close')?.addEventListener('click', () => showHistoryNotice(''));
-    const launchers = ['generateCircuit()', 'addToBatch()', 'applyPreset()', 'loadBenchmark()',
+    const launchers = ['generateCircuit()', 'addToBatch()', 'applyPreset()',
         'bmAddSelectedToBatch()', 'runAutoGeneration()', 'clearBatch()', 'addEditorToPlaylist()']
         .flatMap(call => Array.from(document.querySelectorAll(`button[onclick="${call}"]`)));
     setAllButtons([document.getElementById('btn-run'), ...launchers]);
@@ -202,8 +202,7 @@ window.onload = async () => {
         welcomeMessage.classList.remove('text-gray-500');
     }
 
-    populateBenchmarkSelectors();
-    if (typeof bmLoadChecklist === 'function') bmLoadChecklist();
+    initBenchPopover();
 
     if (!restored && getState().allAlgorithms.length > 0) {
         generateCircuit();

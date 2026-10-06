@@ -11,8 +11,7 @@
 import { generateCircuit } from './app.js';
 import { closeAuthModal, handleDeleteAccount, handleLoginSubmit, handleLogout, handleRegisterSubmit, openAuthModal, toggleAuthMode } from './auth.js';
 import { addEditorToPlaylist, addToBatch, applyPreset, clearBatch, closeGeneratorModal, importPlaylist, openGeneratorModal, runAutoGeneration } from './batch.js';
-import { addBenchmarkToBatch, bmAddAllOfCurrentSuite, bmAddSelectedToBatch, bmRenderChecklist, bmToggleSelectAll, loadBenchmark, toggleBenchSuite } from './benchmarks_select.js';
-import { closeDrawers, toggleBenchPanel } from './drawers.js';
+import { bmAddAllShown, bmAddSelectedToBatch, bmRenderChecklist, bmToggleSelectAll, toggleBenchSuite } from './benchmarks_select.js';
 import { openAdvanced, runWorkspace, stopWaiting, updateWorkspace } from './workspace.js';
 import { closeHistoryModal, deleteSelectedHistory, downloadSelectedHistory, openHistoryModal, toggleSelectAllHistory } from './history.js';
 import { closeVisualizer, copyRawJson, downloadRawJson, generateAndVisualize, renderSuiteSummary } from './renderers.js';
@@ -49,16 +48,11 @@ Object.assign(window, {
     openGeneratorModal,
     runAutoGeneration,
     // benchmarks_select.js
-    addBenchmarkToBatch,
-    bmAddAllOfCurrentSuite,
+    bmAddAllShown,
     bmAddSelectedToBatch,
     bmRenderChecklist,
     bmToggleSelectAll,
-    loadBenchmark,
     toggleBenchSuite,
-    // drawers.js
-    closeDrawers,
-    toggleBenchPanel,
     // history.js
     closeHistoryModal,
     deleteSelectedHistory,

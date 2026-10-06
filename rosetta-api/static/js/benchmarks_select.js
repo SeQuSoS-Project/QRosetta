@@ -1,18 +1,13 @@
-// Shared benchmark-selection logic used by both the Benchmarks panel (precise multi-select)
-// and the Experiment panel (quick "add all of a suite"). One module so neither surface
-// duplicates list-fetching, normalization, or queueing.
-//
-// Benchmark queue items are lightweight references resolved server-side at run time:
+// The Playlist's Bench popover: tick MQT Bench or QASMBench circuits (with a name filter and a
+// qubit cap) and add them, or add a whole suite. Single circuits come from the Quantum
+// Algorithms menu. Queue items are references the server resolves at run time:
 //   { source: 'mqt'|'qasmbench', algorithm, qubits, name, qasm_string: null }
-// The batch worker and the experiment runner both resolve them via benchmark_library.
 
-import { qasmInput } from './dom.js';
-import { fetchMQTBench, fetchMQTList, fetchQASMBench, fetchQASMBenchList } from './api.js';
+import { fetchMQTList, fetchQASMBenchList } from './api.js';
 import { renderBatchQueue } from './batch.js';
-import { updateContextBar } from './config.js';
-import { closeDrawers } from './drawers.js';
+import { bindPopover, closePopover } from './popover.js';
 import { dispatch, getState } from './state.js';
-import { _escapeHtml, setLoading } from './utils.js';
+import { _escapeHtml } from './utils.js';
 
 export const _bmEntriesCache = {};   // suite -> normalized entries (fetched once)
 const _bmSelected = new Set();         // keys of ticked entries; kept across filter changes
@@ -104,14 +99,20 @@ export async function bmLoadChecklist() {
     }
 }
 
+/** The entries the checklist shows: the chosen suite, filtered by name and the qubit cap. */
+function _bmShownEntries() {
+    const filter = (/** @type {HTMLInputElement|null} */ (document.getElementById('bench-filter'))?.value || '').toLowerCase();
+    const maxQ = bmMaxQubits();
+    return (_bmEntriesCache[bmCurrentSuite()] || []).filter(e => e.label.toLowerCase().includes(filter) && _bmWithinCap(e, maxQ));
+}
+
 export function bmRenderChecklist() {
     const list = document.getElementById('bench-checklist');
     if (!list) return;
     const suite = bmCurrentSuite();
-    const filter = (document.getElementById('bench-filter')?.value || '').toLowerCase();
-    const maxQ = bmMaxQubits();
-    const entries = (_bmEntriesCache[suite] || [])
-        .filter(e => e.label.toLowerCase().includes(filter) && _bmWithinCap(e, maxQ));
+    const entries = _bmShownEntries();
+    const shownCount = document.getElementById('bench-shown-count');
+    if (shownCount) shownCount.textContent = String(entries.length);
 
     list.innerHTML = '';
     if (entries.length === 0) {
@@ -168,6 +169,7 @@ export function bmAddSelectedToBatch() {
     const all = /** @type {HTMLInputElement|null} */ (document.getElementById('bench-select-all'));
     if (all) all.checked = false;
     bmRenderChecklist();
+    closePopover(true);
     if (added) document.dispatchEvent(new Event('circuit-list-added'));
     if (added < items.length) {
         alert(`${items.length - added} of ${items.length} selected circuits were already in the playlist and were not added again.`);
@@ -176,149 +178,27 @@ export function bmAddSelectedToBatch() {
 
 // --- Experiment panel: quick "add all of a suite" ------------------------------------
 
-export async function bmAddAllOfSuite(suite, maxQubits) {
-    try {
-        const maxQ = Number.isFinite(maxQubits) && maxQubits > 0 ? maxQubits : Infinity;
-        const entries = (await bmSuiteEntries(suite)).filter(e => _bmWithinCap(e, maxQ));
-        const added = bmAddToQueue(entries.map(bmEntryToQueueItem));
-        renderBatchQueue();
-        if (added) document.dispatchEvent(new Event('circuit-list-added'));
-        const cap = Number.isFinite(maxQ) ? ` (≤ ${maxQ}q)` : '';
-        alert(`Added ${added} ${suite === 'mqt' ? 'MQT Bench' : 'QASMBench'}${cap} circuit(s) to the playlist`
-            + (added === 0 ? ' (all already present or above the cap).' : '.'));
-    } catch (e) {
-        alert(e.message);
+
+/** + Add all shown: every circuit the checklist shows (suite, name filter and qubit cap). */
+export function bmAddAllShown() {
+    const items = _bmShownEntries().map(bmEntryToQueueItem);
+    if (!items.length) return;
+    const added = bmAddToQueue(items);
+    closePopover(true);
+    if (added) document.dispatchEvent(new Event('circuit-list-added'));
+    if (added < items.length) {
+        alert(`${items.length - added} of ${items.length} circuits were already in the playlist and were not added again.`);
     }
 }
 
-/** Add every circuit of the suite chosen in the picker, up to the qubit cap typed beside the button. */
-export function bmAddAllOfCurrentSuite() {
-    const cap = parseInt(/** @type {HTMLInputElement|null} */ (document.getElementById('bench-all-max-qubits'))?.value || '', 10);
-    return bmAddAllOfSuite(bmCurrentSuite(), cap);
-}
-
-// --- Benchmarks panel: selectors, single fetch, load-to-editor ----------------------
-// (moved from app.js; the benchmark concern lives here)
-
-export let _mqtSizes = {};
-
-export async function populateBenchmarkSelectors() {
-    try {
-        const [mqt, qasm] = await Promise.all([fetchMQTList(), fetchQASMBenchList()]);
-        _mqtSizes = mqt || {};
-
-        const mqtSel = document.getElementById('bench-mqt-algo');
-        if (mqtSel) {
-            mqtSel.innerHTML = '';
-            Object.keys(_mqtSizes).forEach(algo => {
-                const o = document.createElement('option');
-                o.value = algo;
-                o.textContent = algo;
-                mqtSel.appendChild(o);
-            });
-            mqtSel.onchange = updateMqtQubitRange;  // idempotent: won't stack on re-populate
-            updateMqtQubitRange();
-        }
-
-        const qSel = document.getElementById('bench-qasmbench-circuit');
-        if (qSel) {
-            qSel.innerHTML = '';
-            (qasm || []).forEach(name => {
-                const o = document.createElement('option');
-                o.value = name;
-                o.textContent = name;
-                qSel.appendChild(o);
-            });
-        }
-    } catch (error) {
-        console.error('Failed to load benchmark lists:', error);
-    }
-}
-
-export function updateMqtQubitRange() {
-    const algo = document.getElementById('bench-mqt-algo')?.value;
-    const sizes = _mqtSizes[algo] || [];
-    const input = document.getElementById('bench-mqt-qubits');
-    if (!input || sizes.length === 0) return;
-    input.min = sizes[0];
-    input.max = sizes[sizes.length - 1];
-    const v = parseInt(input.value);
-    if (!(v >= sizes[0] && v <= sizes[sizes.length - 1])) input.value = sizes[0];
-}
-
+/** Switching suites reloads the checklist. */
 export function toggleBenchSuite() {
-    const suite = document.querySelector('input[name="bench-suite"]:checked').value;
-    const mqtOptions = document.getElementById('bench-mqt-options');
-    const qasmbenchOptions = document.getElementById('bench-qasmbench-options');
-    
-    if (suite === 'mqt') {
-        mqtOptions.classList.remove('hidden');
-        qasmbenchOptions.classList.add('hidden');
-    } else {
-        mqtOptions.classList.add('hidden');
-        qasmbenchOptions.classList.remove('hidden');
-    }
-    if (typeof bmLoadChecklist === 'function') bmLoadChecklist();
+    bmLoadChecklist();
 }
 
-export async function fetchBenchmarkQasm() {
-    const suite = document.querySelector('input[name="bench-suite"]:checked').value;
-    const errorDiv = document.getElementById('bench-error');
-    errorDiv.classList.add('hidden');
-    
-    try {
-        let data;
-        let title = "";
-        
-        if (suite === 'mqt') {
-            const algo = document.getElementById('bench-mqt-algo').value;
-            const qubits = document.getElementById('bench-mqt-qubits').value;
-            setLoading(true, "Fetching MQT Bench...", { overlay: false });
-            data = await fetchMQTBench(algo, qubits);
-            title = `MQT Bench: ${document.getElementById('bench-mqt-algo').options[document.getElementById('bench-mqt-algo').selectedIndex].text} (${qubits}q)`;
-        } else {
-            const circuit = document.getElementById('bench-qasmbench-circuit').value;
-            setLoading(true, "Fetching QASMBench...", { overlay: false });
-            data = await fetchQASMBench(circuit);
-            title = `QASMBench: ${document.getElementById('bench-qasmbench-circuit').options[document.getElementById('bench-qasmbench-circuit').selectedIndex].text}`;
-        }
-        
-        return { qasm: data.qasm, title: title };
-    } catch (error) {
-        errorDiv.textContent = error.message;
-        errorDiv.classList.remove('hidden');
-        return null;
-    } finally {
-        setLoading(false);
-    }
-}
-
-export async function loadBenchmark() {
-    if (getState().isProcessing) return;
-    const result = await fetchBenchmarkQasm();
-    if (result && result.qasm) {
-        qasmInput.value = result.qasm;
-        dispatch('SET_CURRENT_ALGO_NAME', result.title);
-        updateContextBar();
-        closeDrawers();
-        document.dispatchEvent(new Event('editor-loaded'));
-    }
-}
-
-export function addBenchmarkToBatch() {
-    if (getState().isProcessing) return;
-    const suite = bmCurrentSuite();
-    let item;
-    if (suite === 'mqt') {
-        const algo = document.getElementById('bench-mqt-algo').value;
-        const qubits = parseInt(document.getElementById('bench-mqt-qubits').value) || 0;
-        if (!algo) return;
-        item = { source: 'mqt', algorithm: algo, qubits, name: algo, qasm_string: null };
-    } else {
-        const circuit = document.getElementById('bench-qasmbench-circuit').value;
-        if (!circuit) return;
-        item = { source: 'qasmbench', algorithm: circuit, qubits: _bmParseQubits(circuit), name: circuit, qasm_string: null };
-    }
-    if (bmAddToQueue([item])) document.dispatchEvent(new Event('circuit-list-added'));
-    else alert('That circuit is already in the playlist.');
+/** Wire the Playlist's Bench button to its popover. */
+export function initBenchPopover() {
+    const button = document.getElementById('btn-bench');
+    const panel = document.getElementById('bench-popover');
+    if (button && panel) bindPopover(button, panel, { onOpen: bmLoadChecklist, focusSelector: '#bench-filter' });
 }

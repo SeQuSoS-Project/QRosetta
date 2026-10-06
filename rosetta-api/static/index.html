@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quantum Rosetta</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="css/tailwind.css?v=1.0.39">
+    <link rel="stylesheet" href="css/tailwind.css?v=1.0.42">
     <style>
         .loader {
             border-top-color: #3b82f6;
@@ -100,8 +100,6 @@
                             class="py-2 px-4 rounded-md text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">Load</button>
                         <button type="button" onclick="addToBatch()" title="Add the selected circuit to the playlist"
                             class="py-2 px-4 rounded-md text-sm font-medium text-indigo-700 bg-indigo-100 hover:bg-indigo-200">+ Add</button>
-                        <button type="button" onclick="toggleBenchPanel()" title="Browse the MQT Bench and QASMBench suites"
-                            class="py-2 px-4 rounded-md text-sm font-medium text-emerald-700 bg-emerald-50 border border-emerald-300 hover:bg-emerald-100">Bench</button>
                     </div>
                     <p id="algo-description" class="text-xs text-gray-500"></p>
                 </section>
@@ -132,20 +130,9 @@
                 </section>
 
                 <!-- === PLAYLIST === -->
-                <section aria-labelledby="ws-playlist" class="p-4 border border-yellow-200 rounded-lg bg-yellow-50 space-y-2">
-                    <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <section aria-labelledby="ws-playlist" class="relative p-4 border border-yellow-200 rounded-lg bg-yellow-50 space-y-2">
+                    <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                         <h2 id="ws-playlist" class="text-lg font-semibold text-yellow-900">Playlist (<span id="queue-count">0</span>)</h2>
-                        <div class="flex items-center gap-2 flex-1 min-w-[16rem]">
-                            <label for="preset-select" class="text-xs font-medium text-yellow-800 whitespace-nowrap">Quick Load:</label>
-                            <select id="preset-select" class="flex-1 min-w-0 text-xs border-yellow-300 bg-white rounded p-1">
-                                <option value="each">Sanity Check (every algorithm, 5 qubits)</option>
-                                <option value="scaling">Scaling Test (GHZ, 5 qubits to the statevector limit)</option>
-                                <option value="largest">Memory Stress (Random, BV and VQE at the statevector limit)</option>
-                            </select>
-                            <button type="button" onclick="applyPreset()" class="text-xs font-medium py-1 px-2 rounded border border-yellow-300 bg-white text-yellow-700 hover:bg-yellow-100">Apply</button>
-                            <button type="button" onclick="openGeneratorModal()" title="Add circuits of chosen algorithms at random qubit counts"
-                                class="text-xs font-medium py-1 px-2 rounded border border-yellow-300 bg-white text-yellow-700 hover:bg-yellow-100">Auto-Gen</button>
-                        </div>
                         <div class="flex gap-3 text-xs">
                             <button type="button" onclick="document.getElementById('playlist-upload').click()" class="text-yellow-800 hover:text-yellow-900 font-medium">⬆ Import JSON</button>
                             <button type="button" onclick="exportPlaylist()" class="text-yellow-800 hover:text-yellow-900 font-medium">⬇ Export JSON</button>
@@ -153,7 +140,43 @@
                             <button type="button" onclick="clearBatch()" class="text-red-600 hover:text-red-800">Clear</button>
                         </div>
                     </div>
-                    <p id="playlist-empty-hint" class="text-xs text-yellow-800">Playlist is empty. Use + Add, Quick Load or Auto-Gen to collect circuits to run together as a batch.</p>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <label for="preset-select" class="text-xs font-medium text-yellow-800 whitespace-nowrap">Quick Load:</label>
+                        <select id="preset-select" class="flex-1 min-w-[12rem] text-xs border-yellow-300 bg-white rounded p-1">
+                            <option value="each">Sanity Check (every algorithm, 5 qubits)</option>
+                            <option value="scaling">Scaling Test (GHZ, 5 qubits to the statevector limit)</option>
+                            <option value="largest">Memory Stress (Random, BV and VQE at the statevector limit)</option>
+                        </select>
+                        <button type="button" onclick="applyPreset()" class="text-xs font-medium py-1 px-2 rounded border border-yellow-300 bg-white text-yellow-700 hover:bg-yellow-100">Apply</button>
+                        <button type="button" onclick="openGeneratorModal()" title="Add circuits of chosen algorithms at random qubit counts"
+                            class="text-xs font-medium py-1 px-2 rounded border border-yellow-300 bg-white text-yellow-700 hover:bg-yellow-100">Auto-Gen</button>
+                        <button type="button" id="btn-bench" title="Add several MQT Bench or QASMBench circuits"
+                            class="text-xs font-medium py-1 px-2 rounded border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100">Bench</button>
+                    </div>
+                    <div id="bench-popover" role="dialog" aria-label="Add benchmark circuits to the playlist"
+                        class="hidden w-[min(26rem,calc(100vw-1rem))] bg-white border border-emerald-200 rounded-lg shadow-xl p-3 space-y-2">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-sm font-semibold text-emerald-900">Benchmarks</h3>
+                            <fieldset class="flex items-center gap-3 text-xs text-emerald-900">
+                                <legend class="sr-only">Suite</legend>
+                                <label class="flex items-center gap-1"><input type="radio" name="bench-suite" value="mqt" checked onchange="toggleBenchSuite()"> MQT Bench</label>
+                                <label class="flex items-center gap-1"><input type="radio" name="bench-suite" value="qasmbench" onchange="toggleBenchSuite()"> QASMBench</label>
+                            </fieldset>
+                        </div>
+                        <div class="flex gap-2">
+                            <input type="text" id="bench-filter" oninput="bmRenderChecklist()" placeholder="Filter by name" aria-label="Filter by name" class="flex-1 text-xs border border-emerald-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                            <input type="number" id="bench-max-qubits" min="1" oninput="bmRenderChecklist()" placeholder="≤ qubits" aria-label="At most this many qubits" class="w-24 text-xs border border-emerald-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                        </div>
+                        <label class="flex items-center gap-1 text-xs text-emerald-900"><input type="checkbox" id="bench-select-all" onchange="bmToggleSelectAll()"> Select all shown</label>
+                        <div id="bench-checklist" class="max-h-56 overflow-y-auto border border-emerald-100 rounded p-2 bg-white text-xs space-y-1"></div>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" onclick="bmAddSelectedToBatch()"
+                                class="flex-1 py-1.5 px-2 rounded-md text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700">+ Add selected to Playlist (<span id="bench-selected-count">0</span>)</button>
+                            <button type="button" onclick="bmAddAllShown()" title="Every circuit the list shows: with no filter and no qubit cap, the whole suite"
+                                class="py-1.5 px-2 rounded-md text-xs font-medium text-emerald-800 bg-emerald-50 border border-emerald-300 hover:bg-emerald-100">+ Add all shown (<span id="bench-shown-count">0</span>)</button>
+                        </div>
+                    </div>
+                    <p id="playlist-empty-hint" class="text-xs text-yellow-800">Playlist is empty. Use + Add, Quick Load, Auto-Gen or Bench to collect circuits to run together as a batch.</p>
                     <ul id="queue-list" class="hidden space-y-1 max-h-48 overflow-y-auto text-sm text-gray-700"></ul>
                 </section>
 
@@ -301,100 +324,6 @@
                         Run Editor Code
                     </button>
                 </section>
-
-                <!-- Shared backdrop for the slide-over drawer -->
-                <div id="drawer-backdrop" class="hidden fixed inset-0 bg-black/40 z-40 !mt-0"></div>
-
-                <!-- === BENCHMARKS DRAWER === -->
-                <div id="benchmarks-panel"
-                    class="translate-x-full fixed top-0 right-0 z-50 h-full w-full sm:max-w-md !mt-0 bg-emerald-50 shadow-2xl overflow-y-auto transform transition-transform duration-300 ease-in-out p-4">
-                    <div class="flex items-center justify-between mb-3">
-                        <h2 class="text-lg font-semibold text-emerald-900">Benchmarks</h2>
-                        <button onclick="closeDrawers()" aria-label="Close"
-                            class="text-emerald-400 hover:text-emerald-700 text-2xl leading-none">&times;</button>
-                    </div>
-                    <div class="space-y-3">
-                        <div>
-                            <label class="block text-sm font-medium text-emerald-800">Suite</label>
-                            <div class="mt-1 flex space-x-4">
-                                <label class="flex items-center">
-                                    <input type="radio" name="bench-suite" value="mqt" checked onchange="toggleBenchSuite()">
-                                    <span class="ml-2 text-sm text-emerald-900">MQT Bench</span>
-                                </label>
-                                <label class="flex items-center">
-                                    <input type="radio" name="bench-suite" value="qasmbench" onchange="toggleBenchSuite()">
-                                    <span class="ml-2 text-sm text-emerald-900">QASMBench</span>
-                                </label>
-                            </div>
-                        </div>
-
-                        <!-- MQT Bench Options -->
-                        <div id="bench-mqt-options" class="space-y-3">
-                            <div>
-                                <label for="bench-mqt-algo" class="block text-sm font-medium text-emerald-800">Algorithm</label>
-                                <select id="bench-mqt-algo" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-emerald-300 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm rounded-md">
-                                    <!-- Populated dynamically from /benchmarks/mqt/list -->
-                                </select>
-                            </div>
-                            <div>
-                                <label for="bench-mqt-qubits" class="block text-sm font-medium text-emerald-800">Qubits</label>
-                                <input type="number" id="bench-mqt-qubits" value="4" min="2" max="24"
-                                    class="mt-1 block w-full border border-emerald-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm">
-                            </div>
-                        </div>
-
-                        <!-- QASMBench Options -->
-                        <div id="bench-qasmbench-options" class="hidden space-y-3">
-                            <div>
-                                <label for="bench-qasmbench-circuit" class="block text-sm font-medium text-emerald-800">Circuit</label>
-                                <select id="bench-qasmbench-circuit" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-emerald-300 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm rounded-md">
-                                    <!-- Populated dynamically from /benchmarks/qasmbench/list -->
-                                </select>
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-2 gap-2 mt-2">
-                            <button onclick="loadBenchmark()"
-                                class="col-span-1 flex justify-center py-2 px-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none">
-                                Load to Editor
-                            </button>
-                            <button onclick="addBenchmarkToBatch()"
-                                class="col-span-1 flex justify-center py-2 px-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-emerald-700 bg-emerald-100 hover:bg-emerald-200 focus:outline-none">
-                                + Add to Playlist
-                            </button>
-                        </div>
-                        <div id="bench-error" class="hidden text-xs text-red-600 mt-2"></div>
-                        <div class="border-t border-emerald-200 pt-3 mt-3">
-                            <span class="block text-sm font-medium text-emerald-800 mb-1">Add a whole suite</span>
-                            <div class="flex space-x-2">
-                                <input type="number" id="bench-all-max-qubits" min="1" placeholder="≤ qubits"
-                                    class="w-24 text-xs border border-emerald-300 rounded px-2 py-1 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
-                                <button type="button" onclick="bmAddAllOfCurrentSuite()"
-                                    class="flex-1 text-xs font-medium py-1 px-2 rounded border border-emerald-300 text-emerald-800 bg-white hover:bg-emerald-50">+ Add whole suite to Playlist</button>
-                            </div>
-                        </div>
-
-                        <div class="border-t border-emerald-200 pt-3 mt-3">
-                            <div class="flex items-center justify-between mb-1">
-                                <span class="text-sm font-medium text-emerald-800">Bulk select</span>
-                                <label class="flex items-center text-xs text-emerald-800 cursor-pointer">
-                                    <input type="checkbox" id="bench-select-all" onchange="bmToggleSelectAll()" class="mr-1">Select all</label>
-                            </div>
-                            <div class="flex space-x-2 mb-2">
-                                <input type="text" id="bench-filter" oninput="bmRenderChecklist()" placeholder="filter"
-                                    class="flex-1 text-xs border border-emerald-300 rounded px-2 py-1 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
-                                <input type="number" id="bench-max-qubits" min="1" oninput="bmRenderChecklist()" placeholder="≤ qubits"
-                                    class="w-24 text-xs border border-emerald-300 rounded px-2 py-1 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500">
-                            </div>
-                            <div id="bench-checklist"
-                                class="max-h-48 overflow-y-auto border border-emerald-200 rounded p-2 bg-white text-xs space-y-1"></div>
-                            <button onclick="bmAddSelectedToBatch()"
-                                class="mt-2 w-full flex justify-center py-2 px-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-emerald-700 bg-emerald-100 hover:bg-emerald-200 focus:outline-none">
-                                + Add selected to Playlist (<span id="bench-selected-count">0</span>)
-                            </button>
-                        </div>
-                    </div>
-                </div>
 
             </div>
 
@@ -891,7 +820,7 @@
     </template>
 
     <!-- Single entry point; the module graph pulls in the rest. -->
-    <script type="module" src="js/main.js?v=1.0.39"></script>
+    <script type="module" src="js/main.js?v=1.0.42"></script>
 
 </body>
 
