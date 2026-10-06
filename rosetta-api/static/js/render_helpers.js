@@ -225,8 +225,37 @@ export function _tag(text, colorClasses, title) {
     return span;
 }
 
+// Tag colours describe a run; none of them reuses a status colour (green agree, yellow bit-order
+// agreement, red disagree, orange error, purple timeout). Gray: a plain fact. Amber: a condition
+// worth checking. Each fact with a few values has its own hue, and its values differ by fill:
+// sky for bit order, slate for the sampling method.
 export const TAG_GRAY = 'bg-gray-100 text-gray-600 border-gray-200';
 export const TAG_AMBER = 'bg-amber-100 text-amber-800 border-amber-300';
+
+const BIT_ORDER_TAGS = {
+    lsb: { label: 'LSB', color: 'bg-sky-100 text-sky-800 border-sky-300', title: 'LSB: qubit 0 is the rightmost bit of a basis-state label.' },
+    msb: { label: 'MSB', color: 'bg-white text-sky-800 border-sky-300', title: 'MSB: qubit 0 is the leftmost bit of a basis-state label.' },
+};
+
+const SAMPLING_TAGS = {
+    native: { label: 'Native', color: 'bg-white text-slate-700 border-slate-400', title: 'The backend sampled the shots itself.' },
+    sv_sample: { label: 'SV-Sample', color: 'bg-slate-200 text-slate-800 border-slate-400', title: 'Shots drawn from the computed statevector (multinomial).' },
+    tn_sample: { label: 'TN-Sample', color: 'bg-slate-600 text-white border-slate-600', title: 'Shots sampled from tensor-network amplitudes.' },
+};
+
+/** The bit order a backend declares, LSB and MSB told apart by colour. */
+export function bitOrderTag(order) {
+    if (!order) return null;
+    const cfg = BIT_ORDER_TAGS[String(order).toLowerCase()];
+    return cfg ? _tag(cfg.label, cfg.color, cfg.title) : _tag(String(order), TAG_GRAY, 'Qubit ordering declared by the runner');
+}
+
+/** How a measured run's shots were drawn. */
+export function samplingTag(method) {
+    if (!method) return null;
+    const cfg = SAMPLING_TAGS[method];
+    return cfg ? _tag(cfg.label, cfg.color, `Sampling method: ${cfg.title}`) : _tag(String(method), TAG_GRAY, 'Sampling method');
+}
 
 /** A backend's precision tag; complex64 is highlighted. */
 export function precisionTag(precision) {
@@ -263,11 +292,12 @@ export function executionTags(r, { device = true } = {}) {
     if (isGpuRun(r) && r.custatevec_enabled === true) {
         tags.push(_tag('cuStateVec', TAG_AMBER, deviceTitle(r)));
     }
-    if (r.simulator_backend) {
-        tags.push(_tag(String(r.simulator_backend), TAG_GRAY, `Simulator library that executed the circuit: ${r.simulator_backend}`));
-    }
-    if (r.simulation_method) {
-        tags.push(_tag(String(r.simulation_method), TAG_GRAY, `Simulation method: ${r.simulation_method}`));
+    if (r.simulator_backend || r.simulation_method) {
+        const library = r.simulator_backend ? String(r.simulator_backend).split(/[\s(]/)[0] : '';
+        const text = [library, r.simulation_method].filter(Boolean).join(' · ');
+        const title = [r.simulator_backend && `Simulator library that executed the circuit: ${r.simulator_backend}.`,
+            r.simulation_method && `Simulation method: ${r.simulation_method}.`].filter(Boolean).join(' ');
+        tags.push(_tag(text, TAG_GRAY, title));
     }
     return tags;
 }

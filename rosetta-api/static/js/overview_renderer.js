@@ -3,7 +3,7 @@
 
 import { backendVerdicts, headlineModel } from './backend_verdicts.js';
 import { labelDefinition, labelText } from './labels.js';
-import { STATUS_STYLES, _chip, _displayRunnerName, fmtInt, fmtNum, precisionTag } from './render_helpers.js';
+import { STATUS_STYLES, _chip, _displayRunnerName, bitOrderTag, fmtInt, fmtNum, precisionTag } from './render_helpers.js';
 import { RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, recommendedShots, runnerStatus } from './run_status.js';
 import { setTip } from './tooltip.js';
 
@@ -178,12 +178,13 @@ export function renderBackendTable(panel, data, verdicts) {
         st.className = 'px-2 py-1';
         st.appendChild(_chip(STATUS_STYLES[RUNNER_STATUS_STYLE[status] || 'offline'].badge, RUNNER_STATUS_LABEL[status] || status, labelDefinition(status)));
         const order = document.createElement('td');
-        order.className = 'px-2 py-1 font-mono';
-        order.textContent = b.bitOrder || '—';
+        order.className = 'px-2 py-1';
+        const orderTag = bitOrderTag(b.bitOrder);
+        if (orderTag) { orderTag.classList.remove('ml-1'); order.appendChild(orderTag); } else order.textContent = '—';
         const prec = document.createElement('td');
         prec.className = 'px-2 py-1';
         const tag = raw ? precisionTag(raw.precision) : null;
-        if (tag) prec.appendChild(tag); else prec.textContent = '—';
+        if (tag) { tag.classList.remove('ml-1'); prec.appendChild(tag); } else prec.textContent = '—';
         const time = document.createElement('td');
         time.className = 'px-2 py-1 font-mono';
         time.textContent = typeof raw?.execution_time_sec === 'number' ? fmtNum(raw.execution_time_sec) : '—';

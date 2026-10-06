@@ -3,16 +3,10 @@
 
 import {
     QUEUE_WAIT_SHOWN_SEC, TAG_AMBER, TAG_GRAY, _applyLegendDots, _cloneTemplate, _displayRunnerName,
-    _makeStatusCell, _tag, cpuQuotaPhrase, deviceTitle, executionTags, fmtInt, fmtNum, getOptBadge, isGpuRun, coreClasses, mixedCoresText, outsideProcessText, precisionTag, simulationCoreSpeeds, unstableText, queueWaitText, throttleText,
+    _makeStatusCell, _tag, bitOrderTag, cpuQuotaPhrase, deviceTitle, executionTags, fmtInt, fmtNum, getOptBadge, isGpuRun, coreClasses, mixedCoresText, outsideProcessText, precisionTag, samplingTag, simulationCoreSpeeds, unstableText, queueWaitText, throttleText,
     renderTooltip,
 } from './render_helpers.js';
 import { RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, runnerStatus, userFacingError } from './run_status.js';
-
-const SAMPLING_TAGS = {
-    native: { label: 'Native', color: 'bg-green-100 text-green-700 border-green-200', title: 'The backend sampled the shots itself.' },
-    sv_sample: { label: 'SV-Sample', color: 'bg-blue-100 text-blue-700 border-blue-200', title: 'Shots drawn from the computed statevector (multinomial).' },
-    tn_sample: { label: 'TN-Sample', color: 'bg-orange-100 text-orange-700 border-orange-200', title: 'Shots sampled from tensor-network amplitudes.' },
-};
 
 const MISSING_METRIC_REASON = {
     execution_time_sec: 'missing_timing',
@@ -51,18 +45,15 @@ function _rawIndex(rawResults) {
     return map;
 }
 
-function _fillSimulatorCell(td, simulatorName, config, raw, { memory = false } = {}) {
-    td.appendChild(document.createTextNode(_displayRunnerName(simulatorName)));
-    if (raw?.qubit_ordering) {
-        td.appendChild(_tag(String(raw.qubit_ordering).toUpperCase(), TAG_GRAY,
-            'Qubit ordering declared by the runner'));
-    }
-    if (raw?.sampling_method) {
-        const cfg = SAMPLING_TAGS[raw.sampling_method];
-        td.appendChild(cfg
-            ? _tag(cfg.label, cfg.color, `Sampling method: ${cfg.title}`)
-            : _tag(String(raw.sampling_method), TAG_GRAY, 'Sampling method'));
-    }
+/** The backend's name, then its tags on one wrapping line below it. */
+function _fillSimulatorCell(cell, simulatorName, config, raw, { memory = false } = {}) {
+    cell.appendChild(document.createTextNode(_displayRunnerName(simulatorName)));
+    const td = document.createElement('div');
+    td.className = 'mt-1 flex flex-wrap gap-1 font-normal [&>*]:ml-0';
+    const order = bitOrderTag(raw?.qubit_ordering);
+    if (order) td.appendChild(order);
+    const sampling = samplingTag(raw?.sampling_method);
+    if (sampling) td.appendChild(sampling);
     const prec = precisionTag(raw?.precision);
     if (prec) td.appendChild(prec);
     executionTags(raw, { device: false }).forEach(tag => td.appendChild(tag));
@@ -86,6 +77,7 @@ function _fillSimulatorCell(td, simulatorName, config, raw, { memory = false } =
     }
     const badge = getOptBadge(simulatorName, config);
     if (badge) td.appendChild(badge);
+    if (td.childElementCount) cell.appendChild(td);
 }
 
 const UNSTABLE_LABEL = '1.3×';
@@ -332,7 +324,7 @@ export function renderRankingTable(report, key, unit, panel, config = {}, rawRes
         }
         tr.appendChild(rankTd);
         const simTd = document.createElement('td');
-        simTd.className = 'px-4 py-3 text-sm font-medium text-gray-900';
+        simTd.className = 'px-4 py-3 text-sm font-medium text-gray-900 min-w-[13rem]';
         _fillSimulatorCell(simTd, r.simulator, config, raw, { memory: isMemory });
         tr.appendChild(simTd);
         tr.appendChild(_deviceCell(raw));
@@ -355,7 +347,7 @@ export function renderRankingTable(report, key, unit, panel, config = {}, rawRes
         rankTd.textContent = 'not ranked';
         tr.appendChild(rankTd);
         const simTd = document.createElement('td');
-        simTd.className = 'px-4 py-3 text-sm font-medium text-gray-900';
+        simTd.className = 'px-4 py-3 text-sm font-medium text-gray-900 min-w-[13rem]';
         _fillSimulatorCell(simTd, r.simulator, config, raw, { memory: isMemory });
         const reason = document.createElement('div');
         reason.className = 'text-[11px] font-normal text-gray-500';
