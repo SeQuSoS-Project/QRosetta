@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quantum Rosetta</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="css/tailwind.css?v=1.0.50">
+    <link rel="stylesheet" href="css/tailwind.css?v=1.0.51">
     <style>
         .loader {
             border-top-color: #3b82f6;
@@ -361,21 +361,19 @@
             <!-- === RIGHT PANEL (RESULTS) === -->
             <div class="w-full md:w-1/2 p-4 sm:p-6 lg:p-8 flex flex-col overflow-y-auto bg-gray-50">
                 <div class="flex-1 flex flex-col rounded-lg min-h-0 min-w-0 relative bg-white border border-gray-200 shadow-sm overflow-hidden">
-                    <div id="loader"
-                        class="absolute inset-0 z-10 flex-col bg-white bg-opacity-97 rounded-lg hidden overflow-y-auto transition-opacity duration-300">
-                        <div class="p-5 flex flex-col h-full min-h-0">
-                            <div class="border-b border-indigo-100 pb-3 mb-4 flex-shrink-0">
-                                <p class="font-mono text-xs text-indigo-300 tracking-widest uppercase">quantum rosetta · compute</p>
-                                <h2 id="loader-text" class="font-mono font-bold text-indigo-800 text-sm tracking-wide mt-1">Processing...</h2>
-                                <!-- Batch-suite progress, filled by the poller -->
-                                <div id="batch-progress" class="hidden mt-2"></div>
-                            </div>
-                            <div id="runner-status-grid" class="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2 content-start overflow-y-auto"></div>
-                            <div class="mt-4 pt-3 border-t border-indigo-100 flex-shrink-0 text-center">
-                                <span id="loader-elapsed" class="font-mono text-xs text-indigo-300">0s elapsed</span>
+                    <div id="loader" class="absolute inset-0 z-10 flex-col bg-white rounded-lg hidden overflow-y-auto">
+                        <div id="loader-tabs"></div>
+                        <div class="p-4">
+                            <p id="loader-kicker" class="text-xs font-medium uppercase tracking-wide text-gray-400"></p>
+                            <h2 id="loader-text" class="text-xl font-semibold text-gray-900 mt-1">Processing</h2>
+                            <p class="text-sm text-gray-600 mt-1 mb-4 flex flex-wrap items-center gap-x-1.5">
+                                <span id="loader-progress" role="status"></span>
+                                <span id="loader-elapsed">0 s elapsed</span>
                                 <button type="button" id="btn-stop-waiting" onclick="stopWaiting()" title="The job keeps running on the server; reopen this page to see its results."
-                                    class="ml-3 text-xs text-indigo-600 hover:text-indigo-800 underline">Stop waiting</button>
-                            </div>
+                                    class="ml-2 text-indigo-700 hover:text-indigo-900 underline">Stop waiting</button>
+                            </p>
+                            <div id="batch-progress"></div>
+                            <div id="runner-status-grid"></div>
                         </div>
                     </div>
 
@@ -847,7 +845,7 @@
     </template>
 
     <!-- Single entry point; the module graph pulls in the rest. -->
-    <script type="module" src="js/main.js?v=1.0.50"></script>
+    <script type="module" src="js/main.js?v=1.0.51"></script>
 
 </body>
 

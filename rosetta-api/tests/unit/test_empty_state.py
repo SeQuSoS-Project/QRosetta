@@ -14,7 +14,7 @@ EXAMPLES = [{"value": "example:rotation_1q.qasm", "label": "Single rotation (sta
 def _model(**over):
     data = {"source": "editor", "circuitName": "GHZ State (3q)", "playlist": ["GHZ State (3q)", "qft (4q)"],
             "modes": {"statevector": True, "measured": False}, "preprocessing": "on", "compilerCount": 0,
-            "backends": ["Cirq (Google)", "Qiskit (IBM)"], "backendsLoaded": True, "examples": EXAMPLES}
+            "backends": [{"key": "cirq", "name": "Cirq (Google)"}, {"key": "qiskit", "name": "Qiskit (IBM)"}], "backendsLoaded": True, "examples": EXAMPLES}
     data.update(over)
     (model,) = call_js(["empty_state.js"], [("emptyStateModel", [data])])
     return model
@@ -49,6 +49,7 @@ def test_backend_columns_match_the_summary_table():
     assert _model()["table"]["columns"] == [c for c in summary if c != "Inconclusive with"]
     assert _model(modes={"statevector": False, "measured": True})["table"]["columns"] == summary
     assert [r[0] for r in _model()["table"]["rows"]] == ["Cirq (Google)", "Qiskit (IBM)"]
+    assert _model()["table"]["keys"] == ["cirq", "qiskit"]
 
 
 def test_playlist_columns_match_the_suite_table():
@@ -77,3 +78,10 @@ def test_sentence_names_the_runs():
     both = _model(modes={"statevector": True, "measured": True})["text"]
     assert "as a statevector run and then as a measured run, and compares" in both
     assert "preprocessing on and then off" in _model(preprocessing="both")["text"]
+
+
+def test_running_view_reuses_the_placeholder_and_keeps_the_sent_label():
+    text = (_STATIC / "js" / "status_cards.js").read_text()
+    assert "from './empty_state.js'" in text and "placeholderTable(" in text and "greyTabs(" in text
+    assert re.search(r"running:\s*\{[^}]*label: 'SENT'", text)
+    assert "font-mono" not in text

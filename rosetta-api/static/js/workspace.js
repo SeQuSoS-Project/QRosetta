@@ -21,6 +21,7 @@ import { getAgreementThresholds, getSeed, setLoading } from './utils.js';
 import { batchItemLabel, renderBatchQueue } from './batch.js';
 import { exampleOptions } from './circuit_sources.js';
 import { emptyStateModel, renderEmptyState } from './empty_state.js';
+import { setRunKicker, startRunView } from './status_cards.js';
 import { _displayRunnerName } from './render_helpers.js';
 
 const _checked = id => !!/** @type {HTMLInputElement|null} */ (document.getElementById(id))?.checked;
@@ -105,20 +106,37 @@ export function updateWorkspace() {
 
 /** The results area before a result: what Run will do and the table it will fill. */
 function _renderEmptyState(ws) {
-    const model = emptyStateModel({
+    renderEmptyState(document.getElementById('empty-state'), _emptyModel(ws), {
+        onExample: value => document.dispatchEvent(new CustomEvent('open-circuit', { detail: value })),
+    });
+}
+
+/** The screen-before-a-run model of the workspace `ws`. */
+function _emptyModel(ws) {
+    return emptyStateModel({
         source: ws.source,
         circuitName: ws.editor.name,
         playlist: ws.list.map(batchItemLabel),
         modes: ws.modes,
         preprocessing: ws.preprocessing,
         compilerCount: Object.values(ws.compilers).reduce((n, levels) => n + levels.length, 0),
-        backends: [...ws.common.target_simulators].sort().map(_displayRunnerName),
+        backends: [...ws.common.target_simulators].sort().map(key => ({ key, name: _displayRunnerName(key) })),
         backendsLoaded: getEnabledRunnerIds().length > 0,
         examples: exampleOptions(),
     });
-    renderEmptyState(document.getElementById('empty-state'), model, {
-        onExample: value => document.dispatchEvent(new CustomEvent('open-circuit', { detail: value })),
+}
+
+const _TABS_BY_KIND = { batch: ['Suite Summary', 'Exports'], experiment: [] };
+
+/** Show the running view for one planned run: the tabs and table of the screen before it. */
+function _startRunView(ws, run) {
+    const model = _emptyModel({
+        ...ws,
+        modes: { statevector: run.mode === 'statevector', measured: run.mode === 'measured' },
+        preprocessing: run.kind === 'experiment' ? 'both' : ws.preprocessing,
     });
+    const tabs = _TABS_BY_KIND[run.kind] ?? model.tabs;
+    startRunView({ tabs, table: model.table, compilerIds: Object.keys(ws.compilers), nameOf: _displayRunnerName });
 }
 
 /** Warn before a run when the circuits exceed a ticked mode's qubit limit. */
@@ -242,7 +260,8 @@ async function _runAll(runs) {
         for (let i = 0; i < runs.length; i++) {
             const run = runs[i];
             const step = runs.length > 1 ? ` (${i + 1} of ${runs.length})` : '';
-            setLoading(true, `Submitting ${run.title}${step}...`);
+            _startRunView(readWorkspace(), run);
+            setLoading(true, `${run.title}${step}`);
             let jobId;
             try {
                 jobId = await _submit(run.endpoint, run.payload);
@@ -255,7 +274,8 @@ async function _runAll(runs) {
                           runner_config: run.payload.runner_config || {}, submitted_at: Date.now(),
                           remaining: runs.slice(i + 1).map(r => r.title) };
             savePendingJob(job);
-            setLoading(true, `Running ${run.title}${step}...`, { startedAt: job.submitted_at });
+            setRunKicker('Running');
+            setLoading(true, `${run.title}${step}`, { startedAt: job.submitted_at });
             const entry = await _await(job);
             _finished.push(entry);
             if (entry.stopped) break;
@@ -302,7 +322,9 @@ export async function resumeJob(job) {
     _finished = [];
     clearReport();
     dispatch('SET_PROCESSING', true);
-    setLoading(true, `Running ${job.title}...`, { startedAt: job.submitted_at });
+    startRunView({ tabs: _TABS_BY_KIND[job.kind] ?? ['Summary', 'Agreement', 'Performance', 'Circuits', 'Exports'], nameOf: _displayRunnerName });
+    setRunKicker('Running');
+    setLoading(true, job.title, { startedAt: job.submitted_at });
     try {
         _finished.push(await _await(job));
     } finally {

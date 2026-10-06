@@ -1,7 +1,7 @@
 // Frontend logic for api functionality.
 
 import { getState } from './state.js';
-import { renderBatchProgress, updateRunnerStatuses } from './status_cards.js';
+import { renderBatchProgress, setRunKicker, updateRunnerStatuses } from './status_cards.js';
 
 export let BASE_URL = '';
 if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
@@ -100,8 +100,7 @@ export async function pollJobStatus(jobId) {
                     const executionMode = getState().executionMode;
                     const targetName = executionMode === 'local' ? "this server's runners"
                         : executionMode === 'kubernetes' ? 'the Kubernetes cluster' : 'the server';
-                    const loaderText = document.getElementById('loader-text');
-                    if (loaderText) loaderText.textContent = `Running on ${targetName}...`;
+                    setRunKicker(`Running on ${targetName}`);
                     setTimeout(checkStatus, 3000);
                 }
             } catch (err) {

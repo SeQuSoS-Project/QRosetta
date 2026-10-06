@@ -4,7 +4,7 @@
 import { allButtons } from './dom.js';
 import { BASE_URL, apiDetailText, getAuthHeaders } from './api.js';
 
-import { renderBatchProgress, _stopRunnerCardTimer } from './status_cards.js';
+import { endRunView } from './status_cards.js';
 import { dispatch, getState } from './state.js';
 
 export let _loaderElapsedTimer = null;
@@ -26,16 +26,15 @@ export function setLoading(isLoading, message = "Processing...", options = {}) {
     if (isLoading) {
         if (overlay) {
             if (loaderText) loaderText.textContent = message;
-            renderBatchProgress(null);
             loader.classList.remove('hidden');
             loader.classList.add('flex');
             if (!_loaderElapsedTimer) {
                 const startTime = typeof options.startedAt === 'number' ? Math.min(options.startedAt, Date.now()) : Date.now();
                 const elapsedEl = document.getElementById('loader-elapsed');
-                if (elapsedEl) elapsedEl.textContent = `${Math.floor((Date.now() - startTime) / 1000)}s elapsed`;
+                if (elapsedEl) elapsedEl.textContent = `${Math.floor((Date.now() - startTime) / 1000)} s elapsed`;
                 _loaderElapsedTimer = setInterval(() => {
                     const el = document.getElementById('loader-elapsed');
-                    if (el) el.textContent = `${Math.floor((Date.now() - startTime) / 1000)}s elapsed`;
+                    if (el) el.textContent = `${Math.floor((Date.now() - startTime) / 1000)} s elapsed`;
                 }, 1000);
             }
         } else if (busyToast) {
@@ -56,11 +55,9 @@ export function setLoading(isLoading, message = "Processing...", options = {}) {
             clearInterval(_loaderElapsedTimer);
             _loaderElapsedTimer = null;
         }
-        _stopRunnerCardTimer();
-        const grid = document.getElementById('runner-status-grid');
-        if (grid) grid.innerHTML = '';
+        endRunView();
         const elapsedEl = document.getElementById('loader-elapsed');
-        if (elapsedEl) elapsedEl.textContent = '0s elapsed';
+        if (elapsedEl) elapsedEl.textContent = '0 s elapsed';
     }
 }
 
