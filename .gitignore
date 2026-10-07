@@ -12,9 +12,6 @@ build/
 dist/
 *.egg-info/
 
-# Docker
-.dockerignore
-
 # OS
 .DS_Store
 Thumbs.db
