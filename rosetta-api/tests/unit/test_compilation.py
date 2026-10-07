@@ -404,3 +404,13 @@ def test_undeployed_compilers_are_rejected(monkeypatch):
         compilation.validate_compilers({"qsynth": [0]})
     assert exc.value.status_code == 400 and "not deployed" in exc.value.detail
     compilation.validate_compilers({"pyzx": [1]})
+
+
+def test_every_offered_level_fits_the_compile_job_cap():
+    from config import settings
+    from schemas import QasmPayload
+    every = {cid: sorted(c["optimization_levels"])
+             for cid, c in settings.get_compiler_services().items() if c.get("enabled", True)}
+    payload = QasmPayload(qasm_string='OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[1];\nh q[0];\n',
+                          compilers=every, simulate=False)
+    assert sum(len(v) for v in payload.compilers.values()) == settings.max_compile_jobs()

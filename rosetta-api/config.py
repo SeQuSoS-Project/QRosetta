@@ -33,7 +33,6 @@ class Settings(BaseSettings):
     QSYNTH_COMPILER_URL: str = "http://qsynth-compiler:8000"
     QUARTZ_COMPILER_URL: str = "http://quartz-compiler:8000"
     SYNTHETIQ_COMPILER_URL: str = "http://synthetiq-compiler:8000"
-    MAX_COMPILE_JOBS: int = 15
 
     PLATFORM_VERSION: str = os.getenv("QROSETTA_VERSION", "1.0.0")
 
@@ -289,6 +288,11 @@ class Settings(BaseSettings):
                 }
             }
         }
+
+    def max_compile_jobs(self) -> int:
+        """Compile jobs one circuit may request: every level of every enabled compiler once."""
+        return sum(len(c["optimization_levels"])
+                   for c in self.get_compiler_services().values() if c.get("enabled", True))
 
     def get_compiler_services(self):
         """Canonical compile-only service id -> base_url, display name, enabled flag and

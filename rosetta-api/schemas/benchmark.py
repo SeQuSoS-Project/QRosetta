@@ -150,8 +150,9 @@ def _check_compilers(value):
         if len(set(levels)) != len(levels):
             raise ValueError(f"compilers[{name!r}] repeats a level; compilation is deterministic")
         total += len(levels)
-    if total > settings.MAX_COMPILE_JOBS:
-        raise ValueError(f"at most {settings.MAX_COMPILE_JOBS} compile jobs per circuit")
+    limit = settings.max_compile_jobs()
+    if total > limit:
+        raise ValueError(f"at most {limit} compile jobs per circuit")
     return value
 
 
