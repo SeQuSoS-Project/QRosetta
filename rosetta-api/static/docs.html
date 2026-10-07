@@ -686,7 +686,11 @@
                     are bits 2–4. In an <code>lsb</code> key, classical bit 0 is the rightmost character; in an
                     <code>msb</code> key it is the leftmost. A circuit without measurements, in measured mode,
                     gets a measure-all appended for backends that sample natively (see
-                    <a href="#preprocessing">Circuit preprocessing</a>).
+                    <a href="#preprocessing">Circuit preprocessing</a>): a new register named
+                    <code>meas</code> (<code>meas0</code>, <code>meas1</code>, … if the name is taken),
+                    declared after the circuit's own, with qubit k read into <code>meas[k]</code>.
+                    Backends that sample a final statevector read out the same register, so every key
+                    holds the declared classical bits (all 0) followed by <code>meas</code>.
                 </p>
             </section>
 

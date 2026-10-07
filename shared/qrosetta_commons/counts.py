@@ -31,8 +31,10 @@ STATEVECTOR_REORDER_NOTE = (
     "after the timed window; the index convention (qubit_ordering) is unchanged.")
 
 IMPLICIT_MEASURE_ALL_NOTE = (
-    "The circuit has no measure statements, so every qubit is read out: counts keys hold one "
-    "bit per declared qubit in declaration order.")
+    "The circuit has no measure statements, so every qubit is read out into an added "
+    "classical register '{creg}', declared after the circuit's own (qubit k in declaration "
+    "order into {creg}[k]), as the API's measure-all for natively sampling runners does. "
+    "Counts keys hold the circuit's declared classical bits, which read 0, and then {creg}.")
 
 _QREG_RE = re.compile(r"^qreg\s+(\w+)\s*\[\s*(\d+)\s*\]$")
 _CREG_RE = re.compile(r"^creg\s+(\w+)\s*\[\s*(\d+)\s*\]$")
@@ -43,11 +45,26 @@ _ARG_RE = re.compile(r"^(\w+)\s*(?:\[\s*(\d+)\s*\])?$")
 _NAME_RE = re.compile(r"^([A-Za-z_]\w*)")
 _LINE_COMMENT_RE = re.compile(r"//[^\n]*")
 _BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.S)
+_IDENT_RE = re.compile(r"[A-Za-z_]\w*")
 _SKIPPED_KEYWORDS = ("OPENQASM", "include", "opaque", "barrier")
+MEASURE_ALL_BASE = "meas"
 
 
 def _strip_comments(qasm: str) -> str:
     return _LINE_COMMENT_RE.sub("", _BLOCK_COMMENT_RE.sub("", qasm))
+
+
+def measure_all_register(qasm: str) -> str:
+    """Name of the register a measure-all appends: ``meas``, else ``meas0``, ``meas1``, ...
+
+    The name differs from every identifier in the circuit (comments excluded).
+    """
+    taken = set(_IDENT_RE.findall(_strip_comments(qasm)))
+    name, i = MEASURE_ALL_BASE, 0
+    while name in taken:
+        name = f"{MEASURE_ALL_BASE}{i}"
+        i += 1
+    return name
 
 
 def _statements(qasm: str):
@@ -114,12 +131,14 @@ class MeasurementLayout:
         """``{flat_clbit: flat_qubit}`` for every written classical bit; the last write wins."""
         return {c: q for q, c in self.measures}
 
-    def implicit_measure_all(self) -> "MeasurementLayout":
-        """A layout reading every qubit into its own classical bit, in declaration order."""
+    def implicit_measure_all(self, creg: str) -> "MeasurementLayout":
+        """This layout plus a register ``creg`` after the declared ones, reading qubit k into
+        ``creg[k]`` in declaration order (the declared classical bits stay, unwritten)."""
+        offset = self.n_clbits
         return MeasurementLayout(
-            self.qregs, [("meas", self.n_qubits)],
-            [(q, q) for q in range(self.n_qubits)], self.non_terminal, self.has_reset,
-            self.has_classical_control)
+            self.qregs, self.cregs + [(creg, self.n_qubits)],
+            [(q, offset + q) for q in range(self.n_qubits)], self.non_terminal,
+            self.has_reset, self.has_classical_control)
 
     def key(self, bits, bit_order: str) -> str:
         """Key for ``bits`` indexed by flat classical bit."""
@@ -355,12 +374,15 @@ def prepare_final_state_sampling(qasm: str):
     """For runners that draw shots from a final state: ``(stripped_qasm, layout, notes)``.
 
     Raises ValueError when a measurement is not terminal. A circuit without measure
-    statements reads out every qubit.
+    statements reads out every qubit into a register appended after the declared ones
+    (``measure_all_register``), matching the circuit the API sends natively sampling runners.
     """
     layout = parse_measurement_layout(qasm)
     layout.require_terminal()
     if not layout.has_measurements:
-        return qasm, layout.implicit_measure_all(), [IMPLICIT_MEASURE_ALL_NOTE]
+        creg = measure_all_register(qasm)
+        return (qasm, layout.implicit_measure_all(creg),
+                [IMPLICIT_MEASURE_ALL_NOTE.format(creg=creg)])
     return strip_measurements(qasm), layout, [FINAL_STATE_SAMPLING_NOTE]
 
 
