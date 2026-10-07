@@ -633,7 +633,12 @@
                         (recorded as <code>power.delta_tv_tested</code> and <code>power.pooled_probability</code>).
                         When δ<sub>tested</sub> ≤ 0 a gap of δ could sit entirely inside the pooled bin, the power is
                         α′ and the pair is inconclusive, however small its p-values. The chi-square statistic then follows a noncentral
-                        χ² with <code>df = K − 1</code> and noncentrality <code>λ = N w²</code>.
+                        χ² with <code>df = K − 1</code> and noncentrality
+                        <code>λ = 4·n<sub>i</sub>·n<sub>j</sub>/(n<sub>i</sub> + n<sub>j</sub>) · w²</code>,
+                        where n<sub>i</sub> and n<sub>j</sub> are the two backends' shot totals. With equal
+                        totals this is <code>N w²</code> (N = n<sub>i</sub> + n<sub>j</sub>); with unequal
+                        totals the smaller sample limits it, so 8,200 shots against 50 has the power of about
+                        200 shots split evenly. The single-bit marginal tests use the same noncentrality.
                         <code>power_to_detect_delta_at_observed_shots = 1 − F(χ²₁₋α′,df ; df, λ)</code> with
                         α′ = α/(m·c_m), the level BY applies to a single discovery among the m tested pairs
                         of the run (recorded as <code>power.alpha_used</code>, <code>power.m_pairs</code> and

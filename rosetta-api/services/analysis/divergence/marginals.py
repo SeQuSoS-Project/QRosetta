@@ -15,7 +15,7 @@ from scipy.stats import chi2 as _chi2_dist, chi2_contingency
 
 from .common import STAT_TEST_ALPHA, STAT_TEST_DELTA_TV, STAT_TEST_TARGET_POWER
 from .statistics import (
-    MIN_EXPECTED_COUNT, _holm_adjust, _power_at_shots, _williams_q,
+    MIN_EXPECTED_COUNT, _holm_adjust, _power_at_shots, _williams_q, effective_total_shots,
 )
 
 MARGINAL_RULE = (
@@ -95,7 +95,8 @@ def apply_marginal_correction(blocks, alpha=STAT_TEST_ALPHA, delta=STAT_TEST_DEL
         summary["power"] = {
             "delta_p_one": delta, "target_power": STAT_TEST_TARGET_POWER, "alpha_used": alpha_used,
             "model": ("power to detect a difference of delta_p_one in P(bit = 1) at alpha/m (Holm's "
-                      "first step), df = 1, w = delta_p_one (as for the full table)")}
+                      "first step), df = 1, w = delta_p_one, noncentrality 4*n_i*n_j/(n_i+n_j) * w^2 "
+                      "(as for the full table)")}
     counts = {}
     for block in blocks:
         differing = [bit["clbit"] for bit in block["bits"] if bit.get("differs")]
@@ -109,7 +110,7 @@ def apply_marginal_correction(blocks, alpha=STAT_TEST_ALPHA, delta=STAT_TEST_DEL
         block["differing_clbits"] = sorted(differing)
         if m:
             block["power_to_detect_delta"] = _power_at_shots(
-                summary["power"]["alpha_used"], delta, 1, sum(block["n_shots"]))
+                summary["power"]["alpha_used"], delta, 1, effective_total_shots(*block["n_shots"]))
         counts[assessment] = counts.get(assessment, 0) + 1
     summary["assessment_counts"] = counts
     return summary
