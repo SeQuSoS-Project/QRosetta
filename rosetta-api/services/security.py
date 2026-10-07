@@ -1,17 +1,36 @@
 # Password hashing, JWT tokens, the rate limiter and the get_current_user dependency.
 
+import hmac
+
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from config import settings
+
+PROXY_CLIENT_HEADER = "x-qrosetta-client-ip"
+PROXY_TOKEN_HEADER = "x-qrosetta-proxy-token"
+
 
 def client_address(request) -> str:
-    """Client IP as recorded by the nearest proxy (X-Real-IP, else last X-Forwarded-For hop)."""
-    real_ip = request.headers.get("x-real-ip")
-    if real_ip:
-        return real_ip.strip()
+    """Client IP for rate limits and the exclusive slot.
+
+    A request carrying QROSETTA_PROXY_TOKEN (sent by the Cloud Run frontend) is keyed by the
+    address that proxy saw (X-Qrosetta-Client-Ip). Any other is keyed by the last
+    X-Forwarded-For entry, which the nearest proxy (local nginx, the OpenShift router)
+    appends and a caller cannot set, else by the socket peer. X-Real-IP is not read: the
+    OpenShift router passes a caller's own value through.
+    """
+    token = settings.PROXY_TOKEN
+    if token:
+        sent = request.headers.get(PROXY_TOKEN_HEADER, "")
+        proxied = request.headers.get(PROXY_CLIENT_HEADER, "").strip()
+        if proxied and hmac.compare_digest(sent.encode(), token.encode()):
+            return proxied
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        return forwarded.split(",")[-1].strip()
+        last = forwarded.split(",")[-1].strip()
+        if last:
+            return last
     return get_remote_address(request)
 
 
@@ -21,8 +40,6 @@ import secrets
 from datetime import datetime, timedelta, timezone
 import bcrypt
 from jose import jwt
-
-from config import settings
 
 
 def _resolve_secret_key() -> str:
