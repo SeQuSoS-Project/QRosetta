@@ -16,7 +16,7 @@ docs
 data
 examples
 
-# setuptools output from a host `pip install ./shared`: an image's `pip install` of the
-# copied shared/ would package a stale build/lib instead of the current sources.
+# setuptools output from a host `pip install ./shared`: setuptools copies sources over an
+# existing build/lib but never removes files deleted from the sources, so images could ship them.
 **/build
 **/*.egg-info

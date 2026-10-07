@@ -1545,6 +1545,13 @@
                             <td>Measured, 20000 shots: <code>qreg q[2]; creg c[2]; x q[0]; h q[1];
                                 cu3(0.7,0.3,0.1) q[0],q[1]; measure q -&gt; c;</code>. The exact P(q[1] = 1) is
                                 0.82; Qrisp returns about 0.19.</td></tr>
+                        <tr><td>quimb 1.13.0</td>
+                            <td>The QASM parser substitutes a gate definition's parameters with plain text
+                                replacement, so a parameter whose name starts with another parameter's name
+                                (<code>t</code> and <code>t2</code>) receives a wrong value, without an error.</td>
+                            <td>Statevector: <code>qreg q[1]; gate g(t, t2) a { rz(t2) a; } h q[0]; g(0.1, 0.7) q[0];</code>.
+                                quimb applies <code>rz(0.12)</code> instead of <code>rz(0.7)</code>. With preprocessing on,
+                                the pytket round-trip inlines the definition first and quimb agrees.</td></tr>
                         <tr><td>PyZX 0.10.6 (compile-only)</td>
                             <td><code>basic_optimization(circuit.to_basic_gates())</code> changes the unitary when
                                 an X, S or swap is followed by an X- or Y-rotation on the same qubit. In random
