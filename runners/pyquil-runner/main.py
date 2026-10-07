@@ -45,6 +45,11 @@ _PEEPHOLE_2Q_NOTE = (
 _FULL_PEEPHOLE_NOTE = (
     "pytket.passes.FullPeepholeOptimise() (optimization_level=2): single-qubit merging and "
     "KAK-based two-qubit reduction.")
+_IMPLICIT_SWAPS_NOTE = (
+    "pytket Circuit.replace_implicit_wire_swaps(): the optimisation pass left an implicit "
+    "qubit permutation (allow_swaps=True removes SWAPs by relabelling wires), which "
+    "tk_to_pyquil does not carry over; it is written back as explicit SWAP gates before the "
+    "rebase, so the final state is in the input's qubit order.")
 _U0_NOTE = (
     "Calls to u0 removed from the QASM: qelib1 defines u0 as the identity and tk_to_pyquil "
     "cannot convert it. Required by the adapter, applied regardless of apply_preprocessing.")
@@ -74,6 +79,9 @@ def _to_quil_program(qasm_str: str, optimization_level: int = 0, apply_preproces
     elif optimization_level == 1:
         PeepholeOptimise2Q().apply(tk_circ)
         preprocessing_applied.append(_PEEPHOLE_2Q_NOTE)
+    if tk_circ.implicit_qubit_permutation() != {q: q for q in tk_circ.qubits}:
+        tk_circ.replace_implicit_wire_swaps()
+        preprocessing_applied.append(_IMPLICIT_SWAPS_NOTE)
 
     if apply_preprocessing:
         auto_rebase_pass({OpType.CX, OpType.Rz, OpType.Rx}).apply(tk_circ)

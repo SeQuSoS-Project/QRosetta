@@ -25,7 +25,9 @@ app = FastAPI(title="cuQuantum Runner")
 
 try:
     from qiskit import QuantumCircuit, transpile as qiskit_transpile
-    from qrosetta_commons.qiskit_circuits import exact_qasm2_dumps
+    from qrosetta_commons.qiskit_circuits import (
+        exact_qasm2_dumps, final_layout_note, restore_final_layout,
+    )
     from qrosetta_commons import aer_split
     aer_split.require_aer("qiskit-aer-gpu")
     from qiskit_aer import AerSimulator
@@ -108,19 +110,27 @@ def _to_aer_basis(qc, sim, preprocessing_applied):
     return qiskit_transpile(qc, sim, optimization_level=0)
 
 
-def _transpile(qasm_str: str, optimization_level: int, sim):
+def _transpile(qasm_str: str, optimization_level: int, sim, restore_layout: bool):
     """Parse QASM 2.0 into a Qiskit QuantumCircuit and apply Qiskit transpiler passes.
 
     Level 0: no optimization
     Level 1: basic gate cancellation and 1Q consolidation
     Level 2: unitary synthesis + gate cancellation
     Level 3: heavy optimization (slowest compile, fewest gates)
+
+    With ``restore_layout`` an output permutation the transpiler recorded only in the layout
+    is made explicit with swap gates; the measured path leaves it, since the transpiler
+    already moves each measurement onto its qubit's final position.
     """
     preprocessing_applied = []
     qc = QuantumCircuit.from_qasm_str(qasm_str)
     if optimization_level > 0:
         qc = qiskit_transpile(qc, optimization_level=min(optimization_level, 3))
         preprocessing_applied.append(f"qiskit.compiler.transpile(level={min(optimization_level, 3)}): Native Qiskit transpilation pass applied to decompose and optimize the circuit for the Aer backend.")
+        if restore_layout:
+            qc, swaps = restore_final_layout(qc)
+            if swaps:
+                preprocessing_applied.append(final_layout_note(swaps))
     return _to_aer_basis(qc, sim, preprocessing_applied), preprocessing_applied
 
 
@@ -189,7 +199,8 @@ def process_run(payload: dict) -> dict:
     def compile_step(payload):
         qasm, strip_notes = prepare_statevector_qasm(payload["circuit_data"])
         sim = _simulator()
-        qc, preprocessing_applied = _transpile(qasm, payload.get("optimization_level", 0), sim)
+        qc, preprocessing_applied = _transpile(
+            qasm, payload.get("optimization_level", 0), sim, True)
         executed_qc = qc.copy()
         executed_qc.save_statevector()
         return CompileResult(
@@ -228,7 +239,7 @@ def process_run_measured(payload: dict) -> dict:
     def compile_step(payload):
         sim = _simulator()
         qc, preprocessing_applied = _transpile(
-            payload["circuit_data"], payload.get("optimization_level", 0), sim)
+            payload["circuit_data"], payload.get("optimization_level", 0), sim, False)
         prepared = aer_split.prepare(sim, qc, shots=payload.get("n_shots", 1024),
                                      seed_simulator=payload.get("seed"))
         return CompileResult(

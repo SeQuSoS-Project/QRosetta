@@ -39,6 +39,13 @@ _CONVERT_NOTE = (
     "mode the phase is applied, the state read as BackendResult.get_state() and the shots "
     "drawn inside the timed run.")
 
+_IMPLICIT_SWAPS_NOTE = (
+    "pytket Circuit.replace_implicit_wire_swaps(): the default compilation pass left an "
+    "implicit qubit permutation (FullPeepholeOptimise with allow_swaps=True removes SWAPs by "
+    "relabelling wires); it is written as explicit SWAP gates on the compiled circuit before "
+    "conversion, so transpiled_qasm, whose OpenQASM writer drops implicit permutations, shows "
+    "the SWAPs the converted circuit applies.")
+
 _PASS_NOTES = {}
 
 
@@ -78,6 +85,9 @@ def _compile(payload: dict, qasm: str, notes) -> CompileResult:
     opt_level = min(payload.get("optimization_level", 0), 2)
     compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=opt_level)
     preprocessing_applied.append(_compilation_note(backend, opt_level))
+    if compiled_circ.implicit_qubit_permutation() != {q: q for q in compiled_circ.qubits}:
+        compiled_circ.replace_implicit_wire_swaps()
+        preprocessing_applied.append(_IMPLICIT_SWAPS_NOTE)
     backend._check_all_circuits([compiled_circ], nomeasure_warn=False)
     quest_circ = tk_to_quest(compiled_circ, reverse_index=True, replace_implicit_swaps=True)
     preprocessing_applied.append(_CONVERT_NOTE)
