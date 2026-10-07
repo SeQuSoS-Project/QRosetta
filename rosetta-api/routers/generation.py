@@ -24,7 +24,7 @@ async def get_algorithms():
             "id": algo["id"],
             "name": algo.get("name", ""),
             "min_qubits": algo.get("min_qubits", 2),
-            "max_qubits": algo.get("max_qubits", 20),
+            "max_qubits": algo.get("max_qubits", settings.MAX_QUBITS_MEASURED),
             "default_qubits": algo.get("default_qubits", 3),
             "description": algo.get("description", "")
         }

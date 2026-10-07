@@ -7,6 +7,7 @@ import { ICONS, PRESETS, VIEW_UI_BY_ID, itemFormats } from './export_view_ui.js'
 import { makeButton as button, makeEl as el } from './render_helpers.js';
 import { readPref, writePref } from './session_store.js';
 import { dispatch, getState } from './state.js';
+import { printableLabel } from './request_limits.js';
 import {
     copyText, crateSources, downloadBlob, downloadFullReport, exportRoCrate, hasStatevectors,
     reportHasTruncatedSv,
@@ -275,7 +276,12 @@ export function renderExportPanel(aside, ctx) {
         const input = el('input', 'qr-input text-xs');
         input.type = 'text'; input.id = id; input.placeholder = ph; input.autocomplete = ac; input.value = readPref(key);
         input.setAttribute('aria-label', ph);
-        input.addEventListener('change', () => { writePref(key, input.value.trim()); });
+        if (key === AUTHOR_KEY) input.maxLength = getState().maxLabelLength;
+        input.addEventListener('change', () => {
+            const value = key === AUTHOR_KEY ? printableLabel(input.value, getState().maxLabelLength) : input.value.trim();
+            input.value = value;
+            writePref(key, value);
+        });
         body.append(input);
     });
     credits.append(body);
@@ -303,11 +309,16 @@ export function renderExportPanel(aside, ctx) {
     const foot = el('div', 'qr-export-foot');
     const crate = button('qr-btn-primary w-full h-9 text-sm', 'Export RO-Crate', ICONS.crate);
     crate.id = 'btn-export-rocrate';
+    const cap = getState().maxExportItems;
+    if (items.length > cap) {
+        crate.disabled = true;
+        crate.title = `One export holds at most ${cap} items; ${items.length} are added. Remove some under Added.`;
+    }
     crate.addEventListener('click', () => {
         exportRoCrate({
             source: ui.source || 'browser',
             includeStatevectors: ui.includeSv && hasStatevectors(ctx.crateResults),
-            authorName: readPref(AUTHOR_KEY), authorAffiliation: readPref(AFFILIATION_KEY),
+            authorName: printableLabel(readPref(AUTHOR_KEY), getState().maxLabelLength), authorAffiliation: readPref(AFFILIATION_KEY),
             items: getState().exportItems.map(it => ({ view: it.view, params: _requestParams(it, scope), formats: it.formats })),
             button: crate,
         });

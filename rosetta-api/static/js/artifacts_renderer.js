@@ -11,6 +11,7 @@ import { ICONS, SIZE_TAGS, VIEW_UI, VIEW_UI_BY_ID, defaultFormats } from './expo
 import { makeItem, presetItems, renderExportPanel, resetExportPanel } from './export_panel.js';
 import { _displayRunnerName, makeButton as button, makeEl as el } from './render_helpers.js';
 import { dispatch, getState } from './state.js';
+import { formatBytes } from './request_limits.js';
 import { _stripStatevectors, copyImageToClipboard, copyText, downloadBlob, hasStatevectors } from './utils.js';
 
 const PNG_SCALES = [[1, '150 dpi'], [2, '300 dpi'], [4, '600 dpi']];
@@ -73,7 +74,7 @@ async function _fetchFigureBlob(id, fmt, scale, params = {}, signal = undefined)
         signal,
     });
     if (resp.status === 413) {
-        throw new Error('this report is larger than the 1 MB upload limit, so the server cannot draw it from the copy in this browser. '
+        throw new Error(`this report is larger than the server's upload limit of ${formatBytes(getState().maxRequestBytes)}, so the server cannot draw it from the copy in this browser. `
             + 'A run from this session is drawn from the server copy for 30 minutes after it completes; an RO-Crate exported from a saved run includes the figures.');
     }
     if (!resp.ok) throw new Error(await formatApiError(resp));
@@ -804,6 +805,13 @@ function _renderActions() {
         });
     }
     if (r.error) add.disabled = true;
+    const cap = getState().maxExportItems;
+    if (!editing && !existing && items.length >= cap) {
+        add.disabled = true;
+        add.title = `One export holds at most ${cap} items. Remove an item under Added to add this one.`;
+        host.append(add, el('span', 'text-xs text-gray-500', `${cap} of ${cap} items added`));
+        return;
+    }
     host.append(add);
 }
 

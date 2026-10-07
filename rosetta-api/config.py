@@ -77,6 +77,9 @@ class Settings(BaseSettings):
 
     MAX_RUNS_PER_RUNNER: int = 16
     MAX_TOTAL_RUNS: int = 48
+    MAX_EXPERIMENT_CELLS: int = 200
+    MAX_EXPORT_ITEMS: int = 60
+    MAX_LABEL_LENGTH: int = 200
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

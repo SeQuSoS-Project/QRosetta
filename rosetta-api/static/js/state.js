@@ -19,6 +19,14 @@ export const Store = {
         maxQubitsCompile: 24,
         maxRunsPerRunner: 16,
         maxTotalRuns: 48,
+        maxRequestBytes: 1048576,
+        maxQasmSize: 1000000,
+        maxExperimentCells: 200,
+        maxExportItems: 60,
+        maxLabelLength: 200,
+        emailMaxLength: 254,
+        passwordMinChars: 8,
+        passwordMaxBytes: 72,
         executionMode: null,
         timeoutMin: 10,
         timeoutMax: 300,
@@ -79,6 +87,14 @@ export const Store = {
                 this.state.shotsMax = num(limits.shots_max) ?? this.state.shotsMax;
                 this.state.timeoutDefault = num(limits.timeout_default) ?? this.state.timeoutDefault;
                 this.state.timingRepeatsMax = num(limits.timing_repeats_max) ?? this.state.timingRepeatsMax;
+                this.state.maxRequestBytes = num(limits.max_request_bytes) ?? this.state.maxRequestBytes;
+                this.state.maxQasmSize = num(payload.max_qasm_size) ?? this.state.maxQasmSize;
+                this.state.maxExperimentCells = num(limits.max_experiment_cells) ?? this.state.maxExperimentCells;
+                this.state.maxExportItems = num(limits.max_export_items) ?? this.state.maxExportItems;
+                this.state.maxLabelLength = num(limits.max_label_length) ?? this.state.maxLabelLength;
+                this.state.emailMaxLength = num(limits.email_max_length) ?? this.state.emailMaxLength;
+                this.state.passwordMinChars = num(limits.password_min_chars) ?? this.state.passwordMinChars;
+                this.state.passwordMaxBytes = num(limits.password_max_bytes) ?? this.state.passwordMaxBytes;
                 if (typeof payload.exclusive?.enabled === 'boolean') this.state.exclusiveEnabled = payload.exclusive.enabled;
                 if (payload.agreement_threshold_defaults && typeof payload.agreement_threshold_defaults === 'object') {
                     this.state.thresholdDefaults = { ...payload.agreement_threshold_defaults };

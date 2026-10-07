@@ -8,6 +8,7 @@ import { saveBatchQueue, saveEditorCircuit } from './session_store.js';
 import { dispatch, getState } from './state.js';
 import { setLoading } from './utils.js';
 import { bareCircuitName } from './run_plan.js';
+import { printableLabel } from './request_limits.js';
 
 /** Quick Load sets as preset references; the server generates each circuit when the batch runs. */
 export function presetItems(key, algorithms, cap) {
@@ -71,7 +72,7 @@ export async function addToBatch() {
 export function addEditorToPlaylist() {
     const qasm = qasmInput.value.trim();
     if (!qasm) { alert('The editor is empty.'); return; }
-    const typed = bareCircuitName(/** @type {HTMLInputElement} */ (document.getElementById('ctx-algo-name')).value);
+    const typed = printableLabel(bareCircuitName(/** @type {HTMLInputElement} */ (document.getElementById('ctx-algo-name')).value), getState().maxLabelLength);
     const name = _PLACEHOLDER_NAMES.has(typed.toLowerCase()) ? 'custom' : typed;
     const item = { algorithm: name, qubits: _parseQasmStats(qasm).qubits, name, qasm_string: qasm };
     dispatch('SET_BATCH_QUEUE', [...getState().batchQueue, item]);
@@ -247,6 +248,13 @@ export function openGeneratorModal() {
             list.appendChild(label);
         });
     }
+    const cap = getDynamicMaxQubits();
+    ['gen-min', 'gen-max'].forEach(id => {
+        const input = /** @type {HTMLInputElement|null} */ (document.getElementById(id));
+        if (!input) return;
+        input.max = String(cap);
+        if ((parseInt(input.value, 10) || 0) > cap) input.value = String(cap);
+    });
     document.getElementById('gen-modal').classList.remove('hidden');
 }
 

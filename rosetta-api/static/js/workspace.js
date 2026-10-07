@@ -13,7 +13,8 @@ import { qasmInput } from './dom.js';
 import { renderExperimentResult } from './experiment.js';
 import { clearHistoryState, saveRunToHistory } from './history.js';
 import { clearReport, renderDetailReport, renderSuiteSummary, showTab } from './renderers.js';
-import { planRuns, runButtonLabel } from './run_plan.js';
+import { planRuns, runButtonLabel, runLimitProblems } from './run_plan.js';
+import { printableLabel } from './request_limits.js';
 import { showRunErrors, validateRunInputs } from './run_inputs.js';
 import { clearPendingJob, saveEditorCircuit, savePendingJob } from './session_store.js';
 import { dispatch, getState } from './state.js';
@@ -49,7 +50,7 @@ export function readWorkspace(validated = null) {
         modes: { statevector: _checked('mode-statevector'), measured: _checked('mode-measured') },
         compilers,
         preprocessing: /** @type {'on'|'off'|'both'} */ (_radio('preprocessing') || 'on'),
-        runName: /** @type {HTMLInputElement|null} */ (document.getElementById('single-run-name'))?.value.trim() || '',
+        runName: printableLabel(/** @type {HTMLInputElement|null} */ (document.getElementById('single-run-name'))?.value, getState().maxLabelLength),
         shots: validated?.shots ?? null,
         seed: getSeed(),
         common: {
@@ -64,7 +65,15 @@ export function readWorkspace(validated = null) {
             bypass_limits: _checked('bypass-limits-checkbox'),
             thresholds: getAgreementThresholds(),
         },
+        limits: { maxLabelLength: getState().maxLabelLength },
     };
+}
+
+/** The server limits runLimitProblems() checks, from GET /config. */
+function _requestLimits() {
+    const st = getState();
+    return { maxRequestBytes: st.maxRequestBytes, maxQasmSize: st.maxQasmSize,
+             maxExperimentCells: st.maxExperimentCells, executionMode: st.executionMode };
 }
 
 /** Run button colours by what it runs: the editor circuit blue, the playlist yellow, an experiment emerald. */
@@ -158,8 +167,14 @@ function _showLimitWarning(ws) {
     if (ws.modes.statevector && qubits > sv) notes.push(`statevector runs allow ${sv}`);
     if (ws.modes.measured && qubits > ms) notes.push(`measured runs allow ${ms}`);
     if (!ws.modes.statevector && !ws.modes.measured && qubits > cp) notes.push(`compile-only runs allow ${cp}`);
-    box.textContent = notes.length ? `${what}; ${notes.join(' and ')}.` : '';
-    box.classList.toggle('hidden', !notes.length);
+    const lines = notes.length ? [`${what}; ${notes.join(' and ')}.`] : [];
+    const cells = getState().maxExperimentCells;
+    const circuits = ws.source === 'list' ? ws.list.length : 1;
+    if (ws.preprocessing === 'both' && (ws.modes.statevector || ws.modes.measured) && !ws.common.bypass_limits && circuits * 2 > cells) {
+        lines.push(`SDK Preprocessing Both runs each circuit twice: ${circuits} circuits make ${circuits * 2} experiment runs; the server allows ${cells}.`);
+    }
+    box.textContent = lines.join(' ');
+    box.classList.toggle('hidden', !lines.length);
 }
 
 /** Select the playlist as what runs, once it has circuits. */
@@ -213,6 +228,7 @@ function _show(index) {
     const entry = _finished[index];
     if (!entry) return;
     const { job } = entry;
+    clearHistoryState();
     dispatch('SET_JOB_ID', entry.results ? job.job_id : null);
     dispatch('SET_HISTORY_RUN_ID', entry.historyRunId ?? null);
     if (job.kind === 'experiment') {
@@ -299,8 +315,8 @@ async function _runAll(runs, ws) {
 
 /** Validate the workspace, plan its jobs and run them. */
 export async function runWorkspace() {
-    clearHistoryState();
     if (getState().isProcessing) return;
+    clearHistoryState();
     const draft = readWorkspace();
     const simulating = draft.modes.statevector || draft.modes.measured;
     const v = validateRunInputs({ shotsId: 'shots-single', measured: draft.modes.measured });
@@ -315,6 +331,8 @@ export async function runWorkspace() {
     const ws = readWorkspace(v);
     const { runs, error } = planRuns(ws);
     if (error) { showRunErrors('single-validation-msg', [error]); return; }
+    const problems = runLimitProblems(runs, _requestLimits());
+    if (problems.length) { showRunErrors('single-validation-msg', problems); return; }
     showRunErrors('single-validation-msg', []);
     if (ws.source === 'editor') saveEditorCircuit(qasmInput.value, getState().currentAlgoName);
     document.getElementById('resume-job-banner')?.classList.add('hidden');

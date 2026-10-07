@@ -52,6 +52,10 @@ function _applyServerConfig(config) {
         const current = Number(tInput.value);
         if (!Number.isFinite(current) || current > tMax) tInput.value = String(tMax);
     }
+    const nameInput = /** @type {HTMLInputElement|null} */ (document.getElementById('ctx-algo-name'));
+    if (nameInput) nameInput.maxLength = getState().maxLabelLength;
+    const runName = /** @type {HTMLInputElement|null} */ (document.getElementById('single-run-name'));
+    if (runName) runName.maxLength = getState().maxLabelLength;
     const rInput = /** @type {HTMLInputElement|null} */ (document.getElementById('timing-repeats-input'));
     if (rInput) rInput.max = String(getState().timingRepeatsMax);
     if (!getState().exclusiveEnabled) {
@@ -187,6 +191,7 @@ window.onload = async () => {
         });
 
         select.addEventListener('change', updateQubitConstraints);
+        ['mode-statevector', 'mode-measured'].forEach(id => document.getElementById(id)?.addEventListener('change', () => updateQubitConstraints()));
         document.getElementById('algo-qubits')?.addEventListener('change', _snapBenchSize);
         updateQubitConstraints();
 
@@ -261,7 +266,8 @@ export function updateQubitConstraints(e) {
 
     if (selectedAlgo) {
         const min = selectedAlgo.min_qubits ?? 1;
-        const max = Math.min(selectedAlgo.max_qubits || 24, getDynamicMaxQubits());
+        const cap = getDynamicMaxQubits();
+        const max = Number.isFinite(selectedAlgo.max_qubits) ? Math.min(selectedAlgo.max_qubits, cap) : cap;
         input.min = String(min);
         input.max = String(max);
         const isAlgoChange = e && e.type === 'change';

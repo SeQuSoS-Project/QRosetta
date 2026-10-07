@@ -94,7 +94,7 @@
                         </div>
                         <div class="w-20">
                             <label for="algo-qubits" class="block text-xs font-medium text-gray-600">Qubits</label>
-                            <input type="number" id="algo-qubits" value="3" min="2" max="20" class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                            <input type="number" id="algo-qubits" value="3" min="2" max="18" class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                         </div>
                         <button data-busy-disable type="button" onclick="generateCircuit()" title="Put the selected circuit in the editor"
                             class="py-2 px-4 rounded-md text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">Load</button>
@@ -109,7 +109,7 @@
                     <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                         <h2 id="ws-editor" class="text-lg font-semibold text-gray-800">Editor</h2>
                         <div class="flex items-baseline gap-2 min-w-0 flex-1 justify-end">
-                            <input type="text" id="ctx-algo-name" value="No Circuit Loaded" aria-label="Circuit name" title="The circuit's name, used for + Add to Playlist and in reports"
+                            <input type="text" id="ctx-algo-name" maxlength="200" value="No Circuit Loaded" aria-label="Circuit name" title="The circuit's name, used for + Add to Playlist and in reports"
                                 class="text-sm text-gray-800 bg-transparent border-b border-dashed border-gray-400 focus:outline-none focus:border-blue-500 min-w-0 flex-1 text-right">
                             <span id="ctx-circuit-stats" class="text-xs text-gray-500 whitespace-nowrap"></span>
                         </div>
@@ -452,12 +452,12 @@
                         <div class="grid grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700">Min Qubits</label>
-                                <input type="number" id="gen-min" value="4" min="2" max="20"
+                                <input type="number" id="gen-min" value="4" min="2" max="18"
                                     class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700">Max Qubits</label>
-                                <input type="number" id="gen-max" value="10" min="2" max="20"
+                                <input type="number" id="gen-max" value="10" min="2" max="18"
                                     class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
                             </div>
                         </div>
