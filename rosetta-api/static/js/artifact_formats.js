@@ -410,8 +410,8 @@ export const AGREEMENT_GLOSSARY = [
     ['agree_after_qubit_permutation', 'Disagreement: agrees only after an undeclared qubit permutation (searched up to ≤7 qubits). No declared ordering implies the permutation, so the pair is counted as a disagreement.'],
     ['agree_after_normalization', 'At least one input statevector has a norm differing from 1 by more than norm_tolerance; the normalised vectors agree. metrics.normalized_agreement holds the label the normalised pair receives. The default norm_tolerance (1e-4) lies above complex64 rounding, which leaves norms about 2e-6 from 1.'],
     ['residual_disagreement', 'Statevector disagreement in the label-aligned basis that no registered transform explains. metrics.unaligned_basis_match is "direct" or "bit_reversal" when the pair matches only in the basis its declared orderings do not imply, as when an lsb and an msb backend return equal vectors for an asymmetric state.'],
-    ['distance_within_threshold', 'Measured distributions within the JS-divergence and Hellinger thresholds without a bit-order transform (descriptive, configurable; the shot-noise statistical test gives the significance verdict).'],
-    ['distance_exceeds_threshold', 'Measured distributions exceed the (descriptive, configurable) thresholds after registered transforms; see the statistical test for significance.'],
+    ['distance_within_threshold', 'Measured distributions within the JS-divergence and Hellinger thresholds without a bit-order transform, for a pair whose declared bit orders agree (descriptive, configurable; the shot-noise statistical test gives the significance verdict).'],
+    ['distance_exceeds_threshold', 'Measured distributions exceed the (descriptive, configurable) thresholds in the label-aligned basis. metrics.unaligned_basis_match is "direct" or "bit_reversal" when they are within the thresholds only in the basis the declared bit orders do not imply; otherwise no qubit permutation brings them within. See the statistical test for significance.'],
     ['not_comparable', 'At least one side lacks usable output; the pair cannot be compared. metrics.reason names the cause.'],
 ];
 export const NOT_COMPARABLE_GLOSSARY = [
@@ -458,7 +458,7 @@ export const MEASUREMENT_NOTES = [
     'Outcomes with an expected count below 5 are pooled into one bin before the chi-square and G-tests; statistical_test.pooled_outcomes gives how many were pooled.',
     'Benjamini-Yekutieli controls the false discovery rate at q = alpha under arbitrary dependence between the p-values; pairs that share a backend reuse its sample and are dependent. Its threshold is alpha·i/(m·c_m) with c_m = 1 + 1/2 + ... + 1/m. BH-adjusted p-values are recorded for reference (p_value_bh) and do not set the verdict.',
 ];
-export const ANALYSIS_VERSION = 'divergence-2026.10.02.1';
+export const ANALYSIS_VERSION = 'divergence-2026.10.07.1';
 export const ANALYSIS_VERSION_NOTE = `Analysis version ${ANALYSIS_VERSION} (analysis_version in each divergence report). The `
     + 'labels and verdicts are a function of the outputs and of the analysis rules; verdicts '
     + 'computed under different analysis versions may differ for identical counts.';

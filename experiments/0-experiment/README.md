@@ -65,7 +65,7 @@ python run_experiment.py --config config.example.json --out experiment-1 \
     --base-url http://localhost:8000 --keep-sv
 ```
 
-Only the Python standard library is required. `mode` may be `measured` or `statevector`;
+The script needs numpy and psutil (for `qrosetta_commons`, imported from `shared/`); the repository's `.venv` has both. `mode` may be `measured` or `statevector`;
 `preprocessing_modes` may be `[true]`, `[false]`, or `[true, false]` to run both axes (note:
 some SDKs — e.g. TorchQuantum — cannot run raw QASM without a basis-decomposition pass, so
 `false` is not uniformly meaningful; the per-runner `preprocessing_applied` is recorded).

@@ -457,10 +457,10 @@
                 <table>
                     <thead><tr><th>Label</th><th>Meaning</th></tr></thead>
                     <tbody>
-                        <tr><td><code>distance_within_threshold</code></td><td>Distributions within the JS-divergence and Hellinger thresholds (descriptive; the statistical test gives the significance verdict).</td></tr>
-                        <tr><td><code>agree_after_bit_reversal</code></td><td>Within the thresholds after reversing bit order.</td></tr>
+                        <tr><td><code>distance_within_threshold</code></td><td>Same declared bit orders; distributions within the JS-divergence and Hellinger thresholds (descriptive; the statistical test gives the significance verdict).</td></tr>
+                        <tr><td><code>agree_after_bit_reversal</code></td><td>One <code>lsb</code> and one <code>msb</code> backend; within the thresholds after the bit reversal the declarations imply.</td></tr>
                         <tr><td><code>agree_after_qubit_permutation</code></td><td>Within the thresholds after a bounded qubit permutation (≤&nbsp;7 qubits).</td></tr>
-                        <tr><td><code>distance_exceeds_threshold</code></td><td>Distributions exceed the thresholds after every registered transform.</td></tr>
+                        <tr><td><code>distance_exceeds_threshold</code></td><td>Distributions exceed the thresholds in the basis the declared bit orders imply. With <code>metrics.unaligned_basis_match</code> they are within the thresholds only in the other basis (after bit reversal although the orders are the same, or directly although they differ), as in statevector mode; without it no qubit permutation brings them within.</td></tr>
                         <tr><td><code>not_comparable</code></td><td>At least one side lacks usable output; <code>metrics.reason</code> names the cause.</td></tr>
                     </tbody>
                 </table>
@@ -633,7 +633,12 @@
                         (recorded as <code>power.delta_tv_tested</code> and <code>power.pooled_probability</code>).
                         When δ<sub>tested</sub> ≤ 0 a gap of δ could sit entirely inside the pooled bin, the power is
                         α′ and the pair is inconclusive, however small its p-values. The chi-square statistic then follows a noncentral
-                        χ² with <code>df = K − 1</code> and noncentrality <code>λ = N w²</code>.
+                        χ² with <code>df = K − 1</code> and noncentrality
+                        <code>λ = 4·n<sub>i</sub>·n<sub>j</sub>/(n<sub>i</sub> + n<sub>j</sub>) · w²</code>,
+                        where n<sub>i</sub> and n<sub>j</sub> are the two backends' shot totals. With equal
+                        totals this is <code>N w²</code> (N = n<sub>i</sub> + n<sub>j</sub>); with unequal
+                        totals the smaller sample limits it, so 8,200 shots against 50 has the power of about
+                        200 shots split evenly. The single-bit marginal tests use the same noncentrality.
                         <code>power_to_detect_delta_at_observed_shots = 1 − F(χ²₁₋α′,df ; df, λ)</code> with
                         α′ = α/(m·c_m), the level BY applies to a single discovery among the m tested pairs
                         of the run (recorded as <code>power.alpha_used</code>, <code>power.m_pairs</code> and
@@ -686,7 +691,11 @@
                     are bits 2–4. In an <code>lsb</code> key, classical bit 0 is the rightmost character; in an
                     <code>msb</code> key it is the leftmost. A circuit without measurements, in measured mode,
                     gets a measure-all appended for backends that sample natively (see
-                    <a href="#preprocessing">Circuit preprocessing</a>).
+                    <a href="#preprocessing">Circuit preprocessing</a>): a new register named
+                    <code>meas</code> (<code>meas0</code>, <code>meas1</code>, … if the name is taken),
+                    declared after the circuit's own, with qubit k read into <code>meas[k]</code>.
+                    Backends that sample a final statevector read out the same register, so every key
+                    holds the declared classical bits (all 0) followed by <code>meas</code>.
                 </p>
             </section>
 

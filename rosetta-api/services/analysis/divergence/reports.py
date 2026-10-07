@@ -567,7 +567,11 @@ def create_counts_report(results_list, n_shots, thresholds=None):
                     "agreement": record["agreement"],
                     "is_cross_group": is_cross_group,
                 }
-                if record["agreement"] == "agree_after_qubit_permutation":
+                unaligned = record["metrics"].get("unaligned_basis_match")
+                if unaligned:
+                    entry.update({"group": DISAGREEMENT_GROUPS["unaligned_basis_match"],
+                                  "unaligned_basis_match": unaligned})
+                elif record["agreement"] == "agree_after_qubit_permutation":
                     entry["group"] = DISAGREEMENT_GROUPS["agree_after_qubit_permutation"]
                 divergences_found.append(entry)
 

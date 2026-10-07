@@ -15,7 +15,8 @@ POWER_MODEL = (
     "min_cohens_w at alpha/(m*c_m) on the tested table (w = delta_tv_tested = delta_tv minus "
     "the smaller of the two backends' probabilities in the pooled rare-outcome bin, the most "
     "total variation pooling can hide; power is alpha/(m*c_m) when delta_tv_tested "
-    "<= 0; df = tested outcome bins - 1, at least 1; "
+    "<= 0; df = tested outcome bins - 1, at least 1; noncentrality 4*n_i*n_j/(n_i+n_j) * w^2, "
+    "which is (n_i+n_j) * w^2 for equal shots and is limited by the smaller sample; "
     "m = comparable pairs in the report, the family BY corrects over; c_m = sum_{i=1..m} 1/i). "
     "alpha/(m*c_m) is the threshold Benjamini-Yekutieli applies to a single discovery, so the "
     "power is a lower bound for detecting one wrong backend under the rule that both tests "
@@ -41,7 +42,8 @@ def _shots_per_backend_for_target_power(alpha, target_power, delta_tv, df=1):
 
     For a 2 x K homogeneity test with equal shots per backend, Cohen's w satisfies w >= TV
     for every alternative (Cauchy-Schwarz), so w = delta_tv is the least favourable effect
-    for that TV distance. The noncentrality is lambda = N_total * w^2 on ``df`` = K - 1
+    for that TV distance (``effective_total_shots`` for unequal rows). The noncentrality is
+    lambda = N_total * w^2 on ``df`` = K - 1
     degrees of freedom. The result is exact for the outcome support supplied; if the true
     support is larger than the observed one, the budget can be too small.
     """
@@ -57,10 +59,24 @@ def _shots_per_backend_for_target_power(alpha, target_power, delta_tv, df=1):
     return int(np.ceil(n_total / 2.0))
 
 
-def _power_at_shots(alpha, delta_tv, df, n_total):
-    """Power to detect ``delta_tv`` with ``n_total`` shots across both backends, on ``df``."""
+def effective_total_shots(n_i, n_j):
+    """4 n_i n_j / (n_i + n_j): the shot total that gives the noncentrality of a 2 x K test.
+
+    With rows of n_i and n_j shots the noncentrality is (n_i n_j / N) sum_k d_k^2 / m_k
+    (d = p - q, m = pooled proportions, N = n_i + n_j), at least 4 (n_i n_j / N) TV^2 by
+    Cauchy-Schwarz. For equal rows this is N TV^2; a small row bounds it whatever the other.
+    """
+    n_i, n_j = float(n_i), float(n_j)
+    return 4.0 * n_i * n_j / (n_i + n_j) if n_i + n_j > 0 else 0.0
+
+
+def _power_at_shots(alpha, delta_tv, df, n_effective):
+    """Power to detect ``delta_tv`` on ``df`` at noncentrality ``n_effective * delta_tv^2``.
+
+    ``n_effective`` is ``effective_total_shots`` of the two rows (2n for n shots each).
+    """
     crit = _chi2_dist.ppf(1 - alpha, df)
-    return float(1 - ncx2.cdf(crit, df, n_total * (delta_tv ** 2)))
+    return float(1 - ncx2.cdf(crit, df, n_effective * (delta_tv ** 2)))
 
 
 def _tested_gap(t_i, t_j, pooled_outcomes, delta_tv):
@@ -79,7 +95,7 @@ def _power_on_pooled_table(alpha, delta_tv, p_i, p_j, shots):
     gap, _share = _tested_gap(t_i, t_j, pooled, delta_tv)
     if gap <= 0:
         return 0.0
-    return _power_at_shots(alpha, gap, max(len(t_i) - 1, 1), 2.0 * shots)
+    return _power_at_shots(alpha, gap, max(len(t_i) - 1, 1), effective_total_shots(shots, shots))
 
 
 def _shots_per_backend_with_pooling(alpha, target_power, delta_tv, p_i, p_j):
@@ -120,7 +136,7 @@ def _set_power(block, alpha, m_pairs):
     c_m = _by_constant(m)
     alpha_used = alpha / (m * c_m)
     n_shots = list(block["n_shots"].values())
-    n_total = float(sum(n_shots))
+    n_effective = effective_total_shots(*n_shots)
     gap = power.get("delta_tv_tested", power["delta_tv"])
     proportions = block.get("_observed_proportions")
     if block.get("support_characterised") is False:
@@ -137,7 +153,7 @@ def _set_power(block, alpha, m_pairs):
         "c_m": c_m,
         "correction": CORRECTION,
         "power_to_detect_delta_at_observed_shots": (
-            _power_at_shots(alpha_used, gap, power["df"], n_total) if gap > 0 else alpha_used),
+            _power_at_shots(alpha_used, gap, power["df"], n_effective) if gap > 0 else alpha_used),
         "shots_per_backend_for_target_power": recommended,
         "recommended_shots_per_backend": recommended,
         "recommended_exceeds_actual": (

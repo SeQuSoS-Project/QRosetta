@@ -13,6 +13,7 @@ import re
 from config import settings
 import services.benchmark_library as benchmark_library
 import services.circuit_library as circuit_library
+from qrosetta_commons.counts import measure_all_register
 from qrosetta_commons.helpers import strip_qasm_comments
 from qrosetta_commons.qasm_expressions import (
     ParameterExpressionError, evaluate_constant_expression, tket_parameter_note,
@@ -63,7 +64,6 @@ _DECL_RE = re.compile(r"^\s*(qreg|creg)\s+([A-Za-z_]\w*)\s*\[\s*(\d+)\s*\]\s*;\s
 _GATE_NAME_RE = re.compile(r"^\s*(?:gate|opaque)\s+([A-Za-z_]\w*)")
 _OP_RE = re.compile(r"^(\s*(?:if\s*\([^)]*\)\s*)?)([A-Za-z_]\w*)")
 _REF_RE = re.compile(r"\b([A-Za-z_]\w*)\b(\s*\[\s*(\d+)\s*\])?")
-_IDENT_RE = re.compile(r"[A-Za-z_]\w*")
 _MEASURE_RE = re.compile(r"\bmeasure\b")
 _BARRIER_RE = re.compile(r"\bbarrier\b")
 _PASSTHROUGH_OPS = {"OPENQASM", "include", "qreg", "creg", "gate", "opaque"}
@@ -218,12 +218,12 @@ def flatten_qregs(qasm: str):
 def append_measure_all(qasm: str):
     """Append a fresh classical register and ``measure`` of every qubit, in declaration order.
 
-    Returns ``(qasm, note)``. The register name does not collide with any identifier in
-    the circuit. The input text is kept verbatim and the new lines are appended.
+    Returns ``(qasm, note)``. The register name (``measure_all_register``) does not collide
+    with any identifier in the circuit; sampling runners read out the same register. The input text is kept verbatim and the new lines are appended.
     """
     qubits = [(name, i) for kind, name, size in declared_registers(qasm) if kind == "qreg"
               for i in range(size)]
-    creg = _fresh_name("meas", set(_IDENT_RE.findall(strip_qasm_comments(qasm))))
+    creg = measure_all_register(qasm)
     lines = [f"creg {creg}[{len(qubits)}];"]
     lines += [f"measure {name}[{i}] -> {creg}[{k}];" for k, (name, i) in enumerate(qubits)]
     text = qasm if qasm.endswith("\n") else qasm + "\n"
