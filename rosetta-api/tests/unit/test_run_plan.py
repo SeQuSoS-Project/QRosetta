@@ -95,3 +95,80 @@ def test_button_label_says_what_will_run():
     assert labels == ["Run Editor Code · Statevector · 14 backends",
                       "Run Batch (3 circuits) · Statevector + Measured · 14 backends",
                       "Compile Editor Code"]
+
+
+LIMITS = {"maxRequestBytes": 1_048_576, "maxQasmSize": 1_000_000, "maxExperimentCells": 200,
+          "executionMode": "local"}
+
+
+def _problems(ws, limits=LIMITS):
+    (result,) = call_js(["run_plan.js"], [("planRuns", [ws])])
+    (problems,) = call_js(["run_plan.js"], [("runLimitProblems", [result["runs"], limits])])
+    return problems
+
+
+def test_experiment_over_the_cell_limit_is_refused_unless_bypassed():
+    many = [{"algorithm": "ghz", "qubits": 3, "name": f"g{i}"} for i in range(101)]
+    problems = _problems(_ws(source="list", list=many, preprocessing="both"))
+    assert len(problems) == 1 and "202 experiment runs" in problems[0] and "at most 100 circuits" in problems[0]
+    assert _problems(_ws(source="list", list=many[:100], preprocessing="both")) == []
+    bypass = dict(COMMON, bypass_limits=True)
+    assert _problems(_ws(source="list", list=many, preprocessing="both", common=bypass)) == []
+
+
+def test_a_circuit_under_the_size_limit_can_still_overflow_the_request_body():
+    qasm = QASM + "".join(f"h q[{i % 2}];\n\n\n" for i in range(95_000))
+    assert len(qasm) < 1_000_000
+    problems = _problems(_ws(editor={"qasm": qasm, "name": "big"}))
+    assert len(problems) == 1 and "upload limit" in problems[0] and "Line breaks" in problems[0]
+
+
+def test_a_playlist_of_literal_circuits_is_told_to_split():
+    part = QASM + "".join(f"x q[{i % 2}];\n" for i in range(30_000))
+    items = [{"algorithm": "custom", "qubits": 2, "name": f"c{i}", "qasm_string": part} for i in range(4)]
+    problems = _problems(_ws(source="list", list=items))
+    assert len(problems) == 1 and "4 circuits" in problems[0] and "Split the playlist" in problems[0]
+
+
+def test_circuit_text_over_the_size_limit_is_named_unless_bypassed_locally():
+    qasm = QASM + "// " + "x" * 1_000_000 + "\n"
+    big = {"algorithm": "custom", "qubits": 2, "name": "huge", "qasm_string": qasm}
+    roomy = dict(LIMITS, maxRequestBytes=10**8)
+    assert _problems(_ws(source="list", list=[big]), roomy) == [
+        f'Circuit "huge" has {len(qasm):,} characters; the server accepts circuits of up to 1,000,000.']
+    bypass = dict(COMMON, bypass_limits=True)
+    assert _problems(_ws(source="list", list=[big], common=bypass), roomy) == []
+    assert _problems(_ws(source="list", list=[big], common=bypass), dict(roomy, executionMode="kubernetes")) != []
+
+
+def test_names_are_printable_and_bounded_everywhere():
+    long = "n" * 250
+    item = {"algorithm": "x‮" + long, "qubits": 2, "name": "a​b\u0007" + long, "qasm_string": QASM}
+    for ws in (_ws(source="list", list=[item]), _ws(source="list", list=[item], preprocessing="both")):
+        payload = _plan(ws)["runs"][0]["payload"]
+        circuit = (payload.get("tasks") or payload["circuits"])[0]
+        for field in ("name", "algorithm"):
+            if field in circuit:
+                assert len(circuit[field]) <= 200
+                assert not {"‮", "​", "\u0007"} & set(circuit[field])
+    label = _plan(_ws(preprocessing="both", runName="r " + long))["runs"][0]["payload"]["label"]
+    assert len(label) == 200 and " " not in label
+
+
+def test_label_and_size_helpers():
+    results = call_js(["request_limits.js"], [
+        ("printableLabel", ["  a\u0000b⁦c  ", 200]),
+        ("printableLabel", ["\U0001F600" * 3, 2]),
+        ("labelProblem", ["ok", 200, "The run name"]),
+        ("labelProblem", ["a‎b", 200, "The run name"]),
+        ("labelProblem", ["x" * 201, 200, "The run name"]),
+        ("jsonBytes", [{"q": "a\nb\"é"}]),
+        ("formatBytes", [1048576]),
+    ])
+    assert results[0] == "abc"
+    assert results[1] == "\U0001F600" * 2
+    assert results[2] is None
+    assert "control characters" in results[3]
+    assert results[4] == "The run name has 201 characters; at most 200 are allowed."
+    assert results[5] == len('{"q":"a\\nb\\"é"}'.encode())
+    assert results[6] == "1,048,576 bytes (1.00 MiB)"

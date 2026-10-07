@@ -172,6 +172,13 @@ def test_config_exposes_mode_thresholds_and_limits(client):
         "shots_min": settings.MIN_SHOTS,
         "shots_max": settings.MAX_SHOTS,
         "shots_default": settings.DEFAULT_SHOTS,
+        "max_request_bytes": settings.MAX_UPLOAD_BYTES,
+        "max_experiment_cells": settings.MAX_EXPERIMENT_CELLS,
+        "max_export_items": settings.MAX_EXPORT_ITEMS,
+        "max_label_length": settings.MAX_LABEL_LENGTH,
+        "email_max_length": 254,
+        "password_min_chars": 8,
+        "password_max_bytes": 72,
     }
 
 
@@ -296,3 +303,23 @@ def test_openapi_declares_error_responses(client):
 def test_seed_description_names_the_per_runner_derivation():
     text = MeasuredQasmPayload.model_fields["seed"].description
     assert "derived" in text and "shared by every runner" not in text
+
+
+def test_experiment_over_the_cell_limit_is_rejected_before_it_starts(client):
+    per_axis = settings.MAX_EXPERIMENT_CELLS // 2
+    circuits = [{"algorithm": "ghz", "qubits": 2}] * (per_axis + 1)
+    r = client.post("/experiments", json={"circuits": circuits, "preprocessing_modes": [True, False]})
+    assert r.status_code == 400 and "Experiment too large" in r.json()["detail"]
+    assert not client.started
+    assert client.post("/experiments", json={"circuits": circuits[:per_axis],
+                                             "preprocessing_modes": [True, False]}).status_code == 200
+    assert client.post("/experiments", json={"circuits": circuits, "preprocessing_modes": [True, False],
+                                             "bypass_limits": True}).status_code == 200
+
+
+def test_export_item_cap_is_the_published_limit():
+    from schemas import PublicationArtifactsSelection
+    item = {"view": "glossary", "formats": ["markdown"]}
+    PublicationArtifactsSelection(items=[item] * settings.MAX_EXPORT_ITEMS)
+    with pytest.raises(ValidationError):
+        PublicationArtifactsSelection(items=[item] * (settings.MAX_EXPORT_ITEMS + 1))

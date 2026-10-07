@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from fastapi.responses import FileResponse, JSONResponse
 from config import settings
 from schemas import AgreementThresholds
+from schemas.auth import EMAIL_MAX_LENGTH, PASSWORD_MAX_BYTES, PASSWORD_MIN_CHARS
 from services.availability import runner_availability
 from services.compilation import COMPILER_SERVICES
 
@@ -58,8 +59,14 @@ async def get_config():
     ``limits`` holds the bounds the run endpoints validate against: qubit caps per mode,
     ``timeout_min``/``timeout_max`` (seconds; larger requests are clamped to
     ``timeout_max``), ``timeout_default`` (every run endpoint), ``shots_min``/``shots_max``,
-    ``timing_repeats_max`` and ``max_qasm_gate_statements`` (top-level operation statements;
-    the header, includes, register declarations and gate definitions are not counted).
+    ``timing_repeats_max``, ``max_qasm_gate_statements`` (top-level operation statements;
+    the header, includes, register declarations and gate definitions are not counted),
+    ``max_request_bytes`` (every POST/PUT/PATCH body, the JSON as sent; 413 above it),
+    ``max_experiment_cells`` (circuits x preprocessing axes of one experiment, unless
+    bypass_limits), ``max_export_items`` (publication items of one RO-Crate export),
+    ``max_label_length`` (characters of a run, circuit, task or author name; control and
+    invisible formatting characters are rejected) and the account limits
+    ``email_max_length``, ``password_min_chars`` and ``password_max_bytes`` (UTF-8).
     ``default_n_shots`` is the shot count the measured, batch and experiment endpoints use
     when ``n_shots`` is omitted. The top-level keys repeat the qubit, size and gate limits.
     """
@@ -89,6 +96,13 @@ async def get_config():
             "shots_min": settings.MIN_SHOTS,
             "shots_max": settings.MAX_SHOTS,
             "shots_default": settings.DEFAULT_SHOTS,
+            "max_request_bytes": settings.MAX_UPLOAD_BYTES,
+            "max_experiment_cells": settings.MAX_EXPERIMENT_CELLS,
+            "max_export_items": settings.MAX_EXPORT_ITEMS,
+            "max_label_length": settings.MAX_LABEL_LENGTH,
+            "email_max_length": EMAIL_MAX_LENGTH,
+            "password_min_chars": PASSWORD_MIN_CHARS,
+            "password_max_bytes": PASSWORD_MAX_BYTES,
         },
         "exclusive": {"enabled": settings.EXCLUSIVE_ENABLED,
                       "max_wait_sec": settings.EXCLUSIVE_MAX_WAIT_SEC,

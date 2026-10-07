@@ -28,7 +28,7 @@ from services.circuit_resolver import resolve_circuit_qasm
 
 logger = get_logger("rosetta-experiment")
 
-MAX_EXPERIMENT_CELLS = 200
+MAX_EXPERIMENT_CELLS = settings.MAX_EXPERIMENT_CELLS
 
 
 

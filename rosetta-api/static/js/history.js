@@ -5,7 +5,8 @@ import { BASE_URL, formatApiError, getAuthHeaders } from './api.js';
 import { onNextLogin, openAuthModal, updateAuthUI } from './auth.js';
 import { clearReport, renderDetailReport, renderSuiteSummary } from './renderers.js';
 import { dispatch, getState } from './state.js';
-import { downloadBlob, setLoading } from './utils.js';
+import { downloadBlob, setLoading, setSideLoading } from './utils.js';
+import { labelProblem } from './request_limits.js';
 
 /** Parse a server timestamp; one without a zone designator is UTC. */
 export function parseServerTime(value) {
@@ -101,9 +102,14 @@ export async function saveRunToHistory(jobId, name = null) {
     }
 }
 
+const RUN_IN_PROGRESS = 'A run is in progress. Past runs open in the results panel once it has finished; renaming, downloading and deleting work now.';
+
+let _listGeneration = 0;
+
 export async function openHistoryModal() {
     document.getElementById('history-modal').classList.remove('hidden');
     const list = document.getElementById('history-list');
+    const generation = ++_listGeneration;
     list.innerHTML = '<li class="py-4 text-center text-sm text-gray-500">Loading history...</li>';
 
     if (!getState().authToken) {
@@ -115,6 +121,7 @@ export async function openHistoryModal() {
         const response = await fetch(`${BASE_URL}/history/runs`, {
             headers: getAuthHeaders()
         });
+        if (generation !== _listGeneration) return;
         if (response.status === 401) {
             dispatch('SET_AUTH_TOKEN', null);
             updateAuthUI();
@@ -124,6 +131,7 @@ export async function openHistoryModal() {
         if (!response.ok) throw new Error(await formatApiError(response));
 
         const runs = await response.json();
+        if (generation !== _listGeneration) return;
         if (runs.length === 0) {
             list.innerHTML = '<li class="py-4 text-center text-sm text-gray-500">No previous runs found.</li>';
             return;
@@ -132,6 +140,13 @@ export async function openHistoryModal() {
         runs.sort((a, b) => (parseServerTime(b.created_at)?.getTime() ?? 0) - (parseServerTime(a.created_at)?.getTime() ?? 0));
 
         list.innerHTML = '';
+        const running = getState().isProcessing;
+        if (running) {
+            const note = document.createElement('li');
+            note.className = 'py-2 text-sm text-amber-800';
+            note.textContent = RUN_IN_PROGRESS;
+            list.appendChild(note);
+        }
         runs.forEach(run => {
             const runName = run.run_name || run.id.substring(0, 8);
             const dateStr = _formatServerTime(run.created_at);
@@ -167,6 +182,7 @@ export async function openHistoryModal() {
             nameInput.id = `run-name-input-${run.id}`;
             nameInput.className = "hidden text-sm border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 w-full max-w-xs px-2 py-1";
             nameInput.value = runName;
+            nameInput.maxLength = getState().maxLabelLength;
 
             const editBtn = document.createElement('button');
             editBtn.id = `run-name-edit-btn-${run.id}`;
@@ -197,12 +213,18 @@ export async function openHistoryModal() {
             const viewBtn = document.createElement('button');
             viewBtn.className = "text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 rounded-md shadow-sm transition-colors whitespace-nowrap";
             viewBtn.textContent = "View Results";
+            if (running) {
+                viewBtn.disabled = true;
+                viewBtn.classList.add('opacity-60', 'cursor-not-allowed');
+                viewBtn.title = RUN_IN_PROGRESS;
+            }
             viewBtn.addEventListener('click', () => loadHistoricalRun(run.id, runName, run.created_at));
 
             li.append(leftDiv, viewBtn);
             list.appendChild(li);
         });
     } catch (e) {
+        if (generation !== _listGeneration) return;
         const li = document.createElement('li');
         li.className = "py-4 text-center text-sm text-red-500";
         li.textContent = `Error: ${e.message}`;
@@ -247,6 +269,8 @@ export async function saveRunName(runId) {
     const input = document.getElementById(`run-name-input-${runId}`);
     const newName = input.value.trim();
     if (!newName) return;
+    const problem = labelProblem(newName, getState().maxLabelLength, 'The run name');
+    if (problem) { alert(problem); return; }
 
     try {
         const res = await fetch(`${BASE_URL}/history/runs/${runId}`, {
@@ -289,7 +313,7 @@ export async function downloadSelectedHistory() {
     const runIds = Array.from(checkboxes).map(cb => cb.value);
     if (runIds.length === 0) return;
 
-    setLoading(true, "Downloading histories...");
+    setSideLoading(true, "Downloading histories...");
     try {
         const fetches = runIds.map(async id => {
             const res = await fetch(`${BASE_URL}/history/runs/${id}`, { headers: getAuthHeaders() });
@@ -304,7 +328,7 @@ export async function downloadSelectedHistory() {
         console.error(e);
         alert("The runs were not downloaded. " + e.message);
     } finally {
-        setLoading(false);
+        setSideLoading(false);
     }
 }
 
@@ -314,7 +338,9 @@ export function closeHistoryModal() {
 
 export async function loadHistoricalRun(runId, runName, createdAt) {
     if (!getState().authToken) return;
+    if (getState().isProcessing) { alert(RUN_IN_PROGRESS); return; }
     closeHistoryModal();
+    dispatch('SET_PROCESSING', true);
     setLoading(true, "Loading Past Run...");
     clearReport();
 
@@ -372,6 +398,7 @@ export async function loadHistoricalRun(runId, runName, createdAt) {
         renderDetailReport({ error: e.message }, "Error Loading History");
     } finally {
         setLoading(false);
+        dispatch('SET_PROCESSING', false);
     }
 }
 

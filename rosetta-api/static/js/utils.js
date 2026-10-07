@@ -6,6 +6,7 @@ import { BASE_URL, apiDetailText, getAuthHeaders } from './api.js';
 
 import { endRunView } from './status_cards.js';
 import { dispatch, getState } from './state.js';
+import { formatBytes, printableLabel } from './request_limits.js';
 
 export let _loaderElapsedTimer = null;
 
@@ -59,6 +60,13 @@ export function setLoading(isLoading, message = "Processing...", options = {}) {
         const elapsedEl = document.getElementById('loader-elapsed');
         if (elapsedEl) elapsedEl.textContent = '0 s elapsed';
     }
+}
+
+/** setLoading for work beside a run (sign-in, history downloads): does nothing while a run is
+ * in progress, so the run keeps its loader, busy buttons and running view. */
+export function setSideLoading(isLoading, message = "Processing...") {
+    if (getState().isProcessing) return;
+    setLoading(isLoading, message);
 }
 
 export const COPY_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>';
@@ -138,7 +146,6 @@ export function _stripStatevectors(data) {
 
 const JOB_REPORT_TTL_MIN = 30;
 const DISPLAY_SV_MAX_QUBITS = 14;
-const EXPORT_UPLOAD_LIMIT_BYTES = 1000000;
 
 const EXPIRED_TEXT = `The server keeps a job's full report for ${JOB_REPORT_TTL_MIN} minutes after it completes, and this job's copy is no longer there (expired, or the server restarted).`;
 /** What the browser-held copy of a report lacks. */
@@ -147,6 +154,12 @@ function _browserCopyText(results) {
         return 'This report was stored without statevectors.';
     }
     return `The copy held in this browser does not include statevectors of circuits over ${DISPLAY_SV_MAX_QUBITS} qubits.`;
+}
+
+/** How to export a report too large to upload: from a copy the server holds. */
+function _serverCopyAdvice() {
+    return `A run from this session is exported from the server's copy for ${JOB_REPORT_TTL_MIN} minutes after it completes, `
+        + 'and a saved run from your History (signed in) is exported from the stored copy; neither is uploaded.';
 }
 
 /** Job id of the report on screen when it came from a job run in this session, else null. */
@@ -192,14 +205,20 @@ export async function downloadFullReport() {
 
 /** POST /export with the report held in the browser; null if the user cancels. */
 async function _exportBrowserCopy(results, options) {
+    const limit = getState().maxRequestBytes;
+    const bytes = text => new Blob([text]).size;
     let body = JSON.stringify({
         ...options,
         results: options.include_statevectors ? results : _stripStatevectors(results),
     });
-    if (options.include_statevectors && new Blob([body]).size > EXPORT_UPLOAD_LIMIT_BYTES) {
-        const ok = confirm("With statevectors, this report is larger than the 1 MB upload limit for exporting data held in the browser.\n\nExport it without statevectors?");
+    if (options.include_statevectors && bytes(body) > limit) {
+        const ok = confirm(`With statevectors, this report is larger than the server's upload limit of ${formatBytes(limit)} for exporting data held in the browser.\n\nExport it without statevectors?`);
         if (!ok) return null;
         body = JSON.stringify({ ...options, include_statevectors: false, results: _stripStatevectors(results) });
+    }
+    if (bytes(body) > limit) {
+        throw new Error(`Without statevectors, the report held in this browser is ${formatBytes(bytes(body))}, over the server's upload limit of `
+            + `${formatBytes(limit)}. ${_serverCopyAdvice()}`);
     }
     return fetch(`${BASE_URL}/export`, {
         method: 'POST',
@@ -294,7 +313,8 @@ export async function exportRoCrate({ source = 'browser', includeStatevectors = 
 
         if (!response.ok) {
             if (response.status === 413) {
-                throw new Error("The report is larger than the 1 MB upload limit. Uncheck 'Include raw statevectors' and try again.");
+                throw new Error(`The report is larger than the server's upload limit of ${formatBytes(getState().maxRequestBytes)}. `
+                    + (includeStatevectors ? "Uncheck 'Include raw statevectors' and try again." : _serverCopyAdvice()));
             }
             throw new Error(await _errorDetail(response));
         }
@@ -397,10 +417,7 @@ export function importQasm(inputElement) {
     const reader = new FileReader();
     reader.onload = function (e) {
         document.getElementById('qasm-input').value = e.target.result;
-        let fileName = file.name;
-        if (fileName.endsWith('.qasm')) {
-            fileName = fileName.substring(0, fileName.length - 5);
-        }
+        const fileName = printableLabel(file.name.replace(/\.qasm$/i, ''), getState().maxLabelLength) || 'circuit';
         document.getElementById('ctx-algo-name').value = fileName;
         dispatch('SET_CURRENT_ALGO_NAME', fileName);
         inputElement.value = '';

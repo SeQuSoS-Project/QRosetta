@@ -58,7 +58,7 @@ def _printable_text(value):
     return value
 
 
-Label = Annotated[str, BeforeValidator(_printable_text), Field(max_length=200)]
+Label = Annotated[str, BeforeValidator(_printable_text), Field(max_length=settings.MAX_LABEL_LENGTH)]
 TimingRepeats = Annotated[Int, Field(ge=1, le=settings.MAX_TIMING_REPEATS)]
 RunnerPhases = Dict[str, Int]
 ExecutionTarget = Literal["local", "kubernetes"]
@@ -111,9 +111,10 @@ _TARGET_DESCRIPTION = ("'local' or 'kubernetes'. Defaults to the server's EXECUT
                        "'target' records the mode actually used and 'requested_target' this "
                        "value.")
 _BYPASS_DESCRIPTION = ("Skip the MAX_QASM_SIZE and MAX_QASM_GATES checks when the server's "
-                       "EXECUTION_MODE is 'local'; ignored otherwise. The qubit limits, the "
-                       "expanded-gate and nested-gate-call limits, the syntax checks and the "
-                       "measurement checks still apply.")
+                       "EXECUTION_MODE is 'local'; ignored otherwise. The request body limit "
+                       "(max_request_bytes in GET /config), the qubit limits, the expanded-gate "
+                       "and nested-gate-call limits, the syntax checks and the measurement "
+                       "checks still apply.")
 _SEED_DESCRIPTION = ("Master seed, a non-negative integer. Each runner result receives its own "
                      "seed derived from it and the result key (see the report's "
                      "seed_derivation and each result's runner_seed), so a replay with the "
@@ -324,7 +325,7 @@ class ExperimentPayload(_Request):
     exclusive: StrictBool = Field(False, description=_EXCLUSIVE_DESCRIPTION)
     target_simulators: List[str] = Field(default_factory=list, description="Which runner ids to include. Empty means every enabled runner.")
     execution_target: ExecutionTarget = Field(default_factory=_default_execution_target, description=_TARGET_DESCRIPTION)
-    bypass_limits: StrictBool = Field(False, description=_BYPASS_DESCRIPTION + " For experiments it also lifts the circuit-axis cell cap.")
+    bypass_limits: StrictBool = Field(False, description=_BYPASS_DESCRIPTION + " For experiments it also lifts the cap on circuits x preprocessing axes (max_experiment_cells in GET /config), in every execution mode.")
     preprocessing_modes: List[StrictBool] = Field(default_factory=lambda: [True], min_length=1, max_length=2, description="The preprocessing axis: the whole circuit set runs once per value in this list (True = preprocessing applied, False = raw circuit). One or both of true and false, each at most once.")
     seed: Optional[Seed] = Field(None, description=_SEED_DESCRIPTION + " One master seed covers every circuit and axis and is recorded in the manifest.")
     thresholds: Optional[AgreementThresholds] = Field(None, description="Override the default agreement thresholds for this experiment.")
@@ -398,7 +399,7 @@ class PublicationArtifactsSelection(_Request):
     Either ``items`` (views with parameters) or ``categories`` (every artifact of a category at
     its defaults); empty or absent, nothing is generated (the default).
     """
-    items: List[PublicationItem] = Field(default_factory=list, max_length=60, description="Views to write, each with its parameters and formats. Figures go to figures/<slug>.<fmt> with a .spec.json, tables to tables/<slug>.<ext>.")
+    items: List[PublicationItem] = Field(default_factory=list, max_length=settings.MAX_EXPORT_ITEMS, description="Views to write, each with its parameters and formats. Figures go to figures/<slug>.<fmt> with a .spec.json, tables to tables/<slug>.<ext>.")
     categories: List[PublicationCategory] = Field(default_factory=list, description="Which artifact categories to generate: 'agreement', 'heatmaps', 'performance', 'statistical'. Empty generates none.")
     figure_formats: List[FigureFormat] = Field(default_factory=lambda: ["svg"], description="Formats to render each figure in: 'svg', 'png', 'pdf'.")
     table_formats: List[TableFormat] = Field(default_factory=lambda: ["csv"], description="Formats to render each table in: 'latex', 'csv', 'html', 'xlsx'.")

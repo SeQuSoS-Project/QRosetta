@@ -2,7 +2,8 @@
 
 import { BASE_URL, apiDetailText, formatApiError, getAuthHeaders } from './api.js';
 import { dispatch, getState } from './state.js';
-import { setLoading } from './utils.js';
+import { setSideLoading } from './utils.js';
+import { charCount } from './request_limits.js';
 import { announceWorkspaceChange } from './dom.js';
 
 /** @type {null | (() => void)} */
@@ -71,7 +72,7 @@ export async function handleLoginSubmit() {
         return;
     }
 
-    setLoading(true, "Logging in...");
+    setSideLoading(true, "Logging in...");
     errorDiv.classList.add('hidden');
 
     try {
@@ -104,7 +105,7 @@ export async function handleLoginSubmit() {
         errorDiv.textContent = e.message;
         errorDiv.classList.remove('hidden');
     } finally {
-        setLoading(false);
+        setSideLoading(false);
     }
 }
 
@@ -118,8 +119,19 @@ export async function handleRegisterSubmit() {
         errorDiv.classList.remove('hidden');
         return;
     }
+    const { emailMaxLength, passwordMinChars, passwordMaxBytes } = getState();
+    const problem = charCount(email) > emailMaxLength ? `The email address can have at most ${emailMaxLength} characters.`
+        : charCount(password) < passwordMinChars ? `The password needs at least ${passwordMinChars} characters.`
+        : new TextEncoder().encode(password).length > passwordMaxBytes
+            ? `The password can be at most ${passwordMaxBytes} bytes long (UTF-8; most accented letters and symbols take two or more bytes).`
+            : null;
+    if (problem) {
+        errorDiv.textContent = problem;
+        errorDiv.classList.remove('hidden');
+        return;
+    }
 
-    setLoading(true, "Creating account...");
+    setSideLoading(true, "Creating account...");
     errorDiv.classList.add('hidden');
 
     try {
@@ -145,7 +157,7 @@ export async function handleRegisterSubmit() {
         errorDiv.textContent = e.message;
         errorDiv.classList.remove('hidden');
     } finally {
-        setLoading(false);
+        setSideLoading(false);
     }
 }
 
@@ -174,7 +186,7 @@ export async function handleDeleteAccount() {
         return;
     }
 
-    setLoading(true, "Deleting account...");
+    setSideLoading(true, "Deleting account...");
     try {
         const res = await fetch(`${BASE_URL}/auth/me`, {
             method: 'DELETE',
@@ -189,6 +201,6 @@ export async function handleDeleteAccount() {
         console.error("Account deletion failed:", e);
         alert("Error deleting account: " + e.message);
     } finally {
-        setLoading(false);
+        setSideLoading(false);
     }
 }

@@ -33,11 +33,18 @@ async def start_experiment(request: Request, payload: ExperimentPayload, backgro
     """Start a fleet-wide experiment: run every circuit in the payload across the fleet, over
     every preprocessing axis, and freeze the results into a citable bundle. Runs in the
     background; poll GET /jobs/{job_id} for status, then GET /experiments/{job_id}/bundle once
-    complete. 400 for no circuits, unknown/disabled/unavailable runner ids, or a literal
+    complete. 400 for no circuits, more circuits x preprocessing axes than max_experiment_cells
+    in GET /config (unless bypass_limits), unknown/disabled/unavailable runner ids, or a literal
     circuit that fails the /compare or /compare_measured checks; 422 for an unknown field,
     mode or source. The job's target is the server's EXECUTION_MODE."""
     if not payload.circuits:
         raise HTTPException(status_code=400, detail="No circuits selected.")
+    cells = len(payload.circuits) * len(payload.preprocessing_modes)
+    if cells > settings.MAX_EXPERIMENT_CELLS and not payload.bypass_limits:
+        raise HTTPException(status_code=400, detail=(
+            f"Experiment too large: {len(payload.circuits)} circuits x {len(payload.preprocessing_modes)} "
+            f"preprocessing axes = {cells} circuit-axis runs, over the limit of "
+            f"{settings.MAX_EXPERIMENT_CELLS}. Reduce the selection."))
 
     validate_runner_ids(payload.target_simulators, payload.runner_config, payload.runner_phases)
     validate_runner_config(payload.runner_config)
