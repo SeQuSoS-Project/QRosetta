@@ -1,6 +1,7 @@
 """Qiskit helpers: final measurements split off and restored and basis translation that makes
-no assumption about the qubits' initial state (compile-only adapters), and OpenQASM 2.0
-export that keeps every angle (``exact_qasm2_dumps``)."""
+no assumption about the qubits' initial state (compile-only adapters), the output permutation
+of a transpiled circuit made explicit (``restore_final_layout``), and OpenQASM 2.0 export that
+keeps every angle (``exact_qasm2_dumps``)."""
 
 import re
 
@@ -57,6 +58,47 @@ def unitary_of(circuit: QuantumCircuit):
     definitions are flattened first."""
     from qiskit.quantum_info import Operator
     return Operator(translate_to_basis(circuit, ("u3", "cx")))
+
+
+def swaps_restoring(final_positions) -> list:
+    """Swaps ``(a, b)`` that move the qubit ending at ``final_positions[v]`` back to ``v``."""
+    holder = {p: v for v, p in enumerate(final_positions)}
+    position = list(final_positions)
+    swaps = []
+    for target in range(len(position)):
+        source = position[target]
+        if source == target:
+            continue
+        swaps.append((target, source))
+        displaced = holder[target]
+        holder[target], holder[source] = target, displaced
+        position[target], position[displaced] = target, source
+    return swaps
+
+
+def restore_final_layout(circuit: QuantumCircuit):
+    """(circuit, swaps appended): a transpiled circuit whose ``layout`` records an output
+    permutation (ElidePermutations deletes swap gates and records them only there) gets the
+    swap gates that put each qubit's final state back on its input position; the layout is
+    then cleared, since the gates realise the permutation."""
+    layout = circuit.layout
+    if layout is None:
+        return circuit, []
+    swaps = swaps_restoring(layout.final_index_layout())
+    if swaps:
+        for a, b in swaps:
+            circuit.swap(a, b)
+        circuit._layout = None
+    return circuit, swaps
+
+
+def final_layout_note(swaps) -> str:
+    pairs = "; ".join(f"{a},{b}" for a, b in swaps)
+    return (f"Output permutation: the Qiskit transpiler removed swap gates and recorded the "
+            f"permutation only in the circuit's layout (final_layout, ElidePermutations at "
+            f"levels 2 and 3); swap gates on qubit positions {pairs} (0-based, circuit qubit "
+            f"order) are appended after transpilation, inside compilation_time, so the final "
+            f"state is in the input's qubit order.")
 
 
 def qasm_real(value: float) -> str:

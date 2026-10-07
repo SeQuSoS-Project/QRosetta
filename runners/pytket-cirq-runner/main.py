@@ -53,6 +53,13 @@ _NATIVE_RUN_NOTE = (
     "measurements. Counts keys hold every declared classical bit in declaration order, flat "
     "clbit 0 leftmost; a classical bit measured more than once takes its last value.")
 
+_IMPLICIT_SWAPS_NOTE = (
+    "pytket Circuit.replace_implicit_wire_swaps(): the compilation pass left an implicit qubit "
+    "permutation (FullPeepholeOptimise with allow_swaps=True removes SWAPs by relabelling "
+    "wires), which tk_to_cirq does not carry over; it is written back as explicit SWAP gates "
+    "inside compilation_time, so the final state is in the input's qubit order. Measured "
+    "mode keeps the permutation implicit: each measurement already reads its own wire.")
+
 _PASS_NOTES = {}
 
 
@@ -101,6 +108,12 @@ def _compile_tket(payload: dict, qasm: str, notes=()):
     preprocessing_applied.append(_compilation_note(backend, opt_level))
     return (compiled_circ, preprocessing_applied, unit_pairs(tk_circ.bits),
             unit_pairs(tk_circ.qubits))
+
+
+def _replace_implicit_swaps(compiled_circ: Circuit, preprocessing_applied: list) -> None:
+    if compiled_circ.implicit_qubit_permutation() != {q: q for q in compiled_circ.qubits}:
+        compiled_circ.replace_implicit_wire_swaps()
+        preprocessing_applied.append(_IMPLICIT_SWAPS_NOTE)
 
 
 def _cirq_qubits(tk_circ: Circuit) -> list:
@@ -153,6 +166,7 @@ def process_run(payload: dict) -> dict:
         qasm, strip_notes = prepare_statevector_qasm(payload["circuit_data"])
         compiled_circ, preprocessing_applied, _, tk_qubits = _compile_tket(
             payload, qasm, strip_notes)
+        _replace_implicit_swaps(compiled_circ, preprocessing_applied)
         cirq_circ = _to_cirq_with_phase(compiled_circ)
         qubits = _cirq_qubits(compiled_circ)
         simulator = cirq.Simulator(dtype=np.complex128)

@@ -39,6 +39,13 @@ _CONVERT_NOTE = (
     "QuantumState, as QulacsBackend.process_circuits does, and reads the result. In "
     "statevector mode the global phase of the pytket circuit is restored after the timed run.")
 
+_IMPLICIT_SWAPS_NOTE = (
+    "pytket Circuit.replace_implicit_wire_swaps(): the default compilation pass left an "
+    "implicit qubit permutation (FullPeepholeOptimise with allow_swaps=True removes SWAPs by "
+    "relabelling wires); it is written as explicit SWAP gates on the compiled circuit before "
+    "conversion, so transpiled_qasm, whose OpenQASM writer drops implicit permutations, shows "
+    "the SWAPs the converted circuit applies.")
+
 _MEASURED_NOTE = (
     "Measured mode: which qubits the circuit's measurements read (through the circuit's "
     "implicit wire permutation, as QulacsBackend.process_circuits finds them) is worked out in "
@@ -73,7 +80,9 @@ def _compilation_note(backend, level):
     return _PASS_NOTES[key]
 
 
-def _compile(payload: dict, qasm: str, notes=()) -> CompileResult:
+def _compile(payload: dict, qasm: str, notes=(), replace_swaps: bool = False) -> CompileResult:
+    """Parse and compile for the backend; with ``replace_swaps`` (measurement-free circuits)
+    an implicit qubit permutation is written as SWAP gates on the compiled circuit."""
     qasm, broadcast_note = expand_register_broadcasts(qasm, PYTKET_BROADCAST_REASON)
     tk_circ = pytket.qasm.circuit_from_qasm_str(qasm, maxwidth=PYTKET_QASM_MAXWIDTH)
     preprocessing_applied = list(notes) + ([broadcast_note] if broadcast_note else [])
@@ -88,6 +97,10 @@ def _compile(payload: dict, qasm: str, notes=()) -> CompileResult:
     opt_level = min(payload.get("optimization_level", 0), 2)
     compiled_circ = backend.get_compiled_circuit(tk_circ, optimisation_level=opt_level)
     preprocessing_applied.append(_compilation_note(backend, opt_level))
+    if replace_swaps and compiled_circ.implicit_qubit_permutation() != {
+            q: q for q in compiled_circ.qubits}:
+        compiled_circ.replace_implicit_wire_swaps()
+        preprocessing_applied.append(_IMPLICIT_SWAPS_NOTE)
     backend._check_all_circuits([compiled_circ], nomeasure_warn=False)
     qulacs_circ = tk_to_qulacs(compiled_circ, reverse_index=True, replace_implicit_swaps=True)
     preprocessing_applied.append(_CONVERT_NOTE)
@@ -127,7 +140,7 @@ def _measured_bits(compiled_circ):
 
 def _compile_statevector(payload: dict) -> CompileResult:
     qasm, notes = prepare_statevector_qasm(payload["circuit_data"])
-    return _compile(payload, qasm, notes)
+    return _compile(payload, qasm, notes, replace_swaps=True)
 
 
 def _compile_measured(payload: dict) -> CompileResult:

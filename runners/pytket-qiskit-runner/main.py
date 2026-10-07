@@ -12,7 +12,9 @@ from qrosetta_commons.counts import (
     counts_from_register_keys, parse_measurement_layout, prepare_statevector_qasm,
     statevector_in_declaration_order, unordered_qreg_note,
 )
-from qrosetta_commons.qiskit_circuits import exact_qasm2_dumps
+from qrosetta_commons.qiskit_circuits import (
+    exact_qasm2_dumps, final_layout_note, restore_final_layout,
+)
 from qrosetta_commons import aer_split
 from qrosetta_commons.helpers import (
     CompileResult, declare_sdk_packages, get_logger, register_runner_endpoints,
@@ -128,8 +130,12 @@ def _qubit_pairs(qiskit_circ) -> list:
     return pairs
 
 
-def _to_qiskit(qasm: str, payload: dict):
-    """Parse the QASM via pytket, convert to a Qiskit circuit, and apply the opt level."""
+def _to_qiskit(qasm: str, payload: dict, restore_layout: bool):
+    """Parse the QASM via pytket, convert to a Qiskit circuit, and apply the opt level.
+
+    With ``restore_layout`` an output permutation the transpiler recorded only in the layout
+    is made explicit with swap gates; the measured path leaves it, since the transpiler
+    already moves each measurement onto its qubit's final position."""
     layout = parse_measurement_layout(qasm)
     qasm, broadcast_note = expand_register_broadcasts(qasm, PYTKET_BROADCAST_REASON)
     tk_circ = pytket.qasm.circuit_from_qasm_str(qasm, maxwidth=PYTKET_QASM_MAXWIDTH)
@@ -146,6 +152,10 @@ def _to_qiskit(qasm: str, payload: dict):
         preprocessing_applied.append(
             f"qiskit.compiler.transpile(level={min(opt_level, 3)}): Native Qiskit "
             "transpilation pass applied to optimize the circuit structure for the Aer backend.")
+        if restore_layout:
+            qiskit_circ, swaps = restore_final_layout(qiskit_circ)
+            if swaps:
+                preprocessing_applied.append(final_layout_note(swaps))
     qiskit_circ = _to_aer_basis(qiskit_circ, preprocessing_applied)
     preprocessing_applied.extend([_METHOD_NOTE, _FUSION_NOTE])
 
@@ -161,7 +171,7 @@ def process_run(payload: dict) -> dict:
         """Run save_statevector() on a copy, so the circuit serialised after t1 is the one
         without the Aer-only instruction."""
         qasm, strip_notes = prepare_statevector_qasm(payload["circuit_data"])
-        tk_circ, qiskit_circ, preprocessing_applied = _to_qiskit(qasm, payload)
+        tk_circ, qiskit_circ, preprocessing_applied = _to_qiskit(qasm, payload, True)
         backend_qubits = _qubit_pairs(qiskit_circ)
         executed_circ = qiskit_circ.copy()
         executed_circ.save_statevector()
@@ -203,7 +213,8 @@ def process_run_measured(payload: dict) -> dict:
     sim = _simulator()
 
     def compile_step(payload):
-        tk_circ, qiskit_circ, preprocessing_applied = _to_qiskit(payload["circuit_data"], payload)
+        tk_circ, qiskit_circ, preprocessing_applied = _to_qiskit(
+            payload["circuit_data"], payload, False)
         prepared = aer_split.prepare(
             sim, qiskit_circ, optimization_level=0, shots=payload.get("n_shots", 1024),
             seed_simulator=payload.get("seed"))

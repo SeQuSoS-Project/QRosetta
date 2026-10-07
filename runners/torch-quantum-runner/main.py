@@ -21,7 +21,9 @@ try:
     import torchquantum.functional as tqf
     from torchquantum.plugin import qiskit2tq
     from qiskit import QuantumCircuit as QiskitCircuit, transpile as qiskit_transpile
-    from qrosetta_commons.qiskit_circuits import exact_qasm2_dumps
+    from qrosetta_commons.qiskit_circuits import (
+        exact_qasm2_dumps, final_layout_note, restore_final_layout,
+    )
 
     # torchquantum 0.1.8 gate modules reference an unimported `mat_dict`
     # (mit-han-lab/torchquantum#226); alias the package-level dict into each. import_module
@@ -64,6 +66,7 @@ def _compile(payload: dict, qasm: str, notes=()) -> CompileResult:
         optimization_level=level,
         basis_gates=_TQ_BASIS_GATES,
     )
+    qc, swaps = restore_final_layout(qc)
     return CompileResult(
         circuit=(qiskit2tq(qc), qc),
         n_qubits=qc.num_qubits,
@@ -73,6 +76,7 @@ def _compile(payload: dict, qasm: str, notes=()) -> CompileResult:
             f"basis_gates={_TQ_BASIS_GATES}): Decomposes every gate into a basis TorchQuantum "
             "can execute (levels above 2 run at 2). Required by the adapter, applied "
             "regardless of apply_preprocessing.",
+            *([final_layout_note(swaps)] if swaps else []),
             _PRECISION_NOTE,
         ],
         precision=_PRECISION)
