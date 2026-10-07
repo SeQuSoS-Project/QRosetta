@@ -765,6 +765,45 @@ class TestBatchPublicationArtifacts:
         assert {"@id": "tables/ghz-3q/agreement.csv"} in byid["./"]["hasPart"]
 
 
+class TestBatchWithFailedFirstTask:
+    """A measured playlist whose first task failed validation before dispatch."""
+
+    def _results(self):
+        results = json.loads(json.dumps(SAMPLE_RESULTS_BATCH_MEASURED))
+        results["mode"] = "measured"
+        results["seed"] = 999
+        results["seed_derivation"] = "sha256(master, key)"
+        for task in results["benchmark_summary"]:
+            task.update(optimization_level=1, apply_preprocessing=False)
+            task["raw_results"][0]["runner_seed"] = 4242
+        results["benchmark_summary"].insert(0, {
+            "task_name": "broken (2q)", "task_request": {"source": "literal"},
+            "error": "Failed to process task: Circuit too complex"})
+        return results
+
+    def test_report_mode_wins_over_the_first_task(self):
+        assert infer_export_mode(self._results()) == "measured"
+        assert infer_export_mode({"mode": "statevector", "benchmark_summary": [{"n_shots": 8}]}) \
+            == "statevector"
+        assert infer_export_mode({"benchmark_summary": [{"error": "x"}, {"n_shots": 8}]}) == "measured"
+
+    def test_crate_records_measured_provenance_and_shared_settings(self):
+        from schemas import ExportPayload
+        from services.exporter import build_export_context
+        ctx = build_export_context(self._results(), ExportPayload())
+        data = build_ro_crate(ctx)
+        prov = _provenance(data)
+        config = prov["run_configuration"]
+        assert prov["execution_mode"] == "measured"
+        assert config["n_shots"] == 256 and config["seed"] == 999
+        assert config["seed_derivation"] == "sha256(master, key)"
+        assert config["optimization_level"] == 1 and config["apply_preprocessing"] is False
+        assert prov["runner_configurations"]["qiskit"]["runner_seed_by_task"]["bell-2q"] == 4242
+        assert "seed_honoured" in prov["runner_configurations"]["qiskit"]
+        assert "js_threshold" in config["agreement_thresholds"]
+        assert _by_id(_load_metadata(data))["#param-n_shots"]["value"] == 256
+
+
 class TestRunnerLocksAndThresholds:
     def test_runner_requirements_lock_is_bundled_and_referenced(self):
         services = {"qiskit": {"enabled": True, "base_url": "http://pytket-qiskit-runner:8000"}}

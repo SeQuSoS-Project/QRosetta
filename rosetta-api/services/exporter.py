@@ -107,9 +107,8 @@ def _generate_publication_artifacts(ctx: "ExportContext") -> tuple:
     descriptions: Dict[str, str] = {}
     for task in _iter_tasks(ctx):
         report = task.report
-        mode = ctx.mode if task.task_id is None else infer_export_mode(report)
         try:
-            built, described = build_publication_items(report, mode, items, task=task.label)
+            built, described = build_publication_items(report, ctx.mode, items, task=task.label)
         except ParameterError as exc:
             if task.task_id is None:
                 raise
@@ -228,27 +227,26 @@ def _member(dir_name: str, rel_path: str) -> str:
     return f"{dir_name}/{rel_path}"
 
 
+def _batch_tasks(results: dict) -> list:
+    summary = results.get("benchmark_summary")
+    return [t for t in summary if isinstance(t, dict)] if isinstance(summary, list) else []
+
+
 def _shared_scalar(ctx: "ExportContext", key: str):
-    """A report-wide value: the top-level copy, else the first batch task's copy."""
+    """A report-wide value: the top-level copy, else the copy in the first batch task that
+    records it (a task that failed before dispatch records none)."""
     if key in ctx.results:
         return ctx.results.get(key)
-    benchmark_summary = ctx.results.get("benchmark_summary")
-    if isinstance(benchmark_summary, list) and benchmark_summary:
-        first = benchmark_summary[0]
-        if isinstance(first, dict):
-            return first.get(key)
-    return None
+    return next((t.get(key) for t in _batch_tasks(ctx.results) if key in t), None)
 
 
 def infer_export_mode(results: dict) -> str:
-    """'measured' if the report (or its first batch task) has n_shots, else 'statevector'."""
-    if "n_shots" in results:
+    """The report's own ``mode`` when it records one; else 'measured' if the report or any
+    batch task has n_shots, else 'statevector'."""
+    if results.get("mode") in ("statevector", "measured"):
+        return results["mode"]
+    if "n_shots" in results or any("n_shots" in t for t in _batch_tasks(results)):
         return "measured"
-    benchmark_summary = results.get("benchmark_summary")
-    if isinstance(benchmark_summary, list) and benchmark_summary:
-        first = benchmark_summary[0]
-        if isinstance(first, dict) and "n_shots" in first:
-            return "measured"
     return "statevector"
 
 
