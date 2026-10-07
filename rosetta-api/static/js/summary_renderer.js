@@ -600,7 +600,7 @@ function _renderFailures(panel, raws) {
             b.textContent = _displayRunnerName(r.simulator);
             frag.appendChild(b);
             const why = r.never_started
-                ? 'queued and never started: the runner was busy with other runs for the whole wait budget'
+                ? `never started: ${userFacingError(r.error) || 'it stayed queued for the whole wait budget'}`
                 : (cfg.text || userFacingError(r.error) || RUNNER_STATUS_LABEL[st]);
             frag.appendChild(document.createTextNode(`: ${why}`));
             return frag;

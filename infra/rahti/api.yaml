@@ -47,6 +47,8 @@ items:
           # Services whose images are not in this project's registry.
           - name: QROSETTA_NOT_DEPLOYED
             value: "bqskit,cirq-transformers,qsynth"
+          - name: QROSETTA_K8S_MAX_CONCURRENT_JOBS
+            value: "3"
           - name: CORS_ALLOW_ORIGINS
             value: "https://rosetta-frontend-652754634999.us-central1.run.app,http://localhost:3000,http://localhost:8080"
           - name: DATABASE_URL

@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     RUNNER_CONNECT_TIMEOUT_SEC: int = 10
     RUNNER_DEADLINE_BUFFER_SEC: int = 15
     RUNNER_QUEUE_MAX_WAIT_SEC: int = int(os.getenv("RUNNER_QUEUE_MAX_WAIT_SEC", "1800"))
+    K8S_MAX_CONCURRENT_JOBS: int = max(1, int(os.getenv("QROSETTA_K8S_MAX_CONCURRENT_JOBS", "3")))
     GPU_AVAILABLE: bool = os.getenv("QROSETTA_GPU_AVAILABLE", "false").strip().lower() in ("1", "true", "yes")
     NOT_DEPLOYED: frozenset = frozenset(
         s.strip() for s in os.getenv("QROSETTA_NOT_DEPLOYED", "").split(",") if s.strip())

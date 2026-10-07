@@ -37,7 +37,12 @@ TIMEOUT_SCOPE = {
     ),
     "kubernetes": (
         "whole Kubernetes Job measured from job creation: pod scheduling, image pull, container "
-        "start, SDK import, warm-up run, every timed run (timing_repeats) and S3 upload"
+        "start, SDK import, warm-up run, every timed run (timing_repeats) and S3 upload. A Job "
+        "is created only when one of the server's job slots is free (k8s_job_slots, shared by "
+        "every job on the server, so the Jobs that run fit the project's CPU quota). The wait "
+        "for a slot is not counted, is capped at RUNNER_QUEUE_MAX_WAIT_SEC (recorded as "
+        "queue_max_wait_sec) and is reported as queue_wait_sec; a run still waiting at that "
+        "cap, or whose pod the quota never admitted, is reported as never_started"
     ),
 }
 

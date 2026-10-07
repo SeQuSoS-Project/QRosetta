@@ -1,10 +1,15 @@
-"""Kubernetes dispatcher: one Job per runner run, results exchanged through S3."""
+"""Kubernetes dispatcher: one Job per runner run, results exchanged through S3.
+
+At most ``K8S_MAX_CONCURRENT_JOBS`` Jobs exist at a time across all jobs of this API process,
+so every Job created fits the project's CPU quota; the rest wait for a slot.
+"""
 
 import os
 import json
 import time
 import uuid
 import asyncio
+import threading
 from concurrent.futures import ThreadPoolExecutor
 import boto3
 from botocore.config import Config as BotoConfig
@@ -19,6 +24,9 @@ IMAGE_TAG = os.environ.get("IMAGE_TAG", "latest")
 S3_FETCH_ATTEMPTS = 6
 S3_FETCH_BASE_DELAY_SEC = 2
 RBAC_FALLBACK_POLL_SEC = 5
+POD_GONE_WAIT_SEC = 30
+
+JOB_SLOTS = threading.BoundedSemaphore(settings.K8S_MAX_CONCURRENT_JOBS)
 
 def _make_s3_client():
     return boto3.client(
@@ -127,10 +135,11 @@ def _poll_pod_phase(core_api, namespace: str, job_name: str, sim_name: str, job_
 
     Falls back to polling S3 directly if pod listing is unavailable (RBAC). Returns the
     result dict (RBAC fallback), 'succeeded', 'failed', 'timeout_running' (the pod reached
-    Running), 'timeout_pending' (the pod never reached Running) or 'timeout_unknown'
-    (pod phase could not be read).
+    Running), 'timeout_pending' (the pod never reached Running), 'timeout_no_pod' (no pod
+    was ever created) or 'timeout_unknown' (pod phase could not be read).
     """
     pod_is_running = False
+    pod_seen = False
     pod_check_ok = None
 
     while time.time() < deadline:
@@ -144,6 +153,7 @@ def _poll_pod_phase(core_api, namespace: str, job_name: str, sim_name: str, job_
                 )
                 pod_check_ok = True
                 if pods.items:
+                    pod_seen = True
                     phase = pods.items[0].status.phase
                     if phase == "Running" and not pod_is_running:
                         pod_is_running = True
@@ -177,9 +187,47 @@ def _poll_pod_phase(core_api, namespace: str, job_name: str, sim_name: str, job_
 
     if pod_check_ok is not True:
         return "timeout_unknown"
+    if not pod_seen:
+        return "timeout_no_pod"
     return "timeout_running" if pod_is_running else "timeout_pending"
 
+
+def _pod_refusal_resource(core_api, namespace: str, job_name: str) -> str | None:
+    """The resource named in the Job's latest 'exceeded quota' FailedCreate event
+    (e.g. 'limits.cpu'), 'unknown' for a quota refusal naming none, None otherwise."""
+    try:
+        events = core_api.list_namespaced_event(
+            namespace=namespace, field_selector=f"involvedObject.name={job_name}",
+            _request_timeout=10).items
+    except Exception as e:
+        logger.warning(f"[K8s] Could not read events of '{job_name}': {e}")
+        return None
+    refusals = [ev for ev in events
+                if ev.reason == "FailedCreate" and "exceeded quota" in (ev.message or "")]
+    if not refusals:
+        return None
+    message = refusals[-1].message
+    logger.warning(f"[K8s] Pod of '{job_name}' refused: {message}")
+    requested = message.split("requested: ", 1)[1].split(",")[0] if "requested: " in message else ""
+    return requested.split("=")[0].strip() or "unknown"
+
+
+def _wait_pod_gone(core_api, namespace: str, job_name: str) -> None:
+    """Wait up to POD_GONE_WAIT_SEC for a deleted Job's pod to disappear, so the slot it
+    frees is also free in the quota."""
+    end = time.time() + POD_GONE_WAIT_SEC
+    while time.time() < end:
+        try:
+            if not core_api.list_namespaced_pod(
+                    namespace=namespace, label_selector=f"job-name={job_name}",
+                    _request_timeout=10).items:
+                return
+        except Exception:
+            return
+        time.sleep(2)
+
 def _k8s_error(sim_name: str, message: str, dispatch_status: str) -> dict:
+    """Result for a run that returned nothing: the message and every metric unmeasured."""
     return {
         "simulator": sim_name,
         "error": message,
@@ -195,6 +243,21 @@ def _run_k8s_job_for_simulator(spec: dict, local_payload: dict, timeout_seconds:
 
     dispatched_at = utc_now_iso()
     hostname = spec["url"].split("//")[1].split(":")[0]
+    budget = float(settings.RUNNER_QUEUE_MAX_WAIT_SEC)
+    t0 = time.monotonic()
+    if not JOB_SLOTS.acquire(timeout=budget):
+        waited = time.monotonic() - t0
+        if status_callback:
+            status_callback("timeout")
+        result = _k8s_error(spec["sim_name"], (
+            f"TIMEOUT while waiting for one of the server's {settings.K8S_MAX_CONCURRENT_JOBS} "
+            f"Kubernetes job slots: waited {waited:.0f} s (queue budget {budget:.0f} s); "
+            f"the run never started."), "timeout")
+        result.update(never_started=True, timed_out=True, queue_wait_sec=waited)
+        return annotate_result(result, spec, local_payload, dispatched_at,
+                               dispatch_status=result.pop("dispatch_status", None),
+                               runner_image=runner_image_ref(hostname))
+    waited = time.monotonic() - t0
     try:
         result = _run_k8s_job_inner(spec["sim_name"], spec["url"], local_payload, timeout_seconds, namespace, status_callback)
     except Exception as e:
@@ -202,6 +265,9 @@ def _run_k8s_job_for_simulator(spec: dict, local_payload: dict, timeout_seconds:
         if status_callback:
             status_callback("error")
         result = _k8s_error(spec["sim_name"], f"UNAVAILABLE: the {spec['key']} Job could not be created ({type(e).__name__}).", "offline")
+    finally:
+        JOB_SLOTS.release()
+    result["queue_wait_sec"] = waited
     return annotate_result(result, spec, local_payload, dispatched_at,
                            dispatch_status=result.pop("dispatch_status", None),
                            runner_image=runner_image_ref(hostname))
@@ -268,11 +334,21 @@ def _run_k8s_job_inner(sim_name: str, url: str, local_payload: dict, timeout_sec
                     name=job_name, namespace=namespace, propagation_policy="Background",
                     _request_timeout=10)
                 logger.info(f"[K8s] Deleted timed-out job '{job_name}' for {sim_name}")
+                _wait_pod_gone(core_api, namespace, job_name)
             except Exception as e:
                 logger.warning(f"[K8s] Could not delete timed-out job '{job_name}': {e}")
 
         if status_callback:
             status_callback("timeout" if timed_out else "error")
+        if terminal_state == "timeout_no_pod":
+            refused = _pod_refusal_resource(core_api, namespace, job_name)
+            if refused:
+                result = _k8s_error(sim_name, (
+                    f"TIMEOUT: the cluster's resource quota did not admit a pod for the {sim_name} "
+                    f"Job ({refused}) within {timeout_seconds} s; the run never started."), "timeout")
+                result.update(never_started=True, timed_out=True)
+                return result
+            return _k8s_error(sim_name, f"UNAVAILABLE: Kubernetes created no pod for the {sim_name} Job within {timeout_seconds} s.", "offline")
         if terminal_state == "timeout_pending":
             return _k8s_error(sim_name, f"UNAVAILABLE: the {sim_name} pod was not running after {timeout_seconds}s (unschedulable, or the image could not be pulled).", "offline")
         if timed_out:

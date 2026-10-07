@@ -1028,7 +1028,11 @@
                         1800 s, recorded in the report as <code>queue_max_wait_sec</code>); a run still queued
                         at the cap is not started. It ends with status <code>timeout</code>,
                         <code>timeout_kind: "queue"</code> and <code>never_started: true</code>, and the Summary
-                        tab says it never started.</li>
+                        tab says it never started. On the Kubernetes deployment the queue is server-wide: at most
+                        <code>k8s_job_slots</code> runner Jobs exist at a time (set by <code>QROSETTA_K8S_MAX_CONCURRENT_JOBS</code>
+                        to fit the project's CPU quota), a run waits for a free slot under the same cap, and the
+                        wait is recorded as <code>queue_wait_sec</code>. A run whose pod the cluster's quota did
+                        not admit before its timeout also ends with <code>never_started: true</code>.</li>
                     <li><strong>Timeout scope.</strong> The timeout set in the Execution chip (the server's
                         allowed range is shown under the field) applies to each backend separately and covers
                         starting the isolated runner process, importing the SDK, the warm-up run and the timed

@@ -62,8 +62,10 @@ function _applyServerConfig(config) {
     const tHelp = document.getElementById('timeout-help');
     if (tHelp) {
         tHelp.textContent = `Covers process start, the warm-up run and every timed run. Allowed: ${tMin}–${tMax} s.`
-            + (typeof config?.queue_max_wait_sec === 'number' && mode === 'local'
-                ? ` Waiting for a busy backend is not counted (at most ${config.queue_max_wait_sec} s).` : '');
+            + (typeof config?.queue_max_wait_sec !== 'number' ? ''
+                : mode === 'local' ? ` Waiting for a busy backend is not counted (at most ${config.queue_max_wait_sec} s).`
+                : mode === 'kubernetes' ? ` Waiting for a free slot on the cluster is not counted (at most ${config.queue_max_wait_sec} s).`
+                : '');
     }
 
     const { min: sMin, max: sMax } = shotsRange();

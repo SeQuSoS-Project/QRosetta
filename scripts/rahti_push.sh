@@ -88,6 +88,16 @@ for NAME in "${TARGETS[@]}"; do
     echo ""
 done
 
+# Runner Jobs are created with IMAGE_TAG, so every image stream not pushed above gets that
+# tag on its current :latest.
+echo "--- Tagging services not pushed with $IMAGE_TAG ---"
+for NAME in "${!SERVICE_MAP[@]}"; do
+    [[ " ${TARGETS[*]} " == *" $NAME "* ]] && continue
+    if oc get istag "$NAME:latest" -n "$NAMESPACE" >/dev/null 2>&1; then
+        oc tag "$NAMESPACE/$NAME:latest" "$NAMESPACE/$NAME:$IMAGE_TAG" -n "$NAMESPACE"
+    fi
+done
+
 echo "--- Applying manifests ---"
 sed -i "s/<YOUR_NAMESPACE>/$NAMESPACE/g" infra/rahti/rbac.yaml 2>/dev/null || true
 oc apply -f infra/rahti/rbac.yaml -n "$NAMESPACE"
