@@ -1,0 +1,22 @@
+# Build context exclusions. No Dockerfile COPYs anything below; keeping them out
+# shrinks every image build's context and keeps host virtualenvs out of images.
+.git
+.github
+.venv
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/*.pyc
+.vscode
+.claude
+latex
+export
+experiments
+docs
+data
+examples
+
+# setuptools output from a host `pip install ./shared`: an image's `pip install` of the
+# copied shared/ would package a stale build/lib instead of the current sources.
+**/build
+**/*.egg-info

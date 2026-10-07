@@ -65,6 +65,16 @@ items:
               secretKeyRef:
                 name: rosetta-secrets
                 key: SECRET_KEY
+          # Shared with the Cloud Run frontend (deploy_frontend.sh): a request carrying it
+          # is rate-limited by the client address that proxy saw. Add it with:
+          #   oc patch secret rosetta-secrets -n qrosetta \
+          #     -p "{\"stringData\":{\"QROSETTA_PROXY_TOKEN\":\"$(openssl rand -hex 32)\"}}"
+          - name: QROSETTA_PROXY_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: rosetta-secrets
+                key: QROSETTA_PROXY_TOKEN
+                optional: true
           - name: STORAGE_MODE
             value: "s3"
           - name: S3_ENDPOINT_URL
@@ -111,6 +121,12 @@ items:
   kind: Route
   metadata:
     name: rosetta-api-route
+    annotations:
+      # 300 s maximum job time plus a 30 s buffer, as in nginx and gunicorn.
+      haproxy.router.openshift.io/timeout: 330s
+      # The router appends the connecting address to X-Forwarded-For; the API keys rate
+      # limits on that last entry.
+      haproxy.router.openshift.io/set-forwarded-headers: append
   spec:
     to:
       kind: Service

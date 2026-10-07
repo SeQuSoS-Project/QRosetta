@@ -11,12 +11,12 @@ from pathlib import Path
 from qrosetta_commons.compile_errors import CompileRefused, OutputRejected
 from qrosetta_commons.cpu import apply_cpu_affinity
 from qrosetta_commons.helpers import (
-    GATE_METRICS_FROM_QASM, IMAGE_GIT_SHA, MAX_QUBITS_MEASURED, ExecutionSlots, _stamp_code_sha,
+    GATE_METRICS_FROM_QASM, IMAGE_GIT_SHA, MAX_QUBITS_COMPILE, ExecutionSlots, _stamp_code_sha,
     check_qubits_limit, count_qasm_gates_and_depth, count_qasm_gates_by_name,
     get_num_qubits_from_qasm, get_sdk_versions, run_cli_job,
 )
 
-COMPILE_MAX_QUBITS = MAX_QUBITS_MEASURED
+COMPILE_MAX_QUBITS = MAX_QUBITS_COMPILE
 
 _PROBE_HEADER = 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[3];\n'
 SELF_TEST_PROBES = {

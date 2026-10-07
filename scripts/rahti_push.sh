@@ -10,7 +10,16 @@ cd "$(dirname "$0")/.." || exit 1
 
 NAMESPACE=${1:-"qrosetta"}
 REGISTRY="image-registry.apps.2.rahti.csc.fi/$NAMESPACE"
-IMAGE_TAG=$(git rev-parse --short HEAD)
+HEAD_SHA=$(git rev-parse --short HEAD)
+# A checkout with uncommitted changes gets a unique "-dirty-<epoch>" tag (a reused tag would
+# be served from a node's IfNotPresent cache) and is recorded as "<sha>-dirty".
+if [ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]; then
+    IMAGE_TAG="${HEAD_SHA}-dirty-$(date +%s)"
+    DEPLOY_GIT_SHA="${HEAD_SHA}-dirty"
+else
+    IMAGE_TAG="$HEAD_SHA"
+    DEPLOY_GIT_SHA="$HEAD_SHA"
+fi
 shift || true
 
 # Registry image name -> docker compose service name.
@@ -70,6 +79,9 @@ echo "========================================"
 
 set -e
 
+declare -A IMAGE_SOURCE=()
+declare -A BUILT_FROM=()
+
 for NAME in "${TARGETS[@]}"; do
     COMPOSE_SERVICE="${SERVICE_MAP[$NAME]}"
     if [ -z "$COMPOSE_SERVICE" ]; then
@@ -85,6 +97,10 @@ for NAME in "${TARGETS[@]}"; do
     echo ">> Pushing $VERSIONED_TAG"
     docker push "$VERSIONED_TAG"
     docker push "$LATEST_TAG"
+    IMAGE_SOURCE[$NAME]="pushed by this deploy"
+    BUILT_FROM[$NAME]=$(docker image inspect "$LOCAL_IMAGE" \
+        --format '{{range .Config.Env}}{{println .}}{{end}}' \
+        | sed -n 's/^QROSETTA_IMAGE_GIT_SHA=//p' | head -n 1)
     echo ""
 done
 
@@ -95,8 +111,26 @@ for NAME in "${!SERVICE_MAP[@]}"; do
     [[ " ${TARGETS[*]} " == *" $NAME "* ]] && continue
     if oc get istag "$NAME:latest" -n "$NAMESPACE" >/dev/null 2>&1; then
         oc tag "$NAMESPACE/$NAME:latest" "$NAMESPACE/$NAME:$IMAGE_TAG" -n "$NAMESPACE"
+        IMAGE_SOURCE[$NAME]="previous :latest retagged, not rebuilt by this deploy"
     fi
 done
+
+# The digest of every image the API can start: recorded in reports (image_digests) and used
+# to create each Job by digest, so the image a result names is the image that ran.
+# image_git_sha is the commit baked into a pushed image when it was built.
+echo "--- Recording image digests ---"
+DIGESTS_JSON=""
+for NAME in "${!SERVICE_MAP[@]}"; do
+    DIGEST=$(oc get istag "$NAME:$IMAGE_TAG" -n "$NAMESPACE" -o jsonpath='{.image.metadata.name}' 2>/dev/null || true)
+    [ -z "$DIGEST" ] && continue
+    ENTRY="\"digest\":\"$DIGEST\",\"tag\":\"$IMAGE_TAG\",\"source\":\"${IMAGE_SOURCE[$NAME]:-unknown}\""
+    if [ -n "${BUILT_FROM[$NAME]}" ]; then
+        ENTRY="$ENTRY,\"image_git_sha\":\"${BUILT_FROM[$NAME]}\""
+    fi
+    DIGESTS_JSON="${DIGESTS_JSON:+$DIGESTS_JSON,}\"$NAME\":{$ENTRY}"
+done
+DIGESTS_JSON="{$DIGESTS_JSON}"
+echo "$DIGESTS_JSON"
 
 echo "--- Applying manifests ---"
 sed -i "s/<YOUR_NAMESPACE>/$NAMESPACE/g" infra/rahti/rbac.yaml 2>/dev/null || true
@@ -104,10 +138,11 @@ oc apply -f infra/rahti/rbac.yaml -n "$NAMESPACE"
 oc apply -f infra/rahti/api.yaml  -n "$NAMESPACE"
 
 # api.yaml pins rosetta-api:latest, which IfNotPresent will not re-pull, so set the hash
-# tag after `oc apply`. The dispatcher uses IMAGE_TAG for runner Job images;
-# QROSETTA_GIT_SHA is recorded in experiment manifests.
+# tag after `oc apply`. The dispatcher creates Jobs from QROSETTA_IMAGE_DIGESTS, else from
+# IMAGE_TAG; QROSETTA_GIT_SHA is git_sha when the API image has no commit baked in.
 echo "--- Setting rosetta-api image + IMAGE_TAG=$IMAGE_TAG and restarting ---"
-oc set env   deployment/rosetta-api IMAGE_TAG="$IMAGE_TAG" QROSETTA_GIT_SHA="$IMAGE_TAG" -n "$NAMESPACE"
+oc set env   deployment/rosetta-api IMAGE_TAG="$IMAGE_TAG" QROSETTA_GIT_SHA="$DEPLOY_GIT_SHA" \
+    QROSETTA_IMAGE_DIGESTS="$DIGESTS_JSON" -n "$NAMESPACE"
 oc set image deployment/rosetta-api api="$REGISTRY/rosetta-api:$IMAGE_TAG" -n "$NAMESPACE"
 oc rollout status  deployment/rosetta-api -n "$NAMESPACE" --timeout=120s
 

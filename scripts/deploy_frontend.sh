@@ -46,11 +46,20 @@ docker push "$REPO/rosetta-frontend:latest"
 
 echo ""
 echo "--- 4. Deploying to Google Cloud Run ---"
+# QROSETTA_PROXY_TOKEN must equal the API's (rosetta-secrets on Rahti); without it the API
+# rate-limits every visitor of this frontend as one client.
+TOKEN_ARGS=()
+if [ -n "${QROSETTA_PROXY_TOKEN}" ]; then
+    TOKEN_ARGS=(--update-env-vars "QROSETTA_PROXY_TOKEN=${QROSETTA_PROXY_TOKEN}")
+else
+    echo ">> WARNING: QROSETTA_PROXY_TOKEN is unset; the API will see one client for every visitor."
+fi
 gcloud run deploy rosetta-frontend \
     --image "$REPO/rosetta-frontend:$IMAGE_TAG" \
     --region "${REGION}" \
     --allow-unauthenticated \
-    --port 8080
+    --port 8080 \
+    "${TOKEN_ARGS[@]}"
 
 echo "========================================"
 echo "Deployed image tag: $IMAGE_TAG"

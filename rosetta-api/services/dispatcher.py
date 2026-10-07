@@ -105,7 +105,8 @@ def annotate_result(result: dict, spec: dict, sent_payload: dict, dispatched_at:
     dispatch_status, timeout_kind (``"queue"`` for a run that never left the runner's
     queue, ``"run"`` otherwise; only on timeouts), dispatched_at, completed_at,
     timing_samples, timing_statistic, runner_image, dispatch_phase, concurrent_runs (runs
-    dispatched in the same phase, this one included), and for seeded runs runner_seed, seed,
+    dispatched in the same phase, this one included; ``annotate_overlaps`` adds the runs of
+    other dispatches in flight beside it), and for seeded runs runner_seed, seed,
     seed_honoured. ``seed_honoured`` is None for a failed run, which sampled nothing.
     """
     result["simulator"] = spec["key"]
@@ -218,10 +219,58 @@ def _run_interval(result: dict):
     return (start + (wait if isinstance(wait, (int, float)) else 0.0), end)
 
 
+def record_dispatch_waves(results: list) -> list:
+    """Give the results of one dispatch their ``dispatch_wave``: per dispatch phase, the
+    wave's start (earliest dispatched_at), end (latest completed_at) and run count. Results
+    of a phase share one wave object."""
+    waves = {}
+    for r in results:
+        if isinstance(r, dict):
+            waves.setdefault(r.get("dispatch_phase", 1), []).append(r)
+    for phase, members in waves.items():
+        wave = {"phase": phase, "runs": len(members),
+                "started_at": min((m.get("dispatched_at") or "") for m in members) or None,
+                "finished_at": max((m.get("completed_at") or "") for m in members) or None}
+        for m in members:
+            m["dispatch_wave"] = wave
+    return results
+
+
+def _wave_interval(wave):
+    try:
+        return (datetime.fromisoformat(wave["started_at"]).timestamp(),
+                datetime.fromisoformat(wave["finished_at"]).timestamp())
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _annotate_concurrency(results: list) -> None:
+    """Set ``concurrent_runs`` from the dispatch waves in ``results``: the runs of every wave
+    in flight while this run's wave was (its own included). Two dispatches gathered together
+    (the sampled and native groups of a measured run) count each other's runs."""
+    waves = {}
+    for r in results:
+        if isinstance(r, dict) and isinstance(r.get("dispatch_wave"), dict):
+            waves.setdefault(id(r["dispatch_wave"]), r["dispatch_wave"])
+    spans = {key: _wave_interval(w) for key, w in waves.items()}
+    for r in results:
+        if not isinstance(r, dict) or not isinstance(r.get("dispatch_wave"), dict):
+            continue
+        mine = spans[id(r["dispatch_wave"])]
+        if mine is None:
+            continue
+        r["concurrent_runs"] = sum(
+            waves[key]["runs"] for key, span in spans.items()
+            if key == id(r["dispatch_wave"])
+            or (span is not None and span[0] < mine[1] and mine[0] < span[1]))
+
+
 def annotate_overlaps(results: list) -> list:
     """Set ``overlapping_runs`` on each result: how many other runs of this job were in
     their runner process (spawn, warm-up and timed runs) at some time this run was. Runs of
-    other jobs on the same server are not counted."""
+    other jobs on the same server are not counted. Also sets ``concurrent_runs`` across
+    every dispatch in ``results`` (see ``_annotate_concurrency``)."""
+    _annotate_concurrency(results)
     intervals = [_run_interval(r) if isinstance(r, dict) else None for r in results]
     for i, r in enumerate(results):
         if not isinstance(r, dict):
@@ -267,4 +316,4 @@ async def dispatch_to_runners(runner_urls: dict, runner_payload: dict, timeout_s
             r["exclusive_wait_sec"] = waited if exclusive else None
             r["gate_wait_sec"] = waited
             r.setdefault("server_overlapping_runs", None)
-    return annotate_overlaps(results)
+    return annotate_overlaps(record_dispatch_waves(results))
