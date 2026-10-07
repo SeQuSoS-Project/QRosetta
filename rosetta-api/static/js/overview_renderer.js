@@ -85,7 +85,7 @@ function _nextSteps(data, v, h) {
     if (v.mode === 'measured' && v.inconclusive && shots) {
         steps.push(`For the inconclusive pairs, the power model asks for about ${fmtInt(shots)} shots per backend (this run used ${fmtInt(data.n_shots)}).`);
     }
-    if (h.failed.timeout.length) steps.push('Timed-out backends: raise the timeout in Config, or run a smaller circuit.');
+    if (h.failed.timeout.length) steps.push('Timed-out backends: raise the timeout in the Execution chip, or run a smaller circuit.');
     if (h.failed.error.length) steps.push('Backends with errors: their messages are under "Errors" below.');
     if (v.disagreeing) steps.push('To see the evidence for a pair, open the Agreement tab or the lists below.');
     return steps;

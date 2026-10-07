@@ -1,5 +1,6 @@
 // localStorage records that survive a page reload: the job submitted last (until its
-// results are shown), the circuit in the editor and the batch queue. Leaf module: no imports.
+// results are shown), the circuit in the editor, the batch queue and small per-browser
+// preferences. Leaf module: no imports.
 
 const PENDING_KEY = 'rosetta_pending_job';
 const EDITOR_KEY = 'rosetta_editor_circuit';
@@ -20,6 +21,22 @@ function _write(key, value) {
     try {
         if (value === null) localStorage.removeItem(key);
         else localStorage.setItem(key, JSON.stringify(value));
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
+
+/** A stored string preference, or `fallback` when none is stored or storage is unavailable. */
+export function readPref(key, fallback = '') {
+    try { return localStorage.getItem(key) ?? fallback; } catch (_) { return fallback; }
+}
+
+/** @returns {boolean} false when the browser refused to store the value */
+export function writePref(key, value) {
+    try {
+        if (value === null || value === '') localStorage.removeItem(key);
+        else localStorage.setItem(key, value);
         return true;
     } catch (_) {
         return false;

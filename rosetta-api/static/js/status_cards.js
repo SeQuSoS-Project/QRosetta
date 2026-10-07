@@ -72,12 +72,14 @@ function _chip(cfg, seconds, key) {
     return wrap;
 }
 
-/** Make sure `group`'s table has a row for every key, rebuilding it in key order when not. */
+/** Make sure `group`'s table has a row for every key, rebuilding it in key order when not.
+ * A planned backend row gives way to that backend's multi-run rows (`<id>~opt<L>~run<N>`). */
 function _ensureRows(group, keys) {
     const t = _view.tables[group];
     const known = t ? new Set(t.keys) : new Set();
     if (t && keys.every(k => known.has(k))) return;
-    const all = [...new Set([...known, ...keys])].sort();
+    const runOf = new Set(keys.filter(k => k.includes('~')).map(k => parseRunnerKey(k).simId));
+    const all = [...new Set([...known, ...keys])].filter(k => k.includes('~') || !runOf.has(k)).sort();
     const spec = group === 'compile'
         ? { caption: 'Compile-only services', columns: COMPILER_COLUMNS, keys: all, rows: all.map(k => [_compilerName(k), '—']) }
         : { caption: _view.backendCaption, columns: _view.backendColumns, keys: all,

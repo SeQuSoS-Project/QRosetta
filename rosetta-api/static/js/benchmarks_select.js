@@ -17,8 +17,8 @@ export function bmCurrentSuite() {
     return document.querySelector('input[name="bench-suite"]:checked')?.value || 'mqt';
 }
 
-// Max-qubit cap from the Benchmarks panel input (empty = no cap). Entries whose size is
-// unknown (0, e.g. a name without an _n suffix) are kept so nothing is silently hidden.
+// Max-qubit cap from the Bench popover input (empty = no cap). Entries whose size is
+// unknown (0, e.g. a name without an _n suffix) are kept, as the cap cannot be checked.
 export function bmMaxQubits() {
     const v = parseInt(document.getElementById('bench-max-qubits')?.value);
     return Number.isFinite(v) && v > 0 ? v : Infinity;
@@ -85,7 +85,7 @@ export function bmAddToQueue(items) {
     return added;
 }
 
-// --- Benchmarks panel: precise multi-select ------------------------------------------
+// Bench popover: the checklist, its filter and the qubit cap.
 
 export async function bmLoadChecklist() {
     const list = document.getElementById('bench-checklist');
@@ -95,7 +95,7 @@ export async function bmLoadChecklist() {
         await bmSuiteEntries(bmCurrentSuite());
         bmRenderChecklist();
     } catch (e) {
-        list.innerHTML = `<div class="text-red-600">${e.message}</div>`;
+        list.replaceChildren(Object.assign(document.createElement('div'), { className: 'text-red-600', textContent: e.message }));
     }
 }
 
@@ -175,9 +175,6 @@ export function bmAddSelectedToBatch() {
         alert(`${items.length - added} of ${items.length} selected circuits were already in the playlist and were not added again.`);
     }
 }
-
-// --- Experiment panel: quick "add all of a suite" ------------------------------------
-
 
 /** + Add all shown: every circuit the checklist shows (suite, name filter and qubit cap). */
 export function bmAddAllShown() {

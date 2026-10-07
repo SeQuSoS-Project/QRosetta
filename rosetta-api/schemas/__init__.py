@@ -16,6 +16,8 @@ from schemas.benchmark import (
     ExportPayload,
     ExportRequest,
     PublicationArtifactsSelection,
+    PublicationItem,
+    PublicationJobRenderRequest,
     PublicationRenderRequest,
 )
 from schemas.auth import (
@@ -43,7 +45,8 @@ __all__ = [
     "ExperimentCircuit", "ExperimentPayload",
     "VisualizerResponse", "JobStatusResponse", "RunnerPerformanceMetrics",
     "ComparisonResult", "ExportPayload", "ExportRequest",
-    "PublicationArtifactsSelection", "PublicationRenderRequest",
+    "PublicationArtifactsSelection", "PublicationItem", "PublicationJobRenderRequest",
+    "PublicationRenderRequest",
 
     "UserCreate", "UserResponse", "Token",
     "PASSWORD_MAX_BYTES", "normalize_email", "password_too_long",

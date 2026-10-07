@@ -8,6 +8,9 @@ Each entry is ``{"available": bool, "reason": str | None, "device": str | None}`
   cannot be reached is unavailable with reason ``"unreachable"``.
 * kubernetes mode: no runner is long-lived, so a runner with ``requires_gpu`` is available
   only when QROSETTA_GPU_AVAILABLE is true; every other enabled runner is available.
+
+In both modes a service listed in QROSETTA_NOT_DEPLOYED (comma-separated ids) is unavailable
+with reason ``NOT_DEPLOYED``.
 """
 
 import asyncio
@@ -24,6 +27,7 @@ logger = get_logger("rosetta-availability")
 AVAILABILITY_TTL_SEC = 60.0
 PROBE_TIMEOUT_SEC = 2.0
 UNREACHABLE = "unreachable"
+NOT_DEPLOYED = "not deployed on this server"
 
 _cache: dict = {}
 
@@ -97,11 +101,14 @@ async def runner_availability(names=None, services=None) -> dict:
     services = services if services is not None else settings.get_runner_services()
     wanted = [n for n in (names if names is not None else services)
               if n in services and services[n].get("enabled", True)]
+    out = {n: {"available": False, "reason": NOT_DEPLOYED, "device": None}
+           for n in wanted if n in settings.NOT_DEPLOYED}
+    wanted = [n for n in wanted if n not in out]
     if settings.EXECUTION_MODE != "local":
-        return {n: _registry_entry(services[n]) for n in wanted}
+        return {**out, **{n: _registry_entry(services[n]) for n in wanted}}
 
     now = time.monotonic()
-    out, stale = {}, []
+    stale = []
     for name in wanted:
         cached = _cache.get(name)
         if cached and now - cached[0] < AVAILABILITY_TTL_SEC:

@@ -18,7 +18,7 @@ from typing import Any
 import matplotlib.pyplot as plt
 from openpyxl import Workbook
 
-from .theme import BASE_DPI, _MPL_LOCK
+from .theme import BASE_DPI, _MPL_LOCK, figure_size
 
 
 def _savefig_bytes(fig, fmt: str, scale: int = 1) -> bytes:
@@ -31,11 +31,19 @@ def _savefig_bytes(fig, fmt: str, scale: int = 1) -> bytes:
     return buf.getvalue()
 
 
-def _render_figure(build_fig, fmt: str, scale: int = 1) -> bytes:
-    """Build a figure, render it as ``fmt`` and close it, holding _MPL_LOCK throughout."""
-    with _MPL_LOCK:
+def _render_figure(build_fig, fmt: str, scale: int = 1, size: str = "auto",
+                   title: bool = True) -> bytes:
+    """Build a figure at the ``size`` preset, render it as ``fmt`` and close it, holding
+    _MPL_LOCK throughout. ``title=False`` removes the figure title and each axes' centred
+    title; panel labels, drawn on the left, stay."""
+    with _MPL_LOCK, figure_size(size):
         fig = build_fig()
         try:
+            if not title:
+                for ax in fig.axes:
+                    ax.set_title("")
+                if fig.get_suptitle():
+                    fig.suptitle("")
             return _savefig_bytes(fig, fmt, scale)
         finally:
             plt.close(fig)

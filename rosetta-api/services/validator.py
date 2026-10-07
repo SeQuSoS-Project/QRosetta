@@ -314,10 +314,6 @@ def expanded_counts(qasm: str, statements: list = None) -> tuple:
     return count, call_count
 
 
-def expanded_gate_count(qasm: str, statements: list = None) -> int:
-    return expanded_counts(qasm, statements)[0]
-
-
 def validate_request(qasm: str, mode: str = "statevector", bypass_limits: bool = False,
                      apply_preprocessing: bool = True, check_reserved_names: bool = True):
     """Raise HTTPException for an oversized, too-complex, malformed, qubit-less or too-wide
@@ -376,7 +372,8 @@ def validate_request(qasm: str, mode: str = "statevector", bypass_limits: bool =
     if qubit_count > max_qubits:
         raise HTTPException(
             status_code=400,
-            detail=f"Circuit exceeds the maximum limit of {max_qubits} qubits for {mode} mode (requested: {qubit_count}).",
+            detail=(f"Circuit exceeds the maximum limit of {max_qubits} qubits for "
+                    f"{'a compile-only run' if mode == 'compile' else f'{mode} mode'} (requested: {qubit_count})."),
         )
     check_measurements(qasm)
 

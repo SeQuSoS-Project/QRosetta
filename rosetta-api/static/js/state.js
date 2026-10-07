@@ -1,8 +1,10 @@
-// Frontend logic for state functionality.
+// The app's single state object and the dispatch() reducer that changes it.
+
+import { readPref, writePref } from './session_store.js';
 
 export const Store = {
     state: {
-        authToken: localStorage.getItem('rosetta_token') || null,
+        authToken: readPref('rosetta_token', '') || null,
         isProcessing: false,
         currentSuiteData: null,
         currentSuiteTitle: '',
@@ -14,6 +16,7 @@ export const Store = {
         currentHistoryRunId: null,
         maxQubitsStatevector: 18,
         maxQubitsMeasured: 24,
+        maxQubitsCompile: 24,
         maxRunsPerRunner: 16,
         maxTotalRuns: 48,
         executionMode: null,
@@ -25,6 +28,9 @@ export const Store = {
         shotsMin: 1,
         shotsMax: null,
         thresholdDefaults: null,
+        exportItems: [],
+        exportPreset: readPref('rosetta_export_preset', 'paper') || 'paper',
+        exportCustomised: false,
     },
 
     dispatch(action, payload) {
@@ -32,11 +38,7 @@ export const Store = {
         switch (action) {
             case 'SET_AUTH_TOKEN':
                 this.state.authToken = payload;
-                if (payload) {
-                    localStorage.setItem('rosetta_token', payload);
-                } else {
-                    localStorage.removeItem('rosetta_token');
-                }
+                writePref('rosetta_token', payload || null);
                 break;
             case 'SET_PROCESSING':
                 this.state.isProcessing = payload;
@@ -70,6 +72,7 @@ export const Store = {
                 const num = v => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
                 this.state.maxQubitsStatevector = num(limits.max_qubits_statevector) ?? num(payload.max_qubits_statevector) ?? this.state.maxQubitsStatevector;
                 this.state.maxQubitsMeasured = num(limits.max_qubits_measured) ?? num(payload.max_qubits_measured) ?? this.state.maxQubitsMeasured;
+                this.state.maxQubitsCompile = num(limits.max_qubits_compile) ?? num(payload.max_qubits_compile) ?? this.state.maxQubitsCompile;
                 this.state.timeoutMin = num(limits.timeout_min) ?? this.state.timeoutMin;
                 this.state.timeoutMax = num(limits.timeout_max) ?? this.state.timeoutMax;
                 this.state.shotsMin = num(limits.shots_min) ?? this.state.shotsMin;
@@ -85,16 +88,22 @@ export const Store = {
                 if (payload.execution_mode !== undefined) this.state.executionMode = payload.execution_mode;
                 break;
             }
+            case 'SET_EXPORT_ITEMS':
+                this.state.exportItems = payload.items;
+                this.state.exportCustomised = !!payload.customised;
+                break;
+            case 'SET_EXPORT_PRESET':
+                this.state.exportPreset = payload;
+                writePref('rosetta_export_preset', payload);
+                break;
             default:
                 console.warn(`[State] Unknown action: ${action}`);
         }
     },
 
+    /** A shallow frozen copy: assigning to it throws in strict mode. Nested objects and
+     * arrays are the live values; to change one, build a new value and dispatch it. */
     getState() {
-        // A shallow frozen copy. Reads stay cheap, but `getState().x = 1` now throws in
-        // strict mode instead of quietly bypassing the reducer. Nested objects and arrays
-        // are still the live references, so callers that need to change one build a new
-        // value and dispatch it, as they already do.
         return Object.freeze({ ...this.state });
     }
 };

@@ -11,6 +11,7 @@ import services.history as history_service
 from db.database import get_db
 from services.security import get_current_user
 from services.exporter import build_export_context, build_ro_crate
+from services.publication.views import ParameterError
 from services.job_manager import ACTIVE_JOBS, job_report_or_error
 from routers.errors import responses
 from qrosetta_commons.helpers import get_logger
@@ -207,6 +208,8 @@ def export_run_as_ro_crate(
 
     try:
         zip_bytes = build_ro_crate(ctx)
+    except ParameterError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     except Exception:
         logger.error(f"RO-Crate export failed for run_id={run_id}", exc_info=True)
         raise HTTPException(status_code=500, detail="Export failed")

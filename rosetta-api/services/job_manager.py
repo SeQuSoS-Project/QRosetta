@@ -574,11 +574,13 @@ async def run_batch_tasks(payload: BatchPayload, runner_statuses: dict, progress
                 axis = progress["tasks"][gi].get("axis")
                 progress["tasks"][gi]["name"] = task_name + (f" · {axis}" if axis else "")
 
-            validate_request(qasm_string, mode=payload.mode, bypass_limits=payload.bypass_limits,
+            simulate = getattr(payload, "simulate", True)
+            validate_request(qasm_string, mode=payload.mode if simulate else "compile",
+                             bypass_limits=payload.bypass_limits,
                              apply_preprocessing=payload.apply_preprocessing,
                              check_reserved_names=is_user_circuit(task))
             timeout = clamp_timeout(payload.timeout_seconds)
-            if not getattr(payload, "simulate", True):
+            if not simulate:
                 report = await run_compile_only(qasm_string, payload.optimization_level, timeout, runner_statuses, payload.apply_preprocessing, batch_thresholds, payload.bypass_limits, payload.compilers)
             elif payload.mode == 'statevector':
                 report = await run_single_circuit_comparison(qasm_string, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, runner_statuses, payload.runner_phases, payload.apply_preprocessing, batch_thresholds, payload.bypass_limits, payload.timing_repeats, compilers=payload.compilers)

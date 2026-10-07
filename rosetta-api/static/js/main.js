@@ -14,12 +14,11 @@ import { addEditorToPlaylist, addToBatch, applyPreset, clearBatch, closeGenerato
 import { bmAddAllShown, bmAddSelectedToBatch, bmRenderChecklist, bmToggleSelectAll, toggleBenchSuite } from './benchmarks_select.js';
 import { runWorkspace, stopWaiting, updateWorkspace } from './workspace.js';
 import { closeHistoryModal, deleteSelectedHistory, downloadSelectedHistory, openHistoryModal, toggleSelectAllHistory } from './history.js';
-import { closeVisualizer, copyRawJson, downloadRawJson, generateAndVisualize, renderSuiteSummary } from './renderers.js';
-import { copyCircuitQasm, downloadFullReport, exportPlaylist, exportQasm, exportRoCrate, importQasm, resetAgreementThresholds, togglePublicationOptions } from './utils.js';
+import { closeVisualizer, generateAndVisualize, renderSuiteSummary } from './renderers.js';
+import { copyCircuitQasm, exportPlaylist, exportQasm, importQasm, resetAgreementThresholds } from './utils.js';
 
 // Imported for their side effects (state store, bootstrap, render registration).
 import './api.js';
-import './artifacts_renderer.js';
 import './autosave.js';
 import './state.js';
 import './tables_renderer.js';
@@ -61,19 +60,14 @@ Object.assign(window, {
     toggleSelectAllHistory,
     // renderers.js
     closeVisualizer,
-    copyRawJson,
-    downloadRawJson,
     generateAndVisualize,
     renderSuiteSummary,
     // utils.js
     copyCircuitQasm,
-    downloadFullReport,
     exportPlaylist,
     exportQasm,
-    exportRoCrate,
     importQasm,
     resetAgreementThresholds,
-    togglePublicationOptions,
     // workspace.js
     runWorkspace,
     stopWaiting,

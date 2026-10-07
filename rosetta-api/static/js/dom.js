@@ -7,7 +7,6 @@ export let loader = null;
 export let tabNav = null;
 export let welcomeMessage = null;
 export let backButtonContainer = null;
-export let jsonOutput = null;
 export let queueList = null;
 export let queueCount = null;
 export let panelElements = {};
@@ -20,7 +19,6 @@ export function initDomRefs() {
     tabNav = document.getElementById('tab-nav');
     welcomeMessage = document.getElementById('welcome-message');
     backButtonContainer = document.getElementById('back-button-container');
-    jsonOutput = document.getElementById('json-output');
 
     queueList = document.getElementById('queue-list');
     queueCount = document.getElementById('queue-count');
@@ -32,8 +30,7 @@ export function initDomRefs() {
         'divergence': document.getElementById('divergence-panel'),
         'agreement': document.getElementById('agreement-panel'),
         'circuits': document.getElementById('circuits-panel'),
-        'artifacts': document.getElementById('artifacts-panel'),
-        'raw': document.getElementById('raw-panel'),
+        'export': document.getElementById('export-panel'),
         'suite-summary': document.getElementById('suite-summary-panel'),
         'experiment': document.getElementById('experiment-panel'),
         'visualizer': document.getElementById('visualizer-panel'),
@@ -43,4 +40,16 @@ export function initDomRefs() {
 /** Register the buttons that are disabled while a run is in flight. */
 export function setAllButtons(buttons) {
     allButtons = buttons;
+}
+
+let _workspaceChangeQueued = false;
+/** Dispatch one `workspace-change` on `document` for any number of calls in the same task,
+ * so a change that several handlers report refreshes the workspace once. */
+export function announceWorkspaceChange() {
+    if (_workspaceChangeQueued) return;
+    _workspaceChangeQueued = true;
+    queueMicrotask(() => {
+        _workspaceChangeQueued = false;
+        document.dispatchEvent(new Event('workspace-change'));
+    });
 }

@@ -7,6 +7,7 @@ import { getCompilerSelection } from './compilers_config.js';
 import { _multiRunEnabled, _orderingEnabled, getEnabledRunnerIds, getTargetSimulators } from './config.js';
 import { bindPopover } from './popover.js';
 import { THRESHOLD_INPUT_IDS, thresholdDefaults } from './utils.js';
+import { announceWorkspaceChange } from './dom.js';
 
 const PLAIN = ['bg-white', 'text-gray-700', 'border-gray-300', 'hover:bg-gray-50'];
 const CHANGED = ['bg-indigo-600', 'text-white', 'border-indigo-600', 'hover:bg-indigo-700'];
@@ -78,16 +79,9 @@ export function initSettingsBar() {
         panel.addEventListener('input', updateSettingsChips);
         panel.addEventListener('change', () => {
             updateSettingsChips();
-            document.dispatchEvent(new Event('workspace-change'));
+            announceWorkspaceChange();
         });
     });
     document.addEventListener('workspace-change', updateSettingsChips);
     updateSettingsChips();
 }
-
-/** Open the popover of the chip with id `chipId`. */
-export function openSettings(chipId) {
-    const chip = document.getElementById(chipId);
-    if (chip && chip.getAttribute('aria-expanded') !== 'true') chip.click();
-}
-

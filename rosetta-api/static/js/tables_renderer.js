@@ -10,7 +10,7 @@ import {
     measuredAssessment, statevectorGroup, statusBySimulator, unalignedBasisMatch,
 } from './run_status.js';
 import { makeCopyIconButton } from './utils.js';
-import { labelDefinition, labelText } from './labels.js';
+import { docsLink, labelDefinition, labelText } from './labels.js';
 
 /** Tooltip text for a recorded code: its definition, an optional detail, and the code itself. */
 function _codeTip(code, detail = '') {
@@ -112,7 +112,7 @@ export function renderDivergenceTables(report, panel, config = {}, rawResults = 
                 let title = `${_displayRunnerName(s1)} × ${_displayRunnerName(s2)}`;
                 const legacySentinel = val === -1;
                 if (i === j) {
-                    text = typeof val === 'number' && !legacySentinel ? fmtNum(val) : '-';
+                    text = typeof val === 'number' && !legacySentinel ? fmtNum(val) : '—';
                     style = 'neutral';
                     title += ': the backend compared with itself';
                 } else if (failed) {
@@ -445,9 +445,10 @@ export function _pairLookup(pairs) {
     return map;
 }
 
-export function _agreementLegend(keys) {
+/** Colour key of the pair heatmap; `docsCode` links it to the manual section on those verdicts. */
+export function _agreementLegend(keys, docsCode = null) {
     const wrap = document.createElement('div');
-    wrap.className = 'flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[11px]';
+    wrap.className = 'flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-[11px]';
     keys.forEach(({ hex, label }) => {
         const item = document.createElement('span');
         item.className = 'inline-flex items-center gap-1';
@@ -458,6 +459,8 @@ export function _agreementLegend(keys) {
         item.appendChild(document.createTextNode(label));
         wrap.appendChild(item);
     });
+    const link = docsCode ? docsLink(docsCode, 'What the colours mean') : null;
+    if (link) wrap.appendChild(link);
     return wrap;
 }
 
@@ -573,7 +576,9 @@ export function _agreementHeatmap(report, pairs, config) {
 
     const keys = new Map();
     pairs.forEach(p => { const k = _cellKey(p); keys.set(k.label, k); });
-    const legend = _agreementLegend([...keys.values()].sort((a, b) => a.rank - b.rank));
+    const measured = pairs.some(p => p.mode === 'measured');
+    const legend = _agreementLegend([...keys.values()].sort((a, b) => a.rank - b.rank),
+        measured ? 'distinguishable' : 'residual_disagreement');
     wrap.appendChild(legend);
     return wrap;
 }
@@ -616,7 +621,9 @@ export function _agreementPairTable(pairs) {
         return b;
     };
     filters.appendChild(mkFilterBtn('', `All (${pairs.length})`));
-    present.forEach(k => filters.appendChild(mkFilterBtn(k.label, `${k.label} (${pairs.filter(p => keyOf(p).label === k.label).length})`)));
+    const perLabel = new Map();
+    pairs.forEach(p => { const l = keyOf(p).label; perLabel.set(l, (perLabel.get(l) || 0) + 1); });
+    present.forEach(k => filters.appendChild(mkFilterBtn(k.label, `${k.label} (${perLabel.get(k.label) || 0})`)));
     const simSelect = document.createElement('select');
     simSelect.className = 'ml-2 text-xs border border-gray-300 rounded px-1 py-0.5';
     simSelect.setAttribute('aria-label', 'Show only pairs with this backend');
@@ -687,12 +694,16 @@ export function _agreementPairTable(pairs) {
         sum.appendChild(vslot);
         det.appendChild(sum);
 
-        const body = document.createElement('div');
-        body.className = 'px-3 pb-3 pt-2 text-xs text-gray-600 space-y-2 border-t border-gray-100';
-        body.appendChild(_agreementMetricsBlock(p));
-        if (st) body.appendChild(_statisticalTestBlock(st));
-        body.appendChild(_provenanceBlock(p.provenance));
-        det.appendChild(body);
+        det.addEventListener('toggle', () => {
+            if (!det.open || det.dataset.built) return;
+            det.dataset.built = '1';
+            const body = document.createElement('div');
+            body.className = 'px-3 pb-3 pt-2 text-xs text-gray-600 space-y-2 border-t border-gray-100';
+            body.appendChild(_agreementMetricsBlock(p));
+            if (st) body.appendChild(_statisticalTestBlock(st));
+            body.appendChild(_provenanceBlock(p.provenance));
+            det.appendChild(body);
+        });
         list.appendChild(det);
     });
     wrap.appendChild(list);

@@ -1,14 +1,11 @@
-// Publication-artifact number and column formatting, text builders and catalog. Mirrors
-// services/publication (formats.py, selectors.py, tables.py, theme.py glossaries,
-// registry.py catalog); tests/unit/test_artifacts_parity.py compares the two. No DOM, no
-// network.
+// Publication-artifact number and column formatting and text builders. Mirrors
+// services/publication (formats.py, selectors.py, tables.py, theme.py glossaries);
+// tests/unit/test_artifacts_parity.py compares the two. No DOM, no network.
 
 const _SCI_BELOW = 1e-3;
 const _SCI_ABOVE = 1e15;
 const _MAX_DIGITS = 17;
 export const JS_UNIT = 'nats';
-export const MAX_HISTOGRAM_PAIRS = 12;
-export const COMMON_KEY_ORDER_NOTE = 'keys in msb order (classical bit 0 leftmost); lsb-declared backends bit-reversed';
 
 /** Scientific notation with 3 significant digits and a signed 2+ digit exponent. */
 function _artSci(x) {
@@ -82,7 +79,7 @@ class _ArtCell {
 class _ArtNumSpec {
     constructor(v, digits = 4, p = false) { this.v = v; this.digits = digits; this.p = p; }
 }
-const _n = (v, d = 4) => new _ArtNumSpec(v, d);
+export const _n = (v, d = 4) => new _ArtNumSpec(v, d);
 const _pn = v => new _ArtNumSpec(v, 4, true);
 const _finiteNum = v => typeof v === 'number' && Number.isFinite(v);
 
@@ -216,6 +213,37 @@ export function _artPairKey(rec) {
 }
 /** The pairwise_agreement list, or []. */
 export function _artPairwise(div) { return Array.isArray(div.pairwise_agreement) ? div.pairwise_agreement : []; }
+
+/** circuit_name, else task_name, else run_name, else "unnamed circuit" (selectors.py _circuit_name). */
+export function _artCircuitName(results) {
+    const name = results.circuit_name || results.task_name || results.run_name;
+    return name ? String(name) : 'unnamed circuit';
+}
+/** "<circuit name>, <n> shots per backend" (selectors.py _run_label). */
+export function _artRunLabel(results) {
+    const parts = [_artCircuitName(results)];
+    if (results.n_shots !== null && results.n_shots !== undefined) parts.push(`${_artInt(results.n_shots)} shots per backend`);
+    return parts.join(', ');
+}
+/** Map simulator -> counts with keys in msb order, lsb-declared backends' keys reversed (selectors.py _msb_counts). */
+export function _artMsbCounts(results) {
+    const out = {};
+    (results.raw_results || []).forEach(r => {
+        const sim = r.simulator;
+        let counts = r.counts;
+        if (!(counts && typeof counts === 'object' && !Array.isArray(counts) && Object.keys(counts).length) || (sim in out)) return;
+        if (r.qubit_ordering === 'lsb') {
+            const flipped = {};
+            Object.entries(counts).forEach(([k, v]) => {
+                const rk = k.split('').reverse().join('');
+                flipped[rk] = (flipped[rk] || 0) + v;
+            });
+            counts = flipped;
+        }
+        out[sim] = counts;
+    });
+    return out;
+}
 
 /** Map simulator -> its first raw result. */
 function _artRawBySim(results) {
@@ -678,180 +706,4 @@ export function _txtGlossary(mode) {
     out.push('', `Default thresholds: ${THRESHOLD_DEFAULTS}. A run may override them; the values applied are recorded in each pairwise record and in the divergence report's agreement_thresholds. JS divergence is in ${JS_UNIT} (maximum ln 2).`,
         '', ANALYSIS_VERSION_NOTE, '', 'Each label names the registered transform that explains the pair and reports its numerical effect; the per-pair records carry full provenance.');
     return out.join('\n');
-}
-
-// ---- catalog (registry.py _iter_artifacts) ----
-/** "measured" when the report has n_shots, else "statevector". */
-export function _artifactMode(results) { return ('n_shots' in results) ? 'measured' : 'statevector'; }
-
-/** Artifacts available for `results`: {id, label, group, view, formats, legend[, getText]}. */
-export function buildArtifactCatalog(results) {
-    const div = results.divergence_report || {};
-    const mode = _artifactMode(results);
-    const items = [];
-    const table = (id, label, group, dataFn, legend) => items.push({
-        id, label, group, view: 'text', formats: ['latex', 'csv', 'html', 'markdown'], legend,
-        getText: fmt => _renderTable(fmt, dataFn()),
-    });
-    const blob = (id, label, group, formats, textFn, legend) => items.push({
-        id, label, group, view: 'text', formats, legend, getText: () => textFn(),
-    });
-    const image = (id, label, group, legend) => items.push({
-        id, label, group, view: 'image', formats: ['svg', 'png', 'pdf'], legend,
-    });
-
-    const pairwise = _artPairwise(div);
-    if (pairwise.length) {
-        image('agreement_distribution', 'Agreement class distribution', 'Agreement',
-            'Bar chart of how many backend pairs fall into each agreement label (transform-explained, residual or not comparable)' + (mode === 'measured' ? ' and shot-noise verdict' : '') + '.');
-        table('agreement', 'Pairwise agreement table', 'Agreement', () => _dataAgreement(div, mode),
-            `One row per backend pair: explained-cause label, registered transform, key metric (direct fidelity, or JS divergence in ${JS_UNIT} direct and in the label-aligned basis), statistical verdict and measured assessment (measured) and not-comparable reason.`);
-    }
-    const heat = mode === 'statevector'
-        ? [['fidelity_matrix', 'Raw statevector fidelity (no transform)', 'fidelity']]
-        : [['statistical_distance_matrix (js_divergence)', `Raw Jensen–Shannon divergence (${JS_UNIT})`, 'js_divergence'],
-           ['hellinger_distance_matrix', 'Raw Hellinger distance', 'hellinger']];
-    const multi = (div.simulators || []).length >= 2;
-    heat.forEach(([key, title, base]) => {
-        if (multi && Array.isArray(div[key]) && div[key].length) {
-            const short = title.split('(')[0].trim();
-            image(`${base}_heatmap`, `${short} heatmap`, 'Divergence',
-                `${title}: N×N heatmap; darker = larger value. Not-compared pairs and the diagonal shown neutral.`);
-            const mid = { fidelity: 'matrix_fidelity', js_divergence: 'matrix_js', hellinger: 'matrix_hellinger' }[base];
-            table(mid, `${short} matrix (table)`, 'Divergence', () => _dataMatrix(div, key, title),
-                `${title} as a copyable N×N matrix table (raw metric).`);
-        }
-    });
-    const unrankedNote = 'runs without a rank are listed with their status and reason and have no bar.';
-    const perf = results.performance_report || {};
-    const repeated = _artTimingRepeated(results);
-    if ((perf.ranking || []).length || (perf.unranked || []).length) {
-        image('performance_time', 'Execution-time chart', 'Performance',
-            'Stacked compilation + simulation wall-clock time per backend '
-            + (repeated ? '(median of each stage over the timed runs), ' : '(raw), ')
-            + `n=${_artTimingSamples(results)} timing sample(s) per backend; GPU runs are labelled (GPU); ` + unrankedNote);
-        table('performance', 'Execution-time table', 'Performance', () => _dataPerformance(results),
-            'Per-backend device, compilation, simulation and total wall-clock time'
-            + (repeated ? ' (medians, with the IQR, stdev and n of total time)' : '')
-            + ', simulation and process CPU time, and status (raw).');
-    }
-    const res = results.resource_report || {};
-    if ((res.ranking || []).length || (res.unranked || []).length) {
-        image('resource_memory', 'Process peak RSS chart', 'Resources',
-            "Peak RSS of each backend's simulating process over its whole life (interpreter start, imports, warm-up and every timed run), in MiB; method: "
-            + `${_artDistinct(results, 'process_peak_rss_method')}. Ranked lowest first; GPU runs are labelled (GPU) and not ranked because GPU device memory is not measured; ` + unrankedNote);
-        table('resources', 'Resource-usage table', 'Resources', () => _dataResources(results),
-            'Per-backend device, process peak RSS, sim-window peak RSS and RSS delta, theoretical statevector size, precision and status (raw).');
-    }
-    if (mode === 'measured') {
-        if (pairwise.some(r => (r.metrics || {}).statistical_test)) {
-            table('statistical_test', 'Statistical-test table', 'Statistical', () => _dataStatistical(div),
-                'Chi-square + G-test p-values (raw + BY) in the label-aligned basis, effect size, power and pooled outcomes per pair.');
-        }
-        const rawCounts = {};
-        (results.raw_results || []).forEach(r => {
-            const c = r.counts;
-            if (c && typeof c === 'object' && !Array.isArray(c) && Object.keys(c).length) rawCounts[r.simulator] = c;
-        });
-        const missing = [];
-        (results.raw_results || []).forEach(r => {
-            const sim = r.simulator;
-            if (sim && !(sim in rawCounts) && !missing.includes(sim)) missing.push(sim);
-        });
-        const missingNote = missing.length ? ` Backends without counts are not drawn: ${missing.join(', ')}.` : '';
-        if (Object.keys(rawCounts).length >= 2) {
-            image('counts_overview', 'Count overview (all backends)', 'Statistical',
-                `Clustered bar histogram of measured probabilities, one colour per backend over the top outcomes (Qiskit plot_histogram convention), ${COMMON_KEY_ORDER_NOTE}; low-probability outcomes are folded into 'other' (disclosed in-figure).` + missingNote);
-            image('counts_overview_heatmap', 'Count overview heatmap (optional)', 'Statistical',
-                `Optional compact view: outcome × backend probability heatmap, ${COMMON_KEY_ORDER_NOTE}; a uniform row = agreement, a varying row = disagreement. Scales to many backends.` + missingNote);
-        }
-        const eligible = pairwise.filter(rec => {
-            const [a, b] = rec.simulators || [null, null];
-            return rawCounts[a] && rawCounts[b];
-        });
-        const capNote = eligible.length > MAX_HISTOGRAM_PAIRS
-            ? ` Histograms are generated for the first ${MAX_HISTOGRAM_PAIRS} of ${eligible.length} backend pairs with counts.`
-            : '';
-        eligible.slice(0, MAX_HISTOGRAM_PAIRS).forEach(rec => {
-            const [a, b] = rec.simulators;
-            image(`histogram_${_artSlug(a + '_' + b)}`, `Count histogram: ${a} vs ${b}`, 'Statistical',
-                `Measured probability distributions for ${a} vs ${b}, ${COMMON_KEY_ORDER_NOTE}.` + capNote);
-        });
-    }
-    if ((results.raw_results || []).length) {
-        table('metadata', 'Run + provenance metadata', 'Metadata', () => _dataMetadata(results, mode),
-            'Backends, device, SDK versions, qubit-ordering & sampling labels, opt level, run params.');
-        (results.raw_results || []).forEach(r => {
-            if (r.simulator && r.transpiled_qasm) {
-                blob(`circuit_${_artSlug(r.simulator)}`, `Executed QASM: ${r.simulator}`, 'Circuits',
-                    ['qasm', 'text'], () => _txtExecutedQasm(results, r.simulator),
-                    `The exact transpiled OpenQASM executed by the ${r.simulator} adapter.`);
-            }
-        });
-    }
-    const terms = ['agreement class', 'not-comparable reason'];
-    if (mode === 'measured') terms.push('statistical verdict');
-    terms.push('unranked reason');
-    blob('glossary', 'Taxonomy glossary', 'Reference', ['markdown', 'text'], () => _txtGlossary(mode),
-        'Definitions of every ' + terms.join(', ') + ', plus the default thresholds.');
-    return items;
-}
-
-// ---- backend subset ----
-/** Backends in divergence-report order, then any others present in raw_results. */
-export function _artBackends(results) {
-    const order = (results.divergence_report || {}).simulators || [];
-    const seen = new Set(order);
-    const extra = (results.raw_results || []).map(r => r.simulator)
-        .filter(s => s && !seen.has(s));
-    return order.concat(extra);
-}
-/**
- * Copy of `results` restricted to the `selected` backends: square N×N matrices sliced,
- * pairwise records, raw results, ranking and unranked lists filtered, verdict counts
- * recomputed. Does not mutate `results`.
- */
-export function _subsetResults(results, selected) {
-    const div = results.divergence_report || {};
-    const allSims = div.simulators || [];
-    const keepIdx = [];
-    allSims.forEach((s, i) => { if (selected.has(s)) keepIdx.push(i); });
-    const newDiv = Object.assign({}, div);
-    newDiv.simulators = keepIdx.map(i => allSims[i]);
-    Object.keys(div).forEach(k => {
-        const v = div[k];
-        if (Array.isArray(v) && v.length === allSims.length
-            && v.every(row => Array.isArray(row) && row.length === allSims.length)) {
-            newDiv[k] = keepIdx.map(i => keepIdx.map(j => v[i][j]));
-        }
-    });
-    if (Array.isArray(div.pairwise_agreement)) {
-        newDiv.pairwise_agreement = div.pairwise_agreement.filter(r => {
-            const s = r.simulators || [];
-            return s.length === 2 && selected.has(s[0]) && selected.has(s[1]);
-        });
-    }
-    const summary = div.statistical_test_summary;
-    if (summary && summary.verdict_counts) {
-        const vc = {};
-        (newDiv.pairwise_agreement || []).forEach(r => {
-            const v = ((r.metrics || {}).statistical_test || {}).verdict;
-            if (v) vc[v] = (vc[v] || 0) + 1;
-        });
-        newDiv.statistical_test_summary = Object.assign({}, summary, { verdict_counts: vc });
-    }
-    const out = Object.assign({}, results, { divergence_report: newDiv });
-    if (Array.isArray(results.raw_results)) {
-        out.raw_results = results.raw_results.filter(r => selected.has(r.simulator));
-    }
-    ['performance_report', 'resource_report'].forEach(rep => {
-        const report = results[rep];
-        if (!report) return;
-        const patch = {};
-        ['ranking', 'unranked'].forEach(k => {
-            if (Array.isArray(report[k])) patch[k] = report[k].filter(r => selected.has(r.simulator));
-        });
-        out[rep] = Object.assign({}, report, patch);
-    });
-    return out;
 }

@@ -54,6 +54,8 @@ class Settings(BaseSettings):
     RUNNER_DEADLINE_BUFFER_SEC: int = 15
     RUNNER_QUEUE_MAX_WAIT_SEC: int = int(os.getenv("RUNNER_QUEUE_MAX_WAIT_SEC", "1800"))
     GPU_AVAILABLE: bool = os.getenv("QROSETTA_GPU_AVAILABLE", "false").strip().lower() in ("1", "true", "yes")
+    NOT_DEPLOYED: frozenset = frozenset(
+        s.strip() for s in os.getenv("QROSETTA_NOT_DEPLOYED", "").split(",") if s.strip())
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     SECRET_KEY: str = os.getenv("SECRET_KEY", "")
 
@@ -66,6 +68,7 @@ class Settings(BaseSettings):
 
     MAX_QUBITS_STATEVECTOR: int = 18
     MAX_QUBITS_MEASURED: int = 24
+    MAX_QUBITS_COMPILE: int = 24
     MAX_QASM_SIZE: int = 1_000_000
     MAX_QASM_GATES: int = 10_000
     MAX_UPLOAD_BYTES: int = 1_048_576
@@ -78,7 +81,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     def max_qubits_for_mode(self, mode: str) -> int:
-        """Qubit cap for a run mode: statevector runs are capped lower than measured runs."""
+        """Qubit cap for a run mode ("statevector", "measured" or "compile" for a compile-only
+        run): statevector runs are capped lower than measured runs."""
+        if mode == "compile":
+            return self.MAX_QUBITS_COMPILE
         return self.MAX_QUBITS_STATEVECTOR if mode == "statevector" else self.MAX_QUBITS_MEASURED
 
     def get_cors_origins(self) -> list:

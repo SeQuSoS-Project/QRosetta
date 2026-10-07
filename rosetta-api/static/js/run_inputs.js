@@ -97,7 +97,7 @@ export function validateRunInputs({ shotsId, measured = false } = {}) {
         timeout = _integerIn(tEl.value, min, max);
         const msg = timeout === null ? `Timeout must be ${_rangeText(min, max)} seconds.` : null;
         _setFieldError(tEl, msg);
-        if (msg) errors.push(`Config → ${msg}`);
+        if (msg) errors.push(`Execution chip → ${msg}`);
     }
 
     let timingRepeats = 1;
@@ -107,7 +107,7 @@ export function validateRunInputs({ shotsId, measured = false } = {}) {
         const msg = timingRepeats === null
             ? `Timing repeats must be ${_rangeText(TIMING_REPEATS_MIN, getState().timingRepeatsMax)}.` : null;
         _setFieldError(rEl, msg);
-        if (msg) errors.push(`Config → ${msg}`);
+        if (msg) errors.push(`Execution chip → ${msg}`);
     }
 
     const seedEl = _input('seed-input');
@@ -116,7 +116,7 @@ export function validateRunInputs({ shotsId, measured = false } = {}) {
         const msg = raw !== '' && _integerIn(raw, 0, null) === null
             ? 'Seed must be empty or a non-negative integer.' : null;
         _setFieldError(seedEl, measured ? msg : null);
-        if (measured && msg) errors.push(`Config → ${msg}`);
+        if (measured && msg) errors.push(`Seed chip → ${msg}`);
     }
 
     for (const [key, id] of Object.entries(THRESHOLD_INPUT_IDS)) {
@@ -127,7 +127,7 @@ export function validateRunInputs({ shotsId, measured = false } = {}) {
         const msg = (raw === '' || !Number.isFinite(v) || v < 0)
             ? `${THRESHOLD_LABELS[key]} must be a number ≥ 0.` : null;
         _setFieldError(el, msg);
-        if (msg) errors.push(`Config → Agreement thresholds → ${msg}`);
+        if (msg) errors.push(`Agreement Thresholds chip → ${msg}`);
     }
 
     return { ok: errors.length === 0, errors, shots, timeout, timingRepeats };

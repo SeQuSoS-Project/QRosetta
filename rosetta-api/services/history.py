@@ -92,12 +92,6 @@ def list_runs(db: Session, user_id: int) -> list:
     return db.query(models.RunHistory).filter(models.RunHistory.user_id == user_id).all()
 
 
-def get_run_report(db: Session, user_id: int, run_id: str) -> dict:
-    """The stored report of one of ``user_id``'s runs."""
-    run = _owned_run(db, user_id, run_id)
-    return fetch_run_report(run.s3_object_key)
-
-
 def get_run_report_with_metadata(db: Session, user_id: int, run_id: str) -> dict:
     """The stored report with ``run_id``, ``run_name`` and ``created_at`` (UTC, 'Z') added."""
     run = _owned_run(db, user_id, run_id)

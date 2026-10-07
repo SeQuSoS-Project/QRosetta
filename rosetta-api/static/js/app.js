@@ -7,10 +7,10 @@ import { initAutosave } from './autosave.js';
 import { loadCompilers } from './compilers_config.js';
 import { renderBatchQueue } from './batch.js';
 import { initBenchPopover } from './benchmarks_select.js';
-import { getDynamicMaxQubits, loadRunners, updateContextBar } from './config.js';
+import { editorHasEdits, getDynamicMaxQubits, loadRunners, updateContextBar } from './config.js';
 import { saveRunToHistory, showHistoryNotice } from './history.js';
 import { setRunSaver } from './share_links.js';
-import { initDomRefs, qasmInput, setAllButtons, welcomeMessage } from './dom.js';
+import { announceWorkspaceChange, initDomRefs, qasmInput, setAllButtons, welcomeMessage } from './dom.js';
 import { shotsRange, timeoutRange } from './run_inputs.js';
 import { clearPendingJob, loadBatchQueue, loadEditorCircuit, loadPendingJob, saveEditorCircuit } from './session_store.js';
 import { dispatch, getState } from './state.js';
@@ -67,27 +67,29 @@ function _applyServerConfig(config) {
     }
 
     const { min: sMin, max: sMax } = shotsRange();
-    ['shots-single'].forEach(id => {
-        const el = /** @type {HTMLInputElement|null} */ (document.getElementById(id));
-        if (!el) return;
-        el.min = String(sMin);
-        if (sMax !== null && sMax !== undefined) el.max = String(sMax);
+    const shotsEl = /** @type {HTMLInputElement|null} */ (document.getElementById('shots-single'));
+    if (shotsEl) {
+        shotsEl.min = String(sMin);
+        if (sMax !== null && sMax !== undefined) shotsEl.max = String(sMax);
         const dflt = config?.default_n_shots ?? config?.limits?.default_n_shots;
-        if (typeof dflt === 'number' && Number.isInteger(dflt) && el.value === el.defaultValue) {
-            el.value = String(dflt);
-            el.defaultValue = String(dflt);
+        if (typeof dflt === 'number' && Number.isInteger(dflt) && shotsEl.value === shotsEl.defaultValue) {
+            shotsEl.value = String(dflt);
+            shotsEl.defaultValue = String(dflt);
         }
-    });
+    }
 
     if (config.agreement_threshold_defaults) resetAgreementThresholds();
 }
 
 let _editorSaveTimer = null;
-function _saveEditorSoon() {
+/** After typing pauses: refresh the circuit stats and the Run label, and save the editor. */
+function _editorChangedSoon() {
     if (_editorSaveTimer) clearTimeout(_editorSaveTimer);
     _editorSaveTimer = setTimeout(() => {
+        updateContextBar();
+        announceWorkspaceChange();
         saveEditorCircuit(qasmInput.value, getState().currentAlgoName);
-    }, 400);
+    }, 300);
 }
 
 function _restoreEditorCircuit() {
@@ -128,9 +130,7 @@ window.onload = async () => {
 
     initDomRefs();
     document.getElementById('history-save-notice-close')?.addEventListener('click', () => showHistoryNotice(''));
-    const launchers = ['generateCircuit()', 'addToBatch()', 'applyPreset()',
-        'bmAddSelectedToBatch()', 'runAutoGeneration()', 'clearBatch()', 'addEditorToPlaylist()']
-        .flatMap(call => Array.from(document.querySelectorAll(`button[onclick="${call}"]`)));
+    const launchers = Array.from(document.querySelectorAll('button[data-busy-disable]'));
     setAllButtons([document.getElementById('btn-run'), ...launchers]);
 
     updateAuthUI();
@@ -188,12 +188,17 @@ window.onload = async () => {
         document.getElementById('algo-qubits')?.addEventListener('change', _snapBenchSize);
         updateQubitConstraints();
 
+        const nameInput = /** @type {HTMLInputElement} */ (document.getElementById('ctx-algo-name'));
         qasmInput.addEventListener('input', () => {
-            dispatch('SET_CURRENT_ALGO_NAME', "Custom / Modified");
-            updateContextBar();
-            _saveEditorSoon();
-            document.dispatchEvent(new Event('workspace-change'));
+            if (nameInput.dataset.typed !== '1') dispatch('SET_CURRENT_ALGO_NAME', "Custom / Modified");
+            _editorChangedSoon();
         });
+        nameInput.addEventListener('input', () => {
+            nameInput.dataset.typed = '1';
+            dispatch('SET_CURRENT_ALGO_NAME', nameInput.value);
+            _editorChangedSoon();
+        });
+        document.addEventListener('editor-loaded', () => { delete nameInput.dataset.typed; });
         restored = _restoreEditorCircuit();
         updateContextBar();
 
@@ -211,7 +216,7 @@ window.onload = async () => {
     }
     dispatch('SET_BATCH_QUEUE', loadBatchQueue());
     renderBatchQueue();
-    if (typeof initAutosave === 'function') initAutosave();
+    initAutosave();
     updateWorkspace();
     _offerPendingJob();
 };
@@ -271,11 +276,6 @@ export function updateQubitConstraints(e) {
     }
 }
 
-/** True when the editor holds text the user typed or changed, which Load would replace. */
-function _editorHasEdits() {
-    return qasmInput.value.trim() !== '' && /^Custom\b/.test(getState().currentAlgoName || '');
-}
-
 /** Put an example or benchmark circuit in the editor; an example also ticks the mode it is meant for. */
 async function _loadSelection(sel, qubits) {
     const { qasm, title } = await fetchSelection(sel, qubits);
@@ -291,7 +291,6 @@ async function _loadSelection(sel, qubits) {
     document.dispatchEvent(new Event('editor-loaded'));
 }
 
-/** Load: the selected circuit into the editor, asking first when that replaces edits. */
 /** Select `value` in the Quantum Algorithms menu and load it into the editor. */
 async function _openCircuit(value) {
     const select = /** @type {HTMLSelectElement|null} */ (document.getElementById('algo-select'));
@@ -305,7 +304,7 @@ document.addEventListener('open-circuit', e => { _openCircuit(/** @type {CustomE
 
 export async function generateCircuit() {
     if (getState().isProcessing) return;
-    if (_editorHasEdits() && !confirm('Load replaces the circuit in the editor, which you have edited. Continue?')) return;
+    if (editorHasEdits() && !confirm('Load replaces the circuit in the editor, which you have edited. Continue?')) return;
     const algoId = /** @type {HTMLSelectElement} */ (document.getElementById('algo-select')).value;
     const sel = selectionFor(algoId);
     if (sel.kind !== 'algorithm') {

@@ -9,7 +9,11 @@ import subprocess
 
 import pytest
 
-from services.publication import _fmt_int, _fmt_num, _fmt_p, list_artifacts, render_artifact
+from services.publication import (
+    _fmt_int, _fmt_num, _fmt_p, item_paths, list_artifacts, normalize_params, render_artifact,
+    view_slug,
+)
+from services.publication.subset import subset_results
 from tests.unit.test_publication import MEASURED, STATEVECTOR
 
 _NODE = shutil.which("node")
@@ -194,7 +198,38 @@ def _many_pairs():
     return rep
 
 
-_CASES = [("measured", MEASURED), ("statevector", STATEVECTOR), ("statevector", _many_pairs()),
+def _counts_rich():
+    """Five backends on 5 classical bits: spread-out counts, one lsb backend, one without
+    counts, a missing pair verdict and ties in probability."""
+    sims = ["p", "q", "r", "s", "t"]
+    raw = []
+    for n, sim in enumerate(sims[:4]):
+        counts = {}
+        for i in range(32):
+            c = (i * (7 + n) + 3 * n) % 23
+            if c:
+                counts[format(i, "05b")] = c
+        counts["00000"] = 40 + n
+        raw.append({"simulator": sim, "qubit_ordering": "lsb" if sim == "q" else "msb",
+                    "counts": counts})
+    raw.append({"simulator": "t", "error": "boom", "status": "error"})
+    pairs = [{"simulators": [a, b], "mode": "measured",
+              "measured_assessment": ["distinguishable", "consistent_within_shot_noise"][(i + j) % 2],
+              "marginal_assessment": "marginal_distinguishable" if a == "r" else None}
+             for i, a in enumerate(sims[:4]) for j, b in enumerate(sims[:4]) if i < j]
+    return {"n_shots": 300, "task_name": "rich (5q)",
+            "divergence_report": {"simulators": sims, "pairwise_agreement": pairs},
+            "performance_report": {"ranking": [
+                {"simulator": s, "status": "success", "compilation_time_sec": 0.001 * (k + 1),
+                 "simulation_time_sec": 0.01 / (k + 1), "execution_time_sec": 0.001 * (k + 1) + 0.01 / (k + 1)}
+                for k, s in enumerate(sims[:4])], "unranked": []},
+            "resource_report": {"ranking": [{"simulator": s, "process_peak_rss_mb": 100 + k,
+                                             "memory_usage_mb": 0.5 * k} for k, s in enumerate(sims[:4])],
+                                "unranked": []},
+            "raw_results": raw}
+
+
+_CASES = [("measured", MEASURED), ("measured", _counts_rich()), ("statevector", STATEVECTOR), ("statevector", _many_pairs()),
           ("statevector", _sv_edge()), ("measured", _measured_edge()),
           ("statevector", _repeated_timing()), ("statevector", _overlapping()),
           ("statevector", _exclusive())]
@@ -213,6 +248,10 @@ def _text_requests(results, mode):
             if a["view"] == "text" for fmt in a["formats"] if fmt not in _SERVER_ONLY_FORMATS]
 
 
+def _key(r):
+    return f"{r['id']}|{r['fmt']}|{json.dumps(r.get('params') or {}, separators=(',', ':'))}"
+
+
 def _json_roundtrip(results):
     """The report as the browser sees it (Python floats like 2.0 arrive as JS numbers)."""
     return json.loads(json.dumps(results))
@@ -224,9 +263,8 @@ def test_text_artifacts_match(mode, results):
     reqs = _text_requests(results, mode)
     assert reqs
     js = _js({"results": results, "requests": reqs})["texts"]
-    mismatches = [f"{r['id']}|{r['fmt']}" for r in reqs
-                  if js.get(f"{r['id']}|{r['fmt']}") !=
-                  render_artifact(results, mode, r["id"], r["fmt"])[0].decode("utf-8")]
+    mismatches = [_key(r) for r, text in zip(reqs, js)
+                  if text != render_artifact(results, mode, r["id"], r["fmt"])[0].decode("utf-8")]
     assert not mismatches, "JS/Python drift on: " + ", ".join(mismatches)
 
 
@@ -288,3 +326,110 @@ def test_edge_fixture_exercises_every_label_and_reason():
     for token in _LABELS + _SV_REASONS + _COUNT_REASONS + ["runner_error", "missing_timing",
                                                           "missing_process_peak_rss"]:
         assert f"**{token}**" in gloss
+
+
+_COUNT_PARAMS = [
+    {}, {"top": 3}, {"top": 3, "other": False}, {"outcomes": "threshold", "threshold": 0.05},
+    {"outcomes": "threshold", "threshold": 1e-05}, {"outcomes": "threshold", "threshold": 1},
+    {"outcomes": "bits", "bits": [4, 0]}, {"outcomes": "bits", "bits": [1], "keyorder": "lsb"},
+    {"outcomes": "bits", "bits": [0, 1, 2], "sort": "probability"},
+    {"sort": "bitstring", "keyorder": "lsb"}, {"sort": "hamming"},
+    {"layout": "diff", "ref": "r", "band": False}, {"layout": "diff"}, {"layout": "panels", "yscale": "log"},
+    {"layout": "heatmap", "colour": "highlight", "ref": "q"}, {"yscale": "log", "colour": "highlight"},
+    {"backends": ["q", "s"]}, {"backends": ["t", "p"]}, {"size": "single", "title": False},
+]
+_VIEW_PARAMS = {
+    "counts": _COUNT_PARAMS,
+    "marginals": [{}, {"layout": "diff", "ref": "s"}, {"errorbars": False}, {"layout": "diff", "errorbars": False},
+                  {"colour": "highlight"}, {"backends": ["r"]}],
+    "hamming": [{}, {"layout": "lines"}, {"layout": "diff", "ref": "q"}, {"colour": "highlight", "ref": "r"}],
+    "rank": [{}, {"xscale": "linear"}, {"colour": "highlight"}, {"backends": ["p", "q"]}],
+    "execution_time": [{}, {"stage": "simulation"}, {"stage": "compilation", "xscale": "log"},
+                       {"stage": "stacked", "xscale": "log"}, {"backends": ["s", "p"]}],
+    "resource_usage": [{}, {"metric": "memory_delta"}],
+    "agreement": [{}, {"backends": ["p", "r"]}],
+    "metadata": [{"backends": ["t"]}],
+}
+
+
+def _view_cases():
+    from services.publication.views import VIEW_BY_ID
+    for vid, plist in _VIEW_PARAMS.items():
+        for params in plist:
+            yield vid, VIEW_BY_ID[vid], params
+
+
+def test_parameterised_views_match():
+    """Every table of a parameterised view, and the catalog legends, agree for each case."""
+    results = _json_roundtrip(_counts_rich())
+    reqs, catalogs = [], []
+    for vid, view, params in _view_cases():
+        if "table" in view:
+            reqs += [{"id": view["table"], "fmt": fmt, "params": params}
+                     for fmt in ("latex", "csv", "html", "markdown")]
+        catalogs.append((vid, params))
+    js = _js({"results": results, "requests": reqs})["texts"]
+    mismatches = [_key(r) for r, text in zip(reqs, js) if text != render_artifact(
+        results, "measured", r["id"], r["fmt"], params=r["params"])[0].decode("utf-8")]
+    assert not mismatches, "JS/Python drift on: " + ", ".join(mismatches)
+    for vid, params in catalogs:
+        scoped = subset_results(results, params["backends"]) if params.get("backends") else results
+        p = {k: v for k, v in params.items() if k != "backends"}
+        py = [{**a, "formats": [f for f in a["formats"] if f not in _SERVER_ONLY_FORMATS]}
+              for a in list_artifacts(scoped, "measured", {vid: p})]
+        assert _js({"results": scoped, "catalogParams": {vid: p}})["catalog"] == py, (vid, params)
+
+
+_NORMALIZE = [
+    ("counts", {}), ("counts", {"backends": ["s", "p", "t", "q", "r"]}), ("counts", {"backends": ["s", "p"]}),
+    ("counts", {"nope": 1, "zz": 2}), ("counts", {"layout": "pie"}), ("counts", {"top": 0}),
+    ("counts", {"top": True}), ("counts", {"top": 65}), ("counts", {"threshold": -0.5}),
+    ("counts", {"threshold": 0.25}), ("counts", {"backends": ["zz", "yy"]}), ("counts", {"backends": []}),
+    ("counts", {"backends": "p"}), ("counts", {"backends": ["p"], "ref": "q"}), ("counts", {"ref": 3}),
+    ("counts", {"bits": [0, 0]}), ("counts", {"bits": [5]}), ("counts", {"bits": [-1]}),
+    ("counts", {"bits": list(range(7))}), ("counts", {"bits": [True]}), ("counts", {"bits": [3, 1]}),
+    ("counts", {"other": "yes"}), ("counts", {"size": "poster"}), ("counts", {"layout": None}),
+    ("agreement", {"size": "single"}), ("glossary", {}), ("nope", {}),
+    ("execution_time", {"stage": "simulation", "title": False}),
+    ("counts", {"ref": "t"}), ("counts", {"backends": ["t"]}), ("marginals", {"backends": ["t", "q"]}),
+    ("hamming", {"backends": ["t", "r"], "ref": "t"}), ("rank", {"ref": "zz"}),
+]
+_SLUGS = [
+    ("counts", {}), ("counts", {"layout": "diff", "ref": "q"}), ("counts", {"threshold": 1e-05}),
+    ("counts", {"threshold": 0.125, "outcomes": "threshold"}), ("counts", {"top": 20, "other": False}),
+    ("counts", {"bits": [3, 1]}), ("counts", {"backends": ["q", "r"]}), ("counts", {"backends": ["q", "r"], "ref": "r"}),
+    ("counts", {"size": "double", "title": False}), ("marginals", {"errorbars": False}),
+    ("execution_time", {"stage": "simulation"}), ("glossary", {}), ("metadata", {"backends": ["t"]}),
+    ("counts", {"backends": ["t", "q"]}), ("hamming", {"backends": ["t"]}),
+]
+
+
+def _py_try(fn):
+    try:
+        return fn()
+    except (ValueError, KeyError) as exc:
+        return {"__error__": str(exc).strip("'") if isinstance(exc, KeyError) else str(exc)}
+
+
+def test_view_parameters_slugs_and_paths_match():
+    results = _json_roundtrip(_counts_rich())
+    paths = [("counts", "counts_x", ["svg", "png", "latex", "csv", "markdown", "xlsx", "text"]),
+             ("agreement", "agreement", ["latex", "svg", "csv"]), ("glossary", "glossary", ["markdown", "text", "csv"]),
+             ("agreement_distribution", "a", ["pdf", "csv"]), ("counts", "c", ["csv"])]
+    out = _js({"results": results, "normalize": [{"view": v, "params": p} for v, p in _NORMALIZE],
+               "slugs": [{"view": v, "params": p} for v, p in _SLUGS],
+               "itemPaths": [{"view": v, "slug": s, "formats": f} for v, s, f in paths]})
+    py_norm = [_py_try(lambda v=v, p=p: normalize_params(v, p, results)) for v, p in _NORMALIZE]
+    assert out["normalized"] == py_norm
+    py_slugs = [view_slug(v, normalize_params(v, p, results), results) for v, p in _SLUGS]
+    assert out["slugs"] == py_slugs
+    assert out["itemPaths"] == [item_paths(v, s, f) for v, s, f in paths]
+
+
+@pytest.mark.parametrize("mode,results", [("measured", _measured_edge()), ("statevector", _sv_edge()),
+                                          ("measured", _counts_rich())])
+def test_backend_subset_matches(mode, results):
+    results = _json_roundtrip(results)
+    sims = list(results["divergence_report"]["simulators"])
+    picks = [sims[:1], sims[1:3], sims[::2], [], sims + ["x"]]
+    assert _js({"results": results, "subsets": picks})["subsets"] == [subset_results(results, p) for p in picks]

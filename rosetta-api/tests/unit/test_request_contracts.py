@@ -161,6 +161,7 @@ def test_config_exposes_mode_thresholds_and_limits(client):
     assert cfg["limits"] == {
         "max_qubits_statevector": settings.MAX_QUBITS_STATEVECTOR,
         "max_qubits_measured": settings.MAX_QUBITS_MEASURED,
+        "max_qubits_compile": settings.MAX_QUBITS_COMPILE,
         "timeout_min": settings.MIN_TIMEOUT_SEC,
         "timeout_max": settings.RUNNER_TIMEOUT_SEC,
         "timeout_default": settings.DEFAULT_TIMEOUT_SEC,

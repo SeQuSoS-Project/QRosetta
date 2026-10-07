@@ -1,25 +1,26 @@
-"""Artifact catalog for a report, single-artifact rendering and the RO-Crate bundle builder.
+"""Artifact catalog for a report and single-artifact rendering.
 
 The catalog (ids, labels, groups, legends, availability) is mirrored by
-buildArtifactCatalog in static/js/artifact_formats.js.
+buildArtifactCatalog in static/js/artifact_catalog.js; items.py builds crate files from it.
 """
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional
 
 from qrosetta_commons.helpers import get_logger
 
-from .theme import (
-    MAX_HISTOGRAM_PAIRS, MIME_TYPES, SUPPORTED_FIGURE_FORMATS,
-    SUPPORTED_TABLE_FORMATS, TAB_TABLE_FORMATS,
+from .theme import MIME_TYPES, SUPPORTED_FIGURE_FORMATS, TAB_TABLE_FORMATS
+from .figures import _fig_agreement_distribution, _fig_heatmap, _fig_ranking_bar
+from .figures_counts import fig_counts, fig_hamming, fig_marginals, fig_rank
+from .distributions import (
+    count_probabilities, counts_legend, hamming_legend, marginals_legend, rank_legend,
+    tbl_counts, tbl_hamming, tbl_marginals, tbl_rank,
 )
-from .figures import (
-    _fig_agreement_distribution, _fig_count_histogram, _fig_counts_overview_bars,
-    _fig_counts_overview_heatmap, _fig_heatmap, _fig_ranking_bar,
-)
+from .subset import subset_results
+from .views import VIEW_OF_ARTIFACT, ParameterError, normalize_params
 from .formats import _render_figure, _table_bytes, basename_slug
 from .selectors import (
-    COMMON_KEY_ORDER_NOTE, JS_UNIT, _circuit_name, _distinct, _heatmap_specs, _msb_counts,
-    _pairwise_records, _run_label, _timing_repeated, _timing_samples,
+    JS_UNIT, _circuit_name, _distinct, _heatmap_specs, _pairwise_records, _timing_repeated,
+    _timing_samples,
 )
 from .tables import (
     _tbl_agreement, _tbl_matrix, _tbl_metadata, _tbl_performance, _tbl_resources,
@@ -29,27 +30,54 @@ from .tables import (
 logger = get_logger("rosetta-publication")
 
 
-def _iter_artifacts(results: dict, mode: str) -> List[dict]:
+def _iter_artifacts(results: dict, mode: str, params: Optional[Dict[str, dict]] = None,
+                    only: Optional[str] = None) -> List[dict]:
     """Return the artifact descriptors available for this report.
 
-    Each is {id, label, group, view ('image'|'text'), formats, legend, _render}, where
-    _render(fmt, scale) -> bytes.
+    Each is {id, label, group, view ('image'|'text'), view_id, formats, legend, _render},
+    where _render(fmt, scale) -> bytes; ``legend`` is a string or a callable returning it
+    (_legend resolves either). ``params`` maps a view id to its normalised
+    parameters (normalize_params); views not in it use their defaults. Figures render at the
+    view's size preset and title setting. ``only`` keeps just that artifact, so a render
+    builds one descriptor instead of the catalog.
     """
     div = results.get("divergence_report", {}) or {}
     out: List[dict] = []
+    params = dict(params or {})
+
+    def vp(aid):
+        vid = VIEW_OF_ARTIFACT.get(aid)
+        if vid is None:
+            return None, {}
+        if vid not in params:
+            params[vid] = normalize_params(vid, {}, results)
+        return vid, params[vid]
+
+    def want(*aids):
+        return only is None or only in aids
 
     def fig_artifact(aid, label, group, build_fig, legend):
-        out.append({"id": aid, "label": label, "group": group, "view": "image",
+        if not want(aid):
+            return
+        vid, p = vp(aid)
+        out.append({"id": aid, "label": label, "group": group, "view": "image", "view_id": vid,
                     "formats": list(SUPPORTED_FIGURE_FORMATS), "legend": legend,
-                    "_render": lambda fmt, scale, bf=build_fig: _render_figure(bf, fmt, scale)})
+                    "_render": lambda fmt, scale, bf=build_fig: _render_figure(
+                        bf, fmt, scale, p.get("size", "auto"), p.get("title", True))})
 
     def table_artifact(aid, label, group, build_data, legend):
-        out.append({"id": aid, "label": label, "group": group, "view": "text",
+        if not want(aid):
+            return
+        vid, _ = vp(aid)
+        out.append({"id": aid, "label": label, "group": group, "view": "text", "view_id": vid,
                     "formats": list(TAB_TABLE_FORMATS), "legend": legend, "_data": build_data,
                     "_render": lambda fmt, scale, bd=build_data: _table_bytes(*bd(), fmt)})
 
     def text_artifact(aid, label, group, build_text, formats, legend):
-        out.append({"id": aid, "label": label, "group": group, "view": "text",
+        if not want(aid):
+            return
+        vid, _ = vp(aid)
+        out.append({"id": aid, "label": label, "group": group, "view": "text", "view_id": vid,
                     "formats": list(formats), "legend": legend,
                     "_render": lambda fmt, scale, bt=build_text: bt().encode("utf-8")})
 
@@ -85,21 +113,29 @@ def _iter_artifacts(results: dict, mode: str) -> List[dict]:
     perf = results.get("performance_report") or {}
     repeated = _timing_repeated(results)
     if perf.get("ranking") or perf.get("unranked"):
+        _, pt = vp("performance_time")
+        stages = {"stacked": [("compilation_time_sec", "#2a78d6", "compilation"),
+                              ("simulation_time_sec", "#1baf7a", "simulation")],
+                  "simulation": [("simulation_time_sec", "#1baf7a", "simulation")],
+                  "compilation": [("compilation_time_sec", "#2a78d6", "compilation")]}[pt["stage"]]
+        stage_text = {"stacked": "Stacked compilation + simulation", "simulation": "Simulation",
+                      "compilation": "Compilation"}[pt["stage"]]
+        log = pt["xscale"] == "log" and pt["stage"] != "stacked"
         fig_artifact("performance_time", "Execution-time chart", "Performance",
-                     lambda: _fig_ranking_bar(results, "performance_report",
-                                              [("compilation_time_sec", "#2a78d6", "compilation"),
-                                               ("simulation_time_sec", "#1baf7a", "simulation")],
+                     lambda: _fig_ranking_bar(results, "performance_report", stages,
                                               f"Wall-clock time by stage: {_circuit_name(results)}",
                                               "seconds",
                                               (f"medians of n={_timing_samples(results)} timed "
                                                "runs per backend; warm-up excluded")
                                               if repeated else
                                               (f"n={_timing_samples(results)} timing sample(s) per "
-                                               "backend; timed run only, warm-up excluded")),
-                     "Stacked compilation + simulation wall-clock time per backend "
+                                               "backend; timed run only, warm-up excluded"),
+                                              xscale="log" if log else "linear"),
+                     f"{stage_text} wall-clock time per backend "
                      + ("(median of each stage over the timed runs), " if repeated else "(raw), ")
                      + f"n={_timing_samples(results)} timing sample(s) per backend; GPU runs are "
-                     "labelled (GPU); " + unranked_note)
+                     "labelled (GPU); " + unranked_note
+                     + (" Logarithmic time axis." if log else ""))
         table_artifact("performance", "Execution-time table", "Performance",
                        lambda: _tbl_performance(results),
                        "Per-backend device, compilation, simulation and total wall-clock time"
@@ -108,18 +144,32 @@ def _iter_artifacts(results: dict, mode: str) -> List[dict]:
 
     res = results.get("resource_report") or {}
     if res.get("ranking") or res.get("unranked"):
-        fig_artifact("resource_memory", "Process peak RSS chart", "Resources",
-                     lambda: _fig_ranking_bar(results, "resource_report",
-                                              [("process_peak_rss_mb", "#2a78d6", "process peak RSS")],
-                                              "Process peak RSS (whole runner process): "
-                                              f"{_circuit_name(results)}", "MiB",
-                                              "includes interpreter start, SDK import and warm-up; "
-                                              "SDK import dominates for small circuits"),
-                     "Peak RSS of each backend's simulating process over its whole life "
-                     "(interpreter start, imports, warm-up and every timed run), in MiB; method: "
-                     f"{_distinct(results, 'process_peak_rss_method')}. Ranked lowest first; GPU "
-                     "runs are labelled (GPU) and not ranked because GPU device memory is not "
-                     "measured; " + unranked_note)
+        _, pr = vp("resource_memory")
+        if pr["metric"] == "memory_delta":
+            fig_artifact("resource_memory", "Process peak RSS chart", "Resources",
+                         lambda: _fig_ranking_bar(results, "resource_report",
+                                                  [("memory_usage_mb", "#2a78d6", "sim-window RSS delta")],
+                                                  "Sim-window RSS delta: "
+                                                  f"{_circuit_name(results)}", "MiB",
+                                                  "first timed run; bars in resource-ranking order"),
+                         "Sim-window RSS delta of each backend (peak minus RSS at monitor entry over "
+                         "the pre-execute step and simulation window of the first timed run), in "
+                         f"MiB; method: {_distinct(results, 'memory_method')}. It reads near 0 when "
+                         "the simulation reuses memory the warm-up freed. Bars follow the resource "
+                         "ranking (process peak RSS); GPU runs are labelled (GPU); " + unranked_note)
+        else:
+            fig_artifact("resource_memory", "Process peak RSS chart", "Resources",
+                         lambda: _fig_ranking_bar(results, "resource_report",
+                                                  [("process_peak_rss_mb", "#2a78d6", "process peak RSS")],
+                                                  "Process peak RSS (whole runner process): "
+                                                  f"{_circuit_name(results)}", "MiB",
+                                                  "includes interpreter start, SDK import and warm-up; "
+                                                  "SDK import dominates for small circuits"),
+                         "Peak RSS of each backend's simulating process over its whole life "
+                         "(interpreter start, imports, warm-up and every timed run), in MiB; method: "
+                         f"{_distinct(results, 'process_peak_rss_method')}. Ranked lowest first; GPU "
+                         "runs are labelled (GPU) and not ranked because GPU device memory is not "
+                         "measured; " + unranked_note)
         table_artifact("resources", "Resource-usage table", "Resources",
                        lambda: _tbl_resources(results),
                        "Per-backend device, process peak RSS, sim-window peak RSS and RSS delta, "
@@ -131,47 +181,36 @@ def _iter_artifacts(results: dict, mode: str) -> List[dict]:
                            lambda: _tbl_statistical(div),
                            "Chi-square + G-test p-values (raw + BY) in the label-aligned basis, "
                            "effect size, power and pooled outcomes per pair.")
-        raw = _msb_counts(results)
-        run_label = _run_label(results)
-        missing = []
-        for r in results.get("raw_results", []):
-            sim = r.get("simulator")
-            if sim and sim not in raw and sim not in missing:
-                missing.append(sim)
-        missing_note = (f" Backends without counts are not drawn: {', '.join(missing)}."
-                        if missing else "")
-        if len(raw) >= 2:
-            order = div.get("simulators") or [r.get("simulator") for r in results.get("raw_results", [])]
-            sims_order = [s for s in order if s in raw]
-            fig_artifact("counts_overview", "Count overview (all backends)", "Statistical",
-                         lambda cbs=dict(raw), so=list(sims_order):
-                         _fig_counts_overview_bars(cbs, so, run_label),
-                         "Clustered bar histogram of measured probabilities, one colour per "
-                         "backend over the top outcomes (Qiskit plot_histogram convention), "
-                         f"{COMMON_KEY_ORDER_NOTE}; low-probability outcomes are folded into "
-                         "'other' (disclosed in-figure)."
-                         + missing_note)
-            fig_artifact("counts_overview_heatmap", "Count overview heatmap (optional)", "Statistical",
-                         lambda cbs=dict(raw), so=list(sims_order):
-                         _fig_counts_overview_heatmap(cbs, so, run_label),
-                         "Optional compact view: outcome × backend probability heatmap, "
-                         f"{COMMON_KEY_ORDER_NOTE}; a uniform "
-                         "row = agreement, a varying row = disagreement. Scales to many backends."
-                         + missing_note)
-        eligible = [rec for rec in records
-                    if raw.get((rec.get("simulators") or [None, None])[0])
-                    and raw.get((rec.get("simulators") or [None, None])[1])]
-        cap_note = (f" Histograms are generated for the first {MAX_HISTOGRAM_PAIRS} of "
-                    f"{len(eligible)} backend pairs with counts."
-                    if len(eligible) > MAX_HISTOGRAM_PAIRS else "")
-        for rec in eligible[:MAX_HISTOGRAM_PAIRS]:
-            a, b = rec["simulators"][0], rec["simulators"][1]
-            slug = basename_slug(f"{a}_{b}")
-            fig_artifact(f"histogram_{slug}", f"Count histogram: {a} vs {b}", "Statistical",
-                         lambda ca=raw[a], cb=raw[b], aa=a, bb=b:
-                         _fig_count_histogram(ca, cb, aa, bb, run_label),
-                         f"Measured probability distributions for {a} vs {b}, "
-                         f"{COMMON_KEY_ORDER_NOTE}." + cap_note)
+        if count_probabilities(results)["sims"]:
+            if want("counts_overview", "counts_table"):
+                _, pc = vp("counts_overview")
+                fig_artifact("counts_overview", "Count comparison", "Statistical",
+                             lambda: fig_counts(results, pc), lambda: counts_legend(results, pc))
+                table_artifact("counts_table", "Count comparison (table)", "Statistical",
+                               lambda: tbl_counts(results, pc),
+                               "Measured probability of each shown outcome (rows) per backend (columns).")
+            if want("qubit_marginals", "qubit_marginals_table"):
+                _, pm = vp("qubit_marginals")
+                fig_artifact("qubit_marginals", "Single-bit marginals", "Statistical",
+                             lambda: fig_marginals(results, pm), lambda: marginals_legend(results, pm))
+                table_artifact("qubit_marginals_table", "Single-bit marginals (table)", "Statistical",
+                               lambda: tbl_marginals(results, pm),
+                               "P(c[j] = 1) for each classical bit j (rows) per backend (columns).")
+            if want("hamming_weight", "hamming_weight_table"):
+                _, ph = vp("hamming_weight")
+                fig_artifact("hamming_weight", "Hamming-weight distribution", "Statistical",
+                             lambda: fig_hamming(results, ph), lambda: hamming_legend(results, ph))
+                table_artifact("hamming_weight_table", "Hamming-weight distribution (table)",
+                               "Statistical", lambda: tbl_hamming(results, ph),
+                               "Probability of each Hamming weight (rows) per backend (columns).")
+            if want("rank_probability", "rank_probability_table"):
+                _, pk = vp("rank_probability")
+                fig_artifact("rank_probability", "Outcome probabilities by rank", "Statistical",
+                             lambda: fig_rank(results, pk), lambda: rank_legend(results, pk))
+                table_artifact("rank_probability_table", "Outcome spread (table)", "Statistical",
+                               lambda: tbl_rank(results, pk),
+                               "Per backend: shots, observed outcomes, largest probability and the "
+                               "outcomes covering 50% and 90% of the shots.")
 
     if results.get("raw_results"):
         table_artifact("metadata", "Run + provenance metadata", "Metadata",
@@ -194,88 +233,40 @@ def _iter_artifacts(results: dict, mode: str) -> List[dict]:
     return out
 
 
-def list_artifacts(results: dict, mode: str) -> List[dict]:
-    """Public catalog for the interactive tab: descriptors without the render callable."""
-    return [{k: a[k] for k in ("id", "label", "group", "view", "formats", "legend")}
-            for a in _iter_artifacts(results, mode)]
+def _legend(a: dict) -> str:
+    """The artifact's legend, computing it when it is deferred."""
+    return a["legend"]() if callable(a["legend"]) else a["legend"]
 
 
-def render_artifact(results: dict, mode: str, artifact_id: str, fmt: str,
-                    scale: int = 1) -> Tuple[bytes, str, str]:
-    """Render one artifact -> (bytes, mime, legend). Raises KeyError/ValueError if invalid."""
-    for a in _iter_artifacts(results, mode):
-        if a["id"] == artifact_id:
-            if fmt not in a["formats"]:
-                raise ValueError(f"format '{fmt}' not supported for '{artifact_id}'")
-            data = a["_render"](fmt, max(1, int(scale)))
-            return data, MIME_TYPES.get(fmt, "application/octet-stream"), a["legend"]
+def list_artifacts(results: dict, mode: str, params: Optional[Dict[str, dict]] = None) -> List[dict]:
+    """The catalog without render callables, legends resolved: the reference the browser's
+    buildArtifactCatalog is tested against. ``params`` maps a view id to raw parameters."""
+    norm = {vid: normalize_params(vid, p, results) for vid, p in (params or {}).items()}
+    return [{**{k: a[k] for k in ("id", "label", "group", "view", "view_id", "formats")},
+             "legend": _legend(a)} for a in _iter_artifacts(results, mode, norm)]
+
+
+def _scoped(results: dict, view_id: Optional[str], params: Optional[dict]):
+    """(report restricted to the view's backends, normalised params by view id)."""
+    if view_id is None:
+        if params:
+            raise ParameterError("this artifact takes no parameters")
+        return results, {}
+    p = normalize_params(view_id, params, results)
+    scoped = subset_results(results, p["backends"]) if p["backends"] else results
+    return scoped, {view_id: p}
+
+
+def render_artifact(results: dict, mode: str, artifact_id: str, fmt: str, scale: int = 1,
+                    params: Optional[dict] = None, with_legend: bool = True):
+    """Render one artifact with its view's ``params`` -> (bytes, mime, legend or None).
+    Raises KeyError for an unknown artifact and ParameterError for a bad format or
+    parameter."""
+    scoped, norm = _scoped(results, VIEW_OF_ARTIFACT.get(artifact_id), params)
+    for a in _iter_artifacts(scoped, mode, norm, only=artifact_id):
+        if fmt not in a["formats"]:
+            raise ParameterError(f"format '{fmt}' not supported for '{artifact_id}'")
+        data = a["_render"](fmt, max(1, int(scale)))
+        return (data, MIME_TYPES.get(fmt, "application/octet-stream"),
+                _legend(a) if with_legend else None)
     raise KeyError(artifact_id)
-
-
-def describe_artifact_paths(results: dict, mode: str, paths: List[str]) -> Dict[str, str]:
-    """{path: description} for bundle paths "figures/<id>.<fmt>" / "tables/<id>.<fmt>":
-    the artifact legend, plus the table title and caption for tables."""
-    by_id = {a["id"]: a for a in _iter_artifacts(results, mode)}
-    out: Dict[str, str] = {}
-    for path in paths:
-        aid, _, fmt = path.rsplit("/", 1)[-1].rpartition(".")
-        a = by_id.get(aid)
-        if not a:
-            continue
-        text = a["legend"]
-        if "_data" in a:
-            _, _, title, caption = a["_data"]()
-            where = ("The file carries no caption; it is " if fmt == "csv"
-                     else "The file carries the caption ")
-            text += f" {where}\"{title}. {caption}\""
-        out[path] = text
-    return out
-
-
-_BUNDLE_FIGURES = {
-    "agreement": ["agreement_distribution"],
-    "heatmaps": ["fidelity_heatmap", "js_divergence_heatmap", "hellinger_heatmap"],
-    "performance": ["performance_time", "resource_memory"],
-    "statistical": ["counts_overview", "__histograms__"],
-}
-_BUNDLE_TABLES = {
-    "agreement": ["agreement"],
-    "performance": ["performance", "resources"],
-    "statistical": ["statistical_test"],
-}
-
-
-def build_publication_artifacts(results: dict, mode: str, categories: Tuple[str, ...],
-                                figure_formats: Tuple[str, ...] = ("svg",),
-                                table_formats: Tuple[str, ...] = ("csv",)) -> Dict[str, bytes]:
-    """Build the selected artifacts as {relative_path: bytes} for the RO-Crate bundle.
-
-    Generates only what the report supports; "__histograms__" expands to every
-    histogram_* artifact.
-    """
-    figure_formats = tuple(f for f in figure_formats if f in SUPPORTED_FIGURE_FORMATS)
-    table_formats = tuple(f for f in table_formats if f in SUPPORTED_TABLE_FORMATS)
-    by_id = {a["id"]: a for a in _iter_artifacts(results, mode)}
-    artifacts: Dict[str, bytes] = {}
-    try:
-        for cat in categories:
-            for aid in _BUNDLE_FIGURES.get(cat, []):
-                ids = ([k for k in by_id if k.startswith("histogram_")]
-                       if aid == "__histograms__" else [aid])
-                for real_id in ids:
-                    a = by_id.get(real_id)
-                    if not a or a["view"] != "image":
-                        continue
-                    for fmt in figure_formats:
-                        artifacts[f"figures/{real_id}.{fmt}"] = a["_render"](fmt, 1)
-            for aid in _BUNDLE_TABLES.get(cat, []):
-                a = by_id.get(aid)
-                if not a or a["view"] != "text":
-                    continue
-                for fmt in table_formats:
-                    artifacts[f"tables/{aid}.{fmt}"] = a["_render"](fmt, 1)
-    except Exception:
-        logger.error("Publication artifact generation failed", exc_info=True)
-        raise
-    logger.info(f"Built {len(artifacts)} publication artifact file(s)")
-    return artifacts

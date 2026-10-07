@@ -2,6 +2,7 @@
 // level), Toggle All, and reads which levels are ticked for the next run's `compilers` field.
 
 import { BASE_URL } from './api.js';
+import { announceWorkspaceChange } from './dom.js';
 
 const GRID_ID = 'compiler-grid';
 
@@ -119,5 +120,5 @@ export function toggleAllCompilers() {
     document.getElementById(GRID_ID)?.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
-document.getElementById(GRID_ID)?.addEventListener('change', () => document.dispatchEvent(new Event('workspace-change')));
+document.getElementById(GRID_ID)?.addEventListener('change', () => announceWorkspaceChange());
 document.getElementById('compilers-toggle-all')?.addEventListener('click', toggleAllCompilers);

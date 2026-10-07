@@ -3,6 +3,7 @@
 import { BASE_URL, apiDetailText, formatApiError, getAuthHeaders } from './api.js';
 import { dispatch, getState } from './state.js';
 import { setLoading } from './utils.js';
+import { announceWorkspaceChange } from './dom.js';
 
 /** @type {null | (() => void)} */
 let _afterLogin = null;
@@ -56,7 +57,7 @@ export function updateAuthUI() {
         if (userProfile) userProfile.classList.add('hidden');
         if (emailDisplay) emailDisplay.textContent = '';
     }
-    document.dispatchEvent(new Event('workspace-change'));
+    announceWorkspaceChange();
 }
 
 export async function handleLoginSubmit() {
@@ -80,7 +81,7 @@ export async function handleLoginSubmit() {
             body: new URLSearchParams({ username: email, password: pw }).toString(),
         });
         let res = await requestToken(password);
-        // Accounts registered before passwords were sent untrimmed hold the trimmed password.
+        // An account can hold the trimmed form of a password typed with spaces around it.
         if (res.status === 401 && password.trim() !== password && password.trim()) {
             res = await requestToken(password.trim());
         }

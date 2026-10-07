@@ -44,6 +44,9 @@ items:
                 fieldPath: metadata.namespace
           - name: RUNNER_TIMEOUT_SEC
             value: "300"
+          # Services whose images are not in this project's registry.
+          - name: QROSETTA_NOT_DEPLOYED
+            value: "bqskit,cirq-transformers,qsynth"
           - name: CORS_ALLOW_ORIGINS
             value: "https://rosetta-frontend-652754634999.us-central1.run.app,http://localhost:3000,http://localhost:8080"
           - name: DATABASE_URL

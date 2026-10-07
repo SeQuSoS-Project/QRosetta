@@ -73,6 +73,23 @@ export const STATUS_STYLES = {
     }
 };
 
+/** A new element with `className` and, when given, text. */
+export function makeEl(tag, className = '', text = undefined) {
+    const e = document.createElement(tag);
+    if (className) e.className = className;
+    if (text !== undefined && text !== null) e.textContent = text;
+    return e;
+}
+
+/** A type="button" button: an optional trusted icon SVG followed by its label. */
+export function makeButton(className, label, icon = '') {
+    const b = makeEl('button', className);
+    b.type = 'button';
+    b.innerHTML = icon;
+    if (label) b.append(document.createTextNode(label));
+    return b;
+}
+
 export function _cloneTemplate(id) {
     const tpl = document.getElementById(id);
     if (!tpl) throw new Error(`Missing <template id="${id}">`);

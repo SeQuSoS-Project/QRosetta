@@ -1,7 +1,7 @@
 // Shared UI utilities: loading overlay, clipboard, downloads, report and RO-Crate export,
 // agreement-threshold inputs, seed input, and QASM/playlist import/export.
 
-import { allButtons } from './dom.js';
+import { allButtons, announceWorkspaceChange } from './dom.js';
 import { BASE_URL, apiDetailText, getAuthHeaders } from './api.js';
 
 import { endRunView } from './status_cards.js';
@@ -136,28 +136,6 @@ export function _stripStatevectors(data) {
     return data;
 }
 
-export function togglePublicationOptions() {
-    const enabled = document.getElementById('pub-enable')?.checked;
-    const opts = document.getElementById('pub-options');
-    if (opts) opts.classList.toggle('hidden', !enabled);
-}
-
-/** The publication-artifact selection, or null unless the checkbox is on and a category is selected. */
-export function _readPublicationSelection() {
-    if (!document.getElementById('pub-enable')?.checked) return null;
-    const vals = (sel) => Array.from(document.querySelectorAll(sel))
-        .filter(el => el.checked).map(el => el.value);
-    const categories = vals('.pub-category');
-    if (categories.length === 0) return null;
-    const figure_formats = vals('.pub-figfmt');
-    const table_formats = vals('.pub-tblfmt');
-    return {
-        categories,
-        figure_formats: figure_formats.length ? figure_formats : ['svg'],
-        table_formats: table_formats.length ? table_formats : ['csv'],
-    };
-}
-
 const JOB_REPORT_TTL_MIN = 30;
 const DISPLAY_SV_MAX_QUBITS = 14;
 const EXPORT_UPLOAD_LIMIT_BYTES = 1000000;
@@ -191,13 +169,13 @@ function _filenameFrom(response, fallback) {
 export async function downloadFullReport() {
     const jobId = _liveJobId();
     if (!jobId) {
-        alert(`This report was not produced by a job in this session, so the server holds no full copy of it. Use "Download browser copy (JSON)". ${_browserCopyText(getState().currentSuiteData)}`);
+        alert(`This report was not produced by a job in this session, so the server holds no full copy of it. Use "Download displayed JSON". ${_browserCopyText(getState().currentSuiteData)}`);
         return;
     }
     try {
         const res = await fetch(`${BASE_URL}/jobs/${encodeURIComponent(jobId)}/report`, { headers: getAuthHeaders() });
         if (res.status === 404) {
-            alert(`${EXPIRED_TEXT} Use "Download browser copy (JSON)" instead. ${_browserCopyText(getState().currentSuiteData)}`);
+            alert(`${EXPIRED_TEXT} Use "Download displayed JSON" instead. ${_browserCopyText(getState().currentSuiteData)}`);
             return;
         }
         if (res.status === 409) {
@@ -230,36 +208,62 @@ async function _exportBrowserCopy(results, options) {
     });
 }
 
-/** Export the report as an RO-Crate ZIP: from the server copy for a live job
- * (POST /jobs/{id}/export), else from the saved run (POST /history/runs/{id}/export),
- * else from the browser copy (POST /export). */
-export async function exportRoCrate() {
+/** Whether a report (or any task of a batch report) holds statevectors. */
+export function hasStatevectors(data) {
+    const any = arr => Array.isArray(arr) && arr.some(r => r && r.statevector !== undefined && r.statevector !== null);
+    if (any(data?.raw_results)) return true;
+    return Array.isArray(data?.benchmark_summary) && data.benchmark_summary.some(t => any(t?.raw_results));
+}
+
+/** Whether a report (or any task of a batch report) lacks statevectors the browser dropped. */
+export function reportHasTruncatedSv(data) {
+    const scan = (arr) => Array.isArray(arr) && arr.some(r => r?.statevector_omitted_for_display
+        || (typeof r?.statevector === 'string' && r.statevector.startsWith('<Statevector too large')));
+    if (scan(data?.raw_results)) return true;
+    if (Array.isArray(data?.benchmark_summary)) return data.benchmark_summary.some(task => scan(task?.raw_results));
+    return false;
+}
+
+/** Where an RO-Crate export can read the report from, best first: 'server' (a job run in
+ * this session), 'saved' (a saved run, signed in), 'browser'. */
+export function crateSources() {
+    const { currentJobId, currentHistoryRunId, authToken } = getState();
+    const out = [];
+    if (currentJobId) out.push('server');
+    else if (currentHistoryRunId && authToken) out.push('saved');
+    out.push('browser');
+    return out;
+}
+
+/**
+ * Export the report as an RO-Crate ZIP from `source` ('server': POST /jobs/{id}/export,
+ * 'saved': POST /history/runs/{id}/export, 'browser': POST /export), falling back to the
+ * browser copy with the user's consent when the server copy is gone. `items` are the export
+ * items ({view, params, formats}).
+ */
+export async function exportRoCrate({ source = 'browser', includeStatevectors = false, authorName = null,
+    authorAffiliation = null, items = [], button = null } = {}) {
     const results = getState().currentSuiteData;
     if (!results) {
         alert("No results to export. Run a comparison first.");
         return;
     }
-
     const options = {
         format: 'ro-crate',
-        include_statevectors: document.getElementById('export-include-sv')?.checked || false,
-        author_name: document.getElementById('export-author-name')?.value.trim() || null,
-        author_affiliation: document.getElementById('export-author-affiliation')?.value.trim() || null,
-        publication_artifacts: _readPublicationSelection(),
+        include_statevectors: includeStatevectors,
+        author_name: authorName || null,
+        author_affiliation: authorAffiliation || null,
+        publication_artifacts: items.length ? { items } : null,
     };
-
-    const btn = document.getElementById('btn-export-rocrate');
-    let originalText = '';
-    if (btn) {
-        originalText = btn.innerHTML;
-        btn.innerHTML = `<span class="inline-block animate-spin mr-1 border-2 border-emerald-600 border-t-transparent rounded-full w-3 h-3"></span> Exporting`;
-        btn.disabled = true;
+    const label = button ? button.innerHTML : '';
+    if (button) {
+        button.textContent = 'Exporting';
+        button.disabled = true;
     }
-
     try {
         let response = null;
-        const jobId = _liveJobId();
-        if (jobId) {
+        const jobId = getState().currentJobId;
+        if (source === 'server' && jobId) {
             response = await fetch(`${BASE_URL}/jobs/${encodeURIComponent(jobId)}/export`, {
                 method: 'POST',
                 headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
@@ -274,7 +278,7 @@ export async function exportRoCrate() {
             }
         }
         const { currentHistoryRunId: runId, authToken } = getState();
-        if (!response && !jobId && runId && authToken) {
+        if (!response && source === 'saved' && runId && authToken) {
             response = await fetch(`${BASE_URL}/history/runs/${encodeURIComponent(runId)}/export`, {
                 method: 'POST',
                 headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
@@ -299,9 +303,9 @@ export async function exportRoCrate() {
         console.error("RO-Crate export failed:", err);
         alert("Export failed: " + err.message);
     } finally {
-        if (btn) {
-            btn.innerHTML = originalText;
-            btn.disabled = false;
+        if (button) {
+            button.innerHTML = label;
+            button.disabled = false;
         }
     }
 }
@@ -353,7 +357,7 @@ export function thresholdDefaults() {
     return out;
 }
 
-/** Threshold values from the config panel, sent with every run; undefined if the inputs are absent.
+/** Threshold values from the Agreement Thresholds chip, sent with every run; undefined if the inputs are absent.
  * Fields that do not parse are left out; validateRunInputs() blocks the run before that. */
 export function getAgreementThresholds() {
     const out = {};
@@ -375,6 +379,7 @@ export function resetAgreementThresholds() {
         const el = /** @type {HTMLInputElement|null} */ (document.getElementById(id));
         if (el) el.value = String(defaults[key]);
     }
+    announceWorkspaceChange();
 }
 
 export function exportPlaylist() {

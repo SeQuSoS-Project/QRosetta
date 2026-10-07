@@ -48,13 +48,23 @@ export async function formatApiError(res) {
 
 let _stopPolling = false;
 
-/** Make the poll in progress stop at its next check, rejecting with `stopped: true`; the job keeps running. */
+/** Make the poll in progress stop at its next check, rejecting with `stopped: true`; the job keeps running.
+ * Stays set until resetStopPolling(), so a press between two planned runs also stops the second. */
 export function stopPolling() {
     _stopPolling = true;
 }
 
-export async function pollJobStatus(jobId) {
+/** Clear a Stop waiting request before starting new runs. */
+export function resetStopPolling() {
     _stopPolling = false;
+}
+
+/** Whether Stop waiting was pressed since the last resetStopPolling(). */
+export function pollingStopped() {
+    return _stopPolling;
+}
+
+export async function pollJobStatus(jobId) {
     return new Promise((resolve, reject) => {
         let networkErrorCount = 0;
         const MAX_NETWORK_ERRORS = 4;

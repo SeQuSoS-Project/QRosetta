@@ -1,12 +1,13 @@
 // Frontend logic for batch functionality.
 
-import { qasmInput, queueCount, queueList } from './dom.js';
-import { BASE_URL, fetchMQTBench, fetchQASMBench, getAuthHeaders } from './api.js';
-import { _parseQasmStats, updateContextBar } from './config.js';
+import { announceWorkspaceChange, qasmInput, queueCount, queueList } from './dom.js';
+import { BASE_URL, fetchMQTBench, fetchQASMBench, formatApiError, getAuthHeaders } from './api.js';
+import { _parseQasmStats, editorHasEdits, getDynamicMaxQubits, updateContextBar } from './config.js';
 import { playlistItemFor, selectionFor } from './circuit_sources.js';
-import { saveBatchQueue } from './session_store.js';
+import { saveBatchQueue, saveEditorCircuit } from './session_store.js';
 import { dispatch, getState } from './state.js';
 import { setLoading } from './utils.js';
+import { bareCircuitName } from './run_plan.js';
 
 /** Quick Load sets as preset references; the server generates each circuit when the batch runs. */
 export function presetItems(key, algorithms, cap) {
@@ -36,25 +37,10 @@ export function applyPreset() {
 
 const _PLACEHOLDER_NAMES = new Set(['', 'no circuit loaded', 'custom / modified', 'custom circuit']);
 
-/** A circuit name without a trailing qubit-count suffix such as " (4q)". */
-export function bareCircuitName(name) {
-    return String(name ?? '').replace(/(\s*\(\d+q\))+\s*$/, '').trim();
-}
-
 /** Queue label: the circuit's name followed by its qubit count, once. */
 export function batchItemLabel(item) {
     const name = bareCircuitName(item.name) || item.algorithm || 'custom';
     return `${name} (${item.qubits}q)`;
-}
-
-/** A queue item as a BenchmarkTask: only the fields the server defines. */
-export function toBatchTask(item) {
-    const task = { algorithm: String(item.algorithm || 'custom'), qubits: parseInt(item.qubits) || 0 };
-    const name = bareCircuitName(item.name);
-    if (name && name !== task.algorithm) task.name = name.slice(0, 200);
-    if (item.qasm_string) task.qasm_string = item.qasm_string;
-    if (item.source) task.source = item.source;
-    return task;
 }
 
 /** + Add: the selected circuit (an algorithm or MQT Bench algorithm at the chosen qubit count, an example or a QASMBench circuit) added to the playlist. */
@@ -95,7 +81,7 @@ export function addEditorToPlaylist() {
 
 export function renderBatchQueue() {
     const stored = saveBatchQueue(getState().batchQueue);
-    document.dispatchEvent(new Event('workspace-change'));
+    announceWorkspaceChange();
     if (queueCount) {
         queueCount.textContent = getState().batchQueue.length;
     }
@@ -153,73 +139,46 @@ function _selectInMenu(item) {
     if (!qubits.disabled && item.qubits) qubits.value = String(item.qubits);
 }
 
+/** Open a playlist entry in the editor, asking first when that replaces edits. The editor
+ * keeps its text when the circuit cannot be fetched. */
 export async function viewBatchItem(index) {
     if (getState().isProcessing) return;
     const item = getState().batchQueue[index];
     if (!item) return;
-
+    if (editorHasEdits() && !confirm('Open replaces the circuit in the editor, which you have edited. Continue?')) return;
     _selectInMenu(item);
-    if (item.qasm_string) {
-        qasmInput.value = item.qasm_string;
-
-        document.getElementById('ctx-algo-name').value = batchItemLabel(item);
-        dispatch('SET_CURRENT_ALGO_NAME', batchItemLabel(item));
-        updateContextBar();
-        return;
-    }
-
-    if (item.source === 'mqt' || item.source === 'qasmbench') {
-        qasmInput.value = "";
+    let qasm = item.qasm_string;
+    if (!qasm) {
+        dispatch('SET_PROCESSING', true);
+        setLoading(true, 'Loading the circuit', { overlay: false });
         try {
-            dispatch('SET_PROCESSING', true);
-            setLoading(true, "Loading Preview...", { overlay: false });
-            const data = item.source === 'mqt'
-                ? await fetchMQTBench(item.algorithm, item.qubits)
-                : await fetchQASMBench(item.algorithm);
-            qasmInput.value = data.qasm || "";
-            document.getElementById('ctx-algo-name').value = batchItemLabel(item);
-            dispatch('SET_CURRENT_ALGO_NAME', batchItemLabel(item));
-            updateContextBar();
+            qasm = await _fetchItemQasm(item);
         } catch (e) {
-            qasmInput.value = "";
+            alert(`${batchItemLabel(item)} could not be opened: ${e.message}`);
+            return;
         } finally {
             setLoading(false);
             dispatch('SET_PROCESSING', false);
         }
-        return;
     }
+    qasmInput.value = qasm;
+    dispatch('SET_CURRENT_ALGO_NAME', batchItemLabel(item));
+    updateContextBar();
+    saveEditorCircuit(qasmInput.value, getState().currentAlgoName);
+    document.dispatchEvent(new Event('editor-loaded'));
+}
 
-    qasmInput.value = "";
-
-    try {
-        dispatch('SET_PROCESSING', true);
-        setLoading(true, "Loading Preview...", { overlay: false });
-        const response = await fetch(`${BASE_URL}/generate_circuit`, {
-            method: 'POST',
-            headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-            body: JSON.stringify({ algorithm: item.algorithm, qubits: item.qubits })
-        });
-        const data = await response.json();
-        if (response.ok) {
-            qasmInput.value = data.qasm;
-            const sel = document.getElementById('algo-select');
-            if (sel.querySelector(`option[value="${item.algorithm}"]`)) {
-                sel.value = item.algorithm;
-                document.getElementById('algo-qubits').value = item.qubits;
-            }
-
-            document.getElementById('ctx-algo-name').value = batchItemLabel(item);
-            dispatch('SET_CURRENT_ALGO_NAME', batchItemLabel(item));
-            updateContextBar();
-        } else {
-            qasmInput.value = "";
-        }
-    } catch (e) {
-        qasmInput.value = "";
-    } finally {
-        setLoading(false);
-        dispatch('SET_PROCESSING', false);
-    }
+/** The QASM text of a playlist entry that names a benchmark or a preset circuit. */
+async function _fetchItemQasm(item) {
+    if (item.source === 'mqt') return (await fetchMQTBench(item.algorithm, item.qubits)).qasm || '';
+    if (item.source === 'qasmbench') return (await fetchQASMBench(item.algorithm)).qasm || '';
+    const response = await fetch(`${BASE_URL}/generate_circuit`, {
+        method: 'POST',
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ algorithm: item.algorithm, qubits: item.qubits }),
+    });
+    if (!response.ok) throw new Error(await formatApiError(response));
+    return (await response.json()).qasm || '';
 }
 
 export function removeFromBatch(index) {
@@ -277,13 +236,15 @@ export function openGeneratorModal() {
     const list = document.getElementById('gen-algo-list');
     if (list && list.children.length === 0) {
         getState().allAlgorithms.forEach(algo => {
-            const div = document.createElement('div');
-            div.className = "flex items-center";
-            div.innerHTML = `
-                        <input type="checkbox" value="${algo.id}" checked class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
-                        <label class="ml-2 block text-gray-900">${algo.name}</label>
-                    `;
-            list.appendChild(div);
+            const label = document.createElement('label');
+            label.className = 'flex items-center gap-2 cursor-pointer text-gray-900';
+            const box = document.createElement('input');
+            box.type = 'checkbox';
+            box.value = String(algo.id);
+            box.checked = true;
+            box.className = 'h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500';
+            label.append(box, document.createTextNode(String(algo.name)));
+            list.appendChild(label);
         });
     }
     document.getElementById('gen-modal').classList.remove('hidden');
@@ -304,8 +265,7 @@ export function runAutoGeneration() {
     if (minQ > maxQ) { alert("Min qubits cannot be greater than Max qubits."); return; }
 
     const st = getState();
-    const measured = !(/** @type {HTMLInputElement|null} */ (document.getElementById('mode-statevector'))?.checked);
-    const cap = measured ? st.maxQubitsMeasured : st.maxQubitsStatevector;
+    const cap = getDynamicMaxQubits();
     const added = [];
     for (let i = 0; i < count; i++) {
         const algoId = selectedAlgos[Math.floor(Math.random() * selectedAlgos.length)];

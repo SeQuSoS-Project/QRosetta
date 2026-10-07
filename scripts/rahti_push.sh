@@ -42,10 +42,23 @@ declare -A SERVICE_MAP=(
     ["synthetiq-compiler"]="synthetiq_compiler"
 )
 
+# Left out of a full push: the project's image-stream quota (crq-2017360) is 20.
+# Name one explicitly to push it anyway.
+SKIP_BY_DEFAULT=(
+    pytket-braket-runner
+    pytket-projectq-runner
+    bqskit-compiler
+    cirq-compiler
+    qsynth-compiler
+)
+
 if [ $# -gt 0 ]; then
     TARGETS=("$@")
 else
-    TARGETS=("${!SERVICE_MAP[@]}")
+    TARGETS=()
+    for NAME in "${!SERVICE_MAP[@]}"; do
+        [[ " ${SKIP_BY_DEFAULT[*]} " == *" $NAME "* ]] || TARGETS+=("$NAME")
+    done
 fi
 
 echo "========================================"

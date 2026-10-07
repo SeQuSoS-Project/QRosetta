@@ -34,9 +34,12 @@ def enabled_compilers() -> dict:
 
 
 def validate_compilers(compilers: dict) -> None:
-    """400 for an unknown or disabled compiler id, or a level the compiler does not offer."""
-    available = enabled_compilers()
+    """400 for an unknown, disabled or undeployed compiler id, or a level the compiler does
+    not offer."""
+    available = {cid: svc for cid, svc in enabled_compilers().items() if cid not in settings.NOT_DEPLOYED}
     for cid, levels in (compilers or {}).items():
+        if cid in settings.NOT_DEPLOYED and cid in COMPILER_SERVICES:
+            raise HTTPException(status_code=400, detail=f"Compiler {cid!r} is not deployed on this server.")
         if cid not in available:
             raise HTTPException(status_code=400, detail=(
                 f"Unknown or disabled compiler {cid!r}; available: {', '.join(sorted(available)) or 'none'}."))
@@ -79,15 +82,27 @@ def _unrun(compilers: dict, status: str, reason: str) -> list:
             for cid, levels in compilers.items() for lvl in levels]
 
 
+def _compile_status_keys(compilers: dict) -> list:
+    """The live-status keys the dispatch reports: ``<id>`` for one level, ``<id>~opt<L>~run1``
+    for several."""
+    return [key for cid, levels in (compilers or {}).items()
+            for key in ([cid] if len(levels) == 1 else [f"{cid}~opt{lvl}~run1" for lvl in levels])]
+
+
 def queue_compile_statuses(runner_statuses: dict, compilers: dict) -> None:
-    """Mark every requested compile as queued in the live status map, under the keys the
-    dispatch reports (``<id>`` for one level, ``<id>~opt<L>~run1`` for several)."""
+    """Mark every requested compile as queued in the live status map."""
     if runner_statuses is None:
         return
-    for cid, levels in (compilers or {}).items():
-        keys = [cid] if len(levels) == 1 else [f"{cid}~opt{lvl}~run1" for lvl in levels]
-        for key in keys:
-            runner_statuses[key] = "queued"
+    for key in _compile_status_keys(compilers):
+        runner_statuses[key] = "queued"
+
+
+def _settle_compile_statuses(runner_statuses: dict, compilers: dict, status: str) -> None:
+    """Give every requested compile a final live status when none reaches a compiler."""
+    if runner_statuses is None:
+        return
+    for key in _compile_status_keys(compilers):
+        runner_statuses[key] = status
 
 
 async def compile_circuit(qasm_string: str, apply_preprocessing: bool, compilers: dict,
@@ -102,12 +117,14 @@ async def compile_circuit(qasm_string: str, apply_preprocessing: bool, compilers
     try:
         prepared = prepare_statevector_dispatch(qasm_string, apply_preprocessing)
     except StatevectorIncompatible:
+        _settle_compile_statuses(runner_statuses, compilers, "done")
         return {"compilers_requested": {cid: list(levels) for cid, levels in compilers.items()},
                 "compile_input": None, "compiled_circuits": _unrun(compilers, "skipped", (
             "Not compiled: compile-only services take the unitary part of a circuit, and this "
             "circuit has a mid-circuit measurement, reset or classical control."))}
     except Exception as exc:
         logger.error("Preparing the compile input failed", exc_info=True)
+        _settle_compile_statuses(runner_statuses, compilers, "error")
         return {"compilers_requested": {cid: list(levels) for cid, levels in compilers.items()},
                 "compile_input": None, "compiled_circuits": _unrun(
             compilers, "error", f"Not compiled: the compile input could not be prepared ({type(exc).__name__}).")}
@@ -122,6 +139,7 @@ async def compile_circuit(qasm_string: str, apply_preprocessing: bool, compilers
         results = await dispatch_to_runners(urls, payload, timeout_seconds, runner_statuses)
     except Exception as exc:
         logger.error("Compile dispatch failed", exc_info=True)
+        _settle_compile_statuses(runner_statuses, compilers, "error")
         return {"compilers_requested": {cid: list(levels) for cid, levels in compilers.items()},
                 "compile_input": compile_input, "compiled_circuits": _unrun(
             compilers, "error", f"Not compiled: the compile dispatch failed ({type(exc).__name__}).")}

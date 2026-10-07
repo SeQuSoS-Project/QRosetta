@@ -2,112 +2,37 @@
 
 theme.py holds constants, matplotlib setup, palette and glossary text; formats.py number
 formatting and output renderers; selectors.py report accessors; figures.py and tables.py
-the builders; registry.py the artifact catalog and public API. static/js/artifact_formats.js
-mirrors the text builders and catalog.
+the builders; distributions.py and figures_counts.py the measured-distribution views; views.py
+the export views and their parameters; subset.py the backend subset; registry.py the artifact
+catalog and rendering; items.py the crate files of export items. static/js/artifact_formats.js,
+artifact_distributions.js, artifact_views.js and artifact_catalog.js mirror them.
 """
 
-from .theme import (
-    AGREEMENT_COLORS,
-    BASE_DPI,
-    MAX_HISTOGRAM_OUTCOMES,
-    MAX_HISTOGRAM_PAIRS,
-    MAX_OVERVIEW_BARS,
-    MAX_OVERVIEW_OUTCOMES,
-    MIME_TYPES,
-    MIN_OUTCOME_PROB,
-    PUBLICATION_CATEGORIES,
-    SUPPORTED_FIGURE_FORMATS,
-    SUPPORTED_TABLE_FORMATS,
-    TAB_TABLE_FORMATS,
-    VERDICT_COLORS,
-    _rank_outcomes,
-)
-from .figures import (
-    _fig_agreement_distribution,
-    _fig_count_histogram,
-    _fig_counts_overview_bars,
-    _fig_counts_overview_heatmap,
-    _fig_heatmap,
-    _fig_ranking_bar,
-)
-from .formats import (
-    _fmt_int,
-    _fmt_p,
-    _fmt_num,
-    _fmt_text,
-    _latex_escape,
-    _render_csv,
-    _render_figure,
-    _render_html,
-    _render_latex,
-    _render_markdown,
-    _render_xlsx,
-    _table_bytes,
-    basename_slug,
-)
-from .registry import (
-    build_publication_artifacts, describe_artifact_paths, list_artifacts, render_artifact,
-)
-from .selectors import _heatmap_specs, _key_metric, _pair_key, _pairwise_records
-from .tables import (
-    _tbl_agreement,
-    _tbl_matrix,
-    _tbl_metadata,
-    _tbl_performance,
-    _tbl_resources,
-    _tbl_statistical,
-    _txt_executed_qasm,
-    _txt_glossary,
-)
+from .theme import SUPPORTED_FIGURE_FORMATS, SUPPORTED_TABLE_FORMATS
+from .figures import _fig_heatmap, _fig_ranking_bar
+from .formats import _fmt_int, _fmt_num, _fmt_p, _table_bytes
+from .registry import list_artifacts, render_artifact
+from .items import build_publication_items, categories_to_items, item_paths
+from .views import ParameterError, normalize_params, view_defaults, view_slug
+from .tables import _tbl_performance
 
 __all__ = [
-    "build_publication_artifacts",
-    "describe_artifact_paths",
-    "list_artifacts",
-    "render_artifact",
-    "basename_slug",
-    "AGREEMENT_COLORS",
-    "BASE_DPI",
-    "MAX_HISTOGRAM_OUTCOMES",
-    "MAX_HISTOGRAM_PAIRS",
-    "MAX_OVERVIEW_BARS",
-    "MAX_OVERVIEW_OUTCOMES",
-    "MIME_TYPES",
-    "MIN_OUTCOME_PROB",
-    "PUBLICATION_CATEGORIES",
+    "ParameterError",
     "SUPPORTED_FIGURE_FORMATS",
     "SUPPORTED_TABLE_FORMATS",
-    "TAB_TABLE_FORMATS",
-    "VERDICT_COLORS",
-    "_fig_agreement_distribution",
-    "_fig_count_histogram",
-    "_fig_counts_overview_bars",
-    "_fig_counts_overview_heatmap",
+    "build_publication_items",
+    "categories_to_items",
+    "item_paths",
+    "list_artifacts",
+    "normalize_params",
+    "render_artifact",
+    "view_defaults",
+    "view_slug",
     "_fig_heatmap",
     "_fig_ranking_bar",
     "_fmt_int",
-    "_fmt_p",
     "_fmt_num",
-    "_fmt_text",
-    "_heatmap_specs",
-    "_key_metric",
-    "_latex_escape",
-    "_pair_key",
-    "_pairwise_records",
-    "_rank_outcomes",
-    "_render_csv",
-    "_render_figure",
-    "_render_html",
-    "_render_latex",
-    "_render_markdown",
-    "_render_xlsx",
+    "_fmt_p",
     "_table_bytes",
-    "_tbl_agreement",
-    "_tbl_matrix",
-    "_tbl_metadata",
     "_tbl_performance",
-    "_tbl_resources",
-    "_tbl_statistical",
-    "_txt_executed_qasm",
-    "_txt_glossary",
 ]

@@ -3,18 +3,23 @@
 import { BASE_URL } from './api.js';
 import { getState } from './state.js';
 import { _escapeHtml } from './utils.js';
+import { announceWorkspaceChange } from './dom.js';
 
+/** Qubit cap of the run the mode boxes describe: statevector, measured, or compile-only when
+ * neither is ticked. */
 export function getDynamicMaxQubits() {
     const statevector = /** @type {HTMLInputElement|null} */ (document.getElementById('mode-statevector'))?.checked ?? true;
-    return statevector ? getState().maxQubitsStatevector : getState().maxQubitsMeasured;
+    const measured = /** @type {HTMLInputElement|null} */ (document.getElementById('mode-measured'))?.checked ?? false;
+    if (statevector) return getState().maxQubitsStatevector;
+    return measured ? getState().maxQubitsMeasured : getState().maxQubitsCompile;
 }
 
 export let _runnerOptInfo = {};
 
-// Both opt-in. Off = the default panel behavior (single opt-level select per runner,
-// all runners dispatched concurrently). See applyConfigModes() for show/hide wiring.
-export let _multiRunEnabled = false;   // self-comparison: run a runner N times across opt levels
-export let _orderingEnabled = false;   // phased dispatch: assign runners to sequential phase waves
+/** Multi-run mode (Backends popover): each runner runs N times across opt levels. Off by default. */
+export let _multiRunEnabled = false;
+/** Custom ordering (Backends popover): runners dispatched in phases one after another. Off by default. */
+export let _orderingEnabled = false;
 
 export function getRunnerOptInfo(runnerId) {
     return _runnerOptInfo[runnerId] || { max_level: 0, optimization_levels: {} };
@@ -94,7 +99,9 @@ export function runnerSelectionProblem() {
         return `The backend list could not be loaded from the server${_runnersLoadError ? ` (${_runnersLoadError})` : ''}. Reload the page to try again.`;
     }
     if (getTargetSimulators().length === 0) {
-        return 'No backend is selected. Open the Backends chip above the run button and check at least one.';
+        return _multiRunEnabled
+            ? 'No backend has a run count. Open the Backends chip above the run button and set a count of at least 1 for one backend.'
+            : 'No backend is selected. Open the Backends chip above the run button and check at least one.';
     }
     return null;
 }
@@ -114,7 +121,7 @@ export function updateBackendSelectionSummary() {
         text = `Backends: ${selected.length} of ${enabled.length} enabled backends selected`;
     }
     document.querySelectorAll('.backend-selection-summary').forEach(el => { el.textContent = text; });
-    document.dispatchEvent(new Event('workspace-change'));
+    announceWorkspaceChange();
 }
 
 export function _buildOptTooltip(optLevels) {
@@ -184,15 +191,13 @@ export function renderConfigPanel(runners) {
     for (let i = 0; i <= Math.min(maxGlobal, 3); i++) {
         globalOpts += `<option value="${i}">${i} — ${GLOBAL_LABELS[i] ?? i}</option>`;
     }
-    const mode = getState().executionMode;
-    const memText = mode === 'local' || mode === 'kubernetes' ? '1 GiB' : '1 GiB locally, 1 GiB on Kubernetes';
     const global = _section();
     global.innerHTML = `
         <label class="qr-label" for="opt-global">Global Optimization Level</label>
         <select id="opt-global" class="qr-input">${globalOpts}</select>
-        <p class="qr-help">Applied to all runners — each runner uses the nearest level it supports. Override per runner below. Each runner has 1 CPU, 1 thread and ${memText} memory.</p>
+        <p class="qr-help">Applied to all runners — each runner uses the nearest level it supports. Override per runner below. Each runner has 1 CPU, 1 thread and 1 GiB memory.</p>
     `;
-    global.querySelector('#opt-global').addEventListener('change', () => { updateContextBar(); document.dispatchEvent(new Event('workspace-change')); });
+    global.querySelector('#opt-global').addEventListener('change', () => { updateContextBar(); announceWorkspaceChange(); });
     grid.appendChild(global);
 
     const list = _section();
@@ -394,7 +399,7 @@ export function checkRunCountLimits(runnerConfig) {
     for (const [name, val] of Object.entries(runnerConfig || {})) {
         const count = Array.isArray(val) ? val.length : 1;
         if (count > perRunner) {
-            alert(`'${name}' is configured to run ${count} times, over the per-runner limit of ${perRunner}. Lower the counts in the Config panel.`);
+            alert(`'${name}' is configured to run ${count} times, over the per-runner limit of ${perRunner}. Lower the counts in the Backends chip.`);
             return false;
         }
         total += count;
@@ -426,7 +431,7 @@ export function toggleAllSimulators() {
     checkboxes.forEach(cb => cb.checked = !allChecked);
     _saveDeselected();
     updateBackendSelectionSummary();
-    document.dispatchEvent(new Event('workspace-change'));
+    announceWorkspaceChange();
 }
 
 export function getTargetSimulators() {
@@ -456,20 +461,9 @@ export function _parseQasmStats(qasm) {
 }
 
 export function updateContextBar() {
-    const nameSpan = document.getElementById('ctx-algo-name');
-    const optSpan = document.getElementById('ctx-opt-level');
+    const nameInput = /** @type {HTMLInputElement|null} */ (document.getElementById('ctx-algo-name'));
     const statsSpan = document.getElementById('ctx-circuit-stats');
-    const globalSelect = document.getElementById('opt-global');
-    const level = globalSelect ? globalSelect.value : 0;
-
-    if (nameSpan) {
-        if (nameSpan.tagName === 'INPUT') {
-            nameSpan.value = getState().currentAlgoName;
-        } else {
-            nameSpan.textContent = getState().currentAlgoName;
-        }
-    }
-    if (optSpan) optSpan.textContent = `Global Opt: ${level}`;
+    if (nameInput && document.activeElement !== nameInput) nameInput.value = getState().currentAlgoName;
 
     if (statsSpan) {
         const qasmEl = document.getElementById('qasm-input');
@@ -483,4 +477,12 @@ export function updateContextBar() {
             statsSpan.textContent = '';
         }
     }
+}
+
+/** True when the editor holds text the user typed or changed, or a circuit the user named,
+ * which loading another circuit would replace. */
+export function editorHasEdits() {
+    const named = /** @type {HTMLInputElement|null} */ (document.getElementById('ctx-algo-name'))?.dataset.typed === '1';
+    const text = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('qasm-input'))?.value.trim() || '';
+    return text !== '' && (named || /^Custom\b/.test(getState().currentAlgoName || ''));
 }

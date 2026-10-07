@@ -72,7 +72,16 @@ export function labelDefinition(code) {
     return LABELS[code]?.definition ?? '';
 }
 
-/** Docs anchor (docs.html#...) for a code, or ''. */
-export function labelAnchor(code) {
-    return LABELS[code]?.anchor ?? '';
+/** A link to the manual section that explains `code`, opening in a new tab; null when the
+ * code has none. */
+export function docsLink(code, text = 'How this is decided') {
+    const anchor = LABELS[code]?.anchor;
+    if (!anchor) return null;
+    const a = document.createElement('a');
+    a.href = `docs.html#${anchor}`;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.className = 'text-xs font-normal underline opacity-80 hover:opacity-100';
+    a.textContent = text;
+    return a;
 }

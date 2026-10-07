@@ -56,12 +56,12 @@ def test_playlist_columns_match_the_suite_table():
     model = _model(source="list")
     assert model["table"]["columns"] == _suite_columns()
     assert [r[0] for r in model["table"]["rows"]] == ["GHZ State (3q)", "qft (4q)"]
-    assert model["tabs"] == _tab_labels(["suite-summary", "raw"])
+    assert model["tabs"] == _tab_labels(["suite-summary", "export"])
 
 
 def test_tabs_are_the_ones_a_result_gets():
     assert _model()["tabs"] == _tab_labels(["summary", "agreement", "performance", "circuits", "export"])
-    assert _model(modes={"statevector": False, "measured": False}, compilerCount=2)["tabs"] == _tab_labels(["summary", "circuits", "raw"])
+    assert _model(modes={"statevector": False, "measured": False}, compilerCount=2)["tabs"] == _tab_labels(["summary", "circuits", "export"])
 
 
 def test_states_without_a_table():

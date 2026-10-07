@@ -1,5 +1,7 @@
 """Benchmark job routes: start single, measured and batch runs; poll and fetch job reports."""
 
+import asyncio
+
 from services.job_manager import require_exclusive_slot
 from services.security import client_address, get_optional_user
 from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
@@ -63,7 +65,7 @@ async def get_job_full_report(request: Request, job_id: str):
     with a placeholder. A job whose runners all failed is 'failed' but still has a report.
     404 if the job id is unknown or expired; 409 if the job has not finished, failed before
     any runner ran, or is an experiment (use GET /experiments/{job_id}/bundle)."""
-    report = job_report_or_error(job_id, "download")
+    report = await asyncio.to_thread(job_report_or_error, job_id, "download")
     return JSONResponse(
         content=report,
         headers={"Content-Disposition": f'attachment; filename="qrosetta_report_{job_id[:8]}.json"'},
@@ -80,8 +82,8 @@ async def compare_circuits_endpoint(request: Request, payload: QasmPayload, back
     classical control, and for unknown, disabled or unavailable runner ids; 413 for a
     circuit over MAX_QASM_SIZE. 400 also for a gate definition under a name a runner's
     parser reserves, and a runner_config level above that runner's max."""
-    validate_request(payload.qasm_string, mode="statevector", bypass_limits=payload.bypass_limits,
-                     apply_preprocessing=payload.apply_preprocessing)
+    validate_request(payload.qasm_string, mode="statevector" if payload.simulate else "compile",
+                     bypass_limits=payload.bypass_limits, apply_preprocessing=payload.apply_preprocessing)
     check_statevector_circuit(payload.qasm_string)
     validate_runner_ids(payload.target_simulators, payload.runner_config, payload.runner_phases)
     validate_runner_config(payload.runner_config)
@@ -141,7 +143,8 @@ async def run_batch_suite_endpoint(request: Request, payload: BatchPayload, back
     for index, task in enumerate(payload.tasks):
         if task.qasm_string:
             try:
-                validate_request(task.qasm_string, mode=payload.mode, bypass_limits=payload.bypass_limits,
+                validate_request(task.qasm_string, mode=payload.mode if payload.simulate else "compile",
+                                 bypass_limits=payload.bypass_limits,
                                  apply_preprocessing=payload.apply_preprocessing)
                 if payload.mode == "statevector":
                     check_statevector_circuit(task.qasm_string)

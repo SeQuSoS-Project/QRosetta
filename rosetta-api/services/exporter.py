@@ -80,7 +80,9 @@ def _entity_ref_id(key: str) -> str:
 
 _ARTIFACT_ENCODING = {
     "svg": "image/svg+xml", "png": "image/png", "pdf": "application/pdf",
-    "csv": "text/csv", "latex": "application/x-latex", "html": "text/html",
+    "csv": "text/csv", "latex": "application/x-latex", "tex": "application/x-latex",
+    "html": "text/html", "md": "text/markdown", "markdown": "text/markdown",
+    "txt": "text/plain", "json": "application/json",
     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 }
 
@@ -91,27 +93,31 @@ def _artifact_encoding_format(path: str) -> str:
 
 def _generate_publication_artifacts(ctx: "ExportContext") -> tuple:
     """(files, descriptions) for the requested publication figures/tables; ({}, {}) when
-    none are requested. A batch report gets one set per task under figures/<task_id>/ and
-    tables/<task_id>/. The publication engine (and matplotlib) is imported only then."""
+    none are requested. ``categories`` stand for their views at the defaults
+    (categories_to_items). A batch report gets one set per task under figures/<task_id>/,
+    tables/<task_id>/ and reference/<task_id>/; a parameter error names the task. The
+    publication engine (and matplotlib) is imported only then."""
     sel = ctx.publication_artifacts
-    if not sel or not sel.get("categories"):
+    if not sel or not (sel.get("categories") or sel.get("items")):
         return {}, {}
-    from services.publication import build_publication_artifacts, describe_artifact_paths
-    categories = tuple(sel.get("categories", []))
-    figure_formats = tuple(sel.get("figure_formats", ["svg"]))
-    table_formats = tuple(sel.get("table_formats", ["csv"]))
+    from services.publication import ParameterError, build_publication_items, categories_to_items
+    items = categories_to_items(sel.get("categories") or [], sel.get("figure_formats") or ["svg"],
+                                sel.get("table_formats") or ["csv"]) + list(sel.get("items") or [])
     files: Dict[str, bytes] = {}
     descriptions: Dict[str, str] = {}
     for task in _iter_tasks(ctx):
         report = task.report
         mode = ctx.mode if task.task_id is None else infer_export_mode(report)
-        built = build_publication_artifacts(report, mode, categories, figure_formats, table_formats)
-        described = describe_artifact_paths(report, mode, sorted(built))
+        try:
+            built, described = build_publication_items(report, mode, items, task=task.label)
+        except ParameterError as exc:
+            if task.task_id is None:
+                raise
+            raise ParameterError(f"circuit {task.label}: {exc}") from None
         for path, data in built.items():
             if task.task_id is None:
                 files[path] = data
-                if path in described:
-                    descriptions[path] = described[path]
+                descriptions[path] = described.get(path, "")
                 continue
             folder, name = path.split("/", 1)
             scoped = f"{folder}/{task.task_id}/{name}"

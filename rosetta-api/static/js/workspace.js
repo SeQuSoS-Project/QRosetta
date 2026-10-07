@@ -2,7 +2,7 @@
 // Run button's label; submitting the planned jobs one after another; showing their results
 // with a switcher when there are several; resuming a job after a reload.
 
-import { BASE_URL, formatApiError, getAuthHeaders, pollJobStatus, stopPolling } from './api.js';
+import { BASE_URL, formatApiError, getAuthHeaders, pollJobStatus, pollingStopped, resetStopPolling, stopPolling } from './api.js';
 import { autosaveRun } from './autosave.js';
 import { getCompilerSelection } from './compilers_config.js';
 import {
@@ -67,7 +67,7 @@ export function readWorkspace(validated = null) {
     };
 }
 
-/** Run button colours, as the separate run buttons had them: editor blue, batch yellow, experiment emerald. */
+/** Run button colours by what it runs: the editor circuit blue, the playlist yellow, an experiment emerald. */
 const RUN_THEMES = {
     editor: ['bg-blue-600', 'hover:bg-blue-700', 'focus:ring-blue-500'],
     batch: ['bg-yellow-600', 'hover:bg-yellow-700', 'focus:ring-yellow-500'],
@@ -75,8 +75,14 @@ const RUN_THEMES = {
 };
 
 /** Refresh everything that depends on the workspace: shots field, compiler line, counts, Run label. */
+let _lastModes = '';
 export function updateWorkspace() {
     const ws = readWorkspace({ shots: 1 });
+    const modes = JSON.stringify(ws.modes);
+    if (modes !== _lastModes) {
+        _lastModes = modes;
+        updateContextBar();
+    }
     document.getElementById('shots-container-single')?.classList.toggle('hidden', !ws.modes.measured);
     const count = document.getElementById('run-source-count');
     if (count) count.textContent = String(ws.list.length);
@@ -146,11 +152,12 @@ function _showLimitWarning(ws) {
     const qubits = ws.source === 'list'
         ? Math.max(0, ...ws.list.map(item => parseInt(item.qubits) || 0))
         : _parseQasmStats(ws.editor.qasm).qubits;
-    const { maxQubitsStatevector: sv, maxQubitsMeasured: ms } = getState();
+    const { maxQubitsStatevector: sv, maxQubitsMeasured: ms, maxQubitsCompile: cp } = getState();
     const what = ws.source === 'list' ? `The largest playlist circuit has ${qubits} qubits` : `This circuit has ${qubits} qubits`;
     const notes = [];
     if (ws.modes.statevector && qubits > sv) notes.push(`statevector runs allow ${sv}`);
     if (ws.modes.measured && qubits > ms) notes.push(`measured runs allow ${ms}`);
+    if (!ws.modes.statevector && !ws.modes.measured && qubits > cp) notes.push(`compile-only runs allow ${cp}`);
     box.textContent = notes.length ? `${what}; ${notes.join(' and ')}.` : '';
     box.classList.toggle('hidden', !notes.length);
 }
@@ -250,17 +257,19 @@ function _renderSwitcher(active) {
     });
 }
 
-/** Run every planned job, one after another, then show the first. */
-async function _runAll(runs) {
+/** Run every planned job of the workspace `ws`, one after another, then show the first. */
+async function _runAll(runs, ws) {
     _finished = [];
+    resetStopPolling();
     clearReport();
     dispatch('SET_JOB_ID', null);
     dispatch('SET_PROCESSING', true);
     try {
         for (let i = 0; i < runs.length; i++) {
+            if (pollingStopped()) break;
             const run = runs[i];
             const step = runs.length > 1 ? ` (${i + 1} of ${runs.length})` : '';
-            _startRunView(readWorkspace(), run);
+            _startRunView(ws, run);
             setLoading(true, `${run.title}${step}`);
             let jobId;
             try {
@@ -269,7 +278,7 @@ async function _runAll(runs) {
                 _finished.push({ job: { kind: run.kind, title: run.title, job_id: null }, error: e.message });
                 continue;
             }
-            const job = { job_id: jobId, kind: run.kind, title: run.title, run_name: readWorkspace().runName || null,
+            const job = { job_id: jobId, kind: run.kind, title: run.title, run_name: ws.runName || null,
                           circuit_name: run.kind === 'single' ? _editorCircuitName() : null,
                           runner_config: run.payload.runner_config || {}, submitted_at: Date.now(),
                           remaining: runs.slice(i + 1).map(r => r.title) };
@@ -309,7 +318,7 @@ export async function runWorkspace() {
     showRunErrors('single-validation-msg', []);
     if (ws.source === 'editor') saveEditorCircuit(qasmInput.value, getState().currentAlgoName);
     document.getElementById('resume-job-banner')?.classList.add('hidden');
-    await _runAll(runs);
+    await _runAll(runs, ws);
 }
 
 /** Stop waiting for the job in progress; it keeps running and can be resumed after a reload. */
@@ -320,6 +329,7 @@ export function stopWaiting() {
 /** Resume a job recorded before a reload. */
 export async function resumeJob(job) {
     _finished = [];
+    resetStopPolling();
     clearReport();
     dispatch('SET_PROCESSING', true);
     startRunView({ tabs: _TABS_BY_KIND[job.kind] ?? ['Summary', 'Agreement', 'Performance', 'Circuits', 'Exports'], nameOf: _displayRunnerName });

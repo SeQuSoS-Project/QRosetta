@@ -163,10 +163,6 @@ def _timing_samples(results: dict) -> str:
     return "/".join(vals) if vals else "1"
 
 
-COMMON_KEY_ORDER_NOTE = ("keys in msb order (classical bit 0 leftmost); "
-                         "lsb-declared backends bit-reversed")
-
-
 def _msb_counts(results: dict) -> dict:
     """Map simulator -> counts with keys in msb order (lsb-declared backends' keys reversed).
 

@@ -1,10 +1,7 @@
-// Optional auto-save of completed runs to a local folder via the File System Access API.
-//
-// Default OFF. When enabled the user picks a folder once; each completed run is then written
-// there as a JSON file, with no upload and no server involvement. The API is Chromium-only
-// (Chrome/Edge); everywhere else the control degrades to a disabled state with a note. The
-// directory handle is kept in memory for the session (re-pick after a reload) to avoid the
-// IndexedDB permission-persistence dance for this first version.
+// Optional auto-save of completed runs to a local folder via the File System Access API
+// (Chrome and Edge; other browsers show the control disabled with a note). Off by default.
+// The user picks a folder once per session; each completed run is written there as a JSON
+// file, with no upload. The folder handle lives in memory, so a reload asks again.
 
 export let _autosaveDirHandle = null;
 
@@ -31,17 +28,15 @@ export async function _autosaveChooseFolder() {
         _autosaveDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
         _autosaveSetFolderLabel();
     } catch (e) {
-        // AbortError = user cancelled the picker; ignore quietly.
         if (e && e.name !== 'AbortError') console.warn('[autosave] folder pick failed:', e.message);
     }
 }
 
-// Called after every completed run. No-ops unless enabled with a chosen folder.
+/** Write a completed run to the chosen folder; nothing happens unless auto-save is on with a folder. */
 export async function autosaveRun(results, name) {
     const toggle = _autosaveEl('autosave-toggle');
     if (!toggle || !toggle.checked || !_autosaveDirHandle || !results) return;
     try {
-        // Confirm we still hold write permission (handle can go stale across long sessions).
         if (_autosaveDirHandle.queryPermission) {
             const perm = await _autosaveDirHandle.queryPermission({ mode: 'readwrite' });
             if (perm !== 'granted' && (await _autosaveDirHandle.requestPermission({ mode: 'readwrite' })) !== 'granted') {
@@ -81,8 +76,11 @@ export function initAutosave() {
             if (toggle.checked) {
                 detail.classList.remove('hidden');
                 if (!_autosaveDirHandle) await _autosaveChooseFolder();
-                // If the user cancelled the picker, don't leave the toggle on with no folder.
-                if (!_autosaveDirHandle) { toggle.checked = false; detail.classList.add('hidden'); }
+                if (!_autosaveDirHandle) {
+                    toggle.checked = false;
+                    detail.classList.add('hidden');
+                    toggle.dispatchEvent(new Event('change', { bubbles: true }));
+                }
             } else {
                 detail.classList.add('hidden');
             }

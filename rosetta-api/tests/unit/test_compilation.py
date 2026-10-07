@@ -375,3 +375,32 @@ def test_compile_only_batch_runs_each_task_without_simulators(fake_dispatch):
     summary, _ = asyncio.run(job_manager.run_batch_tasks(payload, {}))
     assert summary[0]["simulated"] is False and summary[0]["raw_results"] == []
     assert all(url.endswith("/compile") for urls, _ in fake_dispatch for url in urls.values())
+
+
+def _wide(n):
+    return f'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[{n}];\nh q[0];\n'
+
+
+def test_compile_only_runs_have_their_own_qubit_limit(client):
+    from fastapi import HTTPException
+    from services.validator import validate_request
+    from config import settings
+    assert settings.max_qubits_for_mode("compile") == settings.MAX_QUBITS_COMPILE == 24
+    validate_request(_wide(20), mode="compile")
+    with pytest.raises(HTTPException) as exc:
+        validate_request(_wide(20), mode="statevector")
+    assert "18 qubits for statevector mode" in exc.value.detail
+    r = client.post("/compare", json={"qasm_string": _wide(25), "simulate": False, "compilers": {"pyzx": [1]}})
+    assert r.status_code == 400 and "24 qubits for a compile-only run" in r.text
+    r = client.post("/run_batch_suite", json={"tasks": [{"qasm_string": _wide(25)}], "mode": "statevector",
+                                              "simulate": False, "compilers": {"pyzx": [1]}})
+    assert r.status_code == 400 and "24 qubits for a compile-only run" in r.text
+    assert client.get("/config").json()["limits"]["max_qubits_compile"] == 24
+
+
+def test_undeployed_compilers_are_rejected(monkeypatch):
+    monkeypatch.setattr(compilation.settings, "NOT_DEPLOYED", frozenset({"qsynth"}))
+    with pytest.raises(HTTPException) as exc:
+        compilation.validate_compilers({"qsynth": [0]})
+    assert exc.value.status_code == 400 and "not deployed" in exc.value.detail
+    compilation.validate_compilers({"pyzx": [1]})

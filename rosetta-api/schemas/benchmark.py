@@ -67,6 +67,11 @@ CircuitSource = Literal["preset", "qasmbench", "mqt", "qasm"]
 FigureFormat = Literal["svg", "png", "pdf"]
 TableFormat = Literal["latex", "csv", "html", "xlsx"]
 PublicationCategory = Literal["agreement", "heatmaps", "performance", "statistical"]
+ExportView = Literal["agreement_distribution", "agreement", "statistical_test", "counts",
+                     "marginals", "hamming", "rank", "fidelity_heatmap",
+                     "js_divergence_heatmap", "hellinger_heatmap", "execution_time",
+                     "resource_usage", "metadata", "glossary"]
+ItemFormat = Literal["svg", "png", "pdf", "latex", "csv", "html", "markdown", "xlsx", "text"]
 
 _EXCLUSIVE_DESCRIPTION = ("Run for timing: every backend in its own phase, one after another, and "
                           "only while no other run is in flight on this server (other jobs wait, "
@@ -380,11 +385,19 @@ class ComparisonResult(BaseModel):
     resource_report: Dict[str, Any] = Field(..., description="Per-backend memory usage: 'ranking' lists successful backends by process peak RSS (lowest first); 'unranked' lists the rest with a reason.")
     raw_results: List[RunnerPerformanceMetrics] = Field(..., description="Every backend's individual result.")
 
+class PublicationItem(_Request):
+    """One export view with its parameters and the formats to write."""
+    view: ExportView = Field(..., description="The view: a figure and/or table (or text) of the report.")
+    params: Dict[str, Any] = Field(default_factory=dict, description="The view's parameters (backends, layout, outcomes, figure size, ...); omitted ones take their defaults. Recorded in figures/<slug>.spec.json.")
+    formats: List[ItemFormat] = Field(..., min_length=1, max_length=9, description="Formats to write: figure formats (svg, png, pdf) for the view's figure, table formats (latex, csv, html, markdown, xlsx) for its table, markdown/text for a text view.")
+
 class PublicationArtifactsSelection(_Request):
     """Opt-in selection of publication-ready figures/tables to bundle into an RO-Crate export.
 
-    Empty or absent categories generate no artifacts (the default).
+    Either ``items`` (views with parameters) or ``categories`` (every artifact of a category at
+    its defaults); empty or absent, nothing is generated (the default).
     """
+    items: List[PublicationItem] = Field(default_factory=list, max_length=60, description="Views to write, each with its parameters and formats. Figures go to figures/<slug>.<fmt> with a .spec.json, tables to tables/<slug>.<ext>.")
     categories: List[PublicationCategory] = Field(default_factory=list, description="Which artifact categories to generate: 'agreement', 'heatmaps', 'performance', 'statistical'. Empty generates none.")
     figure_formats: List[FigureFormat] = Field(default_factory=lambda: ["svg"], description="Formats to render each figure in: 'svg', 'png', 'pdf'.")
     table_formats: List[TableFormat] = Field(default_factory=lambda: ["csv"], description="Formats to render each table in: 'latex', 'csv', 'html', 'xlsx'.")
@@ -401,6 +414,15 @@ class ExportRequest(ExportPayload):
     """POST /export request body: export options plus the report to export."""
     results: Dict[str, Any] = Field(..., description="The full report to export (as returned in a completed job's results field).")
 
+class PublicationJobRenderRequest(_Request):
+    """Request body for POST /jobs/{job_id}/publication/render: one figure or table drawn from
+    the server's copy of a finished job, so no report is uploaded."""
+    artifact_id: str = Field(..., description="Which figure or table to render, from the report's list of available artifacts.")
+    format: str = Field(..., description="Output format for this artifact, e.g. 'svg', 'png', 'pdf', 'csv', 'xlsx'.")
+    scale: Int = Field(1, ge=1, le=4, description="Raster resolution multiplier for image formats, 1-4. Ignored for vector/text formats.")
+    params: Dict[str, Any] = Field(default_factory=dict, description="Parameters of the artifact's view; omitted ones take their defaults.")
+    task: Optional[Int] = Field(None, ge=0, description="For a playlist job: the index of the circuit in benchmark_summary. Omit for a single-circuit job.")
+
 class PublicationRenderRequest(_Request):
     """Request body for POST /publication/render — render one publication figure or table
     on demand, without generating a full export."""
@@ -408,3 +430,4 @@ class PublicationRenderRequest(_Request):
     artifact_id: str = Field(..., description="Which figure or table to render, from the report's list of available artifacts.")
     format: str = Field(..., description="Output format for this artifact, e.g. 'svg', 'png', 'pdf', 'csv', 'html', 'latex'.")
     scale: Int = Field(1, ge=1, le=4, description="Raster resolution multiplier for image formats, 1-4 (rendered at BASE_DPI x scale). Ignored for vector/text formats.")
+    params: Dict[str, Any] = Field(default_factory=dict, description="Parameters of the artifact's view (backends, layout, outcomes, figure size, ...); omitted ones take their defaults.")

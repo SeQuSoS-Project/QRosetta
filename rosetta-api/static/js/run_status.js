@@ -45,8 +45,6 @@ export function statusBySimulator(rawResults) {
     return map;
 }
 
-export const DIRECT_AGREEMENT = new Set(['agree_directly', 'agree_up_to_global_phase', 'distance_within_threshold']);
-
 /**
  * The label a pair would carry without the normalisation note: for
  * agree_after_normalization, the label the normalised vectors received.
@@ -177,7 +175,7 @@ export function recommendedShots(pairs) {
 const OPERATOR_HINTS = [
     [/\s*Server operators can check whether its service is running\.?/gi, ' The backend may be restarting; try again in a minute. If it keeps happening, tell the administrator of this server.'],
     [/\s*Server operators can see details in the runner( pod)? logs\.?/gi, ' If it happens again, tell the administrator of this server.'],
-    [/raise the timeout\./g, 'raise the timeout in Config.'],
+    [/raise the timeout\./g, 'raise the timeout in the Execution chip.'],
     [/\s*Check the \S+ container logs( to confirm)?\.?/gi, ' If it happens again, tell the administrator of this server.'],
     [/\s*Check container logs in your Kubernetes cluster\.?/gi, ' If it happens again, tell the administrator of this server.'],
     [/\s*Check that its container is running\.?/gi, ' The backend may be restarting; try again in a minute.'],

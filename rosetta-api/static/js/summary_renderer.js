@@ -7,6 +7,7 @@ import {
     executionTags, precisionTag, queueWaitText, renderPreprocessingList, throttleText, outsideProcessText,
 } from './render_helpers.js';
 import { getEnabledRunnerIds } from './config.js';
+import { docsLink } from './labels.js';
 import { parseRunnerKey } from './runner_key.js';
 import { circuitPanes } from './circuit_panes.js';
 import {
@@ -23,7 +24,8 @@ const FAILURE_HEADINGS = {
     error: { heading: 'Errors', text: null },
 };
 
-function _block(heading, styleKey, items) {
+/** A titled block of pair items; `code` links the title to the manual section on that code. */
+function _block(heading, styleKey, items, code = null) {
     const wrap = document.createElement('div');
     const colors = {
         success: 'bg-green-50 text-green-800 border-green-200',
@@ -39,7 +41,15 @@ function _block(heading, styleKey, items) {
     const h3 = document.createElement('h3');
     h3.className = 'font-bold';
     h3.textContent = heading;
-    wrap.appendChild(h3);
+    const link = code ? docsLink(code) : null;
+    if (link) {
+        const head = document.createElement('div');
+        head.className = 'flex flex-wrap items-baseline justify-between gap-x-3';
+        head.append(h3, link);
+        wrap.appendChild(head);
+    } else {
+        wrap.appendChild(h3);
+    }
     if (items.length) {
         const ul = document.createElement('ul');
         ul.className = 'list-disc ml-5 mt-2 text-sm space-y-0.5';
@@ -243,7 +253,7 @@ function _notComparableBlock(panel, pairs) {
                 ? ` (${Object.entries(p.metrics.details).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join('; ')})`
                 : '';
             return _pairItem(p, `${p.metrics?.reason || 'reason not recorded'}${details}`);
-        })));
+        }), 'not_comparable'));
 }
 
 /** Why a statevector pair in the disagreement group disagrees, followed by its metrics. */
@@ -292,7 +302,7 @@ function _renderStatevectorBlocks(panel, pairs, tol) {
     }
 
     if (disagree.length) {
-        const block = _block(`Disagree (${disagree.length})`, 'anomaly', _byBackend(disagree).map(p => _pairItem(p, _disagreementText(p))));
+        const block = _block(`Disagree (${disagree.length})`, 'anomaly', _byBackend(disagree).map(p => _pairItem(p, _disagreementText(p))), 'residual_disagreement');
         _note(block, 'A pair disagrees when no registered transform explains the difference, when it agrees only after an '
             + 'undeclared qubit permutation, or when it matches only in the basis the declared qubit orderings do not imply. '
             + 'The report does not decide which backend is wrong; check against an independent reference.');
@@ -300,11 +310,11 @@ function _renderStatevectorBlocks(panel, pairs, tol) {
     }
     if (bitOrder.length) {
         panel.appendChild(_block(`Agree after the bit reversal the declared orderings imply (${bitOrder.length})`, 'divergence',
-            bitOrder.map(p => _pairItem(p, `${_metricText(p)}${_orderingNote(p)}`))));
+            bitOrder.map(p => _pairItem(p, `${_metricText(p)}${_orderingNote(p)}`)), 'agree_after_bit_reversal'));
     }
     if (phase.length) {
         panel.appendChild(_block(`Agree up to a global phase offset larger than ${tol.phase} rad (${phase.length})`, 'success',
-            phase.map(p => _pairItem(p, _metricText(p)))));
+            phase.map(p => _pairItem(p, _metricText(p))), 'agree_up_to_global_phase'));
     }
 
     if (normalised.length) {
@@ -313,7 +323,7 @@ function _renderStatevectorBlocks(panel, pairs, tol) {
                 const norms = p.metrics?.norms || {};
                 const text = Object.entries(norms).map(([k, v]) => `${_displayRunnerName(k)} norm ${fmtNum(v, 8)}`).join(', ');
                 return _pairItem(p, `${text}; after normalisation: ${p.metrics?.normalized_agreement ?? '—'}, ${_metricText(p)}`);
-            })));
+            }), 'agree_after_normalization'));
     }
 
     if (byGroup.other.length) {
@@ -337,7 +347,7 @@ function _inconclusiveBlocks(panel, pairs) {
     if (uncharacterised.length) {
         const unseen = Math.max(...uncharacterised.map(p => p.metrics.statistical_test.unseen_mass_good_turing ?? 0));
         const block = _block(`Inconclusive, the sample does not yet show the outcome distribution (${uncharacterised.length})`, 'inconclusive',
-            uncharacterised.map(p => _measuredItem(p)));
+            uncharacterised.map(p => _measuredItem(p)), 'inconclusive_low_shots');
         _note(block, `Outcomes seen only once carry up to ${fmtProb(unseen)} of the shots (Good–Turing estimate of the probability of `
             + 'outcomes not yet seen), so the outcome distribution is spread over more outcomes than the sample covers. No shot '
             + 'count can be recommended from it, and the number needed may exceed the platform maximum. Measuring fewer qubits '
@@ -350,7 +360,7 @@ function _inconclusiveBlocks(panel, pairs) {
             || p.metrics?.statistical_test?.recommendation_is_lower_bound === true);
         const advice = rec ? `: more shots would help: ${pooledPairs ? 'at least ' : ''}~${fmtInt(rec)} per backend` : '';
         const block = _block(`Inconclusive, test power below ${target} (${lowPower.length})${advice}`, 'inconclusive',
-            lowPower.map(p => _measuredItem(p)));
+            lowPower.map(p => _measuredItem(p)), 'low_power');
         _note(block, 'Neither test finds a significant difference, but the power to detect the target gap is below '
             + `${target}, so these pairs are neither consistent nor in disagreement. ${_powerLevelText(lowPower)}`
             + (rec ? ` The power model reaches ${target} at about ${fmtInt(rec)} shots per backend.` : '')
@@ -360,25 +370,20 @@ function _inconclusiveBlocks(panel, pairs) {
     }
     if (lowCounts.length) {
         const block = _block(`Inconclusive, expected counts below 5${pooling} (${lowCounts.length}): more shots would help`, 'inconclusive',
-            lowCounts.map(p => _measuredItem(p)));
+            lowCounts.map(p => _measuredItem(p)), 'low_expected_counts');
         _note(block, 'Some outcomes are too rare in this sample for the chi-square and G-test to be reliable, so the tests '
             + 'cannot decide either way.');
         panel.appendChild(block);
     }
     if (tooRare.length) {
         const block = _block(`Inconclusive, outcomes too rare for the test at any practical shot count (${tooRare.length})`, 'inconclusive',
-            tooRare.map(p => _measuredItem(p)));
+            tooRare.map(p => _measuredItem(p)), 'low_expected_counts');
         _note(block, `Expected counts stay below 5${pooling}, and the report records that more shots would not change `
             + 'this at a practical shot count. The distance label and the metrics are the available evidence for these pairs.');
         panel.appendChild(block);
     }
 }
 
-/**
- * Measured pairs grouped only by their shot-noise assessment, so each pair appears in one
- * group; the descriptive distance label is shown as detail. Only "distinguishable" is a
- * disagreement.
- */
 /** Register-qualified names of the flat classical-bit indices, from the circuit's creg declarations. */
 function _clbitNames(qasm) {
     const names = [];
@@ -398,13 +403,13 @@ function _marginalItem(p, names) {
     return _pairItem(p, detail);
 }
 
-/** Pairs whose single-bit marginals differ: a secondary test with its own BY family. */
+/** Pairs whose single-bit marginals differ: a secondary test, Holm-corrected across every tested bit. */
 function _renderMarginalBlock(panel, pairs, data, alpha) {
     const flagged = pairs.filter(p => p.marginal_assessment === 'marginal_distinguishable');
     if (!flagged.length) return;
     const summary = data.divergence_report?.statistical_test_summary?.marginal_test_summary || {};
     const names = _clbitNames(data.input_qasm);
-    const block = _block(`Single-bit marginals differ (${flagged.length})`, 'anomaly', _byBackend(flagged).map(p => _marginalItem(p, names)));
+    const block = _block(`Single-bit marginals differ (${flagged.length})`, 'anomaly', _byBackend(flagged).map(p => _marginalItem(p, names)), 'marginal_distinguishable');
     _note(block, `For each classical bit, the two backends' counts of that bit being 0 and 1 are compared (chi-square and `
         + `G-test, both required, Holm-corrected over all ${summary.family_size ?? '—'} bit tests at α = ${alpha ?? '—'}, so the `
         + `chance of any false flag in this list is at most α). Equal distributions have equal marginals, so a differing bit `
@@ -415,6 +420,11 @@ function _renderMarginalBlock(panel, pairs, data, alpha) {
     panel.appendChild(block);
 }
 
+/**
+ * Measured pairs grouped only by their shot-noise assessment, so each pair appears in one
+ * group; the descriptive distance label is shown as detail. Only "distinguishable" is a
+ * disagreement.
+ */
 function _renderMeasuredBlocks(panel, pairs, tol, data, alpha) {
     const groups = { consistent_within_shot_noise: [], inconclusive_low_shots: [], distinguishable: [], ambiguous: [], untested: [] };
     pairs.forEach(p => {
@@ -458,7 +468,7 @@ function _renderMeasuredBlocks(panel, pairs, tol, data, alpha) {
 
     if (groups.distinguishable.length) {
         const block = _block(`Distinguishable beyond shot noise (${groups.distinguishable.length})`, 'anomaly',
-            _byBackend(groups.distinguishable).map(p => _measuredItem(p, { power: false })));
+            _byBackend(groups.distinguishable).map(p => _measuredItem(p, { power: false })), 'distinguishable');
         _note(block, corr === 'BY'
             ? `The Benjamini–Yekutieli correction controls the false discovery rate at q = ${alpha ?? '—'} under any dependence `
                 + 'between the tests, including pairs that share a backend and so share its sample. On average up to that '
@@ -471,14 +481,14 @@ function _renderMeasuredBlocks(panel, pairs, tol, data, alpha) {
     }
     if (groups.ambiguous.length) {
         panel.appendChild(_block(`Inconclusive: the chi-square and G-test disagree (${groups.ambiguous.length})`, 'inconclusive',
-            groups.ambiguous.map(p => _measuredItem(p, { power: false }))));
+            groups.ambiguous.map(p => _measuredItem(p, { power: false })), 'ambiguous'));
     }
     if (groups.untested.length) {
         const exceeds = groups.untested.filter(p => p.agreement === 'distance_exceeds_threshold');
         const rest = groups.untested.filter(p => p.agreement !== 'distance_exceeds_threshold');
         if (exceeds.length) {
             panel.appendChild(_block(`Above the JS/Hellinger thresholds, no shot-noise test recorded (${exceeds.length})`, 'anomaly',
-                exceeds.map(p => _pairItem(p, _metricText(p)))));
+                exceeds.map(p => _pairItem(p, _metricText(p))), 'distance_exceeds_threshold'));
         }
         if (rest.length) {
             panel.appendChild(_block(`No shot-noise test recorded (${rest.length})`, 'offline',
@@ -492,7 +502,7 @@ function _renderMeasuredBlocks(panel, pairs, tol, data, alpha) {
         const aboveThreshold = consistent.filter(p => !_agreesInLabelAlignedBasis(p)).length;
         const powers = consistent.map(pairPower).filter(v => v !== null);
         const block = _block(`Consistent within shot noise (${consistent.length})`, 'success',
-            consistent.map(p => _measuredItem(p)));
+            consistent.map(p => _measuredItem(p)), 'consistent_within_shot_noise');
         const notes = [];
         if (powers.length) {
             const lo = Math.min(...powers), hi = Math.max(...powers);
@@ -556,9 +566,7 @@ function _renderCoverage(panel, raws, data) {
         let text = `This run dispatched ${resolved.dispatched.length} backend(s) (${scope}); ${okIds.size} returned a result.`;
         const skipped = Array.isArray(resolved.skipped) ? resolved.skipped : [];
         if (!skipped.length) return;
-        if (skipped.length) {
-            text += ` Not run: ${skipped.map(sk => `${_displayRunnerName(sk.id)}${sk.reason ? ` (${sk.reason})` : ''}`).join('; ')}.`;
-        }
+        text += ` Not run: ${skipped.map(sk => `${_displayRunnerName(sk.id)}${sk.reason ? ` (${sk.reason})` : ''}`).join('; ')}.`;
         p.textContent = text;
         panel.appendChild(p);
         return;

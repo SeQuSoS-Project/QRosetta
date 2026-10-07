@@ -11,6 +11,7 @@ import schemas
 from routers.errors import responses
 from services.security import limiter
 from services.exporter import build_export_context, build_ro_crate
+from services.publication.views import ParameterError
 from services.report_validation import reject_invalid_report
 from services.job_manager import job_report_or_error, report_failed_before_dispatch
 from qrosetta_commons.helpers import get_logger
@@ -25,6 +26,8 @@ async def _crate_response(results: dict, payload, route: str) -> StreamingRespon
     ctx = build_export_context(results, payload, route)
     try:
         zip_bytes = await asyncio.to_thread(build_ro_crate, ctx)
+    except ParameterError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     except Exception:
         logger.error("RO-Crate export failed", exc_info=True)
         raise HTTPException(status_code=500, detail="Export failed")
@@ -59,4 +62,5 @@ async def export_job_ro_crate(request: Request, job_id: str, payload: schemas.Ex
     With ``include_statevectors=true`` it carries every statevector the runners returned.
     404 if the job id is unknown or expired; 409 if the job has not finished, failed before
     any runner ran, or is an experiment (use GET /experiments/{job_id}/bundle)."""
-    return await _crate_response(job_report_or_error(job_id, "export"), payload, "server_job")
+    report = await asyncio.to_thread(job_report_or_error, job_id, "export")
+    return await _crate_response(report, payload, "server_job")

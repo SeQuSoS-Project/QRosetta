@@ -4,11 +4,13 @@ The glossary entries are mirrored by static/js/artifact_formats.js.
 """
 
 import threading
+from contextlib import contextmanager
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.ticker import FuncFormatter, LogLocator, NullFormatter
 
 from qrosetta_commons.helpers import get_logger
 
@@ -21,14 +23,42 @@ _MPL_LOCK = threading.Lock()
 SUPPORTED_FIGURE_FORMATS = ("svg", "png", "pdf")
 SUPPORTED_TABLE_FORMATS = ("latex", "csv", "html", "xlsx")
 TAB_TABLE_FORMATS = ("latex", "csv", "html", "markdown", "xlsx")
-PUBLICATION_CATEGORIES = ("agreement", "heatmaps", "performance", "statistical")
 
-MAX_HISTOGRAM_PAIRS = 12
-MAX_HISTOGRAM_OUTCOMES = 24
-MAX_OVERVIEW_BARS = 12
-MAX_OVERVIEW_OUTCOMES = 20
-MIN_OUTCOME_PROB = 0.01
 BASE_DPI = 150
+
+FIGURE_SIZES = {
+    "auto": None,
+    "single": {"inches": (3.5, 2.6), "font": 7.0},
+    "double": {"inches": (7.0, 3.6), "font": 8.0},
+    "slide": {"inches": (13.33, 7.5), "font": 16.0},
+}
+_SIZE = threading.local()
+
+
+@contextmanager
+def figure_size(size: str = "auto"):
+    """Within the block, figures take the preset's size and base font size ("auto" keeps
+    each figure's own size)."""
+    preset = FIGURE_SIZES.get(size)
+    previous = getattr(_SIZE, "preset", None)
+    _SIZE.preset = preset
+    try:
+        if preset is None:
+            yield
+            return
+        f = preset["font"]
+        with plt.rc_context({"font.size": f, "axes.titlesize": f * 1.1, "axes.labelsize": f,
+                             "xtick.labelsize": f * 0.9, "ytick.labelsize": f * 0.9,
+                             "legend.fontsize": f * 0.85, "figure.titlesize": f * 1.15}):
+            yield
+    finally:
+        _SIZE.preset = previous
+
+
+def _figsize(default):
+    """``default`` (width, height) in inches, or the active size preset's."""
+    preset = getattr(_SIZE, "preset", None)
+    return preset["inches"] if preset else default
 
 MIME_TYPES = {
     "svg": "image/svg+xml", "png": "image/png", "pdf": "application/pdf",
@@ -205,16 +235,11 @@ def _prob_cmap():
     return cmap
 
 
-def _rank_outcomes(all_outcomes, max_prob, cap: int, min_prob: float = MIN_OUTCOME_PROB):
-    """Return ``(kept_sorted, rest)``: outcomes to draw and outcomes folded into "other".
-
-    Keeps the highest-probability outcomes with ``max_prob(o) >= min_prob``, at most
-    ``cap`` including the "other" slot; ``rest`` is [] when nothing is folded.
-    """
-    ranked = sorted(all_outcomes, key=max_prob, reverse=True)
-    signif = [o for o in ranked if max_prob(o) >= min_prob] or ranked[:1]
-    if len(signif) == len(all_outcomes) and len(signif) <= cap:
-        return sorted(signif), []
-    kept = sorted(signif[:cap - 1])
-    kept_set = set(kept)
-    return kept, [o for o in all_outcomes if o not in kept_set]
+def _log_axis(ax, which: str = "y"):
+    """Log scale on ``which`` with plain tick labels (0.01, 1e-04): mathtext is off, so the
+    default log labels would print their TeX source."""
+    axis = ax.yaxis if which == "y" else ax.xaxis
+    (ax.set_yscale if which == "y" else ax.set_xscale)("log")
+    axis.set_major_locator(LogLocator(base=10))
+    axis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:g}"))
+    axis.set_minor_formatter(NullFormatter())

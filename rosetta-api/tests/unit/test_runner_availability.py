@@ -94,3 +94,14 @@ def test_runner_scaffold_serves_capabilities():
                               capabilities=lambda: {"available": False, "reason": "no GPU"})
     body = TestClient(app).get("/capabilities").json()
     assert body == {"available": False, "reason": "no GPU", "device": None}
+
+
+@pytest.mark.parametrize("mode", ["local", "kubernetes"])
+def test_undeployed_services_are_unavailable_with_a_reason(monkeypatch, mode):
+    monkeypatch.setattr(settings, "EXECUTION_MODE", mode)
+    monkeypatch.setattr(settings, "NOT_DEPLOYED", frozenset({"qsynth"}))
+    _mock_transport(monkeypatch, lambda request: httpx.Response(404))
+    status = asyncio.run(availability.runner_availability(
+        ["qsynth", "pyzx"], services=settings.get_compiler_services()))
+    assert status["qsynth"] == {"available": False, "reason": availability.NOT_DEPLOYED, "device": None}
+    assert status["pyzx"]["available"] is True

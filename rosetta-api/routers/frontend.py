@@ -66,6 +66,7 @@ async def get_config():
     return JSONResponse(content={
         "max_qubits_statevector": settings.MAX_QUBITS_STATEVECTOR,
         "max_qubits_measured": settings.MAX_QUBITS_MEASURED,
+        "max_qubits_compile": settings.MAX_QUBITS_COMPILE,
         "max_qasm_size": settings.MAX_QASM_SIZE,
         "max_qasm_gates": settings.MAX_QASM_GATES,
         "max_runs_per_runner": settings.MAX_RUNS_PER_RUNNER,
@@ -77,6 +78,7 @@ async def get_config():
         "limits": {
             "max_qubits_statevector": settings.MAX_QUBITS_STATEVECTOR,
             "max_qubits_measured": settings.MAX_QUBITS_MEASURED,
+            "max_qubits_compile": settings.MAX_QUBITS_COMPILE,
             "timeout_min": settings.MIN_TIMEOUT_SEC,
             "timeout_max": settings.RUNNER_TIMEOUT_SEC,
             "timeout_default": settings.DEFAULT_TIMEOUT_SEC,

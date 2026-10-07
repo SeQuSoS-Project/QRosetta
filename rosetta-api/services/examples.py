@@ -14,8 +14,6 @@ _NAME = re.compile(r"^[A-Za-z0-9_-]+\.qasm$")
 _NOT_LISTED = {"bell_state_2q.qasm", "ghz_state_3q.qasm"}
 
 _META = {
-    "bell_state_2q.qasm": ("Bell state", "Two entangled qubits, measured.", "measured"),
-    "ghz_state_3q.qasm": ("GHZ state", "Three entangled qubits; a quick first statevector run.", "statevector"),
     "rotation_1q.qasm": ("Single rotation", "One qubit, ry(0.5): the smallest circuit with a non-trivial amplitude.", "statevector"),
     "qrisp_measured_bias_16q.qasm": (
         "Sampler bias, 16 qubits",

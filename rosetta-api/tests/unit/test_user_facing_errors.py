@@ -40,7 +40,7 @@ def test_dispatcher_messages_lose_operator_instructions():
         assert "Server operators" not in text, text
         assert text != original or "raise the timeout" not in original
     assert "try again in a minute" in rewritten[0]
-    assert "raise the timeout in Config." in rewritten[1]
+    assert "raise the timeout in the Execution chip." in rewritten[1]
     assert all("administrator" in t for t in rewritten[2:])
 
 

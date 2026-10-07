@@ -1,10 +1,10 @@
 // Report layout: tabs, the single-circuit detail report, the batch suite summary, the
 // Exports tab and the Quirk visualizer.
 
-import { backButtonContainer, jsonOutput, panelElements, tabNav, welcomeMessage } from './dom.js';
+import { backButtonContainer, panelElements, tabNav, welcomeMessage } from './dom.js';
 
 import { BASE_URL, apiDetailText, getAuthHeaders } from './api.js';
-import { renderArtifactsPanel } from './artifacts_renderer.js';
+import { renderExportTab, showExportTab } from './artifacts_renderer.js';
 import { renderCircuitExplorer } from './circuit_explorer_renderer.js';
 import { circuitPanes } from './circuit_panes.js';
 import { backendVerdicts, headlineModel } from './backend_verdicts.js';
@@ -19,7 +19,6 @@ import {
 import { getState } from './state.js';
 import { renderSummaryPanel } from './summary_renderer.js';
 import { renderAgreementPanel, renderDivergenceTables } from './tables_renderer.js';
-import { _stripStatevectors, copyText, downloadBlob } from './utils.js';
 
 export function clearReport() {
     welcomeMessage.classList.add('hidden');
@@ -27,63 +26,21 @@ export function clearReport() {
     backButtonContainer.classList.add('hidden');
 
     Object.entries(panelElements).forEach(([key, panel]) => {
-        if (key !== 'raw' && key !== 'visualizer') {
+        if (key !== 'visualizer') {
             if (panel) panel.innerHTML = '';
         }
         if (panel) panel.classList.add('hidden');
     });
-    _setRawTabData(null);
-
-    const authorNameInput = document.getElementById('export-author-name');
-    const authorAffiliationInput = document.getElementById('export-author-affiliation');
-    const includeSvCheckbox = document.getElementById('export-include-sv');
-    if (authorNameInput) authorNameInput.value = '';
-    if (authorAffiliationInput) authorAffiliationInput.value = '';
-    if (includeSvCheckbox) includeSvCheckbox.checked = false;
 }
-
-// The Exports tab's JSON dump is stringified when the tab is first opened.
-export let _rawTabData = null;
-export let _rawTabRendered = false;
-
-export function _reportHasTruncatedSv(data) {
-    const scan = (arr) => Array.isArray(arr) && arr.some(r => r?.statevector_omitted_for_display
-        || (typeof r?.statevector === 'string' && r.statevector.startsWith('<Statevector too large')));
-    if (scan(data?.raw_results)) return true;
-    if (Array.isArray(data?.benchmark_summary)) {
-        return data.benchmark_summary.some(task => scan(task?.raw_results));
-    }
-    return false;
-}
-
-export function _setRawTabData(data) {
-    _rawTabData = data;
-    _rawTabRendered = false;
-    if (jsonOutput) jsonOutput.textContent = '';
-}
-
-export function _renderRawTabIfNeeded() {
-    if (_rawTabRendered || !_rawTabData || !jsonOutput) return;
-    if (!/** @type {HTMLDetailsElement|null} */ (document.getElementById('json-output-details'))?.open) return;
-    const withVectors = /** @type {HTMLInputElement|null} */ (document.getElementById('json-show-sv'))?.checked;
-    jsonOutput.textContent = JSON.stringify(withVectors ? _rawTabData : _stripStatevectors(_rawTabData), null, 2);
-    _rawTabRendered = true;
-}
-
-document.getElementById('json-output-details')?.addEventListener('toggle', _renderRawTabIfNeeded);
-document.getElementById('json-show-sv')?.addEventListener('change', () => {
-    _rawTabRendered = false;
-    _renderRawTabIfNeeded();
-});
 
 /** Panels each tab shows, in order, and the tab's label. */
 const TAB_PANELS = {
     summary: ['summary'], agreement: ['agreement', 'divergence'], performance: ['performance', 'resources'],
-    circuits: ['circuits'], export: ['raw', 'artifacts'], raw: ['raw'], 'suite-summary': ['suite-summary'],
+    circuits: ['circuits'], export: ['export'], 'suite-summary': ['suite-summary'],
 };
 const TAB_LABELS = {
     summary: 'Summary', agreement: 'Agreement', performance: 'Performance', circuits: 'Circuits',
-    export: 'Exports', raw: 'Exports', 'suite-summary': 'Suite Summary',
+    export: 'Exports', 'suite-summary': 'Suite Summary',
 };
 
 export function showTab(tabName) {
@@ -91,8 +48,8 @@ export function showTab(tabName) {
     Object.values(panelElements).forEach(panel => { if (panel) panel.classList.add('hidden') });
 
     const panels = TAB_PANELS[tabName] || [tabName];
-    if (panels.includes('raw')) _renderRawTabIfNeeded();
     panels.forEach(key => panelElements[key]?.classList.remove('hidden'));
+    if (panels.includes('export')) showExportTab();
 
     tabNav.querySelectorAll('[role="tab"]').forEach(btn => {
         const active = btn.getAttribute('data-tab') === tabName;
@@ -155,31 +112,11 @@ export function _effectiveOptMap(data, fallbackConfig = {}) {
     return map;
 }
 
-/** Show or hide the Exports-tab truncation notice and the server-copy download button. */
-function _updateExportNotices(data) {
-    const warningBanner = document.getElementById('truncation-warning');
-    const downloadButton = document.getElementById('download-btn');
-    const live = !!getState().currentJobId;
-    if (warningBanner) {
-        warningBanner.classList.toggle('hidden', !_reportHasTruncatedSv(data));
-        const text = warningBanner.querySelector('.tpl-truncation-text');
-        if (text) {
-            text.textContent = live
-                ? 'Statevectors of circuits over 14 qubits are not in this browser copy. The server keeps the full report for 30 minutes after the job completes: use "Download full report" or export the RO-Crate with statevectors.'
-                : 'Statevectors of circuits over 14 qubits are not in this copy, and this report did not come from a job run in this session, so no server copy is available.';
-        }
-    }
-    if (downloadButton) downloadButton.classList.toggle('hidden', !live);
-}
-
 export function renderDetailReport(data, title, config = getState().currentRunnerConfig) {
     const hasCircuits = circuitPanes(data).length > 0;
-    renderTabs(data.error ? ['summary', ...(hasCircuits ? ['circuits'] : []), 'raw']
-        : data.simulated === false ? ['summary', 'circuits', 'raw']
+    renderTabs(data.error ? ['summary', ...(hasCircuits ? ['circuits'] : []), 'export']
+        : data.simulated === false ? ['summary', 'circuits', 'export']
         : ['summary', 'agreement', 'performance', 'circuits', 'export']);
-    _setRawTabData(data);
-    _updateExportNotices(data);
-
     renderSummaryPanel(data, title);
     if (!data.error) {
         const optMap = _effectiveOptMap(data, config);
@@ -188,8 +125,13 @@ export function renderDetailReport(data, title, config = getState().currentRunne
         if (data.resource_report) renderRankingTable(data.resource_report, 'memory_usage_mb', 'MiB', panelElements.resources, optMap, raws);
         if (data.divergence_report) renderDivergenceTables(data.divergence_report, panelElements.divergence, optMap, raws);
         if (data.divergence_report) renderAgreementPanel(data.divergence_report, panelElements.agreement, optMap);
-        renderArtifactsPanel(data, panelElements.artifacts);
     }
+    const suite = getState().currentSuiteData;
+    const inPlaylist = suite && suite !== data && Array.isArray(suite.benchmark_summary);
+    renderExportTab(data, panelElements.export, {
+        scope: data.error && !(data.raw_results || []).length ? 'error' : inPlaylist ? 'task' : 'report',
+        crateResults: inPlaylist ? suite : data,
+    });
     renderCircuitExplorer(data, panelElements.circuits, {
         extraControls: renderShareControls,
         filePrefix: typeof data.task_name === 'string' ? data.task_name : '',
@@ -202,7 +144,7 @@ export function renderDetailReport(data, title, config = getState().currentRunne
 function _fillWinnerCell(td, entry, rawResults, next = null) {
     if (!td) return;
     if (!entry) {
-        td.textContent = '-';
+        td.textContent = '—';
         return;
     }
     td.textContent = _displayRunnerName(entry.simulator);
@@ -277,9 +219,8 @@ function _taskBadges(item) {
 
 export function renderSuiteSummary(data, title) {
     clearReport();
-    renderTabs(['suite-summary', 'raw']);
-    _setRawTabData(data);
-    _updateExportNotices(data);
+    renderTabs(['suite-summary', 'export']);
+    renderExportTab(data, panelElements.export, { scope: data.error ? 'error' : 'suite' });
 
     const panel = panelElements['suite-summary'];
     if (!panel) return;
@@ -372,19 +313,6 @@ export function viewDetail(index) {
     clearReport();
     backButtonContainer.classList.remove('hidden');
     renderDetailReport(item, `Detail: ${fname}`, getState().currentRunnerConfig);
-}
-
-export function copyRawJson(btn) {
-    if (!_rawTabData) return;
-    copyText(JSON.stringify(_rawTabData, null, 2), btn);
-}
-
-export function downloadRawJson() {
-    if (!_rawTabData) {
-        alert("No JSON content to download.");
-        return;
-    }
-    downloadBlob(new Blob([JSON.stringify(_rawTabData, null, 2)], { type: 'application/json' }), "rosetta_raw_report.json");
 }
 
 export function showVisualizerTab() {

@@ -551,7 +551,7 @@ class TestPublicationArtifactsInCrate:
         # Files present in the ZIP.
         assert "figures/agreement_distribution.svg" in names
         assert "tables/agreement.csv" in names
-        assert "tables/agreement.latex" in names
+        assert "tables/agreement.tex" in names
         assert "tables/statistical_test.csv" in names
         # Registered as RO-Crate File entities in hasPart + as analysis results.
         meta = _load_metadata(build_ro_crate(ctx))
@@ -757,7 +757,7 @@ class TestBatchPublicationArtifacts:
         for task in ("bell-2q", "ghz-3q"):
             assert f"figures/{task}/agreement_distribution.svg" in names
             assert f"tables/{task}/agreement.csv" in names
-        assert "figures/bell-2q/counts_overview.svg" in names
+        assert "figures/bell-2q/counts.svg" in names
         byid = _by_id(_load_metadata(data))
         entity = byid["tables/bell-2q/agreement.csv"]
         assert entity["name"] == "bell-2q/agreement.csv"
@@ -798,7 +798,7 @@ class TestRunnerLocksAndThresholds:
         byid = _by_id(_load_metadata(build_ro_crate(ctx)))
         csv_desc = byid["tables/agreement.csv"]["description"]
         assert "carries no caption" in csv_desc and "registered-transform lattice" in csv_desc
-        assert "carries the caption" in byid["tables/agreement.latex"]["description"]
+        assert "carries the caption" in byid["tables/agreement.tex"]["description"]
 
 
 class TestAnalysisProvenance:
