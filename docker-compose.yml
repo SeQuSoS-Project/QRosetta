@@ -35,6 +35,9 @@ services:
       - QROSETTA_GPU_AVAILABLE=${QROSETTA_GPU_AVAILABLE:-false}
       - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
       - QROSETTA_IMAGE_DIGESTS=${QROSETTA_IMAGE_DIGESTS:-}
+      - MAX_QUBITS_STATEVECTOR=${MAX_QUBITS_STATEVECTOR:-18}
+      - MAX_QUBITS_MEASURED=${MAX_QUBITS_MEASURED:-24}
+      - MAX_QUBITS_COMPILE=${MAX_QUBITS_COMPILE:-24}
     volumes:
       - rosetta_db_data:/home/appuser/app/data
     networks:
@@ -67,6 +70,8 @@ services:
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
       - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+      - MAX_QUBITS_STATEVECTOR=${MAX_QUBITS_STATEVECTOR:-18}
+      - MAX_QUBITS_MEASURED=${MAX_QUBITS_MEASURED:-24}
     networks:
       - isolated_net
     deploy:
@@ -89,6 +94,8 @@ services:
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
       - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+      - MAX_QUBITS_STATEVECTOR=${MAX_QUBITS_STATEVECTOR:-18}
+      - MAX_QUBITS_MEASURED=${MAX_QUBITS_MEASURED:-24}
     networks:
       - isolated_net
     deploy:
@@ -111,6 +118,8 @@ services:
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
       - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+      - MAX_QUBITS_STATEVECTOR=${MAX_QUBITS_STATEVECTOR:-18}
+      - MAX_QUBITS_MEASURED=${MAX_QUBITS_MEASURED:-24}
     networks:
       - isolated_net
     deploy:
@@ -133,6 +142,8 @@ services:
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
       - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+      - MAX_QUBITS_STATEVECTOR=${MAX_QUBITS_STATEVECTOR:-18}
+      - MAX_QUBITS_MEASURED=${MAX_QUBITS_MEASURED:-24}
     networks:
       - isolated_net
     deploy:
@@ -155,6 +166,8 @@ services:
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
       - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+      - MAX_QUBITS_STATEVECTOR=${MAX_QUBITS_STATEVECTOR:-18}
+      - MAX_QUBITS_MEASURED=${MAX_QUBITS_MEASURED:-24}
     networks:
       - isolated_net
     deploy:
@@ -177,6 +190,8 @@ services:
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
       - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+      - MAX_QUBITS_STATEVECTOR=${MAX_QUBITS_STATEVECTOR:-18}
+      - MAX_QUBITS_MEASURED=${MAX_QUBITS_MEASURED:-24}
     networks:
       - isolated_net
     deploy:
@@ -199,6 +214,8 @@ services:
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
       - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+      - MAX_QUBITS_STATEVECTOR=${MAX_QUBITS_STATEVECTOR:-18}
+      - MAX_QUBITS_MEASURED=${MAX_QUBITS_MEASURED:-24}
     networks:
       - isolated_net
     deploy:
@@ -221,6 +238,8 @@ services:
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
       - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+      - MAX_QUBITS_STATEVECTOR=${MAX_QUBITS_STATEVECTOR:-18}
+      - MAX_QUBITS_MEASURED=${MAX_QUBITS_MEASURED:-24}
     networks:
       - isolated_net
     deploy:
@@ -243,6 +262,8 @@ services:
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
       - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+      - MAX_QUBITS_STATEVECTOR=${MAX_QUBITS_STATEVECTOR:-18}
+      - MAX_QUBITS_MEASURED=${MAX_QUBITS_MEASURED:-24}
     networks:
       - isolated_net
     deploy:
@@ -265,6 +286,8 @@ services:
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
       - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+      - MAX_QUBITS_STATEVECTOR=${MAX_QUBITS_STATEVECTOR:-18}
+      - MAX_QUBITS_MEASURED=${MAX_QUBITS_MEASURED:-24}
     networks:
       - isolated_net
     deploy:
@@ -287,6 +310,8 @@ services:
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
       - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+      - MAX_QUBITS_STATEVECTOR=${MAX_QUBITS_STATEVECTOR:-18}
+      - MAX_QUBITS_MEASURED=${MAX_QUBITS_MEASURED:-24}
     networks:
       - isolated_net
     deploy:
@@ -309,6 +334,8 @@ services:
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
       - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+      - MAX_QUBITS_STATEVECTOR=${MAX_QUBITS_STATEVECTOR:-18}
+      - MAX_QUBITS_MEASURED=${MAX_QUBITS_MEASURED:-24}
     networks:
       - isolated_net
     deploy:
@@ -331,6 +358,8 @@ services:
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
       - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+      - MAX_QUBITS_STATEVECTOR=${MAX_QUBITS_STATEVECTOR:-18}
+      - MAX_QUBITS_MEASURED=${MAX_QUBITS_MEASURED:-24}
     networks:
       - isolated_net
     deploy:
@@ -353,6 +382,8 @@ services:
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
       - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+      - MAX_QUBITS_STATEVECTOR=${MAX_QUBITS_STATEVECTOR:-18}
+      - MAX_QUBITS_MEASURED=${MAX_QUBITS_MEASURED:-24}
     networks:
       - isolated_net
     deploy:
@@ -375,6 +406,8 @@ services:
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
       - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+      - MAX_QUBITS_STATEVECTOR=${MAX_QUBITS_STATEVECTOR:-18}
+      - MAX_QUBITS_MEASURED=${MAX_QUBITS_MEASURED:-24}
     networks:
       - isolated_net
     deploy:
@@ -397,6 +430,8 @@ services:
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
       - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+      - MAX_QUBITS_STATEVECTOR=${MAX_QUBITS_STATEVECTOR:-18}
+      - MAX_QUBITS_MEASURED=${MAX_QUBITS_MEASURED:-24}
     networks:
       - isolated_net
     deploy:
@@ -421,6 +456,7 @@ services:
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
       - COMPILER_MAX_CONCURRENT=${COMPILER_MAX_CONCURRENT:-2}
+      - MAX_QUBITS_COMPILE=${MAX_QUBITS_COMPILE:-24}
     networks:
       - isolated_net
     deploy:
@@ -443,6 +479,7 @@ services:
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
       - COMPILER_MAX_CONCURRENT=${COMPILER_MAX_CONCURRENT:-2}
+      - MAX_QUBITS_COMPILE=${MAX_QUBITS_COMPILE:-24}
     networks:
       - isolated_net
     deploy:
@@ -465,6 +502,7 @@ services:
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
       - COMPILER_MAX_CONCURRENT=${COMPILER_MAX_CONCURRENT:-2}
+      - MAX_QUBITS_COMPILE=${MAX_QUBITS_COMPILE:-24}
     networks:
       - isolated_net
     deploy:
@@ -487,6 +525,7 @@ services:
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
       - COMPILER_MAX_CONCURRENT=${COMPILER_MAX_CONCURRENT:-2}
+      - MAX_QUBITS_COMPILE=${MAX_QUBITS_COMPILE:-24}
     networks:
       - isolated_net
     deploy:
@@ -509,6 +548,7 @@ services:
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
       - COMPILER_MAX_CONCURRENT=${COMPILER_MAX_CONCURRENT:-2}
+      - MAX_QUBITS_COMPILE=${MAX_QUBITS_COMPILE:-24}
     networks:
       - isolated_net
     deploy:
@@ -531,6 +571,7 @@ services:
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
       - COMPILER_MAX_CONCURRENT=${COMPILER_MAX_CONCURRENT:-2}
+      - MAX_QUBITS_COMPILE=${MAX_QUBITS_COMPILE:-24}
     networks:
       - isolated_net
     deploy:
@@ -553,6 +594,7 @@ services:
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
       - COMPILER_MAX_CONCURRENT=${COMPILER_MAX_CONCURRENT:-2}
+      - MAX_QUBITS_COMPILE=${MAX_QUBITS_COMPILE:-24}
     networks:
       - isolated_net
     deploy:
@@ -575,6 +617,7 @@ services:
       - NUMEXPR_NUM_THREADS=1
       - NUMBA_NUM_THREADS=1
       - COMPILER_MAX_CONCURRENT=${COMPILER_MAX_CONCURRENT:-2}
+      - MAX_QUBITS_COMPILE=${MAX_QUBITS_COMPILE:-24}
     networks:
       - isolated_net
     deploy:

@@ -28,6 +28,7 @@ from qrosetta_commons.memory import MemoryMonitor, lifetime_peak_rss
 
 MAX_QUBITS_STATEVECTOR = int(os.getenv("MAX_QUBITS_STATEVECTOR", "18"))
 MAX_QUBITS_MEASURED = int(os.getenv("MAX_QUBITS_MEASURED", "24"))
+MAX_QUBITS_COMPILE = int(os.getenv("MAX_QUBITS_COMPILE", "24"))
 
 THREAD_ENV_VARS = ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
                    "NUMEXPR_NUM_THREADS", "NUMBA_NUM_THREADS")
@@ -1043,12 +1044,14 @@ def run_cli_job(process, args, parser) -> None:
     import json
     if args.s3_job_id:
         import boto3
+        from botocore.config import Config
         s3 = boto3.client(
             "s3",
             endpoint_url=os.getenv("S3_ENDPOINT_URL"),
             aws_access_key_id=os.getenv("S3_ACCESS_KEY"),
             aws_secret_access_key=os.getenv("S3_SECRET_KEY"),
             region_name=os.getenv("S3_REGION", "us-east-1"),
+            config=Config(signature_version="s3v4"),
         )
         bucket = os.getenv("S3_BUCKET_NAME")
         payload_env = os.getenv("QROSETTA_PAYLOAD")

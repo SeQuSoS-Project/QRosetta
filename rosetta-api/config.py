@@ -2,6 +2,7 @@
 
 import json
 import os
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
@@ -52,12 +53,13 @@ class Settings(BaseSettings):
     RUNNER_CONNECT_TIMEOUT_SEC: int = 10
     RUNNER_DEADLINE_BUFFER_SEC: int = 15
     RUNNER_QUEUE_MAX_WAIT_SEC: int = int(os.getenv("RUNNER_QUEUE_MAX_WAIT_SEC", "1800"))
-    K8S_MAX_CONCURRENT_JOBS: int = max(1, int(os.getenv("QROSETTA_K8S_MAX_CONCURRENT_JOBS", "3")))
+    K8S_MAX_CONCURRENT_JOBS: int = Field(default=3, validation_alias="QROSETTA_K8S_MAX_CONCURRENT_JOBS")
     GPU_AVAILABLE: bool = os.getenv("QROSETTA_GPU_AVAILABLE", "false").strip().lower() in ("1", "true", "yes")
     NOT_DEPLOYED: frozenset = frozenset(
         s.strip() for s in os.getenv("QROSETTA_NOT_DEPLOYED", "").split(",") if s.strip())
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     SECRET_KEY: str = os.getenv("SECRET_KEY", "")
+    PROXY_TOKEN: str = Field(default="", validation_alias="QROSETTA_PROXY_TOKEN")
 
     STORAGE_MODE: str = os.getenv("STORAGE_MODE", "local")
     S3_ENDPOINT_URL: str = os.getenv("S3_ENDPOINT_URL", "https://s3.amazonaws.com")
@@ -79,6 +81,11 @@ class Settings(BaseSettings):
     MAX_TOTAL_RUNS: int = 48
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @field_validator("K8S_MAX_CONCURRENT_JOBS", mode="after")
+    @classmethod
+    def _at_least_one_slot(cls, value: int) -> int:
+        return max(1, value)
 
     def max_qubits_for_mode(self, mode: str) -> int:
         """Qubit cap for a run mode ("statevector", "measured" or "compile" for a compile-only
