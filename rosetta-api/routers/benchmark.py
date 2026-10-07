@@ -5,7 +5,7 @@ import asyncio
 from services.job_manager import require_exclusive_slot
 from services.security import client_address, get_optional_user
 from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
-from fastapi.responses import JSONResponse
+from fastapi.responses import StreamingResponse
 import uuid
 from routers.errors import responses
 from qrosetta_commons.helpers import get_logger
@@ -15,12 +15,12 @@ from services.validator import (
 from schemas import QasmPayload, MeasuredQasmPayload, BatchPayload, JobStatusResponse
 from services.security import limiter
 from services.availability import require_available
-from services.job_store import JOB_NOT_FOUND
+from services.job_store import JOB_NOT_FOUND, file_chunks, report_json_file
 from services.compilation import validate_compilers
 from config import settings
 from services.job_manager import (
     ACTIVE_JOBS,
-    job_report_or_error,
+    finished_job_or_error,
     clamp_timeout,
     effective_thresholds,
     new_job,
@@ -57,6 +57,15 @@ async def get_job_status(job_id: str):
         "progress": job_data.get("progress"),
     }
 
+def _report_file(job_id: str):
+    """The job's full report as an open JSON file; 404 when the job expires meanwhile."""
+    job = finished_job_or_error(job_id, "download")
+    try:
+        return report_json_file(job)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=JOB_NOT_FOUND)
+
+
 @router.get("/jobs/{job_id}/report", responses=responses(404, 409))
 @limiter.limit("30/minute")
 async def get_job_full_report(request: Request, job_id: str):
@@ -65,9 +74,9 @@ async def get_job_full_report(request: Request, job_id: str):
     with a placeholder. A job whose runners all failed is 'failed' but still has a report.
     404 if the job id is unknown or expired; 409 if the job has not finished, failed before
     any runner ran, or is an experiment (use GET /experiments/{job_id}/bundle)."""
-    report = await asyncio.to_thread(job_report_or_error, job_id, "download")
-    return JSONResponse(
-        content=report,
+    fh = await asyncio.to_thread(_report_file, job_id)
+    return StreamingResponse(
+        file_chunks(fh), media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="qrosetta_report_{job_id[:8]}.json"'},
     )
 

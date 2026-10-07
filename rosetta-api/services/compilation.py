@@ -7,6 +7,8 @@ own job and an exclusive job of another client still waits for it. Their results
 apart from raw_results: they are circuit text, never simulated or compared.
 """
 
+import asyncio
+
 from fastapi import HTTPException
 
 from config import settings
@@ -106,16 +108,20 @@ def _settle_compile_statuses(runner_statuses: dict, compilers: dict, status: str
 
 
 async def compile_circuit(qasm_string: str, apply_preprocessing: bool, compilers: dict,
-                          timeout_seconds: int, runner_statuses: dict = None) -> dict:
+                          timeout_seconds: int, runner_statuses: dict = None,
+                          prepared: dict = None) -> dict:
     """``{"compile_input", "compiled_circuits"}`` for the report, or ``{}`` when no compiler
     was requested. A circuit with mid-circuit measurement, reset or classical control is not
     compiled, and every requested compile is recorded with dispatch_status "skipped" and
     the reason; a dispatch that fails is recorded as "error" for each compile, so the run's
-    simulator results are kept either way."""
+    simulator results are kept either way. ``prepared`` is the circuit's
+    ``prepare_statevector_dispatch`` result when the caller already has it; otherwise it is
+    prepared in a worker thread."""
     if not compilers:
         return {}
     try:
-        prepared = prepare_statevector_dispatch(qasm_string, apply_preprocessing)
+        if prepared is None:
+            prepared = await asyncio.to_thread(prepare_statevector_dispatch, qasm_string, apply_preprocessing)
     except StatevectorIncompatible:
         _settle_compile_statuses(runner_statuses, compilers, "done")
         return {"compilers_requested": {cid: list(levels) for cid, levels in compilers.items()},

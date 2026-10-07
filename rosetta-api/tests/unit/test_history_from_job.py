@@ -216,3 +216,28 @@ def test_an_anonymous_job_can_be_saved_by_any_account(client):
         assert client.post("/history/runs/from_job/anon-job-1").status_code == 201
     finally:
         del job_manager.ACTIVE_JOBS["anon-job-1"]
+
+
+def test_a_job_whose_report_files_are_gone_is_404(client):
+    import os
+    _job("expired-job-1", {"raw_results": []})
+    os.remove(job_manager.ACTIVE_JOBS["expired-job-1"]["full_results"].path)
+    try:
+        r = client.post("/history/runs/from_job/expired-job-1")
+        assert r.status_code == 404 and r.json()["detail"] == job_manager.JOB_NOT_FOUND
+    finally:
+        del job_manager.ACTIVE_JOBS["expired-job-1"]
+
+
+def test_a_job_evicted_after_its_report_is_read_is_still_saved(client, monkeypatch):
+    _job("evicted-job-1", {"raw_results": [{"simulator": "qiskit", "statevector": "A" * 64}]})
+    real = job_manager.full_report
+
+    def read_then_evict(job, each_task=None):
+        report = real(job, each_task)
+        job_manager.ACTIVE_JOBS.pop("evicted-job-1")
+        return report
+    monkeypatch.setattr(job_manager, "full_report", read_then_evict)
+    r = client.post("/history/runs/from_job/evicted-job-1")
+    assert r.status_code == 201, r.text
+    assert "evicted-job-1" not in job_manager.ACTIVE_JOBS

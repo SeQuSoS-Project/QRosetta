@@ -2,6 +2,7 @@
 effective config, sampled-group preprocessing, and the request fixes that go with them."""
 import asyncio
 import json
+import zipfile
 
 import pytest
 from fastapi import HTTPException
@@ -118,12 +119,13 @@ def test_experiment_manifest_records_the_effective_config(monkeypatch):
     from schemas import ExperimentCircuit, ExperimentPayload
 
     async def fake_run_batch_tasks(payload, runner_statuses, progress=None, batch_seed=None,
-                                   task_offset=0):
+                                   task_offset=0, store=None):
         thresholds = job_manager.effective_thresholds(payload.thresholds)
-        return [{"seed": batch_seed, "agreement_thresholds": thresholds,
-                 "resolved_runners": {"requested": [], "dispatched": ["qiskit", "quest"],
-                                      "skipped": [{"id": "cuquantum", "reason": "no GPU"}]},
-                 "raw_results": []} for _ in payload.tasks], batch_seed
+        reports = [{"seed": batch_seed, "agreement_thresholds": thresholds,
+                    "resolved_runners": {"requested": [], "dispatched": ["qiskit", "quest"],
+                                         "skipped": [{"id": "cuquantum", "reason": "no GPU"}]},
+                    "raw_results": []} for _ in payload.tasks]
+        return [await store(i, r) for i, r in enumerate(reports)], batch_seed
     monkeypatch.setattr(exp, "run_batch_tasks", fake_run_batch_tasks)
 
     payload = ExperimentPayload(circuits=[ExperimentCircuit(source="qasm", qasm_string=CUSTOM_GATE)],
@@ -132,8 +134,9 @@ def test_experiment_manifest_records_the_effective_config(monkeypatch):
     try:
         asyncio.run(exp.worker_experiment("exp-prov", payload))
         job = job_manager.ACTIVE_JOBS["exp-prov"]
-        manifest = json.loads(job["bundle_files"]["manifest.json"])
-        result = json.loads(job["bundle_files"]["results/measured_preprocOn/000_circuit-0.json"])
+        with zipfile.ZipFile(job["bundle_path"]) as zf:
+            manifest = json.loads(zf.read("manifest.json"))
+            result = json.loads(zf.read("results/measured_preprocOn/000_circuit-0.json"))
     finally:
         del job_manager.ACTIVE_JOBS["exp-prov"]
 

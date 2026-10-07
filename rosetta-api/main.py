@@ -11,17 +11,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import JSONResponse
 from services.security import limiter
-from services.job_manager import ACTIVE_JOBS
+from services.job_manager import ACTIVE_JOBS, expired_job_ids
 from services.job_store import reset_spill_dir
 from config import settings
 from qrosetta_commons.helpers import get_logger
 from contextlib import asynccontextmanager
 import asyncio
-import time
 import logging
 
 logger = get_logger("rosetta-main")
-_JOB_TTL_SEC = 1800
 
 class _SuppressAlgorithmsFilter(logging.Filter):
     """Drop GET /algorithms access log entries — they are frontend keepalive polls."""
@@ -34,10 +32,7 @@ logging.getLogger("uvicorn.access").addFilter(_SuppressAlgorithmsFilter())
 async def _cleanup_old_jobs():
     while True:
         await asyncio.sleep(600)
-        cutoff = time.time() - _JOB_TTL_SEC
-        expired = [jid for jid, job in list(ACTIVE_JOBS.items())
-                   if job.get("status") in ("completed", "failed")
-                   and job.get("finished_at", 0) < cutoff]
+        expired = expired_job_ids()
         for jid in expired:
             ACTIVE_JOBS.pop(jid, None)
         if expired:

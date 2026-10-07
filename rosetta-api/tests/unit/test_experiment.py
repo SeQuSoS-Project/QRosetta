@@ -1,6 +1,5 @@
 """Unit tests for services/experiment.py, with the fleet mocked at run_batch_tasks."""
 import asyncio
-import io
 import hashlib
 import json
 import zipfile
@@ -15,6 +14,19 @@ from services.job_manager import ACTIVE_JOBS  # noqa: E402
 from schemas import ExperimentPayload, ExperimentCircuit  # noqa: E402
 
 BELL_QASM = "OPENQASM 2.0;\ninclude \"qelib1.inc\";\nqreg q[2];\nh q[0];\ncx q[0],q[1];\n"
+
+
+async def _stored(summary, store):
+    """What run_batch_tasks returns when it hands each report to ``store``."""
+    if store is None:
+        return summary
+    return [await store(i, report) for i, report in enumerate(summary)]
+
+
+def _bundle(job):
+    """{name: bytes} of the experiment's bundle ZIP."""
+    with zipfile.ZipFile(job["bundle_path"]) as zf:
+        return {name: zf.read(name) for name in zf.namelist()}
 
 
 def _fake_summary(batch_seed):
@@ -34,13 +46,13 @@ def _fake_summary(batch_seed):
 
 def _install_fake_batch(monkeypatch, seen_seeds):
     async def fake_run_batch_tasks(payload, runner_statuses, progress=None,
-                                   batch_seed=None, task_offset=0):
+                                   batch_seed=None, task_offset=0, store=None):
         seen_seeds.append(batch_seed)
         if progress is not None:
             for i in range(len(payload.tasks)):
                 progress["tasks"][task_offset + i]["status"] = "done"
                 progress["completed"] += 1
-        return _fake_summary(batch_seed), batch_seed
+        return await _stored(_fake_summary(batch_seed), store), batch_seed
     monkeypatch.setattr(exp, "run_batch_tasks", fake_run_batch_tasks)
 
 
@@ -60,7 +72,7 @@ def test_experiment_completes_and_freezes_bundle(monkeypatch):
     _, job = _run_experiment(payload)
 
     assert job["status"] == "completed"
-    files = job["bundle_files"]
+    files = _bundle(job)
     # both axes frozen, plus inputs + the two separated CSVs + manifest + README + error log
     assert "inputs/000_bell.qasm" in files
     assert "results/measured_preprocOn/000_bell.json" in files
@@ -105,8 +117,7 @@ def test_bundle_zip_is_valid_archive(monkeypatch):
         circuits=[ExperimentCircuit(source="qasm", qasm_string=BELL_QASM, name="bell", qubits=2)],
         mode="measured", preprocessing_modes=[True], seed=1)
     _, job = _run_experiment(payload)
-    data = exp.build_bundle_zip(job["bundle_files"])
-    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+    with zipfile.ZipFile(job["bundle_path"]) as zf:
         assert zf.testzip() is None
         names = set(zf.namelist())
         assert "manifest.json" in names and "README.txt" in names
@@ -191,7 +202,7 @@ def test_statevector_mode_is_seedless(monkeypatch):
 
 def test_result_files_named_by_circuit_id_do_not_collide(monkeypatch):
     async def fake_run_batch_tasks(payload, runner_statuses, progress=None,
-                                   batch_seed=None, task_offset=0):
+                                   batch_seed=None, task_offset=0, store=None):
         summary = []
         for i, task in enumerate(payload.tasks):
             summary.append({
@@ -202,7 +213,7 @@ def test_result_files_named_by_circuit_id_do_not_collide(monkeypatch):
             if progress is not None:
                 progress["tasks"][task_offset + i]["status"] = "done"
                 progress["completed"] += 1
-        return summary, batch_seed
+        return await _stored(summary, store), batch_seed
     monkeypatch.setattr(exp, "run_batch_tasks", fake_run_batch_tasks)
 
     other = BELL_QASM.replace("h q[0];", "x q[0];")
@@ -211,7 +222,7 @@ def test_result_files_named_by_circuit_id_do_not_collide(monkeypatch):
         ExperimentCircuit(source="qasm", qasm_string=other, algorithm="bell", qubits=2),
     ], mode="measured", preprocessing_modes=[True], seed=3)
     _, job = _run_experiment(payload)
-    files = job["bundle_files"]
+    files = _bundle(job)
     results = sorted(k for k in files if k.startswith("results/"))
     assert results == ["results/measured_preprocOn/000_bell-2q.json",
                        "results/measured_preprocOn/001_bell-2q.json"]
@@ -245,7 +256,7 @@ def test_manifest_records_the_job_id(monkeypatch):
         circuits=[ExperimentCircuit(source="qasm", qasm_string=BELL_QASM, name="bell")],
         mode="measured", seed=1)
     job_id, job = _run_experiment(payload)
-    manifest = json.loads(job["bundle_files"]["manifest.json"])
+    manifest = json.loads(_bundle(job)["manifest.json"])
     assert manifest["job_id"] == job_id
     assert manifest["circuits"][0]["qubits"] == 2
     assert job["kind"] == "experiment"
