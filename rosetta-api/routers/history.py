@@ -12,7 +12,8 @@ from db.database import get_db
 from services.security import get_current_user
 from services.exporter import build_export_context, build_ro_crate
 from services.publication.views import ParameterError
-from services.job_manager import ACTIVE_JOBS, job_report_or_error
+from services.job_manager import ACTIVE_JOBS, job_with_report_or_error
+from services.report_filters import remove_statevectors
 from routers.errors import responses
 from qrosetta_commons.helpers import get_logger
 from fastapi.responses import StreamingResponse
@@ -101,13 +102,13 @@ def save_run_from_job(
     finished, failed before any runner ran, or is an experiment; 403 if another signed-in
     account started it. A job submitted without a sign-in can be saved by any account that
     holds its id."""
-    report = job_report_or_error(job_id, "save")
-    owner = ACTIVE_JOBS[job_id].get("owner_user_id")
+    job, report = job_with_report_or_error(job_id, "save", each_task=remove_statevectors)
+    owner = job.get("owner_user_id")
     if owner is not None and owner != current_user.id:
         raise HTTPException(status_code=403, detail=(
             "This job was started by another signed-in account; only that account can save it."))
     with _job_save_lock(job_id):
-        saved_runs = ACTIVE_JOBS[job_id].setdefault("saved_runs", {})
+        saved_runs = job.setdefault("saved_runs", {})
         existing = history_service.find_run(db, current_user.id, saved_runs.get(current_user.id))
         if existing is not None:
             response.status_code = status.HTTP_200_OK

@@ -2,14 +2,18 @@
 
 ``worker_experiment`` runs a fleet sweep over one or more preprocessing axes as a
 server-side background job, reusing the batch core (``job_manager.run_batch_tasks``),
-and assembles the frozen artifact bundle from ``services.experiment_artifacts`` as an
-in-memory ZIP (nothing is written to server disk).
+and assembles the frozen artifact bundle from ``services.experiment_artifacts`` as a ZIP in
+the job's spill directory (``job_store.job_dir``), deleted with the job. Each cell's result
+file is written there as the cell finishes; memory keeps only the fields the summary tables
+read.
 """
 from __future__ import annotations
 
-import io
+import asyncio
 import json
+import os
 import re
+import shutil
 import time
 import zipfile
 from datetime import datetime, timezone
@@ -19,9 +23,11 @@ from schemas import BatchPayload, BenchmarkTask, ExperimentPayload
 from services import experiment_artifacts as art
 from services.dispatcher import SEED_DERIVATION
 from services.export_compiled import compiled_metrics_csv, compiler_build_files
+from services.job_store import job_dir
 from services.run_registry import EXCLUSIVE, releases_exclusive
 from services.job_manager import (
-    ACTIVE_JOBS, _resolve_seed, effective_thresholds, run_batch_tasks, task_label, task_qubits,
+    ACTIVE_JOBS, _resolve_seed, effective_thresholds, run_batch_tasks, start_job, task_label,
+    task_qubits,
 )
 from qrosetta_commons.helpers import get_logger
 from services.circuit_resolver import resolve_circuit_qasm
@@ -101,20 +107,77 @@ def _axis_label(mode: str, pp: bool) -> str:
     return f"{mode}_preproc{'On' if pp else 'Off'}"
 
 
+_BULKY_RESULT_FIELDS = frozenset({"statevector", "counts", "transpiled_qasm"})
+_KEPT_REPORT_FIELDS = ("task_name", "circuit_id", "error", "seed", "git_sha", "seed_derivation",
+                       "agreement_thresholds", "resolved_runners")
+
+
+def _kept_record(report: dict) -> dict:
+    """The fields of a cell's report that the summary tables and manifest read after the
+    cell: top-level provenance, each result without its statevector, counts and circuit
+    text, the pairwise agreement records and the compile records."""
+    record = {k: report[k] for k in _KEPT_REPORT_FIELDS if k in report}
+    record["raw_results"] = [
+        {k: v for k, v in entry.items() if k not in _BULKY_RESULT_FIELDS}
+        if isinstance(entry, dict) else entry
+        for entry in report.get("raw_results") or []]
+    divergence = report.get("divergence_report")
+    if isinstance(divergence, dict):
+        record["divergence_report"] = {"pairwise_agreement": divergence.get("pairwise_agreement") or []}
+    if "compiled_circuits" in report:
+        record["compiled_circuits"] = report["compiled_circuits"]
+    return record
+
+
+def _freeze_cell(report: dict, circuit: dict, axis: str, staging: str,
+                 keep_statevectors: bool) -> tuple:
+    """Write one cell's result file under ``staging`` and return (its conformance rows, its
+    performance rows, the kept record)."""
+    report["circuit_id"] = circuit["id"]
+    report["task_request"] = circuit["request"]
+    if not keep_statevectors:
+        report = art.strip_statevectors(report)
+    path = os.path.join(staging, "results", axis, f"{circuit['id']}.json")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as fh:
+        fh.write(json.dumps(report, indent=2, default=str).encode("utf-8"))
+    return (art.build_conformance_rows(axis, [report]), art.build_performance_rows(axis, [report]),
+            _kept_record(report))
+
+
+def write_bundle_zip(zip_path: str, files: dict, staging: str) -> None:
+    """Zip the {relative_path: bytes} files and every file under ``staging`` (by its
+    relative path) to ``zip_path``, in sorted order, one staged file in memory at a time."""
+    staged = {}
+    for root, _, names in os.walk(staging):
+        for name in names:
+            full = os.path.join(root, name)
+            staged[os.path.relpath(full, staging).replace(os.sep, "/")] = full
+    tmp = f"{zip_path}.tmp"
+    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zf:
+        for rel_path in sorted({*files, *staged}):
+            if rel_path in files:
+                zf.writestr(rel_path, files[rel_path])
+            else:
+                with open(staged[rel_path], "rb") as fh:
+                    zf.writestr(rel_path, fh.read())
+    os.replace(tmp, zip_path)
+
+
 @releases_exclusive
 async def worker_experiment(job_id: str, payload: ExperimentPayload):
     """Background task for POST /experiments.
 
     Runs every resolved circuit on every preprocessing axis with one master seed, and
-    stores the bundle files in ``ACTIVE_JOBS[job_id]["bundle_files"]``. The number of
+    writes the bundle to ``ACTIVE_JOBS[job_id]["bundle_path"]``. The number of
     circuit-axis cells is capped at MAX_EXPERIMENT_CELLS unless bypass_limits is set.
     """
     EXCLUSIVE.set(payload.exclusive)
     runner_statuses = {}
-    ACTIVE_JOBS[job_id]["status"] = "processing"
-    ACTIVE_JOBS[job_id]["runner_statuses"] = runner_statuses
+    start_job(job_id, runner_statuses)
+    staging = os.path.join(job_dir(job_id), "bundle")
     try:
-        resolved, resolution_errors = resolve_circuits(payload)
+        resolved, resolution_errors = await asyncio.to_thread(resolve_circuits, payload)
         axes = payload.preprocessing_modes
         if not resolved:
             raise ValueError("No circuits could be resolved: "
@@ -141,10 +204,32 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
         effective_seeds, sdk_versions = {}, {}
         thresholds_per_axis, runners_per_axis = {}, {}
         all_reports: list = []
-        result_files: dict = {}
         compiled_reports: list = []
         offset = 0
         for pp, axis in zip(axes, axis_labels):
+            axis_conformance, axis_records = [], []
+
+            async def store(index: int, report: dict, axis=axis, axis_conformance=axis_conformance,
+                            axis_records=axis_records):
+                circuit = resolved[index]
+                if report.get("agreement_thresholds") is not None:
+                    thresholds_per_axis.setdefault(axis, report["agreement_thresholds"])
+                if report.get("resolved_runners"):
+                    runners = runners_per_axis.setdefault(
+                        axis, {"dispatched": set(), "skipped": {}})
+                    runners["dispatched"].update(report["resolved_runners"]["dispatched"])
+                    for skip in report["resolved_runners"]["skipped"]:
+                        runners["skipped"].setdefault(skip["id"], skip["reason"])
+                rows, perf_rows, record = await asyncio.to_thread(
+                    _freeze_cell, report, circuit, axis, staging, payload.keep_statevectors)
+                axis_conformance.extend(rows)
+                performance.extend(perf_rows)
+                axis_records.append(record)
+                compiled_reports.append((f"{axis}/{circuit['id']}", record))
+                if record.get("seed") is not None:
+                    effective_seeds[axis] = record["seed"]
+                return record
+
             batch_payload = BatchPayload(
                 tasks=[BenchmarkTask(algorithm=c["algorithm"], qubits=c["qubits"],
                                      qasm_string=c["qasm"], source=c["source"]) for c in resolved],
@@ -158,9 +243,9 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
                 apply_preprocessing=bool(pp), seed=exp_seed, thresholds=payload.thresholds,
                 compilers=payload.compilers,
             )
-            summary, _ = await run_batch_tasks(batch_payload, runner_statuses, progress,
-                                               batch_seed=exp_seed, task_offset=offset)
-            all_reports += summary
+            await run_batch_tasks(batch_payload, runner_statuses, progress,
+                                  batch_seed=exp_seed, task_offset=offset, store=store)
+            all_reports += axis_records
             offset += len(resolved)
 
             for e in resolution_errors:
@@ -168,35 +253,13 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
                                     "status": "resolution_error",
                                     "error_signature": str(e["error"])[:300], "triage": "untriaged",
                                     "circuit_id": e["id"]})
-
-            for circuit, report in zip(resolved, summary):
-                report["circuit_id"] = circuit["id"]
-                report["task_request"] = circuit["request"]
-                if report.get("agreement_thresholds") is not None:
-                    thresholds_per_axis.setdefault(axis, report["agreement_thresholds"])
-                if report.get("resolved_runners"):
-                    runners = runners_per_axis.setdefault(
-                        axis, {"dispatched": set(), "skipped": {}})
-                    runners["dispatched"].update(report["resolved_runners"]["dispatched"])
-                    for skip in report["resolved_runners"]["skipped"]:
-                        runners["skipped"].setdefault(skip["id"], skip["reason"])
-                if not payload.keep_statevectors:
-                    report = art.strip_statevectors(report)
-                result_files[f"results/{axis}/{circuit['id']}.json"] = json.dumps(
-                    report, indent=2, default=str).encode("utf-8")
-                compiled_reports.append((f"{axis}/{circuit['id']}", report))
-                if report.get("seed") is not None:
-                    effective_seeds[axis] = report["seed"]
-
-            conformance += art.build_conformance_rows(axis, summary)
-            prevalence += art.build_prevalence_rows(axis, summary)
-            performance += art.build_performance_rows(axis, summary)
-            art.collect_sdk_versions(summary, into=sdk_versions)
+            conformance += axis_conformance
+            prevalence += art.build_prevalence_rows(axis, axis_records)
+            art.collect_sdk_versions(axis_records, into=sdk_versions)
 
         progress["current_index"] = None
 
-        files: dict = dict(result_files)
-        files.update(_compiled_files(compiled_reports))
+        files: dict = _compiled_files(compiled_reports)
         for c in resolved:
             files[f"inputs/{c['id']}.qasm"] = art.qasm_bytes(c["qasm"])
         files["conformance_matrix.csv"] = art.csv_string(
@@ -259,26 +322,24 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
             "cells": cells, "bundle_ready": True, "bundle_name": bundle_name,
             "job_id": job_id,
         }
+        bundle_path = os.path.join(job_dir(job_id), "bundle.zip")
+        await asyncio.to_thread(write_bundle_zip, bundle_path, files, staging)
+        await asyncio.to_thread(shutil.rmtree, staging, True)
+        if job_id not in ACTIVE_JOBS:
+            await asyncio.to_thread(shutil.rmtree, job_dir(job_id), True)
+            return
         ACTIVE_JOBS[job_id] = {
             "status": "completed", "kind": "experiment", "target": payload.execution_target,
             "results": {"experiment_summary": experiment_summary},
             "runner_statuses": runner_statuses, "progress": progress,
-            "bundle_files": files, "bundle_name": bundle_name, "finished_at": time.time(),
+            "bundle_path": bundle_path, "bundle_name": bundle_name, "finished_at": time.time(),
         }
         logger.info(f"--- Experiment {job_id} complete: {cells} cells, {n_err} errors to triage ---")
 
     except Exception as e:
         logger.error(f"Experiment {job_id} failed: {e}", exc_info=True)
+        await asyncio.to_thread(shutil.rmtree, job_dir(job_id), True)
         ACTIVE_JOBS[job_id] = {"status": "failed", "kind": "experiment",
                                "target": payload.execution_target,
                                "error": str(e), "runner_statuses": runner_statuses,
                                "finished_at": time.time()}
-
-
-def build_bundle_zip(files: dict) -> bytes:
-    """Zip the {relative_path: bytes} bundle in memory, files in sorted order."""
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for rel_path in sorted(files):
-            zf.writestr(rel_path, files[rel_path])
-    return buf.getvalue()

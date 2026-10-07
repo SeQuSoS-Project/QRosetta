@@ -263,17 +263,24 @@ def test_every_runner_failed_is_a_failed_job_with_results(client, monkeypatch):
     del job_manager.ACTIVE_JOBS[job_id]
 
 
-def test_bundle_and_report_routes_check_the_job_kind(client):
+def test_bundle_and_report_routes_check_the_job_kind(client, tmp_path):
     import services.job_manager as job_manager
+    from services.job_store import JOB_NOT_FOUND
+    bundle = tmp_path / "bundle.zip"
+    bundle.write_bytes(b"PK zip bytes")
     job_manager.ACTIVE_JOBS["plain"] = job_manager._completed_job("local", {"raw_results": []}, {})
     job_manager.ACTIVE_JOBS["exp"] = {"status": "completed", "kind": "experiment", "target": "local",
-                                      "bundle_files": {"a.txt": b"x"}, "results": {}}
+                                      "bundle_path": str(bundle), "results": {}}
     try:
         r = client.get("/experiments/plain/bundle")
         assert r.status_code == 404 and "not an experiment" in r.json()["detail"]
         for r in (client.get("/jobs/exp/report"), client.post("/jobs/exp/export", json={})):
             assert r.status_code == 409 and "/experiments/exp/bundle" in r.json()["detail"]
-        assert client.get("/experiments/exp/bundle").status_code == 200
+        r = client.get("/experiments/exp/bundle")
+        assert r.status_code == 200 and r.content == b"PK zip bytes"
+        bundle.unlink()
+        r = client.get("/experiments/exp/bundle")
+        assert r.status_code == 404 and r.json()["detail"] == JOB_NOT_FOUND
     finally:
         del job_manager.ACTIVE_JOBS["plain"], job_manager.ACTIVE_JOBS["exp"]
 

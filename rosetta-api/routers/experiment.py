@@ -1,11 +1,11 @@
 """Experiment routes: POST /experiments starts a sweep (poll GET /jobs/{id});
-GET /experiments/{id}/bundle streams the finished bundle as an in-memory ZIP."""
+GET /experiments/{id}/bundle streams the finished bundle's ZIP from disk."""
 
 from services.compilation import validate_compilers
 from services.job_manager import require_exclusive_slot
 from services.security import client_address
 from config import settings
-import io
+import asyncio
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
@@ -15,10 +15,10 @@ from qrosetta_commons.helpers import get_logger
 from schemas import ExperimentPayload, JobStatusResponse
 from routers.errors import responses
 from services.availability import require_available
-from services.job_store import JOB_NOT_FOUND
+from services.job_store import JOB_NOT_FOUND, file_chunks
 from services.security import limiter
 from services.job_manager import ACTIVE_JOBS, new_job
-from services.experiment import worker_experiment, build_bundle_zip
+from services.experiment import worker_experiment
 from services.validator import (
     check_statevector_circuit, validate_request, validate_runner_config, validate_runner_ids,
 )
@@ -64,8 +64,17 @@ async def start_experiment(request: Request, payload: ExperimentPayload, backgro
             "target": ACTIVE_JOBS[job_id]["target"], "requested_target": requested_target}
 
 
+def _open_bundle(path: str):
+    """The bundle file opened for reading; 404 when the job's files are gone (expired)."""
+    try:
+        return open(path, "rb")
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=JOB_NOT_FOUND)
+
+
 @router.get("/experiments/{job_id}/bundle", responses=responses(404, 409))
-async def download_experiment_bundle(job_id: str):
+@limiter.limit("30/minute")
+async def download_experiment_bundle(request: Request, job_id: str):
     """Download a completed experiment as an in-memory ZIP: the frozen input circuits, the
     per-circuit results, a manifest (job id, git SHA, executed SDK versions, seeds, and
     image digests when the deployment sets QROSETTA_IMAGE_DIGESTS, otherwise marked 'not
@@ -76,14 +85,14 @@ async def download_experiment_bundle(job_id: str):
     job = ACTIVE_JOBS.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail=JOB_NOT_FOUND)
-    if job.get("kind") != "experiment" and "bundle_files" not in job:
+    if job.get("kind") != "experiment" and "bundle_path" not in job:
         raise HTTPException(status_code=404, detail="This job is not an experiment and has no bundle; use GET /jobs/{job_id}/report or POST /jobs/{job_id}/export.")
     if job.get("status") == "failed":
         raise HTTPException(status_code=409, detail=f"The experiment failed and has no bundle: {job.get('error')}")
-    if job.get("status") != "completed" or not job.get("bundle_files"):
+    if job.get("status") != "completed" or not job.get("bundle_path"):
         raise HTTPException(status_code=409, detail=f"The experiment has not finished yet (status: {job.get('status')}).")
 
-    data = build_bundle_zip(job["bundle_files"])
+    fh = await asyncio.to_thread(_open_bundle, job["bundle_path"])
     name = job.get("bundle_name") or f"experiment_{job_id[:8]}"
     headers = {"Content-Disposition": f'attachment; filename="{name}.zip"'}
-    return StreamingResponse(io.BytesIO(data), media_type="application/zip", headers=headers)
+    return StreamingResponse(file_chunks(fh), media_type="application/zip", headers=headers)

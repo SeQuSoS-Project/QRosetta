@@ -405,8 +405,9 @@
                     In the API the experiment is <code>POST /experiments</code> with a list of
                     <code>circuits</code> and <code>preprocessing_modes</code> (<code>[true]</code>,
                     <code>[false]</code> or <code>[true, false]</code>); the bundle is
-                    <code>GET /experiments/{job_id}/bundle</code>. Nothing is stored on the server beyond the
-                    job's retention time (30 minutes), and experiments are not saved to the run history.
+                    <code>GET /experiments/{job_id}/bundle</code>. The bundle is written to the API's local
+                    disk as the cells finish and deleted with the job after its retention time (30 minutes);
+                    experiments are not saved to the run history.
                 </p>
             </section>
 
@@ -1085,7 +1086,10 @@
                     binds fixed ports); a third waits in that
                     service's queue, so a busy service can delay another client's compile; the live status grid lists each compile while it runs. A compile
                     that fails or times out is recorded with its status and reason and does not affect the
-                    simulator results. A compile the adapter refuses (an input it cannot compile correctly,
+                    simulator results. In a compile-only run (<code>simulate: false</code>), where no
+                    simulator runs, a circuit whose every compile failed, was refused or was skipped is
+                    reported like a run whose every runner failed: the job is <code>failed</code> with
+                    "all N compiles failed" (a playlist: every circuit) and keeps its report. A compile the adapter refuses (an input it cannot compile correctly,
                     such as a <code>cu3</code> Cirq would import wrongly) or whose output fails the adapter's
                     check has <code>refusal</code> (the reason) and <code>refusal_kind</code>
                     (<code>input</code> or <code>output_check</code>); the Summary lists every compile with
