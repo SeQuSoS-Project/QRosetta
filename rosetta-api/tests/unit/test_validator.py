@@ -110,3 +110,33 @@ def test_validate_runner_ids_accepts_enabled_ids():
     from services.validator import validate_runner_ids
     validate_runner_ids(["qiskit", "cirq"], {"qiskit": [0, 1]}, {"cirq": 2})
     validate_runner_ids([], {}, {})
+
+
+_HEAD = 'OPENQASM 2.0;\ninclude "qelib1.inc";\n'
+
+
+def test_indexed_operand_of_a_prefix_named_register_counts_once():
+    from services.validator import expanded_counts
+    qasm = _HEAD + "qreg q[22];\nqreg qa[2];\ncreg c[2];\n" + "x qa[0];\n" * 9998
+    assert expanded_counts(qasm) == (9998, 0)
+    validate_request(qasm, mode="measured")
+
+
+def test_broadcasts_over_prefix_named_registers_use_their_own_size():
+    from services.validator import expanded_counts
+    qasm = _HEAD + "qreg q[5];\nqreg qa[3];\nx qa;\ncx q, qa[0];\nx q[1];\n"
+    assert expanded_counts(qasm) == (3 + 5 + 1, 0)
+
+
+def test_gate_calls_on_prefix_named_registers_count_through_definitions():
+    from services.validator import expanded_counts
+    body = "gate g a { x a; }\ngate f a { g a; g a; }\n"
+    qasm = _HEAD + body + "qreg q[20];\nqreg qb[2];\n" + "f qb[1];\n" * 3
+    assert expanded_counts(qasm) == (6, 6)
+    assert expanded_counts(qasm.replace("f qb[1];", "f qb;")) == (12, 12)
+
+
+def test_commented_out_register_does_not_change_broadcast_width():
+    from services.validator import expanded_counts
+    for comment in ("// qreg q[24];\n", "/* qreg q[24]; */\n"):
+        assert expanded_counts(_HEAD + comment + "qreg q[2];\nx q;\n") == (2, 0)

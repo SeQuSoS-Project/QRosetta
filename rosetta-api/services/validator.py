@@ -263,7 +263,8 @@ def check_parameter_values(qasm: str, statements: list = None, check_calls: bool
 
 
 _DEF_HEAD_RE = re.compile(r"^\s*gate\s+([A-Za-z_]\w*)")
-_BARE_REG_RE = re.compile(r"(?<![\w\[])([A-Za-z_]\w*)(?!\s*\[)")
+_BARE_REG_RE = re.compile(r"(?<![\w\[])([A-Za-z_]\w*)\b(?!\s*\[)")
+_QREG_STMT_RE = re.compile(r"^qreg\s+([A-Za-z_]\w*)\s*\[\s*(\d+)\s*\]")
 
 
 def expanded_counts(qasm: str, statements: list = None) -> tuple:
@@ -273,7 +274,7 @@ def expanded_counts(qasm: str, statements: list = None) -> tuple:
     inside gate definitions in that expansion, times the size of the largest register it is
     broadcast over."""
     statements = split_statements(qasm) if statements is None else statements
-    sizes = {name: int(size) for name, size in re.findall(r"\bqreg\s+(\w+)\s*\[\s*(\d+)\s*\]", qasm)}
+    sizes = {m.group(1): int(m.group(2)) for m in map(_QREG_STMT_RE.match, statements) if m}
     cost, calls = {}, {}
     for stmt in statements:
         m = _DEF_HEAD_RE.match(stmt)
