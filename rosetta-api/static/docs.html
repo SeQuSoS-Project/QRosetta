@@ -900,7 +900,8 @@
                         <code>simulation_involuntary_switches_samples</code>), and contention with the other
                         backends of the same comparison, which run at the same time unless runner phases or
                         the Sequential ordering stage them (each result records <code>concurrent_runs</code>, the number
-                        of runs dispatched in its phase, <code>dispatch_phase</code>, and <code>overlapping_runs</code>, the
+                        of runs dispatched in its phase or in a phase in flight beside it, such as the sampled and native
+                        groups of a measured run; <code>dispatch_phase</code>; <code>dispatch_wave</code>, its phase's start, end and run count; and <code>overlapping_runs</code>, the
                         number of other runs of the same job that were in their runner process at some time this one was;
                         other users' runs on a shared server are not counted). Concurrent runs share cores,
                         hyperthreads and memory bandwidth: on a 20-qubit measured QFT testers saw 2.3–3.3× longer times
@@ -1032,7 +1033,13 @@
                         <code>k8s_job_slots</code> runner Jobs exist at a time (set by <code>QROSETTA_K8S_MAX_CONCURRENT_JOBS</code>
                         to fit the project's CPU quota), a run waits for a free slot under the same cap, and the
                         wait is recorded as <code>queue_wait_sec</code>. A run whose pod the cluster's quota did
-                        not admit before its timeout also ends with <code>never_started: true</code>.</li>
+                        not admit, or that the scheduler did not place, before its timeout also ends with
+                        <code>never_started: true</code>. A pod still pulling its image or creating its container
+                        at the timeout is a <code>timeout</code> whose message says so (<code>pod_waiting_reason</code>); a pod
+                        whose image cannot be pulled is <code>offline</code>. Each result's <code>runner_image</code> names
+                        the image by digest (<code>registry/name@sha256:&lt;digest&gt;</code>) when the deployment records digests;
+                        the report's <code>image_digests</code> says, per image, whether the deployment pushed it or kept
+                        an earlier build.</li>
                     <li><strong>Timeout scope.</strong> The timeout set in the Execution chip (the server's
                         allowed range is shown under the field) applies to each backend separately and covers
                         starting the isolated runner process, importing the SDK, the warm-up run and the timed
