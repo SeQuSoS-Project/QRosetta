@@ -166,6 +166,10 @@ function _measuredMetricText(p) {
         return `bit-reversed JS ${fmtNum(t.js_divergence_after_transform)} nats, Hellinger `
             + `${fmtNum(t.hellinger_distance_after_transform)} (direct ${direct})`;
     }
+    if (unalignedBasis(p) === 'bit_reversal') {
+        return `${direct} (bit-reversed JS ${fmtNum(m.bit_reversed_js_divergence)} nats, Hellinger `
+            + `${fmtNum(m.bit_reversed_hellinger_distance)})`;
+    }
     return direct;
 }
 
@@ -192,8 +196,12 @@ function _distanceLabelText(p) {
                 : `within the thresholds only after reversing bit order${_orderingNote(p)}`;
         case 'agree_after_qubit_permutation':
             return `within the thresholds only after qubit permutation ${JSON.stringify(perm ?? null)}`;
-        case 'distance_exceeds_threshold':
+        case 'distance_exceeds_threshold': {
+            const other = unalignedBasis(p);
+            if (other === 'bit_reversal') return `above the JS/Hellinger thresholds; within them only after reversing bit order, which the declared orderings do not imply${_orderingNote(p)}`;
+            if (other === 'direct') return `above the JS/Hellinger thresholds in the label-aligned (bit-reversed) basis; within them only without reversing bit order${_orderingNote(p)}`;
             return 'above the JS/Hellinger thresholds under every registered transform';
+        }
         default:
             return String(p.agreement);
     }

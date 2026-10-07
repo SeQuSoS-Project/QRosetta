@@ -128,10 +128,14 @@ _AGREEMENT_GLOSSARY = [
      "\"bit_reversal\" when the pair matches only in the basis its declared orderings do not "
      "imply, as when an lsb and an msb backend return equal vectors for an asymmetric state."),
     ("distance_within_threshold", "Measured distributions within the JS-divergence and Hellinger "
-     "thresholds without a bit-order transform (descriptive, configurable; the shot-noise "
-     "statistical test gives the significance verdict)."),
+     "thresholds without a bit-order transform, for a pair whose declared bit orders agree "
+     "(descriptive, configurable; the shot-noise statistical test gives the significance "
+     "verdict)."),
     ("distance_exceeds_threshold", "Measured distributions exceed the (descriptive, configurable) "
-     "thresholds after registered transforms; see the statistical test for significance."),
+     "thresholds in the label-aligned basis. metrics.unaligned_basis_match is \"direct\" or "
+     "\"bit_reversal\" when they are within the thresholds only in the basis the declared bit "
+     "orders do not imply; otherwise no qubit permutation brings them within. See the "
+     "statistical test for significance."),
     ("not_comparable", "At least one side lacks usable output; the pair cannot be compared. "
      "metrics.reason names the cause."),
 ]

@@ -661,11 +661,16 @@ export function _agreementPairTable(pairs) {
         name.textContent = `${_displayRunnerName(sims[0])} × ${_displayRunnerName(sims[1])}`;
         sum.appendChild(name);
 
-        const unaligned = p.mode === 'statevector' && unalignedBasisMatch(p) && p.agreement !== 'unaligned_basis_match';
+        const unaligned = unalignedBasisMatch(p) && p.agreement !== 'unaligned_basis_match';
+        const measuredPair = p.mode === 'measured';
         sum.appendChild(_chip(STATUS_STYLES[_pairStyle(p)].badge,
-            unaligned ? `${labelText(p.agreement)} · in the undeclared basis` : labelText(p.agreement),
             unaligned
-                ? `Matches only in the basis the declared qubit orderings do not imply; counted as a disagreement. Code: ${p.agreement}`
+                ? `${labelText(p.agreement)} · ${measuredPair ? 'within them only in the undeclared basis' : 'in the undeclared basis'}`
+                : labelText(p.agreement),
+            unaligned
+                ? (measuredPair
+                    ? `Within the JS/Hellinger thresholds only in the basis the declared bit orders do not imply; the shot-noise assessment decides agreement. Code: ${p.agreement}`
+                    : `Matches only in the basis the declared qubit orderings do not imply; counted as a disagreement. Code: ${p.agreement}`)
                 : (p.agreement === 'agree_after_normalization'
                     ? `${_codeTip(p.agreement)} Label after normalisation: ${p.metrics?.normalized_agreement ?? '—'}`
                     : _codeTip(p.agreement))));

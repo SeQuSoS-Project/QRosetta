@@ -457,10 +457,10 @@
                 <table>
                     <thead><tr><th>Label</th><th>Meaning</th></tr></thead>
                     <tbody>
-                        <tr><td><code>distance_within_threshold</code></td><td>Distributions within the JS-divergence and Hellinger thresholds (descriptive; the statistical test gives the significance verdict).</td></tr>
-                        <tr><td><code>agree_after_bit_reversal</code></td><td>Within the thresholds after reversing bit order.</td></tr>
+                        <tr><td><code>distance_within_threshold</code></td><td>Same declared bit orders; distributions within the JS-divergence and Hellinger thresholds (descriptive; the statistical test gives the significance verdict).</td></tr>
+                        <tr><td><code>agree_after_bit_reversal</code></td><td>One <code>lsb</code> and one <code>msb</code> backend; within the thresholds after the bit reversal the declarations imply.</td></tr>
                         <tr><td><code>agree_after_qubit_permutation</code></td><td>Within the thresholds after a bounded qubit permutation (≤&nbsp;7 qubits).</td></tr>
-                        <tr><td><code>distance_exceeds_threshold</code></td><td>Distributions exceed the thresholds after every registered transform.</td></tr>
+                        <tr><td><code>distance_exceeds_threshold</code></td><td>Distributions exceed the thresholds in the basis the declared bit orders imply. With <code>metrics.unaligned_basis_match</code> they are within the thresholds only in the other basis (after bit reversal although the orders are the same, or directly although they differ), as in statevector mode; without it no qubit permutation brings them within.</td></tr>
                         <tr><td><code>not_comparable</code></td><td>At least one side lacks usable output; <code>metrics.reason</code> names the cause.</td></tr>
                     </tbody>
                 </table>
