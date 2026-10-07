@@ -73,19 +73,13 @@ def authenticate(db: Session, email: str, password: str) -> models.User:
 def delete_account(db: Session, user: models.User) -> None:
     """Delete the account, its saved circuits, and its run history.
 
-    Stored reports are deleted first; if that fails nothing else is deleted. Child rows
-    are deleted explicitly because the foreign keys have no ON DELETE CASCADE.
+    The rows are deleted and flushed first, then the stored reports, then the transaction
+    is committed: if either step fails it is rolled back and nothing is deleted from the
+    database. Child rows are deleted explicitly because the foreign keys have no ON DELETE
+    CASCADE; another account's run that names one of these circuits loses the link.
     """
     runs = db.query(models.RunHistory).filter(models.RunHistory.user_id == user.id).all()
     s3_keys = [r.s3_object_key for r in runs]
-
-    if s3_keys:
-        try:
-            delete_run_reports(s3_keys)
-        except Exception as exc:
-            logger.error("Failed to delete stored run reports during account deletion",
-                         exc_info=True)
-            raise StoredReportsNotDeleted(str(exc)) from exc
 
     try:
         delete_links(db, [r.id for r in runs])
@@ -94,10 +88,29 @@ def delete_account(db: Session, user: models.User) -> None:
 
         circuits = db.query(models.SavedCircuit).filter(
             models.SavedCircuit.user_id == user.id).all()
+        if circuits:
+            db.query(models.RunHistory).filter(
+                models.RunHistory.circuit_id.in_([c.id for c in circuits])).update(
+                {models.RunHistory.circuit_id: None}, synchronize_session=False)
         for circuit in circuits:
             db.delete(circuit)
 
         db.delete(user)
+        db.flush()
+    except Exception:
+        db.rollback()
+        logger.error("Failed to delete account", exc_info=True)
+        raise
+
+    try:
+        delete_run_reports(s3_keys)
+    except Exception as exc:
+        db.rollback()
+        logger.error("Failed to delete stored run reports during account deletion",
+                     exc_info=True)
+        raise StoredReportsNotDeleted(str(exc)) from exc
+
+    try:
         db.commit()
     except Exception:
         db.rollback()

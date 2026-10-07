@@ -59,7 +59,7 @@ def get_saved_circuits(
 
 
 @router.post("/runs", response_model=schemas.RunHistoryResponse, status_code=status.HTTP_201_CREATED,
-             responses=responses(422))
+             responses=responses(404, 422))
 def save_run(
     run_payload: dict,
     circuit_id: str | None = None,
@@ -69,7 +69,8 @@ def save_run(
     """Save a completed run's report to the current user's history. Statevectors are
     removed and the stored report is marked ``statevector_storage="removed_before_storage"``;
     it goes to local disk or S3 per STORAGE_MODE, with a reference in the database.
-    Optionally link it to a saved circuit via circuit_id. 422 for a body that is neither a
+    Optionally link it to a saved circuit via circuit_id (404 if it is not one of the
+    current user's saved circuits). 422 for a body that is neither a
     single-circuit report (raw_results list) nor a batch report (benchmark_summary list).
     Prefer POST /history/runs/from_job/{job_id}, which stores the server's copy."""
     problems = history_service.report_structure_problems(run_payload)
@@ -79,6 +80,8 @@ def save_run(
     reject_invalid_report(run_payload)
     try:
         return history_service.save_run(db, current_user.id, run_payload, circuit_id)
+    except history_service.CircuitNotFound:
+        raise HTTPException(status_code=404, detail="Saved circuit not found")
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to save run history")
 

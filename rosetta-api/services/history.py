@@ -21,6 +21,10 @@ class RunNotFound(ValueError):
     """No run with that id belongs to this user."""
 
 
+class CircuitNotFound(ValueError):
+    """No saved circuit with that id belongs to this user."""
+
+
 def create_circuit(db: Session, user_id: int, name: str, qasm_string: str) -> models.SavedCircuit:
     """Store a named circuit for ``user_id``."""
     circuit = models.SavedCircuit(user_id=user_id, name=name, qasm_string=qasm_string)
@@ -64,7 +68,12 @@ def save_run(db: Session, user_id: int, run_payload: dict,
     """Store the report, then record it. The row is only committed once the report is
     stored, so history never references a report that does not exist. The stored report's
     ``saved_from`` is set here, never taken from the payload: ``server_job`` for a report
-    copied from this server's job, ``upload`` for one a client supplied."""
+    copied from this server's job, ``upload`` for one a client supplied. CircuitNotFound
+    when ``circuit_id`` is not one of ``user_id``'s saved circuits."""
+    if circuit_id is not None and not db.query(models.SavedCircuit).filter(
+            models.SavedCircuit.id == circuit_id,
+            models.SavedCircuit.user_id == user_id).first():
+        raise CircuitNotFound(circuit_id)
     run_id = str(uuid.uuid4())
     run_payload = {**run_payload, "saved_from": saved_from}
     run_name = run_payload.get("run_name", run_id[:8])
@@ -160,7 +169,8 @@ def rename_run(db: Session, user_id: int, run_id: str, run_name: str) -> models.
 
 
 def delete_runs(db: Session, user_id: int, run_ids: list) -> int:
-    """Delete the stored reports first, then the rows. Returns how many were deleted."""
+    """Delete the rows (flushed, not committed), then the stored reports, then commit, so a
+    failure at either step leaves every row with its report. Returns how many were deleted."""
     runs = db.query(models.RunHistory).filter(
         models.RunHistory.id.in_(run_ids),
         models.RunHistory.user_id == user_id,
@@ -168,9 +178,14 @@ def delete_runs(db: Session, user_id: int, run_ids: list) -> int:
     if not runs:
         return 0
 
-    delete_run_reports([run.s3_object_key for run in runs])
-    delete_links(db, [run.id for run in runs])
-    for run in runs:
-        db.delete(run)
-    db.commit()
+    try:
+        delete_links(db, [run.id for run in runs])
+        for run in runs:
+            db.delete(run)
+        db.flush()
+        delete_run_reports([run.s3_object_key for run in runs])
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return len(runs)
