@@ -1,8 +1,8 @@
 """Builders for the reproducible-experiment artifact bundle.
 
 Imported by both the in-app experiment runner (``services.experiment``) and the
-standalone CLI harness (``experiments/0-experiment/run_experiment.py``). Stdlib-only
-so the CLI can import it without the API's runtime dependencies.
+standalone CLI harness (``experiments/0-experiment/run_experiment.py``). Needs numpy and
+``qrosetta_commons`` but none of the API's web or SDK dependencies.
 
 Bundle outputs:
   A) conformance matrix  — per (circuit x simulator) run status + error signature
@@ -22,8 +22,8 @@ import csv
 import hashlib
 import io
 import json
-import re
 
+from qrosetta_commons.helpers import get_num_qubits_from_qasm
 from services.report_filters import fingerprint_statevectors
 
 CONFORMANCE_FIELDS = ["axis", "circuit", "simulator", "status", "error_signature", "triage",
@@ -175,7 +175,8 @@ def _runner_status(entry: dict) -> tuple:
     dispatch_status = entry.get("dispatch_status")
     if not entry.get("error"):
         return _DISPATCH_TO_CONFORMANCE.get(dispatch_status, "success"), ""
-    sig = str(entry["error"]).strip().splitlines()[0][:300]
+    lines = str(entry["error"]).strip().splitlines()
+    sig = lines[0][:300] if lines else "(empty error text)"
     if dispatch_status in _DISPATCH_TO_CONFORMANCE:
         return _DISPATCH_TO_CONFORMANCE[dispatch_status], sig
     low = sig.lower()
@@ -202,15 +203,11 @@ def build_conformance_rows(axis_label: str, summary: list) -> list:
     return rows
 
 
-_QREG_RE = re.compile(r"\bqreg\s+\w+\s*\[\s*(\d+)\s*\]\s*;")
-_COMMENT_RE = re.compile(r"//[^\n]*|/\*.*?\*/", re.DOTALL)
-
-
 def _declared_qubits(qasm):
     """Sum of every qreg size in ``qasm``; None without QASM."""
     if not qasm:
         return None
-    return sum(int(n) for n in _QREG_RE.findall(_COMMENT_RE.sub("", qasm)))
+    return get_num_qubits_from_qasm(qasm)
 
 
 def _samples_extreme(entry: dict, pick):

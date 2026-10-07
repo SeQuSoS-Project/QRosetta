@@ -1,4 +1,4 @@
-"""Unit tests for services/experiment_artifacts.py (stdlib-only bundle builders)."""
+"""Unit tests for services/experiment_artifacts.py (bundle builders)."""
 import hashlib
 import json
 
@@ -263,3 +263,18 @@ def test_host_environment_summarises_every_run():
     assert env["cpu_quota_cores"] == [1.0, None]
     assert env["cpu_affinity_settings"] == ["0-15", None]
     assert len(env["runtime_environments"]) == 2
+
+
+def test_conformance_whitespace_error_keeps_a_signature():
+    summary = [{"task_name": "c", "raw_results": [
+        {"simulator": "a", "error": "  \n ", "dispatch_status": "error"},
+        {"simulator": "b", "error": "\n"}]}]
+    rows = art.build_conformance_rows("ax", summary)
+    assert [(r["status"], r["error_signature"], r["triage"]) for r in rows] == [
+        ("error", "(empty error text)", "untriaged"), ("error", "(empty error text)", "untriaged")]
+
+
+def test_declared_qubits_uses_the_shared_counter():
+    qasm = "OPENQASM 2.0;\nqreg a[2];\n// qreg x[9];\nqreg b[3];\n/* qreg y[4]; */"
+    assert art._declared_qubits(qasm) == 5
+    assert art._declared_qubits("") is None

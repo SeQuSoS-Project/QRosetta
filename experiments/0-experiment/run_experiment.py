@@ -49,9 +49,9 @@ from datetime import datetime, timezone
 
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-# Import the SHARED, stdlib-only artifact builders from the API package (single source of
-# truth for the frozen-bundle format). Only `services.experiment_artifacts` is imported, so
-# no FastAPI/pytket runtime dependency is pulled in.
+# The artifact builders come from the API package; `services.experiment_artifacts` needs
+# numpy and `qrosetta_commons` but no FastAPI/pytket runtime dependency.
+sys.path.insert(0, os.path.join(_REPO_ROOT, "shared"))
 sys.path.insert(0, os.path.join(_REPO_ROOT, "rosetta-api"))
 from services import experiment_artifacts as art  # noqa: E402
 
