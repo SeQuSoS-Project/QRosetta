@@ -21,7 +21,7 @@ def statevector_digest(sv):
     """``(sha256 hex, amplitude count, digest input)`` of a statevector, or None.
 
     A Base64 string (the runner wire format) is hashed as its decoded bytes, which are
-    complex128 amplitudes. A list of numbers or of ``[re, im]`` pairs is converted to
+    little-endian complex128 amplitudes (complex64 results are widened before encoding). A list of numbers or of ``[re, im]`` pairs is converted to
     complex128 and hashed the same way, so both forms of one vector give the same digest.
     """
     if isinstance(sv, str):
@@ -90,18 +90,22 @@ def fingerprint_statevectors(report: dict, sha256) -> dict:
     """Replace each statevector in ``report['raw_results']`` with a digest and a length.
 
     - Base64 string (the runner wire format): ``statevector_sha256`` is the sha256 of the
-      decoded bytes (complex128 amplitudes), ``statevector_len`` and ``statevector_length``
-      the amplitude count, and
-      ``statevector_digest_input = "base64_decoded_bytes"``.
+      decoded bytes (little-endian complex128 amplitudes; backends that compute in complex64
+      are widened to complex128 before encoding), ``statevector_length`` the amplitude
+      count, and ``statevector_digest_input = "base64_decoded_bytes"``.
     - List: ``sha256(list)`` from the caller-supplied function,
       ``statevector_digest_input = "json_list"``.
     - Display placeholder: no digest; ``statevector_omitted_for_display = True``.
 
+    A ``statevector_len`` field of an older report is renamed ``statevector_length``.
     Mutates and returns ``report``.
     """
     for entry in report.get("raw_results", []) or []:
         if not isinstance(entry, dict):
             continue
+        if "statevector_len" in entry:
+            legacy = entry.pop("statevector_len")
+            entry.setdefault("statevector_length", legacy)
         sv = entry.get("statevector")
         if sv is None:
             continue
@@ -115,16 +119,15 @@ def fingerprint_statevectors(report: dict, sha256) -> dict:
             except (binascii.Error, ValueError):
                 raw = sv.encode("utf-8")
                 entry["statevector_digest_input"] = "utf8_string"
-                entry["statevector_len"] = None
+                entry["statevector_length"] = None
             else:
                 entry["statevector_digest_input"] = "base64_decoded_bytes"
-                entry["statevector_len"] = len(raw) // 16
+                entry["statevector_length"] = len(raw) // 16
             entry["statevector_sha256"] = hashlib.sha256(raw).hexdigest()
         else:
             entry["statevector_sha256"] = sha256(sv)
             entry["statevector_digest_input"] = "json_list"
-            entry["statevector_len"] = len(sv) if hasattr(sv, "__len__") else None
-        entry["statevector_length"] = entry["statevector_len"]
+            entry["statevector_length"] = len(sv) if hasattr(sv, "__len__") else None
         entry["statevector"] = None
     return report
 

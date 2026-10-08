@@ -68,7 +68,8 @@ def save_run(db: Session, user_id: int, run_payload: dict,
     """Store the report, then record it. The row is only committed once the report is
     stored, so history never references a report that does not exist. The stored report's
     ``saved_from`` is set here, never taken from the payload: ``server_job`` for a report
-    copied from this server's job, ``upload`` for one a client supplied. CircuitNotFound
+    copied from this server's job, ``upload`` for one a client supplied. An upload's
+    ``job_id`` is stored as ``source_job_id`` (the id the client gave). CircuitNotFound
     when ``circuit_id`` is not one of ``user_id``'s saved circuits."""
     if circuit_id is not None and not db.query(models.SavedCircuit).filter(
             models.SavedCircuit.id == circuit_id,
@@ -76,6 +77,8 @@ def save_run(db: Session, user_id: int, run_payload: dict,
         raise CircuitNotFound(circuit_id)
     run_id = str(uuid.uuid4())
     run_payload = {**run_payload, "saved_from": saved_from}
+    if saved_from == SAVED_FROM_UPLOAD and "job_id" in run_payload:
+        run_payload["source_job_id"] = run_payload.pop("job_id")
     run_name = run_payload.get("run_name", run_id[:8])
     try:
         s3_key = save_run_report(user_id, run_id, run_payload)

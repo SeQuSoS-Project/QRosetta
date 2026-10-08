@@ -24,9 +24,11 @@ async def _stored(summary, store):
 
 
 def _bundle(job):
-    """{name: bytes} of the experiment's bundle ZIP."""
+    """{path inside the bundle's top folder: bytes} of the experiment's bundle ZIP."""
+    top = f"{job['bundle_name']}/"
     with zipfile.ZipFile(job["bundle_path"]) as zf:
-        return {name: zf.read(name) for name in zf.namelist()}
+        assert all(name.startswith(top) for name in zf.namelist())
+        return {name[len(top):]: zf.read(name) for name in zf.namelist()}
 
 
 def _fake_summary(batch_seed):
@@ -83,6 +85,9 @@ def test_experiment_completes_and_freezes_bundle(monkeypatch):
     assert "manifest.json" in files
     assert "README.txt" in files
     assert "errors/qibo.log" in files
+    assert {"runners/pytket-qiskit-runner/requirements.lock",
+            "runners/qibo-runner/requirements.lock"} <= set(files)
+    assert job["bundle_name"] == "experiment_demo"
 
     # one shared seed across both axes (never re-generated per axis)
     assert seen == [42, 42]
@@ -119,9 +124,9 @@ def test_bundle_zip_is_valid_archive(monkeypatch):
     _, job = _run_experiment(payload)
     with zipfile.ZipFile(job["bundle_path"]) as zf:
         assert zf.testzip() is None
-        names = set(zf.namelist())
-        assert "manifest.json" in names and "README.txt" in names
-        assert "untriaged" in zf.read("README.txt").decode("utf-8")
+    files = _bundle(job)
+    assert "manifest.json" in files and "README.txt" in files
+    assert "untriaged" in files["README.txt"].decode("utf-8")
 
 
 def test_resolution_error_recorded_not_fatal(monkeypatch):

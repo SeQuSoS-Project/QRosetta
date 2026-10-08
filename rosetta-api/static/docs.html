@@ -445,8 +445,19 @@
                         class, by <code>measured_assessment</code> in measured mode and by label in
                         statevector mode.</li>
                     <li>A manifest recording the git commit, executed SDK versions, the seeds used and the
-                        effective configuration.</li>
+                        effective configuration. <code>config_sha256</code> and
+                        <code>effective_config_sha256</code> are the sha256 of
+                        <code>json.dumps(config, sort_keys=True, default=str)</code> in Python, encoded as
+                        UTF-8 (separators <code>", "</code> and <code>": "</code>, non-ASCII characters
+                        escaped).</li>
+                    <li>Each runner's pinned environment as
+                        <code>runners/&lt;runner&gt;/requirements.lock</code>, as in an RO-Crate.</li>
                 </ul>
+                <p>
+                    Everything sits in one top-level folder named like the download
+                    (<code>experiment_&lt;label&gt;</code>, or <code>experiment_&lt;job id&gt;</code> without a
+                    label).
+                </p>
                 <p>
                     In the API the experiment is <code>POST /experiments</code> with a list of
                     <code>circuits</code> and <code>preprocessing_modes</code> (<code>[true]</code>,
@@ -845,13 +856,26 @@
                     <li><strong>Statevector hashes.</strong> A report stored or exported without
                         statevectors (history, RO-Crates with <code>include_statevectors</code> false,
                         experiment bundles) keeps <code>statevector_sha256</code> and
-                        <code>statevector_length</code> for every backend. The hash is not stable across replays
+                        <code>statevector_length</code> (amplitude count) for every backend. The hash is over
+                        the bytes the runner sent: little-endian <code>complex128</code> amplitudes for every
+                        backend. A backend that computes in <code>complex64</code> (its
+                        <code>precision</code> field says so) has its amplitudes widened to
+                        <code>complex128</code> before encoding, so the hash covers the widened values. An older
+                        report may carry <code>statevector_len</code> instead; exports and bundles write it
+                        as <code>statevector_length</code>. The hash is not stable across replays
                         for every backend: Cirq, for example, can differ in the last bits of some amplitudes
                         between two runs of the same circuit. Compare replayed statevectors by fidelity.</li>
                     <li><strong>RO-Crate export.</strong> A run exports as an RO-Crate conforming to the
                         Process Run Crate profile, with the inputs, dispatched and executed circuits, per-backend
                         results (counts, or statevector hashes unless statevectors are included), agreement
-                        evidence and provenance.</li>
+                        evidence and provenance. Every file in <code>ro-crate-metadata.json</code> has its
+                        <code>sha256</code> and <code>contentSize</code> (bytes); the agreement thresholds
+                        and, in measured mode, the test's α, target power and total-variation gap are
+                        PropertyValues of <code>#agreement-analysis</code>. Links to the source code point at
+                        the commit the API was built from in the repository the server is configured with
+                        (<code>QROSETTA_REPOSITORY_URL</code>); they resolve only when that commit has been
+                        published there, and a commit marked "-dirty" or unknown gets a link to the
+                        repository root.</li>
                 </ul>
                 <h3 id="replay">Replaying a run</h3>
                 <ol>
@@ -1203,7 +1227,15 @@
                     for the server's copy of a job, <code>upload</code> or <code>not_recorded</code> for a
                     saved run by how it was saved, and <code>client_supplied</code> for
                     <code>POST /export</code>, whose contents (git commit, versions, circuit texts) are as the
-                    requester sent them. A field in the report cannot change it.
+                    requester sent them. A field in the report cannot change it. The same value is
+                    <code>report_source</code> in <code>results.json</code> and the
+                    <code>#report-source</code> PropertyValue of the crate and of its agreement analysis.
+                    For any source other than <code>server_job</code>, <code>ro-crate-metadata.json</code>
+                    asserts no completed or failed status for the backend runs and compiles, says that their
+                    records are as supplied, gives SDK versions and the platform version only as supplied
+                    text, and the crate carries no runner or compiler lock files and no links to a
+                    commit. A run uploaded to history keeps the uploaded <code>job_id</code> as
+                    <code>source_job_id</code>.
                 </p>
                 <p>
                     Outputs are deterministic on a given image: the same circuit, level and image give the
@@ -1409,7 +1441,7 @@
                         <tr><td>Circuits</td><td>A table of the circuit texts the run recorded, one row per distinct text: rows that list several backends are byte-for-byte the same text with the same recorded gate count and depth. Each row gives the lines, gates, depth and the lines added and removed against the text it was derived from; View shows that text below the table, with its notes, and puts it on side B of the diff (side A becomes the text it was derived from when A was the same text). Gates and depth of the submitted circuit, the dispatched circuits and the compiler input are counted in the browser the same way as for compiled circuits (top-level gate statements; barriers and measurements not counted), so a compiler's reduction can be read against the compiler input. The texts are: the circuit as submitted, the circuit the API sent to each dispatch group (with the API's changes) and the circuit each backend executed (its <code>transpiled_qasm</code>, with the backend's transforms, SDK versions, gate count and depth). Each executed pane says where its gate count and depth come from (<code>gate_metrics_basis</code>): counted from that text for most backends, from the executed tape for PennyLane, whose recorded text decomposes <code>QubitUnitary</code> although the tape does not. A line diff compares any two texts, raw or with whitespace and line breaks, comments, or the OPENQASM and include lines ignored; the raw text stays in the panes. The diff stops at about 4,000 changed lines. pytket rewrites angles as multiples of π, so the same angle can be written <code>pi/4</code>, <code>0.25*pi</code> or <code>0.7853981633974483</code>; <strong>Compare angles by value</strong> evaluates every gate parameter without variables and compares it in radians to 12 significant digits, so those read the same (parameters with variables, as in gate bodies, are compared as written). The Cirq pane holds pytket's serialisation of the circuit the Cirq adapter built: <code>include "hqslib1.inc"</code> and <code>U1q</code> come from pytket's gate set, not from Cirq. Texts written with Qiskit (the Qiskit, cuQuantum and TorchQuantum panes, QMAP's input and Q-Synth's output) give every angle as the shortest literal that reads back as the same double; Qiskit's own <code>qasm2.dumps</code> would write an angle below 1e-12 as 0 and one within 1e-12 of a simple multiple of π as that multiple. The qsim pane is Cirq's <code>to_qasm</code> with angles as multiples of π to 16 decimal places. The tab shows text only and draws no conclusion from a difference: two texts can differ line by line and describe the same unitary. When the run used compile-only services, the compiler input and each compiled circuit are panes too (see <a href="#compilers">Compile-only services</a>). A saved run opened from history also offers a read-only link (see <a href="#accounts">Accounts, history &amp; autosave</a>).</td></tr>
                         
                         <tr><td>Exports</td><td>Three parts. On the left, the <strong>views</strong> of the run, grouped as Agreement, Statistical, Divergence, Performance, Resources, Metadata, Circuits and Reference; a narrow results column shows them as a menu above the view. In the middle, the selected view: its preview (Chart, Table and Data tabs; Data holds the CSV of the numbers and, for a figure, the spec saved beside it), its caption, which states every choice that shapes the figure (outcomes shown, what is summed into 'other', key order, reference, shot-noise band), and its settings, with the less used ones under <em>More</em>. On the right, the <strong>Export</strong> panel: what the RO-Crate will contain. The report (<code>results.json</code>), circuits and provenance are always included; <em>Add to export</em> adds the view with its settings, each with its own formats, and the pencil reloads an added view to change it. One export holds at most 60 items (<code>limits.max_export_items</code>); at 60, remove an item before adding another. Presets (Paper figures, Data for analysis, Everything, Nothing extra) fill the list; the preset and the author and affiliation under <em>Credits</em> are remembered in this browser. <em>Files from your selection</em> lists the paths the crate will hold.
-                        <br><br>Every figure view takes <strong>Backends</strong> (any subset; with two selected the count comparison is a one-against-one histogram), a <strong>Figure size</strong> (automatic, single column 3.5 in, double column 7 in, slide) and a title on or off. Measured runs add views that stay readable at many qubits: <strong>Count comparison</strong> (overlay, small multiples, difference from a reference backend with a ±2σ shot-noise band, or an outcome × backend heatmap; the top <em>n</em> outcomes, those above a probability, or the marginal distribution over up to 6 chosen classical bits; sorted by probability, bitstring or Hamming weight; keys in msb or lsb order), <strong>Single-bit marginals</strong> P(c[j] = 1), the quantities the single-bit marginal tests compare, <strong>Hamming weight</strong> (n + 1 bins) and <strong>Rank–probability</strong>. <em>Highlight disagreeing</em> colours the backends whose pair with the reference is a disagreement and greys the rest. Figures are drawn on the server: from its copy of a run made in this session while the copy is kept, otherwise from the fields of the browser copy that figures read (subject to the 1 MiB request-body limit). Tables are built in the browser as LaTeX, CSV, Markdown or HTML, and on the server as XLSX. A LaTeX table needs <code>\usepackage{booktabs,adjustbox,longtable}</code>: it is scaled down to the line width when it is wider, set as a <code>longtable</code> above 40 rows so it breaks across pages, and carries its explanation as a note below the table; <em>LaTeX document</em> downloads a complete document that compiles as it is. <em>Report JSON only</em> downloads the full report from the server, the browser copy, or copies it.</td></tr>
+                        <br><br>Every figure view takes <strong>Backends</strong> (any subset; with two selected the count comparison is a one-against-one histogram), a <strong>Figure size</strong> (automatic, single column 3.5 in, double column 7 in, slide) and a title on or off. The automatic and column sizes are cropped to what is drawn; a slide figure keeps its 13.33 × 7.5 in (16:9) canvas. Measured runs add views that stay readable at many qubits: <strong>Count comparison</strong> (overlay, small multiples, difference from a reference backend with a ±2σ shot-noise band, or an outcome × backend heatmap; the top <em>n</em> outcomes, those above a probability, or the marginal distribution over up to 6 chosen classical bits; sorted by probability, bitstring or Hamming weight; keys in msb or lsb order), <strong>Single-bit marginals</strong> P(c[j] = 1), the quantities the single-bit marginal tests compare, <strong>Hamming weight</strong> (n + 1 bins) and <strong>Rank–probability</strong>. <em>Highlight disagreeing</em> colours the backends whose pair with the reference is a disagreement and greys the rest. Figures are drawn on the server: from its copy of a run made in this session while the copy is kept, otherwise from the fields of the browser copy that figures read (subject to the 1 MiB request-body limit). Titles and captions name the circuit as the caption on screen does (the circuit's name, else the playlist entry's, else the run name); the browser sends that name with each request, since the server's copy of a run records none. Figure legends, axis labels and captions name backends as the Backends table does ("Qiskit (IBM)", "qsim (Google)"); tables keep the runner ids used in <code>results.json</code>. Tables are built in the browser as LaTeX, CSV, Markdown or HTML, and on the server as XLSX. A LaTeX table needs <code>\usepackage{booktabs,adjustbox,longtable}</code>: it is scaled down to the line width when it is wider, set as a <code>longtable</code> above 40 rows so it breaks across pages, and carries its explanation as a note below the table; <em>LaTeX document</em> downloads a complete document that compiles as it is. <em>Report JSON only</em> downloads the full report from the server, the browser copy, or copies it.</td></tr>
                     </tbody>
                 </table>
                 <p>

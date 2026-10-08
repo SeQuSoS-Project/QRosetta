@@ -314,9 +314,10 @@ def test_experiment_bundle_is_written_to_disk(monkeypatch, spill_dir):
     assert sorted(p.name for p in (spill_dir / "lc-exp").iterdir()) == ["bundle.zip"]
     with zipfile.ZipFile(job["bundle_path"]) as zf:
         names = zf.namelist()
-        result = json.loads(zf.read("results/measured_preprocOn/000_bell.json"))
-        manifest = json.loads(zf.read("manifest.json"))
-    assert names == sorted(names)
+        top = job["bundle_name"]
+        result = json.loads(zf.read(f"{top}/results/measured_preprocOn/000_bell.json"))
+        manifest = json.loads(zf.read(f"{top}/manifest.json"))
+    assert names == sorted(names) and all(n.startswith(f"{top}/") for n in names)
     assert result["raw_results"][0]["counts"] == {"00": 5}
     assert result["raw_results"][0]["statevector"] is None
     assert manifest["runner_images"] == {"qiskit": "img"}

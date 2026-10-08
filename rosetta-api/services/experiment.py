@@ -23,6 +23,7 @@ from schemas import BatchPayload, BenchmarkTask, ExperimentPayload
 from services import experiment_artifacts as art
 from services.dispatcher import SEED_DERIVATION
 from services.export_compiled import compiled_metrics_csv, compiler_build_files
+from services.exporter import runner_lock_files
 from services.job_store import job_dir
 from services.run_registry import EXCLUSIVE, releases_exclusive
 from services.job_manager import (
@@ -145,9 +146,10 @@ def _freeze_cell(report: dict, circuit: dict, axis: str, staging: str,
             _kept_record(report))
 
 
-def write_bundle_zip(zip_path: str, files: dict, staging: str) -> None:
+def write_bundle_zip(zip_path: str, files: dict, staging: str, top: str = "") -> None:
     """Zip the {relative_path: bytes} files and every file under ``staging`` (by its
-    relative path) to ``zip_path``, in sorted order, one staged file in memory at a time."""
+    relative path) to ``zip_path``, in sorted order, one staged file in memory at a time;
+    with ``top``, every path is under the folder ``top/``."""
     staged = {}
     for root, _, names in os.walk(staging):
         for name in names:
@@ -156,11 +158,12 @@ def write_bundle_zip(zip_path: str, files: dict, staging: str) -> None:
     tmp = f"{zip_path}.tmp"
     with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zf:
         for rel_path in sorted({*files, *staged}):
+            member = f"{top}/{rel_path}" if top else rel_path
             if rel_path in files:
-                zf.writestr(rel_path, files[rel_path])
+                zf.writestr(member, files[rel_path])
             else:
                 with open(staged[rel_path], "rb") as fh:
-                    zf.writestr(rel_path, fh.read())
+                    zf.writestr(member, fh.read())
     os.replace(tmp, zip_path)
 
 
@@ -271,6 +274,10 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
         for sim, text in art.build_error_logs(conformance).items():
             files[f"errors/{art.slug(sim)}.log"] = text.encode("utf-8")
         files["README.txt"] = art.TRIAGE_README.encode("utf-8")
+        files.update(runner_lock_files(
+            sorted({str(e.get("simulator")) for r in all_reports for e in r.get("raw_results") or []
+                    if isinstance(e, dict) and e.get("simulator")}),
+            settings.get_runner_services()))
 
         if payload.mode == "measured":
             seed_derivation = art.recorded_value(all_reports, "seed_derivation") or SEED_DERIVATION
@@ -323,7 +330,7 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
             "job_id": job_id,
         }
         bundle_path = os.path.join(job_dir(job_id), "bundle.zip")
-        await asyncio.to_thread(write_bundle_zip, bundle_path, files, staging)
+        await asyncio.to_thread(write_bundle_zip, bundle_path, files, staging, bundle_name)
         await asyncio.to_thread(shutil.rmtree, staging, True)
         if job_id not in ACTIVE_JOBS:
             await asyncio.to_thread(shutil.rmtree, job_dir(job_id), True)

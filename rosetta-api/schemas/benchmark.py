@@ -454,6 +454,8 @@ class ExportPayload(_Request):
     author_name: Optional[Label] = Field(None, description="Author name recorded in the crate's metadata.")
     author_affiliation: Optional[str] = Field(None, description="Author affiliation recorded in the crate's metadata.")
     publication_artifacts: Optional[PublicationArtifactsSelection] = Field(None, description="Optionally bundle publication-ready figures/tables into the crate alongside the raw results.")
+    name: Optional[Label] = Field(None, description="Name of the run as the app shows it, for the crate's file and folder name when the report records no run_name. Not written to results.json or provenance.json.")
+    circuit_name: Optional[Label] = Field(None, description="Circuit name as the app shows it, for figure titles and captions of a single-circuit report that records no circuit_name, task_name or run_name. Not written to results.json or provenance.json.")
 
 class ExportRequest(ExportPayload):
     """POST /export request body: export options plus the report to export."""
@@ -467,6 +469,7 @@ class PublicationJobRenderRequest(_Request):
     scale: Int = Field(1, ge=1, le=4, description="Raster resolution multiplier for image formats, 1-4. Ignored for vector/text formats.")
     params: Dict[str, Any] = Field(default_factory=dict, description="Parameters of the artifact's view; omitted ones take their defaults.")
     task: Optional[Int] = Field(None, ge=0, description="For a playlist job: the index of the circuit in benchmark_summary. Omit for a single-circuit job.")
+    circuit_name: Optional[Label] = Field(None, description="Circuit or run name for figure titles and captions, as the app shows it. The server's copy of a single-circuit job records no name; this one is used in its place.")
 
 class PublicationRenderRequest(_Request):
     """Request body for POST /publication/render — render one publication figure or table

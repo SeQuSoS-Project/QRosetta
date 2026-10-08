@@ -1,10 +1,12 @@
 """RO-Crate 1.1 export (Process Run Crate profile) of a single-circuit or batch report."""
 
 import copy
+import hashlib
 import io
 import json
 import os
 import re
+import unicodedata
 import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -34,7 +36,6 @@ from services.report_filters import (
 logger = get_logger("rosetta-exporter")
 
 PROCESS_RUN_CRATE_PROFILE = "https://w3id.org/ro/wfrun/process/0.5"
-REPOSITORY_URL = "https://github.com/SeQuSoS-Project/QRosetta"
 _GIT_SHA = re.compile(r"^[0-9a-f]{7,40}$")
 _ACTION_STATUS_COMPLETED = "http://schema.org/CompletedActionStatus"
 _ACTION_STATUS_FAILED = "http://schema.org/FailedActionStatus"
@@ -58,20 +59,57 @@ _THRESHOLD_DEFAULTS = {
 }
 
 
+_ANALYSIS_PARAMETERS = {
+    "fidelity_tolerance": "A statevector pair agrees when its fidelity is at least 1 - fidelity_tolerance.",
+    "phase_tolerance": "Largest global-phase difference, in radians, still counted as a global phase.",
+    "norm_tolerance": "Largest deviation of a statevector's norm from 1 still counted as normalised.",
+    "js_threshold": "Jensen-Shannon divergence (nats) below which a measured pair's distance label is within threshold.",
+    "hellinger_threshold": "Hellinger distance below which a measured pair's distance label is within threshold.",
+    "stat_test_alpha": ("Significance level of the shot-noise tests: the false discovery rate across "
+                        "pairs (Benjamini-Yekutieli) and the family-wise level of the single-bit "
+                        "marginal tests (Holm)."),
+    "stat_test_target_power": "Power the shot-noise test aims for when it recommends shots per backend.",
+    "stat_test_delta_tv": "Total-variation gap the power calculation and the marginal tests' power are made against.",
+}
+
+
 def _recorded_commit(ctx: "ExportContext") -> Optional[str]:
-    """The report's git_sha when it is a hexadecimal commit id, else None."""
+    """The report's git_sha when it is a hexadecimal commit id, else None (a '-dirty' or
+    'unknown' value names no commit)."""
     sha = _shared_scalar(ctx, "git_sha")
     sha = str(sha).strip().lower() if sha else ""
     return sha if _GIT_SHA.match(sha) else None
 
 
+def _trusted(ctx: "ExportContext") -> bool:
+    """True when the crate is built from the server's own copy of a job it ran."""
+    return ctx.report_source == "server_job"
+
+
 def _source_url(ctx: "ExportContext", path: str = "") -> str:
     """Repository URL pinned to the recorded commit: the commit page for the whole tree,
-    ``tree/<sha>/<path>`` for a directory; the repository root when no commit is recorded."""
-    sha = _recorded_commit(ctx)
+    ``tree/<sha>/<path>`` for a directory; the repository root when no commit is recorded
+    or the report is not the server's own."""
+    repo = settings.REPOSITORY_URL
+    sha = _recorded_commit(ctx) if _trusted(ctx) else None
     if not sha:
-        return REPOSITORY_URL
-    return f"{REPOSITORY_URL}/tree/{sha}/{path}" if path else f"{REPOSITORY_URL}/commit/{sha}"
+        return repo
+    return f"{repo}/tree/{sha}/{path}" if path else f"{repo}/commit/{sha}"
+
+
+def _source_link_note(ctx: "ExportContext") -> str:
+    """What the crate's source links point at and when they resolve."""
+    repo = settings.REPOSITORY_URL
+    recorded = _shared_scalar(ctx, "git_sha")
+    if not _trusted(ctx):
+        return (f" The url is the repository root ({repo}); the git SHA in the supplied report "
+                f"({recorded if recorded else NOT_RECORDED}) is not checked by this server.")
+    sha = _recorded_commit(ctx)
+    if sha:
+        return (f" Source links point at commit {sha} of {repo}; they resolve only when that "
+                "commit has been published to that repository.")
+    return (f" The recorded git SHA ({recorded if recorded else NOT_RECORDED}) names no "
+            f"published commit, so links point at the repository root ({repo}).")
 
 
 def _entity_ref_id(key: str) -> str:
@@ -95,7 +133,8 @@ def _artifact_encoding_format(path: str) -> str:
 def _generate_publication_artifacts(ctx: "ExportContext") -> tuple:
     """(files, descriptions) for the requested publication figures/tables; ({}, {}) when
     none are requested. ``categories`` stand for their views at the defaults
-    (categories_to_items). A batch report gets one set per task under figures/<task_id>/,
+    (categories_to_items). A single-circuit report that records no name takes the request's
+    circuit_name for titles. A batch report gets one set per task under figures/<task_id>/,
     tables/<task_id>/ and reference/<task_id>/; a parameter error names the task. The
     publication engine (and matplotlib) is imported only then."""
     sel = ctx.publication_artifacts
@@ -108,6 +147,9 @@ def _generate_publication_artifacts(ctx: "ExportContext") -> tuple:
     descriptions: Dict[str, str] = {}
     for task in _iter_tasks(ctx):
         report = task.report
+        if task.task_id is None and ctx.circuit_name and not any(
+                report.get(k) for k in ("circuit_name", "task_name", "run_name")):
+            report = {**report, "circuit_name": ctx.circuit_name}
         try:
             built, described = build_publication_items(report, ctx.mode, items, task=task.label)
         except ParameterError as exc:
@@ -294,6 +336,8 @@ def build_export_context(results: dict, payload, route: str = "client_request") 
             payload.publication_artifacts.model_dump()
             if payload.publication_artifacts else None
         ),
+        label=getattr(payload, "name", None) or None,
+        circuit_name=getattr(payload, "circuit_name", None) or None,
     )
 
 
@@ -330,6 +374,8 @@ class ExportContext:
     circuit_features: Optional[Dict[str, Any]] = None
     suite_source: Optional[str] = None
     hardware_anchor: Optional[Dict[str, Any]] = None
+    label: Optional[str] = None
+    circuit_name: Optional[str] = None
 
 
 # --- report lookups --------------------------------------------------------------------
@@ -359,17 +405,24 @@ def _read_runner_lock(dir_name: str) -> Optional[bytes]:
     return None
 
 
-def _runner_lock_files(ctx: "ExportContext") -> Dict[str, bytes]:
-    """{crate path: bytes} of requirements.lock for each runner used, where found on disk."""
+def runner_lock_files(simulators, runner_services: dict) -> Dict[str, bytes]:
+    """{``runners/<runner dir>/requirements.lock``: bytes} for each runner key in
+    ``simulators`` whose lock file is on disk; ``runner_services`` maps canonical ids to
+    registry entries."""
     out: Dict[str, bytes] = {}
-    for runner in _extract_runners_used(ctx):
-        dir_name = _runner_dir_name(ctx.runner_services.get(_canonical_sim_id(runner), {}))
+    for runner in simulators:
+        dir_name = _runner_dir_name(runner_services.get(_canonical_sim_id(runner), {}))
         if not dir_name or f"runners/{dir_name}/requirements.lock" in out:
             continue
         data = _read_runner_lock(dir_name)
         if data is not None:
             out[f"runners/{dir_name}/requirements.lock"] = data
     return out
+
+
+def _runner_lock_files(ctx: "ExportContext") -> Dict[str, bytes]:
+    """runner_lock_files for every runner the report used."""
+    return runner_lock_files(_extract_runners_used(ctx), ctx.runner_services)
 
 
 def _get_runner_version(runner_id: str) -> str:
@@ -703,7 +756,8 @@ def _statevector_description(ctx: ExportContext) -> str:
         return ""
     if not ctx.include_statevectors:
         return (" Raw statevectors excluded from this export; each result that had one "
-                "carries statevector_sha256 (sha256 of the Base64-decoded complex128 bytes, "
+                "carries statevector_sha256 (sha256 of the Base64-decoded little-endian complex128 "
+                "bytes, complex64 results widened to complex128 before encoding; "
                 "or of the sorted-key JSON for a list-form vector; statevector_digest_input "
                 "says which) and statevector_length (amplitude count).")
     inv = statevector_inventory(ctx.results)
@@ -745,6 +799,9 @@ def _build_ro_crate_metadata(ctx: ExportContext,
     has_transpiled = any(transpiled.values())
     compiled = {id(t): _compiled_files(t) for t in tasks}
     platform_version = _shared_scalar(ctx, "platform_version") or settings.PLATFORM_VERSION
+    trusted = _trusted(ctx)
+    as_supplied = (f" As supplied in the report (report_source {ctx.report_source}); this server "
+                   "did not run it and did not check these values.")
 
     graph.append({
         "@type": "CreativeWork",
@@ -794,7 +851,15 @@ def _build_ro_crate_metadata(ctx: ExportContext,
             {"@id": "provenance.json"},
         ],
         "mentions": [],
+        "additionalProperty": [{"@id": "#report-source"}],
     }
+    graph.append({
+        "@id": "#report-source",
+        "@type": "PropertyValue",
+        "name": "report_source",
+        "value": ctx.report_source,
+        "description": REPORT_SOURCES[ctx.report_source],
+    })
 
     if ctx.author_name:
         author_id = "#author"
@@ -896,7 +961,7 @@ def _build_ro_crate_metadata(ctx: ExportContext,
                           "programmingLanguage": {"@id": "#openqasm2"}})
             root_entity["hasPart"].append({"@id": f["path"]})
         for action in compile_actions(task.report, task.task_id, task.label, compiled[id(task)],
-                                      settings.get_compiler_services()):
+                                      settings.get_compiler_services(), trusted=trusted):
             graph.append(action)
             root_entity["mentions"].append({"@id": action["@id"]})
     graph.extend(compiler_applications([t.report for t in tasks], settings.get_compiler_services(),
@@ -919,18 +984,23 @@ def _build_ro_crate_metadata(ctx: ExportContext,
         "name": "Process Run Crate",
         "version": "0.5",
     })
-    graph.append({
+    platform_node = {
         "@id": "#quantum-rosetta",
         "@type": "SoftwareApplication",
         "name": "Quantum Rosetta",
-        "softwareVersion": platform_version,
         "description": (
             "Microservices platform for cross-simulator quantum circuit benchmarking "
             "using OpenQASM 2.0 as the canonical input format. Orchestrates each backend "
             "execution and computes cross-simulator agreement evidence."
+            + ("" if trusted else f" Platform version as supplied in the report: {platform_version}.")
+            + _source_link_note(ctx)
         ),
         "url": _source_url(ctx),
-    })
+        "codeRepository": settings.REPOSITORY_URL,
+    }
+    if trusted:
+        platform_node["softwareVersion"] = platform_version
+    graph.append(platform_node)
     graph.append({
         "@id": "#openqasm2",
         "@type": "ComputerLanguage",
@@ -1022,12 +1092,14 @@ def _build_ro_crate_metadata(ctx: ExportContext,
                 "@id": f"#run-{frag}",
                 "@type": "CreateAction",
                 "name": f"Execution of {circuit_phrase} on {runner}",
-                "description": f"Dispatch of {circuit_phrase} to the {runner} backend adapter for {ctx.mode} execution.",
+                "description": (f"Dispatch of {circuit_phrase} to the {runner} backend adapter for "
+                                f"{ctx.mode} execution." + ("" if trusted else as_supplied)),
                 "instrument": {"@id": f"#{runner_id}"},
                 "object": obj_refs,
                 "result": {"@id": output_id},
-                "actionStatus": _ACTION_STATUS_FAILED if failed else _ACTION_STATUS_COMPLETED,
             }
+            if trusted:
+                action["actionStatus"] = _ACTION_STATUS_FAILED if failed else _ACTION_STATUS_COMPLETED
             if raw.get("dispatched_at"):
                 action["startTime"] = raw["dispatched_at"]
             if raw.get("completed_at"):
@@ -1055,6 +1127,21 @@ def _build_ro_crate_metadata(ctx: ExportContext,
         artifact_refs.append({"@id": path})
         root_entity["hasPart"].append({"@id": path})
 
+    analysis_param_refs: List[dict] = []
+    is_batch_note = (" For a playlist, each circuit's values are in provenance.json "
+                     "run_configuration.agreement_thresholds_by_task." if is_batch else "")
+    for key, value in sorted(_effective_thresholds(ctx, _shared_scalar(ctx, "agreement_thresholds")).items()):
+        param_id = f"#param-analysis-{key}"
+        graph.append({
+            "@id": param_id,
+            "@type": "PropertyValue",
+            "name": key,
+            "value": value,
+            "description": (_ANALYSIS_PARAMETERS.get(key, "Agreement analysis parameter.")
+                            + is_batch_note),
+        })
+        analysis_param_refs.append({"@id": param_id})
+
     if output_refs:
         analysis_results = [{"@id": "results.json"}] + artifact_refs
         analysis = {
@@ -1066,9 +1153,13 @@ def _build_ro_crate_metadata(ctx: ExportContext,
                 "registered-transform lattice and, for measured mode, the shot-noise "
                 "statistical test, from the backend outputs. Publication figures and "
                 "tables, when requested, are derived from these reports."
+                + ("" if trusted else
+                   f" The agreement evidence is as supplied in the report (report_source "
+                   f"{ctx.report_source}); this server did not compute it.")
             ),
             "instrument": {"@id": "#quantum-rosetta"},
-            "object": output_refs,
+            "object": output_refs + analysis_param_refs,
+            "additionalProperty": [{"@id": "#report-source"}],
             "result": analysis_results if len(analysis_results) > 1 else {"@id": "results.json"},
             **({"agent": agent_ref} if agent_ref else {}),
         }
@@ -1097,10 +1188,15 @@ def _build_ro_crate_metadata(ctx: ExportContext,
             "@id": f"#{runner_id}",
             "@type": "SoftwareApplication",
             "name": f"{runner_id} Simulator Adapter",
-            "softwareVersion": version,
             "description": f"Quantum execution environment provided by the {runner_id} backend adapter.",
-            "url": _source_url(ctx, f"runners/{dir_name}" if dir_name else ""),
         }
+        if not trusted:
+            node["description"] += (f" SDK versions as supplied in the report: {version}; not "
+                                    "checked by this server.")
+            graph.append(node)
+            continue
+        node["softwareVersion"] = version
+        node["url"] = _source_url(ctx, f"runners/{dir_name}" if dir_name else "")
         requirements: List[Any] = [
             f"{pkg}=={ver}" for pkg, ver in sorted(executed_versions.items())
         ]
@@ -1132,17 +1228,14 @@ def _build_ro_crate_metadata(ctx: ExportContext,
 
 def _fingerprint(report: dict) -> None:
     """Replace each statevector in ``report['raw_results']`` with statevector_sha256 and
-    statevector_length (statevector_len is kept alongside it)."""
+    statevector_length."""
     fingerprint_statevectors(report, _json_sha256)
-    for r in report.get("raw_results", []) or []:
-        if isinstance(r, dict) and "statevector_len" in r:
-            r.setdefault("statevector_length", r["statevector_len"])
 
 
 def _results_json_data(ctx: ExportContext) -> dict:
     """results.json content: statevectors per ``include_statevectors`` (else a sha256 and
-    length per result), display placeholders nulled and flagged, and circuit texts written
-    as separate files removed."""
+    length per result), display placeholders nulled and flagged, circuit texts written as
+    separate files removed, and ``report_source`` set from the export route."""
     data = copy.deepcopy(ctx.results)
     if not ctx.include_statevectors:
         _fingerprint(data)
@@ -1168,6 +1261,8 @@ def _results_json_data(ctx: ExportContext) -> dict:
     for task_result in data.get("benchmark_summary", []) or []:
         if isinstance(task_result, dict):
             clean(task_result)
+            task_result.pop("report_source", None)
+    data["report_source"] = ctx.report_source
     return data
 
 
@@ -1188,11 +1283,8 @@ def _add_compiled_metrics_table(ctx: ExportContext, files: dict, descriptions: d
         "Compilers write different gate sets, so gate_count is not comparable across them.")
 
 
-def _crate_label(ctx: ExportContext) -> str:
-    """What the crate holds, for its file name: the saved run's name, else the one task's
-    name, else the number of circuits of a playlist, else mode and qubit count."""
-    if ctx.results.get("run_name"):
-        return str(ctx.results["run_name"])
+def _fallback_label(ctx: ExportContext) -> str:
+    """The number of circuits of a playlist, else mode and qubit count."""
     tasks = _iter_tasks(ctx)
     if isinstance(ctx.results.get("benchmark_summary"), list):
         return tasks[0].label if len(tasks) == 1 else f"playlist {len(tasks)} circuits"
@@ -1200,16 +1292,41 @@ def _crate_label(ctx: ExportContext) -> str:
     return f"{ctx.mode} {qubits}q" if qubits else ctx.mode
 
 
+def _crate_label(ctx: ExportContext) -> str:
+    """What the crate holds, for its file name: the report's run name, else the name the
+    export request gives, else the one task's name, else _fallback_label."""
+    return str(ctx.results.get("run_name") or ctx.label or _fallback_label(ctx))
+
+
+def _name_slug(text: str) -> str:
+    """``text`` without accents and apostrophes, lower-case, runs of other characters as
+    '-', at most 60 characters."""
+    plain = unicodedata.normalize("NFKD", str(text or ""))
+    plain = "".join(c for c in plain if not unicodedata.combining(c))
+    return _slugify(re.sub(r"['\u2019]", "", plain), "")[:60].strip("-")
+
+
 def crate_name(ctx: ExportContext) -> str:
     """``rosetta-export-<label slug>-<UTC export time as YYYYMMDDTHHMMSSZ>``: the ZIP's file
-    name without ``.zip`` and its top-level directory."""
+    name without ``.zip`` and its top-level directory. A label with no letters or digits
+    (emoji only, say) gives way to _fallback_label."""
     try:
         moment = datetime.fromisoformat(ctx.timestamp).astimezone(timezone.utc)
         stamp = moment.strftime("%Y%m%dT%H%M%SZ")
     except ValueError:
         stamp = _slugify(ctx.timestamp, "undated")
-    label = _slugify(re.sub(r"['\u2019]", "", _crate_label(ctx)), "")[:60].strip("-")
+    label = _name_slug(_crate_label(ctx)) or _name_slug(_fallback_label(ctx))
     return "-".join(part for part in ("rosetta-export", label, stamp) if part)
+
+
+def _describe_files(metadata: dict, files: Dict[str, bytes]) -> None:
+    """Add ``sha256`` and ``contentSize`` (bytes) to every File entity whose @id is a file
+    of the crate."""
+    for entity in metadata["@graph"]:
+        data = files.get(entity.get("@id"))
+        if data is not None and entity.get("@type") == "File":
+            entity["sha256"] = hashlib.sha256(data).hexdigest()
+            entity["contentSize"] = str(len(data))
 
 
 def build_ro_crate(ctx: ExportContext) -> bytes:
@@ -1221,10 +1338,24 @@ def build_ro_crate(ctx: ExportContext) -> bytes:
     publication_files, artifact_descriptions = _generate_publication_artifacts(ctx)
     _add_compiled_metrics_table(ctx, publication_files, artifact_descriptions)
     compiler_files = compiler_build_files([t.report for t in _iter_tasks(ctx)], settings.get_compiler_services(),
-                                          trusted=ctx.report_source == "server_job")
-    lock_files = {**_runner_lock_files(ctx), **{p: data for p, (data, _) in compiler_files.items()}}
+                                          trusted=_trusted(ctx))
+    runner_locks = _runner_lock_files(ctx) if _trusted(ctx) else {}
     metadata = _build_ro_crate_metadata(ctx, sorted(publication_files), artifact_descriptions,
-                                        sorted(_runner_lock_files(ctx)), compiler_files)
+                                        sorted(runner_locks), compiler_files)
+
+    files: Dict[str, bytes] = {}
+    files.update(publication_files)
+    files.update(runner_locks)
+    files.update({p: data for p, (data, _) in compiler_files.items()})
+    for task in _iter_tasks(ctx):
+        if task.input_qasm:
+            files[_circuit_path(task)] = task.input_qasm.encode("utf-8")
+    files["results.json"] = json.dumps(results_data, indent=2, ensure_ascii=False).encode("utf-8")
+    files["provenance.json"] = json.dumps(provenance_data, indent=2, ensure_ascii=False).encode("utf-8")
+    for task in _iter_tasks(ctx):
+        for f in _dispatched_circuit_files(task) + _transpiled_circuit_files(task) + _compiled_files(task):
+            files[f["path"]] = f["qasm"].encode("utf-8")
+    _describe_files(metadata, files)
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -1232,24 +1363,8 @@ def build_ro_crate(ctx: ExportContext) -> bytes:
             f"{dir_name}/ro-crate-metadata.json",
             json.dumps(metadata, indent=2, ensure_ascii=False),
         )
-        for rel_path, data in publication_files.items():
+        for rel_path, data in files.items():
             zf.writestr(_member(dir_name, rel_path), data)
-        for rel_path, data in lock_files.items():
-            zf.writestr(_member(dir_name, rel_path), data)
-        for task in _iter_tasks(ctx):
-            if task.input_qasm:
-                zf.writestr(_member(dir_name, _circuit_path(task)), task.input_qasm)
-        zf.writestr(
-            f"{dir_name}/results.json",
-            json.dumps(results_data, indent=2, ensure_ascii=False),
-        )
-        zf.writestr(
-            f"{dir_name}/provenance.json",
-            json.dumps(provenance_data, indent=2, ensure_ascii=False),
-        )
-        for task in _iter_tasks(ctx):
-            for f in _dispatched_circuit_files(task) + _transpiled_circuit_files(task) + _compiled_files(task):
-                zf.writestr(_member(dir_name, f["path"]), f["qasm"])
 
     logger.info(f"Built RO-Crate ZIP: {dir_name} ({buf.tell()} bytes)")
     return buf.getvalue()
