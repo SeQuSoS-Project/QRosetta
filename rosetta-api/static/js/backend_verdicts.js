@@ -1,9 +1,9 @@
 // Per-backend counts over a report's pair records (how many backends each one differs from,
 // is inconclusive with on the full-distribution test, or could not be compared with), and
-// the headline built from them. Disagreement is isDisagreement() only, so these counts match
-// the pair badges; a measured pair can be inconclusive and differ in a marginal at once.
+// the headline model built from them. Disagreement is isDisagreement() only, so these counts
+// match the pair badges; a measured pair can be inconclusive and differ in a marginal at once.
 // A measured pair flagged only under Benjamini–Yekutieli (not under Holm, no differing
-// marginal) is counted apart as "BY only" and does not shape the headline groups.
+// marginal) is counted apart as "BY only" and does not shape the headline.
 
 import { isDisagreement, measuredAssessment, runnerStatus, statevectorGroup } from './run_status.js';
 import { parseRunnerKey } from './runner_key.js';
@@ -12,7 +12,7 @@ import { parseRunnerKey } from './runner_key.js';
  * @typedef {{ key: string, status: string, compared: number, differs: number, differsFull: number,
  *             differsMarginal: number, differsByOnly: number, inconclusive: number, notComparable: number,
  *             differsWith: string[], byOnlyWith: string[], agreesWith: string[], comparedWith: string[],
- *             bitOrder: string|null }} BackendVerdict
+ *             worstFidelity: number|null, largestTv: number|null, bitOrder: string|null }} BackendVerdict
  */
 
 /** True for a measured pair whose only disagreement evidence is significance under BY but not under Holm. */
@@ -27,6 +27,15 @@ function _agrees(p) {
     if (p.mode === 'measured') return measuredAssessment(p) === 'consistent_within_shot_noise' && !isDisagreement(p);
     const g = statevectorGroup(p);
     return g === 'agree' || g === 'bit_order';
+}
+
+const _num = x => (typeof x === 'number' && Number.isFinite(x) ? x : null);
+
+/** Size of a pair's difference: label-aligned fidelity (statevector) or total variation (measured). */
+function _magnitude(p) {
+    const m = p.metrics || {};
+    if (p.mode === 'measured') return { tv: _num(m.statistical_test?.effect_size?.total_variation), fidelity: null };
+    return { tv: null, fidelity: _num(m.label_aligned_fidelity) ?? _num(m.direct_fidelity) };
 }
 
 /** @returns {{ mode: string, backends: BackendVerdict[], pairs: number, disagreeing: number,
@@ -45,7 +54,7 @@ export function backendVerdicts(report) {
         if (!byKey.has(key)) {
             byKey.set(key, { key, status: 'ok', compared: 0, differs: 0, differsFull: 0, differsMarginal: 0, differsByOnly: 0,
                              inconclusive: 0, notComparable: 0, differsWith: [], byOnlyWith: [], agreesWith: [],
-                             comparedWith: [], bitOrder: ordering[key] ?? null });
+                             comparedWith: [], worstFidelity: null, largestTv: null, bitOrder: ordering[key] ?? null });
         }
         return byKey.get(key);
     };
@@ -79,10 +88,15 @@ export function backendVerdicts(report) {
                 byOnlyPairs.push([a.key, b.key]);
             } else {
                 a.differsWith.push(b.key); b.differsWith.push(a.key);
-            }
-            if (p.mode === 'measured') {
-                if (measuredAssessment(p) === 'distinguishable') { a.differsFull++; b.differsFull++; }
-                if (p.marginal_assessment === 'marginal_distinguishable') { a.differsMarginal++; b.differsMarginal++; }
+                const { tv, fidelity } = _magnitude(p);
+                [a, b].forEach(x => {
+                    if (fidelity !== null && (x.worstFidelity === null || fidelity < x.worstFidelity)) x.worstFidelity = fidelity;
+                    if (tv !== null && (x.largestTv === null || tv > x.largestTv)) x.largestTv = tv;
+                });
+                if (p.mode === 'measured') {
+                    if (measuredAssessment(p) === 'distinguishable') { a.differsFull++; b.differsFull++; }
+                    if (p.marginal_assessment === 'marginal_distinguishable') { a.differsMarginal++; b.differsMarginal++; }
+                }
             }
         }
     });
@@ -95,22 +109,42 @@ export function backendVerdicts(report) {
              multiRun: backends.some(b => parseRunnerKey(b.key).isMulti) };
 }
 
-/** Groups of successful backends linked by pairs that agree (or are consistent within shot noise), largest first. */
-function _agreementGroups(ok) {
-    const byKey = new Map(ok.map(b => [b.key, b]));
+export const MAX_NAMED = 4;
+export const MAX_GROUPS = 4;
+
+/** Every vertex cover of the smallest size up to `limit` of the graph with these edges, or []. */
+export function minimumCovers(edges, limit = MAX_NAMED) {
+    for (let k = 1; k <= limit; k++) {
+        const found = new Map();
+        const search = (chosen, depth) => {
+            const open = edges.find(([u, v]) => !chosen.has(u) && !chosen.has(v));
+            if (!open) {
+                const cover = [...chosen].sort();
+                found.set(cover.join('\u0000'), cover);
+                return;
+            }
+            if (depth === k) return;
+            open.forEach(x => search(new Set([...chosen, x]), depth + 1));
+        };
+        search(new Set(), 0);
+        if (found.size) return [...found.values()].filter(c => c.length === k);
+    }
+    return [];
+}
+
+/** Connected components of `keys` under the symmetric relation `linked`, largest first. */
+function _components(keys, linked) {
     const seen = new Set();
     const groups = [];
-    ok.forEach(start => {
-        if (seen.has(start.key)) return;
+    keys.forEach(start => {
+        if (seen.has(start)) return;
         const members = [];
-        const stack = [start.key];
-        seen.add(start.key);
+        const stack = [start];
+        seen.add(start);
         while (stack.length) {
             const k = stack.pop();
             members.push(k);
-            byKey.get(k).agreesWith.forEach(n => {
-                if (byKey.has(n) && !seen.has(n)) { seen.add(n); stack.push(n); }
-            });
+            keys.forEach(n => { if (!seen.has(n) && linked(k, n)) { seen.add(n); stack.push(n); } });
         }
         groups.push(members.sort());
     });
@@ -118,68 +152,84 @@ function _agreementGroups(ok) {
 }
 
 /**
- * Headline model. `failed` lists failed backends by status. `differing` are the backends that
- * differ from at least one other (BY-only pairs left out), most first; `outliers` differ from
- * every backend they were compared with. `groups` partitions the successful backends into
- * groups linked by agreeing pairs; `main` is the largest group when no other is as large, and
- * `others` the remaining groups that differ from a backend, each with `differsFrom` (backends
- * outside it that a member differs from), `comparedOutside`, and `internalPairs`. `clean` is
- * true when the groups explain every disagreement except those inside `main`. `flagged` are
- * the backends the headline names as differing; `rest` the others and `residualPairs` the
- * pairs among `rest` that differ.
+ * Headline model, built from the pairs that differ (BY-only pairs left out). Inconclusive and
+ * not-comparable pairs count as neither agreement nor difference.
+ *
+ * `kind` is one of:
+ * - 'none': no pair differs;
+ * - 'named': one smallest set of at most MAX_NAMED backends, fewer than half, appears in every
+ *   pair that differs; `named` lists it as groups of members that agree with each other, each
+ *   with `differsFrom` (backends outside it a member differs from) and `comparedOutside`; `rest`
+ *   are the other backends, among which no pair differs;
+ * - 'camps': with the backends that differ from none (`neutral`) set aside, the others split into
+ *   2 to MAX_GROUPS groups, at least two of them with two or more members, with no differing pair
+ *   inside a group and every compared pair between groups differing; `camps` lists them,
+ *   `largest` is the unique largest group or null;
+ * - 'pairs': at most MAX_NAMED pairs differ and none of the above applies; `pairs` lists them;
+ * - 'spread': anything else; `named` lists the backends that differ from more than half of those
+ *   they were compared with (at most MAX_NAMED; else the ones that differ most), `rest` the
+ *   others and `pairs` the differing pairs among `rest`.
+ *
+ * `flagged` are the backends the headline names as differing; `byOnlyHub` is the backend in
+ * every BY-only pair when there are two or more such pairs.
  */
 export function headlineModel(verdicts) {
     const failed = { offline: [], error: [], timeout: [] };
     verdicts.backends.forEach(b => { if (b.status !== 'ok' && failed[b.status]) failed[b.status].push(b.key); });
     const ok = verdicts.backends.filter(b => b.status === 'ok');
     const byKey = new Map(ok.map(b => [b.key, b]));
-    const robust = b => b.differsWith.length;
-    const differing = ok.filter(b => robust(b) > 0)
-        .sort((x, y) => (robust(y) / y.compared) - (robust(x) / x.compared) || robust(y) - robust(x) || x.key.localeCompare(y.key));
-    const outliers = differing.filter(b => robust(b) === b.compared);
-    const outlierKeys = new Set(outliers.map(b => b.key));
-    const explainedByOutliers = outliers.length > 0 && differing.every(b =>
-        outlierKeys.has(b.key) || b.differsWith.every(k => outlierKeys.has(k)));
+    const keys = ok.map(b => b.key).sort();
+    const differs = (x, y) => byKey.get(x).differsWith.includes(y);
+    const ratio = b => b.differsWith.length / Math.max(1, b.compared);
+    const differing = ok.filter(b => b.differsWith.length > 0)
+        .sort((x, y) => ratio(y) - ratio(x) || y.differsWith.length - x.differsWith.length || x.key.localeCompare(y.key));
+    const edges = [];
+    keys.forEach(k => byKey.get(k).differsWith.forEach(o => { if (byKey.has(o) && k < o) edges.push([k, o]); }));
 
-    const groups = _agreementGroups(ok);
+    const byOnly = verdicts.byOnlyPairs || [];
+    const hubs = byOnly.length >= 2 ? byOnly.reduce((acc, pair) => acc.filter(k => pair.includes(k)), byOnly[0]) : [];
+    const base = { failed, ok: ok.length, differing, edges, byOnlyHub: hubs.length === 1 ? hubs[0] : null,
+                   named: [], rest: [], camps: [], largest: null, neutral: [], pairs: [], flagged: [] };
+    if (!edges.length) return { ...base, kind: 'none' };
+
     const describe = members => {
         const set = new Set(members);
         const differsFrom = new Set(), comparedOutside = new Set();
-        const internalPairs = [];
-        let everyOutsidePair = true;
         members.forEach(k => {
             const b = byKey.get(k);
-            b.differsWith.forEach(o => {
-                if (!set.has(o)) differsFrom.add(o);
-                else if (k < o) internalPairs.push([k, o]);
-            });
-            const outside = b.comparedWith.filter(o => !set.has(o) && byKey.has(o));
-            outside.forEach(o => comparedOutside.add(o));
-            if (outside.some(o => !b.differsWith.includes(o))) everyOutsidePair = false;
+            b.differsWith.forEach(o => { if (!set.has(o)) differsFrom.add(o); });
+            b.comparedWith.forEach(o => { if (!set.has(o) && byKey.has(o)) comparedOutside.add(o); });
         });
         return { members, differsFrom: [...differsFrom].sort(), comparedOutside: comparedOutside.size,
-                 differsFromAll: everyOutsidePair && differsFrom.size > 0, internalPairs };
+                 differsFromAll: differsFrom.size > 0 && differsFrom.size === comparedOutside.size };
     };
-    const unique = groups.length === 1 || (groups.length > 1 && groups[0].length > groups[1].length);
-    const main = unique && groups[0].length >= 2 ? describe(groups[0]) : null;
-    const others = (main ? groups.slice(1) : groups).map(describe)
-        .filter(g => g.differsFrom.length || g.internalPairs.length)
-        .sort((x, y) => (y.differsFrom.length / Math.max(1, y.comparedOutside)) - (x.differsFrom.length / Math.max(1, x.comparedOutside))
-            || y.members.length - x.members.length || x.members[0].localeCompare(y.members[0]));
-    const clean = !!main && others.every(g => g.internalPairs.length === 0);
 
-    let flagged;
-    if (clean) flagged = others.flatMap(g => g.members);
-    else if (outliers.length) flagged = outliers.map(b => b.key);
-    else flagged = differing.filter(b => robust(b) * 2 > b.compared).map(b => b.key);
-    if (!flagged.length) flagged = differing.map(b => b.key);
+    const covers = minimumCovers(edges);
+    if (covers.length === 1 && covers[0].length * 2 < ok.length && edges.length > 1) {
+        const cover = covers[0];
+        const agree = (x, y) => byKey.get(x).agreesWith.includes(y);
+        const named = _components(cover, agree).map(describe)
+            .sort((x, y) => y.differsFrom.length - x.differsFrom.length || x.members[0].localeCompare(y.members[0]));
+        return { ...base, kind: 'named', named, rest: keys.filter(k => !cover.includes(k)), flagged: cover };
+    }
 
-    const rest = clean && main ? main.members.map(k => byKey.get(k)) : ok.filter(b => !outlierKeys.has(b.key));
-    const restKeys = new Set(rest.map(b => b.key));
-    const residualPairs = [];
-    rest.forEach(b => b.differsWith.forEach(k => {
-        if (restKeys.has(k) && b.key < k) residualPairs.push([b.key, k]);
-    }));
-    return { failed, ok: ok.length, differing, outliers, explainedByOutliers, rest, residualPairs,
-             groups, main, others, clean, flagged };
+    const neutral = keys.filter(k => byKey.get(k).differsWith.length === 0);
+    const active = keys.filter(k => !neutral.includes(k));
+    const camps = _components(active, (x, y) => !differs(x, y));
+    const consistent = camps.every(c => c.every(x => c.every(y => !differs(x, y))));
+    if (camps.length >= 2 && camps.length <= MAX_GROUPS && consistent && camps[1].length >= 2) {
+        const largest = camps[0].length > camps[1].length ? camps[0] : null;
+        return { ...base, kind: 'camps', camps: camps.map(describe), largest, neutral,
+                 flagged: camps.filter(c => c !== largest).flat() };
+    }
+
+    if (edges.length <= MAX_NAMED) {
+        return { ...base, kind: 'pairs', pairs: edges, flagged: [...new Set(edges.flat())].sort() };
+    }
+
+    const majority = differing.filter(b => b.differsWith.length * 2 > b.compared);
+    const named = (majority.length ? majority : differing).slice(0, MAX_NAMED).map(b => b.key);
+    const rest = keys.filter(k => !named.includes(k));
+    return { ...base, kind: 'spread', named: named.map(k => describe([k])), rest,
+             pairs: edges.filter(([x, y]) => !named.includes(x) && !named.includes(y)), flagged: named };
 }

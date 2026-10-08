@@ -51,9 +51,8 @@ def test_one_wrong_statevector_backend_is_the_outlier():
     assert by_key["d"]["differs"] == 3 and by_key["d"]["compared"] == 3
     assert all(by_key[s]["differs"] == 1 for s in "abc")
     assert {k: b["differs"] for k, b in by_key.items()} == _disagreement_counts(report)
-    assert [b["key"] for b in h["outliers"]] == ["d"]
-    assert h["explainedByOutliers"] is True
-    assert sorted(b["key"] for b in h["rest"]) == ["a", "b", "c"]
+    assert h["kind"] == "named" and h["flagged"] == ["d"]
+    assert h["rest"] == ["a", "b", "c"]
     assert v["disagreeing"] == 3
 
 
@@ -64,7 +63,7 @@ def test_bit_reversal_pairs_are_not_disagreements():
              _sv_pair("msb1", "msb2", "agree_directly")]
     by_key, v, h = _verdicts(_report(pairs, sims))
     assert all(b["differs"] == 0 for b in by_key.values())
-    assert h["differing"] == [] and h["outliers"] == []
+    assert h["differing"] == [] and h["kind"] == "none" and h["flagged"] == []
 
 
 def test_measured_marginal_and_full_counts_stay_separate():
@@ -115,8 +114,8 @@ def test_outlier_plus_one_more_pair_lists_the_residual_pair():
         return "residual_disagreement" if "e" in (x, y) or {x, y} == {"a", "b"} else "agree_directly"
     pairs = [_sv_pair(x, y, label(x, y)) for x, y in combinations(sims, 2)]
     _, _, h = _verdicts(_report(pairs, sims))
-    assert [b["key"] for b in h["outliers"]] == ["e"]
-    assert h["residualPairs"] == [["a", "b"]]
+    assert h["kind"] == "spread" and h["flagged"] == ["e"]
+    assert h["pairs"] == [["a", "b"]]
 
 
 def test_inconclusive_count_includes_pairs_that_differ_in_a_marginal():
