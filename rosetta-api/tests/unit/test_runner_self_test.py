@@ -1,6 +1,7 @@
 """helpers.run_self_test and the provenance fields every runner result carries."""
 import hashlib
 import io
+import re
 from pathlib import Path
 
 import pytest
@@ -40,6 +41,22 @@ def test_a_declared_ordering_that_differs_from_the_result_fails():
     failed, text = _self_test(fx.process_run, fx.process_run_measured,
                               qubit_ordering_statevector="lsb")
     assert "FAIL statevector_one_hot" in text and "runner declares 'lsb'" in text, text
+
+
+def test_a_runner_dropping_the_rest_of_a_barrier_line_fails():
+    failed, text = _self_test(fx.process_run_dropping_barrier_lines, fx.process_run_measured)
+    assert "FAIL statevector_barrier_then_gate_on_one_line" in text, text
+    assert "PASS statevector_barrier_only" in text, text
+
+
+def test_no_runner_or_shared_helper_filters_qasm_lines_by_barrier():
+    root = Path(__file__).resolve().parents[3]
+    pattern = re.compile(r"startswith\(\s*['\"]barrier")
+    sources = list((root / "runners").glob("*/main.py")) + list(
+        (root / "shared" / "qrosetta_commons").glob("*.py"))
+    assert sources
+    offenders = [str(p) for p in sources if pattern.search(p.read_text())]
+    assert not offenders, offenders
 
 
 def test_cli_self_test_exits_non_zero_on_failure(monkeypatch):

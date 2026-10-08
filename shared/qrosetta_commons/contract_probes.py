@@ -9,9 +9,10 @@ returns |0...0>, mislabels its bit order, or drops idle qubits fails. The classi
 check the counts contract: keys hold every declared classical bit (flat index in creg
 declaration order), flat clbit 0 rightmost under "lsb" and leftmost under "msb", and
 unmeasured classical bits read 0. The shape probes check that a gate-free circuit returns
-|0...0> over every declared qubit and that, with apply_preprocessing off, the statevector
-follows register declaration order (a runner may instead refuse several registers with an
-error that says to enable apply_preprocessing).
+|0...0> over every declared qubit, that a gate written on the same line as a barrier
+runs, and that, with apply_preprocessing off, the statevector follows register declaration
+order (a runner may instead refuse several registers with an error that says to enable
+apply_preprocessing).
 """
 
 import base64
@@ -60,6 +61,8 @@ CLASSICAL_BIT_PROBES = {
 STATEVECTOR_SHAPE_PROBES = {
     "gate_free": ("qreg q[2];", True, 2, {"lsb": 0, "msb": 0}),
     "barrier_only": ("qreg q[2]; barrier q;", True, 2, {"lsb": 0, "msb": 0}),
+    "barrier_then_gate_on_one_line": (
+        "qreg q[2];\nbarrier q[0]; x q[1];", True, 2, {"lsb": 2, "msb": 1}),
     "qreg_declaration_order": (
         "qreg b[1]; qreg a[2]; x b[0]; x a[0];", False, 3, {"lsb": 3, "msb": 6}),
     "register_broadcast": ("qreg q[1]; qreg r[2]; x q[0]; cx q[0],r;", False, 3, {"lsb": 7, "msb": 7}),

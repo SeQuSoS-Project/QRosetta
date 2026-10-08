@@ -188,14 +188,6 @@ def get_num_qubits_from_qasm(qasm_string: str) -> int:
     return sum(int(size) for size in sizes)
 
 
-def strip_barriers_from_qasm(qasm_string: str) -> str:
-    """Remove ``barrier`` lines from QASM source."""
-    return '\n'.join(
-        line for line in qasm_string.split('\n')
-        if not line.strip().startswith('barrier')
-    )
-
-
 def check_qubits_limit(qasm_string: str, max_qubits: int = 24):
     """Raise ValueError if the circuit declares more than ``max_qubits`` qubits."""
     n_qubits = get_num_qubits_from_qasm(qasm_string)

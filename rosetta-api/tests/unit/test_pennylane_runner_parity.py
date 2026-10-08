@@ -45,3 +45,19 @@ def test_the_two_runners_are_otherwise_identical():
         "is intentional for one backend only, say so here; otherwise mirror it into both, or "
         "the pair stops being a controlled comparison."
     )
+
+
+def test_executed_text_names_are_qelib1_gates():
+    """Each PennyLane operation the serializer writes by name maps to a qelib1.inc gate with
+    the same matrix (checked against Qiskit in the runner images); the map is pinned here."""
+    import ast
+    from qrosetta_commons.qelib1 import qelib1_definitions
+
+    tree = ast.parse(_DEFAULT.read_text())
+    names = next(ast.literal_eval(node.value) for node in tree.body
+                 if isinstance(node, ast.Assign)
+                 and getattr(node.targets[0], "id", None) == "_QELIB1_NAMES")
+    assert set(names.values()) - {"barrier"} <= set(qelib1_definitions())
+    assert names == {
+        "SX": "sx", "Adjoint(SX)": "sxdg", "CH": "ch", "CY": "cy", "IsingXX": "rxx",
+        "IsingZZ": "rzz", "ControlledPhaseShift": "cu1", "Barrier": "barrier"}
