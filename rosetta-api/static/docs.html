@@ -1132,7 +1132,7 @@
                         much faster than a dense statevector would suggest. For scaling studies, include circuits whose
                         state is entangled and dense, such as <code>random</code>.</li>
                     <li><strong>Gate count and depth</strong> come from the circuit each backend executed: by default the
-                        top-level gate statements of its <code>transpiled_qasm</code>, with depth by greedy layering. The
+                        top-level gate statements of its <code>transpiled_qasm</code> (a statement on whole registers, such as <code>h q;</code>, once per index), with depth by greedy layering. The
                         PennyLane runners count the operations of the tape the device executes instead, because their
                         <code>transpiled_qasm</code> text decomposes operations such as <code>QubitUnitary</code> into gates
                         that were not executed as such (a <code>QubitUnitary</code> on three or more wires is written as
@@ -1305,7 +1305,7 @@
                     <code>compiler_code_sha256</code>; cite the record's text rather than a regenerated text.
                 </p>
                 <p>
-                    <code>gate_count</code> is the number of top-level gate statements in the output text and
+                    <code>gate_count</code> is the number of top-level gate statements in the output text (a statement on whole registers once per index) and
                     <code>circuit_depth</code> its greedy layering, one statement per layer slot whatever the
                     gate; barriers are neither counted nor treated as aligning the wires, so the depth can be
                     lower than Qiskit's <code>depth()</code> of the same text. The compilers write different

@@ -325,55 +325,86 @@ DEFAULT_HARD_TIMEOUT_SEC = int(os.getenv("RUNNER_HARD_TIMEOUT_SEC", "300"))
 _QASM_NON_GATE_KEYWORDS = {
     "openqasm", "include", "qreg", "creg", "barrier", "measure", "reset", "if", "gate", "opaque",
 }
-_QASM_QUBIT_REF_RE = re.compile(r'([a-zA-Z_][a-zA-Z0-9_]*)\s*\[\s*(\d+)\s*\]')
+
+
+_QASM_QREG_RE = re.compile(r'\bqreg\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\[\s*(\d+)\s*\]')
+_QASM_OPERAND_RE = re.compile(r'^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\[\s*(\d+)\s*\])?\s*$')
+
+
+def _qasm_operands(stmt: str, name: str) -> str:
+    """The operand list of a gate statement: what follows its name and parameter list."""
+    rest = stmt[stmt.index(name) + len(name):].lstrip()
+    if rest.startswith('('):
+        level = 0
+        for i, ch in enumerate(rest):
+            level += ch == '('
+            level -= ch == ')'
+            if level == 0:
+                return rest[i + 1:]
+        return ''
+    return rest
+
+
+def qasm_gate_applications(qasm_str: str) -> list:
+    """``[(gate name, [qubit keys])]`` for every top-level gate application of OpenQASM 2.0.
+
+    A statement on whole registers (``h q;``, ``cx a, b;``) is one application per index of
+    the declared registers. Statements inside ``gate``/``opaque`` bodies, ``if (...)``
+    statements, barriers, measurements and resets are not applications. A statement with a
+    whole-register operand that is not declared, or with whole registers of different sizes,
+    is left out.
+    """
+    text = re.sub(r'//.*', '', qasm_str)
+    sizes = {reg: int(n) for reg, n in _QASM_QREG_RE.findall(text)}
+    text = re.sub(r'\{[^{}]*\}', ';', text)
+    apps = []
+    for stmt in text.split(';'):
+        stmt = stmt.strip()
+        if not stmt:
+            continue
+        words = stmt.split('(', 1)[0].split()
+        if not words or words[0].lower() in _QASM_NON_GATE_KEYWORDS:
+            continue
+        name = words[0]
+        operands = []
+        for part in _qasm_operands(stmt, name).split(','):
+            m = _QASM_OPERAND_RE.match(part)
+            if not m or (m.group(2) is None and m.group(1) not in sizes):
+                operands = None
+                break
+            operands.append((m.group(1), None if m.group(2) is None else int(m.group(2))))
+        if not operands:
+            continue
+        widths = {sizes[reg] for reg, idx in operands if idx is None}
+        if len(widths) > 1:
+            continue
+        repeat = widths.pop() if widths else 1
+        for k in range(repeat):
+            apps.append((name, [f"{reg}[{k if idx is None else idx}]" for reg, idx in operands]))
+    return apps
 
 
 def count_qasm_gates_and_depth(qasm_str: str) -> tuple:
-    """Return ``(gate_count, depth)`` for the top-level gate statements of OpenQASM 2.0.
-
-    Depth is greedy layering over literal ``reg[i]`` operands. Statements inside
-    ``gate``/``opaque`` definitions and ``if (...)`` statements are not counted.
-    """
+    """Return ``(gate_count, depth)`` over ``qasm_gate_applications``: one per application,
+    depth by greedy layering over the qubits each application acts on."""
     depth_by_qubit = {}
-    gate_count = 0
-    no_braces = re.sub(r'//.*', '', qasm_str).replace('{', ' ').replace('}', ' ')
-    for stmt in no_braces.split(';'):
-        stmt = stmt.strip()
-        if not stmt:
-            continue
-        words = stmt.split('(', 1)[0].split()
-        if not words or words[0].lower() in _QASM_NON_GATE_KEYWORDS:
-            continue
-        qubits = _QASM_QUBIT_REF_RE.findall(stmt)
-        if not qubits:
-            continue
-        gate_count += 1
-        qubit_keys = [f"{reg}[{idx}]" for reg, idx in qubits]
+    apps = qasm_gate_applications(qasm_str)
+    for _name, qubit_keys in apps:
         layer = max((depth_by_qubit.get(k, 0) for k in qubit_keys), default=0) + 1
         for k in qubit_keys:
             depth_by_qubit[k] = layer
-    return gate_count, max(depth_by_qubit.values(), default=0)
+    return len(apps), max(depth_by_qubit.values(), default=0)
 
 
 def count_qasm_gates_by_name(qasm_str: str) -> tuple:
-    """Return ``({gate name: count}, multi_qubit_count)`` over the same top-level gate
-    statements ``count_qasm_gates_and_depth`` counts; ``multi_qubit_count`` is the number of
-    statements acting on two or more distinct qubits."""
+    """Return ``({gate name: count}, multi_qubit_count)`` over the same applications
+    ``count_qasm_gates_and_depth`` counts; ``multi_qubit_count`` is the number of
+    applications on two or more distinct qubits."""
     counts = {}
     multi_qubit = 0
-    no_braces = re.sub(r'//.*', '', qasm_str).replace('{', ' ').replace('}', ' ')
-    for stmt in no_braces.split(';'):
-        stmt = stmt.strip()
-        if not stmt:
-            continue
-        words = stmt.split('(', 1)[0].split()
-        if not words or words[0].lower() in _QASM_NON_GATE_KEYWORDS:
-            continue
-        qubits = {f"{reg}[{idx}]" for reg, idx in _QASM_QUBIT_REF_RE.findall(stmt)}
-        if not qubits:
-            continue
-        counts[words[0]] = counts.get(words[0], 0) + 1
-        if len(qubits) >= 2:
+    for name, qubit_keys in qasm_gate_applications(qasm_str):
+        counts[name] = counts.get(name, 0) + 1
+        if len(set(qubit_keys)) >= 2:
             multi_qubit += 1
     return dict(sorted(counts.items())), multi_qubit
 

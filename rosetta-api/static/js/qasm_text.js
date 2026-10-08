@@ -18,33 +18,80 @@ export function visibleFormatCharacters(text) {
 }
 
 const _NON_GATE_KEYWORDS = new Set(['openqasm', 'include', 'qreg', 'creg', 'barrier', 'measure', 'reset', 'if', 'gate', 'opaque']);
-const _QUBIT_REF = /([a-zA-Z_][a-zA-Z0-9_]*)\s*\[\s*(\d+)\s*\]/g;
+const _QREG = /\bqreg\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\[\s*(\d+)\s*\]/g;
+const _OPERAND = /^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\[\s*(\d+)\s*\])?\s*$/;
+
+/** Declared quantum registers of OpenQASM 2.0 text and their sizes. */
+export function qregSizes(text) {
+    const sizes = new Map();
+    for (const m of String(text ?? '').replace(/\/\/[^\n]*/g, '').matchAll(_QREG)) sizes.set(m[1], parseInt(m[2], 10));
+    return sizes;
+}
+
+/** The operand list of a gate statement: what follows its name and parameter list. */
+function _operands(stmt, name) {
+    const rest = stmt.slice(stmt.indexOf(name) + name.length).trimStart();
+    if (!rest.startsWith('(')) return rest;
+    let level = 0;
+    for (let i = 0; i < rest.length; i++) {
+        if (rest[i] === '(') level += 1;
+        if (rest[i] === ')') level -= 1;
+        if (level === 0) return rest.slice(i + 1);
+    }
+    return '';
+}
 
 /**
- * Gate count and depth of OpenQASM 2.0 text, counted as qrosetta_commons.helpers
- * count_qasm_gates_and_depth counts them: top-level gate statements on literal reg[i]
- * operands, depth by greedy layering; barriers, measurements, resets, if statements and
- * gate bodies are not counted. Also the statements on two or more distinct qubits.
- * @returns {{ gateCount: number, depth: number, multiQubitGateCount: number }}
+ * Every top-level gate application of OpenQASM 2.0 text as [name, qubit keys], as
+ * qrosetta_commons.helpers.qasm_gate_applications finds them: a statement on whole registers
+ * (`h q;`, `cx a, b;`) is one application per index of the declared registers; gate bodies,
+ * if statements, barriers, measurements and resets are not applications; a statement with an
+ * undeclared whole-register operand, or whole registers of different sizes, is left out.
+ * @returns {[string, string[]][]}
  */
-export function qasmGateMetrics(text) {
-    const depthByQubit = new Map();
-    let gateCount = 0;
-    let multiQubitGateCount = 0;
-    const body = String(text ?? '').replace(/\/\/[^\n]*/g, '').replace(/[{}]/g, ' ');
-    for (const raw of body.split(';')) {
+export function qasmGateApplications(text) {
+    const clean = String(text ?? '').replace(/\/\/[^\n]*/g, '');
+    const sizes = qregSizes(clean);
+    /** @type {[string, string[]][]} */
+    const apps = [];
+    for (const raw of clean.replace(/\{[^{}]*\}/g, ';').split(';')) {
         const stmt = raw.trim();
         if (!stmt) continue;
         const words = stmt.split('(', 1)[0].trim().split(/\s+/).filter(Boolean);
         if (!words.length || _NON_GATE_KEYWORDS.has(words[0].toLowerCase())) continue;
-        const qubits = [...stmt.matchAll(_QUBIT_REF)].map(m => `${m[1]}[${m[2]}]`);
-        if (!qubits.length) continue;
-        gateCount += 1;
+        const name = words[0];
+        let operands = [];
+        for (const part of _operands(stmt, name).split(',')) {
+            const m = part.match(_OPERAND);
+            if (!m || (m[2] === undefined && !sizes.has(m[1]))) { operands = null; break; }
+            operands.push([m[1], m[2] === undefined ? null : parseInt(m[2], 10)]);
+        }
+        if (!operands || !operands.length) continue;
+        const widths = new Set(operands.filter(([, i]) => i === null).map(([reg]) => sizes.get(reg)));
+        if (widths.size > 1) continue;
+        const repeat = widths.size ? [...widths][0] : 1;
+        for (let k = 0; k < repeat; k++) apps.push([name, operands.map(([reg, i]) => `${reg}[${i === null ? k : i}]`)]);
+    }
+    return apps;
+}
+
+/**
+ * Gate count and depth of OpenQASM 2.0 text, counted as qrosetta_commons.helpers
+ * count_qasm_gates_and_depth counts them: one per gate application (whole-register
+ * statements expanded over the declared registers), depth by greedy layering. Also the
+ * applications on two or more distinct qubits.
+ * @returns {{ gateCount: number, depth: number, multiQubitGateCount: number }}
+ */
+export function qasmGateMetrics(text) {
+    const depthByQubit = new Map();
+    let multiQubitGateCount = 0;
+    const apps = qasmGateApplications(text);
+    for (const [, qubits] of apps) {
         const layer = Math.max(0, ...qubits.map(k => depthByQubit.get(k) || 0)) + 1;
         qubits.forEach(k => depthByQubit.set(k, layer));
         if (new Set(qubits).size >= 2) multiQubitGateCount += 1;
     }
-    return { gateCount, depth: Math.max(0, ...depthByQubit.values()), multiQubitGateCount };
+    return { gateCount: apps.length, depth: Math.max(0, ...depthByQubit.values()), multiQubitGateCount };
 }
 
 /** Lines of `text`; a final line break does not start another line. */

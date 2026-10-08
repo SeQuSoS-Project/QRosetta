@@ -182,6 +182,8 @@ _GATE_CORPUS = [
     'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[4];\nh q[0];\ncu1(pi/2) q[1],q[0];\nbarrier q;\nswap q[0],q[3];\n',
     'qreg a[2]; qreg b[1]; creg c[2];\ngate g(t) x, y { cx x, y; rz(t) y; }\ng(0.3) a[0], b[0]; // h a[1];\nmeasure a -> c;\nreset a[0];\nif (c==1) x a[1];\n',
     'qreg q[3];\nccx q[0],q[1],q[2]; cx q[0], q[0];\nU(0.1,0.2,0.3) q[ 2 ];\nopaque o q;\nBARRIER q[0];\n',
+    'qreg a[3]; qreg b[3]; qreg c[2];\nh a; cx a, b; cx a[0], b; u3(pi/2, 0, pi) c;\ncx a, c;\nx d;\n',
+    'qreg q [2];\ngate bell x, y { h x; cx x, y; }\nbell q[0], q[1]; h q;\n',
     '',
 ]
 
@@ -193,6 +195,18 @@ def test_browser_gate_counter_matches_the_python_counter():
         gates, depth = count_qasm_gates_and_depth(text)
         _, multi = count_qasm_gates_by_name(text)
         assert got == {"gateCount": gates, "depth": depth, "multiQubitGateCount": multi}, text
+
+
+def test_whole_register_statements_count_once_per_index():
+    gates, depth = count_qasm_gates_and_depth('qreg a[3]; qreg b[3];\nh a; cx a, b;\n')
+    by_name, multi = count_qasm_gates_by_name('qreg a[3]; qreg b[3];\nh a; cx a, b;\n')
+    assert (gates, depth, by_name, multi) == (6, 2, {"cx": 3, "h": 3}, 3)
+
+
+@requires_node
+def test_editor_badge_reads_registers_with_spaces_and_several_registers():
+    stats = call_js(["config.js"], [("_parseQasmStats", ['qreg q [2];\nqreg r[ 3 ];\nh q; x r[1];\n'])])[0]
+    assert stats == {"qubits": 5, "gates": 3}
 
 
 @requires_node
