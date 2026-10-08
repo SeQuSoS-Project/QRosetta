@@ -922,3 +922,23 @@ class TestCommitPinnedUrlsAndStatevectorFingerprints:
         out = _crate_results(build_ro_crate(_make_ctx(results=results)))
         assert all(r["statevector_sha256"] == "ab" * 32 and r["statevector_length"] == 8
                    for r in out["raw_results"])
+
+
+class TestRunConfigurationTimingSettings:
+    def test_exclusive_timing_and_effective_phases_are_recorded(self):
+        results = json.loads(json.dumps(SAMPLE_RESULTS_SV))
+        results.update({"exclusive": True, "timing_repeats": 5, "timing_statistic": "median",
+                        "runner_phases": {}})
+        for i, r in enumerate(results["raw_results"]):
+            r["dispatch_phase"] = i + 1
+        config = _provenance(build_ro_crate(_make_ctx(results=results)))["run_configuration"]
+        assert config["exclusive"] is True and config["timing_repeats"] == 5
+        assert config["timing_statistic"] == "median"
+        assert config["runner_phases"] == {}
+        assert config["effective_runner_phases"] == {"qiskit": 1, "cirq": 2}
+
+    def test_a_recorded_phase_plan_is_used_as_is(self):
+        results = json.loads(json.dumps(SAMPLE_RESULTS_SV))
+        results["effective_runner_phases"] = {"qiskit": 2}
+        config = _provenance(build_ro_crate(_make_ctx(results=results)))["run_configuration"]
+        assert config["effective_runner_phases"] == {"qiskit": 2}

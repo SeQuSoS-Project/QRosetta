@@ -42,7 +42,8 @@ NOT_RECORDED = "not recorded"
 
 _RUN_CONFIG_FIELDS = (
     "execution_mode", "platform_version", "git_sha", "image_digests", "apply_preprocessing",
-    "optimization_level", "runner_config", "runner_phases", "timeout_seconds",
+    "optimization_level", "runner_config", "runner_phases", "effective_runner_phases",
+    "exclusive", "timeout_seconds", "timing_repeats", "timing_statistic",
     "timeout_scope", "agreement_thresholds", "n_shots", "seed", "seed_derivation",
     "bypass_limits", "started_at", "finished_at",
 )
@@ -543,6 +544,12 @@ def _run_configuration(ctx: ExportContext) -> dict:
         requested if requested is not None else "none (defaults applied)")
     config["analysis_version"] = _analysis_version(ctx)
     tasks = _iter_tasks(ctx)
+    if config.get("effective_runner_phases") == NOT_RECORDED:
+        phases = {r["simulator"]: r["dispatch_phase"] for t in tasks[:1]
+                  for r in t.report.get("raw_results") or []
+                  if isinstance(r, dict) and r.get("simulator") and "dispatch_phase" in r}
+        if phases:
+            config["effective_runner_phases"] = phases
     if any(t.task_id is not None for t in tasks):
         config["agreement_thresholds_by_task"] = {
             t.task_id: _task_effective_thresholds(ctx, t, requested) for t in tasks}
