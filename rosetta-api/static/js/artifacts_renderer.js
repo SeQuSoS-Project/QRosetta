@@ -426,7 +426,7 @@ function _paintFigure(paper, figId, params) {
         paper.innerHTML = '';
         const img = el('img', 'block w-full h-auto');
         img.src = url;
-        img.alt = VIEW_UI_BY_ID[S.viewId].label;
+        img.alt = `${VIEW_UI_BY_ID[S.viewId].label}${VIEW_BY_ID[S.viewId]?.table ? '. The plotted values are in the Table tab of this view.' : ''}`;
         paper.append(img);
         S.lastFigure = { view: S.viewId, url };
     };

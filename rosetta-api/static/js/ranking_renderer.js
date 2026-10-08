@@ -256,7 +256,7 @@ function _fillValueCell(td, cell, column, fmt) {
     td.textContent = fmtColumn(cell.value, fmt);
     if (cell.n > 1) {
         const sub = document.createElement('div');
-        sub.className = 'text-[10px] font-sans font-normal text-gray-400';
+        sub.className = 'text-[10px] font-sans font-normal text-gray-500';
         const sd = cell.sd !== null && cell.sd !== undefined ? `± ${fmtColumn(cell.sd, fmt)}` : '';
         sub.textContent = fmt.showN === false ? sd : [sd, `n=${cell.n}`].filter(Boolean).join(' · ');
         td.appendChild(sub);
@@ -371,7 +371,7 @@ export function renderRankingTable(report, key, unit, panel, config = {}, rawRes
         const tr = document.createElement('tr');
         tr.className = 'bg-gray-50';
         const rankTd = document.createElement('td');
-        rankTd.className = 'px-2 py-2 text-xs text-gray-400 align-top';
+        rankTd.className = 'px-2 py-2 text-xs text-gray-500 align-top';
         rankTd.textContent = 'not ranked';
         tr.appendChild(rankTd);
         const simTd = document.createElement('td');

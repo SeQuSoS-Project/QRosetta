@@ -66,13 +66,13 @@ function _chip(cfg, seconds, key) {
     wrap.className = `inline-flex items-center gap-1.5 font-medium ${cfg.text}`;
     if (cfg.hint) wrap.title = cfg.hint;
     const dot = document.createElement('span');
-    dot.className = `w-2 h-2 rounded-full ${cfg.color}${cfg.pulse ? ' animate-pulse' : ''}`;
+    dot.className = `w-2 h-2 rounded-full ${cfg.color}${cfg.pulse ? ' animate-pulse motion-reduce:animate-none' : ''}`;
     const label = document.createElement('span');
     label.textContent = cfg.label;
     wrap.append(dot, label);
     if (cfg.untimed) return wrap;
     const time = document.createElement('span');
-    time.className = 'text-gray-400 font-normal';
+    time.className = 'text-gray-500 font-normal';
     time.textContent = `${seconds} s`;
     if (!cfg.terminal) time.dataset.since = key;
     wrap.append(time);
@@ -100,7 +100,7 @@ function _ensureRows(group, keys) {
 function _setStatus(tableNode, key, chip) {
     const cell = tableNode.querySelector(`tr[data-key="${CSS.escape(key)}"] .qr-status-cell`);
     if (!cell) return;
-    cell.classList.remove('text-gray-300');
+    cell.classList.remove('text-gray-500');
     cell.replaceChildren(chip);
 }
 
@@ -160,7 +160,8 @@ function _renderProgress() {
     if (backends.length) parts.push(`${_finishedText(s, backends, noun)}${p ? ' on the current circuit' : ''}`);
     if (compiles.length) parts.push(_finishedText(s, compiles, 'compile'));
     if (analysing) parts.push('analysing results');
-    host.textContent = parts.length ? `${parts.join(' · ')} ·` : '';
+    host.textContent = parts.join(' · ');
+    _el('loader-progress-sep')?.classList.toggle('hidden', !parts.length);
 }
 
 /**
@@ -202,6 +203,7 @@ export function endRunView() {
     if (_view) clearInterval(_view.timer);
     _view = null;
     ['loader-tabs', 'runner-status-grid', 'batch-progress', 'loader-progress', 'loader-kicker'].forEach(id => _el(id)?.replaceChildren());
+    _el('loader-progress-sep')?.classList.add('hidden');
 }
 
 /** Each runner key's live status (`queued`, `running`, `done`, ...), from the job poll. */

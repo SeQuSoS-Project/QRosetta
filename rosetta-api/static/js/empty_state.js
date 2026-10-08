@@ -92,7 +92,7 @@ function _el(tag, className, text) {
 export function greyTabs(labels) {
     const nav = _el('div', 'flex flex-wrap border-b border-gray-200');
     nav.setAttribute('aria-hidden', 'true');
-    labels.forEach(label => nav.appendChild(_el('span', 'ml-4 px-3 py-3 font-medium text-sm border-b-2 border-transparent text-gray-300 select-none', label)));
+    labels.forEach(label => nav.appendChild(_el('span', 'ml-4 px-3 py-3 font-medium text-sm border-b-2 border-transparent text-gray-300 select-none qr-placeholder-tab', label)));
     return nav;
 }
 
@@ -118,7 +118,7 @@ export function placeholderTable(table) {
         const th = _el('th', 'px-2 py-1 text-left font-medium text-gray-700 whitespace-nowrap', name);
         th.scope = 'row';
         tr.appendChild(th);
-        cells.forEach((c, j) => tr.appendChild(_el('td', `px-2 py-1 text-gray-300 whitespace-nowrap${j === 0 ? ' qr-status-cell' : ''}`, c)));
+        cells.forEach((c, j) => tr.appendChild(_el('td', `px-2 py-1 text-gray-500 whitespace-nowrap${j === 0 ? ' qr-status-cell' : ''}`, c)));
         tbody.appendChild(tr);
     });
     el.appendChild(tbody);
@@ -133,7 +133,7 @@ export function renderEmptyState(container, model, { onExample }) {
     if (model.tabs.length) parts.push(greyTabs(model.tabs));
 
     const body = _el('div', 'p-4');
-    body.appendChild(_el('p', 'text-xs font-medium uppercase tracking-wide text-gray-400', model.kicker));
+    body.appendChild(_el('p', 'text-xs font-medium uppercase tracking-wide text-gray-500', model.kicker));
     body.appendChild(_el('h2', 'text-xl font-semibold text-gray-900 mt-1', model.title));
     body.appendChild(_el('p', 'text-sm text-gray-600 mt-1 mb-4', model.text));
     if (model.table) body.appendChild(placeholderTable(model.table));

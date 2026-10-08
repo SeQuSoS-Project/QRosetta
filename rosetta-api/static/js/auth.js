@@ -6,6 +6,8 @@ import { setSideLoading } from './utils.js';
 import { charCount } from './request_limits.js';
 import { announceWorkspaceChange } from './dom.js';
 import { readPref, writePref } from './session_store.js';
+import { closeModal, isModalOpen, openModal } from './modal.js';
+import { announce } from './announce.js';
 
 const SKEW_KEY = 'rosetta_token_clock_skew_ms';
 
@@ -17,29 +19,58 @@ export function onNextLogin(cb) {
     _afterLogin = cb;
 }
 
+const _FIELDS = { login: ['login-email', 'login-password'], register: ['register-email', 'register-password'] };
+
 export function openAuthModal() {
-    document.getElementById('auth-modal').classList.remove('hidden');
-    toggleAuthMode('login');
+    const modal = document.getElementById('auth-modal');
+    _setMode('login');
+    openModal(modal, { initialFocus: '#login-email', onEscape: closeAuthModal });
 }
 
 export function closeAuthModal() {
-    document.getElementById('auth-modal').classList.add('hidden');
-    document.getElementById('login-email').value = '';
-    document.getElementById('login-password').value = '';
-    document.getElementById('register-email').value = '';
-    document.getElementById('register-password').value = '';
-    document.getElementById('login-error').classList.add('hidden');
-    document.getElementById('register-error').classList.add('hidden');
+    const modal = document.getElementById('auth-modal');
+    [..._FIELDS.login, ..._FIELDS.register].forEach(id => { /** @type {HTMLInputElement} */ (document.getElementById(id)).value = ''; });
+    _clearAuthError('login');
+    _clearAuthError('register');
+    if (isModalOpen(modal)) {
+        closeModal(modal, { returnFocus: getState().authToken ? '#account-menu summary' : '#btn-login-modal' });
+    } else {
+        modal.classList.add('hidden');
+    }
+}
+
+/** Show the login or the register form; the dialog takes that form's heading as its name. */
+function _setMode(mode) {
+    const login = mode === 'login';
+    document.getElementById('login-form-container').classList.toggle('hidden', !login);
+    document.getElementById('register-form-container').classList.toggle('hidden', login);
+    document.getElementById('auth-modal').setAttribute('aria-labelledby', login ? 'auth-modal-title' : 'register-modal-title');
+    _clearAuthError(login ? 'register' : 'login');
 }
 
 export function toggleAuthMode(mode) {
-    if (mode === 'login') {
-        document.getElementById('login-form-container').classList.remove('hidden');
-        document.getElementById('register-form-container').classList.add('hidden');
-    } else {
-        document.getElementById('login-form-container').classList.add('hidden');
-        document.getElementById('register-form-container').classList.remove('hidden');
-    }
+    _setMode(mode);
+    /** @type {HTMLElement|null} */ (document.getElementById(mode === 'login' ? 'login-email' : 'register-email'))?.focus();
+}
+
+/** Show `message` in the login or register form's error box and mark `fields` (input ids) invalid. */
+function _showAuthError(mode, message, fields = _FIELDS[mode]) {
+    const box = document.getElementById(`${mode}-error`);
+    box.textContent = message;
+    box.classList.remove('hidden');
+    _FIELDS[mode].forEach(id => {
+        const input = document.getElementById(id);
+        if (fields.includes(id)) input.setAttribute('aria-invalid', 'true');
+        else input.removeAttribute('aria-invalid');
+    });
+    /** @type {HTMLElement|null} */ (document.getElementById(fields[0]))?.focus();
+}
+
+function _clearAuthError(mode) {
+    const box = document.getElementById(`${mode}-error`);
+    box.textContent = '';
+    box.classList.add('hidden');
+    _FIELDS[mode].forEach(id => document.getElementById(id).removeAttribute('aria-invalid'));
 }
 
 /** The claims of a JWT (`sub`, `exp` in seconds), or null when it cannot be read. */
@@ -139,16 +170,14 @@ export function updateAuthUI() {
 export async function handleLoginSubmit() {
     const email = document.getElementById('login-email').value.trim();
     const password = document.getElementById('login-password').value;
-    const errorDiv = document.getElementById('login-error');
 
     if (!email || !password) {
-        errorDiv.textContent = "Email and password are required.";
-        errorDiv.classList.remove('hidden');
+        _showAuthError('login', "Email and password are required.", _FIELDS.login.filter(id => !document.getElementById(id).value.trim()));
         return;
     }
 
     setSideLoading(true, "Logging in...");
-    errorDiv.classList.add('hidden');
+    _clearAuthError('login');
 
     try {
         const requestToken = (pw) => fetch(`${BASE_URL}/auth/token`, {
@@ -172,13 +201,13 @@ export async function handleLoginSubmit() {
 
         updateAuthUI();
         closeAuthModal();
+        announce(`Signed in as ${email}.`);
         const next = _afterLogin;
         _afterLogin = null;
         if (next) next();
 
     } catch (e) {
-        errorDiv.textContent = e.message;
-        errorDiv.classList.remove('hidden');
+        _showAuthError('login', e.message);
     } finally {
         setSideLoading(false);
     }
@@ -187,27 +216,25 @@ export async function handleLoginSubmit() {
 export async function handleRegisterSubmit() {
     const email = document.getElementById('register-email').value.trim();
     const password = document.getElementById('register-password').value;
-    const errorDiv = document.getElementById('register-error');
 
     if (!email || !password) {
-        errorDiv.textContent = "Email and password are required.";
-        errorDiv.classList.remove('hidden');
+        _showAuthError('register', "Email and password are required.", _FIELDS.register.filter(id => !document.getElementById(id).value.trim()));
         return;
     }
     const { emailMaxLength, passwordMinChars, passwordMaxBytes } = getState();
-    const problem = charCount(email) > emailMaxLength ? `The email address can have at most ${emailMaxLength} characters.`
-        : charCount(password) < passwordMinChars ? `The password needs at least ${passwordMinChars} characters.`
+    const emailProblem = charCount(email) > emailMaxLength ? `The email address can have at most ${emailMaxLength} characters.` : null;
+    const problem = emailProblem
+        || (charCount(password) < passwordMinChars ? `The password needs at least ${passwordMinChars} characters.`
         : new TextEncoder().encode(password).length > passwordMaxBytes
             ? `The password can be at most ${passwordMaxBytes} bytes long (UTF-8; most accented letters and symbols take two or more bytes).`
-            : null;
+            : null);
     if (problem) {
-        errorDiv.textContent = problem;
-        errorDiv.classList.remove('hidden');
+        _showAuthError('register', problem, [emailProblem ? 'register-email' : 'register-password']);
         return;
     }
 
     setSideLoading(true, "Creating account...");
-    errorDiv.classList.add('hidden');
+    _clearAuthError('register');
 
     try {
         const payload = { email: email, password: password };
@@ -223,14 +250,13 @@ export async function handleRegisterSubmit() {
             throw new Error(apiDetailText(data.detail) || `Registration failed (HTTP ${res.status}).`);
         }
 
-        toggleAuthMode('login');
+        _setMode('login');
         document.getElementById('login-email').value = email;
         document.getElementById('login-password').value = password;
         await handleLoginSubmit();
 
     } catch (e) {
-        errorDiv.textContent = e.message;
-        errorDiv.classList.remove('hidden');
+        _showAuthError('register', e.message);
     } finally {
         setSideLoading(false);
     }
@@ -238,9 +264,12 @@ export async function handleRegisterSubmit() {
 
 /** Sign out; the signed-out account's results and saved runs leave the screen. */
 export function handleLogout() {
+    const hadFocus = document.getElementById('user-profile')?.contains(document.activeElement);
     _setToken(null);
     updateAuthUI();
     document.dispatchEvent(new Event('signed-out'));
+    if (hadFocus) /** @type {HTMLElement|null} */ (document.getElementById('btn-login-modal'))?.focus();
+    announce('Signed out.');
 }
 
 export async function verifySession() {

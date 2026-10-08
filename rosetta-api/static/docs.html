@@ -18,7 +18,8 @@
         .doc-prose code { background: #eef2ff; color: #3730a3; padding: .1rem .35rem; border-radius: .3rem; font-size: .85em; }
         .doc-prose pre { background: #0b1020; color: #e5e7eb; padding: 1rem; border-radius: .6rem; overflow-x: auto; font-size: .82rem; margin-bottom: 1rem; }
         .doc-prose pre code { background: none; color: inherit; padding: 0; }
-        .doc-prose table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; font-size: .9rem; }
+        .doc-prose .table-scroll { overflow-x: auto; margin-bottom: 1rem; }
+        .doc-prose table { width: 100%; border-collapse: collapse; font-size: .9rem; }
         .doc-prose th, .doc-prose td { border: 1px solid #e5e7eb; padding: .5rem .7rem; text-align: left; vertical-align: top; }
         .doc-prose thead th { background: #eef2ff; color: #312e81; font-weight: 600; }
         .toc-link.active { color: var(--accent); font-weight: 600; border-left-color: var(--accent); }
@@ -33,7 +34,7 @@
     <header class="fixed top-0 inset-x-0 z-40 bg-white/90 backdrop-blur border-b border-gray-200">
         <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
             <a href="index.html" class="flex items-center gap-2 font-semibold text-indigo-900">
-                <span class="text-xl">⚛</span> QRosetta <span class="text-gray-400 font-normal text-sm">Docs</span>
+                <span class="text-xl">⚛</span> QRosetta <span class="text-gray-500 font-normal text-sm">Docs</span>
             </a>
             <a href="index.html"
                 class="text-sm font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1.5 rounded-md border border-indigo-200 transition-colors">
@@ -46,7 +47,7 @@
         <!-- Sidebar TOC -->
         <nav aria-label="Table of contents"
             class="hidden lg:block w-56 flex-shrink-0 sticky top-24 self-start max-h-[calc(100vh-7rem)] overflow-y-auto">
-            <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">On this page</p>
+            <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">On this page</p>
             <ul class="space-y-1 text-sm border-l border-gray-200">
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#what">Overview</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#quickstart">Quickstart: your first run</a></li>
@@ -179,7 +180,7 @@
 
             <section id="modes">
                 <h2>Run modes</h2>
-                <table>
+                <div class="table-scroll"><table>
                     <thead><tr><th>Mode</th><th>What each backend returns</th><th>How QRosetta compares</th></tr></thead>
                     <tbody>
                         <tr>
@@ -195,7 +196,7 @@
                                 statistical test.</td>
                         </tr>
                     </tbody>
-                </table>
+                </table></div>
                 <p>
                     Before a run starts, the API rejects with HTTP 400, naming the line: text that does not
                     start with <code>OPENQASM 2.0;</code> (the short form <code>OPENQASM 2;</code> included);
@@ -435,7 +436,8 @@
                     The editor's <em>Visualize</em> button converts the circuit in the editor to Quirk's JSON format
                     (<code>POST /visualize/quirk</code>) and opens it in Craig Gidney's Quirk, an external
                     web page, in a frame that covers the whole window, with <strong>Open in Quirk</strong>
-                    (the same page in a new tab) and <strong>Close</strong> (or Escape) above it. Quirk's
+                    (the same page in a new tab) and <strong>Close</strong> (or Escape) above it. While the
+                    keyboard is inside the Quirk frame, Quirk receives Escape; Tab out of the frame or use Close. Quirk's
                     page is wider than a phone or tablet screen and scrolls sideways inside the frame. The
                     conversion covers the gates Quirk has; a circuit with other gates shows an error instead.
                 </p>
@@ -446,7 +448,7 @@
                 <p>
                     One press of the run button can start more than one job:
                 </p>
-                <table>
+                <div class="table-scroll"><table>
                     <thead><tr><th>Choice under Run and Mode</th><th>Request</th></tr></thead>
                     <tbody>
                         <tr><td>Editor code, Statevector or Measured</td><td><code>POST /compare</code> or <code>POST /compare_measured</code></td></tr>
@@ -455,7 +457,7 @@
                         <tr><td>Compile-only services chosen in their chip, with neither Statevector nor Measured ticked</td><td>The same endpoint with <code>simulate: false</code>: only the compile-only services run, and the report records <code>simulated: false</code></td></tr>
                         <tr><td>SDK Preprocessing chip → Both</td><td><code>POST /experiments</code>, below</td></tr>
                     </tbody>
-                </table>
+                </table></div>
                 <p>
                     When there are two jobs, a row above the tabs switches between their results. A batch
                     shares one master seed, and because a backend's <code>runner_seed</code> is derived from
@@ -542,7 +544,7 @@
                     (<code>metrics.basis_source</code> says which rule applied). The labels fall into three
                     groups.
                 </p>
-                <table>
+                <div class="table-scroll"><table>
                     <thead><tr><th>Group</th><th>Label</th><th>Meaning</th></tr></thead>
                     <tbody>
                         <tr><td rowspan="3">Agree</td><td><code>agree_directly</code></td><td>Same orderings; outputs match with no transform.</td></tr>
@@ -554,9 +556,9 @@
                         <tr><td>Note</td><td><code>agree_after_normalization</code></td><td>An agreement with a note: at least one input statevector has a norm differing from 1 by more than <code>norm_tolerance</code>, and the normalised vectors agree. <code>metrics.normalized_agreement</code> holds the label the normalised pair receives (for example <code>agree_directly</code>), and the UI groups the pair by that label.</td></tr>
                         <tr><td>—</td><td><code>not_comparable</code></td><td>At least one side lacks usable output; the pair cannot be compared. <code>metrics.reason</code> names the cause (see the <a href="#glossary">glossary</a>).</td></tr>
                     </tbody>
-                </table>
+                </table></div>
                 <h3>Measured labels</h3>
-                <table>
+                <div class="table-scroll"><table>
                     <thead><tr><th>Label</th><th>Meaning</th></tr></thead>
                     <tbody>
                         <tr><td><code>distance_within_threshold</code></td><td>Same declared bit orders, or keys of one classical bit (<code>metrics.basis_source: "single_bit"</code>, where bit reversal changes nothing); distributions within the JS-divergence and Hellinger thresholds (descriptive; the statistical test gives the significance verdict).</td></tr>
@@ -565,14 +567,14 @@
                         <tr><td><code>distance_exceeds_threshold</code></td><td>Distributions exceed the thresholds in the basis the declared bit orders imply. With <code>metrics.unaligned_basis_match</code> they are within the thresholds only in the other basis (after bit reversal although the orders are the same, or directly although they differ), as in statevector mode; without it no qubit permutation brings them within.</td></tr>
                         <tr><td><code>not_comparable</code></td><td>At least one side lacks usable output; <code>metrics.reason</code> names the cause.</td></tr>
                     </tbody>
-                </table>
+                </table></div>
                 <p>
                     The measured labels are descriptive distance checks, and at small shot counts two
                     samples of the same distribution routinely exceed them. Whether a measured pair
                     disagrees is decided by its <code>measured_assessment</code>, derived from the
                     <a href="#stat">shot-noise test</a>:
                 </p>
-                <table>
+                <div class="table-scroll"><table>
                     <thead><tr><th><code>measured_assessment</code></th><th>Meaning</th></tr></thead>
                     <tbody>
                         <tr><td><code>consistent_within_shot_noise</code></td><td>Neither test is significant after Benjamini–Yekutieli (BY) correction, and the power to detect a total-variation gap of 0.05, computed at α/(m·c_m), is at least 0.8. This holds even when the label is <code>distance_exceeds_threshold</code>. It is a failure to find a difference at that power, not a demonstration that the distributions are equal.</td></tr>
@@ -581,7 +583,7 @@
                         <tr><td><code>ambiguous</code></td><td>Exactly one of the two tests is significant. Treated as inconclusive, not as a disagreement.</td></tr>
                         <tr><td><code>not_comparable</code></td><td>The pair has no usable counts on at least one side.</td></tr>
                     </tbody>
-                </table>
+                </table></div>
                 <p>
                     For a report without <code>measured_assessment</code>, the UI reads
                     <code>metrics.statistical_test.verdict</code> instead
@@ -801,7 +803,7 @@
                     disagreement with <code>unaligned_basis_match</code>: either a label below is wrong or a
                     gate defect mimics a reversal.
                 </p>
-                <table>
+                <div class="table-scroll"><table>
                     <thead><tr><th>Backend</th><th>Statevector</th><th>Measured</th></tr></thead>
                     <tbody>
                         <tr><td>Qiskit (Aer)</td><td>lsb</td><td>lsb</td></tr>
@@ -810,7 +812,7 @@
                         <tr><td>Cirq, qsim, Qulacs, QuEST, PennyLane (both), Qibo, myQLM, PyQuil, TorchQuantum, quimb</td><td>msb</td><td>msb</td></tr>
                         <tr><td>Braket, ProjectQ (disabled)</td><td>msb</td><td>msb</td></tr>
                     </tbody>
-                </table>
+                </table></div>
                 <h3>Counts keys</h3>
                 <p>
                     A counts key is a bitstring over every classical bit the circuit declares, including
@@ -1319,7 +1321,7 @@
                     partitions), so its output would depend on machine load rather than on the circuit
                     and settings.
                 </p>
-                <table>
+                <div class="table-scroll"><table>
                     <thead><tr><th>Compiler</th><th>Levels</th><th>What runs</th></tr></thead>
                     <tbody>
                         <tr><td>BQSKit 1.2.1</td><td>1, 2, 3</td><td><code>bqskit.compile</code> at that
@@ -1460,7 +1462,7 @@
                             <code>-ffast-math</code>. Every output is checked against the input with Qiskit;
                             final measurements are kept, mid-circuit measurement is refused.</td></tr>
                     </tbody>
-                </table>
+                </table></div>
                 <p>
                     Each compiler image has a self-test (<code>python main.py --self-test</code>) that compiles
                     five probe circuits at every level (six for QMAP, Q-Synth and Quartz, which also compile
@@ -1488,19 +1490,28 @@
 
             <section id="reading">
                 <h2>Reading the results</h2>
-                <table>
+                <p>
+                    With the keyboard: the first Tab stop is <em>Skip to the workspace</em>. Login, History,
+                    Auto-Gen and the Quirk view open as dialogs that keep the keyboard inside them until they
+                    close (Escape or their Close or Cancel button), after which focus returns to the button
+                    that opened them. When a run finishes, focus moves to the heading of its results and a
+                    screen reader hears the first lines of the headline, or the error. Badges and labels that
+                    carry a tooltip take one Tab stop per table row; Left and Right arrows move between them,
+                    and the tooltip stays open while the pointer is on it.
+                </p>
+                <div class="table-scroll"><table>
                     <thead><tr><th>Tab</th><th>What it shows</th></tr></thead>
                     <tbody>
                         <tr><td>Summary</td><td>A headline, then a Backends table, then the evidence. The headline says how many backends returned a result, names failed ones as Offline, Error or Timeout, and names the backends that differ from the others. It is built from the pairs that differ; an inconclusive pair counts as neither agreement nor difference. When one set of at most four backends, fewer than half of those with a result, is the only set of that size that appears in every pair that differs, those backends are named with how many backends they differ from ("Qibo differs from all 13 other backends"; "Qrisp differs from 7 of 13 other backends"; backends in that set that agree with each other are named together: "PL Default and PL Lightning agree with each other and differ from every other backend (12)"), followed by a sentence about the other backends, among which no pair differs. Otherwise, when the backends that differ from at least one other split into two to four groups, at least two of them with two or more members, with no differing pair inside a group and every compared pair between groups differing, the groups are listed as differing from each other; a backend that differs from none is named apart. Otherwise up to four differing pairs are listed by name, and in measured mode, when each backend of these pairs differs from no other, the headline suggests rerunning with more shots, since a single flagged pair can be a chance result. Otherwise the backends that differ from more than half of those they were compared with are named, then the differing pairs among the others. Each named backend or group carries the size of its largest difference: the lowest label-aligned fidelity (statevector) or the largest total variation (measured) over its differing pairs. In a multi-run report the same sentences count runs ("all 4 PL Default runs"). Red in the Backends table marks exactly the backends the headline names as differing. A measured pair that is distinguishable under Benjamini–Yekutieli but not under Holm's family-wise correction, and has no differing single-bit marginal, is listed on its own line as significant under BY only and does not shape the headline; when one backend is in every such pair (two or more), the headline names it as distinguishable under Benjamini–Yekutieli but not under Holm. "No single-bit marginal differs" is said only when the marginal test ran (it needs keys of two or more bits). It uses the same rule as the pair badges: a statevector pair differs when it disagrees (<a href="#taxonomy">Agreement classification</a>); a measured pair differs when it is distinguishable beyond shot noise or a single-bit marginal differs. In measured mode the full-distribution and marginal counts are given apart, and the number of inconclusive pairs with the shots the power model asks for ("at least" when the recommendation is a lower bound, see <code>recommendation_is_lower_bound</code>). When backends timed out, the next step suggests raising the timeout unless the run already used the server maximum. A pair that differs shows that one of the two is wrong; the report does not decide which. The Backends table gives per backend its status, how many backends it differs from (hover for the names and the size of its largest difference; red for the backends the headline names, gray for the others, with pairs significant under BY only added as "+N BY only"), in measured mode how many it is inconclusive with, its declared bit order, precision, total time and peak memory. <strong>Evidence</strong> follows, with a legend for the mode: statevector pairs in the three label groups; measured pairs grouped only by <code>measured_assessment</code>, each pair once with its JS/Hellinger distance label as detail; pairs whose single-bit marginals differ in their own block; inconclusive pairs split by cause; not comparable pairs with the reason. A block of differing pairs that involves a backend listed under <a href="#known-issues">Known backend issues</a> links that section, naming those backends; whether the documented behaviour explains a given circuit is left to the reader. Lists of differing pairs are never folded and are ordered by the backend they share; lists of agreeing pairs over twelve items are folded. Power is shown to three decimals with the α/(m·c_m), m and c_m it was computed at. A collapsible section lists the analysis version and git commit, then per-backend run details. A compile-only run (<code>simulated: false</code>) shows a headline naming the compiles that were refused, rejected by their output check, not run, timed out or failed, then its compile records; a compile-only Playlist run shows one row per circuit with the compiles that returned a circuit and those that did not.</td></tr>
                         <tr><td>Performance</td><td>Times, then memory: ranked successful runs, then the unranked runs with their status and reason. A run on a GPU carries a GPU tag under its name (hover for the GPU); the header says when every run was on a CPU. Each column uses one number format: fixed decimals chosen so its smallest value shows three significant digits, or scientific notation throughout when a value is below 1e-6. The header names conditions in this run that can bias a comparison (backends ran at the same time, other jobs on the server, throttling, unstable repetitions, CPUs of different speeds, one timed run per backend); "How these times are measured" gives the details. With Timing repeats above 1, each time cell shows the median with ± the sample standard deviation below it; the header gives the number of timed runs when every backend had the same, and each cell gives n when they differ. Process Peak RSS includes interpreter start, SDK imports and the warm-up run, so for small circuits it is mostly the SDK footprint. Tooltips on each column give the measurement window; they open on hover, keyboard focus or tap.</td></tr>
                         
-                        <tr><td>Agreement</td><td>Counts per label, a heatmap with one cell per pair (coloured by the same verdict as the Summary; click a cell to open its evidence), and the evidence per pair: label, metrics, tolerances, statistical test and provenance (seeds, ordering, SDK versions, preprocessing). Labels are shown in words with the recorded code in the tooltip; the pair list can be filtered by verdict and by backend. Each statevector row shows the fidelity under the transform its label names; for a pair that disagrees it is the fidelity in the basis the declared orderings imply (F(bit-rev) for an <code>lsb</code>×<code>msb</code> pair), with the other basis' value added when the pair matches only there, and a pair that agrees up to a global phase shows that phase, also after the declared bit reversal. Agreement after the declared bit reversal is blue on badges, legends, heatmap and export charts. A measured row leads with its shot-noise assessment; its JS/Hellinger distance label follows in gray after "distance:", which describes the distance and does not decide agreement. <strong>Divergence matrices</strong> (collapsed) hold the N×N fidelity, global phase offset arg⟨a|b⟩, JS-divergence (nats) and Hellinger values. Each number is the direct value, before any bit reversal; for a pair compared after the bit reversal its declared orderings imply, the value in that basis is shown below it with ↺. Cells are coloured by the pair's verdict, not by the number, so an <code>lsb</code>×<code>msb</code> pair that agrees after the declared reversal is coloured as agreeing although its direct fidelity is low. OFF, ERR and T/O mark failed runs, n/c a pair that is not comparable. Cells are rounded for display: four decimals, more for a fidelity that would otherwise round to 1, and three significant digits in scientific notation below 1e-3. Hover a cell for the unrounded value.</td></tr>
+                        <tr><td>Agreement</td><td>Counts per label, a heatmap with one cell per pair (coloured by the same verdict as the Summary, with a symbol per class that the key below repeats: = agree or consistent within shot noise, φ agree up to a global phase, ↺ agree after the declared bit reversal, P agree only after a qubit permutation, N agree after normalisation, ≠ disagree or distinguishable, ? inconclusive, – not comparable; click a cell to open its evidence), and the evidence per pair: label, metrics, tolerances, statistical test and provenance (seeds, ordering, SDK versions, preprocessing). Labels are shown in words with the recorded code in the tooltip; the pair list can be filtered by verdict and by backend. Each statevector row shows the fidelity under the transform its label names; for a pair that disagrees it is the fidelity in the basis the declared orderings imply (F(bit-rev) for an <code>lsb</code>×<code>msb</code> pair), with the other basis' value added when the pair matches only there, and a pair that agrees up to a global phase shows that phase, also after the declared bit reversal. Agreement after the declared bit reversal is blue on badges, legends, heatmap and export charts. A measured row leads with its shot-noise assessment; its JS/Hellinger distance label follows in gray after "distance:", which describes the distance and does not decide agreement. <strong>Divergence matrices</strong> (collapsed) hold the N×N fidelity, global phase offset arg⟨a|b⟩, JS-divergence (nats) and Hellinger values. Each number is the direct value, before any bit reversal; for a pair compared after the bit reversal its declared orderings imply, the value in that basis is shown below it with ↺. Cells are coloured by the pair's verdict, not by the number, so an <code>lsb</code>×<code>msb</code> pair that agrees after the declared reversal is coloured as agreeing although its direct fidelity is low. OFF, ERR and T/O mark failed runs, n/c a pair that is not comparable. Cells are rounded for display: four decimals, more for a fidelity that would otherwise round to 1, and three significant digits in scientific notation below 1e-3. Hover a cell for the unrounded value.</td></tr>
                         <tr><td>Circuits</td><td>A table of the circuit texts the run recorded, one row per distinct text: rows that list several backends are byte-for-byte the same text with the same recorded gate count and depth. Each row gives the lines, gates, depth and the lines added and removed against the text it was derived from; View shows that text below the table, with its notes, and puts it on side B of the diff (side A becomes the text it was derived from when A was the same text). Gates and depth of the submitted circuit, the dispatched circuits and the compiler input are counted in the browser the same way as for compiled circuits (top-level gate statements; barriers and measurements not counted), so a compiler's reduction can be read against the compiler input. The texts are: the circuit as submitted, the circuit the API sent to each dispatch group (with the API's changes) and the circuit each backend executed (its <code>transpiled_qasm</code>, with the backend's transforms, SDK versions, gate count and depth). Each executed pane says where its gate count and depth come from (<code>gate_metrics_basis</code>): counted from that text for most backends, from the executed tape for PennyLane, whose recorded text decomposes <code>QubitUnitary</code> although the tape does not. A line diff compares any two texts, raw or with whitespace and line breaks, comments, or the OPENQASM and include lines ignored; the raw text stays in the panes. The diff stops at about 4,000 changed lines. pytket rewrites angles as multiples of π, so the same angle can be written <code>pi/4</code>, <code>0.25*pi</code> or <code>0.7853981633974483</code>; <strong>Compare angles by value</strong> evaluates every gate parameter without variables and compares it in radians to 12 significant digits, so those read the same (parameters with variables, as in gate bodies, are compared as written). The Cirq pane holds pytket's serialisation of the circuit the Cirq adapter built: <code>include "hqslib1.inc"</code> and <code>U1q</code> come from pytket's gate set, not from Cirq. Texts written with Qiskit (the Qiskit, cuQuantum and TorchQuantum panes, QMAP's input and Q-Synth's output) give every angle as the shortest literal that reads back as the same double; Qiskit's own <code>qasm2.dumps</code> would write an angle below 1e-12 as 0 and one within 1e-12 of a simple multiple of π as that multiple. The qsim pane is Cirq's <code>to_qasm</code> with angles as multiples of π to 16 decimal places. The tab shows text only and draws no conclusion from a difference: two texts can differ line by line and describe the same unitary. When the run used compile-only services, the compiler input and each compiled circuit are panes too (see <a href="#compilers">Compile-only services</a>). A saved run opened from history also offers a read-only link (see <a href="#accounts">Accounts, history &amp; autosave</a>).</td></tr>
                         
                         <tr><td>Exports</td><td>Three parts. On the left, the <strong>views</strong> of the run, grouped as Agreement, Statistical, Divergence, Performance, Resources, Metadata, Circuits and Reference; a narrow results column shows them as a menu above the view. In the middle, the selected view: its preview (Chart, Table and Data tabs; Data holds the CSV of the numbers and, for a figure, the spec saved beside it), its caption, which states every choice that shapes the figure (outcomes shown, what is summed into 'other', key order, reference, shot-noise band), and its settings, with the less used ones under <em>More</em>. On the right, the <strong>Export</strong> panel: what the RO-Crate will contain. The report (<code>results.json</code>), circuits and provenance are always included; <em>Add to export</em> adds the view with its settings, each with its own formats, and the pencil reloads an added view to change it. One export holds at most 60 items (<code>limits.max_export_items</code>); at 60, remove an item before adding another. Presets (Paper figures, Data for analysis, Everything, Nothing extra) fill the list; the preset and the author and affiliation under <em>Credits</em> are remembered in this browser. <em>Files from your selection</em> lists the paths the crate will hold.
                         <br><br>Every figure view takes <strong>Backends</strong> (any subset; with two selected the count comparison is a one-against-one histogram), a <strong>Figure size</strong> (automatic, single column 3.5 in, double column 7 in, slide) and a title on or off. The automatic and column sizes are cropped to what is drawn; a slide figure keeps its 13.33 × 7.5 in (16:9) canvas. Measured runs add views that stay readable at many qubits: <strong>Count comparison</strong> (overlay, small multiples, difference from a reference backend with a ±2σ shot-noise band, or an outcome × backend heatmap; the top <em>n</em> outcomes, those above a probability, or the marginal distribution over up to 6 chosen classical bits; sorted by probability, bitstring or Hamming weight; keys in msb or lsb order), <strong>Single-bit marginals</strong> P(c[j] = 1), the quantities the single-bit marginal tests compare, <strong>Hamming weight</strong> (n + 1 bins) and <strong>Rank–probability</strong>. <em>Highlight disagreeing</em> colours the backends whose pair with the reference is a disagreement and greys the rest. Figures are drawn on the server: from its copy of a run made in this session while the copy is kept, otherwise from the fields of the browser copy that figures read (subject to the 1 MiB request-body limit). Titles and captions name the circuit as the caption on screen does (the circuit's name, else the playlist entry's, else the run name); the browser sends that name with each request, since the server's copy of a run records none. Figure legends, axis labels and captions name backends as the Backends table does ("Qiskit (IBM)", "qsim (Google)"); tables keep the runner ids used in <code>results.json</code>. Tables are built in the browser as LaTeX, CSV, Markdown or HTML, and on the server as XLSX. A LaTeX table needs <code>\usepackage{booktabs,adjustbox,longtable}</code>: it is scaled down to the line width when it is wider, set as a <code>longtable</code> above 40 rows so it breaks across pages, and carries its explanation as a note below the table; <em>LaTeX document</em> downloads a complete document that compiles as it is. <em>Report JSON only</em> downloads the full report from the server, the browser copy, or copies it.</td></tr>
                     </tbody>
-                </table>
+                </table></div>
                 <p>
                     A run of the playlist shows a suite summary and the Exports tab. The suite summary
                     gives each circuit an agreement badge plus one badge per failed-run status, and the
@@ -1525,7 +1536,7 @@
                     untruncated report, for 30 to 40 minutes: jobs older than 30 minutes are removed by a
                     sweep that runs every 10 minutes.
                 </p>
-                <table>
+                <div class="table-scroll"><table>
                     <thead><tr><th>Endpoint</th><th>Returns</th></tr></thead>
                     <tbody>
                         <tr><td><code>GET /jobs/{job_id}</code></td><td>Job status, progress and the browser copy of the report.</td></tr>
@@ -1540,7 +1551,7 @@
                         <tr><td><code>POST /shared/circuits</code></td><td>The circuit texts a link reads (body: <code>{"token": "..."}</code>), with the run's name, save time, the link's expiry and <code>report_source</code> (<code>server_job</code>, <code>upload</code> or <code>not_recorded</code>); no sign-in. 404 for a token that is unknown, expired or revoked, whose owner's account is deactivated, or whose run was deleted. Limited to 30 requests a minute per client.</td></tr>
                         <tr><td><code>POST /export</code></td><td>An RO-Crate ZIP built from a report in the request body, limited by the 1,048,576-byte request-body limit. Used for runs loaded from history and when the server copy has expired; it cannot include statevectors the browser copy does not hold.</td></tr>
                     </tbody>
-                </table>
+                </table></div>
                 <p>
                     <em>Export RO-Crate</em> uses <code>/jobs/{job_id}/export</code> for a job run in this
                     session (or the saved run, for a run opened from history) unless <em>Browser copy</em> is
@@ -1658,7 +1669,7 @@
                     it. Check your own circuits the same way before attributing a disagreement. Every
                     circuit starts with <code>OPENQASM 2.0; include "qelib1.inc";</code>.
                 </p>
-                <table>
+                <div class="table-scroll"><table>
                     <thead><tr><th>Backend</th><th>Behaviour</th><th>Circuit to reproduce</th></tr></thead>
                     <tbody>
                         <tr><td>Qrisp (measured mode)</td>
@@ -1920,7 +1931,7 @@
                             <td>Either mode, preprocessing off: <code>qreg a[1]; qreg b[1]; h a[0];
                                 cx a[0],b[0];</code>.</td></tr>
                     </tbody>
-                </table>
+                </table></div>
             </section>
 
             <section id="contributing">
@@ -1941,7 +1952,7 @@
                 <h3>Agreement classes</h3>
                 <p>See the label tables in <a href="#taxonomy">Agreement classification</a>.</p>
                 <h3>Not-comparable reasons (<code>metrics.reason</code>)</h3>
-                <table>
+                <div class="table-scroll"><table>
                     <thead><tr><th>Reason</th><th>Meaning</th></tr></thead>
                     <tbody>
                         <tr><td><code>missing_statevector</code></td><td>A run returned no statevector.</td></tr>
@@ -1960,9 +1971,9 @@
                         <tr><td><code>nonfinite_metric</code></td><td>A distance metric evaluated to NaN or infinity.</td></tr>
                         <tr><td><code>comparison_error</code></td><td>The comparison raised an exception; <code>metrics.details.error</code> holds the message.</td></tr>
                     </tbody>
-                </table>
+                </table></div>
                 <h3>Statistical verdicts (measured mode)</h3>
-                <table>
+                <div class="table-scroll"><table>
                     <thead><tr><th>Verdict</th><th>Meaning</th></tr></thead>
                     <tbody>
                         <tr><td><code>consistent</code></td><td>Neither the chi-square test nor the G-test is significant after Benjamini–Yekutieli (BY) correction, and the power to detect a total-variation gap of 0.05, computed at α/(m·c_m), is at least 0.8.</td></tr>
@@ -1970,9 +1981,9 @@
                         <tr><td><code>inconclusive_low_shots</code></td><td>Expected counts below 5 after pooling rare outcomes on a table larger than 2 × 2 (<code>inconclusive_reason: low_expected_counts</code>), or neither test significant with power below 0.8 at α/(m·c_m) (<code>low_power</code>). <code>resolvable_by_more_shots</code> is false when the outcomes are too rare for the test at any practical shot count.</td></tr>
                         <tr><td><code>ambiguous</code></td><td>Exactly one of the chi-square test and the G-test is significant after BY correction.</td></tr>
                     </tbody>
-                </table>
+                </table></div>
                 <h3>Unranked reasons (Performance / Resources)</h3>
-                <table>
+                <div class="table-scroll"><table>
                     <thead><tr><th>Reason</th><th>Meaning</th></tr></thead>
                     <tbody>
                         <tr><td><code>runner_error</code></td><td>The run returned an error.</td></tr>
@@ -1980,9 +1991,9 @@
                         <tr><td><code>missing_process_peak_rss</code></td><td>The run returned no <code>process_peak_rss_mb</code>.</td></tr>
                         <tr><td><code>gpu_memory_not_measured</code></td><td>The run simulated on a GPU; its device memory is not measured, so it is not ranked by memory.</td></tr>
                     </tbody>
-                </table>
+                </table></div>
                 <h3>Run statuses</h3>
-                <table>
+                <div class="table-scroll"><table>
                     <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
                     <tbody>
                         <tr><td>Offline</td><td>The runner could not be reached (infrastructure).</td></tr>
@@ -1990,7 +2001,7 @@
                         <tr><td>Timeout</td><td>The run exceeded the timeout (<code>timeout_kind: "run"</code>), or it stayed queued behind other runs until the queue cap and never started (<code>timeout_kind: "queue"</code>, <code>never_started: true</code>).</td></tr>
                         <tr><td>Anomaly</td><td>Results exist, but a statevector pair disagrees (<code>residual_disagreement</code>, with or without <code>unaligned_basis_match</code>, or <code>agree_after_qubit_permutation</code>), or a measured pair is <code>distinguishable</code> beyond shot noise.</td></tr>
                     </tbody>
-                </table>
+                </table></div>
             </section>
 
             <section id="faq">

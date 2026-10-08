@@ -45,7 +45,7 @@ function _linkRow(link, onRevoked) {
     const state = link.active ? `expires ${_when(link.expires_at)}`
         : link.revoked_at ? `revoked ${_when(link.revoked_at)}` : `expired ${_when(link.expires_at)}`;
     if (link.label) row.appendChild(_el('span', 'font-medium', link.label));
-    row.appendChild(_el('span', link.active ? '' : 'text-gray-400', `Created ${_when(link.created_at)}, ${state}`));
+    row.appendChild(_el('span', link.active ? '' : 'text-gray-500', `Created ${_when(link.created_at)}, ${state}`));
     if (link.active) {
         const revoke = _el('button', 'text-xs text-red-700 hover:text-red-900 underline', 'Revoke');
         revoke.type = 'button';
@@ -66,11 +66,11 @@ function _linkRow(link, onRevoked) {
 }
 
 async function _paintLinks(list, runId) {
-    list.replaceChildren(_el('li', 'text-xs text-gray-400', 'Loading links…'));
+    list.replaceChildren(_el('li', 'text-xs text-gray-500', 'Loading links…'));
     try {
         const links = await _request(`/history/runs/${encodeURIComponent(runId)}/share-links`);
         list.replaceChildren(...links.map(link => _linkRow(link, () => _paintLinks(list, runId))));
-        if (!links.length) list.replaceChildren(_el('li', 'text-xs text-gray-400', 'No links yet.'));
+        if (!links.length) list.replaceChildren(_el('li', 'text-xs text-gray-500', 'No links yet.'));
     } catch (err) {
         list.replaceChildren(_el('li', 'text-xs text-red-700', err.message));
     }

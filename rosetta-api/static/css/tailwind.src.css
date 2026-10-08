@@ -122,3 +122,25 @@
     radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0)) right center / 0.75rem 100% no-repeat scroll;
   background-color: #fff;
 }
+
+/* Heatmap cells and key swatches: a symbol on the class colour. */
+.qr-glyph-cell { display: inline-flex; align-items: center; justify-content: center; line-height: 1; vertical-align: middle; }
+
+/* A busy button that keeps keyboard focus: aria-disabled instead of disabled. */
+[data-busy-disable][aria-disabled="true"] { cursor: not-allowed; opacity: 0.5; }
+#btn-run[aria-disabled="true"] { background-color: #9ca3af; box-shadow: none; cursor: not-allowed; }
+
+/* Run source segments: the focus ring sits inside the segment, in the segment's text colour. */
+input[name="run-source"]:focus-visible + .qr-seg-option { outline: 2px solid currentColor; outline-offset: -4px; }
+
+@media (forced-colors: active) {
+  .qr-glyph-cell { border: 1px solid CanvasText; }
+  input[name="run-source"]:checked + .qr-seg-option { forced-color-adjust: none; background-color: Highlight; color: HighlightText; }
+  input[name="run-source"]:disabled + .qr-seg-option { color: GrayText; }
+  [role="tab"] { border-bottom-color: Canvas; }
+  [role="tab"][aria-selected="true"] { border-bottom-color: Highlight; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 6px; }
+  .qr-placeholder-tab { color: GrayText; border-bottom-color: Canvas; }
+  [aria-pressed="true"] { forced-color-adjust: none; background-color: Highlight; color: HighlightText; }
+  [data-busy-disable][aria-disabled="true"], #btn-run[aria-disabled="true"], button:disabled { color: GrayText; border-color: GrayText; }
+  #tab-content .overflow-x-auto { background: Canvas; }
+}

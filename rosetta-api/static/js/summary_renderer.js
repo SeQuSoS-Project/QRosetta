@@ -771,7 +771,7 @@ function _kv(parent, key, value) {
     if (value === undefined || value === null || value === '') return;
     const row = document.createElement('div');
     const k = document.createElement('span');
-    k.className = 'text-gray-400';
+    k.className = 'text-gray-500';
     k.textContent = `${key}: `;
     const v = document.createElement('span');
     v.className = 'font-mono text-gray-800 break-words';
@@ -805,7 +805,7 @@ function _renderRunDetails(panel, data, raws) {
     _kv(top, 'finished', data.finished_at);
     if (Array.isArray(data.api_preprocessing_applied)) {
         const label = document.createElement('div');
-        label.className = 'text-gray-400';
+        label.className = 'text-gray-500';
         label.textContent = 'applied by the API before dispatch:';
         top.appendChild(label);
         top.appendChild(renderPreprocessingList(data.api_preprocessing_applied.map(e => (String(e).startsWith('API:') ? e : `API: ${e}`))));
@@ -879,7 +879,7 @@ function _renderRunDetails(panel, data, raws) {
 
         if (st === 'ok' || Array.isArray(r.preprocessing_applied)) {
             const label = document.createElement('div');
-            label.className = 'text-gray-400 mt-1';
+            label.className = 'text-gray-500 mt-1';
             label.textContent = 'preprocessing:';
             card.appendChild(label);
             card.appendChild(renderPreprocessingList(r.preprocessing_applied));

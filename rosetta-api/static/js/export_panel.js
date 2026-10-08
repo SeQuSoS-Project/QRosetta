@@ -90,7 +90,7 @@ function _section(title, extra) {
 function _sourceBlock(results, scope) {
     const box = el('div', 'qr-export-item qr-export-item-locked');
     const head = el('div', 'text-xs font-semibold text-gray-800', 'Report JSON');
-    head.append(el('span', 'font-normal text-gray-400', ' · results.json'));
+    head.append(el('span', 'font-normal text-gray-500', ' · results.json'));
     box.append(head);
     const sources = crateSources();
     if (!sources.includes(ui.source)) ui.source = sources[0];
@@ -161,6 +161,8 @@ function _itemRow(item, ctx) {
     top.append(acts);
     row.append(top);
     const fmts = el('div', 'flex flex-wrap gap-1');
+    fmts.setAttribute('role', 'group');
+    fmts.setAttribute('aria-label', `File formats for ${ui0 ? ui0.label : item.view}`);
     itemFormats(item.view).forEach(([value, label]) => {
         const chip = button('qr-fmt', label);
         chip.setAttribute('aria-pressed', String(item.formats.includes(value)));
@@ -301,7 +303,7 @@ export function renderExportPanel(aside, ctx) {
     [['ro-crate-metadata.json'], ['results.json'], ['provenance.json'],
         [scope === 'report' ? 'circuit.qasm' : 'circuits/<circuit>.qasm'],
         ['dispatched_circuits/, transpiled_circuits/'], ['runners/<runner>/requirements.lock']].forEach(([p]) => {
-        list.append(el('li', 'text-gray-400', p));
+        list.append(el('li', 'text-gray-500', p));
     });
     files.append(list);
     aside.append(files);

@@ -9,6 +9,7 @@ import { dispatch, getState } from './state.js';
 import { setLoading } from './utils.js';
 import { bareCircuitName } from './run_plan.js';
 import { printableLabel } from './request_limits.js';
+import { closeModal, openModal } from './modal.js';
 
 /** Quick Load sets as preset references; the server generates each circuit when the batch runs. */
 export function presetItems(key, algorithms, cap) {
@@ -259,7 +260,7 @@ export function openGeneratorModal() {
         input.max = String(cap);
         if ((parseInt(input.value, 10) || 0) > cap) input.value = String(cap);
     });
-    document.getElementById('gen-modal').classList.remove('hidden');
+    openModal(document.getElementById('gen-modal'), { onEscape: closeGeneratorModal });
 }
 
 /** Which runs set the qubit cap of getDynamicMaxQubits(), from the ticked modes. */
@@ -271,7 +272,7 @@ export function qubitCapReason() {
 }
 
 export function closeGeneratorModal() {
-    document.getElementById('gen-modal').classList.add('hidden');
+    closeModal(document.getElementById('gen-modal'));
 }
 
 export function runAutoGeneration() {

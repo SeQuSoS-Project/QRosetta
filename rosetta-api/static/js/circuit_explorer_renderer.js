@@ -230,6 +230,7 @@ function _groupTable(groups, panes, selected, onSelect) {
     ['Kind', 'Circuit', 'Lines', 'Gates', 'Depth', 'Change', ''].forEach(t => {
         const th = _el('th', 'px-2 py-1 text-left font-medium text-gray-600 whitespace-nowrap', t);
         th.scope = 'col';
+        if (!t) th.appendChild(_el('span', 'sr-only', 'Show text'));
         head.appendChild(th);
     });
     const thead = _el('thead');
@@ -249,6 +250,7 @@ function _groupTable(groups, panes, selected, onSelect) {
         const button = _el('button', 'text-xs text-blue-700 hover:underline', group.id === selected ? 'Shown' : 'View');
         button.type = 'button';
         button.setAttribute('aria-pressed', String(group.id === selected));
+        button.setAttribute('aria-label', `${group.id === selected ? 'Shown' : 'View'}: ${KIND_LABEL[group.kind]}, ${_groupTitle(group)}`);
         button.onclick = () => onSelect(group.id);
         view.appendChild(button);
         tr.append(kind, name,
@@ -285,8 +287,8 @@ function _diffRow(op, aLines, bLines) {
         : op.type === 'insert' ? 'bg-green-50 text-green-900' : 'text-gray-700';
     const sign = op.type === 'delete' ? '−' : op.type === 'insert' ? '+' : ' ';
     const row = _el('div', `grid grid-cols-[3rem_3rem_1rem_1fr] font-mono text-xs ${style}`);
-    row.appendChild(_el('span', 'text-right pr-2 text-gray-400 select-none', op.a === null ? '' : String(op.a + 1)));
-    row.appendChild(_el('span', 'text-right pr-2 text-gray-400 select-none', op.b === null ? '' : String(op.b + 1)));
+    row.appendChild(_el('span', 'text-right pr-2 text-gray-600 select-none', op.a === null ? '' : String(op.a + 1)));
+    row.appendChild(_el('span', 'text-right pr-2 text-gray-600 select-none', op.b === null ? '' : String(op.b + 1)));
     row.appendChild(_el('span', 'select-none', sign));
     row.appendChild(_el('span', 'whitespace-pre', visibleFormatCharacters(op.type === 'insert' ? bLines[op.b] : aLines[op.a]).text));
     return row;

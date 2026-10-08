@@ -138,7 +138,7 @@ export function renderDivergenceTables(report, panel, config = {}, rawResults = 
                 td.textContent = text;
                 if (aligned !== null) {
                     const sub = document.createElement('div');
-                    sub.className = 'text-[10px] text-gray-500';
+                    sub.className = 'text-[10px] text-gray-600';
                     sub.textContent = `↺ ${aligned}`;
                     td.appendChild(sub);
                 }
@@ -233,7 +233,7 @@ export function _kvGrid(rows) {
         const row = document.createElement('div');
         row.className = 'min-w-0';
         const kSpan = document.createElement('span');
-        kSpan.className = 'text-gray-400';
+        kSpan.className = 'text-gray-500';
         kSpan.textContent = `${k}: `;
         const vSpan = document.createElement('span');
         vSpan.className = 'text-gray-800 font-mono break-words';
@@ -355,7 +355,7 @@ export function _statisticalTestBlock(st) {
         ['resolvable by more shots', typeof st.resolvable_by_more_shots === 'boolean' ? _yesNo(st.resolvable_by_more_shots) : undefined],
     ]));
     const model = document.createElement('div');
-    model.className = 'text-[11px] text-gray-400 mt-1';
+    model.className = 'text-[11px] text-gray-500 mt-1';
     model.textContent = `Power model: ${pw.model}. The verdict is reported alongside the descriptive label.`;
     wrap.appendChild(model);
     return wrap;
@@ -390,7 +390,7 @@ export function _provenanceBlock(prov) {
         box.className = 'mt-1 space-y-1';
         Object.entries(pre).forEach(([sim, list]) => {
             const label = document.createElement('div');
-            label.className = 'text-gray-400';
+            label.className = 'text-gray-500';
             label.textContent = `preprocessing, ${_displayRunnerName(sim)}:`;
             box.appendChild(label);
             box.appendChild(renderPreprocessingList(list));
@@ -408,11 +408,39 @@ export const AGREEMENT_HEX = {
     not_comparable: '#898781',
 };
 
-const MEASURED_KEYS = {
-    disagree: { hex: '#e34948', label: 'distinguishable, or a single-bit marginal differs', rank: 0 },
-    inconclusive: { hex: '#7a8fa6', label: 'inconclusive', rank: 3 },
-    consistent: { hex: '#008300', label: 'consistent within shot noise', rank: 5 },
+/** The symbol each heatmap cell and key swatch shows, so a class can be told apart without its colour. */
+export const AGREEMENT_GLYPH = {
+    agree_directly: '=', distance_within_threshold: '=',
+    agree_up_to_global_phase: 'φ', agree_after_bit_reversal: '↺',
+    agree_after_qubit_permutation: 'P', agree_after_normalization: 'N',
+    residual_disagreement: '≠', distance_exceeds_threshold: '≠',
+    not_comparable: '–',
 };
+
+const MEASURED_KEYS = {
+    disagree: { hex: '#e34948', glyph: '≠', label: 'distinguishable, or a single-bit marginal differs', rank: 0 },
+    inconclusive: { hex: '#7a8fa6', glyph: '?', label: 'inconclusive', rank: 3 },
+    consistent: { hex: '#008300', glyph: '=', label: 'consistent within shot noise', rank: 5 },
+};
+
+/** Black or white, whichever contrasts more with the background colour `hex` (#rrggbb). */
+export function textColourOn(hex) {
+    const lin = c => { const v = c / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+    const n = parseInt(String(hex).slice(1), 16);
+    const L = 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+    return (L + 0.05) / 0.05 > 1.05 / (L + 0.05) ? '#000000' : '#ffffff';
+}
+
+/** A coloured swatch carrying the class's symbol; the symbol stays when forced colours drop the fill. */
+function _glyphBox(className, hex, glyph) {
+    const box = document.createElement('span');
+    box.className = `qr-glyph-cell ${className}`;
+    box.style.backgroundColor = hex;
+    box.style.color = textColourOn(hex);
+    box.setAttribute('aria-hidden', 'true');
+    box.textContent = glyph;
+    return box;
+}
 
 /** Heatmap colour and legend label: measured pairs by their shot-noise and marginal verdicts,
  * statevector pairs by agreement label. */
@@ -423,8 +451,8 @@ function _cellKey(rec) {
         if (a === 'consistent_within_shot_noise') return MEASURED_KEYS.consistent;
         if (a === 'inconclusive_low_shots' || a === 'ambiguous') return MEASURED_KEYS.inconclusive;
     }
-    return { hex: AGREEMENT_HEX[rec.agreement] || '#898781', label: labelText(rec.agreement),
-             rank: _AGREEMENT_SEVERITY[rec.agreement] ?? 9 };
+    return { hex: AGREEMENT_HEX[rec.agreement] || '#898781', glyph: AGREEMENT_GLYPH[rec.agreement] || '•',
+             label: labelText(rec.agreement), rank: _AGREEMENT_SEVERITY[rec.agreement] ?? 9 };
 }
 
 /** Pair-table order: disagreement first, not_comparable last. */
@@ -453,13 +481,13 @@ export function _pairLookup(pairs) {
 export function _agreementLegend(keys, docsCode = null) {
     const wrap = document.createElement('div');
     wrap.className = 'flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-[11px]';
-    keys.forEach(({ hex, label }) => {
+    wrap.setAttribute('role', 'list');
+    wrap.setAttribute('aria-label', 'Key');
+    keys.forEach(({ hex, glyph, label }) => {
         const item = document.createElement('span');
         item.className = 'inline-flex items-center gap-1';
-        const sw = document.createElement('span');
-        sw.className = 'inline-block w-3 h-3 rounded-sm border border-gray-300';
-        sw.style.backgroundColor = hex;
-        item.appendChild(sw);
+        item.setAttribute('role', 'listitem');
+        item.appendChild(_glyphBox('w-4 h-4 rounded-sm text-[10px]', hex, glyph || '•'));
         item.appendChild(document.createTextNode(label));
         wrap.appendChild(item);
     });
@@ -518,6 +546,13 @@ export function _agreementSummaryStrip(report, pairs) {
     return strip;
 }
 
+function _srText(text) {
+    const span = document.createElement('span');
+    span.className = 'sr-only';
+    span.textContent = text;
+    return span;
+}
+
 export function _agreementHeatmap(report, pairs, config) {
     const sims = report.simulators || [];
     if (sims.length < 2) return null;
@@ -525,19 +560,23 @@ export function _agreementHeatmap(report, pairs, config) {
     const wrap = document.createElement('div');
     wrap.className = 'mb-6 overflow-x-auto';
 
-    const h = document.createElement('h4');
-    h.className = 'text-sm font-semibold text-gray-700 mb-2';
-    h.textContent = 'Agreement class by pair';
-    wrap.appendChild(h);
-
     const table = document.createElement('table');
     table.className = 'matrix-table border-collapse text-xs';
+    const caption = document.createElement('caption');
+    caption.className = 'text-left text-sm font-semibold text-gray-700 mb-2';
+    caption.textContent = 'Agreement class by pair';
+    const captionNote = document.createElement('span');
+    captionNote.className = 'sr-only';
+    captionNote.textContent = '. Each cell names the class of the row and column backends; the symbol in the cell matches the key below the table.';
+    caption.appendChild(captionNote);
+    table.appendChild(caption);
     const thead = document.createElement('thead');
     const hrow = document.createElement('tr');
     hrow.appendChild(document.createElement('th'));
     sims.forEach(s => {
         const th = document.createElement('th');
         th.className = 'sim-header px-1 text-gray-600 font-medium align-bottom';
+        th.scope = 'col';
         th.textContent = _displayRunnerName(s);
         hrow.appendChild(th);
     });
@@ -549,20 +588,23 @@ export function _agreementHeatmap(report, pairs, config) {
         const tr = document.createElement('tr');
         const rh = document.createElement('th');
         rh.className = 'px-2 text-right text-gray-600 font-medium whitespace-nowrap';
+        rh.scope = 'row';
         rh.textContent = _displayRunnerName(s1);
         tr.appendChild(rh);
         sims.forEach((s2, j) => {
             const td = document.createElement('td');
-            td.className = 'w-6 h-6 text-center border border-white';
+            td.className = 'p-0 w-6 h-6 text-center border border-white';
             if (i === j) {
                 td.classList.add('bg-gray-100');
+                td.appendChild(_srText('same backend'));
             } else {
                 const rec = lookup[_pairKey(s1, s2)];
                 if (rec) {
-                    td.style.backgroundColor = _cellKey(rec).hex;
-                    td.style.color = '#ffffff';
+                    const key = _cellKey(rec);
+                    td.appendChild(_glyphBox('w-6 h-6 font-bold', key.hex, key.glyph));
+                    td.appendChild(_srText(key.label));
                     const a = rec.mode === 'measured' ? measuredAssessment(rec) : null;
-                    td.title = `${_displayRunnerName(s1)} × ${_displayRunnerName(s2)}: ${_cellKey(rec).label} (${rec.agreement}${a ? `, ${a}` : ''})`;
+                    td.title = `${_displayRunnerName(s1)} × ${_displayRunnerName(s2)}: ${key.label} (${rec.agreement}${a ? `, ${a}` : ''})`;
                     td.style.cursor = 'pointer';
                     td.onclick = () => {
                         const row = /** @type {HTMLDetailsElement|null} */ (document.getElementById(`agr-row-${_agrRowId(rec)}`));
@@ -573,6 +615,7 @@ export function _agreementHeatmap(report, pairs, config) {
                     };
                 } else {
                     td.classList.add('bg-gray-50');
+                    td.appendChild(_srText('no comparison'));
                 }
             }
             tr.appendChild(td);

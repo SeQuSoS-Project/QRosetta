@@ -26,6 +26,7 @@ import { emptyStateModel, renderEmptyState } from './empty_state.js';
 import { setRunKicker, startRunView } from './status_cards.js';
 import { _displayRunnerName } from './render_helpers.js';
 import { compareRunnerKeys, plannedRunKeys } from './runner_key.js';
+import { announce, firstSentence, focusHeading, focusIsLost } from './announce.js';
 
 const _checked = id => !!/** @type {HTMLInputElement|null} */ (document.getElementById(id))?.checked;
 const _radio = name => /** @type {HTMLInputElement|null} */ (document.querySelector(`input[name="${name}"]:checked`))?.value;
@@ -348,9 +349,34 @@ function _renderSwitcher(active) {
         b.setAttribute('aria-pressed', String(i === active));
         b.className = `px-2 py-1 rounded border ${i === active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`;
         b.textContent = `${entry.job.title}${entry.stopped ? ' (stopped waiting)' : entry.error ? ' (error)' : ''}`;
-        b.onclick = () => _show(i);
+        b.onclick = () => {
+            _show(i);
+            /** @type {HTMLElement|undefined} */ (host.querySelectorAll('button')[i])?.focus();
+        };
         host.appendChild(b);
     });
+}
+
+/** The heading of the results now on screen: the visible panel's first heading. */
+function _shownHeading() {
+    const panel = Array.from(document.querySelectorAll('#tab-content > [id$="-panel"]')).find(p => !p.classList.contains('hidden'));
+    return panel?.querySelector('h2, h3') || null;
+}
+
+/** After a run or a resumed job: say what arrived, and move focus to the results heading when
+ * focus is on the Run button or nowhere. */
+function _announceShown(entry) {
+    if (!entry) return;
+    const run = document.getElementById('btn-run');
+    if (focusIsLost(run) || document.getElementById('loader')?.contains(document.activeElement)) focusHeading(_shownHeading());
+    const { job } = entry;
+    if (entry.stopped) { announce(`Stopped waiting for ${job.title}. The job keeps running on the server.`); return; }
+    if (!entry.results) { announce(`The run failed: ${job.title}. ${entry.error || ''}`); return; }
+    const err = entry.results.error || entry.results.job_error;
+    if (err) { announce(`The run failed: ${job.title}. ${typeof err === 'string' ? err : ''}`); return; }
+    const lines = Array.from(document.querySelectorAll('#summary-panel section[aria-label="Result"] p.text-sm')).slice(0, 2);
+    const headline = lines.map(p => firstSentence(p.textContent)).join(' ');
+    announce(`Results ready: ${job.title}.${headline ? ` ${headline}` : ''}`);
 }
 
 /** On a narrow screen, where the results follow the workspace, scroll to them. */
@@ -401,6 +427,7 @@ async function _runAll(runs, ws) {
     }
     const first = _finished.findIndex(e => e.results);
     _show(first >= 0 ? first : 0);
+    _announceShown(_finished[first >= 0 ? first : 0]);
     offerRecentJobs({ unfinishedOnly: true });
 }
 
@@ -503,6 +530,7 @@ export async function resumeJob(job) {
     startRunView({ tabs: _TABS_BY_KIND[job.kind] ?? ['Summary', 'Agreement', 'Performance', 'Circuits', 'Exports'], nameOf: _displayRunnerName });
     setRunKicker('Running');
     setLoading(true, job.title, { startedAt: job.submitted_at });
+    if (focusIsLost()) focusHeading(document.getElementById('loader-text'));
     try {
         _finished.push(await _await(job));
     } finally {
@@ -511,6 +539,7 @@ export async function resumeJob(job) {
         updateWorkspace();
     }
     _show(0);
+    _announceShown(_finished[0]);
     offerRecentJobs({ unfinishedOnly: true });
 }
 
@@ -614,10 +643,14 @@ document.addEventListener('workspace-change', () => { updateWorkspace(); _refres
 document.addEventListener('signed-out', () => _forgetAccountView());
 document.addEventListener('history-runs-deleted', e => _historyRunsDeleted(/** @type {CustomEvent} */ (e).detail || []));
 document.addEventListener('circuit-list-added', () => selectListSource());
-document.addEventListener('editor-loaded', () => {
+document.addEventListener('editor-loaded', e => {
     const editorRadio = /** @type {HTMLInputElement|null} */ (document.querySelector('input[name="run-source"][value="editor"]'));
     if (editorRadio) editorRadio.checked = true;
     updateContextBar();
     updateWorkspace();
+    if (/** @type {CustomEvent} */ (e).detail?.initial) return;
+    const stats = document.getElementById('ctx-circuit-stats')?.textContent || '';
+    announce(`Loaded into the editor: ${getState().currentAlgoName}${stats ? `, ${stats.replace(' · ', ', ')}` : ''}.`);
+    if (focusIsLost()) focusHeading(document.getElementById('ws-editor'));
 });
 

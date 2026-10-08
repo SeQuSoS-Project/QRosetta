@@ -95,7 +95,7 @@ export function docsLink(code, text = 'How this is decided') {
     a.href = `docs.html#${anchor}`;
     a.target = '_blank';
     a.rel = 'noopener';
-    a.className = 'text-xs font-normal underline opacity-80 hover:opacity-100';
+    a.className = 'text-xs font-normal underline hover:no-underline';
     a.textContent = text;
     return a;
 }

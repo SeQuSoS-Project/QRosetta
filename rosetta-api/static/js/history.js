@@ -7,6 +7,7 @@ import { clearReport, renderDetailReport, renderSuiteSummary } from './renderers
 import { dispatch, getState } from './state.js';
 import { downloadBlob, setLoading, setSideLoading } from './utils.js';
 import { labelProblem } from './request_limits.js';
+import { closeModal, openModal } from './modal.js';
 
 /** Parse a server timestamp; one without a zone designator is UTC. */
 export function parseServerTime(value) {
@@ -145,7 +146,7 @@ const RUN_IN_PROGRESS = 'A run is in progress. Past runs open in the results pan
 let _listGeneration = 0;
 
 export async function openHistoryModal() {
-    document.getElementById('history-modal').classList.remove('hidden');
+    openModal(document.getElementById('history-modal'), { onEscape: closeHistoryModal });
     const selectAll = /** @type {HTMLInputElement|null} */ (document.getElementById('history-select-all'));
     if (selectAll) selectAll.checked = false;
     const list = document.getElementById('history-list');
@@ -201,6 +202,7 @@ export async function openHistoryModal() {
             checkbox.type = "checkbox";
             checkbox.className = "history-checkbox mr-4 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded";
             checkbox.value = run.id;
+            checkbox.setAttribute('aria-label', `Select ${runName}`);
 
             const colDiv = document.createElement('div');
             colDiv.className = "flex flex-col flex-1 min-w-0";
@@ -214,7 +216,7 @@ export async function openHistoryModal() {
             nameSpan.textContent = runName;
 
             const idSpan = document.createElement('span');
-            idSpan.className = "text-xs text-gray-400 font-mono bg-gray-100 px-1 rounded border border-gray-200";
+            idSpan.className = "text-xs text-gray-600 font-mono bg-gray-100 px-1 rounded border border-gray-200";
             idSpan.textContent = run.id.substring(0, 8);
 
             const nameInput = document.createElement('input');
@@ -223,21 +225,27 @@ export async function openHistoryModal() {
             nameInput.className = "hidden text-sm border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 w-full max-w-xs px-2 py-1";
             nameInput.value = runName;
             nameInput.maxLength = getState().maxLabelLength;
+            nameInput.setAttribute('aria-label', 'Run name');
 
             const editBtn = document.createElement('button');
             editBtn.id = `run-name-edit-btn-${run.id}`;
-            editBtn.className = "ml-2 text-xs text-gray-400 hover:text-gray-600";
+            editBtn.type = 'button';
+            editBtn.className = "ml-2 text-xs text-gray-500 hover:text-gray-700";
             editBtn.textContent = "✏️";
+            editBtn.setAttribute('aria-label', `Rename ${runName}`);
+            editBtn.title = 'Rename';
             editBtn.addEventListener('click', () => toggleEditRunName(run.id));
 
             const saveBtn = document.createElement('button');
             saveBtn.id = `run-name-save-btn-${run.id}`;
+            saveBtn.type = 'button';
             saveBtn.className = "hidden ml-2 text-xs font-medium text-green-600 hover:text-green-800";
             saveBtn.textContent = "Save";
             saveBtn.addEventListener('click', () => saveRunName(run.id));
 
             const cancelBtn = document.createElement('button');
             cancelBtn.id = `run-name-cancel-btn-${run.id}`;
+            cancelBtn.type = 'button';
             cancelBtn.className = "hidden ml-2 text-xs font-medium text-red-600 hover:text-red-800";
             cancelBtn.textContent = "Cancel";
             cancelBtn.addEventListener('click', () => cancelEditRunName(run.id, nameSpan.textContent));
@@ -252,7 +260,9 @@ export async function openHistoryModal() {
 
             const viewBtn = document.createElement('button');
             viewBtn.className = "text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 rounded-md shadow-sm transition-colors whitespace-nowrap";
+            viewBtn.type = 'button';
             viewBtn.textContent = "View Results";
+            viewBtn.setAttribute('aria-label', `View Results: ${runName}, ${dateStr}`);
             if (running) {
                 viewBtn.disabled = true;
                 viewBtn.classList.add('opacity-60', 'cursor-not-allowed');
@@ -303,6 +313,7 @@ export function cancelEditRunName(runId, originalName) {
     document.getElementById(`run-name-input-${runId}`).classList.add('hidden');
     document.getElementById(`run-name-save-btn-${runId}`).classList.add('hidden');
     document.getElementById(`run-name-cancel-btn-${runId}`).classList.add('hidden');
+    document.getElementById(`run-name-edit-btn-${runId}`).focus();
 }
 
 export async function saveRunName(runId) {
@@ -321,6 +332,7 @@ export async function saveRunName(runId) {
         if (!res.ok) throw new Error(await formatApiError(res));
 
         document.getElementById(`run-name-text-${runId}`).textContent = newName;
+        document.getElementById(`run-name-edit-btn-${runId}`)?.setAttribute('aria-label', `Rename ${newName}`);
         cancelEditRunName(runId, newName);
     } catch (e) {
         console.error(e);
@@ -388,7 +400,7 @@ export async function downloadSelectedHistory() {
 }
 
 export function closeHistoryModal() {
-    document.getElementById('history-modal').classList.add('hidden');
+    closeModal(document.getElementById('history-modal'));
 }
 
 export async function loadHistoricalRun(runId, runName, createdAt) {
@@ -488,10 +500,4 @@ document.addEventListener('session-expired', () => {
         label: 'Sign in',
         onClick: () => openAuthModal(),
     });
-});
-
-document.addEventListener('keydown', e => {
-    if (e.key !== 'Escape') return;
-    const modal = document.getElementById('history-modal');
-    if (modal && !modal.classList.contains('hidden')) closeHistoryModal();
 });

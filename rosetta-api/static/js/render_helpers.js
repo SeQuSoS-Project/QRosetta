@@ -67,7 +67,7 @@ export const STATUS_STYLES = {
     },
     offline: {
         badge: "bg-gray-100 text-gray-600 border-gray-300",
-        cell: "bg-gray-100 text-gray-400 italic",
+        cell: "bg-gray-100 text-gray-600 italic",
         legendDot: "bg-gray-100 border-gray-300"
     },
     inconclusive: {
@@ -432,7 +432,7 @@ export function renderPreprocessingList(entries) {
     const list = Array.isArray(entries) ? entries : [];
     if (list.length === 0) {
         const li = document.createElement('li');
-        li.className = 'text-gray-400';
+        li.className = 'text-gray-500';
         li.textContent = 'none recorded';
         ul.appendChild(li);
         return ul;

@@ -49,7 +49,8 @@ export function setLoading(isLoading, message = "Processing...", options = {}) {
         allButtons.forEach(btn => {
             if (!btn) return;
             if (!btn.disabled && btn.dataset.idleTitle === undefined) btn.dataset.idleTitle = btn.getAttribute('title') ?? '';
-            btn.disabled = true;
+            if (btn === document.activeElement || btn.getAttribute('aria-disabled') === 'true') btn.setAttribute('aria-disabled', 'true');
+            else btn.disabled = true;
             btn.title = reason;
         });
     } else {
@@ -62,6 +63,7 @@ export function setLoading(isLoading, message = "Processing...", options = {}) {
         allButtons.forEach(btn => {
             if (!btn) return;
             btn.disabled = false;
+            btn.removeAttribute('aria-disabled');
             if (btn.dataset.idleTitle !== undefined) {
                 if (btn.dataset.idleTitle) btn.title = btn.dataset.idleTitle;
                 else btn.removeAttribute('title');
@@ -77,6 +79,14 @@ export function setLoading(isLoading, message = "Processing...", options = {}) {
         if (elapsedEl) elapsedEl.textContent = '0 s elapsed';
     }
 }
+
+/** A button kept focusable while busy (aria-disabled) does nothing when pressed. */
+document.addEventListener('click', e => {
+    const busy = e.target instanceof Element ? e.target.closest('button[aria-disabled="true"]') : null;
+    if (!busy) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+}, true);
 
 /** setLoading for work beside a run (sign-in, history downloads): does nothing while a run is
  * in progress, so the run keeps its loader, busy buttons and running view. */

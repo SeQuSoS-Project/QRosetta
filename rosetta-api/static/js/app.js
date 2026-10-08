@@ -295,7 +295,7 @@ window.onload = async () => {
     _restoreRunName();
 
     if (!restored && getState().allAlgorithms.length > 0) {
-        generateCircuit();
+        generateCircuit(true);
     }
     dispatch('SET_BATCH_QUEUE', loadBatchQueue());
     renderBatchQueue();
@@ -395,7 +395,8 @@ async function _openCircuit(value) {
 
 document.addEventListener('open-circuit', e => { _openCircuit(/** @type {CustomEvent} */ (e).detail); });
 
-export async function generateCircuit() {
+/** Load the selected circuit into the editor; `initial` marks the load at page start, which is not announced. */
+export async function generateCircuit(initial = false) {
     if (getState().isProcessing) return;
     if (editorHasEdits() && !confirm('Load replaces the circuit in the editor, which you have edited. Continue?')) return;
     const algoId = /** @type {HTMLSelectElement} */ (document.getElementById('algo-select')).value;
@@ -444,7 +445,7 @@ export async function generateCircuit() {
             updateContextBar();
             saveEditorCircuit(qasmInput.value, getState().currentAlgoName);
             _markLoaded();
-            document.dispatchEvent(new Event('editor-loaded'));
+            document.dispatchEvent(new CustomEvent('editor-loaded', { detail: { initial: initial === true } }));
         } else {
             throw new Error(apiDetailText(data.detail) || data.error || "Failed to generate circuit.");
         }

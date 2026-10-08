@@ -19,6 +19,7 @@ import {
 import { getState } from './state.js';
 import { renderCompileSuiteTable, renderSummaryPanel } from './summary_renderer.js';
 import { renderAgreementPanel, renderDivergenceTables } from './tables_renderer.js';
+import { closeModal, openModal } from './modal.js';
 
 export function clearReport() {
     welcomeMessage.classList.add('hidden');
@@ -337,9 +338,8 @@ export function viewDetail(index) {
 export function showVisualizerTab() {
     const overlay = panelElements['visualizer'];
     if (!overlay) return;
-    overlay.classList.remove('hidden');
     overlay.classList.add('flex');
-    document.getElementById('visualizer-close')?.focus();
+    openModal(overlay, { initialFocus: '#visualizer-close', onEscape: closeVisualizer });
 }
 
 export async function generateAndVisualize() {
@@ -353,8 +353,8 @@ export async function generateAndVisualize() {
     let originalText = "📊 Visualize";
     if (btn) {
         originalText = btn.innerHTML;
-        btn.innerHTML = `<span class="inline-block animate-spin mr-1 border-2 border-purple-600 border-t-transparent rounded-full w-3 h-3"></span> Loading`;
-        btn.disabled = true;
+        btn.innerHTML = `<span aria-hidden="true" class="inline-block animate-spin motion-reduce:animate-none mr-1 border-2 border-purple-600 border-t-transparent rounded-full w-3 h-3"></span> Loading`;
+        btn.setAttribute('aria-disabled', 'true');
     }
 
     try {
@@ -380,7 +380,7 @@ export async function generateAndVisualize() {
     } finally {
         if (btn) {
             btn.innerHTML = originalText;
-            btn.disabled = false;
+            btn.removeAttribute('aria-disabled');
         }
     }
 }
@@ -389,11 +389,6 @@ export async function generateAndVisualize() {
 export function closeVisualizer() {
     const overlay = panelElements['visualizer'];
     if (!overlay || overlay.classList.contains('hidden')) return;
-    overlay.classList.add('hidden');
     overlay.classList.remove('flex');
-    document.getElementById('btn-visualize')?.focus();
+    closeModal(overlay, { returnFocus: '#btn-visualize' });
 }
-
-document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closeVisualizer();
-});

@@ -1,8 +1,10 @@
 // Searchable picker for the Quantum Algorithms menu (WAI-ARIA combobox with a grouped listbox).
 // The options live in a hidden <select>; the picker filters them as the user types and sets the
 // select's value, firing its change event, so code that reads the select keeps working. Enter
-// picks the highlighted option, or the first match when none is highlighted.
-// Leaf module: no imports.
+// picks the highlighted option, or the first match when none is highlighted. Typing announces
+// the number of matches. Leaf module: imports only the leaf announce.js.
+
+import { announce } from './announce.js';
 
 /**
  * @param {{ input: HTMLInputElement, listbox: HTMLElement, select: HTMLSelectElement }} parts
@@ -97,7 +99,10 @@ export function initCircuitPicker({ input, listbox, select }) {
 
     input.addEventListener('focus', () => input.select());
     input.addEventListener('click', () => { input.select(); open(''); });
-    input.addEventListener('input', () => open(input.value));
+    input.addEventListener('input', () => {
+        open(input.value);
+        announce(shown.length ? `${shown.length} ${shown.length === 1 ? 'circuit matches' : 'circuits match'}.` : 'No circuit matches.');
+    });
     input.addEventListener('blur', () => { close(); syncInput(); });
     input.addEventListener('keydown', e => {
         const isOpen = input.getAttribute('aria-expanded') === 'true';
