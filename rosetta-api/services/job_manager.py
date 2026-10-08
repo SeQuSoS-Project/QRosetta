@@ -24,6 +24,8 @@ from services.dispatcher import (
     EXECUTION_MODE,
     annotate_overlaps,
     dispatch_to_runners,
+    effective_phases,
+    expand_runner_jobs,
     timeout_scope,
     utc_now_iso,
 )
@@ -231,6 +233,7 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
         **compiled,
         "resolved_runners": resolved_runners(target_simulators, filtered_urls, skipped),
         "skipped_runners": skipped,
+        "effective_runner_phases": phase_plan(aggregated_results),
         "started_at": started_at,
         "finished_at": utc_now_iso(),
         "divergence_report": divergence_report,
@@ -310,16 +313,10 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
 
     _queue_for_exclusive(runner_statuses, {**filtered_sampled, **filtered_native})
     async with circuit_section(settings.EXCLUSIVE_MAX_WAIT_SEC):
-        if EXCLUSIVE.get():
-            results_sampled = await dispatch_to_runners(
-                filtered_sampled, payload_for("measured_sampled"), timeout_seconds, runner_statuses)
-            results_native = await dispatch_to_runners(
-                filtered_native, payload_for("measured_native"), timeout_seconds, runner_statuses)
-        else:
-            results_sampled, results_native = await asyncio.gather(
-                dispatch_to_runners(filtered_sampled, payload_for("measured_sampled"), timeout_seconds, runner_statuses),
-                dispatch_to_runners(filtered_native, payload_for("measured_native"), timeout_seconds, runner_statuses),
-            )
+        results_sampled, results_native = await _dispatch_groups_by_phase(
+            [(filtered_sampled, payload_for("measured_sampled")),
+             (filtered_native, payload_for("measured_native"))],
+            runner_phases, timeout_seconds, runner_statuses)
     annotate_overlaps(results_sampled + results_native)
     _apply_api_preprocessing(results_sampled, "measured_sampled", circuits["measured_sampled"])
     _apply_api_preprocessing(results_native, "measured_native", circuits["measured_native"])
@@ -344,6 +341,7 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
             target_simulators, {**filtered_native, **filtered_sampled},
             skipped_native + skipped_sampled),
         "skipped_runners": skipped_native + skipped_sampled,
+        "effective_runner_phases": phase_plan(aggregated_results),
         "started_at": started_at,
     }
 
@@ -429,6 +427,37 @@ def _failed_job(target: str, error: str, runner_statuses: dict, report: dict = N
         if keep_full:
             job["full_results"] = report
     return job
+
+
+async def _dispatch_groups_by_phase(groups: list, runner_phases: dict, timeout_seconds,
+                                    runner_statuses) -> list:
+    """Dispatch several runner groups of one circuit (``[(urls, payload)]``) under one phase
+    plan (``effective_phases`` over every group's runners): phase p of every group runs
+    together, after phase p-1 of every group has finished. Returns each group's results."""
+    plan = effective_phases([name for urls, _ in groups for name in urls], runner_phases,
+                            bool(EXCLUSIVE.get()))
+    phases = sorted(set(plan.values()))
+    if runner_statuses is not None and len(phases) > 1:
+        for urls, payload in groups:
+            later = {n: u for n, u in urls.items() if plan[n] != phases[0]}
+            for spec in expand_runner_jobs(later, payload):
+                runner_statuses.setdefault(spec["key"], "queued")
+    results = [[] for _ in groups]
+    for phase in phases:
+        calls = [(i, {n: u for n, u in urls.items() if plan[n] == phase}, payload)
+                 for i, (urls, payload) in enumerate(groups)]
+        calls = [(i, urls, {**payload, "runner_phases": plan}) for i, urls, payload in calls if urls]
+        batches = await asyncio.gather(*(dispatch_to_runners(urls, payload, timeout_seconds, runner_statuses)
+                                         for _, urls, payload in calls))
+        for (i, _, _), batch in zip(calls, batches):
+            results[i].extend(batch)
+    return results
+
+
+def phase_plan(results: list) -> dict:
+    """Result key -> the dispatch phase it ran in."""
+    return {r["simulator"]: r.get("dispatch_phase", 1) for r in results
+            if isinstance(r, dict) and r.get("simulator")}
 
 
 def _queue_for_exclusive(runner_statuses, urls) -> None:

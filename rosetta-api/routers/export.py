@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 import schemas
 from routers.errors import responses
 from services.security import limiter
-from services.exporter import build_export_context, build_ro_crate
+from services.exporter import build_export_context, build_ro_crate, crate_name
 from services.publication.views import ParameterError
 from services.report_validation import reject_invalid_report
 from services.job_manager import job_report_or_error, report_failed_before_dispatch
@@ -32,11 +32,10 @@ async def _crate_response(results: dict, payload, route: str) -> StreamingRespon
         logger.error("RO-Crate export failed", exc_info=True)
         raise HTTPException(status_code=500, detail="Export failed")
 
-    ts_slug = ctx.timestamp.replace(":", "-").replace("+", "p")
     return StreamingResponse(
         io.BytesIO(zip_bytes),
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="rosetta-export-{ts_slug}.zip"'},
+        headers={"Content-Disposition": f'attachment; filename="{crate_name(ctx)}.zip"'},
     )
 
 

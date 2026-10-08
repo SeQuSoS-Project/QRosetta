@@ -494,7 +494,7 @@ def _await_job(batch_api, core_api, namespace: str, job_name: str, sim_name: str
     if terminal_state == "failed":
         if status_callback:
             status_callback("error")
-        return _k8s_error(sim_name, "The runner pod exited with an error before returning a result (likely out of memory or time). Server operators can see details in the runner pod logs.", "error")
+        return _k8s_error(sim_name, f"The {sim_name} pod exited with an error before returning a result (likely out of memory or time). Server operators can see details in its pod logs.", "error")
 
     if terminal_state == "succeeded":
         logger.info(f"[K8s] Fetching S3 result for {sim_name} (job_id={job_id})")

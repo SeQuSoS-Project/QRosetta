@@ -184,11 +184,22 @@
                     </tbody>
                 </table>
                 <p>
+                    Before a run starts, the API rejects with HTTP 400, naming the line: text that does not
+                    start with <code>OPENQASM 2.0;</code>; a character outside ASCII outside comments
+                    (with its column and Unicode name, such as a non-breaking space); a name declared twice
+                    among registers, gates and opaque gates, which share one set of names; an index outside
+                    its register; an operand that is not a declared register; and a call of a gate that
+                    neither the circuit nor an included <code>qelib1.inc</code> defines (gate names are
+                    case-sensitive: <code>H</code> and <code>cnot</code> are not qelib1 gates).
+                </p>
+                <p>
                     In statevector mode the API removes measurements at the end of the circuit before
                     dispatch and lists that as an <code>API:</code> entry in
                     <code>preprocessing_applied</code>. A circuit with a measurement followed by further
                     operations, a <code>reset</code>, or an <code>if</code> is rejected with HTTP 400 in
                     statevector mode, because it has no single output statevector; run it in measured mode.
+                    A compile-only run accepts such a circuit and records each requested compile as
+                    skipped.
                     In measured mode these operations are passed to every backend; adapters that cannot
                     simulate them return an error for that backend. Qiskit and cuQuantum (Aer) run
                     mid-circuit measurement, <code>reset</code> and <code>if</code>; Qrisp runs mid-circuit
@@ -304,8 +315,10 @@
                         Results record <code>exclusive</code> and <code>exclusive_wait_sec</code>; every result records
                         <code>gate_wait_sec</code>, so a job held back by another user's exclusive run shows how long it
                         waited, and its runners show as queued meanwhile. When an exclusive run ends, the jobs it held
-                        start together and overlap each other (<code>server_overlapping_runs</code>). It overrides
-                        <code>runner_phases</code>. It cannot hold back other programs on the host, and in Kubernetes
+                        start together and overlap each other (<code>server_overlapping_runs</code>). When
+                        <code>runner_phases</code> gives every backend a different phase, that order is kept;
+                        otherwise backends run in id order. Reports record the phases used as
+                        <code>effective_runner_phases</code>. It cannot hold back other programs on the host, and in Kubernetes
                         mode it covers only this server's runner Jobs. Each client may have one unfinished exclusive
                         job (another returns 429). An exclusive circuit that cannot start within the server's wait cap
                         (<code>exclusive.max_wait_sec</code> in <code>GET /config</code>, default 600 s) fails with that
@@ -323,7 +336,9 @@
                         48 runs in total; more is rejected with HTTP 422.</li>
                     <li><strong>Custom ordering (phases)</strong> (<code>runner_phases</code>), under Backends. Assigns each
                         backend a phase number: backends with the same number run at the same time, and
-                        phases run in ascending order. Without phases every backend runs at once. Phases
+                        phases run in ascending order. In measured mode the order covers both groups of
+                        backends (sampled statevector and native sampling): phase 2 of either group starts only
+                        after phase 1 of both has finished. Without phases every backend runs at once. Phases
                         change which backends compete for the host at the same moment, not the per-runner
                         CPU quota.</li>
                     <li><strong>Bypass API Safety Limits</strong> (<code>bypass_limits</code>, local mode
@@ -947,7 +962,8 @@
                         the Sequential ordering stage them (each result records <code>concurrent_runs</code>, the number
                         of runs dispatched in its phase or in a phase in flight beside it, such as the sampled and native
                         groups of a measured run; <code>dispatch_phase</code>; <code>dispatch_wave</code>, its phase's start, end and run count; and <code>overlapping_runs</code>, the
-                        number of other runs of the same job that were in their runner process at some time this one was;
+                        number of other runs of the same job that were in their runner process at some time this one was,
+                        from the times the runner recorded (<code>process_started_at</code>, <code>process_finished_at</code>);
                         other users' runs on a shared server are not counted). Concurrent runs share cores,
                         hyperthreads and memory bandwidth: on a 20-qubit measured QFT testers saw 2.3–3.3× longer times
                         than with the Sequential ordering, and the order of backends changed. For timings meant for a performance comparison,
@@ -1144,7 +1160,8 @@
                     "all N compiles failed" (a playlist: every circuit) and keeps its report. A compile the adapter refuses (an input it cannot compile correctly,
                     such as a <code>cu3</code> Cirq would import wrongly) or whose output fails the adapter's
                     check has <code>refusal</code> (the reason) and <code>refusal_kind</code>
-                    (<code>input</code> or <code>output_check</code>); the Summary lists every compile with
+                    (<code>input</code> or <code>output_check</code>), also as columns of
+                    <code>tables/compiled_circuits.csv</code> in a crate (empty for other errors); the Summary lists every compile with
                     its gate counts or reason, and a share link shows refusal reasons but no other error
                     text.
                 </p>

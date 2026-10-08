@@ -12,7 +12,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from config import settings
-from qrosetta_commons.helpers import get_logger
+from qrosetta_commons.helpers import get_logger, get_num_qubits_from_qasm
 from services.export_compiled import (
     COMPILED_METRICS_PATH, compile_actions, compile_provenance, compiled_circuit_files,
     compiled_metrics_csv, compiler_applications, compiler_keys, compiler_build_entity,
@@ -42,7 +42,8 @@ NOT_RECORDED = "not recorded"
 
 _RUN_CONFIG_FIELDS = (
     "execution_mode", "platform_version", "git_sha", "image_digests", "apply_preprocessing",
-    "optimization_level", "runner_config", "runner_phases", "timeout_seconds",
+    "optimization_level", "runner_config", "runner_phases", "effective_runner_phases",
+    "exclusive", "timeout_seconds", "timing_repeats", "timing_statistic",
     "timeout_scope", "agreement_thresholds", "n_shots", "seed", "seed_derivation",
     "bypass_limits", "started_at", "finished_at",
 )
@@ -543,6 +544,12 @@ def _run_configuration(ctx: ExportContext) -> dict:
         requested if requested is not None else "none (defaults applied)")
     config["analysis_version"] = _analysis_version(ctx)
     tasks = _iter_tasks(ctx)
+    if config.get("effective_runner_phases") == NOT_RECORDED:
+        phases = {r["simulator"]: r["dispatch_phase"] for t in tasks[:1]
+                  for r in t.report.get("raw_results") or []
+                  if isinstance(r, dict) and r.get("simulator") and "dispatch_phase" in r}
+        if phases:
+            config["effective_runner_phases"] = phases
     if any(t.task_id is not None for t in tasks):
         config["agreement_thresholds_by_task"] = {
             t.task_id: _task_effective_thresholds(ctx, t, requested) for t in tasks}
@@ -1174,15 +1181,40 @@ def _add_compiled_metrics_table(ctx: ExportContext, files: dict, descriptions: d
              for t in tasks for f in _compiled_files(t) if f["record"] is not None}
     files[COMPILED_METRICS_PATH] = compiled_metrics_csv(reports, paths).encode()
     descriptions[COMPILED_METRICS_PATH] = (
-        "One row per compile-only record: status, gate_count (top-level statements), "
+        "One row per compile-only record: status, refusal_kind and refusal (set when the "
+        "adapter refused the input or rejected its output, empty for other errors), "
+        "gate_count (top-level statements), "
         "multi_qubit_gate_count, circuit_depth, gate_counts per gate name and the output file. "
         "Compilers write different gate sets, so gate_count is not comparable across them.")
 
 
+def _crate_label(ctx: ExportContext) -> str:
+    """What the crate holds, for its file name: the saved run's name, else the one task's
+    name, else the number of circuits of a playlist, else mode and qubit count."""
+    if ctx.results.get("run_name"):
+        return str(ctx.results["run_name"])
+    tasks = _iter_tasks(ctx)
+    if isinstance(ctx.results.get("benchmark_summary"), list):
+        return tasks[0].label if len(tasks) == 1 else f"playlist {len(tasks)} circuits"
+    qubits = get_num_qubits_from_qasm(ctx.qasm_string or ctx.results.get("input_qasm") or "")
+    return f"{ctx.mode} {qubits}q" if qubits else ctx.mode
+
+
+def crate_name(ctx: ExportContext) -> str:
+    """``rosetta-export-<label slug>-<UTC export time as YYYYMMDDTHHMMSSZ>``: the ZIP's file
+    name without ``.zip`` and its top-level directory."""
+    try:
+        moment = datetime.fromisoformat(ctx.timestamp).astimezone(timezone.utc)
+        stamp = moment.strftime("%Y%m%dT%H%M%SZ")
+    except ValueError:
+        stamp = _slugify(ctx.timestamp, "undated")
+    label = _slugify(re.sub(r"['\u2019]", "", _crate_label(ctx)), "")[:60].strip("-")
+    return "-".join(part for part in ("rosetta-export", label, stamp) if part)
+
+
 def build_ro_crate(ctx: ExportContext) -> bytes:
     """Build the RO-Crate 1.1 ZIP bundle for ``ctx`` and return its bytes."""
-    ts_slug = ctx.timestamp.replace(":", "-").replace("+", "p")
-    dir_name = f"rosetta-export-{ts_slug}"
+    dir_name = crate_name(ctx)
 
     results_data = _results_json_data(ctx)
     provenance_data = _build_provenance(ctx)

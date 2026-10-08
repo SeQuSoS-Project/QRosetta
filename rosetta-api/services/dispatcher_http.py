@@ -29,6 +29,7 @@ async def safe_request(client, url, payload, sim_name, timeout_s, http_timeout=N
     ``offline`` when the runner cannot be reached, ``error`` otherwise. A dropped
     connection is reported with status ``error``, since the cause is not known.
     """
+    kind = "compiler" if str(url).rstrip("/").endswith("/compile") else "runner"
     t0 = time.perf_counter()
     try:
         if http_timeout is None:
@@ -40,12 +41,12 @@ async def safe_request(client, url, payload, sim_name, timeout_s, http_timeout=N
     except (httpx.ConnectError, httpx.ConnectTimeout):
         return _runner_error(
             sim_name,
-            f"UNAVAILABLE: the {sim_name} runner could not be reached. Server operators can "
+            f"UNAVAILABLE: the {sim_name} {kind} could not be reached. Server operators can "
             f"check whether its service is running.", "offline")
     except httpx.TimeoutException:
         return _runner_error(
             sim_name,
-            f"TIMEOUT ({timeout_s}s): the {sim_name} runner did not respond within its queue "
+            f"TIMEOUT ({timeout_s}s): the {sim_name} {kind} did not respond within its queue "
             f"and run budget. The circuit may be too large or deep for the allocated "
             f"resources; reduce the qubit count or raise the timeout.", "timeout")
     except (httpx.RemoteProtocolError, httpx.ReadError) as e:
@@ -53,23 +54,23 @@ async def safe_request(client, url, payload, sim_name, timeout_s, http_timeout=N
         if elapsed >= 0.8 * float(timeout_s):
             return _runner_error(
                 sim_name,
-                f"RUNNER TERMINATED after ~{elapsed:.0f}s: the {sim_name} runner closed the "
-                f"connection near the {timeout_s}s deadline. The runner process was terminated "
+                f"{kind.upper()} TERMINATED after ~{elapsed:.0f}s: the {sim_name} {kind} closed the "
+                f"connection near the {timeout_s}s deadline. The {kind} process was terminated "
                 f"(likely out of memory or time; timeout / OOM kill). Server operators can see "
-                f"details in the runner logs.")
+                f"details in the {kind} logs.")
         return _runner_error(
             sim_name,
-            f"CONNECTION LOST after ~{elapsed:.0f}s to the {sim_name} runner "
-            f"({type(e).__name__}). The runner process was terminated (likely out of memory "
-            f"or time). Server operators can see details in the runner logs.")
+            f"CONNECTION LOST after ~{elapsed:.0f}s to the {sim_name} {kind} "
+            f"({type(e).__name__}). The {kind} process was terminated (likely out of memory "
+            f"or time). Server operators can see details in the {kind} logs.")
     except httpx.HTTPStatusError as e:
         return _runner_error(
-            sim_name, f"HTTP {e.response.status_code} from the {sim_name} runner.")
+            sim_name, f"HTTP {e.response.status_code} from the {sim_name} {kind}.")
     except Exception as e:
         logger.error(f"Unexpected error dispatching to {sim_name}: {e}", exc_info=True)
         return _runner_error(
             sim_name,
-            f"Unexpected error communicating with the {sim_name} runner: {type(e).__name__}.")
+            f"Unexpected error communicating with the {sim_name} {kind}: {type(e).__name__}.")
 
 
 async def dispatch_http_local(runner_urls: dict, runner_payload: dict, timeout_seconds: int, runner_statuses: dict = None) -> list:

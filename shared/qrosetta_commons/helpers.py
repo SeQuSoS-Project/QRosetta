@@ -3,6 +3,7 @@ isolated execution and the HTTP/CLI scaffolding."""
 
 import asyncio as _asyncio
 import base64
+import datetime as _datetime
 import functools
 import gc
 import hashlib
@@ -80,6 +81,11 @@ METRIC_SCOPE = {
                        "frequency of each CPU in simulation_cpus",
     "queue_wait_sec": "wall clock the request waited for this runner's execution slot "
                       "before its process was spawned; 0 on the Kubernetes path",
+    "process_started_at": "UTC wall clock when the runner started this run's isolated "
+                          "process (after the queue wait); with process_finished_at, the "
+                          "interval overlapping_runs is computed from",
+    "process_finished_at": "UTC wall clock when the runner had this run's result, before "
+                           "the response was sent",
     "theoretical_statevector_mb": "2^N x bytes per amplitude / 1024^2, N = qubits declared "
                                   "by the dispatched circuit; 8 bytes for complex64, 16 for "
                                   "complex128, and 16 when the backend reports no precision "
@@ -840,6 +846,11 @@ def run_measured_job(*, simulator, payload, compile_fn, execute_fn, qubit_orderi
 RUNNER_MAX_CONCURRENT = max(1, int(os.getenv("RUNNER_MAX_CONCURRENT", "1")))
 
 
+def utc_iso() -> str:
+    """Current UTC wall-clock time as ISO 8601 with microsecond precision."""
+    return _datetime.datetime.now(_datetime.timezone.utc).isoformat(timespec="microseconds")
+
+
 def _stamp_code_sha(result: dict, func) -> None:
     code_sha = getattr(func, "runner_code_sha256", None)
     if code_sha:
@@ -887,13 +898,17 @@ class ExecutionSlots:
 
         waited = time.monotonic() - t0
         self.running += 1
+        started_at = utc_iso()
         try:
             result = await run_isolated(func, payload, measured=measured)
         finally:
+            finished_at = utc_iso()
             self.running -= 1
             self._semaphore.release()
         if isinstance(result, dict):
             result["queue_wait_sec"] = waited
+            result["process_started_at"] = started_at
+            result["process_finished_at"] = finished_at
             _stamp_code_sha(result, func)
         return result
 
@@ -1028,9 +1043,12 @@ def run_cli_main(app, process_run, process_run_measured, cli_name,
     def _process(payload_dict):
         func = process_run if args.endpoint == "run" else process_run_measured
         apply_cpu_affinity()
+        started_at = utc_iso()
         result = run_with_uniform_measurement(func, payload_dict)
         if isinstance(result, dict):
             result["queue_wait_sec"] = 0.0
+            result["process_started_at"] = started_at
+            result["process_finished_at"] = utc_iso()
             _stamp_code_sha(result, func)
         return result
 

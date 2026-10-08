@@ -922,3 +922,35 @@ class TestCommitPinnedUrlsAndStatevectorFingerprints:
         out = _crate_results(build_ro_crate(_make_ctx(results=results)))
         assert all(r["statevector_sha256"] == "ab" * 32 and r["statevector_length"] == 8
                    for r in out["raw_results"])
+
+
+class TestRunConfigurationTimingSettings:
+    def test_exclusive_timing_and_effective_phases_are_recorded(self):
+        results = json.loads(json.dumps(SAMPLE_RESULTS_SV))
+        results.update({"exclusive": True, "timing_repeats": 5, "timing_statistic": "median",
+                        "runner_phases": {}})
+        for i, r in enumerate(results["raw_results"]):
+            r["dispatch_phase"] = i + 1
+        config = _provenance(build_ro_crate(_make_ctx(results=results)))["run_configuration"]
+        assert config["exclusive"] is True and config["timing_repeats"] == 5
+        assert config["timing_statistic"] == "median"
+        assert config["runner_phases"] == {}
+        assert config["effective_runner_phases"] == {"qiskit": 1, "cirq": 2}
+
+    def test_crate_name_is_readable_utc_and_names_the_run(self):
+        from services.exporter import crate_name
+        ctx = _make_ctx(timestamp="2026-10-07T20:53:19.973+00:00")
+        assert crate_name(ctx) == "rosetta-export-statevector-3q-20261007T205319Z"
+        results = dict(SAMPLE_RESULTS_SV, run_name="Grover’s 3q / try #2")
+        assert crate_name(_make_ctx(results=results, timestamp="2026-10-07T23:53:19+03:00")) == \
+            "rosetta-export-grovers-3q-try-2-20261007T205319Z"
+        assert crate_name(_batch_ctx(timestamp="2026-10-07T20:53:19+00:00")) == \
+            "rosetta-export-playlist-2-circuits-20261007T205319Z"
+        names = zipfile.ZipFile(io.BytesIO(build_ro_crate(ctx))).namelist()
+        assert all(n.startswith("rosetta-export-statevector-3q-20261007T205319Z/") for n in names)
+
+    def test_a_recorded_phase_plan_is_used_as_is(self):
+        results = json.loads(json.dumps(SAMPLE_RESULTS_SV))
+        results["effective_runner_phases"] = {"qiskit": 2}
+        config = _provenance(build_ro_crate(_make_ctx(results=results)))["run_configuration"]
+        assert config["effective_runner_phases"] == {"qiskit": 2}

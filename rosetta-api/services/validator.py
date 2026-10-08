@@ -13,6 +13,7 @@ from services.circuit_resolver import (
     statement_parameters,
     strip_terminal_measurements,
 )
+from services.qasm_structure import HEADER_MESSAGE, check_ascii, check_structure
 from services.reserved_gate_names import reserved_gate_reason
 
 _VERSION_RE = re.compile(r"^\s*OPENQASM\s+([^;\s]+)\s*;", re.MULTILINE)
@@ -121,7 +122,7 @@ def _top_level_statements(code: str):
 
 
 def check_qasm_syntax(qasm: str) -> None:
-    """400 for an OpenQASM 3 program, a malformed qreg/creg declaration, or a final
+    """400 for an OpenQASM 3 program, text that does not start with the OPENQASM header, a malformed qreg/creg declaration, or a final
     statement with no semicolon (each with its line number)."""
     code = _comment_free_keeping_lines(qasm)
     version = _VERSION_RE.search(code)
@@ -131,6 +132,8 @@ def check_qasm_syntax(qasm: str) -> None:
         _bad_request(f"Unsupported OpenQASM version '{version.group(1)}'; submit OpenQASM 2.0.")
     if not _REG_KEYWORD_RE.search(code) and _QASM3_DECL_RE.search(code):
         _bad_request(_QASM3_MESSAGE)
+    if code.strip() and not code.lstrip().startswith("OPENQASM"):
+        _bad_request(HEADER_MESSAGE)
 
     for start, raw, terminated in _top_level_statements(code):
         stmt = " ".join(raw.split())
@@ -342,7 +345,9 @@ def validate_request(qasm: str, mode: str = "statevector", bypass_limits: bool =
                         f"and gate definitions are not counted)."),
             )
 
+    check_ascii(qasm)
     check_qasm_syntax(qasm)
+    check_structure(qasm)
     if check_reserved_names:
         check_gate_names(qasm, statements)
         expanded, user_calls = expanded_counts(qasm, statements)

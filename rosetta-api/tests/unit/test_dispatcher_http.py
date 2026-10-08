@@ -53,6 +53,13 @@ def test_early_disconnect_is_connection_lost_not_crash():
     assert "RUNNER TERMINATED" not in r["error"]
 
 
+def test_compiler_failures_name_the_compiler_not_a_runner():
+    r = asyncio.run(safe_request(_RaisingClient(httpx.RemoteProtocolError("closed")),
+                                 "http://pyzx-compiler:8000/compile", {}, "pyzx~opt1~run1", 0))
+    assert "COMPILER TERMINATED" in r["error"] and "compiler logs" in r["error"]
+    assert "runner" not in r["error"].lower()
+
+
 def test_http_status_error_is_classified():
     r = _run(_StatusErrorClient())
     assert "HTTP 500" in r["error"]

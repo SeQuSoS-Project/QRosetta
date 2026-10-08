@@ -208,8 +208,17 @@ SAMPLED_SV_URLS = {
 
 
 def _run_interval(result: dict):
-    """(start, end) in seconds of a run's time in its runner process: dispatch time plus
-    queue wait, to completion; None without both timestamps."""
+    """(start, end) in seconds of a run's time in its runner process: the runner's own
+    ``process_started_at``..``process_finished_at`` when recorded; else dispatch time plus
+    queue wait, to completion (which includes sending the response); None for a run that
+    never started or without timestamps."""
+    if result.get("never_started"):
+        return None
+    try:
+        return (datetime.fromisoformat(result["process_started_at"]).timestamp(),
+                datetime.fromisoformat(result["process_finished_at"]).timestamp())
+    except (KeyError, TypeError, ValueError):
+        pass
     try:
         start = datetime.fromisoformat(result["dispatched_at"]).timestamp()
         end = datetime.fromisoformat(result["completed_at"]).timestamp()
@@ -282,6 +291,17 @@ def annotate_overlaps(results: list) -> list:
     return results
 
 
+def effective_phases(names, runner_phases: dict = None, exclusive: bool = False) -> dict:
+    """Phase of each runner in ``names``: its ``runner_phases`` entry, default 1. In an
+    exclusive run every runner needs a phase of its own; when the requested phases do not
+    give that, runners take phases 1..n in id order."""
+    names = list(names)
+    phases = {name: (runner_phases or {}).get(name, 1) for name in names}
+    if exclusive and len(set(phases.values())) < len(names):
+        phases = {name: i + 1 for i, name in enumerate(sorted(names))}
+    return phases
+
+
 async def dispatch_to_runners(runner_urls: dict, runner_payload: dict, timeout_seconds: int = settings.RUNNER_TIMEOUT_SEC, runner_statuses: dict = None) -> list:
     """Run every job for ``runner_urls`` and return the annotated results (with
     ``annotate_overlaps``). In an exclusive job (``run_registry.EXCLUSIVE``) every runner
@@ -292,8 +312,8 @@ async def dispatch_to_runners(runner_urls: dict, runner_payload: dict, timeout_s
     runs of other jobs that were in flight at some time this run was."""
     exclusive = bool(EXCLUSIVE.get())
     if exclusive:
-        runner_payload = {**runner_payload, "runner_phases": {
-            name: i + 1 for i, name in enumerate(sorted(runner_urls))}}
+        runner_payload = {**runner_payload, "runner_phases": effective_phases(
+            runner_urls, runner_payload.get("runner_phases"), True)}
     held = GATE_HELD.get()
     gated = held is None
     gate_busy = GATE.status()["exclusive_running"] or GATE.status()["exclusive_waiting"]
