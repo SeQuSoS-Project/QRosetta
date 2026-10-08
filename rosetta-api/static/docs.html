@@ -525,7 +525,7 @@
                     <thead><tr><th><code>measured_assessment</code></th><th>Meaning</th></tr></thead>
                     <tbody>
                         <tr><td><code>consistent_within_shot_noise</code></td><td>Neither test is significant after Benjamini–Yekutieli (BY) correction, and the power to detect a total-variation gap of 0.05, computed at α/(m·c_m), is at least 0.8. This holds even when the label is <code>distance_exceeds_threshold</code>. It is a failure to find a difference at that power, not a demonstration that the distributions are equal.</td></tr>
-                        <tr><td><code>inconclusive_low_shots</code></td><td>Either some expected counts are below 5 after rare outcomes are pooled (<code>inconclusive_reason: low_expected_counts</code>), or neither test is significant but the power to detect the target gap, computed at α/(m·c_m), is below 0.8 (<code>low_power</code>). <code>resolvable_by_more_shots</code> records whether more shots can resolve the pair; it is false when the outcomes are too rare for the test at any practical shot count. The pair is neither consistent nor in disagreement; the Summary tab groups these pairs by cause and gives the shot count the power model recommends when it exceeds the shots used.</td></tr>
+                        <tr><td><code>inconclusive_low_shots</code></td><td>Either some expected counts are below 5 after rare outcomes are pooled on a table larger than 2 × 2 (<code>inconclusive_reason: low_expected_counts</code>; a 2 × 2 table is then tested exactly), or neither test is significant but the power to detect the target gap, computed at α/(m·c_m), is below 0.8 (<code>low_power</code>). <code>resolvable_by_more_shots</code> records whether more shots can resolve the pair; it is false when the outcomes are too rare for the test at any practical shot count. The pair is neither consistent nor in disagreement; the Summary tab groups these pairs by cause and gives the shot count the power model recommends when it exceeds the shots used.</td></tr>
                         <tr><td><code>distinguishable</code></td><td>Both tests are significant after BY correction. Together with a differing single-bit marginal, this is what the Summary counts as a measured disagreement.</td></tr>
                         <tr><td><code>ambiguous</code></td><td>Exactly one of the two tests is significant. Treated as inconclusive, not as a disagreement.</td></tr>
                         <tr><td><code>not_comparable</code></td><td>The pair has no usable counts on at least one side.</td></tr>
@@ -670,12 +670,13 @@
                         (<code>p_value_holm</code>, <code>significant_holm</code>), which control the family-wise
                         error rate. A distinguishable pair carries <code>significant_fwer</code>: true when both
                         tests also pass Holm. Under BY, genuine discoveries in other pairs lower the bar for every
-                        pair, so with one wrong backend among 14, a pair of two correct backends is flagged in about
-                        8–9% of runs; the Summary marks a distinguishable pair that fails Holm as significant under
+                        pair, so with one grossly wrong backend among 14 (2- and 3-qubit circuits at 8,200 shots), at least one pair of two
+                        correct backends is flagged in 6–7% of runs, and in 3% of runs by a flag that also passes Holm
+                        (0.8–1% of runs when every backend is correct); the Summary marks a distinguishable pair that fails Holm as significant under
                         BY only. A p-value that underflows to 0 is shown as
                         <code>&lt;1e-300</code>, and values below 1e-3 in scientific notation.</li>
                     <li><strong>Verdict</strong>: <code>inconclusive_low_shots</code>
-                        (<code>low_expected_counts</code>) if no pooling gives adequate expected counts; else
+                        (<code>low_expected_counts</code>) if no pooling gives adequate expected counts and the table is larger than 2 × 2; else
                         <code>distinguishable</code> if both tests are significant, <code>ambiguous</code> if
                         exactly one is, and, if neither is, <code>consistent</code> when the power at the
                         observed shots, computed at α/(m·c_m), is at least 0.8 and
@@ -1828,7 +1829,7 @@
                     <tbody>
                         <tr><td><code>consistent</code></td><td>Neither the chi-square test nor the G-test is significant after Benjamini–Yekutieli (BY) correction, and the power to detect a total-variation gap of 0.05, computed at α/(m·c_m), is at least 0.8.</td></tr>
                         <tr><td><code>distinguishable</code></td><td>Both tests are significant after BY correction.</td></tr>
-                        <tr><td><code>inconclusive_low_shots</code></td><td>Expected counts below 5 after pooling rare outcomes (<code>inconclusive_reason: low_expected_counts</code>), or neither test significant with power below 0.8 at α/(m·c_m) (<code>low_power</code>). <code>resolvable_by_more_shots</code> is false when the outcomes are too rare for the test at any practical shot count.</td></tr>
+                        <tr><td><code>inconclusive_low_shots</code></td><td>Expected counts below 5 after pooling rare outcomes on a table larger than 2 × 2 (<code>inconclusive_reason: low_expected_counts</code>), or neither test significant with power below 0.8 at α/(m·c_m) (<code>low_power</code>). <code>resolvable_by_more_shots</code> is false when the outcomes are too rare for the test at any practical shot count.</td></tr>
                         <tr><td><code>ambiguous</code></td><td>Exactly one of the chi-square test and the G-test is significant after BY correction.</td></tr>
                     </tbody>
                 </table>
