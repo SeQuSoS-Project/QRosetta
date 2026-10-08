@@ -12,7 +12,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from config import settings
-from qrosetta_commons.helpers import get_logger
+from qrosetta_commons.helpers import get_logger, get_num_qubits_from_qasm
 from services.export_compiled import (
     COMPILED_METRICS_PATH, compile_actions, compile_provenance, compiled_circuit_files,
     compiled_metrics_csv, compiler_applications, compiler_keys, compiler_build_entity,
@@ -1188,10 +1188,33 @@ def _add_compiled_metrics_table(ctx: ExportContext, files: dict, descriptions: d
         "Compilers write different gate sets, so gate_count is not comparable across them.")
 
 
+def _crate_label(ctx: ExportContext) -> str:
+    """What the crate holds, for its file name: the saved run's name, else the one task's
+    name, else the number of circuits of a playlist, else mode and qubit count."""
+    if ctx.results.get("run_name"):
+        return str(ctx.results["run_name"])
+    tasks = _iter_tasks(ctx)
+    if isinstance(ctx.results.get("benchmark_summary"), list):
+        return tasks[0].label if len(tasks) == 1 else f"playlist {len(tasks)} circuits"
+    qubits = get_num_qubits_from_qasm(ctx.qasm_string or ctx.results.get("input_qasm") or "")
+    return f"{ctx.mode} {qubits}q" if qubits else ctx.mode
+
+
+def crate_name(ctx: ExportContext) -> str:
+    """``rosetta-export-<label slug>-<UTC export time as YYYYMMDDTHHMMSSZ>``: the ZIP's file
+    name without ``.zip`` and its top-level directory."""
+    try:
+        moment = datetime.fromisoformat(ctx.timestamp).astimezone(timezone.utc)
+        stamp = moment.strftime("%Y%m%dT%H%M%SZ")
+    except ValueError:
+        stamp = _slugify(ctx.timestamp, "undated")
+    label = _slugify(re.sub(r"['\u2019]", "", _crate_label(ctx)), "")[:60].strip("-")
+    return "-".join(part for part in ("rosetta-export", label, stamp) if part)
+
+
 def build_ro_crate(ctx: ExportContext) -> bytes:
     """Build the RO-Crate 1.1 ZIP bundle for ``ctx`` and return its bytes."""
-    ts_slug = ctx.timestamp.replace(":", "-").replace("+", "p")
-    dir_name = f"rosetta-export-{ts_slug}"
+    dir_name = crate_name(ctx)
 
     results_data = _results_json_data(ctx)
     provenance_data = _build_provenance(ctx)
