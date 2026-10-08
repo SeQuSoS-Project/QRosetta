@@ -40,3 +40,29 @@ export function formatRunnerLabel(key, nameMap) {
     const base = (nameMap && nameMap[simId]) || simId;
     return isMulti ? `${base} · L${optLevel} #${runIndex}` : base;
 }
+
+/** Long, vendor-qualified backend names: the Backends popover, the results tables and figure
+ * legends (mirrored by services/publication/theme.py BACKEND_DISPLAY_NAMES). */
+export const RUNNER_DISPLAY_NAMES = {
+    "qiskit": "Qiskit (IBM)",
+    "qulacs": "Qulacs",
+    "braket": "Braket (AWS)",
+    "quest": "QuEST",
+    "cirq": "Cirq (Google)",
+    "qsim-cirq": "qsim (Google)",
+    "qibo": "Qibo",
+    "qrisp": "Qrisp",
+    "myqlm": "myQLM (Eviden)",
+    "pyquil": "PyQuil (Rigetti)",
+    "projectq": "ProjectQ",
+    "pennylane-lightning": "PL Lightning",
+    "pennylane-default": "PL Default",
+    "torchquantum": "TorchQuantum",
+    "quimb": "Quimb (TN)",
+    "cuquantum": "cuQuantum (NVIDIA)"
+};
+
+/** The long name of a runner key (services/publication/theme.py backend_label). */
+export function backendLabel(key) {
+    return formatRunnerLabel(key, RUNNER_DISPLAY_NAMES);
+}

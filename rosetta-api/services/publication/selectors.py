@@ -134,9 +134,10 @@ def _device(row: dict) -> str:
     return "CPU"
 
 
-def _device_label(row: dict) -> str:
-    """The simulator id, with " (GPU)" appended for a GPU run."""
-    sim = _fmt_text(row["entry"].get("simulator"))
+def _device_label(row: dict, name=_fmt_text) -> str:
+    """``name`` of the simulator id (the id itself by default), with " (GPU)" appended for a
+    GPU run."""
+    sim = name(row["entry"].get("simulator"))
     return f"{sim} (GPU)" if _device(row) == "GPU" else sim
 
 

@@ -5,7 +5,7 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 
-from .theme import _CATEGORICAL, _INK, _MUTED, _figsize, _log_axis, _prob_cmap
+from .theme import _CATEGORICAL, _INK, _MUTED, _figsize, _log_axis, _prob_cmap, backend_label
 from .formats import _fmt_num
 from .distributions import count_selection, disagrees, hamming, marginals, spread
 from .selectors import _circuit_name
@@ -55,7 +55,8 @@ def fig_counts(results: dict, p: dict):
         fig, ax = plt.subplots(figsize=_figsize((min(11.0, max(4.2, 0.85 * M + 2.4)),
                                                  min(10.0, max(2.6, 0.4 * K + 1.3)))))
         im = ax.imshow(P, cmap=_prob_cmap(), aspect="auto", vmin=0.0, vmax=max(P.max(), 1e-9))
-        ax.set_xticks(range(M)); ax.set_xticklabels(sims, rotation=45, ha="right", fontsize="small")
+        ax.set_xticks(range(M)); ax.set_xticklabels([backend_label(s) for s in sims], rotation=45, ha="right",
+                                                      fontsize="small")
         ax.set_yticks(range(K)); ax.set_yticklabels(labels, fontsize="small", fontfamily="monospace")
         ax.set_xlabel("backend"); ax.set_ylabel("measured outcome")
         if K * M <= 160:
@@ -85,7 +86,7 @@ def fig_counts(results: dict, p: dict):
             s = sims[k]
             ax.bar(x, [r["vals"][k] for r in rows], color=colours[s], width=0.8)
             ax.hlines([r["vals"][ref] for r in rows], x - 0.4, x + 0.4, colors=_INK, linewidth=1)
-            ax.set_title(s, fontsize="small", loc="left")
+            ax.set_title(backend_label(s), fontsize="small", loc="left")
             if p["yscale"] == "log":
                 _log_axis(ax)
             ax.set_xticks(x)
@@ -108,15 +109,15 @@ def fig_counts(results: dict, p: dict):
         for i, s in enumerate(others):
             k = sims.index(s)
             ax.bar(x - 0.4 + bw * (i + 0.5), [r["vals"][k] - r["vals"][ref] for r in rows],
-                   width=bw * 0.95, color=colours[s], label=s)
+                   width=bw * 0.95, color=colours[s], label=backend_label(s))
         ax.axhline(0, color=_MUTED, linewidth=0.8)
-        ax.set_ylabel(f"probability − {p['ref']}")
+        ax.set_ylabel(f"probability − {backend_label(p['ref'])}")
         _legend(ax, len(others) + 1)
     else:
         bw = 0.8 / max(M, 1)
         for i, s in enumerate(sims):
             ax.bar(x - 0.4 + bw * (i + 0.5), [r["vals"][i] for r in rows], width=bw * 0.95,
-                   color=colours[s], label=s)
+                   color=colours[s], label=backend_label(s))
         ax.set_ylabel("probability")
         if p["yscale"] == "log":
             _log_axis(ax)
@@ -130,7 +131,7 @@ def fig_counts(results: dict, p: dict):
 
 def _lines(ax, xs, series, colours, err=None):
     for s, ys in series.items():
-        ax.plot(xs, ys, marker="o", markersize=3, linewidth=1.2, color=colours[s], label=s)
+        ax.plot(xs, ys, marker="o", markersize=3, linewidth=1.2, color=colours[s], label=backend_label(s))
         if err is not None:
             ax.errorbar(xs, ys, yerr=err[s], fmt="none", ecolor=colours[s], elinewidth=0.8,
                         capsize=0)
@@ -152,7 +153,7 @@ def fig_marginals(results: dict, p: dict):
         _lines(ax, xs, {s: [a - b for a, b in zip(d["m"][s], ref)] for s in sims if s != p["ref"]},
                colours)
         ax.axhline(0, color=_MUTED, linewidth=0.8)
-        ax.set_ylabel(f"P(c[j] = 1) − {p['ref']}")
+        ax.set_ylabel(f"P(c[j] = 1) − {backend_label(p['ref'])}")
     else:
         err = None
         if p["errorbars"]:
@@ -187,13 +188,13 @@ def fig_hamming(results: dict, p: dict):
                    alpha=0.08, label="±2σ shot noise")
             series = {s: [a - b for a, b in zip(d["h"][s], ref)] for s in sims if s != p["ref"]}
             ax.axhline(0, color=_MUTED, linewidth=0.8)
-            ax.set_ylabel(f"probability − {p['ref']}")
+            ax.set_ylabel(f"probability − {backend_label(p['ref'])}")
         else:
             series = {s: d["h"][s] for s in sims}
             ax.set_ylabel("probability")
         bw = 0.8 / max(len(series), 1)
         for i, (s, ys) in enumerate(series.items()):
-            ax.bar(xs - 0.4 + bw * (i + 0.5), ys, width=bw * 0.95, color=colours[s], label=s)
+            ax.bar(xs - 0.4 + bw * (i + 0.5), ys, width=bw * 0.95, color=colours[s], label=backend_label(s))
     ax.set_xticks(xs); ax.set_xticklabels([str(w) for w in xs], fontsize="small")
     ax.set_xlabel("number of ones w")
     ax.set_title(f"Hamming-weight distribution: {_circuit_name(results)}")
@@ -208,7 +209,7 @@ def fig_rank(results: dict, p: dict):
     fig, ax = plt.subplots(figsize=_figsize((6.5, 4.0)))
     for s in sims:
         ys = d["rows"][s]["sorted"]
-        ax.plot(np.arange(1, len(ys) + 1), ys, linewidth=1.1, color=colours[s], label=s,
+        ax.plot(np.arange(1, len(ys) + 1), ys, linewidth=1.1, color=colours[s], label=backend_label(s),
                 drawstyle="steps-post")
     _log_axis(ax)
     if p["xscale"] == "log":

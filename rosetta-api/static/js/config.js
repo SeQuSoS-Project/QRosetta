@@ -5,6 +5,7 @@ import { getState } from './state.js';
 import { _escapeHtml } from './utils.js';
 import { announceWorkspaceChange } from './dom.js';
 import { qasmGateMetrics } from './qasm_text.js';
+import { RUNNER_DISPLAY_NAMES } from './runner_key.js';
 
 /** Qubit cap of the run the mode boxes describe: statevector, measured, or compile-only when
  * neither is ticked. */
@@ -26,24 +27,7 @@ export function getRunnerOptInfo(runnerId) {
     return _runnerOptInfo[runnerId] || { max_level: 0, optimization_levels: {} };
 }
 
-export const RUNNER_DISPLAY_NAMES = {
-    "qiskit": "Qiskit (IBM)",
-    "qulacs": "Qulacs",
-    "braket": "Braket (AWS)",
-    "quest": "QuEST",
-    "cirq": "Cirq (Google)",
-    "qsim-cirq": "qsim (Google)",
-    "qibo": "Qibo",
-    "qrisp": "Qrisp",
-    "myqlm": "myQLM (Eviden)",
-    "pyquil": "PyQuil (Rigetti)",
-    "projectq": "ProjectQ",
-    "pennylane-lightning": "PL Lightning",
-    "pennylane-default": "PL Default",
-    "torchquantum": "TorchQuantum",
-    "quimb": "Quimb (TN)",
-    "cuquantum": "cuQuantum (NVIDIA)"
-};
+export { RUNNER_DISPLAY_NAMES };
 
 const DESELECTED_KEY = 'rosetta_deselected_runners';
 

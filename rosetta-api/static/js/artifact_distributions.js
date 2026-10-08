@@ -4,6 +4,7 @@
 
 import { _artFull, _artInt, _artMsbCounts, _artRunLabel, _formatColumns, _n } from './artifact_formats.js';
 import { reportBackends } from './artifact_views.js';
+import { backendLabel } from './runner_key.js';
 
 const _byLabel = (a, b) => (a.label < b.label ? -1 : a.label > b.label ? 1 : 0);
 const _sortedKeys = obj => Object.keys(obj).sort();
@@ -41,7 +42,7 @@ function missingNote(cp) {
 
 function highlightNote(p) {
     return p.colour === 'highlight'
-        ? ` Coloured: backends whose pair with ${p.ref} is a disagreement (shot-noise verdict or a single-bit marginal); grey: the rest.`
+        ? ` Coloured: backends whose pair with ${backendLabel(p.ref)} is a disagreement (shot-noise verdict or a single-bit marginal); grey: the rest.`
         : '';
 }
 
@@ -118,9 +119,9 @@ const _COUNT_LEADS = {
 export function countsLegend(results, p) {
     const sel = countSelection(results, p);
     let lead;
-    if (p.layout === 'panels') lead = `One panel per backend; black ticks mark ${p.ref}`;
+    if (p.layout === 'panels') lead = `One panel per backend; black ticks mark ${backendLabel(p.ref)}`;
     else if (p.layout === 'diff') {
-        lead = `Measured probability of each backend minus ${p.ref}`;
+        lead = `Measured probability of each backend minus ${backendLabel(p.ref)}`;
         if (p.band) lead += '; the shaded band is ±2σ shot noise of the difference of two independent samples at the reference probability and shot count';
     } else lead = _COUNT_LEADS[p.layout];
     let text = `${lead}, for ${sel.cp.sims.length} backend(s), ${_artRunLabel(results)}. Shows `
@@ -166,7 +167,7 @@ export function marginalsLegend(results, p) {
     const k = d.cp.sims.length;
     let text;
     if (p.layout === 'diff') {
-        text = `P(c[j] = 1) of each backend minus ${p.ref}, for ${k} backend(s), ${_artRunLabel(results)}`;
+        text = `P(c[j] = 1) of each backend minus ${backendLabel(p.ref)}, for ${k} backend(s), ${_artRunLabel(results)}`;
         if (p.errorbars) text += '; the shaded band is ±2σ shot noise of the difference at the reference value';
     } else {
         text = `Probability that each classical bit reads 1, P(c[j] = 1), for ${k} backend(s), ${_artRunLabel(results)}`;
@@ -211,7 +212,7 @@ export function hammingLegend(results, p) {
     const k = d.cp.sims.length;
     let text;
     if (p.layout === 'diff') {
-        text = `Probability of Hamming weight w for each backend minus ${p.ref}, for ${k} backend(s), ${_artRunLabel(results)}; the shaded band is ±2σ shot noise of the difference at the reference probability`;
+        text = `Probability of Hamming weight w for each backend minus ${backendLabel(p.ref)}, for ${k} backend(s), ${_artRunLabel(results)}; the shaded band is ±2σ shot noise of the difference at the reference probability`;
     } else {
         const each = p.layout === 'lines' ? 'one line per backend' : 'one colour per backend';
         text = `Probability of measuring w ones (Hamming weight w = 0 to ${d.n}), ${each}, for ${k} backend(s), ${_artRunLabel(results)}`;
