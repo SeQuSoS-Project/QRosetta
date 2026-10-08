@@ -623,13 +623,22 @@
                     bit reversal changes nothing and the keys are compared directly
                     (<code>basis_source: "single_bit"</code>), whatever the number of qubits. Outcomes whose
                     expected count is below 5 are pooled into one bin, which holds only these rare outcomes;
-                    <code>pooled_outcomes</code> records how many. The bin is tested as its own column when its
+                    <code>pooled_outcomes</code> records how many when the bin holds two or more (a bin of one
+                    outcome is an ordinary column and records 0). The bin is tested as its own column when its
                     expected count is at least 5, when the table meets Cochran's rule (no expected count below 1,
                     at most 20% below 5), or, with two or more common outcomes, when its expected count is at
                     least 1. Below 1 it is left out of the table (<code>untested_outcomes</code>). A common outcome is never merged into
                     the bin: on a table of three or four outcomes that would hide a gap as large as the common
-                    outcome's probability (see the power model below). With every outcome rare, or one common
-                    outcome beside an undersized bin, the pair is inconclusive (<code>low_expected_counts</code>).
+                    outcome's probability (see the power model below). When the table is 2 × 2 and still fails the
+                    expected-count rule (one common outcome beside an undersized bin, as for a near-deterministic
+                    circuit whose rare outcome has probability 10<sup>−4</sup>, or exactly two observed outcomes,
+                    both rare), the chi-square approximation does not hold and both statistics get exact conditional
+                    p-values instead (<code>test_method: "exact_conditional"</code>, <code>chi2.method</code>,
+                    <code>g_test.method</code>): with the shots and the column totals fixed, the first backend's count in
+                    the second column is hypergeometric, and each p-value is the probability of a table whose statistic
+                    is at least the observed one. For the chi-square statistic this is Fisher's exact test with the
+                    tables ordered by their distance from expectation. With three or more observed outcomes, all rare,
+                    the pair is inconclusive (<code>low_expected_counts</code>).
                     With row totals <code>Rᵢ</code>, column
                     totals <code>Cⱼ</code> and <code>N = Σ O</code>, the expected counts are
                     <code>Eᵢⱼ = Rᵢ Cⱼ / N</code>.
@@ -681,7 +690,10 @@
                         dense state at 8,200 shots; measuring only the qubits of interest gives the test a distribution
                         it can resolve. When the unseen mass is between δ/2 and 0.5, the recommendation is given as a
                         lower bound (<code>recommendation_is_lower_bound</code>): new outcomes appear with more shots and
-                        can raise it. For a 12-qubit QFT at 8,200 shots it recommended 84,838, and at 100,000 shots every
+                        can raise it. It is also a lower bound when the recommendation comes from pooling rare outcomes and
+                        some outcomes were seen once: outcomes seen once in n shots stop being pooled at 10n shots per
+                        backend, so the recommendation often lands exactly there (82,000 for a 12-qubit circuit at 8,200
+                        shots), and the outcomes not yet seen are not in the calculation. For a 12-qubit QFT at 8,200 shots it recommended 84,838, and at 100,000 shots every
                         pair was consistent.</li>
                     <li><strong>Power model</strong>: the effect size is Cohen's
                         <code>w = δ<sub>tested</sub></code>, the smallest w any distribution pair at total
@@ -706,7 +718,11 @@
                         <code>power.c_m</code>). It is the smallest level BY applies to any pair, so the power
                         figure does not overstate the chance that the corrected test flags a gap of size δ.
                         It is still the power of the chi-square test alone; the verdict needs both tests to
-                        be significant. The shots needed therefore grow with the number of outcomes (df) and
+                        be significant. Pairs tested with exact conditional p-values use the same model: at the
+                        alternatives it describes the counts are large and the asymptotic test applies. In
+                        simulation (P(rare) = p₀ against p₀ + δ, 2,000 pairs each, m = 91), the test detected
+                        δ = 0.05 at 4,444 shots per backend in 100% of pairs for p₀ ≤ 0.01 and in 80.4% for
+                        p₀ = 0.475, against a model power of 0.800. The shots needed therefore grow with the number of outcomes (df) and
                         with the number of backends (m); the report computes the power for each pair rather
                         than assuming the default shot count is enough.
                         <code>recommended_shots_per_backend</code> (also recorded as
