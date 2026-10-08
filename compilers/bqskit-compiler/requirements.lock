@@ -25,10 +25,13 @@ pydantic_core==2.46.5
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.4
 PyYAML==6.0.3
+qiskit==2.5.2
+rustworkx==0.18.1
 s3transfer==0.10.4
 scipy==1.15.3
 six==1.17.0
 starlette==0.38.6
+stevedore==5.8.0
 typing-inspection==0.4.4
 typing_extensions==4.16.0
 urllib3==2.8.0

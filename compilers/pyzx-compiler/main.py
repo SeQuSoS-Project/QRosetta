@@ -9,18 +9,25 @@ from fastapi import FastAPI
 import pyzx as zx
 from pyzx.circuit.qasmparser import QASMParser
 
+from qrosetta_commons.compile_checks import process_infidelity, unitary_check_note
 from qrosetta_commons.compile_errors import CompileRefused
 from qrosetta_commons.compile_service import (
     register_compiler_endpoint, run_compile_job, run_compiler_cli_main,
 )
-from qrosetta_commons.helpers import declare_sdk_packages, strip_qasm_comments, with_sdk_versions
+from qrosetta_commons.helpers import (
+    declare_sdk_packages, get_num_qubits_from_qasm, strip_qasm_comments, with_sdk_versions,
+)
+from qrosetta_commons.qelib1 import add_qelib1_definitions
 from qrosetta_commons.qasm_expressions import (
     ParameterExpressionError, evaluate_constant_expression, gate_parameter_lists,
 )
 
-declare_sdk_packages("pyzx")
+declare_sdk_packages("pyzx", "qiskit")
 
 app = FastAPI(title="PyZX Compiler")
+
+PYZX_PARSER_LACKS = frozenset({"c3x", "c3sqrtx", "c4x", "rccx", "rc3x", "u0"})
+MAX_PROCESS_INFIDELITY = 1e-8
 
 _PARSE_NOTE = "pyzx.Circuit.from_qasm(): PyZX's OpenQASM 2.0 parser."
 _CREG_NOTE = ("creg declarations removed before parsing, required by the adapter: PyZX reads each "
@@ -75,8 +82,9 @@ def _plain_decimals(qasm: str):
 
 
 def _quantum_only(qasm: str):
-    """``(qasm without creg declarations, notes)``; ValueError for a circuit with classical
-    operations, which PyZX cannot represent."""
+    """``(qasm without creg declarations, notes)``, with qelib1.inc definitions of the gates
+    PyZX's parser lacks; CompileRefused for a circuit with classical operations, which PyZX
+    cannot represent."""
     code = strip_qasm_comments(qasm)
     if _CLASSICAL_RE.search(code):
         raise CompileRefused("PyZX compiles unitary circuits only; this circuit has measure, reset or if")
@@ -86,33 +94,52 @@ def _quantum_only(qasm: str):
     stripped, examples = _plain_decimals(stripped)
     if examples:
         notes.append(_EXPONENT_NOTE.format(examples=", ".join(examples)))
+    stripped, added = add_qelib1_definitions(stripped, PYZX_PARSER_LACKS)
+    if added:
+        notes.append(f"PyZX 0.10.6's parser lacks {', '.join(added)}; their definitions from "
+                     f"Qiskit's qelib1.inc were added to the circuit given to PyZX.")
     return stripped, notes
 
 
+def _parse(qasm: str):
+    """PyZX's reading of the circuit; CompileRefused for a statement its parser rejects."""
+    try:
+        return zx.Circuit.from_qasm(qasm)
+    except TypeError as exc:
+        raise CompileRefused(f"PyZX 0.10.6's OpenQASM 2.0 parser does not read this circuit ({exc})")
+
+
+def _check(qasm: str, output: str) -> str:
+    return unitary_check_note("PyZX", qasm, output, get_num_qubits_from_qasm(qasm),
+                              MAX_PROCESS_INFIDELITY, "for PyZX's rational phases")
+
+
 def _extract(qasm: str):
-    graph = zx.Circuit.from_qasm(qasm).to_graph()
+    graph = _parse(qasm).to_graph()
     zx.full_reduce(graph)
     return zx.extract_circuit(graph.copy())
 
 
 def _full_reduce(qasm: str):
     unitary, notes = _quantum_only(qasm)
-    return _extract(unitary).to_qasm(), notes + [_PARSE_NOTE, _phase_note(unitary), _REDUCE_NOTE, _ENCODE_NOTE]
+    output = _extract(unitary).to_qasm()
+    return output, notes + [_PARSE_NOTE, _phase_note(unitary), _REDUCE_NOTE, _ENCODE_NOTE, _check(qasm, output)]
 
 
 def _full_reduce_then_basic(qasm: str):
     unitary, notes = _quantum_only(qasm)
-    circuit = zx.basic_optimization(_extract(unitary).to_basic_gates())
-    return circuit.to_qasm(), notes + [_PARSE_NOTE, _phase_note(unitary), _REDUCE_NOTE, _BASIC_NOTE, _ENCODE_NOTE]
+    output = zx.basic_optimization(_extract(unitary).to_basic_gates()).to_qasm()
+    return output, notes + [_PARSE_NOTE, _phase_note(unitary), _REDUCE_NOTE, _BASIC_NOTE, _ENCODE_NOTE,
+                            _check(qasm, output)]
 
 
 PIPELINES = {1: _full_reduce, 2: _full_reduce_then_basic}
 
 
 def equivalent(input_qasm: str, output_qasm: str) -> bool:
-    """PyZX's tensor comparison of the two circuits, up to a global scalar."""
-    return zx.compare_tensors(zx.Circuit.from_qasm(_quantum_only(input_qasm)[0]),
-                              zx.Circuit.from_qasm(output_qasm), preserve_scalar=False)
+    """The output's process infidelity to the input, both read by Qiskit, is at most
+    MAX_PROCESS_INFIDELITY."""
+    return process_infidelity(input_qasm, output_qasm) <= MAX_PROCESS_INFIDELITY
 
 
 @with_sdk_versions

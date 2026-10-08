@@ -1226,10 +1226,16 @@
                         <tr><td>BQSKit 1.2.1</td><td>1, 2, 3</td><td><code>bqskit.compile</code> at that
                             optimization level with <code>max_synthesis_size=3</code>,
                             <code>synthesis_epsilon=1e-8</code>, <code>seed=0</code>, one worker and no machine
-                            model (all-to-all connectivity, BQSKit's default gate set). Resynthesised blocks
-                            match the input within <code>synthesis_epsilon</code>, so the output approximates
-                            the input unitary. Level 4 is not offered: it took 195 s on a 4-qubit, 6-gate
-                            circuit with one worker.</td></tr>
+                            model (all-to-all connectivity, BQSKit's default gate set). Each resynthesised block
+                            is accepted within <code>synthesis_epsilon</code> of the block it replaces and the
+                            errors of the blocks add up, so the output approximates the input unitary. Up to 10
+                            qubits every output is checked with Qiskit: its process infidelity to the input must
+                            be at most 1e-6, and the measured value is in the passes; above 10 qubits the passes
+                            say the output is not checked. A gate on more than 3 qubits (<code>c3x</code>,
+                            <code>c4x</code>, <code>rc3x</code>, <code>c3sqrtx</code>) is refused, because BQSKit's
+                            blocks hold at most 3 qubits, and so is a circuit BQSKit's parser does not read.
+                            Level 4 is not offered: it took 195 s on a 4-qubit, 6-gate circuit with one
+                            worker.</td></tr>
                         <tr><td>PyZX 0.10.6</td><td>1, 2</td><td><code>creg</code> declarations are removed first
                             (PyZX would read each classical bit as an extra qubit). Level 1: <code>full_reduce</code> of the
                             ZX-diagram, then <code>extract_circuit</code>. Level 2: level 1, then
@@ -1237,12 +1243,19 @@
                             <code>basic_optimization</code> on the input itself is not offered (see the known
                             issue below). Numbers in scientific notation are rewritten as plain decimals first, and
                             the passes give the largest angle change from PyZX's rational phases (see the known
-                            issues).</td></tr>
+                            issues). PyZX's parser lacks <code>c3x</code>, <code>c3sqrtx</code>, <code>c4x</code>,
+                            <code>rccx</code>, <code>rc3x</code> and <code>u0</code>; Qiskit's
+                            <code>qelib1.inc</code> definitions of those the circuit uses are added to the circuit
+                            given to PyZX and listed in the passes. Up to 10 qubits every output is checked with
+                            Qiskit: its process infidelity to the input must be at most 1e-8, and the measured
+                            value is in the passes.</td></tr>
                         <tr><td>MQT QMAP 3.10.0</td><td>0, 1</td><td>Qiskit 2.5.2 translates the circuit to
                             <code>u3</code> and <code>cx</code> (<code>optimization_level=0</code>, basis
                             translation only), then QMAP maps it onto a linear chain of the circuit's qubit
                             count, qubit i coupled to i + 1 in both directions: heuristic (A*) at level 0, exact
-                            (SAT) at level 1, with QMAP's default pre- and post-mapping optimizations. The
+                            (SAT) at level 1, with QMAP's default pre- and post-mapping optimizations. Level 1
+                            is offered up to 7 qubits and refuses wider circuits: exact mapping took more than
+                            200 s on an 8-qubit GHZ circuit already laid out as a chain (50 s at 7 qubits). The
                             output's <code>// i</code> and <code>// o</code> lines give the physical qubit of each
                             logical qubit at input and output. A circuit with a qubit that has no gates is not
                             mapped (see the known issue below). Every output is checked when it is produced:
@@ -1256,7 +1269,9 @@
                             (<code>circuit_from_qasm</code>), then <code>optimize_for_target_gateset</code> to the CZ
                             target gate set (CZ and PhasedXZ gates, neighbouring operations merged); level 1 adds
                             <code>eject_phased_paulis</code>, <code>eject_z</code> and the cleanups that drop
-                            negligible operations and empty moments. Written back with
+                            negligible operations and empty moments, with the final measurements set aside and
+                            appended afterwards (the eject transformers would otherwise move Z rotations into
+                            the measurements, which keeps the counts but not the unitary). Written back with
                             <code>to_qasm(precision=16)</code> as one register <code>q</code> in declaration
                             order. This is Cirq's optimiser; the Cirq runner compiles through pytket instead. A
                             <code>cu3</code> that Cirq would import wrongly is refused, at top level or inside a
@@ -1282,9 +1297,12 @@
                             circuit given to staq and listed in the passes. A register or gate named
                             <code>r</code> or <code>cswap</code> is refused, because staq rejects it. staq reads
                             numbers in single precision (see the known issue below); a literal that would change
-                            by more than 1e-6 is refused before staq runs. Up to 10 qubits every output is
-                            checked with Qiskit: its process infidelity to the input must be at most 1e-8, and
-                            the measured value is in the passes.</td></tr>
+                            by more than 1e-6 is refused before staq runs, and the passes give the largest
+                            change single-precision reading makes to a constant angle of the circuit. Up to 10
+                            qubits every output is checked with Qiskit: its process infidelity to the input must
+                            be at most 1e-8, and the measured value is in the passes. Process infidelity grows
+                            with the square of an angle change, so it does not show a change of 1e-8 rad; the
+                            angle line does.</td></tr>
                         <tr><td>Q-Synth 5.1 (Aarhus University)</td><td>0, 1</td><td>Qiskit translates the
                             circuit to <code>u3</code> and <code>cx</code>, the gate set Q-Synth takes; then
                             <code>peephole_synthesis(slicing='cnot')</code> resynthesises each CNOT slice
@@ -1348,10 +1366,11 @@
                     Each compiler image has a self-test (<code>python main.py --self-test</code>) that compiles
                     five probe circuits at every level (six for QMAP, Q-Synth and Quartz, which also compile
                     a <code>c3x</code> followed by a qubit first used after it) and checks the output unitary
-                    against the input with
-                    the image's own SDK (BQSKit's unitary distance, PyZX's tensor comparison, Qiskit's
-                    operator equality with the circuit rebuilt from QMAP's <code>// i</code> and
-                    <code>// o</code> lines), and that the output declares as many qubits as the input. The
+                    against the input (Qiskit's process infidelity within each compiler's tolerance for
+                    BQSKit, PyZX and staq; Qiskit's operator equality for the others, with the circuit
+                    rebuilt from QMAP's <code>// i</code> and <code>// o</code> lines), and that the output
+                    declares as many qubits as the input. The same check runs on every output up to 10
+                    qubits when it is produced. The
                     probes include the circuits of the known issues below and a circuit with a
                     <code>creg</code>.
                 </p>
@@ -1639,7 +1658,9 @@
                             <td>The lexer reads every real literal with <code>std::stof</code>, so each angle
                                 is rounded to single precision before any pass runs. Outputs stay equivalent
                                 (infidelity below 1e-14 on 360 random 3–4 qubit outputs), but their angles
-                                differ from the input after about the eighth significant digit.</td>
+                                differ from the input after about the eighth significant digit. The staq
+                                compiler's passes give the largest such change for the circuit (2.09e-08 rad
+                                for <code>rz(0.7853981643974483)</code>, read as 0.785398185253143).</td>
                             <td><code>qreg q[1]; rz(0.3) q[0];</code> with <code>staq -O1</code> prints
                                 <code>rz(0.300000011920929) q[0];</code>.</td></tr>
                         <tr><td>pytket 1.33.0 (tket), angles</td>

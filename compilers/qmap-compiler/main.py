@@ -6,11 +6,12 @@ from mqt.core import load
 from mqt.qmap.sc import Architecture, Configuration, Method, map_
 from qiskit import QuantumCircuit
 
+from qrosetta_commons.compile_checks import refuse_above_qubits
 from qrosetta_commons.compile_errors import CompileRefused, OutputRejected
 from qrosetta_commons.compile_service import (
     TRANSLATION_PROBES, register_compiler_endpoint, run_compile_job, run_compiler_cli_main,
 )
-from qrosetta_commons.helpers import declare_sdk_packages, with_sdk_versions
+from qrosetta_commons.helpers import declare_sdk_packages, get_num_qubits_from_qasm, with_sdk_versions
 from qrosetta_commons.qiskit_circuits import exact_qasm2_dumps, translate_to_basis, translation_note, unitary_of
 
 declare_sdk_packages("mqt.qmap", "mqt.core", "qiskit")
@@ -19,6 +20,9 @@ app = FastAPI(title="MQT QMAP Compiler")
 
 DECOMPOSITION_BASIS = ("u3", "cx")
 CHECKED_UP_TO_QUBITS = 10
+EXACT_MAX_QUBITS = 7
+_EXACT_LIMIT_EVIDENCE = ("QMAP's SAT-based exact mapping takes more than 200 s on an 8-qubit "
+                         "GHZ circuit already laid out as a chain")
 
 _DECOMPOSE_NOTE = (translation_note(DECOMPOSITION_BASIS) + " QMAP 3.10 rejects gates with more "
                    "than one control and turns other controlled two-qubit gates (cu3, cp) into cx "
@@ -74,6 +78,9 @@ def _line(n_qubits: int) -> Architecture:
 
 def _pipeline(method: Method, description: str):
     def run(qasm: str):
+        if method == Method.exact:
+            refuse_above_qubits(get_num_qubits_from_qasm(qasm), EXACT_MAX_QUBITS, "QMAP",
+                                "level 1 (exact mapping)", _EXACT_LIMIT_EVIDENCE)
         decomposed = _decompose(qasm)
         computation = load(decomposed)
         n_qubits = computation.num_qubits

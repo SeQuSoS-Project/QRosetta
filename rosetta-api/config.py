@@ -334,7 +334,7 @@ class Settings(BaseSettings):
                 "enabled": True,
                 "optimization_levels": {
                     0: "Decompose to u3+cx (Qiskit), then heuristic (A*) mapping onto a linear qubit chain",
-                    1: "Decompose to u3+cx (Qiskit), then exact (SAT) mapping onto a linear qubit chain (small circuits only)",
+                    1: "Decompose to u3+cx (Qiskit), then exact (SAT) mapping onto a linear qubit chain (up to 7 qubits)",
                 },
             },
             "cirq-transformers": {

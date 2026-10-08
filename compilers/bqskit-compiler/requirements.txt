@@ -1,5 +1,6 @@
 bqskit==1.2.1
 bqskitrs==0.4.1
+qiskit==2.5.2
 numpy==2.2.6
 scipy==1.15.3
 fastapi==0.115.0
