@@ -1,42 +1,42 @@
 // Request limits from GET /config that the browser checks before sending: printable names of
 // bounded length, the JSON body size, circuit text size. Pure: no DOM, no network.
 
-const _NOT_PRINTABLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
-const _OTHER_SYMBOL = /\p{So}/u;
-const _isEmojiModifier = cp => cp === 0xFE0F || (cp >= 0x1F3FB && cp <= 0x1F3FF);
-const _isTag = cp => cp >= 0xE0020 && cp <= 0xE007E;
+/** Code point ranges refused in names (mirror schemas/benchmark.py _REFUSED_IN_NAMES): controls,
+ * line and paragraph separators, direction marks, embeddings, overrides and isolates, and named
+ * invisible characters. */
+const _REFUSED_IN_NAMES = [
+    [0x0000, 0x001F], [0x007F, 0x009F],
+    [0x00AD, 0x00AD], [0x061C, 0x061C], [0x115F, 0x1160], [0x180E, 0x180E],
+    [0x200B, 0x200B], [0x200E, 0x200F], [0x2028, 0x202E], [0x2060, 0x2064],
+    [0x2066, 0x206F], [0x3164, 0x3164], [0xD800, 0xDFFF], [0xFEFF, 0xFEFF],
+    [0xFFA0, 0xFFA0], [0xFFF9, 0xFFFB], [0xE0001, 0xE0001],
+];
+/** Invisible characters allowed in names (joiners, variation selectors, tags); mirror
+ * schemas/benchmark.py _INVISIBLE_ALLOWED. */
+const _INVISIBLE_ALLOWED = [[0x200C, 0x200D], [0xFE00, 0xFE0F], [0xE0020, 0xE007F], [0xE0100, 0xE01EF]];
+const _SPACE = /^\s$/u;
 
-/** Positions (in code points) of the formatting characters that belong to an emoji sequence: a
- * zero-width joiner between two symbols (👩‍🔬, 🏳️‍🌈) and the tags of a flag (🏴 + tags + U+E007F).
- * Mirrors schemas/benchmark.py _emoji_sequence_positions. */
-function _emojiSequencePositions(chars) {
-    const allowed = new Set();
-    chars.forEach((ch, i) => {
-        const cp = /** @type {number} */ (ch.codePointAt(0));
-        if (cp === 0x200D) {
-            let j = i - 1;
-            while (j >= 0 && _isEmojiModifier(/** @type {number} */ (chars[j].codePointAt(0)))) j--;
-            if (j >= 0 && _OTHER_SYMBOL.test(chars[j]) && i + 1 < chars.length && _OTHER_SYMBOL.test(chars[i + 1])) allowed.add(i);
-        } else if (cp === 0x1F3F4) {
-            let k = i + 1;
-            while (k < chars.length && _isTag(/** @type {number} */ (chars[k].codePointAt(0)))) k++;
-            if (k > i + 1 && k < chars.length && chars[k].codePointAt(0) === 0xE007F) {
-                for (let m = i + 1; m <= k; m++) allowed.add(m);
-            }
-        }
-    });
-    return allowed;
-}
+/** @param {string} ch @param {number[][]} ranges */
+const _inRanges = (ch, ranges) => {
+    const cp = /** @type {number} */ (ch.codePointAt(0));
+    return ranges.some(([lo, hi]) => lo <= cp && cp <= hi);
+};
+const _refused = (/** @type {string} */ ch) => _inRanges(ch, _REFUSED_IN_NAMES);
 
-/** The first character of `text` the server refuses in a name (control, invisible formatting
- * outside an emoji sequence, line separator), as { position (1-based), code: 'U+00AD' }, or null. */
+/** The first character of `text` the server refuses in a name (control, line separator, direction
+ * control, listed invisible character), as { position (1-based), code: 'U+00AD' }, or null. */
 export function firstUnprintable(text) {
     const chars = Array.from(String(text ?? ''));
-    const allowed = _emojiSequencePositions(chars);
-    const i = chars.findIndex((ch, k) => !allowed.has(k) && _NOT_PRINTABLE.test(ch));
+    const i = chars.findIndex(_refused);
     if (i < 0) return null;
     const code = /** @type {number} */ (chars[i].codePointAt(0)).toString(16).toUpperCase().padStart(4, '0');
     return { position: i + 1, code: `U+${code}` };
+}
+
+/** True when `text` has no visible character: only whitespace, joiners, variation selectors or
+ * tag characters (mirror schemas/benchmark.py is_blank_name). */
+export function isBlankName(text) {
+    return Array.from(String(text ?? '')).every(ch => _SPACE.test(ch) || _inRanges(ch, _INVISIBLE_ALLOWED));
 }
 
 /** Characters of `text` as the server counts them (code points). */
@@ -46,11 +46,11 @@ export function charCount(text) {
     return n;
 }
 
-/** `text` with the characters the server refuses in a name removed, cut to `max` characters. */
+/** `text` with the characters the server refuses in a name removed, cut to `max` characters; ''
+ * when nothing visible is left. */
 export function printableLabel(text, max = 200) {
-    const chars = Array.from(String(text ?? ''));
-    const allowed = _emojiSequencePositions(chars);
-    const clean = chars.filter((ch, k) => allowed.has(k) || !_NOT_PRINTABLE.test(ch)).join('').trim();
+    const clean = Array.from(String(text ?? '')).filter(ch => !_refused(ch)).join('').trim();
+    if (isBlankName(clean)) return '';
     return charCount(clean) <= max ? clean : Array.from(clean).slice(0, max).join('').trim();
 }
 

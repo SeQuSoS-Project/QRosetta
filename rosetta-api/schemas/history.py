@@ -9,7 +9,7 @@ _CREATED_AT = "When it was saved, UTC ISO 8601 ending in 'Z'."
 
 
 
-from schemas.benchmark import Label as PrintableName
+from schemas.benchmark import VisibleLabel as VisibleName
 
 class _Request(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -17,7 +17,7 @@ class _Request(BaseModel):
 
 class SavedCircuitCreate(_Request):
     """Request body for POST /history/circuits."""
-    name: PrintableName = Field(..., description="Display name for the saved circuit.")
+    name: VisibleName = Field(..., description="Display name for the saved circuit.")
     qasm_string: str = Field(..., description="The circuit as OpenQASM 2.0 text.")
 
 class SavedCircuitResponse(BaseModel):
@@ -46,11 +46,11 @@ class RunHistoryFromJob(_Request):
     """Request body for POST /history/runs/from_job/{job_id}."""
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    run_name: Optional[PrintableName] = Field(None, validation_alias=AliasChoices("run_name", "name"), description="Display name for the saved run (also accepted as 'name'). Defaults to the mode and the first 8 characters of the job id.")
+    run_name: Optional[VisibleName] = Field(None, validation_alias=AliasChoices("run_name", "name"), description="Display name for the saved run (also accepted as 'name'). Defaults to the mode and the first 8 characters of the job id.")
 
 class RunHistoryUpdate(_Request):
     """Request body for PATCH /history/runs/{run_id}."""
-    run_name: PrintableName = Field(..., description="New display name for the run.")
+    run_name: VisibleName = Field(..., description="New display name for the run.")
 
 class RunHistoryBatchDelete(_Request):
     """Request body for DELETE /history/runs."""

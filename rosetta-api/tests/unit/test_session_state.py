@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from schemas.benchmark import Label, first_control_character
+from schemas.benchmark import Label, first_control_character, is_blank_name
 from tests.unit.frontend_harness import call_js, requires_node
 
 STATIC = Path(__file__).resolve().parents[2] / "static"
@@ -101,11 +101,21 @@ NAMES = [
     ("🏳️‍🌈", None),
     ("🧑\U0001F3FD‍💻", None),
     ("\U0001F3F4\U000E0067\U000E0062\U000E0073\U000E0063\U000E0074\U000E007F", None),
+    ("\U0001FAF1\U0001F3FB‍\U0001FAF2\U0001F3FC", None),
+    ("\U0001F642‍↔️", None),
+    ("می‌خواهم", None),
+    ("क्‍ष", None),
+    ("a‍b", None),
     ("lab­run", (4, "U+00AD")),
-    ("a‍b", (2, "U+200D")),
-    ("‍🔬", (1, "U+200D")),
     ("x‮y", (2, "U+202E")),
+    ("x⁧y", (2, "U+2067")),
+    ("a​b", (2, "U+200B")),
+    ("﻿name", (1, "U+FEFF")),
+    ("a⁠b", (2, "U+2060")),
+    ("x\u0085", (2, "U+0085")),
+    ("ㅤ", (1, "U+3164")),
     ("line\nbreak", (5, "U+000A")),
+    ("para graph", (5, "U+2029")),
 ]
 
 
@@ -166,3 +176,28 @@ def test_crate_file_name_is_utc_and_names_the_run():
     when = int(datetime(2026, 10, 7, 21, 5, 53, tzinfo=timezone.utc).timestamp() * 1000)
     r = call_js(["utils.js"], [("crateFileName", ["Café GHZ (Statevector)", when]), ("crateFileName", [None, when])])
     assert r == ["rosetta-export-2026-10-07-2105UTC-cafe-ghz-statevector.zip", "rosetta-export-2026-10-07-2105UTC.zip"]
+
+
+BLANK_NAMES = [("   ", True), ("", True), ("‍‌", True), ("️ \t", True),
+               ("a", False), (" \U0001F642 ", False)]
+
+
+@requires_node
+@pytest.mark.parametrize("name,blank", BLANK_NAMES)
+def test_blank_name_rule_is_the_same_in_browser_and_server(name, blank):
+    js_blank, js_clean = call_js(["request_limits.js"], [("isBlankName", [name]), ("printableLabel", [name, 200])])
+    assert js_blank is blank and is_blank_name(name) is blank
+    if blank:
+        assert js_clean == ""
+
+
+@pytest.mark.parametrize("model,field", [("RunHistoryUpdate", "run_name"), ("RunHistoryFromJob", "run_name"),
+                                         ("SavedCircuitCreate", "name")])
+@pytest.mark.parametrize("name", ["   ", "　", "‍"])
+def test_saved_names_need_a_visible_character(model, field, name):
+    import schemas
+    body = {field: name}
+    if model == "SavedCircuitCreate":
+        body["qasm_string"] = "OPENQASM 2.0;"
+    with pytest.raises(ValidationError, match="at least one visible character"):
+        getattr(schemas, model).model_validate(body)

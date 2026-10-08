@@ -4,7 +4,6 @@ from pydantic import (
     BaseModel, BeforeValidator, ConfigDict, Field, PlainValidator, StrictBool, StrictInt,
     WithJsonSchema, field_validator, model_validator,
 )
-import unicodedata
 from typing import Annotated, List, Dict, Any, Literal, Optional, Union
 
 from config import settings
@@ -45,42 +44,34 @@ RunnerConfigValue = Annotated[
 RunnerConfig = Dict[str, RunnerConfigValue]
 
 
-def _is_emoji_modifier(cp: int) -> bool:
-    return cp == 0xFE0F or 0x1F3FB <= cp <= 0x1F3FF
+_REFUSED_IN_NAMES = (
+    (0x0000, 0x001F), (0x007F, 0x009F),
+    (0x00AD, 0x00AD), (0x061C, 0x061C), (0x115F, 0x1160), (0x180E, 0x180E),
+    (0x200B, 0x200B), (0x200E, 0x200F), (0x2028, 0x202E), (0x2060, 0x2064),
+    (0x2066, 0x206F), (0x3164, 0x3164), (0xD800, 0xDFFF), (0xFEFF, 0xFEFF),
+    (0xFFA0, 0xFFA0), (0xFFF9, 0xFFFB), (0xE0001, 0xE0001),
+)
+_INVISIBLE_ALLOWED = (
+    (0x200C, 0x200D), (0xFE00, 0xFE0F), (0xE0020, 0xE007F), (0xE0100, 0xE01EF),
+)
 
 
-def _emoji_sequence_positions(value: str) -> set:
-    """Positions of the format characters that belong to an emoji sequence: a zero-width joiner
-    between two symbols (category So, the first optionally followed by VS16 or a skin-tone
-    modifier) and the tag characters of a flag (U+1F3F4, tags, U+E007F). Mirrors
-    static/js/request_limits.js _emojiSequencePositions."""
-    allowed = set()
-    n = len(value)
-    for i, ch in enumerate(value):
-        cp = ord(ch)
-        if cp == 0x200D:
-            j = i - 1
-            while j >= 0 and _is_emoji_modifier(ord(value[j])):
-                j -= 1
-            if j >= 0 and unicodedata.category(value[j]) == "So" and i + 1 < n \
-                    and unicodedata.category(value[i + 1]) == "So":
-                allowed.add(i)
-        elif cp == 0x1F3F4:
-            k = i + 1
-            while k < n and 0xE0020 <= ord(value[k]) <= 0xE007E:
-                k += 1
-            if k > i + 1 and k < n and ord(value[k]) == 0xE007F:
-                allowed.update(range(i + 1, k + 1))
-    return allowed
+def _in_ranges(cp: int, ranges) -> bool:
+    return any(lo <= cp <= hi for lo, hi in ranges)
 
 
 def first_control_character(value: str):
-    """``(position, character)`` of the first control character, format character outside an
-    emoji sequence (bidirectional overrides, zero-width spaces, soft hyphens) or line or
-    paragraph separator in ``value``, position counted from 1; None when there is none."""
-    allowed = _emoji_sequence_positions(value)
+    """``(position, character)`` of the first character refused in a name, position counted
+    in code points from 1; None when there is none. Refused: C0 and C1 controls, line and
+    paragraph separators, direction marks, embeddings, overrides and isolates
+    (U+061C, U+200E-200F, U+202A-202E, U+2066-2069), and the invisible characters listed in
+    ``_REFUSED_IN_NAMES`` (soft hyphen, zero-width space, word joiner, invisible operators,
+    BOM, Hangul fillers, interlinear annotation, lone surrogates). The list is fixed, so the
+    rule does not depend on the Unicode version of Python or the browser; the zero-width
+    joiner and non-joiner, variation selectors, emoji modifiers and tag characters are
+    allowed. Mirrors static/js/request_limits.js firstUnprintable."""
     for i, ch in enumerate(value):
-        if i not in allowed and unicodedata.category(ch) in ("Cc", "Cf", "Zl", "Zp"):
+        if _in_ranges(ord(ch), _REFUSED_IN_NAMES):
             return i + 1, ch
     return None
 
@@ -88,6 +79,12 @@ def first_control_character(value: str):
 def has_control_characters(value: str) -> bool:
     """True when ``value`` holds a character first_control_character reports."""
     return first_control_character(value) is not None
+
+
+def is_blank_name(value: str) -> bool:
+    """True when ``value`` has no visible character: only whitespace, joiners, variation
+    selectors or tag characters. Mirrors static/js/request_limits.js isBlankName."""
+    return all(ch.isspace() or _in_ranges(ord(ch), _INVISIBLE_ALLOWED) for ch in value)
 
 
 def _printable_text(value):
@@ -101,7 +98,14 @@ def _printable_text(value):
     return value
 
 
+def _visible_text(value):
+    if isinstance(value, str) and is_blank_name(value):
+        raise ValueError("must contain at least one visible character")
+    return value
+
+
 Label = Annotated[str, BeforeValidator(_printable_text), Field(max_length=settings.MAX_LABEL_LENGTH)]
+VisibleLabel = Annotated[Label, BeforeValidator(_visible_text)]
 TimingRepeats = Annotated[Int, Field(ge=1, le=settings.MAX_TIMING_REPEATS)]
 RunnerPhases = Dict[str, Int]
 ExecutionTarget = Literal["local", "kubernetes"]
