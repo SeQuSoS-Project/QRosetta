@@ -25,6 +25,7 @@ RUN chown -R appuser:appuser /home/appuser/app && \
     chgrp -R 0 /home/appuser && \
     chmod -R g=u /home/appuser
 ENV HOME=/home/appuser
+ENV OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
 ARG QROSETTA_GIT_SHA=unknown
 ENV QROSETTA_IMAGE_GIT_SHA=${QROSETTA_GIT_SHA}
 USER appuser

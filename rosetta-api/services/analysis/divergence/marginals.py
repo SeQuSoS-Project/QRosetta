@@ -37,7 +37,7 @@ def marginal_counts(counts: dict):
         return None
     bits = np.frombuffer("".join(keys).encode(), dtype=np.uint8).reshape(len(keys), -1) - ord("0")
     weights = np.array([float(counts[k]) for k in keys])
-    return weights @ bits, float(weights.sum())
+    return (bits * weights[:, None]).sum(axis=0), float(weights.sum())
 
 
 def _clbit_index(position: int, n_bits: int, ordering) -> int:
