@@ -1,5 +1,7 @@
 """Circuit generation, benchmark-circuit lookup, and Quirk visualisation routes."""
 
+import asyncio
+
 from fastapi import APIRouter, Request, HTTPException
 from qrosetta_commons.helpers import get_logger
 import services.circuit_library as library
@@ -54,7 +56,7 @@ async def generate_circuit_endpoint(request: Request, payload: GenerateCircuitPa
     if payload.qubits > settings.MAX_QUBITS_MEASURED:
         raise HTTPException(status_code=400, detail=f"Qubit count {payload.qubits} exceeds limit of {settings.MAX_QUBITS_MEASURED}")
     try:
-        qasm = library.generate_circuit(payload.algorithm, payload.qubits, payload.seed)
+        qasm = await asyncio.to_thread(library.generate_circuit, payload.algorithm, payload.qubits, payload.seed)
         return {"qasm": qasm}
     except HTTPException:
         raise

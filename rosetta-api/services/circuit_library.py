@@ -8,6 +8,7 @@ from pytket.circuit import Circuit, OpType
 from pytket.qasm import circuit_to_qasm_str
 from pytket.transform import Transform
 from qrosetta_commons.helpers import get_logger
+from services.pytket_lock import PYTKET_LOCK
 
 logger = get_logger("rosetta-circuit-library")
 
@@ -69,7 +70,8 @@ def generate_circuit(algorithm_id: str, n_qubits: int, seed: int = None) -> str:
     }
 
     try:
-        exec(algo_data["code"], _EXEC_GLOBALS, local_context)
+        with PYTKET_LOCK:
+            exec(algo_data["code"], _EXEC_GLOBALS, local_context)
         return local_context.get("qasm", "")
     except Exception as e:
         logger.error(f"Error executing python generator for {algorithm_id}: {e}")

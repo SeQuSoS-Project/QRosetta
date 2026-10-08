@@ -11,6 +11,7 @@ text each runner group receives, and return every change made to it as a list of
 import re
 
 from config import settings
+from services.pytket_lock import PYTKET_LOCK
 import services.benchmark_library as benchmark_library
 import services.circuit_library as circuit_library
 from qrosetta_commons.counts import measure_all_register
@@ -487,6 +488,11 @@ def _pytket_round_trip(qasm: str, remove_barriers: bool):
     Register declarations keep their order in ``qasm``. Raises RoundTripIntegrityError
     (see ``check_round_trip_integrity``) instead of emitting a circuit that lost a gate.
     """
+    with PYTKET_LOCK:
+        return _pytket_round_trip_locked(qasm, remove_barriers)
+
+
+def _pytket_round_trip_locked(qasm: str, remove_barriers: bool):
     import pytket.qasm
     from pytket.passes import DecomposeBoxes, RemoveBarriers
 
