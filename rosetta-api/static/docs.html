@@ -283,8 +283,10 @@
                         Results record <code>exclusive</code> and <code>exclusive_wait_sec</code>; every result records
                         <code>gate_wait_sec</code>, so a job held back by another user's exclusive run shows how long it
                         waited, and its runners show as queued meanwhile. When an exclusive run ends, the jobs it held
-                        start together and overlap each other (<code>server_overlapping_runs</code>). It overrides
-                        <code>runner_phases</code>. It cannot hold back other programs on the host, and in Kubernetes
+                        start together and overlap each other (<code>server_overlapping_runs</code>). When
+                        <code>runner_phases</code> gives every backend a different phase, that order is kept;
+                        otherwise backends run in id order. Reports record the phases used as
+                        <code>effective_runner_phases</code>. It cannot hold back other programs on the host, and in Kubernetes
                         mode it covers only this server's runner Jobs. Each client may have one unfinished exclusive
                         job (another returns 429). An exclusive circuit that cannot start within the server's wait cap
                         (<code>exclusive.max_wait_sec</code> in <code>GET /config</code>, default 600 s) fails with that
@@ -302,7 +304,9 @@
                         48 runs in total; more is rejected with HTTP 422.</li>
                     <li><strong>Custom ordering (phases)</strong> (<code>runner_phases</code>), under Backends. Assigns each
                         backend a phase number: backends with the same number run at the same time, and
-                        phases run in ascending order. Without phases every backend runs at once. Phases
+                        phases run in ascending order. In measured mode the order covers both groups of
+                        backends (sampled statevector and native sampling): phase 2 of either group starts only
+                        after phase 1 of both has finished. Without phases every backend runs at once. Phases
                         change which backends compete for the host at the same moment, not the per-runner
                         CPU quota.</li>
                     <li><strong>Bypass API Safety Limits</strong> (<code>bypass_limits</code>, local mode
