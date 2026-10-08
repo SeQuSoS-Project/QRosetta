@@ -57,6 +57,47 @@ def _tbl_agreement(divergence_report: dict, mode: str):
     return headers, rows, "Pairwise explained-cause agreement", caption
 
 
+UNSTABLE_SPREAD = 1.3
+
+
+def _unstable(row: dict) -> bool:
+    """Three or more simulation-time samples whose slowest exceeds UNSTABLE_SPREAD x the fastest."""
+    if row.get("failed"):
+        return False
+    samples = [v for v in (row["raw"].get("simulation_time_samples") or [])
+               if isinstance(v, (int, float)) and not isinstance(v, bool)]
+    if len(samples) < 3 or not min(samples) > 0:
+        return False
+    return max(samples) / min(samples) > UNSTABLE_SPREAD
+
+
+def _timing_marks(rows: list) -> list:
+    """(rank cell, status cell) per row: "≈" after a rank whose per-run totals overlap the
+    next ranked row's (overlaps_next), "unstable" added to the status of an unstable run."""
+    out = []
+    for i, row in enumerate(rows):
+        rank, status = row["rank"], row["status"]
+        nxt = rows[i + 1] if i + 1 < len(rows) else None
+        if row["ranked"] and row["entry"].get("overlaps_next") is True and nxt and nxt["ranked"]:
+            rank = f"{rank} \u2248"
+        if _unstable(row):
+            status = f"{status} (unstable)"
+        out.append((rank, status))
+    return out
+
+
+def _timing_marks_note(marks: list) -> str:
+    """Caption sentences for the marks _timing_marks set."""
+    note = ""
+    if any(str(rank).endswith("\u2248") for rank, _ in marks):
+        note += (" \u2248 after a rank: that backend's slowest timed run took at least as long as the "
+                 "next backend's fastest (overlaps_next), so these runs do not separate the two.")
+    if any(str(status).endswith("(unstable)") for _, status in marks):
+        note += (f" unstable: three or more timed runs whose slowest simulation time exceeds "
+                 f"{UNSTABLE_SPREAD} times the fastest; the median is less reliable than its n suggests.")
+    return note
+
+
 def _tbl_performance(results: dict):
     """Per-backend timings: ranked runs by total time, then unranked runs with the reason.
 
@@ -66,7 +107,9 @@ def _tbl_performance(results: dict):
         return _tbl_performance_repeated(results)
     headers = ["Rank", "Simulator", "Device", "Compilation (s)", "Simulation (s)", "Total (s)",
                "Simulation CPU (s)", "Process CPU (s)", "Gate count", "Depth", "Status"]
-    rows = _format_columns([[row["rank"],
+    report_rows = _report_rows(results, "performance_report")
+    marks = _timing_marks(report_rows)
+    rows = _format_columns([[mark[0],
              _fmt_text(row["entry"].get("simulator")), _device(row),
              _num(_field(row, "compilation_time_sec"), 6),
              _num(_field(row, "simulation_time_sec"), 6),
@@ -74,8 +117,8 @@ def _tbl_performance(results: dict):
              _num(_field(row, "simulation_cpu_time_sec"), 6),
              _num(_field(row, "cpu_time_sec"), 6),
              _fmt_int(_field(row, "gate_count")), _fmt_int(_field(row, "circuit_depth")),
-             row["status"]]
-            for row in _report_rows(results, "performance_report")])
+             mark[1]]
+            for row, mark in zip(report_rows, marks)])
     caption = (f"Wall-clock times of the timed run, n={_timing_samples(results)} timing sample(s) "
                "per backend; a warm-up run precedes it and is not included. Total = compilation "
                "+ simulation. Simulation CPU is process CPU time over the simulation window. "
@@ -83,7 +126,7 @@ def _tbl_performance(results: dict):
                "including interpreter start, imports and the warm-up. Ranked by total time, "
                "fastest first; runs without a rank follow with the reason in Status. Gate "
                "count and depth describe the circuit each backend executed (gate_metrics_basis)."
-               f"{_run_conditions(results)} {DEVICE_NOTE}")
+               f"{_timing_marks_note(marks)}{_run_conditions(results)} {DEVICE_NOTE}")
     return headers, rows, "Execution timing", caption
 
 
@@ -113,10 +156,12 @@ def _tbl_performance_repeated(results: dict):
                "Total median (s)", "Total IQR (s)", "Total stdev (s)", "n",
                "Simulation CPU (s)", "Process CPU (s)", "Gate count", "Depth", "Status"]
     rows = []
-    for row in _report_rows(results, "performance_report"):
+    report_rows = _report_rows(results, "performance_report")
+    marks = _timing_marks(report_rows)
+    for row, mark in zip(report_rows, marks):
         total = _timing_stats(row, "execution_time_sec")
         n = total["n"] if total else (None if row["failed"] else 1)
-        rows.append([row["rank"], _fmt_text(row["entry"].get("simulator")), _device(row),
+        rows.append([mark[0], _fmt_text(row["entry"].get("simulator")), _device(row),
                      _num(_timing_value(row, "compilation_time_sec"), 6),
                      _num(_timing_value(row, "simulation_time_sec"), 6),
                      _num(_timing_value(row, "execution_time_sec"), 6),
@@ -126,7 +171,7 @@ def _tbl_performance_repeated(results: dict):
                      _num(_field(row, "simulation_cpu_time_sec"), 6),
                      _num(_field(row, "cpu_time_sec"), 6),
                      _fmt_int(_field(row, "gate_count")), _fmt_int(_field(row, "circuit_depth")),
-                     row["status"]])
+                     mark[1]])
     rows = _format_columns(rows)
     caption = ("Median wall-clock times over the n timed runs of each backend (column n); a "
                "warm-up run precedes them and is not included. Total median = compilation "
@@ -138,7 +183,8 @@ def _tbl_performance_repeated(results: dict):
                "time of the whole isolated runner process, including interpreter start, "
                "imports, the warm-up and every timed run. Ranked by median total time, fastest first; runs without a rank "
                "follow with the reason in Status. Gate count and depth describe the circuit each "
-               f"backend executed (gate_metrics_basis).{_run_conditions(results)} {DEVICE_NOTE}")
+               f"backend executed (gate_metrics_basis).{_timing_marks_note(marks)}"
+               f"{_run_conditions(results)} {DEVICE_NOTE}")
     return headers, rows, "Execution timing", caption
 
 

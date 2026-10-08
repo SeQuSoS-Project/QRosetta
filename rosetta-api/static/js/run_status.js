@@ -108,6 +108,33 @@ export function statevectorGroup(p) {
     return 'other';
 }
 
+/** Global phase offset (rad) of a statevector pair in the basis its declared orderings imply, or null. */
+export function alignedPhase(p) {
+    const m = p?.metrics || {};
+    const pick = [m.label_aligned_relative_phase_rad, m.label_aligned_relative_phase,
+        m.label_aligned_basis === 'bit_reversal' ? m.bit_reversed_relative_phase_rad : m.direct_relative_phase_rad];
+    const v = pick.find(x => typeof x === 'number' && Number.isFinite(x));
+    return v === undefined ? null : v;
+}
+
+/** True when a statevector pair differs by a global phase larger than its phase tolerance in the basis its declared orderings imply. */
+export function hasPhaseOffset(p) {
+    if (!p || p.mode === 'measured') return false;
+    if (typeof p.transform_effect?.global_phase_aligned === 'boolean') return p.transform_effect.global_phase_aligned;
+    if (effectiveAgreement(p) === 'agree_up_to_global_phase') return true;
+    const phase = alignedPhase(p);
+    const tol = p.metrics?.phase_tolerance;
+    return phase !== null && typeof tol === 'number' && Math.abs(phase) > tol;
+}
+
+/** Fidelity of a statevector pair in the basis its declared orderings imply, and whether that basis is bit-reversed. */
+export function alignedFidelity(p) {
+    const m = p?.metrics || {};
+    const reversed = m.label_aligned_basis === 'bit_reversal';
+    const value = m.label_aligned_fidelity ?? (reversed ? m.bit_reversed_fidelity : m.direct_fidelity);
+    return { value, reversed };
+}
+
 /** True when the pair's outputs disagree by the evidence the report records. */
 export function isDisagreement(p) {
     if (p?.mode === 'measured') {
@@ -173,19 +200,20 @@ export function recommendedShots(pairs) {
 
 /** @type {Array<[RegExp, string]>} */
 const OPERATOR_HINTS = [
-    [/\s*Server operators can check whether its service is running\.?/gi, ' The backend may be restarting; try again in a minute. If it keeps happening, tell the administrator of this server.'],
-    [/\s*Server operators can see details in the runner( pod)? logs\.?/gi, ' If it happens again, tell the administrator of this server.'],
+    [/\s*Server operators can check whether its service is running\.?/gi, ' The {subject} may be restarting; try again in a minute. If it keeps happening, tell the administrator of this server.'],
+    [/\s*Server operators can see details in the (runner|compiler)( pod)? logs\.?/gi, ' If it happens again, tell the administrator of this server.'],
     [/raise the timeout\./g, 'raise the timeout in the Execution chip.'],
     [/\s*Check the \S+ container logs( to confirm)?\.?/gi, ' If it happens again, tell the administrator of this server.'],
     [/\s*Check container logs in your Kubernetes cluster\.?/gi, ' If it happens again, tell the administrator of this server.'],
-    [/\s*Check that its container is running\.?/gi, ' The backend may be restarting; try again in a minute.'],
+    [/\s*Check that its container is running\.?/gi, ' The {subject} may be restarting; try again in a minute.'],
 ];
 
-/** A runner error message with server-operator instructions replaced by ones a UI user can act on. */
-export function userFacingError(msg) {
+/** A runner or compiler error message with server-operator instructions replaced by ones a UI
+ * user can act on; `subject` names what failed ('backend', 'compile-only service'). */
+export function userFacingError(msg, subject = 'backend') {
     if (msg === null || msg === undefined) return msg;
     let text = String(msg);
-    OPERATOR_HINTS.forEach(([re, repl]) => { text = text.replace(re, repl); });
+    OPERATOR_HINTS.forEach(([re, repl]) => { text = text.replace(re, repl.replace('{subject}', subject)); });
     return text;
 }
 

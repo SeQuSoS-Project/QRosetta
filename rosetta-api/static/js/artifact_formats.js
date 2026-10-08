@@ -509,13 +509,50 @@ export function _dataMatrix(div, key, title) {
     }))));
     return { headers, rows, title, caption: `${title} (raw metric; not-compared pairs and the diagonal shown as —). Symmetric matrix.` };
 }
+const UNSTABLE_SPREAD = 1.3;
+
+/** Three or more simulation-time samples whose slowest exceeds UNSTABLE_SPREAD x the fastest (tables.py _unstable). */
+function _artUnstable(row) {
+    if (row.failed) return false;
+    const samples = (row.raw.simulation_time_samples || []).filter(v => typeof v === 'number');
+    if (samples.length < 3 || !(Math.min(...samples) > 0)) return false;
+    return Math.max(...samples) / Math.min(...samples) > UNSTABLE_SPREAD;
+}
+
+/** [rank cell, status cell] per row with the overlap and unstable marks (tables.py _timing_marks). */
+function _artTimingMarks(rows) {
+    return rows.map((row, i) => {
+        let rank = row.rank, status = row.status;
+        const next = rows[i + 1];
+        if (row.ranked && row.entry.overlaps_next === true && next && next.ranked) rank = `${rank} \u2248`;
+        if (_artUnstable(row)) status = `${status} (unstable)`;
+        return [rank, status];
+    });
+}
+
+/** Caption sentences for the marks _artTimingMarks set (tables.py _timing_marks_note). */
+function _artTimingMarksNote(marks) {
+    let note = '';
+    if (marks.some(([rank]) => String(rank).endsWith('\u2248'))) {
+        note += ' \u2248 after a rank: that backend\'s slowest timed run took at least as long as the '
+            + 'next backend\'s fastest (overlaps_next), so these runs do not separate the two.';
+    }
+    if (marks.some(([, status]) => String(status).endsWith('(unstable)'))) {
+        note += ` unstable: three or more timed runs whose slowest simulation time exceeds `
+            + `${UNSTABLE_SPREAD} times the fastest; the median is less reliable than its n suggests.`;
+    }
+    return note;
+}
+
 /** Per-backend timings: ranked runs by total time, then unranked runs with the reason. */
 export function _dataPerformance(results) {
     if (_artTimingRepeated(results)) return _dataPerformanceRepeated(results);
+    const reportRows = _artReportRows(results, 'performance_report');
+    const marks = _artTimingMarks(reportRows);
     return {
         headers: ['Rank', 'Simulator', 'Device', 'Compilation (s)', 'Simulation (s)', 'Total (s)',
             'Simulation CPU (s)', 'Process CPU (s)', 'Gate count', 'Depth', 'Status'],
-        rows: _formatColumns(_artReportRows(results, 'performance_report').map(row => [row.rank,
+        rows: _formatColumns(reportRows.map((row, k) => [marks[k][0],
             _artText(row.entry.simulator), _artDevice(row),
             _n(_artField(row, 'compilation_time_sec'), 6),
             _n(_artField(row, 'simulation_time_sec'), 6),
@@ -523,7 +560,7 @@ export function _dataPerformance(results) {
             _n(_artField(row, 'simulation_cpu_time_sec'), 6),
             _n(_artField(row, 'cpu_time_sec'), 6),
             _artInt(_artField(row, 'gate_count')), _artInt(_artField(row, 'circuit_depth')),
-            row.status])),
+            marks[k][1]])),
         title: 'Execution timing',
         caption: `Wall-clock times of the timed run, n=${_artTimingSamples(results)} timing sample(s) `
             + 'per backend; a warm-up run precedes it and is not included. Total = compilation '
@@ -532,7 +569,7 @@ export function _dataPerformance(results) {
             + 'including interpreter start, imports and the warm-up. Ranked by total time, '
             + 'fastest first; runs without a rank follow with the reason in Status. Gate '
             + 'count and depth describe the circuit each backend executed (gate_metrics_basis).'
-            + `${_artRunConditions(results)} ${DEVICE_NOTE}`,
+            + `${_artTimingMarksNote(marks)}${_artRunConditions(results)} ${DEVICE_NOTE}`,
     };
 }
 /** Caption sentence on whether the successful runs ran exclusively or overlapped others (tables.py _run_conditions). */
@@ -552,14 +589,16 @@ function _artRunConditions(results) {
 }
 /** _dataPerformance with median stage times and the spread of total time. */
 function _dataPerformanceRepeated(results) {
+    const reportRows = _artReportRows(results, 'performance_report');
+    const marks = _artTimingMarks(reportRows);
     return {
         headers: ['Rank', 'Simulator', 'Device', 'Compilation median (s)', 'Simulation median (s)',
             'Total median (s)', 'Total IQR (s)', 'Total stdev (s)', 'n',
             'Simulation CPU (s)', 'Process CPU (s)', 'Gate count', 'Depth', 'Status'],
-        rows: _formatColumns(_artReportRows(results, 'performance_report').map(row => {
+        rows: _formatColumns(reportRows.map((row, k) => {
             const total = _artTimingStats(row, 'execution_time_sec');
             const n = total ? total.n : (row.failed ? null : 1);
-            return [row.rank, _artText(row.entry.simulator), _artDevice(row),
+            return [marks[k][0], _artText(row.entry.simulator), _artDevice(row),
                 _n(_artTimingValue(row, 'compilation_time_sec'), 6),
                 _n(_artTimingValue(row, 'simulation_time_sec'), 6),
                 _n(_artTimingValue(row, 'execution_time_sec'), 6),
@@ -569,7 +608,7 @@ function _dataPerformanceRepeated(results) {
                 _n(_artField(row, 'simulation_cpu_time_sec'), 6),
                 _n(_artField(row, 'cpu_time_sec'), 6),
                 _artInt(_artField(row, 'gate_count')), _artInt(_artField(row, 'circuit_depth')),
-                row.status];
+                marks[k][1]];
         })),
         title: 'Execution timing',
         caption: 'Median wall-clock times over the n timed runs of each backend (column n); a '
@@ -582,7 +621,7 @@ function _dataPerformanceRepeated(results) {
             + 'time of the whole isolated runner process, including interpreter start, '
             + 'imports, the warm-up and every timed run. Ranked by median total time, fastest first; runs without a rank '
             + 'follow with the reason in Status. Gate count and depth describe the circuit each '
-            + `backend executed (gate_metrics_basis).${_artRunConditions(results)} ${DEVICE_NOTE}`,
+            + `backend executed (gate_metrics_basis).${_artTimingMarksNote(marks)}${_artRunConditions(results)} ${DEVICE_NOTE}`,
     };
 }
 /** Per-backend memory: ranked runs by process peak RSS, then unranked runs with the reason. */

@@ -17,6 +17,36 @@ export function visibleFormatCharacters(text) {
     return { text: shown, count };
 }
 
+const _NON_GATE_KEYWORDS = new Set(['openqasm', 'include', 'qreg', 'creg', 'barrier', 'measure', 'reset', 'if', 'gate', 'opaque']);
+const _QUBIT_REF = /([a-zA-Z_][a-zA-Z0-9_]*)\s*\[\s*(\d+)\s*\]/g;
+
+/**
+ * Gate count and depth of OpenQASM 2.0 text, counted as qrosetta_commons.helpers
+ * count_qasm_gates_and_depth counts them: top-level gate statements on literal reg[i]
+ * operands, depth by greedy layering; barriers, measurements, resets, if statements and
+ * gate bodies are not counted. Also the statements on two or more distinct qubits.
+ * @returns {{ gateCount: number, depth: number, multiQubitGateCount: number }}
+ */
+export function qasmGateMetrics(text) {
+    const depthByQubit = new Map();
+    let gateCount = 0;
+    let multiQubitGateCount = 0;
+    const body = String(text ?? '').replace(/\/\/[^\n]*/g, '').replace(/[{}]/g, ' ');
+    for (const raw of body.split(';')) {
+        const stmt = raw.trim();
+        if (!stmt) continue;
+        const words = stmt.split('(', 1)[0].trim().split(/\s+/).filter(Boolean);
+        if (!words.length || _NON_GATE_KEYWORDS.has(words[0].toLowerCase())) continue;
+        const qubits = [...stmt.matchAll(_QUBIT_REF)].map(m => `${m[1]}[${m[2]}]`);
+        if (!qubits.length) continue;
+        gateCount += 1;
+        const layer = Math.max(0, ...qubits.map(k => depthByQubit.get(k) || 0)) + 1;
+        qubits.forEach(k => depthByQubit.set(k, layer));
+        if (new Set(qubits).size >= 2) multiQubitGateCount += 1;
+    }
+    return { gateCount, depth: Math.max(0, ...depthByQubit.values()), multiQubitGateCount };
+}
+
 /** Lines of `text`; a final line break does not start another line. */
 export function splitLines(text) {
     if (typeof text !== 'string' || text === '') return [];

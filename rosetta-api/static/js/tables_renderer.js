@@ -6,7 +6,7 @@ import {
     getOptBadge, renderPreprocessingList, renderTooltip,
 } from './render_helpers.js';
 import {
-    RUNNER_STATUS_STYLE, adjustedPValue, adjustedSignificant, correctionName, effectiveAgreement, isDisagreement,
+    RUNNER_STATUS_STYLE, adjustedPValue, adjustedSignificant, alignedFidelity, alignedPhase, correctionName, effectiveAgreement, hasPhaseOffset, isDisagreement,
     measuredAssessment, statevectorGroup, statusBySimulator, unalignedBasisMatch,
 } from './run_status.js';
 import { makeCopyIconButton } from './utils.js';
@@ -43,7 +43,7 @@ export function pairVerdictStyle(rec) {
     }
     const group = statevectorGroup(rec);
     if (group === 'agree') return { style: 'success', text: 'agree' };
-    if (group === 'bit_order') return { style: 'divergence', text: 'agree after the bit reversal the declared orderings imply' };
+    if (group === 'bit_order') return { style: 'explained', text: 'agree after the bit reversal the declared orderings imply' };
     if (group === 'disagree') return { style: 'anomaly', text: 'disagree' };
     return { style: 'neutral', text: effectiveAgreement(rec) || 'no label' };
 }
@@ -164,7 +164,7 @@ export const AGREEMENT_STYLE = {
     agree_directly: 'success',
     agree_up_to_global_phase: 'success',
     distance_within_threshold: 'success',
-    agree_after_bit_reversal: 'divergence',
+    agree_after_bit_reversal: 'explained',
     agree_after_qubit_permutation: 'anomaly',
     unaligned_basis_match: 'anomaly',
     agree_after_normalization: 'success',
@@ -181,31 +181,35 @@ export const ASSESSMENT_STYLE = {
     not_comparable: 'offline',
 };
 
-/** Badge style for a pair: by its measured assessment, else by the label without the normalisation note. */
+/** Badge style for a statevector pair, by the label without the normalisation note. */
 function _pairStyle(p) {
-    if (p.mode === 'measured') {
-        const a = measuredAssessment(p);
-        if (a === 'consistent_within_shot_noise') {
-            return AGREEMENT_STYLE[p.agreement] === 'divergence' ? 'divergence' : 'success';
-        }
-        if (a && ASSESSMENT_STYLE[a]) return ASSESSMENT_STYLE[a];
-    } else if (unalignedBasisMatch(p)) {
-        return 'anomaly';
-    }
+    if (p.mode !== 'measured' && unalignedBasisMatch(p)) return 'anomaly';
     return AGREEMENT_STYLE[effectiveAgreement(p)] || AGREEMENT_STYLE[p.agreement] || 'offline';
 }
 
-/** Summary-row metric: the value under the transform the label names. */
-function _pairMetricText(p) {
+/** Summary-row metric: the value under the transform the label names, else in the basis the declared orderings imply. */
+export function pairMetricText(p) {
     const m = p.metrics || {};
     const label = effectiveAgreement(p);
     if (p.mode === 'statevector') {
-        if (label === 'agree_after_bit_reversal') return `F(bit-rev)=${_fmtNum(m.bit_reversed_fidelity)}`;
         if (label === 'agree_after_qubit_permutation') return `F(perm)=${_fmtNum(m.qubit_permutation?.fidelity ?? p.transform_effect?.fidelity_after_transform)}`;
-        return `F=${_fmtNum(m.direct_fidelity)}`;
+        const { value, reversed } = label === 'agree_after_bit_reversal'
+            ? { value: m.bit_reversed_fidelity ?? m.label_aligned_fidelity, reversed: true } : alignedFidelity(p);
+        let text = `${reversed ? 'F(bit-rev)' : 'F'}=${_fmtNum(value)}`;
+        if (unalignedBasisMatch(p)) {
+            text += reversed ? `; direct F=${_fmtNum(m.direct_fidelity)}` : `; F(bit-rev)=${_fmtNum(m.bit_reversed_fidelity)}`;
+        }
+        if (statevectorGroup(p) !== 'disagree' && hasPhaseOffset(p)) {
+            const phase = alignedPhase(p);
+            if (phase !== null) text += ` · phase ${_fmtNum(phase)} rad`;
+        }
+        return text;
     }
     if (label === 'agree_after_bit_reversal') return `JS(bit-rev)=${_fmtNum(m.bit_reversed_js_divergence)} nats`;
     if (label === 'agree_after_qubit_permutation') return `JS(perm)=${_fmtNum(m.qubit_permutation?.js_divergence)} nats`;
+    if (m.label_aligned_basis === 'bit_reversal') {
+        return `JS(bit-rev)=${_fmtNum(m.label_aligned_js_divergence ?? m.bit_reversed_js_divergence)} nats`;
+    }
     return `JS=${_fmtNum(m.js_divergence)} nats`;
 }
 
@@ -471,19 +475,19 @@ export function _agreementSummaryStrip(report, pairs) {
     const assessed = pairs.some(p => p.mode === 'measured' && measuredAssessment(p));
     const counts = {};
     pairs.forEach(p => { counts[p.agreement] = (counts[p.agreement] || 0) + 1; });
-    Object.keys(counts)
+    const labelPills = () => Object.keys(counts)
         .sort((a, b) => (_AGREEMENT_SEVERITY[a] ?? 9) - (_AGREEMENT_SEVERITY[b] ?? 9))
         .forEach(label => {
-            const style = assessed && label === 'distance_exceeds_threshold' ? 'offline' : (AGREEMENT_STYLE[label] || 'offline');
-            const pill = _chip(STATUS_STYLES[style].badge, `${labelText(label)} · ${counts[label]}`, _codeTip(label));
+            const pill = assessed && label !== 'not_comparable'
+                ? _chip('bg-white text-gray-600 border-gray-300', `distance: ${labelText(label)} · ${counts[label]}`,
+                    _codeTip(label, 'Descriptive JS/Hellinger label; the shot-noise assessment on the left is the verdict.'))
+                : _chip(STATUS_STYLES[AGREEMENT_STYLE[label] || 'offline'].badge, `${labelText(label)} · ${counts[label]}`, _codeTip(label));
             strip.appendChild(pill);
         });
+    if (!assessed) labelPills();
 
     const st = report.statistical_test_summary;
     if (assessed) {
-        const sep = document.createElement('span');
-        sep.className = 'w-px bg-gray-200 mx-1';
-        strip.appendChild(sep);
         const aCounts = {};
         pairs.forEach(p => {
             const a = measuredAssessment(p);
@@ -498,6 +502,10 @@ export function _agreementSummaryStrip(report, pairs) {
             strip.appendChild(_chip(STATUS_STYLES.anomaly.badge, `${labelText('marginal_distinguishable')} · ${marginal}`,
                 _codeTip('marginal_distinguishable', 'Holm-corrected over every bit of every pair')));
         }
+        const sep = document.createElement('span');
+        sep.className = 'w-px bg-gray-200 mx-1';
+        strip.appendChild(sep);
+        labelPills();
     } else if (st && st.verdict_counts) {
         const sep = document.createElement('span');
         sep.className = 'w-px bg-gray-200 mx-1';
@@ -583,6 +591,30 @@ export function _agreementHeatmap(report, pairs, config) {
     return wrap;
 }
 
+/** The verdict chip of a measured pair: its shot-noise assessment, else the test verdict, else its distance label. */
+function _measuredVerdictChip(p, st) {
+    const assessment = measuredAssessment(p);
+    if (assessment && assessment !== 'not_comparable') {
+        return _chip(STATUS_STYLES[ASSESSMENT_STYLE[assessment] || 'offline'].badge,
+            labelText(assessment), _codeTip(assessment, st?.verdict ? `test verdict: ${st.verdict}` : ''));
+    }
+    if (st && st.verdict) return _chip(STATUS_STYLES[VERDICT_STYLE[st.verdict] || 'offline'].badge, st.verdict, 'Shot-noise statistical verdict');
+    return _chip(STATUS_STYLES[AGREEMENT_STYLE[p.agreement] || 'offline'].badge, labelText(p.agreement), _codeTip(p.agreement));
+}
+
+/** A measured pair's JS/Hellinger distance label as plain gray text beside its verdict: descriptive, it does not decide agreement. */
+function _distanceNote(p, unaligned) {
+    const span = document.createElement('span');
+    const assessed = !!measuredAssessment(p) || !!p.metrics?.statistical_test?.verdict;
+    if (!assessed) return span;
+    span.className = 'text-[11px] text-gray-500 whitespace-nowrap';
+    span.textContent = `distance: ${labelText(p.agreement)}${unaligned ? ' (in the undeclared basis)' : ''}`;
+    const verdict = labelText(measuredAssessment(p) || p.metrics?.statistical_test?.verdict);
+    span.title = `Descriptive: ${labelDefinition(p.agreement) || 'the JS/Hellinger distance label'} `
+        + `The verdict for this pair is "${verdict}", from the shot-noise test. Code: ${p.agreement}`;
+    return span;
+}
+
 export function _agrRowId(p) {
     const s = p.simulators || ['?', '?'];
     return `${s[0]}-${s[1]}`.replace(/[^a-zA-Z0-9-]/g, '_');
@@ -663,40 +695,40 @@ export function _agreementPairTable(pairs) {
 
         const unaligned = unalignedBasisMatch(p) && p.agreement !== 'unaligned_basis_match';
         const measuredPair = p.mode === 'measured';
-        sum.appendChild(_chip(STATUS_STYLES[_pairStyle(p)].badge,
-            unaligned
-                ? `${labelText(p.agreement)} · ${measuredPair ? 'within them only in the undeclared basis' : 'in the undeclared basis'}`
-                : labelText(p.agreement),
-            unaligned
-                ? (measuredPair
-                    ? `Within the JS/Hellinger thresholds only in the basis the declared bit orders do not imply; the shot-noise assessment decides agreement. Code: ${p.agreement}`
-                    : `Matches only in the basis the declared qubit orderings do not imply; counted as a disagreement. Code: ${p.agreement}`)
-                : (p.agreement === 'agree_after_normalization'
-                    ? `${_codeTip(p.agreement)} Label after normalisation: ${p.metrics?.normalized_agreement ?? '—'}`
-                    : _codeTip(p.agreement))));
-
+        const st = p.metrics && p.metrics.statistical_test;
         const metric = document.createElement('span');
         metric.className = 'text-xs text-gray-500 font-mono text-right';
-        metric.title = p.mode === 'statevector' ? 'Fidelity under the transform the label names' : 'JS divergence under the transform the label names';
-        metric.textContent = _pairMetricText(p);
-        sum.appendChild(metric);
+        metric.title = p.mode === 'statevector'
+            ? 'Fidelity under the transform the label names; for a pair that disagrees, in the basis the declared qubit orderings imply'
+            : 'JS divergence under the transform the label names';
+        metric.textContent = pairMetricText(p);
 
-        const st = p.metrics && p.metrics.statistical_test;
-        const vslot = document.createElement('span');
-        const assessment = p.mode === 'measured' ? measuredAssessment(p) : null;
-        if (assessment && assessment !== 'not_comparable') {
-            vslot.appendChild(_chip(STATUS_STYLES[ASSESSMENT_STYLE[assessment] || 'offline'].badge,
-                labelText(assessment), _codeTip(assessment, st?.verdict ? `test verdict: ${st.verdict}` : '')));
-        } else if (st && st.verdict) {
-            vslot.appendChild(_chip(STATUS_STYLES[VERDICT_STYLE[st.verdict] || 'offline'].badge,
-                st.verdict, 'Shot-noise statistical verdict'));
+        if (measuredPair && p.agreement !== 'not_comparable') {
+            sum.className = 'flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 cursor-pointer text-sm select-none';
+            name.classList.add('min-w-[12rem]', 'flex-1');
+            metric.classList.add('whitespace-nowrap');
+            const verdict = document.createElement('span');
+            verdict.className = 'inline-flex flex-wrap gap-1 [&>*]:whitespace-nowrap';
+            verdict.appendChild(_measuredVerdictChip(p, st));
+            if (p.marginal_assessment === 'marginal_distinguishable') {
+                const clbits = (p.metrics?.marginal_test?.differing_clbits || []).join(', ');
+                verdict.appendChild(_chip(STATUS_STYLES.anomaly.badge, labelText('marginal_distinguishable'),
+                    `Single-bit marginal test (Holm-corrected): clbit ${clbits} differs, so the distributions differ`));
+            }
+            sum.appendChild(verdict);
+            sum.appendChild(metric);
+            sum.appendChild(_distanceNote(p, unaligned));
+        } else {
+            sum.appendChild(_chip(STATUS_STYLES[_pairStyle(p)].badge,
+                unaligned ? `${labelText(p.agreement)} · in the undeclared basis` : labelText(p.agreement),
+                unaligned
+                    ? `Matches only in the basis the declared qubit orderings do not imply; counted as a disagreement. Code: ${p.agreement}`
+                    : (p.agreement === 'agree_after_normalization'
+                        ? `${_codeTip(p.agreement)} Label after normalisation: ${p.metrics?.normalized_agreement ?? '—'}`
+                        : _codeTip(p.agreement))));
+            sum.appendChild(metric);
+            sum.appendChild(document.createElement('span'));
         }
-        if (p.marginal_assessment === 'marginal_distinguishable') {
-            const clbits = (p.metrics?.marginal_test?.differing_clbits || []).join(', ');
-            vslot.appendChild(_chip(STATUS_STYLES.anomaly.badge, labelText('marginal_distinguishable'),
-                `Single-bit marginal test (Holm-corrected): clbit ${clbits} differs, so the distributions differ`));
-        }
-        sum.appendChild(vslot);
         det.appendChild(sum);
 
         det.addEventListener('toggle', () => {

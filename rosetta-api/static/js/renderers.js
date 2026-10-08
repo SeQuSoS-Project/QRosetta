@@ -17,7 +17,7 @@ import {
     RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, isDisagreement, measuredAssessment, runnerStatus, statevectorGroup,
 } from './run_status.js';
 import { getState } from './state.js';
-import { renderSummaryPanel } from './summary_renderer.js';
+import { renderCompileSuiteTable, renderSummaryPanel } from './summary_renderer.js';
 import { renderAgreementPanel, renderDivergenceTables } from './tables_renderer.js';
 
 export function clearReport() {
@@ -203,9 +203,11 @@ function _taskBadges(item) {
         badges.push(n ? _makeStatusBadge('divergence', `${n} divergence(s)`) : _makeStatusBadge('offline', 'No pair records'));
     } else if (comparable.some(isDisagreement)) {
         const h = headlineModel(backendVerdicts(item));
-        const lead = (h.outliers.length ? h.outliers : h.differing).slice(0, 2).map(b => _displayRunnerName(b.key));
-        const more = (h.outliers.length ? h.outliers : h.differing).length - lead.length;
-        badges.push(_makeStatusBadge('anomaly', `Anomaly: ${lead.join(', ')}${more > 0 ? ` +${more}` : ''}`));
+        const lead = h.flagged.slice(0, 2).map(_displayRunnerName);
+        const more = h.flagged.length - lead.length;
+        badges.push(lead.length
+            ? _makeStatusBadge('anomaly', `Anomaly: ${lead.join(', ')}${more > 0 ? ` +${more}` : ''}`)
+            : _makeStatusBadge('inconclusive', 'Significant under BY only'));
     } else if (!comparable.length) {
         badges.push(_makeStatusBadge('offline', 'Not comparable'));
     } else {
@@ -231,9 +233,13 @@ export function renderSuiteSummary(data, title) {
     h2.textContent = title;
     panel.appendChild(h2);
 
-    const legendFrag = _cloneTemplate('tpl-legend-suite');
-    _applyLegendDots(legendFrag);
-    panel.appendChild(legendFrag);
+    const items = Array.isArray(data.benchmark_summary) ? data.benchmark_summary : [];
+    const compileOnly = data.simulated === false || (items.some(item => item.simulated === false) && items.every(item => item.simulated === false || item.error));
+    if (!compileOnly) {
+        const legendFrag = _cloneTemplate('tpl-legend-suite');
+        _applyLegendDots(legendFrag);
+        panel.appendChild(legendFrag);
+    }
 
     if (data.error) {
         const errFrag = _cloneTemplate('tpl-suite-api-error');
@@ -258,6 +264,15 @@ export function renderSuiteSummary(data, title) {
         statsFrag.querySelector('.tpl-count').textContent = summary.length;
         statsFrag.querySelector('.tpl-errors').textContent = errors;
         panel.appendChild(statsFrag);
+        if (compileOnly) {
+            const note = document.createElement('p');
+            note.className = 'mb-3 text-sm text-gray-700';
+            note.textContent = 'Compile only: no simulator was run. Details opens a circuit\'s compiled outputs, their passes and the reasons for the ones that did not compile.';
+            panel.appendChild(note);
+            panel.appendChild(renderCompileSuiteTable(summary, viewDetail));
+            showTab('suite-summary');
+            return;
+        }
 
         const tableFrag = _cloneTemplate('tpl-suite-table-wrapper');
         const tbody = tableFrag.querySelector('.tpl-tbody');

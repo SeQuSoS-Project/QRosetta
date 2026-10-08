@@ -4,6 +4,8 @@
 // builds its tabs and tables with the same greyTabs() and placeholderTable(). Leaf module:
 // emptyStateModel() is pure; the rest only builds DOM.
 
+import { parseRunnerKey } from './runner_key.js';
+
 const MODE_RUN = { statevector: 'a statevector run', measured: 'a measured run' };
 const DETAIL_TABS = ['Summary', 'Agreement', 'Performance', 'Circuits', 'Exports'];
 export const BACKEND_COLUMNS = ['Backend', 'Status', 'Differs from', 'Bit order', 'Precision', 'Total time (s)', 'Peak memory (MiB)'];
@@ -25,7 +27,8 @@ function _table(caption, columns, items) {
  * @param {{source: 'editor'|'list', circuitName: string, playlist: string[], modes: {statevector: boolean, measured: boolean},
  *          preprocessing: string, compilerCount: number, backends: {key: string, name: string}[], backendsLoaded: boolean,
  *          examples: {value: string, label: string}[]}} input
- *   `backends` are {key, name} in report order; `playlist` the playlist's item labels.
+ *   `backends` are {key, name} in report order, one per planned run (multi-run keys
+ *   `<id>~opt<L>~run<N>`); `playlist` the playlist's item labels.
  */
 export function emptyStateModel(input) {
     const modes = ['statevector', 'measured'].filter(m => input.modes[m]);
@@ -34,6 +37,10 @@ export function emptyStateModel(input) {
     const list = input.source === 'list';
     const what = list ? `the Playlist (${_plural(input.playlist.length, 'circuit')})` : (input.circuitName || 'the circuit in the editor');
     const n = input.backends.length;
+    const backendIds = new Set(input.backends.map(b => parseRunnerKey(b.key).simId)).size;
+    const multi = input.backends.some(b => parseRunnerKey(b.key).isMulti);
+    const targets = multi ? `${_plural(n, 'run')} on ${_plural(backendIds, 'backend')}` : _plural(n, 'backend');
+    const sendTo = multi ? `Run sends it to ${_plural(backendIds, 'backend')} as the ${_plural(n, 'run')} below,` : `Run sends it to the ${targets} below`;
     const base = { kicker: 'No results yet', examples: input.examples, docs: { href: 'docs.html#reading', label: 'How to read the results' } };
 
     if (!modes.length && !input.compilerCount) {
@@ -55,21 +62,21 @@ export function emptyStateModel(input) {
     if (input.preprocessing === 'both') {
         return {
             ...base, tabs: [], title: `Ready to run an experiment on ${what}`,
-            text: `Run Experiment runs it on ${_plural(n, 'backend')} ${modeText}, with SDK preprocessing on and then off; the results per setting and a downloadable bundle appear here.`,
+            text: `Run Experiment runs it on ${targets} ${modeText}, with SDK preprocessing on and then off; the results per setting and a downloadable bundle appear here.`,
             table: _table('Backends', BACKEND_COLUMNS, input.backends),
         };
     }
     if (list) {
         return {
             ...base, tabs: ['Suite Summary', 'Exports'], title: `Ready to run ${what}`,
-            text: `Run sends each circuit to ${_plural(n, 'backend')} ${modeText}; each row of this table becomes one circuit's outcome, with its full report under Details.`,
+            text: `Run sends each circuit to ${targets} ${modeText}; each row of this table becomes one circuit's outcome, with its full report under Details.`,
             table: _table('Playlist', PLAYLIST_COLUMNS, input.playlist.map((name, i) => ({ key: String(i), name }))),
         };
     }
     const measuredOnly = modes.length === 1 && modes[0] === 'measured';
     return {
         ...base, tabs: DETAIL_TABS, title: `Ready to run ${what}`,
-        text: `Run sends it to the ${_plural(n, 'backend')} below ${modeText}${pause} and compares every pair of outputs; the results fill this table.`,
+        text: `${sendTo} ${modeText}${multi ? ',' : pause} and compares every pair of outputs; the results fill this table.`,
         table: _table('Backends', measuredOnly ? MEASURED_BACKEND_COLUMNS : BACKEND_COLUMNS, input.backends),
     };
 }

@@ -62,6 +62,20 @@ export const LABELS = {
     inconsistent_bitstring_lengths: { short: 'Outcome keys of different lengths', anchor: 'taxonomy', definition: 'The two backends report outcomes with different numbers of bits.' },
 };
 
+/** Simulator ids with a row in the manual's Known backend issues table (docs.html#known-issues). */
+export const KNOWN_ISSUE_BACKENDS = ['pennylane-default', 'pennylane-lightning', 'qibo', 'qrisp', 'quimb'];
+
+/** A link to the manual's Known backend issues section, opening in a new tab. */
+export function knownIssuesLink(text = 'Known backend issues') {
+    const a = document.createElement('a');
+    a.href = 'docs.html#known-issues';
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.className = 'underline';
+    a.textContent = text;
+    return a;
+}
+
 /** Plain wording for a code, or the code itself when it has none. */
 export function labelText(code) {
     return LABELS[code]?.short ?? String(code ?? '');

@@ -3,7 +3,7 @@
 
 import {
     QUEUE_WAIT_SHOWN_SEC, TAG_AMBER, TAG_GRAY, _applyLegendDots, _cloneTemplate, _displayRunnerName,
-    _makeStatusCell, _tag, bitOrderTag, cpuQuotaPhrase, deviceTitle, executionTags, fmtInt, fmtNum, getOptBadge, isGpuRun, coreClasses, mixedCoresText, outsideProcessText, precisionTag, samplingTag, simulationCoreSpeeds, unstableText, queueWaitText, throttleText,
+    _makeStatusCell, _tag, bitOrderTag, cpuQuotaPhrase, executionTags, fmtInt, fmtNum, getOptBadge, isGpuRun, coreClasses, mixedCoresText, outsideProcessText, precisionTag, samplingTag, simulationCoreSpeeds, unstableText, queueWaitText, throttleText,
     renderTooltip,
 } from './render_helpers.js';
 import { RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, runnerStatus, userFacingError } from './run_status.js';
@@ -56,7 +56,7 @@ function _fillSimulatorCell(cell, simulatorName, config, raw, { memory = false }
     if (sampling) td.appendChild(sampling);
     const prec = precisionTag(raw?.precision);
     if (prec) td.appendChild(prec);
-    executionTags(raw, { device: false }).forEach(tag => td.appendChild(tag));
+    executionTags(raw, { device: isGpuRun(raw) }).forEach(tag => td.appendChild(tag));
     const wait = queueWaitText(raw);
     if (wait) td.appendChild(_tag('queued', TAG_AMBER, wait.charAt(0).toUpperCase() + wait.slice(1)));
     const throttled = throttleText(raw);
@@ -151,29 +151,8 @@ function _memoryNote(rawResults, unranked) {
         : ` Memory fields are host RSS. GPU device memory is not measured, so the rank and memory values of the GPU run of ${names} describe host memory only.`;
 }
 
-function _deviceCell(raw) {
-    const td = document.createElement('td');
-    td.className = 'px-4 py-3 text-sm text-gray-700';
-    if (!raw?.device) {
-        td.textContent = '—';
-        return td;
-    }
-    td.textContent = String(raw.device);
-    td.title = deviceTitle(raw);
-    if (isGpuRun(raw)) {
-        td.className += ' font-medium text-amber-800';
-        if (raw.gpu_name) {
-            const sub = document.createElement('div');
-            sub.className = 'text-[11px] font-normal text-gray-500';
-            sub.textContent = String(raw.gpu_name);
-            td.appendChild(sub);
-        }
-    }
-    return td;
-}
-
-const TH_CLASS = 'px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase';
-const TD_CLASS = 'px-4 py-3 text-sm text-gray-500 font-mono';
+const TH_CLASS = 'px-2 py-2 text-left text-[11px] leading-tight font-medium text-gray-500 align-bottom';
+const TD_CLASS = 'px-2 py-2 text-xs text-gray-500 font-mono whitespace-nowrap align-top';
 
 function _th(text, tooltipKey) {
     const th = document.createElement('th');
@@ -211,43 +190,78 @@ function _stageSamples(raw, stage) {
     return c && s && c.length === s.length ? c.map((v, i) => v + s[i]) : null;
 }
 
-/** A timing cell: the value, or median ± sample standard deviation (n) over several timed runs. */
+/** A timing value: the value, or with several timed runs the median, its sample standard deviation and n. */
 function _timingValue(r, raw, stage) {
     const field = `${stage}_time_sec`;
     const value = r[field] ?? raw?.[field];
     const n = _timingCount(raw);
-    if (n <= 1) return fmtNum(value, 6);
+    if (n <= 1) return { value, sd: null, n };
     const samples = _stageSamples(raw, stage);
     const pick = (...keys) => keys.map(k => raw?.[k]).find(v => typeof v === 'number');
     const median = stage === 'execution'
         ? (r.execution_time_sec_median ?? value)
         : pick(`${stage}_time_sec_median`, `${stage}_time_median_sec`) ?? (samples ? _median(samples) : value);
     const sd = pick(`${stage}_time_sec_stdev`, `${stage}_time_stdev_sec`) ?? (samples ? _stdev(samples) : null);
-    return `${fmtNum(median, 6)}${sd !== null ? ` ± ${fmtNum(sd, 6)}` : ''} (n=${n})`;
+    return { value: median, sd, n };
 }
+
+const _plain = v => ({ value: v, sd: null, n: 1 });
 
 const TIME_COLUMNS = [
     { key: 'compilation', label: 'Compilation (s)', value: (r, raw) => _timingValue(r, raw, 'compilation') },
     { key: 'simulation', label: 'Simulation (s)', value: (r, raw) => _timingValue(r, raw, 'simulation') },
     { key: 'total_time', label: 'Total (s)', value: (r, raw) => _timingValue(r, raw, 'execution'), strong: true },
     { key: 'sim_cpu_time', label: 'Sim CPU (s)', value: (r, raw) => _timingValue({}, raw, 'simulation_cpu') },
-    { key: 'cpu_time', label: 'CPU, whole process (s)', value: (r, raw) => fmtNum(r.cpu_time_sec ?? raw?.cpu_time_sec, 6) },
-    { key: 'gate_count', label: 'Gate Count', value: (r, raw) => fmtInt(r.gate_count ?? raw?.gate_count) },
-    { key: 'circuit_depth', label: 'Depth', value: (r, raw) => fmtInt(r.circuit_depth ?? raw?.circuit_depth) },
+    { key: 'cpu_time', label: 'CPU, whole process (s)', value: (r, raw) => _plain(r.cpu_time_sec ?? raw?.cpu_time_sec) },
+    { key: 'gate_count', label: 'Gate Count', value: (r, raw) => _plain(r.gate_count ?? raw?.gate_count), int: true },
+    { key: 'circuit_depth', label: 'Depth', value: (r, raw) => _plain(r.circuit_depth ?? raw?.circuit_depth), int: true },
 ];
 
 const MEMORY_COLUMNS = [
-    { key: 'proc_peak_rss', label: 'Process Peak RSS (MiB)', value: (r) => fmtNum(r.process_peak_rss_mb, 1), strong: true },
-    { key: 'mem_delta', label: 'Sim-window RSS delta (MiB)', value: (r) => fmtNum(r.memory_usage_mb, 4) },
-    { key: 'proc_peak', label: 'Sim-window peak RSS (MiB)', value: (r) => fmtNum(r.process_peak_mb, 1) },
+    { key: 'proc_peak_rss', label: 'Process Peak RSS (MiB)', value: (r) => _plain(r.process_peak_rss_mb), strong: true },
+    { key: 'mem_delta', label: 'Sim-window RSS delta (MiB)', value: (r) => _plain(r.memory_usage_mb) },
+    { key: 'proc_peak', label: 'Sim-window peak RSS (MiB)', value: (r) => _plain(r.process_peak_mb) },
     {
         key: 'theoretical_sv', label: 'Theoretical SV (MiB)',
-        value: (r, raw) => {
-            const v = r.theoretical_statevector_mb !== undefined ? r.theoretical_statevector_mb : raw?.theoretical_statevector_mb;
-            return v === null ? 'N/A' : fmtNum(v, 4);
-        },
+        value: (r, raw) => _plain(r.theoretical_statevector_mb !== undefined ? r.theoretical_statevector_mb : raw?.theoretical_statevector_mb),
+        nullText: 'N/A',
     },
 ];
+
+/**
+ * One number format for a whole column: fixed decimals chosen so the smallest non-zero value
+ * shows three significant digits (1 to 8 decimals), or scientific notation with three
+ * significant digits throughout when a value is below 1e-6 or at least 1e9.
+ * @param {Array<number|null|undefined>} values
+ * @returns {{ sci: boolean, decimals: number }}
+ */
+export function columnFormat(values) {
+    const mags = values.filter(v => typeof v === 'number' && Number.isFinite(v) && v !== 0).map(Math.abs);
+    if (!mags.length) return { sci: false, decimals: 1 };
+    const lo = Math.min(...mags), hi = Math.max(...mags);
+    if (lo < 1e-6 || hi >= 1e9) return { sci: true, decimals: 2 };
+    return { sci: false, decimals: Math.min(8, Math.max(1, Math.ceil(-Math.log10(lo)) + 2)) };
+}
+
+/** A number in a column's format (see columnFormat); "—" when missing. */
+export function fmtColumn(v, fmt) {
+    if (typeof v !== 'number' || !Number.isFinite(v)) return fmtNum(v);
+    return fmt.sci ? v.toExponential(fmt.decimals) : v.toFixed(fmt.decimals);
+}
+
+/** Table cell content: the value, with "± sd" (and "n=N" when backends had different numbers of timed runs) on a second line when several timed runs are behind it. */
+function _fillValueCell(td, cell, column, fmt) {
+    if (column.int) { td.textContent = fmtInt(cell.value); return; }
+    if (cell.value === null && column.nullText) { td.textContent = column.nullText; return; }
+    td.textContent = fmtColumn(cell.value, fmt);
+    if (cell.n > 1) {
+        const sub = document.createElement('div');
+        sub.className = 'text-[10px] font-sans font-normal text-gray-400';
+        const sd = cell.sd !== null && cell.sd !== undefined ? `± ${fmtColumn(cell.sd, fmt)}` : '';
+        sub.textContent = fmt.showN === false ? sd : [sd, `n=${cell.n}`].filter(Boolean).join(' · ');
+        td.appendChild(sub);
+    }
+}
 
 function _statusOf(entry, raw) {
     if (raw) return runnerStatus(raw);
@@ -266,6 +280,9 @@ export function renderRankingTable(report, key, unit, panel, config = {}, rawRes
     const columns = isMemory ? MEMORY_COLUMNS : TIME_COLUMNS;
     const raws = _rawIndex(rawResults);
     const { ranked, unranked } = splitRanking(report, metric);
+    const okCounts = new Set((rawResults || []).filter(r => r && !r.error).map(_timingCount));
+    const uniformRuns = okCounts.size === 1 ? [...okCounts][0] : 0;
+    const allCpu = (rawResults || []).some(r => r && r.device) && !(rawResults || []).some(isGpuRun);
 
     const hFrag = _cloneTemplate('tpl-ranking-section-header');
     const note = isMemory ? _memoryNote(rawResults, unranked) : _timingNote(rawResults);
@@ -273,6 +290,8 @@ export function renderRankingTable(report, key, unit, panel, config = {}, rawRes
     const caveats = isMemory ? [] : _timingCaveats(rawResults);
     hFrag.querySelector('.tpl-summary-text').textContent = `${report.summary || ''}`
         + (caveats.length ? ` Before comparing times: ${caveats.join('; ')}.` : '')
+        + (allCpu ? ' Every run was on a CPU.' : (rawResults || []).some(isGpuRun) ? ' Runs tagged GPU simulated on a GPU; the others on a CPU.' : '')
+        + (!isMemory && uniformRuns > 1 ? ` Each backend had ${uniformRuns} timed runs; ± is their standard deviation.` : '')
         + (otherUnranked.length ? ` ${otherUnranked.length} ${otherUnranked.length === 1 ? 'run is' : 'runs are'} not ranked; `
             + `${otherUnranked.length === 1 ? 'it is' : 'they are'} listed after the ranked runs.` : '');
     panel.appendChild(hFrag);
@@ -303,7 +322,6 @@ export function renderRankingTable(report, key, unit, panel, config = {}, rawRes
     const hr = document.createElement('tr');
     hr.appendChild(_th('Rank'));
     hr.appendChild(_th('Simulator'));
-    hr.appendChild(_th('Device'));
     columns.forEach(c => hr.appendChild(_th(c.label, c.key)));
     thead.appendChild(hr);
     table.appendChild(thead);
@@ -311,27 +329,37 @@ export function renderRankingTable(report, key, unit, panel, config = {}, rawRes
     const tbody = document.createElement('tbody');
     tbody.className = 'bg-white divide-y divide-gray-200';
 
+    /** @type {Map<any, any[]>} */
+    const cells = new Map();
+    const cellOf = (r, idx) => {
+        if (!cells.has(r)) cells.set(r, columns.map(col => col.value(r, raws.get(r.simulator))));
+        return cells.get(r)[idx];
+    };
+    const shown = [...ranked, ...unranked.filter(r => _statusOf(r, raws.get(r.simulator)) === 'ok')];
+    const runCounts = new Set(shown.map(r => _timingCount(raws.get(r.simulator))));
+    const showN = runCounts.size > 1;
+    const formats = columns.map((_, idx) => ({ ...columnFormat(shown.map(r => cellOf(r, idx).value)), showN }));
+
     ranked.forEach((r, i) => {
         const raw = raws.get(r.simulator);
         const tr = document.createElement('tr');
         const rankTd = document.createElement('td');
-        rankTd.className = 'px-4 py-3 text-sm text-gray-500';
+        rankTd.className = 'px-2 py-2 text-sm text-gray-500 whitespace-nowrap align-top';
         rankTd.textContent = String(r.rank ?? i + 1);
         if (r.overlaps_next === true && ranked[i + 1]) {
-            rankTd.appendChild(_tag('≈', TAG_AMBER, `Overlaps rank ${i + 2} (${_displayRunnerName(ranked[i + 1].simulator)}): `
+            rankTd.appendChild(_tag('≈', `${TAG_AMBER} !ml-0.5`, `Overlaps rank ${i + 2} (${_displayRunnerName(ranked[i + 1].simulator)}): `
                 + 'this backend\'s slowest timed run took at least as long as that backend\'s fastest, so these runs do not separate the two. '
                 + 'It reflects the spread within this job only: medians also move between jobs (about 3% on this host), so ranks without ≈ can still swap.'));
         }
         tr.appendChild(rankTd);
         const simTd = document.createElement('td');
-        simTd.className = 'px-4 py-3 text-sm font-medium text-gray-900 min-w-[13rem]';
+        simTd.className = 'px-2 py-2 text-sm font-medium text-gray-900 min-w-[8rem] align-top';
         _fillSimulatorCell(simTd, r.simulator, config, raw, { memory: isMemory });
         tr.appendChild(simTd);
-        tr.appendChild(_deviceCell(raw));
-        columns.forEach(c => {
+        columns.forEach((c, idx) => {
             const td = document.createElement('td');
-            td.className = c.strong ? 'px-4 py-3 text-sm text-gray-900 font-mono font-medium' : TD_CLASS;
-            td.textContent = c.value(r, raw);
+            td.className = c.strong ? `${TD_CLASS} text-gray-900 font-medium` : TD_CLASS;
+            _fillValueCell(td, cellOf(r, idx), c, formats[idx]);
             tr.appendChild(td);
         });
         tbody.appendChild(tr);
@@ -343,18 +371,17 @@ export function renderRankingTable(report, key, unit, panel, config = {}, rawRes
         const tr = document.createElement('tr');
         tr.className = 'bg-gray-50';
         const rankTd = document.createElement('td');
-        rankTd.className = 'px-4 py-3 text-xs text-gray-400';
+        rankTd.className = 'px-2 py-2 text-xs text-gray-400 align-top';
         rankTd.textContent = 'not ranked';
         tr.appendChild(rankTd);
         const simTd = document.createElement('td');
-        simTd.className = 'px-4 py-3 text-sm font-medium text-gray-900 min-w-[13rem]';
+        simTd.className = 'px-2 py-2 text-sm font-medium text-gray-900 min-w-[8rem] align-top';
         _fillSimulatorCell(simTd, r.simulator, config, raw, { memory: isMemory });
         const reason = document.createElement('div');
         reason.className = 'text-[11px] font-normal text-gray-500';
         reason.textContent = `reason: ${r.reason || 'not recorded'}${UNRANKED_REASON_TEXT[r.reason] ? ` (${UNRANKED_REASON_TEXT[r.reason]})` : ''}`;
         simTd.appendChild(reason);
         tr.appendChild(simTd);
-        tr.appendChild(_deviceCell(raw));
         columns.forEach((c, idx) => {
             const td = document.createElement('td');
             td.className = TD_CLASS;
@@ -366,7 +393,7 @@ export function renderRankingTable(report, key, unit, panel, config = {}, rawRes
                     td.textContent = '—';
                 }
             } else {
-                td.textContent = c.value(r, raw);
+                _fillValueCell(td, cellOf(r, idx), c, formats[idx]);
             }
             tr.appendChild(td);
         });
