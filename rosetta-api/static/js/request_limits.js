@@ -33,10 +33,17 @@ export function firstUnprintable(text) {
     return { position: i + 1, code: `U+${code}` };
 }
 
-/** True when `text` has no visible character: only whitespace, joiners, variation selectors or
- * tag characters (mirror schemas/benchmark.py is_blank_name). */
+/** Blank symbols (braille pattern blank, object replacement character); mirror
+ * schemas/benchmark.py _BLANK_SYMBOLS. */
+const _BLANK_SYMBOLS = [[0x2800, 0x2800], [0xFFFC, 0xFFFC]];
+const _MARK_OR_FORMAT = /^[\p{Mn}\p{Me}\p{Cf}]$/u;
+
+/** True when `text` has no visible character: only whitespace, joiners, variation selectors, tag
+ * characters, combining marks, format characters or blank symbols (mirror schemas/benchmark.py
+ * is_blank_name). */
 export function isBlankName(text) {
-    return Array.from(String(text ?? '')).every(ch => _SPACE.test(ch) || _inRanges(ch, _INVISIBLE_ALLOWED));
+    return Array.from(String(text ?? '')).every(ch => _SPACE.test(ch) || _inRanges(ch, _INVISIBLE_ALLOWED)
+        || _inRanges(ch, _BLANK_SYMBOLS) || _MARK_OR_FORMAT.test(ch));
 }
 
 /** Characters of `text` as the server counts them (code points). */
