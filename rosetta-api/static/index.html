@@ -50,17 +50,17 @@
     <div class="flex flex-col min-h-screen lg:h-screen">
         <header class="bg-white border-b border-gray-200 shadow-sm">
             <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-                <div class="flex h-16 items-center justify-between">
-                    <div class="flex items-center">
-                        <h1 class="ml-3 text-2xl lg:text-3xl font-extrabold text-indigo-600 whitespace-nowrap">Quantum Rosetta</h1>
+                <div class="flex h-16 items-center justify-between gap-2">
+                    <div class="flex items-center min-w-0">
+                        <h1 class="sm:ml-3 text-lg leading-tight sm:text-2xl lg:text-3xl font-extrabold text-indigo-600 sm:whitespace-nowrap">Quantum Rosetta</h1>
                     </div>
-                    <div class="flex items-center space-x-4">
+                    <div class="flex items-center gap-2 sm:gap-4">
                         <span id="run-save-note" class="hidden lg:inline text-xs text-gray-500"></span>
                         <div id="auth-container" class="flex items-center gap-2">
                             <a href="docs.html" target="_blank" rel="noopener"
-                                class="text-sm font-medium text-gray-600 hover:text-indigo-700 bg-white px-3 py-1.5 rounded-md border border-gray-200 transition-colors">Docs</a>
+                                class="text-sm font-medium text-gray-600 hover:text-indigo-700 bg-white px-2 sm:px-3 py-1.5 rounded-md border border-gray-200 transition-colors">Docs</a>
                             <button id="btn-login-modal" onclick="openAuthModal()"
-                                class="text-sm font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1.5 rounded-md border border-indigo-200 transition-colors">Login
+                                class="whitespace-nowrap text-sm font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-2 sm:px-3 py-1.5 rounded-md border border-indigo-200 transition-colors">Login
                                 / Register</button>
                             <div id="user-profile" class="hidden flex items-center gap-2">
                                 <button onclick="openHistoryModal()"
@@ -126,7 +126,7 @@
                     <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                         <h2 id="ws-editor" class="text-lg font-semibold text-gray-800">Editor</h2>
                         <div class="flex items-baseline gap-2 min-w-0 flex-1 justify-end">
-                            <input autocomplete="off" type="text" id="ctx-algo-name" maxlength="200" value="No Circuit Loaded" aria-label="Circuit name" title="The circuit's name, used for + Add to Playlist and in reports"
+                            <input autocomplete="off" type="text" id="ctx-algo-name" maxlength="400" value="No Circuit Loaded" aria-label="Circuit name" title="The circuit's name, used for + Add to Playlist and in reports"
                                 class="text-sm text-gray-800 bg-transparent border-b border-dashed border-gray-500 rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-0 flex-1 text-right">
                             <span id="ctx-circuit-stats" class="text-xs text-gray-500 whitespace-nowrap"></span>
                         </div>
@@ -224,7 +224,7 @@
                             <label class="inline-flex items-center" title="Every backend samples measurement outcomes; pairs are compared with a shot-noise test."><input autocomplete="off" type="checkbox" id="mode-measured" onchange="updateWorkspace()"><span class="ml-1.5">Measured</span></label>
                         </fieldset>
                         <label class="flex items-center gap-1 flex-1 min-w-[12rem] text-xs text-gray-600"><span class="font-medium text-gray-700 whitespace-nowrap">Run Name (Optional)</span>
-                            <input autocomplete="off" type="text" id="single-run-name" maxlength="200" placeholder="E.g., GHZ Final Opt" class="flex-1 min-w-0 border border-gray-300 rounded px-2 py-1 text-xs"></label>
+                            <input autocomplete="off" type="text" id="single-run-name" maxlength="400" placeholder="E.g., GHZ Final Opt" class="flex-1 min-w-0 border border-gray-300 rounded px-2 py-1 text-xs"></label>
                     </div>
                     <div id="settings-bar" class="flex flex-wrap items-center gap-1.5" role="toolbar" aria-label="Run settings">
                         <div id="shots-container-single" class="hidden inline-flex items-center gap-1 text-xs mr-1">

@@ -53,3 +53,18 @@ export function announceWorkspaceChange() {
         document.dispatchEvent(new Event('workspace-change'));
     });
 }
+
+/** Hold a text input to `max` characters as the server counts them (code points): maxlength
+ * counts UTF-16 units, so an emoji would use two. Safe to call again with a new `max`. */
+export function limitCodePoints(input, max) {
+    if (!input) return;
+    input.maxLength = 2 * max;
+    input.dataset.maxChars = String(max);
+    if (input.dataset.codePointLimit) return;
+    input.dataset.codePointLimit = '1';
+    input.addEventListener('input', () => {
+        const limit = Number(input.dataset.maxChars);
+        const chars = Array.from(input.value);
+        if (chars.length > limit) input.value = chars.slice(0, limit).join('');
+    });
+}

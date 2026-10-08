@@ -10,7 +10,7 @@ import { initBenchPopover } from './benchmarks_select.js';
 import { editorHasEdits, getDynamicMaxQubits, loadRunners, updateContextBar } from './config.js';
 import { saveRunToHistory, showHistoryNotice } from './history.js';
 import { setRunSaver } from './share_links.js';
-import { announceWorkspaceChange, initDomRefs, qasmInput, setAllButtons, welcomeMessage } from './dom.js';
+import { announceWorkspaceChange, initDomRefs, limitCodePoints, qasmInput, setAllButtons, welcomeMessage } from './dom.js';
 import { shotsRange, timeoutRange } from './run_inputs.js';
 import { loadBatchQueue, loadEditorCircuit, loadLoadedSelection, loadRunModes, loadRunName, saveEditorCircuit, saveLoadedSelection, saveRunName } from './session_store.js';
 import { knownIssuesLink } from './labels.js';
@@ -55,9 +55,8 @@ function _applyServerConfig(config) {
         if (!Number.isFinite(current) || current > tMax) tInput.value = String(tMax);
     }
     const nameInput = /** @type {HTMLInputElement|null} */ (document.getElementById('ctx-algo-name'));
-    if (nameInput) nameInput.maxLength = getState().maxLabelLength;
-    const runName = /** @type {HTMLInputElement|null} */ (document.getElementById('single-run-name'));
-    if (runName) runName.maxLength = getState().maxLabelLength;
+    limitCodePoints(nameInput, getState().maxLabelLength);
+    limitCodePoints(/** @type {HTMLInputElement|null} */ (document.getElementById('single-run-name')), getState().maxLabelLength);
     const pwHint = document.getElementById('register-password-hint');
     if (pwHint) {
         const { passwordMinChars: min, passwordMaxBytes: max } = getState();

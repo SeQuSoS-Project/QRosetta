@@ -103,8 +103,8 @@ export function planRuns(ws) {
     return { runs, error: null };
 }
 
-/** The Run button's label for a workspace. */
-export function runButtonLabel(ws, backendCount) {
+/** The Run button's label for a workspace. With countsInvalid (the multi-run counts cannot be sent) it names no run count. */
+export function runButtonLabel(ws, backendCount, { countsInvalid = false } = {}) {
     const modes = ['statevector', 'measured'].filter(m => ws.modes?.[m]);
     const compilers = ws.compilers && Object.keys(ws.compilers).length;
     const n = (ws.list || []).length;
@@ -116,7 +116,7 @@ export function runButtonLabel(ws, backendCount) {
     const both = ws.preprocessing === 'both' ? ', preprocessing on and off' : '';
     const backends = `${backendCount} backend${backendCount === 1 ? '' : 's'}`;
     const runs = plannedRunKeys(ws.common?.target_simulators || [], ws.common?.runner_config || {}).length;
-    const targets = runs > backendCount ? `${runs} runs on ${backends}` : backends;
+    const targets = countsInvalid ? 'multi-run counts to fix' : runs > backendCount ? `${runs} runs on ${backends}` : backends;
     return `${verb} · ${modeText}${both} · ${targets}`;
 }
 

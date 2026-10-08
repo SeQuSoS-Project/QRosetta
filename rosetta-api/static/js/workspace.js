@@ -17,7 +17,7 @@ import { clearReport, renderDetailReport, renderSuiteSummary, showTab } from './
 import { planRuns, runButtonLabel, runLimitProblems } from './run_plan.js';
 import { labelProblem, printableLabel } from './request_limits.js';
 import { showRunErrors, validateRunInputs } from './run_inputs.js';
-import { FINISHED_KEEP_MS, forgetJob, forgetSignedInJobs, isJobsStorageKey, listJobs, markJobFinished, markJobStopped, recordJob, saveEditorCircuit, saveRunModes } from './session_store.js';
+import { FINISHED_KEEP_MS, forgetJob, isJobsStorageKey, listJobs, markJobFinished, markJobStopped, recordJob, saveEditorCircuit, saveRunModes } from './session_store.js';
 import { dispatch, getState } from './state.js';
 import { getAgreementThresholds, getSeed, setLoading } from './utils.js';
 import { batchItemLabel, renderBatchQueue } from './batch.js';
@@ -108,11 +108,12 @@ export function updateWorkspace() {
     }
     const button = document.getElementById('btn-run');
     if (button) {
-        button.textContent = runButtonLabel(ws, ws.common.target_simulators.length);
+        const countProblems = (ws.modes.statevector || ws.modes.measured) ? runCountProblems() : [];
+        button.textContent = runButtonLabel(ws, ws.common.target_simulators.length, { countsInvalid: countProblems.length > 0 });
         const theme = ws.preprocessing === 'both' ? RUN_THEMES.experiment : ws.source === 'list' ? RUN_THEMES.batch : RUN_THEMES.editor;
         Object.values(RUN_THEMES).flat().forEach(c => button.classList.remove(c));
         theme.forEach(c => button.classList.add(c));
-        _showRunBlocked(button, (ws.modes.statevector || ws.modes.measured) ? runCountProblems() : []);
+        _showRunBlocked(button, countProblems);
     }
     const note = document.getElementById('run-save-note');
     if (note) {
@@ -243,7 +244,7 @@ async function _await(job) {
         if (job.run_name) results.run_name = job.run_name;
         if (job.circuit_name && !results.circuit_name) results.circuit_name = job.circuit_name;
         let historyRunId = null;
-        if (job.kind !== 'experiment') {
+        if (job.kind !== 'experiment' && (job.account || null) === signedInAccount()) {
             historyRunId = await saveRunToHistory(job.job_id, job.run_name || null);
             autosaveRun(results, job.run_name || job.title);
         }
@@ -261,6 +262,9 @@ async function _await(job) {
 
 let _finished = [];
 let _shownIndex = -1;
+/** The account the runs in progress were submitted under, and whether a sign-out dropped them from the screen. */
+let _inFlightAccount = null;
+let _dropInFlight = false;
 
 const _clock = ms => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -389,6 +393,8 @@ function _revealResults() {
 /** Run every planned job of the workspace `ws`, one after another, then show the first. */
 async function _runAll(runs, ws) {
     _finished = [];
+    _inFlightAccount = signedInAccount();
+    _dropInFlight = false;
     resetStopPolling();
     clearReport();
     _revealResults();
@@ -411,7 +417,7 @@ async function _runAll(runs, ws) {
             const job = { job_id: jobId, kind: run.kind, title: run.title, run_name: _historyName(ws.runName, run, runs),
                           circuit_name: run.kind === 'single' ? _editorCircuitName() : null,
                           runner_config: run.payload.runner_config || {}, submitted_at: Date.now(),
-                          remaining: runs.slice(i + 1).map(r => r.title), account: signedInAccount(),
+                          remaining: runs.slice(i + 1).map(r => r.title), account: _inFlightAccount,
                           ...(run.kind === 'experiment' ? _experimentCompilers(run, runs) : {}) };
             recordJob(job);
             setRunKicker('Running');
@@ -425,6 +431,7 @@ async function _runAll(runs, ws) {
         dispatch('SET_PROCESSING', false);
         updateWorkspace();
     }
+    if (_droppedAfterSignOut()) return;
     const first = _finished.findIndex(e => e.results);
     _show(first >= 0 ? first : 0);
     _announceShown(_finished[first >= 0 ? first : 0]);
@@ -521,6 +528,8 @@ export function stopWaiting() {
 export async function resumeJob(job) {
     if (getState().isProcessing) return;
     _finished = [];
+    _inFlightAccount = job.account || null;
+    _dropInFlight = false;
     resetStopPolling();
     clearReport();
     clearHistoryState();
@@ -538,6 +547,7 @@ export async function resumeJob(job) {
         dispatch('SET_PROCESSING', false);
         updateWorkspace();
     }
+    if (_droppedAfterSignOut()) return;
     _show(0);
     _announceShown(_finished[0]);
     offerRecentJobs({ unfinishedOnly: true });
@@ -598,7 +608,7 @@ export function offerRecentJobs({ unfinishedOnly = false } = {}) {
     if (!banner || !list) return;
     const now = Date.now();
     const onScreen = new Set(_finished.filter(e => !e.stopped).map(e => e.job.job_id));
-    const jobs = listJobs(now).filter(j => !onScreen.has(j.job_id) && (!unfinishedOnly || j.state !== 'finished'));
+    const jobs = listJobs(now, signedInAccount()).filter(j => !onScreen.has(j.job_id) && (!unfinishedOnly || j.state !== 'finished'));
     const rows = jobs.map(job => _recentJobRow(job));
     list.replaceChildren(...rows);
     banner.classList.toggle('hidden', jobs.length === 0);
@@ -614,20 +624,36 @@ window.addEventListener?.('storage', e => {
     if (isJobsStorageKey(e.key) && !getState().isProcessing) offerRecentJobs(_offerOptions);
 });
 
-/** Forget what the signed-out account had on screen: its runs, their results and its recorded jobs. */
+function _clearShownRuns() {
+    _finished = [];
+    _shownIndex = -1;
+    _renderSwitcher(-1);
+    dispatch('SET_JOB_ID', null);
+    dispatch('SET_SUITE_DATA', null);
+    dispatch('SET_HISTORY_RUN_ID', null);
+    clearReport();
+    document.getElementById('welcome-message')?.classList.remove('hidden');
+    updateWorkspace();
+}
+
+/** After the runs in progress ended because their account signed out: clear the screen instead of
+ * showing them. Their jobs stay recorded for that account. */
+function _droppedAfterSignOut() {
+    if (!_dropInFlight) return false;
+    _dropInFlight = false;
+    _clearShownRuns();
+    offerRecentJobs();
+    return true;
+}
+
+/** Take what the signed-out account had on screen off it: its finished runs, and the runs still in
+ * progress, whose polling stops. Their jobs stay recorded and are offered when that account signs in again. */
 function _forgetAccountView() {
-    forgetSignedInJobs();
-    if (_finished.some(e => e.job.account)) {
-        _finished = [];
-        _shownIndex = -1;
-        _renderSwitcher(-1);
-        dispatch('SET_JOB_ID', null);
-        dispatch('SET_SUITE_DATA', null);
-        dispatch('SET_HISTORY_RUN_ID', null);
-        clearReport();
-        document.getElementById('welcome-message')?.classList.remove('hidden');
-        updateWorkspace();
+    if (getState().isProcessing && _inFlightAccount) {
+        _dropInFlight = true;
+        stopPolling();
     }
+    if (_finished.some(e => e.job.account)) _clearShownRuns();
     offerRecentJobs();
 }
 
@@ -641,6 +667,7 @@ function _historyRunsDeleted(ids) {
 
 document.addEventListener('workspace-change', () => { updateWorkspace(); _refreshRefusal(); });
 document.addEventListener('signed-out', () => _forgetAccountView());
+document.addEventListener('signed-in', () => { if (!getState().isProcessing) offerRecentJobs(); });
 document.addEventListener('history-runs-deleted', e => _historyRunsDeleted(/** @type {CustomEvent} */ (e).detail || []));
 document.addEventListener('circuit-list-added', () => selectListSource());
 document.addEventListener('editor-loaded', e => {

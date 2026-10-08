@@ -5,7 +5,7 @@ import { dispatch, getState } from './state.js';
 import { setSideLoading } from './utils.js';
 import { charCount } from './request_limits.js';
 import { announceWorkspaceChange } from './dom.js';
-import { readPref, writePref } from './session_store.js';
+import { forgetAccountJobs, readPref, writePref } from './session_store.js';
 import { closeModal, isModalOpen, openModal } from './modal.js';
 import { announce } from './announce.js';
 
@@ -202,6 +202,7 @@ export async function handleLoginSubmit() {
         updateAuthUI();
         closeAuthModal();
         announce(`Signed in as ${email}.`);
+        document.dispatchEvent(new Event('signed-in'));
         const next = _afterLogin;
         _afterLogin = null;
         if (next) next();
@@ -302,6 +303,7 @@ export async function handleDeleteAccount() {
 
         if (!res.ok) throw new Error(await formatApiError(res));
 
+        forgetAccountJobs(signedInAccount());
         handleLogout();
         alert("Your account and its saved runs were deleted, and you are signed out.");
     } catch (e) {

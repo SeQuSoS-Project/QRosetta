@@ -1,6 +1,6 @@
 // Run history: save completed runs, list, load, rename, download and delete them.
 
-import { announceWorkspaceChange, tabNav } from './dom.js';
+import { announceWorkspaceChange, limitCodePoints, tabNav } from './dom.js';
 import { BASE_URL, formatApiError, getAuthHeaders } from './api.js';
 import { onNextLogin, openAuthModal, updateAuthUI } from './auth.js';
 import { clearReport, renderDetailReport, renderSuiteSummary } from './renderers.js';
@@ -224,7 +224,7 @@ export async function openHistoryModal() {
             nameInput.id = `run-name-input-${run.id}`;
             nameInput.className = "hidden text-sm border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 w-full max-w-xs px-2 py-1";
             nameInput.value = runName;
-            nameInput.maxLength = getState().maxLabelLength;
+            limitCodePoints(nameInput, getState().maxLabelLength);
             nameInput.setAttribute('aria-label', 'Run name');
 
             const editBtn = document.createElement('button');

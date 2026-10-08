@@ -49,16 +49,31 @@ def test_finished_jobs_expire_with_the_server_copy_and_unfinished_after_six_hour
 
 
 @requires_node
-def test_forget_and_sign_out_drop_jobs():
+def test_forget_and_account_deletion_drop_jobs():
     r = call_js(["session_store.js"], [
         ("recordJob", [_job("anon"), T0]),
         ("recordJob", [_job("mine", account="x@y.z"), T0]),
+        ("recordJob", [_job("other", account="b@y.z"), T0]),
         ("recordJob", [_job("gone"), T0]),
         ("forgetJob", ["gone"]),
-        ("forgetSignedInJobs", []),
+        ("forgetAccountJobs", ["x@y.z"]),
         ("listJobs", [T0 + MIN]),
     ])
-    assert [j["job_id"] for j in r[-1]] == ["anon"]
+    assert sorted(j["job_id"] for j in r[-1]) == ["anon", "other"]
+
+
+@requires_node
+def test_jobs_of_an_account_are_listed_only_for_that_account():
+    r = call_js(["session_store.js"], [
+        ("recordJob", [_job("anon"), T0]),
+        ("recordJob", [_job("a-run", account="a@y.z"), T0 + 1]),
+        ("listJobs", [T0 + MIN, None]),
+        ("listJobs", [T0 + MIN, "b@y.z"]),
+        ("listJobs", [T0 + MIN, "a@y.z"]),
+    ])
+    assert [j["job_id"] for j in r[2]] == ["anon"]
+    assert [j["job_id"] for j in r[3]] == ["anon"]
+    assert sorted(j["job_id"] for j in r[4]) == ["a-run", "anon"]
 
 
 @requires_node

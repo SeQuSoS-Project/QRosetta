@@ -8,6 +8,7 @@ import { makeButton as button, makeEl as el } from './render_helpers.js';
 import { readPref, writePref } from './session_store.js';
 import { dispatch, getState } from './state.js';
 import { printableLabel } from './request_limits.js';
+import { limitCodePoints } from './dom.js';
 import {
     copyText, crateSources, downloadBlob, downloadFullReport, exportRoCrate, hasStatevectors,
     reportHasTruncatedSv,
@@ -278,7 +279,7 @@ export function renderExportPanel(aside, ctx) {
         const input = el('input', 'qr-input text-xs');
         input.type = 'text'; input.id = id; input.placeholder = ph; input.autocomplete = ac; input.value = readPref(key);
         input.setAttribute('aria-label', ph);
-        if (key === AUTHOR_KEY) input.maxLength = getState().maxLabelLength;
+        if (key === AUTHOR_KEY) limitCodePoints(input, getState().maxLabelLength);
         input.addEventListener('change', () => {
             const value = key === AUTHOR_KEY ? printableLabel(input.value, getState().maxLabelLength) : input.value.trim();
             input.value = value;

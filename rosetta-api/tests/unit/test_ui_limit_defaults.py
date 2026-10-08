@@ -32,7 +32,7 @@ def test_html_inputs_do_not_exceed_the_server_limits():
         assert f'max="{settings.MAX_QUBITS_STATEVECTOR}"' in tag, input_id
     for input_id in ("ctx-algo-name", "single-run-name"):
         tag = re.search(rf'<input[^>]*id="{input_id}"[^>]*>', html, re.S).group(0)
-        assert f'maxlength="{settings.MAX_LABEL_LENGTH}"' in tag, input_id
+        assert f'maxlength="{2 * settings.MAX_LABEL_LENGTH}"' in tag, input_id
 
 
 def test_algorithm_qubit_ranges_fit_the_generator_limit():

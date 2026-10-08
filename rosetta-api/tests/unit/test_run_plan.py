@@ -97,6 +97,13 @@ def test_button_label_says_what_will_run():
                       "Compile Editor Code"]
 
 
+def test_button_label_names_no_run_count_while_the_multi_run_counts_are_invalid():
+    ws = _ws(common={**_ws()["common"], "target_simulators": ["qiskit", "cirq"],
+                     "runner_config": {"qiskit": {"opt_levels": [0, 1, 2, 3], "runs": [16, 16, 16, 1]}}})
+    (label,) = call_js(["run_plan.js"], [("runButtonLabel", [ws, 2, {"countsInvalid": True}])])
+    assert label == "Run Editor Code · Statevector · multi-run counts to fix"
+
+
 LIMITS = {"maxRequestBytes": 1_048_576, "maxQasmSize": 1_000_000, "maxExperimentCells": 200,
           "executionMode": "local"}
 

@@ -126,17 +126,21 @@ export function forgetJob(jobId) {
     _saveJobs(_allJobs().filter(j => j.job_id !== jobId));
 }
 
-/** Forget every job submitted while signed in. */
-export function forgetSignedInJobs() {
-    _saveJobs(_allJobs().filter(j => !j.account));
+/** Forget every job submitted while signed in as `account`. */
+export function forgetAccountJobs(account) {
+    if (account) _saveJobs(_allJobs().filter(j => j.account !== account));
 }
 
-/** @returns {StoredJob[]} the recorded jobs whose results can still be fetched, newest first */
-export function listJobs(now = Date.now()) {
+/** The recorded jobs whose results can still be fetched, newest first. With `account` given
+ * (an email, or null when signed out): the jobs submitted signed out and those of that account only.
+ * @param {number} [now] @param {string|null} [account]
+ * @returns {StoredJob[]} */
+export function listJobs(now = Date.now(), account = undefined) {
     const all = _allJobs();
     const live = all.filter(j => !_expired(j, now));
     if (live.length !== all.length) _saveJobs(live);
-    return live.sort((a, b) => b.submitted_at - a.submitted_at);
+    const visible = account === undefined ? live : live.filter(j => !j.account || j.account === account);
+    return visible.sort((a, b) => b.submitted_at - a.submitted_at);
 }
 
 /** @param {string} qasm @param {string} name */
