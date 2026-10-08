@@ -262,9 +262,15 @@
                                 barriers removed.</li>
                         </ul>
                         The pytket round-trip inlines custom <code>gate</code> definitions, rewrites gates
-                        into pytket's QASM gate set (for example <code>u</code> becomes <code>u3</code> and
-                        <code>cp</code> becomes <code>cu1</code>, with angles as multiples of π) and expands
-                        register broadcasts. tket sets a parameter within 1e-11 half-turns of a multiple of
+                        into pytket's QASM gate set, with angles as multiples of π, and expands register
+                        broadcasts. pytket 1.33 writes <code>u</code> as <code>u3</code> and <code>p</code> as
+                        <code>u1</code> and <code>u0</code> as <code>u3(0,0,0)</code>; it decomposes
+                        <code>cp</code> into three <code>u3</code> and two <code>cx</code>, <code>cu</code> into
+                        five <code>u3</code> and two <code>cx</code>, and <code>rccx</code>, <code>rc3x</code> and
+                        <code>c3sqrtx</code> into <code>u3</code> and <code>cx</code>; it keeps
+                        <code>cu1</code>, <code>crz</code>, <code>crx</code>, <code>cry</code>, <code>cu3</code>,
+                        <code>ch</code>, <code>cy</code>, <code>csx</code>, <code>rxx</code>, <code>rzz</code>,
+                        <code>ccx</code>, <code>cswap</code>, <code>c3x</code> and <code>c4x</code> as written. tket sets a parameter within 1e-11 half-turns of a multiple of
                         π/4 to that multiple; when that happens the <code>API:</code> entries list each moved
                         parameter (see <a href="#known-issues">Known backend issues</a>).
                         In measured mode the native group also receives a measure-all when the circuit has no
@@ -1562,7 +1568,12 @@
                                 <code>statevector_array()</code> of the same circuit is correct. Seen on the circuit
                                 to the right from n = 12 (correct up to n = 11) and on chains of controlled
                                 rotations from 12–13 qubits. The measured report marks Qrisp distinguishable from
-                                every other backend.</td>
+                                every other backend. Cause: <code>run()</code> drops every outcome whose
+                                probability is below 5e-4 times the largest one
+                                (<code>qrisp.simulator.numerics_config.cutoff_ratio</code>) and renormalises the
+                                rest. In the circuit to the right |0…0⟩ has probability 0.5 and each of the other
+                                2048 outcomes 0.5/2048 ≈ 2.4e-4, below the cutoff of 2.5e-4; with the cutoff set
+                                to 0, Qrisp gives 0.504.</td>
                             <td><code>qreg q[12]; creg c[12]; h q[0];</code> then <code>ch q[0],q[k];</code> for
                                 k = 1…11, then <code>measure q[i] -> c[i];</code> for every i. Expected: |0…0⟩ with
                                 probability 0.5; Qrisp: 1.0.</td></tr>
@@ -1597,28 +1608,73 @@
                                 measured mode add <code>h q[0];</code> before measuring so the phase becomes
                                 visible in the counts.</td></tr>
                         <tr><td>Qrisp</td>
-                            <td><code>cu1(λ)</code> behaves as <code>crz(λ)</code>, which differs from it by a
-                                phase on the control's |1⟩ branch. The pytket round-trip rewrites
-                                <code>cp</code> to <code>cu1</code>, so circuits written with <code>cp</code> hit
-                                this with preprocessing on.</td>
+                            <td><code>cu1(λ)</code> has the matrix of <code>crz(λ)</code>, which differs from
+                                <code>qelib1.inc</code>'s <code>cu1</code> by a phase on the control's |1⟩ branch,
+                                and <code>statevector_array()</code> applies that matrix. The pytket round-trip keeps
+                                <code>cu1</code>, so this happens with preprocessing on and off. <code>cp</code> is
+                                correct in Qrisp, and the round-trip writes it as <code>u3</code> and
+                                <code>cx</code>. In measured mode <code>cu1</code> gives a third result (see the
+                                row on gate definitions below).</td>
                             <td>Statevector: <code>qreg q[2]; h q[0]; x q[1]; cu1(0.9) q[0],q[1];</code>.</td></tr>
+                        <tr><td>Qrisp 0.5, measured mode: gate definitions</td>
+                            <td><code>QuantumCircuit.run()</code> first rewrites each gate into its definition
+                                (<code>QuantumCircuit.transpile()</code>), while <code>statevector_array()</code>
+                                applies each gate's matrix. For three <code>qelib1.inc</code> gates the two differ,
+                                so Qrisp's counts disagree with Qrisp's own statevector:
+                                <code>cu1(λ)</code>'s definition is <code>p(3λ/8)</code> on the control, then
+                                <code>p(λ)</code>, <code>cx</code>, <code>p(−λ/2)</code>, <code>cx</code>,
+                                <code>p(−λ/2)</code> on the target, which matches neither <code>cu1</code> nor
+                                <code>crz</code>; <code>cu3(θ,φ,λ)</code>'s
+                                definition applies the transposed target matrix, U3(−θ,λ,φ), where the matrix is
+                                correct; <code>c3sqrtx</code>'s definition and matrix differ from each other and
+                                from <code>qelib1.inc</code>. With preprocessing on, the round-trip decomposes
+                                <code>c3sqrtx</code> and keeps <code>cu1</code> and <code>cu3</code>. A random
+                                5-qubit, 40-gate circuit with two <code>cu1</code> gates gave total variation 0.19
+                                between Qrisp's exact <code>run()</code> distribution and its statevector with
+                                preprocessing on (0.08 off); written with <code>cp</code> or <code>crz</code>
+                                instead, 0.</td>
+                            <td>Measured, 200,000 shots, preprocessing off: <code>qreg q[2]; creg c[2]; h q[0];
+                                h q[1]; cu1(0.6) q[0],q[1]; h q[0]; h q[1]; measure q -&gt; c;</code>. P(c[0] = 1,
+                                c[1] = 0) is 0.0218 for <code>qelib1.inc</code>'s <code>cu1</code>, 0.0005 in
+                                Qrisp's statevector (its <code>crz</code>), 0.0125 in Qrisp's counts. For
+                                <code>cu3</code>: <code>qreg q[2]; creg c[2]; x q[0]; h q[1];
+                                cu3(0.7,0.3,0.1) q[0],q[1]; measure q -&gt; c;</code>; exact P(q[1] = 1) 0.8205,
+                                Qrisp's statevector 0.8205, Qrisp's counts 0.192.</td></tr>
+                        <tr><td>Qrisp 0.5: <code>csx</code></td>
+                            <td><code>csx</code> acts as <code>crx(π/2)</code>: Qrisp's controlled gate leaves out
+                                the e<sup>iπ/4</sup> phase of <code>sx</code> on the control's |1⟩ branch, in both
+                                modes. The pytket round-trip keeps <code>csx</code>, so this happens with
+                                preprocessing on and off.</td>
+                            <td>Statevector: <code>qreg q[2]; h q[0]; csx q[0],q[1]; h q[0];</code>. Exact
+                                P(|00⟩) 0.625; Qrisp 0.7286 (the value for <code>crx(pi/2)</code>).</td></tr>
+                        <tr><td>Qrisp 0.5, statevector mode, 15 or more qubits</td>
+                            <td>Qrisp's simulator sets matrix entries below 1e-5 in magnitude to 0
+                                (<code>numerics_config.float_tresh</code>) and drops tensor entries below 5e-4 times
+                                the largest (<code>cutoff_ratio</code>). On wide, dense states this loses norm:
+                                infidelities up to 3e-4 against Qiskit in the circuits tested at 15–17 qubits,
+                                where the other complex64 backends (qsim, TorchQuantum) stay near 1e-12, so the
+                                pair can fall outside the default fidelity tolerance of 1e-5. At 14 qubits the
+                                loss stayed below 1e-5. With both thresholds set to 0 the same circuits give about
+                                1e-7, the complex64 level. The adapter only reads
+                                <code>statevector_array()</code> and converts it to complex128.</td>
+                            <td>Statevector, 16 qubits: four layers of <code>ry</code> with random angles on
+                                every qubit, with <code>cx q[i],q[j]</code> for every i &lt; j between layers
+                                (424 gates). MQT Bench <code>twolocalrandom</code> at 16 qubits: norm 0.99998,
+                                1 − F = 4.5e-5.</td></tr>
                         <tr><td>Qrisp 0.5, measured mode, wider circuits</td>
                             <td>On a 16-qubit circuit of <code>h</code>, <code>ry</code>, <code>rz</code>,
                                 <code>rx</code> and <code>cx</code> only, Qrisp's sampled single-bit frequencies differ
                                 from the circuit's exact marginals by up to 0.02 (|z| up to 12.7 at 30,000 shots),
                                 while Qrisp's statevector for the same circuit is right (fidelity 1 − 1e-13 with
                                 Qiskit). The full-distribution test is often inconclusive on such circuits; the
-                                single-bit marginal test flags Qrisp's pairs.</td>
+                                single-bit marginal test flags Qrisp's pairs. The outcome cutoff described in the
+                                first Qrisp row explains part of it: <code>run()</code> keeps 4,091 of the 65,536
+                                outcomes, and with the cutoff and <code>float_tresh</code> set to 0 P(clbit 13 = 1)
+                                moves from 0.0405 to 0.0505 of the exact 0.0572. The rest is not explained.</td>
                             <td><code>rosetta-api/circuits/qrisp_measured_bias_16q.qasm</code> in the source
                                 (<code>h</code> on every qubit, then fixed-angle <code>ry</code>, <code>cx</code>,
                                 <code>rz</code> and <code>rx</code> layers, <code>measure q -&gt; c</code>), 30,000 shots:
                                 P(clbit 13 = 1) 0.040 from Qrisp, 0.0579 from Qiskit's samples, 0.0572 exact.</td></tr>
-                        <tr><td>Qrisp, measured mode only</td>
-                            <td>Counts are wrong on <code>cu3</code> while Qrisp's statevector for the same
-                                circuit is right.</td>
-                            <td>Measured, 20000 shots: <code>qreg q[2]; creg c[2]; x q[0]; h q[1];
-                                cu3(0.7,0.3,0.1) q[0],q[1]; measure q -&gt; c;</code>. The exact P(q[1] = 1) is
-                                0.82; Qrisp returns about 0.19.</td></tr>
                         <tr><td>quimb 1.13.0</td>
                             <td>The QASM parser substitutes a gate definition's parameters with plain text
                                 replacement, so a parameter whose name starts with another parameter's name
