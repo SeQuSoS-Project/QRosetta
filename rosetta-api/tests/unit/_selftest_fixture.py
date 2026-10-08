@@ -67,3 +67,11 @@ def _make_measured(seed_override=None, bit_order="msb"):
 process_run_measured = _make_measured()
 process_run_measured_ignoring_seed = _make_measured(seed_override=7)
 process_run_measured_wrong_label = _make_measured(bit_order="lsb")
+
+
+@with_sdk_versions
+def process_run_dropping_barrier_lines(payload):
+    """``process_run`` on the circuit with every line that starts with ``barrier`` removed."""
+    lines = payload["circuit_data"].split("\n")
+    kept = "\n".join(line for line in lines if not line.strip().startswith("barrier"))
+    return process_run({**payload, "circuit_data": kept})

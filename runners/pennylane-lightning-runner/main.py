@@ -5,7 +5,7 @@ from qrosetta_commons.counts import prepare_final_state_sampling, prepare_statev
 from qrosetta_commons.helpers import (
     CompileResult, _draw_statevector_samples, declare_sdk_packages, get_logger,
     get_num_qubits_from_qasm, register_runner_endpoints, run_cli_main, run_measured_job,
-    run_statevector_job, strip_barriers_from_qasm, with_sdk_versions,
+    run_statevector_job, with_sdk_versions,
 )
 import numpy as np
 import pennylane as qml
@@ -19,15 +19,12 @@ _DEVICE = "lightning.qubit"
 _SIMULATOR = "pennylane-lightning"
 _PRECISION = "complex128"
 
-_STRIP_BARRIERS_NOTE = (
-    "qrosetta_commons.helpers.strip_barriers_from_qasm(): Strips barrier instructions from "
-    "the QASM string, as PennyLane's QASM parser does not support them. Required by the "
-    "adapter, applied regardless of apply_preprocessing.")
 _FROM_QASM_NOTE = (
     "qml.from_qasm(measurements=[qml.state()]) (pennylane-qiskit): Maps each Qiskit "
     "instruction to a PennyLane operation; gates without a direct PennyLane equivalent "
-    "(e.g. cu3) become QubitUnitary matrices; the tape ends in a statevector readout. "
-    "Required by the adapter, applied regardless of apply_preprocessing.")
+    "(e.g. cu3) become QubitUnitary matrices; barrier becomes qml.Barrier, which the device "
+    "skips; the tape ends in a statevector readout. Required by the adapter, applied "
+    "regardless of apply_preprocessing.")
 _CANCEL_INVERSES_NOTE = (
     "qml.transforms.cancel_inverses: Cancels adjacent inverse gate pairs (e.g. H·H, X·X) to "
     "reduce gate count.")
@@ -42,12 +39,22 @@ _IDLE_WIRES_NOTE = (
     "qml.state() readout span every declared qubit (a gate-free circuit has no wires "
     "otherwise, and qml.from_qasm then also drops the readout).")
 _SERIALIZE_NOTE = (
-    "transpiled_qasm is QuantumScript.to_openqasm() of the executed tape's operations; "
-    "operations outside the OpenQASM 2.0 gate set (e.g. QubitUnitary) are decomposed in the "
-    "text only. An operation to_openqasm cannot decompose (a QubitUnitary on three or more "
-    "wires, e.g. from c3x) is written as an opaque gate applied to its wires, preceded by "
-    "comments holding its exact matrix. The tape's qml.state() readout is not written as "
-    "measure statements, and the creg that to_openqasm always declares holds nothing.")
+    "transpiled_qasm lists the executed tape's operations in order, one statement per "
+    "operation that has a qelib1.inc gate with the same matrix (e.g. SX as sx, Adjoint(SX) as "
+    "sxdg, CH as ch, CY as cy, IsingXX as rxx, IsingZZ as rzz, ControlledPhaseShift as cu1, "
+    "Barrier as barrier). Any other operation (QubitUnitary, or Rot, which lightning.qubit's "
+    "Device.preprocess() makes from U2 and U3) is written as QuantumScript.to_openqasm() "
+    "writes it, decomposed into qelib1 gates in the text only, so it can take several lines "
+    "and the text can differ from the tape by a global phase. "
+    "An operation to_openqasm cannot decompose (a QubitUnitary on three or more wires, e.g. "
+    "from c3x) is written as an opaque gate applied to its wires, preceded by comments "
+    "holding its exact matrix. The tape's qml.state() readout is not written as measure "
+    "statements, and the declared creg c holds nothing.")
+
+_QELIB1_NAMES = {
+    "SX": "sx", "Adjoint(SX)": "sxdg", "CH": "ch", "CY": "cy", "IsingXX": "rxx",
+    "IsingZZ": "rzz", "ControlledPhaseShift": "cu1", "Barrier": "barrier",
+}
 
 
 def _optimization_pipeline(level: int):
@@ -69,12 +76,11 @@ def _compile(payload: dict, qasm: str, notes=()) -> CompileResult:
 
     Returns (device, tapes, execution_config, device_postprocessing) as the circuit.
     """
-    circuit_data = strip_barriers_from_qasm(qasm)
     num_qubits = get_num_qubits_from_qasm(qasm)
     dev = qml.device(_DEVICE, wires=num_qubits, shots=None)
-    qasm_op = qml.from_qasm(circuit_data, measurements=[qml.state()])
+    qasm_op = qml.from_qasm(qasm, measurements=[qml.state()])
     tape = qml.tape.make_qscript(qasm_op)()
-    notes = [*notes, _STRIP_BARRIERS_NOTE, _FROM_QASM_NOTE]
+    notes = [*notes, _FROM_QASM_NOTE]
     idle = [w for w in range(num_qubits) if w not in tape.wires]
     if idle:
         tape = qml.tape.QuantumScript(
@@ -116,13 +122,17 @@ def _compile_sampled(payload: dict):
 
 def _op_lines(op, wires, opaque_names: dict) -> list:
     """QASM lines for one operation; an opaque gate with its matrix in comments if needed."""
+    targets = ",".join(f"q[{wires.index(w)}]" for w in op.wires)
+    if op.name in _QELIB1_NAMES:
+        params = ("(" + ",".join(repr(float(p)) for p in op.parameters) + ")"
+                  if op.num_params else "")
+        return [f"{_QELIB1_NAMES[op.name]}{params} {targets};"]
     try:
         text = qml.tape.QuantumScript([op]).to_openqasm(wires=wires, measure_all=False)
         return [line for line in text.splitlines()
                 if not line.startswith(("OPENQASM", "include", "qreg", "creg"))]
     except ValueError:
         pass
-    targets = ",".join(f"q[{wires.index(w)}]" for w in op.wires)
     matrix = np.asarray(qml.matrix(op, wire_order=op.wires), dtype=complex)
     key = (len(op.wires), matrix.tobytes())
     if key in opaque_names:
@@ -139,27 +149,23 @@ def _op_lines(op, wires, opaque_names: dict) -> list:
 
 def _serialize(compiled) -> str:
     dev, tapes, _config, _post = compiled.circuit
-    ops = tapes[0].operations
-    try:
-        return qml.tape.QuantumScript(ops).to_openqasm(wires=dev.wires, measure_all=False)
-    except ValueError:
-        pass
-    lines = ['OPENQASM 2.0;', 'include "qelib1.inc";',
-             f"qreg q[{len(dev.wires)}];", f"creg c[{len(dev.wires)}];"]
+    lines = ['OPENQASM 2.0;', 'include "qelib1.inc";']
+    if len(dev.wires):
+        lines += [f"qreg q[{len(dev.wires)}];", f"creg c[{len(dev.wires)}];"]
     opaque_names = {}
-    for op in ops:
+    for op in tapes[0].operations:
         lines += _op_lines(op, dev.wires, opaque_names)
     return "\n".join(lines) + "\n"
 
 
-_GATE_METRICS_BASIS = ("operations of the executed tape after Device.preprocess(), without the "
-                       "Identity operations added for idle wires; depth from the tape's specs")
+_GATE_METRICS_BASIS = ("operations of the executed tape after Device.preprocess(), without "
+                       "Identity and Barrier operations; depth from the tape's specs")
 
 
 def _gate_metrics(compiled):
     """(gate count, depth, basis) of the tape the device executes."""
     _dev, tapes, _config, _post = compiled.circuit
-    ops = [op for op in tapes[0].operations if op.name != "Identity"]
+    ops = [op for op in tapes[0].operations if op.name not in ("Identity", "Barrier")]
     depth = qml.tape.QuantumScript(ops).specs["resources"].depth if ops else 0
     return len(ops), depth, _GATE_METRICS_BASIS
 

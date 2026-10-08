@@ -8,7 +8,7 @@ from qrosetta_commons.counts import (
 )
 from qrosetta_commons.helpers import (
     CompileResult, declare_sdk_packages, get_logger, register_runner_endpoints,
-    run_cli_main, run_measured_job, run_statevector_job, with_sdk_versions,
+    run_cli_main, run_measured_job, run_statevector_job, strip_qasm_comments, with_sdk_versions,
 )
 from qrosetta_commons.qelib1 import QELIB1_SOURCE, add_qelib1_definitions
 import numpy as np
@@ -32,10 +32,11 @@ _FROM_QASM_NOTE = (
     "phase e^{-i(phi+lambda)/2}, which becomes a relative phase once the gate is controlled "
     "(cu3). Required by the adapter, applied regardless of apply_preprocessing.")
 _REMOVE_BARRIERS_NOTE = (
-    "Regex removal of barrier statements: Circuit.from_qasm rejects every barrier "
-    "(\"Unsupported QuantumBarrier statement\").")
+    "Removal of barrier statements (comments removed first, each statement from its start to "
+    "its ';'): Circuit.from_qasm rejects every barrier (\"Unsupported QuantumBarrier "
+    "statement\").")
 _BROADCAST_REASON = "qibo.models.Circuit.from_qasm accepts only indexed qubit operands"
-_BARRIER_RE = re.compile(r"\bbarrier\b[^;]*;")
+_BARRIER_RE = re.compile(r"(?:(?<=[;{}])|^)\s*barrier\b[^;{}]*;", re.M)
 _PARSER_LACKS = frozenset({"u0", "ch", "cswap", "rccx", "c3x", "c3sqrtx", "rc3x", "c4x"})
 _QELIB1_NOTE = (
     "Definitions of {names} from " + QELIB1_SOURCE + " inserted after the include line: "
@@ -81,8 +82,9 @@ def _compile(payload: dict, qasm: str, notes=()) -> CompileResult:
     qasm, broadcast_note = expand_register_broadcasts(qasm, _BROADCAST_REASON)
     if broadcast_note:
         notes.append(broadcast_note)
-    if payload.get("apply_preprocessing", True) and _BARRIER_RE.search(qasm):
-        qasm = _BARRIER_RE.sub("", qasm)
+    uncommented = strip_qasm_comments(qasm)
+    if payload.get("apply_preprocessing", True) and _BARRIER_RE.search(uncommented):
+        qasm = _BARRIER_RE.sub("", uncommented)
         notes.append(_REMOVE_BARRIERS_NOTE)
     if payload.get("apply_preprocessing", True):
         qasm, added = add_qelib1_definitions(qasm, _PARSER_LACKS)
