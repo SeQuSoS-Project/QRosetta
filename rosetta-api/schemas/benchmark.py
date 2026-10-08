@@ -417,6 +417,7 @@ class ExperimentPayload(_Request):
 class VisualizerResponse(BaseModel):
     """Response body carrying a URL to an interactive circuit visualization."""
     url: str = Field(..., description="URL of the rendered visualization.")
+    notes: List[str] = Field(default_factory=list, description="What the drawing shows differently from the text: registers merged into one, gates drawn as other Quirk gates with the same matrix up to a global phase, barriers left out, parameters tket moves.")
 
 class JobStatusResponse(BaseModel):
     """Response body for GET /jobs/{job_id}, and the initial response to every job-creating

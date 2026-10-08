@@ -3,13 +3,14 @@
 import asyncio
 
 from fastapi import APIRouter, Request, HTTPException
-from qrosetta_commons.helpers import get_logger
+from qrosetta_commons.helpers import get_logger, get_num_qubits_from_qasm
 import services.circuit_library as library
 import services.benchmark_library as benchmark_library
 import services.examples as examples
 from schemas import GenerateCircuitPayload, QasmPayload, VisualizerResponse
 from services.validator import validate_request
-from services.quirk_converter import QuirkCompiler
+from services.circuit_resolver import RoundTripIntegrityError
+from services.quirk_converter import QUIRK_MAX_QUBITS, QuirkUnsupported, quirk_url
 from config import settings
 from services.security import limiter
 
@@ -67,22 +68,32 @@ async def generate_circuit_endpoint(request: Request, payload: GenerateCircuitPa
         raise HTTPException(status_code=500, detail="Circuit generation failed")
 
 @router.post("/visualize/quirk", response_model=VisualizerResponse)
-async def visualize_quirk(payload: QasmPayload):
-    """Convert an OpenQASM 2.0 circuit into a URL that opens it in Quirk
-    (https://algassert.com/quirk), an interactive browser-based circuit visualizer. 400 if the
-    circuit uses gates Quirk's URL format cannot represent."""
-    validate_request(payload.qasm_string, mode="statevector")
+@limiter.limit(settings.RUN_RATE_LIMIT)
+async def visualize_quirk(request: Request, payload: QasmPayload):
+    """Convert an OpenQASM 2.0 circuit of at most 16 qubits into a URL that opens it in Quirk
+    (https://algassert.com/quirk), an interactive browser-based circuit visualizer. Every gate
+    is drawn with the same matrix up to a global phase (gates Quirk has no symbol for are drawn
+    as cx and single-qubit rotations, listed in ``notes``); terminal measurements are drawn.
+    400 for a circuit the API refuses at submit, more than 16 qubits, reset, classical control
+    or a gate after a measurement on the same qubit."""
+    n_qubits = get_num_qubits_from_qasm(payload.qasm_string)
+    if n_qubits > QUIRK_MAX_QUBITS:
+        raise HTTPException(
+            status_code=400,
+            detail=(f"The visualizer opens circuits of at most {QUIRK_MAX_QUBITS} qubits, "
+                    f"Quirk's limit; this circuit declares {n_qubits}."))
+    validate_request(payload.qasm_string, mode="measured")
     try:
-        compiler = QuirkCompiler(payload.qasm_string)
-        url = compiler.generate_url()
-        return {"url": url}
-    except HTTPException:
-        raise
-    except ValueError as ve:
-        raise HTTPException(status_code=400, detail=f"Failed to generate Quirk URL: {ve}")
+        url, notes = await asyncio.to_thread(quirk_url, payload.qasm_string)
+        return {"url": url, "notes": notes}
+    except (QuirkUnsupported, RoundTripIntegrityError) as exc:
+        message = str(exc)
+        raise HTTPException(status_code=400, detail=f"Cannot draw this circuit in Quirk: "
+                                                    f"{message[:1].lower() + message[1:]}.")
     except Exception:
-        logger.error("Failed to compile QASM for Visualizer", exc_info=True)
-        raise HTTPException(status_code=400, detail="Failed to generate Quirk URL")
+        logger.error("Failed to convert QASM for the visualizer", exc_info=True)
+        raise HTTPException(status_code=400, detail="Cannot draw this circuit in Quirk: its "
+                                                    "text could not be parsed.")
 
 @router.get("/benchmarks/mqt/list")
 async def list_mqt_bench():
