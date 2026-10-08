@@ -1,6 +1,6 @@
 // Run history: save completed runs, list, load, rename, download and delete them.
 
-import { tabNav } from './dom.js';
+import { announceWorkspaceChange, tabNav } from './dom.js';
 import { BASE_URL, formatApiError, getAuthHeaders } from './api.js';
 import { onNextLogin, openAuthModal, updateAuthUI } from './auth.js';
 import { clearReport, renderDetailReport, renderSuiteSummary } from './renderers.js';
@@ -90,6 +90,23 @@ export async function saveRunToHistory(jobId, name = null) {
             _offerSignInAndRetry(jobId, name);
             return null;
         }
+        if (res.status === 403) {
+            const message = await formatApiError(res);
+            showHistoryNotice(`This run was not saved to your history. ${message}`, 'error', {
+                label: 'Sign in as that account and save',
+                onClick: () => {
+                    onNextLogin(async () => {
+                        const id = await saveRunToHistory(jobId, name);
+                        if (id) {
+                            if (getState().currentJobId === jobId) dispatch('SET_HISTORY_RUN_ID', id);
+                            showHistoryNotice('Saved to your history.', 'success');
+                        }
+                    });
+                    openAuthModal();
+                },
+            });
+            return null;
+        }
         if (!res.ok) throw new Error(await formatApiError(res));
         const data = await res.json().catch(() => null);
         const id = typeof data === 'string' ? data : (data?.id || data?.run_id || null);
@@ -108,6 +125,8 @@ let _listGeneration = 0;
 
 export async function openHistoryModal() {
     document.getElementById('history-modal').classList.remove('hidden');
+    const selectAll = /** @type {HTMLInputElement|null} */ (document.getElementById('history-select-all'));
+    if (selectAll) selectAll.checked = false;
     const list = document.getElementById('history-list');
     const generation = ++_listGeneration;
     list.innerHTML = '<li class="py-4 text-center text-sm text-gray-500">Loading history...</li>';
@@ -301,10 +320,25 @@ export async function deleteSelectedHistory() {
             body: JSON.stringify({ run_ids: runIds })
         });
         if (!res.ok) throw new Error(await formatApiError(res));
+        _forgetDeletedRuns(runIds);
         openHistoryModal();
     } catch (e) {
         console.error(e);
         alert("The runs were not deleted. " + e.message);
+    }
+}
+
+/** The saved runs `runIds` were deleted: a past run on screen among them leaves the screen, and
+ * a run from this session loses its History link. */
+function _forgetDeletedRuns(runIds) {
+    const viewing = getState().currentHistoryRunId;
+    if (!viewing || !runIds.includes(viewing)) return;
+    if (document.getElementById('history-active-banner')) {
+        clearHistoryView();
+        showHistoryNotice('The saved run that was on screen was deleted.', 'success');
+    } else {
+        dispatch('SET_HISTORY_RUN_ID', null);
+        document.dispatchEvent(new CustomEvent('history-runs-deleted', { detail: runIds }));
     }
 }
 
@@ -402,8 +436,30 @@ export async function loadHistoricalRun(runId, runName, createdAt) {
     }
 }
 
+/** Close a past run: the results area returns to what Run will do. */
 export function clearHistoryView() {
     clearReport();
-    const banner = document.getElementById('history-active-banner');
-    if (banner) banner.remove();
+    clearHistoryState();
+    dispatch('SET_SUITE_DATA', null);
+    dispatch('SET_JOB_ID', null);
+    document.getElementById('welcome-message')?.classList.remove('hidden');
+    announceWorkspaceChange();
 }
+
+document.addEventListener('signed-out', () => {
+    closeHistoryModal();
+    if (document.getElementById('history-active-banner')) clearHistoryView();
+});
+
+document.addEventListener('session-expired', () => {
+    showHistoryNotice('Your sign-in has expired. Runs you start now are not saved to your History; sign in again to save them.', 'error', {
+        label: 'Sign in',
+        onClick: () => openAuthModal(),
+    });
+});
+
+document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    const modal = document.getElementById('history-modal');
+    if (modal && !modal.classList.contains('hidden')) closeHistoryModal();
+});

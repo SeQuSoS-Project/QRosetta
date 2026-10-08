@@ -12,11 +12,12 @@ import {
 import { qasmInput } from './dom.js';
 import { renderExperimentResult } from './experiment.js';
 import { clearHistoryState, saveRunToHistory } from './history.js';
+import { confirmUnsavedRun, signedInAccount } from './auth.js';
 import { clearReport, renderDetailReport, renderSuiteSummary, showTab } from './renderers.js';
 import { planRuns, runButtonLabel, runLimitProblems } from './run_plan.js';
-import { printableLabel } from './request_limits.js';
+import { labelProblem, printableLabel } from './request_limits.js';
 import { showRunErrors, validateRunInputs } from './run_inputs.js';
-import { clearPendingJob, saveEditorCircuit, savePendingJob } from './session_store.js';
+import { FINISHED_KEEP_MS, forgetJob, forgetSignedInJobs, listJobs, markJobFinished, markJobStopped, recordJob, saveEditorCircuit, saveRunModes } from './session_store.js';
 import { dispatch, getState } from './state.js';
 import { getAgreementThresholds, getSeed, setLoading } from './utils.js';
 import { batchItemLabel, renderBatchQueue } from './batch.js';
@@ -90,6 +91,7 @@ export function updateWorkspace() {
     const modes = JSON.stringify(ws.modes);
     if (modes !== _lastModes) {
         _lastModes = modes;
+        saveRunModes(ws.modes);
         updateContextBar();
     }
     document.getElementById('shots-container-single')?.classList.toggle('hidden', !ws.modes.measured);
@@ -205,7 +207,7 @@ async function _submit(endpoint, payload) {
 async function _await(job) {
     try {
         const results = await pollJobStatus(job.job_id);
-        clearPendingJob(job.job_id);
+        markJobFinished(job.job_id);
         if (job.run_name) results.run_name = job.run_name;
         if (job.circuit_name && !results.circuit_name) results.circuit_name = job.circuit_name;
         let historyRunId = null;
@@ -215,23 +217,67 @@ async function _await(job) {
         }
         return { job, results, historyRunId };
     } catch (e) {
+        if (e && e.stopped) {
+            markJobStopped(job.job_id);
+            return { job, error: e.message, stopped: true };
+        }
         console.error(e);
-        if (e && e.terminal) clearPendingJob(job.job_id);
-        return { job, error: e.message, stopped: !!(e && e.stopped) };
+        if (e && e.terminal) forgetJob(job.job_id);
+        return { job, error: e.message, stopped: false };
     }
 }
 
 let _finished = [];
+let _shownIndex = -1;
+
+const _clock = ms => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+function _el(tag, className = '', text = '') {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text) node.textContent = text;
+    return node;
+}
+
+/** The results panel after Stop waiting: the job id, what was not started, and a way back to the results. */
+function _renderStopped(entry) {
+    const { job } = entry;
+    clearReport();
+    document.getElementById('back-button-container')?.classList.add('hidden');
+    const panel = document.getElementById('summary-panel');
+    if (!panel) return;
+    const box = _el('div', 'p-4 bg-gray-50 border border-gray-300 rounded text-sm text-gray-800 space-y-2');
+    box.setAttribute('role', 'status');
+    box.appendChild(_el('h3', 'text-base font-semibold text-gray-900', 'Stopped waiting'));
+    box.appendChild(_el('p', '', `${job.title}: the job keeps running on the server, which keeps its results for 30 minutes after it finishes. `
+        + 'Show results waits for it again; reopening this page also offers it.'));
+    const id = _el('p', 'text-xs text-gray-600', 'Job ID: ');
+    id.appendChild(_el('code', 'font-mono select-all', job.job_id));
+    box.appendChild(id);
+    if (Array.isArray(job.remaining) && job.remaining.length) {
+        box.appendChild(_el('p', 'text-xs text-gray-600', `Not started: ${job.remaining.join('; ')}.`));
+    }
+    const show = _el('button', 'px-3 py-1 rounded border border-indigo-300 bg-white text-indigo-700 hover:bg-indigo-50 text-xs font-medium', 'Show results');
+    show.setAttribute('type', 'button');
+    show.addEventListener('click', () => { if (!getState().isProcessing) resumeJob(job); });
+    box.appendChild(show);
+    panel.replaceChildren(box);
+    panel.classList.remove('hidden');
+}
 
 /** Show one finished entry in the results panel. */
 function _show(index) {
     const entry = _finished[index];
     if (!entry) return;
+    _shownIndex = index;
     const { job } = entry;
     clearHistoryState();
     dispatch('SET_JOB_ID', entry.results ? job.job_id : null);
     dispatch('SET_HISTORY_RUN_ID', entry.historyRunId ?? null);
-    if (job.kind === 'experiment') {
+    if (entry.stopped) {
+        dispatch('SET_SUITE_DATA', null);
+        _renderStopped(entry);
+    } else if (job.kind === 'experiment') {
         dispatch('SET_SUITE_DATA', null);
         const panel = document.getElementById('experiment-panel');
         if (panel) {
@@ -267,10 +313,17 @@ function _renderSwitcher(active) {
         b.type = 'button';
         b.setAttribute('aria-pressed', String(i === active));
         b.className = `px-2 py-1 rounded border ${i === active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`;
-        b.textContent = `${entry.job.title}${entry.error ? ' (error)' : ''}`;
+        b.textContent = `${entry.job.title}${entry.stopped ? ' (stopped waiting)' : entry.error ? ' (error)' : ''}`;
         b.onclick = () => _show(i);
         host.appendChild(b);
     });
+}
+
+/** On a narrow screen, where the results follow the workspace, scroll to them. */
+function _revealResults() {
+    if (window.matchMedia?.('(max-width: 767px)').matches) {
+        document.getElementById('results-column')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
 }
 
 /** Run every planned job of the workspace `ws`, one after another, then show the first. */
@@ -278,6 +331,7 @@ async function _runAll(runs, ws) {
     _finished = [];
     resetStopPolling();
     clearReport();
+    _revealResults();
     dispatch('SET_JOB_ID', null);
     dispatch('SET_PROCESSING', true);
     try {
@@ -294,11 +348,11 @@ async function _runAll(runs, ws) {
                 _finished.push({ job: { kind: run.kind, title: run.title, job_id: null }, error: e.message });
                 continue;
             }
-            const job = { job_id: jobId, kind: run.kind, title: run.title, run_name: ws.runName || null,
+            const job = { job_id: jobId, kind: run.kind, title: run.title, run_name: _historyName(ws.runName, run, runs),
                           circuit_name: run.kind === 'single' ? _editorCircuitName() : null,
                           runner_config: run.payload.runner_config || {}, submitted_at: Date.now(),
-                          remaining: runs.slice(i + 1).map(r => r.title) };
-            savePendingJob(job);
+                          remaining: runs.slice(i + 1).map(r => r.title), account: signedInAccount() };
+            recordJob(job);
             setRunKicker('Running');
             setLoading(true, `${run.title}${step}`, { startedAt: job.submitted_at });
             const entry = await _await(job);
@@ -311,44 +365,94 @@ async function _runAll(runs, ws) {
     }
     const first = _finished.findIndex(e => e.results);
     _show(first >= 0 ? first : 0);
+    offerRecentJobs({ unfinishedOnly: true });
+}
+
+/** The name a run is saved to History under: the Run Name, with the mode added when one press of
+ * Run starts a run per mode, so the History rows differ; null without a Run Name. */
+function _historyName(runName, run, runs) {
+    if (!runName) return null;
+    const modes = new Set(runs.map(r => r.mode).filter(Boolean));
+    if (modes.size < 2 || !run.mode) return runName;
+    const suffix = ` (${run.mode === 'measured' ? 'Measured' : 'Statevector'})`;
+    const max = getState().maxLabelLength;
+    const room = Math.max(1, max - suffix.length);
+    const base = Array.from(runName).length > room ? Array.from(runName).slice(0, room).join('').trim() : runName;
+    return `${base}${suffix}`;
+}
+
+/** The problems that keep the workspace from being submitted, or [] when Run would submit it.
+ * `v` is the result of validateRunInputs(). Shows nothing. */
+function _submitProblems(v) {
+    const ws = readWorkspace(v);
+    const problems = [];
+    const nameProblem = labelProblem(_rawRunName(), getState().maxLabelLength, 'The run name');
+    if (nameProblem) problems.push(`Run Name: ${nameProblem}`);
+    const { runs, error } = planRuns(ws);
+    if (error) return [...problems, error];
+    return [...problems, ...runLimitProblems(runs, _requestLimits())];
+}
+
+const _rawRunName = () => /** @type {HTMLInputElement|null} */ (document.getElementById('single-run-name'))?.value.trim() || '';
+
+let _refusalShown = false;
+
+/** Show the reasons Run refused the workspace, or clear them when there are none. */
+function _showRefusal(problems) {
+    _refusalShown = problems.length > 0;
+    showRunErrors('single-validation-msg', problems);
+}
+
+/** After a refused press of Run: check the workspace again, so the box lists only what still blocks it. */
+function _refreshRefusal() {
+    if (!_refusalShown) return;
+    const draft = readWorkspace();
+    const v = validateRunInputs({ shotsId: 'shots-single', measured: draft.modes.measured });
+    const problems = v.ok ? _submitProblems(v) : v.errors;
+    const backends = (draft.modes.statevector || draft.modes.measured) ? runnerSelectionProblem() : null;
+    _showRefusal(backends ? [backends, ...problems] : problems);
 }
 
 /** Validate the workspace, plan its jobs and run them. */
 export async function runWorkspace() {
     if (getState().isProcessing) return;
     clearHistoryState();
+    if (!confirmUnsavedRun()) return;
     const draft = readWorkspace();
     const simulating = draft.modes.statevector || draft.modes.measured;
     const v = validateRunInputs({ shotsId: 'shots-single', measured: draft.modes.measured });
-    if (!v.ok) { showRunErrors('single-validation-msg', v.errors); return; }
+    if (!v.ok) { _showRefusal(v.errors); return; }
     if (simulating) {
         await loadRunners();
         const problem = runnerSelectionProblem();
-        if (problem) { showRunErrors('single-validation-msg', [problem]); return; }
+        if (problem) { _showRefusal([problem]); return; }
         dispatch('SET_RUNNER_CONFIG', getRunnerConfig());
         if (!checkRunCountLimits(getState().currentRunnerConfig)) return;
     }
+    const problems = _submitProblems(v);
+    if (problems.length) { _showRefusal(problems); return; }
+    _showRefusal([]);
     const ws = readWorkspace(v);
-    const { runs, error } = planRuns(ws);
-    if (error) { showRunErrors('single-validation-msg', [error]); return; }
-    const problems = runLimitProblems(runs, _requestLimits());
-    if (problems.length) { showRunErrors('single-validation-msg', problems); return; }
-    showRunErrors('single-validation-msg', []);
+    const { runs } = planRuns(ws);
     if (ws.source === 'editor') saveEditorCircuit(qasmInput.value, getState().currentAlgoName);
     document.getElementById('resume-job-banner')?.classList.add('hidden');
     await _runAll(runs, ws);
 }
 
-/** Stop waiting for the job in progress; it keeps running and can be resumed after a reload. */
+/** Stop waiting for the job in progress; it keeps running and can be resumed. */
 export function stopWaiting() {
     stopPolling();
 }
 
-/** Resume a job recorded before a reload. */
+/** Wait for a job submitted earlier (before a reload, or before Stop waiting) and show its results. */
 export async function resumeJob(job) {
+    if (getState().isProcessing) return;
     _finished = [];
     resetStopPolling();
     clearReport();
+    clearHistoryState();
+    document.getElementById('resume-job-banner')?.classList.add('hidden');
+    _revealResults();
     dispatch('SET_PROCESSING', true);
     startRunView({ tabs: _TABS_BY_KIND[job.kind] ?? ['Summary', 'Agreement', 'Performance', 'Circuits', 'Exports'], nameOf: _displayRunnerName });
     setRunKicker('Running');
@@ -360,9 +464,80 @@ export async function resumeJob(job) {
         dispatch('SET_PROCESSING', false);
     }
     _show(0);
+    offerRecentJobs({ unfinishedOnly: true });
 }
 
-document.addEventListener('workspace-change', () => updateWorkspace());
+/** One row of the recent-jobs offer: what the job is, its state, and Show results / Dismiss. */
+function _recentJobRow(job) {
+    const li = _el('li', 'flex flex-wrap items-center gap-2');
+    const name = job.run_name || job.title;
+    const short = `job ${job.job_id.slice(0, 8)}`;
+    const text = job.state === 'finished'
+        ? `${name} (${short}) finished at ${_clock(job.finished_at)}; the server keeps its results until ${_clock(job.finished_at + FINISHED_KEEP_MS)}.`
+        : job.state === 'stopped'
+            ? `${name} (${short}), submitted at ${_clock(job.submitted_at)}: you stopped waiting for it.`
+            : `${name} (${short}), submitted at ${_clock(job.submitted_at)}: its results were not shown yet.`;
+    const notStarted = job.state !== 'finished' && Array.isArray(job.remaining) && job.remaining.length
+        ? ` Not started: ${job.remaining.join('; ')}.` : '';
+    li.appendChild(_el('span', 'flex-1 min-w-0', `${text}${notStarted}`));
+    const show = _el('button', 'px-2 py-1 rounded border border-amber-300 bg-white hover:bg-amber-100 text-xs font-medium', 'Show results');
+    show.setAttribute('type', 'button');
+    show.addEventListener('click', () => { if (!getState().isProcessing) resumeJob(job); });
+    const dismiss = _el('button', 'px-2 py-1 rounded border border-amber-200 hover:bg-amber-100 text-xs', 'Dismiss');
+    dismiss.setAttribute('type', 'button');
+    dismiss.addEventListener('click', () => {
+        forgetJob(job.job_id);
+        li.remove();
+        if (!document.querySelector('#resume-job-list li')) document.getElementById('resume-job-banner')?.classList.add('hidden');
+    });
+    li.append(show, dismiss);
+    return li;
+}
+
+/**
+ * Offer the jobs this browser submitted whose results can still be fetched: unfinished ones
+ * (the page was closed, or Stop waiting was pressed) and, unless `unfinishedOnly`, finished
+ * ones the server still keeps. The jobs on screen are left out.
+ */
+export function offerRecentJobs({ unfinishedOnly = false } = {}) {
+    const banner = document.getElementById('resume-job-banner');
+    const list = document.getElementById('resume-job-list');
+    if (!banner || !list) return;
+    const now = Date.now();
+    const onScreen = new Set(_finished.filter(e => !e.stopped).map(e => e.job.job_id));
+    const jobs = listJobs(now).filter(j => !onScreen.has(j.job_id) && (!unfinishedOnly || j.state !== 'finished'));
+    list.replaceChildren(...jobs.map(job => _recentJobRow(job)));
+    banner.classList.toggle('hidden', jobs.length === 0);
+}
+
+/** Forget what the signed-out account had on screen: its runs, their results and its recorded jobs. */
+function _forgetAccountView() {
+    forgetSignedInJobs();
+    if (_finished.some(e => e.job.account)) {
+        _finished = [];
+        _shownIndex = -1;
+        _renderSwitcher(-1);
+        dispatch('SET_JOB_ID', null);
+        dispatch('SET_SUITE_DATA', null);
+        dispatch('SET_HISTORY_RUN_ID', null);
+        clearReport();
+        document.getElementById('welcome-message')?.classList.remove('hidden');
+        updateWorkspace();
+    }
+    offerRecentJobs();
+}
+
+/** A saved run was deleted from History: the run on screen loses its History link. */
+function _historyRunsDeleted(ids) {
+    const entry = _finished[_shownIndex];
+    if (!entry || !entry.historyRunId || !ids.includes(entry.historyRunId)) return;
+    entry.historyRunId = null;
+    _show(_shownIndex);
+}
+
+document.addEventListener('workspace-change', () => { updateWorkspace(); _refreshRefusal(); });
+document.addEventListener('signed-out', () => _forgetAccountView());
+document.addEventListener('history-runs-deleted', e => _historyRunsDeleted(/** @type {CustomEvent} */ (e).detail || []));
 document.addEventListener('circuit-list-added', () => selectListSource());
 document.addEventListener('editor-loaded', () => {
     const editorRadio = /** @type {HTMLInputElement|null} */ (document.querySelector('input[name="run-source"][value="editor"]'));

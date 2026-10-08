@@ -9,11 +9,13 @@ const js = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'static', '
 // Minimal stand-ins for the browser globals some modules read when they load.
 const memory = new Map();
 globalThis.localStorage ??= { getItem: k => memory.get(k) ?? null, setItem: (k, v) => memory.set(k, String(v)), removeItem: k => memory.delete(k) };
+const sessionMemory = new Map();
+globalThis.sessionStorage ??= { getItem: k => sessionMemory.get(k) ?? null, setItem: (k, v) => sessionMemory.set(k, String(v)), removeItem: k => sessionMemory.delete(k) };
 globalThis.window ??= Object.assign(globalThis, { location: { hostname: 'localhost', origin: 'http://localhost' } });
 globalThis.document ??= { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [], addEventListener: () => {} };
 const input = JSON.parse(readFileSync(0, 'utf8'));
 const modules = await Promise.all(input.modules.map(name => import(new URL('file://' + join(js, name)).href)));
-const functions = Object.assign({}, ...modules);
+const functions = Object.assign({ __newTab__: () => sessionMemory.clear() }, ...modules);
 
 const results = input.calls.map(({ fn, args }) => {
     try {

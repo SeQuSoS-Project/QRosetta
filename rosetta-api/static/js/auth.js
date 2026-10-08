@@ -39,6 +39,60 @@ export function toggleAuthMode(mode) {
     }
 }
 
+/** The claims of a JWT (`sub`, `exp` in seconds), or null when it cannot be read. */
+export function tokenClaims(token) {
+    try {
+        const part = String(token).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+        const claims = JSON.parse(atob(part + '='.repeat((4 - part.length % 4) % 4)));
+        return claims && typeof claims === 'object' ? claims : null;
+    } catch (_) {
+        return null;
+    }
+}
+
+/** The signed-in account's email, or null when nobody is signed in. */
+export function signedInAccount() {
+    const token = getState().authToken;
+    if (!token) return null;
+    return tokenClaims(token)?.sub || 'signed-in';
+}
+
+/** When the current sign-in expires (epoch ms), or null when unknown or not signed in. */
+function _expiresAt() {
+    const exp = tokenClaims(getState().authToken)?.exp;
+    return getState().authToken && typeof exp === 'number' ? exp * 1000 : null;
+}
+
+let _expiryTimer = null;
+
+/** Sign out because the sign-in expired; the page says so and offers to sign in again. */
+function _expireSession() {
+    const at = _expiresAt();
+    dispatch('SET_AUTH_TOKEN', null);
+    updateAuthUI();
+    document.dispatchEvent(new CustomEvent('session-expired', { detail: { at } }));
+}
+
+function _scheduleExpiry() {
+    clearTimeout(_expiryTimer);
+    _expiryTimer = null;
+    const at = _expiresAt();
+    if (at === null) return;
+    _expiryTimer = setTimeout(_expireSession, Math.max(0, Math.min(at - Date.now(), 2 ** 31 - 1)));
+}
+
+/** Before a run: when the sign-in has expired, say that the run would not be saved and let the
+ * user sign in first. Returns false when the run should not start now. */
+export function confirmUnsavedRun() {
+    const at = _expiresAt();
+    if (at === null || at > Date.now() + 5000) return true;
+    _expireSession();
+    const when = new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (confirm(`Your sign-in expired at ${when}, so this run would not be saved to your History.\n\nOK runs it without saving; Cancel lets you sign in first.`)) return true;
+    openAuthModal();
+    return false;
+}
+
 export function updateAuthUI() {
     const loginBtn = document.getElementById('btn-login-modal');
     const userProfile = document.getElementById('user-profile');
@@ -47,17 +101,13 @@ export function updateAuthUI() {
     if (getState().authToken) {
         if (loginBtn) loginBtn.classList.add('hidden');
         if (userProfile) userProfile.classList.remove('hidden');
-        try {
-            const payload = JSON.parse(atob(getState().authToken.split('.')[1]));
-            if (emailDisplay) emailDisplay.textContent = payload.sub || 'User';
-        } catch (e) {
-            if (emailDisplay) emailDisplay.textContent = 'User (Logged In)';
-        }
+        if (emailDisplay) emailDisplay.textContent = tokenClaims(getState().authToken)?.sub || 'User (Logged In)';
     } else {
         if (loginBtn) loginBtn.classList.remove('hidden');
         if (userProfile) userProfile.classList.add('hidden');
         if (emailDisplay) emailDisplay.textContent = '';
     }
+    _scheduleExpiry();
     announceWorkspaceChange();
 }
 
@@ -161,10 +211,11 @@ export async function handleRegisterSubmit() {
     }
 }
 
+/** Sign out; the signed-out account's results and saved runs leave the screen. */
 export function handleLogout() {
     dispatch('SET_AUTH_TOKEN', null);
-
     updateAuthUI();
+    document.dispatchEvent(new Event('signed-out'));
 }
 
 export async function verifySession() {
@@ -173,7 +224,9 @@ export async function verifySession() {
         const res = await fetch(`${BASE_URL}/auth/me`, {
             headers: getAuthHeaders()
         });
-        if (!res.ok) {
+        if (res.status === 401 && _expiresAt() !== null && /** @type {number} */ (_expiresAt()) <= Date.now()) {
+            _expireSession();
+        } else if (!res.ok) {
             handleLogout();
         }
     } catch (e) {
@@ -195,11 +248,11 @@ export async function handleDeleteAccount() {
 
         if (!res.ok) throw new Error(await formatApiError(res));
 
-        alert("Your account has been securely deleted.");
         handleLogout();
+        alert("Your account and its saved runs were deleted, and you are signed out.");
     } catch (e) {
         console.error("Account deletion failed:", e);
-        alert("Error deleting account: " + e.message);
+        alert("The account was not deleted. " + e.message);
     } finally {
         setSideLoading(false);
     }

@@ -41,7 +41,7 @@
         <button type="button" id="history-save-notice-action" class="hidden font-semibold underline px-1 whitespace-nowrap"></button>
         <button type="button" id="history-save-notice-close" class="font-bold px-1" aria-label="Dismiss">&times;</button>
     </div>
-    <div class="flex flex-col h-screen">
+    <div class="flex flex-col min-h-screen md:h-screen">
         <header class="bg-white border-b border-gray-200 shadow-sm">
             <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                 <div class="flex h-16 items-center justify-between">
@@ -72,10 +72,10 @@
             </div>
         </header>
 
-        <main class="flex-1 flex flex-col md:flex-row min-h-0">
+        <main class="flex-1 flex flex-col md:flex-row md:min-h-0">
 
-            <div class="w-full md:w-1/2 flex flex-col min-h-0 border-r border-gray-200 bg-white">
-            <div id="workspace-scroll" class="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-6">
+            <div class="w-full md:w-1/2 flex flex-col md:min-h-0 border-b md:border-b-0 md:border-r border-gray-200 bg-white">
+            <div id="workspace-scroll" class="md:flex-1 md:min-h-0 md:overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-6">
 
                 <!-- === GENERATE CIRCUITS === -->
                 <section aria-labelledby="ws-generate" class="p-4 border rounded-lg bg-gray-50 space-y-2">
@@ -90,18 +90,19 @@
                             <span class="pointer-events-none absolute right-2.5 bottom-2.5 text-gray-400 text-xs" aria-hidden="true">▾</span>
                             <div id="algo-listbox" role="listbox" aria-label="Circuits"
                                 class="hidden absolute z-30 mt-1 w-full max-h-72 overflow-y-auto bg-white border border-gray-200 rounded-md shadow-lg py-1"></div>
-                            <select id="algo-select" class="hidden" aria-hidden="true" tabindex="-1"></select>
+                            <select autocomplete="off" id="algo-select" class="hidden" aria-hidden="true" tabindex="-1"></select>
                         </div>
                         <div class="w-20">
                             <label for="algo-qubits" class="block text-xs font-medium text-gray-600">Qubits</label>
-                            <input type="number" id="algo-qubits" value="3" min="2" max="18" class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                            <input autocomplete="off" type="number" id="algo-qubits" value="3" min="2" max="18" class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                         </div>
-                        <button data-busy-disable type="button" onclick="generateCircuit()" title="Put the selected circuit in the editor"
+                        <button data-busy-disable type="button" id="btn-load" onclick="generateCircuit()" title="Put the selected circuit in the editor"
                             class="py-2 px-4 rounded-md text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">Load</button>
                         <button data-busy-disable type="button" onclick="addToBatch()" title="Add the selected circuit to the playlist"
                             class="py-2 px-4 rounded-md text-sm font-medium text-indigo-700 bg-indigo-100 hover:bg-indigo-200">+ Add</button>
                     </div>
                     <p id="algo-description" class="text-xs text-gray-500"></p>
+                    <p id="algo-not-loaded" role="status" class="hidden text-xs text-indigo-800">Selected, not loaded: the editor still holds the previous circuit. Load puts this one in the editor; + Add adds it to the playlist.</p>
                 </section>
 
                 <!-- === EDITOR === -->
@@ -109,7 +110,7 @@
                     <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                         <h2 id="ws-editor" class="text-lg font-semibold text-gray-800">Editor</h2>
                         <div class="flex items-baseline gap-2 min-w-0 flex-1 justify-end">
-                            <input type="text" id="ctx-algo-name" maxlength="200" value="No Circuit Loaded" aria-label="Circuit name" title="The circuit's name, used for + Add to Playlist and in reports"
+                            <input autocomplete="off" type="text" id="ctx-algo-name" maxlength="200" value="No Circuit Loaded" aria-label="Circuit name" title="The circuit's name, used for + Add to Playlist and in reports"
                                 class="text-sm text-gray-800 bg-transparent border-b border-dashed border-gray-400 focus:outline-none focus:border-blue-500 min-w-0 flex-1 text-right">
                             <span id="ctx-circuit-stats" class="text-xs text-gray-500 whitespace-nowrap"></span>
                         </div>
@@ -120,10 +121,10 @@
                         <button type="button" onclick="copyCircuitQasm(this)" title="Copy circuit QASM" class="text-gray-600 hover:text-gray-900 font-medium">⧉ Copy</button>
                         <button type="button" onclick="generateAndVisualize()" id="btn-visualize" class="text-purple-600 hover:text-purple-800 font-medium">📊 Visualize</button>
                         <button data-busy-disable type="button" onclick="addEditorToPlaylist()" title="Add the circuit in the editor to the playlist" class="text-yellow-700 hover:text-yellow-900 font-medium">+ Add to Playlist</button>
-                        <input type="file" id="qasm-upload" class="hidden" accept=".qasm,.txt" onchange="importQasm(this)">
+                        <input autocomplete="off" type="file" id="qasm-upload" class="hidden" accept=".qasm,.txt" onchange="importQasm(this)">
                     </div>
                     <label for="qasm-input" class="sr-only">OpenQASM 2.0 editor</label>
-                    <textarea id="qasm-input" spellcheck="false"
+                    <textarea autocomplete="off" id="qasm-input" spellcheck="false"
                         class="w-full p-3 font-mono text-sm text-gray-800 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
                         style="height: 38vh; min-height: 200px;"></textarea>
                 </section>
@@ -135,13 +136,13 @@
                         <div class="flex gap-3 text-xs">
                             <button type="button" onclick="document.getElementById('playlist-upload').click()" class="text-yellow-800 hover:text-yellow-900 font-medium">⬆ Import JSON</button>
                             <button type="button" onclick="exportPlaylist()" class="text-yellow-800 hover:text-yellow-900 font-medium">⬇ Export JSON</button>
-                            <input type="file" id="playlist-upload" class="hidden" accept=".json" onchange="importPlaylist(this)">
+                            <input autocomplete="off" type="file" id="playlist-upload" class="hidden" accept=".json" onchange="importPlaylist(this)">
                             <button data-busy-disable type="button" onclick="clearBatch()" class="text-red-600 hover:text-red-800">Clear</button>
                         </div>
                     </div>
                     <div class="flex flex-wrap items-center gap-2">
                         <label for="preset-select" class="text-xs font-medium text-yellow-800 whitespace-nowrap">Quick Load:</label>
-                        <select id="preset-select" class="flex-1 min-w-[12rem] text-xs border-yellow-300 bg-white rounded p-1">
+                        <select autocomplete="off" id="preset-select" class="flex-1 min-w-[12rem] text-xs border-yellow-300 bg-white rounded p-1">
                             <option value="each">Sanity Check (every algorithm, 5 qubits)</option>
                             <option value="scaling">Scaling Test (GHZ, 5 qubits to the statevector limit)</option>
                             <option value="largest">Memory Stress (Random, BV and VQE at the statevector limit)</option>
@@ -157,17 +158,17 @@
                             <h3 id="bench-popover-title" class="qr-popover-title">Benchmarks</h3>
                             <fieldset class="flex items-center gap-3 text-xs text-indigo-900">
                                 <legend class="sr-only">Suite</legend>
-                                <label class="flex items-center gap-1"><input type="radio" name="bench-suite" value="mqt" checked onchange="toggleBenchSuite()"> MQT Bench</label>
-                                <label class="flex items-center gap-1"><input type="radio" name="bench-suite" value="qasmbench" onchange="toggleBenchSuite()"> QASMBench</label>
+                                <label class="flex items-center gap-1"><input autocomplete="off" type="radio" name="bench-suite" value="mqt" checked onchange="toggleBenchSuite()"> MQT Bench</label>
+                                <label class="flex items-center gap-1"><input autocomplete="off" type="radio" name="bench-suite" value="qasmbench" onchange="toggleBenchSuite()"> QASMBench</label>
                             </fieldset>
                         </div>
                         <div class="qr-popover-body">
                             <div class="qr-section">
                                 <div class="flex gap-2">
-                                    <input type="text" id="bench-filter" oninput="bmRenderChecklist()" placeholder="Filter by name" aria-label="Filter by name" class="qr-input flex-1">
-                                    <input type="number" id="bench-max-qubits" min="1" oninput="bmRenderChecklist()" placeholder="≤ qubits" aria-label="At most this many qubits" class="qr-input w-24">
+                                    <input autocomplete="off" type="text" id="bench-filter" oninput="bmRenderChecklist()" placeholder="Filter by name" aria-label="Filter by name" class="qr-input flex-1">
+                                    <input autocomplete="off" type="number" id="bench-max-qubits" min="1" oninput="bmRenderChecklist()" placeholder="≤ qubits" aria-label="At most this many qubits" class="qr-input w-24">
                                 </div>
-                                <label class="qr-option text-xs"><input type="checkbox" id="bench-select-all" onchange="bmToggleSelectAll()"><span>Select all shown</span></label>
+                                <label class="qr-option text-xs"><input autocomplete="off" type="checkbox" id="bench-select-all" onchange="bmToggleSelectAll()"><span>Select all shown</span></label>
                             </div>
                             <div class="qr-section">
                                 <div id="bench-checklist" class="text-xs space-y-1"></div>
@@ -194,25 +195,25 @@
                             <legend class="sr-only">Run</legend>
                             <span class="font-medium text-gray-700" aria-hidden="true">Run</span>
                             <div class="inline-flex rounded-md border border-gray-300 overflow-hidden text-sm">
-                                <label class="cursor-pointer"><input type="radio" name="run-source" value="editor" checked onchange="updateWorkspace()" class="peer sr-only">
+                                <label class="cursor-pointer"><input autocomplete="off" type="radio" name="run-source" value="editor" checked onchange="updateWorkspace()" class="peer sr-only">
                                     <span class="block px-3 py-1 bg-white text-gray-700 peer-checked:bg-blue-600 peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500">Editor code</span></label>
-                                <label class="cursor-pointer border-l border-gray-300"><input type="radio" name="run-source" value="list" onchange="updateWorkspace()" class="peer sr-only">
+                                <label class="cursor-pointer border-l border-gray-300"><input autocomplete="off" type="radio" name="run-source" value="list" onchange="updateWorkspace()" class="peer sr-only">
                                     <span id="run-source-list-label" class="block px-3 py-1 bg-white text-gray-700 peer-checked:bg-yellow-600 peer-checked:text-white peer-disabled:opacity-50 peer-disabled:cursor-not-allowed peer-focus-visible:ring-2 peer-focus-visible:ring-yellow-500">Playlist (<span id="run-source-count">0</span>)</span></label>
                             </div>
                         </fieldset>
                         <fieldset class="flex flex-wrap items-center gap-x-3 gap-y-1">
                             <legend class="sr-only">Mode</legend>
                             <span class="font-medium text-gray-700" aria-hidden="true">Mode</span>
-                            <label class="inline-flex items-center" title="Every backend returns its final statevector; pairs are compared by fidelity."><input type="checkbox" id="mode-statevector" checked onchange="updateWorkspace()"><span class="ml-1.5">Statevector</span></label>
-                            <label class="inline-flex items-center" title="Every backend samples measurement outcomes; pairs are compared with a shot-noise test."><input type="checkbox" id="mode-measured" onchange="updateWorkspace()"><span class="ml-1.5">Measured</span></label>
+                            <label class="inline-flex items-center" title="Every backend returns its final statevector; pairs are compared by fidelity."><input autocomplete="off" type="checkbox" id="mode-statevector" checked onchange="updateWorkspace()"><span class="ml-1.5">Statevector</span></label>
+                            <label class="inline-flex items-center" title="Every backend samples measurement outcomes; pairs are compared with a shot-noise test."><input autocomplete="off" type="checkbox" id="mode-measured" onchange="updateWorkspace()"><span class="ml-1.5">Measured</span></label>
                         </fieldset>
                         <label class="flex items-center gap-1 flex-1 min-w-[12rem] text-xs text-gray-600"><span class="font-medium text-gray-700 whitespace-nowrap">Run Name (Optional)</span>
-                            <input type="text" id="single-run-name" maxlength="200" placeholder="E.g., GHZ Final Opt" class="flex-1 min-w-0 border border-gray-300 rounded px-2 py-1 text-xs"></label>
+                            <input autocomplete="off" type="text" id="single-run-name" maxlength="200" placeholder="E.g., GHZ Final Opt" class="flex-1 min-w-0 border border-gray-300 rounded px-2 py-1 text-xs"></label>
                     </div>
                     <div id="settings-bar" class="flex flex-wrap items-center gap-1.5" role="toolbar" aria-label="Run settings">
                         <div id="shots-container-single" class="hidden inline-flex items-center gap-1 text-xs mr-1">
                             <label for="shots-single" class="font-medium text-gray-700">Shots</label>
-                            <input type="number" id="shots-single" value="8200" min="1" step="1" class="w-20 border border-gray-300 rounded px-2 py-1 text-xs" aria-describedby="shots-hint-single">
+                            <input autocomplete="off" type="number" id="shots-single" value="8200" min="1" step="1" class="w-20 border border-gray-300 rounded px-2 py-1 text-xs" aria-describedby="shots-hint-single">
                             <span id="shots-hint-single" class="sr-only">When the shots are too few for a reliable comparison, the result says so and recommends a count.</span>
                         </div>
                         <button type="button" id="chip-backends" data-popover="pop-backends" class="settings-chip inline-flex items-center gap-1 max-w-full px-2.5 py-1 rounded-full border text-xs whitespace-nowrap overflow-hidden text-ellipsis"></button>
@@ -225,7 +226,7 @@
                     <p id="run-limit-warning" role="status" class="hidden text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1"></p>
                     <div id="single-validation-msg" role="alert" class="hidden p-2 text-xs text-red-800 bg-red-50 border border-red-200 rounded"></div>
                     <button onclick="runWorkspace()" id="btn-run"
-                        class="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                        class="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:hover:bg-gray-400 disabled:cursor-not-allowed disabled:shadow-none">
                         Run Editor Code
                     </button>
                 </section>
@@ -248,28 +249,28 @@
                         <div class="qr-section">
                             <div class="qr-field">
                                 <label class="qr-label" for="timeout-input">Timeout per backend (seconds)</label>
-                                <input type="number" id="timeout-input" value="60" min="10" max="300" step="1" class="qr-input">
+                                <input autocomplete="off" type="number" id="timeout-input" value="60" min="10" max="300" step="1" class="qr-input">
                             </div>
                             <p id="timeout-help" class="qr-help">Covers process start, the warm-up run and every timed run.</p>
                         </div>
                         <div class="qr-section">
                             <div class="qr-field">
                                 <label class="qr-label" for="timing-repeats-input">Timing repeats</label>
-                                <input type="number" id="timing-repeats-input" value="1" min="1" max="10" step="1" class="qr-input">
+                                <input autocomplete="off" type="number" id="timing-repeats-input" value="1" min="1" max="10" step="1" class="qr-input">
                             </div>
                             <p class="qr-help">After one warm-up, compile and simulate this many times in the same process; times are the median. Each backend still gives one result. To compare separate runs of a backend with each other, use Multi-run mode in Backends.</p>
                         </div>
                         <div id="exclusive-container" class="qr-section">
-                            <label class="qr-option" for="exclusive-checkbox"><input type="checkbox" id="exclusive-checkbox">
+                            <label class="qr-option" for="exclusive-checkbox"><input autocomplete="off" type="checkbox" id="exclusive-checkbox">
                                 <span>Exclusive timing run<span class="qr-option-help">Backends run one at a time, and only while no other run is in flight on this server. Use it for timings you will compare or publish.</span></span></label>
                         </div>
                         <div class="qr-section">
                             <label class="qr-label" for="execution-target-select">Execution Environment</label>
-                            <select id="execution-target-select" class="qr-input"><option value="">Server default</option></select>
+                            <select autocomplete="off" id="execution-target-select" class="qr-input"><option value="">Server default</option></select>
                             <p id="execution-target-help" class="qr-help">The report records where it ran.</p>
                         </div>
                         <div id="autosave-card" class="qr-section">
-                            <label class="qr-option"><input type="checkbox" id="autosave-toggle"><span>Auto-save results to a folder</span></label>
+                            <label class="qr-option"><input autocomplete="off" type="checkbox" id="autosave-toggle"><span>Auto-save results to a folder</span></label>
                             <div id="autosave-detail" class="hidden space-y-1">
                                 <div class="flex items-center gap-2 flex-wrap">
                                     <button type="button" id="autosave-choose" class="qr-action">Choose folder</button>
@@ -291,16 +292,16 @@
                         <div class="qr-section" role="radiogroup" aria-labelledby="preprocessing-label">
                             <p id="preprocessing-label" class="qr-label">Apply SDK Preprocessing</p>
                             <div class="qr-choices">
-                                <label class="qr-option"><input type="radio" name="preprocessing" value="on" checked>
+                                <label class="qr-option"><input autocomplete="off" type="radio" name="preprocessing" value="on" checked>
                                     <span>On<span class="qr-option-help">The API merges quantum registers and round-trips the circuit through pytket; each backend applies its own passes. Every change is listed per backend.</span></span></label>
-                                <label class="qr-option"><input type="radio" name="preprocessing" value="off">
+                                <label class="qr-option"><input autocomplete="off" type="radio" name="preprocessing" value="off">
                                     <span>Off<span class="qr-option-help">Raw SDK behaviour; some backends will reject some gates.</span></span></label>
-                                <label class="qr-option"><input type="radio" name="preprocessing" value="both">
+                                <label class="qr-option"><input autocomplete="off" type="radio" name="preprocessing" value="both">
                                     <span>Both, as an experiment<span class="qr-option-help">Runs with it on and off; results per setting and a downloadable bundle.</span></span></label>
                             </div>
                         </div>
                         <div id="bypass-limits-container" class="qr-section">
-                            <label class="qr-option"><input type="checkbox" id="bypass-limits-checkbox">
+                            <label class="qr-option"><input autocomplete="off" type="checkbox" id="bypass-limits-checkbox">
                                 <span>Bypass API Safety Limits<span class="qr-option-help">Local servers only: skips the size and statement-count limits. Qubit limits still apply.</span></span></label>
                         </div>
                     </div>
@@ -331,15 +332,15 @@
                         </div>
                         <div class="qr-section grid grid-cols-2 gap-x-3 gap-y-2 space-y-0">
                             <label class="text-xs text-gray-800">Statevector fidelity tol
-                                <input type="number" id="th-fidelity" value="1e-5" step="any" min="0" class="qr-input mt-0.5"></label>
+                                <input autocomplete="off" type="number" id="th-fidelity" value="1e-5" step="any" min="0" class="qr-input mt-0.5"></label>
                             <label class="text-xs text-gray-800">Statevector phase tol (rad)
-                                <input type="number" id="th-phase" value="1e-6" step="any" min="0" class="qr-input mt-0.5"></label>
+                                <input autocomplete="off" type="number" id="th-phase" value="1e-6" step="any" min="0" class="qr-input mt-0.5"></label>
                             <label class="text-xs text-gray-800">Measured JS threshold (nats)
-                                <input type="number" id="th-js" value="0.01" step="any" min="0" class="qr-input mt-0.5"></label>
+                                <input autocomplete="off" type="number" id="th-js" value="0.01" step="any" min="0" class="qr-input mt-0.5"></label>
                             <label class="text-xs text-gray-800">Measured Hellinger threshold
-                                <input type="number" id="th-hellinger" value="0.1" step="any" min="0" class="qr-input mt-0.5"></label>
+                                <input autocomplete="off" type="number" id="th-hellinger" value="0.1" step="any" min="0" class="qr-input mt-0.5"></label>
                             <label class="text-xs text-gray-800">Statevector norm tol
-                                <input type="number" id="th-norm" value="1e-4" step="any" min="0" class="qr-input mt-0.5"></label>
+                                <input autocomplete="off" type="number" id="th-norm" value="1e-4" step="any" min="0" class="qr-input mt-0.5"></label>
                         </div>
                     </div>
                 </div>
@@ -350,7 +351,7 @@
                     <div class="qr-popover-body">
                         <div class="qr-section">
                             <label class="qr-label" for="seed-input">Sampling seed (measured)</label>
-                            <input type="number" id="seed-input" placeholder="empty: a random seed, recorded in the report" min="0" step="1" class="qr-input">
+                            <input autocomplete="off" type="number" id="seed-input" placeholder="empty: a random seed, recorded in the report" min="0" step="1" class="qr-input">
                             <p class="qr-help">Each backend gets its own seed derived from this one. Statevector runs use no seed.</p>
                         </div>
                     </div>
@@ -358,7 +359,7 @@
             </div>
 
             <!-- === RIGHT PANEL (RESULTS) === -->
-            <div class="w-full md:w-1/2 p-4 sm:p-6 lg:p-8 flex flex-col overflow-y-auto bg-gray-50">
+            <div id="results-column" class="w-full md:w-1/2 p-4 sm:p-6 lg:p-8 flex flex-col min-h-[85vh] md:min-h-0 md:overflow-y-auto bg-gray-50">
                 <div class="flex-1 flex flex-col rounded-lg min-h-0 min-w-0 relative bg-white border border-gray-200 shadow-sm overflow-hidden">
                     <div id="loader" class="absolute inset-0 z-10 flex-col bg-white rounded-lg hidden overflow-y-auto">
                         <div id="loader-tabs"></div>
@@ -368,7 +369,7 @@
                             <p class="text-sm text-gray-600 mt-1 mb-4 flex flex-wrap items-center gap-x-1.5">
                                 <span id="loader-progress" role="status"></span>
                                 <span id="loader-elapsed">0 s elapsed</span>
-                                <button type="button" id="btn-stop-waiting" onclick="stopWaiting()" title="The job keeps running on the server; reopen this page to see its results."
+                                <button type="button" id="btn-stop-waiting" onclick="stopWaiting()" title="The job keeps running on the server. Its results can be shown later from this page or after reopening it, for 30 minutes after it finishes."
                                     class="ml-2 text-indigo-700 hover:text-indigo-900 underline">Stop waiting</button>
                             </p>
                             <div id="batch-progress"></div>
@@ -385,10 +386,9 @@
                     <div id="run-switcher" class="hidden flex flex-wrap items-center gap-2 px-4 pt-3 text-xs" role="group" aria-label="Runs from the last press of Run"></div>
                     <nav class="flex flex-wrap border-b border-gray-200 flex-shrink-0" id="tab-nav"></nav>
 
-                    <div id="resume-job-banner" role="status" class="hidden p-3 border-b border-amber-200 bg-amber-50 text-sm text-amber-900 flex flex-wrap items-center gap-2">
-                        <span id="resume-job-text" class="flex-1 min-w-0"></span>
-                        <button type="button" id="resume-job-btn" class="px-2 py-1 rounded border border-amber-300 bg-white hover:bg-amber-100 text-xs font-medium">Show results</button>
-                        <button type="button" id="resume-job-discard" class="px-2 py-1 rounded border border-amber-200 hover:bg-amber-100 text-xs">Dismiss</button>
+                    <div id="resume-job-banner" role="status" aria-labelledby="resume-job-title" class="hidden p-3 border-b border-amber-200 bg-amber-50 text-sm text-amber-900 space-y-1">
+                        <p id="resume-job-title" class="font-medium">Earlier runs from this browser</p>
+                        <ul id="resume-job-list" class="space-y-1"></ul>
                     </div>
 
                     <div class="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden" id="tab-content">
@@ -452,18 +452,18 @@
                         <div class="grid grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700">Min Qubits</label>
-                                <input type="number" id="gen-min" value="4" min="2" max="18"
+                                <input autocomplete="off" type="number" id="gen-min" value="4" min="2" max="18"
                                     class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700">Max Qubits</label>
-                                <input type="number" id="gen-max" value="10" min="2" max="18"
+                                <input autocomplete="off" type="number" id="gen-max" value="10" min="2" max="18"
                                     class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
                             </div>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700">Total Circuits</label>
-                            <input type="number" id="gen-count" value="10" min="1" max="50"
+                            <input autocomplete="off" type="number" id="gen-count" value="10" min="1" max="50"
                                 class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
                         </div>
                     </div>
@@ -497,12 +497,12 @@
                                 class="hidden text-sm text-red-600 bg-red-50 p-2 rounded border border-red-200"></div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700">Email</label>
-                                <input type="email" id="login-email"
+                                <input type="email" id="login-email" autocomplete="username"
                                     class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700">Password</label>
-                                <input type="password" id="login-password"
+                                <input type="password" id="login-password" autocomplete="current-password"
                                     class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2"
                                     onkeydown="if(event.key === 'Enter') handleLoginSubmit()">
                             </div>
@@ -530,15 +530,15 @@
                                 class="hidden text-sm text-red-600 bg-red-50 p-2 rounded border border-red-200"></div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700">Email</label>
-                                <input type="email" id="register-email"
+                                <input type="email" id="register-email" autocomplete="username"
                                     class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700">Password</label>
-                                <input type="password" id="register-password"
+                                <input type="password" id="register-password" autocomplete="new-password"
                                     class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2"
                                     onkeydown="if(event.key === 'Enter') handleRegisterSubmit()">
-                                <span class="text-xs text-gray-500">8 to 72 bytes.</span>
+                                <span id="register-password-hint" class="text-xs text-gray-500">At least 8 characters and at most 72 bytes: up to 72 plain ASCII characters, fewer with accented letters or symbols, which take 2 to 4 bytes each.</span>
                             </div>
                         </div>
                     </div>
@@ -570,7 +570,7 @@
                 <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4 flex flex-col h-[70vh]">
                     <div class="flex justify-between items-center mb-4">
                         <div class="flex items-center">
-                            <input type="checkbox" id="history-select-all"
+                            <input autocomplete="off" type="checkbox" id="history-select-all"
                                 class="mr-3 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
                                 onclick="toggleSelectAllHistory()">
                             <h3 class="text-lg leading-6 font-medium text-gray-900" id="history-modal-title">Your Run

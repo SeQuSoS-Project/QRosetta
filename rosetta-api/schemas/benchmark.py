@@ -45,16 +45,59 @@ RunnerConfigValue = Annotated[
 RunnerConfig = Dict[str, RunnerConfigValue]
 
 
+def _is_emoji_modifier(cp: int) -> bool:
+    return cp == 0xFE0F or 0x1F3FB <= cp <= 0x1F3FF
+
+
+def _emoji_sequence_positions(value: str) -> set:
+    """Positions of the format characters that belong to an emoji sequence: a zero-width joiner
+    between two symbols (category So, the first optionally followed by VS16 or a skin-tone
+    modifier) and the tag characters of a flag (U+1F3F4, tags, U+E007F). Mirrors
+    static/js/request_limits.js _emojiSequencePositions."""
+    allowed = set()
+    n = len(value)
+    for i, ch in enumerate(value):
+        cp = ord(ch)
+        if cp == 0x200D:
+            j = i - 1
+            while j >= 0 and _is_emoji_modifier(ord(value[j])):
+                j -= 1
+            if j >= 0 and unicodedata.category(value[j]) == "So" and i + 1 < n \
+                    and unicodedata.category(value[i + 1]) == "So":
+                allowed.add(i)
+        elif cp == 0x1F3F4:
+            k = i + 1
+            while k < n and 0xE0020 <= ord(value[k]) <= 0xE007E:
+                k += 1
+            if k > i + 1 and k < n and ord(value[k]) == 0xE007F:
+                allowed.update(range(i + 1, k + 1))
+    return allowed
+
+
+def first_control_character(value: str):
+    """``(position, character)`` of the first control character, format character outside an
+    emoji sequence (bidirectional overrides, zero-width spaces, soft hyphens) or line or
+    paragraph separator in ``value``, position counted from 1; None when there is none."""
+    allowed = _emoji_sequence_positions(value)
+    for i, ch in enumerate(value):
+        if i not in allowed and unicodedata.category(ch) in ("Cc", "Cf", "Zl", "Zp"):
+            return i + 1, ch
+    return None
+
+
 def has_control_characters(value: str) -> bool:
-    """True when ``value`` holds a control character, a format character (bidirectional
-    overrides, zero-width characters) or a line or paragraph separator."""
-    return any(unicodedata.category(ch) in ("Cc", "Cf", "Zl", "Zp") for ch in value)
+    """True when ``value`` holds a character first_control_character reports."""
+    return first_control_character(value) is not None
 
 
 def _printable_text(value):
-    if isinstance(value, str) and has_control_characters(value):
-        raise ValueError("must not contain control characters, invisible formatting characters "
-                         "(such as direction overrides) or line separators")
+    if isinstance(value, str):
+        bad = first_control_character(value)
+        if bad:
+            position, ch = bad
+            raise ValueError("must not contain control characters, invisible formatting characters "
+                             "(such as direction overrides) or line separators; "
+                             f"character {position} is U+{ord(ch):04X}")
     return value
 
 

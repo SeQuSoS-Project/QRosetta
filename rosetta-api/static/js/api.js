@@ -16,17 +16,31 @@ export function getAuthHeaders(extraHeaders = {}) {
     return headers;
 }
 
-/** FastAPI `detail` as text: a string as is, validation errors as "field: message" lines. */
+/** FastAPI `detail` as text: a string as is, validation errors as "field: message" lines; a
+ * message that already starts with its field name ("email must be ...") is not prefixed again. */
 export function apiDetailText(detail) {
     if (detail === undefined || detail === null) return '';
     if (Array.isArray(detail)) {
         return detail.map(d => {
-            const loc = Array.isArray(d?.loc) ? d.loc.filter(x => x !== 'body').join('.') : '';
+            const path = Array.isArray(d?.loc) ? d.loc.filter(x => x !== 'body') : [];
+            const loc = path.join('.');
             const msg = typeof d?.msg === 'string' ? d.msg.replace(/^(Value|Assertion) error,\s*/i, '') : JSON.stringify(d);
+            const field = String(path[path.length - 1] ?? '');
+            if (field && msg.toLowerCase().startsWith(`${field.toLowerCase()} `)) return msg.charAt(0).toUpperCase() + msg.slice(1);
             return `${loc ? `${loc}: ` : ''}${msg}`;
         }).join('\n');
     }
     return typeof detail === 'string' ? detail.replace(/^(Value|Assertion) error,\s*/i, '') : JSON.stringify(detail);
+}
+
+/** The error text for an HTTP status and the server's message: the message alone for refusals
+ * that explain themselves (401, 403, 404, 409), else prefixed with what kind of failure it was. */
+export function apiErrorText(status, message, statusText = '') {
+    const text = message || statusText;
+    if ([401, 403, 404, 409].includes(status) && message) return message;
+    const kind = status === 400 || status === 422 ? 'The server rejected the request'
+        : status === 429 ? 'Too many requests' : 'Request failed';
+    return `${kind} (HTTP ${status}): ${text}`;
 }
 
 /**
@@ -41,17 +55,18 @@ export async function formatApiError(res) {
         const data = JSON.parse(body);
         message = apiDetailText(data?.detail ?? data?.error ?? data?.message) || body;
     } catch (_) { /* body is not JSON */ }
-    const kind = res.status === 400 || res.status === 422 ? 'The server rejected the request'
-        : res.status === 429 ? 'Too many requests' : 'Request failed';
-    return `${kind} (HTTP ${res.status}): ${message || res.statusText}`;
+    return apiErrorText(res.status, message, res.statusText);
 }
 
 let _stopPolling = false;
+/** @type {Set<() => void>} */
+const _activePolls = new Set();
 
-/** Make the poll in progress stop at its next check, rejecting with `stopped: true`; the job keeps running.
+/** Stop the poll in progress now, rejecting it with `stopped: true`; the job keeps running.
  * Stays set until resetStopPolling(), so a press between two planned runs also stops the second. */
 export function stopPolling() {
     _stopPolling = true;
+    [..._activePolls].forEach(stop => stop());
 }
 
 /** Clear a Stop waiting request before starting new runs. */
@@ -65,13 +80,28 @@ export function pollingStopped() {
 }
 
 export async function pollJobStatus(jobId) {
-    return new Promise((resolve, reject) => {
+    return new Promise((outerResolve, outerReject) => {
         let networkErrorCount = 0;
         const MAX_NETWORK_ERRORS = 4;
+        let timer = null;
+        let settled = false;
+        const finish = (fn, value) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            _activePolls.delete(stop);
+            fn(value);
+        };
+        const resolve = value => finish(outerResolve, value);
+        const reject = err => finish(outerReject, err);
+        const stop = () => reject(Object.assign(new Error('Stopped waiting. The job keeps running on the server.'), { stopped: true }));
+        const setTimeout = (fn, ms) => { timer = globalThis.setTimeout(fn, ms); };
+        _activePolls.add(stop);
 
         const checkStatus = async () => {
+            if (settled) return;
             if (_stopPolling) {
-                reject(Object.assign(new Error('Stopped waiting. The job keeps running on the server.'), { stopped: true }));
+                stop();
                 return;
             }
             try {
@@ -86,6 +116,7 @@ export async function pollJobStatus(jobId) {
                     throw new Error(`Failed to fetch job status: ${res.status}`);
                 }
                 const data = await res.json();
+                if (settled) return;
                 networkErrorCount = 0;
 
                 if (data.runner_statuses) {

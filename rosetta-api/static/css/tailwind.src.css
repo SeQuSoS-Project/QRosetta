@@ -32,6 +32,9 @@
   .qr-option-help { @apply mt-0.5 block text-xs leading-snug text-gray-500; }
   .qr-action { @apply rounded border border-indigo-200 bg-white px-2 py-0.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50; }
 
+  /* Buttons disabled while a run or a circuit load is in progress. */
+  [data-busy-disable]:disabled { @apply cursor-not-allowed opacity-50; }
+
   /* A button whose popover is open. */
   button[aria-haspopup="dialog"][aria-expanded="true"] { @apply ring-2 ring-indigo-500 ring-offset-1; }
   .settings-chip::after { content: " \25BE"; }

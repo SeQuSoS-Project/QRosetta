@@ -43,7 +43,15 @@ export function setLoading(isLoading, message = "Processing...", options = {}) {
             busyToast.classList.remove('hidden');
             busyToast.classList.add('flex');
         }
-        allButtons.forEach(btn => { if (btn) btn.disabled = true });
+        const reason = overlay
+            ? 'Available again when the run finishes, or after Stop waiting.'
+            : 'Available again when the circuit has loaded.';
+        allButtons.forEach(btn => {
+            if (!btn) return;
+            if (!btn.disabled && btn.dataset.idleTitle === undefined) btn.dataset.idleTitle = btn.getAttribute('title') ?? '';
+            btn.disabled = true;
+            btn.title = reason;
+        });
     } else {
         loader.classList.add('hidden');
         loader.classList.remove('flex');
@@ -51,7 +59,15 @@ export function setLoading(isLoading, message = "Processing...", options = {}) {
             busyToast.classList.add('hidden');
             busyToast.classList.remove('flex');
         }
-        allButtons.forEach(btn => { if (btn) btn.disabled = false });
+        allButtons.forEach(btn => {
+            if (!btn) return;
+            btn.disabled = false;
+            if (btn.dataset.idleTitle !== undefined) {
+                if (btn.dataset.idleTitle) btn.title = btn.dataset.idleTitle;
+                else btn.removeAttribute('title');
+                delete btn.dataset.idleTitle;
+            }
+        });
         if (_loaderElapsedTimer) {
             clearInterval(_loaderElapsedTimer);
             _loaderElapsedTimer = null;
@@ -170,6 +186,17 @@ function _liveJobId() {
 async function _errorDetail(response) {
     const body = await response.json().catch(() => null);
     return (body && (apiDetailText(body.detail) || body.error)) || response.statusText || `HTTP ${response.status}`;
+}
+
+/** The RO-Crate download name: the export time in UTC and the run's name, e.g.
+ * rosetta-export-2026-10-07-2105UTC-ghz-final.zip. */
+export function crateFileName(name, when = Date.now()) {
+    const d = new Date(when);
+    const pad = n => String(n).padStart(2, '0');
+    const stamp = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}-${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}UTC`;
+    const slug = String(name ?? '').normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '');
+    return `rosetta-export-${stamp}${slug ? `-${slug}` : ''}.zip`;
 }
 
 function _filenameFrom(response, fallback) {
@@ -318,7 +345,7 @@ export async function exportRoCrate({ source = 'browser', includeStatevectors = 
             }
             throw new Error(await _errorDetail(response));
         }
-        downloadBlob(await response.blob(), _filenameFrom(response, 'rosetta-export.zip'));
+        downloadBlob(await response.blob(), crateFileName(results.run_name || results.circuit_name || getState().currentSuiteTitle));
     } catch (err) {
         console.error("RO-Crate export failed:", err);
         alert("Export failed: " + err.message);

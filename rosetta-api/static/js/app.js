@@ -1,5 +1,5 @@
 // Page bootstrap: server limits and defaults, the preset list, circuit generation, and the
-// offer to resume a job after a reload.
+// offer of earlier runs from this browser after a reload.
 
 import { BASE_URL, apiDetailText, getAuthHeaders } from './api.js';
 import { updateAuthUI, verifySession } from './auth.js';
@@ -12,12 +12,13 @@ import { saveRunToHistory, showHistoryNotice } from './history.js';
 import { setRunSaver } from './share_links.js';
 import { announceWorkspaceChange, initDomRefs, qasmInput, setAllButtons, welcomeMessage } from './dom.js';
 import { shotsRange, timeoutRange } from './run_inputs.js';
-import { clearPendingJob, loadBatchQueue, loadEditorCircuit, loadPendingJob, saveEditorCircuit } from './session_store.js';
+import { loadBatchQueue, loadEditorCircuit, loadLoadedSelection, loadRunModes, saveEditorCircuit, saveLoadedSelection } from './session_store.js';
+import { loadQubitProblem } from './request_limits.js';
 import { dispatch, getState } from './state.js';
 import { resetAgreementThresholds, setLoading } from './utils.js';
 import { fetchSelection, loadCircuitSources, menuGroups, nearestSize, selectionFor } from './circuit_sources.js';
 import { initCircuitPicker } from './circuit_picker.js';
-import { resumeJob, updateWorkspace } from './workspace.js';
+import { offerRecentJobs, updateWorkspace } from './workspace.js';
 import { initSettingsBar } from './settings_bar.js';
 
 const EXECUTION_MODE_LABELS = {
@@ -56,6 +57,11 @@ function _applyServerConfig(config) {
     if (nameInput) nameInput.maxLength = getState().maxLabelLength;
     const runName = /** @type {HTMLInputElement|null} */ (document.getElementById('single-run-name'));
     if (runName) runName.maxLength = getState().maxLabelLength;
+    const pwHint = document.getElementById('register-password-hint');
+    if (pwHint) {
+        const { passwordMinChars: min, passwordMaxBytes: max } = getState();
+        pwHint.textContent = `At least ${min} characters and at most ${max} bytes: up to ${max} plain ASCII characters, fewer with accented letters or symbols, which take 2 to 4 bytes each.`;
+    }
     const rInput = /** @type {HTMLInputElement|null} */ (document.getElementById('timing-repeats-input'));
     if (rInput) rInput.max = String(getState().timingRepeatsMax);
     if (!getState().exclusiveEnabled) {
@@ -107,33 +113,78 @@ function _restoreEditorCircuit() {
     return true;
 }
 
-function _hideResumeBanner() {
-    document.getElementById('resume-job-banner')?.classList.add('hidden');
+/** Tick the run modes this tab (or, in a new tab, the last tab) used. */
+function _restoreRunModes() {
+    const modes = loadRunModes();
+    const sv = /** @type {HTMLInputElement|null} */ (document.getElementById('mode-statevector'));
+    const ms = /** @type {HTMLInputElement|null} */ (document.getElementById('mode-measured'));
+    if (!modes || !sv || !ms) return;
+    sv.checked = modes.statevector;
+    ms.checked = modes.measured;
 }
 
-function _offerPendingJob() {
-    const job = loadPendingJob();
-    const banner = document.getElementById('resume-job-banner');
-    if (!job || !banner) return;
-    const when = new Date(job.submitted_at).toLocaleTimeString();
-    const text = document.getElementById('resume-job-text');
-    const notStarted = Array.isArray(job.remaining) && job.remaining.length
-        ? ` Not started: ${job.remaining.join('; ')}.` : '';
-    if (text) text.textContent = `A run submitted at ${when} (${job.run_name || job.title}) had not finished loading when the page was closed.${notStarted}`;
-    banner.classList.remove('hidden');
-    document.getElementById('resume-job-btn')?.addEventListener('click', () => {
-        _hideResumeBanner();
-        if (getState().isProcessing) return;
-        resumeJob(job);
-    }, { once: true });
-    document.getElementById('resume-job-discard')?.addEventListener('click', () => {
-        clearPendingJob(job.job_id);
-        _hideResumeBanner();
-    }, { once: true });
+/** The Generate Circuits choice that is in the editor: { value, qubits }, or null. */
+let _loadedSelection = null;
+
+function _currentSelection() {
+    const select = /** @type {HTMLSelectElement|null} */ (document.getElementById('algo-select'));
+    const qubits = /** @type {HTMLInputElement|null} */ (document.getElementById('algo-qubits'));
+    if (!select || !select.value) return null;
+    const kind = selectionFor(select.value).kind;
+    const fixed = kind === 'example' || kind === 'qasmbench';
+    return { value: select.value, qubits: fixed ? null : parseInt(qubits?.value || '', 10) || null };
+}
+
+/** Record that Load put the current Generate Circuits choice in the editor. */
+function _markLoaded() {
+    _loadedSelection = _currentSelection();
+    saveLoadedSelection(_loadedSelection);
+    _updateLoadHint();
+}
+
+/** Say when the Generate Circuits choice differs from the circuit in the editor, and highlight Load. */
+function _updateLoadHint() {
+    const hint = document.getElementById('algo-not-loaded');
+    const load = document.getElementById('btn-load');
+    const current = _currentSelection();
+    const pending = !!current && !(_loadedSelection && _loadedSelection.value === current.value && _loadedSelection.qubits === current.qubits);
+    hint?.classList.toggle('hidden', !pending);
+    ['ring-2', 'ring-offset-1', 'ring-indigo-400'].forEach(c => load?.classList.toggle(c, pending));
+}
+
+/** Show the Generate Circuits choice that produced the restored editor circuit. */
+function _restoreSelection() {
+    const saved = loadLoadedSelection();
+    const select = /** @type {HTMLSelectElement|null} */ (document.getElementById('algo-select'));
+    if (!saved || !select || ![...select.options].some(o => o.value === saved.value)) return;
+    select.value = saved.value;
+    select.dispatchEvent(new Event('change'));
+    const qubits = /** @type {HTMLInputElement|null} */ (document.getElementById('algo-qubits'));
+    if (qubits && saved.qubits !== null && !qubits.disabled) qubits.value = String(saved.qubits);
+    _loadedSelection = saved;
+}
+
+/** Keep the browser from saving or restoring form values across Back/Forward: every setting
+ * comes from the page's defaults or from the app's own storage. */
+function _disableFormRestore() {
+    window.addEventListener('pagehide', () => {
+        document.querySelectorAll('input, select, textarea').forEach(el => {
+            const token = el.getAttribute('autocomplete');
+            if (token && token !== 'off') /** @type {HTMLElement} */ (el).dataset.autocomplete = token;
+            el.setAttribute('autocomplete', 'off');
+        });
+    });
+    window.addEventListener('pageshow', () => {
+        document.querySelectorAll('[data-autocomplete]').forEach(el => {
+            el.setAttribute('autocomplete', /** @type {HTMLElement} */ (el).dataset.autocomplete || 'on');
+        });
+    });
 }
 
 window.onload = async () => {
 
+    _disableFormRestore();
+    _restoreRunModes();
     initDomRefs();
     document.getElementById('history-save-notice-close')?.addEventListener('click', () => showHistoryNotice(''));
     const launchers = Array.from(document.querySelectorAll('button[data-busy-disable]'));
@@ -191,8 +242,11 @@ window.onload = async () => {
         });
 
         select.addEventListener('change', updateQubitConstraints);
+        select.addEventListener('change', _updateLoadHint);
         ['mode-statevector', 'mode-measured'].forEach(id => document.getElementById(id)?.addEventListener('change', () => updateQubitConstraints()));
         document.getElementById('algo-qubits')?.addEventListener('change', _snapBenchSize);
+        document.getElementById('algo-qubits')?.addEventListener('input', _updateLoadHint);
+        document.getElementById('algo-qubits')?.addEventListener('change', _updateLoadHint);
         updateQubitConstraints();
 
         const nameInput = /** @type {HTMLInputElement} */ (document.getElementById('ctx-algo-name'));
@@ -207,6 +261,8 @@ window.onload = async () => {
         });
         document.addEventListener('editor-loaded', () => { delete nameInput.dataset.typed; });
         restored = _restoreEditorCircuit();
+        if (restored) _restoreSelection();
+        _updateLoadHint();
         updateContextBar();
 
     } catch (error) {
@@ -225,7 +281,7 @@ window.onload = async () => {
     renderBatchQueue();
     initAutosave();
     updateWorkspace();
-    _offerPendingJob();
+    offerRecentJobs();
 };
 
 /** For an MQT Bench algorithm, move the Qubits field to the nearest size the suite has. */
@@ -296,7 +352,16 @@ async function _loadSelection(sel, qubits) {
     }
     updateContextBar();
     saveEditorCircuit(qasmInput.value, getState().currentAlgoName);
+    _markLoaded();
     document.dispatchEvent(new Event('editor-loaded'));
+}
+
+/** Why Load refuses a circuit of `qubits` qubits for the ticked modes, or null. */
+function _loadQubitProblem(qubits) {
+    const checked = id => !!/** @type {HTMLInputElement|null} */ (document.getElementById(id))?.checked;
+    const st = getState();
+    return loadQubitProblem(qubits, { statevector: checked('mode-statevector'), measured: checked('mode-measured') },
+        { statevector: st.maxQubitsStatevector, measured: st.maxQubitsMeasured, compile: st.maxQubitsCompile });
 }
 
 /** Select `value` in the Quantum Algorithms menu and load it into the editor. */
@@ -316,6 +381,8 @@ export async function generateCircuit() {
     const algoId = /** @type {HTMLSelectElement} */ (document.getElementById('algo-select')).value;
     const sel = selectionFor(algoId);
     if (sel.kind !== 'algorithm') {
+        const size = sel.kind === 'mqt' ? _loadQubitProblem(parseInt(/** @type {HTMLInputElement} */ (document.getElementById('algo-qubits')).value, 10)) : null;
+        if (size) { alert(size); return; }
         dispatch('SET_PROCESSING', true);
         setLoading(true, 'Loading circuit...', { overlay: false });
         try {
@@ -332,6 +399,11 @@ export async function generateCircuit() {
 
     if (!algoId || isNaN(qubits)) {
         alert("Please select an algorithm and specify a valid number of qubits.");
+        return;
+    }
+    const sizeProblem = _loadQubitProblem(qubits);
+    if (sizeProblem) {
+        alert(sizeProblem);
         return;
     }
 
@@ -351,6 +423,7 @@ export async function generateCircuit() {
             dispatch('SET_CURRENT_ALGO_NAME', selectElement.options[selectElement.selectedIndex].text + ` (${qubits}q)`);
             updateContextBar();
             saveEditorCircuit(qasmInput.value, getState().currentAlgoName);
+            _markLoaded();
             document.dispatchEvent(new Event('editor-loaded'));
         } else {
             throw new Error(apiDetailText(data.detail) || data.error || "Failed to generate circuit.");

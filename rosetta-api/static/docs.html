@@ -116,17 +116,38 @@
                 <h2>Quickstart: your first run</h2>
                 <p>The page opens with a three-qubit GHZ circuit in the editor, Statevector ticked and every backend the server offers selected.</p>
                 <ol class="list-decimal pl-5 space-y-1 mb-4 text-gray-700">
-                    <li>Press <strong>Run Editor Code</strong>, at the bottom of the left column, where Run, Mode, Run Name and the settings chips always stay in view. The button label says what will run, for example "Run Editor Code · Statevector · 14 backends". While the run is in progress, a card per backend shows its state.</li>
+                    <li>Press <strong>Run Editor Code</strong>, at the bottom of the left column, where Run, Mode, Run Name and the settings chips always stay in view. The button label says what will run, for example "Run Editor Code · Statevector · 14 backends". While the run is in progress, the results area shows the table the result will fill, with each backend's state in its Status column.</li>
                     <li>Read the <strong>Summary</strong> tab. Its first line says how many backends returned a result; the next line names any backend that differs from the others, for example "Qrisp differs from 13 of 13". A GHZ circuit should read "Every comparable pair of backends agrees". The Backends table gives one row per backend: its status, how many others it differs from, its bit order, precision, time and peak memory. Below it, <strong>Evidence</strong> lists the pairs grouped by verdict.</li>
                     <li>For a measured run, choose <em>Sampler bias, 16 qubits</em> in the <strong>Examples</strong> group of the Quantum Algorithms menu and press <strong>Load</strong>. This ticks Measured. Open the <strong>Seed</strong> chip above the run button and set a <strong>Sampling seed</strong> (for example 42) so a rerun draws the same shots, then press Run Editor Code. Expect the full-distribution test to call most pairs inconclusive (16 qubits have 65,536 outcomes, far more than 8,200 shots cover; the Summary gives the shots the test would need) and the single-bit marginal test to name Qrisp, whose sampler is biased on this circuit (see <a href="#known-issues">Known backend issues</a>).</li>
                     <li>Open the other tabs when you need them: <strong>Agreement</strong> (a heatmap of every pair, the evidence per pair, and the raw matrices), <strong>Performance</strong> (times and memory), <strong>Circuits</strong> (what each backend executed), <strong>Exports</strong> (figures and tables you set up, the RO-Crate and the report files).</li>
                 </ol>
                 <p>
-                    Inputs are checked before a run is submitted: a shot count, timeout, seed or threshold
-                    that is out of range is marked next to the field and the run is not sent. Requests the
-                    server rejects are shown with the server's message. If the page is reloaded while a run
-                    is in progress, the page offers to show that run's results when it loads again; the
-                    editor and the playlist are kept in this browser.
+                    Inputs are checked before a run is submitted. When something blocks the run (a shot
+                    count, timeout, seed or threshold out of range, a Run Name with an invisible character,
+                    too many circuits for the server), the run is not sent and a red <em>Not submitted</em>
+                    box above the Run button lists every problem; the field concerned is outlined in red
+                    inside its chip. The box is checked again whenever the workspace changes, so it lists
+                    only what still blocks the run. Requests the server rejects are shown with the
+                    server's message.
+                </p>
+                <p>
+                    <strong>Stop waiting</strong>, beside the elapsed time of a run in progress, stops the
+                    page from waiting; the job keeps running on the server. The results area then says
+                    <em>Stopped waiting</em>, gives the job ID and has a <strong>Show results</strong>
+                    button that waits for it again. This browser records every job it submitted: when the
+                    page is opened again (after a reload, Back and Forward, or in a new tab), <em>Earlier
+                    runs from this browser</em> above the results lists the jobs whose results were not
+                    shown, and finished jobs whose results the server still keeps (30 minutes after they
+                    finish), each with Show results and Dismiss. Logging out forgets the jobs submitted while signed in and
+                    clears their results from the screen.
+                </p>
+                <p>
+                    Each browser tab keeps its own editor circuit and ticked modes (Statevector,
+                    Measured) across reloads; a new tab starts from the last ones used. The playlist,
+                    the backend choice and the export preset are shared by all tabs. Other settings
+                    (preprocessing, Bypass API Safety Limits, timeout, thresholds, seed) start from their
+                    defaults when the page loads. On a narrow screen the workspace, the Run footer and
+                    the results follow each other in one scrolling column.
                 </p>
             </section>
 
@@ -1425,9 +1446,15 @@
                     the account deletes its links, and a deactivated account's links stop working.
                 </p>
                 <p>
-                    A session lasts 30 minutes. If it expires before a run finishes, the page says the run
-                    was not saved and offers <strong>Sign in and save</strong>, which saves the run after
-                    you sign in again, as long as the server still holds the job. <strong>Delete
+                    A session lasts 30 minutes. When it expires, the page signs you out and says that runs
+                    started from then on are not saved; pressing Run with an expired session asks first. If
+                    it expires before a run finishes, the page says the run was not saved and offers
+                    <strong>Sign in and save</strong>, which saves the run after you sign in again, as long
+                    as the server still holds the job. When one press of Run starts a statevector and a
+                    measured run with a Run Name, History saves them as "<em>name</em> (Statevector)" and
+                    "<em>name</em> (Measured)". Run names may contain emoji, including joined ones such as
+                    👩‍🔬, but no other invisible characters (soft hyphens, direction overrides, zero-width
+                    spaces); the message names the character and its position. <strong>Delete
                     Account</strong>, beside Logout in the header, removes the account with its saved runs
                     and circuits; a session token issued before the deletion stops working.
                 </p>
