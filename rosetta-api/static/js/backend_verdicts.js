@@ -3,7 +3,9 @@
 // the headline model built from them. Disagreement is isDisagreement() only, so these counts
 // match the pair badges; a measured pair can be inconclusive and differ in a marginal at once.
 // A measured pair flagged only under Benjamini–Yekutieli (not under Holm, no differing
-// marginal) is counted apart as "BY only" and does not shape the headline.
+// marginal) is counted apart as "BY only" and does not shape the headline. Each backend keeps
+// the size of every compared pair (total variation or fidelity) so a difference can be sized
+// against the backends the headline does not name.
 
 import { isDisagreement, measuredAssessment, runnerStatus, statevectorGroup } from './run_status.js';
 import { parseRunnerKey } from './runner_key.js';
@@ -12,7 +14,8 @@ import { parseRunnerKey } from './runner_key.js';
  * @typedef {{ key: string, status: string, compared: number, differs: number, differsFull: number,
  *             differsMarginal: number, differsByOnly: number, inconclusive: number, notComparable: number,
  *             differsWith: string[], byOnlyWith: string[], agreesWith: string[], comparedWith: string[],
- *             worstFidelity: number|null, largestTv: number|null, bitOrder: string|null }} BackendVerdict
+ *             worstFidelity: number|null, largestTv: number|null, bitOrder: string|null,
+ *             sizeWith: Object<string, number> }} BackendVerdict
  */
 
 /** True for a measured pair whose only disagreement evidence is significance under BY but not under Holm. */
@@ -54,7 +57,8 @@ export function backendVerdicts(report) {
         if (!byKey.has(key)) {
             byKey.set(key, { key, status: 'ok', compared: 0, differs: 0, differsFull: 0, differsMarginal: 0, differsByOnly: 0,
                              inconclusive: 0, notComparable: 0, differsWith: [], byOnlyWith: [], agreesWith: [],
-                             comparedWith: [], worstFidelity: null, largestTv: null, bitOrder: ordering[key] ?? null });
+                             comparedWith: [], worstFidelity: null, largestTv: null, bitOrder: ordering[key] ?? null,
+                             sizeWith: {} });
         }
         return byKey.get(key);
     };
@@ -73,6 +77,9 @@ export function backendVerdicts(report) {
         }
         a.compared++; b.compared++;
         a.comparedWith.push(b.key); b.comparedWith.push(a.key);
+        const size = _magnitude(p);
+        const value = p.mode === 'measured' ? size.tv : size.fidelity;
+        if (value !== null) { a.sizeWith[b.key] = value; b.sizeWith[a.key] = value; }
         const assessment = p.mode === 'measured' ? measuredAssessment(p) : null;
         if (assessment === 'inconclusive_low_shots' || assessment === 'ambiguous') {
             inconclusive++;
@@ -166,12 +173,20 @@ function _components(keys, linked) {
  *   inside a group and every compared pair between groups differing; `camps` lists them,
  *   `largest` is the unique largest group or null;
  * - 'pairs': at most MAX_NAMED pairs differ and none of the above applies; `pairs` lists them;
- * - 'spread': anything else; `named` lists the backends that differ from more than half of those
- *   they were compared with (at most MAX_NAMED; else the ones that differ most), `rest` the
- *   others and `pairs` the differing pairs among `rest`.
+ * - 'spread': anything else; the backends that differ from more than half of those they were
+ *   compared with are split into groups that agree with each other, ranked by the size of their
+ *   difference from the other backends (lowest fidelity, or median total variation), then by the
+ *   share of pairs that differ; `named` lists the first groups up to MAX_NAMED backends (at least
+ *   one group) and `unnamed` the rest of these backends. With no such backend, `named` lists the
+ *   MAX_NAMED backends that differ most, one per group. `rest` are the other backends and `pairs`
+ *   the differing pairs among `rest`.
  *
- * `flagged` are the backends the headline names as differing; `byOnlyHub` is the backend in
- * every BY-only pair when there are two or more such pairs.
+ * `flagged` are the backends the headline names as differing; `reference` are the backends a
+ * named backend or group is sized against ('named' and 'spread': `rest`; otherwise empty);
+ * `chance` are the named single backends of a measured report that differ from fewer than half
+ * of the backends they were compared with and are consistent with all the others, a pattern one
+ * unusual sample can produce; `byOnlyHub` is the backend in every BY-only pair when there are
+ * two or more such pairs.
  */
 export function headlineModel(verdicts) {
     const failed = { offline: [], error: [], timeout: [] };
@@ -189,7 +204,13 @@ export function headlineModel(verdicts) {
     const byOnly = verdicts.byOnlyPairs || [];
     const hubs = byOnly.length >= 2 ? byOnly.reduce((acc, pair) => acc.filter(k => pair.includes(k)), byOnly[0]) : [];
     const base = { failed, ok: ok.length, differing, edges, byOnlyHub: hubs.length === 1 ? hubs[0] : null,
-                   named: [], rest: [], camps: [], largest: null, neutral: [], pairs: [], flagged: [] };
+                   named: [], rest: [], camps: [], largest: null, neutral: [], pairs: [], flagged: [],
+                   unnamed: [], reference: [], chance: [] };
+    const chance = groups => verdicts.mode !== 'measured' ? [] : groups
+        .filter(g => g.members.length === 1)
+        .map(g => byKey.get(g.members[0]))
+        .filter(b => b.differsWith.length * 2 < b.compared && b.differsWith.length + b.agreesWith.length === b.compared)
+        .map(b => b.key);
     if (!edges.length) return { ...base, kind: 'none' };
 
     const describe = members => {
@@ -210,7 +231,8 @@ export function headlineModel(verdicts) {
         const agree = (x, y) => byKey.get(x).agreesWith.includes(y);
         const named = _components(cover, agree).map(describe)
             .sort((x, y) => y.differsFrom.length - x.differsFrom.length || x.members[0].localeCompare(y.members[0]));
-        return { ...base, kind: 'named', named, rest: keys.filter(k => !cover.includes(k)), flagged: cover };
+        const rest = keys.filter(k => !cover.includes(k));
+        return { ...base, kind: 'named', named, rest, flagged: cover, reference: rest, chance: chance(named) };
     }
 
     const neutral = keys.filter(k => byKey.get(k).differsWith.length === 0);
@@ -227,9 +249,55 @@ export function headlineModel(verdicts) {
         return { ...base, kind: 'pairs', pairs: edges, flagged: [...new Set(edges.flat())].sort() };
     }
 
-    const majority = differing.filter(b => b.differsWith.length * 2 > b.compared);
-    const named = (majority.length ? majority : differing).slice(0, MAX_NAMED).map(b => b.key);
-    const rest = keys.filter(k => !named.includes(k));
-    return { ...base, kind: 'spread', named: named.map(k => describe([k])), rest,
-             pairs: edges.filter(([x, y]) => !named.includes(x) && !named.includes(y)), flagged: named };
+    const majority = differing.filter(b => b.differsWith.length * 2 > b.compared).map(b => b.key);
+    let groups, unnamed = [];
+    if (majority.length) {
+        const others = keys.filter(k => !majority.includes(k));
+        const agree = (x, y) => byKey.get(x).agreesWith.includes(y);
+        const measured = verdicts.mode === 'measured';
+        const score = members => {
+            const values = sizesBetween(verdicts, members, others);
+            if (!values.length) return Infinity;
+            return measured ? -median(values) : Math.min(...values);
+        };
+        const share = members => Math.max(...members.map(k => ratio(byKey.get(k))));
+        const ranked = _components(majority, agree).map(m => ({ m, score: score(m), share: share(m) }))
+            .sort((x, y) => (x.score === y.score ? 0 : x.score < y.score ? -1 : 1)
+                || y.share - x.share || y.m.length - x.m.length || x.m[0].localeCompare(y.m[0]));
+        groups = [];
+        let count = 0;
+        ranked.forEach(({ m }) => {
+            if (!groups.length || count + m.length <= MAX_NAMED) { groups.push(describe(m)); count += m.length; }
+            else unnamed.push(...m);
+        });
+        unnamed.sort();
+    } else {
+        groups = differing.slice(0, MAX_NAMED).map(b => describe([b.key]));
+    }
+    const named = groups.flatMap(g => g.members);
+    const flagged = [...named, ...unnamed];
+    const rest = keys.filter(k => !flagged.includes(k));
+    return { ...base, kind: 'spread', named: groups, unnamed, rest, reference: rest, chance: chance(groups),
+             pairs: edges.filter(([x, y]) => !flagged.includes(x) && !flagged.includes(y)), flagged };
+}
+
+/** Recorded sizes (total variation or fidelity) of the compared pairs between `members` and `others`. */
+export function sizesBetween(verdicts, members, others) {
+    const byKey = new Map(verdicts.backends.map(b => [b.key, b]));
+    const out = [];
+    members.forEach(k => {
+        const b = byKey.get(k);
+        if (!b) return;
+        others.forEach(o => {
+            if (o !== k && Object.prototype.hasOwnProperty.call(b.sizeWith, o)) out.push(b.sizeWith[o]);
+        });
+    });
+    return out;
+}
+
+/** Median of a non-empty list of numbers. */
+export function median(xs) {
+    const s = [...xs].sort((a, b) => a - b);
+    const mid = Math.floor(s.length / 2);
+    return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }

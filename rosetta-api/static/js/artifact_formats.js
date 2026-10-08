@@ -455,10 +455,10 @@ export const UNRANKED_GLOSSARY = [
 export const MEASUREMENT_NOTES = [
     'Global phase offset arg⟨a|b⟩: the phase of the inner product of two normalised statevectors. It is a global-phase difference between the states, not a relative phase between components of one superposition. The JSON fields relative_phase_matrix and *relative_phase* keep their names for compatibility.',
     "Label-aligned basis: for a pair whose declared qubit orderings differ (lsb vs msb) the second backend's output is bit-reversed (statevector amplitudes or counts keys); otherwise it is compared directly. Bit reversal is the identity on a one-qubit circuit and on counts keys of one classical bit, so those pairs are compared directly. Statevector labels, the statistical tests and the label-aligned distances use this basis; the direct values are recorded as well.",
-    "Outcomes with an expected count below 5 are pooled into one bin before the chi-square and G-tests; statistical_test.pooled_outcomes gives how many were pooled. The bin holds only rare outcomes. If it breaks Cochran's rule and its expected count is below 1, it is left out of the table; statistical_test.untested_outcomes gives how many outcomes it held.",
+    "Outcomes with an expected count below 5 are pooled into one bin before the chi-square and G-tests; statistical_test.pooled_outcomes gives how many were pooled. The bin holds only rare outcomes. It is tested as its own column when its expected count reaches 5, when the table meets Cochran's rule, or, with two or more common outcomes, when its expected count is at least 1; below that it is left out of the table, and statistical_test.untested_outcomes gives how many outcomes it held. A 2 x 2 table that fails the expected-count rule gets exact conditional p-values (test_method = exact_conditional); when both backends returned the same single outcome nothing is tested (test_method = degenerate, p = 1).",
     'Benjamini-Yekutieli controls the false discovery rate at q = alpha under arbitrary dependence between the p-values; pairs that share a backend reuse its sample and are dependent. Its threshold is alpha·i/(m·c_m) with c_m = 1 + 1/2 + ... + 1/m. BH-adjusted p-values are recorded for reference (p_value_bh) and do not set the verdict.',
 ];
-export const ANALYSIS_VERSION = 'divergence-2026.10.08.2';
+export const ANALYSIS_VERSION = 'divergence-2026.10.08.3';
 export const ANALYSIS_VERSION_NOTE = `Analysis version ${ANALYSIS_VERSION} (analysis_version in each divergence report). The `
     + 'labels and verdicts are a function of the outputs and of the analysis rules; verdicts '
     + 'computed under different analysis versions may differ for identical counts.';
@@ -676,15 +676,16 @@ export function _dataStatistical(div) {
     return {
         headers: ['Pair', 'Basis', 'chi2 p', 'chi2 p (BY)', 'G-test p', 'G-test p (BY)',
             'Total variation', "Cramér's V", 'Power@obs', 'Shots/backend for power',
-            'Pooled outcomes', 'Verdict'],
+            'Lower bound', 'Pooled outcomes', 'Untested outcomes', 'Method', 'Verdict'],
         rows: _formatColumns(recs.map(r => {
             const st = r.metrics.statistical_test, ef = st.effect_size || {}, pw = st.power || {},
                 c = st.chi2 || {}, g = st.g_test || {};
             return [_artPairKey(r), _artText(st.basis), _pn(c.p_value), _pn(c.p_value_by),
                 _pn(g.p_value), _pn(g.p_value_by), _n(ef.total_variation), _n(ef.cramers_v),
                 _n(pw.power_to_detect_delta_at_observed_shots, 3),
-                _artInt(pw.shots_per_backend_for_target_power), _artInt(st.pooled_outcomes),
-                _artVerdictText(st)];
+                _artInt(pw.recommended_shots_per_backend ?? pw.shots_per_backend_for_target_power),
+                _artText(st.recommendation_is_lower_bound), _artInt(st.pooled_outcomes),
+                _artInt(st.untested_outcomes), _artText(st.test_method), _artVerdictText(st)];
         })),
         title: 'Shot-noise statistical test',
         caption: 'Shot-noise-aware homogeneity tests (chi-square + G-test) in the label-aligned '
@@ -696,9 +697,18 @@ export function _dataStatistical(div) {
             + 'sample; a flagged pair can still be a false discovery. Power@obs is the power '
             + 'of the chi-square test to detect a total-variation gap of 0.05 at '
             + `alpha/(m·c_m)${_artPowerAlphaText(recs)}, the threshold BY applies to a `
-            + 'single discovery: a lower bound for detecting one wrong backend. Outcomes with '
-            + 'an expected count below 5 are pooled into one bin. A non-significant pair with '
-            + 'power below 0.8 is inconclusive_low_shots.',
+            + 'single discovery: a lower bound for detecting one wrong backend. Shots/backend for '
+            + 'power is the shot count at which the power model reaches 0.8, times 1.1 and rounded up '
+            + 'to two significant figures (recommended_shots_per_backend); Lower bound is true when '
+            + 'outcomes not yet seen can raise it. Outcomes with an expected count below 5 are pooled '
+            + 'into one bin of rare outcomes (Pooled outcomes, when it holds two or more); with two or '
+            + 'more common outcomes the bin stays its own column when its expected count is at least 1 '
+            + 'and is left out of the table below 1 (Untested outcomes). Method: asymptotic (chi-square '
+            + 'distribution); exact_conditional (2 x 2 table with expected counts below 5: p-values from '
+            + 'the hypergeometric distribution of tables with the same margins); degenerate (both '
+            + 'backends returned the same single outcome, so there is nothing to test and p = 1); '
+            + 'not_tested (one column after pooling). A non-significant pair with power below 0.8 is '
+            + 'inconclusive_low_shots.',
     };
 }
 /** Per-backend SDK versions, ordering and sampling labels, opt level and status. */

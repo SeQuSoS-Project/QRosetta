@@ -235,11 +235,15 @@ _MEASUREMENT_NOTES = [
     "and on counts keys of one classical bit, so those pairs are compared directly. "
     "Statevector labels, the statistical tests and the label-aligned distances use "
     "this basis; the direct values are recorded as well.",
-    "Outcomes with an expected count below 5 are pooled into one bin before the chi-square "
-    "and G-tests; statistical_test.pooled_outcomes gives how many were pooled. The bin holds "
-    "only rare outcomes. If it breaks Cochran's rule and its expected count is below 1, it "
-    "is left out of the table; statistical_test.untested_outcomes gives how many outcomes "
-    "it held.",
+    "Outcomes with an expected count below 5 are pooled into one bin before the "
+    "chi-square and G-tests; statistical_test.pooled_outcomes gives how many were pooled. "
+    "The bin holds only rare outcomes. It is tested as its own column when its expected "
+    "count reaches 5, when the table meets Cochran's rule, or, with two or more common "
+    "outcomes, when its expected count is at least 1; below that it is left out of the "
+    "table, and statistical_test.untested_outcomes gives how many outcomes it held. A 2 x "
+    "2 table that fails the expected-count rule gets exact conditional p-values "
+    "(test_method = exact_conditional); when both backends returned the same single "
+    "outcome nothing is tested (test_method = degenerate, p = 1).",
     "Benjamini-Yekutieli controls the false discovery rate at q = alpha under arbitrary "
     "dependence between the p-values; pairs that share a backend reuse its sample and are "
     "dependent. Its threshold is alpha·i/(m·c_m) with c_m = 1 + 1/2 + ... + 1/m. BH-adjusted "

@@ -29,7 +29,8 @@ def test_small_second_sample_is_inconclusive():
     assert power == pytest.approx(0.1086, abs=1e-3)
     assert block["verdict"] == "inconclusive_low_shots"
     assert block["inconclusive_reason"] == "low_power"
-    assert block["power"]["recommended_shots_per_backend"] == 1570
+    assert block["power"]["shots_per_backend_for_target_power"] == 1570
+    assert block["power"]["recommended_shots_per_backend"] == 1800
 
 
 @pytest.mark.parametrize("n_i,n_j", [(8200, 50), (8200, 400), (300, 5000)])

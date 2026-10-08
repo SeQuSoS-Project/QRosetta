@@ -85,7 +85,7 @@ def test_one_outlier_with_inconclusive_correct_pairs_names_only_the_outlier():
     _assert_well_formed(out)
     assert out["model"]["flagged"] == ["qrisp"]
     assert out["lines"][1] == ("Qrisp differs from all 13 other backends (13 distinguishable; "
-                               "largest total variation 0.087).")
+                               "total variation 0.087 against the other 13 backends).")
     assert out["lines"][2].startswith("Among the other 13 backends, no pair is distinguishable")
 
 
@@ -113,7 +113,7 @@ def test_two_outliers_that_agree_form_a_group():
     out = _headline(_report(S, _groups({"qibo", "qrisp"}, set(S) - {"qibo", "qrisp"}),
                             magnitude=lambda a, b: 0.146))
     assert out["lines"][1] == ("Qibo and Qrisp agree with each other and differ from every other backend "
-                               "(12; lowest fidelity 0.146).")
+                               "(12; lowest fidelity 0.146 against the other 12 backends).")
 
 
 def test_tied_groups_are_described_as_groups():
@@ -149,7 +149,8 @@ def test_isolated_measured_pair_suggests_more_shots():
     out = _headline(_report(S, lambda a, b: "differ" if {a, b} == {"pyquil", "quest"} else "agree", measured=True,
                             n_shots=100))
     _assert_well_formed(out)
-    assert any("rerun with more shots to confirm" in line for line in out["lines"])
+    assert any("rerun with another seed to confirm" in line for line in out["lines"])
+    assert out["lines"][-1].startswith("If a rerun confirms a difference")
 
 
 def test_by_only_hub_is_named_without_an_all_clear():

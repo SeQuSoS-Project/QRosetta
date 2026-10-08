@@ -4,7 +4,7 @@ from qrosetta_commons.helpers import get_logger
 
 logger = get_logger("rosetta-divergence")
 
-ANALYSIS_VERSION = "divergence-2026.10.08.2"
+ANALYSIS_VERSION = "divergence-2026.10.08.3"
 
 STAT_TEST_ALPHA = 0.05
 STAT_TEST_TARGET_POWER = 0.8

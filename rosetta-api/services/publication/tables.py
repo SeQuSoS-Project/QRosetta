@@ -225,6 +225,12 @@ def _verdict_text(st: dict) -> str:
     return f"{verdict} ({reason})"
 
 
+def _recommended(pw: dict):
+    """recommended_shots_per_backend, or shots_per_backend_for_target_power in reports that lack it."""
+    rec = pw.get("recommended_shots_per_backend")
+    return rec if rec is not None else pw.get("shots_per_backend_for_target_power")
+
+
 def _power_alpha_text(records) -> str:
     """" = <alpha_used> (m = <m_pairs>, c_m = <c_m>)" from the first record that records
     them, else ""."""
@@ -242,7 +248,7 @@ def _tbl_statistical(divergence_report: dict):
                if (r.get("metrics", {}) or {}).get("statistical_test")]
     headers = ["Pair", "Basis", "chi2 p", "chi2 p (BY)", "G-test p", "G-test p (BY)",
                "Total variation", "Cramér's V", "Power@obs", "Shots/backend for power",
-               "Pooled outcomes", "Verdict"]
+               "Lower bound", "Pooled outcomes", "Untested outcomes", "Method", "Verdict"]
     rows = []
     for r in records:
         st = r["metrics"]["statistical_test"]
@@ -253,8 +259,9 @@ def _tbl_statistical(divergence_report: dict):
                      _pnum(gt.get("p_value")), _pnum(gt.get("p_value_by")),
                      _num(ef.get("total_variation")), _num(ef.get("cramers_v")),
                      _num(pw.get("power_to_detect_delta_at_observed_shots"), 3),
-                     _fmt_int(pw.get("shots_per_backend_for_target_power")),
-                     _fmt_int(st.get("pooled_outcomes")), _verdict_text(st)])
+                     _fmt_int(_recommended(pw)), _fmt_text(st.get("recommendation_is_lower_bound")),
+                     _fmt_int(st.get("pooled_outcomes")), _fmt_int(st.get("untested_outcomes")),
+                     _fmt_text(st.get("test_method")), _verdict_text(st)])
     rows = _format_columns(rows)
     caption = ("Shot-noise-aware homogeneity tests (chi-square + G-test) in the label-aligned "
                "basis (bit-reversed when the declared bit orders differ), with "
@@ -265,9 +272,18 @@ def _tbl_statistical(divergence_report: dict):
                "sample; a flagged pair can still be a false discovery. Power@obs is the power "
                "of the chi-square test to detect a total-variation gap of 0.05 at "
                f"alpha/(m·c_m){_power_alpha_text(records)}, the threshold BY applies to a "
-               "single discovery: a lower bound for detecting one wrong backend. Outcomes with "
-               "an expected count below 5 are pooled into one bin. A non-significant pair with "
-               "power below 0.8 is inconclusive_low_shots.")
+               "single discovery: a lower bound for detecting one wrong backend. Shots/backend for "
+               "power is the shot count at which the power model reaches 0.8, times 1.1 and rounded up "
+               "to two significant figures (recommended_shots_per_backend); Lower bound is true when "
+               "outcomes not yet seen can raise it. Outcomes with an expected count below 5 are pooled "
+               "into one bin of rare outcomes (Pooled outcomes, when it holds two or more); with two or "
+               "more common outcomes the bin stays its own column when its expected count is at least 1 "
+               "and is left out of the table below 1 (Untested outcomes). Method: asymptotic (chi-square "
+               "distribution); exact_conditional (2 x 2 table with expected counts below 5: p-values from "
+               "the hypergeometric distribution of tables with the same margins); degenerate (both "
+               "backends returned the same single outcome, so there is nothing to test and p = 1); "
+               "not_tested (one column after pooling). A non-significant pair with power below 0.8 is "
+               "inconclusive_low_shots.")
     return headers, rows, "Shot-noise statistical test", caption
 
 
