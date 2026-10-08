@@ -82,3 +82,32 @@ def test_exact_dumps_keeps_every_angle_and_restores_qiskit():
     back = qasm2.loads(exact_qasm2_dumps(circuit))
     assert [float(i.operation.params[0]) for i in back.data] == values
     assert "rz(0) q[0];" in qasm2.dumps(circuit)
+
+
+def test_keyword_and_builtin_names_are_ordinary_parameter_names():
+    import pytest
+    from qrosetta_commons.qasm_expressions import ParameterExpressionError, evaluate_constant_expression as ev
+    env = {"lambda": 0.3, "in": 2.0, "None": 1.0, "True": 4.0, "sin": 0.5, "pi": 7.0}
+    assert ev("lambda*in - None + True", env) == 0.3 * 2.0 - 1.0 + 4.0
+    assert ev("sin(sin)", env) == math.sin(0.5)
+    assert ev("pi", env) == 7.0 and ev("pi") == math.pi
+    for text in ["lambda", "None", "x"]:
+        with pytest.raises(ParameterExpressionError, match="only numbers, pi"):
+            ev(text)
+
+
+def test_expression_grammar_matches_openqasm_precedence():
+    import pytest
+    from qrosetta_commons.qasm_expressions import ParameterExpressionError, evaluate_constant_expression as ev
+    assert ev("-2^2") == -4.0 and ev("2^-1") == 0.5 and ev("2^3^2") == 512.0
+    assert ev("1 - 2 - 3") == -4.0 and ev("8/2/2") == 2.0 and ev("2*-3") == -6.0
+    assert ev(".5 + 5. + 2.5E+0 + 1e-3") == 8.001
+    for text, message in [("2**3", "only OpenQASM 2.0 numbers"), ("0x1", "only OpenQASM 2.0 numbers"),
+                          ("1j", "only OpenQASM 2.0 numbers"), ("1_0", "only OpenQASM 2.0 numbers"),
+                          ("01", "only OpenQASM 2.0 numbers"), ("1/0", "division by zero"),
+                          ("(-8)^(1/3)", "not a real number"), ("1e400", "not finite"),
+                          ("10^400", "too large"), ("sqrt(-1)", "math domain error"),
+                          ("(" * 500 + "1" + ")" * 500, "nested too deeply"), ("", "only numbers"),
+                          ("1 2", "only numbers"), ("abs(1)", "only numbers"), ("1 % 2", "only numbers")]:
+        with pytest.raises(ParameterExpressionError, match=message):
+            ev(text)

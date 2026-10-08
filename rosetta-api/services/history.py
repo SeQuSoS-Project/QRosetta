@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 import db.models as models
 from qrosetta_commons.helpers import get_logger
+from schemas.benchmark import printable_name
 from schemas.timestamps import utc_iso
 from services.share_links import delete_links
 from services.storage import delete_run_reports, fetch_run_report, save_run_report
@@ -110,7 +111,7 @@ def get_run_report_with_metadata(db: Session, user_id: int, run_id: str) -> dict
     report = fetch_run_report(run.s3_object_key)
     if not isinstance(report, dict):
         return report
-    return {**report, "run_id": run.id, "run_name": run.run_name,
+    return {**report, "run_id": run.id, "run_name": printable_name(run.run_name, run.id[:8]),
             "created_at": utc_iso(run.created_at) if run.created_at else None}
 
 

@@ -565,9 +565,30 @@ def _name_cnx_by_size(emitted: str):
     return _PYTKET_CNX_RE.sub(rename, emitted), sorted(set(renamed))
 
 
+_SPACE_BEFORE_INDEX_RE = re.compile(r"(\w)\s+\[")
+_SPACE_IN_INDEX_RE = re.compile(r"\[\s*(\d+)\s*\]")
+
+
+def normalise_index_spacing(qasm: str):
+    """Remove the spaces between a register name and its index and inside the brackets
+    (``q [ 0 ]`` -> ``q[0]``), which pytket's parser does not accept. Returns ``(qasm, note)``;
+    ``note`` is None and the text unchanged when there are none. Otherwise comments are
+    removed."""
+    code = strip_qasm_comments(qasm)
+    text = _SPACE_IN_INDEX_RE.sub(r"[\1]", _SPACE_BEFORE_INDEX_RE.sub(r"\1[", code))
+    if text == code:
+        return qasm, None
+    return text, ("API: removed spaces between register names and their indices "
+                  "('q [ 0 ]' -> 'q[0]'), which pytket's parser does not accept; comments removed")
+
+
 def _preprocessed_base(qasm: str):
-    """Register merge, '^' parameter evaluation and the pytket round-trip, with notes."""
+    """Index spacing, register merge, '^' parameter evaluation and the pytket round-trip,
+    with notes."""
     notes = []
+    qasm, note = normalise_index_spacing(qasm)
+    if note:
+        notes.append(note)
     text, note = flatten_qregs(qasm)
     if note:
         notes.append(note)

@@ -13,7 +13,9 @@ from services.circuit_resolver import (
     statement_parameters,
     strip_terminal_measurements,
 )
-from services.qasm_structure import HEADER_MESSAGE, check_ascii, check_structure
+from services.qasm_structure import (
+    HEADER_MESSAGE, check_ascii, check_block_comments, check_structure, definition_line,
+)
 from services.reserved_gate_names import reserved_gate_reason
 
 _VERSION_RE = re.compile(r"^\s*OPENQASM\s+([^;\s]+)\s*;", re.MULTILINE)
@@ -181,7 +183,11 @@ def check_gate_names(qasm: str, statements: list = None) -> None:
             continue
         reason = reserved_gate_reason(m.group(1))
         if reason:
-            _bad_request(f"gate name '{m.group(1)}' is {reason}; rename the gate")
+            line = definition_line(qasm, m.group(1))
+            where = f"Line {line}: " if line else ""
+            _bad_request(f"{where}gate name '{m.group(1)}' is {reason}. A name any backend's "
+                         f"parser reserves is refused whichever backends are selected, so that "
+                         f"every backend receives the same circuit; rename the gate.")
 
 
 def check_parameter_expressions(qasm: str) -> None:
@@ -321,8 +327,9 @@ def expanded_counts(qasm: str, statements: list = None) -> tuple:
 def validate_request(qasm: str, mode: str = "statevector", bypass_limits: bool = False,
                      apply_preprocessing: bool = True, check_reserved_names: bool = True):
     """Raise HTTPException for an oversized, too-complex, malformed, qubit-less or too-wide
-    circuit, a gate definition under a reserved name (``check_reserved_names``; off for the
-    bundled benchmark circuits, whose definitions carry the built-in semantics), or (with
+    circuit, a gate definition under a reserved name or a '/* */' comment
+    (``check_reserved_names``; off for the bundled benchmark circuits, whose definitions carry
+    the built-in semantics), or (with
     ``apply_preprocessing``) a '^' parameter expression the API cannot evaluate.
 
     ``bypass_limits`` skips the size and gate-count checks in local mode only. Gate
@@ -345,6 +352,8 @@ def validate_request(qasm: str, mode: str = "statevector", bypass_limits: bool =
                         f"and gate definitions are not counted)."),
             )
 
+    if check_reserved_names:
+        check_block_comments(qasm)
     check_ascii(qasm)
     check_qasm_syntax(qasm)
     check_structure(qasm)

@@ -2,7 +2,6 @@
 builds a circuit (a parameter within TKET_PARAMETER_EPS half-turns of a multiple of 1/4
 half-turn, i.e. of pi/4, is set to that multiple; pytket 1.33)."""
 
-import ast
 import math
 import re
 
@@ -17,44 +16,137 @@ class ParameterExpressionError(ValueError):
 
 _QASM_FUNCTIONS = {"sin": math.sin, "cos": math.cos, "tan": math.tan, "exp": math.exp,
                    "ln": math.log, "sqrt": math.sqrt}
-_BINARY_OPS = {ast.Add: lambda a, b: a + b, ast.Sub: lambda a, b: a - b,
-               ast.Mult: lambda a, b: a * b, ast.Div: lambda a, b: a / b,
-               ast.Pow: lambda a, b: a ** b}
-_NON_QASM_NUMBER_RE = re.compile(r"\b0[xXoObB]|\d_|_\d|\d[jJ]\b")
+_ALLOWED = ("only numbers, pi, + - * / ^, unary minus and sin/cos/tan/exp/ln/sqrt are allowed")
+_NUMBERS_ONLY = ("only OpenQASM 2.0 numbers (decimal, optional exponent) and '^' for powers "
+                 "are allowed")
+_TOKEN_RE = re.compile(r"\s*(?:(?P<number>(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?)"
+                       r"|(?P<name>[A-Za-z_]\w*)|(?P<op>[-+*/^()]))")
+_MAX_DEPTH = 200
 
 
-def _eval_node(node, env=None):
-    if isinstance(node, ast.Expression):
-        return _eval_node(node.body, env)
-    if isinstance(node, ast.Name) and env and node.id in env:
-        return env[node.id]
-    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) \
-            and not isinstance(node.value, bool):
-        return float(node.value)
-    if isinstance(node, ast.Name) and node.id == "pi":
-        return math.pi
-    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
-        value = _eval_node(node.operand, env)
-        return -value if isinstance(node.op, ast.USub) else value
-    if isinstance(node, ast.BinOp) and type(node.op) in _BINARY_OPS:
-        return _BINARY_OPS[type(node.op)](_eval_node(node.left, env), _eval_node(node.right, env))
-    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-            and node.func.id in _QASM_FUNCTIONS and len(node.args) == 1 and not node.keywords):
-        return _QASM_FUNCTIONS[node.func.id](_eval_node(node.args[0], env))
-    raise ParameterExpressionError("only numbers, pi, + - * / ^, unary minus and "
-                                   "sin/cos/tan/exp/ln/sqrt are allowed")
+def _tokens(text: str) -> list:
+    """[(kind, text)] of ``text``; raises ParameterExpressionError for any other character,
+    a number run into a letter or digit (``0x1``, ``1j``, ``1_0``) or ``**``."""
+    tokens, pos, end = [], 0, len(text.rstrip())
+    while pos < end:
+        m = _TOKEN_RE.match(text, pos)
+        if not m:
+            raise ParameterExpressionError(_ALLOWED)
+        pos = m.end()
+        kind = m.lastgroup
+        value = m.group(kind)
+        if kind == "number":
+            if pos < len(text) and (text[pos].isalnum() or text[pos] == "_"):
+                raise ParameterExpressionError(_NUMBERS_ONLY)
+            if re.fullmatch(r"0+[1-9]\d*", value):
+                raise ParameterExpressionError(_NUMBERS_ONLY)
+        if kind == "op" and value == "*" and tokens and tokens[-1] == ("op", "*"):
+            raise ParameterExpressionError(_NUMBERS_ONLY)
+        tokens.append((kind, value))
+    return tokens
+
+
+class _Parser:
+    """Recursive descent over the OpenQASM 2.0 expression grammar: + - lowest, then * /,
+    then unary minus, then right-associative ^ (so -2^2 = -4 and 2^-1 = 0.5)."""
+
+    def __init__(self, tokens, env):
+        self.tokens, self.pos, self.env, self.depth = tokens, 0, env or {}, 0
+
+    def peek(self):
+        return self.tokens[self.pos] if self.pos < len(self.tokens) else (None, None)
+
+    def take(self, value=None):
+        token = self.peek()
+        if token[0] is None or (value is not None and token[1] != value):
+            raise ParameterExpressionError(_ALLOWED)
+        self.pos += 1
+        return token
+
+    def expression(self):
+        self.depth += 1
+        if self.depth > _MAX_DEPTH:
+            raise ParameterExpressionError("the expression is nested too deeply")
+        value = self.term()
+        while self.peek() in (("op", "+"), ("op", "-")):
+            op = self.take()[1]
+            right = self.term()
+            value = value + right if op == "+" else value - right
+        self.depth -= 1
+        return value
+
+    def term(self):
+        value = self.unary()
+        while self.peek() in (("op", "*"), ("op", "/")):
+            op = self.take()[1]
+            right = self.unary()
+            if op == "*":
+                value = value * right
+            elif right == 0:
+                raise ParameterExpressionError("division by zero")
+            else:
+                value = value / right
+        return value
+
+    def unary(self):
+        if self.peek() in (("op", "-"), ("op", "+")):
+            op = self.take()[1]
+            self.depth += 1
+            if self.depth > _MAX_DEPTH:
+                raise ParameterExpressionError("the expression is nested too deeply")
+            value = self.unary()
+            self.depth -= 1
+            return -value if op == "-" else value
+        return self.power()
+
+    def power(self):
+        base = self.atom()
+        if self.peek() != ("op", "^"):
+            return base
+        self.take()
+        self.depth += 1
+        if self.depth > _MAX_DEPTH:
+            raise ParameterExpressionError("the expression is nested too deeply")
+        exponent = self.unary()
+        self.depth -= 1
+        value = base ** exponent
+        if isinstance(value, complex):
+            raise ParameterExpressionError("the value is not a real number")
+        return value
+
+    def atom(self):
+        kind, text = self.take()
+        if kind == "number":
+            return float(text)
+        if kind == "op" and text == "(":
+            value = self.expression()
+            self.take(")")
+            return value
+        if kind == "name":
+            if text in _QASM_FUNCTIONS and self.peek() == ("op", "("):
+                self.take("(")
+                argument = self.expression()
+                self.take(")")
+                return _QASM_FUNCTIONS[text](argument)
+            if text in self.env:
+                return float(self.env[text])
+            if text == "pi":
+                return math.pi
+        raise ParameterExpressionError(_ALLOWED)
 
 
 def evaluate_constant_expression(text: str, env: dict = None) -> float:
     """Value of an OpenQASM 2.0 constant expression (numbers, pi, + - * / ^, unary minus,
-    sin cos tan exp ln sqrt), computed in floating point. Raises
+    sin cos tan exp ln sqrt), computed in floating point; names in ``env`` (gate parameters,
+    any identifier, ``lambda`` included) take their values from it. Raises
     ParameterExpressionError for anything else or a non-finite value."""
-    if "**" in text or _NON_QASM_NUMBER_RE.search(text):
-        raise ParameterExpressionError(
-            "only OpenQASM 2.0 numbers (decimal, optional exponent) and '^' for powers are allowed")
+    if "**" in text:
+        raise ParameterExpressionError(_NUMBERS_ONLY)
     try:
-        tree = ast.parse(text.replace("^", "**").strip(), mode="eval")
-        value = _eval_node(tree, env)
+        parser = _Parser(_tokens(text), env)
+        value = parser.expression()
+        if parser.pos != len(parser.tokens):
+            raise ParameterExpressionError(_ALLOWED)
     except ParameterExpressionError:
         raise
     except RecursionError:
@@ -63,11 +155,13 @@ def evaluate_constant_expression(text: str, env: dict = None) -> float:
         raise ParameterExpressionError("the value is too large")
     except ZeroDivisionError:
         raise ParameterExpressionError("division by zero")
-    except (SyntaxError, ValueError) as exc:
+    except (TypeError, ValueError) as exc:
         raise ParameterExpressionError(str(exc) or type(exc).__name__)
     if not math.isfinite(value):
         raise ParameterExpressionError("the value is not finite")
     return value
+
+
 
 
 _SKIPPED = ("gate", "opaque", "qreg", "creg", "OPENQASM", "include", "measure", "barrier", "reset")

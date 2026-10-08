@@ -1,13 +1,13 @@
 # Pydantic request/response models for the read-only share-link endpoints.
 
-from typing import Annotated, Optional
+from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
-from schemas.benchmark import Label
+from schemas.benchmark import label_type
 from schemas.timestamps import UtcDatetime
 
-ShareLabel = Annotated[Label, Field(max_length=100)]
+ShareLabel = label_type(100)
 from services.share_links import DEFAULT_EXPIRY_DAYS, MAX_EXPIRY_DAYS, MIN_EXPIRY_DAYS
 
 

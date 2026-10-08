@@ -1,5 +1,7 @@
 """Pydantic request and response schemas for the benchmark endpoints."""
 
+import unicodedata
+
 from pydantic import (
     BaseModel, BeforeValidator, ConfigDict, Field, PlainValidator, StrictBool, StrictInt,
     WithJsonSchema, field_validator, model_validator,
@@ -54,6 +56,7 @@ _REFUSED_IN_NAMES = (
 _INVISIBLE_ALLOWED = (
     (0x200C, 0x200D), (0xFE00, 0xFE0F), (0xE0020, 0xE007F), (0xE0100, 0xE01EF),
 )
+_BLANK_SYMBOLS = ((0x2800, 0x2800), (0xFFFC, 0xFFFC))
 
 
 def _in_ranges(cp: int, ranges) -> bool:
@@ -83,8 +86,22 @@ def has_control_characters(value: str) -> bool:
 
 def is_blank_name(value: str) -> bool:
     """True when ``value`` has no visible character: only whitespace, joiners, variation
-    selectors or tag characters. Mirrors static/js/request_limits.js isBlankName."""
-    return all(ch.isspace() or _in_ranges(ord(ch), _INVISIBLE_ALLOWED) for ch in value)
+    selectors, tag characters, combining marks (categories Mn, Me), format characters (Cf)
+    or the blank symbols in ``_BLANK_SYMBOLS``. Mirrors static/js/request_limits.js
+    isBlankName."""
+    return all(ch.isspace() or _in_ranges(ord(ch), _INVISIBLE_ALLOWED + _BLANK_SYMBOLS)
+               or unicodedata.category(ch) in ("Mn", "Me", "Cf") for ch in value)
+
+
+def printable_name(value, fallback: str) -> str:
+    """``value`` with the characters ``first_control_character`` refuses removed, stripped and
+    cut to MAX_LABEL_LENGTH; ``fallback`` when nothing visible is left or ``value`` is not
+    text. For names stored before the rule applied to them."""
+    if not isinstance(value, str):
+        return fallback
+    clean = "".join(ch for ch in value if not _in_ranges(ord(ch), _REFUSED_IN_NAMES)).strip()
+    clean = clean[:settings.MAX_LABEL_LENGTH].strip()
+    return fallback if is_blank_name(clean) else clean
 
 
 def _printable_text(value):
@@ -99,13 +116,23 @@ def _printable_text(value):
 
 
 def _visible_text(value):
+    value = _printable_text(value)
     if isinstance(value, str) and is_blank_name(value):
         raise ValueError("must contain at least one visible character")
     return value
 
 
-Label = Annotated[str, BeforeValidator(_printable_text), Field(max_length=settings.MAX_LABEL_LENGTH)]
-VisibleLabel = Annotated[Label, BeforeValidator(_visible_text)]
+def label_type(max_length: int = settings.MAX_LABEL_LENGTH, visible: bool = False):
+    """A name field type: printable (``_printable_text``), at most ``max_length`` characters,
+    and with ``visible`` at least one visible character. One validator and one Field, never
+    nested in another Annotated: pydantic 2.9 drops the inner validators of a nested
+    Annotated field that has a Field default."""
+    check = _visible_text if visible else _printable_text
+    return Annotated[str, BeforeValidator(check), Field(max_length=max_length)]
+
+
+Label = label_type()
+VisibleLabel = label_type(visible=True)
 TimingRepeats = Annotated[Int, Field(ge=1, le=settings.MAX_TIMING_REPEATS)]
 RunnerPhases = Dict[str, Int]
 ExecutionTarget = Literal["local", "kubernetes"]
@@ -390,6 +417,7 @@ class ExperimentPayload(_Request):
 class VisualizerResponse(BaseModel):
     """Response body carrying a URL to an interactive circuit visualization."""
     url: str = Field(..., description="URL of the rendered visualization.")
+    notes: List[str] = Field(default_factory=list, description="What the drawing shows differently from the text: registers merged into one, gates drawn as other Quirk gates with the same matrix up to a global phase, barriers left out, parameters tket moves.")
 
 class JobStatusResponse(BaseModel):
     """Response body for GET /jobs/{job_id}, and the initial response to every job-creating

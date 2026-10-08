@@ -197,8 +197,11 @@ def test_crate_file_name_is_utc_and_names_the_run():
     assert r == ["rosetta-export-2026-10-07-2105UTC-cafe-ghz-statevector.zip", "rosetta-export-2026-10-07-2105UTC.zip"]
 
 
-BLANK_NAMES = [("   ", True), ("", True), ("‍‌", True), ("️ \t", True),
-               ("a", False), (" \U0001F642 ", False)]
+BLANK_NAMES = [("   ", True), ("", True), ("\u200d\u200c", True), ("\ufe0f \t", True),
+               ("\u2800", True), ("\u034f", True), ("\U0001D173\U0001D17A", True),
+               ("\u17b4\u17b5", True), ("\u180b\u180c\u180d\u180f", True), ("\u0301", True),
+               ("\ufffc", True), (" \u0301\u2800 ", True),
+               ("a", False), (" \U0001F642 ", False), ("e\u0301", False), ("\u2801", False)]
 
 
 @requires_node

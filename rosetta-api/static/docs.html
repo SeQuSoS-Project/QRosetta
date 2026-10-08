@@ -213,10 +213,22 @@
                     qubits, such as <code>cx q[0];</code> or <code>rx q[0];</code>; a call that names one
                     qubit twice, such as <code>cx q[0],q[0];</code> or <code>cx q,q[0];</code>; a broadcast
                     over registers of different sizes, such as <code>cx a,b;</code> with <code>a[2]</code>
-                    and <code>b[3]</code>; and a call of an <code>opaque</code> gate, at top level or inside
-                    a gate definition. An opaque gate has no definition, so no simulator can apply it;
-                    declare the gate with <code>gate</code> and a body instead. An <code>opaque</code>
-                    declaration that is never called is accepted (the pytket round-trip drops it).
+                    and <code>b[3]</code>; a <code>measure</code> whose two sides differ in size, such as
+                    <code>measure a[0] -&gt; c;</code> with <code>c[2]</code>; a register name that does
+                    not start with a lowercase letter, such as <code>qreg Q[1];</code> (OpenQASM 2.0
+                    identifiers start with a lowercase letter); a gate or register used before its
+                    declaration; a name in a parameter inside a gate definition that is not one of that
+                    gate's parameters, such as <code>gate g a { rz(t) a; }</code>; a
+                    <code>/* ... */</code> comment, which OpenQASM 2.0 does not have (write
+                    <code>//</code> comments); and a top-level call that reaches an <code>opaque</code>
+                    gate, directly or through gate definitions. An opaque gate has no definition, so no
+                    simulator can apply it; declare the gate with <code>gate</code> and a body instead. An
+                    <code>opaque</code> declaration, or a definition that uses one, is accepted while no
+                    top-level call reaches it (the pytket round-trip drops it). Spaces between a register
+                    and its index (<code>q [0]</code>, <code>q[ 0 ]</code>) are legal; with SDK
+                    preprocessing on the API removes them before the pytket round-trip, which does not
+                    accept them, and lists that as an <code>API:</code> entry. Gate parameters may have any
+                    name, including <code>lambda</code>, as in <code>qelib1.inc</code>.
                 </p>
                 <p>
                     In statevector mode the API removes measurements at the end of the circuit before
@@ -429,7 +441,10 @@
                         <code>iswap</code>, <code>eswap</code>, <code>phasediswap</code>,
                         <code>xxphase3</code>, <code>tk2</code>) whatever the definition says. Every
                         pytket-parsed backend would then run a different circuit from the one written and
-                        agree with the others on it. Rename the gate.</li>
+                        agree with the others on it. Names that the Qiskit, myQLM, Qibo or quimb parsers
+                        treat as their own built-in gates are rejected the same way. The check applies
+                        whichever backends are selected, so that every backend receives the same circuit,
+                        and the message gives the line of the definition. Rename the gate.</li>
                 </ul>
                 <h3>Quirk visualizer</h3>
                 <p>
@@ -438,8 +453,17 @@
                     web page, in a frame that covers the whole window, with <strong>Open in Quirk</strong>
                     (the same page in a new tab) and <strong>Close</strong> (or Escape) above it. While the
                     keyboard is inside the Quirk frame, Quirk receives Escape; Tab out of the frame or use Close. Quirk's
-                    page is wider than a phone or tablet screen and scrolls sideways inside the frame. The
-                    conversion covers the gates Quirk has; a circuit with other gates shows an error instead.
+                    page is wider than a phone or tablet screen and scrolls sideways inside the frame.
+                    The circuit is checked as for a run, its registers are merged into one in declaration
+                    order, and pytket parses it. Gates Quirk has a symbol for keep it (H, X, Y, Z, S and T
+                    as Z^½ and Z^¼ and their inverses, sx as X^½, rx/ry/rz/u1/p as X^t/Y^t/Z^t with the
+                    angle in half-turns, cx/cy/cz/ch/ccx/c3x/c4x as controls, swap and cswap); every other
+                    gate is drawn as cx and single-qubit Z^t and Y^t rotations with the same matrix up to a
+                    global phase, and the response's <code>notes</code> name those gates. Final
+                    measurements are drawn in a last column; barriers are not drawn. The visualizer opens
+                    at most 16 qubits (Quirk's own limit) and 1,000 columns, and refuses
+                    <code>reset</code>, <code>if</code> and a gate after a measurement of the same qubit,
+                    naming the reason.
                 </p>
             </section>
 
@@ -1626,7 +1650,10 @@
                     interlinear annotation marks; the message names the character and its position. The
                     browser and the server check the same fixed list of characters, so a name the page
                     accepts is accepted when the run is saved. A saved run or circuit name needs at least one
-                    visible character.
+                    visible character: spaces, joiners, variation selectors, combining marks on their own
+                    (such as U+0301), format characters, the braille blank U+2800 and the object
+                    replacement character U+FFFC do not count. A name saved before these checks covered it
+                    is shown and exported with the refused characters removed.
                     A saved run opened from
                     History has the same heading as when it ran, with its mode and shot count. A run that was
                     uploaded (<code>POST /history/runs</code>) instead of saved from this server's job is

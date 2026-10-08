@@ -26,16 +26,18 @@ def _detail(qasm, **kw):
 
 @pytest.mark.parametrize("mode", ["statevector", "measured"])
 def test_sleep_is_rejected_with_the_parser_named(mode):
-    assert _detail(SLEEP, mode=mode) == (
-        "gate name 'sleep' is reserved by the pytket parser (treated as a barrier); rename the gate")
+    detail = _detail(SLEEP, mode=mode)
+    assert "gate name 'sleep' is reserved by the pytket parser (treated as a barrier)." in detail
+    assert detail.startswith("Line ") and detail.endswith("whichever backends are selected, so "
+                                                          "that every backend receives the same circuit; rename the gate.")
 
 
 @pytest.mark.parametrize("qasm,name", [(ORDER2, "order2"), (YYPHASE, "yyphase"), (FSIM, "fsim"),
                                        (ISWAP, "iswap")])
 def test_red_team_repros_are_rejected(qasm, name):
     detail = _detail(qasm, mode="measured", apply_preprocessing=False)
-    assert detail.startswith(f"gate name '{name}' is reserved by the")
-    assert detail.endswith("rename the gate")
+    assert f": gate name '{name}' is reserved by the" in detail
+    assert detail.endswith("rename the gate.")
 
 
 @pytest.mark.parametrize("name", ["group20", "tk2", "h", "cu", "rcccx", "pH", "toffoli", "GPI2",

@@ -224,7 +224,7 @@ def test_unknown_fields_and_wrong_types_are_rejected(client, path, body):
     ("OPENQASM 3;\nqubit[30] q;\n", "OpenQASM 3 is not supported"),
     ('OPENQASM 3.0;\ninclude "stdgates.inc";\nqubit[2] q;\nh q[0];\n', "OpenQASM 3 is not supported"),
     (H + "qreg q[2]\nh q[0];\n", "Syntax error on line 3"),
-    (H + "qreg q[3];\ncreg c[2];\nh q;\nmeasure q -> c;\n", "measure operands differ in size"),
+    (H + "qreg q[3];\ncreg c[2];\nh q;\nmeasure q -> c;\n", "Line 6: measure q -> c has operands of different sizes"),
     (H + "qreg q[2];\ncreg c[2];\nmeasure q[0] -> c[7];\n", "outside the declared register"),
 ])
 @pytest.mark.parametrize("path", ["/compare", "/compare_measured"])

@@ -65,7 +65,7 @@ def test_validate_request_rejects_circuits_without_qubits(qasm):
 def test_gate_count_ignores_semicolons_in_comments(monkeypatch):
     import config
     monkeypatch.setattr(config.settings, "MAX_QASM_GATES", 5)
-    qasm = "OPENQASM 2.0;\ninclude \"qelib1.inc\";\nqreg q[1];\n// ;;;;;;;;;;\n/* ;;;;;; */\nh q[0];\n"
+    qasm = "OPENQASM 2.0;\ninclude \"qelib1.inc\";\nqreg q[1];\n// ;;;;;;;;;;\n// /* ;;;;;; */\nh q[0];\n"
     validate_request(qasm, mode="statevector")
 
 
