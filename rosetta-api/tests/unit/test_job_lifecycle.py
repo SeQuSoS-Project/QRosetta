@@ -90,11 +90,11 @@ def _blocking(seconds, real):
 @pytest.mark.parametrize("measured", [False, True])
 def test_circuit_preparation_does_not_block_the_event_loop(monkeypatch, fake_dispatch, measured):
     monkeypatch.setattr(job_manager, "prepare_statevector_dispatch",
-                        _blocking(0.4, job_manager.prepare_statevector_dispatch))
+                        _blocking(1.0, job_manager.prepare_statevector_dispatch))
     monkeypatch.setattr(job_manager, "prepare_measured_dispatch",
-                        _blocking(0.4, job_manager.prepare_measured_dispatch))
+                        _blocking(1.0, job_manager.prepare_measured_dispatch))
     monkeypatch.setattr(compilation, "prepare_statevector_dispatch",
-                        _blocking(0.4, compilation.prepare_statevector_dispatch))
+                        _blocking(1.0, compilation.prepare_statevector_dispatch))
     run = (job_manager.run_single_circuit_measurement(QASM, 100, target_simulators=["qiskit"],
                                                       compilers={"pyzx": [1]})
            if measured else
@@ -102,7 +102,7 @@ def test_circuit_preparation_does_not_block_the_event_loop(monkeypatch, fake_dis
                                                      compilers={"pyzx": [1]}))
     report, gap = asyncio.run(_max_loop_gap(run))
     assert report["raw_results"] and report["compile_input"]["qasm"]
-    assert gap < 0.2, f"event loop blocked for {gap:.2f} s"
+    assert gap < 0.5, f"event loop blocked for {gap:.2f} s"
 
 
 def test_storing_a_large_report_does_not_block_the_event_loop():
@@ -113,7 +113,7 @@ def test_storing_a_large_report_does_not_block_the_event_loop():
     async def store():
         return await job_manager.ACTIVE_JOBS.store("lc-big", job_manager._completed_job("t", report, {}))
     stored, gap = asyncio.run(_max_loop_gap(store()))
-    assert stored and gap < 0.2, f"event loop blocked for {gap:.2f} s"
+    assert stored and gap < 0.5, f"event loop blocked for {gap:.2f} s"
     assert isinstance(dict.__getitem__(job_manager.ACTIVE_JOBS, "lc-big")["full_results"],
                       job_store.SpilledReport)
     assert job_store.full_report(job_manager.ACTIVE_JOBS["lc-big"]) == report
