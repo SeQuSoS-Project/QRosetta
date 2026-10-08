@@ -1127,7 +1127,8 @@
                     "all N compiles failed" (a playlist: every circuit) and keeps its report. A compile the adapter refuses (an input it cannot compile correctly,
                     such as a <code>cu3</code> Cirq would import wrongly) or whose output fails the adapter's
                     check has <code>refusal</code> (the reason) and <code>refusal_kind</code>
-                    (<code>input</code> or <code>output_check</code>); the Summary lists every compile with
+                    (<code>input</code> or <code>output_check</code>), also as columns of
+                    <code>tables/compiled_circuits.csv</code> in a crate (empty for other errors); the Summary lists every compile with
                     its gate counts or reason, and a share link shows refusal reasons but no other error
                     text.
                 </p>

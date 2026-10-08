@@ -1181,7 +1181,9 @@ def _add_compiled_metrics_table(ctx: ExportContext, files: dict, descriptions: d
              for t in tasks for f in _compiled_files(t) if f["record"] is not None}
     files[COMPILED_METRICS_PATH] = compiled_metrics_csv(reports, paths).encode()
     descriptions[COMPILED_METRICS_PATH] = (
-        "One row per compile-only record: status, gate_count (top-level statements), "
+        "One row per compile-only record: status, refusal_kind and refusal (set when the "
+        "adapter refused the input or rejected its output, empty for other errors), "
+        "gate_count (top-level statements), "
         "multi_qubit_gate_count, circuit_depth, gate_counts per gate name and the output file. "
         "Compilers write different gate sets, so gate_count is not comparable across them.")
 

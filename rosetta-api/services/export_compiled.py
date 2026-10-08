@@ -186,13 +186,17 @@ def compile_provenance(reports_by_task: list) -> list:
 
 
 COMPILED_METRICS_PATH = "tables/compiled_circuits.csv"
-_METRIC_FIELDS = ("task", "compiler", "compiler_id", "optimization_level", "dispatch_status",
-                  "gate_count", "multi_qubit_gate_count", "circuit_depth", "gate_counts", "file")
+_RECORD_FIELDS = ("compiler", "compiler_id", "optimization_level", "dispatch_status",
+                  "refusal_kind", "refusal", "gate_count", "multi_qubit_gate_count",
+                  "circuit_depth")
+_METRIC_FIELDS = ("task",) + _RECORD_FIELDS + ("gate_counts", "file")
 
 
 def compiled_metrics_csv(reports_by_task: list, file_paths: dict) -> str:
-    """One CSV row per compile record; ``gate_counts`` as sorted-key JSON, ``file`` the
-    crate path of its output (``file_paths[(task, compiler key)]``), empty when it has none."""
+    """One CSV row per compile record; ``refusal_kind`` (input, output_check) and ``refusal`` are
+    set for a compile the adapter refused or whose output failed its check and empty for
+    other errors; ``gate_counts`` as sorted-key JSON, ``file`` the crate path of its output
+    (``file_paths[(task, compiler key)]``), empty when it has none."""
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=_METRIC_FIELDS, lineterminator="\n")
     writer.writeheader()
@@ -201,7 +205,8 @@ def compiled_metrics_csv(reports_by_task: list, file_paths: dict) -> str:
             counts = record.get("gate_counts")
             writer.writerow({
                 "task": "" if task is None else task,
-                **{field: record.get(field, "") for field in _METRIC_FIELDS[1:8]},
+                **{field: "" if record.get(field) is None else record.get(field)
+                   for field in _RECORD_FIELDS},
                 "gate_counts": json.dumps(counts, sort_keys=True) if isinstance(counts, dict) else "",
                 "file": file_paths.get((task, record.get("compiler")), ""),
             })
