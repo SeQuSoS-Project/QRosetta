@@ -16,6 +16,7 @@ from qrosetta_commons.compile_service import (
     register_compiler_endpoint, run_compile_job, run_compiler_cli_main,
 )
 from qrosetta_commons.helpers import declare_sdk_packages, strip_qasm_comments, with_sdk_versions
+from qrosetta_commons.qelib1 import called_names
 from qrosetta_commons.qiskit_circuits import unitary_of
 
 declare_sdk_packages("cirq-core", "qiskit")
@@ -31,6 +32,10 @@ _LEVEL0_NOTE = ("cirq.optimize_for_target_gateset(circuit, gateset=cirq.CZTarget
                 "single- and two-qubit operations.")
 _LEVEL1_NOTE = ("then cirq.eject_phased_paulis, cirq.eject_z, cirq.drop_negligible_operations and "
                 "cirq.drop_empty_moments.")
+_MEASURE_NOTE = ("Final measurements set aside for the eject transformers and appended after them: "
+                 "cirq.eject_z and cirq.eject_phased_paulis would otherwise move Z rotations into the "
+                 "measurements, which keeps the counts but not the unitary.")
+MATRIX_IMPORTED_GATES = frozenset({"rc3x"})
 _ENCODE_NOTE = (f"Circuit.to_qasm(qubit_order=<declared qubits in register order>, precision="
                 f"{QASM_PRECISION}): the output as OpenQASM 2.0, one register q in declaration "
                 f"order; gates Cirq has no qelib1 name for are written as their u3/cx form.")
@@ -60,6 +65,30 @@ def _refuse_misimported_cu3(qasm: str) -> None:
                 f"control's |1> branch), so the circuit is not compiled")
 
 
+def _parse(qasm: str):
+    """Cirq's reading of the circuit; CompileRefused for a gate Cirq 1.7.0 imports as a matrix
+    on more than two qubits (its CZ target gate set leaves it undecomposed and its OpenQASM
+    writer cannot write it) or a circuit its parser rejects."""
+    matrix = sorted(called_names(strip_qasm_comments(qasm)) & MATRIX_IMPORTED_GATES)
+    if matrix:
+        raise CompileRefused(
+            f"cirq-core 1.7.0 imports {', '.join(matrix)} as a matrix gate on more than two qubits, "
+            f"which its CZ target gate set does not decompose and its OpenQASM 2.0 writer cannot write")
+    try:
+        return circuit_from_qasm(qasm)
+    except Exception as exc:
+        raise CompileRefused(f"cirq-core 1.7.0's OpenQASM 2.0 parser does not read this circuit ({exc})")
+
+
+def _split_final_measurements(circuit):
+    """(circuit without its measurements, the measurement operations) when every measurement
+    is terminal, else (circuit, [])."""
+    measures = [op for op in circuit.all_operations() if cirq.is_measurement(op)]
+    if not measures or not circuit.are_all_measurements_terminal():
+        return circuit, []
+    return cirq.Circuit(op for op in circuit.all_operations() if not cirq.is_measurement(op)), measures
+
+
 def _declared_qubits(qasm: str) -> list:
     return [cirq.NamedQubit(f"{name}_{i}") for name, size in _QREG.findall(strip_qasm_comments(qasm))
             for i in range(int(size))]
@@ -85,13 +114,17 @@ def _pipeline(cleanup: bool):
     def run(qasm: str):
         _refuse_misimported_cu3(qasm)
         qubits = _declared_qubits(qasm)
-        circuit = cirq.optimize_for_target_gateset(circuit_from_qasm(qasm), gateset=cirq.CZTargetGateset())
+        circuit = cirq.optimize_for_target_gateset(_parse(qasm), gateset=cirq.CZTargetGateset())
         notes = [_PARSE_NOTE, _LEVEL0_NOTE]
         if cleanup:
+            circuit, measures = _split_final_measurements(circuit)
             for transformer in (cirq.eject_phased_paulis, cirq.eject_z, cirq.drop_negligible_operations,
                                 cirq.drop_empty_moments):
                 circuit = transformer(circuit)
             notes.append(_LEVEL1_NOTE)
+            if measures:
+                circuit.append(measures)
+                notes.append(_MEASURE_NOTE)
         output = circuit.to_qasm(qubit_order=qubits, precision=QASM_PRECISION)
         return output, notes + [_ENCODE_NOTE, _check(qasm, output, len(qubits))]
     return run

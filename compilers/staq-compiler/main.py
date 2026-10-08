@@ -8,9 +8,11 @@ import tempfile
 
 import numpy as np
 from fastapi import FastAPI
-from qiskit import QuantumCircuit
 
-from qrosetta_commons.compile_errors import CompileRefused, OutputRejected
+from qrosetta_commons.compile_checks import (
+    process_infidelity, single_precision_angle_change, unitary_check_note,
+)
+from qrosetta_commons.compile_errors import CompileRefused
 from qrosetta_commons.compile_service import (
     declare_native_component, register_compiler_endpoint, run_compile_job, run_compiler_cli_main,
 )
@@ -19,7 +21,6 @@ from qrosetta_commons.helpers import (
     with_sdk_versions,
 )
 from qrosetta_commons.qelib1 import add_qelib1_definitions, qelib1_definitions
-from qrosetta_commons.qiskit_circuits import unitary_of
 
 declare_sdk_packages("qiskit")
 
@@ -32,7 +33,6 @@ declare_native_component(
     source_url=f"https://github.com/softwareQinc/staq/archive/refs/tags/v{STAQ_VERSION}.tar.gz",
     source_sha256=os.getenv("STAQ_SHA256", "not recorded"),
     compiler_flags=os.getenv("STAQ_CXXFLAGS", "not recorded"))
-CHECKED_UP_TO_QUBITS = 10
 MAX_PROCESS_INFIDELITY = 1e-8
 MAX_LITERAL_ROUNDING = 1e-6
 STAQ_GATES = frozenset({
@@ -51,20 +51,13 @@ _LEVEL_NOTES = {
 _BUILD_NOTE = (f"staq {STAQ_VERSION} built from the release source with USE_OPENQASM2_SPECS=false: "
                f"its gate library is the OpenQASM 2.0 qelib1 gates plus r and cswap, with Qiskit's "
                f"cu3 and rz definitions; no device mapping.")
-_PRECISION_NOTE = (f"staq 3.5 reads every real literal in single precision (std::stof in its "
-                   f"lexer), so angles in the output differ from the input from about the eighth "
-                   f"significant digit; literals it would change by more than "
-                   f"{MAX_LITERAL_ROUNDING:g} are refused before staq runs.")
 
 
-def process_infidelity(input_qasm: str, output_qasm: str) -> float:
-    """1 - |Tr(U_in^dagger U_out)| / 2^n, both unitaries read by Qiskit; 0 means equal up to
-    global phase."""
-    source = unitary_of(QuantumCircuit.from_qasm_str(input_qasm).remove_final_measurements(inplace=False))
-    output = unitary_of(QuantumCircuit.from_qasm_str(output_qasm).remove_final_measurements(inplace=False))
-    if source.dim != output.dim:
-        return 1.0
-    return max(0.0, 1.0 - abs(np.trace(source.data.conj().T @ output.data)) / source.dim[0])
+def _precision_note(qasm: str) -> str:
+    return (f"staq 3.5 reads every real literal in single precision (std::stof in its lexer) and "
+            f"evaluates the expression in double precision; literals it would change by more "
+            f"than {MAX_LITERAL_ROUNDING:g} are refused before staq runs. The largest change to a "
+            f"constant angle of this circuit is {single_precision_angle_change(qasm):.3g} rad.")
 
 
 def equivalent(input_qasm: str, output_qasm: str) -> bool:
@@ -126,21 +119,13 @@ def _pipeline(level: int):
         _refuse_single_precision_losses(qasm)
         given, added = _add_missing_qelib1_definitions(qasm)
         output = _staq(given, level)
-        n_qubits = get_num_qubits_from_qasm(qasm)
-        if n_qubits > CHECKED_UP_TO_QUBITS:
-            check = f"The output's unitary is not checked above {CHECKED_UP_TO_QUBITS} qubits."
-        else:
-            infidelity = process_infidelity(qasm, output)
-            if infidelity > MAX_PROCESS_INFIDELITY:
-                raise OutputRejected(f"staq's output has process infidelity {infidelity:.2g} to the input "
-                                 f"(more than {MAX_PROCESS_INFIDELITY:g}), so it is not reported")
-            check = (f"Checked with Qiskit: process infidelity to the input {infidelity:.2g} "
-                     f"(at most {MAX_PROCESS_INFIDELITY:g} accepted, for single-precision angles).")
+        check = unitary_check_note("staq", qasm, output, get_num_qubits_from_qasm(qasm),
+                                   MAX_PROCESS_INFIDELITY, "for single-precision angles")
         notes = [_BUILD_NOTE]
         if added:
             notes.append(f"staq's gate library lacks {', '.join(added)}; their definitions from "
                          f"Qiskit's qelib1.inc were added to the circuit given to staq.")
-        return output, notes + [_LEVEL_NOTES[level], _PRECISION_NOTE, check]
+        return output, notes + [_LEVEL_NOTES[level], _precision_note(qasm), check]
     return run
 
 
