@@ -74,6 +74,18 @@ def test_one_qubit_lsb_msb_pair_agrees_directly():
     assert rec["metrics"]["basis_source"] == "single_qubit"
 
 
+def test_cross_ordering_pair_with_a_global_phase_records_the_aligned_phase():
+    ghz = np.zeros(8, dtype=complex)
+    ghz[0] = ghz[7] = 2 ** -0.5
+    report = create_divergence_report([_res("qiskit", "lsb", ghz), _res("myqlm", "msb", -1j * ghz)])
+    rec = _pair(report, "qiskit", "myqlm")
+    assert rec["agreement"] == "agree_after_bit_reversal"
+    assert rec["transform_effect"]["global_phase_aligned"] is True
+    assert abs(abs(rec["metrics"]["label_aligned_relative_phase_rad"]) - np.pi / 2) < 1e-12
+    assert rec["metrics"]["label_aligned_relative_phase_rad"] == (
+        rec["transform_effect"]["relative_phase_after_transform_rad"])
+
+
 def test_undeclared_permutation_is_a_disagreement_group():
     rng = np.random.default_rng(3)
     v = rng.normal(size=8) + 1j * rng.normal(size=8)

@@ -13,7 +13,8 @@ from .classification import (
     _statevector_not_comparable_record,
 )
 from .counts import (
-    _best_counts_qubit_permutation_metrics, _bit_reversed_counts, _counts_distance_metrics,
+    _best_counts_qubit_permutation_metrics, _bit_reversed_counts, _counts_bit_length,
+    _counts_distance_metrics,
     _counts_invalid_reason, _counts_probability_vector, _counts_total,
 )
 from .statevector import (
@@ -348,6 +349,21 @@ def _statevector_label_aligned_basis(res_i, res_j, length):
     return "direct", "undeclared_qubit_ordering"
 
 
+def _counts_label_aligned_basis(counts_i, counts_j, res_i, res_j):
+    """(basis, basis_source) for a measured pair.
+
+    Keys of one classical bit: reversing a one-character key is the identity, so
+    ("direct", "single_bit") whatever the qubit count. Both orderings declared: the basis
+    they imply. Otherwise ("direct", "undeclared_qubit_ordering").
+    """
+    if _counts_bit_length(counts_i) == 1 and _counts_bit_length(counts_j) == 1:
+        return "direct", "single_bit"
+    if (res_i.get("qubit_ordering") in _DECLARED_ORDERS
+            and res_j.get("qubit_ordering") in _DECLARED_ORDERS):
+        return _label_aligned_basis(res_i, res_j), "declared_qubit_ordering"
+    return "direct", "undeclared_qubit_ordering"
+
+
 def _statevector_divergence_entry(record, is_cross_group):
     """divergences_found entry for a disagreeing pair ("Fidelity") or an agreeing pair with a
     global phase offset in the label-aligned basis ("Phase"); None otherwise."""
@@ -441,7 +457,7 @@ def _compare_counts_pair(res_i, res_j, is_cross_group, js_threshold, hellinger_t
         sim_i, _counts_total(counts_i), sim_j, _counts_total(counts_j), n_shots
     )
 
-    basis = _label_aligned_basis(res_i, res_j)
+    basis, basis_source = _counts_label_aligned_basis(counts_i, counts_j, res_i, res_j)
     record = _classify_counts_pair(
         res_i,
         res_j,
@@ -456,11 +472,13 @@ def _compare_counts_pair(res_i, res_j, is_cross_group, js_threshold, hellinger_t
         n_shots,
         shot_total_mismatch,
         label_aligned_basis=basis,
+        basis_source=basis_source,
     )
 
     counts_j_aligned = bit_reversed_counts_j if basis == "bit_reversal" else counts_j
     stat_block = _statistical_agreement_test(
-        counts_i, counts_j_aligned, basis, sim_i, sim_j, res_i=res_i, res_j=res_j
+        counts_i, counts_j_aligned, basis, sim_i, sim_j, res_i=res_i, res_j=res_j,
+        basis_source=basis_source,
     )
     record["metrics"]["statistical_test"] = stat_block
     record["metrics"]["marginal_test"] = marginal_block(

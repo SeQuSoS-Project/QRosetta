@@ -5,6 +5,8 @@ sampled from a shared seed may draw correlated samples, which the tests do not m
 test block records whether the pair shared a runner seed.
 """
 
+from typing import NamedTuple
+
 import numpy as np
 from scipy.stats import chi2 as _chi2_dist, chi2_contingency, ncx2
 from scipy.optimize import brentq
@@ -13,9 +15,10 @@ from .common import STAT_TEST_ALPHA, STAT_TEST_DELTA_TV, STAT_TEST_TARGET_POWER
 
 POWER_MODEL = (
     "min_cohens_w at alpha/(m*c_m) on the tested table (w = delta_tv_tested = delta_tv minus "
-    "the smaller of the two backends' probabilities in the pooled rare-outcome bin, the most "
-    "total variation pooling can hide; power is alpha/(m*c_m) when delta_tv_tested "
-    "<= 0; df = tested outcome bins - 1, at least 1; noncentrality 4*n_i*n_j/(n_i+n_j) * w^2, "
+    "the most total variation the tested table can hide: the smaller of the two backends' "
+    "probabilities in a pooled bin of two or more rare outcomes, or the larger of their "
+    "probabilities on rare outcomes left out of the table; power is alpha/(m*c_m) when "
+    "delta_tv_tested <= 0; df = tested outcome bins - 1, at least 1; noncentrality 4*n_i*n_j/(n_i+n_j) * w^2, "
     "which is (n_i+n_j) * w^2 for equal shots and is limited by the smaller sample; "
     "m = comparable pairs in the report, the family BY corrects over; c_m = sum_{i=1..m} 1/i). "
     "alpha/(m*c_m) is the threshold Benjamini-Yekutieli applies to a single discovery, so the "
@@ -79,23 +82,29 @@ def _power_at_shots(alpha, delta_tv, df, n_effective):
     return float(1 - ncx2.cdf(crit, df, n_effective * (delta_tv ** 2)))
 
 
-def _tested_gap(t_i, t_j, pooled_outcomes, delta_tv):
-    """(delta_tv minus the smaller pooled-bin probability, that probability) for a tested
-    table whose last column pools ``pooled_outcomes`` outcomes; a bin holding one outcome
-    hides nothing."""
-    if pooled_outcomes < 2 or len(t_i) == 0:
+def _tested_gap(table, delta_tv):
+    """(delta_tv minus the total variation the tested table cannot see, that amount).
+
+    Outcomes left out of the table hide up to the larger of the two backends' probabilities
+    on them; a pooled bin of two or more outcomes hides up to the smaller of the two
+    backends' probabilities in it; a bin holding one outcome hides nothing."""
+    if table.untested_outcomes:
+        share = float(max(table.untested_i / table.n_i, table.untested_j / table.n_j))
+    elif table.pooled_outcomes >= 2 and len(table.t_i):
+        share = float(min(table.t_i[-1] / table.t_i.sum(), table.t_j[-1] / table.t_j.sum()))
+    else:
         return float(delta_tv), 0.0
-    share = float(min(t_i[-1] / t_i.sum(), t_j[-1] / t_j.sum()))
     return float(delta_tv) - share, share
 
 
 def _power_on_pooled_table(alpha, delta_tv, p_i, p_j, shots):
     """Power at ``shots`` per backend for the table the observed proportions pool into."""
-    t_i, t_j, pooled, _ok = _pool_rare_outcomes(p_i * shots, p_j * shots)
-    gap, _share = _tested_gap(t_i, t_j, pooled, delta_tv)
+    table = _pool_rare_outcomes(p_i * shots, p_j * shots)
+    gap, _share = _tested_gap(table, delta_tv)
     if gap <= 0:
         return 0.0
-    return _power_at_shots(alpha, gap, max(len(t_i) - 1, 1), effective_total_shots(shots, shots))
+    return _power_at_shots(
+        alpha, gap, max(len(table.t_i) - 1, 1), effective_total_shots(shots, shots))
 
 
 def _shots_per_backend_with_pooling(alpha, target_power, delta_tv, p_i, p_j):
@@ -176,7 +185,7 @@ def _shots_per_backend_for_expected_counts(row_i, row_j):
     p_j = row_j / row_j.sum()
 
     def testable(shots):
-        return _pool_rare_outcomes(p_i * shots, p_j * shots)[3]
+        return _pool_rare_outcomes(p_i * shots, p_j * shots).ok
 
     hi = _max_shots_per_backend()
     if not testable(hi):
@@ -207,14 +216,33 @@ def _cochran_ok(expected):
     return bool(expected.min() >= 1.0 and (expected < MIN_EXPECTED_COUNT).mean() <= 0.2)
 
 
+class PooledTable(NamedTuple):
+    """The tested 2 x K table after rare outcomes are pooled.
+
+    ``pooled_outcomes`` counts the outcomes merged into the last column (0 when it holds
+    one); ``untested_outcomes`` counts outcomes left out of the table, whose counts are
+    ``untested_i`` and ``untested_j``; ``n_i`` and ``n_j`` are the full row totals."""
+    t_i: np.ndarray
+    t_j: np.ndarray
+    pooled_outcomes: int
+    ok: bool
+    untested_outcomes: int = 0
+    untested_i: float = 0.0
+    untested_j: float = 0.0
+    n_i: float = 0.0
+    n_j: float = 0.0
+
+
 def _pool_rare_outcomes(row_i, row_j):
     """Pool outcome columns with an expected count below MIN_EXPECTED_COUNT into one bin.
 
-    Returns (row_i, row_j, pooled_outcomes, ok). The pooled bin is kept when its own
-    expected counts reach MIN_EXPECTED_COUNT or the table meets Cochran's rule; otherwise
-    the smallest remaining column is merged into it while two or more columns would remain.
-    ``ok`` is False when no testable table with at least two columns and adequate expected
-    counts exists. ``pooled_outcomes`` counts the observed outcomes merged into the bin.
+    The bin is the table's last column and holds only rare outcomes. It is accepted when its
+    expected counts reach MIN_EXPECTED_COUNT or the table meets Cochran's rule (no expected
+    count below 1, at most 20% below 5). Otherwise, with two or more common columns, it stays
+    its own column when its expected counts are at least 1 and is left out of the table when
+    they are below 1. ``ok`` is False when no table with at least two columns and adequate
+    expected counts exists: every outcome is rare, or one common outcome remains beside an
+    undersized bin.
     """
     row_i, row_j = np.asarray(row_i), np.asarray(row_j)
     n_i, n_j = row_i.sum(), row_j.sum()
@@ -226,23 +254,24 @@ def _pool_rare_outcomes(row_i, row_j):
     kept = order[~rare]
     n_pooled = int(rare.sum())
     pooled_i, pooled_j = row_i[order[rare]].sum(), row_j[order[rare]].sum()
-    start = 0
+    totals = {"n_i": float(n_i), "n_j": float(n_j)}
 
-    while True:
-        t_i, t_j = row_i[kept[start:]], row_j[kept[start:]]
-        if n_pooled:
-            t_i, t_j = np.append(t_i, pooled_i), np.append(t_j, pooled_j)
-        expected = np.outer([n_i, n_j], t_i + t_j) / n_total
-        if len(t_i) < 2:
-            ok = bool((expected >= MIN_EXPECTED_COUNT).all())
-            return t_i, t_j, n_pooled if n_pooled > 1 else 0, ok and not n_pooled
-        if not n_pooled or expected[:, -1].min() >= MIN_EXPECTED_COUNT or _cochran_ok(expected):
-            return t_i, t_j, n_pooled if n_pooled > 1 else 0, True
-        if len(kept) - start < 2:
-            return t_i, t_j, n_pooled, False
-        pooled_i, pooled_j = pooled_i + row_i[kept[start]], pooled_j + row_j[kept[start]]
-        n_pooled += 1
-        start += 1
+    t_i, t_j = row_i[kept], row_j[kept]
+    if n_pooled:
+        t_i, t_j = np.append(t_i, pooled_i), np.append(t_j, pooled_j)
+    expected = np.outer([n_i, n_j], t_i + t_j) / n_total
+    reported = n_pooled if n_pooled > 1 else 0
+    if len(t_i) < 2:
+        ok = bool((expected >= MIN_EXPECTED_COUNT).all())
+        return PooledTable(t_i, t_j, reported, ok and not n_pooled, **totals)
+    if not n_pooled or expected[:, -1].min() >= MIN_EXPECTED_COUNT or _cochran_ok(expected):
+        return PooledTable(t_i, t_j, reported, True, **totals)
+    if len(kept) < 2:
+        return PooledTable(t_i, t_j, n_pooled, False, **totals)
+    if expected[:, -1].min() >= 1.0:
+        return PooledTable(t_i, t_j, reported, True, **totals)
+    return PooledTable(t_i[:-1], t_j[:-1], 0, True, n_pooled,
+                       float(pooled_i), float(pooled_j), **totals)
 
 
 def _williams_q(table):
@@ -266,13 +295,15 @@ def _statistical_agreement_test(
     delta_tv=STAT_TEST_DELTA_TV,
     res_i=None,
     res_j=None,
+    basis_source="declared_qubit_ordering",
 ):
     """Pearson chi-square and G-test (with Williams' correction) of homogeneity between two
     count vectors.
 
     ``counts_j`` is already aligned to ``basis``. Outcomes with zero counts in both rows are
     dropped; outcomes with an expected count below 5 are pooled into one bin
-    (``pooled_outcomes``). A table with a single outcome bin is tested against the empty
+    (``pooled_outcomes``), or left out when that bin is below an expected count of 1 and
+    breaks Cochran's rule (``untested_outcomes``). A table with a single outcome bin is tested against the empty
     complement bin: statistic 0 on 1 degree of freedom. ``low_count_warning`` is set when no
     pooling gives adequate expected counts. Power is evaluated on the tested table's degrees
     of freedom. Multiple-comparison correction and the verdict are filled in by
@@ -292,19 +323,21 @@ def _statistical_agreement_test(
     p_j = row_j / n_j
     total_variation = float(0.5 * np.abs(p_i - p_j).sum())
 
-    t_i, t_j, pooled_outcomes, counts_ok = _pool_rare_outcomes(row_i, row_j)
+    pooled_table = _pool_rare_outcomes(row_i, row_j)
+    t_i, t_j, pooled_outcomes, counts_ok = pooled_table[:4]
     df = max(len(t_i) - 1, 1)
-    gap, pooled_share = _tested_gap(t_i, t_j, pooled_outcomes, delta_tv)
+    gap, pooled_share = _tested_gap(pooled_table, delta_tv)
     unseen = max(_good_turing_unseen(row_i), _good_turing_unseen(row_j))
     characterised = unseen <= UNSEEN_MASS_LIMIT
     block = {
         "basis": basis,
-        "basis_source": "declared_qubit_ordering",
+        "basis_source": basis_source,
         "n_shots": {sim_i: int(round(n_i)), sim_j: int(round(n_j))},
         "alpha": alpha,
         "shared_seed": _shared_seed(res_i, res_j),
         "observed_outcomes": len(outcomes),
         "pooled_outcomes": int(pooled_outcomes),
+        "untested_outcomes": int(pooled_table.untested_outcomes),
         "tested_outcome_bins": int(len(t_i)),
         "effect_size": {
             "total_variation": total_variation,

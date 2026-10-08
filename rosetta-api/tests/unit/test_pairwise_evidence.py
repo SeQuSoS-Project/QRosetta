@@ -692,3 +692,26 @@ def test_sparse_samples_get_no_shot_recommendation():
     assert stat["unseen_mass_good_turing"] > 0.9
     assert stat["power"]["recommended_shots_per_backend"] is None
     assert stat["resolvable_by_more_shots"] is None
+
+
+@pytest.mark.parametrize("counts", [{"0": 500, "1": 500}, {"0": 700, "1": 300}])
+def test_one_bit_keys_are_compared_directly_across_declared_orders(counts):
+    rec = _record(create_counts_report([
+        {"simulator": "a", "counts": counts, "qubit_ordering": "lsb"},
+        {"simulator": "b", "counts": dict(counts), "qubit_ordering": "msb"},
+    ], n_shots=1000), "a", "b")
+    assert rec["agreement"] == "distance_within_threshold"
+    assert rec["metrics"]["label_aligned_basis"] == "direct"
+    assert rec["metrics"]["basis_source"] == "single_bit"
+    assert rec["metrics"]["statistical_test"]["basis"] == "direct"
+    assert rec["metrics"]["statistical_test"]["basis_source"] == "single_bit"
+
+
+def test_multi_bit_keys_keep_the_declared_basis():
+    counts = {"00": 500, "11": 500}
+    rec = _record(create_counts_report([
+        {"simulator": "a", "counts": counts, "qubit_ordering": "lsb"},
+        {"simulator": "b", "counts": dict(counts), "qubit_ordering": "msb"},
+    ], n_shots=1000), "a", "b")
+    assert rec["agreement"] == "agree_after_bit_reversal"
+    assert rec["metrics"]["basis_source"] == "declared_qubit_ordering"
