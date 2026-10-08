@@ -53,6 +53,23 @@ def translation_note(basis) -> str:
             f"qubit is assumed to start in |0>, so the translation keeps the unitary.")
 
 
+def idle_qubits(circuit: QuantumCircuit) -> list:
+    """Indices of the qubits on which every operation is a barrier or a u3 with all three
+    parameters exactly 0 (what id, rz(0) and u1(0) translate to)."""
+    def acts(inst):
+        name = inst.operation.name
+        if name == "barrier":
+            return False
+        if name == "u3":
+            try:
+                return any(float(p) != 0.0 for p in inst.operation.params)
+            except TypeError:
+                return True
+        return True
+    used = {circuit.find_bit(q).index for inst in circuit.data if acts(inst) for q in inst.qubits}
+    return sorted(set(range(circuit.num_qubits)) - used)
+
+
 def unitary_of(circuit: QuantumCircuit):
     """Qiskit Operator of the circuit, built from its u3/cx translation so that nested gate
     definitions are flattened first."""
