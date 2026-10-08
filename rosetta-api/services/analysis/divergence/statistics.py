@@ -8,7 +8,7 @@ test block records whether the pair shared a runner seed.
 from typing import NamedTuple
 
 import numpy as np
-from scipy.stats import chi2 as _chi2_dist, chi2_contingency, ncx2
+from scipy.stats import chi2 as _chi2_dist, chi2_contingency, hypergeom, ncx2
 from scipy.optimize import brentq
 
 from .common import STAT_TEST_ALPHA, STAT_TEST_DELTA_TV, STAT_TEST_TARGET_POWER
@@ -139,7 +139,11 @@ def _set_power(block, alpha, m_pairs):
 
     Power is evaluated at ``delta_tv_tested``. When rare outcomes were pooled, the
     recommended shots come from pooling the observed proportions at each candidate count
-    (``_shots_per_backend_with_pooling``), since pooling changes with the shot count."""
+    (``_shots_per_backend_with_pooling``), since pooling changes with the shot count.
+    ``recommendation_is_lower_bound`` is set when the Good-Turing unseen mass exceeds delta/2,
+    or when the recommendation comes from pooling and some outcomes were seen once: the
+    observed proportions then leave out outcomes not yet seen, and outcomes seen once stop
+    being pooled together at ten times the shots, which sets the count."""
     power = block["power"]
     m = max(int(m_pairs), 1)
     c_m = _by_constant(m)
@@ -156,6 +160,9 @@ def _set_power(block, alpha, m_pairs):
     else:
         recommended = _shots_per_backend_for_target_power(
             alpha_used, power["target_power"], gap, power["df"])
+    unseen = block.get("unseen_mass_good_turing") or 0.0
+    block["recommendation_is_lower_bound"] = bool(recommended is not None and (
+        unseen > LOWER_BOUND_UNSEEN_MASS or (power.get("pooled_probability") and unseen > 0)))
     power.update({
         "alpha_used": alpha_used,
         "m_pairs": int(m_pairs),
@@ -219,9 +226,12 @@ def _cochran_ok(expected):
 class PooledTable(NamedTuple):
     """The tested 2 x K table after rare outcomes are pooled.
 
-    ``pooled_outcomes`` counts the outcomes merged into the last column (0 when it holds
-    one); ``untested_outcomes`` counts outcomes left out of the table, whose counts are
-    ``untested_i`` and ``untested_j``; ``n_i`` and ``n_j`` are the full row totals."""
+    ``pooled_outcomes`` counts the outcomes merged into the last column when it holds two or
+    more, else 0 (a single rare outcome is an ordinary column); ``untested_outcomes`` counts
+    outcomes left out of the table, whose counts are ``untested_i`` and ``untested_j``;
+    ``n_i`` and ``n_j`` are the full row totals. ``exact`` is True for a 2 x 2 table whose
+    expected counts are too small for the chi-square approximation: its p-values come from
+    the exact conditional distribution (``_exact_conditional_p_values``)."""
     t_i: np.ndarray
     t_j: np.ndarray
     pooled_outcomes: int
@@ -231,6 +241,7 @@ class PooledTable(NamedTuple):
     untested_j: float = 0.0
     n_i: float = 0.0
     n_j: float = 0.0
+    exact: bool = False
 
 
 def _pool_rare_outcomes(row_i, row_j):
@@ -242,7 +253,8 @@ def _pool_rare_outcomes(row_i, row_j):
     its own column when its expected counts are at least 1 and is left out of the table when
     they are below 1. ``ok`` is False when no table with at least two columns and adequate
     expected counts exists: every outcome is rare, or one common outcome remains beside an
-    undersized bin.
+    undersized bin. A 2 x 2 table that fails the expected-count rule (one common outcome beside
+    the rare bin, or exactly two observed outcomes, both rare) is kept and marked ``exact``.
     """
     row_i, row_j = np.asarray(row_i), np.asarray(row_j)
     n_i, n_j = row_i.sum(), row_j.sum()
@@ -262,16 +274,60 @@ def _pool_rare_outcomes(row_i, row_j):
     expected = np.outer([n_i, n_j], t_i + t_j) / n_total
     reported = n_pooled if n_pooled > 1 else 0
     if len(t_i) < 2:
+        if n_pooled and len(row_i) == 2:
+            return PooledTable(row_i[order], row_j[order], 0, True, exact=True, **totals)
         ok = bool((expected >= MIN_EXPECTED_COUNT).all())
         return PooledTable(t_i, t_j, reported, ok and not n_pooled, **totals)
     if not n_pooled or expected[:, -1].min() >= MIN_EXPECTED_COUNT or _cochran_ok(expected):
         return PooledTable(t_i, t_j, reported, True, **totals)
     if len(kept) < 2:
-        return PooledTable(t_i, t_j, n_pooled, False, **totals)
+        return PooledTable(t_i, t_j, reported, True, exact=True, **totals)
     if expected[:, -1].min() >= 1.0:
         return PooledTable(t_i, t_j, reported, True, **totals)
     return PooledTable(t_i[:-1], t_j[:-1], 0, True, n_pooled,
                        float(pooled_i), float(pooled_j), **totals)
+
+
+def _two_by_two_statistics(a, b, c, d):
+    """(Pearson chi-square, G) of the 2 x 2 tables [[a, b], [c, d]], elementwise over arrays."""
+    a, b, c, d = (np.asarray(x, dtype=float) for x in (a, b, c, d))
+    n = a + b + c + d
+    rows = (a + b, c + d)
+    cols = (a + c, b + d)
+    chi2 = n * (a * d - b * c) ** 2 / (rows[0] * rows[1] * cols[0] * cols[1])
+    g = np.zeros_like(chi2)
+    for obs, r, col in ((a, rows[0], cols[0]), (b, rows[0], cols[1]),
+                        (c, rows[1], cols[0]), (d, rows[1], cols[1])):
+        with np.errstate(divide="ignore", invalid="ignore"):
+            g += np.where(obs > 0, obs * np.log(obs * n / (r * col)), 0.0)
+    return chi2, 2.0 * g
+
+
+EXACT_TEST = (
+    "exact conditional test: with the row totals (shots) and column totals fixed, the count in "
+    "the first row's second column is hypergeometric; the p-value of each statistic (Pearson "
+    "chi-square, G) is the probability of a table whose statistic is at least the observed "
+    "one. Used for a 2 x 2 table that fails the expected-count rule.")
+
+
+def _exact_conditional_p_values(table):
+    """Exact conditional p-values (chi-square, G) of a 2 x 2 table of counts.
+
+    Under homogeneity, given both margins, the first row's count in the second column is
+    hypergeometric. Each p-value sums the probabilities of the tables whose statistic is at
+    least the observed one (relative tolerance 1e-7 for ties). Williams' correction divides G by
+    a constant of the margins, so it does not change the ordering."""
+    (a, b), (c, d) = np.asarray(table, dtype=float).round().astype(int)
+    r1, r2, c2 = a + b, c + d, b + d
+    n = r1 + r2
+    x = np.arange(max(0, c2 - r2), min(c2, r1) + 1)
+    pmf = hypergeom.pmf(x, n, c2, r1)
+    chi2_all, g_all = _two_by_two_statistics(r1 - x, x, (n - c2) - (r1 - x), c2 - x)
+    chi2_obs, g_obs = _two_by_two_statistics(a, b, c, d)
+    p = []
+    for stats, observed in ((chi2_all, chi2_obs), (g_all, g_obs)):
+        p.append(float(min(1.0, pmf[stats >= observed * (1 - 1e-7)].sum())))
+    return p[0], p[1]
 
 
 def _williams_q(table):
@@ -303,9 +359,10 @@ def _statistical_agreement_test(
     ``counts_j`` is already aligned to ``basis``. Outcomes with zero counts in both rows are
     dropped; outcomes with an expected count below 5 are pooled into one bin
     (``pooled_outcomes``), or left out when that bin is below an expected count of 1 and
-    breaks Cochran's rule (``untested_outcomes``). A table with a single outcome bin is tested against the empty
-    complement bin: statistic 0 on 1 degree of freedom. ``low_count_warning`` is set when no
-    pooling gives adequate expected counts. Power is evaluated on the tested table's degrees
+    breaks Cochran's rule (``untested_outcomes``). A 2 x 2 table that fails the expected-count
+    rule is tested with exact conditional p-values (``test_method``). A table with a single
+    outcome bin is tested against the empty complement bin: statistic 0 on 1 degree of
+    freedom. ``low_count_warning`` is set when no table can be tested. Power is evaluated on the tested table's degrees
     of freedom. Multiple-comparison correction and the verdict are filled in by
     ``_apply_multiple_comparison_correction``. Raises ValueError if scipy rejects the table.
     """
@@ -325,6 +382,7 @@ def _statistical_agreement_test(
 
     pooled_table = _pool_rare_outcomes(row_i, row_j)
     t_i, t_j, pooled_outcomes, counts_ok = pooled_table[:4]
+    exact = pooled_table.exact
     df = max(len(t_i) - 1, 1)
     gap, pooled_share = _tested_gap(pooled_table, delta_tv)
     unseen = max(_good_turing_unseen(row_i), _good_turing_unseen(row_j))
@@ -339,6 +397,7 @@ def _statistical_agreement_test(
         "pooled_outcomes": int(pooled_outcomes),
         "untested_outcomes": int(pooled_table.untested_outcomes),
         "tested_outcome_bins": int(len(t_i)),
+        "test_method": "exact_conditional" if exact else "asymptotic",
         "effect_size": {
             "total_variation": total_variation,
             "cramers_v": None,
@@ -372,7 +431,6 @@ def _statistical_agreement_test(
         "low_count_warning": not counts_ok,
         "unseen_mass_good_turing": unseen,
         "support_characterised": characterised,
-        "recommendation_is_lower_bound": bool(characterised and unseen > LOWER_BOUND_UNSEEN_MASS),
         "shots_per_backend_for_expected_counts": (
             None if counts_ok or not characterised
             else _shots_per_backend_for_expected_counts(row_i, row_j)),
@@ -395,12 +453,18 @@ def _statistical_agreement_test(
     q = _williams_q(table)
     g_stat = g_raw / q
     g_p = float(_chi2_dist.sf(g_stat, dof))
+    method = "asymptotic"
+    if exact:
+        chi2_p, g_p = _exact_conditional_p_values(table)
+        method = "exact_conditional"
+        block["exact_test"] = EXACT_TEST
 
     block["effect_size"]["cramers_v"] = float(np.sqrt(chi2_stat / n_total))
     block["chi2"].update({
         "statistic": float(chi2_stat),
         "dof": int(dof),
         "p_value": float(chi2_p),
+        "method": method,
     })
     block["g_test"].update({
         "statistic_uncorrected": float(g_raw),
@@ -408,6 +472,7 @@ def _statistical_agreement_test(
         "statistic": float(g_stat),
         "dof": int(dof),
         "p_value": float(g_p),
+        "method": method,
     })
     return block
 

@@ -538,8 +538,9 @@ def test_rare_outcome_pooling_and_recommendation_flag():
         {"simulator": "a", "counts": {"0": 99998, "1": 2}},
         {"simulator": "b", "counts": {"0": 99998, "1": 2}},
     ], n_shots=100000), "a", "b")["metrics"]["statistical_test"]
-    assert stat["verdict"] == "inconclusive_low_shots"
-    assert stat["inconclusive_reason"] == "low_expected_counts"
+    assert stat["test_method"] == "exact_conditional"
+    assert stat["verdict"] == "consistent"
+    assert stat["inconclusive_reason"] is None
     assert stat["power"]["recommended_shots_per_backend"] == 1570
     assert stat["power"]["recommended_exceeds_actual"] is False
 
@@ -629,20 +630,19 @@ def test_divergence_reports_record_analysis_version_and_effective_thresholds():
 
 def test_low_expected_counts_reports_whether_more_shots_can_resolve_it():
     fixable = _record(create_counts_report([
-        {"simulator": "a", "counts": {"0": 99997, "1": 3}},
-        {"simulator": "b", "counts": {"0": 99997, "1": 3}},
-    ], n_shots=100000), "a", "b")["metrics"]["statistical_test"]
+        {"simulator": "a", "counts": {"00": 2, "01": 2, "10": 2}},
+        {"simulator": "b", "counts": {"00": 2, "01": 2, "11": 2}},
+    ], n_shots=6), "a", "b")["metrics"]["statistical_test"]
     assert fixable["inconclusive_reason"] == "low_expected_counts"
     assert fixable["resolvable_by_more_shots"] is True
-    assert 100000 < fixable["shots_per_backend_for_expected_counts"] <= 1_000_000
+    assert 6 < fixable["shots_per_backend_for_expected_counts"] <= 100
 
-    unfixable = _record(create_counts_report([
+    exact = _record(create_counts_report([
         {"simulator": "a", "counts": {"0": 999999, "1": 1}},
         {"simulator": "b", "counts": {"0": 1000000}},
     ], n_shots=1000000), "a", "b")["metrics"]["statistical_test"]
-    assert unfixable["inconclusive_reason"] == "low_expected_counts"
-    assert unfixable["resolvable_by_more_shots"] is False
-    assert unfixable["shots_per_backend_for_expected_counts"] is None
+    assert exact["test_method"] == "exact_conditional" and exact["verdict"] == "consistent"
+    assert exact["chi2"]["p_value"] == exact["g_test"]["p_value"] == 1.0
 
     low_power = _record(create_counts_report([
         {"simulator": "a", "counts": {"00": 10}}, {"simulator": "b", "counts": {"00": 10}},

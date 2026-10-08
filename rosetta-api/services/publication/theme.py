@@ -191,8 +191,10 @@ _VERDICT_GLOSSARY = [
      "expected share of false discoveries among flagged pairs at most q = 0.05 under any "
      "dependence between the tests, including pairs that share one backend's sample; a "
      "flagged pair can still be a false discovery."),
-    ("inconclusive_low_shots", "Expected counts stay below 5 after pooling rare outcomes "
-     "(inconclusive_reason = low_expected_counts), or neither test is significant and the "
+    ("inconclusive_low_shots", "Expected counts stay below 5 after pooling rare outcomes on "
+     "a table larger than 2 x 2 (inconclusive_reason = low_expected_counts; a 2 x 2 table with "
+     "low expected counts is tested with exact conditional p-values, test_method = "
+     "exact_conditional), or neither test is significant and the "
      "power at alpha/(m·c_m) to detect a total-variation gap of 0.05 is below 0.8 "
      "(inconclusive_reason = low_power). resolvable_by_more_shots is false when no shot count "
      "up to the platform maximum would give a testable table (low_expected_counts) or the "

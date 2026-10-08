@@ -4,6 +4,7 @@ sparse table that must pool in linear time."""
 import time
 
 import numpy as np
+import pytest
 
 from services.analysis.divergence import create_counts_report
 from services.analysis.divergence.statistics import _pool_rare_outcomes, _tested_gap
@@ -21,10 +22,50 @@ def test_small_pool_beside_two_common_columns_stays_its_own_bin():
     assert list(table.t_i) == [90, 100, 3] and list(table.t_j) == [99, 95, 3]
 
 
-def test_undersized_pool_beside_one_common_column_is_untestable():
+def test_undersized_pool_beside_one_common_column_is_tested_exactly():
     table = _pool_rare_outcomes(np.array([1, 2, 100]), np.array([2, 1, 99]))
-    assert not table.ok and table.pooled_outcomes == 2
+    assert table.ok and table.exact and table.pooled_outcomes == 2
     assert list(table.t_i) == [100, 3] and list(table.t_j) == [99, 3]
+
+
+def test_single_rare_outcome_beside_one_common_column_is_not_counted_as_pooled():
+    table = _pool_rare_outcomes(np.array([8199, 1]), np.array([8199, 1]))
+    assert table.ok and table.exact and table.pooled_outcomes == 0 and table.untested_outcomes == 0
+
+
+def test_two_rare_outcomes_alone_are_tested_exactly():
+    table = _pool_rare_outcomes(np.array([2, 1]), np.array([1, 3]))
+    assert table.ok and table.exact and len(table.t_i) == 2 and table.pooled_outcomes == 0
+
+
+def test_exact_p_values_match_fisher_and_the_hypergeometric_tail():
+    from scipy.stats import fisher_exact
+    from services.analysis.divergence.statistics import _exact_conditional_p_values
+    for table in ([[8199, 1], [8199, 1]], [[8200, 0], [8197, 3]], [[8190, 10], [8200, 0]], [[3, 2], [1, 4]]):
+        p_chi2, p_g = _exact_conditional_p_values(table)
+        assert abs(p_chi2 - fisher_exact(table)[1]) < 1e-12
+        assert 0 < p_g <= 1
+    assert _exact_conditional_p_values([[8199, 1], [8199, 1]])[0] == pytest.approx(1.0)
+
+
+def test_near_deterministic_correct_pair_is_consistent_and_its_record_agrees():
+    stat = create_counts_report([
+        {"simulator": "a", "counts": {"0": 8199, "1": 1}, "qubit_ordering": "lsb"},
+        {"simulator": "b", "counts": {"0": 8199, "1": 1}, "qubit_ordering": "lsb"},
+    ], n_shots=8200)["pairwise_agreement"][0]["metrics"]["statistical_test"]
+    assert stat["test_method"] == "exact_conditional" and stat["chi2"]["method"] == "exact_conditional"
+    assert stat["verdict"] == "consistent" and stat["low_count_warning"] is False
+    assert stat["power"]["power_to_detect_delta_at_observed_shots"] >= 0.8
+    assert stat["power"]["recommended_exceeds_actual"] is False
+
+
+def test_near_deterministic_wrong_pair_is_distinguishable():
+    stat = create_counts_report([
+        {"simulator": "a", "counts": {"0": 8200}, "qubit_ordering": "lsb"},
+        {"simulator": "b", "counts": {"0": 8191, "1": 9}, "qubit_ordering": "lsb"},
+    ], n_shots=8200)["pairwise_agreement"][0]["metrics"]["statistical_test"]
+    assert stat["test_method"] == "exact_conditional"
+    assert stat["chi2"]["p_value"] < 0.01 and stat["verdict"] == "distinguishable"
 
 
 def test_one_rare_column_left_in_place_when_cochran_holds():
