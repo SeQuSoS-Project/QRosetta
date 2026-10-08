@@ -6,7 +6,7 @@ import { formatRunnerLabel, parseRunnerKey } from './runner_key.js';
 import { setTip } from './tooltip.js';
 
 export const METRIC_DEFINITIONS = {
-    "compilation": "<b>Compilation Time:</b> Wall clock from t0 to t1 of a timed run: parse the QASM, apply this backend's transforms and build its native circuit (Qulacs, QuEST, qsim and Qiskit Aer convert the circuit into their own form inside the simulation call instead; see the manual). After one discarded warm-up run; with Timing repeats above 1, the median of the timed runs, with their spread and n.",
+    "compilation": "<b>Compilation Time:</b> Wall clock from t0 to t1 of a timed run: parse the QASM, apply this backend's transforms and build its native circuit. For Qulacs, QuEST, qsim, Qiskit and cuQuantum this includes converting the circuit into the simulator's own form (state allocation and gate application are in Simulation Time; see the manual). After one discarded warm-up run; with Timing repeats above 1, the median of the timed runs, with their spread and n.",
     "simulation": "<b>Simulation Time:</b> Wall clock from t2 to t3 of a timed run: execute the circuit and return the statevector or draw the shots. Building the counts histogram from drawn shots is outside this window. After one discarded warm-up run; with Timing repeats above 1, the median of the timed runs, with their spread and n.",
     "total_time": "<b>Total:</b> Compilation + Simulation. With Timing repeats above 1, median compilation + median simulation, ± the standard deviation of the per-run totals. Backends are ranked by this column.",
     "cpu_time": "<b>CPU Time:</b> User+system CPU time of the whole isolated runner process: interpreter start, SDK import, warm-up and every timed run, so it grows with Timing repeats. It covers more than the wall-clock columns.",
@@ -15,10 +15,12 @@ export const METRIC_DEFINITIONS = {
     "circuit_depth": "<b>Depth:</b> Greedy-layering depth of the circuit this backend executed (its transpiled_qasm).",
     "executed_gate_count": "<b>Gates:</b> The runner's gate_count for the circuit this backend executed. How it was counted is its gate_metrics_basis, given in the pane's note: from this text for most backends, from the executed tape for PennyLane.",
     "executed_depth": "<b>Depth:</b> The runner's circuit_depth for the circuit this backend executed, counted the same way as Gates.",
-    "compiled_gate_count": "<b>Gates:</b> Number of top-level gate statements in this compiled circuit's text. A ccx, a swap and an rz each count as one, and compilers write different gate sets (staq keeps ccx and cu1, Quartz writes h, x, rz and cx, Cirq writes cz plus single-qubit gates), so this number is not comparable across compilers; compare the 2+ qubit count or the per-gate counts, or translate the outputs to one gate set first.",
+    "text_gate_count": "<b>Gates:</b> Number of top-level gate statements in this text, counted in the browser the same way as for compiled circuits: barriers, measurements, resets and statements inside gate definitions are not counted, and a call of a user-defined gate counts once. Compare it with a compiled circuit's count to read a reduction, keeping in mind that compilers write different gate sets.",
+    "text_depth": "<b>Depth:</b> Greedy-layering depth of this text, counted the same way as for compiled circuits: one layer per gate statement whatever the gate; barriers are not counted.",
+    "compiled_gate_count":"<b>Gates:</b> Number of top-level gate statements in this compiled circuit's text. A ccx, a swap and an rz each count as one, and compilers write different gate sets (staq keeps ccx and cu1, Quartz writes h, x, rz and cx, Cirq writes cz plus single-qubit gates), so this number is not comparable across compilers; compare the 2+ qubit count or the per-gate counts, or translate the outputs to one gate set first.",
     "compiled_multi_qubit_gate_count": "<b>On 2+ qubits:</b> Number of gate statements in this text that act on two or more qubits (a ccx counts once). Comparable across compilers only when they use the same multi-qubit gates.",
     "compiled_depth": "<b>Depth:</b> Greedy-layering depth of this compiled circuit's text, one layer per gate statement whatever the gate. Barriers are not counted and do not align the wires, so the value can be lower than Qiskit's depth() of the same text.",
-    "proc_peak_rss": "<b>Process Peak RSS:</b> Peak RSS of the simulating process over its whole life: interpreter start, SDK import, warm-up and every timed run. Kernel high-water mark (VmHWM); a getrusage badge marks the ru_maxrss fallback. Resources are ranked by this column.",
+    "proc_peak_rss": "<b>Process Peak RSS:</b> Peak RSS of the simulating process over its whole life: interpreter start, SDK import, warm-up and every timed run. For small circuits it is mostly the interpreter and SDK import footprint, not the state. Kernel high-water mark (VmHWM); a getrusage badge marks the ru_maxrss fallback. Resources are ranked by this column.",
     "mem_delta": "<b>Mem Delta:</b> Peak RSS minus baseline RSS during the simulation window (pre-execute setup plus t2..t3 of the first timed run). Memory the warm-up freed but the process kept can be reused, so a state smaller than the SDK's cached memory can read near 0. Kernel high-water mark (VmHWM, reset when the window opens); a sampled badge marks 10 ms RSS polling, which can miss short peaks.",
     "proc_peak": "<b>Window Peak:</b> Absolute peak RSS during the simulation window of the first timed run, measured the same way as Mem Delta.",
     "theoretical_sv": "<b>Theoretical SV:</b> Size of a dense statevector for the declared qubits: 2^N × 16 bytes for complex128 backends, 2^N × 8 bytes for complex64 backends. quimb (tensor network) holds no dense statevector; its value is computed the same way from the precision it reports, for comparison.",
@@ -37,6 +39,11 @@ export const STATUS_STYLES = {
         badge: "bg-green-100 text-green-800 border-green-300",
         cell: "bg-green-50 text-gray-900",
         legendDot: "bg-green-100 border-green-300"
+    },
+    explained: {
+        badge: "bg-blue-100 text-blue-800 border-blue-300",
+        cell: "bg-blue-50 text-gray-900",
+        legendDot: "bg-blue-100 border-blue-300"
     },
     divergence: {
         badge: "bg-yellow-100 text-yellow-800 border-yellow-300",
@@ -100,6 +107,7 @@ export function _applyLegendDots(fragment) {
     const dotMap = {
         'tpl-dot-success': STATUS_STYLES.success.legendDot,
         'tpl-dot-divergence': STATUS_STYLES.divergence.legendDot,
+        'tpl-dot-explained': STATUS_STYLES.explained.legendDot,
         'tpl-dot-offline': STATUS_STYLES.offline.legendDot,
         'tpl-dot-anomaly': STATUS_STYLES.anomaly.legendDot,
         'tpl-dot-error': STATUS_STYLES.error.legendDot,
@@ -242,8 +250,8 @@ export function _tag(text, colorClasses, title) {
     return span;
 }
 
-// Tag colours describe a run; none of them reuses a status colour (green agree, yellow bit-order
-// agreement, red disagree, orange error, purple timeout). Gray: a plain fact. Amber: a condition
+// Tag colours describe a run; none of them reuses a status colour (green agree, blue agreement
+// after the declared bit reversal, red disagree, orange error, purple timeout). Gray: a plain fact. Amber: a condition
 // worth checking. Each fact with a few values has its own hue, and its values differ by fill:
 // sky for bit order, slate for the sampling method.
 export const TAG_GRAY = 'bg-gray-100 text-gray-600 border-gray-200';

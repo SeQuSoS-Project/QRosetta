@@ -2,7 +2,7 @@
 // circuit, each dispatch group's circuit, each backend's executed circuit and, when the run
 // had compile-only services, their input and outputs. Pure; imports only other pure modules.
 
-import { splitLines } from './qasm_text.js';
+import { qasmGateMetrics, splitLines } from './qasm_text.js';
 import { parseRunnerKey } from './runner_key.js';
 import { diffLines } from './text_diff.js';
 
@@ -82,6 +82,12 @@ function _compiledPane(record, index) {
     };
 }
 
+/** Gate count, depth and 2+ qubit statements the platform counts from a recorded text (submitted, dispatched, compile input). */
+function _textMetrics(text) {
+    const m = qasmGateMetrics(text);
+    return { gateCount: m.gateCount, depth: m.depth, multiQubitGateCount: m.multiQubitGateCount, countedHere: true };
+}
+
 /**
  * Panes in display order: submitted, dispatched (per group), executed (per result key),
  * then the compile input and each compiled circuit.
@@ -90,7 +96,7 @@ export function circuitPanes(report) {
     if (!report || typeof report !== 'object') return [];
     const panes = [];
     if (typeof report.input_qasm === 'string') {
-        panes.push({ id: 'input', kind: 'input', key: null, group: null, text: report.input_qasm });
+        panes.push({ id: 'input', kind: 'input', key: null, group: null, text: report.input_qasm, ..._textMetrics(report.input_qasm) });
     }
     for (const record of Array.isArray(report.dispatched_circuits) ? report.dispatched_circuits : []) {
         if (!record || typeof record.group !== 'string' || typeof record.qasm !== 'string') continue;
@@ -102,6 +108,7 @@ export function circuitPanes(report) {
             text: record.qasm,
             apiNotes: _strings(record.api_preprocessing_applied),
             runners: _strings(record.runners),
+            ..._textMetrics(record.qasm),
         });
     }
     (Array.isArray(report.raw_results) ? report.raw_results : []).forEach((result, index) => {
@@ -110,7 +117,7 @@ export function circuitPanes(report) {
     const compileInput = report.compile_input;
     if (compileInput && typeof compileInput === 'object' && typeof compileInput.qasm === 'string') {
         panes.push({ id: 'compile-input', kind: 'compile-input', key: null, group: null, text: compileInput.qasm,
-                     apiNotes: _strings(compileInput.api_preprocessing_applied) });
+                     apiNotes: _strings(compileInput.api_preprocessing_applied), ..._textMetrics(compileInput.qasm) });
     }
     (Array.isArray(report.compiled_circuits) ? report.compiled_circuits : []).forEach((record, index) => {
         if (record && typeof record === 'object') panes.push(_compiledPane(record, index));

@@ -132,7 +132,8 @@ function _renderProgress() {
     const s = _view.statuses;
     const backends = Object.keys(s).filter(k => !_isCompiler(parseRunnerKey(k).simId));
     const compiles = Object.keys(s).filter(k => _isCompiler(parseRunnerKey(k).simId));
-    if (backends.length) parts.push(`${_finishedText(s, backends, 'backend')}${p ? ' on the current circuit' : ''}`);
+    const noun = backends.some(k => parseRunnerKey(k).isMulti) ? 'run' : 'backend';
+    if (backends.length) parts.push(`${_finishedText(s, backends, noun)}${p ? ' on the current circuit' : ''}`);
     if (compiles.length) parts.push(_finishedText(s, compiles, 'compile'));
     host.textContent = parts.length ? `${parts.join(' · ')} ·` : '';
 }

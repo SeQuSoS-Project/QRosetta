@@ -3,6 +3,7 @@
 // those requests would exceed. Pure: no DOM, no network.
 
 import { charCount, formatBytes, groupDigits, jsonBytes, printableLabel } from './request_limits.js';
+import { plannedRunKeys } from './runner_key.js';
 
 /** A circuit name without a trailing qubit-count suffix such as " (4q)". */
 export function bareCircuitName(name) {
@@ -113,7 +114,10 @@ export function runButtonLabel(ws, backendCount) {
     const verb = ws.preprocessing === 'both' ? `Run Experiment: ${list ? `${n} circuit${n === 1 ? '' : 's'}` : 'Editor Code'}` : `Run ${what}`;
     const modeText = modes.map(m => MODE_LABEL[m]).join(' + ');
     const both = ws.preprocessing === 'both' ? ', preprocessing on and off' : '';
-    return `${verb} · ${modeText}${both} · ${backendCount} backend${backendCount === 1 ? '' : 's'}`;
+    const backends = `${backendCount} backend${backendCount === 1 ? '' : 's'}`;
+    const runs = plannedRunKeys(ws.common?.target_simulators || [], ws.common?.runner_config || {}).length;
+    const targets = runs > backendCount ? `${runs} runs on ${backends}` : backends;
+    return `${verb} · ${modeText}${both} · ${targets}`;
 }
 
 /** The literal circuits of a planned request: [name, qasm] pairs. */

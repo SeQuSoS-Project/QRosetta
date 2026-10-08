@@ -7,11 +7,11 @@ import {
     executionTags, precisionTag, queueWaitText, renderPreprocessingList, throttleText, outsideProcessText,
 } from './render_helpers.js';
 import { getEnabledRunnerIds } from './config.js';
-import { docsLink } from './labels.js';
+import { KNOWN_ISSUE_BACKENDS, docsLink, knownIssuesLink } from './labels.js';
 import { parseRunnerKey } from './runner_key.js';
 import { circuitPanes } from './circuit_panes.js';
 import {
-    RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, adjustedPValue, correctionLongName, correctionName, effectiveAgreement,
+    RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, adjustedPValue, correctionLongName, correctionName, effectiveAgreement, hasPhaseOffset,
     measuredAssessment, pairPower, pairPowerLevel, recommendedShots, resolvableByMoreShots, runnerStatus,
     statevectorGroup, unalignedBasis, unalignedBasisMatch, userFacingError,
 } from './run_status.js';
@@ -29,6 +29,7 @@ function _block(heading, styleKey, items, code = null) {
     const wrap = document.createElement('div');
     const colors = {
         success: 'bg-green-50 text-green-800 border-green-200',
+        explained: 'bg-blue-50 text-blue-900 border-blue-200',
         divergence: 'bg-yellow-50 text-yellow-800 border-yellow-200',
         anomaly: 'bg-red-50 text-red-700 border-red-200',
         error: 'bg-orange-50 text-orange-900 border-orange-200',
@@ -252,6 +253,23 @@ function _note(block, text) {
     block.insertBefore(note, block.querySelector('details, ul'));
 }
 
+/** A note in a block of differing pairs naming the backends the headline names (`named`, else
+ * every backend in the block) that have documented upstream behaviour, with a link to it. */
+function _knownIssuesNote(block, pairs, named) {
+    const keys = pairs.flatMap(p => p.simulators || []);
+    const scope = Array.isArray(named) && named.length ? keys.filter(k => named.includes(k)) : keys;
+    const ids = new Set(scope.map(k => parseRunnerKey(k).simId));
+    const listed = KNOWN_ISSUE_BACKENDS.filter(id => ids.has(id));
+    if (!listed.length) return;
+    const note = document.createElement('p');
+    note.className = 'text-sm mt-2';
+    const names = listed.map(_displayRunnerName);
+    const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+    note.append(document.createTextNode(`The manual's `), knownIssuesLink(),
+        document.createTextNode(` section lists documented upstream behaviour of ${list}, each with a circuit that reproduces it. Compare your circuit with those before checking it against a reference.`));
+    block.insertBefore(note, block.querySelector('details, ul'));
+}
+
 function _notComparableBlock(panel, pairs) {
     const notComparable = pairs.filter(p => p.agreement === 'not_comparable');
     if (!notComparable.length) return;
@@ -278,7 +296,7 @@ function _disagreementText(p) {
 }
 
 /** Statevector pairs: agreement, bit order as declared, disagreements, normalisation notes. */
-function _renderStatevectorBlocks(panel, pairs, tol) {
+function _renderStatevectorBlocks(panel, pairs, tol, named) {
     const byGroup = { agree: [], bit_order: [], disagree: [], not_comparable: [], other: [] };
     pairs.forEach(p => byGroup[statevectorGroup(p)].push(p));
     const direct = byGroup.agree.filter(p => effectiveAgreement(p) === 'agree_directly');
@@ -290,11 +308,14 @@ function _renderStatevectorBlocks(panel, pairs, tol) {
 
     const allAgree = byGroup.agree.length + bitOrder.length === pairs.length;
     const criterion = `fidelity ≥ 1 − ${tol.fidelity}, phase tolerance ${tol.phase} rad`;
+    const bitOrderPhase = bitOrder.filter(hasPhaseOffset).length;
+    const bitOrderText = `${bitOrder.length} after the bit reversal their declared orderings imply`
+        + (bitOrderPhase ? ` (${bitOrderPhase} of them also up to a global phase larger than ${tol.phase} rad)` : '');
     if (allAgree) {
         let msg = `All ${pairs.length} pairs agree (${criterion})`;
         const parts = [];
-        if (bitOrder.length) parts.push(`${bitOrder.length} after the bit reversal their declared orderings imply`);
-        if (phase.length) parts.push(`${phase.length} up to a global phase larger than ${tol.phase} rad`);
+        if (bitOrder.length) parts.push(bitOrderText);
+        if (phase.length) parts.push(`${phase.length} ${bitOrderPhase ? 'others ' : ''}up to a global phase larger than ${tol.phase} rad`);
         msg += parts.length ? `; ${parts.join(', ')}.` : '.';
         if (normalised.length) msg += ` ${normalised.length} pair(s) involve a statevector whose norm differs from 1 by more than ${tol.norm}; see below.`;
         const frag = _cloneTemplate('tpl-summary-success-banner');
@@ -304,7 +325,7 @@ function _renderStatevectorBlocks(panel, pairs, tol) {
         const ov = document.createElement('p');
         ov.className = 'text-sm text-gray-700 mb-3';
         ov.textContent = `Of ${pairs.length} pairs: ${direct.length} agree directly, ${phase.length} up to a global phase, `
-            + `${bitOrder.length} after the bit reversal their declared orderings imply, ${disagree.length} disagree `
+            + `${bitOrderText}, ${disagree.length} disagree `
             + `(${criterion}); ${comparable.length} of ${pairs.length} pairs were comparable.`;
         panel.appendChild(ov);
     }
@@ -314,10 +335,11 @@ function _renderStatevectorBlocks(panel, pairs, tol) {
         _note(block, 'A pair disagrees when no registered transform explains the difference, when it agrees only after an '
             + 'undeclared qubit permutation, or when it matches only in the basis the declared qubit orderings do not imply. '
             + 'The report does not decide which backend is wrong; check against an independent reference.');
+        _knownIssuesNote(block, disagree, named);
         panel.appendChild(block);
     }
     if (bitOrder.length) {
-        panel.appendChild(_block(`Agree after the bit reversal the declared orderings imply (${bitOrder.length})`, 'divergence',
+        panel.appendChild(_block(`Agree after the bit reversal the declared orderings imply (${bitOrder.length})`, 'explained',
             bitOrder.map(p => _pairItem(p, `${_metricText(p)}${_orderingNote(p)}`)), 'agree_after_bit_reversal'));
     }
     if (phase.length) {
@@ -412,7 +434,7 @@ function _marginalItem(p, names) {
 }
 
 /** Pairs whose single-bit marginals differ: a secondary test, Holm-corrected across every tested bit. */
-function _renderMarginalBlock(panel, pairs, data, alpha) {
+function _renderMarginalBlock(panel, pairs, data, alpha, named) {
     const flagged = pairs.filter(p => p.marginal_assessment === 'marginal_distinguishable');
     if (!flagged.length) return;
     const summary = data.divergence_report?.statistical_test_summary?.marginal_test_summary || {};
@@ -425,6 +447,7 @@ function _renderMarginalBlock(panel, pairs, data, alpha) {
         + 'listed here and also under its shot-noise assessment below (that test looks at the whole distribution with a '
         + 'total-variation threshold). Pairs not listed may still differ: equal marginals do not show agreement. This test '
         + 'and the full-distribution test are separate families, each at α.');
+    _knownIssuesNote(block, flagged, named);
     panel.appendChild(block);
 }
 
@@ -433,7 +456,7 @@ function _renderMarginalBlock(panel, pairs, data, alpha) {
  * group; the descriptive distance label is shown as detail. Only "distinguishable" is a
  * disagreement.
  */
-function _renderMeasuredBlocks(panel, pairs, tol, data, alpha) {
+function _renderMeasuredBlocks(panel, pairs, tol, data, alpha, named) {
     const groups = { consistent_within_shot_noise: [], inconclusive_low_shots: [], distinguishable: [], ambiguous: [], untested: [] };
     pairs.forEach(p => {
         if (p.agreement === 'not_comparable') return;
@@ -472,7 +495,7 @@ function _renderMeasuredBlocks(panel, pairs, tol, data, alpha) {
     ov.textContent = `Of ${pairs.length} pairs: ${parts.join(', ')}; ${pairs.length - comparable.length} not comparable (${test}). `
         + 'Each pair is listed once under its shot-noise assessment, with its JS/Hellinger distance label beside it; pairs whose single-bit marginals differ are also listed in their own block.';
     panel.appendChild(ov);
-    _renderMarginalBlock(panel, pairs, data, alpha);
+    _renderMarginalBlock(panel, pairs, data, alpha, named);
 
     if (groups.distinguishable.length) {
         const block = _block(`Distinguishable beyond shot noise (${groups.distinguishable.length})`, 'anomaly',
@@ -485,6 +508,7 @@ function _renderMeasuredBlocks(panel, pairs, tol, data, alpha) {
             : `The ${correctionLongName(corr)} correction controls the false discovery rate at q = ${alpha ?? '—'} for `
                 + 'independent or positively dependent (PRDS) tests; pairs that share a backend share its sample and are '
                 + 'dependent. A few flagged pairs among many can be false discoveries.');
+        _knownIssuesNote(block, groups.distinguishable, named);
         panel.appendChild(block);
     }
     if (groups.ambiguous.length) {
@@ -533,7 +557,7 @@ function _renderMeasuredBlocks(panel, pairs, tol, data, alpha) {
 }
 
 /** Agreement blocks built from pairwise_agreement[] and the shot-noise assessments. */
-function _renderAgreementBlocks(panel, data, nOk) {
+function _renderAgreementBlocks(panel, data, nOk, named) {
     const report = data.divergence_report || {};
     const pairs = Array.isArray(report.pairwise_agreement) ? report.pairwise_agreement : [];
     const measured = !!data.n_shots || pairs.some(p => p.mode === 'measured');
@@ -556,8 +580,8 @@ function _renderAgreementBlocks(panel, data, nOk) {
     }
 
     const tol = _tolerances(pairs, data);
-    if (measured) _renderMeasuredBlocks(panel, pairs, tol, data, report.statistical_test_summary?.alpha);
-    else _renderStatevectorBlocks(panel, pairs, tol);
+    if (measured) _renderMeasuredBlocks(panel, pairs, tol, data, report.statistical_test_summary?.alpha, named);
+    else _renderStatevectorBlocks(panel, pairs, tol, named);
 }
 
 /** Which backends this run dispatched and which returned a result, from the report's
@@ -635,10 +659,104 @@ function _compileItem(pane) {
     } else if (pane.status === 'skipped') {
         text = `not run: ${pane.reason || 'skipped'}`;
     } else {
-        text = `${pane.status || 'no output'}${pane.reason ? `: ${userFacingError(pane.reason)}` : ''}`;
+        text = `${pane.status || 'no output'}${pane.reason ? `: ${userFacingError(pane.reason, 'compile-only service')}` : ''}`;
     }
     frag.appendChild(document.createTextNode(`: ${text}`));
     return frag;
+}
+
+/** Name of a compiled pane: the compiler and its level. */
+function _compileName(pane) {
+    return `${pane.compilerName || pane.compilerId}${pane.level !== null ? ` level ${pane.level}` : ''}`;
+}
+
+/** Outcome of one compile: 'compiled', 'refused', 'rejected', 'skipped', 'timeout' or 'error'. */
+export function compileOutcome(pane) {
+    if (pane.text !== null) return 'compiled';
+    if (pane.refusalKind === 'input') return 'refused';
+    if (pane.refusalKind === 'output_check') return 'rejected';
+    if (pane.status === 'skipped') return 'skipped';
+    if (pane.status === 'timeout') return 'timeout';
+    return 'error';
+}
+
+const COMPILE_OUTCOME_TEXT = {
+    refused: 'Refused (the compiler cannot compile this input correctly)',
+    rejected: 'Output rejected by its check',
+    skipped: 'Not run',
+    timeout: 'Timed out',
+    error: 'Failed',
+};
+
+/** Headline of a compile-only run: how many compiles returned a circuit, then the others by outcome, by name. */
+export function compileHeadline(panes) {
+    const ok = panes.filter(p => compileOutcome(p) === 'compiled').length;
+    const lines = [`Compile only: no simulator was run. ${ok} of ${panes.length} compile${panes.length === 1 ? '' : 's'} returned a circuit.`];
+    Object.entries(COMPILE_OUTCOME_TEXT).forEach(([outcome, text]) => {
+        const names = panes.filter(p => compileOutcome(p) === outcome).map(_compileName);
+        if (names.length) lines.push(`${text}: ${names.join(', ')}.`);
+    });
+    lines.push('The outputs and their passes are in the Circuits tab; the reasons are listed below.');
+    return lines;
+}
+
+/** Playlist table of a compile-only run: per circuit, how many compiles returned a circuit and which did not, by outcome. */
+export function renderCompileSuiteTable(summary, onDetails) {
+    const wrap = document.createElement('div');
+    wrap.className = 'overflow-x-auto border rounded-lg';
+    const table = document.createElement('table');
+    table.className = 'min-w-full divide-y divide-gray-200 text-sm';
+    const head = document.createElement('tr');
+    ['Task', 'Compiled', 'Not compiled', ''].forEach(text => {
+        const th = document.createElement('th');
+        th.scope = 'col';
+        th.className = 'px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase';
+        th.textContent = text;
+        head.appendChild(th);
+    });
+    const thead = document.createElement('thead');
+    thead.className = 'bg-gray-50';
+    thead.appendChild(head);
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    tbody.className = 'bg-white divide-y divide-gray-200';
+    summary.forEach((item, idx) => {
+        const tr = document.createElement('tr');
+        const name = document.createElement('td');
+        name.className = 'px-4 py-3 font-medium text-gray-900';
+        name.textContent = item.task_name || (item.benchmark_file ? String(item.benchmark_file).replace('circuits/', '') : 'Unknown');
+        const compiled = document.createElement('td');
+        compiled.className = 'px-4 py-3 whitespace-nowrap';
+        const failed = document.createElement('td');
+        failed.className = 'px-4 py-3 text-gray-700';
+        if (item.error) {
+            compiled.appendChild(_chip(STATUS_STYLES.error.badge, 'Error', userFacingError(item.error, 'compile-only service')));
+            failed.textContent = userFacingError(item.error, 'compile-only service');
+        } else {
+            const panes = circuitPanes(item).filter(p => p.kind === 'compiled');
+            const ok = panes.filter(p => compileOutcome(p) === 'compiled').length;
+            compiled.appendChild(_chip(STATUS_STYLES[ok === panes.length ? 'success' : ok ? 'inconclusive' : 'error'].badge,
+                `${ok} of ${panes.length}`, 'Compiles that returned a circuit'));
+            const lines = Object.entries(COMPILE_OUTCOME_TEXT).map(([outcome, text]) => {
+                const names = panes.filter(p => compileOutcome(p) === outcome).map(_compileName);
+                return names.length ? `${text}: ${names.join(', ')}` : null;
+            }).filter(Boolean);
+            failed.textContent = lines.length ? lines.join('. ') : '—';
+        }
+        const details = document.createElement('td');
+        details.className = 'px-4 py-3 text-right';
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'text-blue-600 hover:text-blue-900 text-sm font-medium';
+        button.textContent = 'Details';
+        button.addEventListener('click', () => onDetails(idx));
+        details.appendChild(button);
+        tr.append(name, compiled, failed, details);
+        tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    return wrap;
 }
 
 function _renderCompiles(panel, data) {
@@ -791,19 +909,21 @@ export function renderSummaryPanel(data, title) {
     }
 
     if (data.simulated === false) {
-        const records = Array.isArray(data.compiled_circuits) ? data.compiled_circuits : [];
-        const ok = records.filter(r => r && r.dispatch_status === 'ok').length;
         const card = document.createElement('section');
         card.className = 'p-4 mb-4 border-l-4 rounded bg-gray-50 border-gray-300 text-sm text-gray-800';
-        card.textContent = `Compile only: no simulator was run. ${ok} of ${records.length} compile-only level${records.length === 1 ? '' : 's'} returned a circuit; `
-            + 'the outputs and their passes are in the Circuits tab.';
+        compileHeadline(circuitPanes(data).filter(p => p.kind === 'compiled')).forEach((text, i) => {
+            const p = document.createElement('p');
+            if (i === 0) p.className = 'font-semibold';
+            p.textContent = text;
+            card.appendChild(p);
+        });
         panel.appendChild(card);
         _renderCompiles(panel, data);
         return;
     }
 
-    const { verdicts } = renderHeadline(panel, data);
-    renderBackendTable(panel, data, verdicts);
+    const { verdicts, model } = renderHeadline(panel, data);
+    renderBackendTable(panel, data, verdicts, model);
 
     const evidence = document.createElement('h3');
     evidence.className = 'text-base font-semibold text-gray-900 mt-6 mb-2';
@@ -819,7 +939,7 @@ export function renderSummaryPanel(data, title) {
     const raws = Array.isArray(data.raw_results) ? data.raw_results : [];
     _renderCoverage(panel, raws, data);
     _renderFailures(panel, raws);
-    _renderAgreementBlocks(panel, data, raws.filter(r => runnerStatus(r) === 'ok').length);
+    _renderAgreementBlocks(panel, data, raws.filter(r => runnerStatus(r) === 'ok').length, model.flagged);
     _renderCompiles(panel, data);
     _renderRunDetails(panel, data, raws);
 }

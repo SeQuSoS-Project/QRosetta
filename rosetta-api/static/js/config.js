@@ -4,6 +4,7 @@ import { BASE_URL } from './api.js';
 import { getState } from './state.js';
 import { _escapeHtml } from './utils.js';
 import { announceWorkspaceChange } from './dom.js';
+import { qasmGateMetrics } from './qasm_text.js';
 
 /** Qubit cap of the run the mode boxes describe: statevector, measured, or compile-only when
  * neither is ticked. */
@@ -448,16 +449,14 @@ export function getTargetSimulators() {
 }
 
 export function _parseQasmStats(qasm) {
-    let qubits = 0, gates = 0;
+    let qubits = 0;
     for (const line of qasm.split('\n')) {
         const t = line.trim();
         if (!t || t.startsWith('//')) continue;
         const m = t.match(/^qreg\s+\w+\[(\d+)\]/);
-        if (m) { qubits += parseInt(m[1]); continue; }
-        if (t.startsWith('OPENQASM') || t.startsWith('include') || t.startsWith('creg')) continue;
-        if (t.endsWith(';')) gates++;
+        if (m) qubits += parseInt(m[1]);
     }
-    return { qubits, gates };
+    return { qubits, gates: qasmGateMetrics(qasm).gateCount };
 }
 
 export function updateContextBar() {

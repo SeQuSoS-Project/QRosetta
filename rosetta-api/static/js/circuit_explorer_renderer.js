@@ -87,13 +87,13 @@ function _recordedNote(pane) {
         return 'The circuit every compile-only service received: the submitted circuit as the API prepares it for statevector runners.';
     }
     if (pane.kind === 'compiled' && pane.text === null) {
-        return 'A compile-only service was asked for this level and returned no circuit. It is not part of the pairwise comparison.';
+        return 'A compile-only service was asked for this level and returned no circuit; the reason is below.';
     }
     if (pane.kind === 'compiled') {
         const layout = pane.compilerId === 'qmap'
             ? " The lines '// i' and '// o' list, for logical qubits 0, 1, 2, ..., the physical qubit of the chain that holds each one at the start and at the end."
             : '';
-        return `The output of a compile-only service. It was not simulated and is not part of the pairwise comparison. Gate count and depth are counted from this text.${layout}`;
+        return `The output of a compile-only service. Compiled circuits are not simulated, timed or compared. Gate count and depth are counted from this text.${layout}`;
     }
     if (pane.kind === 'dispatched') {
         const names = pane.runners.map(_displayRunnerName).join(', ');
@@ -150,8 +150,18 @@ function _paneCard(pane, context) {
                 `${c.name} ${c.version}${c.sourceSha256 ? ` (source sha256 ${c.sourceSha256.slice(0, 12)}…)` : ''}`
                 + (c.patches.length ? `, patched with ${c.patches.join(', ')}` : ''))));
         }
-    } else if ((pane.kind === 'dispatched' || pane.kind === 'compile-input') && pane.apiNotes.length) {
-        head.appendChild(_noteList('API changes', pane.apiNotes));
+    } else {
+        if (pane.text !== null && typeof pane.gateCount === 'number') {
+            const line = _metricLine(pane, ['text_gate_count', 'text_depth']);
+            const item = _el('span');
+            item.appendChild(renderTooltip('compiled_multi_qubit_gate_count', 'On 2+ qubits'));
+            item.appendChild(document.createTextNode(`: ${fmtInt(pane.multiQubitGateCount)}`));
+            line.appendChild(item);
+            head.appendChild(line);
+        }
+        if ((pane.kind === 'dispatched' || pane.kind === 'compile-input') && pane.apiNotes.length) {
+            head.appendChild(_noteList('API changes', pane.apiNotes));
+        }
     }
     card.appendChild(head);
 
@@ -168,7 +178,8 @@ function _paneCard(pane, context) {
         if (pane.kind === 'compiled' && pane.reason) {
             const label = pane.refusalKind === 'input' ? 'Refused: '
                 : pane.refusalKind === 'output_check' ? 'Output rejected by the check: ' : '';
-            card.appendChild(_el('p', 'px-3 pb-3 text-xs text-gray-700 break-words', `${label}${pane.reason}`));
+            const reason = pane.refusalKind ? pane.reason : userFacingError(pane.reason, 'compile-only service');
+            card.appendChild(_el('p', 'px-3 pb-3 text-xs text-gray-700 break-words', `${label}${reason}`));
         }
         return card;
     }
@@ -317,15 +328,17 @@ function _renderDiff(out, a, b, options) {
     out.appendChild(body);
 }
 
+/** The Diff section and `showB(paneId)`, which puts that pane on side B (and its source on side A when A was the same pane). */
 function _diffSection(panes) {
     const withText = panes.filter(p => p.text !== null);
     const section = _el('section', 'space-y-2');
+    const result = { section, showB: (/** @type {string} */ _id) => {} };
     section.appendChild(_el('h3', 'text-sm font-semibold text-gray-900', 'Diff'));
     section.appendChild(_el('p', 'text-xs text-gray-500',
         "A line diff compares text only. Two texts can differ in every line and still describe the same circuit (gates rewritten, angles written differently, qubits relabelled), so the counts below say nothing about whether the circuits are equivalent."));
     if (withText.length < 2) {
         section.appendChild(_el('p', 'text-xs text-gray-500', 'This run recorded fewer than two circuit texts.'));
-        return section;
+        return result;
     }
     const firstExecuted = withText.find(p => p.kind === 'executed');
     const bId = (firstExecuted || withText[withText.length - 1]).id;
@@ -356,7 +369,17 @@ function _diffSection(panes) {
     };
     [aSelect, bSelect, ...Object.values(toggles)].forEach(control => { control.onchange = paint; });
     paint();
-    return section;
+    result.showB = id => {
+        const pane = withText.find(p => p.id === id);
+        if (!pane) return;
+        bSelect.value = id;
+        if (aSelect.value === id) {
+            const source = sourcePaneId(pane, withText);
+            aSelect.value = source && source !== id ? source : (withText.find(p => p.id !== id)?.id ?? aSelect.value);
+        }
+        paint();
+    };
+    return result;
 }
 
 function _crateNote(report, sharePage) {
@@ -394,8 +417,13 @@ export function renderCircuitExplorer(report, panel, { extraControls = null, upl
     let selected = groups[0].id;
     const tableHost = _el('div');
     const viewer = _el('div', 'space-y-1');
+    const diff = _diffSection(panes);
     const paint = () => {
-        tableHost.replaceChildren(_groupTable(groups, panes, selected, id => { selected = id; paint(); }));
+        tableHost.replaceChildren(_groupTable(groups, panes, selected, id => {
+            selected = id;
+            paint();
+            diff.showB(groups.find(g => g.id === id)?.panes[0].id ?? id);
+        }));
         const group = groups.find(g => g.id === selected) || groups[0];
         const items = [];
         if (group.panes.length > 1) {
@@ -407,6 +435,6 @@ export function renderCircuitExplorer(report, panel, { extraControls = null, upl
     root.appendChild(tableHost);
     root.appendChild(viewer);
     paint();
-    root.appendChild(_diffSection(panes));
+    root.appendChild(diff.section);
     panel.appendChild(root);
 }

@@ -24,6 +24,7 @@ import { exampleOptions } from './circuit_sources.js';
 import { emptyStateModel, renderEmptyState } from './empty_state.js';
 import { setRunKicker, startRunView } from './status_cards.js';
 import { _displayRunnerName } from './render_helpers.js';
+import { plannedRunKeys } from './runner_key.js';
 
 const _checked = id => !!/** @type {HTMLInputElement|null} */ (document.getElementById(id))?.checked;
 const _radio = name => /** @type {HTMLInputElement|null} */ (document.querySelector(`input[name="${name}"]:checked`))?.value;
@@ -135,7 +136,7 @@ function _emptyModel(ws) {
         modes: ws.modes,
         preprocessing: ws.preprocessing,
         compilerCount: Object.values(ws.compilers).reduce((n, levels) => n + levels.length, 0),
-        backends: [...ws.common.target_simulators].sort().map(key => ({ key, name: _displayRunnerName(key) })),
+        backends: plannedRunKeys(ws.common.target_simulators, ws.common.runner_config).sort().map(key => ({ key, name: _displayRunnerName(key) })),
         backendsLoaded: getEnabledRunnerIds().length > 0,
         examples: exampleOptions(),
     });
