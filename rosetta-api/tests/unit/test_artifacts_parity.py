@@ -166,6 +166,8 @@ def _repeated_timing():
                "simulation_time_samples": [2.0, 0.1, 0.30000000000000004, 7.5]})
     s1.update({"timing_samples": 3, "compilation_time_samples": [1e-7, 1e-7, 2e-7],
                "simulation_time_samples": [0.5, 0.49, 0.5100001]})
+    rep["performance_report"]["ranking"][0]["overlaps_next"] = True
+    rep["performance_report"]["ranking"][1]["overlaps_next"] = True
     return rep
 
 
