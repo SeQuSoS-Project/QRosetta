@@ -8,6 +8,7 @@ apart from raw_results: they are circuit text, never simulated or compared.
 """
 
 import asyncio
+import re
 
 from fastapi import HTTPException
 
@@ -23,7 +24,11 @@ COMPILER_SERVICES = settings.get_compiler_services()
 
 COMPILE_INPUT_DERIVATION = (
     "The submitted circuit as the API prepares it for statevector runners: terminal "
-    "measurements removed, then the run's API preprocessing (see api_preprocessing_applied).")
+    "measurements removed, then the run's API preprocessing (see api_preprocessing_applied). "
+    "Compilers receive this circuit, so compiled circuits have no measurements.")
+
+_STATEVECTOR_MEASURE_NOTE = re.compile(
+    r"^(API: removed \d+ terminal measurement\(s\)); statevector mode reports the pre-measurement state")
 
 _COPIED_FIELDS = ("optimization_level", "transpiled_qasm", "passes_applied", "gate_count",
                   "circuit_depth", "gate_counts", "multi_qubit_gate_count", "gate_metrics_basis", "sdk_versions", "native_components", "build_files", "dispatch_status",
@@ -50,6 +55,14 @@ def validate_compilers(compilers: dict) -> None:
         if missing:
             raise HTTPException(status_code=400, detail=(
                 f"Compiler {cid!r} has no optimization level {missing[0]}; it offers {sorted(offered)}."))
+
+
+def compile_input_notes(notes) -> list:
+    """The API preprocessing notes of the compile input, with the terminal-measurement note
+    worded for compilers."""
+    return [_STATEVECTOR_MEASURE_NOTE.sub(
+        r"\1; compilers receive the unitary part, so the compiled circuits have no measurements",
+        note) for note in notes]
 
 
 def _compiler_id(key: str) -> str:
@@ -138,7 +151,7 @@ async def compile_circuit(qasm_string: str, apply_preprocessing: bool, compilers
     payload = {"circuit_data": prepared["qasm"], "optimization_level": 0,
                "runner_config": {cid: list(levels) for cid, levels in compilers.items()}}
     compile_input = {"qasm": prepared["qasm"],
-                     "api_preprocessing_applied": list(prepared["api_preprocessing_applied"]),
+                     "api_preprocessing_applied": compile_input_notes(prepared["api_preprocessing_applied"]),
                      "derivation": COMPILE_INPUT_DERIVATION}
     token = EXCLUSIVE.set(False)
     try:

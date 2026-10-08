@@ -198,14 +198,27 @@ COMPILED_METRICS_PATH = "tables/compiled_circuits.csv"
 _RECORD_FIELDS = ("compiler", "compiler_id", "optimization_level", "dispatch_status",
                   "refusal_kind", "refusal", "gate_count", "multi_qubit_gate_count",
                   "circuit_depth")
-_METRIC_FIELDS = ("task",) + _RECORD_FIELDS + ("gate_counts", "file")
+_METRIC_FIELDS = ("task",) + _RECORD_FIELDS[:6] + ("reason",) + _RECORD_FIELDS[6:] + ("gate_counts", "file")
+
+
+def _reason(record: dict) -> str:
+    """Why a compile has no output: its refusal, else its error text (a skip, a timeout, a
+    compiler error); empty for a compile with output."""
+    if record.get("dispatch_status") == "ok" and not record.get("error"):
+        return ""
+    for field in ("refusal", "error"):
+        if isinstance(record.get(field), str) and record[field]:
+            return record[field]
+    return ""
 
 
 def compiled_metrics_csv(reports_by_task: list, file_paths: dict) -> str:
     """One CSV row per compile record; ``refusal_kind`` (input, output_check) and ``refusal`` are
     set for a compile the adapter refused or whose output failed its check and empty for
-    other errors; ``gate_counts`` as sorted-key JSON, ``file`` the crate path of its output
-    (``file_paths[(task, compiler key)]``), empty when it has none."""
+    other errors; ``reason`` says why any compile without output has none (the refusal, else
+    the recorded error: skipped, timed out or failed); ``gate_counts`` as sorted-key JSON,
+    ``file`` the crate path of its output (``file_paths[(task, compiler key)]``), empty when
+    it has none."""
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=_METRIC_FIELDS, lineterminator="\n")
     writer.writeheader()
@@ -216,6 +229,7 @@ def compiled_metrics_csv(reports_by_task: list, file_paths: dict) -> str:
                 "task": "" if task is None else task,
                 **{field: "" if record.get(field) is None else record.get(field)
                    for field in _RECORD_FIELDS},
+                "reason": _reason(record),
                 "gate_counts": json.dumps(counts, sort_keys=True) if isinstance(counts, dict) else "",
                 "file": file_paths.get((task, record.get("compiler")), ""),
             })

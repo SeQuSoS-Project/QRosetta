@@ -170,6 +170,25 @@ def test_compile_only_headline_names_the_levels_that_did_not_compile():
 
 
 @requires_node
+def test_compile_reasons_are_given_once_per_reason_and_listed_first():
+    reason = ("Not compiled: compile-only services take the unitary part of a circuit, and this "
+              "circuit has a mid-circuit measurement, reset or classical control.")
+
+    def pane(cid, level, status="skipped"):
+        return {"kind": "compiled", "compilerId": cid, "compilerName": cid, "level": level, "text": None,
+                "status": status, "refusalKind": None, "reason": reason if status == "skipped" else "boom"}
+    panes = [pane("bqskit", 1), pane("pyzx", 1), pane("qmap", 0), pane("staq", 2, status="timeout")]
+    reasons, lines = call_js(["summary_renderer.js"], [("compileReasons", [panes]), ("compileHeadline", [panes])])
+    assert reasons[0]["names"] == ["bqskit level 1", "pyzx level 1", "qmap level 0"]
+    assert reasons[0]["text"].startswith("not run: compile-only services take the unitary part")
+    assert len(reasons) == 2 and reasons[1]["names"] == ["staq level 2"]
+    assert lines[-1].endswith("the reasons are listed first under Compile-only services below.")
+    ok = [{**pane("staq", 1), "text": "x", "status": "ok", "gateCount": 1}]
+    (ok_lines,) = call_js(["summary_renderer.js"], [("compileHeadline", [ok])])
+    assert ok_lines[-1] == "The outputs and their passes are in the Circuits tab."
+
+
+@requires_node
 def test_compile_errors_get_compiler_wording():
     msg = "The compiler process was terminated (exit code -9). Server operators can see details in the runner logs."
     out = call_js(["run_status.js"], [("userFacingError", [msg, "compile-only service"]),

@@ -24,8 +24,8 @@ const FAILURE_HEADINGS = {
     error: { heading: 'Errors', text: null },
 };
 
-/** A titled block of pair items; `code` links the title to the manual section on that code. */
-function _block(heading, styleKey, items, code = null) {
+/** A titled block of pair items; `code` links the title to the manual section on that code; a long list is collapsed unless `open`. */
+function _block(heading, styleKey, items, code = null, open = false) {
     const wrap = document.createElement('div');
     const colors = {
         success: 'bg-green-50 text-green-800 border-green-200',
@@ -63,6 +63,7 @@ function _block(heading, styleKey, items, code = null) {
         if (items.length > 12 && styleKey !== 'anomaly') {
             const det = document.createElement('details');
             det.className = 'mt-2 text-sm';
+            det.open = open;
             const sum = document.createElement('summary');
             sum.className = 'cursor-pointer select-none';
             sum.textContent = `Show all ${items.length}`;
@@ -640,27 +641,37 @@ function _renderFailures(panel, raws) {
     });
 }
 
-function _compileItem(pane) {
-    const frag = document.createDocumentFragment();
-    const b = document.createElement('b');
-    b.textContent = `${pane.compilerName || pane.compilerId}${pane.level !== null ? ` level ${pane.level}` : ''}`;
-    frag.appendChild(b);
-    let text;
+/** What happened to one compile, as the text after its name. */
+function _compileText(pane) {
     if (pane.text !== null) {
         const parts = [];
         if (pane.gateCount !== null) parts.push(`${fmtInt(pane.gateCount)} gates`);
         if (pane.multiQubitGateCount !== null) parts.push(`${fmtInt(pane.multiQubitGateCount)} on 2+ qubits`);
         if (pane.depth !== null) parts.push(`depth ${fmtInt(pane.depth)}`);
-        text = `compiled${parts.length ? `: ${parts.join(', ')}` : ''}`;
-    } else if (pane.refusalKind === 'input') {
-        text = `refused: ${pane.reason}`;
-    } else if (pane.refusalKind === 'output_check') {
-        text = `output rejected by the check: ${pane.reason}`;
-    } else if (pane.status === 'skipped') {
-        text = `not run: ${pane.reason || 'skipped'}`;
-    } else {
-        text = `${pane.status || 'no output'}${pane.reason ? `: ${userFacingError(pane.reason, 'compile-only service')}` : ''}`;
+        return `compiled${parts.length ? `: ${parts.join(', ')}` : ''}`;
     }
+    if (pane.refusalKind === 'input') return `refused: ${pane.reason}`;
+    if (pane.refusalKind === 'output_check') return `output rejected by the check: ${pane.reason}`;
+    if (pane.status === 'skipped') return `not run: ${String(pane.reason || 'skipped').replace(/^Not compiled: /, '')}`;
+    return `${pane.status || 'no output'}${pane.reason ? `: ${userFacingError(pane.reason, 'compile-only service')}` : ''}`;
+}
+
+/** Compiles without output grouped by identical reason, in order: `[{names, text}]`. */
+export function compileReasons(panes) {
+    const groups = new Map();
+    panes.filter(p => compileOutcome(p) !== 'compiled').forEach(pane => {
+        const text = _compileText(pane);
+        if (!groups.has(text)) groups.set(text, { names: [], text });
+        groups.get(text).names.push(_compileName(pane));
+    });
+    return [...groups.values()];
+}
+
+function _compileItem(names, text) {
+    const frag = document.createDocumentFragment();
+    const b = document.createElement('b');
+    b.textContent = names.join(', ');
+    frag.appendChild(b);
     frag.appendChild(document.createTextNode(`: ${text}`));
     return frag;
 }
@@ -696,7 +707,8 @@ export function compileHeadline(panes) {
         const names = panes.filter(p => compileOutcome(p) === outcome).map(_compileName);
         if (names.length) lines.push(`${text}: ${names.join(', ')}.`);
     });
-    lines.push('The outputs and their passes are in the Circuits tab; the reasons are listed below.');
+    lines.push(ok === panes.length ? 'The outputs and their passes are in the Circuits tab.'
+        : 'The outputs and their passes are in the Circuits tab; the reasons are listed first under Compile-only services below.');
     return lines;
 }
 
@@ -738,8 +750,10 @@ export function renderCompileSuiteTable(summary, onDetails) {
             compiled.appendChild(_chip(STATUS_STYLES[ok === panes.length ? 'success' : ok ? 'inconclusive' : 'error'].badge,
                 `${ok} of ${panes.length}`, 'Compiles that returned a circuit'));
             const lines = Object.entries(COMPILE_OUTCOME_TEXT).map(([outcome, text]) => {
-                const names = panes.filter(p => compileOutcome(p) === outcome).map(_compileName);
-                return names.length ? `${text}: ${names.join(', ')}` : null;
+                const these = panes.filter(p => compileOutcome(p) === outcome);
+                if (!these.length) return null;
+                const reasons = outcome === 'skipped' ? compileReasons(these).map(r => r.text.replace(/^not run: /, '')) : [];
+                return `${text}: ${these.map(_compileName).join(', ')}${reasons.length === 1 ? ` (${reasons[0].replace(/\.$/, '')})` : ''}`;
             }).filter(Boolean);
             failed.textContent = lines.length ? lines.join('. ') : '—';
         }
@@ -762,7 +776,10 @@ export function renderCompileSuiteTable(summary, onDetails) {
 function _renderCompiles(panel, data) {
     const panes = circuitPanes(data).filter(p => p.kind === 'compiled');
     if (!panes.length) return;
-    const block = _block(`Compile-only services (${panes.length})`, 'neutral', panes.map(_compileItem));
+    const reasons = compileReasons(panes);
+    const items = [...reasons.map(r => _compileItem(r.names, r.text)),
+        ...panes.filter(p => compileOutcome(p) === 'compiled').map(p => _compileItem([_compileName(p)], _compileText(p)))];
+    const block = _block(`Compile-only services (${panes.length})`, 'neutral', items, null, reasons.length > 0);
     _note(block, 'Compiled circuits are text: they are not simulated, timed or compared. Gate counts use each compiler\'s own gate set, so they are not comparable across compilers. The Circuits tab shows each output with its passes.');
     panel.appendChild(block);
 }

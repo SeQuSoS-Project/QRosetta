@@ -37,8 +37,9 @@ _LEVEL_NOTES = {
 _INSTALL_NOTE = ("Q-Synth 5.1 pins python-sat 1.8.dev13, which is no longer on PyPI; this image "
                  "runs it with python-sat 1.8.dev14.")
 _REGISTER_NOTE = ("Q-Synth is given the qubits as one register q in declaration order; its output "
-                  "is composed back onto the input's registers, with the input's final "
-                  "measurements in their original order.")
+                  "is composed back onto the input's registers.")
+_MEASURE_NOTE = ("Final measurements set aside before Q-Synth and appended to its output in their "
+                 "original order.")
 _ENCODE_NOTE = ("qrosetta_commons.qiskit_circuits.exact_qasm2_dumps(): the output as OpenQASM "
                 "2.0, every numeric angle written as the shortest literal that reads back as "
                 "the same double.")
@@ -113,7 +114,7 @@ def _pipeline(level: int):
         else:
             check = f"The output's unitary is not checked above {CHECKED_UP_TO_QUBITS} qubits."
         notes = [translation_note(DECOMPOSITION_BASIS), _LEVEL_NOTES[level], _INSTALL_NOTE, _REGISTER_NOTE,
-                 _ENCODE_NOTE, check]
+                 *([_MEASURE_NOTE] if measures else []), _ENCODE_NOTE, check]
         return output, notes
     return run
 

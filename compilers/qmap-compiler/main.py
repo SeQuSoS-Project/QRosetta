@@ -12,7 +12,9 @@ from qrosetta_commons.compile_service import (
     TRANSLATION_PROBES, register_compiler_endpoint, run_compile_job, run_compiler_cli_main,
 )
 from qrosetta_commons.helpers import declare_sdk_packages, get_num_qubits_from_qasm, with_sdk_versions
-from qrosetta_commons.qiskit_circuits import exact_qasm2_dumps, translate_to_basis, translation_note, unitary_of
+from qrosetta_commons.qiskit_circuits import (
+    exact_qasm2_dumps, idle_qubits, translate_to_basis, translation_note, unitary_of,
+)
 
 declare_sdk_packages("mqt.qmap", "mqt.core", "qiskit")
 
@@ -40,12 +42,12 @@ def _decompose(qasm: str) -> str:
                         - {"barrier"})
     if unexpected:
         raise CompileRefused(f"decomposition left gates QMAP cannot map: {unexpected}")
-    used = {circuit.find_bit(q).index for inst in circuit.data if inst.operation.name != "barrier"
-            for q in inst.qubits}
-    idle = sorted(set(range(circuit.num_qubits)) - used)
+    idle = idle_qubits(circuit)
     if idle:
-        raise CompileRefused(f"qubit(s) {idle} have no gates; QMAP 3.10 then records a qubit layout "
-                         f"that does not match its output, so the circuit is not mapped")
+        raise CompileRefused(f"qubit(s) {idle} have no gates other than barriers and identities "
+                             f"(id, or a rotation by 0, which QMAP 3.10 removes); QMAP then records "
+                             f"a qubit layout that does not match its output, so the circuit is "
+                             f"not mapped")
     return exact_qasm2_dumps(circuit)
 
 

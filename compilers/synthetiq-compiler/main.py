@@ -55,8 +55,9 @@ _BUILD_NOTE = (f"Synthetiq (eth-sri/synthetiq, commit {COMMIT[:12]}) built from 
 _ANGLE_NOTE = ("Each rz(k*pi/4) written as Clifford+T gates for Synthetiq's reader (t, s, s t, "
                "s s, s s t, sdg, tdg for k = 1..7 mod 8), equal up to global phase.")
 _REGISTER_NOTE = ("Synthetiq is given the qubits as one register in declaration order; its output "
-                  "is renamed onto the input's registers, with the input's final measurements in "
-                  "their original order.")
+                  "is renamed onto the input's registers.")
+_MEASURE_NOTE = ("Final measurements set aside before Synthetiq and appended to its output in "
+                 "their original order.")
 
 
 def _search_note(level: int) -> str:
@@ -218,7 +219,7 @@ def _pipeline(level: int):
                                     f"of pi/4, are taken as that multiple)." if largest else "")
         notes = [translation_note(DECOMPOSITION_BASIS), angle_note, _BUILD_NOTE, *search,
                  *(["Barriers removed: Synthetiq synthesises the circuit's whole unitary."] if barriers else []),
-                 _REGISTER_NOTE,
+                 _REGISTER_NOTE, *([_MEASURE_NOTE] if measures else []),
                  "Checked: the output has the input's unitary (Qiskit Operator equality up to global phase)."]
         return output, notes
     return run

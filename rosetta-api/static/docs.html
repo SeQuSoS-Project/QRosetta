@@ -1233,7 +1233,8 @@
                 <p>
                     Every compiler receives the same circuit, recorded as <code>compile_input</code>: the
                     submitted circuit as the API prepares it for statevector runners (terminal measurements
-                    removed, then the run's API preprocessing). In statevector mode this is the dispatched
+                    removed, then the run's API preprocessing), so compiled circuits carry no measurements,
+                    also for a measured-mode circuit. In statevector mode this is the dispatched
                     statevector circuit. A measured-mode circuit with mid-circuit measurement, reset or
                     classical control is not compiled; each requested compile is then recorded with
                     <code>dispatch_status</code> <code>skipped</code> and the reason. Compilers run after the
@@ -1254,9 +1255,13 @@
                     such as a <code>cu3</code> Cirq would import wrongly) or whose output fails the adapter's
                     check has <code>refusal</code> (the reason) and <code>refusal_kind</code>
                     (<code>input</code> or <code>output_check</code>), also as columns of
-                    <code>tables/compiled_circuits.csv</code> in a crate (empty for other errors); the Summary lists every compile with
-                    its gate counts or reason, and a share link shows refusal reasons but no other error
-                    text.
+                    <code>tables/compiled_circuits.csv</code> in a crate (empty for other errors). Its
+                    <code>reason</code> column gives the reason for every compile without output: the
+                    refusal, else the recorded error (the skip reason, "TIMEOUT (N s)" with the time, or
+                    the compiler's error text, which the crate's <code>provenance.json</code> also holds).
+                    The Summary lists every compile with its gate counts or reason, the compiles without
+                    output first and one line per distinct reason, and a share link shows refusal reasons
+                    but no other error text.
                 </p>
                 <p>
                     The report records the request as <code>compilers_requested</code>. Each record's key is
@@ -1332,9 +1337,13 @@
                             errors of the blocks add up, so the output approximates the input unitary. Up to 10
                             qubits every output is checked with Qiskit: its process infidelity to the input must
                             be at most 1e-6, and the measured value is in the passes; above 10 qubits the passes
-                            say the output is not checked. A gate on more than 3 qubits (<code>c3x</code>,
-                            <code>c4x</code>, <code>rc3x</code>, <code>c3sqrtx</code>) is refused, because BQSKit's
-                            blocks hold at most 3 qubits, and so is a circuit BQSKit's parser does not read.
+                            say the output is not checked. BQSKit's blocks hold at most 3 qubits and its parser
+                            reads <code>c3x</code>, <code>c4x</code>, <code>rc3x</code> and <code>c3sqrtx</code> as
+                            single gates on 4 or 5 qubits and <code>u0</code> without its parameter, so Qiskit's
+                            <code>qelib1.inc</code> definitions of those the circuit uses are added under new names
+                            (<code>qelib1_c3x</code> and so on) and the calls renamed, and a gate defined in the
+                            circuit on more than 3 qubits is replaced by its body; both are listed in the passes.
+                            A circuit BQSKit's parser does not read is refused.
                             Level 4 is not offered: it took 195 s on a 4-qubit, 6-gate circuit with one
                             worker.</td></tr>
                         <tr><td>PyZX 0.10.6</td><td>1, 2</td><td><code>creg</code> declarations are removed first
@@ -1358,27 +1367,27 @@
                             is offered up to 7 qubits and refuses wider circuits: exact mapping took more than
                             200 s on an 8-qubit GHZ circuit already laid out as a chain (50 s at 7 qubits). The
                             output's <code>// i</code> and <code>// o</code> lines give the physical qubit of each
-                            logical qubit at input and output. A circuit with a qubit that has no gates is not
-                            mapped (see the known issue below). Every output is checked when it is produced:
+                            logical qubit at input and output. A circuit with a qubit that has no gates other than
+                            barriers and identities (<code>id</code>, or a rotation by 0 such as
+                            <code>rz(0)</code>, which QMAP removes) is not mapped (see the known issue below). Every output is checked when it is produced:
                             both layout lines must be permutations of all the qubits, and up to 10 qubits the
                             output read through them must have the input's unitary (Qiskit operator equality
                             up to global phase); a compile that fails either check is recorded as an error,
-                            never as output. Gates QMAP's own optimizations remove, such as <code>id</code>,
-                            can leave a qubit idle and are caught by this check. QMAP's post-mapping optimizations can rewrite
+                            never as output. QMAP's post-mapping optimizations can rewrite
                             single-qubit sequences, so the output can contain gates such as <code>h</code>.</td></tr>
                         <tr><td>Cirq (cirq-core 1.7.0)</td><td>0, 1</td><td>Cirq's own OpenQASM 2.0 parser
                             (<code>circuit_from_qasm</code>), then <code>optimize_for_target_gateset</code> to the CZ
                             target gate set (CZ and PhasedXZ gates, neighbouring operations merged); level 1 adds
                             <code>eject_phased_paulis</code>, <code>eject_z</code> and the cleanups that drop
-                            negligible operations and empty moments, with the final measurements set aside and
-                            appended afterwards (the eject transformers would otherwise move Z rotations into
-                            the measurements, which keeps the counts but not the unitary). Written back with
+                            negligible operations and empty moments. Written back with
                             <code>to_qasm(precision=16)</code> as one register <code>q</code> in declaration
                             order. This is Cirq's optimiser; the Cirq runner compiles through pytket instead. A
                             <code>cu3</code> that Cirq would import wrongly is refused, at top level or inside a
                             gate definition and at any qubit count (see the known issue below), and up to 10
                             qubits every output is checked against the input with Qiskit and refused when it
-                            differs. The image fixes <code>PYTHONHASHSEED</code>, without which Cirq writes the
+                            differs. Cirq imports <code>rc3x</code> as a 4-qubit matrix that its CZ gate set does
+                            not decompose, so Qiskit's <code>qelib1.inc</code> definition of <code>rc3x</code> is
+                            added to the circuit given to Cirq (listed in the passes). The image fixes <code>PYTHONHASHSEED</code>, without which Cirq writes the
                             gates of a moment in a different order in each process. The sqrt-iSWAP target gate set is not offered: OpenQASM
                             2.0 has no such gate, so the text would show only its <code>cx</code>
                             decomposition.</td></tr>
@@ -1409,8 +1418,7 @@
                             <code>peephole_synthesis(slicing='cnot')</code> resynthesises each CNOT slice
                             exactly with a SAT solver (CaDiCaL 1.9 through python-sat): the fewest CNOTs at
                             level 0, the smallest CNOT depth at level 1. Q-Synth is given the qubits as one
-                            register <code>q</code>; the output is composed back onto the circuit's registers
-                            with its final measurements. Q-Synth splits its 240 s solver budget over the slices
+                            register <code>q</code>; the output is composed back onto the circuit's registers. Q-Synth splits its 240 s solver budget over the slices
                             and keeps a slice's original gates when its solver call times out; a compile in which
                             any slice was still timed out at the end, or the budget ran out, is recorded as an
                             error, because the result would depend on machine speed. The job's timeout (at most
@@ -1432,7 +1440,7 @@
                             the known issue below). Angles go to Quartz as exact fractions of π and come back
                             the same way, so an angle such as 0.3 appears as
                             <code>pi*238732414637843/2500000000000000</code>; the output keeps Quartz's gate lines
-                            with the input's registers, declarations and any final measurements. Barriers are
+                            with the input's registers and declarations. Barriers are
                             removed first, since Quartz
                             rewrites across them; mid-circuit measurement, <code>reset</code> and
                             <code>if</code> are refused, since Quartz drops measurements. The library is built
@@ -1459,8 +1467,7 @@
                             the job's timeout ended it (only the run limit gives the same outcome on any machine).
                             A circuit with no gates after translation is returned empty without running
                             Synthetiq. Barriers are removed (listed). Built without <code>-march=native</code> or
-                            <code>-ffast-math</code>. Every output is checked against the input with Qiskit;
-                            final measurements are kept, mid-circuit measurement is refused.</td></tr>
+                            <code>-ffast-math</code>. Every output is checked against the input with Qiskit.</td></tr>
                     </tbody>
                 </table></div>
                 <p>
@@ -1480,7 +1487,7 @@
                     <a href="#preprocessing">Circuit preprocessing</a>); to see how a compiler treats your own
                     text, run with preprocessing off. Several compilers then reject some valid OpenQASM 2.0,
                     each recorded as that compile's error: BQSKit rejects register broadcasts (<code>h q;</code>), Cirq
-                    rejects <code>barrier</code>, the 4-parameter <code>cu</code> and <code>rc3x</code>, and
+                    rejects <code>barrier</code> and the 4-parameter <code>cu</code>, and
                     Cirq, Q-Synth and Quartz reject <code>u0</code>, which Qiskit's reader does not take.
                     Qiskit's translation for QMAP, Q-Synth and Quartz runs with
                     <code>qubits_initially_zero=False</code>, so a multi-controlled gate is never decomposed
@@ -1506,7 +1513,7 @@
                         <tr><td>Performance</td><td>Times, then memory: ranked successful runs, then the unranked runs with their status and reason. A run on a GPU carries a GPU tag under its name (hover for the GPU); the header says when every run was on a CPU. Each column uses one number format: fixed decimals chosen so its smallest value shows three significant digits, or scientific notation throughout when a value is below 1e-6. The header names conditions in this run that can bias a comparison (backends ran at the same time, other jobs on the server, throttling, unstable repetitions, CPUs of different speeds, one timed run per backend); "How these times are measured" gives the details. With Timing repeats above 1, each time cell shows the median with ± the sample standard deviation below it; the header gives the number of timed runs when every backend had the same, and each cell gives n when they differ. Process Peak RSS includes interpreter start, SDK imports and the warm-up run, so for small circuits it is mostly the SDK footprint. Tooltips on each column give the measurement window; they open on hover, keyboard focus or tap.</td></tr>
                         
                         <tr><td>Agreement</td><td>Counts per label, a heatmap with one cell per pair (coloured by the same verdict as the Summary, with a symbol per class that the key below repeats: = agree or consistent within shot noise, φ agree up to a global phase, ↺ agree after the declared bit reversal, P agree only after a qubit permutation, N agree after normalisation, ≠ disagree or distinguishable, ? inconclusive, – not comparable; click a cell to open its evidence), and the evidence per pair: label, metrics, tolerances, statistical test and provenance (seeds, ordering, SDK versions, preprocessing). Labels are shown in words with the recorded code in the tooltip; the pair list can be filtered by verdict and by backend. Each statevector row shows the fidelity under the transform its label names; for a pair that disagrees it is the fidelity in the basis the declared orderings imply (F(bit-rev) for an <code>lsb</code>×<code>msb</code> pair), with the other basis' value added when the pair matches only there, and a pair that agrees up to a global phase shows that phase, also after the declared bit reversal. Agreement after the declared bit reversal is blue on badges, legends, heatmap and export charts. A measured row leads with its shot-noise assessment; its JS/Hellinger distance label follows in gray after "distance:", which describes the distance and does not decide agreement. <strong>Divergence matrices</strong> (collapsed) hold the N×N fidelity, global phase offset arg⟨a|b⟩, JS-divergence (nats) and Hellinger values. Each number is the direct value, before any bit reversal; for a pair compared after the bit reversal its declared orderings imply, the value in that basis is shown below it with ↺. Cells are coloured by the pair's verdict, not by the number, so an <code>lsb</code>×<code>msb</code> pair that agrees after the declared reversal is coloured as agreeing although its direct fidelity is low. OFF, ERR and T/O mark failed runs, n/c a pair that is not comparable. Cells are rounded for display: four decimals, more for a fidelity that would otherwise round to 1, and three significant digits in scientific notation below 1e-3. Hover a cell for the unrounded value.</td></tr>
-                        <tr><td>Circuits</td><td>A table of the circuit texts the run recorded, one row per distinct text: rows that list several backends are byte-for-byte the same text with the same recorded gate count and depth. Each row gives the lines, gates, depth and the lines added and removed against the text it was derived from; View shows that text below the table, with its notes, and puts it on side B of the diff (side A becomes the text it was derived from when A was the same text). Gates and depth of the submitted circuit, the dispatched circuits and the compiler input are counted in the browser the same way as for compiled circuits (top-level gate statements; barriers and measurements not counted), so a compiler's reduction can be read against the compiler input. The texts are: the circuit as submitted, the circuit the API sent to each dispatch group (with the API's changes) and the circuit each backend executed (its <code>transpiled_qasm</code>, with the backend's transforms, SDK versions, gate count and depth). Each executed pane says where its gate count and depth come from (<code>gate_metrics_basis</code>): counted from that text for most backends, from the executed tape for PennyLane, whose recorded text decomposes <code>QubitUnitary</code> although the tape does not. A line diff compares any two texts, raw or with whitespace and line breaks, comments, or the OPENQASM and include lines ignored; the raw text stays in the panes. The diff stops at about 4,000 changed lines. pytket rewrites angles as multiples of π, so the same angle can be written <code>pi/4</code>, <code>0.25*pi</code> or <code>0.7853981633974483</code>; <strong>Compare angles by value</strong> evaluates every gate parameter without variables and compares it in radians to 12 significant digits, so those read the same (parameters with variables, as in gate bodies, are compared as written). The Cirq pane holds pytket's serialisation of the circuit the Cirq adapter built: <code>include "hqslib1.inc"</code> and <code>U1q</code> come from pytket's gate set, not from Cirq. Texts written with Qiskit (the Qiskit, cuQuantum and TorchQuantum panes, QMAP's input and Q-Synth's output) give every angle as the shortest literal that reads back as the same double; Qiskit's own <code>qasm2.dumps</code> would write an angle below 1e-12 as 0 and one within 1e-12 of a simple multiple of π as that multiple. The qsim pane is Cirq's <code>to_qasm</code> with angles as multiples of π to 16 decimal places. The tab shows text only and draws no conclusion from a difference: two texts can differ line by line and describe the same unitary. When the run used compile-only services, the compiler input and each compiled circuit are panes too (see <a href="#compilers">Compile-only services</a>). A saved run opened from history also offers a read-only link (see <a href="#accounts">Accounts, history &amp; autosave</a>).</td></tr>
+                        <tr><td>Circuits</td><td>A table of the circuit texts the run recorded, one row per distinct text: rows that list several backends are byte-for-byte the same text with the same recorded gate count and depth. Each row gives the lines, gates, depth and the lines added and removed against the text it was derived from; View shows that text below the table, with its notes, and sets the diff to match the Change column: side A is the text it was derived from and side B the text itself; for the submitted circuit, which has no source, A is the submitted circuit and B the first text derived from it. The view opens on the first row with the diff set the same way. Gates and depth of the submitted circuit, the dispatched circuits and the compiler input are counted in the browser the same way as for compiled circuits (top-level gate statements; barriers and measurements not counted), so a compiler's reduction can be read against the compiler input. The texts are: the circuit as submitted, the circuit the API sent to each dispatch group (with the API's changes) and the circuit each backend executed (its <code>transpiled_qasm</code>, with the backend's transforms, SDK versions, gate count and depth). Each executed pane says where its gate count and depth come from (<code>gate_metrics_basis</code>): counted from that text for most backends, from the executed tape for PennyLane, whose recorded text decomposes <code>QubitUnitary</code> although the tape does not. A line diff compares any two texts, raw or with whitespace and line breaks, comments, or the OPENQASM and include lines ignored; the raw text stays in the panes. The diff stops at about 4,000 changed lines. pytket rewrites angles as multiples of π, so the same angle can be written <code>pi/4</code>, <code>0.25*pi</code> or <code>0.7853981633974483</code>; <strong>Compare angles by value</strong> evaluates every gate parameter without variables and compares it in radians to 12 significant digits, so those read the same (parameters with variables, as in gate bodies, are compared as written). The Cirq pane holds pytket's serialisation of the circuit the Cirq adapter built: <code>include "hqslib1.inc"</code> and <code>U1q</code> come from pytket's gate set, not from Cirq. Texts written with Qiskit (the Qiskit, cuQuantum and TorchQuantum panes, QMAP's input and Q-Synth's output) give every angle as the shortest literal that reads back as the same double; Qiskit's own <code>qasm2.dumps</code> would write an angle below 1e-12 as 0 and one within 1e-12 of a simple multiple of π as that multiple. The qsim pane is Cirq's <code>to_qasm</code> with angles as multiples of π to 16 decimal places. The tab shows text only and draws no conclusion from a difference: two texts can differ line by line and describe the same unitary. When the run used compile-only services, the compiler input and each compiled circuit are panes too (see <a href="#compilers">Compile-only services</a>). A saved run opened from history also offers a read-only link (see <a href="#accounts">Accounts, history &amp; autosave</a>).</td></tr>
                         
                         <tr><td>Exports</td><td>Three parts. On the left, the <strong>views</strong> of the run, grouped as Agreement, Statistical, Divergence, Performance, Resources, Metadata, Circuits and Reference; a narrow results column shows them as a menu above the view. In the middle, the selected view: its preview (Chart, Table and Data tabs; Data holds the CSV of the numbers and, for a figure, the spec saved beside it), its caption, which states every choice that shapes the figure (outcomes shown, what is summed into 'other', key order, reference, shot-noise band), and its settings, with the less used ones under <em>More</em>. On the right, the <strong>Export</strong> panel: what the RO-Crate will contain. The report (<code>results.json</code>), circuits and provenance are always included; <em>Add to export</em> adds the view with its settings, each with its own formats, and the pencil reloads an added view to change it. One export holds at most 60 items (<code>limits.max_export_items</code>); at 60, remove an item before adding another. Presets (Paper figures, Data for analysis, Everything, Nothing extra) fill the list; the preset and the author and affiliation under <em>Credits</em> are remembered in this browser. <em>Files from your selection</em> lists the paths the crate will hold.
                         <br><br>Every figure view takes <strong>Backends</strong> (any subset; with two selected the count comparison is a one-against-one histogram), a <strong>Figure size</strong> (automatic, single column 3.5 in, double column 7 in, slide) and a title on or off. The automatic and column sizes are cropped to what is drawn; a slide figure keeps its 13.33 × 7.5 in (16:9) canvas. Measured runs add views that stay readable at many qubits: <strong>Count comparison</strong> (overlay, small multiples, difference from a reference backend with a ±2σ shot-noise band, or an outcome × backend heatmap; the top <em>n</em> outcomes, those above a probability, or the marginal distribution over up to 6 chosen classical bits; sorted by probability, bitstring or Hamming weight; keys in msb or lsb order), <strong>Single-bit marginals</strong> P(c[j] = 1), the quantities the single-bit marginal tests compare, <strong>Hamming weight</strong> (n + 1 bins) and <strong>Rank–probability</strong>. <em>Highlight disagreeing</em> colours the backends whose pair with the reference is a disagreement and greys the rest. Figures are drawn on the server: from its copy of a run made in this session while the copy is kept, otherwise from the fields of the browser copy that figures read (subject to the 1 MiB request-body limit). Titles and captions name the circuit as the caption on screen does (the circuit's name, else the playlist entry's, else the run name); the browser sends that name with each request, since the server's copy of a run records none. Figure legends, axis labels and captions name backends as the Backends table does ("Qiskit (IBM)", "qsim (Google)"); tables keep the runner ids used in <code>results.json</code>. Tables are built in the browser as LaTeX, CSV, Markdown or HTML, and on the server as XLSX. A LaTeX table needs <code>\usepackage{booktabs,adjustbox,longtable}</code>: it is scaled down to the line width when it is wider, set as a <code>longtable</code> above 40 rows so it breaks across pages, and carries its explanation as a note below the table; <em>LaTeX document</em> downloads a complete document that compiles as it is. <em>Report JSON only</em> downloads the full report from the server, the browser copy, or copies it.</td></tr>
@@ -1815,11 +1822,23 @@
                         <tr><td>MQT QMAP 3.10.0 (compile-only), idle qubits</td>
                             <td>When a qubit has no gates, <code>map_</code> reuses its wire and still writes the
                                 identity layout in <code>// i</code> and <code>// o</code> (and in
-                                <code>initial_layout</code>), so the layout lines do not describe the output. The
-                                QMAP compiler therefore does not map such circuits.</td>
+                                <code>initial_layout</code>), so the layout lines do not describe the output. QMAP
+                                removes <code>id</code> and rotations by 0 before mapping, so a qubit with only
+                                those is idle too. The QMAP compiler therefore does not map such circuits.</td>
                             <td><code>qreg q[3]; h q[0]; cx q[0],q[2];</code> on a 3-qubit line: output
                                 <code>cx q[0],q[1]</code> with <code>// i 0 1 2</code> and
-                                <code>// o 0 1</code>.</td></tr>
+                                <code>// o 0 1</code>; the same with <code>rz(0) q[1];</code> added.</td></tr>
+                        <tr><td>BQSKit 1.2.1 (compile-only)</td>
+                            <td><code>Circuit.unfold(point)</code> of a gate defined in the circuit
+                                (<code>CircuitGate</code>) that is not in the first cycle places some of its
+                                body's gates before gates that preceded it, so the circuit's unitary changes;
+                                <code>Circuit.unfold_all()</code> keeps it. The BQSKit compiler replaces wide
+                                definitions by rebuilding the circuit in operation order, as
+                                <code>unfold_all</code> does.</td>
+                            <td><code>gate g a,b { h b; cx a,b; t b; cx a,b; h b; } qreg q[2]; h q[0]; g
+                                q[0],q[1];</code> decoded with BQSKit's OpenQASM 2.0 parser: after
+                                <code>unfold((1, 0))</code> the last <code>h</code> comes first and the process
+                                infidelity to the decoded circuit is 0.146; after <code>unfold_all()</code>, 0.</td></tr>
                         <tr><td>Cirq 1.7.0 (compile-only)</td>
                             <td><code>circuit_from_qasm</code> imports <code>cu3(θ,φ,λ)</code> with the wrong
                                 unitary when θ mod 4π lies in [2π, 4π), for example any small negative θ: the

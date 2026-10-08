@@ -16,7 +16,7 @@ from qrosetta_commons.compile_service import (
     register_compiler_endpoint, run_compile_job, run_compiler_cli_main,
 )
 from qrosetta_commons.helpers import declare_sdk_packages, strip_qasm_comments, with_sdk_versions
-from qrosetta_commons.qelib1 import called_names
+from qrosetta_commons.qelib1 import QELIB1_SOURCE, add_qelib1_definitions
 from qrosetta_commons.qiskit_circuits import unitary_of
 
 declare_sdk_packages("cirq-core", "qiskit")
@@ -66,16 +66,17 @@ def _refuse_misimported_cu3(qasm: str) -> None:
 
 
 def _parse(qasm: str):
-    """Cirq's reading of the circuit; CompileRefused for a gate Cirq 1.7.0 imports as a matrix
-    on more than two qubits (its CZ target gate set leaves it undecomposed and its OpenQASM
-    writer cannot write it) or a circuit its parser rejects."""
-    matrix = sorted(called_names(strip_qasm_comments(qasm)) & MATRIX_IMPORTED_GATES)
-    if matrix:
-        raise CompileRefused(
-            f"cirq-core 1.7.0 imports {', '.join(matrix)} as a matrix gate on more than two qubits, "
-            f"which its CZ target gate set does not decompose and its OpenQASM 2.0 writer cannot write")
+    """(Cirq's reading of the circuit, notes), with qelib1.inc's definitions of the gates Cirq
+    1.7.0 imports as a matrix on more than two qubits (its CZ target gate set leaves such a
+    matrix undecomposed and its OpenQASM writer cannot write it); CompileRefused for a circuit
+    its parser rejects."""
+    text, added = add_qelib1_definitions(qasm, MATRIX_IMPORTED_GATES)
+    notes = [f"cirq-core 1.7.0 imports {', '.join(added)} as a matrix gate on more than two "
+             f"qubits, which its CZ target gate set does not decompose and its OpenQASM 2.0 "
+             f"writer cannot write; the definition from {QELIB1_SOURCE} was added to the "
+             f"circuit given to Cirq, which reads it as a gate defined in the circuit."] if added else []
     try:
-        return circuit_from_qasm(qasm)
+        return circuit_from_qasm(text), notes
     except Exception as exc:
         raise CompileRefused(f"cirq-core 1.7.0's OpenQASM 2.0 parser does not read this circuit ({exc})")
 
@@ -114,8 +115,9 @@ def _pipeline(cleanup: bool):
     def run(qasm: str):
         _refuse_misimported_cu3(qasm)
         qubits = _declared_qubits(qasm)
-        circuit = cirq.optimize_for_target_gateset(_parse(qasm), gateset=cirq.CZTargetGateset())
-        notes = [_PARSE_NOTE, _LEVEL0_NOTE]
+        parsed, notes = _parse(qasm)
+        circuit = cirq.optimize_for_target_gateset(parsed, gateset=cirq.CZTargetGateset())
+        notes += [_PARSE_NOTE, _LEVEL0_NOTE]
         if cleanup:
             circuit, measures = _split_final_measurements(circuit)
             for transformer in (cirq.eject_phased_paulis, cirq.eject_z, cirq.drop_negligible_operations,

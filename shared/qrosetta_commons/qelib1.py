@@ -59,3 +59,20 @@ def add_qelib1_definitions(qasm: str, missing, builtin_rewrites=None):
         definitions = [d if d.startswith(f"gate {replacement}") else pattern.sub(replacement, d)
                        for d in definitions]
     return qasm[:match.end()] + "\n" + "\n".join(definitions) + qasm[match.end():], order
+
+
+def renamed_qelib1_definitions(qasm: str, names, prefix: str = "qelib1_"):
+    """(qasm, {name: new name}): like ``add_qelib1_definitions`` for the gates in ``names``,
+    for a parser that knows those names but reads them differently from qelib1.inc. Each
+    inserted definition and every call of it (top level and inside gate bodies) is renamed
+    ``prefix + name`` (more underscores when the circuit already uses that name), so the
+    parser reads the qelib1.inc definition as a gate defined in the circuit."""
+    text, added = add_qelib1_definitions(qasm, names)
+    if not added:
+        return qasm, {}
+    used = set(re.findall(r"[A-Za-z_]\w*", strip_qasm_comments(qasm)))
+    while any(prefix + name in used for name in added):
+        prefix += "_"
+    renames = {name: prefix + name for name in added}
+    pattern = re.compile(r"(?<![\w.])(" + "|".join(map(re.escape, added)) + r")(?=\s*[(\s])")
+    return pattern.sub(lambda m: renames[m.group(1)], text), renames
