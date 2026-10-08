@@ -173,6 +173,8 @@ def test_config_exposes_mode_thresholds_and_limits(client):
         "shots_max": settings.MAX_SHOTS,
         "shots_default": settings.DEFAULT_SHOTS,
         "max_request_bytes": settings.MAX_UPLOAD_BYTES,
+        "run_rate_limit": settings.RUN_RATE_LIMIT,
+        "access_token_expire_sec": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         "max_experiment_cells": settings.MAX_EXPERIMENT_CELLS,
         "max_export_items": settings.MAX_EXPORT_ITEMS,
         "max_label_length": settings.MAX_LABEL_LENGTH,
@@ -238,7 +240,7 @@ def test_batch_literal_task_is_validated_up_front(client):
     qasm = H + "qreg q[3];\ncreg c[2];\nmeasure q -> c;\n"
     r = client.post("/run_batch_suite", json={
         "mode": "measured", "tasks": [{"algorithm": "mine", "qubits": 3, "qasm_string": qasm}]})
-    assert r.status_code == 400 and r.json()["detail"].startswith("Task 0 (mine): ")
+    assert r.status_code == 400 and r.json()["detail"].startswith("tasks[0] (mine): ")
 
 
 def test_unknown_job_is_404_with_detail(client):
@@ -280,7 +282,7 @@ def test_bundle_and_report_routes_check_the_job_kind(client, tmp_path):
                                       "bundle_path": str(bundle), "results": {}}
     try:
         r = client.get("/experiments/plain/bundle")
-        assert r.status_code == 404 and "not an experiment" in r.json()["detail"]
+        assert r.status_code == 409 and "not an experiment" in r.json()["detail"]
         for r in (client.get("/jobs/exp/report"), client.post("/jobs/exp/export", json={})):
             assert r.status_code == 409 and "/experiments/exp/bundle" in r.json()["detail"]
         r = client.get("/experiments/exp/bundle")

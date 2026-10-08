@@ -1,7 +1,8 @@
 """Frontend routes: the index page, the runner registry, and client-facing limits."""
 
 from services.run_registry import GATE
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import FileResponse, JSONResponse
 from config import settings
 from schemas import AgreementThresholds
@@ -10,6 +11,34 @@ from services.availability import runner_availability
 from services.compilation import COMPILER_SERVICES
 
 router = APIRouter()
+
+SWAGGER_UI_VERSION = "5.17.14"
+REDOC_VERSION = "2.1.5"
+_CDN = "https://cdn.jsdelivr.net/npm"
+
+
+def _openapi_url(request: Request) -> str:
+    return request.scope.get("root_path", "").rstrip("/") + request.app.openapi_url
+
+
+@router.get("/docs", include_in_schema=False)
+async def swagger_ui(request: Request):
+    """The interactive API reference (Swagger UI at a pinned version)."""
+    return get_swagger_ui_html(
+        openapi_url=_openapi_url(request), title=f"{request.app.title} - Swagger UI",
+        swagger_js_url=f"{_CDN}/swagger-ui-dist@{SWAGGER_UI_VERSION}/swagger-ui-bundle.js",
+        swagger_css_url=f"{_CDN}/swagger-ui-dist@{SWAGGER_UI_VERSION}/swagger-ui.css",
+        swagger_favicon_url="data:,")
+
+
+@router.get("/redoc", include_in_schema=False)
+async def redoc(request: Request):
+    """The API reference as ReDoc (pinned version)."""
+    return get_redoc_html(
+        openapi_url=_openapi_url(request), title=f"{request.app.title} - ReDoc",
+        redoc_js_url=f"{_CDN}/redoc@{REDOC_VERSION}/bundles/redoc.standalone.js",
+        redoc_favicon_url="data:,", with_google_fonts=False)
+
 
 @router.get("/")
 async def read_index():
@@ -62,6 +91,8 @@ async def get_config():
     ``timing_repeats_max``, ``max_qasm_gate_statements`` (top-level operation statements;
     the header, includes, register declarations and gate definitions are not counted),
     ``max_request_bytes`` (every POST/PUT/PATCH body, the JSON as sent; 413 above it),
+    ``run_rate_limit`` (requests per client address to each run, export and lookup route;
+    429 above it), ``access_token_expire_sec`` (lifetime of a sign-in token),
     ``max_experiment_cells`` (circuits x preprocessing axes of one experiment, unless
     bypass_limits), ``max_export_items`` (publication items of one RO-Crate export),
     ``max_label_length`` (characters of a run, circuit, task or author name; control and
@@ -97,6 +128,8 @@ async def get_config():
             "shots_max": settings.MAX_SHOTS,
             "shots_default": settings.DEFAULT_SHOTS,
             "max_request_bytes": settings.MAX_UPLOAD_BYTES,
+            "run_rate_limit": settings.RUN_RATE_LIMIT,
+            "access_token_expire_sec": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
             "max_experiment_cells": settings.MAX_EXPERIMENT_CELLS,
             "max_export_items": settings.MAX_EXPORT_ITEMS,
             "max_label_length": settings.MAX_LABEL_LENGTH,

@@ -58,7 +58,7 @@ def test_delete_account_with_saved_circuit_and_run_history_succeeds(client, tmp_
     monkeypatch.setattr("services.storage.MOCK_S3_DIR", str(tmp_path))
     headers = _register_and_login(client, "delete-me-1@example.com")
 
-    r = client.post("/history/circuits", json={"name": "c1", "qasm_string": "OPENQASM 2.0;"},
+    r = client.post("/history/circuits", json={"name": "c1", "qasm_string": "OPENQASM 2.0;\nqreg q[1];\n"},
                      headers=headers)
     assert r.status_code == 201, r.text
     circuit_id = r.json()["id"]
@@ -77,7 +77,7 @@ def test_delete_account_with_only_a_saved_circuit_succeeds(client, monkeypatch, 
     monkeypatch.setattr("services.storage.MOCK_S3_DIR", str(tmp_path))
     headers = _register_and_login(client, "delete-me-2@example.com")
 
-    r = client.post("/history/circuits", json={"name": "c1", "qasm_string": "OPENQASM 2.0;"},
+    r = client.post("/history/circuits", json={"name": "c1", "qasm_string": "OPENQASM 2.0;\nqreg q[1];\n"},
                      headers=headers)
     assert r.status_code == 201, r.text
 
@@ -92,7 +92,7 @@ def test_delete_account_with_no_saved_data_succeeds(client):
 
 
 def _save_circuit(client, headers):
-    r = client.post("/history/circuits", json={"name": "c1", "qasm_string": "OPENQASM 2.0;"},
+    r = client.post("/history/circuits", json={"name": "c1", "qasm_string": "OPENQASM 2.0;\nqreg q[1];\n"},
                     headers=headers)
     assert r.status_code == 201, r.text
     return r.json()["id"]

@@ -1529,10 +1529,11 @@
                     <thead><tr><th>Endpoint</th><th>Returns</th></tr></thead>
                     <tbody>
                         <tr><td><code>GET /jobs/{job_id}</code></td><td>Job status, progress and the browser copy of the report.</td></tr>
-                        <tr><td><code>GET /jobs/{job_id}/report</code></td><td>The untruncated report as JSON (the <em>Download full report</em> button). 404 if the job is unknown or expired, 409 if it has not completed.</td></tr>
-                        <tr><td><code>POST /jobs/{job_id}/export</code></td><td>An RO-Crate ZIP built from the server copy; body: <code>include_statevectors</code>, <code>author_name</code>, <code>author_affiliation</code>, <code>publication_artifacts</code>. Same 404 and 409 cases. <code>publication_artifacts.items</code> lists views as <code>{"view", "params", "formats"}</code>: each figure is written to <code>figures/&lt;name&gt;.&lt;format&gt;</code> with <code>figures/&lt;name&gt;.spec.json</code> (the view, its parameters, the caption and the analysis version), each table to <code>tables/&lt;name&gt;.&lt;ext&gt;</code>, the glossary to <code>reference/</code>; the name is the view id followed by every parameter that differs from its default. A playlist crate draws each view for every circuit under <code>figures/&lt;circuit&gt;/</code>. An unknown view, parameter or format is a 400.</td></tr>
+                        <tr><td><code>GET /jobs/{job_id}/report</code></td><td>The untruncated report as JSON (the <em>Download full report</em> button): the report object itself, without the job envelope. 404 if the job is unknown or expired, 409 if it has not completed.</td></tr>
+                        <tr><td><code>GET /jobs/{job_id}/publication/artifacts</code></td><td>The figures and tables the server copy offers: each one's <code>id</code> (the <code>artifact_id</code> to render), label, group, formats and caption at default parameters; <code>?task=</code> picks a playlist circuit. <code>POST /publication/artifacts</code> does the same for a report in the body. Rendering an id the report does not offer is a 404 whose detail lists the ids it does.</td></tr>
+                        <tr><td><code>POST /jobs/{job_id}/export</code></td><td>An RO-Crate ZIP built from the server copy; body (optional; every field has a default): <code>include_statevectors</code>, <code>author_name</code>, <code>author_affiliation</code>, <code>publication_artifacts</code>. Same 404 and 409 cases. <code>publication_artifacts.items</code> lists views as <code>{"view", "params", "formats"}</code>: each figure is written to <code>figures/&lt;name&gt;.&lt;format&gt;</code> with <code>figures/&lt;name&gt;.spec.json</code> (the view, its parameters, the caption and the analysis version), each table to <code>tables/&lt;name&gt;.&lt;ext&gt;</code>, the glossary to <code>reference/</code>; the name is the view id followed by every parameter that differs from its default. A playlist crate draws each view for every circuit under <code>figures/&lt;circuit&gt;/</code>. An unknown view, parameter or format is a 400.</td></tr>
                         <tr><td><code>POST /jobs/{job_id}/publication/render</code></td><td>One figure or table drawn from the server copy (body: <code>artifact_id</code>, <code>format</code>, <code>scale</code>, <code>params</code>, and <code>task</code>, the circuit's index, for a playlist job). Same 404 and 409 cases; 400 for a parameter or format the view does not take. <code>POST /publication/render</code> takes a report in the body instead.</td></tr>
-                        <tr><td><code>POST /history/runs/from_job/{job_id}</code></td><td>Saves a finished single or batch job to the signed-in user's history from the server copy (body, optional: <code>{"run_name": "..."}</code>). 201 with the saved run; saving the same job again returns that run with 200. 404 if the job is unknown or expired; 409 if it has not finished or is an experiment; 403 if another signed-in account started it. A job submitted with a sign-in belongs to that account; one submitted without a sign-in can be saved by any account that holds its id.</td></tr>
+                        <tr><td><code>POST /history/runs/from_job/{job_id}</code></td><td>Saves a finished single or batch job to the signed-in user's history from the server copy (body, optional: <code>{"run_name": "..."}</code>). 201 with the saved run; saving the same job again returns that run with 200, also after the job has expired. <code>GET /history/runs</code> lists each run's <code>job_id</code> (null for a report uploaded with <code>POST /history/runs</code>). 404 if the job is unknown or expired and this account has not saved it; 409 if it has not finished or is an experiment; 403 if another signed-in account started it. A job submitted with a sign-in belongs to that account; one submitted without a sign-in can be saved by any account that holds its id.</td></tr>
                         <tr><td><code>GET /compilers</code></td><td>The compile-only services: id, name, enabled and available state, and a description of each optimization level.</td></tr>
                         <tr><td><code>POST /history/runs/{run_id}/share-links</code></td><td>Creates a read-only link to one of the signed-in user's saved runs (body, optional: <code>{"expires_in_days": 1..90, "label": "..."}</code>, default 30 days; the label is at most 100 characters and is shown only to the owner). 201 with the link's id, expiry and token; the token appears only in this response. 404 if the run is not yours; 409 when the run already has 10 active links.</td></tr>
                         <tr><td><code>GET /history/runs/{run_id}/share-links</code></td><td>The links to one of your saved runs, with creation, expiry and revocation times, without tokens.</td></tr>
@@ -1545,6 +1546,72 @@
                     <em>Export RO-Crate</em> uses <code>/jobs/{job_id}/export</code> for a job run in this
                     session (or the saved run, for a run opened from history) unless <em>Browser copy</em> is
                     chosen in the Export panel, and offers the browser copy when the server copy has expired.
+                </p>
+                <h3 id="api-scripts">Using the API from a script</h3>
+                <p>
+                    <code>/openapi.json</code> describes every route, its request fields, the status codes
+                    it can return and the shape of the reports (<code>/docs</code> and <code>/redoc</code> show it).
+                    A run is a POST that returns a job envelope <code>{job_id, status, ...}</code>; poll
+                    <code>GET /jobs/{job_id}</code> until <code>status</code> is <code>completed</code> or
+                    <code>failed</code>. Its <code>results</code> is one of three shapes:
+                </p>
+                <ul>
+                    <li>a single-circuit report (<code>/compare</code>, <code>/compare_measured</code>):
+                        <code>raw_results</code> is a list with one entry per run, keyed by
+                        <code>simulator</code>; <code>divergence_report.pairwise_agreement</code> holds one
+                        record per pair; <code>n_shots</code> is present only in measured mode;</li>
+                    <li>a playlist report (<code>/run_batch_suite</code>): <code>mode</code> and
+                        <code>benchmark_summary</code>, one single-circuit report per task in task order, each
+                        with <code>task_name</code> (the display label, the name followed by
+                        "(<em>n</em>q)"), <code>task_qubits</code> and <code>task_request</code> (the task as
+                        sent, including its <code>name</code>); a task that failed before dispatch is
+                        <code>{task_name, task_qubits, task_request, error}</code>;</li>
+                    <li>an experiment: <code>{experiment_summary}</code> only; the per-circuit data is in the
+                        bundle.</li>
+                </ul>
+                <p>
+                    In measured mode the verdict of a pair is <code>measured_assessment</code>
+                    (<code>distinguishable</code> is the disagreement), together with
+                    <code>marginal_assessment</code>. The pair's <code>agreement</code> field compares the
+                    JS and Hellinger distances with their thresholds and ignores shot noise, so a check
+                    that reads only <code>agreement</code> can pass a distinguishable pair or fail a
+                    consistent one. In statevector mode <code>agreement</code> is the verdict.
+                </p>
+                <p>
+                    Live statuses in <code>runner_statuses</code> use the same keys as the results: a
+                    backend at one level is its id, several runs are
+                    <code>&lt;id&gt;~opt&lt;L&gt;~run&lt;N&gt;</code>, and a compile is always
+                    <code>&lt;id&gt;~opt&lt;L&gt;~run1</code>, as in <code>compiled_circuits</code>.
+                    <code>progress</code> (playlists and experiments) stays on the job after it finishes.
+                </p>
+                <p>
+                    Errors have the body <code>{"detail": ...}</code>. A 422 means the request does not match
+                    its schema, whatever the server offers (a wrong type, a value out of range such as a
+                    level above 3, an unknown field); its detail is a list of
+                    <code>{loc, msg, type}</code>. A 400 means the request is well formed but this server
+                    cannot run it (a circuit that does not parse, an unknown or undeployed backend or
+                    compiler, a level a compiler does not offer, a circuit or playlist task over the qubit
+                    limit; a playlist error names the task as <code>tasks[i]</code>, counted from 0). A 413
+                    is a body over the request limit; one over the proxy's 5 MB limit gets the same JSON
+                    shape. 409 is a job in the wrong state or of the wrong kind (for example asking an
+                    ordinary job for an experiment bundle).
+                </p>
+                <p>
+                    Run, export, render and lookup routes are rate-limited per client address
+                    (<code>limits.run_rate_limit</code> in <code>GET /config</code> for runs, exports and circuit lookups, 10 a minute by default; rendering 120 a minute; full-report and bundle downloads and share-link reads 30 a minute; creating a share link 20 a minute). Each
+                    response of a limited route carries <code>X-RateLimit-Limit</code>,
+                    <code>X-RateLimit-Remaining</code> and <code>X-RateLimit-Reset</code> (Unix time); a 429
+                    adds <code>Retry-After</code> in seconds. The exclusive-run 429 sends
+                    <code>Retry-After: 10</code>.
+                </p>
+                <p>
+                    <code>POST /auth/token</code> returns <code>expires_in</code>: the token is valid for
+                    that many seconds (1800 by default), with no refresh token; after that, authenticated
+                    routes return 401 and the script signs in again. Saved circuits can be listed, created
+                    (the text must parse as OpenQASM 2.0), renamed (<code>PATCH
+                    /history/circuits/{id}</code>) and deleted (<code>DELETE /history/circuits/{id}</code>;
+                    runs linked to it are kept). <code>DELETE /history/runs</code> answers with the ids it
+                    deleted and those it did not find, and 404 when it found none.
                 </p>
             </section>
 

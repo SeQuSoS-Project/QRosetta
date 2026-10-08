@@ -67,3 +67,4 @@ class Token(BaseModel):
     """Response body for POST /auth/token."""
     access_token: str = Field(..., description="Bearer token to send as 'Authorization: Bearer <token>' on authenticated requests.")
     token_type: str = Field(..., description="Always 'bearer'.")
+    expires_in: int = Field(..., description="Seconds until the token expires (ACCESS_TOKEN_EXPIRE_MINUTES x 60; 1800 by default). After that, authenticated routes return 401 and a new token must be requested.")

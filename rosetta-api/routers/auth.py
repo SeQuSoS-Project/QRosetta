@@ -13,6 +13,7 @@ import services.accounts as accounts
 from db.database import get_db
 from services.security import access_token_for, get_current_user
 from config import settings
+from routers.errors import responses
 from qrosetta_commons.helpers import get_logger
 
 logger = get_logger("rosetta-auth")
@@ -23,7 +24,8 @@ router = APIRouter(
 )
 
 
-@router.post("/register", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED,
+             responses=responses((400, "The email is already registered (compared case-insensitively)."), 422))
 def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
     """Create an account with an email and password. 422 for an invalid email (format, over
     254 characters) or password (under 8 characters, over 72 bytes); 400 if the email is
@@ -34,13 +36,17 @@ def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Email already registered")
 
 
-@router.post("/token", response_model=schemas.Token)
+@router.post("/token", response_model=schemas.Token, responses=responses(
+    (400, "Password over 72 bytes (UTF-8)."),
+    (401, "Unrecognised email or wrong password. Sent with WWW-Authenticate: Bearer."),
+    (403, "The account is deactivated."), 422))
 def login_for_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: Session = Depends(get_db)
 ):
     """Exchange an email + password (sent as OAuth2 password-grant form fields, username =
-    email, matched case-insensitively) for a bearer access token. 400 for a password over
+    email, matched case-insensitively) for a bearer access token valid for ``expires_in``
+    seconds (1800 by default); there is no refresh token. 400 for a password over
     72 bytes, 401 on an unrecognized email or wrong password, 403 on a deactivated account."""
     if schemas.password_too_long(form_data.password):
         raise HTTPException(
@@ -63,7 +69,8 @@ def login_for_access_token(
 
     access_token = access_token_for(
         user, expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES))
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"access_token": access_token, "token_type": "bearer",
+            "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60}
 
 
 @router.get("/me", response_model=schemas.UserResponse)

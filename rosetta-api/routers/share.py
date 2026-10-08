@@ -25,7 +25,9 @@ def _response(link, **extra) -> dict:
 
 
 @router.post("/history/runs/{run_id}/share-links", response_model=ShareLinkCreated,
-             status_code=status.HTTP_201_CREATED, responses=responses(404, 409, 422))
+             status_code=status.HTTP_201_CREATED, responses=responses(
+                 (404, "No saved run with that id belongs to this account."),
+                 (409, "The run already has the maximum number of active links (10); revoke one first."), 422))
 @limiter.limit("20/minute")
 def create_share_link(request: Request, run_id: str, response: Response,
                       body: ShareLinkCreate | None = None, db: Session = Depends(get_db),
@@ -47,7 +49,7 @@ def create_share_link(request: Request, run_id: str, response: Response,
 
 
 @router.get("/history/runs/{run_id}/share-links", response_model=list[ShareLinkResponse],
-            responses=responses(404))
+            responses=responses((404, "No saved run with that id belongs to this account.")))
 def list_share_links(run_id: str, db: Session = Depends(get_db),
                      current_user: models.User = Depends(get_current_user)):
     """The links to one of your saved runs, without their tokens. 404 if the run is not yours."""
@@ -58,7 +60,7 @@ def list_share_links(run_id: str, db: Session = Depends(get_db),
 
 
 @router.delete("/history/share-links/{link_id}", response_model=ShareLinkResponse,
-               responses=responses(404))
+               responses=responses((404, "No share link with that id belongs to this account.")))
 def revoke_share_link(link_id: str, db: Session = Depends(get_db),
                       current_user: models.User = Depends(get_current_user)):
     """Revoke one of your links; it stops working at once. 404 if the link is not yours."""
@@ -68,7 +70,8 @@ def revoke_share_link(link_id: str, db: Session = Depends(get_db),
         raise HTTPException(status_code=404, detail="Share link not found")
 
 
-@router.post("/shared/circuits", responses=responses(404, 422))
+@router.post("/shared/circuits", responses=responses(
+    (404, "The token is unknown, expired or revoked, its owner is deactivated, or its run was deleted."), 422))
 @limiter.limit("30/minute")
 def read_shared_circuits(request: Request, body: SharedCircuitsRequest, response: Response,
                          db: Session = Depends(get_db)):

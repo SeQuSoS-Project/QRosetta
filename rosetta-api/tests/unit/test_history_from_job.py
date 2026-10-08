@@ -143,12 +143,13 @@ def test_concurrent_saves_of_one_job_store_one_run(monkeypatch):
 
     def slow_save(db, user_id, payload, circuit_id=None, saved_from=None):
         time.sleep(0.2)
-        run = SimpleNamespace(id=f"run-{len(stored)}", user_id=user_id, run_name=payload["run_name"],
+        run = SimpleNamespace(id=f"run-{len(stored)}", user_id=user_id, run_name=payload["run_name"], job_id=payload.get("job_id"),
                               created_at=datetime.now(timezone.utc))
         stored[run.id] = run
         return run
     monkeypatch.setattr(history_service, "save_run", slow_save)
-    monkeypatch.setattr(history_service, "find_run", lambda db, uid, rid: stored.get(rid))
+    monkeypatch.setattr(history_service, "find_run_for_job",
+                        lambda db, uid, jid: next((r for r in stored.values() if r.job_id == jid), None))
     user = SimpleNamespace(id=1)
     _job("race-job-0001", {"n_shots": 10, "raw_results": []})
     codes, ids = [], []

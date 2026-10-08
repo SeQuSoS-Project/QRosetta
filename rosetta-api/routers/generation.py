@@ -12,6 +12,7 @@ from services.validator import validate_request
 from services.quirk_converter import QuirkCompiler
 from config import settings
 from services.security import limiter
+from routers.errors import responses
 
 logger = get_logger("rosetta-api")
 router = APIRouter()
@@ -19,7 +20,9 @@ router = APIRouter()
 @router.get("/algorithms")
 async def get_algorithms():
     """List the preset circuit families available from the circuit generator (e.g. 'ghz',
-    'bell', 'qft', 'bv', 'grover'), with each one's supported qubit-count range."""
+    'bell', 'qft', 'bv', 'grover'), with each one's supported qubit-count range.
+    ``max_qubits`` is the generator's own maximum; ``max_qubits_statevector`` and
+    ``max_qubits_measured`` are the largest size a run in that mode accepts."""
     algorithms = library.load_algorithms()
     return [
         {
@@ -27,6 +30,10 @@ async def get_algorithms():
             "name": algo.get("name", ""),
             "min_qubits": algo.get("min_qubits", 2),
             "max_qubits": algo.get("max_qubits", settings.MAX_QUBITS_MEASURED),
+            "max_qubits_statevector": min(algo.get("max_qubits", settings.MAX_QUBITS_MEASURED),
+                                          settings.MAX_QUBITS_STATEVECTOR),
+            "max_qubits_measured": min(algo.get("max_qubits", settings.MAX_QUBITS_MEASURED),
+                                       settings.MAX_QUBITS_MEASURED),
             "default_qubits": algo.get("default_qubits", 3),
             "description": algo.get("description", "")
         }
@@ -40,7 +47,7 @@ async def get_examples():
     return examples.list_examples()
 
 
-@router.get("/examples/{name}")
+@router.get("/examples/{name}", responses=responses((404, "No bundled example circuit has that name.")))
 async def get_example(name: str):
     """One bundled example circuit's OpenQASM 2.0 text. 404 for a name that is not one."""
     qasm = examples.read_example(name)
@@ -49,7 +56,7 @@ async def get_example(name: str):
     return {"name": name, "qasm": qasm}
 
 
-@router.post("/generate_circuit")
+@router.post("/generate_circuit", responses=responses((400, "Unknown algorithm, or a qubit count outside its range or over max_qubits_measured.")))
 @limiter.limit(settings.RUN_RATE_LIMIT)
 async def generate_circuit_endpoint(request: Request, payload: GenerateCircuitPayload):
     """Build one preset circuit's OpenQASM 2.0 text server-side, without running it."""
@@ -66,7 +73,7 @@ async def generate_circuit_endpoint(request: Request, payload: GenerateCircuitPa
         logger.error("Circuit generation failed for algorithm=%s qubits=%s", payload.algorithm, payload.qubits, exc_info=True)
         raise HTTPException(status_code=500, detail="Circuit generation failed")
 
-@router.post("/visualize/quirk", response_model=VisualizerResponse)
+@router.post("/visualize/quirk", response_model=VisualizerResponse, responses=responses((400, "The circuit does not parse, or uses gates Quirk's URL format cannot represent.")))
 async def visualize_quirk(payload: QasmPayload):
     """Convert an OpenQASM 2.0 circuit into a URL that opens it in Quirk
     (https://algassert.com/quirk), an interactive browser-based circuit visualizer. 400 if the
@@ -96,7 +103,7 @@ async def list_qasmbench():
     qubit-count parameter)."""
     return benchmark_library.list_qasmbench()
 
-@router.get("/benchmarks/mqt")
+@router.get("/benchmarks/mqt", responses=responses((400, "Qubit count over max_qubits_measured."), (404, "No bundled MQT Bench circuit for that algorithm and qubit count.")))
 @limiter.limit(settings.RUN_RATE_LIMIT)
 async def get_mqt_bench(request: Request, algorithm: str, qubits: int = 3):
     """Fetch one bundled MQT Bench circuit's OpenQASM 2.0 text, by algorithm name and qubit
@@ -112,7 +119,7 @@ async def get_mqt_bench(request: Request, algorithm: str, qubits: int = 3):
         logger.error("MQT Bench lookup failed for algorithm=%s qubits=%s", algorithm, qubits, exc_info=True)
         raise HTTPException(status_code=500, detail="Benchmark circuit could not be loaded")
 
-@router.get("/benchmarks/qasmbench")
+@router.get("/benchmarks/qasmbench", responses=responses((400, "Invalid circuit name."), (404, "No bundled QASMBench circuit has that name.")))
 @limiter.limit(settings.RUN_RATE_LIMIT)
 async def get_qasmbench(request: Request, circuit: str):
     """Fetch one bundled QASMBench circuit's OpenQASM 2.0 text, by name (see GET

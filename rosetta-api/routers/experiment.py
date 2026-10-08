@@ -58,7 +58,7 @@ async def start_experiment(request: Request, payload: ExperimentPayload, backgro
                 if payload.mode == "statevector":
                     check_statevector_circuit(circuit.qasm_string)
             except HTTPException as exc:
-                raise HTTPException(status_code=exc.status_code, detail=f"Circuit {index} ({label}): {exc.detail}")
+                raise HTTPException(status_code=exc.status_code, detail=f"circuits[{index}] ({label}): {exc.detail}")
     await require_available(payload.target_simulators)
 
     job_id = str(uuid.uuid4())
@@ -79,7 +79,8 @@ def _open_bundle(path: str):
         raise HTTPException(status_code=404, detail=JOB_NOT_FOUND)
 
 
-@router.get("/experiments/{job_id}/bundle", responses=responses(404, 409))
+@router.get("/experiments/{job_id}/bundle", responses=responses(
+    404, (409, "The job is not an experiment, or the experiment has not finished or failed.")))
 @limiter.limit("30/minute")
 async def download_experiment_bundle(request: Request, job_id: str):
     """Download a completed experiment as an in-memory ZIP: the frozen input circuits, the
@@ -87,13 +88,13 @@ async def download_experiment_bundle(request: Request, job_id: str):
     image digests when the deployment sets QROSETTA_IMAGE_DIGESTS, otherwise marked 'not
     recorded'; runner_images lists the per-result images the Kubernetes path records), a
     conformance matrix (did each circuit run on each backend?), and an agreement-prevalence
-    summary. 404 if the job id is unknown or is not an experiment; 409 if the experiment
-    has not finished or failed."""
+    summary. 404 if the job id is unknown or expired; 409 if the job is not an experiment, or
+    the experiment has not finished or failed."""
     job = ACTIVE_JOBS.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail=JOB_NOT_FOUND)
     if job.get("kind") != "experiment" and "bundle_path" not in job:
-        raise HTTPException(status_code=404, detail="This job is not an experiment and has no bundle; use GET /jobs/{job_id}/report or POST /jobs/{job_id}/export.")
+        raise HTTPException(status_code=409, detail="This job is not an experiment and has no bundle; use GET /jobs/{job_id}/report or POST /jobs/{job_id}/export.")
     if job.get("status") == "failed":
         raise HTTPException(status_code=409, detail=f"The experiment failed and has no bundle: {job.get('error')}")
     if job.get("status") != "completed" or not job.get("bundle_path"):

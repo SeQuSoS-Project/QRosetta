@@ -4,7 +4,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from routers import frontend, generation, benchmark, auth, history, export, publication, experiment, share
-from routers.errors import register_error_handlers
+from routers.errors import document_route_errors, register_error_handlers
+from routers.rate_limit import RateLimitHeaders
 import db.models as models
 from db.database import add_missing_nullable_columns, engine
 from fastapi.middleware.cors import CORSMiddleware
@@ -45,7 +46,8 @@ async def lifespan(app: FastAPI):
     yield
     cleanup_task.cancel()
 
-app = FastAPI(title="Quantum Rosetta API", version=settings.PLATFORM_VERSION, lifespan=lifespan)
+app = FastAPI(title="Quantum Rosetta API", version=settings.PLATFORM_VERSION, lifespan=lifespan,
+              docs_url=None, redoc_url=None)
 
 models.Base.metadata.create_all(bind=engine)
 for _column in add_missing_nullable_columns(models.Base.metadata, engine):
@@ -106,6 +108,7 @@ app.add_middleware(
 )
 
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+app.add_middleware(RateLimitHeaders)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/js", StaticFiles(directory="static/js"), name="js")
@@ -120,3 +123,5 @@ app.include_router(export.router)
 app.include_router(publication.router)
 app.include_router(experiment.router)
 app.include_router(share.router)
+
+document_route_errors(app)

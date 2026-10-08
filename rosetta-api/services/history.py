@@ -39,6 +39,41 @@ def list_circuits(db: Session, user_id: int) -> list:
     return db.query(models.SavedCircuit).filter(models.SavedCircuit.user_id == user_id).all()
 
 
+def _owned_circuit(db: Session, user_id: int, circuit_id: str) -> models.SavedCircuit:
+    circuit = db.query(models.SavedCircuit).filter(
+        models.SavedCircuit.id == circuit_id,
+        models.SavedCircuit.user_id == user_id,
+    ).first()
+    if not circuit:
+        raise CircuitNotFound(circuit_id)
+    return circuit
+
+
+def rename_circuit(db: Session, user_id: int, circuit_id: str, name: str) -> models.SavedCircuit:
+    """Rename one of ``user_id``'s saved circuits."""
+    circuit = _owned_circuit(db, user_id, circuit_id)
+    circuit.name = name
+    db.commit()
+    db.refresh(circuit)
+    return circuit
+
+
+def delete_circuit(db: Session, user_id: int, circuit_id: str) -> None:
+    """Delete one of ``user_id``'s saved circuits; runs linked to it keep their reports and
+    lose the link (``circuit_id`` becomes null)."""
+    circuit = _owned_circuit(db, user_id, circuit_id)
+    try:
+        db.query(models.RunHistory).filter(
+            models.RunHistory.circuit_id == circuit.id,
+            models.RunHistory.user_id == user_id,
+        ).update({models.RunHistory.circuit_id: None}, synchronize_session=False)
+        db.delete(circuit)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+
 def _owned_run(db: Session, user_id: int, run_id: str) -> models.RunHistory:
     run = db.query(models.RunHistory).filter(
         models.RunHistory.id == run_id,
@@ -49,14 +84,12 @@ def _owned_run(db: Session, user_id: int, run_id: str) -> models.RunHistory:
     return run
 
 
-def find_run(db: Session, user_id: int, run_id: str | None):
-    """``user_id``'s run with ``run_id``, or None when there is none."""
-    if not run_id:
-        return None
-    try:
-        return _owned_run(db, user_id, run_id)
-    except RunNotFound:
-        return None
+def find_run_for_job(db: Session, user_id: int, job_id: str):
+    """``user_id``'s run saved from server job ``job_id``, or None."""
+    return db.query(models.RunHistory).filter(
+        models.RunHistory.user_id == user_id,
+        models.RunHistory.job_id == job_id,
+    ).first()
 
 
 SAVED_FROM_JOB = "server_job"
@@ -88,6 +121,7 @@ def save_run(db: Session, user_id: int, run_payload: dict,
             circuit_id=circuit_id,
             s3_object_key=s3_key,
             run_name=run_name,
+            job_id=run_payload.get("job_id") if saved_from == SAVED_FROM_JOB else None,
         )
         db.add(run)
         db.commit()
@@ -171,15 +205,15 @@ def rename_run(db: Session, user_id: int, run_id: str, run_name: str) -> models.
     return run
 
 
-def delete_runs(db: Session, user_id: int, run_ids: list) -> int:
+def delete_runs(db: Session, user_id: int, run_ids: list) -> list:
     """Delete the rows (flushed, not committed), then the stored reports, then commit, so a
-    failure at either step leaves every row with its report. Returns how many were deleted."""
+    failure at either step leaves every row with its report. Returns the deleted ids."""
     runs = db.query(models.RunHistory).filter(
         models.RunHistory.id.in_(run_ids),
         models.RunHistory.user_id == user_id,
     ).all()
     if not runs:
-        return 0
+        return []
 
     try:
         delete_links(db, [run.id for run in runs])
@@ -191,4 +225,4 @@ def delete_runs(db: Session, user_id: int, run_ids: list) -> int:
     except Exception:
         db.rollback()
         raise
-    return len(runs)
+    return [run.id for run in runs]

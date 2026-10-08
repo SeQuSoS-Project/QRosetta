@@ -18,7 +18,12 @@ def _reject_bool(value):
 
 Int = Annotated[int, BeforeValidator(_reject_bool)]
 Seed = Annotated[StrictInt, Field(ge=0)]
-OptimizationLevel = Annotated[Int, Field(ge=0, le=3)]
+def _bounded_int(**bounds):
+    """An int with JSON-schema bounds (minimum/maximum) that rejects booleans."""
+    return Annotated[int, Field(**bounds), BeforeValidator(_reject_bool)]
+
+
+OptimizationLevel = _bounded_int(ge=0, le=3)
 
 RUNNER_CONFIG_MESSAGE = "runner_config values must be an int 0–3 or a non-empty list of ints 0–3"
 
@@ -106,7 +111,7 @@ def _visible_text(value):
 
 Label = Annotated[str, BeforeValidator(_printable_text), Field(max_length=settings.MAX_LABEL_LENGTH)]
 VisibleLabel = Annotated[Label, BeforeValidator(_visible_text)]
-TimingRepeats = Annotated[Int, Field(ge=1, le=settings.MAX_TIMING_REPEATS)]
+TimingRepeats = _bounded_int(ge=1, le=settings.MAX_TIMING_REPEATS)
 RunnerPhases = Dict[str, Int]
 ExecutionTarget = Literal["local", "kubernetes"]
 RunMode = Literal["statevector", "measured"]
@@ -305,7 +310,7 @@ class BenchmarkTask(_Request):
     """One circuit within a batch run (POST /run_batch_suite)."""
     name: Optional[Label] = Field(None, description="Display name for this circuit in the report and progress list. Omit to use algorithm.")
     algorithm: Optional[Label] = Field(None, description="Circuit identifier: a preset family name, or the file name for a bundled benchmark circuit. Required unless qasm_string is given, where it is only a label.")
-    qubits: Optional[Int] = Field(None, ge=0, description="Number of qubits for a generated preset or MQT Bench circuit; required for those sources. Optional and ignored for QASMBench and literal circuits, whose qubit count is read from the QASM.")
+    qubits: Optional[_bounded_int(ge=0)] = Field(None, description="Number of qubits for a generated preset or MQT Bench circuit; required for those sources. Optional and ignored for QASMBench and literal circuits, whose qubit count is read from the QASM.")
     qasm_string: Optional[str] = Field(None, description="User-supplied OpenQASM 2.0 text. When present, this is run as-is and algorithm/qubits/source are ignored.")
     source: Optional[CircuitSource] = Field(None, description="Where to resolve the circuit from when qasm_string is absent: None or 'preset' generates it from the built-in circuit library; 'qasmbench' or 'mqt' loads it from the corresponding bundled benchmark suite; 'qasm' requires qasm_string.")
 
@@ -398,10 +403,10 @@ class JobStatusResponse(BaseModel):
     status: str = Field(..., description="'pending', 'processing', 'completed', or 'failed'. 'failed' means the circuit could not be dispatched (e.g. it does not parse), every runner returned an error, or every task of a batch failed. A failed job that reached the runners still carries its report in results.")
     target: str = Field(..., description="The execution mode this job was dispatched with ('local' or 'kubernetes').")
     requested_target: Optional[str] = Field(None, description="The execution_target value the request carried (the server's EXECUTION_MODE when omitted).")
-    results: Optional[Dict[str, Any]] = Field(None, description="The report, present once status is 'completed' (and for a failed single-circuit job).")
+    results: Optional[Dict[str, Any]] = Field(None, description="The report, present once status is 'completed' (and for a failed job that reached the runners); null in the response to the POST that created the job. GET /jobs/{job_id} documents its shapes.")
     error: Optional[str] = Field(None, description="Failure message, present if status is 'failed', e.g. 'all 14 runners failed'.")
-    runner_statuses: Optional[Dict[str, str]] = Field(None, description="Per-runner status while the job is in flight.")
-    progress: Optional[Dict[str, Any]] = Field(None, description="Batch/experiment progress: {total, completed, current_index, tasks:[{name,status}]}. Present only while a multi-circuit run is in progress; absent for single-circuit runs.")
+    runner_statuses: Optional[Dict[str, str]] = Field(None, description="Live status per run: queued, running, done, error, timeout or offline. Keys are result keys: '<id>' for a backend at one level, '<id>~opt<L>~run<N>' for several, and '<id>~opt<L>~run1' for every compile.")
+    progress: Optional[Dict[str, Any]] = Field(None, description="Playlist and experiment jobs: {total, completed, current_index, tasks:[{name,status}]}. Updated while the job runs and kept once it finishes (current_index is then null); absent for single-circuit runs.")
 
 class RunnerPerformanceMetrics(BaseModel):
     """One backend's raw result for a single circuit run — the entries in a report's
@@ -468,18 +473,33 @@ class ExportRequest(ExportPayload):
 class PublicationJobRenderRequest(_Request):
     """Request body for POST /jobs/{job_id}/publication/render: one figure or table drawn from
     the server's copy of a finished job, so no report is uploaded."""
-    artifact_id: str = Field(..., description="Which figure or table to render, from the report's list of available artifacts.")
+    artifact_id: str = Field(..., description="Which figure or table to render: an id from GET /jobs/{job_id}/publication/artifacts or POST /publication/artifacts.")
     format: str = Field(..., description="Output format for this artifact, e.g. 'svg', 'png', 'pdf', 'csv', 'xlsx'.")
     scale: Int = Field(1, ge=1, le=4, description="Raster resolution multiplier for image formats, 1-4. Ignored for vector/text formats.")
     params: Dict[str, Any] = Field(default_factory=dict, description="Parameters of the artifact's view; omitted ones take their defaults.")
-    task: Optional[Int] = Field(None, ge=0, description="For a playlist job: the index of the circuit in benchmark_summary. Omit for a single-circuit job.")
+    task: Optional[_bounded_int(ge=0)] = Field(None, description="For a playlist job: the index of the circuit in benchmark_summary. Omit for a single-circuit job.")
     circuit_name: Optional[Label] = Field(None, description="Circuit or run name for figure titles and captions, as the app shows it. The server's copy of a single-circuit job records no name; this one is used in its place.")
+
+class PublicationArtifactsRequest(_Request):
+    """Request body for POST /publication/artifacts."""
+    results: Dict[str, Any] = Field(..., description="The report, as for POST /publication/render.")
+
+class PublicationArtifact(BaseModel):
+    """One figure or table a report offers (POST /publication/artifacts, GET
+    /jobs/{job_id}/publication/artifacts)."""
+    id: str = Field(..., description="The artifact_id to render.")
+    label: str = Field(..., description="Display name.")
+    group: str = Field(..., description="Category, e.g. 'agreement', 'heatmaps', 'performance', 'statistical'.")
+    view: str = Field(..., description="'image' for a figure, 'text' for a table or text.")
+    view_id: Optional[str] = Field(None, description="The export view whose params the artifact takes; null when it takes none.")
+    formats: List[str] = Field(..., description="Formats the artifact renders in.")
+    legend: Optional[str] = Field(None, description="Caption at default parameters.")
 
 class PublicationRenderRequest(_Request):
     """Request body for POST /publication/render — render one publication figure or table
     on demand, without generating a full export."""
     results: Dict[str, Any] = Field(..., description="The statevector-stripped report the browser already holds.")
-    artifact_id: str = Field(..., description="Which figure or table to render, from the report's list of available artifacts.")
+    artifact_id: str = Field(..., description="Which figure or table to render: an id from GET /jobs/{job_id}/publication/artifacts or POST /publication/artifacts.")
     format: str = Field(..., description="Output format for this artifact, e.g. 'svg', 'png', 'pdf', 'csv', 'html', 'latex'.")
     scale: Int = Field(1, ge=1, le=4, description="Raster resolution multiplier for image formats, 1-4 (rendered at BASE_DPI x scale). Ignored for vector/text formats.")
     params: Dict[str, Any] = Field(default_factory=dict, description="Parameters of the artifact's view (backends, layout, outcomes, figure size, ...); omitted ones take their defaults.")

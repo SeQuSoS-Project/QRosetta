@@ -39,7 +39,9 @@ async def _crate_response(results: dict, payload, route: str) -> StreamingRespon
     )
 
 
-@router.post("/export", responses=responses(400, 409, 413, 422))
+@router.post("/export", responses=responses(
+    (400, "No report given, a runner key of the wrong form, or an export option the report cannot take."),
+    (409, "The report's circuit never reached a runner (top-level error, no raw_results)."), 413, 422))
 @limiter.limit(settings.RUN_RATE_LIMIT)
 async def export_ro_crate(request: Request, payload: schemas.ExportRequest):
     """Build an RO-Crate ZIP from the report supplied in the request body (subject to the
@@ -53,13 +55,18 @@ async def export_ro_crate(request: Request, payload: schemas.ExportRequest):
     return await _crate_response(payload.results, payload, "client_request")
 
 
-@router.post("/jobs/{job_id}/export", responses=responses(404, 409, 422))
+@router.post("/jobs/{job_id}/export", responses=responses(
+    (400, "An export option the report cannot take (e.g. a publication view parameter)."), 404, 409, 422))
 @limiter.limit(settings.RUN_RATE_LIMIT)
-async def export_job_ro_crate(request: Request, job_id: str, payload: schemas.ExportPayload):
+async def export_job_ro_crate(request: Request, job_id: str,
+                              payload: schemas.ExportPayload | None = None):
     """Build an RO-Crate ZIP from the server's untruncated copy of a finished /compare,
     /compare_measured or /run_batch_suite job, including one whose runners all failed.
     With ``include_statevectors=true`` it carries every statevector the runners returned.
-    404 if the job id is unknown or expired; 409 if the job has not finished, failed before
-    any runner ran, or is an experiment (use GET /experiments/{job_id}/bundle)."""
+    The body is optional; every option has a default. 404 if the job id is unknown or
+    expired; 409 if the job has not finished, failed before any runner ran, or is an
+    experiment (use GET /experiments/{job_id}/bundle); 400 for an export option the report
+    cannot take."""
+    payload = payload or schemas.ExportPayload()
     report = await asyncio.to_thread(job_report_or_error, job_id, "export")
     return await _crate_response(report, payload, "server_job")
