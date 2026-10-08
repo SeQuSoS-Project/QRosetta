@@ -5,6 +5,9 @@ import { dispatch, getState } from './state.js';
 import { setSideLoading } from './utils.js';
 import { charCount } from './request_limits.js';
 import { announceWorkspaceChange } from './dom.js';
+import { readPref, writePref } from './session_store.js';
+
+const SKEW_KEY = 'rosetta_token_clock_skew_ms';
 
 /** @type {null | (() => void)} */
 let _afterLogin = null;
@@ -57,10 +60,28 @@ export function signedInAccount() {
     return tokenClaims(token)?.sub || 'signed-in';
 }
 
-/** When the current sign-in expires (epoch ms), or null when unknown or not signed in. */
+/** Server clock minus this browser's clock (ms), from a token's issue time read on arrival. */
+export function clockSkewMs(token, nowMs) {
+    const iat = tokenClaims(token)?.iat;
+    return typeof iat === 'number' && Number.isFinite(iat) ? iat * 1000 - nowMs : 0;
+}
+
+/** A token's expiry on this browser's clock (epoch ms), or null when it has none. */
+export function localExpiry(token, skewMs) {
+    const exp = tokenClaims(token)?.exp;
+    return typeof exp === 'number' && Number.isFinite(exp) ? exp * 1000 - (Number.isFinite(skewMs) ? skewMs : 0) : null;
+}
+
+/** Store a new sign-in token together with the clock difference measured as it arrived. */
+function _setToken(token) {
+    writePref(SKEW_KEY, token ? String(clockSkewMs(token, Date.now())) : null);
+    dispatch('SET_AUTH_TOKEN', token);
+}
+
+/** When the current sign-in expires (epoch ms on this browser's clock), or null when unknown or not signed in. */
 function _expiresAt() {
-    const exp = tokenClaims(getState().authToken)?.exp;
-    return getState().authToken && typeof exp === 'number' ? exp * 1000 : null;
+    const token = getState().authToken;
+    return token ? localExpiry(token, Number(readPref(SKEW_KEY, '0'))) : null;
 }
 
 let _expiryTimer = null;
@@ -68,7 +89,7 @@ let _expiryTimer = null;
 /** Sign out because the sign-in expired; the page says so and offers to sign in again. */
 function _expireSession() {
     const at = _expiresAt();
-    dispatch('SET_AUTH_TOKEN', null);
+    _setToken(null);
     updateAuthUI();
     document.dispatchEvent(new CustomEvent('session-expired', { detail: { at } }));
 }
@@ -101,11 +122,15 @@ export function updateAuthUI() {
     if (getState().authToken) {
         if (loginBtn) loginBtn.classList.add('hidden');
         if (userProfile) userProfile.classList.remove('hidden');
-        if (emailDisplay) emailDisplay.textContent = tokenClaims(getState().authToken)?.sub || 'User (Logged In)';
+        const email = tokenClaims(getState().authToken)?.sub || 'User (Logged In)';
+        if (emailDisplay) emailDisplay.textContent = email;
+        const full = document.getElementById('user-email-full');
+        if (full) full.textContent = email;
     } else {
         if (loginBtn) loginBtn.classList.remove('hidden');
         if (userProfile) userProfile.classList.add('hidden');
         if (emailDisplay) emailDisplay.textContent = '';
+        /** @type {HTMLDetailsElement|null} */ (document.getElementById('account-menu'))?.removeAttribute('open');
     }
     _scheduleExpiry();
     announceWorkspaceChange();
@@ -143,7 +168,7 @@ export async function handleLoginSubmit() {
             throw new Error(apiDetailText(data.detail) || "Login failed.");
         }
 
-        dispatch('SET_AUTH_TOKEN', data.access_token);
+        _setToken(data.access_token);
 
         updateAuthUI();
         closeAuthModal();
@@ -213,7 +238,7 @@ export async function handleRegisterSubmit() {
 
 /** Sign out; the signed-out account's results and saved runs leave the screen. */
 export function handleLogout() {
-    dispatch('SET_AUTH_TOKEN', null);
+    _setToken(null);
     updateAuthUI();
     document.dispatchEvent(new Event('signed-out'));
 }
@@ -257,3 +282,14 @@ export async function handleDeleteAccount() {
         setSideLoading(false);
     }
 }
+/** The account menu in the header closes on a click outside it and on Escape. */
+document.addEventListener('click', e => {
+    const menu = document.getElementById('account-menu');
+    if (menu?.hasAttribute('open') && e.target instanceof Node && !menu.contains(e.target)) menu.removeAttribute('open');
+});
+document.addEventListener('keydown', e => {
+    const menu = document.getElementById('account-menu');
+    if (e.key !== 'Escape' || !menu?.hasAttribute('open')) return;
+    menu.removeAttribute('open');
+    /** @type {HTMLElement|null} */ (menu.querySelector('summary'))?.focus();
+});

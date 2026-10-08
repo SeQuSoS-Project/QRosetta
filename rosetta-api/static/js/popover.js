@@ -1,6 +1,8 @@
 // Non-modal popovers anchored to a button. The button toggles the panel and reports it in
 // aria-haspopup and aria-expanded (CSS styles an open popover's button from it); Escape or a
-// click outside closes it and returns focus to the button; one popover is open at a time. A
+// click outside closes it and returns focus to the button; Tab past the panel's last control
+// closes it and moves on to the control after the button (Shift+Tab before the first returns to
+// the button), and focus leaving the panel any other way closes it; one popover is open at a time. A
 // panel follows the .qr-popover anatomy (see css/tailwind.src.css). It opens on the side of the
 // button with more room, its height is capped at that room, and it is placed again whenever its
 // content, the window or a scroll position changes. Leaf module.
@@ -42,6 +44,35 @@ function _place(button, panel) {
     panel.style.left = `${Math.min(Math.max(MARGIN, b.right - width), window.innerWidth - width - MARGIN)}px`;
 }
 
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/** The focusable elements in `root` that are shown, in document order. */
+function _focusables(root) {
+    return Array.from(root.querySelectorAll(FOCUSABLE)).filter(el => el instanceof HTMLElement && el.getClientRects().length > 0);
+}
+
+/** The control after `button` in tab order, skipping the panel's own controls. */
+function _nextAfter(button, panel) {
+    const all = _focusables(document);
+    const i = all.indexOf(button);
+    return all.slice(i + 1).find(el => !panel.contains(el)) || null;
+}
+
+function _onPanelKeydown(e, button, panel) {
+    if (e.key !== 'Tab' || !_open || _open.panel !== panel) return;
+    const inside = _focusables(panel);
+    if (!inside.length) return;
+    if (!e.shiftKey && document.activeElement === inside[inside.length - 1]) {
+        e.preventDefault();
+        _close(false);
+        const next = _nextAfter(button, panel);
+        (next || button).focus();
+    } else if (e.shiftKey && document.activeElement === inside[0]) {
+        e.preventDefault();
+        _close(true);
+    }
+}
+
 /** Close whichever popover is open. */
 export function closePopover(restoreFocus = false) {
     _close(restoreFocus);
@@ -55,6 +86,12 @@ export function bindPopover(button, panel, { onOpen = null, focusSelector = null
     button.setAttribute('aria-haspopup', 'dialog');
     button.setAttribute('aria-expanded', 'false');
     button.setAttribute('aria-controls', panel.id);
+    panel.addEventListener('keydown', e => _onPanelKeydown(e, button, panel));
+    panel.addEventListener('focusout', e => {
+        const to = e.relatedTarget;
+        if (!_open || _open.panel !== panel || !(to instanceof Node)) return;
+        if (!panel.contains(to) && !button.contains(to)) _close(false);
+    });
     button.addEventListener('click', () => {
         if (_open && _open.panel === panel) { _close(false); return; }
         _close(false);

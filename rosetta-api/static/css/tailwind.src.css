@@ -113,3 +113,12 @@
   .qr-export-builder { grid-column: 2; grid-row: 1; padding-left: 1.25rem; padding-right: 1.25rem; }
   .qr-export-aside { grid-column: 3; grid-row: 1; }
 }
+/* A table wider than its results panel scrolls sideways; shadows at the edges show there is more. */
+#tab-content .overflow-x-auto {
+  background:
+    linear-gradient(to right, #fff 30%, rgba(255, 255, 255, 0)) left center / 2rem 100% no-repeat local,
+    linear-gradient(to left, #fff 30%, rgba(255, 255, 255, 0)) right center / 2rem 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0)) left center / 0.75rem 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0)) right center / 0.75rem 100% no-repeat scroll;
+  background-color: #fff;
+}

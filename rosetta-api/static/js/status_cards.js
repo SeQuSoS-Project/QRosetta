@@ -4,10 +4,11 @@
 // on every poll tick. Leaf module.
 
 import { BACKEND_COLUMNS, greyTabs, placeholderTable } from './empty_state.js';
-import { formatRunnerLabel, parseRunnerKey } from './runner_key.js';
+import { compareRunnerKeys, formatRunnerLabel, parseRunnerKey } from './runner_key.js';
 
 export const _STATUS_CFG = {
-    queued:   { color: 'bg-gray-300',    text: 'text-gray-500',   label: 'QUEUED',    pulse: false, terminal: false },
+    queued:   { color: 'bg-gray-300',    text: 'text-gray-500',   label: 'QUEUED',    pulse: false, terminal: false, untimed: true,
+                hint: 'Not started yet. Its time starts when it does.' },
     spawning: { color: 'bg-amber-400',   text: 'text-amber-700',  label: 'SPAWNING',  pulse: true,  terminal: false },
     running:  { color: 'bg-blue-500',    text: 'text-blue-700',   label: 'SENT',      pulse: true,  terminal: false,
                 hint: 'Sent to the backend. Each backend runs one request at a time, so this includes any wait behind another job; the wait is recorded as queue_wait_sec.' },
@@ -18,9 +19,13 @@ export const _STATUS_CFG = {
                 hint: 'The backend could not be reached.' },
 };
 
+const _ANALYSING = { color: 'bg-indigo-500', text: 'text-indigo-700', label: 'ANALYSING', pulse: true, terminal: false,
+                    hint: 'Every backend has returned; the server is comparing the results. Measured runs with many outcomes can take tens of seconds here.' };
+
 const _TASK_CFG = {
     queued:  _STATUS_CFG.queued,
     running: { color: 'bg-blue-500', text: 'text-blue-700', label: 'RUNNING', pulse: true, terminal: false },
+    analysing: _ANALYSING,
     done:    _STATUS_CFG.done,
     error:   _STATUS_CFG.error,
 };
@@ -64,11 +69,13 @@ function _chip(cfg, seconds, key) {
     dot.className = `w-2 h-2 rounded-full ${cfg.color}${cfg.pulse ? ' animate-pulse' : ''}`;
     const label = document.createElement('span');
     label.textContent = cfg.label;
+    wrap.append(dot, label);
+    if (cfg.untimed) return wrap;
     const time = document.createElement('span');
     time.className = 'text-gray-400 font-normal';
     time.textContent = `${seconds} s`;
     if (!cfg.terminal) time.dataset.since = key;
-    wrap.append(dot, label, time);
+    wrap.append(time);
     return wrap;
 }
 
@@ -79,7 +86,7 @@ function _ensureRows(group, keys) {
     const known = t ? new Set(t.keys) : new Set();
     if (t && keys.every(k => known.has(k))) return;
     const runOf = new Set(keys.filter(k => k.includes('~')).map(k => parseRunnerKey(k).simId));
-    const all = [...new Set([...known, ...keys])].filter(k => k.includes('~') || !runOf.has(k)).sort();
+    const all = [...new Set([...known, ...keys])].filter(k => k.includes('~') || !runOf.has(k)).sort(compareRunnerKeys);
     const spec = group === 'compile'
         ? { caption: 'Compile-only services', columns: COMPILER_COLUMNS, keys: all, rows: all.map(k => [_compilerName(k), '—']) }
         : { caption: _view.backendCaption, columns: _view.backendColumns, keys: all,
@@ -123,9 +130,26 @@ function _finishedText(statuses, keys, noun) {
     return `${done} of ${keys.length} ${noun}${keys.length === 1 ? '' : 's'} finished`;
 }
 
+/** True when every backend and compile has finished. Once a circuit's runs were seen in progress
+ * and all have finished, the server is analysing its results (it reports no status of its own
+ * for this; a playlist keeps the previous circuit's statuses until the next one dispatches). */
+export function allRunsFinished(statuses) {
+    const keys = Object.keys(statuses || {});
+    return keys.length > 0 && keys.every(k => (_STATUS_CFG[statuses[k]] || _STATUS_CFG.queued).terminal);
+}
+
 function _renderProgress() {
     const host = _el('loader-progress');
     if (!host || !_view) return;
+    const current = _view.progress ? _view.progress.current_index : 'single';
+    const finished = allRunsFinished(_view.statuses);
+    if (!finished && Object.keys(_view.statuses).length) _view.activeFor = current;
+    const analysing = finished && _view.activeFor === current;
+    if (analysing !== _view.analysing) {
+        _view.analysing = analysing;
+        setRunKicker(analysing ? 'Analysing results' : 'Running');
+        if (_view.progress) _renderTasks();
+    }
     const parts = [];
     const p = _view.progress;
     if (p) parts.push(`${p.completed || 0} of ${p.total || p.tasks.length} circuits finished`);
@@ -135,6 +159,7 @@ function _renderProgress() {
     const noun = backends.some(k => parseRunnerKey(k).isMulti) ? 'run' : 'backend';
     if (backends.length) parts.push(`${_finishedText(s, backends, noun)}${p ? ' on the current circuit' : ''}`);
     if (compiles.length) parts.push(_finishedText(s, compiles, 'compile'));
+    if (analysing) parts.push('analysing results');
     host.textContent = parts.length ? `${parts.join(' · ')} ·` : '';
 }
 
@@ -147,7 +172,7 @@ export function startRunView({ tabs = [], table = null, compilerIds = [], nameOf
     endRunView();
     const playlist = table?.caption === 'Playlist';
     _view = {
-        nameOf, compilerIds: new Set(compilerIds), tables: {}, phases: {}, statuses: {}, progress: null,
+        nameOf, compilerIds: new Set(compilerIds), tables: {}, phases: {}, statuses: {}, progress: null, analysing: false, activeFor: null,
         backendCaption: playlist ? 'Backends (current circuit)' : 'Backends',
         backendColumns: !table || playlist ? BACKEND_COLUMNS : table.columns,
         timer: setInterval(_tick, 1000),
@@ -202,6 +227,13 @@ export function renderBatchProgress(progress) {
     if (!progress || !Array.isArray(progress.tasks) || !progress.tasks.length) return;
     if (!_view) startRunView();
     _view.progress = progress;
+    _renderTasks();
+    _renderProgress();
+}
+
+/** The playlist table's Status cells; the running circuit reads ANALYSING once all its runs finished. */
+function _renderTasks() {
+    const progress = _view.progress;
     const keys = progress.tasks.map((_, i) => String(i));
     let t = _view.tables.tasks;
     if (!t || t.keys.length !== keys.length) {
@@ -210,9 +242,8 @@ export function renderBatchProgress(progress) {
         t = _view.tables.tasks = { node, keys };
     }
     progress.tasks.forEach((task, i) => {
-        const status = task.status || 'queued';
+        const status = task.status === 'running' && _view.analysing ? 'analysing' : (task.status || 'queued');
         const cfg = _TASK_CFG[status] || _TASK_CFG.queued;
         _setStatus(t.node, String(i), _chip(cfg, _seconds(`task:${i}`, status, cfg), `task:${i}`));
     });
-    _renderProgress();
 }

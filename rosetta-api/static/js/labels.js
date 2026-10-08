@@ -9,7 +9,7 @@ export const LABELS = {
     agree_up_to_global_phase: { short: 'Agree up to a global phase', anchor: 'taxonomy',
         definition: 'The statevectors match after removing a global phase, which no measurement can see.' },
     agree_after_bit_reversal: { short: 'Agree after bit reversal', anchor: 'bitorder',
-        definition: 'The statevectors match after the bit reversal that the two backends\' declared qubit orderings imply.' },
+        definition: 'The statevectors match after the bit reversal that the two backends\' declared qubit orderings imply: one backend writes qubit 0 as the rightmost bit of a basis state, the other as the leftmost, so the same state is written in reverse. This is agreement. A state that reads the same both ways (a Bell or GHZ state) is listed here too for every pair of one LSB and one MSB backend.' },
     agree_after_qubit_permutation: { short: 'Match only after an undeclared qubit permutation', anchor: 'taxonomy',
         definition: 'The outputs match only after reordering qubits in a way neither backend declares. Counted as a disagreement.' },
     agree_after_normalization: { short: 'Agree after normalisation', anchor: 'taxonomy',
@@ -98,4 +98,28 @@ export function docsLink(code, text = 'How this is decided') {
     a.className = 'text-xs font-normal underline opacity-80 hover:opacity-100';
     a.textContent = text;
     return a;
+}
+
+/** A plain-language reading of a report's Summary for a reader new to the comparison, by mode. */
+export const PLAIN_MEANING = {
+    statevector: 'Each backend computed the final quantum state of the circuit, and every pair of backends was compared. '
+        + 'Two backends agree when their states match to within rounding. "Agree after bit reversal" is also agreement: the two backends '
+        + 'write the qubits of a state in opposite order (qubit 0 rightmost or leftmost), and the states match once that is undone. '
+        + 'A backend that differs from the others has produced a different state; the report shows which pairs differ, not which backend is right.',
+    measured: 'Each backend simulated measuring the circuit many times (the shots) and counted the outcomes. Random sampling makes the counts '
+        + 'of two correct backends differ a little, so each pair is tested for a difference larger than that noise. "Consistent within shot noise" '
+        + 'means none was found; "Inconclusive" means more shots are needed to tell; "Distinguishable" or a differing single-bit marginal '
+        + 'means a real difference, so at least one of the two backends is wrong.',
+};
+
+/** The "What this means" paragraph for a report in `mode` ('statevector' or 'measured'). */
+export function plainMeaningNote(mode) {
+    const text = PLAIN_MEANING[mode === 'measured' ? 'measured' : 'statevector'];
+    const p = document.createElement('p');
+    p.className = 'text-sm text-gray-700 mb-4';
+    const b = document.createElement('span');
+    b.className = 'font-medium';
+    b.textContent = 'What this means: ';
+    p.append(b, text);
+    return p;
 }

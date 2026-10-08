@@ -134,6 +134,7 @@ export function renderDetailReport(data, title, config = getState().currentRunne
     });
     renderCircuitExplorer(data, panelElements.circuits, {
         extraControls: renderShareControls,
+        uploaded: data.saved_from === 'upload',
         filePrefix: typeof data.task_name === 'string' ? data.task_name : '',
     });
 
@@ -214,7 +215,9 @@ function _taskBadges(item) {
         badges.push(_agreementBadge(comparable));
     }
     Object.entries(failures).forEach(([st, n]) => {
-        badges.push(_makeStatusBadge(RUNNER_STATUS_STYLE[st], `${RUNNER_STATUS_LABEL[st]} ×${n}`));
+        const badge = _makeStatusBadge(RUNNER_STATUS_STYLE[st], `${RUNNER_STATUS_LABEL[st]} ×${n}`);
+        badge.classList.add('whitespace-nowrap');
+        badges.push(badge);
     });
     return badges;
 }
@@ -330,21 +333,13 @@ export function viewDetail(index) {
     renderDetailReport(item, `Detail: ${fname}`, getState().currentRunnerConfig);
 }
 
+/** Show the Quirk view as a full-page overlay above the results, which stay as they are. */
 export function showVisualizerTab() {
-    const welcome = document.getElementById('welcome-message');
-    if (welcome) welcome.classList.add('hidden');
-    Object.values(panelElements).forEach(panel => {
-        if (panel) panel.classList.add('hidden');
-    });
-    if (panelElements['visualizer']) panelElements['visualizer'].classList.remove('hidden');
-
-    const tabNavEl = document.getElementById('tab-nav');
-    if (tabNavEl) {
-        tabNavEl.querySelectorAll('button').forEach(btn => {
-            btn.classList.remove('border-blue-600', 'text-blue-600');
-            btn.classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-700');
-        });
-    }
+    const overlay = panelElements['visualizer'];
+    if (!overlay) return;
+    overlay.classList.remove('hidden');
+    overlay.classList.add('flex');
+    document.getElementById('visualizer-close')?.focus();
 }
 
 export async function generateAndVisualize() {
@@ -376,6 +371,8 @@ export async function generateAndVisualize() {
         }
 
         document.getElementById('quirk-iframe').src = data.url;
+        const link = /** @type {HTMLAnchorElement|null} */ (document.getElementById('quirk-open-link'));
+        if (link) link.href = data.url;
         showVisualizerTab();
     } catch (err) {
         console.error("Visualizer API Error:", err);
@@ -388,20 +385,15 @@ export async function generateAndVisualize() {
     }
 }
 
+/** Close the Quirk overlay; focus returns to the Visualize button. */
 export function closeVisualizer() {
-    if (panelElements['visualizer']) panelElements['visualizer'].classList.add('hidden');
-    const suiteData = getState().currentSuiteData;
-    if (suiteData) {
-        showTab(suiteData.benchmark_summary ? 'suite-summary' : 'summary');
-    } else {
-        const welcome = document.getElementById('welcome-message');
-        if (welcome) welcome.classList.remove('hidden');
-        const tabNavEl = document.getElementById('tab-nav');
-        if (tabNavEl) {
-            tabNavEl.querySelectorAll('button').forEach(btn => {
-                btn.classList.remove('border-blue-600', 'text-blue-600');
-                btn.classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-700');
-            });
-        }
-    }
+    const overlay = panelElements['visualizer'];
+    if (!overlay || overlay.classList.contains('hidden')) return;
+    overlay.classList.add('hidden');
+    overlay.classList.remove('flex');
+    document.getElementById('btn-visualize')?.focus();
 }
+
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeVisualizer();
+});

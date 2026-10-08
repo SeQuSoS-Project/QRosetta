@@ -188,6 +188,8 @@ export function removeFromBatch(index) {
 }
 
 export function clearBatch() {
+    const n = getState().batchQueue.length;
+    if (n && !confirm(`Remove all ${n} circuit${n === 1 ? '' : 's'} from the playlist? This cannot be undone; Export JSON keeps a copy.`)) return;
     dispatch('SET_BATCH_QUEUE', []);
     renderBatchQueue();
 }
@@ -249,6 +251,8 @@ export function openGeneratorModal() {
         });
     }
     const cap = getDynamicMaxQubits();
+    const note = document.getElementById('gen-cap-note');
+    if (note) note.textContent = `At most ${cap} qubits: the limit for ${qubitCapReason()}. Each algorithm also has its own maximum.`;
     ['gen-min', 'gen-max'].forEach(id => {
         const input = /** @type {HTMLInputElement|null} */ (document.getElementById(id));
         if (!input) return;
@@ -256,6 +260,14 @@ export function openGeneratorModal() {
         if ((parseInt(input.value, 10) || 0) > cap) input.value = String(cap);
     });
     document.getElementById('gen-modal').classList.remove('hidden');
+}
+
+/** Which runs set the qubit cap of getDynamicMaxQubits(), from the ticked modes. */
+export function qubitCapReason() {
+    const sv = /** @type {HTMLInputElement|null} */ (document.getElementById('mode-statevector'))?.checked ?? true;
+    const ms = /** @type {HTMLInputElement|null} */ (document.getElementById('mode-measured'))?.checked ?? false;
+    if (sv) return ms ? 'statevector runs (measured runs allow more, but Statevector is ticked)' : 'statevector runs';
+    return ms ? 'measured runs' : 'compile-only runs';
 }
 
 export function closeGeneratorModal() {
@@ -275,19 +287,25 @@ export function runAutoGeneration() {
     const st = getState();
     const cap = getDynamicMaxQubits();
     const added = [];
+    const lowered = new Set();
     for (let i = 0; i < count; i++) {
         const algoId = selectedAlgos[Math.floor(Math.random() * selectedAlgos.length)];
         const algoMeta = st.allAlgorithms.find(a => a.id === algoId);
         const safeMin = Math.max(minQ, algoMeta.min_qubits || 2);
         const safeMax = Math.min(maxQ, algoMeta.max_qubits || cap, cap);
+        if ((algoMeta.max_qubits || cap) < Math.min(maxQ, cap)) lowered.add(`${algoMeta.name} to its maximum of ${algoMeta.max_qubits}`);
         if (safeMin <= safeMax) {
             const q = Math.floor(Math.random() * (safeMax - safeMin + 1)) + safeMin;
             added.push({ algorithm: algoId, qubits: q, name: algoMeta.name });
         }
     }
+    const notes = [];
+    if (maxQ > cap) notes.push(`Max Qubits ${maxQ} is over ${cap}, the limit for ${qubitCapReason()}.`);
+    if (lowered.size) notes.push(`Qubit counts were limited for ${[...lowered].join('; ')}.`);
     if (added.length < count) {
-        alert(`${count - added.length} of ${count} circuits were not added: no qubit count in ${minQ}–${maxQ} fits the chosen algorithm and the ${cap}-qubit limit.`);
+        notes.push(`${count - added.length} of ${count} circuits were not added: no qubit count in ${minQ}–${maxQ} fits the chosen algorithm and the ${cap}-qubit limit.`);
     }
+    if (notes.length) alert(notes.join('\n\n'));
     dispatch('SET_BATCH_QUEUE', [...st.batchQueue, ...added]);
     renderBatchQueue();
     closeGeneratorModal();

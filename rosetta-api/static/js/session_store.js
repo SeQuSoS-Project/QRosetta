@@ -1,6 +1,6 @@
 // Browser storage records that survive a page reload: the jobs this browser submitted (until
 // their results expire on the server), the circuit in the editor and the ticked run modes (per
-// tab, with the last tab's values for a new tab), the playlist and small per-browser
+// tab, with the last tab's values for a new tab), the Run Name, the playlist and small per-browser
 // preferences. Leaf module: no imports.
 
 const JOBS_KEY = 'rosetta_jobs';
@@ -9,6 +9,7 @@ const EDITOR_KEY = 'rosetta_editor_circuit';
 const MODES_KEY = 'rosetta_run_modes';
 const SELECTION_KEY = 'rosetta_loaded_selection';
 const BATCH_KEY = 'rosetta_batch_queue';
+const RUN_NAME_KEY = 'rosetta_run_name';
 
 /** An unfinished job is offered for this long after it was submitted. */
 export const UNFINISHED_MAX_AGE_MS = 6 * 60 * 60 * 1000;
@@ -65,7 +66,7 @@ export function writePref(key, value) {
 /**
  * @typedef {{ job_id: string, kind: 'single'|'batch'|'experiment', title: string,
  *             run_name?: string|null, circuit_name?: string|null, runner_config?: object,
- *             remaining?: string[], account?: string|null, submitted_at: number,
+ *             remaining?: string[], account?: string|null, submitted_at: number, compilers?: object, compilers_with?: string,
  *             state?: 'pending'|'stopped'|'finished', finished_at?: number }} StoredJob
  */
 
@@ -172,6 +173,28 @@ export function loadLoadedSelection() {
         if (v && typeof v.value === 'string') return { value: v.value, qubits: Number.isFinite(v.qubits) ? v.qubits : null };
     }
     return null;
+}
+
+/** @param {string} name the Run Name field's text */
+export function saveRunName(name) {
+    const value = { name: String(name ?? '') };
+    _write(RUN_NAME_KEY, value, 'session');
+    _write(RUN_NAME_KEY, value);
+}
+
+/** This tab's Run Name, else the one typed last in any tab, else ''.
+ * @returns {string} */
+export function loadRunName() {
+    for (const kind of ['session', 'local']) {
+        const v = _read(RUN_NAME_KEY, kind);
+        if (v && typeof v.name === 'string') return v.name;
+    }
+    return '';
+}
+
+/** Whether a `storage` event key concerns the recorded jobs (null: storage was cleared). */
+export function isJobsStorageKey(key) {
+    return key === null || key === JOBS_KEY;
 }
 
 /** @param {{ statevector: boolean, measured: boolean }} modes */

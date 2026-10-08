@@ -258,8 +258,10 @@ export const TAG_GRAY = 'bg-gray-100 text-gray-600 border-gray-200';
 export const TAG_AMBER = 'bg-amber-100 text-amber-800 border-amber-300';
 
 const BIT_ORDER_TAGS = {
-    lsb: { label: 'LSB', color: 'bg-sky-100 text-sky-800 border-sky-300', title: 'LSB: qubit 0 is the rightmost bit of a basis-state label.' },
-    msb: { label: 'MSB', color: 'bg-white text-sky-800 border-sky-300', title: 'MSB: qubit 0 is the leftmost bit of a basis-state label.' },
+    lsb: { label: 'LSB', color: 'bg-sky-100 text-sky-800 border-sky-300',
+           title: 'LSB: qubit 0 (and c[0]) is the least significant bit, written rightmost: in "01", qubit 0 is 1. Qiskit prints states this way. Pairs with an MSB backend are compared after reversing the bits.' },
+    msb: { label: 'MSB', color: 'bg-white text-sky-800 border-sky-300',
+           title: 'MSB: qubit 0 (and c[0]) is the most significant bit, written leftmost: in "01", qubit 0 is 0 and qubit 1 is 1. Pairs with an LSB backend are compared after reversing the bits.' },
 };
 
 const SAMPLING_TAGS = {
