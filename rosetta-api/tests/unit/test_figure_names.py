@@ -64,6 +64,19 @@ def test_slide_figures_keep_their_aspect_ratio(size, ratio):
         assert abs(width / height - ratio) < 0.01, (artifact, width, height)
 
 
+def test_concurrent_renders_at_different_sizes_do_not_share_settings():
+    from concurrent.futures import ThreadPoolExecutor
+
+    def render(size):
+        png, _, _ = render_artifact(COUNTS, "measured", "counts_overview", "png", 1, {"size": size})
+        return struct.unpack(">II", png[16:24])
+
+    alone = {size: render(size) for size in ("slide", "single")}
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        mixed = list(pool.map(render, ["slide", "single"] * 6))
+    assert mixed == [alone["slide"], alone["single"]] * 6
+
+
 @requires_node
 def test_display_names_match_the_browser_register():
     keys = list(BACKEND_DISPLAY_NAMES) + ["qiskit~opt2~run1", "unknown-sim", "qibo~opt0~run3"]

@@ -42,7 +42,7 @@ export const VIEW_UI = [
                 help: '±2σ of the difference of two independent samples at the reference probability and shot count.' },
             { key: 'keyorder', label: 'Key order', control: 'seg', more: true,
                 options: [['msb', 'msb (c[0] left)'], ['lsb', 'lsb (c[0] right)']],
-                help: 'How keys are written on the axis. lsb-declared backends are aligned to one order before plotting either way.' },
+                help: 'How keys are written on the axis. Example with three classical bits where only c[0] reads 1: msb writes 100, lsb writes 001 (the order Qiskit prints). lsb-declared backends are aligned to one order before plotting either way.' },
             COLOUR, ...FIGURE_MORE] },
     { id: 'marginals', group: 'Statistical', label: 'Single-bit marginals',
         desc: 'P(c[j] = 1) for each classical bit: one point per bit, however many qubits the circuit has.',
