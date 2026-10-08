@@ -152,7 +152,7 @@ function _differenceLines(v, h, measured, noun, records) {
         const k = h.pairs.length;
         lines.push(`${k === 1 ? 'One pair differs' : `${k} pairs differ`}: ${h.pairs.map(([a, b]) => _pairText(a, b, records, measured)).join(', ')}.`);
         lines.push(measured
-            ? `No other pair is distinguishable${v.marginalTested ? ' or differs in a single-bit marginal' : ''}.`
+            ? `No other pair is distinguishable${v.byOnly ? ' apart from the BY-only pairs below' : ''}${v.marginalTested ? ' or differs in a single-bit marginal' : ''}.`
             : 'No other pair differs.');
         const isolated = h.pairs.every(([a, b]) => byKey.get(a).differsWith.length === 1 && byKey.get(b).differsWith.length === 1);
         if (measured && isolated) {
@@ -325,6 +325,18 @@ function _differsCell(b, flagged, measured) {
     return td;
 }
 
+/** Runner keys by backend id, then optimization level and run number as numbers. */
+function _compareKeys(x, y) {
+    const a = parseRunnerKey(x), b = parseRunnerKey(y);
+    return a.simId.localeCompare(b.simId) || (a.optLevel ?? -1) - (b.optLevel ?? -1) || (a.runIndex ?? -1) - (b.runIndex ?? -1);
+}
+
+/** Backends table rows: most differing pairs first, then by backend, level and run number. */
+export function backendRows(verdicts) {
+    return [...verdicts.backends].sort((a, b) => (b.differsWith.length - a.differsWith.length)
+        || (b.differsByOnly - a.differsByOnly) || _compareKeys(a.key, b.key));
+}
+
 /** One row per backend: status, how many backends it differs from / is inconclusive with,
  * bit order, precision, total time and peak memory. */
 export function renderBackendTable(panel, data, verdicts, model = headlineModel(verdicts)) {
@@ -332,8 +344,7 @@ export function renderBackendTable(panel, data, verdicts, model = headlineModel(
     const measured = verdicts.mode === 'measured';
     const noun = unitNoun(verdicts);
     const flagged = new Set(model.flagged);
-    const rows = [...verdicts.backends].sort((a, b) => (b.differsWith.length - a.differsWith.length)
-        || (b.differsByOnly - a.differsByOnly) || a.key.localeCompare(b.key));
+    const rows = backendRows(verdicts);
     if (!rows.length) return;
 
     const wrap = document.createElement('div');

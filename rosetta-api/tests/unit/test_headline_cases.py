@@ -251,3 +251,12 @@ def test_outlier_plus_an_unrelated_pair_lists_that_pair():
     assert out["model"]["flagged"] == ["qrisp"]
     assert out["lines"][1] == "Qrisp differs from all 13 other backends."
     assert out["lines"][2] == "Among the other 13 backends, 1 pair differs: Cirq (Google) × Qiskit (IBM)."
+
+
+def test_backend_rows_order_run_numbers_numerically():
+    names = [f"qiskit~opt0~run{n}" for n in (1, 2, 10, 11)] + ["cirq"]
+    report = _report(names, lambda a, b: "agree")
+    v = call_js(["backend_verdicts.js"], [("backendVerdicts", [report])])[0]
+    rows = call_js(["overview_renderer.js"], [("backendRows", [v])])[0]
+    assert [r["key"] for r in rows] == ["cirq", "qiskit~opt0~run1", "qiskit~opt0~run2", "qiskit~opt0~run10",
+                                        "qiskit~opt0~run11"]
