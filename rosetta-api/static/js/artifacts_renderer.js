@@ -12,7 +12,7 @@ import { makeItem, presetItems, renderExportPanel, resetExportPanel } from './ex
 import { _displayRunnerName, makeButton as button, makeEl as el } from './render_helpers.js';
 import { dispatch, getState } from './state.js';
 import { formatBytes } from './request_limits.js';
-import { _stripStatevectors, copyImageToClipboard, copyText, downloadBlob, hasStatevectors } from './utils.js';
+import { _stripStatevectors, copyImageToClipboard, copyText, downloadBlob, hasStatevectors, shownCircuitName } from './utils.js';
 
 const PNG_SCALES = [[1, '150 dpi'], [2, '300 dpi'], [4, '600 dpi']];
 const TEXT_EXT = { latex: 'tex', csv: 'csv', html: 'html', markdown: 'md', qasm: 'qasm', text: 'txt', json: 'json' };
@@ -56,10 +56,12 @@ function figureReport(results) {
 async function _fetchFigureBlob(id, fmt, scale, params = {}, signal = undefined) {
     const jobId = getState().currentJobId;
     if (jobId && S.jobTask !== undefined && !S.jobCopyGone) {
+        const name = shownCircuitName(S.stripped);
         const resp = await fetch(`${BASE_URL}/jobs/${encodeURIComponent(jobId)}/publication/render`, {
             method: 'POST',
             headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-            body: JSON.stringify({ artifact_id: id, format: fmt, scale, params, task: S.jobTask }),
+            body: JSON.stringify({ artifact_id: id, format: fmt, scale, params, task: S.jobTask,
+                ...(name ? { circuit_name: name } : {}) }),
             signal,
         });
         if (resp.ok) return await resp.blob();

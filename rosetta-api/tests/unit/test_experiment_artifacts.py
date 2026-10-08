@@ -21,7 +21,7 @@ def test_strip_statevectors_replaces_list_keeps_metrics():
     out = art.strip_statevectors(report)
     r0 = out["raw_results"][0]
     assert r0["statevector"] is None
-    assert r0["statevector_len"] == 2
+    assert r0["statevector_length"] == 2 and "statevector_len" not in r0
     assert r0["statevector_digest_input"] == "json_list"
     assert len(r0["statevector_sha256"]) == 64
     assert r0["execution_time_sec"] == 0.5
@@ -38,7 +38,7 @@ def test_strip_statevectors_hashes_base64_decoded_bytes():
     r0 = out["raw_results"][0]
     assert r0["statevector"] is None
     assert r0["statevector_sha256"] == hashlib.sha256(sv.tobytes()).hexdigest()
-    assert r0["statevector_len"] == 4
+    assert r0["statevector_length"] == 4 and "statevector_len" not in r0
     assert r0["statevector_digest_input"] == "base64_decoded_bytes"
 
 

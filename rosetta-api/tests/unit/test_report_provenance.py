@@ -135,8 +135,9 @@ def test_experiment_manifest_records_the_effective_config(monkeypatch):
         asyncio.run(exp.worker_experiment("exp-prov", payload))
         job = job_manager.ACTIVE_JOBS["exp-prov"]
         with zipfile.ZipFile(job["bundle_path"]) as zf:
-            manifest = json.loads(zf.read("manifest.json"))
-            result = json.loads(zf.read("results/measured_preprocOn/000_circuit-0.json"))
+            top = job["bundle_name"]
+            manifest = json.loads(zf.read(f"{top}/manifest.json"))
+            result = json.loads(zf.read(f"{top}/results/measured_preprocOn/000_circuit-0.json"))
     finally:
         del job_manager.ACTIVE_JOBS["exp-prov"]
 

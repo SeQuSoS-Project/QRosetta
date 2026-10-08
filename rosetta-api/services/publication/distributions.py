@@ -8,6 +8,7 @@ from typing import Callable, Dict
 
 from .formats import _fixed, _fmt_int, _format_columns, _full, _num
 from .selectors import _msb_counts, _run_label
+from .theme import backend_label
 from .views import report_backends
 
 
@@ -57,7 +58,7 @@ def missing_note(cp: dict) -> str:
 
 
 def highlight_note(p: dict) -> str:
-    return (f" Coloured: backends whose pair with {p['ref']} is a disagreement (shot-noise "
+    return (f" Coloured: backends whose pair with {backend_label(p['ref'])} is a disagreement (shot-noise "
             "verdict or a single-bit marginal); grey: the rest."
             if p.get("colour") == "highlight" else "")
 
@@ -159,9 +160,9 @@ def counts_legend(results: dict, p: dict) -> str:
     """Caption of the count comparison figure."""
     sel = count_selection(results, p)
     if p["layout"] == "panels":
-        lead = f"One panel per backend; black ticks mark {p['ref']}"
+        lead = f"One panel per backend; black ticks mark {backend_label(p['ref'])}"
     elif p["layout"] == "diff":
-        lead = f"Measured probability of each backend minus {p['ref']}"
+        lead = f"Measured probability of each backend minus {backend_label(p['ref'])}"
         if p["band"]:
             lead += ("; the shaded band is ±2σ shot noise of the difference of two independent "
                      "samples at the reference probability and shot count")
@@ -209,7 +210,7 @@ def marginals_legend(results: dict, p: dict) -> str:
     d = marginals(results)
     k = len(d["cp"]["sims"])
     if p["layout"] == "diff":
-        text = f"P(c[j] = 1) of each backend minus {p['ref']}, for {k} backend(s), {_run_label(results)}"
+        text = f"P(c[j] = 1) of each backend minus {backend_label(p['ref'])}, for {k} backend(s), {_run_label(results)}"
         if p["errorbars"]:
             text += "; the shaded band is ±2σ shot noise of the difference at the reference value"
     else:
@@ -253,7 +254,7 @@ def hamming_legend(results: dict, p: dict) -> str:
     d = hamming(results)
     k = len(d["cp"]["sims"])
     if p["layout"] == "diff":
-        text = (f"Probability of Hamming weight w for each backend minus {p['ref']}, for {k} "
+        text = (f"Probability of Hamming weight w for each backend minus {backend_label(p['ref'])}, for {k} "
                 f"backend(s), {_run_label(results)}; the shaded band is ±2σ shot noise of the "
                 "difference at the reference probability")
     else:

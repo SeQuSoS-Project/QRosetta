@@ -60,7 +60,8 @@ async def publication_render(request: Request, payload: schemas.PublicationRende
 async def job_publication_render(request: Request, job_id: str,
                                  payload: schemas.PublicationJobRenderRequest):
     """Render a single publication figure or table from the server's copy of a finished
-    job, kept for 30 minutes after it completes; ``task`` picks a circuit of a playlist job.
+    job, kept for 30 minutes after it completes; ``task`` picks a circuit of a playlist job and
+    ``circuit_name`` names the circuit in titles and captions in place of the copy's own.
     404 for an unknown or expired job, an unknown artifact or task; 409 for an unfinished
     job or one with no report."""
     report = await asyncio.to_thread(job_report_or_error, job_id, "render")
@@ -71,5 +72,7 @@ async def job_publication_render(request: Request, job_id: str,
         report = tasks[payload.task]
     elif isinstance(tasks, list):
         raise HTTPException(status_code=400, detail="This is a playlist job: give the circuit's index as task.")
+    if payload.circuit_name:
+        report = {**report, "circuit_name": payload.circuit_name}
     return await _render_response(report, payload.artifact_id, payload.format, payload.scale,
                                   payload.params)

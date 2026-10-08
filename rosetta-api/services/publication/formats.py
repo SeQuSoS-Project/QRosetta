@@ -18,16 +18,17 @@ from typing import Any
 import matplotlib.pyplot as plt
 from openpyxl import Workbook
 
-from .theme import BASE_DPI, _MPL_LOCK, figure_size
+from .theme import BASE_DPI, FIXED_CANVAS_SIZES, _MPL_LOCK, figure_size
 
 
-def _savefig_bytes(fig, fmt: str, scale: int = 1) -> bytes:
-    """Save ``fig`` as ``fmt`` with timestamp metadata removed."""
+def _savefig_bytes(fig, fmt: str, scale: int = 1, tight: bool = True) -> bytes:
+    """Save ``fig`` as ``fmt`` with timestamp metadata removed; ``tight`` crops the canvas to
+    the drawn content, otherwise the canvas keeps the figure's size."""
     buf = io.BytesIO()
     metadata = {"svg": {"Date": None}, "pdf": {"CreationDate": None},
                 "png": {"Software": None}}[fmt]
-    fig.savefig(buf, format=fmt, bbox_inches="tight", dpi=BASE_DPI * max(1, scale),
-                metadata=metadata)
+    fig.savefig(buf, format=fmt, bbox_inches="tight" if tight else None,
+                dpi=BASE_DPI * max(1, scale), metadata=metadata)
     return buf.getvalue()
 
 
@@ -35,7 +36,9 @@ def _render_figure(build_fig, fmt: str, scale: int = 1, size: str = "auto",
                    title: bool = True) -> bytes:
     """Build a figure at the ``size`` preset, render it as ``fmt`` and close it, holding
     _MPL_LOCK throughout. ``title=False`` removes the figure title and each axes' centred
-    title; panel labels, drawn on the left, stay."""
+    title; panel labels, drawn on the left, stay. A preset in FIXED_CANVAS_SIZES (the 16:9
+    slide) keeps its canvas, with the content laid out inside it; the others are cropped to
+    their content."""
     with _MPL_LOCK, figure_size(size):
         fig = build_fig()
         try:
@@ -44,7 +47,10 @@ def _render_figure(build_fig, fmt: str, scale: int = 1, size: str = "auto",
                     ax.set_title("")
                 if fig.get_suptitle():
                     fig.suptitle("")
-            return _savefig_bytes(fig, fmt, scale)
+            fixed = size in FIXED_CANVAS_SIZES
+            if fixed and fig.get_layout_engine() is None:
+                fig.set_layout_engine("tight")
+            return _savefig_bytes(fig, fmt, scale, tight=not fixed)
         finally:
             plt.close(fig)
 

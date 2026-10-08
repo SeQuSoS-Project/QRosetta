@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 from .theme import (
     AGREEMENT_COLORS, VERDICT_COLORS, _AGREEMENT_ORDER, _INK, _MUTED, _VERDICT_ORDER,
-    _blue_cmap, _figsize, _log_axis,
+    _blue_cmap, _figsize, _log_axis, backend_label,
 )
 from .formats import _fmt_num
 from .selectors import _device, _device_label, _pairwise_records, _report_rows, _timing_value
@@ -58,7 +58,7 @@ def _fig_agreement_distribution(divergence_report: dict, mode: str):
 
 def _fig_heatmap(divergence_report: dict, key: str, title: str):
     """N×N heatmap of matrix ``key``; the diagonal and not-compared (None) cells are masked."""
-    labels = divergence_report.get("simulators", [])
+    labels = [backend_label(s) for s in divergence_report.get("simulators", [])]
     arr = np.array([[np.nan if v is None else v for v in row] for row in divergence_report[key]],
                    dtype=float)
     mask = np.isnan(arr) | (arr == -1.0)
@@ -89,7 +89,7 @@ def _fig_ranking_bar(results, report_key, value_keys, title, xlabel, subtitle=No
     runs are labelled "<simulator> (GPU)" with an amber tick label. Timing stages with two or
     more samples are drawn at their median."""
     rows = [r for r in _report_rows(results, report_key) if r["entry"].get("simulator")]
-    sims = [_device_label(r) for r in rows]
+    sims = [_device_label(r, backend_label) for r in rows]
     fig, ax = plt.subplots(figsize=_figsize((max(5.0, 0.5 * len(sims) + 2), max(2.4, 0.32 * len(sims) + 1.6))))
     y = np.arange(len(sims)); left = np.zeros(len(sims))
     for key, color, label in value_keys:

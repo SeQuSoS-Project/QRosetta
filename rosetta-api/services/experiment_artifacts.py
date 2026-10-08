@@ -61,11 +61,16 @@ TRIAGE_README = (
     "  inputs/<id>.qasm         - each circuit as submitted; the text each runner received\n"
     "                             is under dispatched_circuits in the per-circuit report\n"
     "  results/<axis>/<id>.json - per-circuit reports, named by circuit id. By default each\n"
-    "                             statevector is replaced by statevector_sha256 (sha256 of the\n"
-    "                             Base64-decoded complex128 bytes; for list-form vectors, of\n"
-    "                             the sorted-key JSON) and statevector_length (also\n"
-    "                             written as statevector_len);\n"
-    "                             metrics, labels and provenance are kept in full\n"
+    "                             statevector is replaced by statevector_sha256 and\n"
+    "                             statevector_length (amplitude count). The sha256 is over\n"
+    "                             the Base64-decoded bytes the runner sent: little-endian\n"
+    "                             complex128 for every backend, including those whose\n"
+    "                             precision field says complex64 (their amplitudes are\n"
+    "                             widened to complex128 before encoding, so the digest covers\n"
+    "                             the widened values). A list-form vector is hashed as its\n"
+    "                             JSON (json.dumps(v, sort_keys=True), default separators).\n"
+    "                             statevector_digest_input says which. Metrics, labels and\n"
+    "                             provenance are kept in full\n"
     "  conformance_matrix.csv   - per (circuit x simulator) run status + error signature\n"
     "  performance.csv          - per (circuit x simulator) timings, memory and CPU context,\n"
     "                             one row per run. Times are medians over timing_repeats\n"
@@ -115,6 +120,8 @@ TRIAGE_README = (
     "                             marginal_distinguishable pair differs whatever its\n"
     "                             measured_assessment.\n"
     "  errors/*.log             - per-simulator error signatures\n"
+    "  runners/<runner>/requirements.lock - full pinned Python environment of each runner\n"
+    "                             image used, as committed in the server's source tree\n"
     "  manifest.json            - config as requested (nulls mean server defaults) and\n"
     "                             effective_config (the seed, agreement thresholds and runner\n"
     "                             ids actually used; hashed as effective_config_sha256), git\n"
@@ -122,7 +129,12 @@ TRIAGE_README = (
     "                             derived from it; see seed_derivation and runner_seed in the\n"
     "                             results), thresholds and runners per axis, SDK versions.\n"
     "                             To replay, submit inputs/*.qasm as literal circuits with\n"
-    "                             the values in effective_config (not the preset names).\n\n"
+    "                             the values in effective_config (not the preset names).\n"
+    "                             config_sha256 and effective_config_sha256 are\n"
+    "                             sha256(json.dumps(obj, sort_keys=True, default=str)\n"
+    "                             .encode('utf-8')) in Python: separators ', ' and ': ',\n"
+    "                             non-ASCII escaped (ensure_ascii), values JSON cannot\n"
+    "                             represent written with str().\n\n"
     "Reading the CSVs:\n"
     "  * The conformance matrix and the prevalence table are separate outputs: a cell\n"
     "    that failed to run carries no agreement information.\n"
@@ -137,7 +149,8 @@ TRIAGE_README = (
 
 
 def sha256(obj) -> str:
-    """Stable sha256 over any JSON-able object (sorted keys, str fallback)."""
+    """sha256 of ``json.dumps(obj, sort_keys=True, default=str)`` encoded as UTF-8 (default
+    separators, ASCII escapes)."""
     return hashlib.sha256(
         json.dumps(obj, sort_keys=True, default=str).encode("utf-8")
     ).hexdigest()
@@ -165,11 +178,7 @@ def slug(text: str) -> str:
 def strip_statevectors(report: dict) -> dict:
     """Replace each raw statevector with statevector_sha256 and statevector_length (see
     fingerprint_statevectors)."""
-    fingerprint_statevectors(report, sha256)
-    for entry in report.get("raw_results", []) or []:
-        if isinstance(entry, dict) and "statevector_len" in entry:
-            entry.setdefault("statevector_length", entry["statevector_len"])
-    return report
+    return fingerprint_statevectors(report, sha256)
 
 
 def _runner_status(entry: dict) -> tuple:
@@ -431,6 +440,7 @@ def build_manifest(*, config: dict, git_sha: str, api_base: str, requested_seed,
                     "agreement_prevalence": "agreement_prevalence.csv",
                     "performance": "performance.csv",
                     "inputs": "inputs/", "results": "results/", "errors": "errors/",
+                    "runner_locks": "runners/",
                     "readme": "README.txt"},
         "notes": notes,
     }

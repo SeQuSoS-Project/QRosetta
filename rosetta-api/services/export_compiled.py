@@ -68,9 +68,12 @@ def compiled_circuit_files(report: dict, task_id, label, scoped_path) -> list:
     return files
 
 
-def compile_actions(report: dict, task_id, label, files: list, services: dict = None) -> list:
+def compile_actions(report: dict, task_id, label, files: list, services: dict = None,
+                    trusted: bool = True) -> list:
     """One CreateAction per compile record, from the compile input to its output file (or
-    failed, with the reason), with the compiler as instrument."""
+    failed, with the reason), with the compiler as instrument. Unless ``trusted`` (the report
+    is the server's own job) no actionStatus is asserted and the description says the record
+    is as supplied."""
     suffix = f" for task '{label}' ({task_id})" if task_id is not None else ""
     input_ids = [f["path"] for f in files if f["record"] is None]
     output_by_key = {str(f["record"].get("compiler")): f["path"] for f in files if f["record"] is not None}
@@ -84,8 +87,12 @@ def compile_actions(report: dict, task_id, label, files: list, services: dict = 
             "@type": "CreateAction",
             "name": f"Compilation by {_label(record, services)}{suffix}",
             "instrument": {"@id": f"#compiler-{record.get('compiler_id')}"},
-            "actionStatus": ACTION_COMPLETED if output else ACTION_FAILED,
         }
+        if trusted:
+            action["actionStatus"] = ACTION_COMPLETED if output else ACTION_FAILED
+        else:
+            action["description"] = ("As supplied in the report; this server did not run this "
+                                     "compilation and did not check the record.")
         if input_ids:
             action["object"] = {"@id": input_ids[0]}
         if output:
@@ -163,6 +170,8 @@ def compiler_applications(reports: list, services: dict = None, trusted: bool = 
 
     apps = [{"@id": f"#compiler-{cid}", "@type": "SoftwareApplication",
              "name": f"{entry['name']} compile-only service",
+             **({} if trusted else {"description": (
+                 "Versions and code hashes as supplied in the report; not checked by this server.")}),
              "softwareRequirements": sorted(entry["versions"]) + [{"@id": n} for n in sorted(entry["natives"])],
              **({"identifier": sorted(entry["hashes"])} if entry["hashes"] else {}),
              **({"hasPart": parts(cid)} if parts(cid) else {})}

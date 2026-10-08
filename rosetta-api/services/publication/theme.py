@@ -32,6 +32,7 @@ FIGURE_SIZES = {
     "double": {"inches": (7.0, 3.6), "font": 8.0},
     "slide": {"inches": (13.33, 7.5), "font": 16.0},
 }
+FIXED_CANVAS_SIZES = ("slide",)
 _SIZE = threading.local()
 
 
@@ -59,6 +60,27 @@ def _figsize(default):
     """``default`` (width, height) in inches, or the active size preset's."""
     preset = getattr(_SIZE, "preset", None)
     return preset["inches"] if preset else default
+
+BACKEND_DISPLAY_NAMES = {
+    "qiskit": "Qiskit (IBM)", "qulacs": "Qulacs", "braket": "Braket (AWS)", "quest": "QuEST",
+    "cirq": "Cirq (Google)", "qsim-cirq": "qsim (Google)", "qibo": "Qibo", "qrisp": "Qrisp",
+    "myqlm": "myQLM (Eviden)", "pyquil": "PyQuil (Rigetti)", "projectq": "ProjectQ",
+    "pennylane-lightning": "PL Lightning", "pennylane-default": "PL Default",
+    "torchquantum": "TorchQuantum", "quimb": "Quimb (TN)", "cuquantum": "cuQuantum (NVIDIA)",
+}
+
+
+def backend_label(key: str) -> str:
+    """The app's name for a runner key: the display name of its runner id, with
+    " · L<level> #<run>" for a ``<id>~opt<L>~run<N>`` key; unknown ids as given. Mirrors
+    static/js/runner_key.js backendLabel."""
+    key = str(key)
+    sim_id, _, rest = key.partition("~opt")
+    level, _, run = rest.partition("~run")
+    multi = bool(rest) and level.isdigit() and run.isdigit()
+    base = BACKEND_DISPLAY_NAMES.get(sim_id if multi else key, sim_id if multi else key)
+    return f"{base} · L{int(level)} #{int(run)}" if multi else base
+
 
 MIME_TYPES = {
     "svg": "image/svg+xml", "png": "image/png", "pdf": "application/pdf",

@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     SYNTHETIQ_COMPILER_URL: str = "http://synthetiq-compiler:8000"
 
     PLATFORM_VERSION: str = os.getenv("QROSETTA_VERSION", "1.0.0")
+    REPOSITORY_URL: str = os.getenv("QROSETTA_REPOSITORY_URL",
+                                    "https://github.com/SeQuSoS-Project/QRosetta").rstrip("/")
 
     RUN_RATE_LIMIT: str = os.getenv("QROSETTA_RUN_RATE_LIMIT", "10/minute")
 

@@ -116,6 +116,7 @@ def _make_ctx(**overrides):
         mode="statevector",
         runner_services=SAMPLE_RUNNER_SERVICES,
         include_statevectors=False,
+        report_source="server_job",
     )
     defaults.update(overrides)
     return ExportContext(**defaults)
@@ -422,6 +423,7 @@ def _measured_ctx(**overrides):
         results=SAMPLE_RESULTS_MEASURED,
         mode="measured",
         runner_services={"qiskit": {"enabled": True}, "qibo": {"enabled": True}},
+        report_source="server_job",
     )
     defaults.update(overrides)
     return ExportContext(**defaults)
@@ -640,6 +642,7 @@ def _batch_ctx(**overrides):
         results=SAMPLE_RESULTS_BATCH_MEASURED,
         mode="measured",
         runner_services={"qiskit": {"enabled": True}, "qibo": {"enabled": True}},
+        report_source="server_job",
     )
     defaults.update(overrides)
     return ExportContext(**defaults)

@@ -199,6 +199,19 @@ export function crateFileName(name, when = Date.now()) {
     return `rosetta-export-${stamp}${slug ? `-${slug}` : ''}.zip`;
 }
 
+/** The circuit name figure captions show for `results` (circuit_name, else task_name, else
+ * run_name) as a name the server accepts, or null when the report records none. */
+export function shownCircuitName(results) {
+    const name = results && (results.circuit_name || results.task_name || results.run_name);
+    return name ? printableLabel(name, getState().maxLabelLength) || null : null;
+}
+
+/** The run's name as the app shows it, for the crate's file name, or null. */
+function _runDisplayName(results) {
+    const name = results && (results.run_name || results.circuit_name) || getState().currentSuiteTitle;
+    return name ? printableLabel(name, getState().maxLabelLength) || null : null;
+}
+
 function _filenameFrom(response, fallback) {
     const disposition = response.headers.get('Content-Disposition') || '';
     const match = disposition.match(/filename="?(.+?)"?$/);
@@ -300,6 +313,8 @@ export async function exportRoCrate({ source = 'browser', includeStatevectors = 
         author_name: authorName || null,
         author_affiliation: authorAffiliation || null,
         publication_artifacts: items.length ? { items } : null,
+        name: _runDisplayName(results),
+        circuit_name: Array.isArray(results.benchmark_summary) ? null : shownCircuitName(results),
     };
     const label = button ? button.innerHTML : '';
     if (button) {
@@ -345,7 +360,7 @@ export async function exportRoCrate({ source = 'browser', includeStatevectors = 
             }
             throw new Error(await _errorDetail(response));
         }
-        downloadBlob(await response.blob(), crateFileName(results.run_name || results.circuit_name || getState().currentSuiteTitle));
+        downloadBlob(await response.blob(), _filenameFrom(response, crateFileName(_runDisplayName(results))));
     } catch (err) {
         console.error("RO-Crate export failed:", err);
         alert("Export failed: " + err.message);
