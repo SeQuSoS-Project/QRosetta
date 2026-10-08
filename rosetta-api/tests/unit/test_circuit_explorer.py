@@ -172,6 +172,27 @@ def test_malformed_report_fields_are_skipped():
     assert panes[0]["text"] is None
 
 
+def test_diff_sides_follow_the_change_column_of_the_shown_row():
+    report = {"input_qasm": "OPENQASM 2.0;\nqreg q[2];\nh q[0];\nmeasure q[0] -> c[0];\n",
+              "compile_input": {"qasm": "OPENQASM 2.0;\nqreg q[2];\nh q[0];\n"},
+              "compiled_circuits": [
+                  {"compiler": "pyzx~opt1~run1", "compiler_id": "pyzx", "optimization_level": 1,
+                   "transpiled_qasm": "OPENQASM 2.0;\nqreg q[2];\nh q[0];\nx q[1];\n", "dispatch_status": "ok"},
+                  {"compiler": "staq~opt1~run1", "compiler_id": "staq", "optimization_level": 1,
+                   "transpiled_qasm": "OPENQASM 2.0;\nqreg q[2];\n", "dispatch_status": "ok"},
+                  {"compiler": "qmap~opt0~run1", "compiler_id": "qmap", "optimization_level": 0,
+                   "dispatch_status": "error", "refusal": "idle", "refusal_kind": "input"}]}
+    (panes,) = _call(("circuitPanes", report))
+    submitted, compiled, refused, groups = _call(
+        ("diffPairFor", "input", panes), ("diffPairFor", "compiled:staq~opt1~run1", panes),
+        ("diffPairFor", "compiled:qmap~opt0~run1", panes), ("groupPanes", panes))
+    assert submitted == ["input", "compile-input"]
+    assert compiled == ["compile-input", "compiled:staq~opt1~run1"]
+    assert refused is None
+    change = next(g["change"] for g in groups if g["panes"][0]["id"] == "compile-input")
+    assert change["sourceId"] == submitted[0] and change["removed"] == 1 and change["added"] == 0
+
+
 def test_compile_input_and_compiled_panes_follow_the_executed_ones():
     report = {**_REPORT,
               "compile_input": {"qasm": "OPENQASM 2.0;\nqreg q[2];\nh q[0];\n", "api_preprocessing_applied": ["API: x"]},

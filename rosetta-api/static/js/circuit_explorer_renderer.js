@@ -2,7 +2,7 @@
 // compile-only input and outputs, side by side, with a line diff between any two of them.
 // Shows recorded text only.
 
-import { circuitPanes, groupPanes, sourcePaneId } from './circuit_panes.js';
+import { circuitPanes, diffPairFor, groupPanes } from './circuit_panes.js';
 import { comparableLines, differOnlyInLineBreaks, endsWithNewline, splitLines, visibleFormatCharacters } from './qasm_text.js';
 import { _displayRunnerName, fmtInt, renderTooltip } from './render_helpers.js';
 import { userFacingError } from './run_status.js';
@@ -328,11 +328,11 @@ function _renderDiff(out, a, b, options) {
     out.appendChild(body);
 }
 
-/** The Diff section and `showB(paneId)`, which puts that pane on side B (and its source on side A when A was the same pane). */
-function _diffSection(panes) {
+/** The Diff section, opened on `diffPairFor(initialId)`, and `show(paneId)`, which diffs that pane against its source (a pane without a source against the first pane derived from it). */
+function _diffSection(panes, initialId) {
     const withText = panes.filter(p => p.text !== null);
     const section = _el('section', 'space-y-2');
-    const result = { section, showB: (/** @type {string} */ _id) => {} };
+    const result = { section, show: (/** @type {string} */ _id) => {} };
     section.appendChild(_el('h3', 'text-sm font-semibold text-gray-900', 'Diff'));
     section.appendChild(_el('p', 'text-xs text-gray-500',
         "A line diff compares text only. Two texts can differ in every line and still describe the same circuit (gates rewritten, angles written differently, qubits relabelled), so the counts below say nothing about whether the circuits are equivalent."));
@@ -340,9 +340,7 @@ function _diffSection(panes) {
         section.appendChild(_el('p', 'text-xs text-gray-500', 'This run recorded fewer than two circuit texts.'));
         return result;
     }
-    const firstExecuted = withText.find(p => p.kind === 'executed');
-    const bId = (firstExecuted || withText[withText.length - 1]).id;
-    const aId = sourcePaneId(withText.find(p => p.id === bId), withText) || withText[0].id;
+    const [aId, bId] = diffPairFor(initialId, panes) || [withText[0].id, withText[1].id];
     const controls = _el('div', 'flex flex-wrap items-center gap-3');
     const [aWrap, aSelect] = _paneSelect(withText, aId, 'A', 'Diff side A (lines shown with −)');
     const [bWrap, bSelect] = _paneSelect(withText, bId, 'B', 'Diff side B (lines shown with +)');
@@ -369,14 +367,10 @@ function _diffSection(panes) {
     };
     [aSelect, bSelect, ...Object.values(toggles)].forEach(control => { control.onchange = paint; });
     paint();
-    result.showB = id => {
-        const pane = withText.find(p => p.id === id);
-        if (!pane) return;
-        bSelect.value = id;
-        if (aSelect.value === id) {
-            const source = sourcePaneId(pane, withText);
-            aSelect.value = source && source !== id ? source : (withText.find(p => p.id !== id)?.id ?? aSelect.value);
-        }
+    result.show = id => {
+        const pair = diffPairFor(id, panes);
+        if (!pair) return;
+        [aSelect.value, bSelect.value] = pair;
         paint();
     };
     return result;
@@ -417,12 +411,12 @@ export function renderCircuitExplorer(report, panel, { extraControls = null, upl
     let selected = groups[0].id;
     const tableHost = _el('div');
     const viewer = _el('div', 'space-y-1');
-    const diff = _diffSection(panes);
+    const diff = _diffSection(panes, groups[0].panes[0].id);
     const paint = () => {
         tableHost.replaceChildren(_groupTable(groups, panes, selected, id => {
             selected = id;
             paint();
-            diff.showB(groups.find(g => g.id === id)?.panes[0].id ?? id);
+            diff.show(groups.find(g => g.id === id)?.panes[0].id ?? id);
         }));
         const group = groups.find(g => g.id === selected) || groups[0];
         const items = [];

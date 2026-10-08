@@ -140,6 +140,23 @@ export function sourcePaneId(pane, panes) {
 }
 
 /**
+ * Diff sides `[aId, bId]` for showing pane `paneId`: B is the pane and A the pane its Change
+ * column counts against (`sourcePaneId`); for a pane without a source (Submitted), A is the
+ * pane and B the first pane derived from it. Only panes with text are diffed; null when the
+ * pane has no text or fewer than two panes have text.
+ */
+export function diffPairFor(paneId, panes) {
+    const withText = panes.filter(p => p.text !== null);
+    const pane = withText.find(p => p.id === paneId);
+    if (!pane || withText.length < 2) return null;
+    const source = sourcePaneId(pane, withText);
+    if (source && source !== paneId) return [source, paneId];
+    const derived = withText.find(p => p.id !== paneId && sourcePaneId(p, withText) === paneId)
+        || withText.find(p => p.id !== paneId);
+    return [paneId, derived.id];
+}
+
+/**
  * Panes grouped by kind, identical text (byte for byte) and identical recorded gate count
  * and depth, in pane order. Each group has
  * the panes, the shared text (null for a pane without text, which is never grouped), its
