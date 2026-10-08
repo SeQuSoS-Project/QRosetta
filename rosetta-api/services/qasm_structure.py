@@ -19,6 +19,8 @@ _BUILTINS = {"U", "CX"}
 _NON_GATES = {"measure", "reset", "barrier"}
 _KINDS = {"qreg": "quantum register", "creg": "classical register",
           "gate": "gate", "opaque": "opaque gate"}
+HEADER_MESSAGE = ("The circuit must start with the header 'OPENQASM 2.0;' (comments may come "
+                  "before it), usually followed by 'include \"qelib1.inc\";'.")
 _ALIASES = {"cnot": "cx", "toffoli": "ccx", "fredkin": "cswap", "phase": "p", "cphase": "cp",
             "i": "id", "identity": "id"}
 
@@ -84,8 +86,7 @@ def _suggestion(name: str, known: set) -> str:
 
 def _check_header(code: str, items: list) -> None:
     if not items or not _HEADER_RE.match(" ".join(items[0][1].split())):
-        _bad_request("The circuit must start with the header 'OPENQASM 2.0;' (comments may come "
-                     "before it), usually followed by 'include \"qelib1.inc\";'.")
+        _bad_request(HEADER_MESSAGE)
     for offset, text in items[1:]:
         if text.startswith("OPENQASM"):
             _bad_request(f"Line {_line(code, offset)}: the 'OPENQASM' header appears a second "

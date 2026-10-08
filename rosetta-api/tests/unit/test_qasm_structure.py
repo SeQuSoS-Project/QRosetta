@@ -77,9 +77,15 @@ def test_unknown_gate_inside_a_definition():
     assert "unknown gate 'foo' (inside the definition of 'g')" in detail
 
 
-def test_missing_header():
-    assert "must start with the header 'OPENQASM 2.0;'" in _detail(
-        'include "qelib1.inc";\nqreg q[1];\nh q[0];\n')
+@pytest.mark.parametrize("text", ['include "qelib1.inc";\nqreg q[1];\nh q[0];\n',
+                                  "qreg q[2]\nh q[0]\n",
+                                  "// a comment\nqreg q[2];\nOPENQASM 2.0;\n"])
+def test_missing_header(text):
+    assert "must start with the header 'OPENQASM 2.0;'" in _detail(text)
+
+
+def test_openqasm3_keeps_its_own_message():
+    assert "OpenQASM 3 is not supported" in _detail("qubit[2] q;\nh q[0];\n")
 
 
 def test_valid_program_with_definitions_conditions_and_opaque_passes():
