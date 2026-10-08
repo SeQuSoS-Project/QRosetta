@@ -50,7 +50,7 @@ SEED_MAX = 2**31 - 1
 JOB_TTL_SEC = 1800
 
 _MAX_DISPLAY_STATEVECTOR_AMPLITUDES = 16384
-_MAX_DISPLAY_STATEVECTOR_B64_CHARS = _MAX_DISPLAY_STATEVECTOR_AMPLITUDES * 16 * 4 // 3
+_MAX_DISPLAY_STATEVECTOR_B64_CHARS = 4 * -(-_MAX_DISPLAY_STATEVECTOR_AMPLITUDES * 16 // 3)
 _STATEVECTOR_PLACEHOLDER = (
     "<Statevector too large for display. The full vector is kept on the server with this job "
     "and returned by GET /jobs/{job_id}/report and POST /jobs/{job_id}/export "
