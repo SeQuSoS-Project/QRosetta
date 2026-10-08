@@ -13,6 +13,7 @@ from services.circuit_resolver import (
     statement_parameters,
     strip_terminal_measurements,
 )
+from services.qasm_structure import check_ascii, check_structure
 from services.reserved_gate_names import reserved_gate_reason
 
 _VERSION_RE = re.compile(r"^\s*OPENQASM\s+([^;\s]+)\s*;", re.MULTILINE)
@@ -342,7 +343,9 @@ def validate_request(qasm: str, mode: str = "statevector", bypass_limits: bool =
                         f"and gate definitions are not counted)."),
             )
 
+    check_ascii(qasm)
     check_qasm_syntax(qasm)
+    check_structure(qasm)
     if check_reserved_names:
         check_gate_names(qasm, statements)
         expanded, user_calls = expanded_counts(qasm, statements)
