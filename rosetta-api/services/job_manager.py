@@ -49,8 +49,10 @@ SEED_MAX = 2**31 - 1
 
 JOB_TTL_SEC = 1800
 
+EXCLUSIVE_RETRY_AFTER_SEC = 10
+
 _MAX_DISPLAY_STATEVECTOR_AMPLITUDES = 16384
-_MAX_DISPLAY_STATEVECTOR_B64_CHARS = _MAX_DISPLAY_STATEVECTOR_AMPLITUDES * 16 * 4 // 3
+_MAX_DISPLAY_STATEVECTOR_B64_CHARS = 4 * -(-_MAX_DISPLAY_STATEVECTOR_AMPLITUDES * 16 // 3)
 _STATEVECTOR_PLACEHOLDER = (
     "<Statevector too large for display. The full vector is kept on the server with this job "
     "and returned by GET /jobs/{job_id}/report and POST /jobs/{job_id}/export "
@@ -476,7 +478,7 @@ def require_exclusive_slot(payload, client: str, job_id: str) -> None:
         raise HTTPException(status_code=400, detail="Exclusive runs are disabled on this server.")
     held = claim_exclusive(client, job_id)
     if held is not None:
-        raise HTTPException(status_code=429, detail=(
+        raise HTTPException(status_code=429, headers={"Retry-After": str(EXCLUSIVE_RETRY_AFTER_SEC)}, detail=(
             f"You already have an exclusive job ({held}) that has not finished; one exclusive "
             f"job per client runs at a time."))
 
@@ -690,6 +692,7 @@ async def run_batch_tasks(payload: BatchPayload, runner_statuses: dict, progress
                 raise ValueError(f"Unknown mode: {payload.mode}")
 
             report["task_name"] = task_name
+            report["task_qubits"] = task_qubits(task, qasm_string) or None
             report["task_request"] = task_request(task)
             status = ("error" if report_failed_before_dispatch(report) or all_runners_failed(report)
                       else "done")
@@ -698,6 +701,7 @@ async def run_batch_tasks(payload: BatchPayload, runner_statuses: dict, progress
             reason = e.detail if isinstance(e, HTTPException) else str(e)
             report = {
                 "task_name": task_name,
+                "task_qubits": task_qubits(task) or None,
                 "task_request": task_request(task),
                 "error": f"Failed to process task: {reason}"
             }

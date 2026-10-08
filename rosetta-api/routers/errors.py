@@ -22,19 +22,64 @@ _INTERNAL_LOC_RE = re.compile(
     r"nullable|lax-or-strict|json-or-python|constrained-\w+|chain|definition-ref)\[|\bat 0x[0-9a-f]+")
 _REPR_RE = re.compile(r"<[^<>]*\bat 0x[0-9a-f]+>")
 
+_DETAIL_BODY = " Body: {\"detail\": str}."
+
 ERROR_RESPONSES = {
-    400: {"description": "The request is well formed but cannot be run (e.g. the circuit does not parse, or names an unknown or unavailable runner). Body: {\"detail\": str}."},
-    403: {"description": "The resource belongs to another account. Body: {\"detail\": str}."},
-    404: {"description": "Unknown or expired job id. Body: {\"detail\": str}."},
-    409: {"description": "The job exists but is in the wrong state or of the wrong kind for this request. Body: {\"detail\": str}."},
-    413: {"description": "Request body over the upload limit, or circuit text over MAX_QASM_SIZE. Body: {\"detail\": str}."},
-    422: {"description": "Request validation failed. Body: {\"detail\": [{\"loc\": [...], \"msg\": str, \"type\": str}]}; submitted values are not echoed."},
+    400: "The request is well formed but cannot be run (e.g. the circuit does not parse, or names an unknown or unavailable runner).",
+    401: ("Missing, invalid or expired bearer token (a token lasts expires_in seconds from "
+          "POST /auth/token). Sent with WWW-Authenticate: Bearer."),
+    403: "The account is deactivated, or the resource belongs to another account.",
+    404: "Unknown or expired job id.",
+    409: "The job exists but is in the wrong state or of the wrong kind for this request.",
+    413: "Request body over the upload limit, or circuit text over MAX_QASM_SIZE.",
+    429: ("Too many requests: this client address has used up the route's rate limit "
+          "(Retry-After gives the seconds until the window resets), or, for a run with "
+          "exclusive=true, this client already has an exclusive job that has not finished. "
+          "Every response of a rate-limited route carries X-RateLimit-Limit, "
+          "X-RateLimit-Remaining and X-RateLimit-Reset (Unix time)."),
 }
 
+_VALIDATION_422 = ("Request validation failed. Body: {\"detail\": [{\"loc\": [...], \"msg\": str, "
+                   "\"type\": str}]}; submitted values are not echoed.")
 
-def responses(*codes: int) -> dict:
-    """OpenAPI ``responses`` entries for the given status codes."""
-    return {code: ERROR_RESPONSES[code] for code in codes}
+
+def responses(*codes) -> dict:
+    """OpenAPI ``responses`` entries. Each item is a status code (generic description) or
+    ``(code, description)`` for a route-specific one."""
+    out = {}
+    for item in codes:
+        code, text = item if isinstance(item, tuple) else (item, None)
+        if code == 422:
+            out[code] = {"description": text or _VALIDATION_422}
+        else:
+            out[code] = {"description": (text or ERROR_RESPONSES[code]) + _DETAIL_BODY}
+    return out
+
+
+def _depends_on(dependant, target) -> bool:
+    return any(dep.call is target or _depends_on(dep, target) for dep in dependant.dependencies)
+
+
+def document_route_errors(app: FastAPI) -> None:
+    """Declare the codes that shared machinery returns: 413 on routes with a request body
+    (the upload limit), 401 and 403 on routes that require a bearer token, 429 on
+    rate-limited routes. A code a route already declares keeps its description."""
+    from fastapi.routing import APIRoute
+    from routers.rate_limit import is_rate_limited
+    from services.security import get_current_user
+    for route in app.routes:
+        if not isinstance(route, APIRoute):
+            continue
+        extra = []
+        if route.body_field is not None:
+            extra.append(413)
+        if _depends_on(route.dependant, get_current_user):
+            extra += [401, 403]
+        if is_rate_limited(route.endpoint):
+            extra.append(429)
+        for code, entry in responses(*extra).items():
+            route.responses.setdefault(code, entry)
+    app.openapi_schema = None
 
 
 def _clean_msg(msg: str) -> str:
@@ -80,12 +125,17 @@ async def _http_exception_handler(request: Request, exc: StarletteHTTPException)
 
 
 async def _rate_limit_handler(request: Request, exc: RateLimitExceeded):
-    response = JSONResponse(status_code=429, content={"detail": f"Rate limit exceeded: {exc.detail}"})
-    limiter = getattr(request.app.state, "limiter", None)
+    from routers.rate_limit import rate_limit_headers
+    headers = {}
     view_limit = getattr(request.state, "view_rate_limit", None)
-    if limiter is not None and view_limit is not None:
-        response = limiter._inject_headers(response, view_limit)
-    return response
+    if view_limit is not None:
+        try:
+            values, retry_after = rate_limit_headers(view_limit)
+            headers = {**values, "Retry-After": str(retry_after)}
+        except Exception:
+            logger.warning("Could not read the rate-limit window", exc_info=True)
+    return JSONResponse(status_code=429, content={"detail": f"Rate limit exceeded: {exc.detail}"},
+                        headers=headers)
 
 
 async def _unhandled_handler(request: Request, exc: Exception):

@@ -276,11 +276,11 @@ def test_malformed_compile_records_do_not_break_exports():
     assert report_problems({"raw_results": [], "compiled_circuits": [{"transpiled_qasm": "x"}, {"transpiled_qasm": "y"}]})
 
 
-def test_compile_requests_are_recorded_and_queued_under_dispatch_keys(fake_dispatch):
+def test_compile_requests_are_recorded_and_queued_under_report_keys(fake_dispatch):
     pytest.importorskip("pytket")
     statuses = {}
     compilation.queue_compile_statuses(statuses, {"pyzx": [1, 2], "bqskit": [1]})
-    assert statuses == {"pyzx~opt1~run1": "queued", "pyzx~opt2~run1": "queued", "bqskit": "queued"}
+    assert statuses == {"pyzx~opt1~run1": "queued", "pyzx~opt2~run1": "queued", "bqskit~opt1~run1": "queued"}
     report = asyncio.run(job_manager.run_single_circuit_comparison(
         QASM, target_simulators=["qiskit"], compilers={"pyzx": [1]}))
     assert report["compilers_requested"] == {"pyzx": [1]}

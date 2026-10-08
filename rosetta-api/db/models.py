@@ -33,6 +33,7 @@ class RunHistory(Base):
     s3_object_key = Column(String, nullable=False, unique=True, index=True)
     run_name = Column(String, nullable=False, default="Unknown")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    job_id = Column(String(36), nullable=True, index=True)
 
 class ShareLink(Base):
     __tablename__ = "share_links"

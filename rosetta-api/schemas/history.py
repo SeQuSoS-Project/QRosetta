@@ -38,7 +38,7 @@ class RunHistoryResponse(BaseModel):
     circuit_id: Optional[str] = Field(None, description="Id of the saved circuit this run used, if any.")
     run_name: str = Field(..., description="Display name for the run.")
     created_at: UtcDatetime = Field(..., description=_CREATED_AT)
-    job_id: Optional[str] = Field(None, description="The job the run was saved from; set on POST /history/runs/from_job/{job_id} responses, null on the other /history/runs responses.")
+    job_id: Optional[str] = Field(None, description="The server job the run was saved from with POST /history/runs/from_job/{job_id}; null for a report uploaded with POST /history/runs (its stored report keeps the id the client gave as source_job_id) and for runs saved before job ids were recorded.")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -50,8 +50,20 @@ class RunHistoryFromJob(_Request):
 
 class RunHistoryUpdate(_Request):
     """Request body for PATCH /history/runs/{run_id}."""
-    run_name: VisibleName = Field(..., description="New display name for the run.")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    run_name: VisibleName = Field(..., validation_alias=AliasChoices("run_name", "name"), description="New display name for the run (also accepted as 'name').")
+
+class SavedCircuitUpdate(_Request):
+    """Request body for PATCH /history/circuits/{circuit_id}."""
+    name: VisibleName = Field(..., description="New display name for the saved circuit.")
 
 class RunHistoryBatchDelete(_Request):
     """Request body for DELETE /history/runs."""
     run_ids: List[str] = Field(..., description="Ids of the saved runs to delete.")
+
+class RunHistoryBatchDeleteResponse(BaseModel):
+    """Response body for DELETE /history/runs."""
+    detail: str = Field(..., description="Summary, e.g. 'Deleted 2 runs'.")
+    deleted: List[str] = Field(..., description="Ids that were deleted.")
+    not_found: List[str] = Field(..., description="Requested ids that do not exist or belong to another account; nothing was done for them.")

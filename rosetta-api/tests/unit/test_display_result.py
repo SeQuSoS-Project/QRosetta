@@ -46,3 +46,13 @@ def test_error_result_untouched():
 def test_counts_result_untouched():
     counts = {"simulator": "qibo", "counts": {"00": 512, "11": 512}}
     assert _display_result(counts) is counts
+
+
+@pytest.mark.parametrize("n_qubits, kept", [(13, True), (14, True), (15, False)])
+def test_display_copy_keeps_statevectors_up_to_14_qubits(n_qubits, kept):
+    import numpy as np
+    from qrosetta_commons.helpers import encode_statevector
+    sv = encode_statevector(np.zeros(2 ** n_qubits, dtype=np.complex128))
+    out = _display_result({"simulator": "qiskit", "statevector": sv})
+    assert (out["statevector"] == sv) is kept
+    assert bool(out.get("statevector_omitted_for_display")) is not kept

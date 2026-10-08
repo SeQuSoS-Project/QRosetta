@@ -19,6 +19,8 @@ from schemas.benchmark import (
     PublicationItem,
     PublicationJobRenderRequest,
     PublicationRenderRequest,
+    PublicationArtifact,
+    PublicationArtifactsRequest,
 )
 from schemas.auth import (
     UserCreate,
@@ -35,6 +37,8 @@ from schemas.history import (
     RunHistoryFromJob,
     RunHistoryUpdate,
     RunHistoryBatchDelete,
+    RunHistoryBatchDeleteResponse,
+    SavedCircuitUpdate,
 )
 
 __all__ = [
@@ -46,11 +50,12 @@ __all__ = [
     "VisualizerResponse", "JobStatusResponse", "RunnerPerformanceMetrics",
     "ComparisonResult", "ExportPayload", "ExportRequest",
     "PublicationArtifactsSelection", "PublicationItem", "PublicationJobRenderRequest",
-    "PublicationRenderRequest",
+    "PublicationRenderRequest", "PublicationArtifact", "PublicationArtifactsRequest",
 
     "UserCreate", "UserResponse", "Token",
     "PASSWORD_MAX_BYTES", "normalize_email", "password_too_long",
 
     "SavedCircuitCreate", "SavedCircuitResponse",
     "RunHistoryResponse", "RunHistoryFromJob", "RunHistoryUpdate", "RunHistoryBatchDelete",
+    "RunHistoryBatchDeleteResponse", "SavedCircuitUpdate",
 ]

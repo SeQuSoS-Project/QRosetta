@@ -9,6 +9,7 @@ apart from raw_results: they are circuit text, never simulated or compared.
 
 import asyncio
 import re
+from collections.abc import MutableMapping
 
 from fastapi import HTTPException
 
@@ -98,10 +99,36 @@ def _unrun(compilers: dict, status: str, reason: str) -> list:
 
 
 def _compile_status_keys(compilers: dict) -> list:
-    """The live-status keys the dispatch reports: ``<id>`` for one level, ``<id>~opt<L>~run1``
-    for several."""
-    return [key for cid, levels in (compilers or {}).items()
-            for key in ([cid] if len(levels) == 1 else [f"{cid}~opt{lvl}~run1" for lvl in levels])]
+    """The live-status keys of the requested compiles: the report keys (``compile_key``)."""
+    return [compile_key(cid, lvl) for cid, levels in (compilers or {}).items() for lvl in levels]
+
+
+class _CompileStatuses(MutableMapping):
+    """The job's live-status map as the dispatch sees it: a compiler's bare id (the key the
+    dispatch uses for a single level) is written under its report key ``<id>~opt<L>~run1``."""
+
+    def __init__(self, target: dict, compilers: dict):
+        self._target = target
+        self._compilers = compilers
+
+    def _key(self, key):
+        levels = self._compilers.get(key)
+        return compile_key(key, levels[0]) if levels and len(levels) == 1 else key
+
+    def __getitem__(self, key):
+        return self._target[self._key(key)]
+
+    def __setitem__(self, key, value):
+        self._target[self._key(key)] = value
+
+    def __delitem__(self, key):
+        del self._target[self._key(key)]
+
+    def __iter__(self):
+        return iter(self._target)
+
+    def __len__(self):
+        return len(self._target)
 
 
 def queue_compile_statuses(runner_statuses: dict, compilers: dict) -> None:
@@ -155,7 +182,8 @@ async def compile_circuit(qasm_string: str, apply_preprocessing: bool, compilers
                      "derivation": COMPILE_INPUT_DERIVATION}
     token = EXCLUSIVE.set(False)
     try:
-        results = await dispatch_to_runners(urls, payload, timeout_seconds, runner_statuses)
+        statuses = None if runner_statuses is None else _CompileStatuses(runner_statuses, compilers)
+        results = await dispatch_to_runners(urls, payload, timeout_seconds, statuses)
     except Exception as exc:
         logger.error("Compile dispatch failed", exc_info=True)
         _settle_compile_statuses(runner_statuses, compilers, "error")
