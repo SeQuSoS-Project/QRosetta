@@ -23,3 +23,24 @@ def test_refusal_columns_distinguish_refusals_from_crashes():
     assert rows[2]["gate_count"] == "4" and rows[2]["gate_counts"] == '{"cx": 1, "h": 3}'
     assert list(rows[0])[:7] == ["task", "compiler", "compiler_id", "optimization_level",
                                  "dispatch_status", "refusal_kind", "refusal"]
+
+
+def test_reason_column_explains_every_compile_without_output():
+    report = {"compiled_circuits": [
+        {"compiler": "bqskit~opt3~run1", "compiler_id": "bqskit", "optimization_level": 3,
+         "dispatch_status": "timeout",
+         "error": "TIMEOUT (120s): the compiler process (spawn, SDK import and the call) exceeded 120 s and was terminated."},
+        {"compiler": "qmap~opt0~run1", "compiler_id": "qmap", "optimization_level": 0,
+         "dispatch_status": "skipped", "error": "Not compiled: this circuit has a mid-circuit measurement."},
+        {"compiler": "qmap~opt1~run1", "compiler_id": "qmap", "optimization_level": 1,
+         "dispatch_status": "error", "error": "CompileRefused: up to 7 qubits", "refusal": "up to 7 qubits",
+         "refusal_kind": "input"},
+        {"compiler": "pyzx~opt1~run1", "compiler_id": "pyzx", "optimization_level": 1,
+         "dispatch_status": "ok", "gate_count": 4},
+    ]}
+    rows = list(csv.DictReader(io.StringIO(compiled_metrics_csv([(None, report)], {}))))
+    assert rows[0]["reason"].startswith("TIMEOUT (120s)") and "exceeded 120 s" in rows[0]["reason"]
+    assert rows[1]["reason"] == "Not compiled: this circuit has a mid-circuit measurement."
+    assert rows[2]["reason"] == "up to 7 qubits"
+    assert rows[3]["reason"] == ""
+    assert list(rows[0])[4:8] == ["dispatch_status", "refusal_kind", "refusal", "reason"]
