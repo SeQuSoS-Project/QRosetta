@@ -122,3 +122,61 @@ def test_every_algorithm_template_passes_the_structural_checks():
             qasm = circuit_library.generate_circuit(algorithm, n)
             check_ascii(qasm)
             check_structure(qasm)
+
+
+@pytest.mark.parametrize("body,expected", [
+    ("qreg a[2];\nqreg b[3];\ncx a,b;\n", "Line 5: 'cx' broadcasts over registers of different sizes (a[2], b[3])"),
+    ("qreg q[2];\ncx q[0];\n", "Line 4: 'cx' acts on 2 qubits, but the call lists 1 operand"),
+    ("qreg q[2];\ncx q[0] q[1];\n", "Line 4: 'cx' acts on 2 qubits, but the call lists 1 operand"),
+    ("qreg q[2];\nrx q[0];\n", "Line 4: 'rx' takes 1 parameter in parentheses, but the call gives 0"),
+    ("qreg q[2];\nh(0.1) q[0];\n", "Line 4: 'h' takes 0 parameters in parentheses, but the call gives 1"),
+    ("qreg q[2];\ncx q[0],q[0];\n", "Line 4: 'cx' names q[0] more than once"),
+    ("qreg q[2];\ncx q,q[1];\n", "Line 4: 'cx' names q[1] more than once"),
+    ("qreg q[1];\n;\nh q[0];\n", "Line 4: a semicolon with no statement before it"),
+    ("qreg q[1];\nh q[0];;\n", "Line 4: a semicolon with no statement before it"),
+    ("qreg q[1];\nh\x0bq[0];\n", "Line 4, column 2: control character U+000B (vertical tab)"),
+    ("qreg q[1];\ncreg c[1];\nh c[0];\n", "Line 5: 'c' is a classical register; 'h' acts on qubits"),
+    ("gate g a, b { cx a; }\nqreg q[2];\ng q[0], q[1];\n",
+     "Line 3: 'cx' (inside the definition of 'g') acts on 2 qubits"),
+    ("gate g a, b { cx a, a; }\nqreg q[2];\ng q[0], q[1];\n",
+     "Line 3: 'cx' (inside the definition of 'g') names 'a' twice"),
+    ("gate g a { h b; }\nqreg q[1];\ng q[0];\n",
+     "Line 3: 'b' (inside the definition of 'g') is not one of the gate's qubit arguments"),
+    ("qreg q[2];\ncreg c[2];\nmeasure q[0], q[1] -> c;\n", "Line 5: measure is written"),
+])
+def test_malformed_calls_are_rejected_with_their_line(body, expected):
+    assert expected in _detail(HEAD + body, mode="measured")
+
+
+def test_short_version_header_is_rejected():
+    detail = _detail('OPENQASM 2;\ninclude "qelib1.inc";\nqreg q[1];\nh q[0];\n')
+    assert "Line 1: write the version as 'OPENQASM 2.0;'" in detail
+
+
+@pytest.mark.parametrize("body,line", [
+    ("opaque myop a;\nqreg q[1];\nmyop q[0];\n", 5),
+    ("opaque myop(t) a, b;\nqreg q[2];\ncreg c[1];\nif(c==0) myop(0.1) q[0], q[1];\n", 6),
+    ("opaque myop a;\ngate g a { myop a; }\nqreg q[1];\ng q[0];\n", 4),
+])
+def test_a_call_of_an_opaque_gate_is_rejected(body, line):
+    detail = _detail(HEAD + body, mode="measured")
+    assert f"Line {line}: 'myop'" in detail and "declared 'opaque' on line 3" in detail
+
+
+@pytest.mark.parametrize("text,line,name", [
+    ("qreg x[1];\ncreg c[1];\nmeasure x[0] -> c[0];\n", 3, "x"),
+    ("qreg q[1];\ncreg h[1];\nmeasure q[0] -> h[0];\n", 4, "h"),
+    ("qreg q[1];\ncreg U[1];\nmeasure q[0] -> U[0];\n", 4, "U"),
+])
+def test_a_register_named_like_an_included_gate_is_a_duplicate_name(text, line, name):
+    detail = _detail(HEAD + text, mode="measured")
+    assert f"Line {line}: '{name}' is already declared as a" in detail
+    assert "rename the register" in detail
+
+
+def test_a_register_named_like_a_qelib1_gate_is_allowed_without_the_include():
+    validate_request("OPENQASM 2.0;\nqreg x[1];\nU(0.1,0,0) x[0];\n")
+
+
+def test_broadcasts_over_equal_registers_and_a_register_with_an_index_pass():
+    validate_request(HEAD + "qreg a[2];\nqreg b[2];\ncx a,b;\ncx a[0],b;\nh a;\nbarrier a,a[0];\n")

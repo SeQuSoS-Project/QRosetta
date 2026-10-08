@@ -63,6 +63,7 @@ def resolve_circuit_qasm(
 
 _DECL_RE = re.compile(r"^\s*(qreg|creg)\s+([A-Za-z_]\w*)\s*\[\s*(\d+)\s*\]\s*;\s*$")
 _GATE_NAME_RE = re.compile(r"^\s*(?:gate|opaque)\s+([A-Za-z_]\w*)")
+_OPAQUE_RE = re.compile(r"^\s*opaque\s+([A-Za-z_]\w*)")
 _OP_RE = re.compile(r"^(\s*(?:if\s*\([^)]*\)\s*)?)([A-Za-z_]\w*)")
 _REF_RE = re.compile(r"\b([A-Za-z_]\w*)\b(\s*\[\s*(\d+)\s*\])?")
 _MEASURE_RE = re.compile(r"\bmeasure\b")
@@ -152,12 +153,17 @@ def _split_op(stmt: str):
     return op, stmt[:pos], stmt[pos:]
 
 
+class BroadcastSizeError(ValueError):
+    """A statement broadcasts over whole registers of different sizes."""
+
+
 def flatten_qregs(qasm: str):
     """Merge every qreg into one register, indexed in declaration order.
 
     Returns ``(qasm, note)``; ``note`` is None and the text is returned unchanged when the
     circuit declares at most one qreg. Register broadcasts (``h a;``, ``measure a -> c;``)
     are expanded per qubit and ``barrier a;`` lists every qubit. Comments are removed.
+    Raises BroadcastSizeError for a broadcast over whole registers of different sizes.
     """
     regs = declared_registers(qasm)
     qregs = [(name, size) for kind, name, size in regs if kind == "qreg"]
@@ -165,7 +171,8 @@ def flatten_qregs(qasm: str):
         return qasm, None
 
     statements = split_statements(qasm)
-    cregs = {name for kind, name, _ in regs if kind == "creg"}
+    creg_sizes = {name: size for kind, name, size in regs if kind == "creg"}
+    cregs = set(creg_sizes)
     gate_names = {m.group(1) for s in statements for m in [_GATE_NAME_RE.match(s)] if m}
     flat = _fresh_name("q", cregs | gate_names)
 
@@ -206,7 +213,15 @@ def flatten_qregs(qasm: str):
         if op == "barrier" or not bare:
             out.append(head + rewrite(args, None, op == "barrier"))
             continue
-        width = max(offsets[name][1] for name in bare)
+        bare_cregs = [m.group(1) for m in _REF_RE.finditer(args)
+                      if m.group(1) in cregs and m.group(3) is None]
+        sizes = {offsets[name][1] for name in bare} | {creg_sizes[name] for name in bare_cregs}
+        if len(sizes) > 1:
+            raise BroadcastSizeError(
+                f"'{' '.join(stmt.split())}' broadcasts over registers of different sizes; "
+                f"OpenQASM 2.0 requires every whole-register operand of a statement to have "
+                f"the same size")
+        width = sizes.pop()
         out.extend(head + rewrite(args, j, False) for j in range(width))
 
     layout = ", ".join(f"{name}[0..{size - 1}] -> {flat}[{offsets[name][0]}..{offsets[name][0] + size - 1}]"
@@ -461,6 +476,10 @@ def _empty_custom_gate_names(circ) -> list:
     return sorted(names)
 
 
+def _opaque_names(qasm: str) -> set:
+    return {m.group(1) for stmt in split_statements(qasm) for m in [_OPAQUE_RE.match(stmt)] if m}
+
+
 def check_round_trip_integrity(circ, qasm: str) -> None:
     """Raise RoundTripIntegrityError when pytket's parse of ``qasm`` turned a gate call
     into a barrier, or when a user-defined gate called at top level is not a custom gate
@@ -507,6 +526,11 @@ def _pytket_round_trip_locked(qasm: str, remove_barriers: bool):
         "pi), register broadcasts expanded, comments removed"
     ]
     empty = _empty_custom_gate_names(circ)
+    opaque = sorted(set(empty) & _opaque_names(qasm))
+    if opaque:
+        raise RoundTripIntegrityError(
+            f"{', '.join(opaque)} is declared opaque and has no definition, so no simulator "
+            f"can apply it; declare it with 'gate' and a body")
     if empty:
         DecomposeBoxes().apply(circ)
         notes.append(f"API: removed the calls to {', '.join(empty)}, whose gate definition is "

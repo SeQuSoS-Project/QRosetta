@@ -185,12 +185,24 @@
                 </table>
                 <p>
                     Before a run starts, the API rejects with HTTP 400, naming the line: text that does not
-                    start with <code>OPENQASM 2.0;</code>; a character outside ASCII outside comments
-                    (with its column and Unicode name, such as a non-breaking space); a name declared twice
-                    among registers, gates and opaque gates, which share one set of names; an index outside
-                    its register; an operand that is not a declared register; and a call of a gate that
-                    neither the circuit nor an included <code>qelib1.inc</code> defines (gate names are
-                    case-sensitive: <code>H</code> and <code>cnot</code> are not qelib1 gates).
+                    start with <code>OPENQASM 2.0;</code> (the short form <code>OPENQASM 2;</code> included);
+                    a character outside ASCII outside comments (with its column and Unicode name, such as a
+                    non-breaking space) or a control character other than tab and line break, such as a
+                    vertical tab; a semicolon with no statement before it; a name declared twice among
+                    registers, gates and opaque gates, which share one set of names (with
+                    <code>include "qelib1.inc";</code> the qelib1 gates are in that set too, so
+                    <code>qreg x[1];</code> or <code>creg h[1];</code> is rejected); an index outside
+                    its register; an operand that is not a declared register, or a classical register given
+                    to a gate; a call of a gate that neither the circuit nor an included
+                    <code>qelib1.inc</code> defines (gate names are case-sensitive: <code>H</code> and
+                    <code>cnot</code> are not qelib1 gates); a call with the wrong number of parameters or
+                    qubits, such as <code>cx q[0];</code> or <code>rx q[0];</code>; a call that names one
+                    qubit twice, such as <code>cx q[0],q[0];</code> or <code>cx q,q[0];</code>; a broadcast
+                    over registers of different sizes, such as <code>cx a,b;</code> with <code>a[2]</code>
+                    and <code>b[3]</code>; and a call of an <code>opaque</code> gate, at top level or inside
+                    a gate definition. An opaque gate has no definition, so no simulator can apply it;
+                    declare the gate with <code>gate</code> and a body instead. An <code>opaque</code>
+                    declaration that is never called is accepted (the pytket round-trip drops it).
                 </p>
                 <p>
                     In statevector mode the API removes measurements at the end of the circuit before

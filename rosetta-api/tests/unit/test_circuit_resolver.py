@@ -91,3 +91,24 @@ def test_c3x_survives_the_preprocessing_round_trip():
     out = prepare_statevector_dispatch(qasm, apply_preprocessing=True)
     assert "c3x q[0],q[1],q[2],q[3];" in out["qasm"]
     assert "c4x" not in out["qasm"]
+
+
+def test_flatten_qregs_refuses_a_broadcast_over_registers_of_different_sizes():
+    from services.circuit_resolver import BroadcastSizeError, flatten_qregs
+    qasm = 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg a[2];\nqreg b[3];\ncx a,b;\n'
+    with pytest.raises(BroadcastSizeError, match="different sizes"):
+        flatten_qregs(qasm)
+
+
+def test_round_trip_refuses_a_call_of_an_opaque_gate():
+    from services.circuit_resolver import RoundTripIntegrityError, prepare_statevector_dispatch
+    qasm = 'OPENQASM 2.0;\ninclude "qelib1.inc";\nopaque myop a;\nqreg q[1];\nh q[0];\nmyop q[0];\n'
+    with pytest.raises(RoundTripIntegrityError, match="myop is declared opaque"):
+        prepare_statevector_dispatch(qasm, True)
+
+
+def test_round_trip_still_removes_calls_of_an_empty_gate_definition():
+    from services.circuit_resolver import prepare_statevector_dispatch
+    qasm = 'OPENQASM 2.0;\ninclude "qelib1.inc";\ngate e a { }\nqreg q[1];\nh q[0];\ne q[0];\n'
+    notes = prepare_statevector_dispatch(qasm, True)["api_preprocessing_applied"]
+    assert any("removed the calls to e, whose gate definition is empty" in n for n in notes)
