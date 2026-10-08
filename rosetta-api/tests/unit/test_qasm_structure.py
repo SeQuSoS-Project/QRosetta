@@ -156,11 +156,28 @@ def test_short_version_header_is_rejected():
 @pytest.mark.parametrize("body,line", [
     ("opaque myop a;\nqreg q[1];\nmyop q[0];\n", 5),
     ("opaque myop(t) a, b;\nqreg q[2];\ncreg c[1];\nif(c==0) myop(0.1) q[0], q[1];\n", 6),
-    ("opaque myop a;\ngate g a { myop a; }\nqreg q[1];\ng q[0];\n", 4),
 ])
 def test_a_call_of_an_opaque_gate_is_rejected(body, line):
     detail = _detail(HEAD + body, mode="measured")
     assert f"Line {line}: 'myop'" in detail and "declared 'opaque' on line 3" in detail
+
+
+@pytest.mark.parametrize("body,expected", [
+    ("opaque myop a;\ngate g a { myop a; }\nqreg q[1];\ng q[0];\n",
+     "Line 6: 'g' calls 'myop' (line 4, in its expansion), which is declared 'opaque' on line 3"),
+    ("opaque myop a;\ngate g a { myop a; }\ngate k a { h a; g a; }\nqreg q[1];\nk q[0];\n",
+     "Line 7: 'k' calls 'myop' (line 4, in its expansion), which is declared 'opaque' on line 3"),
+])
+def test_a_call_that_expands_to_an_opaque_gate_is_rejected_at_the_call(body, expected):
+    assert expected in _detail(HEAD + body, mode="measured")
+
+
+@pytest.mark.parametrize("body", [
+    "opaque zz a;\ngate g a { zz a; }\nqreg q[1];\nh q[0];\n",
+    "opaque zz a;\ngate g a { zz a; }\ngate k a { g a; }\nqreg q[1];\nh q[0];\n",
+])
+def test_an_opaque_gate_only_reached_from_uncalled_definitions_is_accepted(body):
+    validate_request(HEAD + body)
 
 
 @pytest.mark.parametrize("text,line,name", [

@@ -20,6 +20,9 @@ _OP_RE = re.compile(r"^(?:if\s*\(\s*([A-Za-z_]\w*)\s*==\s*\d+\s*\)\s*)?([A-Za-z_
 _OPERAND_RE = re.compile(r"^([A-Za-z_]\w*)\s*(?:\[\s*(\d+)\s*\])?$")
 _SIGNATURE_RE = re.compile(r"^(?:gate|opaque)\s+[A-Za-z_]\w*\s*(?:\(([^)]*)\))?\s*([^{]*)")
 _EMPTY_STATEMENT_RE = re.compile(r"(?:^|[;{}])\s*(;)")
+_NAME_RE = re.compile(r"(?<![\w.])[A-Za-z_]\w*")
+_LINE_OR_BLOCK_START_RE = re.compile(r"//[^\n]*|/\*")
+_FUNCTIONS = {"sin", "cos", "tan", "exp", "ln", "sqrt"}
 _ALLOWED_CONTROLS = {"\t", "\n", "\r"}
 _CONTROL_NAMES = {"\x00": "null", "\x0b": "vertical tab", "\x0c": "form feed", "\x7f": "delete"}
 _BUILTINS = {"U", "CX"}
@@ -173,14 +176,24 @@ def _check_call(code, offset, text, op, known, included, where=""):
                  f"{' or in qelib1.inc' if included else ''}.{_suggestion(op, known)}")
 
 
-def _check_shape(line, op, params, operands, signatures, opaque, where=""):
-    """400 for a call of an opaque gate, or a gate call with the wrong number of parameters
-    or operands."""
+def _check_opaque_call(line, op, opaque, uses_opaque):
+    """400 for a top-level call of an opaque gate or of a gate whose expansion calls one."""
     if op in opaque:
         _bad_request(
-            f"Line {line}: '{op}'{where} is declared 'opaque' on line {opaque[op]}, so it has no "
+            f"Line {line}: '{op}' is declared 'opaque' on line {opaque[op]}, so it has no "
             f"definition and no simulator can apply it. Declare it with 'gate {op} ... "
             f"{{ ... }}' and a body instead.")
+    if op in uses_opaque:
+        name, call_line = uses_opaque[op]
+        _bad_request(
+            f"Line {line}: '{op}' calls '{name}' (line {call_line}, in its expansion), which is "
+            f"declared 'opaque' on line {opaque[name]}, so it has no definition and no "
+            f"simulator can apply it. Declare '{name}' with 'gate {name} ... {{ ... }}' and a "
+            f"body instead.")
+
+
+def _check_shape(line, op, params, operands, signatures, where=""):
+    """400 for a gate call with the wrong number of parameters or operands."""
     if op in _NON_GATES:
         return
     n_params, n_qubits = signatures[op]
@@ -237,6 +250,19 @@ def _check_top_level_operands(line, op, args, registers):
         if len(refs) != 2 or [len(r) for r in refs] != [1, 1]:
             _bad_request(f"Line {line}: measure is written 'measure q[i] -> c[j];' or "
                          f"'measure q -> c;'.")
+        (qname, qindex), (cname, cindex) = refs[0][0], refs[1][0]
+        if registers[qname][0] != "qreg" or registers[cname][0] != "creg":
+            _bad_request(f"Line {line}: measure reads a quantum register and writes a classical "
+                         f"one ('measure q[i] -> c[j];').")
+        sizes = [1 if qindex is not None else registers[qname][1],
+                 1 if cindex is not None else registers[cname][1]]
+        if sizes[0] != sizes[1]:
+            shown = [name if index is None else f"{name}[{index}]"
+                     for name, index in ((qname, qindex), (cname, cindex))]
+            _bad_request(f"Line {line}: measure {shown[0]} -> {shown[1]} has operands of different "
+                         f"sizes ({_plural(sizes[0], 'qubit')}, {_plural(sizes[1], 'bit')}); measure "
+                         f"one qubit into one bit, or a whole register into a register of the "
+                         f"same size.")
         return
     refs = _parse_operands(line, args, registers)
     for name, _ in refs:
@@ -257,15 +283,57 @@ def _check_top_level_operands(line, op, args, registers):
                      f"the same size.")
 
 
+def _check_body_parameters(line, op, params, gate, param_names, where):
+    """400 for a name in a parameter of a call inside a gate body that is neither one of the
+    gate's parameters nor pi or a function name."""
+    for param in params or []:
+        for name in _NAME_RE.findall(param):
+            if name in param_names or name == "pi" or name in _FUNCTIONS:
+                continue
+            listed = f"its parameters are {', '.join(sorted(param_names))}" if param_names \
+                else "it has no parameters"
+            _bad_request(f"Line {line}: '{name}' in the parameter '{param}' of '{op}'{where} is "
+                         f"not a parameter of '{gate}' ({listed}). Parameters may use the gate's "
+                         f"parameters, numbers, pi, + - * / ^ and sin/cos/tan/exp/ln/sqrt.")
+
+
+def _register_name_problem(name: str):
+    if "a" <= name[0] <= "z":
+        return None
+    suggestion = name[0].lower() + name[1:] if name[0].isalpha() else "q" + name.lstrip("_")
+    return (f"register name '{name}' must start with a lowercase letter (OpenQASM 2.0 "
+            f"identifiers are a lowercase letter followed by letters, digits and '_'); rename "
+            f"it, for example to '{suggestion}'")
+
+
+def check_block_comments(qasm: str) -> None:
+    """400 naming the line of the first '/*' outside a '//' comment; OpenQASM 2.0 has line
+    comments only."""
+    for m in _LINE_OR_BLOCK_START_RE.finditer(qasm):
+        if m.group(0) == "/*":
+            _bad_request(f"Line {_line(qasm, m.start())}: '/* ... */' comments are not part of "
+                         f"OpenQASM 2.0; write each comment line with '//' instead.")
+
+
+def definition_line(qasm: str, name: str):
+    """Line of the ``gate``/``opaque`` declaration of ``name``, or None."""
+    code = _blank_comments(qasm)
+    m = re.search(rf"\b(?:gate|opaque)\s+{re.escape(name)}\b", code)
+    return _line(code, m.start()) if m else None
+
+
 def check_structure(qasm: str) -> None:
     """Nothing for a circuit with no qreg (the qubit check reports it). Otherwise 400 for a
     missing, repeated or short-form header, an empty statement, a name declared twice
     (registers, gates and opaque gates share one namespace; it also holds U, CX and, with
-    ``include "qelib1.inc"``, the qelib1 gates), a
-    register index outside its register, a malformed operand or one that is not a declared
-    register, a call of a gate that neither the circuit nor an included qelib1.inc defines,
-    a call of an opaque gate, a call with the wrong number of parameters or qubits or a
-    repeated qubit, or a broadcast over registers of different sizes."""
+    ``include "qelib1.inc"``, the qelib1 gates), a register name that does not start with a
+    lowercase letter, a register or gate used before its declaration, a register index outside
+    its register, a malformed operand or one that is not a declared register, a call of a gate
+    that neither the circuit nor an included qelib1.inc defines, a top-level call of an opaque
+    gate or of a gate whose expansion calls one, a call with the wrong number of parameters or
+    qubits or a repeated qubit, a name in a gate body's parameter that is not one of the
+    gate's parameters, a measure whose operands differ in size, or a broadcast over registers
+    of different sizes."""
     code = _blank_comments(qasm)
     items = list(_statements(code))
     if not any(_REG_RE.match(" ".join(t.split())) and t.startswith("qreg") for _, t in items):
@@ -277,7 +345,7 @@ def check_structure(qasm: str) -> None:
     if included:
         signatures.update(_qelib1_signatures())
     known = set(signatures)
-    declared, registers, opaque = {}, {}, {}
+    declared, registers, opaque, uses_opaque, offsets = {}, {}, {}, {}, {}
     for offset, text in items[1:]:
         flat = " ".join(text.split())
         reg, definition = _REG_RE.match(flat), _DEF_RE.match(flat)
@@ -297,14 +365,19 @@ def check_structure(qasm: str) -> None:
             _bad_request(
                 f"Line {line}: '{name}' is already declared as {source}. Registers and gates "
                 f"share one set of names in OpenQASM 2.0; rename the register.")
+        if reg and _register_name_problem(name):
+            _bad_request(f"Line {line}: {_register_name_problem(name)}.")
         declared[name] = (kind, line)
+        offsets[name] = offset
         if reg:
             registers[name] = (kind, int(reg.group(3)))
             continue
         if kind == "gate" and "{" in text:
             body = text[text.index("{") + 1:text.rindex("}")]
             body_offset = offset + text.index("{") + 1
-            qubit_args = _split_list(_SIGNATURE_RE.match(flat).group(2))
+            head = _SIGNATURE_RE.match(flat)
+            qubit_args = _split_list(head.group(2))
+            param_names = set(_split_list(head.group(1) or ""))
             where = f" (inside the definition of '{name}')"
             for inner_offset, inner in _statements(body):
                 inner_flat = " ".join(inner.split())
@@ -316,9 +389,14 @@ def check_structure(qasm: str) -> None:
                             included, where=where)
                 params, args = _call_parts(inner_flat, op.end())
                 operands = _split_list(args)
-                _check_shape(inner_line, op.group(2), params, operands, signatures, opaque,
-                             where=where)
+                _check_shape(inner_line, op.group(2), params, operands, signatures, where=where)
                 _check_body_operands(inner_line, op.group(2), operands, qubit_args, where)
+                _check_body_parameters(inner_line, op.group(2), params, name, param_names, where)
+                if name not in uses_opaque:
+                    if op.group(2) in opaque:
+                        uses_opaque[name] = (op.group(2), inner_line)
+                    elif op.group(2) in uses_opaque:
+                        uses_opaque[name] = uses_opaque[op.group(2)]
         signatures[name] = _signature(flat)
         if kind == "opaque":
             opaque[name] = line
@@ -333,9 +411,19 @@ def check_structure(qasm: str) -> None:
         name = op.group(2)
         _check_call(code, offset, flat, name, known, included)
         line = _line(code, offset)
+        used = [name] + _NAME_RE.findall(flat[op.end():])
+        if op.group(1) is not None:
+            used.append(op.group(1))
+        for used_name in used:
+            if offsets.get(used_name, -1) > offset:
+                noun = _KINDS[declared[used_name][0]]
+                _bad_request(f"Line {line}: {noun} '{used_name}' is used before its declaration on "
+                             f"line {declared[used_name][1]}; OpenQASM 2.0 requires every gate and "
+                             f"register to be declared before the statements that use it.")
         if op.group(1) is not None and registers.get(op.group(1), ("",))[0] != "creg":
             _bad_request(f"Line {line}: the condition of 'if' names '{op.group(1)}', which is not "
                          f"a declared classical register.")
         params, args = _call_parts(flat, op.end())
-        _check_shape(line, name, params, _split_list(args), signatures, opaque)
+        _check_opaque_call(line, name, opaque, uses_opaque)
+        _check_shape(line, name, params, _split_list(args), signatures)
         _check_top_level_operands(line, name, args, registers)
