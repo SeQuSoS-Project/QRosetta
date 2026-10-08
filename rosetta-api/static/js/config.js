@@ -122,6 +122,7 @@ export function updateBackendSelectionSummary() {
         text = `Backends: ${selected.length} of ${enabled.length} enabled backends selected`;
     }
     document.querySelectorAll('.backend-selection-summary').forEach(el => { el.textContent = text; });
+    _showRunCountProblems();
     announceWorkspaceChange();
 }
 
@@ -171,6 +172,7 @@ export function renderConfigPanel(runners) {
             <span>Multi-run mode (self-comparison)<span id="multirun-note" class="qr-option-help">Each count is one separate run in its own process, compared with every other run like another
             backend. The counts decide what runs; a backend with all counts 0 does not run. For a more stable time
             within one run, use Timing repeats instead.</span></span></label>
+        <p id="run-count-problems" role="alert" class="hidden pl-6 text-xs text-red-700"></p>
         <label class="qr-option"><input type="checkbox" id="ordering-toggle" ${_orderingEnabled ? 'checked' : ''}>
             <span>Custom ordering (phases)<span class="qr-option-help">Lower phase number runs first; the same number runs together.</span></span></label>
         <div id="ordering-presets" class="pl-6 flex gap-2 ${_orderingEnabled ? '' : 'hidden'}">
@@ -266,7 +268,7 @@ export function renderConfigPanel(runners) {
             countsHtml += i > max ? '<span class="qr-cell"></span>' : `
                 <input type="number" class="runner-count-input qr-input-small qr-cell" title="${_escapeHtml(desc || ('Optimization level ' + i))}"
                        aria-label="${_escapeHtml(name)}: runs at level ${i}" data-runner="${_escapeHtml(r.id)}" data-level="${i}"
-                       value="0" min="0" max="8" ${isDisabled ? 'disabled' : ''}>`;
+                       value="0" min="0" max="${getState().maxRunsPerRunner || 16}" step="1" ${isDisabled ? 'disabled' : ''}>`;
         }
 
         const row = document.createElement('div');
@@ -369,13 +371,14 @@ export function getRunnerConfig() {
 
     if (_multiRunEnabled) {
         // Build a per-runner list of opt levels from the count inputs (repeats allowed).
+        const cap = (getState().maxRunsPerRunner || 16) + 1;
         document.querySelectorAll('.runner-count-input').forEach(inp => {
             const runner = inp.getAttribute('data-runner');
             const level = parseInt(inp.getAttribute('data-level'));
-            const count = parseInt(inp.value) || 0;
+            const count = parseRunCount(/** @type {HTMLInputElement} */ (inp).value) || 0;
             if (count > 0 && !/** @type {HTMLInputElement} */ (inp).disabled) {
                 if (!config[runner]) config[runner] = [];
-                for (let k = 0; k < count; k++) config[runner].push(level);
+                for (let k = 0; k < Math.min(count, cap) && config[runner].length < cap; k++) config[runner].push(level);
             }
         });
         return config;
@@ -393,23 +396,58 @@ export function getRunnerConfig() {
     return config;
 }
 
-export function checkRunCountLimits(runnerConfig) {
-    const perRunner = getState().maxRunsPerRunner || 16;
-    const totalMax = getState().maxTotalRuns || 48;
-    let total = 0;
-    for (const [name, val] of Object.entries(runnerConfig || {})) {
-        const count = Array.isArray(val) ? val.length : 1;
-        if (count > perRunner) {
-            alert(`'${name}' is configured to run ${count} times, over the per-runner limit of ${perRunner}. Lower the counts in the Backends chip.`);
-            return false;
+/** A run count typed in multi-run mode: a whole number of runs, 0 for an empty field, NaN otherwise
+ * ("1e1", "2.5" and "-1" are not counts). */
+export function parseRunCount(raw) {
+    const text = String(raw ?? '').trim();
+    if (text === '') return 0;
+    return /^\d+$/.test(text) ? Number(text) : NaN;
+}
+
+/**
+ * Why the multi-run counts cannot be sent, or [] when they can: a count that is not a whole
+ * number, a backend over `perRunner` runs, or more than `totalMax` runs in all.
+ * @param {Array<{ runner: string, level: number, raw: string }>} cells
+ * @param {number} perRunner @param {number} totalMax @param {Record<string, string>} [names]
+ */
+export function runCountProblemsFor(cells, perRunner, totalMax, names = {}) {
+    const problems = [];
+    const perBackend = new Map();
+    cells.forEach(({ runner, level, raw }) => {
+        const n = parseRunCount(raw);
+        const name = names[runner] || runner;
+        if (Number.isNaN(n)) {
+            problems.push(`${name}, level ${level}: "${String(raw).trim()}" is not a whole number of runs.`);
+            return;
         }
+        perBackend.set(runner, (perBackend.get(runner) || 0) + n);
+    });
+    let total = 0;
+    perBackend.forEach((count, runner) => {
         total += count;
-    }
-    if (total > totalMax) {
-        alert(`You've configured ${total} total runs, over the limit of ${totalMax}. Lower the run counts in multi-run mode.`);
-        return false;
-    }
-    return true;
+        if (count > perRunner) problems.push(`${names[runner] || runner} has ${count} runs; the limit is ${perRunner} per backend.`);
+    });
+    if (total > totalMax) problems.push(`${total} runs in all; the limit is ${totalMax}.`);
+    return problems;
+}
+
+/** Why the multi-run counts in the Backends popover cannot be sent, or [] (always [] outside multi-run mode). */
+export function runCountProblems() {
+    if (!_multiRunEnabled) return [];
+    const cells = Array.from(document.querySelectorAll('.runner-count-input'))
+        .filter(inp => !/** @type {HTMLInputElement} */ (inp).disabled)
+        .map(inp => ({ runner: inp.getAttribute('data-runner') || '', level: parseInt(inp.getAttribute('data-level') || '0', 10),
+                       raw: /** @type {HTMLInputElement} */ (inp).value }));
+    return runCountProblemsFor(cells, getState().maxRunsPerRunner || 16, getState().maxTotalRuns || 48, RUNNER_DISPLAY_NAMES);
+}
+
+/** Show the multi-run count problems in the Backends popover. */
+function _showRunCountProblems() {
+    const box = document.getElementById('run-count-problems');
+    if (!box) return;
+    const problems = runCountProblems();
+    box.textContent = problems.join(' ');
+    box.classList.toggle('hidden', problems.length === 0);
 }
 
 export function getRunnerPhases() {

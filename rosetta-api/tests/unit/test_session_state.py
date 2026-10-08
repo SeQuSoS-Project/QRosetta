@@ -89,11 +89,15 @@ def test_static_form_controls_are_not_restored_by_the_browser():
 
 
 def test_narrow_screens_stack_into_one_scrolling_column():
+    """Phones and tablets up to 1023 px (lg) get one scrolling column; the results-reveal
+    media query in workspace.js uses the same breakpoint."""
     html = (STATIC / "index.html").read_text()
     scroll = re.search(r'id="workspace-scroll" class="([^"]+)"', html).group(1).split()
-    assert "overflow-y-auto" not in scroll and "md:overflow-y-auto" in scroll
+    assert "overflow-y-auto" not in scroll and "lg:overflow-y-auto" in scroll
     outer = re.search(r'<div class="(flex flex-col [^"]*)">\s*<header', html).group(1).split()
-    assert "h-screen" not in outer and "md:h-screen" in outer
+    assert "h-screen" not in outer and "lg:h-screen" in outer
+    assert not re.search(r'\bmd:(h-screen|flex-row|w-1/2|overflow-y-auto|min-h-0)', html)
+    assert "(max-width: 1023px)" in (STATIC / "js" / "workspace.js").read_text()
 
 
 NAMES = [

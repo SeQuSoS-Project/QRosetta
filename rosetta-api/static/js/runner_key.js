@@ -40,3 +40,13 @@ export function formatRunnerLabel(key, nameMap) {
     const base = (nameMap && nameMap[simId]) || simId;
     return isMulti ? `${base} · L${optLevel} #${runIndex}` : base;
 }
+
+/** Order runner keys by backend id, then optimization level and run number as numbers
+ * (`~run2` before `~run10`); plain ids before their multi-run keys. */
+export function compareRunnerKeys(a, b) {
+    const x = parseRunnerKey(a);
+    const y = parseRunnerKey(b);
+    if (x.simId !== y.simId) return x.simId < y.simId ? -1 : 1;
+    if (x.isMulti !== y.isMulti) return x.isMulti ? 1 : -1;
+    return (x.optLevel ?? 0) - (y.optLevel ?? 0) || (x.runIndex ?? 0) - (y.runIndex ?? 0);
+}

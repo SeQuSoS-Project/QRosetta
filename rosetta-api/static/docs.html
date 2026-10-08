@@ -138,16 +138,29 @@
                     page is opened again (after a reload, Back and Forward, or in a new tab), <em>Earlier
                     runs from this browser</em> above the results lists the jobs whose results were not
                     shown, and finished jobs whose results the server still keeps (30 minutes after they
-                    finish), each with Show results and Dismiss. Logging out forgets the jobs submitted while signed in and
-                    clears their results from the screen.
+                    finish), each with Show results and Dismiss. A job the server no longer has (it answers
+                    404 for the job, for example after a restart) is dropped from the list when the list is
+                    shown. The list follows jobs started or dismissed in another tab. Logging out forgets
+                    the jobs submitted while signed in and clears their results from the screen.
                 </p>
                 <p>
-                    Each browser tab keeps its own editor circuit and ticked modes (Statevector,
-                    Measured) across reloads; a new tab starts from the last ones used. The playlist,
+                    While a run is in progress the Status column shows each backend's state: QUEUED (not
+                    started yet; no time is shown), SENT, then DONE, ERROR, TIMEOUT or OFFLINE with the
+                    seconds it took. Once every backend and compile of the circuit has finished and the
+                    server is still comparing the results, the progress line says <em>analysing
+                    results</em> and a playlist's running circuit reads ANALYSING; for measured runs with
+                    many outcomes this can take tens of seconds. The server reports no status of its own
+                    for this step, so the page infers it.
+                </p>
+                <p>
+                    Each browser tab keeps its own editor circuit, ticked modes (Statevector,
+                    Measured) and Run Name across reloads; a new tab starts from the last ones used. The playlist,
                     the backend choice and the export preset are shared by all tabs. Other settings
                     (preprocessing, Bypass API Safety Limits, timeout, thresholds, seed) start from their
-                    defaults when the page loads. On a narrow screen the workspace, the Run footer and
-                    the results follow each other in one scrolling column.
+                    defaults when the page loads. On a screen narrower than 1024 pixels (phones and
+                    tablets) the workspace, the Run footer and the results follow each other in one
+                    scrolling column. A table wider than the results panel scrolls sideways, with a
+                    shadow at the edge that has more columns.
                 </p>
             </section>
 
@@ -157,10 +170,10 @@
                 <ul>
                     <li><strong>Generate Circuits.</strong> The <strong>Quantum Algorithms</strong> menu holds every ready-made circuit in four groups: the generated algorithms (GHZ, Bell, QFT, Bernstein–Vazirani, Grover, VQE ansatz, random, bit-order probe), bundled <strong>Examples</strong> (<code>GET /examples</code>), <strong>MQT Bench</strong> algorithms and <strong>QASMBench</strong> circuits. Type in it to search all four. For an algorithm or an MQT Bench algorithm, Qubits sets the size (an MQT Bench size moves to the nearest one the suite has); examples and QASMBench circuits have a fixed size. The line under the menu describes the selection; for an example it names the mode it is meant for. <strong>Load</strong> puts the selection in the editor (asking first when that replaces your edits; loading an example ticks its mode); <strong>+ Add</strong> adds it to the playlist.</li>
                     <li><strong>Editor.</strong> Paste or type OpenQASM 2.0; <strong>Import QASM</strong> reads a file into it and <strong>Export QASM</strong> saves it; <strong>+ Add to Playlist</strong> adds the editor's circuit to the playlist under the name above the editor.</li>
-                    <li><strong>Playlist.</strong> <strong>Quick Load</strong> fills it with a ready-made set (one of each algorithm, a GHZ scaling series, or the largest statevector circuits); <strong>Auto-Gen</strong> adds circuits of chosen algorithms at random qubit counts; <strong>Bench</strong> opens a list of MQT Bench or QASMBench circuits beside the button, with a name filter and a qubit cap, where you tick circuits and add them, or add every circuit the list shows (with no filter and no cap, the whole suite). Escape or a click elsewhere closes it.</li>
+                    <li><strong>Playlist.</strong> <strong>Quick Load</strong> fills it with a ready-made set (one of each algorithm, a GHZ scaling series, or the largest statevector circuits); <strong>Auto-Gen</strong> adds circuits of chosen algorithms at random qubit counts, up to the qubit limit of the ticked modes (the statevector limit while Statevector is ticked) and each algorithm's own maximum, and says when it lowered a count; <strong>Clear</strong> asks before emptying the playlist; <strong>Bench</strong> opens a list of MQT Bench or QASMBench circuits beside the button, with a name filter and a qubit cap, where you tick circuits and add them, or add every circuit the list shows (with no filter and no cap, the whole suite). Escape or a click elsewhere closes it.</li>
                 </ul>
                 <p>
-                    In the run section at the bottom of the left column, <strong>Run</strong> switches between <strong>Editor code</strong> and <strong>Playlist</strong>; a warning appears there when a circuit has more qubits than a ticked mode allows. Loading a circuit into the editor selects the editor; adding to the playlist selects the playlist. The playlist can be exported to and imported from a JSON file.
+                    In the run section at the bottom of the left column, <strong>Run</strong> switches between <strong>Editor code</strong> and <strong>Playlist</strong>; a warning appears there when a circuit has more qubits than a ticked mode allows, and when a measured circuit has more than 22 qubits, where several backends are likely to reach the timeout (at 24 qubits about half of them did not finish within 300 s). Loading a circuit into the editor selects the editor; adding to the playlist selects the playlist. The playlist can be exported to and imported from a JSON file.
                 </p>
             </section>
 
@@ -333,7 +346,9 @@
                         backend once per element, for example <code>{"qiskit": [0, 0, 1]}</code>. Each run
                         gets the key <code>&lt;runner&gt;~opt&lt;L&gt;~run&lt;N&gt;</code>, and the key is
                         part of its seed derivation. A request may ask for at most 16 runs of one backend and
-                        48 runs in total; more is rejected with HTTP 422.</li>
+                        48 runs in total; more is rejected with HTTP 422. In the Backends chip each count
+                        must be a whole number; while a count is not, or the counts exceed these limits,
+                        the chip and the Run footer say which, and the run button is disabled.</li>
                     <li><strong>Custom ordering (phases)</strong> (<code>runner_phases</code>), under Backends. Assigns each
                         backend a phase number: backends with the same number run at the same time, and
                         phases run in ascending order. In measured mode the order covers both groups of
@@ -401,8 +416,10 @@
                 <p>
                     The editor's <em>Visualize</em> button converts the circuit in the editor to Quirk's JSON format
                     (<code>POST /visualize/quirk</code>) and opens it in Craig Gidney's Quirk, an external
-                    web page, inside a frame. The conversion covers the gates Quirk has; a circuit with
-                    other gates shows an error instead.
+                    web page, in a frame that covers the whole window, with <strong>Open in Quirk</strong>
+                    (the same page in a new tab) and <strong>Close</strong> (or Escape) above it. Quirk's
+                    page is wider than a phone or tablet screen and scrolls sideways inside the frame. The
+                    conversion covers the gates Quirk has; a circuit with other gates shows an error instead.
                 </p>
             </section>
 
@@ -457,7 +474,12 @@
                     One experiment runs at most 200 circuit × preprocessing combinations
                     (<code>limits.max_experiment_cells</code> in <code>GET /config</code>), so <strong>Both</strong>
                     takes at most 100 circuits; a larger request is rejected with HTTP 400 before it starts,
-                    and the page says so before sending it.
+                    and the page says so before sending it. Compile-only levels chosen together with
+                    <strong>Both</strong> run with the first experiment of the press of Run (the statevector
+                    one when both modes are ticked), once per circuit and setting; that experiment's panel
+                    lists them, its bundle holds the outputs under
+                    <code>compiled_circuits/&lt;setting&gt;/&lt;circuit&gt;/</code> and in
+                    <code>compiled_circuits.csv</code>, and the other experiment's panel says where they are.
                 </p>
             </section>
 
@@ -1501,9 +1523,17 @@
                     measured run with a Run Name, History saves them as "<em>name</em> (Statevector)" and
                     "<em>name</em> (Measured)". Run names may contain emoji, including joined ones such as
                     👩‍🔬, but no other invisible characters (soft hyphens, direction overrides, zero-width
-                    spaces); the message names the character and its position. <strong>Delete
-                    Account</strong>, beside Logout in the header, removes the account with its saved runs
-                    and circuits; a session token issued before the deletion stops working.
+                    spaces); the message names the character and its position. A saved run opened from
+                    History has the same heading as when it ran, with its mode and shot count. A run that was
+                    uploaded (<code>POST /history/runs</code>) instead of saved from this server's job is
+                    tagged <strong>Uploaded</strong> in the Viewing Past Run banner, and one saved before
+                    the server recorded the source is tagged <strong>Source not recorded</strong>. The
+                    History list itself does not show the source. The session's expiry is measured on the
+                    server's clock (from the sign-in token's issue time), so a computer clock that is
+                    fast or slow does not end it early. Logout and <strong>Delete Account</strong> are in
+                    the menu under your email address in the header; Delete Account removes the account
+                    with its saved runs and circuits, and a session token issued before the deletion stops
+                    working.
                 </p>
                 <p>
                     Separately, and independent of an account, the Execution chip offers

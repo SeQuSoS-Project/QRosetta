@@ -71,8 +71,25 @@ function _line(parent, heading, text, className = '') {
     parent.appendChild(div);
 }
 
+/** What the panel says about compile-only services requested with the experiment, or null. */
+export function experimentCompilerNote(compilers, compilersWith) {
+    const entries = Object.entries(compilers || {}).filter(([, l]) => Array.isArray(l) && l.length);
+    if (entries.length) {
+        const n = entries.reduce((sum, [, l]) => sum + l.length, 0);
+        const list = entries.map(([id, l]) => `${id} level${l.length === 1 ? '' : 's'} ${l.join(', ')}`).join('; ');
+        return `Compile-only services ran with this experiment (${n} level${n === 1 ? '' : 's'}: ${list}), once per circuit and `
+            + 'preprocessing setting. They are not in the counts above; the bundle holds their outputs under '
+            + 'compiled_circuits/<setting>/<circuit>/ and one row per compile in compiled_circuits.csv.';
+    }
+    if (compilersWith) {
+        return `The compile-only services requested with this run ran with ${compilersWith}; their outputs are in that `
+            + "experiment's bundle, not this one.";
+    }
+    return null;
+}
+
 /** Render an experiment's summary and bundle download into `panel`. */
-export function renderExperimentResult(results, panel, { jobId, name, title }) {
+export function renderExperimentResult(results, panel, { jobId, name, title, compilers = null, compilersWith = null }) {
     panel.replaceChildren();
     const summary = results && results.experiment_summary;
     const h2 = document.createElement('h2');
@@ -93,6 +110,8 @@ export function renderExperimentResult(results, panel, { jobId, name, title }) {
     _line(card, null, `${summary.cells} runs: ${nCircuits} circuit${nCircuits === 1 ? '' : 's'} × ${nAxes} preprocessing setting${nAxes === 1 ? '' : 's'}.`, 'font-semibold');
     _line(card, prev.heading, prev.text);
     _line(card, 'Errors to classify', `${nErr}${nResolve ? `; circuits that could not be resolved: ${nResolve}` : ''}`);
+    const compilerNote = experimentCompilerNote(compilers, compilersWith);
+    if (compilerNote) _line(card, 'Compile-only services', compilerNote);
     panel.appendChild(card);
     _line(panel, null, 'The bundle holds the inputs, every per-circuit result, a conformance matrix, an agreement-prevalence '
         + 'table and a provenance manifest. Each error signature is marked untriaged, for you to classify as adapter, SDK, '

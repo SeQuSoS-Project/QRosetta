@@ -6,8 +6,8 @@ import { BASE_URL, formatApiError, getAuthHeaders, pollJobStatus, pollingStopped
 import { autosaveRun } from './autosave.js';
 import { getCompilerSelection } from './compilers_config.js';
 import {
-    _parseQasmStats, checkRunCountLimits, getEnabledRunnerIds, getRunnerConfig, getRunnerPhases, getTargetSimulators, loadRunners,
-    runnerSelectionProblem, updateContextBar,
+    _parseQasmStats, getEnabledRunnerIds, getRunnerConfig, getRunnerPhases, getTargetSimulators, loadRunners,
+    runCountProblems, runnerSelectionProblem, updateContextBar,
 } from './config.js';
 import { qasmInput } from './dom.js';
 import { renderExperimentResult } from './experiment.js';
@@ -17,7 +17,7 @@ import { clearReport, renderDetailReport, renderSuiteSummary, showTab } from './
 import { planRuns, runButtonLabel, runLimitProblems } from './run_plan.js';
 import { labelProblem, printableLabel } from './request_limits.js';
 import { showRunErrors, validateRunInputs } from './run_inputs.js';
-import { FINISHED_KEEP_MS, forgetJob, forgetSignedInJobs, listJobs, markJobFinished, markJobStopped, recordJob, saveEditorCircuit, saveRunModes } from './session_store.js';
+import { FINISHED_KEEP_MS, forgetJob, forgetSignedInJobs, isJobsStorageKey, listJobs, markJobFinished, markJobStopped, recordJob, saveEditorCircuit, saveRunModes } from './session_store.js';
 import { dispatch, getState } from './state.js';
 import { getAgreementThresholds, getSeed, setLoading } from './utils.js';
 import { batchItemLabel, renderBatchQueue } from './batch.js';
@@ -25,7 +25,7 @@ import { exampleOptions } from './circuit_sources.js';
 import { emptyStateModel, renderEmptyState } from './empty_state.js';
 import { setRunKicker, startRunView } from './status_cards.js';
 import { _displayRunnerName } from './render_helpers.js';
-import { plannedRunKeys } from './runner_key.js';
+import { compareRunnerKeys, plannedRunKeys } from './runner_key.js';
 
 const _checked = id => !!/** @type {HTMLInputElement|null} */ (document.getElementById(id))?.checked;
 const _radio = name => /** @type {HTMLInputElement|null} */ (document.querySelector(`input[name="${name}"]:checked`))?.value;
@@ -111,6 +111,7 @@ export function updateWorkspace() {
         const theme = ws.preprocessing === 'both' ? RUN_THEMES.experiment : ws.source === 'list' ? RUN_THEMES.batch : RUN_THEMES.editor;
         Object.values(RUN_THEMES).flat().forEach(c => button.classList.remove(c));
         theme.forEach(c => button.classList.add(c));
+        _showRunBlocked(button, (ws.modes.statevector || ws.modes.measured) ? runCountProblems() : []);
     }
     const note = document.getElementById('run-save-note');
     if (note) {
@@ -120,6 +121,19 @@ export function updateWorkspace() {
     }
     _showLimitWarning(ws);
     _renderEmptyState(ws);
+}
+
+/** Disable Run and say why while the multi-run counts cannot be sent; a run in progress keeps its own state. */
+function _showRunBlocked(button, problems) {
+    const box = document.getElementById('run-blocked-msg');
+    if (box) {
+        box.textContent = problems.length ? `Run is unavailable until the Backends chip's multi-run counts are fixed: ${problems.join(' ')}` : '';
+        box.classList.toggle('hidden', !problems.length);
+    }
+    if (getState().isProcessing) return;
+    button.disabled = problems.length > 0;
+    if (problems.length) button.setAttribute('aria-describedby', 'run-blocked-msg');
+    else button.removeAttribute('aria-describedby');
 }
 
 /** The results area before a result: what Run will do and the table it will fill. */
@@ -138,7 +152,7 @@ function _emptyModel(ws) {
         modes: ws.modes,
         preprocessing: ws.preprocessing,
         compilerCount: Object.values(ws.compilers).reduce((n, levels) => n + levels.length, 0),
-        backends: plannedRunKeys(ws.common.target_simulators, ws.common.runner_config).sort().map(key => ({ key, name: _displayRunnerName(key) })),
+        backends: plannedRunKeys(ws.common.target_simulators, ws.common.runner_config).sort(compareRunnerKeys).map(key => ({ key, name: _displayRunnerName(key) })),
         backendsLoaded: getEnabledRunnerIds().length > 0,
         examples: exampleOptions(),
     });
@@ -157,6 +171,21 @@ function _startRunView(ws, run) {
     startRunView({ tabs, table: model.table, compilerIds: Object.keys(ws.compilers), nameOf: _displayRunnerName });
 }
 
+/** Above this many qubits a measured run is likely to hit the timeout on several backends. */
+export const SLOW_MEASURED_QUBITS = 22;
+
+/** The pre-run warning for a measured circuit of `qubits` qubits above SLOW_MEASURED_QUBITS. */
+export function slowMeasuredWarning(qubits, timeout, timeoutMax) {
+    return `Measured runs of more than ${SLOW_MEASURED_QUBITS} qubits take minutes on several backends: at 24 qubits about half `
+        + `of them did not finish within the ${timeoutMax} s maximum timeout, and some used about 1 GiB of memory. `
+        + `Expect timeouts for this ${qubits}-qubit circuit at the current timeout of ${timeout ?? '—'} s.`;
+}
+
+const _timeoutSeconds = () => {
+    const v = Number(/** @type {HTMLInputElement|null} */ (document.getElementById('timeout-input'))?.value);
+    return Number.isFinite(v) ? v : null;
+};
+
 /** Warn before a run when the circuits exceed a ticked mode's qubit limit. */
 function _showLimitWarning(ws) {
     const box = document.getElementById('run-limit-warning');
@@ -171,6 +200,7 @@ function _showLimitWarning(ws) {
     if (ws.modes.measured && qubits > ms) notes.push(`measured runs allow ${ms}`);
     if (!ws.modes.statevector && !ws.modes.measured && qubits > cp) notes.push(`compile-only runs allow ${cp}`);
     const lines = notes.length ? [`${what}; ${notes.join(' and ')}.`] : [];
+    if (ws.modes.measured && qubits > SLOW_MEASURED_QUBITS && qubits <= ms) lines.push(slowMeasuredWarning(qubits, _timeoutSeconds(), getState().timeoutMax));
     const cells = getState().maxExperimentCells;
     const circuits = ws.source === 'list' ? ws.list.length : 1;
     if (ws.preprocessing === 'both' && (ws.modes.statevector || ws.modes.measured) && !ws.common.bypass_limits && circuits * 2 > cells) {
@@ -282,7 +312,10 @@ function _show(index) {
         dispatch('SET_SUITE_DATA', null);
         const panel = document.getElementById('experiment-panel');
         if (panel) {
-            if (entry.results) renderExperimentResult(entry.results, panel, { jobId: job.job_id, name: job.run_name || job.title, title: job.title });
+            if (entry.results) {
+                renderExperimentResult(entry.results, panel, { jobId: job.job_id, name: job.run_name || job.title, title: job.title,
+                                                               compilers: job.compilers, compilersWith: job.compilers_with });
+            }
             else panel.textContent = entry.error;
         }
         document.getElementById('tab-nav')?.replaceChildren();
@@ -322,7 +355,7 @@ function _renderSwitcher(active) {
 
 /** On a narrow screen, where the results follow the workspace, scroll to them. */
 function _revealResults() {
-    if (window.matchMedia?.('(max-width: 767px)').matches) {
+    if (window.matchMedia?.('(max-width: 1023px)').matches) {
         document.getElementById('results-column')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 }
@@ -352,7 +385,8 @@ async function _runAll(runs, ws) {
             const job = { job_id: jobId, kind: run.kind, title: run.title, run_name: _historyName(ws.runName, run, runs),
                           circuit_name: run.kind === 'single' ? _editorCircuitName() : null,
                           runner_config: run.payload.runner_config || {}, submitted_at: Date.now(),
-                          remaining: runs.slice(i + 1).map(r => r.title), account: signedInAccount() };
+                          remaining: runs.slice(i + 1).map(r => r.title), account: signedInAccount(),
+                          ...(run.kind === 'experiment' ? _experimentCompilers(run, runs) : {}) };
             recordJob(job);
             setRunKicker('Running');
             setLoading(true, `${run.title}${step}`, { startedAt: job.submitted_at });
@@ -363,10 +397,20 @@ async function _runAll(runs, ws) {
     } finally {
         setLoading(false);
         dispatch('SET_PROCESSING', false);
+        updateWorkspace();
     }
     const first = _finished.findIndex(e => e.results);
     _show(first >= 0 ? first : 0);
     offerRecentJobs({ unfinishedOnly: true });
+}
+
+/** For an experiment run: the compile-only levels it carries, or the title of the run of the same
+ * press of Run that carries them. */
+function _experimentCompilers(run, runs) {
+    const levels = c => Object.values(c || {}).reduce((n, l) => n + (Array.isArray(l) ? l.length : 0), 0);
+    if (levels(run.payload.compilers)) return { compilers: run.payload.compilers };
+    const other = runs.find(r => r !== run && levels(r.payload?.compilers));
+    return other ? { compilers_with: other.title } : {};
 }
 
 /** The name a run is saved to History under: the Run Name, with the mode added when one press of
@@ -427,8 +471,9 @@ export async function runWorkspace() {
         await loadRunners();
         const problem = runnerSelectionProblem();
         if (problem) { _showRefusal([problem]); return; }
+        const countProblems = runCountProblems();
+        if (countProblems.length) { _showRefusal(countProblems); return; }
         dispatch('SET_RUNNER_CONFIG', getRunnerConfig());
-        if (!checkRunCountLimits(getState().currentRunnerConfig)) return;
     }
     const problems = _submitProblems(v);
     if (problems.length) { _showRefusal(problems); return; }
@@ -463,6 +508,7 @@ export async function resumeJob(job) {
     } finally {
         setLoading(false);
         dispatch('SET_PROCESSING', false);
+        updateWorkspace();
     }
     _show(0);
     offerRecentJobs({ unfinishedOnly: true });
@@ -495,21 +541,49 @@ function _recentJobRow(job) {
     return li;
 }
 
+/** Whether the server still has job `jobId`: false on 404, true otherwise (also when it cannot be
+ * reached). Reads the status line only; the body is not downloaded. */
+async function _serverHasJob(jobId) {
+    const controller = new AbortController();
+    try {
+        const res = await fetch(`${BASE_URL}/jobs/${encodeURIComponent(jobId)}`, { signal: controller.signal, headers: getAuthHeaders() });
+        controller.abort();
+        return res.status !== 404;
+    } catch (_) {
+        return true;
+    }
+}
+
+let _offerOptions = { unfinishedOnly: false };
+
 /**
  * Offer the jobs this browser submitted whose results can still be fetched: unfinished ones
  * (the page was closed, or Stop waiting was pressed) and, unless `unfinishedOnly`, finished
- * ones the server still keeps. The jobs on screen are left out.
+ * ones the server still keeps. The jobs on screen are left out, and a job the server no longer
+ * has (it answers 404, for example after a restart) is dropped from the list and forgotten.
  */
 export function offerRecentJobs({ unfinishedOnly = false } = {}) {
+    _offerOptions = { unfinishedOnly };
     const banner = document.getElementById('resume-job-banner');
     const list = document.getElementById('resume-job-list');
     if (!banner || !list) return;
     const now = Date.now();
     const onScreen = new Set(_finished.filter(e => !e.stopped).map(e => e.job.job_id));
     const jobs = listJobs(now).filter(j => !onScreen.has(j.job_id) && (!unfinishedOnly || j.state !== 'finished'));
-    list.replaceChildren(...jobs.map(job => _recentJobRow(job)));
+    const rows = jobs.map(job => _recentJobRow(job));
+    list.replaceChildren(...rows);
     banner.classList.toggle('hidden', jobs.length === 0);
+    jobs.forEach(async (job, i) => {
+        if (await _serverHasJob(job.job_id)) return;
+        forgetJob(job.job_id);
+        rows[i].remove();
+        if (!list.querySelector('li')) banner.classList.add('hidden');
+    });
 }
+
+window.addEventListener?.('storage', e => {
+    if (isJobsStorageKey(e.key) && !getState().isProcessing) offerRecentJobs(_offerOptions);
+});
 
 /** Forget what the signed-out account had on screen: its runs, their results and its recorded jobs. */
 function _forgetAccountView() {

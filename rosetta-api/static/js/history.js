@@ -17,6 +17,27 @@ export function parseServerTime(value) {
     return Number.isNaN(d.getTime()) ? null : d;
 }
 
+/** The heading of a saved run: its name with the mode and shots, as a run's own heading has them. */
+export function savedRunHeading(data, runName) {
+    const name = String(runName || '').replace(/ \((Measured|Statevector)\)$/, '');
+    if (data?.simulated === false) return `${name} (compile only)`;
+    const pairs = data?.divergence_report?.pairwise_agreement;
+    const measured = data?.mode === 'measured' || !!data?.n_shots
+        || (Array.isArray(pairs) && pairs.some(p => p?.mode === 'measured'));
+    const shots = Number.isFinite(data?.n_shots) ? `, ${data.n_shots} shots` : '';
+    return `${name} (${measured ? `Measured${shots}` : 'Statevector'})`;
+}
+
+/** Where a saved run's report came from, for the Viewing Past Run banner: null for a run saved
+ * from this server's job. */
+export function savedRunSourceNote(data) {
+    if (data?.saved_from === 'server_job') return null;
+    if (data?.saved_from === 'upload') {
+        return { tag: 'Uploaded', text: 'This report was uploaded to History (POST /history/runs), not saved from a job this server ran. Its contents are as the uploader supplied them.' };
+    }
+    return { tag: 'Source not recorded', text: 'This report was saved before the server recorded where saved reports come from, so it cannot say whether this server produced it.' };
+}
+
 function _formatServerTime(value) {
     const d = parseServerTime(value);
     return d ? d.toLocaleString() : '';
@@ -409,6 +430,17 @@ export async function loadHistoricalRun(runId, runName, createdAt) {
         } else {
             title.append(displayDate);
         }
+        const source = savedRunSourceNote(data);
+        if (source) {
+            const tag = document.createElement('span');
+            tag.className = 'ml-2 px-1.5 py-0.5 rounded border border-amber-300 bg-amber-100 text-amber-900 text-xs font-medium';
+            tag.textContent = source.tag;
+            title.append(tag);
+            const detail = document.createElement('p');
+            detail.className = 'text-xs mt-1';
+            detail.textContent = source.text;
+            title.append(detail);
+        }
         const closeBtn = document.createElement('button');
         closeBtn.type = 'button';
         closeBtn.className = 'text-yellow-600 hover:text-yellow-900 font-bold underline';
@@ -422,10 +454,10 @@ export async function loadHistoricalRun(runId, runName, createdAt) {
 
         const isBatch = !!data.benchmark_summary;
         if (isBatch) {
-            dispatch('SET_SUITE_TITLE', runName || "Historical Batch Run");
+            dispatch('SET_SUITE_TITLE', savedRunHeading(data, runName || "Historical Batch Run"));
             renderSuiteSummary(data, getState().currentSuiteTitle);
         } else {
-            renderDetailReport(data, runName || "Historical Single Run", {});
+            renderDetailReport(data, savedRunHeading(data, runName || "Historical Single Run"), {});
         }
     } catch (e) {
         console.error("Historical load fail:", e);

@@ -7,7 +7,7 @@ import {
     executionTags, precisionTag, queueWaitText, renderPreprocessingList, throttleText, outsideProcessText,
 } from './render_helpers.js';
 import { getEnabledRunnerIds } from './config.js';
-import { KNOWN_ISSUE_BACKENDS, docsLink, knownIssuesLink } from './labels.js';
+import { KNOWN_ISSUE_BACKENDS, docsLink, knownIssuesLink, plainMeaningNote } from './labels.js';
 import { parseRunnerKey } from './runner_key.js';
 import { circuitPanes } from './circuit_panes.js';
 import {
@@ -923,6 +923,7 @@ export function renderSummaryPanel(data, title) {
     }
 
     const { verdicts, model } = renderHeadline(panel, data);
+    panel.appendChild(plainMeaningNote(verdicts.mode));
     renderBackendTable(panel, data, verdicts, model);
 
     const evidence = document.createElement('h3');
