@@ -124,6 +124,18 @@ def _shots_per_backend_with_pooling(alpha, target_power, delta_tv, p_i, p_j):
 
 
 UNSEEN_MASS_LIMIT = 0.5
+RECOMMENDATION_MARGIN = 1.1
+
+
+def _with_margin(shots):
+    """``shots`` times RECOMMENDATION_MARGIN, rounded up to two significant figures and capped
+    at MAX_SHOTS. Power is estimated from the observed table, whose bins change with the shot
+    count, so a rerun at exactly the minimum can land just below the target power."""
+    if shots is None:
+        return None
+    raw = float(shots) * RECOMMENDATION_MARGIN
+    step = 10 ** max(int(np.floor(np.log10(raw))) - 1, 0)
+    return int(min(np.ceil(raw / step) * step, max(_max_shots_per_backend(), int(shots))))
 LOWER_BOUND_UNSEEN_MASS = 0.5 * STAT_TEST_DELTA_TV
 
 
@@ -143,7 +155,9 @@ def _set_power(block, alpha, m_pairs):
     ``recommendation_is_lower_bound`` is set when the Good-Turing unseen mass exceeds delta/2,
     or when the recommendation comes from pooling and some outcomes were seen once: the
     observed proportions then leave out outcomes not yet seen, and outcomes seen once stop
-    being pooled together at ten times the shots, which sets the count."""
+    being pooled together at ten times the shots, which sets the count.
+    ``shots_per_backend_for_target_power`` is the model's minimum; ``recommended_shots_per_backend``
+    adds RECOMMENDATION_MARGIN (``_with_margin``)."""
     power = block["power"]
     m = max(int(m_pairs), 1)
     c_m = _by_constant(m)
@@ -153,13 +167,14 @@ def _set_power(block, alpha, m_pairs):
     gap = power.get("delta_tv_tested", power["delta_tv"])
     proportions = block.get("_observed_proportions")
     if block.get("support_characterised") is False:
-        recommended = None
+        minimum = None
     elif power.get("pooled_probability") and proportions is not None:
-        recommended = _shots_per_backend_with_pooling(
+        minimum = _shots_per_backend_with_pooling(
             alpha_used, power["target_power"], power["delta_tv"], *proportions)
     else:
-        recommended = _shots_per_backend_for_target_power(
+        minimum = _shots_per_backend_for_target_power(
             alpha_used, power["target_power"], gap, power["df"])
+    recommended = _with_margin(minimum)
     unseen = block.get("unseen_mass_good_turing") or 0.0
     block["recommendation_is_lower_bound"] = bool(recommended is not None and (
         unseen > LOWER_BOUND_UNSEEN_MASS or (power.get("pooled_probability") and unseen > 0)))
@@ -170,8 +185,9 @@ def _set_power(block, alpha, m_pairs):
         "correction": CORRECTION,
         "power_to_detect_delta_at_observed_shots": (
             _power_at_shots(alpha_used, gap, power["df"], n_effective) if gap > 0 else alpha_used),
-        "shots_per_backend_for_target_power": recommended,
+        "shots_per_backend_for_target_power": minimum,
         "recommended_shots_per_backend": recommended,
+        "recommendation_margin": RECOMMENDATION_MARGIN,
         "recommended_exceeds_actual": (
             None if recommended is None else bool(recommended > min(n_shots))),
     })
@@ -360,9 +376,10 @@ def _statistical_agreement_test(
     dropped; outcomes with an expected count below 5 are pooled into one bin
     (``pooled_outcomes``), or left out when that bin is below an expected count of 1 and
     breaks Cochran's rule (``untested_outcomes``). A 2 x 2 table that fails the expected-count
-    rule is tested with exact conditional p-values (``test_method``). A table with a single
-    outcome bin is tested against the empty complement bin: statistic 0 on 1 degree of
-    freedom. ``low_count_warning`` is set when no table can be tested. Power is evaluated on the tested table's degrees
+    rule is tested with exact conditional p-values (``test_method``). When both backends
+    returned the same single outcome there is nothing to test: statistic 0 and p-value 1 on 1
+    degree of freedom, ``test_method`` "degenerate" ("not_tested" for a table that pooling
+    leaves with one column, which is also low_count_warning). ``low_count_warning`` is set when no table can be tested. Power is evaluated on the tested table's degrees
     of freedom. Multiple-comparison correction and the verdict are filled in by
     ``_apply_multiple_comparison_correction``. Raises ValueError if scipy rejects the table.
     """
@@ -442,8 +459,10 @@ def _statistical_agreement_test(
     _set_power(block, alpha, 1)
 
     if len(t_i) < 2:
-        block["chi2"].update({"statistic": 0.0, "dof": df, "p_value": 1.0})
-        block["g_test"].update({"statistic": 0.0, "dof": df, "p_value": 1.0})
+        method = "degenerate" if len(outcomes) == 1 else "not_tested"
+        block["test_method"] = method
+        block["chi2"].update({"statistic": 0.0, "dof": df, "p_value": 1.0, "method": method})
+        block["g_test"].update({"statistic": 0.0, "dof": df, "p_value": 1.0, "method": method})
         block["effect_size"]["cramers_v"] = 0.0
         return block
 

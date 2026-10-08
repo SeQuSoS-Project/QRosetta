@@ -326,7 +326,7 @@ function _renderStatevectorBlocks(panel, pairs, tol, named) {
         ov.className = 'text-sm text-gray-700 mb-3';
         ov.textContent = `Of ${pairs.length} pairs: ${direct.length} agree directly, ${phase.length} up to a global phase, `
             + `${bitOrderText}, ${disagree.length} disagree `
-            + `(${criterion}); ${comparable.length} of ${pairs.length} pairs were comparable.`;
+            + `(agreement means ${criterion}); ${comparable.length} of ${pairs.length} pairs were comparable.`;
         panel.appendChild(ov);
     }
 

@@ -319,6 +319,13 @@ export function _agreementMetricsBlock(p) {
     return wrap;
 }
 
+const _TEST_METHOD = {
+    asymptotic: 'asymptotic (chi-square distribution)',
+    exact_conditional: 'exact conditional (2 × 2 table with expected counts below 5)',
+    degenerate: 'no test: both backends returned the same single outcome (p = 1)',
+    not_tested: 'no test: one outcome bin after pooling',
+};
+
 export function _statisticalTestBlock(st) {
     const wrap = document.createElement('div');
     wrap.appendChild(_sectionLabel(`Shot-noise statistical test (basis: ${st.basis})`));
@@ -351,6 +358,8 @@ export function _statisticalTestBlock(st) {
         ['outcomes observed / tested bins', st.observed_outcomes !== undefined
             ? `${fmtInt(st.observed_outcomes)} / ${fmtInt(st.tested_outcome_bins)}` : undefined],
         ['rare outcomes pooled', st.pooled_outcomes !== undefined ? fmtInt(st.pooled_outcomes) : undefined],
+        ['outcomes left out', st.untested_outcomes ? fmtInt(st.untested_outcomes) : undefined],
+        ['p-values', _TEST_METHOD[st.test_method] ?? st.test_method ?? undefined],
         ['inconclusive reason', st.inconclusive_reason ?? undefined],
         ['resolvable by more shots', typeof st.resolvable_by_more_shots === 'boolean' ? _yesNo(st.resolvable_by_more_shots) : undefined],
     ]));

@@ -541,7 +541,8 @@ def test_rare_outcome_pooling_and_recommendation_flag():
     assert stat["test_method"] == "exact_conditional"
     assert stat["verdict"] == "consistent"
     assert stat["inconclusive_reason"] is None
-    assert stat["power"]["recommended_shots_per_backend"] == 1570
+    assert stat["power"]["shots_per_backend_for_target_power"] == 1570
+    assert stat["power"]["recommended_shots_per_backend"] == 1800
     assert stat["power"]["recommended_exceeds_actual"] is False
 
     stat = _record(create_counts_report([
@@ -556,7 +557,8 @@ def test_rare_outcome_pooling_and_recommendation_flag():
     assert abs(stat["power"]["delta_tv_tested"] - 0.048) < 1e-12
     assert stat["verdict"] == "inconclusive_low_shots"
     assert stat["inconclusive_reason"] == "low_power"
-    assert stat["power"]["recommended_shots_per_backend"] == 2091
+    assert stat["power"]["shots_per_backend_for_target_power"] == 2091
+    assert stat["power"]["recommended_shots_per_backend"] == 2400
 
 
 def test_single_outcome_tables_use_one_degree_of_freedom_and_low_count_checks():
@@ -590,7 +592,8 @@ def test_power_is_evaluated_at_the_by_single_discovery_level():
     assert power["m_pairs"] == 10
     assert power["c_m"] == pytest.approx(c_m)
     assert power["alpha_used"] == pytest.approx(0.05 / (10 * c_m))
-    assert power["recommended_shots_per_backend"] == _shots_per_backend_for_target_power(
+    assert power["recommended_shots_per_backend"] == 3500
+    assert power["shots_per_backend_for_target_power"] == _shots_per_backend_for_target_power(
         power["alpha_used"], 0.8, 0.05) == 3166
     assert power["power_to_detect_delta_at_observed_shots"] < 0.8
     assert "alpha/(m*c_m)" in power["model"]
