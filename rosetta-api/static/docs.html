@@ -1214,7 +1214,9 @@
                             <code>u3</code> and <code>cx</code> (<code>optimization_level=0</code>, basis
                             translation only), then QMAP maps it onto a linear chain of the circuit's qubit
                             count, qubit i coupled to i + 1 in both directions: heuristic (A*) at level 0, exact
-                            (SAT) at level 1, with QMAP's default pre- and post-mapping optimizations. The
+                            (SAT) at level 1, with QMAP's default pre- and post-mapping optimizations. Level 1
+                            is offered up to 7 qubits and refuses wider circuits: exact mapping took more than
+                            200 s on an 8-qubit GHZ circuit already laid out as a chain (50 s at 7 qubits). The
                             output's <code>// i</code> and <code>// o</code> lines give the physical qubit of each
                             logical qubit at input and output. A circuit with a qubit that has no gates is not
                             mapped (see the known issue below). Every output is checked when it is produced:

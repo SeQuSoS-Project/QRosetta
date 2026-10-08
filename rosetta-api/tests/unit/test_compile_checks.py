@@ -108,3 +108,13 @@ def test_pyzx_gets_qelib1_definitions_only_for_gates_qelib1_defines():
                  and getattr(node.targets[0], "id", "") == "PYZX_PARSER_LACKS")
     names = {elt.value for elt in lacks.args[0].elts}
     assert names and names <= set(qelib1_definitions())
+
+
+def test_qmap_exact_mapping_refuses_above_its_measured_width_before_mapping():
+    tree = ast.parse((COMPILERS / "qmap-compiler" / "main.py").read_text())
+    limit = next(node.value.value for node in ast.walk(tree) if isinstance(node, ast.Assign)
+                 and getattr(node.targets[0], "id", "") == "EXACT_MAX_QUBITS")
+    run = next(node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name == "run")
+    lines = {getattr(c.func, "id", ""): c.lineno for c in ast.walk(run) if isinstance(c, ast.Call)}
+    assert limit == 7
+    assert lines["refuse_above_qubits"] < lines["map_"]
