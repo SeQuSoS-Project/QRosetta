@@ -460,7 +460,7 @@
                     <tbody>
                         <tr><td rowspan="3">Agree</td><td><code>agree_directly</code></td><td>Same orderings; outputs match with no transform.</td></tr>
                         <tr><td><code>agree_up_to_global_phase</code></td><td>Same orderings; outputs match after removing an overall (unobservable) global phase.</td></tr>
-                        <tr><td><code>agree_after_bit_reversal</code></td><td>One <code>lsb</code> and one <code>msb</code> backend; outputs match after the bit reversal the declarations imply. <code>transform_effect.global_phase_aligned</code> marks a global phase offset.</td></tr>
+                        <tr><td><code>agree_after_bit_reversal</code></td><td>One <code>lsb</code> and one <code>msb</code> backend; outputs match after the bit reversal the declarations imply. <code>transform_effect.global_phase_aligned</code> marks a global phase offset, and <code>metrics.label_aligned_relative_phase_rad</code> gives it.</td></tr>
                         <tr><td rowspan="3">Disagree</td><td><code>residual_disagreement</code></td><td>No registered transform explains the difference.</td></tr>
                         <tr><td><code>residual_disagreement</code> with <code>metrics.unaligned_basis_match</code></td><td>The outputs match only in the basis the declared orderings do not imply: directly although the orderings differ, or after bit reversal although they are the same. <code>unaligned_basis_match</code> names that basis. Either a declared ordering is wrong, or a gate defect happens to mimic a bit reversal (see <a href="#known-issues">Known backend issues</a>).</td></tr>
                         <tr><td><code>agree_after_qubit_permutation</code></td><td>The outputs match only after a qubit permutation that neither declared ordering implies (searched up to 7 qubits). A permutation is not a convention either backend declares, so this is a disagreement.</td></tr>
@@ -472,8 +472,8 @@
                 <table>
                     <thead><tr><th>Label</th><th>Meaning</th></tr></thead>
                     <tbody>
-                        <tr><td><code>distance_within_threshold</code></td><td>Same declared bit orders; distributions within the JS-divergence and Hellinger thresholds (descriptive; the statistical test gives the significance verdict).</td></tr>
-                        <tr><td><code>agree_after_bit_reversal</code></td><td>One <code>lsb</code> and one <code>msb</code> backend; within the thresholds after the bit reversal the declarations imply.</td></tr>
+                        <tr><td><code>distance_within_threshold</code></td><td>Same declared bit orders, or keys of one classical bit (<code>metrics.basis_source: "single_bit"</code>, where bit reversal changes nothing); distributions within the JS-divergence and Hellinger thresholds (descriptive; the statistical test gives the significance verdict).</td></tr>
+                        <tr><td><code>agree_after_bit_reversal</code></td><td>One <code>lsb</code> and one <code>msb</code> backend, with keys of two or more classical bits; within the thresholds after the bit reversal the declarations imply.</td></tr>
                         <tr><td><code>agree_after_qubit_permutation</code></td><td>Within the thresholds after a bounded qubit permutation (≤&nbsp;7 qubits).</td></tr>
                         <tr><td><code>distance_exceeds_threshold</code></td><td>Distributions exceed the thresholds in the basis the declared bit orders imply. With <code>metrics.unaligned_basis_match</code> they are within the thresholds only in the other basis (after bit reversal although the orders are the same, or directly although they differ), as in statevector mode; without it no qubit permutation brings them within.</td></tr>
                         <tr><td><code>not_comparable</code></td><td>At least one side lacks usable output; <code>metrics.reason</code> names the cause.</td></tr>
@@ -583,11 +583,18 @@
                     different bit orders (<code>lsb</code> against <code>msb</code>), the second backend's
                     keys are bit-reversed first; otherwise the keys are compared directly. The basis comes
                     from the declared orderings, not from which basis gives the smaller distance, and is
-                    recorded as <code>statistical_test.basis</code>. Outcomes whose expected count is below 5
-                    are pooled into one bin, and more of the rarest outcomes are merged in until the pooled
-                    bin reaches an expected count of 5 or the table meets Cochran's rule (no expected count
-                    below 1, at most 20% below 5); <code>pooled_outcomes</code> records how many outcomes
-                    were merged. With row totals <code>Rᵢ</code>, column
+                    recorded as <code>statistical_test.basis</code>. When the keys have one classical bit,
+                    bit reversal changes nothing and the keys are compared directly
+                    (<code>basis_source: "single_bit"</code>), whatever the number of qubits. Outcomes whose
+                    expected count is below 5 are pooled into one bin, which holds only these rare outcomes;
+                    <code>pooled_outcomes</code> records how many. The bin is tested as its own column when its
+                    expected count is at least 5, when the table meets Cochran's rule (no expected count below 1,
+                    at most 20% below 5), or, with two or more common outcomes, when its expected count is at
+                    least 1. Below 1 it is left out of the table (<code>untested_outcomes</code>). A common outcome is never merged into
+                    the bin: on a table of three or four outcomes that would hide a gap as large as the common
+                    outcome's probability (see the power model below). With every outcome rare, or one common
+                    outcome beside an undersized bin, the pair is inconclusive (<code>low_expected_counts</code>).
+                    With row totals <code>Rᵢ</code>, column
                     totals <code>Cⱼ</code> and <code>N = Σ O</code>, the expected counts are
                     <code>Eᵢⱼ = Rᵢ Cⱼ / N</code>.
                 </p>
@@ -642,10 +649,13 @@
                         pair was consistent.</li>
                     <li><strong>Power model</strong>: the effect size is Cohen's
                         <code>w = δ<sub>tested</sub></code>, the smallest w any distribution pair at total
-                        variation δ = 0.05 can have on the table the test sees (w ≥ TV). Pooling rare outcomes
-                        into one bin can hide up to min(P, Q) of the total variation, where P and Q are the two
-                        backends' probabilities in the pooled bin, so <code>δ<sub>tested</sub> = δ − min(P, Q)</code>
+                        variation δ = 0.05 can have on the table the test sees (w ≥ TV). Pooling two or more rare
+                        outcomes into one bin can hide up to min(P, Q) of the total variation, where P and Q are the
+                        two backends' probabilities in the pooled bin, so <code>δ<sub>tested</sub> = δ − min(P, Q)</code>;
+                        leaving a bin out can hide up to max(P, Q), so <code>δ<sub>tested</sub> = δ − max(P, Q)</code>
                         (recorded as <code>power.delta_tv_tested</code> and <code>power.pooled_probability</code>).
+                        Because the bin holds only rare outcomes, P and Q are small whenever the table has
+                        common outcomes.
                         When δ<sub>tested</sub> ≤ 0 a gap of δ could sit entirely inside the pooled bin, the power is
                         α′ and the pair is inconclusive, however small its p-values. The chi-square statistic then follows a noncentral
                         χ² with <code>df = K − 1</code> and noncentrality

@@ -115,7 +115,8 @@ _AGREEMENT_GLOSSARY = [
      "when a global phase offset remains after the reversal. For a measured pair whose "
      "declared bit orders differ the label means the pair agrees in the label-aligned "
      "(bit-reversed) basis; it is used by convention even when the direct distances are "
-     "equal too, as for GHZ-type outcomes that bit reversal leaves unchanged."),
+     "equal too, as for GHZ-type outcomes that bit reversal leaves unchanged. Counts keys "
+     "of one classical bit are compared directly and never get this label."),
     ("agree_after_qubit_permutation", "Disagreement: agrees only after an undeclared qubit "
      "permutation (searched up to ≤7 qubits). No declared ordering implies the permutation, "
      "so the pair is counted as a disagreement."),
@@ -206,11 +207,15 @@ _MEASUREMENT_NOTES = [
     "*relative_phase* keep their names for compatibility.",
     "Label-aligned basis: for a pair whose declared qubit orderings differ (lsb vs msb) the "
     "second backend's output is bit-reversed (statevector amplitudes or counts keys); "
-    "otherwise it is compared directly, and on a one-qubit circuit bit reversal is the "
-    "identity. Statevector labels, the statistical tests and the label-aligned distances use "
+    "otherwise it is compared directly. Bit reversal is the identity on a one-qubit circuit "
+    "and on counts keys of one classical bit, so those pairs are compared directly. "
+    "Statevector labels, the statistical tests and the label-aligned distances use "
     "this basis; the direct values are recorded as well.",
     "Outcomes with an expected count below 5 are pooled into one bin before the chi-square "
-    "and G-tests; statistical_test.pooled_outcomes gives how many were pooled.",
+    "and G-tests; statistical_test.pooled_outcomes gives how many were pooled. The bin holds "
+    "only rare outcomes. If it breaks Cochran's rule and its expected count is below 1, it "
+    "is left out of the table; statistical_test.untested_outcomes gives how many outcomes "
+    "it held.",
     "Benjamini-Yekutieli controls the false discovery rate at q = alpha under arbitrary "
     "dependence between the p-values; pairs that share a backend reuse its sample and are "
     "dependent. Its threshold is alpha·i/(m·c_m) with c_m = 1 + 1/2 + ... + 1/m. BH-adjusted "

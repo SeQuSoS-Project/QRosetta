@@ -254,12 +254,14 @@ def _classify_counts_pair(
     n_shots,
     shot_total_mismatch=None,
     label_aligned_basis="direct",
+    basis_source="declared_qubit_ordering",
 ):
     """Label a measured pair from its direct, bit-reversed and permuted JS/Hellinger distances.
 
     The label is a descriptive threshold check; ``metrics.statistical_test`` is added by the
     report builder. Only ``label_aligned_basis`` ("direct" or "bit_reversal", from the
-    declared counts bit orders) can give a within-threshold label: a pair within the
+    declared counts bit orders; "direct" for keys of one bit, recorded in
+    ``metrics.basis_source``) can give a within-threshold label: a pair within the
     thresholds only in the other basis is distance_exceeds_threshold with
     ``metrics.unaligned_basis_match`` naming that basis, as in statevector mode; otherwise
     qubit permutations are checked.
@@ -348,6 +350,7 @@ def _classify_counts_pair(
             "bit_reversed_js_divergence": _json_float(bit_reversed_js_div),
             "bit_reversed_hellinger_distance": _json_float(bit_reversed_h_dist),
             "label_aligned_basis": label_aligned_basis,
+            "basis_source": basis_source,
             "label_aligned_js_divergence": _json_float(
                 bit_reversed_js_div if label_aligned_basis == "bit_reversal" else js_div
             ),
