@@ -163,11 +163,22 @@
                     </tbody>
                 </table>
                 <p>
+                    Before a run starts, the API rejects with HTTP 400, naming the line: text that does not
+                    start with <code>OPENQASM 2.0;</code>; a character outside ASCII outside comments
+                    (with its column and Unicode name, such as a non-breaking space); a name declared twice
+                    among registers, gates and opaque gates, which share one set of names; an index outside
+                    its register; an operand that is not a declared register; and a call of a gate that
+                    neither the circuit nor an included <code>qelib1.inc</code> defines (gate names are
+                    case-sensitive: <code>H</code> and <code>cnot</code> are not qelib1 gates).
+                </p>
+                <p>
                     In statevector mode the API removes measurements at the end of the circuit before
                     dispatch and lists that as an <code>API:</code> entry in
                     <code>preprocessing_applied</code>. A circuit with a measurement followed by further
                     operations, a <code>reset</code>, or an <code>if</code> is rejected with HTTP 400 in
                     statevector mode, because it has no single output statevector; run it in measured mode.
+                    A compile-only run accepts such a circuit and records each requested compile as
+                    skipped.
                     In measured mode these operations are passed to every backend; adapters that cannot
                     simulate them return an error for that backend. Qiskit and cuQuantum (Aer) run
                     mid-circuit measurement, <code>reset</code> and <code>if</code>; Qrisp runs mid-circuit
