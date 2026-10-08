@@ -414,3 +414,21 @@ def test_every_offered_level_fits_the_compile_job_cap():
     payload = QasmPayload(qasm_string='OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[1];\nh q[0];\n',
                           compilers=every, simulate=False)
     assert sum(len(v) for v in payload.compilers.values()) == settings.max_compile_jobs()
+
+
+MID_CIRCUIT = ('OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[2];\ncreg c[2];\nh q[0];\n'
+               'measure q[0] -> c[0];\ncx q[0],q[1];\nmeasure q -> c;\n')
+
+
+def test_compile_only_run_accepts_mid_circuit_measurement_and_skips_each_compile(client, fake_dispatch):
+    pytest.importorskip("pytket")
+    r = client.post("/compare", json={"qasm_string": MID_CIRCUIT, "simulate": False,
+                                      "compilers": {"pyzx": [1]}})
+    assert r.status_code == 200, r.text
+    r = client.post("/run_batch_suite", json={"tasks": [{"qasm_string": MID_CIRCUIT}], "mode": "statevector",
+                                              "simulate": False, "compilers": {"pyzx": [1]}})
+    assert r.status_code == 200, r.text
+    report = asyncio.run(job_manager.run_compile_only(MID_CIRCUIT, compilers={"pyzx": [1]}))
+    assert [c["dispatch_status"] for c in report["compiled_circuits"]] == ["skipped"]
+    r = client.post("/compare", json={"qasm_string": MID_CIRCUIT})
+    assert r.status_code == 400 and "measured mode" in r.text

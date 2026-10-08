@@ -93,7 +93,8 @@ async def compare_circuits_endpoint(request: Request, payload: QasmPayload, back
     parser reserves, and a runner_config level above that runner's max."""
     validate_request(payload.qasm_string, mode="statevector" if payload.simulate else "compile",
                      bypass_limits=payload.bypass_limits, apply_preprocessing=payload.apply_preprocessing)
-    check_statevector_circuit(payload.qasm_string)
+    if payload.simulate:
+        check_statevector_circuit(payload.qasm_string)
     validate_runner_ids(payload.target_simulators, payload.runner_config, payload.runner_phases)
     validate_runner_config(payload.runner_config)
     validate_compilers(payload.compilers)
@@ -155,7 +156,7 @@ async def run_batch_suite_endpoint(request: Request, payload: BatchPayload, back
                 validate_request(task.qasm_string, mode=payload.mode if payload.simulate else "compile",
                                  bypass_limits=payload.bypass_limits,
                                  apply_preprocessing=payload.apply_preprocessing)
-                if payload.mode == "statevector":
+                if payload.mode == "statevector" and payload.simulate:
                     check_statevector_circuit(task.qasm_string)
             except HTTPException as exc:
                 raise HTTPException(status_code=exc.status_code, detail=f"Task {index} ({task.algorithm or 'qasm'}): {exc.detail}")
