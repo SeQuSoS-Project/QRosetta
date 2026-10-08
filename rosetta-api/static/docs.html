@@ -930,7 +930,8 @@
                         the Sequential ordering stage them (each result records <code>concurrent_runs</code>, the number
                         of runs dispatched in its phase or in a phase in flight beside it, such as the sampled and native
                         groups of a measured run; <code>dispatch_phase</code>; <code>dispatch_wave</code>, its phase's start, end and run count; and <code>overlapping_runs</code>, the
-                        number of other runs of the same job that were in their runner process at some time this one was;
+                        number of other runs of the same job that were in their runner process at some time this one was,
+                        from the times the runner recorded (<code>process_started_at</code>, <code>process_finished_at</code>);
                         other users' runs on a shared server are not counted). Concurrent runs share cores,
                         hyperthreads and memory bandwidth: on a 20-qubit measured QFT testers saw 2.3–3.3× longer times
                         than with the Sequential ordering, and the order of backends changed. For timings meant for a performance comparison,

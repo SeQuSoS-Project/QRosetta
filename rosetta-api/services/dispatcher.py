@@ -208,8 +208,17 @@ SAMPLED_SV_URLS = {
 
 
 def _run_interval(result: dict):
-    """(start, end) in seconds of a run's time in its runner process: dispatch time plus
-    queue wait, to completion; None without both timestamps."""
+    """(start, end) in seconds of a run's time in its runner process: the runner's own
+    ``process_started_at``..``process_finished_at`` when recorded; else dispatch time plus
+    queue wait, to completion (which includes sending the response); None for a run that
+    never started or without timestamps."""
+    if result.get("never_started"):
+        return None
+    try:
+        return (datetime.fromisoformat(result["process_started_at"]).timestamp(),
+                datetime.fromisoformat(result["process_finished_at"]).timestamp())
+    except (KeyError, TypeError, ValueError):
+        pass
     try:
         start = datetime.fromisoformat(result["dispatched_at"]).timestamp()
         end = datetime.fromisoformat(result["completed_at"]).timestamp()
