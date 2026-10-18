@@ -54,11 +54,34 @@ COMPILERS=(
   "synthetiq_compiler"
 )
 
+# Builds one compose service with `docker build`, tagged as compose names it. Under podman,
+# `docker compose build` goes through the API service, which stages layers in /var/tmp
+# whatever TMPDIR or image_copy_tmp_dir says; the CLI honours both.
+build_service() {
+  local spec
+  spec=$(docker compose config --format json 2>/dev/null | python3 -c '
+import json, shlex, sys
+d = json.load(sys.stdin)
+svc = d["services"][sys.argv[1]]
+b = svc["build"]
+args = " ".join("--build-arg " + shlex.quote(f"{k}={v}") for k, v in (b.get("args") or {}).items())
+image = svc.get("image") or d["name"] + "-" + sys.argv[1]
+print(shlex.quote(image), shlex.quote(b["dockerfile"]), shlex.quote(b["context"]), args)
+' "$1") || return 1
+  eval "set -- $spec"
+  local image=$1 dockerfile=$2 context=$3
+  shift 3
+  (cd "$context" && docker build -t "$image" -f "$dockerfile" "$@" .)
+}
+
 echo ">>> Starting Graceful Build..."
 
 echo "[INFO] Building Core Services: ${CORE_SERVICES[*]}"
-docker compose build "${CORE_SERVICES[@]}"
-if [ $? -ne 0 ]; then
+CORE_OK=1
+for core in "${CORE_SERVICES[@]}"; do
+  build_service "$core" || CORE_OK=0
+done
+if [ "$CORE_OK" -ne 1 ]; then
   echo "[CRITICAL] Core services failed to build. Exiting."
   exit 1
 fi
@@ -69,9 +92,7 @@ SUCCESSFUL_RUNNERS=()
 echo "[BUILD] Building Runners..."
 for runner in "${RUNNERS[@]}"; do
   echo "   - Attempting to build $runner..."
-  docker compose build "$runner"
-  
-  if [ $? -eq 0 ]; then
+  if build_service "$runner"; then
     echo "     [SUCCESS] $runner built."
     SUCCESSFUL_RUNNERS+=("$runner")
   else
@@ -82,7 +103,7 @@ done
 echo "[BUILD] Building Compilers..."
 for compiler in "${COMPILERS[@]}"; do
   echo "   - Attempting to build $compiler..."
-  if docker compose build "$compiler"; then
+  if build_service "$compiler"; then
     echo "     [SUCCESS] $compiler built."
     SUCCESSFUL_RUNNERS+=("$compiler")
   else
@@ -94,7 +115,7 @@ echo ">>> Launching application..."
 echo "   Core Services: ${CORE_SERVICES[*]}"
 echo "   Active Runners: ${SUCCESSFUL_RUNNERS[*]}"
 
-docker compose up -d "${CORE_SERVICES[@]}" "${SUCCESSFUL_RUNNERS[@]}"
+docker compose up -d --no-build "${CORE_SERVICES[@]}" "${SUCCESSFUL_RUNNERS[@]}"
 
 echo ">>> Attaching to container logs (Press Ctrl+C to stop watching logs)..."
 docker compose logs -f
