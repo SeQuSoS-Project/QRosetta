@@ -99,6 +99,10 @@ and returns the same set of fields.
 | Qiskit Aer, Cirq, Qulacs, QuEST | PennyLane Lightning, PennyLane Default |
 | qsim-Cirq, Qibo, Qrisp, myQLM | PyQuil, TorchQuantum, Quimb, cuQuantum |
 
+myQLM's simulator is in the proprietary `qat-*` packages (Bull myQLM EULA), which allow use
+only on the licensee's own computers and forbid third-party use and transfer over a network.
+It runs in a local stack; the Rahti deployment does not offer it and `rahti_push.sh` does not push it.
+
 The web UI runs every enabled backend unless you deselect some in the Backends chip above the run button. The
 cuQuantum runner is qiskit-aer-gpu 0.15.1 with cuStateVec enabled, on an NVIDIA GPU. On a host
 without one, `GET /runners` marks it unavailable with a reason, the backend list shows it

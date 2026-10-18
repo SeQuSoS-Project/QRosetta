@@ -51,9 +51,11 @@ declare -A SERVICE_MAP=(
     ["synthetiq-compiler"]="synthetiq_compiler"
 )
 
-# Left out of a full push: the project's image-stream quota (crq-2017360) is 20.
+# Left out of a full push: the project's image-stream quota (crq-2017360) is 20, and the
+# myQLM licence (Bull EULA §2(b), §3(a)) allows neither third-party use nor network transfer.
 # Name one explicitly to push it anyway.
 SKIP_BY_DEFAULT=(
+    myqlm-runner
     pytket-braket-runner
     pytket-projectq-runner
     bqskit-compiler

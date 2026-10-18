@@ -46,7 +46,7 @@ items:
             value: "300"
           # Services whose images are not in this project's registry.
           - name: QROSETTA_NOT_DEPLOYED
-            value: "bqskit,cirq-transformers,qsynth"
+            value: "myqlm,bqskit,cirq-transformers,qsynth"
           - name: QROSETTA_K8S_MAX_CONCURRENT_JOBS
             value: "3"
           - name: CORS_ALLOW_ORIGINS
