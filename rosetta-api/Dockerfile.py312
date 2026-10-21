@@ -1,0 +1,34 @@
+# Variant of Dockerfile on Python 3.12 for the 3.10 -> 3.12 check (docs-audit/2026-10-21-api-python312.md); same lock file.
+FROM python:3.12-slim@sha256:cb33f7f771ecec2ef1225cf39b159591a040391bd73e4c01f00fdfc4c47611d2
+
+RUN useradd -m appuser
+WORKDIR /home/appuser/app
+
+# Build context is the repository root.
+COPY rosetta-api/requirements.txt .
+COPY rosetta-api/requirements.lock .
+ENV PIP_DEFAULT_TIMEOUT=1000
+RUN pip install --no-cache-dir -r requirements.lock
+
+COPY shared /tmp/shared-src
+RUN pip install /tmp/shared-src
+
+COPY rosetta-api/ .
+
+# services/exporter.py reads runners/*/requirements.txt and compilers/*/requirements.lock.
+COPY runners/ ./runners/
+COPY compilers/ ./compilers/
+
+RUN mkdir -p /home/appuser/app/data
+
+# Group 0 with g=u lets OpenShift's arbitrary UID write here.
+RUN chown -R appuser:appuser /home/appuser/app && \
+    chgrp -R 0 /home/appuser && \
+    chmod -R g=u /home/appuser
+ENV HOME=/home/appuser
+ENV OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+ARG QROSETTA_GIT_SHA=unknown
+ENV QROSETTA_IMAGE_GIT_SHA=${QROSETTA_GIT_SHA}
+USER appuser
+
+CMD ["sh", "-c", "gunicorn main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000} --timeout 330 --access-logfile -"]
