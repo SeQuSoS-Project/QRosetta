@@ -153,6 +153,20 @@ def full_report(job: dict, each_task=None):
     return report
 
 
+def report_or_task(job: dict, task):
+    """``(report, n_tasks)``. For a single-circuit job: its untruncated report (None when
+    ``task`` is set) and None. For a batch: the report of task ``task`` alone, the other
+    tasks not read (None when ``task`` is None or out of range), and the batch length.
+    Raises FileNotFoundError when the job's files were removed (the job expired)."""
+    report = _loaded(job.get("full_results"))
+    tasks = report.get("benchmark_summary") if isinstance(report, dict) else None
+    if not isinstance(tasks, list):
+        return (report if task is None else None), None
+    if task is None or not 0 <= task < len(tasks):
+        return None, len(tasks)
+    return _loaded(tasks[task]), len(tasks)
+
+
 def report_with_task_loader(job: dict, each_task):
     """``(report, load)``: the job's untruncated report with each batch task's report passed
     through ``each_task`` (read one at a time), and ``load(i)``, which reads task i's report
