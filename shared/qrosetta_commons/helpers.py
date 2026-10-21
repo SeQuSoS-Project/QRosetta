@@ -287,6 +287,21 @@ def runtime_environment() -> dict:
             "kernel": platform.release(), "machine": platform.machine()}
 
 
+_BATCH_ENV = {
+    "slurm_job_id": "SLURM_JOB_ID", "slurm_step_id": "SLURM_STEP_ID",
+    "slurm_partition": "SLURM_JOB_PARTITION", "slurm_node": "SLURMD_NODENAME",
+    "slurm_cpus_per_task": "SLURM_CPUS_PER_TASK", "slurm_cpu_bind": "SLURM_CPU_BIND",
+    "slurm_mem_per_cpu_mb": "SLURM_MEM_PER_CPU", "slurm_cluster": "SLURM_CLUSTER_NAME",
+    "container_image": "APPTAINER_CONTAINER", "container_image_sha256": "QROSETTA_IMAGE_SHA256",
+}
+
+
+def batch_environment() -> dict:
+    """The batch job and container image this process runs in (Slurm, Apptainer), from the
+    environment the launch script passes; empty outside one."""
+    return {key: os.environ[var] for key, var in _BATCH_ENV.items() if os.environ.get(var)}
+
+
 def with_sdk_versions(func):
     """Decorator for ``process_run`` / ``process_run_measured``.
 
@@ -306,6 +321,9 @@ def with_sdk_versions(func):
             result.setdefault("runner_code_sha256", code_sha)
             result.setdefault("image_git_sha", IMAGE_GIT_SHA)
             result.setdefault("runtime_environment", runtime_environment())
+            batch = batch_environment()
+            if batch:
+                result.setdefault("batch_environment", batch)
             if result.get("device") is None:
                 result["device"] = None if result.get("error") else DEFAULT_DEVICE
         return result

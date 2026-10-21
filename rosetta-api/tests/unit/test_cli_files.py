@@ -46,3 +46,31 @@ def test_both_clis_accept_the_file_arguments():
     from pathlib import Path
     compile_service = Path(helpers.__file__).with_name("compile_service.py").read_text()
     assert "add_file_arguments(parser)" in compile_service
+
+
+def test_batch_environment_records_slurm_and_image_fields(monkeypatch):
+    for var in list(helpers._BATCH_ENV.values()):
+        monkeypatch.delenv(var, raising=False)
+    assert helpers.batch_environment() == {}
+    monkeypatch.setenv("SLURM_JOB_ID", "123")
+    monkeypatch.setenv("SLURMD_NODENAME", "c1001")
+    monkeypatch.setenv("QROSETTA_IMAGE_SHA256", "ab" * 32)
+    assert helpers.batch_environment() == {"slurm_job_id": "123", "slurm_node": "c1001",
+                                            "container_image_sha256": "ab" * 32}
+
+
+def test_results_carry_batch_environment_only_inside_a_batch_job(monkeypatch):
+    for var in list(helpers._BATCH_ENV.values()):
+        monkeypatch.delenv(var, raising=False)
+    wrapped = helpers.with_sdk_versions(lambda payload: {"ok": True})
+    assert "batch_environment" not in wrapped({})
+    monkeypatch.setenv("SLURM_JOB_ID", "9")
+    assert wrapped({})["batch_environment"] == {"slurm_job_id": "9"}
+
+
+def test_launch_wrapper_passes_the_batch_variables_into_the_container():
+    from pathlib import Path
+    script = (Path(__file__).resolve().parents[3] / "scripts" / "roihu" / "run_runner.sh").read_text()
+    for var in helpers._BATCH_ENV.values():
+        if var != "APPTAINER_CONTAINER":
+            assert var in script, var
