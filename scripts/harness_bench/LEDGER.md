@@ -56,3 +56,19 @@ Adding `pytest-xdist==3.6.1` to `tests/requirements.txt` and running CI with `-n
 |---|---|---|---|
 | API test venv (no Qiskit) | 1,597 | 98 s | 28 s, 3 runs all passing |
 | Venv with Qiskit 2.5.2 | 1,649 | 101 s | 31 s, 2 runs all passing |
+
+## 2026-10-21, d0bcab4: module preloading
+
+The page loaded 50 ES modules discovered in 4 import levels. That took 4 sequential request waves over HTTP/2 and 7 over HTTP/1.1. index.html and share.html now list their whole static import graph as `<link rel="modulepreload">`, written by `scripts/build_modulepreload.py`. `tests/unit/test_modulepreload.py` fails when a list is stale.
+
+Time to DOMContentLoaded, in ms, as medians of 7 runs (`scripts/frontend_bench/load_bench.mjs`, headless Chromium, nginx's cache headers):
+
+| Page | Protocol | RTT | Cold, before → after | Warm, before → after |
+|---|---|---|---|---|
+| index | HTTP/2 | 50 ms | 308 → 159 | 329 → 161 |
+| index | HTTP/2 | 150 ms | 822 → 352 | 825 → 354 |
+| index | HTTP/1.1 | 50 ms | 626 → 588 | 602 → 535 |
+| index | HTTP/1.1 | 150 ms | 1727 → 1552 | 1709 → 1534 |
+| share | HTTP/2 | 150 ms | 812 → 330 | 821 → 324 |
+
+Module scripts are deferred, so DOMContentLoaded includes the whole module graph. Over HTTP/1.1 the gain is small, because Chromium opens at most 6 connections per host. The Cloud Run front end serves HTTP/2, so the HTTP/2 rows apply there. The request count is unchanged (52), so no module is fetched twice. Warm loads still revalidate each file (`no-cache`, 304), because there are no content-hashed names that would make longer caching safe.
