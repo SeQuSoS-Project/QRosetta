@@ -215,7 +215,7 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
             timeout_seconds=timeout_seconds,
             runner_statuses=runner_statuses,
         )
-    _apply_api_preprocessing(aggregated_results, "statevector", circuit)
+    await asyncio.to_thread(_apply_api_preprocessing, aggregated_results, "statevector", circuit)
     compiled = await compile_circuit(qasm_string, apply_preprocessing, compilers, timeout_seconds,
                                      runner_statuses, prepared=circuit)
 
@@ -320,8 +320,8 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
              (filtered_native, payload_for("measured_native"))],
             runner_phases, timeout_seconds, runner_statuses)
     annotate_overlaps(results_sampled + results_native)
-    _apply_api_preprocessing(results_sampled, "measured_sampled", circuits["measured_sampled"])
-    _apply_api_preprocessing(results_native, "measured_native", circuits["measured_native"])
+    await asyncio.to_thread(_apply_api_preprocessing, results_sampled, "measured_sampled", circuits["measured_sampled"])
+    await asyncio.to_thread(_apply_api_preprocessing, results_native, "measured_native", circuits["measured_native"])
     aggregated_results = results_native + results_sampled
     compiled = await compile_circuit(qasm_string, apply_preprocessing, compilers, timeout_seconds, runner_statuses)
 

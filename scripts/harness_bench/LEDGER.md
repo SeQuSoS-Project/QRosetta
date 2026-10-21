@@ -133,3 +133,7 @@ The same jobs were run through nginx on the local stack at `96ab2a8`, with 13 ba
 One more seeded measured job was run on each API (`save_report.py`). The runners' counts were identical, and so was every field of `divergence_report`.
 
 On the same stack, `tests/integration` passed 31 of 31 non-contract tests and, with cuQuantum removed from the contract list, 7 of 7 contract tests. Raw lines are in `results/live/`.
+
+## 2026-10-22: tket parameter note off the event loop
+
+`_apply_api_preprocessing` runs `tket_parameter_note`, which scans the whole dispatched text, on the event loop once per runner group. It took 0.37–0.45 s on a 3 MB dispatched circuit at 1 CPU: the 9,900-call circuit and Grover n14 after the round trip. At the API's 0.5 CPU that is about 0.9 s per group. It now runs in a worker thread. A new case in `test_event_loop_budget.py` holds the note for 0.5 s and fails on the old code.
