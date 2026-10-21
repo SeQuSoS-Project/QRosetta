@@ -162,6 +162,7 @@ def _build_job_spec(sim_name: str, hostname: str, job_id: str, endpoint_type: st
             template=k8s_client.V1PodTemplateSpec(
                 spec=k8s_client.V1PodSpec(
                     restart_policy="Never",
+                    automount_service_account_token=False,
                     containers=[
                         k8s_client.V1Container(
                             name=sim_name,

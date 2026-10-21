@@ -288,3 +288,14 @@ def test_deploy_script_records_digests_and_dirty_checkouts():
     assert 'QROSETTA_GIT_SHA="$DEPLOY_GIT_SHA"' in script
     assert 'DEPLOY_GIT_SHA="${HEAD_SHA}-dirty"' in script
     assert "retagged, not rebuilt" in script
+
+
+@pytest.mark.parametrize("sim, host, endpoint", [
+    ("qiskit", "pytket-qiskit-runner", "run"),
+    ("cirq-transformers", "cirq-compiler", "compile"),
+])
+def test_job_pods_get_no_service_account_token(sim, host, endpoint):
+    """The namespace's default service account may create Jobs; a runner or compiler pod
+    has no use for that and gets no token."""
+    job = k8s._build_job_spec(sim, host, "0" * 32, endpoint, "{}")
+    assert job.spec.template.spec.automount_service_account_token is False
