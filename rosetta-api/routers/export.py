@@ -12,7 +12,7 @@ from routers.errors import file_response, responses
 from services.security import limiter
 from services.exporter import build_export_context, build_ro_crate, crate_name
 from services.publication.views import ParameterError
-from services.report_validation import reject_invalid_report
+from services.report_validation import REPORT_SHAPE_ERRORS, reject_invalid_report, unreadable_report
 from services.job_manager import job_report_or_error, report_failed_before_dispatch
 from qrosetta_commons.helpers import get_logger
 
@@ -22,13 +22,17 @@ router = APIRouter()
 
 
 async def _crate_response(results: dict, payload, route: str) -> StreamingResponse:
-    """Build the RO-Crate ZIP off the event loop and stream it as an attachment."""
-    ctx = build_export_context(results, payload, route)
+    """Build the RO-Crate ZIP off the event loop and stream it as an attachment. A report in
+    the request body (``route`` client_request) that the builder cannot read is a 400."""
     try:
+        ctx = build_export_context(results, payload, route)
         zip_bytes = await asyncio.to_thread(build_ro_crate, ctx)
     except ParameterError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    except Exception:
+    except Exception as exc:
+        if route == "client_request" and isinstance(exc, REPORT_SHAPE_ERRORS):
+            logger.warning("Could not export a supplied report", exc_info=True)
+            raise unreadable_report(exc)
         logger.error("RO-Crate export failed", exc_info=True)
         raise HTTPException(status_code=500, detail="Export failed")
 
@@ -43,7 +47,8 @@ _CRATE = file_response("The RO-Crate ZIP, sent as an attachment.", "application/
 
 
 @router.post("/export", response_class=StreamingResponse, responses={**_CRATE, **responses(
-    (400, "No report given, a runner key of the wrong form, or an export option the report cannot take."),
+    (400, "No report given, a runner key of the wrong form, an export option the report cannot "
+          "take, or a field of the report that holds a value of the wrong type or shape."),
     (409, "The report's circuit never reached a runner (top-level error, no raw_results)."), 413, 422)})
 @limiter.limit(settings.RUN_RATE_LIMIT)
 async def export_ro_crate(request: Request, payload: schemas.ExportRequest):

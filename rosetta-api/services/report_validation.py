@@ -9,6 +9,9 @@ from services.exporter import invalid_runner_keys
 
 MAX_REPORT_DEPTH = 64
 
+REPORT_SHAPE_ERRORS = (TypeError, ValueError, AttributeError, IndexError, KeyError)
+"""What reading a report raises when a field holds a value of the wrong type or shape."""
+
 
 def _depth(value, limit=MAX_REPORT_DEPTH + 1) -> int:
     """Nesting depth of lists and dicts in ``value``, counted iteratively up to ``limit``."""
@@ -78,3 +81,10 @@ def reject_invalid_report(results) -> None:
     problems = report_problems(results)
     if problems:
         raise HTTPException(status_code=400, detail="Invalid report: " + "; ".join(problems) + ".")
+
+
+def unreadable_report(exc: Exception) -> HTTPException:
+    """400 for a client-supplied report that a table, figure or crate builder could not read
+    (one of ``REPORT_SHAPE_ERRORS``); the server's own reports keep their 500."""
+    return HTTPException(status_code=400, detail=(
+        "Invalid report: a field holds a value of the wrong type or shape, so it cannot be read."))
