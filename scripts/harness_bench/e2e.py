@@ -12,7 +12,7 @@ for _ in range(60):
     lines.append(rng.choice([f"h q[{a}];", f"cx q[{a}],q[{b}];", f"rz({rng.uniform(-3,3):.5f}) q[{a}];", f"ry({rng.uniform(-3,3):.5f}) q[{a}];"]))
 qasm = "\n".join(lines) + "\n"
 runners = [r for r, v in httpx.get(f"{BASE}/runners", timeout=30).json().items() if v.get("available") and v.get("enabled", True)] if isinstance(httpx.get(f"{BASE}/runners", timeout=30).json(), dict) else None
-body = {"qasm_string": qasm + (f"measure q -> c;\n" if kind == "measured" else ""), "seed": 5}
+body = {"qasm_string": qasm + ("measure q -> c;\n" if kind == "measured" else ""), "seed": 5}
 if kind == "measured":
     body["n_shots"] = 8200
     path = "/compare_measured"
