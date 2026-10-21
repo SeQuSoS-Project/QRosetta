@@ -5,6 +5,8 @@ reports both what each backend cost and whether they agree with each other. Each
 in its own container with its own pinned dependencies, behind a single benchmarking contract,
 so results are comparable across SDKs that could not otherwise share a process.
 
+QRosetta is developed by the [Quantum Programming and Algorithms (QPA) Research Group](https://users.jyu.fi/~mhaghpyz/#qpa) at the [University of Jyvaskyla](https://www.jyu.fi/en) in Finland.
+
 Every result set exports as a self-contained RO-Crate 1.1 archive holding the original
 circuit, the circuit the API dispatched to each backend, the circuit each backend executed,
 the metrics, the counts (statevectors on request; otherwise their sha256 and length), the run
@@ -199,6 +201,20 @@ run them; see the README there.
 - Circuit size, gate count, qubit count, upload size, and run fan-out are all capped
   server-side; public endpoints are rate-limited.
 - All `requirements.txt` files pin exact versions, with a `requirements.lock` alongside.
+
+## Contributors
+
+- Shaswato Sarker - *University of Jyvaskyla*
+- Majid Haghparast - *University of Jyvaskyla*
+- Tommi Mikkonen - *University of Jyvaskyla*
+
+## Contact
+
+Majid Haghparast <<majid.m.haghparast@jyu.fi>>
+
+## Acknowledgement
+
+This work has been supported by the Business Finland through project SeQuSoS (Grants No. 112/31/2024), and Research Council of Finland through project Profi 8 - qSIME (Grants No. 365343).
 
 ## Contributing
 
