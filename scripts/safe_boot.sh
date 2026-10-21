@@ -1,5 +1,7 @@
 #!/bin/bash
 # Build core services and each runner separately, start whatever built, then follow logs.
+# QR_BUILD_JOBS builds that many images at a time (default 1); build logs and times go to
+# QR_BUILD_LOG_DIR (default ~/.tmp/qrosetta-build); QR_BUILD_ONLY=1 stops after building.
 
 cd "$(dirname "$0")/.." || exit 1
 
@@ -74,42 +76,99 @@ print(shlex.quote(image), shlex.quote(b["dockerfile"]), shlex.quote(b["context"]
   (cd "$context" && docker build -t "$image" -f "$dockerfile" "$@" .)
 }
 
-echo ">>> Starting Graceful Build..."
+# Compose services whose runner is registered with enabled=False, read from the API image's
+# config.py; they are built only with QR_BUILD_DISABLED=1.
+disabled_services() {
+  local image hosts
+  image=$(docker compose config --format json 2>/dev/null | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+print(d["services"]["api"].get("image") or d["name"] + "-api")') || return 0
+  hosts=$(docker run --rm --entrypoint python "$image" -c '
+from config import settings
+for entry in settings.get_runner_services().values():
+    if not entry.get("enabled", True):
+        print(entry["base_url"].split("//")[1].split(":")[0])' 2>/dev/null) || return 0
+  docker compose config --format json 2>/dev/null | HOSTS="$hosts" python3 -c '
+import json, os, sys
+hosts = set(os.environ["HOSTS"].split())
+for name, svc in json.load(sys.stdin)["services"].items():
+    if svc.get("container_name") in hosts:
+        print(name)'
+}
+
+LOG_DIR="${QR_BUILD_LOG_DIR:-$HOME/.tmp/qrosetta-build}/$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$LOG_DIR"
+BUILD_JOBS="${QR_BUILD_JOBS:-1}"
+
+# Builds one service into $LOG_DIR/<service>.log and records "<seconds> <ok|failed>".
+timed_build() {
+  local start=$SECONDS status=ok
+  build_service "$1" > "$LOG_DIR/$1.log" 2>&1 || status=failed
+  echo "$((SECONDS - start)) $status" > "$LOG_DIR/$1.result"
+}
+
+# Builds the given services, at most BUILD_JOBS at a time.
+build_all() {
+  local svc
+  for svc in "$@"; do
+    while [ "$(jobs -rp | wc -l)" -ge "$BUILD_JOBS" ]; do wait -n; done
+    echo "   - Building $svc (log: $LOG_DIR/$svc.log)"
+    timed_build "$svc" &
+  done
+  wait
+}
+
+result_of() { cat "$LOG_DIR/$1.result" 2>/dev/null || echo "0 failed"; }
+
+echo ">>> Starting Graceful Build (${BUILD_JOBS} at a time; logs in $LOG_DIR)..."
+BOOT_START=$SECONDS
 
 echo "[INFO] Building Core Services: ${CORE_SERVICES[*]}"
-CORE_OK=1
+build_all "${CORE_SERVICES[@]}"
 for core in "${CORE_SERVICES[@]}"; do
-  build_service "$core" || CORE_OK=0
+  read -r _ status < <(result_of "$core")
+  if [ "$status" != ok ]; then
+    tail -20 "$LOG_DIR/$core.log"
+    echo "[CRITICAL] Core service $core failed to build. Exiting."
+    exit 1
+  fi
 done
-if [ "$CORE_OK" -ne 1 ]; then
-  echo "[CRITICAL] Core services failed to build. Exiting."
-  exit 1
-fi
 echo "[SUCCESS] Core services built successfully."
 
+SKIPPED=()
+if [ "${QR_BUILD_DISABLED:-0}" != 1 ]; then
+  mapfile -t SKIPPED < <(disabled_services)
+fi
+TO_BUILD=()
+for svc in "${RUNNERS[@]}" "${COMPILERS[@]}"; do
+  if [[ " ${SKIPPED[*]} " == *" $svc "* ]]; then
+    echo "   - Skipping $svc: its runner is disabled in config.py (QR_BUILD_DISABLED=1 builds it)."
+  else
+    TO_BUILD+=("$svc")
+  fi
+done
+
+echo "[BUILD] Building Runners and Compilers..."
+build_all "${TO_BUILD[@]}"
+
 SUCCESSFUL_RUNNERS=()
-
-echo "[BUILD] Building Runners..."
-for runner in "${RUNNERS[@]}"; do
-  echo "   - Attempting to build $runner..."
-  if build_service "$runner"; then
-    echo "     [SUCCESS] $runner built."
-    SUCCESSFUL_RUNNERS+=("$runner")
-  else
-    echo "     [!WARNING!] Skipping $runner due to build failure."
+echo "[BUILD] Build times (seconds):"
+for svc in "${CORE_SERVICES[@]}" "${TO_BUILD[@]}"; do
+  read -r seconds status < <(result_of "$svc")
+  printf '   %-30s %6s  %s\n' "$svc" "$seconds" "$status"
+  if [ "$status" = ok ] && [[ " ${CORE_SERVICES[*]} " != *" $svc "* ]]; then
+    SUCCESSFUL_RUNNERS+=("$svc")
+  elif [ "$status" != ok ]; then
+    echo "     [!WARNING!] Skipping $svc due to build failure (see $LOG_DIR/$svc.log)."
   fi
 done
+echo "[BUILD] All builds took $((SECONDS - BOOT_START)) s."
 
-echo "[BUILD] Building Compilers..."
-for compiler in "${COMPILERS[@]}"; do
-  echo "   - Attempting to build $compiler..."
-  if build_service "$compiler"; then
-    echo "     [SUCCESS] $compiler built."
-    SUCCESSFUL_RUNNERS+=("$compiler")
-  else
-    echo "     [!WARNING!] Skipping $compiler due to build failure."
-  fi
-done
+if [ "${QR_BUILD_ONLY:-0}" = 1 ]; then
+  echo "[INFO] QR_BUILD_ONLY=1: images built, nothing started."
+  exit 0
+fi
 
 echo ">>> Launching application..."
 echo "   Core Services: ${CORE_SERVICES[*]}"

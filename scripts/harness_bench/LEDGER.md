@@ -76,3 +76,23 @@ Module scripts are deferred, so DOMContentLoaded includes the whole module graph
 ## 2026-10-21: probability vectors built with `np.fromiter`
 
 `_counts_probability_vector` and the statistical-test rows used to fill numpy arrays one element at a time. They now use `np.fromiter` over the same dictionary lookups. A 14-backend measured report took 2.38 → 2.15 s at 12 bits and 3.87 → 3.57 s at 20 bits (8200 shots, medians of 5, interleaved). The machine was loaded by image builds during these runs, so only the ratio is meaningful. The equivalence check found 150 counts cases with 0 differences (`results/2026-10-21-fromiter-equivalence-counts.log`).
+
+## 2026-10-21: timed and parallel image builds, disabled runners skipped
+
+`scripts/safe_boot.sh` used to build 26 images one after another and print no times. It now behaves as follows:
+- It times each build and writes its log to `QR_BUILD_LOG_DIR`.
+- It builds `QR_BUILD_JOBS` images at a time (default 1).
+- It skips runners that `config.py` marks `enabled: False` (braket, projectq), reading the flag from the freshly built API image. `QR_BUILD_DISABLED=1` builds them anyway.
+- `QR_BUILD_ONLY=1` stops after building.
+
+All runs below were on the i9-13950HX host with podman 5.8.2, in a throwaway worktree so that the real `qsimulators-*` tags were untouched. Raw times are in `results/builds/`.
+
+| Rebuild after a `shared/` change (24 images) | Wall time |
+|---|---|
+| Serial, every layer before `COPY shared` cached | 96 s |
+| 4 at a time, every layer before `COPY shared` cached | 46 s |
+| Serial, pip layer not cached (new checkout, so new file mtimes) | 1,074 s |
+
+In that last run TorchQuantum took 171 s, Quartz 164 s and cuQuantum 118 s.
+
+I also checked reproducibility. A full reinstall from the lock files in that cold run gave the same `pip freeze` as the existing image for all 19 images that have pip, so the locks reproduce each specimen's Python environment.
