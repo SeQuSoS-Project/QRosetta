@@ -9,6 +9,7 @@ ShareNotFound, so a caller cannot tell an unknown token from an expired one.
 import hashlib
 import re
 import secrets
+import threading
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
@@ -27,6 +28,7 @@ MAX_ACTIVE_LINKS_PER_RUN = 10
 MIN_EXPIRY_DAYS = 1
 MAX_EXPIRY_DAYS = 90
 DEFAULT_EXPIRY_DAYS = 30
+_CREATE_LOCK = threading.Lock()
 
 
 class RunNotFound(LookupError):
@@ -74,15 +76,16 @@ def create_link(db: Session, user_id: int, run_id: str, expires_in_days: int, la
     that is not theirs; TooManyLinks past the per-run limit."""
     if not MIN_EXPIRY_DAYS <= expires_in_days <= MAX_EXPIRY_DAYS:
         raise ValueError(f"expires_in_days must be {MIN_EXPIRY_DAYS} to {MAX_EXPIRY_DAYS}")
-    if _owned_run(db, user_id, run_id) is None:
-        raise RunNotFound(run_id)
-    if len(_active_links(db, user_id, run_id)) >= MAX_ACTIVE_LINKS_PER_RUN:
-        raise TooManyLinks(run_id)
-    token = secrets.token_urlsafe(TOKEN_BYTES)
-    link = models.ShareLink(token_hash=_hash(token), user_id=user_id, run_id=run_id,
-                            expires_at=_now() + timedelta(days=expires_in_days), label=label)
-    db.add(link)
-    db.commit()
+    with _CREATE_LOCK:
+        if _owned_run(db, user_id, run_id) is None:
+            raise RunNotFound(run_id)
+        if len(_active_links(db, user_id, run_id)) >= MAX_ACTIVE_LINKS_PER_RUN:
+            raise TooManyLinks(run_id)
+        token = secrets.token_urlsafe(TOKEN_BYTES)
+        link = models.ShareLink(token_hash=_hash(token), user_id=user_id, run_id=run_id,
+                                expires_at=_now() + timedelta(days=expires_in_days), label=label)
+        db.add(link)
+        db.commit()
     db.refresh(link)
     return link, token
 
