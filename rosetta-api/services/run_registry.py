@@ -101,12 +101,18 @@ class ExclusiveGate:
         return time.monotonic() - started
 
     async def release(self, exclusive: bool) -> None:
+        """End one admission. The count changes before the first await and the waiters are
+        woken in a shielded task, so a release cancelled while it waits for the condition's
+        lock still frees the gate."""
+        if exclusive:
+            self._exclusive = False
+        else:
+            self._shared -= 1
+        await asyncio.shield(self._notify_waiters())
+
+    async def _notify_waiters(self) -> None:
         cond = self._condition()
         async with cond:
-            if exclusive:
-                self._exclusive = False
-            else:
-                self._shared -= 1
             cond.notify_all()
 
 

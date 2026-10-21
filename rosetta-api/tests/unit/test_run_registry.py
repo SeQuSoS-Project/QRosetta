@@ -67,6 +67,47 @@ def test_exclusive_wait_cap_raises_and_leaves_gate_usable():
     asyncio.run(scenario())
 
 
+def test_a_release_cancelled_while_the_gate_is_busy_still_opens_it():
+    async def scenario():
+        gate = ExclusiveGate()
+        await gate.acquire(True)
+        cond = gate._condition()
+        await cond.acquire()
+        release = asyncio.create_task(gate.release(True))
+        await asyncio.sleep(0)
+        release.cancel()
+        await asyncio.sleep(0)
+        cond.release()
+        try:
+            await release
+        except asyncio.CancelledError:
+            pass
+        assert gate.status() == {"exclusive_running": False, "exclusive_waiting": 0,
+                                 "shared_running": 0}
+        await asyncio.wait_for(gate.acquire(False), timeout=1)
+        await gate.release(False)
+
+        await gate.acquire(False)
+        shared_waiter = asyncio.create_task(gate.acquire(True, max_wait=1))
+        await asyncio.sleep(0)
+        await cond.acquire()
+        release = asyncio.create_task(gate.release(False))
+        await asyncio.sleep(0)
+        release.cancel()
+        await asyncio.sleep(0)
+        cond.release()
+        try:
+            await release
+        except asyncio.CancelledError:
+            pass
+        await asyncio.wait_for(shared_waiter, timeout=1)
+        await gate.release(True)
+        assert gate.status() == {"exclusive_running": False, "exclusive_waiting": 0,
+                                 "shared_running": 0}
+
+    asyncio.run(scenario())
+
+
 def test_one_exclusive_job_per_client():
     from services.run_registry import claim_exclusive, release_exclusive
     assert claim_exclusive("1.2.3.4", "job-a") is None
