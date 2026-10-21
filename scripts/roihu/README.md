@@ -1,6 +1,6 @@
 # Roihu preparation
 
-`docs-audit/2026-10-21-roihu-apptainer.md` describes how the runner images behave under Apptainer and how a run could reach Roihu's Slurm.
+`docs/audits/2026-10-21-overnight/2026-10-21-roihu-apptainer.md` (gitignored) describes how the runner images behave under Apptainer and how a run could reach Roihu's Slurm.
 
 ## Measured readings (`cgroup_check.py`)
 

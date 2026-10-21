@@ -1,6 +1,6 @@
 # First hour on Roihu
 
-These steps answer the open questions of `docs-audit/2026-10-21-roihu-apptainer.md` §5 before any code depends on the answers. Run them on roihu-cpu, in `sinteractive` or a short job on the `test` partition, with small circuits only.
+These steps answer the open questions of `docs/audits/2026-10-21-overnight/2026-10-21-roihu-apptainer.md` (gitignored) §5 before any code depends on the answers. Run them on roihu-cpu, in `sinteractive` or a short job on the `test` partition, with small circuits only.
 
 ## 1. The machine and Slurm
 
