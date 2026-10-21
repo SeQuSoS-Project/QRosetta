@@ -1,3 +1,30 @@
+# Credentials: never committed. scripts/install_hooks.sh adds hooks that also refuse them
+# when force-added, and scan every commit for secrets (.gitleaks.toml).
+.env
+.env.*
+!.env.example
+*.env
+*openrc*
+clouds.yaml
+kubeconfig
+.kube/
+.s3cfg
+rclone.conf
+.netrc
+.pgpass
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+secrets/
+infra/rahti/secret-*.yaml
+!infra/rahti/secret-*.template.yaml
+
+# Host-specific Compose settings (ports, GPU, CPU pinning)
+docker-compose.override.yml
+
 # Python
 __pycache__/
 *.pyc
@@ -6,7 +33,6 @@ __pycache__/
 .Python
 env/
 venv/
-.env
 .venv
 build/
 dist/

@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Refuses a commit that stages a credential file, a private notes file, or a secret in any staged change.
+set -euo pipefail
+
+top=$(git rev-parse --show-toplevel)
+hooks_dir=$(cd "$(git rev-parse --git-common-dir)/hooks" && pwd)
+
+paths_check="$top/scripts/hooks/forbidden_paths.sh"
+[ -x "$paths_check" ] || paths_check="$hooks_dir/forbidden_paths.sh"
+git diff --cached --name-only --diff-filter=ACMR | "$paths_check"
+
+gitleaks=$(command -v gitleaks || true)
+[ -n "$gitleaks" ] || gitleaks="$hooks_dir/bin/gitleaks"
+if [ ! -x "$gitleaks" ]; then
+    echo "gitleaks is not installed; run scripts/install_hooks.sh" >&2
+    exit 1
+fi
+config="$top/.gitleaks.toml"
+[ -f "$config" ] || config="$hooks_dir/gitleaks.toml"
+
+if ! "$gitleaks" git --pre-commit --staged --redact --no-banner --config "$config" "$top"; then
+    echo "Secret found in the staged changes. Remove it; if it is a false positive, add an allowlist entry to .gitleaks.toml." >&2
+    exit 1
+fi

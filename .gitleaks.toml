@@ -1,0 +1,49 @@
+# Secret scanning rules for gitleaks (pre-commit and pre-push hooks, CI).
+# Extends the default rule set with the credential formats this project has handled.
+
+title = "qrosetta"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "database-url-password"
+description = "Database URL with an inline password"
+regex = '''(?i)\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis|amqp)://[^:\s/@"']+:([^@\s"'<>{}$]{6,})@'''
+secretGroup = 1
+keywords = ["://"]
+[[rules.allowlists]]
+regexTarget = "match"
+regexes = ['''://username:password@''', '''://[^:]+:(?:password|changeme|postgres|example)@''']
+
+[[rules]]
+id = "openstack-ec2-credential-table"
+description = "OpenStack EC2 (Allas S3) credential as printed by `openstack ec2 credentials`"
+regex = '''(?i)\|\s*(?:access|secret)\s*\|\s*([0-9a-f]{32})\s*\|'''
+secretGroup = 1
+keywords = ["access", "secret"]
+
+[[rules]]
+id = "s3-key-assignment"
+description = "S3 access or secret key assigned a literal value"
+regex = '''(?i)\b(?:S3|AWS)_(?:ACCESS|SECRET)(?:_ACCESS)?_KEY(?:_ID)?["']?\s*[:=]\s*["']?([A-Za-z0-9/+]{20,})'''
+secretGroup = 1
+keywords = ["_key"]
+
+[[rules]]
+id = "openstack-password"
+description = "OpenStack RC password"
+regex = '''\bOS_PASSWORD\s*=\s*["']?([^"'\s$]{6,})'''
+secretGroup = 1
+keywords = ["os_password"]
+
+[[rules]]
+id = "jwt-signing-key-literal"
+description = "SECRET_KEY assigned a literal value"
+regex = '''\bSECRET_KEY["']?\s*[:=]\s*["']([A-Za-z0-9/+_=-]{16,})["']'''
+secretGroup = 1
+keywords = ["secret_key"]
+
+[[allowlists]]
+description = "Placeholder files"
+paths = ['''(^|/)\.env\.example$''']

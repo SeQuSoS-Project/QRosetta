@@ -2,6 +2,18 @@
 # shrinks every image build's context and keeps host virtualenvs out of images.
 .git
 .github
+.env
+.env.*
+*.env
+**/*openrc*
+**/*.pem
+**/*.key
+**/secrets
+kubeconfig
+.kube
+CLAUDE.md
+**/CLAUDE.md
+docker-compose.override.yml
 .venv
 **/.venv
 **/__pycache__

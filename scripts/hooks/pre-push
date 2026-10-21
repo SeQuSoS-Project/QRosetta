@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Refuses a push whose new commits contain a secret or a credential/private file anywhere in their history.
+set -euo pipefail
+
+remote="$1"
+top=$(git rev-parse --show-toplevel)
+hooks_dir=$(cd "$(git rev-parse --git-common-dir)/hooks" && pwd)
+zero=0000000000000000000000000000000000000000
+
+paths_check="$top/scripts/hooks/forbidden_paths.sh"
+[ -x "$paths_check" ] || paths_check="$hooks_dir/forbidden_paths.sh"
+gitleaks=$(command -v gitleaks || true)
+[ -n "$gitleaks" ] || gitleaks="$hooks_dir/bin/gitleaks"
+if [ ! -x "$gitleaks" ]; then
+    echo "gitleaks is not installed; run scripts/install_hooks.sh" >&2
+    exit 1
+fi
+config="$top/.gitleaks.toml"
+[ -f "$config" ] || config="$hooks_dir/gitleaks.toml"
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+    [ "$local_sha" = "$zero" ] && continue
+    if [ "$remote_sha" = "$zero" ]; then
+        range="$local_sha --not --remotes=$remote"
+    else
+        range="$remote_sha..$local_sha"
+    fi
+    # shellcheck disable=SC2086
+    git log --format= --name-only --diff-filter=ACMR $range | sort -u | sed '/^$/d' | "$paths_check"
+    if ! "$gitleaks" git --log-opts="$range" --redact --no-banner --config "$config" "$top"; then
+        echo "Secret found in commits being pushed to $remote ($local_ref). Rewrite those commits before pushing." >&2
+        exit 1
+    fi
+done

@@ -436,3 +436,18 @@ the base image the Dockerfile uses.
 Before offering a level, run `python main.py --self-test` in the image and compile random
 circuits through it with an independent equivalence check. Do not offer a pipeline that
 changes the unitary of an input beyond its stated tolerance; record why in the manual's known issues instead.
+
+## Secrets and private files
+
+Run `scripts/install_hooks.sh` once after cloning. It installs a pinned, checksum-verified
+gitleaks and two hooks that apply to every branch and worktree of the clone:
+
+- pre-commit refuses staged credential files (`.env`, OpenStack RC files, keys, kubeconfigs,
+  `infra/rahti/secret-*.yaml` other than templates), the private directories `.gitignore`
+  excludes (`docs/`, `export/`, `latex/`, `CLAUDE.md`, `.claude/`), and any secret gitleaks finds
+  in the staged changes;
+- pre-push runs the same checks over every commit being pushed.
+
+CI repeats both checks over the whole history. Credentials belong in `.env` locally and in the
+`rosetta-secrets` secret on Rahti, never in notes or scripts. A false positive gets an allowlist
+entry in `.gitleaks.toml`, not `--no-verify`.
