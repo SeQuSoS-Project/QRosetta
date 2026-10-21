@@ -102,3 +102,20 @@ def test_measured_job_keeps_every_loop_step_within_budget(fleet):
     assert len(report["raw_results"]) == len(RUNNERS), report.get("error")
     assert report["divergence_report"]["pairwise_agreement"]
     assert not slow, slow
+
+
+@pytest.mark.parametrize("mode", ["statevector", "measured"])
+def test_playlist_job_keeps_every_loop_step_within_budget(fleet, mode):
+    from schemas import BatchPayload, BenchmarkTask
+    payload = BatchPayload(mode=mode, n_shots=8200, target_simulators=RUNNERS,
+                           tasks=[BenchmarkTask(name=f"t{i}", qasm_string=_circuit(measured=mode == "measured"))
+                                  for i in range(3)])
+    job_manager.ACTIVE_JOBS["budget-batch"] = job_manager.new_job()
+    try:
+        _, slow = _slow_steps(job_manager.worker_batch_suite("budget-batch", payload))
+        job = job_manager.ACTIVE_JOBS["budget-batch"]
+        assert job["status"] == "completed", job.get("error")
+        assert len(job_store.full_report(job)["benchmark_summary"]) == 3
+        assert not slow, slow
+    finally:
+        job_manager.ACTIVE_JOBS.pop("budget-batch", None)
