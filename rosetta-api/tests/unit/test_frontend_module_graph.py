@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 
 _JS = Path(__file__).resolve().parents[2] / "static" / "js"
-_IMPORT = re.compile(r"""^\s*(?:import|export)\s[^'"]*?from\s+['"]\./([\w.-]+\.js)['"]""", re.M)
+_IMPORT = re.compile(r"""^\s*(?:import|export)\s(?:[^'"]*?from\s+)?['"]\./([\w.-]+\.js)['"]""", re.M)
 
 
 def _graph() -> dict:
