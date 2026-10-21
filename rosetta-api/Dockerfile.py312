@@ -1,4 +1,4 @@
-# Variant of Dockerfile on Python 3.12 for the 3.10 -> 3.12 check (docs-audit/2026-10-21-api-python312.md); same lock file.
+# Variant of Dockerfile on Python 3.12 for the 3.10 -> 3.12 check (scripts/py312_check/); same lock file.
 FROM python:3.12-slim@sha256:cb33f7f771ecec2ef1225cf39b159591a040391bd73e4c01f00fdfc4c47611d2
 
 RUN useradd -m appuser
