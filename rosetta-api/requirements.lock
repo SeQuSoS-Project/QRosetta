@@ -60,7 +60,7 @@ python-multipart==0.0.32
 pytket==1.33.0
 PyYAML==6.0.3
 qwasm==1.0.1
-requests==2.32.3
+requests==2.33.1
 requests-oauthlib==2.0.0
 rsa==4.9.1
 s3transfer==0.10.4

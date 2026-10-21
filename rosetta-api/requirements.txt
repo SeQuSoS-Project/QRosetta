@@ -2,7 +2,7 @@ fastapi==0.115.0
 slowapi==0.1.10
 uvicorn[standard]==0.30.0
 pytket==1.33.0
-requests==2.32.3
+requests==2.33.1
 httpx==0.27.0
 scipy==1.14.0
 numpy==1.26.4
