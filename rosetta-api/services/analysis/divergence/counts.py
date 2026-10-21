@@ -6,12 +6,16 @@ logarithm, so it is in nats and bounded by ln 2.
 """
 
 import numbers
+import re
+from functools import lru_cache
 from itertools import permutations
 
 import numpy as np
 from scipy.spatial.distance import jensenshannon
 
 from .common import MAX_EXHAUSTIVE_QUBIT_PERMUTATION_QUBITS
+
+_BINARY_KEY = re.compile(r"[01]+")
 
 
 def _counts_invalid_reason(counts):
@@ -78,11 +82,83 @@ def _permute_counts(counts, permutation):
     return permuted_counts
 
 
+@lru_cache(maxsize=None)
+def _key_permutation_table(n_bits):
+    """Return (permutations, table) for every non-identity, non-reversal key permutation.
+
+    Permutations are in ``itertools.permutations`` order. ``table[r, x]`` is the integer
+    value of key ``x`` (first character most significant) after ``_permute_counts`` with
+    permutation ``r``.
+    """
+    identity = tuple(range(n_bits))
+    bit_reversal = tuple(reversed(range(n_bits)))
+    perms = [p for p in permutations(range(n_bits)) if p not in (identity, bit_reversal)]
+    keys = np.arange(2 ** n_bits)
+    shifts = n_bits - 1 - np.arange(n_bits)
+    bits = (keys[None, :] >> shifts[:, None]) & 1
+    table = np.zeros((len(perms), 2 ** n_bits), dtype=np.intp)
+    if perms:
+        sources = np.array(perms)
+        for position in range(n_bits):
+            table += bits[sources[:, position]] << shifts[position]
+    table.setflags(write=False)
+    return perms, table
+
+
+def _dense_probabilities(counts, n_bits):
+    """Return (probabilities, present) over all 2^n keys, normalised as ``_normalize_counts``."""
+    probabilities = np.zeros(2 ** n_bits)
+    present = np.zeros(2 ** n_bits, dtype=bool)
+    for bitstring, probability in _normalize_counts(counts).items():
+        index = int(bitstring, 2)
+        probabilities[index] = probability
+        present[index] = True
+    for bitstring in counts:
+        present[int(bitstring, 2)] = True
+    return probabilities, present
+
+
+def _permutation_scores(counts_i, counts_j, n_bits):
+    """Return (js, hellinger) arrays, one entry per row of ``_key_permutation_table``.
+
+    Each entry is computed on the same vectors, in the same operation order, as
+    ``_counts_distance_metrics`` on the sorted outcome union of that permutation, so the
+    values are identical to the per-permutation loop.
+    """
+    _, table = _key_permutation_table(n_bits)
+    n_rows = table.shape[0]
+    dense_i, present_i = _dense_probabilities(counts_i, n_bits)
+    dense_j, present_j = _dense_probabilities(counts_j, n_bits)
+    permuted_j = np.zeros(table.shape)
+    permuted_present_j = np.zeros(table.shape, dtype=bool)
+    np.put_along_axis(permuted_j, table, np.broadcast_to(dense_j, table.shape), axis=1)
+    np.put_along_axis(permuted_present_j, table, np.broadcast_to(present_j, table.shape), axis=1)
+    union = present_i[None, :] | permuted_present_j
+    sizes = union.sum(axis=1)
+    js = np.empty(n_rows)
+    hellinger = np.empty(n_rows)
+    for size in np.unique(sizes):
+        rows = np.flatnonzero(sizes == size)
+        mask = union[rows]
+        pv_i = np.broadcast_to(dense_i, mask.shape)[mask].reshape(len(rows), size)
+        pv_j = permuted_j[rows][mask].reshape(len(rows), size)
+        js[rows] = [distance ** 2 for distance in jensenshannon(pv_i, pv_j, axis=1)]
+        difference = np.sqrt(pv_i) - np.sqrt(pv_j)
+        hellinger[rows] = [_norm(row.copy()) / np.sqrt(2) for row in difference]
+    return js, hellinger
+
+
+def _norm(vector):
+    """Return ``np.linalg.norm(vector)`` for a 1-D float vector by the same BLAS dot."""
+    return np.sqrt(vector.dot(vector))
+
+
 def _best_counts_qubit_permutation_metrics(counts_i, counts_j):
     """Search every non-identity, non-reversal key permutation for the lowest JS + Hellinger.
 
     The whole search space is scanned; ties keep the lexicographically first permutation.
-    Permutations whose metrics are not finite are skipped.
+    Permutations whose metrics are not finite are skipped. Keys made of 0 and 1 only are
+    scored in one array pass; other keys go through the per-permutation loop.
     """
     n_qubits_i = _counts_bit_length(counts_i)
     n_qubits_j = _counts_bit_length(counts_j)
@@ -118,6 +194,22 @@ def _best_counts_qubit_permutation_metrics(counts_i, counts_j):
         "js_divergence": None,
         "hellinger_distance": None,
     }
+    if all(_BINARY_KEY.fullmatch(key) for key in (*counts_i, *counts_j)):
+        perms, _ = _key_permutation_table(n_qubits_i)
+        if not perms:
+            return best
+        js, hellinger = _permutation_scores(counts_i, counts_j, n_qubits_i)
+        scores = js + hellinger
+        finite = np.isfinite(scores)
+        if finite.any():
+            row = int(np.argmin(np.where(finite, scores, np.inf)))
+            best.update({
+                "permutation": list(perms[row]),
+                "js_divergence": float(js[row]),
+                "hellinger_distance": float(hellinger[row]),
+            })
+        return best
+
     best_score = float("inf")
     for permutation in permutations(range(n_qubits_i)):
         if permutation in (identity, bit_reversal):

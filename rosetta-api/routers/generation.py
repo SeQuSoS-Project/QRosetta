@@ -89,7 +89,7 @@ async def visualize_quirk(request: Request, payload: QasmPayload):
             status_code=400,
             detail=(f"The visualizer opens circuits of at most {QUIRK_MAX_QUBITS} qubits, "
                     f"Quirk's limit; this circuit declares {n_qubits}."))
-    validate_request(payload.qasm_string, mode="measured")
+    await asyncio.to_thread(validate_request, payload.qasm_string, mode="measured")
     try:
         url, notes = await asyncio.to_thread(quirk_url, payload.qasm_string)
         return {"url": url, "notes": notes}

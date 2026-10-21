@@ -400,3 +400,14 @@ def check_statevector_circuit(qasm: str) -> None:
         strip_terminal_measurements(qasm)
     except StatevectorIncompatible as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+def validate_submission(qasm: str, mode: str, bypass_limits: bool = False,
+                        apply_preprocessing: bool = True, statevector: bool = False) -> None:
+    """``validate_request``, then ``check_statevector_circuit`` when ``statevector``.
+
+    Routes call it through ``asyncio.to_thread``: a large circuit takes tenths of a second.
+    """
+    validate_request(qasm, mode=mode, bypass_limits=bypass_limits, apply_preprocessing=apply_preprocessing)
+    if statevector:
+        check_statevector_circuit(qasm)

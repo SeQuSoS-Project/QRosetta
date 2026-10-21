@@ -6,7 +6,8 @@ import re
 from pathlib import Path
 
 import pytest
-from qiskit import QuantumCircuit
+
+QuantumCircuit = pytest.importorskip("qiskit").QuantumCircuit
 
 from qrosetta_commons.compile_checks import process_infidelity
 from qrosetta_commons.qelib1 import qelib1_definitions, renamed_qelib1_definitions

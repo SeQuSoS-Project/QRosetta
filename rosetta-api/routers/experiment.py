@@ -19,12 +19,23 @@ from services.job_store import JOB_NOT_FOUND, file_chunks
 from services.security import limiter
 from services.job_manager import ACTIVE_JOBS, new_job
 from services.experiment import worker_experiment
-from services.validator import (
-    check_statevector_circuit, validate_request, validate_runner_config, validate_runner_ids,
-)
+from services.validator import validate_runner_config, validate_runner_ids, validate_submission
 
 logger = get_logger("rosetta-experiment-api")
 router = APIRouter()
+
+
+def _validate_experiment_circuits(payload: ExperimentPayload) -> None:
+    """400 naming the first literal circuit that fails ``validate_submission``."""
+    for index, circuit in enumerate(payload.circuits):
+        if circuit.qasm_string:
+            label = circuit.name or circuit.algorithm or f"circuit {index}"
+            try:
+                validate_submission(circuit.qasm_string, payload.mode, bypass_limits=payload.bypass_limits,
+                                    apply_preprocessing=True in payload.preprocessing_modes,
+                                    statevector=payload.mode == "statevector")
+            except HTTPException as exc:
+                raise HTTPException(status_code=exc.status_code, detail=f"circuits[{index}] ({label}): {exc.detail}")
 
 
 @router.post("/experiments", response_model=JobStatusResponse, responses=responses(400, 413, 422))
@@ -49,16 +60,7 @@ async def start_experiment(request: Request, payload: ExperimentPayload, backgro
     validate_runner_ids(payload.target_simulators, payload.runner_config, payload.runner_phases)
     validate_runner_config(payload.runner_config)
     validate_compilers(payload.compilers)
-    for index, circuit in enumerate(payload.circuits):
-        if circuit.qasm_string:
-            label = circuit.name or circuit.algorithm or f"circuit {index}"
-            try:
-                validate_request(circuit.qasm_string, mode=payload.mode, bypass_limits=payload.bypass_limits,
-                                 apply_preprocessing=True in payload.preprocessing_modes)
-                if payload.mode == "statevector":
-                    check_statevector_circuit(circuit.qasm_string)
-            except HTTPException as exc:
-                raise HTTPException(status_code=exc.status_code, detail=f"circuits[{index}] ({label}): {exc.detail}")
+    await asyncio.to_thread(_validate_experiment_circuits, payload)
     await require_available(payload.target_simulators)
 
     job_id = str(uuid.uuid4())

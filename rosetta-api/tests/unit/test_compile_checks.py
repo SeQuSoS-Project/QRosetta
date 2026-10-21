@@ -6,6 +6,8 @@ import math
 import re
 from pathlib import Path
 
+import importlib.util
+
 import numpy as np
 import pytest
 
@@ -14,12 +16,15 @@ from qrosetta_commons.compile_errors import CompileRefused, OutputRejected
 
 COMPILERS = Path(__file__).resolve().parents[3] / "compilers"
 HEADER = 'OPENQASM 2.0;\ninclude "qelib1.inc";\n'
+needs_qiskit = pytest.mark.skipif(importlib.util.find_spec("qiskit") is None,
+                                  reason="Qiskit is installed in the compiler images, not the API")
 
 
 def _circuit(n, body):
     return HEADER + f"qreg q[{n}];\n" + body
 
 
+@needs_qiskit
 def test_process_infidelity_is_zero_up_to_global_phase_and_quadratic_in_an_angle_change():
     base = _circuit(2, "h q[0];\ncx q[0],q[1];\nrz(0.3) q[1];\n")
     phased = _circuit(2, "h q[0];\ncx q[0],q[1];\nu1(0.3) q[1];\n")
@@ -28,12 +33,14 @@ def test_process_infidelity_is_zero_up_to_global_phase_and_quadratic_in_an_angle
     assert compile_checks.process_infidelity(base, moved) == pytest.approx(1 - math.cos(0.001 / 2), rel=1e-6)
 
 
+@needs_qiskit
 def test_final_measurements_are_ignored_and_a_width_mismatch_is_total_infidelity():
     measured = HEADER + "qreg q[1];\ncreg c[1];\nh q[0];\nmeasure q[0] -> c[0];\n"
     assert compile_checks.process_infidelity(measured, _circuit(1, "h q[0];\n")) < 1e-15
     assert compile_checks.process_infidelity(_circuit(1, "h q[0];\n"), _circuit(2, "h q[0];\n")) == 1.0
 
 
+@needs_qiskit
 def test_check_note_records_the_infidelity_and_rejects_above_the_tolerance():
     source = _circuit(1, "rz(0.3) q[0];\n")
     note = compile_checks.unitary_check_note("X", source, source, 1, 1e-8, "for a reason")
@@ -49,6 +56,7 @@ def test_wide_outputs_are_recorded_as_unchecked_without_building_a_unitary(monke
         f"The output's unitary is not checked above {compile_checks.CHECKED_UP_TO_QUBITS} qubits.")
 
 
+@needs_qiskit
 def test_single_precision_reading_of_a_near_pi_over_4_literal_is_reported_though_the_infidelity_hides_it():
     literal = _circuit(1, "rz(0.7853981643974483) q[0];\nh q[0];\n")
     expression = _circuit(1, "rz(pi/4+1e-9) q[0];\nh q[0];\n")

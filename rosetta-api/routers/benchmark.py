@@ -9,9 +9,7 @@ from fastapi.responses import StreamingResponse
 import uuid
 from routers.errors import responses
 from qrosetta_commons.helpers import get_logger
-from services.validator import (
-    check_statevector_circuit, validate_request, validate_runner_config, validate_runner_ids,
-)
+from services.validator import validate_runner_config, validate_runner_ids, validate_submission
 from schemas import QasmPayload, MeasuredQasmPayload, BatchPayload, JobStatusResponse
 from schemas.reports import JobReport, JobStatus
 from services.security import limiter
@@ -95,10 +93,11 @@ async def compare_circuits_endpoint(request: Request, payload: QasmPayload, back
     classical control, and for unknown, disabled or unavailable runner ids; 413 for a
     circuit over MAX_QASM_SIZE. 400 also for a gate definition under a name a runner's
     parser reserves, and a runner_config level above that runner's max."""
-    validate_request(payload.qasm_string, mode="statevector" if payload.simulate else "compile",
-                     bypass_limits=payload.bypass_limits, apply_preprocessing=payload.apply_preprocessing)
-    if payload.simulate:
-        check_statevector_circuit(payload.qasm_string)
+    await asyncio.to_thread(validate_submission, payload.qasm_string,
+                            "statevector" if payload.simulate else "compile",
+                            bypass_limits=payload.bypass_limits,
+                            apply_preprocessing=payload.apply_preprocessing,
+                            statevector=payload.simulate)
     validate_runner_ids(payload.target_simulators, payload.runner_config, payload.runner_phases)
     validate_runner_config(payload.runner_config)
     validate_compilers(payload.compilers)
@@ -132,8 +131,9 @@ async def compare_measured_circuits_endpoint(request: Request, payload: Measured
     There is no ``simulate`` field: a compile-only run of a circuit with measurements goes
     to POST /compare with ``simulate: false``, which compiles the same input (terminal
     measurements removed) and accepts circuits with measurements."""
-    validate_request(payload.qasm_string, mode="measured", bypass_limits=payload.bypass_limits,
-                     apply_preprocessing=payload.apply_preprocessing)
+    await asyncio.to_thread(validate_submission, payload.qasm_string, "measured",
+                            bypass_limits=payload.bypass_limits,
+                            apply_preprocessing=payload.apply_preprocessing)
     validate_runner_ids(payload.target_simulators, payload.runner_config, payload.runner_phases)
     validate_runner_config(payload.runner_config)
     validate_compilers(payload.compilers)
@@ -147,6 +147,25 @@ async def compare_measured_circuits_endpoint(request: Request, payload: Measured
     background_tasks.add_task(worker_compare_measured, job_id, payload.qasm_string, payload.n_shots, payload.optimization_level, payload.runner_config, timeout, payload.target_simulators, payload.execution_target, payload.runner_phases, payload.apply_preprocessing, payload.seed, thresholds, payload.bypass_limits, payload.timing_repeats, exclusive=payload.exclusive, compilers=payload.compilers)
 
     return _job_envelope(job_id)
+
+def _validate_batch_tasks(payload: BatchPayload) -> None:
+    """400 naming the first task that fails ``validate_submission`` or its mode's qubit cap."""
+    run_mode = payload.mode if payload.simulate else "compile"
+    for index, task in enumerate(payload.tasks):
+        label = f"tasks[{index}] ({task.name or task.algorithm or 'qasm'})"
+        if task.qasm_string:
+            try:
+                validate_submission(task.qasm_string, run_mode, bypass_limits=payload.bypass_limits,
+                                    apply_preprocessing=payload.apply_preprocessing,
+                                    statevector=payload.mode == "statevector" and payload.simulate)
+            except HTTPException as exc:
+                raise HTTPException(status_code=exc.status_code, detail=f"{label}: {exc.detail}")
+        elif (task.source or "preset") in ("preset", "mqt") and not payload.bypass_limits:
+            cap = settings.max_qubits_for_mode(run_mode)
+            if task.qubits and task.qubits > cap:
+                raise HTTPException(status_code=400, detail=(
+                    f"{label}: {task.qubits} qubits is over the {run_mode} limit of {cap}."))
+
 
 @router.post("/run_batch_suite", response_model=JobStatusResponse, responses=responses(400, 413, 422))
 @limiter.limit(settings.RUN_RATE_LIMIT)
@@ -170,23 +189,7 @@ async def run_batch_suite_endpoint(request: Request, payload: BatchPayload, back
     validate_runner_ids(payload.target_simulators, payload.runner_config, payload.runner_phases)
     validate_runner_config(payload.runner_config)
     validate_compilers(payload.compilers)
-    run_mode = payload.mode if payload.simulate else "compile"
-    for index, task in enumerate(payload.tasks):
-        label = f"tasks[{index}] ({task.name or task.algorithm or 'qasm'})"
-        if task.qasm_string:
-            try:
-                validate_request(task.qasm_string, mode=run_mode,
-                                 bypass_limits=payload.bypass_limits,
-                                 apply_preprocessing=payload.apply_preprocessing)
-                if payload.mode == "statevector" and payload.simulate:
-                    check_statevector_circuit(task.qasm_string)
-            except HTTPException as exc:
-                raise HTTPException(status_code=exc.status_code, detail=f"{label}: {exc.detail}")
-        elif (task.source or "preset") in ("preset", "mqt") and not payload.bypass_limits:
-            cap = settings.max_qubits_for_mode(run_mode)
-            if task.qubits and task.qubits > cap:
-                raise HTTPException(status_code=400, detail=(
-                    f"{label}: {task.qubits} qubits is over the {run_mode} limit of {cap}."))
+    await asyncio.to_thread(_validate_batch_tasks, payload)
     await require_available(payload.target_simulators)
     job_id = str(uuid.uuid4())
     require_exclusive_slot(payload, client_address(request), job_id)

@@ -1,5 +1,6 @@
 """Statevector primitives: parsing, validation, normalisation, and bit-order transforms."""
 
+from functools import lru_cache
 from itertools import permutations
 
 import numpy as np
@@ -81,11 +82,33 @@ def _bit_reversed_statevector(sv):
     return _permute_statevector(sv, tuple(reversed(range(n_qubits))))
 
 
+@lru_cache(maxsize=None)
+def _qubit_permutation_gather(n_qubits):
+    """Return (permutations, gather) for every non-identity, non-reversal qubit permutation.
+
+    Permutations are in ``itertools.permutations`` order, and
+    ``sv[gather[r]] == _permute_statevector(sv, permutations[r])``.
+    """
+    identity = tuple(range(n_qubits))
+    bit_reversal = tuple(reversed(range(n_qubits)))
+    perms = [p for p in permutations(range(n_qubits)) if p not in (identity, bit_reversal)]
+    indices = np.arange(2 ** n_qubits)
+    shifts = n_qubits - 1 - np.arange(n_qubits)
+    bits = (indices[None, :] >> shifts[:, None]) & 1
+    gather = np.zeros((len(perms), 2 ** n_qubits), dtype=np.intp)
+    for row, permutation in enumerate(perms):
+        for axis, source in enumerate(permutation):
+            gather[row] += bits[axis] << (n_qubits - 1 - source)
+    gather.setflags(write=False)
+    return perms, gather
+
+
 def _best_statevector_qubit_permutation_metrics(sv_i_norm, sv_j_norm, fidelity_tolerance, phase_tolerance):
     """Search every non-identity, non-reversal qubit permutation for the highest fidelity.
 
     Ties keep the lexicographically first permutation. Above the qubit cap the search is
-    not attempted and the result says so.
+    not attempted and the result says so. Each fidelity and phase is computed by the same
+    operations as ``_statevector_inner_metrics``.
     """
     n_qubits = _statevector_qubit_count(sv_j_norm)
     if n_qubits > MAX_EXHAUSTIVE_QUBIT_PERMUTATION_QUBITS:
@@ -99,30 +122,32 @@ def _best_statevector_qubit_permutation_metrics(sv_i_norm, sv_j_norm, fidelity_t
             "relative_phase": None,
         }
 
-    identity = tuple(range(n_qubits))
-    bit_reversal = tuple(reversed(range(n_qubits)))
     best = {
         "attempted": True,
         "reason": None,
         "n_qubits": n_qubits,
         "max_qubits": MAX_EXHAUSTIVE_QUBIT_PERMUTATION_QUBITS,
         "permutation": None,
-        "fidelity": -1.0,
-        "relative_phase": 0.0,
+        "fidelity": None,
+        "relative_phase": None,
     }
-    for permutation in permutations(range(n_qubits)):
-        if permutation in (identity, bit_reversal):
-            continue
-        permuted = _permute_statevector(sv_j_norm, permutation)
-        fidelity, relative_phase = _statevector_inner_metrics(
-            sv_i_norm, permuted, fidelity_tolerance, phase_tolerance
-        )
-        if fidelity > best["fidelity"]:
-            best.update({
-                "permutation": list(permutation),
-                "fidelity": fidelity,
-                "relative_phase": relative_phase,
-            })
-    if best["permutation"] is None:
-        best.update({"fidelity": None, "relative_phase": None})
+    perms, gather = _qubit_permutation_gather(n_qubits)
+    if not perms:
+        return best
+    conjugate_i = np.conjugate(sv_i_norm)
+    permuted = np.asarray(sv_j_norm)[gather]
+    inner_products = [np.dot(conjugate_i, row) for row in permuted]
+    fidelities = np.array([min(max(np.abs(inner) ** 2, 0.0), 1.0) for inner in inner_products], dtype=float)
+    candidates = ~np.isnan(fidelities)
+    if not candidates.any():
+        return best
+    row = int(np.argmax(np.where(candidates, fidelities, -np.inf)))
+    relative_phase = float(np.angle(inner_products[row]))
+    if abs(relative_phase) <= phase_tolerance:
+        relative_phase = 0.0
+    best.update({
+        "permutation": list(perms[row]),
+        "fidelity": float(fidelities[row]),
+        "relative_phase": relative_phase,
+    })
     return best
