@@ -1052,6 +1052,7 @@ def run_cli_main(app, process_run, process_run_measured, cli_name,
     parser.add_argument("--self-test", action="store_true",
                         help="Run the contract probes in-process and exit non-zero on failure")
     parser.add_argument("--payload", default=None, help="JSON payload string")
+    add_file_arguments(parser)
     parser.add_argument("--s3-job-id", default=None,
                         help="S3 job ID: download payload from jobs/pending/<id>.json, "
                              "upload result to jobs/completed/<id>.json")
@@ -1078,10 +1079,27 @@ def run_cli_main(app, process_run, process_run_measured, cli_name,
     run_cli_job(_process, args, parser)
 
 
+def add_file_arguments(parser) -> None:
+    """``--payload-file`` and ``--result-file``: a payload above the 128 KiB limit of one
+    command-line argument, and a result kept apart from the log on stdout (batch systems)."""
+    parser.add_argument("--payload-file", default=None,
+                        help="Read the JSON payload from this file instead of --payload")
+    parser.add_argument("--result-file", default=None,
+                        help="Write the JSON result to this file (atomically) instead of stdout")
+
+
+def _write_result_file(path, text) -> None:
+    partial = f"{path}.partial"
+    with open(partial, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    os.replace(partial, path)
+
+
 def run_cli_job(process, args, parser) -> None:
     """Run ``process`` on one payload: from QROSETTA_PAYLOAD (else the S3 pending key) with
     the result uploaded to ``jobs/completed/<id>.json`` when ``args.s3_job_id`` is set,
-    else from ``args.payload`` with the result printed as JSON."""
+    else from ``args.payload`` or ``args.payload_file`` with the result printed as JSON or
+    written to ``args.result_file``."""
     import json
     if args.s3_job_id:
         import boto3
@@ -1108,6 +1126,17 @@ def run_cli_job(process, args, parser) -> None:
                       Body=result_bytes, ContentLength=len(result_bytes))
         print(f"Job {args.s3_job_id} completed and uploaded to S3.")
     else:
-        if args.payload is None:
-            parser.error("--payload is required when --s3-job-id is not provided")
-        print(json.dumps(process(json.loads(args.payload))))
+        payload_file = getattr(args, "payload_file", None)
+        result_file = getattr(args, "result_file", None)
+        if (args.payload is None) == (payload_file is None):
+            parser.error("give exactly one of --payload and --payload-file when --s3-job-id is not provided")
+        if payload_file is not None:
+            with open(payload_file, encoding="utf-8") as fh:
+                payload_dict = json.load(fh)
+        else:
+            payload_dict = json.loads(args.payload)
+        text = json.dumps(process(payload_dict))
+        if result_file:
+            _write_result_file(result_file, text)
+        else:
+            print(text)
