@@ -47,6 +47,39 @@ jobs:
         working-directory: rosetta-api
         run: python -m pytest tests/unit -q -n auto
 
+  unit-tests-qiskit:
+    name: unit tests with Qiskit (compiler-side checks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node (parity harness)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            rosetta-api/requirements.txt
+            rosetta-api/tests/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r rosetta-api/requirements.txt
+          pip install -r rosetta-api/tests/requirements.txt
+          # The compiler images' Qiskit (it needs numpy 2, so it cannot join the API pins).
+          pip install qiskit==2.5.2
+          pip install ./shared
+
+      - name: Run unit tests
+        working-directory: rosetta-api
+        run: python -m pytest tests/unit -q -n auto
+
   static-checks:
     name: static checks
     runs-on: ubuntu-latest
