@@ -45,5 +45,10 @@ secretGroup = 1
 keywords = ["secret_key"]
 
 [[allowlists]]
+description = "Values replaced when the history was rewritten"
+regexTarget = "match"
+regexes = ['''\*\*\*REMOVED\*\*\*''']
+
+[[allowlists]]
 description = "Placeholder files"
 paths = ['''(^|/)\.env\.example$''']
