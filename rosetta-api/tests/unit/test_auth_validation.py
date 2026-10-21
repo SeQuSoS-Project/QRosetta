@@ -80,3 +80,59 @@ def test_register_rejects_unknown_fields(client):
     r = client.post("/auth/register", json={"email": "extra@example.org", "password": "testpass123",
                                             "is_admin": True})
     assert r.status_code == 422
+
+
+def test_registration_that_loses_the_race_for_its_email_is_400(client, monkeypatch):
+    import services.accounts as accounts
+    assert client.post("/auth/register", json={"email": "twice@example.org",
+                                               "password": "testpass123"}).status_code == 201
+    monkeypatch.setattr(accounts, "_find_by_email", lambda db, email: None)
+    r = client.post("/auth/register", json={"email": "Twice@example.org", "password": "otherpass123"})
+    assert r.status_code == 400 and r.json()["detail"] == "Email already registered"
+    monkeypatch.undo()
+    r = client.post("/auth/token", data={"username": "twice@example.org", "password": "testpass123"})
+    assert r.status_code == 200
+
+
+def test_simultaneous_registrations_of_one_email_create_one_account(tmp_path, monkeypatch):
+    import threading
+    from sqlalchemy import func
+    import db.models as models
+    import services.accounts as accounts
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'accounts.db'}",
+                           connect_args={"check_same_thread": False, "timeout": 10})
+    Base.metadata.create_all(bind=engine)
+    session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    checked = threading.Barrier(4, timeout=5)
+    find = accounts._find_by_email
+    outcomes = []
+
+    def find_then_wait(db, email):
+        found = find(db, email)
+        checked.wait()
+        return found
+
+    def register():
+        db = session()
+        try:
+            accounts.register(db, "same@example.org", "testpass123")
+            outcomes.append("created")
+        except accounts.EmailAlreadyRegistered:
+            outcomes.append("taken")
+        finally:
+            db.close()
+
+    monkeypatch.setattr(accounts, "_find_by_email", find_then_wait)
+    threads = [threading.Thread(target=register) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(15)
+    assert sorted(outcomes) == ["created", "taken", "taken", "taken"]
+    db = session()
+    try:
+        assert db.query(func.count(models.User.id)).scalar() == 1
+    finally:
+        db.close()
+        engine.dispose()

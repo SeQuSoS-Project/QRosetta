@@ -4,6 +4,7 @@ Raises the exceptions below; routers/auth.py maps them to HTTP status codes.
 """
 
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import db.models as models
@@ -38,7 +39,8 @@ def _find_by_email(db: Session, email: str):
 
 
 def register(db: Session, email: str, password: str) -> models.User:
-    """Create a local account; the email is stored lower-cased."""
+    """Create a local account; the email is stored lower-cased. EmailAlreadyRegistered also
+    when a simultaneous registration of the same email commits first."""
     email = email.strip().lower()
     if _find_by_email(db, email):
         raise EmailAlreadyRegistered(email)
@@ -49,7 +51,11 @@ def register(db: Session, email: str, password: str) -> models.User:
         auth_provider="local",
     )
     db.add(user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise EmailAlreadyRegistered(email) from None
     db.refresh(user)
     return user
 

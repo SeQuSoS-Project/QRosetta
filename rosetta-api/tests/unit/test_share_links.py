@@ -207,6 +207,59 @@ def test_expiry_is_bounded_and_active_links_are_capped(app_client, monkeypatch):
     assert client.post(f"/history/runs/{run_id}/share-links", headers=owner).status_code == 201
 
 
+def test_simultaneous_creations_stay_within_the_active_link_cap(tmp_path, monkeypatch):
+    import threading
+    engine = create_engine(f"sqlite:///{tmp_path / 'links.db'}",
+                           connect_args={"check_same_thread": False, "timeout": 10})
+    Base.metadata.create_all(bind=engine)
+    session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    db = session()
+    user = models.User(email="race@example.org", hashed_password="x", auth_provider="local")
+    db.add(user)
+    db.commit()
+    run = models.RunHistory(user_id=user.id, s3_object_key="users/1/runs/r.json", run_name="r")
+    db.add(run)
+    db.commit()
+    user_id, run_id = user.id, run.id
+    db.close()
+    monkeypatch.setattr(share_links, "MAX_ACTIVE_LINKS_PER_RUN", 2)
+    creators = 6
+    counted = threading.Barrier(creators)
+    count_active = share_links._active_links
+
+    def count_then_wait(db, uid, rid):
+        active = count_active(db, uid, rid)
+        try:
+            counted.wait(timeout=0.5)
+        except threading.BrokenBarrierError:
+            pass
+        return active
+    monkeypatch.setattr(share_links, "_active_links", count_then_wait)
+    outcomes = []
+
+    def create():
+        db = session()
+        try:
+            share_links.create_link(db, user_id, run_id, 30)
+            outcomes.append("created")
+        except share_links.TooManyLinks:
+            outcomes.append("capped")
+        finally:
+            db.close()
+    threads = [threading.Thread(target=create) for _ in range(creators)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(15)
+    db = session()
+    try:
+        assert sorted(outcomes) == ["capped"] * (creators - 2) + ["created"] * 2
+        assert db.query(models.ShareLink).filter(models.ShareLink.run_id == run_id).count() == 2
+    finally:
+        db.close()
+        engine.dispose()
+
+
 def test_batch_report_shares_each_task(app_client):
     client, _ = app_client
     owner = _login(client, "batch@example.org")

@@ -171,6 +171,58 @@ def test_concurrent_saves_of_one_job_store_one_run(monkeypatch):
         del job_manager.ACTIVE_JOBS["race-job-0001"]
 
 
+def test_saves_in_flight_when_the_job_expires_store_one_run(monkeypatch):
+    import threading
+    import time
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from fastapi import Response
+    import routers.history as history_router
+    import services.history as history_service
+
+    stored, evicted = {}, threading.Event()
+    savers = 4
+    all_read = threading.Barrier(savers)
+    read_report = history_router.job_with_report_or_error
+
+    def read_then_wait(job_id, action, each_task=None):
+        found = read_report(job_id, action, each_task=each_task)
+        if all_read.wait() != 0:
+            assert evicted.wait(5)
+        return found
+
+    def save_and_expire(db, user_id, payload, circuit_id=None, saved_from=None):
+        job_manager.ACTIVE_JOBS.pop("expiring-save-1", None)
+        evicted.set()
+        time.sleep(0.2)
+        run = SimpleNamespace(id=f"run-{len(stored)}", user_id=user_id, run_name=payload["run_name"],
+                              job_id=payload.get("job_id"), created_at=datetime.now(timezone.utc))
+        stored[run.id] = run
+        return run
+    monkeypatch.setattr(history_router, "job_with_report_or_error", read_then_wait)
+    monkeypatch.setattr(history_service, "save_run", save_and_expire)
+    monkeypatch.setattr(history_service, "find_run_for_job",
+                        lambda db, uid, jid: next((r for r in stored.values() if r.job_id == jid), None))
+    user = SimpleNamespace(id=1)
+    _job("expiring-save-1", {"n_shots": 10, "raw_results": []})
+    ids = []
+
+    def save():
+        run = history_router.save_run_from_job("expiring-save-1", Response(status_code=201), None,
+                                               None, user)
+        ids.append(run.id)
+    try:
+        threads = [threading.Thread(target=save) for _ in range(savers)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(10)
+        assert len(stored) == 1 and ids == ["run-0"] * savers
+        assert history_router._SAVE_LOCKS == {}
+    finally:
+        job_manager.ACTIVE_JOBS.pop("expiring-save-1", None)
+
+
 @pytest.mark.parametrize("body", [
     {"result": "ok"},
     {"raw_results": "notalist"},
