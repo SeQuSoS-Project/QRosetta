@@ -2,12 +2,12 @@
 # Local package qrosetta_commons is intentionally excluded; Dockerfiles install shared/ separately.
 # matplotlib + openpyxl (and transitive deps) added for publication-artifact export (T3.2b / FIX-019).
 annotated-types==0.7.0
-anyio==4.14.1
+anyio==4.14.2
 bcrypt==5.0.0
 boto3==1.35.99
 botocore==1.35.99
 cachetools==5.5.0
-certifi==2026.6.17
+certifi==2026.10.19
 cffi==2.0.0
 charset-normalizer==3.4.7
 click==8.4.2
@@ -46,7 +46,7 @@ packaging==26.2
 pillow==12.3.0
 psutil==6.0.0
 psycopg2-binary==2.9.12
-pyasn1==0.6.3
+pyasn1==0.6.4
 pyasn1_modules==0.4.2
 pycparser==3.0
 pydantic==2.9.2
@@ -60,7 +60,7 @@ python-multipart==0.0.32
 pytket==1.33.0
 PyYAML==6.0.3
 qwasm==1.0.1
-requests==2.32.3
+requests==2.33.1
 requests-oauthlib==2.0.0
 rsa==4.9.1
 s3transfer==0.10.4
@@ -73,7 +73,7 @@ starlette==0.38.6
 sympy==1.14.0
 typing-inspection==0.4.2
 typing_extensions==4.16.0
-urllib3==2.7.0
+urllib3==2.8.0
 uvicorn==0.30.0
 uvloop==0.22.1
 watchfiles==1.2.0
