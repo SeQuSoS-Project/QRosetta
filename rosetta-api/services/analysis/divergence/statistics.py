@@ -383,12 +383,13 @@ def _statistical_agreement_test(
     of freedom. Multiple-comparison correction and the verdict are filled in by
     ``_apply_multiple_comparison_correction``. Raises ValueError if scipy rejects the table.
     """
+    get_i, get_j = counts_i.get, counts_j.get
     outcomes = [
         o for o in sorted(set(counts_i) | set(counts_j))
-        if float(counts_i.get(o, 0)) + float(counts_j.get(o, 0)) > 0
+        if float(get_i(o, 0)) + float(get_j(o, 0)) > 0
     ]
-    row_i = np.array([float(counts_i.get(o, 0)) for o in outcomes])
-    row_j = np.array([float(counts_j.get(o, 0)) for o in outcomes])
+    row_i = np.fromiter((float(get_i(o, 0)) for o in outcomes), dtype=float, count=len(outcomes))
+    row_j = np.fromiter((float(get_j(o, 0)) for o in outcomes), dtype=float, count=len(outcomes))
     n_i = float(row_i.sum())
     n_j = float(row_j.sum())
     n_total = n_i + n_j

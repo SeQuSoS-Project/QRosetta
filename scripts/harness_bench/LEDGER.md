@@ -72,3 +72,7 @@ Time to DOMContentLoaded, in ms, as medians of 7 runs (`scripts/frontend_bench/l
 | share | HTTP/2 | 150 ms | 812 → 330 | 821 → 324 |
 
 Module scripts are deferred, so DOMContentLoaded includes the whole module graph. Over HTTP/1.1 the gain is small, because Chromium opens at most 6 connections per host. The Cloud Run front end serves HTTP/2, so the HTTP/2 rows apply there. The request count is unchanged (52), so no module is fetched twice. Warm loads still revalidate each file (`no-cache`, 304), because there are no content-hashed names that would make longer caching safe.
+
+## 2026-10-21: probability vectors built with `np.fromiter`
+
+`_counts_probability_vector` and the statistical-test rows used to fill numpy arrays one element at a time. They now use `np.fromiter` over the same dictionary lookups. A 14-backend measured report took 2.38 → 2.15 s at 12 bits and 3.87 → 3.57 s at 20 bits (8200 shots, medians of 5, interleaved). The machine was loaded by image builds during these runs, so only the ratio is meaningful. The equivalence check found 150 counts cases with 0 differences (`results/2026-10-21-fromiter-equivalence-counts.log`).

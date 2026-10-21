@@ -232,11 +232,8 @@ def _best_counts_qubit_permutation_metrics(counts_i, counts_j):
 
 def _counts_probability_vector(counts, outcomes):
     """Return the probability of each outcome in ``outcomes``, normalised by sum(counts)."""
-    probabilities = np.zeros(len(outcomes))
-    normalized = _normalize_counts(counts)
-    for index, bitstring in enumerate(outcomes):
-        probabilities[index] = normalized.get(bitstring, 0.0)
-    return probabilities
+    lookup = _normalize_counts(counts).get
+    return np.fromiter((lookup(bitstring, 0.0) for bitstring in outcomes), dtype=float, count=len(outcomes))
 
 
 def _counts_distance_metrics(pv_i, pv_j):

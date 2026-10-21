@@ -52,6 +52,7 @@ CASES = {
     "counts_report_6b_14b_8200": lambda m: (lambda r=counts_results(6, 8200): lambda: m.create_counts_report(r, 8200))(),
     "counts_report_7b_14b_8200": lambda m: (lambda r=counts_results(7, 8200): lambda: m.create_counts_report(r, 8200))(),
     "counts_report_12b_14b_8200": lambda m: (lambda r=counts_results(12, 8200): lambda: m.create_counts_report(r, 8200))(),
+    "counts_report_20b_14b_8200": lambda m: (lambda r=counts_results(20, 8200): lambda: m.create_counts_report(r, 8200))(),
 }
 
 
