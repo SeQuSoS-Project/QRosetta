@@ -36,3 +36,23 @@ CLAUDE.md §13.6 had claimed the old search took 2.8 s at 6 qubits and 17 s at 7
 ## 2026-10-21, b22e78b: submission validation off the event loop
 
 `validate_request` is pure Python and took 0.29–0.33 s for a 125 kB circuit. It used to run on the event loop for `/compare`, `/compare_measured`, `/run_batch_suite`, `/experiments` and the Quirk route. A playlist validated each task in turn, so 100 large tasks blocked every other request, polls included, for about 30 s. Validation now runs in a worker thread. `tests/unit/test_submission_off_loop.py` holds a 1 s validation and asserts that the loop never stalls for more than 0.5 s.
+
+## 2026-10-21, b827905: Kubernetes client loaded only for Kubernetes dispatch
+
+`services/dispatcher.py` used to import `dispatcher_k8s`, which loads `kubernetes` and `boto3`, even in local mode. It now imports it on the first Kubernetes-mode dispatch.
+
+| API process, local mode | Before | After |
+|---|---|---|
+| `import main` (median of 5) | 1.61 s | 1.36 s |
+| Peak RSS after import | 252 MiB | 223 MiB |
+
+These were measured in the API image at 1 CPU. The before figures come from a worktree at `483191f`. Behaviour is unchanged: the dispatch and job tests pass (154 tests).
+
+## 2026-10-21, 06fc7d2: unit suite in parallel
+
+Adding `pytest-xdist==3.6.1` to `tests/requirements.txt` and running CI with `-n auto` cut the suite's wall time, as below. All runs were on an i9-13950HX host.
+
+| Environment | Tests | Serial | 8 workers |
+|---|---|---|---|
+| API test venv (no Qiskit) | 1,597 | 98 s | 28 s, 3 runs all passing |
+| Venv with Qiskit 2.5.2 | 1,649 | 101 s | 31 s, 2 runs all passing |
