@@ -250,13 +250,14 @@ def test_title_off_keeps_panel_labels():
         assert sim in no_t
 
 
-def test_render_errors_that_are_not_parameter_errors_are_500(client, monkeypatch):
+@pytest.mark.parametrize("error, status", [(ValueError, 400), (RuntimeError, 500)])
+def test_render_errors_that_are_not_parameter_errors_carry_no_detail(client, monkeypatch, error, status):
     import routers.publication as pub
     def boom(*a, **k):
-        raise ValueError("internal numpy detail")
+        raise error("internal numpy detail")
     monkeypatch.setattr(pub, "render_artifact", boom)
     r = client.post("/publication/render", json={"results": _report(), "artifact_id": "hamming_weight", "format": "svg"})
-    assert r.status_code == 500 and "numpy" not in r.text
+    assert r.status_code == status and "numpy" not in r.text
 
 
 def test_playlist_crate_names_the_circuit_on_a_bad_item():

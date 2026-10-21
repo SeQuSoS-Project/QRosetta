@@ -1,5 +1,7 @@
 """Shape checks for reports a client submits (export, history, publication rendering)."""
 
+import math
+
 from fastapi import HTTPException
 
 from schemas.benchmark import has_control_characters
@@ -8,6 +10,9 @@ from services.exporter import invalid_runner_keys
 
 
 MAX_REPORT_DEPTH = 64
+
+REPORT_SHAPE_ERRORS = (TypeError, ValueError, AttributeError, IndexError, KeyError)
+"""What reading a report raises when a field holds a value of the wrong type or shape."""
 
 
 def _depth(value, limit=MAX_REPORT_DEPTH + 1) -> int:
@@ -22,6 +27,21 @@ def _depth(value, limit=MAX_REPORT_DEPTH + 1) -> int:
             children = node.values() if isinstance(node, dict) else node
             stack.extend((child, level + 1) for child in children)
     return deepest
+
+
+def _non_finite_path(value):
+    """Location of the first NaN or infinite number in ``value`` (``"a.b[2]"``), else None.
+    JSON has no such numbers, but Python's parser reads ``NaN`` and ``Infinity``."""
+    stack = [(value, "")]
+    while stack:
+        node, path = stack.pop()
+        if isinstance(node, float) and not math.isfinite(node):
+            return path or "(top level)"
+        if isinstance(node, dict):
+            stack.extend((child, f"{path}.{key}" if path else str(key)) for key, child in node.items())
+        elif isinstance(node, list):
+            stack.extend((child, f"{path}[{index}]") for index, child in enumerate(node))
+    return None
 
 
 def report_problems(results) -> list:
@@ -56,6 +76,10 @@ def report_problems(results) -> list:
     depth = _depth(results)
     if depth > MAX_REPORT_DEPTH:
         problems.append(f"the report nests {depth} levels deep; at most {MAX_REPORT_DEPTH} are accepted")
+    else:
+        where = _non_finite_path(results)
+        if where is not None:
+            problems.append(f"{where} is NaN or infinite; a report holds finite numbers or null")
     for report in reports:
         keys = compiler_keys(report) if isinstance(report, dict) else []
         if "" in keys:
@@ -78,3 +102,10 @@ def reject_invalid_report(results) -> None:
     problems = report_problems(results)
     if problems:
         raise HTTPException(status_code=400, detail="Invalid report: " + "; ".join(problems) + ".")
+
+
+def unreadable_report(exc: Exception) -> HTTPException:
+    """400 for a client-supplied report that a table, figure or crate builder could not read
+    (one of ``REPORT_SHAPE_ERRORS``); the server's own reports keep their 500."""
+    return HTTPException(status_code=400, detail=(
+        "Invalid report: a field holds a value of the wrong type or shape, so it cannot be read."))

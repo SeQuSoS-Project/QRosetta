@@ -11,7 +11,7 @@ artifact_distributions.js, artifact_views.js and artifact_catalog.js mirror them
 from .theme import SUPPORTED_FIGURE_FORMATS, SUPPORTED_TABLE_FORMATS
 from .figures import _fig_heatmap, _fig_ranking_bar
 from .formats import _fmt_int, _fmt_num, _fmt_p, _table_bytes
-from .registry import list_artifacts, render_artifact
+from .registry import UnknownArtifact, list_artifacts, render_artifact
 from .items import build_publication_items, categories_to_items, item_paths
 from .views import ParameterError, normalize_params, view_defaults, view_slug
 from .tables import _tbl_performance
@@ -26,6 +26,7 @@ __all__ = [
     "list_artifacts",
     "normalize_params",
     "render_artifact",
+    "UnknownArtifact",
     "view_defaults",
     "view_slug",
     "_fig_heatmap",

@@ -257,11 +257,15 @@ def _scoped(results: dict, view_id: Optional[str], params: Optional[dict]):
     return scoped, {view_id: p}
 
 
+class UnknownArtifact(KeyError):
+    """The report offers no artifact with this id."""
+
+
 def render_artifact(results: dict, mode: str, artifact_id: str, fmt: str, scale: int = 1,
                     params: Optional[dict] = None, with_legend: bool = True):
     """Render one artifact with its view's ``params`` -> (bytes, mime, legend or None).
-    Raises KeyError for an unknown artifact and ParameterError for a bad format or
-    parameter."""
+    Raises UnknownArtifact (a KeyError) for an unknown artifact and ParameterError for a bad
+    format or parameter."""
     scoped, norm = _scoped(results, VIEW_OF_ARTIFACT.get(artifact_id), params)
     for a in _iter_artifacts(scoped, mode, norm, only=artifact_id):
         if fmt not in a["formats"]:
@@ -269,4 +273,4 @@ def render_artifact(results: dict, mode: str, artifact_id: str, fmt: str, scale:
         data = a["_render"](fmt, max(1, int(scale)))
         return (data, MIME_TYPES.get(fmt, "application/octet-stream"),
                 _legend(a) if with_legend else None)
-    raise KeyError(artifact_id)
+    raise UnknownArtifact(artifact_id)

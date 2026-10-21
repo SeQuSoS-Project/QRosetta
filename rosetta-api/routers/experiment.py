@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse
 
 from qrosetta_commons.helpers import get_logger
 from schemas import ExperimentPayload, JobStatusResponse
-from routers.errors import responses
+from routers.errors import file_response, responses
 from services.availability import require_available
 from services.job_store import JOB_NOT_FOUND, file_chunks
 from services.security import limiter
@@ -81,8 +81,9 @@ def _open_bundle(path: str):
         raise HTTPException(status_code=404, detail=JOB_NOT_FOUND)
 
 
-@router.get("/experiments/{job_id}/bundle", responses=responses(
-    404, (409, "The job is not an experiment, or the experiment has not finished or failed.")))
+@router.get("/experiments/{job_id}/bundle", response_class=StreamingResponse, responses={
+    **file_response("The experiment bundle ZIP, sent as an attachment.", "application/zip"), **responses(
+        404, (409, "The job is not an experiment, or the experiment has not finished or failed."))})
 @limiter.limit("30/minute")
 async def download_experiment_bundle(request: Request, job_id: str):
     """Download a completed experiment as an in-memory ZIP: the frozen input circuits, the
