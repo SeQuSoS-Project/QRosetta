@@ -7,7 +7,6 @@ own job and an exclusive job of another client still waits for it. Their results
 apart from raw_results: they are circuit text, never simulated or compared.
 """
 
-import asyncio
 import re
 from collections.abc import MutableMapping
 
@@ -16,6 +15,7 @@ from fastapi import HTTPException
 from config import settings
 from qrosetta_commons.helpers import get_logger
 from services.circuit_resolver import StatevectorIncompatible, prepare_statevector_dispatch
+from services import prep_worker
 from services.dispatcher import dispatch_to_runners
 from services.run_registry import EXCLUSIVE
 
@@ -156,12 +156,12 @@ async def compile_circuit(qasm_string: str, apply_preprocessing: bool, compilers
     the reason; a dispatch that fails is recorded as "error" for each compile, so the run's
     simulator results are kept either way. ``prepared`` is the circuit's
     ``prepare_statevector_dispatch`` result when the caller already has it; otherwise it is
-    prepared in a worker thread."""
+    prepared by ``prep_worker.prepare``."""
     if not compilers:
         return {}
     try:
         if prepared is None:
-            prepared = await asyncio.to_thread(prepare_statevector_dispatch, qasm_string, apply_preprocessing)
+            prepared = await prep_worker.prepare(prepare_statevector_dispatch, qasm_string, apply_preprocessing)
     except StatevectorIncompatible:
         _settle_compile_statuses(runner_statuses, compilers, "done")
         return {"compilers_requested": {cid: list(levels) for cid, levels in compilers.items()},
@@ -171,9 +171,11 @@ async def compile_circuit(qasm_string: str, apply_preprocessing: bool, compilers
     except Exception as exc:
         logger.error("Preparing the compile input failed", exc_info=True)
         _settle_compile_statuses(runner_statuses, compilers, "error")
+        reason = (f"{str(exc)[:1].lower()}{str(exc)[1:]}" if isinstance(exc, prep_worker.PreparationFailed)
+                  else f"the compile input could not be prepared ({type(exc).__name__}).")
         return {"compilers_requested": {cid: list(levels) for cid, levels in compilers.items()},
                 "compile_input": None, "compiled_circuits": _unrun(
-            compilers, "error", f"Not compiled: the compile input could not be prepared ({type(exc).__name__}).")}
+            compilers, "error", f"Not compiled: {reason}")}
     urls = {cid: f"{COMPILER_SERVICES[cid]['base_url']}/compile" for cid in compilers}
     payload = {"circuit_data": prepared["qasm"], "optimization_level": 0,
                "runner_config": {cid: list(levels) for cid, levels in compilers.items()}}

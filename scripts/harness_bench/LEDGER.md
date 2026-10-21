@@ -6,6 +6,25 @@ Simulator and compiler code, their images, and the timed windows (CLAUDE.md §3.
 
 Unless an entry says otherwise, timings were taken inside the API image (`localhost/qsimulators-api`: Python 3.10.20, numpy 1.26.4, scipy 1.14.0, OpenBLAS 1 thread). The container ran under a 1-CPU quota on an i9-13950HX, not pinned to one core. Reference and new code alternated, 5 samples each. Raw samples are in `results/`.
 
+## 2026-10-22: circuit preparation in a separate, limited process
+
+With `apply_preprocessing` on, `prepare_statevector_dispatch`, `prepare_measured_dispatch` and the Quirk drawing ran pytket in a thread of the API process. Bundled MQT circuits are exempt from `MAX_EXPANDED_GATES`, and pytket expands their nested gates without bound. They now run in one spawned worker process (`services/prep_worker.py`), reused across jobs and running one preparation at a time. The API reads the worker's RSS every 100 ms. Above `QROSETTA_PREP_MAX_MIB` (1,024) or after `QROSETTA_PREP_TIMEOUT_SEC` (120 s) it kills the worker, and the job fails with a message naming the limit. Preparation without preprocessing makes no pytket call and stays in a thread.
+
+Measured in the API image at 1 CPU, with 14 fake runners:
+
+| Case | In a thread (before) | In the worker (after) |
+|---|---|---|
+| grover-noancilla_n16, container 2 GiB without swap | process OOM-killed (exit 137) | API 160 MiB throughout; worker stopped at 1,034 MiB after 11 s; job failed with the message |
+| grover-noancilla_n16, container 6 GiB | API peak 2,489 MiB, 36 s, longest loop stall 4.15 s | as above |
+| 9,900 calls of a 20-statement gate on 10 qubits, longest loop stall (3 jobs) | 1.05–1.10 s | 0.03–0.05 s |
+| Bell circuit preparation, median (p95) of 200 | 0.52 (0.64) ms | 0.59 (0.81) ms; first call 0.87 s (worker start) |
+
+The worker holds 160 MiB when idle. A preparation that leaves it more than 64 MiB larger is followed by `malloc_trim`, which returned the worker from 756 to 137 MiB after grover-noancilla_n14.
+
+Equivalence: `prep_equivalence.py` prepared every bundled circuit (327 benchmarks, 4 examples), every template at 10 sizes and 15 hand-written edge cases (refusals, an empty gate, spaced indices, a c3x, a tiny angle), with preprocessing on and off, plus the Quirk drawing up to 16 qubits, directly in a thread and through the worker, at 2 CPUs. 1,948 cases were compared with 0 differences, 72 of them raised exceptions with the same type and message. 28 cases were stopped at the limit and not compared: grover-noancilla n15–n19 and grover-v-chain n15–n22, with preprocessing (`results/2026-10-22-prep-isolation-equivalence.txt`). lark's `UnexpectedToken` does not unpickle with its constructor, so the worker sends such an exception as a copy built without `__init__`.
+
+The largest preparations that fit, measured in the gate's own process: grover-noancilla_n14 at 995–1,000 MiB and 12 s (22.9 s at 0.5 CPU in the worker), grover-v-chain_n14 at 865 MiB, grover-noancilla_n13 at 626–655 MiB. The 120 s time limit is 5 times the slowest of these at 0.5 CPU.
+
 ## 2026-10-21, b22e78b: permutation searches scored in one array pass
 
 The analysis searches every qubit permutation of each pair of backends, up to 7 qubits or bits. It used to do this in a Python loop of up to 5,038 iterations per pair. It now computes every permutation from one cached index table, using the same floating-point operations as before.

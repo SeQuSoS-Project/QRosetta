@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     MAX_NESTED_GATE_CALLS: int = int(os.getenv("QROSETTA_MAX_NESTED_GATE_CALLS", "4096"))
     EXCLUSIVE_ENABLED: bool = os.getenv("QROSETTA_EXCLUSIVE_ENABLED", "true").lower() == "true"
     EXCLUSIVE_MAX_WAIT_SEC: float = float(os.getenv("QROSETTA_EXCLUSIVE_MAX_WAIT_SEC", "600"))
+    PREP_MAX_MIB: int = int(os.getenv("QROSETTA_PREP_MAX_MIB", "1024"))
+    PREP_TIMEOUT_SEC: float = float(os.getenv("QROSETTA_PREP_TIMEOUT_SEC", "120"))
     MIN_SHOTS: int = 1
     MAX_SHOTS: int = 1_000_000
     DEFAULT_SHOTS: int = 8200

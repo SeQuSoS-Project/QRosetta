@@ -66,3 +66,13 @@ Exact matching depends on details of numpy that a reader might not expect:
 - A numpy scalar raised to the power 2 can round differently from an array raised to the power 2.
 
 The new code reproduces both of these behaviours of the old code.
+
+## Circuit preparation
+
+`prep_equivalence.py` prepares every bundled circuit, every algorithm template at several sizes and a set of circuits that preparation refuses, directly in a thread and through the preparation worker (`services/prep_worker.py`). Results must be equal, and a raised exception must have the same type and message. Cases that the worker stops at its memory or time limit are listed and not compared. It needs no reference package:
+
+```bash
+podman run --rm --memory 6g --cpus 2 -v "$PWD":/repo:ro -w /repo/rosetta-api \
+  -e PYTHONPATH=/repo/rosetta-api:/repo/shared localhost/qsimulators-api:latest \
+  python ../scripts/harness_bench/prep_equivalence.py
+```

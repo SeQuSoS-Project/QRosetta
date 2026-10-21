@@ -8,6 +8,7 @@ import services.circuit_library as library
 import services.benchmark_library as benchmark_library
 import services.examples as examples
 from schemas import GenerateCircuitPayload, QasmPayload, VisualizerResponse
+from services import prep_worker
 from services.validator import validate_request
 from services.circuit_resolver import RoundTripIntegrityError
 from services.quirk_converter import QUIRK_MAX_QUBITS, QuirkUnsupported, quirk_url
@@ -74,7 +75,7 @@ async def generate_circuit_endpoint(request: Request, payload: GenerateCircuitPa
         logger.error("Circuit generation failed for algorithm=%s qubits=%s", payload.algorithm, payload.qubits, exc_info=True)
         raise HTTPException(status_code=500, detail="Circuit generation failed")
 
-@router.post("/visualize/quirk", response_model=VisualizerResponse, responses=responses((400, "The circuit is refused at submit, declares more than 16 qubits, or uses reset, classical control or a gate after a measurement on the same qubit.")))
+@router.post("/visualize/quirk", response_model=VisualizerResponse, responses=responses((400, "The circuit is refused at submit, declares more than 16 qubits, or uses reset, classical control or a gate after a measurement on the same qubit, or its drawing exceeds the memory or time limit of circuit preparation.")))
 @limiter.limit(settings.RUN_RATE_LIMIT)
 async def visualize_quirk(request: Request, payload: QasmPayload):
     """Convert an OpenQASM 2.0 circuit of at most 16 qubits into a URL that opens it in Quirk
@@ -82,7 +83,8 @@ async def visualize_quirk(request: Request, payload: QasmPayload):
     is drawn with the same matrix up to a global phase (gates Quirk has no symbol for are drawn
     as cx and single-qubit rotations, listed in ``notes``); terminal measurements are drawn.
     400 for a circuit the API refuses at submit, more than 16 qubits, reset, classical control
-    or a gate after a measurement on the same qubit."""
+    or a gate after a measurement on the same qubit, or a drawing that exceeds the memory or
+    time limit of circuit preparation (it runs in the preparation process)."""
     n_qubits = get_num_qubits_from_qasm(payload.qasm_string)
     if n_qubits > QUIRK_MAX_QUBITS:
         raise HTTPException(
@@ -91,10 +93,10 @@ async def visualize_quirk(request: Request, payload: QasmPayload):
                     f"Quirk's limit; this circuit declares {n_qubits}."))
     await asyncio.to_thread(validate_request, payload.qasm_string, mode="measured")
     try:
-        url, notes = await asyncio.to_thread(quirk_url, payload.qasm_string)
+        url, notes = await prep_worker.call(quirk_url, payload.qasm_string)
         return {"url": url, "notes": notes}
-    except (QuirkUnsupported, RoundTripIntegrityError) as exc:
-        message = str(exc)
+    except (QuirkUnsupported, RoundTripIntegrityError, prep_worker.PreparationFailed) as exc:
+        message = str(exc).rstrip(".")
         raise HTTPException(status_code=400, detail=f"Cannot draw this circuit in Quirk: "
                                                     f"{message[:1].lower() + message[1:]}.")
     except Exception:

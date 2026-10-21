@@ -16,7 +16,7 @@ pytest.importorskip("pytket")
 import services.compilation as compilation  # noqa: E402
 import services.job_manager as job_manager  # noqa: E402
 from schemas import BatchPayload, BenchmarkTask  # noqa: E402
-from services import job_store  # noqa: E402
+from services import job_store, prep_worker  # noqa: E402
 from services.job_store import JOB_NOT_FOUND  # noqa: E402
 
 QASM = 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[2];\nh q[0];\ncx q[0],q[1];\n'
@@ -89,6 +89,7 @@ def _blocking(seconds, real):
 
 @pytest.mark.parametrize("measured", [False, True])
 def test_circuit_preparation_does_not_block_the_event_loop(monkeypatch, fake_dispatch, measured):
+    monkeypatch.setattr(prep_worker, "IN_PROCESS", True)
     monkeypatch.setattr(job_manager, "prepare_statevector_dispatch",
                         _blocking(1.0, job_manager.prepare_statevector_dispatch))
     monkeypatch.setattr(job_manager, "prepare_measured_dispatch",

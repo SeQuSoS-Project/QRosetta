@@ -1,7 +1,9 @@
 """Whole jobs run under asyncio debug mode: no single event-loop step may take longer than
-the budget, so CPU-heavy work (preparation, analysis, report building) stays in threads."""
+the budget, so CPU-heavy work (preparation, analysis, report building) stays off the loop.
+A ticker beside a large preparation also catches a thread that holds the GIL."""
 import asyncio
 import logging
+import time
 
 import numpy as np
 import pytest
@@ -9,6 +11,7 @@ import pytest
 pytest.importorskip("pytket")
 
 import services.job_manager as job_manager  # noqa: E402
+from services import prep_worker  # noqa: E402
 from qrosetta_commons.helpers import encode_statevector  # noqa: E402
 from services import job_store  # noqa: E402
 
@@ -119,3 +122,41 @@ def test_playlist_job_keeps_every_loop_step_within_budget(fleet, mode):
         assert not slow, slow
     finally:
         job_manager.ACTIVE_JOBS.pop("budget-batch", None)
+
+
+def _nine_thousand_nine_hundred_gate_calls():
+    body = " ".join(["h a;", "cx a,b;", "rz(0.1) b;", "t a;", "cx b,a;"] * 4)
+    calls = "\n".join(f"g q[{k % 10}],q[{(k + 1) % 10}];" for k in range(9900))
+    return f'OPENQASM 2.0;\ninclude "qelib1.inc";\ngate g a,b {{ {body} }}\nqreg q[10];\n{calls}\n'
+
+
+async def _longest_gap(coro):
+    """(result of ``coro``, the longest gap between ticks of a 5 ms ticker beside it)."""
+    gaps, done = [0.0], asyncio.Event()
+
+    async def tick():
+        last = time.perf_counter()
+        while not done.is_set():
+            await asyncio.sleep(0.005)
+            now = time.perf_counter()
+            gaps.append(now - last)
+            last = now
+
+    ticker = asyncio.create_task(tick())
+    try:
+        return await coro, max(gaps)
+    finally:
+        done.set()
+        await ticker
+
+
+def test_a_large_preparation_keeps_every_loop_step_within_budget(fleet):
+    qasm = _nine_thousand_nine_hundred_gate_calls()
+    try:
+        (report, gap), slow = _slow_steps(_longest_gap(job_manager.run_single_circuit_comparison(
+            qasm, target_simulators=RUNNERS)))
+    finally:
+        prep_worker.stop()
+    assert len(report["raw_results"]) == len(RUNNERS), report.get("error")
+    assert not slow, slow
+    assert gap < BUDGET_SEC, f"event loop blocked for {gap:.2f} s"

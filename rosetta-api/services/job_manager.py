@@ -11,6 +11,7 @@ import asyncio
 import random
 import time
 from fastapi import HTTPException
+from services import prep_worker
 from services.availability import filter_available
 from services.compilation import compile_circuit, queue_compile_statuses
 from services.job_store import JOB_NOT_FOUND, JobTable, full_report, spill_task_report
@@ -187,7 +188,7 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
                            apply_preprocessing, thresholds, runner_phases, bypass_limits,
                            timing_repeats)
     try:
-        circuit = await asyncio.to_thread(prepare_statevector_dispatch, qasm_string, apply_preprocessing)
+        circuit = await prep_worker.prepare(prepare_statevector_dispatch, qasm_string, apply_preprocessing)
     except Exception as e:
         return {"input_qasm": qasm_string, "error": str(e), **context}
 
@@ -286,7 +287,7 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
     seed_fields = {"n_shots": n_shots, "seed": seed, "seed_derivation": SEED_DERIVATION}
 
     try:
-        circuits = await asyncio.to_thread(prepare_measured_dispatch, qasm_string, apply_preprocessing)
+        circuits = await prep_worker.prepare(prepare_measured_dispatch, qasm_string, apply_preprocessing)
     except Exception as e:
         return {"input_qasm": qasm_string, **seed_fields, **context, "error": str(e)}
 
