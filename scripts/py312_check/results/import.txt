@@ -1,0 +1,8 @@
+round 1 localhost/qsimulators-api:latest
+{"python": "3.10.20", "seconds": [2.135, 1.98, 1.65, 1.58, 1.571], "median_seconds": 1.65, "peak_rss_mib": [224.3, 225.4, 225.0, 224.8, 224.5], "median_peak_rss_mib": 224.8}
+round 1 localhost/py312-api:test
+{"python": "3.12.15", "seconds": [1.842, 1.675, 1.706, 1.669, 1.689], "median_seconds": 1.689, "peak_rss_mib": [236.3, 236.1, 236.2, 236.2, 235.1], "median_peak_rss_mib": 236.2}
+round 2 localhost/qsimulators-api:latest
+{"python": "3.10.20", "seconds": [1.877, 1.45, 1.448, 1.444, 1.425], "median_seconds": 1.448, "peak_rss_mib": [224.8, 224.7, 224.9, 224.5, 225.1], "median_peak_rss_mib": 224.8}
+round 2 localhost/py312-api:test
+{"python": "3.12.15", "seconds": [1.659, 1.519, 1.528, 1.528, 1.528], "median_seconds": 1.528, "peak_rss_mib": [236.5, 236.1, 236.4, 235.8, 235.8], "median_peak_rss_mib": 236.1}
