@@ -10,7 +10,6 @@ from config import settings
 from qrosetta_commons.helpers import TIMING_STATISTIC, get_logger
 from qrosetta_commons.seeds import derive_runner_seed
 from services.dispatcher_http import dispatch_http_local
-from services.dispatcher_k8s import dispatch_kubernetes_jobs
 
 EXECUTION_MODE = settings.EXECUTION_MODE
 logger = get_logger("rosetta-api")
@@ -324,6 +323,7 @@ async def dispatch_to_runners(runner_urls: dict, runner_payload: dict, timeout_s
               if gated else held)
     try:
         if EXECUTION_MODE == "kubernetes":
+            from services.dispatcher_k8s import dispatch_kubernetes_jobs
             results = await dispatch_kubernetes_jobs(runner_urls, runner_payload, timeout_seconds, runner_statuses)
         else:
             results = await dispatch_http_local(runner_urls, runner_payload, timeout_seconds, runner_statuses)
