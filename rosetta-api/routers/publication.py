@@ -13,7 +13,8 @@ from services.security import limiter
 from services.publication import ParameterError, UnknownArtifact, list_artifacts, render_artifact
 from services.publication.theme import MIME_TYPES
 from routers.errors import file_response, responses
-from services.job_manager import job_report_or_error
+from services.job_manager import finished_job_or_error
+from services.job_store import JOB_NOT_FOUND, report_or_task
 from services.report_validation import REPORT_SHAPE_ERRORS, reject_invalid_report, unreadable_report
 from qrosetta_commons.helpers import get_logger
 
@@ -77,13 +78,14 @@ async def _render_response(results: dict, artifact_id: str, fmt: str, scale: int
 
 def _job_circuit_report(job_id: str, task: Optional[int]) -> dict:
     """The server's report of one circuit of ``job_id``; ``task`` picks a playlist circuit."""
-    report = job_report_or_error(job_id, "render")
-    tasks = report.get("benchmark_summary")
-    if task is not None:
-        if not isinstance(tasks, list) or task >= len(tasks):
-            raise HTTPException(status_code=404, detail=f"This job has no circuit {task}.")
-        return tasks[task]
-    if isinstance(tasks, list):
+    job = finished_job_or_error(job_id, "render")
+    try:
+        report, n_tasks = report_or_task(job, task)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=JOB_NOT_FOUND)
+    if task is not None and report is None:
+        raise HTTPException(status_code=404, detail=f"This job has no circuit {task}.")
+    if task is None and n_tasks is not None:
         raise HTTPException(status_code=400, detail="This is a playlist job: give the circuit's index as task.")
     return report
 

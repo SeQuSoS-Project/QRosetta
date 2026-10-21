@@ -1,35 +1,33 @@
 """RO-Crate 1.1 export (Process Run Crate profile) of a single-circuit or batch report."""
 
-import copy
 import hashlib
 import io
 import json
 import os
 import re
+import time
 import unicodedata
 import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from config import settings
 from qrosetta_commons.helpers import get_logger, get_num_qubits_from_qasm
 from services.export_compiled import (
     COMPILED_METRICS_PATH, compile_actions, compile_provenance, compiled_circuit_files,
     compiled_metrics_csv, compiler_applications, compiler_keys, compiler_build_entity,
-    compiler_build_files, strip_compiled_text,
+    compiler_build_files,
 )
 from services.analysis.divergence.common import (
     ANALYSIS_VERSION, DEFAULT_FIDELITY_TOLERANCE, DEFAULT_HELLINGER_THRESHOLD,
     DEFAULT_JS_THRESHOLD, DEFAULT_NORM_TOLERANCE, DEFAULT_PHASE_TOLERANCE,
 )
-from services.experiment_artifacts import sha256 as _json_sha256
+from services.export_results import digest, encoded, results_json_source
 from services.report_filters import (
+    DISPLAY_PLACEHOLDER_PREFIX,
     OMITTED_FOR_DISPLAY,
-    fingerprint_statevectors,
-    is_display_placeholder,
-    remove_statevectors,
     statevector_inventory,
 )
 
@@ -146,7 +144,7 @@ def _generate_publication_artifacts(ctx: "ExportContext") -> tuple:
     files: Dict[str, bytes] = {}
     descriptions: Dict[str, str] = {}
     for task in _iter_tasks(ctx):
-        report = task.report
+        report = _full_report(ctx, task)
         if task.task_id is None and ctx.circuit_name and not any(
                 report.get(k) for k in ("circuit_name", "task_name", "run_name")):
             report = {**report, "circuit_name": ctx.circuit_name}
@@ -181,6 +179,7 @@ class _TaskView:
     input_qasm: str
     raw_results: List[dict]
     report: dict = field(default_factory=dict)
+    index: Optional[int] = None
 
 
 def _slugify(name: str, fallback: str) -> str:
@@ -209,6 +208,7 @@ def _iter_tasks(ctx: "ExportContext") -> List[_TaskView]:
                 input_qasm=task_result.get("input_qasm", ""),
                 raw_results=[r for r in task_result.get("raw_results", []) if isinstance(r, dict)],
                 report=task_result,
+                index=i,
             ))
         return tasks
     return [_TaskView(
@@ -218,6 +218,35 @@ def _iter_tasks(ctx: "ExportContext") -> List[_TaskView]:
         raw_results=[r for r in ctx.results.get("raw_results", []) if isinstance(r, dict)],
         report=ctx.results,
     )]
+
+
+def _full_report(ctx: "ExportContext", task: _TaskView) -> dict:
+    """The task's whole report: read through ``ctx.task_loader`` when ``ctx.results`` holds
+    export skeletons of its batch tasks, else the report the view holds."""
+    if ctx.task_loader is not None and task.index is not None:
+        return ctx.task_loader(task.index)
+    return task.report
+
+
+def export_skeleton_task(task):
+    """A batch task's report for everything in a crate except results.json and the
+    publication files: each result's statevector (unless it is the display placeholder) is
+    replaced by an empty string and its counts by an empty dict, the rest is shared with
+    ``task``."""
+    if not isinstance(task, dict) or not isinstance(task.get("raw_results"), list):
+        return task
+    raw = []
+    for r in task["raw_results"]:
+        if isinstance(r, dict):
+            r = dict(r)
+            sv = r.get("statevector")
+            placeholder = isinstance(sv, str) and sv.startswith(DISPLAY_PLACEHOLDER_PREFIX)
+            if sv is not None and not placeholder:
+                r["statevector"] = ""
+            if "counts" in r:
+                r["counts"] = {}
+        raw.append(r)
+    return {**task, "raw_results": raw}
 
 
 def _circuit_path(task: _TaskView) -> str:
@@ -315,11 +344,14 @@ def _report_source(results: dict, route: str) -> str:
     return "client_supplied"
 
 
-def build_export_context(results: dict, payload, route: str = "client_request") -> "ExportContext":
+def build_export_context(results: dict, payload, route: str = "client_request",
+                         task_loader: Optional[Callable[[int], Any]] = None) -> "ExportContext":
     """Assemble an ExportContext from a report and an ExportPayload. ``route`` is how the
     export obtained the report: ``server_job`` (the server's copy of a job), ``saved_run``
     (a run from history) or ``client_request`` (the request body); it decides the crate's
-    recorded report_source, which no report field can override."""
+    recorded report_source, which no report field can override. With ``task_loader``,
+    ``results['benchmark_summary']`` holds ``export_skeleton_task`` copies and
+    ``task_loader(i)`` returns task i's whole report."""
     source = _report_source(results, route)
     results = {**{k: v for k, v in results.items() if k != "saved_from"},
                **({"saved_from": source} if source in ("server_job", "upload") else {})}
@@ -338,6 +370,7 @@ def build_export_context(results: dict, payload, route: str = "client_request") 
         ),
         label=getattr(payload, "name", None) or None,
         circuit_name=getattr(payload, "circuit_name", None) or None,
+        task_loader=task_loader,
     )
 
 
@@ -357,7 +390,7 @@ class ExportContext:
 
     ``runner_services`` is the exporting server's registry, used only when the report
     carries no ``runner_registry`` recorded at run time. ``timestamp`` is the export time
-    (millisecond ISO 8601).
+    (millisecond ISO 8601). ``task_loader`` as in ``build_export_context``.
     """
     qasm_string: str
     results: dict
@@ -376,6 +409,7 @@ class ExportContext:
     hardware_anchor: Optional[Dict[str, Any]] = None
     label: Optional[str] = None
     circuit_name: Optional[str] = None
+    task_loader: Optional[Callable[[int], Any]] = None
 
 
 # --- report lookups --------------------------------------------------------------------
@@ -1226,46 +1260,6 @@ def _build_ro_crate_metadata(ctx: ExportContext,
 
 # --- public API ------------------------------------------------------------------------
 
-def _fingerprint(report: dict) -> None:
-    """Replace each statevector in ``report['raw_results']`` with statevector_sha256 and
-    statevector_length."""
-    fingerprint_statevectors(report, _json_sha256)
-
-
-def _results_json_data(ctx: ExportContext) -> dict:
-    """results.json content: statevectors per ``include_statevectors`` (else a sha256 and
-    length per result), display placeholders nulled and flagged, circuit texts written as
-    separate files removed, and ``report_source`` set from the export route."""
-    data = copy.deepcopy(ctx.results)
-    if not ctx.include_statevectors:
-        _fingerprint(data)
-        for task_result in data.get("benchmark_summary", []) or []:
-            if isinstance(task_result, dict):
-                _fingerprint(task_result)
-        data = remove_statevectors(data)
-
-    def clean(report: dict) -> None:
-        for r in report.get("raw_results", []) or []:
-            if not isinstance(r, dict):
-                continue
-            r.pop("transpiled_qasm", None)
-            if "statevector" in r and is_display_placeholder(r):
-                r["statevector"] = None
-                r[OMITTED_FOR_DISPLAY] = True
-        for record in report.get("dispatched_circuits", []) or []:
-            if isinstance(record, dict):
-                record.pop("qasm", None)
-        strip_compiled_text(report)
-
-    clean(data)
-    for task_result in data.get("benchmark_summary", []) or []:
-        if isinstance(task_result, dict):
-            clean(task_result)
-            task_result.pop("report_source", None)
-    data["report_source"] = ctx.report_source
-    return data
-
-
 def _add_compiled_metrics_table(ctx: ExportContext, files: dict, descriptions: dict) -> None:
     """tables/compiled_circuits.csv when any task has compile records."""
     tasks = list(_iter_tasks(ctx))
@@ -1319,21 +1313,50 @@ def crate_name(ctx: ExportContext) -> str:
     return "-".join(part for part in ("rosetta-export", label, stamp) if part)
 
 
-def _describe_files(metadata: dict, files: Dict[str, bytes]) -> None:
+def _describe_files(metadata: dict, files: Dict[str, Any], streamed: Dict[str, tuple]) -> None:
     """Add ``sha256`` and ``contentSize`` (bytes) to every File entity whose @id is a file
-    of the crate."""
+    of the crate; ``streamed`` gives (sha256, size) of the files written from a stream."""
     for entity in metadata["@graph"]:
-        data = files.get(entity.get("@id"))
-        if data is not None and entity.get("@type") == "File":
+        if entity.get("@type") != "File":
+            continue
+        path = entity.get("@id")
+        if path in streamed:
+            entity["sha256"], size = streamed[path]
+            entity["contentSize"] = str(size)
+            continue
+        data = files.get(path)
+        if data is not None:
             entity["sha256"] = hashlib.sha256(data).hexdigest()
             entity["contentSize"] = str(len(data))
 
 
-def build_ro_crate(ctx: ExportContext) -> bytes:
-    """Build the RO-Crate 1.1 ZIP bundle for ``ctx`` and return its bytes."""
+def _write_streamed(zf: zipfile.ZipFile, member: str, size: int, pieces) -> None:
+    """Write the byte ``pieces`` (``size`` bytes in all) as ``member``, with the entry
+    ZipFile.writestr would make for the same bytes."""
+    info = zipfile.ZipInfo(member, date_time=time.localtime(time.time())[:6])
+    info.compress_type = zf.compression
+    info.external_attr = 0o600 << 16
+    info.file_size = size
+    written = 0
+    with zf.open(info, "w") as dest:
+        for piece in pieces:
+            dest.write(piece)
+            written += len(piece)
+    if written != size:
+        raise RuntimeError(f"{member}: wrote {written} bytes, expected {size}")
+
+
+_STREAMED = object()
+
+
+def write_ro_crate(ctx: ExportContext, fh) -> None:
+    """Write the RO-Crate 1.1 ZIP bundle for ``ctx`` to the binary file ``fh``. results.json
+    is encoded twice, for its sha256 and size and then into the ZIP, so a batch whose tasks
+    ``ctx.task_loader`` reads holds one task's report at a time."""
     dir_name = crate_name(ctx)
 
-    results_data = _results_json_data(ctx)
+    results_json = results_json_source(ctx.results, ctx.include_statevectors, ctx.report_source,
+                                       ctx.task_loader)
     provenance_data = _build_provenance(ctx)
     publication_files, artifact_descriptions = _generate_publication_artifacts(ctx)
     _add_compiled_metrics_table(ctx, publication_files, artifact_descriptions)
@@ -1343,28 +1366,38 @@ def build_ro_crate(ctx: ExportContext) -> bytes:
     metadata = _build_ro_crate_metadata(ctx, sorted(publication_files), artifact_descriptions,
                                         sorted(runner_locks), compiler_files)
 
-    files: Dict[str, bytes] = {}
+    files: Dict[str, Any] = {}
     files.update(publication_files)
     files.update(runner_locks)
     files.update({p: data for p, (data, _) in compiler_files.items()})
     for task in _iter_tasks(ctx):
         if task.input_qasm:
             files[_circuit_path(task)] = task.input_qasm.encode("utf-8")
-    files["results.json"] = json.dumps(results_data, indent=2, ensure_ascii=False).encode("utf-8")
+    files["results.json"] = _STREAMED
     files["provenance.json"] = json.dumps(provenance_data, indent=2, ensure_ascii=False).encode("utf-8")
     for task in _iter_tasks(ctx):
         for f in _dispatched_circuit_files(task) + _transpiled_circuit_files(task) + _compiled_files(task):
             files[f["path"]] = f["qasm"].encode("utf-8")
-    _describe_files(metadata, files)
+    results_digest = digest(encoded(results_json()))
+    _describe_files(metadata, files, {"results.json": results_digest})
 
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(fh, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr(
             f"{dir_name}/ro-crate-metadata.json",
             json.dumps(metadata, indent=2, ensure_ascii=False),
         )
         for rel_path, data in files.items():
-            zf.writestr(_member(dir_name, rel_path), data)
+            if data is _STREAMED:
+                _write_streamed(zf, _member(dir_name, rel_path), results_digest[1],
+                                encoded(results_json()))
+            else:
+                zf.writestr(_member(dir_name, rel_path), data)
 
-    logger.info(f"Built RO-Crate ZIP: {dir_name} ({buf.tell()} bytes)")
+    logger.info(f"Built RO-Crate ZIP: {dir_name} ({fh.tell()} bytes)")
+
+
+def build_ro_crate(ctx: ExportContext) -> bytes:
+    """The RO-Crate 1.1 ZIP bundle for ``ctx`` (``write_ro_crate``) as bytes."""
+    buf = io.BytesIO()
+    write_ro_crate(ctx, buf)
     return buf.getvalue()

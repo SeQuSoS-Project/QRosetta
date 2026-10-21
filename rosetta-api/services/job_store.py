@@ -1,8 +1,8 @@
 """Job table for ACTIVE_JOBS: each job's untruncated report (``full_results``) is kept in a
 file on local disk rather than in the worker's memory (in memory when the write fails), and
 deleted with the job. A batch writes each task's report to the job's directory as the task
-finishes (``spill_task_report``), so the batch report holds references that ``full_report``
-and ``write_report_json`` read back one task at a time."""
+finishes (``spill_task_report``), so the batch report holds references that ``full_report``,
+``report_with_task_loader`` and ``write_report_json`` read back one task at a time."""
 
 import asyncio
 import json
@@ -153,19 +153,52 @@ def full_report(job: dict, each_task=None):
     return report
 
 
-def report_json_file(job: dict):
-    """The job's full report as JSON (``write_report_json``) in an unnamed temporary file in
-    SPILL_DIR, positioned at its start. Raises FileNotFoundError when the job's files were
-    removed (the job expired)."""
+def report_or_task(job: dict, task):
+    """``(report, n_tasks)``. For a single-circuit job: its untruncated report (None when
+    ``task`` is set) and None. For a batch: the report of task ``task`` alone, the other
+    tasks not read (None when ``task`` is None or out of range), and the batch length.
+    Raises FileNotFoundError when the job's files were removed (the job expired)."""
+    report = _loaded(job.get("full_results"))
+    tasks = report.get("benchmark_summary") if isinstance(report, dict) else None
+    if not isinstance(tasks, list):
+        return (report if task is None else None), None
+    if task is None or not 0 <= task < len(tasks):
+        return None, len(tasks)
+    return _loaded(tasks[task]), len(tasks)
+
+
+def report_with_task_loader(job: dict, each_task):
+    """``(report, load)``: the job's untruncated report with each batch task's report passed
+    through ``each_task`` (read one at a time), and ``load(i)``, which reads task i's report
+    again; ``load`` is None when the report is not a batch. Raises FileNotFoundError when the
+    job's files were removed (the job expired), from ``load`` too."""
+    report = _loaded(job.get("full_results"))
+    if not (isinstance(report, dict) and isinstance(report.get("benchmark_summary"), list)):
+        return report, None
+    refs = list(report["benchmark_summary"])
+    tasks = [each_task(_loaded(task)) for task in refs]
+    return {**report, "benchmark_summary": tasks}, lambda i: _loaded(refs[i])
+
+
+def written_file(write):
+    """An unnamed temporary file in SPILL_DIR holding what ``write(fh)`` wrote, positioned at
+    its start; closed (and so removed) when ``write`` raises."""
     os.makedirs(SPILL_DIR, exist_ok=True)
     fh = tempfile.TemporaryFile(dir=SPILL_DIR)
     try:
-        write_report_json(job, fh)
+        write(fh)
         fh.seek(0)
         return fh
     except BaseException:
         fh.close()
         raise
+
+
+def report_json_file(job: dict):
+    """The job's full report as JSON (``write_report_json``) in an unnamed temporary file in
+    SPILL_DIR, positioned at its start. Raises FileNotFoundError when the job's files were
+    removed (the job expired)."""
+    return written_file(lambda fh: write_report_json(job, fh))
 
 
 def file_chunks(fh, size: int = 1 << 20):
