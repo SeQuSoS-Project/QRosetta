@@ -120,3 +120,16 @@ The gate exported 290 cases with both versions: 240 crates and 50 error response
 ## 2026-10-21: rendering a playlist circuit reads one task
 
 `POST /jobs/{id}/publication/render` and `GET /jobs/{id}/publication/artifacts`, given a `task`, used to load every spilled task of the playlist and keep one. They now read only that task. On a 25-task 18-qubit playlist, that is one task's report (about 78 MB with statevectors) instead of all 25. `tests/unit/test_render_task_loading.py` asserts that exactly one task file is read.
+
+## 2026-10-21: end to end on the live stack
+
+The same jobs were run through nginx on the local stack at `96ab2a8`, with 13 backends: cuQuantum was left out to keep the GPU idle. The API container ran with its compose quota of 0.5 CPU. The only change between the two sets of runs was the API image: tonight's (`96ab2a8`) or the previous one (`localhost/qsimulators-api:latest`, built from `4dc46aa`). Each case ran 3 times, using `e2e.py`. "After the last runner" is the time from the last runner's `process_finished_at` to the job reading completed, which is mostly the analysis.
+
+| Job (60-gate random circuit, 7 qubits) | Submit to done, before → after | After the last runner, before → after |
+|---|---|---|
+| Measured, 8200 shots, seed 5 | 77.4–78.3 s → 10.4–10.8 s | 73.1–73.8 s → 5.8–6.2 s |
+| Statevector | 7.2–7.3 s → 4.7–5.3 s | 3.7–3.9 s → 1.1–1.5 s |
+
+One more seeded measured job was run on each API (`save_report.py`). The runners' counts were identical, and so was every field of `divergence_report`.
+
+On the same stack, `tests/integration` passed 31 of 31 non-contract tests and, with cuQuantum removed from the contract list, 7 of 7 contract tests. Raw lines are in `results/live/`.
