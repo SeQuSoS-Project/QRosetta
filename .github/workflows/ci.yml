@@ -145,4 +145,5 @@ jobs:
         run: git ls-files | scripts/hooks/forbidden_paths.sh
 
       - name: No secrets anywhere in history
-        run: "$RUNNER_TEMP/gitleaks" git --config .gitleaks.toml --redact --no-banner .
+        run: |
+          "$RUNNER_TEMP/gitleaks" git --config .gitleaks.toml --redact --no-banner .
