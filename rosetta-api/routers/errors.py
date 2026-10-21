@@ -1,7 +1,8 @@
 """Exception handlers: every error response body is ``{"detail": ...}``.
 
 Validation errors list ``{loc, msg, type}`` per problem. Submitted values are never echoed
-back, so a rejected password or a non-finite number cannot reach the response.
+back, so a rejected password or a non-finite number cannot reach the response. A request
+body that cannot be decoded is a 422, like one that is not valid JSON.
 """
 
 import re
@@ -125,7 +126,24 @@ async def _validation_handler(request: Request, exc: RequestValidationError):
     return JSONResponse(status_code=422, content={"detail": validation_error_items(exc.errors())})
 
 
+_BODY_PARSE_DETAIL = "There was an error parsing the body"
+
+
+def _body_parse_item(exc: StarletteHTTPException):
+    """The 422 item for a body FastAPI could not read (it raises a 400 with this detail, for
+    example for JSON that is not UTF-8), or None for any other HTTP error."""
+    if exc.status_code != 400 or exc.detail != _BODY_PARSE_DETAIL or exc.__cause__ is None:
+        return None
+    if isinstance(exc.__cause__, UnicodeDecodeError):
+        return {"loc": ["body"], "msg": "JSON decode error: the body is not valid UTF-8",
+                "type": "json_invalid"}
+    return {"loc": ["body"], "msg": "The request body could not be parsed", "type": "body_invalid"}
+
+
 async def _http_exception_handler(request: Request, exc: StarletteHTTPException):
+    body_item = _body_parse_item(exc)
+    if body_item is not None:
+        return JSONResponse(status_code=422, content={"detail": [body_item]})
     detail = exc.detail
     if exc.status_code == 422 and not isinstance(detail, list):
         detail = [{"loc": [], "msg": str(detail), "type": "value_error"}]
