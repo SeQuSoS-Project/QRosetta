@@ -56,6 +56,15 @@ def responses(*codes) -> dict:
     return out
 
 
+def file_response(description: str, *media_types: str) -> dict:
+    """OpenAPI ``responses`` entry for a 200 whose body is a file of one of ``media_types``;
+    the route also sets a ``response_class`` without a media type, so application/json is
+    not listed beside them."""
+    return {200: {"description": description,
+                  "content": {media_type: {"schema": {"type": "string", "format": "binary"}}
+                              for media_type in media_types}}}
+
+
 def _depends_on(dependant, target) -> bool:
     return any(dep.call is target or _depends_on(dep, target) for dep in dependant.dependencies)
 

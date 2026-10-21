@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 import schemas
-from routers.errors import responses
+from routers.errors import file_response, responses
 from services.security import limiter
 from services.exporter import build_export_context, build_ro_crate, crate_name
 from services.publication.views import ParameterError
@@ -39,9 +39,12 @@ async def _crate_response(results: dict, payload, route: str) -> StreamingRespon
     )
 
 
-@router.post("/export", responses=responses(
+_CRATE = file_response("The RO-Crate ZIP, sent as an attachment.", "application/zip")
+
+
+@router.post("/export", response_class=StreamingResponse, responses={**_CRATE, **responses(
     (400, "No report given, a runner key of the wrong form, or an export option the report cannot take."),
-    (409, "The report's circuit never reached a runner (top-level error, no raw_results)."), 413, 422))
+    (409, "The report's circuit never reached a runner (top-level error, no raw_results)."), 413, 422)})
 @limiter.limit(settings.RUN_RATE_LIMIT)
 async def export_ro_crate(request: Request, payload: schemas.ExportRequest):
     """Build an RO-Crate ZIP from the report supplied in the request body (subject to the
@@ -55,8 +58,8 @@ async def export_ro_crate(request: Request, payload: schemas.ExportRequest):
     return await _crate_response(payload.results, payload, "client_request")
 
 
-@router.post("/jobs/{job_id}/export", responses=responses(
-    (400, "An export option the report cannot take (e.g. a publication view parameter)."), 404, 409, 422))
+@router.post("/jobs/{job_id}/export", response_class=StreamingResponse, responses={**_CRATE, **responses(
+    (400, "An export option the report cannot take (e.g. a publication view parameter)."), 404, 409, 422)})
 @limiter.limit(settings.RUN_RATE_LIMIT)
 async def export_job_ro_crate(request: Request, job_id: str,
                               payload: schemas.ExportPayload | None = None):

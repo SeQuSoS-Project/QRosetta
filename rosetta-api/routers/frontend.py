@@ -3,7 +3,7 @@
 from services.run_registry import GATE
 from fastapi import APIRouter, Request
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from config import settings
 from schemas import AgreementThresholds
 from schemas.auth import EMAIL_MAX_LENGTH, PASSWORD_MAX_BYTES, PASSWORD_MIN_CHARS
@@ -40,7 +40,7 @@ async def redoc(request: Request):
         redoc_favicon_url="data:,", with_google_fonts=False)
 
 
-@router.get("/")
+@router.get("/", response_class=HTMLResponse)
 async def read_index():
     """Serves the main HTML page."""
     return FileResponse(

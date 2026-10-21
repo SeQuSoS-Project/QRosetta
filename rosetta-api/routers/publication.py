@@ -11,7 +11,8 @@ from fastapi.responses import StreamingResponse
 import schemas
 from services.security import limiter
 from services.publication import ParameterError, list_artifacts, render_artifact
-from routers.errors import responses
+from services.publication.theme import MIME_TYPES
+from routers.errors import file_response, responses
 from services.job_manager import job_report_or_error
 from services.report_validation import reject_invalid_report
 from qrosetta_commons.helpers import get_logger
@@ -72,6 +73,8 @@ def _job_circuit_report(job_id: str, task: Optional[int]) -> dict:
     return report
 
 
+_RENDERED = file_response("The rendered figure or table, in the media type of its format.",
+                          *sorted(set(MIME_TYPES.values())))
 _UNKNOWN_ARTIFACT = (404, "An artifact this report does not offer; the detail lists the ids it does.")
 _JOB_404 = (404, "Unknown or expired job id, a task index the playlist does not have, or an artifact the report does not offer (the detail lists the ids it does).")
 _JOB_400 = (400, "A playlist job without task, or a format or parameter the artifact does not take.")
@@ -102,9 +105,9 @@ async def job_publication_artifacts(request: Request, job_id: str,
     return await asyncio.to_thread(_catalog, report)
 
 
-@router.post("/publication/render", responses=responses(
+@router.post("/publication/render", response_class=StreamingResponse, responses={**_RENDERED, **responses(
     (400, "No report given, a runner key of the wrong form, or a format or parameter the artifact does not take."),
-    _UNKNOWN_ARTIFACT))
+    _UNKNOWN_ARTIFACT)})
 @limiter.limit("120/minute")
 async def publication_render(request: Request, payload: schemas.PublicationRenderRequest):
     """Render a single publication figure (svg/png/pdf) or table with its view's ``params``
@@ -119,7 +122,8 @@ async def publication_render(request: Request, payload: schemas.PublicationRende
                                   payload.scale, payload.params)
 
 
-@router.post("/jobs/{job_id}/publication/render", responses=responses(_JOB_400, _JOB_404, _JOB_409))
+@router.post("/jobs/{job_id}/publication/render", response_class=StreamingResponse,
+             responses={**_RENDERED, **responses(_JOB_400, _JOB_404, _JOB_409)})
 @limiter.limit("120/minute")
 async def job_publication_render(request: Request, job_id: str,
                                  payload: schemas.PublicationJobRenderRequest):

@@ -14,7 +14,7 @@ from services.exporter import build_export_context, build_ro_crate, crate_name
 from services.publication.views import ParameterError
 from services.job_manager import ACTIVE_JOBS, job_with_report_or_error
 from services.report_filters import remove_statevectors
-from routers.errors import responses
+from routers.errors import file_response, responses
 from services.validator import validate_request
 from schemas.reports import SavedRunReport
 from qrosetta_commons.helpers import get_logger
@@ -265,9 +265,10 @@ def batch_delete_runs(
             "deleted": deleted, "not_found": not_found}
 
 
-@router.post("/runs/{run_id}/export", responses=responses(
-    (400, "An export option the report cannot take (e.g. a publication view parameter)."),
-    (404, _RUN_NOT_FOUND_DOC)))
+@router.post("/runs/{run_id}/export", response_class=StreamingResponse, responses={
+    **file_response("The RO-Crate ZIP, sent as an attachment.", "application/zip"), **responses(
+        (400, "An export option the report cannot take (e.g. a publication view parameter)."),
+        (404, _RUN_NOT_FOUND_DOC))})
 def export_run_as_ro_crate(
     run_id: str,
     payload: schemas.ExportPayload | None = None,
