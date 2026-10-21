@@ -116,3 +116,7 @@ The table shows peak RSS growth during the export: VmHWM after `clear_refs`, min
 Before this change, a 25-task 18-qubit playlist could not be exported within the API's 2 GiB limit. It now needs about one task's worth of memory.
 
 The gate exported 290 cases with both versions: 240 crates and 50 error responses, built from 8 jobs produced by the real workers. Each job was exported from 5 report sources with several option sets. ZIP member names and order, member bytes and ZipInfo fields all matched, with date_time excluded: 14,624 members, 0 differences. The gate was run again after merging the fuzzing fixes, with the same result.
+
+## 2026-10-21: rendering a playlist circuit reads one task
+
+`POST /jobs/{id}/publication/render` and `GET /jobs/{id}/publication/artifacts`, given a `task`, used to load every spilled task of the playlist and keep one. They now read only that task. On a 25-task 18-qubit playlist, that is one task's report (about 78 MB with statevectors) instead of all 25. `tests/unit/test_render_task_loading.py` asserts that exactly one task file is read.
