@@ -1,6 +1,6 @@
 """Saved-circuit and run-history routes, all scoped to the authenticated user."""
 
-from services.report_validation import reject_invalid_report
+from services.report_validation import REPORT_SHAPE_ERRORS, reject_invalid_report, unreadable_report
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 from typing import List
@@ -14,7 +14,7 @@ from services.exporter import build_export_context, build_ro_crate, crate_name
 from services.publication.views import ParameterError
 from services.job_manager import job_with_report_or_error
 from services.report_filters import remove_statevectors
-from routers.errors import responses
+from routers.errors import file_response, responses
 from services.validator import validate_request
 from schemas.reports import SavedRunReport
 from qrosetta_commons.helpers import get_logger
@@ -275,9 +275,11 @@ def batch_delete_runs(
             "deleted": deleted, "not_found": not_found}
 
 
-@router.post("/runs/{run_id}/export", responses=responses(
-    (400, "An export option the report cannot take (e.g. a publication view parameter)."),
-    (404, _RUN_NOT_FOUND_DOC)))
+@router.post("/runs/{run_id}/export", response_class=StreamingResponse, responses={
+    **file_response("The RO-Crate ZIP, sent as an attachment.", "application/zip"), **responses(
+        (400, "An export option the report cannot take (e.g. a publication view parameter), or a "
+              "field of an uploaded report that holds a value of the wrong type or shape."),
+        (404, _RUN_NOT_FOUND_DOC))})
 def export_run_as_ro_crate(
     run_id: str,
     payload: schemas.ExportPayload | None = None,
@@ -296,13 +298,16 @@ def export_run_as_ro_crate(
         logger.error(f"Failed to fetch run report for export, run_id={run_id}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch run history for export")
 
-    ctx = build_export_context(report_data, payload, "saved_run")
-
     try:
+        ctx = build_export_context(report_data, payload, "saved_run")
         zip_bytes = build_ro_crate(ctx)
     except ParameterError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    except Exception:
+    except Exception as exc:
+        if (report_data.get("saved_from") == history_service.SAVED_FROM_UPLOAD
+                and isinstance(exc, REPORT_SHAPE_ERRORS)):
+            logger.warning(f"Could not export uploaded run_id={run_id}", exc_info=True)
+            raise unreadable_report(exc)
         logger.error(f"RO-Crate export failed for run_id={run_id}", exc_info=True)
         raise HTTPException(status_code=500, detail="Export failed")
 
