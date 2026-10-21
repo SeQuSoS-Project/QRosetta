@@ -160,3 +160,19 @@ def test_a_large_preparation_keeps_every_loop_step_within_budget(fleet):
     assert len(report["raw_results"]) == len(RUNNERS), report.get("error")
     assert not slow, slow
     assert gap < BUDGET_SEC, f"event loop blocked for {gap:.2f} s"
+
+
+def test_tket_parameter_note_runs_off_the_loop(fleet, monkeypatch):
+    """The note scans the whole dispatched text (0.4 s on a 3 MB circuit at one CPU)."""
+    import time as _time
+    real = job_manager.tket_parameter_note
+
+    def slow(*args, **kwargs):
+        _time.sleep(0.5)
+        return real(*args, **kwargs)
+    monkeypatch.setattr(job_manager, "tket_parameter_note", slow)
+    monkeypatch.setattr(job_manager, "_TKET_RUNNERS", frozenset(RUNNERS))
+    report, slow_steps = _slow_steps(job_manager.run_single_circuit_comparison(
+        _circuit(n_gates=50), target_simulators=RUNNERS))
+    assert len(report["raw_results"]) == len(RUNNERS)
+    assert not slow_steps, slow_steps
