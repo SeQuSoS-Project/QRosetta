@@ -36,3 +36,19 @@ systemd-run --user --scope -p CPUQuota=100% -p MemoryMax=1G \
 ```
 
 On Roihu, run the same check inside an `srun` step. Slurm may limit a step to a set of CPUs (a cpuset) rather than a quota. Such a run would show no quota, and its affinity list (`cpu_environment.cpu_affinity`) would show the allowed CPUs.
+
+## Running one job (`run_runner.sh`)
+
+`run_runner.sh <image.sif> <run|run_measured|compile> <payload.json> <result.json>` runs one job of a runner or compiler SIF the way compose runs its container:
+- the working directory is `/home/appuser/app`;
+- it passes the compose environment (the five thread pins, `RUNNER_MAX_CONCURRENT=1`, and the qubit caps);
+- it uses `--containall --cleanenv`;
+- the payload directory is mounted read-only and the result directory writable.
+
+`run_runner.sh <image.sif> --self-test` runs the image's probes. Never use `apptainer run`, because it starts the HTTP server.
+
+I tested it on 2026-10-21 on the local qulacs SIF, inside a `CPUQuota=100% MemoryMax=1G` systemd scope. `QR_EXTRA_BINDS` mounted this branch's `qrosetta_commons` over the image's copy, because the SIF predates `--payload-file`.
+
+Both a Bell statevector job and a 1000-shot measured job, seed 7, wrote their results to files. Each result recorded the thread pins, `cpu_quota_cores: 1.0`, `memory_limit_mib: 1024`, `memory_method: vmhwm` and the image commit.
+
+Inside the job's cgroup, container CPU (`simulation_cgroup_cpu_time_sec`) was about 1 ms higher than process CPU. Apptainer's own helper processes share the job's cgroup, and their CPU time is counted there.
