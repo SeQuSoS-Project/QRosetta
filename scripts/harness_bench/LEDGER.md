@@ -96,3 +96,23 @@ All runs below were on the i9-13950HX host with podman 5.8.2, in a throwaway wor
 In that last run TorchQuantum took 171 s, Quartz 164 s and cuQuantum 118 s.
 
 I also checked reproducibility. A full reinstall from the lock files in that cold run gave the same `pip freeze` as the existing image for all 19 images that have pip, so the locks reproduce each specimen's Python environment.
+
+## 2026-10-21, de91904: RO-Crate export streamed from the spilled job
+
+`POST /jobs/{id}/export` used to load every batch task into one dict, deep-copy it, build results.json as one string and assemble the ZIP in memory. It now reads one task at a time from the spill files, writes results.json in chunks and streams the ZIP from a temporary file.
+
+The table shows peak RSS growth during the export: VmHWM after `clear_refs`, minus the baseline. It was measured on synthetic tasks of 14 backends × 2^18 amplitudes, about 78 MB of base64 each.
+
+| Export | Before | After |
+|---|---|---|
+| 1 task, statevectors off | 88 MiB, 0.1 s | 88 MiB, 0.1 s |
+| 1 task, statevectors on | 307 MiB, 7.5 s | 104 MiB, 1.2 s |
+| 3 tasks, statevectors on | 914 MiB, 43 s | 111 MiB, 3.6 s |
+| 6 tasks, statevectors off | 461 MiB | 89 MiB |
+| 6 tasks, statevectors on | 1,575 MiB, 134 s | 106 MiB, 7.1 s |
+| 12 tasks, statevectors on | not run (about 3.1 GiB, extrapolated) | 112 MiB, 14 s |
+| 6 measured tasks (20 bits, 14 × 8200 shots) | 198–213 MiB | 22 MiB |
+
+Before this change, a 25-task 18-qubit playlist could not be exported within the API's 2 GiB limit. It now needs about one task's worth of memory.
+
+The gate exported 290 cases with both versions: 240 crates and 50 error responses, built from 8 jobs produced by the real workers. Each job was exported from 5 report sources with several option sets. ZIP member names and order, member bytes and ZipInfo fields all matched, with date_time excluded: 14,624 members, 0 differences. The gate was run again after merging the fuzzing fixes, with the same result.
