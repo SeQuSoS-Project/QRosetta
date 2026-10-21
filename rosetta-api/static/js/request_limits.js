@@ -13,7 +13,7 @@ const _REFUSED_IN_NAMES = [
 ];
 /** Invisible characters allowed in names (joiners, variation selectors, tags); mirror
  * schemas/benchmark.py _INVISIBLE_ALLOWED. */
-const _INVISIBLE_ALLOWED = [[0x200C, 0x200D], [0xFE00, 0xFE0F], [0xE0020, 0xE007F], [0xE0100, 0xE01EF]];
+const _INVISIBLE_ALLOWED = [[0x180F, 0x180F], [0x200C, 0x200D], [0xFE00, 0xFE0F], [0xE0020, 0xE007F], [0xE0100, 0xE01EF]];
 const _SPACE = /^\s$/u;
 
 /** @param {string} ch @param {number[][]} ranges */
