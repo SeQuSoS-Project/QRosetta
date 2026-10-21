@@ -1,7 +1,8 @@
 """A client-supplied report whose fields hold values of the wrong type is a 400 on the
 publication, export and saved-run export routes; the server's own copy of a job keeps
-its 500."""
+its 500. A report holding NaN or Infinity is refused before it is stored or read."""
 import copy
+import json
 
 import pytest
 from fastapi import FastAPI
@@ -112,3 +113,34 @@ def test_server_copy_of_a_job_keeps_its_500(client):
         assert r.status_code == 500
     finally:
         job_manager.ACTIVE_JOBS.pop(job_id, None)
+
+
+def _post_raw(client, path, body, headers=None):
+    return client.post(path, content=json.dumps(body, allow_nan=True).encode(),
+                       headers={"Content-Type": "application/json", **(headers or {})})
+
+
+def _nan_time():
+    report = copy.deepcopy(MEASURED)
+    report["performance_report"]["ranking"][1]["simulation_time_sec"] = float("nan")
+    return report
+
+
+@pytest.mark.parametrize("path", ["/export", "/publication/artifacts"])
+def test_non_finite_numbers_in_a_supplied_report_are_400(client, path):
+    r = _post_raw(client, path, {"results": _nan_time()})
+    assert r.status_code == 400
+    assert "performance_report.ranking[1].simulation_time_sec is NaN or infinite" in r.json()["detail"]
+    inf = {**copy.deepcopy(MEASURED), "n_shots": float("inf")}
+    assert "n_shots is NaN or infinite" in _post_raw(client, path, {"results": inf}).json()["detail"]
+
+
+def test_a_report_with_nan_is_not_saved(client):
+    client.post("/auth/register", json={"email": "nan@example.org", "password": "testpass123"})
+    token = client.post("/auth/token", data={"username": "nan@example.org",
+                                             "password": "testpass123"}).json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    r = _post_raw(client, "/history/runs", _nan_time(), headers)
+    assert r.status_code == 400 and "NaN or infinite" in r.json()["detail"]
+    listed = client.get("/history/runs", headers=headers)
+    assert listed.status_code == 200 and listed.json() == []
