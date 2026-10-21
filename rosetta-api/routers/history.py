@@ -12,7 +12,7 @@ from db.database import get_db
 from services.security import get_current_user
 from services.exporter import build_export_context, build_ro_crate, crate_name
 from services.publication.views import ParameterError
-from services.job_manager import ACTIVE_JOBS, job_with_report_or_error
+from services.job_manager import job_with_report_or_error
 from services.report_filters import remove_statevectors
 from routers.errors import responses
 from services.validator import validate_request
@@ -21,6 +21,7 @@ from qrosetta_commons.helpers import get_logger
 from fastapi.responses import StreamingResponse
 import io
 import threading
+from contextlib import contextmanager
 
 logger = get_logger("rosetta-history")
 
@@ -33,12 +34,21 @@ _SAVE_LOCKS: dict = {}
 _SAVE_LOCKS_GUARD = threading.Lock()
 
 
-def _job_save_lock(job_id: str) -> threading.Lock:
-    """One lock per job id for from_job saves; locks of evicted jobs are dropped."""
+@contextmanager
+def _job_save_lock(job_id: str):
+    """Hold the from_job save lock of ``job_id``: one lock per job id, kept while any save of
+    that job holds or waits for it."""
     with _SAVE_LOCKS_GUARD:
-        for stale in [jid for jid in _SAVE_LOCKS if jid not in ACTIVE_JOBS]:
-            _SAVE_LOCKS.pop(stale, None)
-        return _SAVE_LOCKS.setdefault(job_id, threading.Lock())
+        entry = _SAVE_LOCKS.setdefault(job_id, [threading.Lock(), 0])
+        entry[1] += 1
+    try:
+        with entry[0]:
+            yield
+    finally:
+        with _SAVE_LOCKS_GUARD:
+            entry[1] -= 1
+            if entry[1] == 0:
+                _SAVE_LOCKS.pop(job_id, None)
 
 
 _CIRCUIT_NOT_FOUND = "Saved circuit not found"
