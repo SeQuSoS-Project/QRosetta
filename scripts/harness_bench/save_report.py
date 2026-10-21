@@ -2,6 +2,7 @@
 
 Usage: python save_report.py <base_url> <out.json>
 """
+import json, sys, time, random
 import httpx
 BASE, out = sys.argv[1], sys.argv[2]
 rng = random.Random(11); n = 7
