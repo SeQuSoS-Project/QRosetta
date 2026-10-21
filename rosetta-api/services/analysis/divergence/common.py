@@ -10,8 +10,8 @@ STAT_TEST_ALPHA = 0.05
 STAT_TEST_TARGET_POWER = 0.8
 STAT_TEST_DELTA_TV = 0.05
 
-# The permutation search is n! transposes over a 2^n vector; over a 91-pair comparison it
-# costs 2.8s at 6 qubits, 17s at 7 and 141s at 8.
+# Every pair is scored over n! - 2 permutations of its bits; over a 91-pair comparison (14 backends)
+# a measured report takes 0.76 s at 6 bits and 2.9 s at 7, a statevector report 0.07 s and 0.47 s.
 MAX_EXHAUSTIVE_QUBIT_PERMUTATION_QUBITS = 7
 
 DEFAULT_FIDELITY_TOLERANCE = 1e-5
