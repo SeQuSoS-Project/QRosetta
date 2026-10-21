@@ -45,7 +45,7 @@ jobs:
 
       - name: Run unit tests
         working-directory: rosetta-api
-        run: python -m pytest tests/unit -q
+        run: python -m pytest tests/unit -q -n auto
 
   static-checks:
     name: static checks
