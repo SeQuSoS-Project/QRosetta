@@ -34,7 +34,7 @@ scripts/roihu/run_runner.sh qulacs.sif --self-test
 ## 3. The CPU probe inside a Slurm step
 
 ```bash
-srun -n1 -c1 --mem-per-cpu=1G apptainer exec --containall -B $PWD:/c qulacs.sif \
+srun -n1 -c1 --mem-per-cpu=1G apptainer exec --containall -B /sys/fs/cgroup:/sys/fs/cgroup:ro -B $PWD:/c qulacs.sif \
   python /c/scripts/roihu/cgroup_check.py /c/<old>/cpu.py /c/shared/qrosetta_commons/cpu.py
 ```
 
