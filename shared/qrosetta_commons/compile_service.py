@@ -13,7 +13,7 @@ from qrosetta_commons.cpu import apply_cpu_affinity
 from qrosetta_commons.helpers import (
     GATE_METRICS_FROM_QASM, IMAGE_GIT_SHA, MAX_QUBITS_COMPILE, ExecutionSlots, _stamp_code_sha,
     check_qubits_limit, count_qasm_gates_and_depth, count_qasm_gates_by_name,
-    get_num_qubits_from_qasm, get_sdk_versions, run_cli_job,
+    add_file_arguments, batch_environment, get_num_qubits_from_qasm, get_sdk_versions, run_cli_job,
 )
 
 COMPILE_MAX_QUBITS = MAX_QUBITS_COMPILE
@@ -189,6 +189,7 @@ def run_compiler_cli_main(app, process_compile, cli_name: str, levels=(), equiva
     parser.add_argument("--self-test", action="store_true",
                         help="Compile the probe circuits at every level and check each output")
     parser.add_argument("--payload", default=None, help="JSON payload string")
+    add_file_arguments(parser)
     parser.add_argument("--s3-job-id", default=None,
                         help="S3 job ID: upload the result to jobs/completed/<id>.json")
     args = parser.parse_args()
@@ -204,6 +205,9 @@ def run_compiler_cli_main(app, process_compile, cli_name: str, levels=(), equiva
         if isinstance(result, dict):
             result["queue_wait_sec"] = 0.0
             _stamp_code_sha(result, process_compile)
+            batch = batch_environment()
+            if batch:
+                result.setdefault("batch_environment", batch)
         return result
 
     run_cli_job(_process, args, parser)

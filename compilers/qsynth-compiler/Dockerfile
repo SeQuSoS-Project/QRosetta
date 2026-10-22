@@ -16,7 +16,7 @@ COPY compilers/qsynth-compiler/main.py .
 
 RUN chown -R appuser:appuser /home/appuser/app && \
     chgrp -R 0 /home/appuser && \
-    chmod -R g=u /home/appuser
+    chmod -R g=u,o=rX /home/appuser
 ENV HOME=/home/appuser
 ARG QROSETTA_GIT_SHA=unknown
 ENV QROSETTA_IMAGE_GIT_SHA=${QROSETTA_GIT_SHA}

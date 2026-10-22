@@ -23,7 +23,7 @@ RUN mkdir -p /home/appuser/app/data
 # Group 0 with g=u lets OpenShift's arbitrary UID write here.
 RUN chown -R appuser:appuser /home/appuser/app && \
     chgrp -R 0 /home/appuser && \
-    chmod -R g=u /home/appuser
+    chmod -R g=u,o=rX /home/appuser
 ENV HOME=/home/appuser
 ENV OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
 ARG QROSETTA_GIT_SHA=unknown
