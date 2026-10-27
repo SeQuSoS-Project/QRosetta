@@ -672,6 +672,12 @@ Compilers are separate from the simulators: their output is a circuit, which is 
 
 ## Interface and API behaviour
 
+### Outcome names and roles
+
+*Rule.* Every summary (`GET /jobs/{id}/summary`, `POST /summary`, saved runs) counts `outcomes`: each pair under its `pair_verdict` value, `no_comparison` (1 when no pair was compared) and `runs_without_output` (runs whose status is not ok, plus 1 for a circuit that never reached a runner); a playlist's are sums over its tasks. `outcome_roles` gives each name's role (difference, not_established, runs_without_output, agreement), published also as `GET /config` `summary_outcomes` with the analysis version. `qrosetta run --fail-on` maps a name to its exit code by role (3, 8, 4) and holds no list of names ([`rosetta-api/tests/unit/test_summary_outcomes.py`](rosetta-api/tests/unit/test_summary_outcomes.py)).
+
+*Evidence (2026-10-27).* CLI spec v3 critique INT-M8: a final line reading "0 differ" when nothing was compared reads as agreement. A CLI copy of the verdict-to-exit mapping would be a second implementation of part of the rule, which is computed only in `verdicts.py`.
+
 ### Runner status label
 
 *Rule.* The live Status cell for a dispatched run reads SENT (tooltip: includes any wait behind another job, recorded as queue_wait_sec).
