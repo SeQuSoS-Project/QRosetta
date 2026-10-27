@@ -277,13 +277,16 @@ _SIMULATE_DESCRIPTION = (
 )
 
 
+COMPILE_ONLY_EMPTY_FIELDS = ("runner_config", "runner_phases", "target_simulators")
+
+
 def _check_compile_only(payload):
     """A compile-only request names compilers and no simulator settings."""
     if payload.simulate:
         return payload
     if not payload.compilers:
         raise ValueError("simulate=false needs at least one compile-only service in compilers")
-    named = [f for f in ("runner_config", "runner_phases", "target_simulators") if getattr(payload, f)]
+    named = [f for f in COMPILE_ONLY_EMPTY_FIELDS if getattr(payload, f)]
     if named:
         raise ValueError(f"simulate=false runs no simulator; leave {', '.join(named)} empty")
     return payload
@@ -511,6 +514,10 @@ class PublicationJobRenderRequest(_Request):
     params: Dict[str, Any] = Field(default_factory=dict, description="Parameters of the artifact's view; omitted ones take their defaults.")
     task: Optional[_bounded_int(ge=0)] = Field(None, description="For a playlist job: the index of the circuit in benchmark_summary. Omit for a single-circuit job.")
     circuit_name: Optional[Label] = Field(None, description="Circuit or run name for figure titles and captions, as the app shows it. The server's copy of a single-circuit job records no name; this one is used in its place.")
+
+class SummaryRequest(_Request):
+    """Request body for POST /summary."""
+    results: Dict[str, Any] = Field(..., description="A single-circuit or playlist report, as GET /jobs/{job_id}/report returns it. The pair verdicts read divergence_report (pairwise_agreement, simulators, ordering_map), raw_results (simulator, dispatch_status, error) and n_shots; other fields may be left out.")
 
 class PublicationArtifactsRequest(_Request):
     """Request body for POST /publication/artifacts."""

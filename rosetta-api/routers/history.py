@@ -16,7 +16,8 @@ from services.job_manager import job_with_report_or_error
 from services.report_filters import remove_statevectors
 from routers.errors import file_response, responses
 from services.validator import validate_request
-from schemas.reports import SavedRunReport
+from schemas.reports import ReportSummary, SavedRunReport
+from services.report_summary import report_summary, summary_problems
 from qrosetta_commons.helpers import get_logger
 from fastapi.responses import StreamingResponse
 import io
@@ -235,6 +236,36 @@ def get_run_history_details(
     except Exception:
         logger.error(f"Failed to fetch run report for run_id={run_id}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch run history details")
+
+
+@router.get("/runs/{run_id}/summary", responses={
+    200: {"model": ReportSummary, "description": "The verdicts: a single-circuit report's at the top level, a playlist's per task in benchmark_summary."},
+    **responses((400, "The stored report's pair records cannot be read: a pair that is not an object, a simulator key of the wrong form, or a field of the wrong type or shape."),
+                (404, _RUN_NOT_FOUND_DOC))})
+def get_run_summary(
+    run_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """Each pair's verdict and the per-backend counts of one saved run (a playlist: per task),
+    computed from the stored report with this server's rule (analysis_version), so a run saved
+    before reports recorded pair_verdict gets the verdicts a new one records. 404 if it does
+    not exist or does not belong to the current user."""
+    try:
+        report = history_service.get_run_report_with_metadata(db, current_user.id, run_id)
+    except history_service.RunNotFound:
+        raise HTTPException(status_code=404, detail=_RUN_NOT_FOUND)
+    except Exception:
+        logger.error(f"Failed to fetch run report for run_id={run_id}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch run history details")
+    problems = summary_problems(report)
+    if problems:
+        raise HTTPException(status_code=400, detail="Invalid report: " + "; ".join(problems) + ".")
+    try:
+        return report_summary(report, "saved_run", report.get("saved_from"))
+    except REPORT_SHAPE_ERRORS as exc:
+        logger.warning(f"Could not summarise run_id={run_id}", exc_info=True)
+        raise unreadable_report(exc)
 
 
 @router.patch("/runs/{run_id}", response_model=schemas.RunHistoryResponse,

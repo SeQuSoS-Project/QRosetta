@@ -27,7 +27,33 @@ const EXECUTION_MODE_LABELS = {
     kubernetes: 'This server: Kubernetes Jobs',
 };
 
-/** Execution-target menu, timeout and shots bounds, and threshold defaults from GET /config. */
+/** Give an input `value` as its default, and as its value while the user has not changed it. */
+function _setDefaultValue(input, value) {
+    if (!input) return;
+    if (input.value === input.defaultValue) input.value = value;
+    input.defaultValue = value;
+}
+
+/** Give a checkbox `checked` as its default, and as its state while the user has not changed it. */
+function _setDefaultChecked(box, checked) {
+    if (!box) return;
+    if (box.checked === box.defaultChecked) box.checked = checked;
+    box.defaultChecked = checked;
+}
+
+/** Tick the radio of group `name` whose value is `value` by default, and now while the user has not changed the choice. */
+function _setDefaultRadio(name, value) {
+    const radios = /** @type {HTMLInputElement[]} */ (Array.from(document.querySelectorAll(`input[name="${name}"]`)));
+    if (!radios.some(r => r.value === value)) return;
+    const untouched = radios.every(r => r.checked === r.defaultChecked);
+    radios.forEach(r => {
+        r.defaultChecked = r.value === value;
+        if (untouched) r.checked = r.value === value;
+    });
+}
+
+/** Execution-target menu, timeout and shots bounds, run-setting defaults (request_defaults)
+ * and threshold defaults from GET /config. */
 function _applyServerConfig(config) {
     const mode = getState().executionMode;
     const select = /** @type {HTMLSelectElement|null} */ (document.getElementById('execution-target-select'));
@@ -47,10 +73,7 @@ function _applyServerConfig(config) {
         tInput.min = String(tMin);
         tInput.max = String(tMax);
         const dflt = getState().timeoutDefault;
-        if (tInput.value === tInput.defaultValue && Number.isFinite(dflt)) {
-            tInput.value = String(dflt);
-            tInput.defaultValue = String(dflt);
-        }
+        if (Number.isFinite(dflt)) _setDefaultValue(tInput, String(dflt));
         const current = Number(tInput.value);
         if (!Number.isFinite(current) || current > tMax) tInput.value = String(tMax);
     }
@@ -63,12 +86,19 @@ function _applyServerConfig(config) {
         pwHint.textContent = `At least ${min} characters and at most ${max} bytes: up to ${max} plain ASCII characters, fewer with accented letters or symbols, which take 2 to 4 bytes each.`;
     }
     const rInput = /** @type {HTMLInputElement|null} */ (document.getElementById('timing-repeats-input'));
-    if (rInput) rInput.max = String(getState().timingRepeatsMax);
-    if (!getState().exclusiveEnabled) {
-        const exclusiveBox = /** @type {HTMLInputElement|null} */ (document.getElementById('exclusive-checkbox'));
+    if (rInput) {
+        rInput.max = String(getState().timingRepeatsMax);
+        _setDefaultValue(rInput, String(getState().defaultTimingRepeats));
+    }
+    const exclusiveBox = /** @type {HTMLInputElement|null} */ (document.getElementById('exclusive-checkbox'));
+    if (getState().exclusiveEnabled) {
+        _setDefaultChecked(exclusiveBox, getState().defaultExclusive);
+    } else {
         if (exclusiveBox) exclusiveBox.checked = false;
         document.getElementById('exclusive-container')?.classList.add('hidden');
     }
+    _setDefaultRadio('preprocessing', getState().defaultPreprocessing);
+    _setDefaultChecked(/** @type {HTMLInputElement|null} */ (document.getElementById('bypass-limits-checkbox')), getState().defaultBypassLimits);
     const tHelp = document.getElementById('timeout-help');
     if (tHelp) {
         tHelp.textContent = `Covers process start, the warm-up run and every timed run. Allowed: ${tMin}–${tMax} s.`
@@ -83,14 +113,11 @@ function _applyServerConfig(config) {
     if (shotsEl) {
         shotsEl.min = String(sMin);
         if (sMax !== null && sMax !== undefined) shotsEl.max = String(sMax);
-        const dflt = config?.default_n_shots ?? config?.limits?.default_n_shots;
-        if (typeof dflt === 'number' && Number.isInteger(dflt) && shotsEl.value === shotsEl.defaultValue) {
-            shotsEl.value = String(dflt);
-            shotsEl.defaultValue = String(dflt);
-        }
+        const dflt = getState().defaultShots;
+        if (Number.isInteger(dflt)) _setDefaultValue(shotsEl, String(dflt));
     }
 
-    if (config.agreement_threshold_defaults) resetAgreementThresholds();
+    if (getState().thresholdDefaults) resetAgreementThresholds();
 }
 
 let _editorSaveTimer = null;

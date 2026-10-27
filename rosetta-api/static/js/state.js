@@ -39,6 +39,12 @@ export const Store = {
         timeoutMax: 300,
         timeoutDefault: 60,
         timingRepeatsMax: 10,
+        defaultOptimizationLevel: 0,
+        defaultTimingRepeats: 1,
+        defaultExclusive: false,
+        defaultPreprocessing: 'on',
+        defaultBypassLimits: false,
+        defaultShots: 8200,
         exclusiveEnabled: true,
         shotsMin: 1,
         shotsMax: null,
@@ -92,7 +98,20 @@ export const Store = {
                 this.state.timeoutMax = num(limits.timeout_max) ?? this.state.timeoutMax;
                 this.state.shotsMin = num(limits.shots_min) ?? this.state.shotsMin;
                 this.state.shotsMax = num(limits.shots_max) ?? this.state.shotsMax;
-                this.state.timeoutDefault = num(limits.timeout_default) ?? this.state.timeoutDefault;
+                const requests = payload.request_defaults?.requests || {};
+                const filled = (kind, field) => {
+                    const entry = requests[kind]?.fields?.[field];
+                    return entry && entry.server_fills ? entry.default : undefined;
+                };
+                const bool = v => (typeof v === 'boolean' ? v : undefined);
+                this.state.timeoutDefault = num(filled('compare', 'timeout_seconds')) ?? num(limits.timeout_default) ?? this.state.timeoutDefault;
+                this.state.defaultOptimizationLevel = num(filled('compare', 'optimization_level')) ?? this.state.defaultOptimizationLevel;
+                this.state.defaultTimingRepeats = num(filled('compare', 'timing_repeats')) ?? this.state.defaultTimingRepeats;
+                this.state.defaultExclusive = bool(filled('compare', 'exclusive')) ?? this.state.defaultExclusive;
+                const preprocessing = bool(filled('compare', 'apply_preprocessing'));
+                if (preprocessing !== undefined) this.state.defaultPreprocessing = preprocessing ? 'on' : 'off';
+                this.state.defaultBypassLimits = bool(filled('compare', 'bypass_limits')) ?? this.state.defaultBypassLimits;
+                this.state.defaultShots = num(filled('compare_measured', 'n_shots')) ?? num(payload.default_n_shots) ?? this.state.defaultShots;
                 this.state.timingRepeatsMax = num(limits.timing_repeats_max) ?? this.state.timingRepeatsMax;
                 this.state.maxRequestBytes = num(limits.max_request_bytes) ?? this.state.maxRequestBytes;
                 this.state.maxQasmSize = num(payload.max_qasm_size) ?? this.state.maxQasmSize;
@@ -114,9 +133,8 @@ export const Store = {
                 this.state.passwordMinChars = num(limits.password_min_chars) ?? this.state.passwordMinChars;
                 this.state.passwordMaxBytes = num(limits.password_max_bytes) ?? this.state.passwordMaxBytes;
                 if (typeof payload.exclusive?.enabled === 'boolean') this.state.exclusiveEnabled = payload.exclusive.enabled;
-                if (payload.agreement_threshold_defaults && typeof payload.agreement_threshold_defaults === 'object') {
-                    this.state.thresholdDefaults = { ...payload.agreement_threshold_defaults };
-                }
+                const thresholds = payload.request_defaults?.agreement_thresholds ?? payload.agreement_threshold_defaults;
+                if (thresholds && typeof thresholds === 'object') this.state.thresholdDefaults = { ...thresholds };
                 if (payload.max_runs_per_runner !== undefined) this.state.maxRunsPerRunner = payload.max_runs_per_runner;
                 if (payload.max_total_runs !== undefined) this.state.maxTotalRuns = payload.max_total_runs;
                 if (payload.execution_mode !== undefined) this.state.executionMode = payload.execution_mode;

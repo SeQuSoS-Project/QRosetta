@@ -34,6 +34,56 @@ class RunnerResult(RunnerPerformanceMetrics):
     timing_caveats: Optional[List[Dict[str, Any]]] = Field(None, description="Conditions that limit how far this run's timings compare: {code, text, fields, detail?}.")
 
 
+class PairVerdict(_Open):
+    """``pair_verdict`` of a pair record: the verdict every view of the report shows for it."""
+    verdict: Literal["not_comparable", "differs_by_only", "differs", "inconclusive", "agrees", "bit_order", "unassessed"] = Field(..., description="The pair's class, decided in this order: not compared; differs only under Benjamini–Yekutieli (measured; not under Holm, no single-bit marginal differs); differs (statevector: residual, only after an undeclared qubit permutation, or only in the basis the declared orderings do not imply; measured: distinguishable or a single-bit marginal differs); inconclusive (measured: inconclusive_low_shots or ambiguous); agrees; agrees after the bit reversal the declared orderings imply (statevector); no verdict recorded.")
+    differs: bool = Field(..., description="The pair is a disagreement (badges, Agreement tab, Summary).")
+    differs_by_only: bool = Field(..., description="Measured: its only evidence is significance under Benjamini–Yekutieli, not under Holm.")
+    differs_full: bool = Field(..., description="Measured: differs on the full-distribution test (not BY only).")
+    differs_marginal: bool = Field(..., description="Measured: differs in a single-bit marginal (not BY only).")
+    agrees: bool = Field(..., description="Statevector: agrees (bit order as declared included); measured: consistent within shot noise and not a disagreement.")
+    inconclusive: bool = Field(..., description="Measured: the shot-noise assessment is inconclusive_low_shots or ambiguous.")
+    assessment: Optional[Any] = Field(None, description="The shot-noise assessment: measured_assessment, else metrics.measured_assessment, else read from metrics.statistical_test.verdict; not_comparable for a pair not compared; null when none is recorded.")
+    statevector_group: Literal["agree", "bit_order", "disagree", "not_comparable", "other"] = Field(..., description="The group of the agreement label: agree (directly, up to a global phase, after normalisation), bit_order, disagree, not_comparable or other.")
+    effective_agreement: Optional[Any] = Field(None, description="The agreement label; for agree_after_normalization the label the normalised vectors received.")
+    unaligned_basis: Optional[str] = Field(None, description="direct or bit_reversal when the pair matches only in the basis its declared orderings do not imply; 'unrecorded' when the record says so without naming the basis.")
+
+
+class BackendVerdict(_Open):
+    """One backend (or run) in ``backend_verdicts``."""
+    key: str = Field(..., description="Result key.")
+    status: Literal["ok", "error", "timeout", "offline"] = Field(..., description="dispatch_status, or for results without one, read from the error text.")
+    compared: int = Field(..., description="Pairs with this backend that were compared.")
+    differs: int = Field(..., description="Compared pairs that differ (BY-only ones included).")
+    differs_full: int = Field(..., description="Measured: pairs that differ on the full-distribution test.")
+    differs_marginal: int = Field(..., description="Measured: pairs in which a single-bit marginal differs.")
+    differs_by_only: int = Field(..., description="Measured: pairs that differ under Benjamini–Yekutieli only.")
+    inconclusive: int = Field(..., description="Measured: pairs that are inconclusive on the full-distribution test.")
+    not_comparable: int = Field(..., description="Pairs that could not be compared.")
+    differs_with: List[str] = Field(..., description="Backends it differs from, BY-only pairs left out.")
+    by_only_with: List[str] = Field(..., description="Backends it differs from under Benjamini–Yekutieli only.")
+    agrees_with: List[str] = Field(..., description="Backends it agrees with.")
+    compared_with: List[str] = Field(..., description="Backends it was compared with.")
+    worst_fidelity: Optional[float] = Field(None, description="Statevector: lowest label-aligned fidelity of a pair that differs.")
+    largest_tv: Optional[float] = Field(None, description="Measured: largest total variation of a pair that differs.")
+    bit_order: Optional[Any] = Field(None, description="The backend's entry in ordering_map.")
+    size_with: Dict[str, float] = Field(..., description="Other backend -> total variation (measured) or label-aligned fidelity (statevector) of their pair.")
+
+
+class BackendVerdicts(_Open):
+    """``divergence_report.backend_verdicts``: per-backend counts over the pair verdicts."""
+    mode: Literal["statevector", "measured"]
+    backends: List[BackendVerdict] = Field(..., description="Backends of raw_results, then of simulators, then of the pairs, in that order.")
+    pairs: int = Field(..., description="Pair records.")
+    disagreeing: int = Field(..., description="Compared pairs that differ (BY-only ones included).")
+    by_only: int = Field(..., description="Pairs that differ under Benjamini–Yekutieli only.")
+    by_only_pairs: List[List[str]]
+    inconclusive: int
+    not_comparable: int
+    marginal_tested: bool = Field(..., description="Some measured pair has single-bit marginal tests.")
+    multi_run: bool = Field(..., description="Some key is <id>~opt<L>~run<N>.")
+
+
 class PairwiseAgreement(_Open):
     """One entry of ``divergence_report.pairwise_agreement``: one pair of runs."""
     simulators: List[str] = Field(..., description="The two result keys compared.")
@@ -42,6 +92,7 @@ class PairwiseAgreement(_Open):
     measured_assessment: Optional[Literal["consistent_within_shot_noise", "inconclusive_low_shots", "ambiguous", "distinguishable", "not_comparable"]] = Field(None, description="Measured mode only: the verdict. 'distinguishable' is the only disagreement; check marginal_assessment too. A CI check of a measured run reads this field, not agreement.")
     marginal_assessment: Optional[str] = Field(None, description="Measured mode only: the single-bit marginal tests' outcome; a significant one is a disagreement too.")
     metrics: Optional[Dict[str, Any]] = Field(None, description="Distances, fidelities and test statistics behind the labels.")
+    pair_verdict: Optional[PairVerdict] = Field(None, description="The pair's verdict (reports from analysis version divergence-2026.10.27.1 on; POST /summary computes it for older reports).")
 
 
 class DivergenceReport(_Open):
@@ -50,6 +101,7 @@ class DivergenceReport(_Open):
     fidelity_matrix: Optional[List[List[Optional[float]]]] = Field(None, description="Statevector mode: pairwise fidelity; null for pairs not compared.")
     pairwise_agreement: Optional[List[PairwiseAgreement]] = Field(None, description="One record per pair of runs.")
     statistical_test_summary: Optional[Dict[str, Any]] = Field(None, description="Measured mode: multiple-testing correction, power, recommended shots and measured_assessment_counts.")
+    backend_verdicts: Optional[BackendVerdicts] = Field(None, description="Per-backend counts over the pair verdicts (reports from analysis version divergence-2026.10.27.1 on).")
     error: Optional[str] = Field(None, description="Present when the analysis failed; the raw results are still in the report.")
 
 
@@ -116,3 +168,26 @@ class SavedRunReport(RootModel[Union[SingleCircuitReport, BatchReport]]):
 class JobStatus(JobStatusResponse):
     """GET /jobs/{job_id}."""
     results: Optional[Union[SingleCircuitReport, BatchReport, ExperimentResults]] = Field(None, description="The report (display copy), once status is 'completed', and for a failed job that reached the runners. Statevectors over 14 qubits are replaced by a placeholder (statevector_omitted_for_display); GET /jobs/{job_id}/report returns the full report.")
+
+
+class PairVerdictEntry(PairVerdict):
+    """One entry of ``pair_verdicts``: a pair's verdict with its two result keys."""
+    simulators: Any = Field(None, description="The pair's simulators, as recorded.")
+
+
+class TaskSummary(_Open):
+    """Verdicts of one circuit's report."""
+    report_analysis_version: Optional[str] = Field(None, description="The analysis version the report records (null for reports that record none).")
+    pair_verdicts: List[PairVerdictEntry] = Field(..., description="One per pair record, in pairwise_agreement order.")
+    backend_verdicts: BackendVerdicts
+
+
+class ReportSummary(_Open):
+    """GET /jobs/{job_id}/summary, GET /history/runs/{run_id}/summary and POST /summary."""
+    analysis_version: str = Field(..., description="This server's analysis version: the rule the verdicts were computed with.")
+    report_source: Literal["server_job", "saved_run", "client_supplied"] = Field(..., description="Where the report came from.")
+    saved_from: Optional[str] = Field(None, description="Saved runs: the stored report's saved_from (server_job or upload).")
+    report_analysis_version: Optional[str] = Field(None, description="Single-circuit report: the analysis version it records.")
+    pair_verdicts: Optional[List[PairVerdictEntry]] = Field(None, description="Single-circuit report: one per pair record, in pairwise_agreement order.")
+    backend_verdicts: Optional[BackendVerdicts] = Field(None, description="Single-circuit report: per-backend counts.")
+    benchmark_summary: Optional[List[TaskSummary]] = Field(None, description="Playlist report: one summary per task, in task order; null for a single-circuit report.")

@@ -6,6 +6,8 @@ import threading
 from collections import OrderedDict
 from typing import Callable, Dict
 
+from services.analysis.divergence.verdicts import verdict_of
+
 from .formats import _fixed, _fmt_int, _format_columns, _full, _num
 from .selectors import _msb_counts, _run_label
 from .theme import backend_label
@@ -322,13 +324,9 @@ def tbl_rank(results: dict, p: dict):
 
 
 def disagrees(results: dict, a: str, b: str) -> bool:
-    """Whether the measured pair a × b is a disagreement (run_status.js isDisagreement)."""
+    """Whether the pair a × b is a disagreement: its pair verdict (recorded, else computed by
+    analysis.divergence.verdicts), as every other view of the report shows it."""
     for r in (results.get("divergence_report") or {}).get("pairwise_agreement") or []:
         if set(r.get("simulators") or []) == {a, b} and a != b:
-            if r.get("marginal_assessment") == "marginal_distinguishable":
-                return True
-            if r.get("measured_assessment"):
-                return r["measured_assessment"] == "distinguishable"
-            return r.get("agreement") == "distance_exceeds_threshold"
+            return verdict_of(r)["differs"]
     return False
-
