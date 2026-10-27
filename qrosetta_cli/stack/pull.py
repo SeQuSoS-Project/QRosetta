@@ -19,9 +19,12 @@ from qrosetta_cli.stack.actions import human_bytes
 from qrosetta_cli.stack.explain import engine_error
 
 RETRY_AFTER_SEC = 5
-_TRANSIENT = re.compile(r"toomanyrequests|connection reset|connection refused|i/o timeout|tls handshake timeout|"
-                        r"timed out|timeout exceeded|unexpected eof|\beof\b|temporary failure|no such host|"
-                        r"network is unreachable|50[0234] |service unavailable|bad gateway", re.I)
+_TRANSIENT = re.compile(
+    r"toomanyrequests|connection reset|connection refused|i/o timeout|tls handshake timeout|"
+    r"timed out|timeout exceeded|unexpected eof|\beof\b|temporary failure|no such host|"
+    r"network is unreachable|50[0234] |service unavailable|bad gateway",
+    re.I,
+)
 _sleep = time.sleep
 
 
@@ -35,12 +38,18 @@ def cache_tmp(env):
 def _checkout_refusal(names):
     release = mf.load()
     keys = " ".join(names) if names else "--profile minimal"
-    why = ("a checkout runs the images it builds, and its compose file names no release images"
-           if mf.images_published(release) else
-           "this checkout carries no release manifest with published image digests")
-    raise CliError(f"`qrosetta pull` fetches the published images of a release; {why}. Build the images here "
-                   "instead, or install a release (pip install qrosetta), whose images are pulled.",
-                   Exit.INCOMPATIBLE, "checkout_builds_images", hint=f"qrosetta build {keys}")
+    why = (
+        "a checkout runs the images it builds, and its compose file names no release images"
+        if mf.images_published(release)
+        else "this checkout carries no release manifest with published image digests"
+    )
+    raise CliError(
+        f"`qrosetta pull` fetches the published images of a release; {why}. Build the images here "
+        "instead, or install a release (pip install qrosetta), whose images are pulled.",
+        Exit.INCOMPATIBLE,
+        "checkout_builds_images",
+        hint=f"qrosetta build {keys}",
+    )
 
 
 def targets(stack, manifest, args, cfg):
@@ -50,8 +59,11 @@ def targets(stack, manifest, args, cfg):
     names = [n for n in args.services if n not in withheld]
     if not (names or args.profile or args.core or args.all or skipped):
         profiles = ", ".join(sorted({p for s in stack.services.values() for p in s.profiles})) or "none"
-        raise usage(f"Name the services to pull, a profile ({profiles}), --core or --all.",
-                    hint="qrosetta pull --profile minimal", reason="nothing_named")
+        raise usage(
+            f"Name the services to pull, a profile ({profiles}), --core or --all.",
+            hint="qrosetta pull --profile minimal",
+            reason="nothing_named",
+        )
     if args.all:
         return list(stack.services), list(withheld.items())
     wanted = serve.requested_services(stack, names, args.profile, cfg) or []
@@ -69,8 +81,10 @@ def pull_ref(engine, ref):
     """Pull by digest, retrying once after a transient registry or network error."""
     out = _pull_once(engine, ref)
     if out.returncode != 0 and _TRANSIENT.search(out.stderr or out.stdout or ""):
-        progress(f"  network or registry error ({(out.stderr or out.stdout).strip().splitlines()[-1]}); "
-                 f"retrying in {RETRY_AFTER_SEC} s")
+        progress(
+            f"  network or registry error ({(out.stderr or out.stdout).strip().splitlines()[-1]}); "
+            f"retrying in {RETRY_AFTER_SEC} s"
+        )
         _sleep(RETRY_AFTER_SEC)
         out = _pull_once(engine, ref)
     if out.returncode != 0:
@@ -97,8 +111,12 @@ def _one(engine, stack, manifest, service, ref, require_signature, env, n, total
     progress(f"{sid} ({n}/{total}): {ref}")
     status, detail = signatures.verify(engine, manifest, ref, env)
     if status == "rejected" or (require_signature and status != "verified"):
-        raise CliError(f"{sid}: signature not verified ({detail}); nothing was pulled for it.", Exit.ENGINE,
-                       "signature_not_verified", hint="qrosetta images verify --require-signature")
+        raise CliError(
+            f"{sid}: signature not verified ({detail}); nothing was pulled for it.",
+            Exit.ENGINE,
+            "signature_not_verified",
+            hint="qrosetta images verify --require-signature",
+        )
     if status != "verified":
         progress(f"  signature not checked: {detail}")
     started = time.monotonic()
@@ -106,13 +124,18 @@ def _one(engine, stack, manifest, service, ref, require_signature, env, n, total
     img = st.find_images(engine, [ref]).get(ref)
     problems = check_pulled(stack, service, ref, img)
     if problems:
-        raise CliError(f"{sid}: {'; '.join(problems)}.", Exit.ENGINE, "pulled_image_mismatch",
-                       hint="qrosetta images verify")
+        raise CliError(
+            f"{sid}: {'; '.join(problems)}.", Exit.ENGINE, "pulled_image_mismatch", hint="qrosetta images verify"
+        )
     if img.labels.get(own.QR_IMAGE_PROJECT) != stack.name:
-        progress(f"  labelled for compose project {img.labels.get(own.QR_IMAGE_PROJECT)!r}, not {stack.name!r}: "
-                 "qrosetta reports this image but never removes it")
-    progress(f"  pulled, {human_bytes(img.size)}, {time.monotonic() - started:.0f} s"
-             + (f"; {detail}" if status == "verified" else ""))
+        progress(
+            f"  labelled for compose project {img.labels.get(own.QR_IMAGE_PROJECT)!r}, not {stack.name!r}: "
+            "qrosetta reports this image but never removes it"
+        )
+    progress(
+        f"  pulled, {human_bytes(img.size)}, {time.monotonic() - started:.0f} s"
+        + (f"; {detail}" if status == "verified" else "")
+    )
     return {"id": sid, "ref": ref, "state": "pulled", "signature": status, "size_bytes": img.size}
 
 
@@ -123,6 +146,7 @@ def cmd_pull(ctx):
         _checkout_refusal(args.services)
     manifest = installed.require_published()
     from qrosetta_cli.stack.commands import open_stack
+
     _, engine, stack = open_stack(ctx)
     wanted, skipped = targets(stack, manifest, args, ctx.cfg)
     for sid, reason in skipped:
@@ -131,36 +155,56 @@ def cmd_pull(ctx):
     by_service = mf.by_compose_service(manifest)
     jobs = [(s, refs[by_service[s]]) for s in wanted if by_service.get(s) in refs]
     if args.require_signature and mf.signer(manifest) is None:
-        raise CliError("--require-signature: this release's manifest names no signing workflow.", Exit.ENGINE,
-                       "signature_not_verified", hint="qrosetta pull without --require-signature")
+        raise CliError(
+            "--require-signature: this release's manifest names no signing workflow.",
+            Exit.ENGINE,
+            "signature_not_verified",
+            hint="qrosetta pull without --require-signature",
+        )
     url = serve.stack_url(engine, stack) if any(c.running for c in own.scan(engine, stack).containers) else None
     if jobs and url:
-        guard.refuse_if_busy(ctx, url, "pull", "--yes", args.yes,
-                             "a pull now loads the host beside their timed windows")
+        guard.refuse_if_busy(
+            ctx, url, "pull", "--yes", args.yes, "a pull now loads the host beside their timed windows"
+        )
     engine.env["TMPDIR"] = cache_tmp(ctx.env)
     pulled, failed = [], []
-    with guard.engine_lock(ctx.env, "pull"), hostload.notice(
-            ctx, url if jobs else None, "pull", [stack.services[s].id for s, _ in jobs]):
+    with (
+        guard.engine_lock(ctx.env, "pull"),
+        hostload.notice(ctx, url if jobs else None, "pull", [stack.services[s].id for s, _ in jobs]),
+    ):
         for n, (service, ref) in enumerate(jobs, 1):
             try:
-                pulled.append(_one(engine, stack, manifest, service, ref, args.require_signature, ctx.env, n,
-                                   len(jobs)))
+                pulled.append(
+                    _one(engine, stack, manifest, service, ref, args.require_signature, ctx.env, n, len(jobs))
+                )
             except CliError as exc:
                 progress(f"  {exc.message}")
-                failed.append({"id": stack.services[service].id, "ref": ref, "reason": exc.reason,
-                               "message": exc.message})
+                failed.append(
+                    {"id": stack.services[service].id, "ref": ref, "reason": exc.reason, "message": exc.message}
+                )
             except KeyboardInterrupt:
-                progress("qrosetta: interrupted; finished images and layers are kept; rerun the same command "
-                         "to continue.")
+                progress(
+                    "qrosetta: interrupted; finished images and layers are kept; rerun the same command to continue."
+                )
                 return Result(int(Exit.SIGINT), {"pulled": pulled, "failed": failed})
-    data = {"release": manifest.get("platform_version"), "pulled": pulled, "failed": failed,
-            "not_published": [{"id": sid, "reason": reason} for sid, reason in skipped]}
+    data = {
+        "release": manifest.get("platform_version"),
+        "pulled": pulled,
+        "failed": failed,
+        "not_published": [{"id": sid, "reason": reason} for sid, reason in skipped],
+    }
     if pulled:
         total = sum(p["size_bytes"] or 0 for p in pulled)
-        result(f"{len(pulled)} images of Quantum Rosetta {data['release']} present ({human_bytes(total)}); "
-               "`qrosetta start -d` starts them.")
+        result(
+            f"{len(pulled)} images of Quantum Rosetta {data['release']} present ({human_bytes(total)}); "
+            "`qrosetta start -d` starts them."
+        )
     if failed:
-        raise CliError(f"{len(failed)} of {len(jobs)} images were not pulled: "
-                       f"{', '.join(f['id'] for f in failed)}.", Exit.ENGINE, failed[0]["reason"],
-                       hint=f"qrosetta pull {' '.join(f['id'] for f in failed)}", data=data)
+        raise CliError(
+            f"{len(failed)} of {len(jobs)} images were not pulled: {', '.join(f['id'] for f in failed)}.",
+            Exit.ENGINE,
+            failed[0]["reason"],
+            hint=f"qrosetta pull {' '.join(f['id'] for f in failed)}",
+            data=data,
+        )
     return Result(0, data)

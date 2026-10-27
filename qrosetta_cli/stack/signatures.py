@@ -9,8 +9,11 @@ import subprocess
 from qrosetta_cli import manifest as mf
 
 INSTALL = "https://docs.sigstore.dev/cosign/system_config/installation/"
-_REJECTED = re.compile(r"no matching signatures|no signatures found|invalid signature|certificate|"
-                       r"identity|issuer|signature.*mismatch", re.I)
+_REJECTED = re.compile(
+    r"no matching signatures|no signatures found|invalid signature|certificate|"
+    r"identity|issuer|signature.*mismatch",
+    re.I,
+)
 
 
 def cosign_path(env):
@@ -29,8 +32,9 @@ def verify(engine, manifest, ref, env):
         return "unavailable", f"cosign is not installed ({INSTALL})"
     identity, issuer = signer
     try:
-        out = engine.tool(path, "verify", "--certificate-identity", identity, "--certificate-oidc-issuer", issuer,
-                          ref, timeout=300)
+        out = engine.tool(
+            path, "verify", "--certificate-identity", identity, "--certificate-oidc-issuer", issuer, ref, timeout=300
+        )
     except subprocess.TimeoutExpired:
         return "unchecked", "cosign did not finish within 300 s"
     text = (out.stderr or out.stdout or "").strip()

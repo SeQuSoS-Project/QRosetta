@@ -16,8 +16,13 @@ from qrosetta_cli.client import results, waiting
 from qrosetta_cli.errors import CliError, Exit, usage
 
 ITEMS = ("report", "summary", "circuits", "crate")
-FILES = {"report": "report.json", "summary": "summary.json", "circuits": "circuit-texts.json",
-         "crate": "ro-crate.zip", "bundle": "bundle.zip"}
+FILES = {
+    "report": "report.json",
+    "summary": "summary.json",
+    "circuits": "circuit-texts.json",
+    "crate": "ro-crate.zip",
+    "bundle": "bundle.zip",
+}
 GATED_FEATURE = "gated_saves"
 CIRCUIT_TEXTS_FEATURE = "circuit_texts"
 REPORT_GATE_WAIT_SEC = 60
@@ -37,8 +42,11 @@ def parse_items(values):
             if not part:
                 continue
             if part not in ITEMS + ("minimal",):
-                raise usage(f"--save {part}: choose from {', '.join(ITEMS)} or minimal.", hint="qrosetta run --help",
-                            reason="save_set")
+                raise usage(
+                    f"--save {part}: choose from {', '.join(ITEMS)} or minimal.",
+                    hint="qrosetta run --help",
+                    reason="save_set",
+                )
             items.append(part)
     if "minimal" in items:
         if len(items) > 1:
@@ -60,16 +68,22 @@ def save_set(conn, args):
         if gated(conn):
             items.add("crate")
         elif conn.local and getattr(args, "crate", None) is None and not minimal:
-            note = ("This server offers no gated saves, so the crate is not built by default (a crate built "
-                    "now could overlap other runs); --crate builds it.")
+            note = (
+                "This server offers no gated saves, so the crate is not built by default (a crate built "
+                "now could overlap other runs); --crate builds it."
+            )
     if getattr(args, "crate", None) is True:
         items.add("crate")
         minimal = False
     elif getattr(args, "crate", None) is False:
         items.discard("crate")
     if "circuits" in items and not conn.has(CIRCUIT_TEXTS_FEATURE):
-        raise CliError("--save circuits needs a server with GET /jobs/{id}/circuit-texts.", Exit.INCOMPATIBLE,
-                       "feature_missing", hint="drop circuits from --save")
+        raise CliError(
+            "--save circuits needs a server with GET /jobs/{id}/circuit-texts.",
+            Exit.INCOMPATIBLE,
+            "feature_missing",
+            hint="drop circuits from --save",
+        )
     return items, minimal, note
 
 
@@ -78,8 +92,12 @@ def crate_options(args):
     body = {}
     if getattr(args, "statevectors", False):
         body["include_statevectors"] = True
-    for flag, field in (("author", "author_name"), ("affiliation", "author_affiliation"),
-                        ("name", "name"), ("circuit_name", "circuit_name")):
+    for flag, field in (
+        ("author", "author_name"),
+        ("affiliation", "author_affiliation"),
+        ("name", "name"),
+        ("circuit_name", "circuit_name"),
+    ):
         if getattr(args, flag, None):
             body[field] = getattr(args, flag)
     items = []
@@ -94,8 +112,9 @@ def crate_options(args):
             continue
         view, sep, formats = spec.rpartition("=")
         if not sep or not view or not formats:
-            raise usage(f"--item takes VIEW=FMT[,FMT] or @FILE, not {spec!r}.", hint="qrosetta run --help",
-                        reason="crate_item")
+            raise usage(
+                f"--item takes VIEW=FMT[,FMT] or @FILE, not {spec!r}.", hint="qrosetta run --help", reason="crate_item"
+            )
         items.append({"view": view, "formats": [f for f in formats.split(",") if f]})
     if items:
         body["publication_artifacts"] = {"items": items}
@@ -141,8 +160,9 @@ class Saver:
                 delay = BACKOFF_SEC[min(attempt, len(BACKOFF_SEC) - 1)]
                 attempt += 1
                 try:
-                    self.conn.download(method, path, dest, payload, query={"gated": "true"},
-                                       confirm_large=self.confirm_large)
+                    self.conn.download(
+                        method, path, dest, payload, query={"gated": "true"}, confirm_large=self.confirm_large
+                    )
                     return True, False
                 except CliError as exc:
                     if not _gate_busy(exc):
@@ -152,8 +172,9 @@ class Saver:
                     if fallback:
                         break
                     return False, False
-                output.progress(f"{os.path.basename(dest)} waiting for an idle server: "
-                                f"{self._in_flight()} runs in flight.")
+                output.progress(
+                    f"{os.path.basename(dest)} waiting for an idle server: {self._in_flight()} runs in flight."
+                )
                 waiting.pause(min(delay, left))
         concurrent = self._in_flight() > 0
         self.conn.download(method, path, dest, payload, confirm_large=self.confirm_large)
@@ -165,10 +186,16 @@ class Saver:
         ttl = self.conn.limit("job_ttl_sec")
         failed = final_env.get("status") == "failed"
         record = {k: v for k, v in final_env.items() if k != "results"}
-        record.update({"server": self.conn.url, "saved_by": f"qrosetta {__version__}", "job_ttl_sec": ttl,
-                       "concurrent_with_other_jobs": bool(previous.get("concurrent_with_other_jobs")),
-                       "crate_deferred_sec": previous.get("crate_deferred_sec"),
-                       "crate_deferred_since": previous.get("crate_deferred_since")})
+        record.update(
+            {
+                "server": self.conn.url,
+                "saved_by": f"qrosetta {__version__}",
+                "job_ttl_sec": ttl,
+                "concurrent_with_other_jobs": bool(previous.get("concurrent_with_other_jobs")),
+                "crate_deferred_sec": previous.get("crate_deferred_sec"),
+                "crate_deferred_since": previous.get("crate_deferred_since"),
+            }
+        )
         files, partial, summary, crate = {}, [], None, "not requested"
         has_report = not (failed and final_env.get("results") is None)
 
@@ -183,8 +210,9 @@ class Saver:
                 files[item] = name
                 return True
             try:
-                saved, concurrent = self._download(method, path, os.path.join(job_dir, name), payload, gate_wait,
-                                                   fallback)
+                saved, concurrent = self._download(
+                    method, path, os.path.join(job_dir, name), payload, gate_wait, fallback
+                )
             except CliError as exc:
                 if exc.http_status == 409 and failed:
                     return True
@@ -205,8 +233,13 @@ class Saver:
                 fetch("bundle", "GET", f"/experiments/{job_id}/bundle")
             else:
                 if "report" in self.items:
-                    fetch("report", "GET", f"/jobs/{job_id}/report",
-                          gate_wait=REPORT_GATE_WAIT_SEC if use_gate else None, fallback=True)
+                    fetch(
+                        "report",
+                        "GET",
+                        f"/jobs/{job_id}/report",
+                        gate_wait=REPORT_GATE_WAIT_SEC if use_gate else None,
+                        fallback=True,
+                    )
                 if "summary" in self.items:
                     fetch("summary", "GET", f"/jobs/{job_id}/summary")
                 if "circuits" in self.items:
@@ -228,8 +261,15 @@ class Saver:
         else:
             token = results.COMPLETE
         results.write_status(job_dir, token)
-        return {"status": token, "files": files, "summary": summary, "crate": crate,
-                "concurrent": record["concurrent_with_other_jobs"], "partial": partial, "record": record}
+        return {
+            "status": token,
+            "files": files,
+            "summary": summary,
+            "crate": crate,
+            "concurrent": record["concurrent_with_other_jobs"],
+            "partial": partial,
+            "record": record,
+        }
 
     def _crate(self, job_dir, job_id, record, ttl, fetch, use_gate):
         path = os.path.join(job_dir, FILES["crate"])
@@ -245,8 +285,10 @@ class Saver:
                 record["crate_deferred_sec"] = round(time.time() - start, 1)
             return "saved" if os.path.isfile(path) else "failed"
         if self.patient:
-            output.progress("The server stayed busy until 10 minutes before the job expires; building the crate "
-                            "now, beside the runs in flight (recorded in job.json).")
+            output.progress(
+                "The server stayed busy until 10 minutes before the job expires; building the crate "
+                "now, beside the runs in flight (recorded in job.json)."
+            )
             fetch("crate", "POST", f"/jobs/{job_id}/export", self.crate_body)
             record["crate_deferred_sec"] = round(time.time() - start, 1)
             return "saved" if os.path.isfile(path) else "failed"

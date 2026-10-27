@@ -29,7 +29,7 @@ def identity_from_history(steps):
         m = _ARGS.search(step.split(IDENTITY_PATH)[0])
         if not m:
             return {"source": None, "release": None, "git_sha": None}
-        tokens = m.group(2).split()[:int(m.group(1))]
+        tokens = m.group(2).split()[: int(m.group(1))]
         args = dict(t.split("=", 1) for t in tokens if "=" in t)
         return {name: (args.get(arg) or None) for arg, name in IDENTITY_ARGS.items()}
     return None
@@ -53,12 +53,20 @@ def read_archive(path):
                 raise ValueError("manifest.json does not describe exactly one image")
             data = _member(tar, str(manifest[0].get("Config") or ""))
     except (OSError, tarfile.TarError, ValueError, KeyError) as exc:
-        raise CliError(f"{path} is not an image archive of `docker save` or `podman save`: {exc}", Exit.ENGINE,
-                       "archive_invalid", hint="qrosetta images save -o DIR (on the machine that has the images)")
+        raise CliError(
+            f"{path} is not an image archive of `docker save` or `podman save`: {exc}",
+            Exit.ENGINE,
+            "archive_invalid",
+            hint="qrosetta images save -o DIR (on the machine that has the images)",
+        )
     config = json.loads(data)
     if not isinstance(config, dict):
-        raise CliError(f"{path}: the image configuration is not an object.", Exit.ENGINE, "archive_invalid",
-                       hint="qrosetta images save -o DIR")
+        raise CliError(
+            f"{path}: the image configuration is not an object.",
+            Exit.ENGINE,
+            "archive_invalid",
+            hint="qrosetta images save -o DIR",
+        )
     return "sha256:" + hashlib.sha256(data).hexdigest(), config
 
 
@@ -82,8 +90,12 @@ def embedded_tags(path):
                 if isinstance(name, str):
                     tags.append(name)
     except (OSError, tarfile.TarError, ValueError, KeyError, AttributeError) as exc:
-        raise CliError(f"{path} is not an image archive of `docker save` or `podman save`: {exc}", Exit.ENGINE,
-                       "archive_invalid", hint="qrosetta images save -o DIR (on the machine that has the images)")
+        raise CliError(
+            f"{path} is not an image archive of `docker save` or `podman save`: {exc}",
+            Exit.ENGINE,
+            "archive_invalid",
+            hint="qrosetta images save -o DIR (on the machine that has the images)",
+        )
     return tags
 
 
@@ -99,8 +111,12 @@ def config_facts(config):
     inner = config.get("config") or {}
     env = dict(e.split("=", 1) for e in inner.get("Env") or [] if "=" in e)
     history = [h.get("created_by") or "" for h in config.get("history") or [] if isinstance(h, dict)]
-    return {"labels": inner.get("Labels") or {}, "git_sha": env.get("QROSETTA_IMAGE_GIT_SHA") or "unknown",
-            "version": env.get("QROSETTA_VERSION"), "identity": identity_from_history(history)}
+    return {
+        "labels": inner.get("Labels") or {},
+        "git_sha": env.get("QROSETTA_IMAGE_GIT_SHA") or "unknown",
+        "version": env.get("QROSETTA_VERSION"),
+        "identity": identity_from_history(history),
+    }
 
 
 def index_path(path):
@@ -116,20 +132,33 @@ def read_index(path):
         with open(path, encoding="utf-8") as fh:
             index = json.load(fh)
     except FileNotFoundError:
-        raise CliError(f"No {INDEX} at {os.path.dirname(path)}.", Exit.NOT_FOUND, "archive_index_missing",
-                       hint="qrosetta images load DIR, with DIR the directory `qrosetta images save` wrote") from None
+        raise CliError(
+            f"No {INDEX} at {os.path.dirname(path)}.",
+            Exit.NOT_FOUND,
+            "archive_index_missing",
+            hint="qrosetta images load DIR, with DIR the directory `qrosetta images save` wrote",
+        ) from None
     except (OSError, ValueError) as exc:
-        raise usage(f"{path} cannot be read as JSON: {exc}", hint="qrosetta images save -o DIR",
-                    reason="archive_index_invalid") from exc
+        raise usage(
+            f"{path} cannot be read as JSON: {exc}", hint="qrosetta images save -o DIR", reason="archive_index_invalid"
+        ) from exc
     entries = index.get("images") if isinstance(index, dict) else None
     if not isinstance(index, dict) or index.get("schema") != SCHEMA or not isinstance(entries, list) or not entries:
-        raise usage(f"{path} is not a {SCHEMA} index.", hint="qrosetta images save -o DIR",
-                    reason="archive_index_invalid")
+        raise usage(
+            f"{path} is not a {SCHEMA} index.", hint="qrosetta images save -o DIR", reason="archive_index_invalid"
+        )
     for entry in entries:
-        if not isinstance(entry, dict) or not _FILE_NAME.match(str(entry.get("file") or "")) or not all(
-                isinstance(entry.get(k), str) for k in ("service", "compose_service", "config_digest", "sha256")):
-            raise usage(f"{path}: an entry lacks service, compose_service, config_digest, sha256 or a plain "
-                        f"file name: {entry!r}", hint="qrosetta images save -o DIR", reason="archive_index_invalid")
+        if (
+            not isinstance(entry, dict)
+            or not _FILE_NAME.match(str(entry.get("file") or ""))
+            or not all(isinstance(entry.get(k), str) for k in ("service", "compose_service", "config_digest", "sha256"))
+        ):
+            raise usage(
+                f"{path}: an entry lacks service, compose_service, config_digest, sha256 or a plain "
+                f"file name: {entry!r}",
+                hint="qrosetta images save -o DIR",
+                reason="archive_index_invalid",
+            )
     return os.path.dirname(path), index
 
 

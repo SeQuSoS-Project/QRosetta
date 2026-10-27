@@ -67,17 +67,22 @@ class Notice:
 
     def _post(self, body):
         from qrosetta_cli.client import servers
-        transport = self.ctx.transport(server=servers.Server("local", self.url, "compose port"),
-                                       timeout=REQUEST_TIMEOUT_SEC)
+
+        transport = self.ctx.transport(
+            server=servers.Server("local", self.url, "compose port"), timeout=REQUEST_TIMEOUT_SEC
+        )
         headers = {"Content-Type": "application/json", **auth_headers(self.ctx.env)}
-        return transport.request("POST", ROUTE, body=json.dumps(body).encode(), headers=headers,
-                                 timeout=REQUEST_TIMEOUT_SEC)
+        return transport.request(
+            "POST", ROUTE, body=json.dumps(body).encode(), headers=headers, timeout=REQUEST_TIMEOUT_SEC
+        )
 
     def begin(self):
         if not read_token(self.ctx.env):
-            output.warn(f"{self.kind}: host load not recorded with the server: no lifecycle token at "
-                        f"{token_path(self.ctx.env)} (the stack was not started by `qrosetta start`).",
-                        "host_load_unrecorded")
+            output.warn(
+                f"{self.kind}: host load not recorded with the server: no lifecycle token at "
+                f"{token_path(self.ctx.env)} (the stack was not started by `qrosetta start`).",
+                "host_load_unrecorded",
+            )
             return
         body = {"action": "begin", "kind": self.kind}
         if self.services:
@@ -89,15 +94,22 @@ class Notice:
             return
         data = resp.json() if resp.status == 200 else None
         if not isinstance(data, dict) or not data.get("notice_id"):
-            why = ("its lifecycle token differs from this one, or it predates host-load notices"
-                   if resp.status == 404 else f"HTTP {resp.status}")
-            output.warn(f"{self.kind}: host load not recorded with the server ({why}); runs beside it do not "
-                        "record it.", "host_load_unrecorded")
+            why = (
+                "its lifecycle token differs from this one, or it predates host-load notices"
+                if resp.status == 404
+                else f"HTTP {resp.status}"
+            )
+            output.warn(
+                f"{self.kind}: host load not recorded with the server ({why}); runs beside it do not record it.",
+                "host_load_unrecorded",
+            )
             return
         self.notice_id = data["notice_id"]
         if data.get("gate_held") is False:
-            output.warn(f"{self.kind}: an exclusive run holds the server; it records this host load.",
-                        "host_load_beside_exclusive")
+            output.warn(
+                f"{self.kind}: an exclusive run holds the server; it records this host load.",
+                "host_load_beside_exclusive",
+            )
         self._thread = threading.Thread(target=self._beat, name="qrosetta-host-load", daemon=True)
         self._thread.start()
 
@@ -111,9 +123,11 @@ class Notice:
                 continue
             if resp.status == 404:
                 self.lost = True
-                output.warn(f"{self.kind}: the server no longer holds this host-load notice (it expired or the "
-                            "server restarted); runs from now on do not record this host load.",
-                            "host_load_lost")
+                output.warn(
+                    f"{self.kind}: the server no longer holds this host-load notice (it expired or the "
+                    "server restarted); runs from now on do not record this host load.",
+                    "host_load_lost",
+                )
                 return
 
     def end(self):
@@ -131,8 +145,11 @@ class Notice:
         except CliError as exc:
             failed = exc.message
         if failed and not self.expect_server_gone:
-            output.warn(f"{self.kind}: the host-load notice was not ended ({failed}); the server ends it "
-                        "30 s after its last heartbeat.", "host_load_not_ended")
+            output.warn(
+                f"{self.kind}: the host-load notice was not ended ({failed}); the server ends it "
+                "30 s after its last heartbeat.",
+                "host_load_not_ended",
+            )
 
 
 @contextmanager

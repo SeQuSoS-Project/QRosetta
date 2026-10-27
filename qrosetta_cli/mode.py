@@ -45,13 +45,14 @@ def detect(flag=None, env=None, checkout=None):
             output.warn("QROSETTA_HOME is deprecated; set QROSETTA_PROJECT_DIR instead.", "deprecated")
         path = os.path.abspath(os.path.expanduser(path))
         if not compose_file(path):
-            raise usage(f"No compose file in {path} (from {source}).",
-                        hint="qrosetta --project-dir DIR status, with DIR a Quantum Rosetta checkout",
-                        reason="project_dir_invalid")
+            raise usage(
+                f"No compose file in {path} (from {source}).",
+                hint="qrosetta --project-dir DIR status, with DIR a Quantum Rosetta checkout",
+                reason="project_dir_invalid",
+            )
         return Mode("checkout", path, source)
     if checkout and compose_file(checkout):
         return Mode("checkout", os.path.abspath(checkout), "this checkout")
     if is_checkout(PACKAGE_PARENT):
         return Mode("checkout", PACKAGE_PARENT, "this checkout")
     return Mode("installed", "", "installed package")
-

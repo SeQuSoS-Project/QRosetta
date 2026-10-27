@@ -6,6 +6,8 @@ repos:
     rev: f12be1ebaa5351c1fc76472de98db2c3446c8253  # frozen: v0.16.10
     hooks:
       - id: ruff-check
+      - id: ruff-format
+        files: ^qrosetta_cli/.*\.py$
 
   - repo: local
     hooks:

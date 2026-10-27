@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 class Result:
     """A command's outcome: exit code, the envelope's data, its `outcome` block (the --fail-on
     rule version, names and matches of a run), and a payload schema other than the command's."""
+
     code: int = 0
     data: object = None
     outcome: dict = None
@@ -42,6 +43,7 @@ class Context:
 
     def server(self):
         from qrosetta_cli.client import servers
+
         if self._server is None:
             self._server = servers.select(self.opt("server"), self.env, self.cfg)
             self.server_block = self._server.block()
@@ -49,6 +51,7 @@ class Context:
 
     def transport(self, with_token=False, timeout=None, server=None):
         from qrosetta_cli.client import servers
+
         server = server or self.server()
         token = servers.token_for(server, self.cfg, self.env) if with_token else None
         factory = self.transport_factory or servers.transport

@@ -53,8 +53,9 @@ def new_invocation(parent, slug, exact=None):
             os.mkdir(path)
         except FileExistsError:
             if os.listdir(path):
-                raise usage(f"{path} already exists and is not empty.", hint="choose a new -o DIR",
-                            reason="output_exists") from None
+                raise usage(
+                    f"{path} already exists and is not empty.", hint="choose a new -o DIR", reason="output_exists"
+                ) from None
         return path
     os.makedirs(parent, exist_ok=True)
     base = os.path.join(parent, f"{stamp()}-{slug}")
@@ -76,8 +77,12 @@ def server_job_id(env, what):
     except ValueError:
         valid = False
     if not valid:
-        raise CliError(f"{what} answered without a valid job id; nothing was written for it.", Exit.INCOMPATIBLE,
-                       "bad_job_id", hint="qrosetta info")
+        raise CliError(
+            f"{what} answered without a valid job id; nothing was written for it.",
+            Exit.INCOMPATIBLE,
+            "bad_job_id",
+            hint="qrosetta info",
+        )
     return value
 
 
@@ -130,9 +135,14 @@ def _sha256(path):
 
 def write_sums(job_dir):
     """SHA256SUMS in GNU format: every file of the job directory and ../plan.json."""
-    names = sorted(n for n in os.listdir(job_dir)
-                   if n not in (STATUS_FILE, SUMS_FILE) and ".tmp" not in n and not n.endswith(".part")
-                   and os.path.isfile(os.path.join(job_dir, n)))
+    names = sorted(
+        n
+        for n in os.listdir(job_dir)
+        if n not in (STATUS_FILE, SUMS_FILE)
+        and ".tmp" not in n
+        and not n.endswith(".part")
+        and os.path.isfile(os.path.join(job_dir, n))
+    )
     lines = [f"{_sha256(os.path.join(job_dir, n))}  {n}" for n in names]
     plan = os.path.join(os.path.dirname(job_dir), PLAN_FILE)
     if os.path.isfile(plan):
@@ -144,8 +154,11 @@ def job_dirs(invocation):
     """The job directories of an invocation, in the order their jobs were submitted."""
     plan = read_json(os.path.join(invocation, PLAN_FILE)) or {}
     order = [d for d in plan.get("job_dirs") or [] if os.path.isdir(os.path.join(invocation, d))]
-    rest = sorted(d for d in os.listdir(invocation)
-                  if d not in order and os.path.isfile(os.path.join(invocation, d, "request.json")))
+    rest = sorted(
+        d
+        for d in os.listdir(invocation)
+        if d not in order and os.path.isfile(os.path.join(invocation, d, "request.json"))
+    )
     return [os.path.join(invocation, d) for d in order + rest]
 
 
@@ -176,6 +189,7 @@ def update_latest(parent, invocation):
 @dataclass
 class Target:
     """What a result reference names: an invocation directory and its jobs, or one job."""
+
     invocation: str = None
     jobs: list = field(default_factory=list)
     source: str = ""
@@ -202,8 +216,9 @@ def job_from_dir(path):
     req = read_json(os.path.join(path, "request.json")) or {}
     job_id = job.get("job_id") or req.get("job_id")
     if not job_id:
-        raise CliError(f"{path} holds no job.json with a job id.", Exit.NOT_FOUND, "result_missing",
-                       hint="qrosetta jobs")
+        raise CliError(
+            f"{path} holds no job.json with a job id.", Exit.NOT_FOUND, "result_missing", hint="qrosetta jobs"
+        )
     return JobRef(job_id, path)
 
 
@@ -217,8 +232,9 @@ def _from_path(path):
         dirs = job_dirs(path)
         if dirs or os.path.isfile(os.path.join(path, SELFTEST_FILE)):
             return Target(path, [job_from_dir(d) for d in dirs], "path")
-    raise CliError(f"{path} is not a job or invocation directory.", Exit.NOT_FOUND, "result_missing",
-                   hint="qrosetta jobs")
+    raise CliError(
+        f"{path} is not a job or invocation directory.", Exit.NOT_FOUND, "result_missing", hint="qrosetta jobs"
+    )
 
 
 def _latest(ctx):
@@ -232,8 +248,12 @@ def _latest(ctx):
         if inv and os.path.dirname(inv) == parent and os.path.isdir(inv) and invocation_complete(inv):
             candidates.append(inv)
     if not candidates:
-        raise CliError(f"No complete results under {parent}.", Exit.NOT_FOUND, "result_missing",
-                       hint="qrosetta run CIRCUIT, or --result job:ID")
+        raise CliError(
+            f"No complete results under {parent}.",
+            Exit.NOT_FOUND,
+            "result_missing",
+            hint="qrosetta run CIRCUIT, or --result job:ID",
+        )
     chosen = candidates[-1]
     output.progress(f"No {LATEST} link in {parent}; using {chosen}, the newest complete invocation in the job index.")
     return _from_path(chosen)
@@ -244,8 +264,11 @@ def resolve(ctx, ref, server_url=None):
     if not ref or ref == LATEST:
         return _latest(ctx)
     if ref.startswith("run:"):
-        raise usage("Saved runs (run:ID) arrive with the history commands.", hint="qrosetta show summary --result job:ID",
-                    reason="run_reference_unavailable")
+        raise usage(
+            "Saved runs (run:ID) arrive with the history commands.",
+            hint="qrosetta show summary --result job:ID",
+            reason="run_reference_unavailable",
+        )
     if ref.startswith("job:"):
         return job_target(ctx, ref[4:], server_url)
     if os.path.exists(ref):
@@ -253,18 +276,26 @@ def resolve(ctx, ref, server_url=None):
     if re.fullmatch(r"[0-9a-fA-F-]{8,}", ref):
         output.warn(f"{ref!r} is not a path; reading it as job:{ref}.", "bare_job_id")
         return job_target(ctx, ref, server_url)
-    raise CliError(f"No result {ref!r}: not a path, latest, job:ID or run:ID.", Exit.NOT_FOUND, "result_missing",
-                   hint="qrosetta jobs")
+    raise CliError(
+        f"No result {ref!r}: not a path, latest, job:ID or run:ID.",
+        Exit.NOT_FOUND,
+        "result_missing",
+        hint="qrosetta jobs",
+    )
 
 
 def job_target(ctx, job_id, server_url=None):
     entry = jobindex.find(ctx.env, job_id, server_url)
     if entry is None:
         if len(job_id) < 32:
-            raise CliError(f"No job starting with {job_id!r} in the job index"
-                           f"{f' for {server_url}' if server_url else ''}.", Exit.NOT_FOUND, "job_unknown",
-                           hint="qrosetta jobs")
+            raise CliError(
+                f"No job starting with {job_id!r} in the job index{f' for {server_url}' if server_url else ''}.",
+                Exit.NOT_FOUND,
+                "job_unknown",
+                hint="qrosetta jobs",
+            )
         return Target(None, [JobRef(job_id)], "job")
     d = entry.get("dir")
-    return Target(entry.get("invocation"), [JobRef(entry["job_id"], d if d and os.path.isdir(d) else None, entry)],
-                  "job")
+    return Target(
+        entry.get("invocation"), [JobRef(entry["job_id"], d if d and os.path.isdir(d) else None, entry)], "job"
+    )

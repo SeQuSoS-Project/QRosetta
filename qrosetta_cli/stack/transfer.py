@@ -28,33 +28,51 @@ def _busy_guard(ctx, engine, stack, command, effect):
 
 def cmd_images_save(ctx):
     from qrosetta_cli.stack.commands import open_stack
+
     args = ctx.args
     mode, engine, stack = open_stack(ctx)
     directory = os.path.abspath(os.path.expanduser(args.output))
     if os.path.exists(os.path.join(directory, archive.INDEX)):
-        raise usage(f"{directory} already holds {archive.INDEX}; qrosetta does not overwrite an archive.",
-                    hint="qrosetta images save -o NEW_DIRECTORY", reason="archive_exists")
+        raise usage(
+            f"{directory} already holds {archive.INDEX}; qrosetta does not overwrite an archive.",
+            hint="qrosetta images save -o NEW_DIRECTORY",
+            reason="archive_exists",
+        )
     wanted = serve.requested_services(stack, args.services, args.profile, ctx.cfg) or list(stack.services)
     owned, refused = own.owned_images(engine, stack)
     owned = {service: img for service, img in owned if service in wanted}
     refused = [(ref, why) for ref, why, _ in refused if any(stack.image_for(s) == ref for s in wanted)]
-    missing = [stack.services[s].id for s in wanted if s not in owned
-               and not any(ref == stack.image_for(s) for ref, _ in refused)]
+    missing = [
+        stack.services[s].id
+        for s in wanted
+        if s not in owned and not any(ref == stack.image_for(s) for ref, _ in refused)
+    ]
     for ref, why in refused:
         progress(f"{ref} {why}; not saved.")
     if missing and (args.services or args.profile):
-        raise CliError(f"No image for {', '.join(missing)}.", Exit.NOT_FOUND, "image_missing",
-                       hint=("qrosetta pull " if stack.release else "qrosetta build ") + " ".join(missing))
+        raise CliError(
+            f"No image for {', '.join(missing)}.",
+            Exit.NOT_FOUND,
+            "image_missing",
+            hint=("qrosetta pull " if stack.release else "qrosetta build ") + " ".join(missing),
+        )
     if not owned:
-        raise CliError("No image of this stack passes the ownership checks; nothing to save.", Exit.NOT_FOUND,
-                       "nothing_to_save", hint="qrosetta images")
-    url = _busy_guard(ctx, engine, stack, "images save", "saving images now loads the host's disks beside their "
-                      "timed windows")
+        raise CliError(
+            "No image of this stack passes the ownership checks; nothing to save.",
+            Exit.NOT_FOUND,
+            "nothing_to_save",
+            hint="qrosetta images",
+        )
+    url = _busy_guard(
+        ctx, engine, stack, "images save", "saving images now loads the host's disks beside their timed windows"
+    )
     os.makedirs(directory, mode=0o755, exist_ok=True)
     engine.env["TMPDIR"] = cache_tmp(ctx.env)
     entries = []
-    with guard.engine_lock(ctx.env, "images save"), hostload.notice(
-            ctx, url, "save", [stack.services[s].id for s in owned]):
+    with (
+        guard.engine_lock(ctx.env, "images save"),
+        hostload.notice(ctx, url, "save", [stack.services[s].id for s in owned]),
+    ):
         for n, (service, img) in enumerate(owned.items(), 1):
             sid = stack.services[service].id
             path = os.path.join(directory, f"{sid}.tar")
@@ -62,23 +80,54 @@ def cmd_images_save(ctx):
             out = engine.cli("save", "-o", path, img.id)
             if out.returncode != 0:
                 from qrosetta_cli.stack.explain import engine_error
+
                 raise engine_error(out.stderr or out.stdout, f"saving {sid}")
             config_digest, _ = archive.read_archive(path)
-            digest = next((d.split("@", 1)[1] for d in img.digests if "@" in d and stack.release
-                           and d == mf.published_refs(stack.release).get(sid)), None)
-            entries.append({"service": sid, "compose_service": service, "file": os.path.basename(path),
-                            "image_id": mf.image_id_key(img.id), "config_digest": config_digest,
-                            "git_sha": img.git_sha, "digest": digest, "sha256": archive.sha256_file(path),
-                            "bytes": os.path.getsize(path)})
-    index = {"schema": archive.SCHEMA, "project": stack.name, "mode": mode.name,
-             "release": (stack.release or {}).get("platform_version"), "created_by": f"qrosetta {__version__}",
-             "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "engine": engine.name,
-             "images": entries}
+            digest = next(
+                (
+                    d.split("@", 1)[1]
+                    for d in img.digests
+                    if "@" in d and stack.release and d == mf.published_refs(stack.release).get(sid)
+                ),
+                None,
+            )
+            entries.append(
+                {
+                    "service": sid,
+                    "compose_service": service,
+                    "file": os.path.basename(path),
+                    "image_id": mf.image_id_key(img.id),
+                    "config_digest": config_digest,
+                    "git_sha": img.git_sha,
+                    "digest": digest,
+                    "sha256": archive.sha256_file(path),
+                    "bytes": os.path.getsize(path),
+                }
+            )
+    index = {
+        "schema": archive.SCHEMA,
+        "project": stack.name,
+        "mode": mode.name,
+        "release": (stack.release or {}).get("platform_version"),
+        "created_by": f"qrosetta {__version__}",
+        "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "engine": engine.name,
+        "images": entries,
+    }
     path = archive.write_index(directory, index)
-    result(f"Saved {len(entries)} images to {directory} ({human_bytes(sum(e['bytes'] for e in entries))}); "
-           f"index {path}. On the other machine: qrosetta images load {directory}")
-    return Result(0, {"directory": directory, "index": path, "images": entries,
-                      "not_saved": [{"ref": ref, "reason": why} for ref, why in refused]})
+    result(
+        f"Saved {len(entries)} images to {directory} ({human_bytes(sum(e['bytes'] for e in entries))}); "
+        f"index {path}. On the other machine: qrosetta images load {directory}"
+    )
+    return Result(
+        0,
+        {
+            "directory": directory,
+            "index": path,
+            "images": entries,
+            "not_saved": [{"ref": ref, "reason": why} for ref, why in refused],
+        },
+    )
 
 
 def _expected(stack, entry):
@@ -93,8 +142,10 @@ def _expected(stack, entry):
             return f"{sid} is not published by the release"
         ids = mf.release_ids(stack.release, sid)
         if not svc.get("image_id"):
-            return (f"the release manifest records no image id for {sid}, so a loaded image cannot be checked "
-                    "against it; `qrosetta pull` fetches it by digest")
+            return (
+                f"the release manifest records no image id for {sid}, so a loaded image cannot be checked "
+                "against it; `qrosetta pull` fetches it by digest"
+            )
         tag = mf.loaded_tag(stack.name, entry["compose_service"], stack.release.get("platform_version"))
         return entry["compose_service"], tag, ids
     svc = by_id.get(sid)
@@ -113,8 +164,12 @@ def check_entry(stack, directory, entry):
     if not os.path.isfile(path):
         raise CliError(f"{path} is missing.", Exit.NOT_FOUND, "archive_file_missing", hint="qrosetta images load DIR")
     if archive.sha256_file(path) != entry["sha256"]:
-        raise CliError(f"{path} does not have the sha256 its index records (a damaged or altered copy).",
-                       Exit.ENGINE, "archive_corrupt", hint="download the archive again")
+        raise CliError(
+            f"{path} does not have the sha256 its index records (a damaged or altered copy).",
+            Exit.ENGINE,
+            "archive_corrupt",
+            hint="download the archive again",
+        )
     config_digest, config = archive.read_archive(path)
     facts = archive.config_facts(config)
     labels = facts["labels"]
@@ -126,14 +181,19 @@ def check_entry(stack, directory, entry):
     if not stack.release and labels.get(own.QR_IMAGE_PROJECT) != stack.name:
         problems.append(f"labelled for compose project {labels.get(own.QR_IMAGE_PROJECT)!r}, not {stack.name!r}")
     if ids is not None and config_digest not in ids:
-        problems.append(f"image id {config_digest} is not the one release "
-                        f"{stack.release.get('platform_version')} records")
+        problems.append(
+            f"image id {config_digest} is not the one release {stack.release.get('platform_version')} records"
+        )
     foreign = sorted({t for t in archive.embedded_tags(path) if st.normalise_tag(t) != st.normalise_tag(tag)})
     if foreign:
         problems.append(f"the archive would tag the image {', '.join(foreign)} on load; qrosetta applies only {tag}")
     if problems:
-        raise CliError(f"{entry['service']}: {'; '.join(problems)}; not loaded.", Exit.ENGINE, "archive_refused",
-                       hint="qrosetta images save -o DIR (on the machine that has the images)")
+        raise CliError(
+            f"{entry['service']}: {'; '.join(problems)}; not loaded.",
+            Exit.ENGINE,
+            "archive_refused",
+            hint="qrosetta images save -o DIR (on the machine that has the images)",
+        )
     return service, tag, config_digest
 
 
@@ -142,45 +202,62 @@ def _tag_holder(engine, stack, service, tag, config_digest):
     img = st.find_images(engine, [tag]).get(tag)
     if img is None or mf.image_id_key(img.id) == config_digest:
         return None
-    return own.image_refusal(stack, service, tag, img) if not stack.release else (
-        None if img.labels.get(own.QR_SERVICE) == service else "has no qrosetta label for this service")
+    return (
+        own.image_refusal(stack, service, tag, img)
+        if not stack.release
+        else (None if img.labels.get(own.QR_SERVICE) == service else "has no qrosetta label for this service")
+    )
 
 
 def _load_one(engine, stack, directory, entry):
     service, tag, config_digest = check_entry(stack, directory, entry)
     holder = _tag_holder(engine, stack, service, tag, config_digest)
     if holder:
-        raise CliError(f"{tag} {holder}; qrosetta leaves it alone, so {entry['service']} was not loaded.",
-                       Exit.ENGINE, "tag_held", hint=f"{engine.name} image inspect {tag}")
+        raise CliError(
+            f"{tag} {holder}; qrosetta leaves it alone, so {entry['service']} was not loaded.",
+            Exit.ENGINE,
+            "tag_held",
+            hint=f"{engine.name} image inspect {tag}",
+        )
     present = st.images_by_id(engine, [config_digest]).get(st.image_key(config_digest))
     if present is None:
         out = engine.cli("load", "-i", os.path.join(directory, entry["file"]))
         if out.returncode != 0:
             from qrosetta_cli.stack.explain import engine_error
+
             raise engine_error(out.stderr or out.stdout, f"loading {entry['file']}")
         present = st.images_by_id(engine, [config_digest]).get(st.image_key(config_digest))
         if present is None:
-            raise CliError(f"{entry['file']} loaded, but the engine shows no image {config_digest}.", Exit.ENGINE,
-                           "loaded_image_missing", hint="qrosetta doctor")
+            raise CliError(
+                f"{entry['file']} loaded, but the engine shows no image {config_digest}.",
+                Exit.ENGINE,
+                "loaded_image_missing",
+                hint="qrosetta doctor",
+            )
     out = engine.cli("tag", present.id, tag)
     if out.returncode != 0:
         from qrosetta_cli.stack.explain import engine_error
+
         raise engine_error(out.stderr or out.stdout, f"tagging {entry['service']}")
     return {"id": entry["service"], "tag": tag, "image_id": present.id, "git_sha": entry.get("git_sha")}
 
 
 def cmd_images_load(ctx):
     from qrosetta_cli.stack.commands import open_stack
+
     args = ctx.args
     directory, index = archive.read_index(args.path)
     _, engine, stack = open_stack(ctx)
     entries = [e for e in index["images"] if not args.services or e["service"] in args.services]
     unknown = sorted(set(args.services or []) - {e["service"] for e in index["images"]})
     if unknown:
-        raise CliError(f"The archive has no image for {', '.join(unknown)}.", Exit.NOT_FOUND, "image_missing",
-                       hint=f"qrosetta images load {directory}")
-    url = _busy_guard(ctx, engine, stack, "images load", "loading images now loads the host beside their timed "
-                      "windows")
+        raise CliError(
+            f"The archive has no image for {', '.join(unknown)}.",
+            Exit.NOT_FOUND,
+            "image_missing",
+            hint=f"qrosetta images load {directory}",
+        )
+    url = _busy_guard(ctx, engine, stack, "images load", "loading images now loads the host beside their timed windows")
     engine.env["TMPDIR"] = cache_tmp(ctx.env)
     loaded, failed = [], []
     with guard.engine_lock(ctx.env, "images load"), hostload.notice(ctx, url, "load", [e["service"] for e in entries]):
@@ -193,10 +270,16 @@ def cmd_images_load(ctx):
                 failed.append({"id": entry["service"], "reason": exc.reason, "message": exc.message})
     data = {"directory": directory, "loaded": loaded, "failed": failed}
     if loaded:
-        result(f"Loaded {len(loaded)} images: {', '.join(e['id'] for e in loaded)}. `qrosetta images verify` "
-               "checks them; `qrosetta start -d` starts them.")
+        result(
+            f"Loaded {len(loaded)} images: {', '.join(e['id'] for e in loaded)}. `qrosetta images verify` "
+            "checks them; `qrosetta start -d` starts them."
+        )
     if failed:
-        raise CliError(f"{len(failed)} of {len(entries)} images were not loaded: "
-                       f"{', '.join(f['id'] for f in failed)}.", Exit.ENGINE, failed[0]["reason"], data=data,
-                       hint="qrosetta images verify")
+        raise CliError(
+            f"{len(failed)} of {len(entries)} images were not loaded: {', '.join(f['id'] for f in failed)}.",
+            Exit.ENGINE,
+            failed[0]["reason"],
+            data=data,
+            hint="qrosetta images verify",
+        )
     return Result(0, data)

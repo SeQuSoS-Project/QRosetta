@@ -11,10 +11,15 @@ from qrosetta_cli.client import handshake, results
 from qrosetta_cli.client.runplan import Settings
 from qrosetta_cli.errors import CliError, Exit, usage
 
-CONTEXT_FIELDS = (("optimization_level", "optimization_level"), ("runner_config", "runner_config"),
-                  ("runner_phases", "runner_phases"), ("timeout_seconds", "timeout_seconds"),
-                  ("timing_repeats", "timing_repeats"), ("thresholds", "agreement_thresholds"),
-                  ("exclusive", "exclusive"))
+CONTEXT_FIELDS = (
+    ("optimization_level", "optimization_level"),
+    ("runner_config", "runner_config"),
+    ("runner_phases", "runner_phases"),
+    ("timeout_seconds", "timeout_seconds"),
+    ("timing_repeats", "timing_repeats"),
+    ("thresholds", "agreement_thresholds"),
+    ("exclusive", "exclusive"),
+)
 MEASURED_FIELDS = ("n_shots", "seed")
 
 
@@ -50,26 +55,46 @@ def _plan_from_request(doc):
     endpoint = doc.get("endpoint")
     req = {"compilers": payload.get("compilers") or {}, "check_circuits": False}
     if endpoint in ("/compare", "/compare_measured"):
-        req.update(source="single", circuits=[{"qasm_string": payload.get("qasm_string"),
-                                               "name": doc.get("title") or "circuit"}])
+        req.update(
+            source="single",
+            circuits=[{"qasm_string": payload.get("qasm_string"), "name": doc.get("title") or "circuit"}],
+        )
     elif endpoint == "/run_batch_suite":
         req.update(source="playlist", circuits=list(payload.get("tasks") or []))
     elif endpoint == "/experiments":
         req.update(source="playlist", circuits=list(payload.get("circuits") or []), preprocessing="both")
     else:
-        raise usage(f"{endpoint!r} is not a run route this CLI replays.", hint="qrosetta run --request plan.json",
-                    reason="replay_invalid")
+        raise usage(
+            f"{endpoint!r} is not a run route this CLI replays.",
+            hint="qrosetta run --request plan.json",
+            reason="replay_invalid",
+        )
     simulate = payload.get("simulate", True) is not False
-    req["modes"] = [] if not simulate else [doc.get("mode") or ("measured" if endpoint == "/compare_measured"
-                                                                 else payload.get("mode") or "statevector")]
+    req["modes"] = (
+        []
+        if not simulate
+        else [
+            doc.get("mode") or ("measured" if endpoint == "/compare_measured" else payload.get("mode") or "statevector")
+        ]
+    )
     if "apply_preprocessing" in payload and endpoint != "/experiments":
         req["preprocessing"] = "on" if payload["apply_preprocessing"] else "off"
     if payload.get("label"):
         req["name"] = payload["label"]
-    skip = {"qasm_string", "tasks", "circuits", "mode", "simulate", "compilers", "apply_preprocessing",
-            "preprocessing_modes", "label"}
-    req["settings"] = {k: {"value": v, "source": "replay"} for k, v in payload.items()
-                       if k not in skip and v is not None}
+    skip = {
+        "qasm_string",
+        "tasks",
+        "circuits",
+        "mode",
+        "simulate",
+        "compilers",
+        "apply_preprocessing",
+        "preprocessing_modes",
+        "label",
+    }
+    req["settings"] = {
+        k: {"value": v, "source": "replay"} for k, v in payload.items() if k not in skip and v is not None
+    }
     return req
 
 
@@ -78,21 +103,30 @@ def load(path):
     path = os.path.abspath(path)
     doc = results.read_json(path)
     if not isinstance(doc, dict):
-        raise CliError(f"Cannot read {path} as JSON.", Exit.NOT_FOUND, "input_missing",
-                       hint="qrosetta run --request DIR/plan.json")
+        raise CliError(
+            f"Cannot read {path} as JSON.", Exit.NOT_FOUND, "input_missing", hint="qrosetta run --request DIR/plan.json"
+        )
     here = os.path.dirname(path)
     if isinstance(doc.get("plan_request"), dict):
         req = dict(doc["plan_request"])
-        req["settings"] = {k: {"value": s.get("value"), "source": "replay"}
-                           for k, s in (req.get("settings") or {}).items()}
+        req["settings"] = {
+            k: {"value": s.get("value"), "source": "replay"} for k, s in (req.get("settings") or {}).items()
+        }
         reports = [os.path.join(here, d, "report.json") for d in doc.get("job_dirs") or []]
         return req, doc.get("server") or {}, doc.get("api_level"), reports
     if "endpoint" in doc and "payload" in doc:
         plan = results.read_json(os.path.join(os.path.dirname(here), results.PLAN_FILE)) or {}
-        return _plan_from_request(doc), plan.get("server") or {}, plan.get("api_level"), [
-            os.path.join(here, "report.json")]
-    raise usage(f"{path} is neither a plan.json nor a request.json.", hint="qrosetta run --request DIR/plan.json",
-                reason="replay_invalid")
+        return (
+            _plan_from_request(doc),
+            plan.get("server") or {},
+            plan.get("api_level"),
+            [os.path.join(here, "report.json")],
+        )
+    raise usage(
+        f"{path} is neither a plan.json nor a request.json.",
+        hint="qrosetta run --request DIR/plan.json",
+        reason="replay_invalid",
+    )
 
 
 def original_slug(path):
@@ -116,10 +150,15 @@ def check_versions(conn, original, api_level, force):
     levels = handshake.levels(conn.block)
     if api_level is not None and levels and not levels[0] <= api_level <= levels[1]:
         if not force:
-            raise CliError(f"The original ran at API level {api_level}; this server serves {levels[0]}-{levels[1]}.",
-                           Exit.INCOMPATIBLE, "replay_api_level", hint="add --force to replay anyway (recorded)")
-        output.warn(f"Replaying across API levels ({api_level} -> {levels[0]}-{levels[1]}) with --force.",
-                    "replay_forced")
+            raise CliError(
+                f"The original ran at API level {api_level}; this server serves {levels[0]}-{levels[1]}.",
+                Exit.INCOMPATIBLE,
+                "replay_api_level",
+                hint="add --force to replay anyway (recorded)",
+            )
+        output.warn(
+            f"Replaying across API levels ({api_level} -> {levels[0]}-{levels[1]}) with --force.", "replay_forced"
+        )
     for key, label in (("platform_version", "platform"), ("analysis_version", "analysis")):
         was, now = original.get(key), conn.block.get(key)
         if was and now and was != now:
@@ -131,14 +170,25 @@ def fill(req, reports, settings_out):
     its saved reports; returns the names filled. Missing reports leave a warning."""
     contexts = [run_context(results.read_json(p)) for p in reports if os.path.isfile(p)]
     if not contexts:
-        output.warn("The original's report.json is not saved, so settings it left to the server stay unset and "
-                    "this server's defaults apply.", "replay_without_report")
+        output.warn(
+            "The original's report.json is not saved, so settings it left to the server stay unset and "
+            "this server's defaults apply.",
+            "replay_without_report",
+        )
         return []
     measured = "measured" in (req.get("modes") or [])
     filled = []
     first = contexts[0]
-    for name in ("optimization_level", "runner_config", "runner_phases", "timeout_seconds", "timing_repeats",
-                 "thresholds", "exclusive", "target_simulators") + (MEASURED_FIELDS if measured else ()):
+    for name in (
+        "optimization_level",
+        "runner_config",
+        "runner_phases",
+        "timeout_seconds",
+        "timing_repeats",
+        "thresholds",
+        "exclusive",
+        "target_simulators",
+    ) + (MEASURED_FIELDS if measured else ()):
         if name in req["settings"]:
             continue
         ctx = next((c for c in contexts if name in c), None) if name in MEASURED_FIELDS else first

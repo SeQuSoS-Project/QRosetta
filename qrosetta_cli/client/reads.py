@@ -12,13 +12,24 @@ from qrosetta_cli.context import Result
 from qrosetta_cli.errors import CliError, Exit, usage
 
 COMMAND_FEATURES = (
-    ("run", "plan", 1), ("run", "summary", 1), ("wait", "summary", 1), ("selftest", "plan", 1),
-    ("selftest", "selftest", 1), ("selftest", "summary", 1), ("show summary", "summary", 1),
-    ("backends --fresh", "fresh_probes", 1), ("compilers --fresh", "fresh_probes", 1),
+    ("run", "plan", 1),
+    ("run", "summary", 1),
+    ("wait", "summary", 1),
+    ("selftest", "plan", 1),
+    ("selftest", "selftest", 1),
+    ("selftest", "summary", 1),
+    ("show summary", "summary", 1),
+    ("backends --fresh", "fresh_probes", 1),
+    ("compilers --fresh", "fresh_probes", 1),
 )
-DEFAULT_FIELDS = (("n_shots", "shots"), ("timeout_seconds", "timeout (s)"), ("timing_repeats", "repeats"),
-                  ("optimization_level", "opt level"), ("apply_preprocessing", "preprocessing"),
-                  ("exclusive", "exclusive"))
+DEFAULT_FIELDS = (
+    ("n_shots", "shots"),
+    ("timeout_seconds", "timeout (s)"),
+    ("timing_repeats", "repeats"),
+    ("optimization_level", "opt level"),
+    ("apply_preprocessing", "preprocessing"),
+    ("exclusive", "exclusive"),
+)
 CATALOGS = {
     "algorithms": ("/algorithms", "algorithm:ID:QUBITS[,seed=S]", "qrosetta circuits get algorithm:ghz:3"),
     "examples": ("/examples", "example:NAME", "qrosetta circuits get example:rotation_1q"),
@@ -57,7 +68,7 @@ def _ranges(numbers):
 
 def _levels(entry):
     keys = []
-    for key in (entry.get("optimization_levels") or {}):
+    for key in entry.get("optimization_levels") or {}:
         try:
             keys.append(int(key))
         except (TypeError, ValueError):
@@ -121,8 +132,12 @@ def compatibility(config):
             if key not in needed_by:
                 missing.append(key)
             needed_by.setdefault(key, []).append(command)
-    return {"cli_api_levels": list(cli), "server_api_levels": list(levels) if levels else None, "ok": ok,
-            "missing_features": missing}, needed_by
+    return {
+        "cli_api_levels": list(cli),
+        "server_api_levels": list(levels) if levels else None,
+        "ok": ok,
+        "missing_features": missing,
+    }, needed_by
 
 
 def _gate_line(gate):
@@ -151,11 +166,16 @@ def cmd_info(ctx):
     else:
         lv = compat["server_api_levels"]
         levels = f"API levels {lv[0]}-{lv[1]}" if lv else "no API levels"
-        rows += [("Platform", f"{block.get('platform_version', '?')}, {levels} (this CLI speaks {cli[0]}-{cli[1]}: "
-                              f"{'compatible' if compat['ok'] else 'incompatible'})"),
-                 ("Analysis", block.get("analysis_version") or "-"),
-                 ("Commit", block.get("git_sha") or "-"),
-                 ("Features", ", ".join(f"{k} {v}" for k, v in sorted((block.get("features") or {}).items())) or "none")]
+        rows += [
+            (
+                "Platform",
+                f"{block.get('platform_version', '?')}, {levels} (this CLI speaks {cli[0]}-{cli[1]}: "
+                f"{'compatible' if compat['ok'] else 'incompatible'})",
+            ),
+            ("Analysis", block.get("analysis_version") or "-"),
+            ("Commit", block.get("git_sha") or "-"),
+            ("Features", ", ".join(f"{k} {v}" for k, v in sorted((block.get("features") or {}).items())) or "none"),
+        ]
     rows += [("Mode", config.get("execution_mode") or "-"), ("Run gate", _gate_line(config.get("exclusive")))]
     defaults = []
     for field, label in DEFAULT_FIELDS:
@@ -164,33 +184,55 @@ def cmd_info(ctx):
             defaults.append(f"{label} {('on' if value else 'off') if isinstance(value, bool) else value}")
     if defaults:
         rows.append(("Defaults", ", ".join(defaults)))
-    thresholds = ((config.get("request_defaults") or {}).get("agreement_thresholds")
-                  or config.get("agreement_threshold_defaults") or {})
+    thresholds = (
+        (config.get("request_defaults") or {}).get("agreement_thresholds")
+        or config.get("agreement_threshold_defaults")
+        or {}
+    )
     if thresholds:
         rows.append(("Thresholds", ", ".join(f"{k} {v}" for k, v in thresholds.items())))
     lim = config.get("limits") or {}
-    rows += [("Qubits", f"statevector {lim.get('max_qubits_statevector', '-')}, measured "
-                        f"{lim.get('max_qubits_measured', '-')}, compile-only {lim.get('max_qubits_compile', '-')}"),
-             ("Shots", f"{lim.get('shots_min', '-')} to {lim.get('shots_max', '-')}"),
-             ("Timeout", f"{_fmt_seconds(lim.get('timeout_min'))} to {_fmt_seconds(lim.get('timeout_max'))}"),
-             ("Repeats", f"up to {lim.get('timing_repeats_max', '-')}"),
-             ("Requests", f"{_fmt_bytes(lim.get('max_request_bytes'))} per body, "
-                          f"{lim.get('max_batch_tasks', '-')} circuits per playlist, "
-                          f"{lim.get('max_qasm_gate_statements', '-')} gate statements per circuit"),
-             ("Jobs kept", _fmt_seconds(lim.get("job_ttl_sec")) + " after they finish")]
+    rows += [
+        (
+            "Qubits",
+            f"statevector {lim.get('max_qubits_statevector', '-')}, measured "
+            f"{lim.get('max_qubits_measured', '-')}, compile-only {lim.get('max_qubits_compile', '-')}",
+        ),
+        ("Shots", f"{lim.get('shots_min', '-')} to {lim.get('shots_max', '-')}"),
+        ("Timeout", f"{_fmt_seconds(lim.get('timeout_min'))} to {_fmt_seconds(lim.get('timeout_max'))}"),
+        ("Repeats", f"up to {lim.get('timing_repeats_max', '-')}"),
+        (
+            "Requests",
+            f"{_fmt_bytes(lim.get('max_request_bytes'))} per body, "
+            f"{lim.get('max_batch_tasks', '-')} circuits per playlist, "
+            f"{lim.get('max_qasm_gate_statements', '-')} gate statements per circuit",
+        ),
+        ("Jobs kept", _fmt_seconds(lim.get("job_ttl_sec")) + " after they finish"),
+    ]
     width = max(len(k) for k, _ in rows)
     for key, value in rows:
         output.result(f"{key:<{width}}  {value}")
     for key in compat["missing_features"]:
-        output.warn(f"this server does not offer {key}, which `qrosetta {', '.join(needed_by[key])}` needs.",
-                    "feature_missing")
+        output.warn(
+            f"this server does not offer {key}, which `qrosetta {', '.join(needed_by[key])}` needs.", "feature_missing"
+        )
     data = {"config": config, "compatibility": compat}
     if block is None:
-        raise CliError("This server predates the CLI; it needs platform 2.0.0 or later.", Exit.INCOMPATIBLE,
-                       "server_too_old", hint=handshake.UPGRADE_HINT, data=data)
+        raise CliError(
+            "This server predates the CLI; it needs platform 2.0.0 or later.",
+            Exit.INCOMPATIBLE,
+            "server_too_old",
+            hint=handshake.UPGRADE_HINT,
+            data=data,
+        )
     if not compat["ok"]:
-        raise CliError(f"This server serves API levels {compat['server_api_levels']}; this CLI speaks "
-                       f"{cli[0]}-{cli[1]}.", Exit.INCOMPATIBLE, "api_levels", hint=handshake.UPGRADE_HINT, data=data)
+        raise CliError(
+            f"This server serves API levels {compat['server_api_levels']}; this CLI speaks {cli[0]}-{cli[1]}.",
+            Exit.INCOMPATIBLE,
+            "api_levels",
+            hint=handshake.UPGRADE_HINT,
+            data=data,
+        )
     return Result(0, data)
 
 
@@ -202,19 +244,28 @@ def _service_list(ctx, path, what):
     if fresh:
         server = ctx.server()
         if not servers.token_for(server, ctx.cfg, ctx.env):
-            raise CliError(f"--fresh needs a signed-in account on {server.url} (or the local lifecycle token).",
-                           Exit.AUTH, "not_signed_in", hint=f"qrosetta login{_server_flag(ctx)}")
+            raise CliError(
+                f"--fresh needs a signed-in account on {server.url} (or the local lifecycle token).",
+                Exit.AUTH,
+                "not_signed_in",
+                hint=f"qrosetta login{_server_flag(ctx)}",
+            )
         conn = Conn(ctx, features=("fresh_probes",), with_token=True)
     else:
         conn = Conn(ctx, with_token=False)
-    entries = conn.get(path, query={"fresh": "true"} if fresh else None, what=f"GET {path}",
-                       hint=f"qrosetta {what}")
+    entries = conn.get(path, query={"fresh": "true"} if fresh else None, what=f"GET {path}", hint=f"qrosetta {what}")
     if not isinstance(entries, list):
-        raise CliError(f"GET {path} answered with {type(entries).__name__}, not a list.", Exit.INCOMPATIBLE,
-                       "unexpected_response", hint="qrosetta info")
+        raise CliError(
+            f"GET {path} answered with {type(entries).__name__}, not a list.",
+            Exit.INCOMPATIBLE,
+            "unexpected_response",
+            hint="qrosetta info",
+        )
     if fresh and any(isinstance(e, dict) and e.get("reason") == "exclusive_run" for e in entries):
-        output.warn("an exclusive run holds the server, so it was not probed; these are the values cached "
-                    "before the run.", "exclusive_run")
+        output.warn(
+            "an exclusive run holds the server, so it was not probed; these are the values cached before the run.",
+            "exclusive_run",
+        )
     return entries, fresh
 
 
@@ -254,13 +305,27 @@ def cmd_backends(ctx):
     elif ctx.opt("levels"):
         _print_levels(entries)
     else:
-        rows = [(e.get("id", "?"), _yes(e.get("available")), _yes(e.get("default_selected")), _levels(e),
-                 e.get("device") or "-", _per_endpoint(e.get("precision")), _per_endpoint(e.get("qubit_ordering")),
-                 ",".join(e.get("profiles") or []) or "-", _note(e)) for e in entries]
-        output.result(table(("ID", "AVAILABLE", "DEFAULT", "LEVELS", "DEVICE", "PRECISION", "ORDER", "PROFILES",
-                             "NOTE"), rows))
-        output.progress(f"{len(ids)} of {len(entries)} backends available and selected by default"
-                        f"{' (probed now)' if fresh else ' (availability cached up to 60 s)'}.")
+        rows = [
+            (
+                e.get("id", "?"),
+                _yes(e.get("available")),
+                _yes(e.get("default_selected")),
+                _levels(e),
+                e.get("device") or "-",
+                _per_endpoint(e.get("precision")),
+                _per_endpoint(e.get("qubit_ordering")),
+                ",".join(e.get("profiles") or []) or "-",
+                _note(e),
+            )
+            for e in entries
+        ]
+        output.result(
+            table(("ID", "AVAILABLE", "DEFAULT", "LEVELS", "DEVICE", "PRECISION", "ORDER", "PROFILES", "NOTE"), rows)
+        )
+        output.progress(
+            f"{len(ids)} of {len(entries)} backends available and selected by default"
+            f"{' (probed now)' if fresh else ' (availability cached up to 60 s)'}."
+        )
     return Result(0, {"runners": entries, "fresh": fresh, "default_ids": ids})
 
 
@@ -269,8 +334,9 @@ def _versions(entry):
     if not isinstance(v, dict):
         return "-"
     parts = [f"{k} {val}" for k, val in sorted((v.get("sdk_versions") or {}).items())]
-    parts += [f"{c.get('name', '?')} {c.get('version', '?')}" for c in v.get("native_components") or []
-              if isinstance(c, dict)]
+    parts += [
+        f"{c.get('name', '?')} {c.get('version', '?')}" for c in v.get("native_components") or [] if isinstance(c, dict)
+    ]
     return ", ".join(parts) or "-"
 
 
@@ -283,12 +349,24 @@ def cmd_compilers(ctx):
     elif ctx.opt("levels"):
         _print_levels(entries)
     else:
-        rows = [(e.get("id", "?"), e.get("name") or "-", _yes(e.get("available")), _levels(e),
-                 ",".join(e.get("profiles") or []) or "-", _note(e), _versions(e)) for e in entries]
+        rows = [
+            (
+                e.get("id", "?"),
+                e.get("name") or "-",
+                _yes(e.get("available")),
+                _levels(e),
+                ",".join(e.get("profiles") or []) or "-",
+                _note(e),
+                _versions(e),
+            )
+            for e in entries
+        ]
         output.result(table(("ID", "NAME", "AVAILABLE", "LEVELS", "PROFILES", "NOTE", "VERSIONS"), rows))
-        output.progress(f"{len(ids)} of {len(entries)} compile-only services available"
-                        f"{' (probed now)' if fresh else ' (availability cached up to 60 s)'}; a run uses one only "
-                        "when --compiler names it.")
+        output.progress(
+            f"{len(ids)} of {len(entries)} compile-only services available"
+            f"{' (probed now)' if fresh else ' (availability cached up to 60 s)'}; a run uses one only "
+            "when --compiler names it."
+        )
     return Result(0, {"compilers": entries, "fresh": fresh, "available_ids": ids})
 
 
@@ -298,11 +376,19 @@ def _matches(text, needle):
 
 def _filter(catalog, items, max_qubits, needle):
     if catalog == "algorithms":
-        return [a for a in items if (max_qubits is None or a.get("min_qubits", 0) <= max_qubits)
-                and _matches(" ".join(str(a.get(k, "")) for k in ("id", "name", "description")), needle)]
+        return [
+            a
+            for a in items
+            if (max_qubits is None or a.get("min_qubits", 0) <= max_qubits)
+            and _matches(" ".join(str(a.get(k, "")) for k in ("id", "name", "description")), needle)
+        ]
     if catalog == "examples":
-        return [e for e in items if (max_qubits is None or (e.get("qubits") or 0) <= max_qubits)
-                and _matches(" ".join(str(e.get(k, "")) for k in ("name", "title", "description", "mode")), needle)]
+        return [
+            e
+            for e in items
+            if (max_qubits is None or (e.get("qubits") or 0) <= max_qubits)
+            and _matches(" ".join(str(e.get(k, "")) for k in ("name", "title", "description", "mode")), needle)
+        ]
     if catalog == "mqt":
         out = {}
         for algo, sizes in items.items():
@@ -315,13 +401,28 @@ def _filter(catalog, items, max_qubits, needle):
 
 def _print_catalog(catalog, items):
     if catalog == "algorithms":
-        rows = [(a.get("id", "?"), f"{a.get('min_qubits', '?')}-{a.get('max_qubits', '?')}",
-                 a.get("max_qubits_statevector", "-"), a.get("max_qubits_measured", "-"), a.get("default_qubits", "-"),
-                 a.get("name") or "-") for a in items]
+        rows = [
+            (
+                a.get("id", "?"),
+                f"{a.get('min_qubits', '?')}-{a.get('max_qubits', '?')}",
+                a.get("max_qubits_statevector", "-"),
+                a.get("max_qubits_measured", "-"),
+                a.get("default_qubits", "-"),
+                a.get("name") or "-",
+            )
+            for a in items
+        ]
         output.result(table(("ID", "QUBITS", "SV MAX", "MEASURED MAX", "DEFAULT", "NAME"), rows))
     elif catalog == "examples":
-        rows = [(e.get("name", "?")[:-5] if e.get("name", "").endswith(".qasm") else e.get("name", "?"),
-                 e.get("qubits", "-"), e.get("mode") or "-", e.get("title") or "-") for e in items]
+        rows = [
+            (
+                e.get("name", "?")[:-5] if e.get("name", "").endswith(".qasm") else e.get("name", "?"),
+                e.get("qubits", "-"),
+                e.get("mode") or "-",
+                e.get("title") or "-",
+            )
+            for e in items
+        ]
         output.result(table(("NAME", "QUBITS", "MODE", "TITLE"), rows))
     elif catalog == "mqt":
         output.result(table(("ALGORITHM", "QUBITS"), [(algo, _ranges(sizes)) for algo, sizes in items.items()]))
@@ -334,8 +435,10 @@ def cmd_circuits(ctx):
     path, form, example = CATALOGS[catalog]
     max_qubits, needle = ctx.opt("max_qubits"), ctx.opt("filter")
     if catalog == "qasmbench" and max_qubits is not None:
-        raise usage("The QASMBench list holds names only, so --max-qubits cannot filter it.",
-                    hint="qrosetta circuits qasmbench --filter adder")
+        raise usage(
+            "The QASMBench list holds names only, so --max-qubits cannot filter it.",
+            hint="qrosetta circuits qasmbench --filter adder",
+        )
     conn = Conn(ctx, with_token=False)
     items = conn.get(path, what=f"GET {path}", hint="qrosetta info")
     shown = _filter(catalog, items, max_qubits, needle)
@@ -345,8 +448,16 @@ def cmd_circuits(ctx):
     else:
         _print_catalog(catalog, shown)
     output.progress(f"{len(shown)} of {total} shown. Reference: {form}, e.g. `{example}`.")
-    return Result(0, {"catalog": catalog, "path": path, "items": shown, "total": total,
-                      "filter": {"max_qubits": max_qubits, "text": needle}})
+    return Result(
+        0,
+        {
+            "catalog": catalog,
+            "path": path,
+            "items": shown,
+            "total": total,
+            "filter": {"max_qubits": max_qubits, "text": needle},
+        },
+    )
 
 
 def _suggest(name, names):
@@ -358,18 +469,34 @@ def _not_found(ref, conn):
     """The exit-14 error for a reference the server does not have, with close names."""
     if ref.kind == "example":
         names = [e["name"][:-5] for e in conn.get("/examples") if str(e.get("name", "")).endswith(".qasm")]
-        return CliError(f"No bundled example {ref.name!r}{_suggest(ref.name, names)}", Exit.NOT_FOUND,
-                        "unknown_example", hint="qrosetta circuits examples")
+        return CliError(
+            f"No bundled example {ref.name!r}{_suggest(ref.name, names)}",
+            Exit.NOT_FOUND,
+            "unknown_example",
+            hint="qrosetta circuits examples",
+        )
     if ref.kind == "mqt":
         index = conn.get("/benchmarks/mqt/list")
         if ref.name in index:
-            return CliError(f"MQT Bench has {ref.name} at {_ranges(index[ref.name])} qubits, not {ref.qubits}.",
-                            Exit.NOT_FOUND, "unknown_size", hint=f"qrosetta circuits mqt --filter {ref.name}")
-        return CliError(f"No MQT Bench algorithm {ref.name!r}{_suggest(ref.name, index)}", Exit.NOT_FOUND,
-                        "unknown_algorithm", hint="qrosetta circuits mqt")
+            return CliError(
+                f"MQT Bench has {ref.name} at {_ranges(index[ref.name])} qubits, not {ref.qubits}.",
+                Exit.NOT_FOUND,
+                "unknown_size",
+                hint=f"qrosetta circuits mqt --filter {ref.name}",
+            )
+        return CliError(
+            f"No MQT Bench algorithm {ref.name!r}{_suggest(ref.name, index)}",
+            Exit.NOT_FOUND,
+            "unknown_algorithm",
+            hint="qrosetta circuits mqt",
+        )
     names = conn.get("/benchmarks/qasmbench/list")
-    return CliError(f"No QASMBench circuit {ref.name!r}{_suggest(ref.name, names)}", Exit.NOT_FOUND,
-                    "unknown_circuit", hint="qrosetta circuits qasmbench")
+    return CliError(
+        f"No QASMBench circuit {ref.name!r}{_suggest(ref.name, names)}",
+        Exit.NOT_FOUND,
+        "unknown_circuit",
+        hint="qrosetta circuits qasmbench",
+    )
 
 
 def _write_text(path, text):
@@ -381,8 +508,12 @@ def _write_text(path, text):
     except OSError as exc:
         if os.path.exists(part):
             os.unlink(part)
-        raise CliError(f"Cannot write {path}: {exc.strerror}.", Exit.REFUSED, "write_failed",
-                       hint="qrosetta circuits get REF -o PATH, with PATH in a writable directory") from None
+        raise CliError(
+            f"Cannot write {path}: {exc.strerror}.",
+            Exit.REFUSED,
+            "write_failed",
+            hint="qrosetta circuits get REF -o PATH, with PATH in a writable directory",
+        ) from None
 
 
 def cmd_circuits_get(ctx):
@@ -393,8 +524,12 @@ def cmd_circuits_get(ctx):
         if ref.kind == "algorithm":
             known = [a.get("id") for a in conn.get("/algorithms")]
             if ref.name not in known:
-                raise CliError(f"No algorithm {ref.name!r}{_suggest(ref.name, known)}", Exit.NOT_FOUND,
-                               "unknown_algorithm", hint="qrosetta circuits algorithms")
+                raise CliError(
+                    f"No algorithm {ref.name!r}{_suggest(ref.name, known)}",
+                    Exit.NOT_FOUND,
+                    "unknown_algorithm",
+                    hint="qrosetta circuits algorithms",
+                )
     try:
         name, qasm = refs.text(conn, ref, ctx.stdin)
     except CliError as exc:

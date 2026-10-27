@@ -98,25 +98,34 @@ def load_stack(engine):
     try:
         cfg = json.loads(out.stdout)
     except json.JSONDecodeError as exc:
-        raise CliError(f"`{engine.name} compose config` did not return JSON: {exc}", Exit.ENGINE,
-                       "compose_config", hint="qrosetta doctor") from exc
+        raise CliError(
+            f"`{engine.name} compose config` did not return JSON: {exc}",
+            Exit.ENGINE,
+            "compose_config",
+            hint="qrosetta doctor",
+        ) from exc
     if cfg.get("name") != engine.project:
-        raise CliError(f"Compose reports project {cfg.get('name')!r}, not {engine.project!r}; "
-                       "nothing was done.", Exit.ENGINE, "project_mismatch",
-                       hint=f"set name: ${{QROSETTA_PROJECT:-qsimulators}} in {engine.files[0]}")
+        raise CliError(
+            f"Compose reports project {cfg.get('name')!r}, not {engine.project!r}; nothing was done.",
+            Exit.ENGINE,
+            "project_mismatch",
+            hint=f"set name: ${{QROSETTA_PROJECT:-qsimulators}} in {engine.files[0]}",
+        )
     services = {}
     for name, svc in cfg.get("services", {}).items():
         deps = svc.get("depends_on") or {}
         services[name] = Service(
-            name=name, container_name=svc.get("container_name") or "",
-            image=svc.get("image") or "", ports=svc.get("ports") or [],
+            name=name,
+            container_name=svc.get("container_name") or "",
+            image=svc.get("image") or "",
+            ports=svc.get("ports") or [],
             depends_on=list(deps) if isinstance(deps, (dict, list)) else [],
-            labels=_labels(svc.get("labels")), environment=_labels(svc.get("environment")),
-            cpus=_cpu_limit(svc))
-    volumes = {key: (v or {}).get("name") or f"{cfg['name']}_{key}"
-               for key, v in (cfg.get("volumes") or {}).items()}
-    return Stack(name=cfg["name"], project_dir=engine.project_dir, services=services,
-                 volume_names=volumes)
+            labels=_labels(svc.get("labels")),
+            environment=_labels(svc.get("environment")),
+            cpus=_cpu_limit(svc),
+        )
+    volumes = {key: (v or {}).get("name") or f"{cfg['name']}_{key}" for key, v in (cfg.get("volumes") or {}).items()}
+    return Stack(name=cfg["name"], project_dir=engine.project_dir, services=services, volume_names=volumes)
 
 
 def _cpu_limit(svc):
@@ -158,7 +167,7 @@ class Image:
 def normalise_tag(tag):
     for prefix in ("localhost/", "docker.io/library/"):
         if tag.startswith(prefix):
-            tag = tag[len(prefix):]
+            tag = tag[len(prefix) :]
     return tag if ":" in tag.rsplit("/", 1)[-1] else tag + ":latest"
 
 
@@ -170,9 +179,15 @@ def image_key(ident):
 def _image(ref, item):
     config = item.get("Config") or {}
     env = dict(e.split("=", 1) for e in (config.get("Env") or []) if "=" in e)
-    return Image(ref=ref, id=item.get("Id", ""), size=int(item.get("Size") or 0), tags=item.get("RepoTags") or [],
-                 env=env, labels=config.get("Labels") or item.get("Labels") or {},
-                 digests=item.get("RepoDigests") or [])
+    return Image(
+        ref=ref,
+        id=item.get("Id", ""),
+        size=int(item.get("Size") or 0),
+        tags=item.get("RepoTags") or [],
+        env=env,
+        labels=config.get("Labels") or item.get("Labels") or {},
+        digests=item.get("RepoDigests") or [],
+    )
 
 
 def _inspect_images(engine, refs):
@@ -187,8 +202,11 @@ def images_by_id(engine, ids):
     """The images among `ids` that exist, keyed by `image_key` of their ID."""
     ids = sorted({i for i in ids if i})
     keys = {image_key(i) for i in ids}
-    return {image_key(item.get("Id")): _image(item.get("Id", ""), item)
-            for item in (_inspect_images(engine, ids) if ids else []) if image_key(item.get("Id")) in keys}
+    return {
+        image_key(item.get("Id")): _image(item.get("Id", ""), item)
+        for item in (_inspect_images(engine, ids) if ids else [])
+        if image_key(item.get("Id")) in keys
+    }
 
 
 def find_images(engine, refs):

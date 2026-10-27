@@ -13,6 +13,7 @@ from qrosetta_cli.output import progress, result
 
 def cmd_version(ctx):
     from qrosetta_cli.client import handshake
+
     mode = modes.detect(ctx.opt("project_dir"), ctx.env, ctx.checkout)
     server = ctx.server()
     block, state = None, "not answering"
@@ -24,22 +25,32 @@ def cmd_version(ctx):
     except CliError as exc:
         state = "not answering" if exc.code == Exit.UNREACHABLE else exc.message
     py = platform.python_version()
-    result(f"qrosetta {__version__} (Python {py}, {mode.name} mode{': ' + mode.project_dir if mode.project_dir else ''})")
+    result(
+        f"qrosetta {__version__} (Python {py}, {mode.name} mode{': ' + mode.project_dir if mode.project_dir else ''})"
+    )
     result(f"CLI API levels {handshake.CLI_API_LEVELS[0]}-{handshake.CLI_API_LEVELS[1]}")
     block_manifest = {"release": None, "index": None}
     if mode.name == "installed":
         release = manifest.load()
         result(f"Release manifest: {manifest.describe(release)}")
-        block_manifest.update(release=(release or {}).get("platform_version"),
-                              images_published=manifest.images_published(release))
+        block_manifest.update(
+            release=(release or {}).get("platform_version"), images_published=manifest.images_published(release)
+        )
     else:
         result("Release manifest: none (images are built from the checkout; the manifest arrives with release 2.0.0)")
     result(f"Server {server.url} ({server.source}): {state}")
-    return Result(0, {"cli_version": __version__, "python": py, "mode": mode.name,
-                      "project_dir": mode.project_dir or None,
-                      "cli_api_levels": list(handshake.CLI_API_LEVELS),
-                      "manifest": block_manifest,
-                      "server": dict(ctx.server_block or {}, handshake=block, reachable=state != "not answering")})
+    return Result(
+        0,
+        {
+            "cli_version": __version__,
+            "python": py,
+            "mode": mode.name,
+            "project_dir": mode.project_dir or None,
+            "cli_api_levels": list(handshake.CLI_API_LEVELS),
+            "manifest": block_manifest,
+            "server": dict(ctx.server_block or {}, handshake=block, reachable=state != "not answering"),
+        },
+    )
 
 
 def _effective(ctx):
@@ -57,22 +68,34 @@ def _effective(ctx):
     value, source = cfgmod.env_or_config(env, "QROSETTA_ON_EXIT", cfg, "lifecycle", "on_exit")
     add("lifecycle.on_exit", value or "ask on a terminal, else standby", source)
     bind = cfg.get("lifecycle", "bind")
-    add("lifecycle.bind", bind or "127.0.0.1:8080 (the compose default, QROSETTA_HTTP_BIND)",
-        "config lifecycle.bind" if bind else "default")
+    add(
+        "lifecycle.bind",
+        bind or "127.0.0.1:8080 (the compose default, QROSETTA_HTTP_BIND)",
+        "config lifecycle.bind" if bind else "default",
+    )
     quota, since, source = localstack.cpu_quota(env, cfg)
     add("lifecycle.cpu_quota", quota, f"{source}, since {since}" if since else source)
     value, source = cfgmod.env_or_config(env, "QROSETTA_RESULTS_DIR", cfg, "results", "dir")
     add("results.dir", os.path.abspath(cfgmod.expand(value or "./qrosetta-results", env)), source)
     from qrosetta_cli.client import servers
-    add("auth.credentials", servers.credentials_path(cfg, env),
-        "config auth.credentials" if cfg.get("auth", "credentials") else "default")
+
+    add(
+        "auth.credentials",
+        servers.credentials_path(cfg, env),
+        "config auth.credentials" if cfg.get("auth", "credentials") else "default",
+    )
     for key, default in (("color", "auto"), ("progress", "auto"), ("experimental_notice", True)):
         value = cfg.get("output", key)
-        add(f"output.{key}", default if value is None else value, "default" if value is None else f"config output.{key}")
+        add(
+            f"output.{key}", default if value is None else value, "default" if value is None else f"config output.{key}"
+        )
     mode = modes.detect(ctx.opt("project_dir"), env, ctx.checkout)
     add("project directory", mode.project_dir or "none (installed mode)", mode.source)
-    add("project", env.get("QROSETTA_PROJECT") or "qsimulators",
-        "env QROSETTA_PROJECT" if env.get("QROSETTA_PROJECT") else "default")
+    add(
+        "project",
+        env.get("QROSETTA_PROJECT") or "qsimulators",
+        "env QROSETTA_PROJECT" if env.get("QROSETTA_PROJECT") else "default",
+    )
     names = sorted((cfg.get("profiles") or {}).keys())
     if names:
         add("user profiles (experimental)", ", ".join(names), "config profiles")
@@ -96,8 +119,9 @@ def cmd_config_show(ctx):
 def cmd_config_init(ctx):
     path = ctx.cfg.path
     if os.path.exists(path):
-        raise usage(f"{path} already exists; config init does not overwrite it.", hint=f"edit {path}",
-                    reason="config_exists")
+        raise usage(
+            f"{path} already exists; config init does not overwrite it.", hint=f"edit {path}", reason="config_exists"
+        )
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "x", encoding="utf-8") as fh:
         fh.write(cfgmod.TEMPLATE)

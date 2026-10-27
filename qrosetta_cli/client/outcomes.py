@@ -22,8 +22,9 @@ def parse(values):
     if names == ["none"]:
         return []
     if "none" in names:
-        raise usage("--fail-on none cannot be combined with outcome names.", hint="qrosetta run --help",
-                    reason="fail_on")
+        raise usage(
+            "--fail-on none cannot be combined with outcome names.", hint="qrosetta run --help", reason="fail_on"
+        )
     return names
 
 
@@ -48,9 +49,12 @@ def resolve(names, config):
         return []
     roles = catalog(config)
     if roles is None:
-        raise CliError("This server publishes no outcome names, so --fail-on cannot be checked.",
-                       Exit.INCOMPATIBLE, "feature_missing",
-                       hint="drop --fail-on, or upgrade the server to one with the summary feature")
+        raise CliError(
+            "This server publishes no outcome names, so --fail-on cannot be checked.",
+            Exit.INCOMPATIBLE,
+            "feature_missing",
+            hint="drop --fail-on, or upgrade the server to one with the summary feature",
+        )
     out = []
     for name in names:
         if name == "any":
@@ -58,11 +62,19 @@ def resolve(names, config):
             continue
         if name not in roles:
             listed = ", ".join(n for n, role in roles.items() if role in ROLE_EXIT)
-            raise CliError(f"--fail-on {name}: this server lists no such outcome. It lists {listed}.",
-                           Exit.INCOMPATIBLE, "unknown_outcome", hint="qrosetta run --help")
+            raise CliError(
+                f"--fail-on {name}: this server lists no such outcome. It lists {listed}.",
+                Exit.INCOMPATIBLE,
+                "unknown_outcome",
+                hint="qrosetta run --help",
+            )
         if roles[name] not in ROLE_EXIT:
-            raise usage(f"--fail-on {name}: that outcome is an agreement ({roles[name]}); --fail-on takes outcomes "
-                        "that are not.", hint="qrosetta run --help", reason="fail_on")
+            raise usage(
+                f"--fail-on {name}: that outcome is an agreement ({roles[name]}); --fail-on takes outcomes "
+                "that are not.",
+                hint="qrosetta run --help",
+                reason="fail_on",
+            )
         if name not in out:
             out.append(name)
     return out

@@ -71,8 +71,10 @@ def experimental(command):
     if not _state["notice_enabled"] or command in _state["notices"]:
         return
     _state["notices"].add(command)
-    progress(f"qrosetta: `{command}` is experimental: its behaviour and JSON (schema @0) may change. "
-             "[output] experimental_notice = false in the config file silences this.")
+    progress(
+        f"qrosetta: `{command}` is experimental: its behaviour and JSON (schema @0) may change. "
+        "[output] experimental_notice = false in the config file silences this."
+    )
 
 
 def prompt(question, timeout=None, stdin=None):
@@ -108,9 +110,17 @@ def utc_now():
 
 def envelope(schema, code, data=None, error=None, server=None, outcome=None):
     """The --json object (spec Q3)."""
-    return {"schema": schema, "cli_version": __version__, "server": server, "ok": code == Exit.OK,
-            "exit_code": int(code), "outcome": outcome, "data": data,
-            "warnings": warnings(), "error": error}
+    return {
+        "schema": schema,
+        "cli_version": __version__,
+        "server": server,
+        "ok": code == Exit.OK,
+        "exit_code": int(code),
+        "outcome": outcome,
+        "data": data,
+        "warnings": warnings(),
+        "error": error,
+    }
 
 
 def emit_envelope(obj):

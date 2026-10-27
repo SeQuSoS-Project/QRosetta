@@ -56,7 +56,9 @@ def status_line(env, labels, title):
     index = progress.get("current_index")
     if isinstance(index, int) and 0 <= index < len(tasks):
         task = tasks[index] or {}
-        parts.append(f"circuit {index + 1} of {progress.get('total') or len(tasks)}: {task.get('name', '')}".rstrip(": "))
+        parts.append(
+            f"circuit {index + 1} of {progress.get('total') or len(tasks)}: {task.get('name', '')}".rstrip(": ")
+        )
     elif tasks:
         parts.append(f"{progress.get('completed', 0)} of {progress.get('total') or len(tasks)} circuits")
     runs = env.get("runner_statuses") or {}
@@ -143,11 +145,17 @@ def submitting():
 
     def handler(signum, frame):
         if state["interrupted"]:
-            raise CliError("Stopped before the server answered; a job may exist on the server without a known id.",
-                           Exit.SIGINT, "submit_interrupted", hint="qrosetta jobs")
+            raise CliError(
+                "Stopped before the server answered; a job may exist on the server without a known id.",
+                Exit.SIGINT,
+                "submit_interrupted",
+                hint="qrosetta jobs",
+            )
         state["interrupted"] = True
-        output.progress(f"Waiting up to {SUBMIT_GRACE_SEC} s for the server's answer, so the job id is not lost; "
-                        "Ctrl-C again stops now.")
+        output.progress(
+            f"Waiting up to {SUBMIT_GRACE_SEC} s for the server's answer, so the job id is not lost; "
+            "Ctrl-C again stops now."
+        )
         timer = threading.Timer(SUBMIT_GRACE_SEC, _thread.interrupt_main)
         timer.daemon = True
         timer.start()

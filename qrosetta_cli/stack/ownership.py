@@ -28,6 +28,7 @@ _TOKEN = object()
 @dataclass(frozen=True)
 class Target:
     """An object the ownership checks accepted; only this module creates them."""
+
     kind: str
     id: str
     name: str
@@ -111,12 +112,22 @@ def _containers(engine, ids):
     for item in _inspect(engine, "container", sorted(set(ids))):
         labels = (item.get("Config") or {}).get("Labels") or {}
         state = item.get("State") or {}
-        result.append((item, labels, Container(
-            id=item.get("Id", ""), name=(item.get("Name") or "").lstrip("/"),
-            project=labels.get(PROJECT_LABEL, ""), service=labels.get(SERVICE_LABEL, ""),
-            running=bool(state.get("Running")) or state.get("Status") in ACTIVE_STATES,
-            pod=item.get("Pod") or "", image=item.get("Image") or "",
-            config_hash=labels.get(CONFIG_HASH_LABEL, ""))))
+        result.append(
+            (
+                item,
+                labels,
+                Container(
+                    id=item.get("Id", ""),
+                    name=(item.get("Name") or "").lstrip("/"),
+                    project=labels.get(PROJECT_LABEL, ""),
+                    service=labels.get(SERVICE_LABEL, ""),
+                    running=bool(state.get("Running")) or state.get("Status") in ACTIVE_STATES,
+                    pod=item.get("Pod") or "",
+                    image=item.get("Image") or "",
+                    config_hash=labels.get(CONFIG_HASH_LABEL, ""),
+                ),
+            )
+        )
     return result
 
 
@@ -220,23 +231,32 @@ def blockers(engine, s):
     """Lines naming what `start` would collide with and how to remove it."""
     lines = []
     if s.conflicts:
-        held = ", ".join(f"{c.name} ({'project ' + c.project if c.project else 'no compose project'}, "
-                         f"{'running' if c.running else 'stopped'})" for c in s.conflicts)
-        lines.append(f"Containers of another project use this stack's container names: {held}. "
-                     f"To remove them (this stops any that run): {engine.name} rm -f "
-                     + " ".join(c.name for c in s.conflicts))
+        held = ", ".join(
+            f"{c.name} ({'project ' + c.project if c.project else 'no compose project'}, "
+            f"{'running' if c.running else 'stopped'})"
+            for c in s.conflicts
+        )
+        lines.append(
+            f"Containers of another project use this stack's container names: {held}. "
+            f"To remove them (this stops any that run): {engine.name} rm -f " + " ".join(c.name for c in s.conflicts)
+        )
     if s.legacy:
-        lines.append(f"Containers labelled with compose project {s.legacy[0].project} but without the "
-                     f"qrosetta label (made by an older script or by hand): "
-                     f"{', '.join(c.name for c in s.legacy)}. To remove them (this stops any that "
-                     f"run; images and data stay): {engine.name} rm -f " + " ".join(c.name for c in s.legacy))
+        lines.append(
+            f"Containers labelled with compose project {s.legacy[0].project} but without the "
+            f"qrosetta label (made by an older script or by hand): "
+            f"{', '.join(c.name for c in s.legacy)}. To remove them (this stops any that "
+            f"run; images and data stay): {engine.name} rm -f " + " ".join(c.name for c in s.legacy)
+        )
     if s.legacy_networks:
-        lines.append(f"Networks without the qrosetta label: {', '.join(s.legacy_networks)}. "
-                     f"To remove them once their containers are gone: {engine.name} network rm "
-                     + " ".join(s.legacy_networks))
+        lines.append(
+            f"Networks without the qrosetta label: {', '.join(s.legacy_networks)}. "
+            f"To remove them once their containers are gone: {engine.name} network rm " + " ".join(s.legacy_networks)
+        )
     if s.foreign_volumes:
-        lines.append(f"Volumes with this stack's volume names that compose did not create for this "
-                     f"project: {', '.join(s.foreign_volumes)}. qrosetta does not use or remove them.")
+        lines.append(
+            f"Volumes with this stack's volume names that compose did not create for this "
+            f"project: {', '.join(s.foreign_volumes)}. qrosetta does not use or remove them."
+        )
     return lines
 
 
@@ -245,6 +265,5 @@ def leftovers(engine, s, shared_pods=()):
     before the command, which a removal of this stack's containers hides from a later scan."""
     lines = blockers(engine, s)
     for name, others in list(shared_pods) + [p for p in s.shared_pods if p not in shared_pods]:
-        lines.append(f"Pod {name} also holds containers that are not this stack's ({', '.join(others)}); "
-                     "left alone.")
+        lines.append(f"Pod {name} also holds containers that are not this stack's ({', '.join(others)}); left alone.")
     return ["qrosetta leaves these alone. " + lines[0]] + lines[1:] if lines else []

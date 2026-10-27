@@ -606,6 +606,7 @@ The CI job `lint` fails only on findings that are not already recorded:
   `[tool.ruff.lint.per-file-ignores]`: reviewed false positives with the reason, code in the
   measured images (runners, compilers, `shared/qrosetta_commons`), and an unreviewed baseline.
   Delete an entry when you fix its file; a new file gets no entry.
+- `ruff format --check qrosetta_cli`; the rest of the tree is not formatted with ruff yet.
 - `scripts/lint/check.sh`: shellcheck over `scripts/**/*.sh` and the git hooks, hadolint over
   every Dockerfile, compared with `scripts/lint/shellcheck.txt` and `scripts/lint/hadolint.txt`
   (file, code, count). A count above its line fails; a count below it is printed so you can
@@ -615,7 +616,7 @@ Locally, with the tools from `scripts/lint/requirements.txt` and a
 [hadolint](https://github.com/hadolint/hadolint/releases) binary on `PATH` (or in `$HADOLINT`):
 
 ```bash
-ruff check . && scripts/lint/check.sh
+ruff check . && ruff format --check qrosetta_cli && scripts/lint/check.sh
 ```
 
 `.pre-commit-config.yaml` runs ruff and the secret check below on each commit if you use

@@ -23,19 +23,27 @@ def load(path=None):
     except FileNotFoundError:
         return None
     except (OSError, ValueError) as exc:
-        raise CliError(f"The release manifest {path} cannot be read: {exc}", Exit.INTERNAL, "manifest_invalid",
-                       hint="reinstall qrosetta") from exc
+        raise CliError(
+            f"The release manifest {path} cannot be read: {exc}",
+            Exit.INTERNAL,
+            "manifest_invalid",
+            hint="reinstall qrosetta",
+        ) from exc
     if not isinstance(data, dict) or data.get("schema") != SCHEMA or not isinstance(data.get("services"), dict):
-        raise CliError(f"{path} is not a {SCHEMA} release manifest.", Exit.INTERNAL, "manifest_invalid",
-                       hint="reinstall qrosetta")
+        raise CliError(
+            f"{path} is not a {SCHEMA} release manifest.", Exit.INTERNAL, "manifest_invalid", hint="reinstall qrosetta"
+        )
     return data
 
 
 def published_refs(manifest):
     """{service id: image reference by digest} for every service the release published."""
     services = (manifest or {}).get("services") or {}
-    return {sid: svc["ref"] for sid, svc in services.items()
-            if isinstance(svc, dict) and isinstance(svc.get("ref"), str) and DIGEST_REF.match(svc["ref"])}
+    return {
+        sid: svc["ref"]
+        for sid, svc in services.items()
+        if isinstance(svc, dict) and isinstance(svc.get("ref"), str) and DIGEST_REF.match(svc["ref"])
+    }
 
 
 def images_published(manifest):
@@ -45,8 +53,7 @@ def images_published(manifest):
         return False
     refs = published_refs(manifest)
     services = manifest["services"]
-    return bool(services) and all((sid in refs) == (svc.get("distributable") is True)
-                                  for sid, svc in services.items())
+    return bool(services) and all((sid in refs) == (svc.get("distributable") is True) for sid, svc in services.items())
 
 
 def describe(manifest):
@@ -81,15 +88,20 @@ def release_ids(manifest, service_id):
 
 def by_compose_service(manifest):
     """{compose service: service id} of every service the manifest lists."""
-    return {svc.get("compose_service"): sid for sid, svc in ((manifest or {}).get("services") or {}).items()
-            if isinstance(svc, dict) and svc.get("compose_service")}
+    return {
+        svc.get("compose_service"): sid
+        for sid, svc in ((manifest or {}).get("services") or {}).items()
+        if isinstance(svc, dict) and svc.get("compose_service")
+    }
 
 
 def not_distributable(manifest):
     """{service id: reason} for the services the release never publishes."""
-    return {sid: svc.get("not_distributable_reason") or "its licence does not allow the project to publish it"
-            for sid, svc in ((manifest or {}).get("services") or {}).items()
-            if isinstance(svc, dict) and svc.get("distributable") is False}
+    return {
+        sid: svc.get("not_distributable_reason") or "its licence does not allow the project to publish it"
+        for sid, svc in ((manifest or {}).get("services") or {}).items()
+        if isinstance(svc, dict) and svc.get("distributable") is False
+    }
 
 
 def loaded_tag(project, compose_service, release):

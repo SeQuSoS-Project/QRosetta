@@ -15,14 +15,29 @@ from qrosetta_cli.context import Result
 from qrosetta_cli.errors import CliError, Exit, usage, worst
 
 STATUS_EXIT = {"failed": Exit.JOB_FAILED, "cancelled": Exit.JOB_CANCELLED}
-REPLAY_CONFLICTS = (("circuits", "circuits"), ("playlist", "--playlist"), ("mode", "--mode"),
-                    ("compile_only", "--compile-only"), ("shots", "--shots"), ("backends", "--backends"),
-                    ("skip", "--skip"), ("opt_level", "--opt-level"), ("timeout", "--timeout"),
-                    ("repeats", "--repeats"), ("exclusive", "--exclusive"), ("preprocessing", "--preprocessing"),
-                    ("compiler", "--compiler"), ("threshold", "--threshold"), ("seed", "--seed"),
-                    ("name", "--name"), ("order", "--order"), ("execution_target", "--execution-target"),
-                    ("bypass_limits", "--bypass-limits"), ("keep_statevectors", "--keep-statevectors"),
-                    ("set", "--set"))
+REPLAY_CONFLICTS = (
+    ("circuits", "circuits"),
+    ("playlist", "--playlist"),
+    ("mode", "--mode"),
+    ("compile_only", "--compile-only"),
+    ("shots", "--shots"),
+    ("backends", "--backends"),
+    ("skip", "--skip"),
+    ("opt_level", "--opt-level"),
+    ("timeout", "--timeout"),
+    ("repeats", "--repeats"),
+    ("exclusive", "--exclusive"),
+    ("preprocessing", "--preprocessing"),
+    ("compiler", "--compiler"),
+    ("threshold", "--threshold"),
+    ("seed", "--seed"),
+    ("name", "--name"),
+    ("order", "--order"),
+    ("execution_target", "--execution-target"),
+    ("bypass_limits", "--bypass-limits"),
+    ("keep_statevectors", "--keep-statevectors"),
+    ("set", "--set"),
+)
 
 
 def duration_text(seconds):
@@ -42,14 +57,18 @@ def retention_text(ttl, now=None):
         return "for as long as the server keeps finished jobs"
     now = time.time() if now is None else now
     until = time.localtime(now + ttl)
-    day = "" if time.localtime(now).tm_yday == until.tm_yday else (
-        " tomorrow" if ttl < 172800 else time.strftime(" on %Y-%m-%d", until))
+    day = (
+        ""
+        if time.localtime(now).tm_yday == until.tm_yday
+        else (" tomorrow" if ttl < 172800 else time.strftime(" on %Y-%m-%d", until))
+    )
     return f"for {duration_text(ttl)}, until {time.strftime('%H:%M', until)}{day}"
 
 
 def confirm_large(ctx, interactive=True):
     """Whether to download a body over 1 GiB: --yes, else a question on a terminal; after a
     wait (`interactive` False) never a question (spec P5)."""
+
     def ask(size):
         if ctx.opt("yes"):
             return True
@@ -57,6 +76,7 @@ def confirm_large(ctx, interactive=True):
             return False
         answer = output.prompt(f"The report is {size / (1 << 30):.1f} GiB. Download it? [y/N] ", stdin=ctx.stdin)
         return bool(answer) and answer.strip().lower() in ("y", "yes")
+
     return ask
 
 
@@ -64,8 +84,12 @@ def stack_record(ctx):
     """The local stack's CPU quota setting as `qrosetta start` recorded it (spec §6.1)."""
     enabled, since, source = localstack.cpu_quota(ctx.env, ctx.cfg)
     entry = localstack.stack_settings(ctx.env)
-    return {"cpu_quota": enabled, "cpu_quota_source": source, "cpu_quota_since": since,
-            "cpu_quota_override_sha256": entry.get("override_sha256") if not enabled else None}
+    return {
+        "cpu_quota": enabled,
+        "cpu_quota_source": source,
+        "cpu_quota_since": since,
+        "cpu_quota_override_sha256": entry.get("override_sha256") if not enabled else None,
+    }
 
 
 def _compose_record(ctx, conn):
@@ -88,8 +112,13 @@ def plan_document(ctx, conn, req, plan, invocation, replay_of=None, replay_force
         "schema": "qrosetta.cli/plan@1",
         "cli_version": __version__,
         "created_at": output.utc_now(),
-        "server": {"url": conn.url, **{k: conn.block.get(k) for k in
-                                       ("platform_version", "api_levels", "analysis_version", "git_sha", "features")}},
+        "server": {
+            "url": conn.url,
+            **{
+                k: conn.block.get(k)
+                for k in ("platform_version", "api_levels", "analysis_version", "git_sha", "features")
+            },
+        },
         "api_level": min(levels[1], handshake.CLI_API_LEVELS[1]) if levels else None,
         "results_dir": invocation,
         "plan_request": req,
@@ -114,8 +143,13 @@ def _problems(plan, req):
     for line in lines[1:]:
         output.progress(f"qrosetta: {line}")
     first = problems[0]
-    raise CliError(lines[0], Exit.REFUSED, first.get("code") or "refused", hint="qrosetta run --dry-run shows the plan",
-                   detail={"problems": problems})
+    raise CliError(
+        lines[0],
+        Exit.REFUSED,
+        first.get("code") or "refused",
+        hint="qrosetta run --dry-run shows the plan",
+        detail={"problems": problems},
+    )
 
 
 def _check_sizes(conn, plan):
@@ -123,9 +157,13 @@ def _check_sizes(conn, plan):
     for i, run in enumerate(plan.get("runs") or []):
         size = len(body_bytes(run["payload"]))
         if limit and size > limit:
-            raise CliError(f"this run's request is {size} bytes; the server accepts {limit}. Split the playlist.",
-                           Exit.REFUSED, "request_too_large", hint="qrosetta run --dry-run shows the plan",
-                           detail={"run_index": i, "bytes": size, "max": limit})
+            raise CliError(
+                f"this run's request is {size} bytes; the server accepts {limit}. Split the playlist.",
+                Exit.REFUSED,
+                "request_too_large",
+                hint="qrosetta run --dry-run shows the plan",
+                detail={"run_index": i, "bytes": size, "max": limit},
+            )
 
 
 def job_files(info):
@@ -159,9 +197,11 @@ def pairs_line(summary):
     nc = counts.get("not_comparable", 0)
     total = sum(n for name, n in counts.items() if name not in NOT_PAIR_OUTCOMES)
     agree, differ = by_role("agreement"), by_role("difference")
-    text = (f"Pairs: {total - nc} compared, {agree} agree, {differ} differ"
-            + (f" ({counts['differs_by_only']} under Benjamini-Yekutieli only)" if counts.get("differs_by_only") else "")
-            + f", {counts.get('inconclusive', 0)} inconclusive, {nc} not comparable.")
+    text = (
+        f"Pairs: {total - nc} compared, {agree} agree, {differ} differ"
+        + (f" ({counts['differs_by_only']} under Benjamini-Yekutieli only)" if counts.get("differs_by_only") else "")
+        + f", {counts.get('inconclusive', 0)} inconclusive, {nc} not comparable."
+    )
     if counts.get("no_comparison"):
         text += " No pair was compared."
     return text
@@ -183,8 +223,7 @@ def crate_line(conn, job_id, info):
         record = info.get("record") or {}
         since = save._epoch(record.get("crate_deferred_since")) or time.time()
         until = time.strftime("%H:%M", time.localtime(since + (ttl or 1800) - save.DEFER_MARGIN_SEC))
-        return (f"Crate: deferred until the server is idle (up to {until}); "
-                f"`qrosetta wait job:{job_id[:8]}` finishes it")
+        return f"Crate: deferred until the server is idle (up to {until}); `qrosetta wait job:{job_id[:8]}` finishes it"
     return f"Crate: `qrosetta export crate --result job:{job_id[:8]}` (the server keeps the job {retention_text(ttl)})"
 
 
@@ -213,12 +252,15 @@ class Follower:
 
     def stop_message(self, job_id, reason_code, remaining=0):
         ttl = self.conn.limit("job_ttl_sec")
-        text = (f"Stopped waiting. Job {job_id[:8]} keeps running on the server; it is kept for "
-                f"{duration_text(ttl) if ttl else 'a while'} after it finishes (this server's retention).")
+        text = (
+            f"Stopped waiting. Job {job_id[:8]} keeps running on the server; it is kept for "
+            f"{duration_text(ttl) if ttl else 'a while'} after it finishes (this server's retention)."
+        )
         if remaining:
             text += f" {remaining} planned job{'s' if remaining > 1 else ''} not submitted."
-        return CliError(text, reason_code, "detached", hint=f"qrosetta wait job:{job_id[:8]}",
-                        data=self.data(self.results_dir))
+        return CliError(
+            text, reason_code, "detached", hint=f"qrosetta wait job:{job_id[:8]}", data=self.data(self.results_dir)
+        )
 
     def follow(self, job_id, job_dir, title, kind, started=None, remaining=0, previous=None, before_save=None):
         """Wait for one job and save it; returns its data entry. `before_save(envelope)` runs
@@ -242,8 +284,10 @@ class Follower:
         if before_save is not None:
             before_save(env)
         info = self.saver.save(job_dir, job_id, kind, env, previous=previous)
-        jobindex.append(self.ctx.env, {"job_id": job_id, "status": env.get("status"), "save_status": info["status"],
-                                       "detached": False})
+        jobindex.append(
+            self.ctx.env,
+            {"job_id": job_id, "status": env.get("status"), "save_status": info["status"], "detached": False},
+        )
         summary = info.get("summary")
         if summary is None and self.fail_on and env.get("status") == "completed":
             summary = self._summary(job_id, kind)
@@ -255,10 +299,14 @@ class Follower:
         for line in (job_line(title, env, summary, elapsed), pairs_line(summary), caveats_line(summary)):
             if line:
                 output.result(line)
-        saved = ", ".join(info["files"][k] for k in ("report", "summary", "circuits", "crate", "bundle")
-                          if k in info["files"])
-        output.result(f"Saved {job_dir}{os.sep}" + (f" ({saved})" if saved else "")
-                      + ("" if info["status"] == results.COMPLETE else f" [{info['status']}]"))
+        saved = ", ".join(
+            info["files"][k] for k in ("report", "summary", "circuits", "crate", "bundle") if k in info["files"]
+        )
+        output.result(
+            f"Saved {job_dir}{os.sep}"
+            + (f" ({saved})" if saved else "")
+            + ("" if info["status"] == results.COMPLETE else f" [{info['status']}]")
+        )
         line = crate_line(self.conn, job_id, info)
         if line:
             output.result(line)
@@ -266,12 +314,24 @@ class Follower:
         if link:
             output.result(f"Open in the browser: {link}")
         request = results.read_json(os.path.join(job_dir, "request.json")) or {}
-        backends = [b.get("key") for b in ((summary or {}).get("backend_verdicts") or {}).get("backends") or []] or \
-            list((request.get("payload") or {}).get("target_simulators") or [])
-        entry = {"job_id": job_id, "endpoint": request.get("endpoint"), "kind": kind, "mode": request.get("mode"),
-                 "title": title, "status": env.get("status"), "save_status": info["status"], "dir": job_dir,
-                 "files": job_files(info), "backends": backends,
-                 "concurrent_with_other_jobs": info["concurrent"], "page_url": link, "summary": summary}
+        backends = [
+            b.get("key") for b in ((summary or {}).get("backend_verdicts") or {}).get("backends") or []
+        ] or list((request.get("payload") or {}).get("target_simulators") or [])
+        entry = {
+            "job_id": job_id,
+            "endpoint": request.get("endpoint"),
+            "kind": kind,
+            "mode": request.get("mode"),
+            "title": title,
+            "status": env.get("status"),
+            "save_status": info["status"],
+            "dir": job_dir,
+            "files": job_files(info),
+            "backends": backends,
+            "concurrent_with_other_jobs": info["concurrent"],
+            "page_url": link,
+            "summary": summary,
+        }
         self.jobs.append(entry)
         return entry
 
@@ -333,8 +393,11 @@ def cmd_run(ctx):
     if args.request:
         given = [flag for attr, flag in REPLAY_CONFLICTS if getattr(args, attr, None) not in (None, False, [])]
         if given:
-            raise usage(f"--request replays a saved run as it was; {', '.join(given)} cannot change it.",
-                        hint="qrosetta run --request FILE, without circuits or run settings", reason="replay_with_settings")
+            raise usage(
+                f"--request replays a saved run as it was; {', '.join(given)} cannot change it.",
+                hint="qrosetta run --request FILE, without circuits or run settings",
+                reason="replay_with_settings",
+            )
         req, original, api_level, reports = replay.load(args.request)
         replay.check_versions(conn, original, api_level, force)
         settings = replay.settings_of(req)
@@ -350,9 +413,11 @@ def cmd_run(ctx):
     _check_sizes(conn, plan)
     runs = plan.get("runs") or []
     if args.detach and len(runs) > 1:
-        raise usage(f"--detach runs one job, and this plan has {len(runs)}.",
-                    hint="drop --detach (the jobs run one after another), or run one mode at a time",
-                    reason="detach_multi_job")
+        raise usage(
+            f"--detach runs one job, and this plan has {len(runs)}.",
+            hint="drop --detach (the jobs run one after another), or run one mode at a time",
+            reason="detach_multi_job",
+        )
     if args.dry_run:
         doc = plan_document(ctx, conn, req, plan, None, replay_of, force, fail_on, planner)
         for i, run in enumerate(runs):
@@ -376,8 +441,9 @@ def cmd_run(ctx):
     if args.detach:
         in_flight = conn.dispatches_in_flight()
         if in_flight:
-            output.progress(f"{in_flight} runs in flight on this server; this job will overlap them, and the overlap "
-                            "is recorded.")
+            output.progress(
+                f"{in_flight} runs in flight on this server; this job will overlap them, and the overlap is recorded."
+            )
 
     saver = save.Saver(conn, items, minimal, crate_body, confirm_large(ctx, interactive=False))
     follower = Follower(ctx, conn, saver, fail_on, wait_timeout)
@@ -386,8 +452,12 @@ def cmd_run(ctx):
         title = run.get("title") or run["endpoint"]
         started = time.time()
         with waiting.submitting() as state:
-            env = conn.post(run["endpoint"], run["payload"], what=f"POST {run['endpoint']}",
-                        hint="qrosetta run --dry-run shows the planned request")
+            env = conn.post(
+                run["endpoint"],
+                run["payload"],
+                what=f"POST {run['endpoint']}",
+                hint="qrosetta run --dry-run shows the planned request",
+            )
         job_id = results.server_job_id(env, f"POST {run['endpoint']}")
         job_dir = os.path.join(invocation, results.job_dir_name(run.get("kind"), run.get("mode"), job_id))
         os.mkdir(job_dir)
@@ -395,11 +465,23 @@ def cmd_run(ctx):
         results.write_json(os.path.join(job_dir, "job.json"), env)
         doc["job_dirs"].append(os.path.basename(job_dir))
         results.write_json(plan_path, doc)
-        jobindex.append(ctx.env, {"job_id": job_id, "server": origin(conn.url), "endpoint": run["endpoint"],
-                                  "kind": run.get("kind"), "mode": run.get("mode"), "title": title, "dir": job_dir,
-                                  "invocation": invocation, "submitted_at": output.utc_now(),
-                                  "save": {"items": sorted(items), "minimal": minimal, "crate": crate_body},
-                                  "fail_on": fail_on, "detached": bool(args.detach)})
+        jobindex.append(
+            ctx.env,
+            {
+                "job_id": job_id,
+                "server": origin(conn.url),
+                "endpoint": run["endpoint"],
+                "kind": run.get("kind"),
+                "mode": run.get("mode"),
+                "title": title,
+                "dir": job_dir,
+                "invocation": invocation,
+                "submitted_at": output.utc_now(),
+                "save": {"items": sorted(items), "minimal": minimal, "crate": crate_body},
+                "fail_on": fail_on,
+                "detached": bool(args.detach),
+            },
+        )
         output.progress(f"Submitted {title}: job {job_id}")
         if state["interrupted"]:
             raise follower.stop_message(job_id, Exit.SIGINT, len(runs) - i - 1)
@@ -408,11 +490,21 @@ def cmd_run(ctx):
             output.result(f"qrosetta wait job:{job_id[:8]}")
             if page_link(conn, job_id):
                 output.result(f"Open in the browser: {page_link(conn, job_id)}")
-            follower.jobs.append({"job_id": job_id, "endpoint": run["endpoint"], "kind": run.get("kind"),
-                                  "mode": run.get("mode"), "title": title, "status": env.get("status"),
-                                  "save_status": None, "dir": job_dir,
-                                  "files": {"request": "request.json", "job": "job.json"}, "backends": [],
-                                  "summary": None})
+            follower.jobs.append(
+                {
+                    "job_id": job_id,
+                    "endpoint": run["endpoint"],
+                    "kind": run.get("kind"),
+                    "mode": run.get("mode"),
+                    "title": title,
+                    "status": env.get("status"),
+                    "save_status": None,
+                    "dir": job_dir,
+                    "files": {"request": "request.json", "job": "job.json"},
+                    "backends": [],
+                    "summary": None,
+                }
+            )
             return Result(0, follower.data(invocation), follower.outcome())
         follower.follow(job_id, job_dir, title, run.get("kind"), started, remaining=len(runs) - i - 1)
         if follower.codes and follower.codes[-1] == Exit.WAIT_TIMEOUT:
@@ -445,22 +537,34 @@ def cmd_wait(ctx):
             job_id = ref[4:] if ref.startswith("job:") else ref
             entry = jobindex.find(ctx.env, job_id, conn.url)
             if entry is None:
-                raise CliError(f"No job {job_id!r} for {conn.url} in the job index.", Exit.NOT_FOUND, "job_unknown",
-                               hint="qrosetta jobs")
+                raise CliError(
+                    f"No job {job_id!r} for {conn.url} in the job index.",
+                    Exit.NOT_FOUND,
+                    "job_unknown",
+                    hint="qrosetta jobs",
+                )
             targets.append(entry)
     else:
         pending = [e for e in known if _unfinished(e)]
         if not pending:
-            raise CliError(f"No unfinished job for {conn.url} in the job index.", Exit.NOT_FOUND, "job_unknown",
-                           hint="qrosetta jobs")
+            raise CliError(
+                f"No unfinished job for {conn.url} in the job index.",
+                Exit.NOT_FOUND,
+                "job_unknown",
+                hint="qrosetta jobs",
+            )
         targets = pending[-1:]
     fail_on = _fail_on(ctx, conn) if ctx.opt("fail_on") else []
     follower = None
     for entry in targets:
         job_dir = entry.get("dir")
         if not job_dir or not os.path.isdir(job_dir):
-            raise CliError(f"Job {entry['job_id'][:8]} has no results directory on this machine.", Exit.NOT_FOUND,
-                           "result_missing", hint=f"qrosetta jobs status {entry['job_id'][:8]}")
+            raise CliError(
+                f"Job {entry['job_id'][:8]} has no results directory on this machine.",
+                Exit.NOT_FOUND,
+                "result_missing",
+                hint=f"qrosetta jobs status {entry['job_id'][:8]}",
+            )
         if args.no_save:
             items, minimal = set(), True
         elif args.save:
@@ -474,8 +578,9 @@ def cmd_wait(ctx):
         if follower is None:
             follower = Follower(ctx, conn, saver, fail_on or entry.get("fail_on") or [], wait_timeout)
         follower.saver = saver
-        follower.follow(entry["job_id"], job_dir, entry.get("title") or entry["job_id"][:8], entry.get("kind"),
-                        previous=previous)
+        follower.follow(
+            entry["job_id"], job_dir, entry.get("title") or entry["job_id"][:8], entry.get("kind"), previous=previous
+        )
         inv = entry.get("invocation")
         if inv and results.invocation_complete(inv):
             results.update_latest(os.path.dirname(inv), inv)

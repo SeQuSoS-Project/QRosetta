@@ -19,15 +19,22 @@ def status_error(status, retry_after=None):
     if status in (400, 413, 422):
         return Exit.REFUSED, {413: "request_too_large", 422: "request_invalid"}.get(status, "refused"), ROUTES_HINT
     if status in (401, 403):
-        return (Exit.AUTH, "unauthorised" if status == 401 else "forbidden",
-                "qrosetta login (or set QROSETTA_TOKEN to a token from POST /auth/token)")
+        return (
+            Exit.AUTH,
+            "unauthorised" if status == 401 else "forbidden",
+            "qrosetta login (or set QROSETTA_TOKEN to a token from POST /auth/token)",
+        )
     if status == 404:
         return Exit.NOT_FOUND, "not_found", ROUTES_HINT
     if status in (429, 503):
         wait = f" after {retry_after} s" if retry_after else " later"
         return Exit.BUSY, "rate_limited" if status == 429 else "unavailable", f"run the same command again{wait}"
     if status >= 500:
-        return Exit.UNREACHABLE, "server_error", "qrosetta logs api --tail 50 (local stack), or ask the server's operator"
+        return (
+            Exit.UNREACHABLE,
+            "server_error",
+            "qrosetta logs api --tail 50 (local stack), or ask the server's operator",
+        )
     return Exit.REFUSED, "refused", ROUTES_HINT
 
 
@@ -57,8 +64,12 @@ def read_input(source, stdin):
         with open(source, "rb") as fh:
             return fh.read()
     except OSError as exc:
-        raise CliError(f"Cannot read {source}: {exc.strerror}.", Exit.NOT_FOUND, "input_missing",
-                       hint="qrosetta api METHOD PATH --input FILE, with FILE readable") from None
+        raise CliError(
+            f"Cannot read {source}: {exc.strerror}.",
+            Exit.NOT_FOUND,
+            "input_missing",
+            hint="qrosetta api METHOD PATH --input FILE, with FILE readable",
+        ) from None
 
 
 def cmd_api(ctx):
@@ -88,8 +99,14 @@ def cmd_api(ctx):
         code, reason, hint = status_error(resp.status, resp.headers.get("retry-after"))
         detail = parsed if parsed is not None else resp.body.decode("utf-8", "replace")
         summary = detail.get("detail", detail) if isinstance(detail, dict) else detail
-        raise CliError(f"{method} {args.path} answered HTTP {resp.status}: {summary}", code, reason, hint,
-                       http_status=resp.status, detail=detail)
+        raise CliError(
+            f"{method} {args.path} answered HTTP {resp.status}: {summary}",
+            code,
+            reason,
+            hint,
+            http_status=resp.status,
+            detail=detail,
+        )
     if args.output and args.output != "-":
         path = os.path.abspath(args.output)
         with open(path, "wb") as fh:

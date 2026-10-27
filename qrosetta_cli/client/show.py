@@ -34,14 +34,22 @@ def summary_for(ctx, job, cache):
             raise
     report = os.path.join(job.dir, "report.json")
     if not os.path.isfile(report):
-        raise CliError(f"Job {job.job_id[:8]} has expired on the server and no report.json or summary.json is saved.",
-                       Exit.NOT_FOUND, "result_missing", hint="qrosetta jobs")
+        raise CliError(
+            f"Job {job.job_id[:8]} has expired on the server and no report.json or summary.json is saved.",
+            Exit.NOT_FOUND,
+            "result_missing",
+            hint="qrosetta jobs",
+        )
     conn = _conn(ctx, cache)
     limit = conn.limit("max_request_bytes")
     size = os.path.getsize(report) + len('{"results":}')
     if limit and size > limit:
-        raise CliError(f"{report} is {size} bytes; POST /summary accepts {limit}.", Exit.REFUSED, "request_too_large",
-                       hint="save the summary while the job lives (`qrosetta run` saves it by default)")
+        raise CliError(
+            f"{report} is {size} bytes; POST /summary accepts {limit}.",
+            Exit.REFUSED,
+            "request_too_large",
+            hint="save the summary while the job lives (`qrosetta run` saves it by default)",
+        )
     with open(report, "rb") as fh:
         body = b'{"results":' + fh.read() + b"}"
     resp = conn.transport.request("POST", "/summary", body=body, headers={"Content-Type": "application/json"})
@@ -55,17 +63,28 @@ def _job_lines(summary, task=None):
     tasks = summary.get("benchmark_summary")
     if isinstance(tasks, list) and task is not None:
         if not 0 <= task < len(tasks):
-            raise usage(f"--task {task}: this playlist has {len(tasks)} circuits (0-{len(tasks) - 1}).",
-                        hint="qrosetta show summary", reason="bad_task")
-        return _job_lines({**tasks[task], "analysis_version": summary.get("analysis_version"),
-                           "outcome_roles": summary.get("outcome_roles")})
+            raise usage(
+                f"--task {task}: this playlist has {len(tasks)} circuits (0-{len(tasks) - 1}).",
+                hint="qrosetta show summary",
+                reason="bad_task",
+            )
+        return _job_lines(
+            {
+                **tasks[task],
+                "analysis_version": summary.get("analysis_version"),
+                "outcome_roles": summary.get("outcome_roles"),
+            }
+        )
     line = run.pairs_line(summary)
     if line:
         lines.append(line)
     runs = summary.get("runs") or {}
     if runs.get("total"):
-        lines.append(f"Runs: {runs.get('returned', 0)} of {runs['total']} returned"
-                     + (f"; {runs['circuits_failed']} circuits failed" if runs.get("circuits_failed") else "") + ".")
+        lines.append(
+            f"Runs: {runs.get('returned', 0)} of {runs['total']} returned"
+            + (f"; {runs['circuits_failed']} circuits failed" if runs.get("circuits_failed") else "")
+            + "."
+        )
     if isinstance(tasks, list):
         for i, t in enumerate(tasks):
             pl = run.pairs_line({**t, "outcome_roles": summary.get("outcome_roles")}) or "no pairs"
@@ -82,8 +101,10 @@ def _job_lines(summary, task=None):
         width = max(len("BACKEND"), *(len(b.get("key", "")) for b in backends))
         lines.append(f"{'BACKEND':<{width}}  STATUS   COMPARED  DIFFERS  INCONCLUSIVE  NOT COMPARABLE")
         for b in backends:
-            lines.append(f"{b.get('key', ''):<{width}}  {b.get('status', ''):<7}  {b.get('compared', 0):>8}  "
-                         f"{b.get('differs', 0):>7}  {b.get('inconclusive', 0):>12}  {b.get('not_comparable', 0):>14}")
+            lines.append(
+                f"{b.get('key', ''):<{width}}  {b.get('status', ''):<7}  {b.get('compared', 0):>8}  "
+                f"{b.get('differs', 0):>7}  {b.get('inconclusive', 0):>12}  {b.get('not_comparable', 0):>14}"
+            )
     caveats = run.caveats_line(summary)
     if caveats:
         lines.append(caveats)
@@ -115,11 +136,16 @@ def cmd_show_summary(ctx):
     target = results.resolve(ctx, args.result, server_url)
     jobs = target.jobs
     if args.job:
-        jobs = [j for j in jobs if (j.mode() or "compile") == args.job or (j.kind() == "experiment" and args.job ==
-                                                                              f"experiment-{j.mode()}")]
+        jobs = [
+            j
+            for j in jobs
+            if (j.mode() or "compile") == args.job
+            or (j.kind() == "experiment" and args.job == f"experiment-{j.mode()}")
+        ]
         if not jobs:
-            raise CliError(f"No {args.job} job in this result.", Exit.NOT_FOUND, "result_missing",
-                           hint="qrosetta show summary")
+            raise CliError(
+                f"No {args.job} job in this result.", Exit.NOT_FOUND, "result_missing", hint="qrosetta show summary"
+            )
     data = {"result": target.invocation, "jobs": []}
     if target.invocation:
         selftest = results.read_json(os.path.join(target.invocation, results.SELFTEST_FILE))
@@ -131,16 +157,21 @@ def cmd_show_summary(ctx):
         status = results.read_status(job.dir) if job.dir else None
         req = job.request()
         if job.kind() == "experiment":
-            output.result(f"{req.get('title') or job.job_id}: experiment; its results are in bundle.zip "
-                          "(`show experiment` arrives with the experimental views).")
+            output.result(
+                f"{req.get('title') or job.job_id}: experiment; its results are in bundle.zip "
+                "(`show experiment` arrives with the experimental views)."
+            )
             data["jobs"].append({"job_id": job.job_id, "dir": job.dir, "save_status": status, "summary": None})
             continue
         summary, where = summary_for(ctx, job, cache)
         source = SOURCE_TEXT.get(summary.get("report_source"), summary.get("report_source") or "unknown source")
-        output.result(f"{req.get('title') or 'Job'} (job {job.job_id[:8]}): saved {status or 'not saved'}; "
-                      f"{source}, read from {where}; rule {summary.get('analysis_version')}")
+        output.result(
+            f"{req.get('title') or 'Job'} (job {job.job_id[:8]}): saved {status or 'not saved'}; "
+            f"{source}, read from {where}; rule {summary.get('analysis_version')}"
+        )
         for line in _job_lines(summary, args.task):
             output.result(line)
-        data["jobs"].append({"job_id": job.job_id, "dir": job.dir, "save_status": status, "source": where,
-                             "summary": summary})
+        data["jobs"].append(
+            {"job_id": job.job_id, "dir": job.dir, "save_status": status, "source": where, "summary": summary}
+        )
     return Result(0, data)

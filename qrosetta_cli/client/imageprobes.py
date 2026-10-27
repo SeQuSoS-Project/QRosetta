@@ -34,12 +34,19 @@ def fresh_rows(conn, path, headers):
     except CliError as exc:
         if exc.code not in (Exit.AUTH, Exit.BUSY):
             raise
-        why = ("fresh probes are rate-limited (6 a minute)" if exc.code == Exit.BUSY else
-               "fresh probes need the lifecycle token of a stack `qrosetta start` started, or a sign-in")
+        why = (
+            "fresh probes are rate-limited (6 a minute)"
+            if exc.code == Exit.BUSY
+            else "fresh probes need the lifecycle token of a stack `qrosetta start` started, or a sign-in"
+        )
         return conn.get(path), why
     if not isinstance(rows, list):
-        raise CliError(f"GET {path} answered with {type(rows).__name__}, not a list.", Exit.INCOMPATIBLE,
-                       "unexpected_response", hint="qrosetta info")
+        raise CliError(
+            f"GET {path} answered with {type(rows).__name__}, not a list.",
+            Exit.INCOMPATIBLE,
+            "unexpected_response",
+            hint="qrosetta info",
+        )
     if rows and not any(isinstance(r, dict) and "fresh" in r for r in rows):
         return rows, "this server has no on-demand probes"
     return rows, None
@@ -80,8 +87,14 @@ def _commit(row, api_sha):
     identity = versions.get("image_identity") or {}
     reported = [v for v in (identity.get("git_sha"), versions.get("image_git_sha")) if isinstance(v, str)]
     if not reported:
-        return SKIP, ("its probe row does not carry the image's commit (the API and the images report it from "
-                      "this version on; `qrosetta build` rebuilds them)"), None
+        return (
+            SKIP,
+            (
+                "its probe row does not carry the image's commit (the API and the images report it from "
+                "this version on; `qrosetta build` rebuilds them)"
+            ),
+            None,
+        )
     sha = next((v for v in reported if v not in UNIDENTIFIED), reported[0])
     if sha in UNIDENTIFIED:
         return FAIL, "the image does not record the commit it was built from", sha
@@ -110,9 +123,16 @@ def check_image(row, kind, api_sha, key=None):
     statuses = {c["status"] for c in checks}
     worst = FAIL if FAIL in statuses else WARN if WARN in statuses else PASS
     versions = (row or {}).get("versions") or {}
-    return {"id": key or (row or {}).get("id"), "kind": kind, "status": worst, "fresh": (row or {}).get("fresh"),
-            "probed_at": (row or {}).get("probed_at"), "image_git_sha": sha,
-            "image_source": (versions.get("image_identity") or {}).get("source"), "checks": checks}
+    return {
+        "id": key or (row or {}).get("id"),
+        "kind": kind,
+        "status": worst,
+        "fresh": (row or {}).get("fresh"),
+        "probed_at": (row or {}).get("probed_at"),
+        "image_git_sha": sha,
+        "image_source": (versions.get("image_identity") or {}).get("source"),
+        "checks": checks,
+    }
 
 
 def probe_images(conn, env, runner_rows, runner_why, keys):
@@ -127,10 +147,17 @@ def probe_images(conn, env, runner_rows, runner_why, keys):
     if why:
         output.progress(f"Compiler images not probed: {why}.")
     else:
-        images += [check_image(r, "compiler", api_sha) for r in compiler_rows
-                   if isinstance(r, dict) and r.get("enabled") and (r.get("available") or r.get("reason") == "busy")]
-    return {"status": "probed", "reason": None if not why else f"compilers: {why}", "server_git_sha": api_sha,
-            "images": images}
+        images += [
+            check_image(r, "compiler", api_sha)
+            for r in compiler_rows
+            if isinstance(r, dict) and r.get("enabled") and (r.get("available") or r.get("reason") == "busy")
+        ]
+    return {
+        "status": "probed",
+        "reason": None if not why else f"compilers: {why}",
+        "server_git_sha": api_sha,
+        "images": images,
+    }
 
 
 def lines_and_findings(block):

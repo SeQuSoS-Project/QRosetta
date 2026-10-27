@@ -46,8 +46,11 @@ def one_job(ctx, server):
         jobs = [j for j in jobs if (j.mode() or "compile") == ctx.opt("job")]
     if len(jobs) != 1:
         modes = ", ".join(j.mode() or "compile" for j in target.jobs) or "none"
-        raise usage(f"This result holds {len(target.jobs)} jobs ({modes}); choose one with --job MODE.",
-                    hint="qrosetta show circuits --job statevector", reason="several_jobs")
+        raise usage(
+            f"This result holds {len(target.jobs)} jobs ({modes}); choose one with --job MODE.",
+            hint="qrosetta show circuits --job statevector",
+            reason="several_jobs",
+        )
     return jobs[0]
 
 
@@ -77,8 +80,12 @@ _EOCD = b"PK\x05\x06"
 
 
 def _crate_error(path, why):
-    return CliError(f"{path} cannot be read as an RO-Crate: {why}.", Exit.INCOMPATIBLE, "crate_unreadable",
-                    hint="qrosetta export crate")
+    return CliError(
+        f"{path} cannot be read as an RO-Crate: {why}.",
+        Exit.INCOMPATIBLE,
+        "crate_unreadable",
+        hint="qrosetta export crate",
+    )
 
 
 def _check_directory(path):
@@ -92,11 +99,14 @@ def _check_directory(path):
     at = tail.rfind(_EOCD)
     if at < 0 or len(tail) - at < 22:
         raise _crate_error(path, "it is not a ZIP file")
-    entries = int.from_bytes(tail[at + 10:at + 12], "little")
-    directory = int.from_bytes(tail[at + 12:at + 16], "little")
+    entries = int.from_bytes(tail[at + 10 : at + 12], "little")
+    directory = int.from_bytes(tail[at + 12 : at + 16], "little")
     if entries >= MAX_CRATE_MEMBERS or directory > MAX_CRATE_DIRECTORY_BYTES:
-        raise _crate_error(path, f"it declares more than {MAX_CRATE_MEMBERS - 1} files or a file list over "
-                                 f"{MAX_CRATE_DIRECTORY_BYTES >> 20} MiB")
+        raise _crate_error(
+            path,
+            f"it declares more than {MAX_CRATE_MEMBERS - 1} files or a file list over "
+            f"{MAX_CRATE_DIRECTORY_BYTES >> 20} MiB",
+        )
 
 
 def _read_member(zf, info, limit, path):
@@ -125,14 +135,17 @@ def crate_texts(path):
             entities = metadata.get("@graph", []) if isinstance(metadata, dict) else []
             graph = {e.get("@id"): e for e in entities if isinstance(e, dict)}
             parts = [p.get("@id") for p in (graph.get("./") or {}).get("hasPart", []) if isinstance(p, dict)]
-            wanted = [infos[f"{top}/{p}"] for p in dict.fromkeys(parts)
-                      if isinstance(p, str) and p.endswith(".qasm") and f"{top}/{p}" in infos]
+            wanted = [
+                infos[f"{top}/{p}"]
+                for p in dict.fromkeys(parts)
+                if isinstance(p, str) and p.endswith(".qasm") and f"{top}/{p}" in infos
+            ]
             if sum(i.file_size for i in wanted) > MAX_CRATE_TEXT_BYTES:
                 raise _crate_error(path, f"its circuit files hold more than {MAX_CRATE_TEXT_BYTES >> 30} GiB")
-            texts = {i.filename[len(top) + 1:]: zf.read(i).decode("utf-8") for i in wanted}
+            texts = {i.filename[len(top) + 1 :]: zf.read(i).decode("utf-8") for i in wanted}
     except (zipfile.BadZipFile, json.JSONDecodeError, UnicodeDecodeError, OSError, EOFError) as exc:
         raise _crate_error(path, f"{type(exc).__name__}") from None
-    tasks = [p[len("circuits/"):-len(".qasm")] for p in parts if isinstance(p, str) and p.startswith("circuits/")]
+    tasks = [p[len("circuits/") : -len(".qasm")] for p in parts if isinstance(p, str) and p.startswith("circuits/")]
 
     def panes(task):
         scope = f"{task}/" if task else ""
@@ -143,8 +156,8 @@ def crate_texts(path):
         for folder, kind in (("dispatched_circuits", "dispatched"), ("transpiled_circuits", "executed")):
             prefix = f"{folder}/{scope}"
             for p in texts:
-                if p.startswith(prefix) and "/" not in p[len(prefix):]:
-                    key = p[len(prefix):-len(".qasm")]
+                if p.startswith(prefix) and "/" not in p[len(prefix) :]:
+                    key = p[len(prefix) : -len(".qasm")]
                     if kind == "dispatched":
                         out.append({**_pane(f"dispatched:{key}", kind, None, texts[p]), "runners": [key]})
                     else:
@@ -154,14 +167,17 @@ def crate_texts(path):
             out.append(_pane("compile-input", "compile-input", None, texts[cinp]))
         prefix = f"compiled_circuits/{scope}"
         for p in texts:
-            if p.startswith(prefix) and "/" not in p[len(prefix):]:
-                key = p[len(prefix):-len(".qasm")]
+            if p.startswith(prefix) and "/" not in p[len(prefix) :]:
+                key = p[len(prefix) : -len(".qasm")]
                 out.append(_pane(f"compiled:{key}", "compiled", key, texts[p]))
         return out
 
     source = (graph.get("#report-source") or {}).get("value")
-    circuits = ([{"task": i, "task_name": t, "panes": panes(t)} for i, t in enumerate(tasks)] if tasks
-                else [{"task": None, "task_name": None, "panes": panes(None)}])
+    circuits = (
+        [{"task": i, "task_name": t, "panes": panes(t)} for i, t in enumerate(tasks)]
+        if tasks
+        else [{"task": None, "task_name": None, "panes": panes(None)}]
+    )
     return {"report_source": source, "circuits": circuits}
 
 
@@ -175,8 +191,9 @@ def circuit_texts(server, job):
     try:
         conn = server.conn
         if conn.has(FEATURE):
-            resp = conn.request("GET", f"/jobs/{job.job_id}/circuit-texts",
-                                what=f"circuit texts of job {job.job_id[:8]}")
+            resp = conn.request(
+                "GET", f"/jobs/{job.job_id}/circuit-texts", what=f"circuit texts of job {job.job_id[:8]}"
+            )
             if job.dir:
                 keep(job.dir, TEXTS_FILE, resp.body)
             return resp.json(), "the server's job"
@@ -187,15 +204,21 @@ def circuit_texts(server, job):
         reason = exc.message
     if crate:
         return crate_texts(crate), f"saved {os.path.basename(crate)}"
-    raise CliError(f"No circuit texts for job {job.job_id[:8]}: {reason}; no {TEXTS_FILE} or crate is saved.",
-                   Exit.INCOMPATIBLE, "feature_missing", hint="qrosetta export crate")
+    raise CliError(
+        f"No circuit texts for job {job.job_id[:8]}: {reason}; no {TEXTS_FILE} or crate is saved.",
+        Exit.INCOMPATIBLE,
+        "feature_missing",
+        hint="qrosetta export crate",
+    )
 
 
 def header(job, texts, where):
     status = results.read_status(job.dir) if job.dir else None
     source = SOURCE_TEXT.get(texts.get("report_source"), texts.get("report_source") or "unknown source")
-    return (f"{job.request().get('title') or 'Job'} (job {job.job_id[:8]}): saved {status or 'not saved'}; "
-            f"{source}, read from {where}")
+    return (
+        f"{job.request().get('title') or 'Job'} (job {job.job_id[:8]}): saved {status or 'not saved'}; "
+        f"{source}, read from {where}"
+    )
 
 
 def select(texts, task, need_one):
@@ -203,13 +226,20 @@ def select(texts, task, need_one):
     if task is not None:
         chosen = [c for c in circuits if c.get("task") == task]
         if not chosen:
-            raise usage(f"--task {task}: this result has {len(circuits)} circuit(s)"
-                        + ("" if any(c.get("task") is not None for c in circuits) else " and is not a playlist") + ".",
-                        hint="qrosetta show circuits", reason="bad_task")
+            raise usage(
+                f"--task {task}: this result has {len(circuits)} circuit(s)"
+                + ("" if any(c.get("task") is not None for c in circuits) else " and is not a playlist")
+                + ".",
+                hint="qrosetta show circuits",
+                reason="bad_task",
+            )
         return chosen
     if need_one and len(circuits) != 1:
-        raise usage(f"This playlist has {len(circuits)} circuits; choose one with --task N.",
-                    hint="qrosetta show circuits", reason="bad_task")
+        raise usage(
+            f"This playlist has {len(circuits)} circuits; choose one with --task N.",
+            hint="qrosetta show circuits",
+            reason="bad_task",
+        )
     return circuits
 
 
@@ -225,9 +255,13 @@ def find_pane(panes, name):
         return matches[0]
     ids = [p.get("id") for p in panes]
     close = difflib.get_close_matches(name, ids, n=1)
-    raise usage(f"No pane {name!r}" + (f" (several match: {', '.join(p['id'] for p in matches)})" if matches else "")
-                + f"; this circuit has {', '.join(ids) or 'none'}.",
-                hint=f"qrosetta show diff {close[0]}" if close else "qrosetta show circuits", reason="pane_unknown")
+    raise usage(
+        f"No pane {name!r}"
+        + (f" (several match: {', '.join(p['id'] for p in matches)})" if matches else "")
+        + f"; this circuit has {', '.join(ids) or 'none'}.",
+        hint=f"qrosetta show diff {close[0]}" if close else "qrosetta show circuits",
+        reason="pane_unknown",
+    )
 
 
 def source_pane(pane, panes):
@@ -252,8 +286,14 @@ def _rows(panes):
             status = f"refused ({p['refusal_kind']})"
         else:
             status = p.get("dispatch_status") or ("" if isinstance(text, str) else "no text")
-        rows.append((p.get("id", ""), str(len(text.splitlines())) if isinstance(text, str) else "-",
-                     str(p["gate_count"]) if isinstance(p.get("gate_count"), int) else "-", status))
+        rows.append(
+            (
+                p.get("id", ""),
+                str(len(text.splitlines())) if isinstance(text, str) else "-",
+                str(p["gate_count"]) if isinstance(p.get("gate_count"), int) else "-",
+                status,
+            )
+        )
     widths = [max(len(r[i]) for r in rows) for i in range(4)]
     return [f"{r[0]:<{widths[0]}}  {r[1]:>{widths[1]}}  {r[2]:>{widths[2]}}  {r[3]}".rstrip() for r in rows]
 
@@ -270,8 +310,12 @@ def cmd_show_circuits(ctx):
         pane = find_pane(circuits[0].get("panes") or [], pane_name)
         output.progress(line)
         if pane.get("text") is None:
-            raise CliError(f"Pane {pane['id']} recorded no text.", Exit.NOT_FOUND, "pane_without_text",
-                           hint="qrosetta show circuits")
+            raise CliError(
+                f"Pane {pane['id']} recorded no text.",
+                Exit.NOT_FOUND,
+                "pane_without_text",
+                hint="qrosetta show circuits",
+            )
         if not output.json_mode():
             output.raw(pane["text"] if pane["text"].endswith("\n") else pane["text"] + "\n")
         return Result(0, {**data, "task": circuits[0].get("task"), "pane": pane})
@@ -291,8 +335,11 @@ def _ignored(values):
         for part in value.split(","):
             part = part.strip()
             if part and part not in IGNORABLE:
-                raise usage(f"--ignore {part}: choose from {', '.join(IGNORABLE)}.", hint="qrosetta show diff --help",
-                            reason="ignore_unknown")
+                raise usage(
+                    f"--ignore {part}: choose from {', '.join(IGNORABLE)}.",
+                    hint="qrosetta show diff --help",
+                    reason="ignore_unknown",
+                )
             if part and part not in chosen:
                 chosen.append(part)
     return chosen
@@ -316,8 +363,9 @@ def lines_of(text, ignore):
 def cmd_show_diff(ctx):
     names = ctx.opt("panes") or []
     if len(names) > 2:
-        raise usage("show diff compares two panes: A and B.", hint="qrosetta show diff input executed:qiskit",
-                    reason="usage")
+        raise usage(
+            "show diff compares two panes: A and B.", hint="qrosetta show diff input executed:qiskit", reason="usage"
+        )
     ignore = _ignored(ctx.opt("ignore"))
     server = Server(ctx)
     job = one_job(ctx, server)
@@ -330,25 +378,46 @@ def cmd_show_diff(ctx):
         b = find_pane(panes, names[0])
         a = source_pane(b, panes)
         if a is None:
-            raise usage(f"{b['id']} is derived from no other pane; name two.", hint=f"qrosetta show diff {b['id']} B",
-                        reason="pane_without_source")
+            raise usage(
+                f"{b['id']} is derived from no other pane; name two.",
+                hint=f"qrosetta show diff {b['id']} B",
+                reason="pane_without_source",
+            )
     else:
         b = next((p for p in with_text if source_pane(p, panes) is not None), None)
         a = source_pane(b, panes) if b else None
         if a is None:
-            raise usage("This circuit has fewer than two texts to compare.", hint="qrosetta show circuits",
-                        reason="pane_without_source")
+            raise usage(
+                "This circuit has fewer than two texts to compare.",
+                hint="qrosetta show circuits",
+                reason="pane_without_source",
+            )
     for p in (a, b):
         if p.get("text") is None:
-            raise CliError(f"Pane {p['id']} recorded no text.", Exit.NOT_FOUND, "pane_without_text",
-                           hint="qrosetta show circuits")
-    diff = list(difflib.unified_diff(lines_of(a["text"], ignore), lines_of(b["text"], ignore),
-                                     fromfile=a["id"], tofile=b["id"], lineterm=""))
+            raise CliError(
+                f"Pane {p['id']} recorded no text.", Exit.NOT_FOUND, "pane_without_text", hint="qrosetta show circuits"
+            )
+    diff = list(
+        difflib.unified_diff(
+            lines_of(a["text"], ignore), lines_of(b["text"], ignore), fromfile=a["id"], tofile=b["id"], lineterm=""
+        )
+    )
     output.progress(header(job, texts, where))
     if not diff:
-        output.progress(f"{a['id']} and {b['id']}: the same text" + (f" (ignoring {', '.join(ignore)})" if ignore else "")
-                        + ".")
+        output.progress(
+            f"{a['id']} and {b['id']}: the same text" + (f" (ignoring {', '.join(ignore)})" if ignore else "") + "."
+        )
     for line in diff:
         output.result(line)
-    return Result(0, {"job_id": job.job_id, "source": where, "a": a["id"], "b": b["id"], "ignore": ignore,
-                      "identical": not diff, "diff": "\n".join(diff)})
+    return Result(
+        0,
+        {
+            "job_id": job.job_id,
+            "source": where,
+            "a": a["id"],
+            "b": b["id"],
+            "ignore": ignore,
+            "identical": not diff,
+            "diff": "\n".join(diff),
+        },
+    )

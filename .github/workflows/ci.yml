@@ -220,6 +220,9 @@ jobs:
       - name: ruff check
         run: ruff check --output-format=github .
 
+      - name: ruff format (qrosetta_cli only)
+        run: ruff format --check --diff qrosetta_cli
+
       - name: shellcheck and hadolint against their baselines
         env:
           HADOLINT: ${{ runner.temp }}/hadolint

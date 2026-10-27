@@ -59,13 +59,17 @@ def find(env, job_id, server_url=None):
     """The entry whose id is `job_id` or starts with it (8 characters or more), on `server_url`'s
     origin when given; None when there is none. Ambiguous prefixes are a usage error."""
     want = origin(server_url) if server_url else None
-    hits = [e for e in entries(env)
-            if (e["job_id"] == job_id or (len(job_id) >= 8 and e["job_id"].startswith(job_id)))
-            and (want is None or e.get("server") == want)]
+    hits = [
+        e
+        for e in entries(env)
+        if (e["job_id"] == job_id or (len(job_id) >= 8 and e["job_id"].startswith(job_id)))
+        and (want is None or e.get("server") == want)
+    ]
     exact = [e for e in hits if e["job_id"] == job_id]
     if exact:
         return exact[-1]
     if len(hits) > 1:
-        raise usage(f"job:{job_id} matches {len(hits)} jobs; give more of the id.", hint="qrosetta jobs",
-                    reason="ambiguous_job")
+        raise usage(
+            f"job:{job_id} matches {len(hits)} jobs; give more of the id.", hint="qrosetta jobs", reason="ambiguous_job"
+        )
     return hits[0] if hits else None

@@ -13,9 +13,13 @@ def fetch_config(transport, timeout=10):
     resp = transport.request("GET", "/config", timeout=timeout)
     data = resp.json()
     if resp.status != 200 or not isinstance(data, dict) or "limits" not in data:
-        raise CliError(f"{transport.url} answered GET /config with HTTP {resp.status}, not Quantum Rosetta's "
-                       "configuration.", Exit.INCOMPATIBLE, "not_quantum_rosetta", hint="qrosetta config show",
-                       http_status=resp.status)
+        raise CliError(
+            f"{transport.url} answered GET /config with HTTP {resp.status}, not Quantum Rosetta's configuration.",
+            Exit.INCOMPATIBLE,
+            "not_quantum_rosetta",
+            hint="qrosetta config show",
+            http_status=resp.status,
+        )
     return data
 
 
@@ -45,19 +49,31 @@ def check(config, features=()):
     CLI, and offers every feature in `features` (name or (name, minimum version))."""
     block = server_block(config)
     if block is None:
-        raise CliError("This server predates the CLI; it needs platform 2.0.0 or later.", Exit.INCOMPATIBLE,
-                       "server_too_old", hint=UPGRADE_HINT)
+        raise CliError(
+            "This server predates the CLI; it needs platform 2.0.0 or later.",
+            Exit.INCOMPATIBLE,
+            "server_too_old",
+            hint=UPGRADE_HINT,
+        )
     lv = levels(block)
     if lv is None or lv[1] < CLI_API_LEVELS[0] or lv[0] > CLI_API_LEVELS[1]:
-        raise CliError(f"This server serves API levels {lv}; this CLI speaks {CLI_API_LEVELS[0]}-"
-                       f"{CLI_API_LEVELS[1]}.", Exit.INCOMPATIBLE, "api_levels", hint=UPGRADE_HINT)
+        raise CliError(
+            f"This server serves API levels {lv}; this CLI speaks {CLI_API_LEVELS[0]}-{CLI_API_LEVELS[1]}.",
+            Exit.INCOMPATIBLE,
+            "api_levels",
+            hint=UPGRADE_HINT,
+        )
     offered = block.get("features") or {}
     for feature in features:
         fname, minimum = feature if isinstance(feature, tuple) else (feature, 1)
         have = offered.get(fname)
         if not isinstance(have, int) or have < minimum:
-            raise CliError(f"This server does not offer {fname}@{minimum}.", Exit.INCOMPATIBLE,
-                           "feature_missing", hint=UPGRADE_HINT)
+            raise CliError(
+                f"This server does not offer {fname}@{minimum}.",
+                Exit.INCOMPATIBLE,
+                "feature_missing",
+                hint=UPGRADE_HINT,
+            )
     return block
 
 

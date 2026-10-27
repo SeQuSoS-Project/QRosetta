@@ -15,7 +15,7 @@ from qrosetta_cli.output import result
 from qrosetta_cli.stack import engine as eng, hostload, quota
 from qrosetta_cli.stack.explain import DELEGATE_DROPIN, OTHER_BIND, SUBUID_FIX, probe_message
 
-GIB = 1024 ** 3
+GIB = 1024**3
 LOW_DISK_GIB = 10
 ORDER = ("PASS", "INFO", "WARN", "FAIL", "SKIP")
 
@@ -109,8 +109,12 @@ def check_os(host, rep):
     if host.system() == "Linux" and machine in ("x86_64", "amd64"):
         rep.add("os", "PASS", "Linux x86_64")
     else:
-        rep.add("os", "FAIL", f"{host.system()} {machine}: Quantum Rosetta images are linux/amd64 only",
-                "use a Linux x86_64 machine")
+        rep.add(
+            "os",
+            "FAIL",
+            f"{host.system()} {machine}: Quantum Rosetta images are linux/amd64 only",
+            "use a Linux x86_64 machine",
+        )
 
 
 def check_engine(host, rep, configured):
@@ -118,16 +122,24 @@ def check_engine(host, rep, configured):
         choice = eng.choose_engine(host.env, configured, host.which, host.run)
     except CliError as exc:
         docker_refused = "permission denied" in exc.message.lower()
-        fix = ("sudo usermod -aG docker $USER (root-equivalent), then reboot; or install rootless podman"
-               if docker_refused else "install Docker with Compose v2, or rootless podman (README, Requirements)")
+        fix = (
+            "sudo usermod -aG docker $USER (root-equivalent), then reboot; or install rootless podman"
+            if docker_refused
+            else "install Docker with Compose v2, or rootless podman (README, Requirements)"
+        )
         rep.add("engine", "FAIL", exc.message, fix)
         return None
     status = "INFO" if choice.name == "podman" and "permission denied" in choice.reason else "PASS"
-    rep.add("engine", status, f"{choice.name} {choice.version} ({'rootless' if choice.rootless else 'rootful'}); "
-            f"{choice.reason}" + "".join(f"; {n}" for n in choice.notes if n not in choice.reason))
+    rep.add(
+        "engine",
+        status,
+        f"{choice.name} {choice.version} ({'rootless' if choice.rootless else 'rootful'}); "
+        f"{choice.reason}" + "".join(f"; {n}" for n in choice.notes if n not in choice.reason),
+    )
     if choice.name == "docker" and not choice.rootless:
-        rep.add("rootful_docker", "INFO", "the Docker daemon runs as root; members of the docker group are "
-                "root-equivalent")
+        rep.add(
+            "rootful_docker", "INFO", "the Docker daemon runs as root; members of the docker group are root-equivalent"
+        )
     return choice
 
 
@@ -142,9 +154,13 @@ def check_compose(host, rep, choice):
         rep.add("compose", "PASS", text.splitlines()[0])
     else:
         extra = " --no-install-recommends" if choice.name == "podman" else ""
-        rep.add("compose", "FAIL", f"`{choice.name} compose` is not Docker Compose v2 "
-                f"({text.splitlines()[0] if text else 'no output'}); podman-compose 1.x is not supported",
-                f"sudo apt install{extra} docker-compose-v2")
+        rep.add(
+            "compose",
+            "FAIL",
+            f"`{choice.name} compose` is not Docker Compose v2 "
+            f"({text.splitlines()[0] if text else 'no output'}); podman-compose 1.x is not supported",
+            f"sudo apt install{extra} docker-compose-v2",
+        )
 
 
 def check_podman(host, rep, choice):
@@ -153,8 +169,12 @@ def check_podman(host, rep, choice):
     if host.exists(sock):
         rep.add("podman_socket", "PASS", f"podman.socket at {sock}")
     else:
-        rep.add("podman_socket", "FAIL", f"no podman API socket at {sock}; Docker Compose needs it",
-                "systemctl --user enable --now podman.socket")
+        rep.add(
+            "podman_socket",
+            "FAIL",
+            f"no podman API socket at {sock}; Docker Compose needs it",
+            "systemctl --user enable --now podman.socket",
+        )
     if not choice.rootless:
         return
     if _subids(host, "/etc/subuid") and _subids(host, "/etc/subgid"):
@@ -168,8 +188,12 @@ def check_controllers(host, rep, choice, quota_on=True):
         return
     have = quota.user_controllers(host.read, host.exists, host.uid())
     if have == "v1":
-        rep.add("cgroup", "FAIL", "rootless containers on cgroup v1: memory and CPU limits are absent",
-                "boot with cgroup v2 (systemd.unified_cgroup_hierarchy=1)")
+        rep.add(
+            "cgroup",
+            "FAIL",
+            "rootless containers on cgroup v1: memory and CPU limits are absent",
+            "boot with cgroup v2 (systemd.unified_cgroup_hierarchy=1)",
+        )
         return
     missing = [c for c in ("cpu", "memory", "pids") if c not in (have or set())]
     if not missing:
@@ -177,12 +201,21 @@ def check_controllers(host, rep, choice, quota_on=True):
         return
     without_flag = DELEGATE_DROPIN + f"\nor, without sudo: {quota.FLAG_HINT} (no CPU limits; results record it)"
     if missing == ["cpu"] and not quota_on:
-        rep.add("cgroup", "WARN", "the cpu controller is not delegated to your user; the stack starts without "
-                "the CPU quota (--no-cpu-quota), so timings are not comparable with runs under it", DELEGATE_DROPIN)
+        rep.add(
+            "cgroup",
+            "WARN",
+            "the cpu controller is not delegated to your user; the stack starts without "
+            "the CPU quota (--no-cpu-quota), so timings are not comparable with runs under it",
+            DELEGATE_DROPIN,
+        )
         return
-    rep.add("cgroup", "FAIL", f"controllers not delegated to your user: {', '.join(missing)}; `start` cannot "
-            "apply the " + ("CPU and memory limits" if "memory" in missing else "CPU limits"),
-            without_flag if missing == ["cpu"] else DELEGATE_DROPIN)
+    rep.add(
+        "cgroup",
+        "FAIL",
+        f"controllers not delegated to your user: {', '.join(missing)}; `start` cannot "
+        "apply the " + ("CPU and memory limits" if "memory" in missing else "CPU limits"),
+        without_flag if missing == ["cpu"] else DELEGATE_DROPIN,
+    )
 
 
 def check_port(host, rep, bind, answers):
@@ -199,8 +232,10 @@ def check_port(host, rep, bind, answers):
 
 
 def check_disk(host, rep, choice):
-    places = [("image store", eng.image_store(choice.name, choice.info) if choice else ""),
-              ("cache", os.path.join(host.env.get("XDG_CACHE_HOME") or os.path.join(host.env.get("HOME") or "~", ".cache")))]
+    places = [
+        ("image store", eng.image_store(choice.name, choice.info) if choice else ""),
+        ("cache", os.path.join(host.env.get("XDG_CACHE_HOME") or os.path.join(host.env.get("HOME") or "~", ".cache"))),
+    ]
     for label, path in places:
         if not path:
             continue
@@ -208,8 +243,12 @@ def check_disk(host, rep, choice):
         if free is None:
             continue
         if free < LOW_DISK_GIB * GIB:
-            rep.add("disk", "WARN", f"{label} {path}: {free / GIB:.1f} GiB free (under {LOW_DISK_GIB} GiB)",
-                    f"free space under {path}")
+            rep.add(
+                "disk",
+                "WARN",
+                f"{label} {path}: {free / GIB:.1f} GiB free (under {LOW_DISK_GIB} GiB)",
+                f"free space under {path}",
+            )
         else:
             rep.add("disk", "PASS", f"{label} {path}: {free / GIB:.1f} GiB free")
     tmp = host.free_bytes("/var/tmp")
@@ -229,17 +268,24 @@ def check_credentials(host, rep, path):
 
 def check_extras(host, rep):
     gpu = host.exists("/dev/nvidia0") or bool(host.which("nvidia-smi"))
-    rep.add("gpu", "INFO", "NVIDIA GPU present (cuQuantum can run)" if gpu else "no NVIDIA GPU (cuQuantum is unavailable)")
+    rep.add(
+        "gpu", "INFO", "NVIDIA GPU present (cuQuantum can run)" if gpu else "no NVIDIA GPU (cuQuantum is unavailable)"
+    )
     tool = host.which("apptainer") or host.which("singularity")
     rep.add("apptainer", "INFO", f"Apptainer at {tool}" if tool else "Apptainer not installed (HPC images only)")
 
 
 def check_live(rep, config, transport, env=None):
     from qrosetta_cli.client import handshake
+
     block = handshake.server_block(config)
     if block is None:
-        rep.add("server", "WARN", "the running server predates the version handshake (needs platform 2.0.0)",
-                "rebuild the stack from this checkout: qrosetta build")
+        rep.add(
+            "server",
+            "WARN",
+            "the running server predates the version handshake (needs platform 2.0.0)",
+            "rebuild the stack from this checkout: qrosetta build",
+        )
     else:
         try:
             handshake.check(config)
@@ -274,8 +320,13 @@ def check_live(rep, config, transport, env=None):
         for e in down:
             kind = e.get("error_kind")
             parts.append(probe_message(kind, e["id"])[0] if kind else f"{e['id']} ({e.get('unavailable_reason')})")
-        rep.add(label, "WARN", f"{len(enabled) - len(down)} of {len(enabled)} {label} available ({how}); not "
-                "available: " + "; ".join(parts), "qrosetta start -d (adds the services that are not running)")
+        rep.add(
+            label,
+            "WARN",
+            f"{len(enabled) - len(down)} of {len(enabled)} {label} available ({how}); not "
+            "available: " + "; ".join(parts),
+            "qrosetta start -d (adds the services that are not running)",
+        )
 
 
 def _service_rows(transport, path, headers):
@@ -286,8 +337,11 @@ def _service_rows(transport, path, headers):
         data = resp.json()
         if resp.status == 200 and isinstance(data, list) and any(isinstance(e, dict) and "fresh" in e for e in data):
             return data, "probed now"
-        why = {401: "the server did not take the lifecycle token", 403: "the server did not take the lifecycle token",
-               429: "fresh probes are rate-limited"}.get(resp.status, "the server has no on-demand probes")
+        why = {
+            401: "the server did not take the lifecycle token",
+            403: "the server did not take the lifecycle token",
+            429: "fresh probes are rate-limited",
+        }.get(resp.status, "the server has no on-demand probes")
     else:
         why = "no lifecycle token"
     return transport.request("GET", path, timeout=30).json(), f"cached availability: {why}"
@@ -296,6 +350,7 @@ def _service_rows(transport, path, headers):
 def run(ctx, host=None):
     """All checks; returns the report."""
     from qrosetta_cli.client import handshake, servers
+
     host = host or Host(ctx.env)
     rep = Report()
     check_os(host, rep)
@@ -336,13 +391,21 @@ def print_report(rep):
 
 def cmd_doctor(ctx, host=None):
     from qrosetta_cli.context import Result
+
     rep = run(ctx, host)
     print_report(rep)
-    data = {"checks": [c.as_dict() for c in rep.checks], "failed": len(rep.failed),
-            "warnings": sum(c.status == "WARN" for c in rep.checks)}
+    data = {
+        "checks": [c.as_dict() for c in rep.checks],
+        "failed": len(rep.failed),
+        "warnings": sum(c.status == "WARN" for c in rep.checks),
+    }
     if rep.failed:
         first = rep.failed[0]
-        raise CliError(f"{len(rep.failed)} check(s) failed: {', '.join(c.id for c in rep.failed)}.",
-                       Exit.CHECKS_FAILED, "checks_failed", hint=(first.fix or "qrosetta doctor").splitlines()[0],
-                       data=data)
+        raise CliError(
+            f"{len(rep.failed)} check(s) failed: {', '.join(c.id for c in rep.failed)}.",
+            Exit.CHECKS_FAILED,
+            "checks_failed",
+            hint=(first.fix or "qrosetta doctor").splitlines()[0],
+            data=data,
+        )
     return Result(0, data)
