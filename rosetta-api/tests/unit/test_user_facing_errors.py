@@ -1,10 +1,12 @@
 """userFacingError (static/js/run_status.js) rewrites the operator hints in the messages the
 dispatchers produce today into steps a UI user can take."""
 import asyncio
+import contextlib
 
 import httpx
 
 from services.dispatcher_http import safe_request
+from services.result_contract import invalid_response_message
 from tests.unit.frontend_harness import call_js, requires_node
 
 pytestmark = requires_node
@@ -14,8 +16,10 @@ class _RaisingClient:
     def __init__(self, exc):
         self._exc = exc
 
-    async def post(self, url, json, timeout=None):
+    @contextlib.asynccontextmanager
+    async def stream(self, method, url, json, timeout=None):
         raise self._exc
+        yield
 
 
 def _error(exc, timeout_s=300):
@@ -34,6 +38,7 @@ def test_dispatcher_messages_lose_operator_instructions():
         _error(httpx.ReadError("reset"), timeout_s=10**9),
         "The runner pod exited with code 1 before returning a result; Kubernetes recorded no cause. "
         "Server operators can see details in the runner pod logs.",
+        invalid_response_message("qiskit", "runner", "it is not a JSON object"),
     ]
     rewritten = _rewrite(*messages)
     for original, text in zip(messages, rewritten):

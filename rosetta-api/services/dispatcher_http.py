@@ -7,6 +7,10 @@ import httpx
 import asyncio
 from qrosetta_commons.helpers import get_logger, unmeasured_metrics
 from config import settings
+from services.result_contract import (
+    MAX_RESULT_BYTES, ResultContractError, endpoint_of, invalid_response_message, log_rejected,
+    parse_result,
+)
 
 logger = get_logger("rosetta-api")
 
@@ -29,24 +33,42 @@ def _stopped_by_user(sim_name: str, message: str, dispatch_status: str = "error"
     return result
 
 
+async def _read_capped(response, limit: int) -> bytes:
+    """The response body; ResultContractError once it passes ``limit`` bytes, read no further."""
+    declared = response.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > limit:
+        raise ResultContractError(f"it is larger than {limit // (1024 * 1024)} MiB")
+    chunks, size = [], 0
+    async for chunk in response.aiter_bytes():
+        size += len(chunk)
+        if size > limit:
+            raise ResultContractError(f"it is larger than {limit // (1024 * 1024)} MiB")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 async def safe_request(client, url, payload, sim_name, timeout_s, http_timeout=None):
     """Dispatch to one runner and classify transport failures.
 
     Failures carry ``dispatch_status``: ``timeout`` when httpx's read budget expires,
-    ``offline`` when the runner cannot be reached, ``error`` otherwise. A dropped
+    ``offline`` when the runner cannot be reached, ``error`` otherwise, including a response
+    that breaks the result contract (``services.result_contract``). A dropped
     connection is reported with status ``error``; its message names the possible causes
     unless a stop notice (``services.host_load``) covers the service, which records
     ``stopped_by_user``.
     """
-    kind = "compiler" if str(url).rstrip("/").endswith("/compile") else "runner"
+    endpoint = endpoint_of(url)
+    kind = "compiler" if endpoint == "compile" else "runner"
     t0 = time.perf_counter()
     try:
-        if http_timeout is None:
-            response = await client.post(url, json=payload)
-        else:
-            response = await client.post(url, json=payload, timeout=http_timeout)
-        response.raise_for_status()
-        return response.json()
+        options = {} if http_timeout is None else {"timeout": http_timeout}
+        async with client.stream("POST", url, json=payload, **options) as response:
+            response.raise_for_status()
+            body = await _read_capped(response, MAX_RESULT_BYTES)
+        return parse_result(body, endpoint)
+    except ResultContractError as e:
+        log_rejected(sim_name, str(e))
+        return _runner_error(sim_name, invalid_response_message(sim_name, kind, str(e)))
     except (httpx.ConnectError, httpx.ConnectTimeout):
         if host_load.stopped_by_user(sim_name):
             return _stopped_by_user(sim_name, (

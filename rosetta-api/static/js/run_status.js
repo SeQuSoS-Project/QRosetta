@@ -276,7 +276,7 @@ export function recommendedShots(pairs) {
 /** @type {Array<[RegExp, string]>} */
 const OPERATOR_HINTS = [
     [/\s*Server operators can check whether its service is running\.?/gi, ' The {subject} may be restarting; try again in a minute. If it keeps happening, tell the administrator of this server.'],
-    [/\s*Server operators can see details in the (runner|compiler)( pod)? logs\.?/gi, ' If it happens again, tell the administrator of this server.'],
+    [/\s*Server operators can see details in the (runner|compiler|API)( pod)? logs\.?/gi, ' If it happens again, tell the administrator of this server.'],
     [/raise the timeout\./g, 'raise the timeout in the Execution chip.'],
     [/\s*Check the \S+ container logs( to confirm)?\.?/gi, ' If it happens again, tell the administrator of this server.'],
     [/\s*Check container logs in your Kubernetes cluster\.?/gi, ' If it happens again, tell the administrator of this server.'],

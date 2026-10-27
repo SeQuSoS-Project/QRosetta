@@ -173,6 +173,12 @@ Units are MiB (1024²) throughout, although field names say `_mb`.
 
 *Evidence (2026-10-07).* An exception in `worker_batch_suite` left the job `processing` forever and the browser polled indefinitely. A compile-only playlist whose every compile errored completed as done.
 
+### Runner and compiler responses
+
+*Rule.* The API checks every runner and compiler response, over HTTP and from S3, before it uses it (`services/result_contract.py`): a JSON object of at most 256 MiB nested at most 32 levels, with no NaN or infinity, an `error` that is text, numeric metrics that are numbers or null, and, unless it is an error, the endpoint's own field (`statevector` text, `counts` mapping bit strings to non-negative integers, `transpiled_qasm` text). A response that fails is that backend's `error` ("INVALID RESPONSE", naming the rule it broke, never its content); the other backends of the job finish. HTTP bodies are read as a stream and reading stops at the cap; a malformed S3 result is not fetched again.
+
+*Evidence (2026-10-28).* A runner that returned valid JSON that was not an object (`null`, a list) raised TypeError in the dispatcher, which ended the `gather` for every backend of the job and failed the whole job with the exception text; a malformed S3 result was fetched six times and then reported as "not found" (`test_v1_01_runner_response_contract.py`).
+
 ### Playlist length
 
 *Rule.* A playlist holds at most 400 circuits (`MAX_BATCH_TASKS`, published as `limits.max_batch_tasks`). `bypass_limits` lifts it.

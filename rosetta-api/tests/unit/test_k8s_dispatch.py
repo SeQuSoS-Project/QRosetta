@@ -93,10 +93,10 @@ def _run_inner(monkeypatch, payload, s3, batch, core):
 
 
 def _succeeding(s3, batch):
-    """A core API whose pod succeeds after writing ``{"ok": 1}`` to the completed key."""
+    """A core API whose pod succeeds after writing a statevector result to the completed key."""
     def listing(**_k):
         job_id = batch.created[-1].spec.template.spec.containers[0].command[-1]
-        s3.objects[f"jobs/completed/{job_id}.json"] = b'{"ok": 1}'
+        s3.objects[f"jobs/completed/{job_id}.json"] = b'{"ok": 1, "statevector": ""}'
         return SimpleNamespace(items=[_pod("Succeeded")])
     return SimpleNamespace(list_namespaced_pod=listing, list_namespaced_event=None)
 
@@ -104,7 +104,7 @@ def _succeeding(s3, batch):
 def test_small_payload_travels_in_the_environment(monkeypatch):
     s3, batch = FakeS3(), FakeBatch()
     result = _run_inner(monkeypatch, {"circuit_data": "x" * 100}, s3, batch, _succeeding(s3, batch))
-    assert result == {"ok": 1}
+    assert result == {"ok": 1, "statevector": ""}
     assert json.loads(_env(batch.created[0])["QROSETTA_PAYLOAD"]) == {"circuit_data": "x" * 100}
     assert s3.puts == []
 
@@ -113,7 +113,7 @@ def test_large_payload_goes_to_the_pending_key_and_is_deleted(monkeypatch):
     s3, batch = FakeS3(), FakeBatch()
     payload = {"circuit_data": "h q[0];\n" * 20000}
     result = _run_inner(monkeypatch, payload, s3, batch, _succeeding(s3, batch))
-    assert result == {"ok": 1}
+    assert result == {"ok": 1, "statevector": ""}
     job = batch.created[0]
     job_id = job.spec.template.spec.containers[0].command[-1]
     assert "QROSETTA_PAYLOAD" not in _env(job)

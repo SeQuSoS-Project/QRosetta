@@ -1,5 +1,6 @@
 """Unit tests for the HTTP dispatcher's failure classification and dispatch_status."""
 import asyncio
+import contextlib
 
 import httpx
 
@@ -10,15 +11,16 @@ class _RaisingClient:
     def __init__(self, exc):
         self._exc = exc
 
-    async def post(self, url, json, timeout=None):
+    @contextlib.asynccontextmanager
+    async def stream(self, method, url, json, timeout=None):
         raise self._exc
+        yield
 
 
 class _StatusErrorClient:
-    async def post(self, url, json, timeout=None):
-        req = httpx.Request("POST", "http://runner/run")
-        resp = httpx.Response(500, request=req)
-        return resp  # raise_for_status() below turns 500 into HTTPStatusError
+    @contextlib.asynccontextmanager
+    async def stream(self, method, url, json, timeout=None):
+        yield httpx.Response(500, request=httpx.Request("POST", "http://runner/run"))
 
 
 def _run(client, timeout_s=300):
