@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "qrosetta.cli/jobs@1: the job index with each job's save status and, unless --offline, its server status",
+  "type": "object",
+  "properties": {
+    "index": {
+      "type": "string"
+    },
+    "offline": {
+      "type": "boolean"
+    },
+    "jobs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string"
+          },
+          "server": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "endpoint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "submitted_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dir": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "save_status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "server_status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "job_id",
+          "dir",
+          "save_status",
+          "server_status"
+        ]
+      }
+    }
+  },
+  "required": [
+    "index",
+    "offline",
+    "jobs"
+  ]
+}

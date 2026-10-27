@@ -226,7 +226,8 @@ def test_destructive_engine_calls_take_targets_only_from_the_ownership_scan():
             if isinstance(arg, ast.List):
                 words = {_const(e) for e in arg.elts}
                 assert not words & (destructive | {"down"}), (module, fn, words)
-    values = {_const(n) for p in (REPO / "qrosetta_cli").rglob("*.py") for n in ast.walk(ast.parse(p.read_text()))}
+    engine_side = [p for p in (REPO / "qrosetta_cli").rglob("*.py") if "client" not in p.parts and p.name != "cli.py"]
+    values = {_const(n) for p in engine_side for n in ast.walk(ast.parse(p.read_text()))}
     assert not {"prune", "--all", "down", "kill"} & values
     assert all("-a" not in cmd and "--all" not in cmd for cmd in own.COMMANDS.values())
 

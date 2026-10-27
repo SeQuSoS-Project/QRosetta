@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "qrosetta.cli/job@1: one job's envelope without its report, with its local directory and save status",
+  "type": "object",
+  "properties": {
+    "job": {
+      "type": "object"
+    },
+    "dir": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "save_status": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "job",
+    "dir",
+    "save_status"
+  ]
+}

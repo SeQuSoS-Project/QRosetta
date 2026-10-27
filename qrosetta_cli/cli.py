@@ -28,7 +28,21 @@ class Spec:
     examples: tuple
     stable: bool = True
     group: str = "Lifecycle"
+    notes: str = ""
 
+
+RUN_NOTES = """
+Exit codes: 0 when the jobs finished and nothing in --fail-on matched (the default is none: a
+difference is a result); 3, 8 and 4 when --fail-on matched an outcome whose role is a difference,
+not established, or runs without output; 5 for a failed job; 7 at --wait-timeout.
+
+In CI: pin -b and --seed, and fail on differs and runs_without_output. differs_by_only is left out:
+with one backend grossly wrong, Benjamini-Yekutieli alone flags a correct pair in 6.0-6.7% of runs
+(DESIGN_DECISIONS.md, false-flag figures).
+A CI job's SIGTERM stops the waiting and leaves the job running on the server (and an exclusive run
+holding the server), so set --wait-timeout below the CI job's time limit.
+
+Ctrl-C stops waiting; the job keeps running, and `qrosetta wait job:ID` saves it later."""
 
 SPECS = {
     "start": Spec("stack.commands:cmd_start", "start@0", "start the stack, or add services to a running one",
@@ -62,16 +76,50 @@ SPECS = {
                         ("qrosetta config edit",), stable=False, group="Config"),
     "help": Spec("", "help@0", "help for a command; `help all` lists every command",
                  ("qrosetta help start", "qrosetta help all"), group="Help"),
+    "run": Spec("client.run:cmd_run", "run-result@1", "plan through the server, run the jobs one after another, "
+                "follow them and save their results",
+                ("qrosetta run algorithm:ghz:3",
+                 "qrosetta run circuit.qasm -m statevector,measured --shots 20000 -b qiskit,cirq,qulacs --crate",
+                 "qrosetta run --playlist suite.json --exclusive --repeats 5 --compiler bqskit=1,2",
+                 "qrosetta run circuit.qasm -m measured --seed 7 -b qiskit,cirq --fail-on differs,runs_without_output "
+                 "--wait-timeout 50m",
+                 "qrosetta run circuit.qasm --dry-run --json"), group="Runs", notes=RUN_NOTES),
+    "wait": Spec("client.run:cmd_wait", "run-result@1", "follow detached jobs and save them where their run created "
+                 "their directories", ("qrosetta wait", "qrosetta wait job:1a2b3c4d", "qrosetta wait --all"),
+                 group="Runs"),
+    "jobs list": Spec("client.jobs:cmd_jobs", "jobs@1", "the jobs this machine submitted, with their server status",
+                      ("qrosetta jobs", "qrosetta jobs --offline"), group="Runs"),
+    "jobs status": Spec("client.jobs:cmd_jobs_status", "job@1", "one job's status, without its report",
+                        ("qrosetta jobs status job:1a2b3c4d",), group="Runs"),
+    "selftest": Spec("client.selftest:cmd_selftest", "selftest@1", "known-answer and environment checks of the "
+                     "backends, with reports and crates saved", ("qrosetta selftest", "qrosetta selftest --backends "
+                                                                 "qiskit,cirq"), group="Runs"),
+    "show summary": Spec("client.show:cmd_show_summary", "summary@1", "the server's summary of a result: outcomes, "
+                         "per-backend counts, caveats",
+                         ("qrosetta show summary", "qrosetta show summary --result job:1a2b3c4d"), group="Results"),
+    "export crate": Spec("client.export:cmd_export_crate", "export@1", "write a result's RO-Crate ZIP",
+                         ("qrosetta export crate", "qrosetta export crate --result job:1a2b3c4d -o crate.zip"),
+                         group="Results"),
+    "export report": Spec("client.export:cmd_export_report", "export@1", "write a result's full report JSON",
+                          ("qrosetta export report", "qrosetta export report --result job:1a2b3c4d -o -"),
+                          group="Results"),
 }
 ALIASES = {"rm": "remove"}
+GROUPS = {"jobs": "jobs list", "show": "show summary", "config": "config show"}
+EXPERIMENTAL_RUN_FLAGS = (("order", "--order"), ("execution_target", "--execution-target"),
+                          ("bypass_limits", "--bypass-limits"), ("keep_statevectors", "--keep-statevectors"),
+                          ("set", "--set"))
 
 GET_STARTED = (
     ("Get started", (("qrosetta doctor", "check this machine; every problem comes with its fix"),
                      ("qrosetta build --profile minimal", "build the images of the minimal profile"),
                      ("qrosetta start -d --profile minimal", "start the stack and wait for its runners"),
-                     ("qrosetta status", "services, memory, images and the URL"))),
-    ("Run and inspect", (("qrosetta api GET /runners", "any server route, with the exit codes of qrosetta"),
-                         ("qrosetta logs api --tail 50", "a service's log"),
+                     ("qrosetta selftest", "known-answer checks of every started backend"),
+                     ("qrosetta show summary", "what the newest result says"))),
+    ("Run and inspect", (("qrosetta run algorithm:ghz:3", "plan, run and save; results in ./qrosetta-results"),
+                         ("qrosetta wait", "follow a detached job and save it"),
+                         ("qrosetta export crate", "the newest result's RO-Crate"),
+                         ("qrosetta status", "services, memory, images and the URL"),
                          ("qrosetta stop", "standby: stop the containers, keep everything"),
                          ("qrosetta remove", "remove the containers; images and data stay"))),
 )
@@ -111,6 +159,8 @@ def _globals(parser, suppress):
 
 def _epilog(spec):
     lines = ["Examples:"] + [f"  {e}" for e in spec.examples]
+    if spec.notes:
+        lines.append(spec.notes)
     if not spec.stable:
         lines.append("\nExperimental: behaviour and JSON (schema @0) may change.")
     return "\n".join(lines)
@@ -194,9 +244,133 @@ def build_parser():
     for name in ("config path", "config show", "config init", "config edit"):
         _add(csub, name)
 
+    _add_runs(sub)
+
     p = _add(sub, "help")
     p.add_argument("topic", nargs="*", metavar="COMMAND", help="a command, or `all`")
     return parser
+
+
+def _save_flags(p, crate_toggle=True):
+    if crate_toggle:
+        p.add_argument("--save", action="append", metavar="LIST", help="what to save: any of report, summary, "
+                       "circuits, crate, or minimal (request.json and job.json only); default report,summary, plus "
+                       "the crate on a local stack whose server offers gated saves")
+        p.add_argument("--crate", action=argparse.BooleanOptionalAction, default=None,
+                       help="add (or leave out) the RO-Crate")
+    p.add_argument("--statevectors", action="store_true", help="the crate carries every statevector")
+    p.add_argument("--author", metavar="NAME", help="author recorded in the crate")
+    p.add_argument("--affiliation", metavar="TEXT", help="author affiliation recorded in the crate")
+    p.add_argument("--item", action="append", metavar="VIEW=FMT[,FMT]|@FILE",
+                   help="a publication view to write into the crate (repeatable)")
+    p.add_argument("--yes", "-y", action="store_true", help="download reports over 1 GiB without asking")
+
+
+def _group(sub, name, help_text, examples, required=False):
+    p = sub.add_parser(name, help=help_text, description=help_text,
+                       epilog="Examples:\n" + "\n".join(f"  {e}" for e in examples))
+    _globals(p, suppress=True)
+    if name in GROUPS:
+        p.set_defaults(spec_name=GROUPS[name])
+    gsub = p.add_subparsers(dest=f"{name}_command", metavar="SUBCOMMAND", parser_class=Parser)
+    gsub.required = required
+    return gsub
+
+
+def _add_runs(sub):
+    p = _add(sub, "run")
+    p.add_argument("circuits", nargs="*", metavar="CIRCUIT", help="a file, - for stdin, or algorithm:ALGO:QUBITS"
+                   "[,seed=S], example:NAME, mqt:ALGO:QUBITS, qasmbench:NAME; two or more make a playlist")
+    p.add_argument("--playlist", metavar="FILE", help="a playlist file in the page's format")
+    p.add_argument("-m", "--mode", action="append", metavar="MODE", help="statevector, measured or compile "
+                   "(repeatable or a comma list; two modes make two jobs); default statevector")
+    p.add_argument("--compile-only", action="store_true", help="the same as --mode compile")
+    p.add_argument("--shots", type=int, metavar="N", help="n_shots (default: the server's)")
+    p.add_argument("-b", "--backends", action="append", metavar="KEYS", help="backend keys, or all (default: the "
+                   "server's default selection)")
+    p.add_argument("--skip", action="append", metavar="KEYS", help="leave these backends out")
+    p.add_argument("-O", "--opt-level", action="append", metavar="[KEY=]N[,N]",
+                   help="N: optimization_level; KEY=N or KEY=0,0,3: runner_config (repeatable)")
+    p.add_argument("--timeout", metavar="DURATION", help="timeout_seconds, e.g. 90 or 5m")
+    p.add_argument("--repeats", type=int, metavar="N", help="timing_repeats")
+    p.add_argument("--exclusive", action=argparse.BooleanOptionalAction, default=None,
+                   help="run every backend alone on the server (exclusive)")
+    p.add_argument("--preprocessing", choices=("on", "off", "both"),
+                   help="apply_preprocessing; both runs an experiment (experimental)")
+    p.add_argument("--compiler", action="append", metavar="KEY=L[,L]|KEY=all", help="a compile-only service and its "
+                   "levels (repeatable)")
+    p.add_argument("--threshold", action="append", metavar="NAME=VALUE", help="an agreement threshold (repeatable)")
+    p.add_argument("--seed", type=int, metavar="N", help="the master seed of a measured run")
+    p.add_argument("--name", metavar="TEXT", help="the run's name (crate, history, results directory)")
+    p.add_argument("--circuit-name", metavar="TEXT", help="the circuit name in crate figures and captions")
+    p.add_argument("--order", action="append", metavar="KEY=K", help="runner_phases (experimental)")
+    p.add_argument("--execution-target", choices=("local", "kubernetes"), help="execution_target (experimental)")
+    p.add_argument("--bypass-limits", action=argparse.BooleanOptionalAction, default=None,
+                   help="bypass_limits (experimental)")
+    p.add_argument("--keep-statevectors", action="store_true", help="keep_statevectors of an experiment "
+                   "(experimental)")
+    p.add_argument("--set", action="append", metavar="FIELD=JSON", help="any other request field the server lists, "
+                   "planned through POST /plan (experimental)")
+    _save_flags(p)
+    p.add_argument("-o", "--output", metavar="DIR", help="the exact results directory of this invocation")
+    p.add_argument("--results-dir", metavar="DIR", help="the parent results directory (default: "
+                   "$QROSETTA_RESULTS_DIR, [results] dir, else ./qrosetta-results)")
+    p.add_argument("--detach", action="store_true", help="submit one job and return; `qrosetta wait` saves it")
+    p.add_argument("--dry-run", action="store_true", help="print the plan and send nothing")
+    p.add_argument("--request", metavar="FILE", help="replay a saved plan.json or request.json")
+    p.add_argument("--force", action="store_true", help="replay across API levels (recorded)")
+    p.add_argument("--fail-on", action="append", metavar="LIST", help="outcome names that make the exit code non-zero "
+                   "(default none); names from GET /config summary_outcomes, e.g. differs,runs_without_output")
+    p.add_argument("--wait-timeout", metavar="DURATION", help="stop waiting after this long (exit 7)")
+
+    p = _add(sub, "wait")
+    p.add_argument("jobs", nargs="*", metavar="JOB", help="job:ID or an id prefix (default: the newest unfinished job)")
+    p.add_argument("--all", action="store_true", help="every unfinished job of this server")
+    p.add_argument("--wait-timeout", metavar="DURATION", help="stop waiting after this long (exit 7)")
+    p.add_argument("--save", action="append", metavar="LIST", help="what to save (default: what the run chose)")
+    p.add_argument("--no-save", action="store_true", help="the same as --save minimal")
+    p.add_argument("--fail-on", action="append", metavar="LIST", help="as for run (default: what the run chose)")
+    p.add_argument("--yes", "-y", action="store_true", help="download reports over 1 GiB without asking")
+
+    gsub = _group(sub, "jobs", "the jobs this machine submitted: list, status", ("qrosetta jobs",
+                                                                                 "qrosetta jobs status job:1a2b3c4d"))
+    p = _add(gsub, "jobs list", aliases=("ls",))
+    p.add_argument("--offline", action="store_true", help="read only the job index; ask no server")
+    p = _add(gsub, "jobs status")
+    p.add_argument("job", metavar="JOB", help="job:ID or an id prefix")
+    sub.choices["jobs"].add_argument("--offline", action="store_true", help="read only the job index; ask no server")
+
+    p = _add(sub, "selftest")
+    p.add_argument("--backends", action="append", metavar="KEYS", help="test these backends (default: every started "
+                   "runner on a local stack, else the server's default selection)")
+    p.add_argument("--no-images", action="store_true", help="skip the image contract probes")
+    p.add_argument("-o", "--output", metavar="DIR", help="the exact results directory of this invocation")
+    p.add_argument("--results-dir", metavar="DIR", help="the parent results directory")
+    p.add_argument("--yes", "-y", action="store_true", help="download reports over 1 GiB without asking")
+
+    gsub = _group(sub, "show", "print a result: summary", ("qrosetta show summary",))
+    p = _add(gsub, "show summary")
+    p.add_argument("--result", metavar="REF", help="latest (default), job:ID or a path")
+    p.add_argument("--task", type=int, metavar="N", help="one playlist circuit (0-based)")
+    p.add_argument("--job", metavar="MODE", help="one job of the result: statevector, measured or compile")
+    p.add_argument("--results-dir", metavar="DIR", help="the parent results directory")
+    sub.choices["show"].add_argument("--result", metavar="REF", help=argparse.SUPPRESS)
+
+    gsub = _group(sub, "export", "write a result's files: crate, report",
+                  ("qrosetta export crate", "qrosetta export report -o report.json"), required=True)
+    for name in ("export crate", "export report"):
+        p = _add(gsub, name)
+        p.add_argument("--result", metavar="REF", help="latest (default), job:ID or a path")
+        p.add_argument("--job", metavar="MODE", help="one job of the result: statevector, measured or compile")
+        p.add_argument("-o", "--output", metavar="PATH|-", help="where to write (default: the job's directory); "
+                       "- for stdout")
+        p.add_argument("--results-dir", metavar="DIR", help="the parent results directory")
+        if name == "export crate":
+            _save_flags(p, crate_toggle=False)
+            p.add_argument("--allow-supplied", action="store_true", help="after the job has expired, build the crate "
+                           "from the saved report.json (recorded as client_supplied)")
+        else:
+            p.add_argument("--yes", "-y", action="store_true", help="download reports over 1 GiB without asking")
 
 
 def get_started():
@@ -212,11 +386,11 @@ def get_started():
 
 def help_all():
     lines = []
-    for group in ("Lifecycle", "Server", "Config", "Help"):
+    for group in ("Lifecycle", "Runs", "Results", "Server", "Config", "Help"):
         lines.append(f"{group}:")
         for name, spec in SPECS.items():
             if spec.group == group:
-                alias = " (alias rm)" if name == "remove" else ""
+                alias = {"remove": " (alias rm)", "jobs list": " (alias ls; bare jobs)"}.get(name, "")
                 lines.append(f"  {name + alias:<22} {_help(spec)}")
         lines.append("")
     lines.append("Global options: --json, --server URL|NAME, --config FILE, --project-dir DIR (anywhere on the line).")
@@ -261,7 +435,7 @@ def main(argv=None, checkout=None, engine_factory=None, transport_factory=None, 
     argv = list(argv)
     env = os.environ if env is None else env
     output.configure(json_mode="--json" in argv)
-    schema, data, error, ctx, code = ERROR_SCHEMA, None, None, None, Exit.OK
+    schema, data, error, ctx, code, outcome = ERROR_SCHEMA, None, None, None, Exit.OK, None
     try:
         parser = build_parser()
         if not argv:
@@ -278,12 +452,16 @@ def main(argv=None, checkout=None, engine_factory=None, transport_factory=None, 
         if name is None:
             output.result(get_started())
             return 0
-        if getattr(args, "config_command", None):
-            name = f"config {args.config_command}"
         spec = SPECS[name]
         schema = SCHEMA_PREFIX + spec.schema
         if not spec.stable:
             output.experimental(name)
+        if name == "run":
+            used = [flag for attr, flag in EXPERIMENTAL_RUN_FLAGS if getattr(args, attr, None) not in (None, False, [])]
+            if getattr(args, "preprocessing", None) == "both":
+                used.append("--preprocessing both")
+            for flag in used:
+                output.experimental(f"run {flag}")
         if name == "logs" and output.json_mode():
             raise CliError("logs passes the engine's output through; --json is not offered.", Exit.USAGE,
                            "usage", hint="qrosetta logs --no-follow")
@@ -296,7 +474,9 @@ def main(argv=None, checkout=None, engine_factory=None, transport_factory=None, 
                 return int(exc.code or 0)
         else:
             res = _load(spec.func)(ctx)
-        code, data = res.code, res.data
+        code, data, outcome = res.code, res.data, res.outcome
+        if res.schema:
+            schema = SCHEMA_PREFIX + res.schema
     except CliError as exc:
         code, data, error = exc.code, exc.data, exc.as_dict()
         _print_error(exc)
@@ -317,7 +497,7 @@ def main(argv=None, checkout=None, engine_factory=None, transport_factory=None, 
         _print_error(exc)
     if output.json_mode():
         server = ctx.server_block if ctx is not None else None
-        output.emit_envelope(output.envelope(schema, code, data=data, error=error, server=server))
+        output.emit_envelope(output.envelope(schema, code, data=data, error=error, server=server, outcome=outcome))
     try:
         sys.stdout.flush()
     except OSError:

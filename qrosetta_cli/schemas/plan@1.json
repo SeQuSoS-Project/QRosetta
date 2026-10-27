@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "qrosetta.cli/plan@1: plan.json, and the data of run --dry-run: the server's plan with its sources and versions",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string",
+      "enum": [
+        "qrosetta.cli/plan@1"
+      ]
+    },
+    "cli_version": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "server": {
+      "type": "object"
+    },
+    "api_level": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "results_dir": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "plan_request": {
+      "type": "object"
+    },
+    "planner_sources": {
+      "type": "object"
+    },
+    "plan": {
+      "type": "object"
+    },
+    "planned_jobs": {
+      "type": "integer"
+    },
+    "job_dirs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "replay_of": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "replay_force": {
+      "type": "boolean"
+    },
+    "fail_on": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "stack": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "compose": {
+      "type": [
+        "object",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "schema",
+    "cli_version",
+    "server",
+    "plan_request",
+    "plan",
+    "planned_jobs",
+    "job_dirs",
+    "replay_of"
+  ]
+}

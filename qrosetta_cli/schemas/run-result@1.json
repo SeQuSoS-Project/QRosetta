@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "qrosetta.cli/run-result@1: the jobs of one run or wait, each with its directory, save status and the server's summary",
+  "type": "object",
+  "properties": {
+    "results_dir": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "jobs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string"
+          },
+          "endpoint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "save_status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dir": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "files": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "backends": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "concurrent_with_other_jobs": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "summary": {
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "job_id",
+          "status",
+          "save_status",
+          "dir"
+        ]
+      }
+    }
+  },
+  "required": [
+    "results_dir",
+    "jobs"
+  ]
+}
