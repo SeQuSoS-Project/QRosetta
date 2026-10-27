@@ -287,6 +287,24 @@ image whose signature is not verified. myQLM, cuQuantum and BQSKit are never pub
 `THIRD_PARTY_NOTICES.md`); `pull` names them and the checkout command that builds them. In a
 checkout `pull` exits 12 and prints the `qrosetta build` command.
 
+Disk space per profile, in GB (10^9 bytes); each profile includes the API and nginx:
+
+| Profile | Images | Published images, after `pull` | Built on your machine |
+|---|---|---|---|
+| `minimal` | 5 | 2.5 | none |
+| `cpu` | 15 | 12.0 | myQLM, 1.2 |
+| `gpu` | 16 | 12.0 | myQLM and cuQuantum, 5.3 |
+| `compilers` | 10 | 3.8 | BQSKit, 0.5 |
+| `full` | 24 | 14.9 | all three, 5.8 |
+
+These are the uncompressed layer sizes of the images built on 2026-10-27 from this repository's
+Dockerfiles, with the base-image layers counted once and every other layer once per image (the
+release builds each image on its own machine, so only base layers are shared). The registry
+sends compressed layers, so the download is smaller; its size is not measured yet because no
+image has been published. The last column is what an installed `qrosetta` cannot pull: those
+images come from `qrosetta build` in a checkout. A checkout that builds all 24 images uses
+about 19 GB, because local builds share more layers.
+
 A pulled image is this stack's in the same way as a built one: the generated compose file names
 it by digest, so `start` and `status` find it through its repo digest, and its two labels let
 `remove --images` remove it. Release images are labelled for project `qsimulators`; under another

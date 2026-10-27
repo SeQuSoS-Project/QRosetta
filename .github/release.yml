@@ -1,0 +1,33 @@
+# Categories of the notes GitHub generates for a release (publish-release in release-images.yml
+# appends them below the version's CHANGELOG.md section). A pull request goes under the first
+# category whose labels it carries; `skip-changelog` leaves it out.
+changelog:
+  exclude:
+    labels:
+      - skip-changelog
+  categories:
+    - title: Changes to measurement or analysis
+      labels:
+        - measurement
+        - analysis
+    - title: Runner and compiler images (requalified)
+      labels:
+        - sealed-image
+    - title: New features
+      labels:
+        - enhancement
+    - title: Fixes
+      labels:
+        - bug
+    - title: Security
+      labels:
+        - security
+    - title: Documentation
+      labels:
+        - documentation
+    - title: Dependencies
+      labels:
+        - dependencies
+    - title: Other changes
+      labels:
+        - "*"

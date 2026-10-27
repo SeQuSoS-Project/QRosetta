@@ -589,10 +589,12 @@ other spelling):
    id), and attaches an SPDX SBOM made by syft (`anchore/sbom-action`) as an attestation
    (`actions/attest-sbom`). It writes each image's source notice with
    `scripts/release/image_notice.py` (every Debian or Alpine source package at its installed
-   version, with its source address) and uploads it as the artifact `notice-<id>`; attach the
-   `NOTICE-<id>.txt` files to the GitHub release of the version (`THIRD_PARTY_NOTICES.md` says
-   they are there). Step 2 also writes each notice on every run, and discards it, so a dry run
-   fails when a notice cannot be written.
+   version, with its source address) and uploads it as the artifact `notice-<id>`, and the SBOM
+   as `sbom-<id>`; step 7 attaches both to the GitHub release (`THIRD_PARTY_NOTICES.md` says the
+   notices are there). Step 2 also writes each notice on every run, and discards it, so a dry run
+   fails when a notice cannot be written. The job waits for `openapi`, which writes the API
+   description from the tagged code (`scripts/release/release_assets.py openapi`, with the API's
+   locked dependencies on Python 3.10); no image is pushed when that fails.
 4. `wheel` writes the manifest (with the pushed digests, image ids and the signing workflow's
    identity, if any), builds the sdist and the wheel, and checks them with `check_dist.py`
    against the tag.
@@ -600,6 +602,21 @@ other spelling):
    `pypi`), and only when step 3 ran and succeeded, so no wheel on PyPI names an image that was
    not published; the job checks the wheel's version again before uploading. A pre-release tag
    goes to TestPyPI (environment `testpypi`) and never to PyPI.
+6. `release-assets` (public repository, tag pushes only) collects the wheel, the sdist, the
+   SBOMs, the notices, `openapi-<version>.json` and `qrosetta-<version>-images.txt` (written by
+   `wheel` from the manifest: every image by digest with its `cosign verify` and
+   `gh attestation verify` commands), writes `SHA256SUMS`, attests the provenance of every file
+   in it and saves the bundle as `qrosetta-<version>.intoto.jsonl`, then verifies each file
+   against the bundle. It checks out no code and installs nothing.
+7. `publish-release` (final versions only, after the PyPI upload) creates the GitHub release as
+   a draft with those files, the version's `CHANGELOG.md` section and GitHub's generated notes
+   (categories in `.github/release.yml`), downloads the attached files again and checks them
+   against `SHA256SUMS`, then publishes the release. A pre-release tag gets no GitHub release,
+   so Zenodo does not archive it. `plan` refuses a final tag whose `CHANGELOG.md` section is
+   missing or undated.
+
+The order of a release, the files a version bump touches and the checks on a clean machine are
+in `docs/RELEASING.md`.
 
 `workflow_dispatch` is a dry run: the same image builds and self-tests, then a wheel versioned
 `<release>.dev<run number>` with a manifest that names no digest goes to TestPyPI. Before the
