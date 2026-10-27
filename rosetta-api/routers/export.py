@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 
 import schemas
 from routers.errors import file_response, responses
-from services.security import limiter
+from services.security import run_rate_limit
 from services.exporter import build_export_context, crate_name, export_skeleton_task, write_ro_crate
 from services.publication.views import ParameterError
 from services.report_validation import REPORT_SHAPE_ERRORS, reject_invalid_report, unreadable_report
@@ -77,7 +77,7 @@ _CRATE = file_response("The RO-Crate ZIP, sent as an attachment.", "application/
     (400, "No report given, a runner key of the wrong form, an export option the report cannot "
           "take, or a field of the report that holds a value of the wrong type or shape."),
     (409, "The report's circuit never reached a runner (top-level error, no raw_results)."), 413, 422)})
-@limiter.limit(settings.RUN_RATE_LIMIT)
+@run_rate_limit
 async def export_ro_crate(request: Request, payload: schemas.ExportRequest):
     """Build an RO-Crate ZIP from the report supplied in the request body (subject to the
     1 MB upload limit). No authentication; nothing is stored. 409 for a report whose
@@ -94,7 +94,7 @@ async def export_ro_crate(request: Request, payload: schemas.ExportRequest):
     (400, "An export option the report cannot take (e.g. a publication view parameter)."), 404,
     (409, "The job has not finished, failed before any runner ran, or is an experiment; or, with "
           "gated=true, gate_busy: a dispatch is in flight (sent with Retry-After)."), 422)})
-@limiter.limit(settings.RUN_RATE_LIMIT)
+@run_rate_limit
 async def export_job_ro_crate(request: Request, job_id: str,
                               payload: schemas.ExportPayload | None = None, gated: bool = False):
     """Build an RO-Crate ZIP from the server's untruncated copy of a finished /compare,

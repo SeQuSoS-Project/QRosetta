@@ -9,7 +9,7 @@ import services.share_links as share_links
 from db.database import get_db
 from routers.errors import responses
 from schemas.share import ShareLinkCreate, ShareLinkCreated, ShareLinkResponse, SharedCircuitsRequest
-from services.security import get_current_user, limiter
+from services.security import address_key, get_current_user, limiter
 
 router = APIRouter(tags=["share"])
 
@@ -72,7 +72,7 @@ def revoke_share_link(link_id: str, db: Session = Depends(get_db),
 
 @router.post("/shared/circuits", responses=responses(
     (404, "The token is unknown, expired or revoked, its owner is deactivated, or its run was deleted."), 422))
-@limiter.limit("30/minute")
+@limiter.limit("30/minute", key_func=address_key)
 def read_shared_circuits(request: Request, body: SharedCircuitsRequest, response: Response,
                          db: Session = Depends(get_db)):
     """The circuit texts a share link reads: the submitted circuit, each dispatched circuit,

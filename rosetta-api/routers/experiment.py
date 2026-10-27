@@ -17,7 +17,7 @@ from schemas import ExperimentPayload, JobStatusResponse
 from routers.errors import BYPASS_401, file_response, responses
 from services.availability import require_available
 from services.job_store import JOB_NOT_FOUND, file_chunks
-from services.security import limiter
+from services.security import limiter, run_rate_limit
 from services.job_manager import ACTIVE_JOBS, job_phase, new_job
 from services.experiment import worker_experiment
 from services.validator import (require_bypass_permission, validate_runner_config,
@@ -48,7 +48,7 @@ def _validate_experiment_circuits(payload: ExperimentPayload) -> None:
 
 @router.post("/experiments", response_model=JobStatusResponse,
              responses=responses(400, BYPASS_401, 413, 422, 503))
-@limiter.limit(settings.RUN_RATE_LIMIT)
+@run_rate_limit
 async def start_experiment(request: Request, payload: ExperimentPayload, background_tasks: BackgroundTasks,
                            user=Depends(get_optional_user)):
     """Start a fleet-wide experiment: run every circuit in the payload across the fleet, over

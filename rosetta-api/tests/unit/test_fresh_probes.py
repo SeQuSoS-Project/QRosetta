@@ -122,6 +122,17 @@ def test_rate_limit_is_six_a_minute(probes):
     assert client.get("/runners").status_code == 200
 
 
+def test_the_rate_limit_is_per_account_and_the_lifecycle_token_counts_as_one(monkeypatch, probes):
+    from services.security import create_access_token
+    monkeypatch.setattr(fresh_probes, "_account_for", lambda token: object())
+    client = _client()
+    first = create_access_token({"sub": "a@example.org", "uid": 1})
+    second = create_access_token({"sub": "b@example.org", "uid": 2})
+    for token in (first, second, TOKEN):
+        codes = [client.get("/runners?fresh=true", headers=_auth(token)).status_code for _ in range(7)]
+        assert codes == [200] * 6 + [429]
+
+
 def test_busy_runners_are_not_probed(probes):
     ids = IN_FLIGHT.enter(["quest"])
     try:

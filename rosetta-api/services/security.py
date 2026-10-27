@@ -1,4 +1,4 @@
-# Password hashing, JWT tokens, the rate limiter and the get_current_user dependency.
+# Password hashing, JWT tokens, the rate limiter and its keys, and the get_current_user dependency.
 
 import hmac
 
@@ -33,8 +33,6 @@ def client_address(request) -> str:
             return last
     return get_remote_address(request)
 
-
-limiter = Limiter(key_func=client_address)
 
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -94,6 +92,108 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
 def access_token_for(user, expires_delta: timedelta | None = None) -> str:
     """Access token bound to ``user``: ``sub`` is the email and ``uid`` the account id."""
     return create_access_token({"sub": user.email, "uid": user.id}, expires_delta)
+
+
+RATE_KEY_STATE = "qrosetta_rate_key"
+
+
+def address_key(request) -> str:
+    """Rate-limit key of the client address: login, registration and share-link reads."""
+    return "address:" + client_address(request)
+
+
+def address_ceiling_key(request) -> str:
+    """Rate-limit key of the per-address ceiling on expensive routes, counted apart from the
+    address's own budget."""
+    return "address-ceiling:" + client_address(request)
+
+
+def _bearer_token(request) -> str:
+    scheme, _, token = request.headers.get("authorization", "").partition(" ")
+    return token.strip() if scheme.lower() == "bearer" else ""
+
+
+def _signed_account_id(token: str):
+    """The ``uid`` of a token with a valid signature, ``exp``, ``iat`` and ``sub``, else None.
+    The database is not read."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM],
+                             options={"require": ["exp", "iat", "sub"]})
+    except jwt.PyJWTError:
+        return None
+    uid = payload.get("uid")
+    if isinstance(uid, bool) or not isinstance(uid, int):
+        return None
+    if not isinstance(payload.get("sub"), str):
+        return None
+    return uid
+
+
+def rate_limit_key(request) -> str:
+    """Rate-limit key: ``account:<id>`` for a bearer token signed by this server and not
+    expired, ``lifecycle`` for the local lifecycle token, else ``address:<client address>``.
+    A token of a deactivated or deleted account keys on its id until it expires."""
+    cached = getattr(request.state, RATE_KEY_STATE, None)
+    if cached:
+        return cached
+    key = None
+    token = _bearer_token(request)
+    if token:
+        uid = _signed_account_id(token)
+        if uid is not None:
+            key = f"account:{uid}"
+        else:
+            from services.lifecycle_token import matches_lifecycle_token
+            if matches_lifecycle_token(token):
+                key = "lifecycle"
+    key = key or address_key(request)
+    setattr(request.state, RATE_KEY_STATE, key)
+    return key
+
+
+class TightestLimiter(Limiter):
+    """slowapi Limiter that reports, on a request within every limit of its route, the limit
+    with the fewest requests left (slowapi reports the first one evaluated). Counters are
+    per route (``key_style="endpoint"``), so path parameters do not split a budget."""
+
+    def __init__(self, **kwargs):
+        super().__init__(key_style="endpoint", **kwargs)
+
+    def _check_request_limit(self, request, endpoint_func, in_middleware=True):
+        super()._check_request_limit(request, endpoint_func, in_middleware)
+        if endpoint_func is None or not self.enabled:
+            return
+        name = f"{endpoint_func.__module__}.{endpoint_func.__name__}"
+        limits = self._route_limits.get(name, [])
+        if len(limits) < 2:
+            return
+        scope = request["path"] if self._key_style == "url" else name
+        tightest = None
+        for lim in limits:
+            args = [lim.key_func(request), lim.scope or scope]
+            if self._key_prefix:
+                args = [self._key_prefix] + args
+            _, remaining = self.limiter.get_window_stats(lim.limit, *args)
+            if tightest is None or remaining < tightest[0]:
+                tightest = (remaining, (lim.limit, args))
+        request.state.view_rate_limit = tightest[1]
+
+
+limiter = TightestLimiter(key_func=rate_limit_key)
+
+
+def limit_with_address_ceiling(limit_value: str, ceiling: str):
+    """Route decorator: ``limit_value`` per rate_limit_key and ``ceiling`` per client address
+    (address_ceiling_key); a request must be within both. The key's own limit is counted
+    first, so a key over its limit does not use the address's ceiling."""
+    def decorate(func):
+        return limiter.limit(ceiling, key_func=address_ceiling_key)(limiter.limit(limit_value)(func))
+    return decorate
+
+
+run_rate_limit = limit_with_address_ceiling(settings.RUN_RATE_LIMIT, settings.RUN_RATE_LIMIT_PER_ADDRESS)
+render_rate_limit = limit_with_address_ceiling(settings.RENDER_RATE_LIMIT,
+                                               settings.RENDER_RATE_LIMIT_PER_ADDRESS)
 
 
 TOKEN_CLOCK_TOLERANCE_SEC = 2

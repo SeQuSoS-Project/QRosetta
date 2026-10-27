@@ -38,9 +38,12 @@ ERROR_RESPONSES = {
           "jobs older than limits.job_evictable_after_sec were deleted; finished jobs are "
           "deleted limits.job_ttl_sec seconds after they finish. Retry-After gives the "
           "seconds to wait."),
-    429: ("Too many requests: this client address has used up the route's rate limit "
-          "(Retry-After gives the seconds until the window resets), or, for a run with "
-          "exclusive=true, this client already has an exclusive job that has not finished. "
+    429: ("Too many requests: the client has used up one of the route's rate limits "
+          "(counted per account for a valid bearer token, else per client address; run, "
+          "export and render routes also have a ceiling per client address whatever the "
+          "accounts). Retry-After gives the seconds until the window resets. For a run with "
+          "exclusive=true, a 429 can also mean this client address already has an exclusive "
+          "job that has not finished. "
           "Every response of a rate-limited route carries X-RateLimit-Limit, "
           "X-RateLimit-Remaining and X-RateLimit-Reset (Unix time)."),
 }

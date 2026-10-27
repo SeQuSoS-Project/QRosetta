@@ -11,7 +11,7 @@ import db.models as models
 import schemas
 import services.accounts as accounts
 from db.database import get_db
-from services.security import access_token_for, get_current_user, limiter
+from services.security import access_token_for, address_key, get_current_user, limiter
 from config import settings
 from routers.errors import responses
 from qrosetta_commons.helpers import get_logger
@@ -26,7 +26,7 @@ router = APIRouter(
 
 @router.post("/register", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED,
              responses=responses((400, "The email is already registered (compared case-insensitively)."), 422))
-@limiter.limit(settings.REGISTER_RATE_LIMIT)
+@limiter.limit(settings.REGISTER_RATE_LIMIT, key_func=address_key)
 def register(request: Request, user: schemas.UserCreate, db: Session = Depends(get_db)):
     """Create an account with an email and password. 422 for an invalid email (format, over
     254 characters) or password (under 8 characters, over 72 bytes); 400 if the email is
@@ -42,7 +42,7 @@ def register(request: Request, user: schemas.UserCreate, db: Session = Depends(g
     (400, "Password over 72 bytes (UTF-8), or a form of more than 1,000 fields."),
     (401, "Unrecognised email or wrong password. Sent with WWW-Authenticate: Bearer."),
     (403, "The account is deactivated."), 422))
-@limiter.limit(settings.LOGIN_RATE_LIMIT)
+@limiter.limit(settings.LOGIN_RATE_LIMIT, key_func=address_key)
 def login_for_access_token(
     request: Request,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
@@ -53,8 +53,9 @@ def login_for_access_token(
     seconds (1800 by default); there is no refresh token. 400 for a password over
     72 bytes or a form of more than 1,000 fields, 401 on an unrecognized email or wrong
     password, 403 on a deactivated account. Empty fields count as missing (422).
-    Limited per client address (``limits.login_rate_limit`` in GET /config, 10 a minute by
-    default); every attempt that passes form validation counts, successful or not."""
+    Limited per client address, whatever bearer token the request carries
+    (``limits.login_rate_limit`` in GET /config, 10 a minute by default); every attempt that
+    passes form validation counts, successful or not."""
     if schemas.password_too_long(form_data.password):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

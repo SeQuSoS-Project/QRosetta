@@ -13,7 +13,7 @@ from services.preparation_limits import bundled_over_prep_limit
 from services.report_summary import outcome_catalog
 from services.request_defaults import request_defaults
 from services.server_info import server_block
-from services.security import client_address
+from services.security import rate_limit_key
 from services.service_listing import compiler_rows, fresh_rows, runner_rows
 from services.status_labels import status_labels
 
@@ -81,11 +81,11 @@ async def get_runners(request: Request, fresh: bool = False):
     mode; "disabled"; "not_deployed"), ``error_kind`` ("dns", "connect", "timeout" or "http"
     when the probe got no answer or an error status) and ``probed_at``. It needs a signed-in
     account or the local lifecycle token as the bearer token (401 otherwise, 403 for a
-    deactivated account), is limited to 6 requests a minute per client (429 with
-    Retry-After), and serves a round younger than 5 s again.
+    deactivated account), is limited to 6 requests a minute per account or for the
+    lifecycle token (429 with Retry-After), and serves a round younger than 5 s again.
     """
     if fresh:
-        return JSONResponse(content=await fresh_rows("runners", request, client_address(request)))
+        return JSONResponse(content=await fresh_rows("runners", request, rate_limit_key(request)))
     return JSONResponse(content=await runner_rows())
 
 @router.get("/config", responses={200: {"model": ServerConfig, "description": "The handshake, limits, request defaults and gate state."}})
@@ -114,11 +114,14 @@ async def get_config():
     the header, includes, register declarations and gate definitions are not counted),
     ``max_request_bytes`` (every POST/PUT/PATCH body, the JSON as sent; 413 above it),
     ``max_plan_request_bytes`` (the larger body limit of POST /plan, so a plan can report a
-    request over max_request_bytes), ``plan_rate_limit`` (requests per client address to
-    POST /plan),
-    ``run_rate_limit`` (requests per client address to each run, export and lookup route;
-    429 above it), ``login_rate_limit`` and ``register_rate_limit`` (requests per client
-    address to POST /auth/token and POST /auth/register; 429 above them),
+    request over max_request_bytes), ``plan_rate_limit`` (requests per client to
+    POST /plan; a client is the account of a valid bearer token, else the client address),
+    ``run_rate_limit`` (requests per client to each run, export and lookup route; 429 above
+    it) and ``run_rate_limit_per_address`` (requests per client address to each of those
+    routes, whatever the accounts), ``render_rate_limit`` and ``render_rate_limit_per_address``
+    (the same pair for the two publication render routes), ``login_rate_limit`` and
+    ``register_rate_limit`` (requests per client address to POST /auth/token and
+    POST /auth/register; 429 above them),
     ``access_token_expire_sec`` (lifetime of a sign-in token),
     ``max_experiment_cells`` (circuits x preprocessing axes of one experiment, unless
     bypass_limits), ``max_batch_tasks`` (circuits of one playlist run, unless bypass_limits),
@@ -192,6 +195,9 @@ async def get_config():
             "max_plan_request_bytes": settings.MAX_PLAN_REQUEST_BYTES,
             "plan_rate_limit": settings.PLAN_RATE_LIMIT,
             "run_rate_limit": settings.RUN_RATE_LIMIT,
+            "run_rate_limit_per_address": settings.RUN_RATE_LIMIT_PER_ADDRESS,
+            "render_rate_limit": settings.RENDER_RATE_LIMIT,
+            "render_rate_limit_per_address": settings.RENDER_RATE_LIMIT_PER_ADDRESS,
             "login_rate_limit": settings.LOGIN_RATE_LIMIT,
             "register_rate_limit": settings.REGISTER_RATE_LIMIT,
             "access_token_expire_sec": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
@@ -233,9 +239,9 @@ async def get_compilers(request: Request, fresh: bool = False):
     mode; "disabled"; "not_deployed"), ``error_kind`` ("dns", "connect", "timeout" or "http"
     when the probe got no answer or an error status) and ``probed_at``. It needs a signed-in
     account or the local lifecycle token as the bearer token (401 otherwise, 403 for a
-    deactivated account), is limited to 6 requests a minute per client (429 with
-    Retry-After), and serves a round younger than 5 s again.
+    deactivated account), is limited to 6 requests a minute per account or for the
+    lifecycle token (429 with Retry-After), and serves a round younger than 5 s again.
     """
     if fresh:
-        return JSONResponse(content=await fresh_rows("compilers", request, client_address(request)))
+        return JSONResponse(content=await fresh_rows("compilers", request, rate_limit_key(request)))
     return JSONResponse(content=await compiler_rows())
