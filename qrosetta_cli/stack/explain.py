@@ -59,8 +59,9 @@ ROWS = [
                       "subuid_missing", SUBUID_FIX)),
     (r"no space left on device", _no_space),
     (r"ghcr\.io.*(manifest unknown|denied|not found)|(manifest unknown|denied|not found).*ghcr\.io",
-     lambda m, t, b: ("An image was not found in the registry. In a checkout, build it instead.",
-                      "image_not_in_registry", "qrosetta build")),
+     lambda m, t, b: ("An image was not found in the registry. The release's image archives load without "
+                      "it (`qrosetta images load DIR`); in a checkout, `qrosetta build` builds the image.",
+                      "image_not_in_registry", "qrosetta images load DIR")),
     (r"exec format error",
      lambda m, t, b: ("This machine is not linux/amd64; Quantum Rosetta images are linux/amd64 only.",
                       "wrong_architecture", "qrosetta doctor")),

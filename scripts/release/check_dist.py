@@ -2,10 +2,13 @@
 """Checks the sdist and wheel in a dist directory before they are published: the wheel holds
 qrosetta_cli and its metadata only, its version is the expected one, it has no dependencies, and
 it carries the licence files, the JSON schemas and (with --require-manifest) the release manifest.
+`--prerelease VERSION` prints whether a canonical PEP 440 version is a pre-release (aN, bN, rcN
+or .devN; the release workflow sends those to TestPyPI only) and refuses any other spelling.
 Stdlib only."""
 
 import argparse
 import email.parser
+import re
 import sys
 import tarfile
 import zipfile
@@ -14,6 +17,17 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 SDIST_ALLOWED_TOP = {"qrosetta_cli", "qrosetta.egg-info", "pyproject.toml", "README.md", "LICENSE",
                      "THIRD_PARTY_NOTICES.md", "PKG-INFO", "setup.cfg"}
+CANONICAL = re.compile(r"^(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*((a|b|rc)(0|[1-9][0-9]*))?(\.post(0|[1-9][0-9]*))?"
+                       r"(\.dev(0|[1-9][0-9]*))?$")
+
+
+def is_prerelease(version):
+    """True for a pre-release or development version, False for a final or post release; a
+    version that is not canonical PEP 440 is a ValueError."""
+    m = CANONICAL.match(version or "")
+    if not m:
+        raise ValueError(f"{version!r} is not a canonical PEP 440 version")
+    return bool(m.group(4) or m.group(9))
 
 
 def _metadata(text):
@@ -75,10 +89,20 @@ def check_sdist(path, version):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("dist", help="directory holding one .whl and one .tar.gz")
-    parser.add_argument("--version", required=True, help="the version both must carry")
+    parser.add_argument("dist", nargs="?", help="directory holding one .whl and one .tar.gz")
+    parser.add_argument("--version", help="the version both must carry")
     parser.add_argument("--require-manifest", action="store_true")
+    parser.add_argument("--prerelease", metavar="VERSION", help="print true or false and exit")
     args = parser.parse_args(argv)
+    if args.prerelease is not None:
+        try:
+            print("true" if is_prerelease(args.prerelease) else "false")
+        except ValueError as exc:
+            print(f"check_dist: {exc}", file=sys.stderr)
+            return 1
+        return 0
+    if not args.dist or not args.version:
+        parser.error("dist and --version are required")
     dist = Path(args.dist)
     wheels, sdists = sorted(dist.glob("*.whl")), sorted(dist.glob("*.tar.gz"))
     if len(wheels) != 1 or len(sdists) != 1:

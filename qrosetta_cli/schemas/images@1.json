@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "qrosetta.cli/images@1: the envelope's data",
+  "type": "object",
+  "properties": {
+    "project": {
+      "type": "string"
+    },
+    "mode": {
+      "enum": [
+        "checkout",
+        "installed"
+      ]
+    },
+    "release": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "images": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "compose_service": {
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "missing",
+              "pulled",
+              "pulled-other",
+              "loaded",
+              "built",
+              "unknown"
+            ]
+          },
+          "ref": {
+            "type": "string"
+          },
+          "digest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "image_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "git_sha": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "release": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "size_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "owned": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "compose_service",
+          "state",
+          "ref",
+          "digest",
+          "image_id",
+          "git_sha",
+          "release",
+          "size_bytes",
+          "owned"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "not_published": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "project",
+    "mode",
+    "release",
+    "images",
+    "not_published"
+  ]
+}

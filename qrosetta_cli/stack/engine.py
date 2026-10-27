@@ -230,6 +230,10 @@ class Engine:
         """Run `<engine> args...` and capture its output."""
         return self._call([self.name, *args], check, timeout)
 
+    def tool(self, *argv, timeout=None):
+        """Run another program (cosign) with the engine's environment and capture its output."""
+        return self._call(list(argv), False, timeout)
+
     def compose(self, *args, check=False, timeout=None):
         """Run `<engine> compose args...` and capture its output."""
         return self._call(self.compose_args(*args), check, timeout)

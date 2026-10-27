@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Writes qrosetta_cli/release/manifest.json (packaging plan §8.1): every service of
 docker-compose.yml, checked against config.py's runner and compiler registries, with the image
-digests a release pushed. --list-images prints the images a release builds, for the workflow.
+digests a release pushed, their image ids (config digests, which `qrosetta images load` checks)
+and the workflow identity their cosign signatures carry. --list-images prints the images a
+release builds, for the workflow.
 
 Needs PyYAML, pydantic and pydantic-settings (config.py is imported, not parsed)."""
 
@@ -31,6 +33,9 @@ NOT_DISTRIBUTABLE = {
                  "been reviewed for redistribution; the image is built on the user's machine",
 }
 DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
+REPOSITORY = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+OIDC_ISSUER = "https://token.actions.githubusercontent.com"
+SIGNING_WORKFLOW = ".github/workflows/release-images.yml"
 _DEFAULTED = re.compile(r"\$\{QROSETTA_PROJECT:-([^}]*)\}")
 _SELF_TEST = {
     "runner": ["python", "main.py", "--self-test"],
@@ -163,6 +168,23 @@ def release_images(records):
     return out
 
 
+def check_image_ids(digests, image_ids):
+    """Refuse an image id for a service without a digest, or a malformed one."""
+    for sid, image_id in image_ids.items():
+        if sid not in digests:
+            raise ManifestError(f"image id for {sid}, which has no digest")
+        if not DIGEST.match(str(image_id)):
+            raise ManifestError(f"{sid}: image id {image_id!r} is not a sha256 digest")
+
+
+def signing(version, repository, server="https://github.com"):
+    """The certificate identity and issuer of the release workflow's keyless cosign signatures."""
+    if not REPOSITORY.match(repository or ""):
+        raise ManifestError(f"--signer-repository {repository!r} is not OWNER/REPOSITORY")
+    return {"issuer": OIDC_ISSUER,
+            "identity": f"{server.rstrip('/')}/{repository}/{SIGNING_WORKFLOW}@refs/tags/v{version}"}
+
+
 def check_digests(records, digests):
     """Refuse a digest for a service the release does not distribute, an unknown id, a malformed
     digest, or a set that does not cover every distributable service."""
@@ -180,43 +202,61 @@ def check_digests(records, digests):
             raise ManifestError(f"no digest for {', '.join(missing)}: a release publishes every distributable image")
 
 
-def build_manifest(version, git_sha, registry=DEFAULT_REGISTRY, digests=None, records=None, compose=None, repo=REPO):
+def build_manifest(version, git_sha, registry=DEFAULT_REGISTRY, digests=None, records=None, compose=None, repo=REPO,
+                   image_ids=None, signer_repository=None, server="https://github.com"):
     compose = compose or load_compose(repo)
     records = records if records is not None else services(compose=compose, repo=repo)
     digests = dict(digests or {})
+    image_ids = dict(image_ids or {})
     check_digests(records, digests)
+    check_image_ids(digests, image_ids)
     entries = {}
     for r in records:
         repository = f"{registry}/qrosetta-{r['infra_host']}" if r["distributable"] else None
         entry = {k: v for k, v in r.items() if k not in ("id", "image_labels")}
         entry["repository"] = repository
         entry["ref"] = f"{repository}@{digests[r['id']]}" if r["distributable"] and r["id"] in digests else None
+        entry["image_id"] = image_ids.get(r["id"]) if entry["ref"] else None
         if not r["distributable"]:
             entry["not_distributable_reason"] = NOT_DISTRIBUTABLE[r["id"]]
         entries[r["id"]] = entry
     top = {k: v for k, v in compose.items() if k != "services" and not k.startswith("x-")}
-    return {"schema": SCHEMA, "platform_version": version, "git_sha": git_sha, "registry": registry,
-            "images_published": bool(digests), "compose": top, "services": entries}
+    manifest = {"schema": SCHEMA, "platform_version": version, "git_sha": git_sha, "registry": registry,
+                "images_published": bool(digests), "compose": top, "services": entries}
+    if digests and signer_repository:
+        manifest["signing"] = signing(version, signer_repository, server)
+    return manifest
 
 
-def read_digests(directory=None, pairs=()):
-    digests = {}
+def read_pushed(directory=None, pairs=()):
+    """({service id: digest}, {service id: image id}) from the publish jobs' JSON files, each
+    {id: digest} or {id: {"digest": ..., "image_id": ...}}, and from --digest ID=sha256:..."""
+    digests, image_ids = {}, {}
 
-    def add(sid, digest):
+    def add(sid, digest, image_id=None):
         if sid in digests and digests[sid] != digest:
             raise ManifestError(f"two digests for {sid}")
         digests[sid] = digest
+        if image_id is not None:
+            image_ids[sid] = image_id
 
     if directory:
         for path in sorted(Path(directory).glob("*.json")):
-            for sid, digest in json.loads(path.read_text()).items():
-                add(sid, digest)
+            for sid, value in json.loads(path.read_text()).items():
+                if isinstance(value, dict):
+                    add(sid, value.get("digest"), value.get("image_id"))
+                else:
+                    add(sid, value)
     for pair in pairs:
         sid, sep, digest = pair.partition("=")
         if not sep:
             raise ManifestError(f"--digest {pair!r} is not ID=sha256:...")
         add(sid, digest)
-    return digests
+    return digests, image_ids
+
+
+def read_digests(directory=None, pairs=()):
+    return read_pushed(directory, pairs)[0]
 
 
 def _git_sha():
@@ -235,6 +275,9 @@ def main(argv=None):
     parser.add_argument("--registry", default=DEFAULT_REGISTRY)
     parser.add_argument("--digests-dir", help="directory of JSON files {service id: sha256 digest}")
     parser.add_argument("--digest", action="append", default=[], metavar="ID=sha256:...")
+    parser.add_argument("--signer-repository", metavar="OWNER/REPOSITORY",
+                        help="the repository whose release workflow signed the images (default: none)")
+    parser.add_argument("--server-url", default=os.environ.get("GITHUB_SERVER_URL") or "https://github.com")
     parser.add_argument("--out", default=str(DEFAULT_OUT))
     args = parser.parse_args(argv)
     try:
@@ -245,8 +288,10 @@ def main(argv=None):
         version = platform_version()
         if args.version and args.version != version:
             raise ManifestError(f"--version {args.version} differs from qrosetta_cli.__version__ {version}")
-        manifest = build_manifest(version, args.git_sha or _git_sha(), args.registry,
-                                  read_digests(args.digests_dir, args.digest), records)
+        digests, image_ids = read_pushed(args.digests_dir, args.digest)
+        manifest = build_manifest(version, args.git_sha or _git_sha(), args.registry, digests, records,
+                                  image_ids=image_ids, signer_repository=args.signer_repository,
+                                  server=args.server_url)
     except ManifestError as exc:
         print(f"make_manifest: {exc}", file=sys.stderr)
         return 1

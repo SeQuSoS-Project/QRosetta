@@ -1,6 +1,8 @@
 """.github/workflows/release-images.yml, read statically: myQLM and cuQuantum are never built or
 pushed, the publish jobs use the trusted environments, only publish jobs get an OIDC token, the
-PyPI upload needs published images, and every third-party action is pinned to a commit."""
+PyPI upload needs published images and a final version (a pre-release tag goes to TestPyPI only),
+every published image gets an SBOM attestation and its image id recorded, every image carries the
+labels qrosetta recognises it by, and every third-party action is pinned to a commit."""
 
 import os
 import re
@@ -64,7 +66,7 @@ def test_packages_write_only_where_images_are_pushed_and_only_when_enabled(wf):
 def test_publish_jobs_use_the_trusted_environments(wf):
     test, real = wf["jobs"]["publish-testpypi"], wf["jobs"]["publish-pypi"]
     assert test["environment"]["name"] == "testpypi" and real["environment"]["name"] == "pypi"
-    assert test["if"] == "github.event_name == 'workflow_dispatch'"
+    assert "github.event_name == 'workflow_dispatch'" in test["if"]
     uploads = {name: [s for s in _steps(job) if s.get("uses", "").startswith("pypa/gh-action-pypi-publish@")]
                for name, job in wf["jobs"].items()}
     assert {name for name, steps in uploads.items() if steps} == {"publish-testpypi", "publish-pypi"}
@@ -99,7 +101,7 @@ def test_myqlm_and_cuquantum_are_never_built_or_pushed(wf, text):
     code = "\n".join(line for line in text.lower().splitlines() if not line.lstrip().startswith("#"))
     for name in NEVER_PUBLISHED:
         assert name not in code
-    assert "docker build" not in code
+    assert not re.search(r"docker build(?!x)", code)
     assert "--list-images" in _runs(wf["jobs"]["plan"])
     for name in ("images", "publish-images"):
         job = wf["jobs"][name]
@@ -123,3 +125,96 @@ def test_the_image_script_refuses_myqlm_and_cuquantum(tmp_path, sid, dockerfile,
     proc = subprocess.run(["bash", str(IMAGE_SCRIPT), action], env=env, capture_output=True, text=True, cwd=REPO)
     assert proc.returncode == 1 and "never" in proc.stderr
     assert not (tmp_path / "called").exists()
+
+
+def test_a_pre_release_tag_goes_to_testpypi_and_never_to_pypi(wf):
+    plan = wf["jobs"]["plan"]
+    assert plan["outputs"]["prerelease"] == "${{ steps.version.outputs.prerelease }}"
+    assert 'check_dist.py --prerelease "$version"' in _runs(plan)
+    test, real = wf["jobs"]["publish-testpypi"], wf["jobs"]["publish-pypi"]
+    assert "plan" in test["needs"] and "plan" in real["needs"]
+    assert ("(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && "
+            "needs.plan.outputs.prerelease == 'true')") in test["if"]
+    assert "needs.wheel.result == 'success'" in test["if"]
+    assert "needs.plan.outputs.prerelease == 'false'" in real["if"]
+    assert "prerelease == 'true'" not in real["if"]
+    final = next(s for s in real["steps"] if s.get("name") == "The wheel is a final version")
+    upload = next(i for i, s in enumerate(real["steps"]) if s.get("uses", "").startswith("pypa/gh-action-pypi-publish@"))
+    assert real["steps"].index(final) < upload
+    assert "never goes to PyPI" in final["run"] and "(a|b|rc)[0-9]+|[.]dev[0-9]+" in final["run"]
+
+
+@pytest.mark.parametrize("version,expected", [("2.0.0", False), ("2.0.0.post1", False), ("2.0.0rc1", True),
+                                              ("2.0.0a2", True), ("2.0.0b1.post1", True), ("2.0.0.dev3", True),
+                                              ("2.0.0rc1.dev1", True)])
+def test_pre_release_detection_follows_pep_440(version, expected):
+    from tests.unit.test_release_dist import cd
+    assert cd.is_prerelease(version) is expected
+    assert cd.main(["--prerelease", version]) == 0
+
+
+@pytest.mark.parametrize("version", ["2.0.0-rc1", "v2.0.0", "2.0.0RC1", "2.0", "02.0.0", ""])
+def test_a_non_canonical_version_stops_the_plan(version, capsys):
+    from tests.unit.test_release_dist import cd
+    if version == "2.0":
+        assert cd.is_prerelease(version) is False
+        return
+    assert cd.main(["--prerelease", version]) == 1
+    assert "not a canonical PEP 440 version" in capsys.readouterr().err
+
+
+def test_published_images_get_an_sbom_attestation_and_a_recorded_image_id(wf):
+    steps = wf["jobs"]["publish-images"]["steps"]
+    uses = [s.get("uses", "").split("@")[0] for s in steps]
+    sbom = steps[uses.index("anchore/sbom-action")]
+    attest = steps[uses.index("actions/attest-sbom")]
+    assert uses.index("anchore/sbom-action") < uses.index("actions/attest-sbom")
+    assert sbom["with"]["image"] == "${{ env.REPOSITORY }}@${{ steps.push.outputs.digest }}"
+    assert sbom["with"]["format"] == "spdx-json" and re.fullmatch(r"v\d+\.\d+\.\d+", sbom["with"]["syft-version"])
+    assert attest["with"]["sbom-path"] == sbom["with"]["output-file"]
+    assert attest["with"]["subject-digest"] == "${{ steps.push.outputs.digest }}"
+    assert attest["with"]["push-to-registry"] is True
+    image_id = next(s for s in steps if s.get("id") == "image-id")
+    assert "imagetools inspect --raw" in image_id["run"] and '["config"]["digest"]' in image_id["run"]
+    assert '"$config" != "$local_id"' in image_id["run"]
+    record = next(s for s in steps if s.get("name") == "Record the digest and image id")
+    assert '"image_id"' in record["run"] and record["env"]["IMAGE_ID"] == "${{ steps.image-id.outputs.image_id }}"
+    assert "--signer-repository \"$GITHUB_REPOSITORY\"" in _runs(wf["jobs"]["wheel"])
+
+
+def test_the_image_script_requires_the_ownership_labels_and_adds_the_notices_label(tmp_path):
+    docker = tmp_path / "docker"
+    docker.write_text("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$(dirname \"$0\")/args\"\n")
+    docker.chmod(0o755)
+    base = dict(os.environ, PATH=f"{tmp_path}:{os.environ['PATH']}", ID="qiskit",
+                DOCKERFILE="runners/pytket-qiskit-runner/Dockerfile", VERSION="1.0.0", IMAGE="x", GITHUB_SHA="abc",
+                GITHUB_SERVER_URL="https://github.com", GITHUB_REPOSITORY="o/r")
+    for labels in ("", "org.qrosetta.service=pytket_qiskit_runner", "org.qrosetta.image.project=qsimulators",
+                   "org.qrosetta.image.project= org.qrosetta.service=x"):
+        proc = subprocess.run(["bash", str(IMAGE_SCRIPT), "build"], env=dict(base, LABELS=labels),
+                              capture_output=True, text=True, cwd=REPO)
+        assert proc.returncode == 1 and "LABELS lacks" in proc.stderr, labels
+        assert not (tmp_path / "args").exists()
+    labels = "org.qrosetta.image.project=qsimulators org.qrosetta.service=pytket_qiskit_runner"
+    proc = subprocess.run(["bash", str(IMAGE_SCRIPT), "build"], env=dict(base, LABELS=labels),
+                          capture_output=True, text=True, cwd=REPO)
+    assert proc.returncode == 0, proc.stderr
+    args = (tmp_path / "args").read_text().splitlines()
+    for label in labels.split() + ["org.qrosetta.third-party-notices=https://github.com/o/r/blob/abc/"
+                                   "THIRD_PARTY_NOTICES.md"]:
+        assert args[args.index(label) - 1] == "--label", label
+
+
+def test_every_release_image_gets_both_ownership_labels():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("make_manifest", REPO / "scripts" / "release" / "make_manifest.py")
+    mm = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mm)
+        records = mm.services()
+    except ImportError:
+        pytest.skip("make_manifest needs PyYAML and pydantic")
+    for image in mm.release_images(records):
+        labels = dict(item.split("=", 1) for item in image["labels"].split())
+        assert labels == {"org.qrosetta.image.project": "qsimulators",
+                          "org.qrosetta.service": image["compose_service"]}

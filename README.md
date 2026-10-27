@@ -179,6 +179,10 @@ without it. Locally, leaving it empty generates a random key per process.
 ./qrosetta remove --data --confirm qsimulators   # also delete the database and saved runs
 ./qrosetta remove --all --confirm qsimulators    # containers, networks, images and data, listed first
 ./qrosetta start -d --no-cpu-quota   # start without the compose CPU limits (hosts without cpu delegation)
+./qrosetta images                    # each service's image: missing, pulled, loaded, built or unknown
+./qrosetta images verify             # labels, baked commit and build identity of every image
+./qrosetta images save -o DIR        # write this stack's images to DIR for a machine without a registry
+./qrosetta images load DIR           # load them there
 ./qrosetta profiles                  # profiles and their services
 ./qrosetta info                      # server version, API levels, request defaults and limits
 ./qrosetta backends                  # simulators: availability, levels, precision, bit order, profiles
@@ -269,6 +273,43 @@ images built before them carry none. `qrosetta status` lists them; remove the co
 networks once with the commands it prints (images and data stay), and `qrosetta start` creates
 them again with the labels. `remove --images` removes only images built after the change; for
 older ones it prints the `rmi` command.
+
+### Images: pull, verify, save and load
+
+A checkout builds its own images. An installed `qrosetta` (a wheel from PyPI or the Zenodo
+record) carries the release manifest, which names each published image by digest; `qrosetta
+pull NAME ...`, `pull --profile minimal`, `pull --core` or `pull --all` pulls them by digest with
+`TMPDIR` set to `~/.cache/qrosetta/tmp`, retries once after a network or registry error, and
+checks that the pulled image has the manifest's digest and the `org.qrosetta.image.project` and
+`org.qrosetta.service` labels of its service. When `cosign` is on the `PATH` it first checks the
+image's signature against the release workflow's identity; `--require-signature` refuses an
+image whose signature is not verified. myQLM and cuQuantum are never published (their licences,
+`THIRD_PARTY_NOTICES.md`); `pull` names them and the checkout command that builds them. In a
+checkout `pull` exits 12 and prints the `qrosetta build` command.
+
+A pulled image is this stack's in the same way as a built one: the generated compose file names
+it by digest, so `start` and `status` find it through its repo digest, and its two labels let
+`remove --images` remove it. Release images are labelled for project `qsimulators`; under another
+`QROSETTA_PROJECT` they are reported and never removed.
+
+`qrosetta images verify [NAME ...]` reads only inspect data and runs no container. Per image it
+checks the labels, the baked commit (`QROSETTA_IMAGE_GIT_SHA`), and for runners and compilers
+the identity written at build to `/usr/local/share/qrosetta-image/identity`, read from the build
+step in the image's history that wrote it. In installed mode it also checks the repo digest or
+image id against the manifest, the release and commit in the identity, the API image's
+`QROSETTA_VERSION`, and the cosign signature (`--require-signature` fails an unverified one). It
+exits 16 when a check fails.
+
+`qrosetta images save [NAME ...] -o DIR` (experimental) writes one `docker save` or `podman save`
+archive per image to `DIR`, with `DIR/qrosetta-images.json` listing the service, image id,
+config digest, baked commit, repo digest and the archive's sha256. Only images that pass the
+ownership checks are written. `qrosetta images load DIR [NAME ...]` reads each archive's image
+configuration before loading it: the archive must have the sha256 in the index, carry the labels
+of a known service, and in installed mode have the image id the release manifest records. The
+loaded image is tagged where the stack looks for it (`qsimulators-<service>` in a checkout,
+`qsimulators-<service>:<release>` in installed mode, which `status` shows as `loaded`). A tag held
+by an image that is not this stack's is left alone. `pull`, `images save` and `images load` are
+refused while the server reports runs in flight (`--yes` goes ahead) and are recorded as host load.
 
 Docker and podman both work. `qrosetta` uses the first of docker and podman whose `info`
 answers (`qrosetta doctor` says which and why); `QROSETTA_ENGINE=docker|podman` or

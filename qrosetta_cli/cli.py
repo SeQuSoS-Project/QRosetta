@@ -59,6 +59,25 @@ SPECS = {
                  ("qrosetta logs api --tail 50", "qrosetta logs --no-follow")),
     "build": Spec("stack.commands:cmd_build", "build@0", "build images from this checkout (scripts/safe_boot.sh)",
                   ("qrosetta build --profile minimal", "qrosetta build qiskit")),
+    "pull": Spec("stack.pull:cmd_pull", "pull@0", "pull the release's images by digest, checking digests, labels "
+                 "and, with cosign installed, signatures (installed mode)",
+                 ("qrosetta pull --profile minimal", "qrosetta pull qiskit cirq", "qrosetta pull --core",
+                  "qrosetta pull --all --require-signature")),
+    "images list": Spec("stack.images:cmd_images_list", "images@1", "this stack's images: missing, pulled, loaded, "
+                        "built or unknown, with sizes", ("qrosetta images", "qrosetta images --profile minimal",
+                                                         "qrosetta images --json")),
+    "images verify": Spec("stack.images:cmd_images_verify", "images-verify@0", "check each image: labels, baked "
+                          "commit, build identity and, in installed mode, digest or image id against the release "
+                          "manifest and the cosign signature",
+                          ("qrosetta images verify", "qrosetta images verify qiskit",
+                           "qrosetta images verify --require-signature")),
+    "images save": Spec("stack.transfer:cmd_images_save", "images-save@0", "write this stack's images to a "
+                        "directory of archives with an index, for machines without registry access",
+                        ("qrosetta images save -o qrosetta-images", "qrosetta images save --profile minimal -o dir"),
+                        stable=False),
+    "images load": Spec("stack.transfer:cmd_images_load", "images-load@0", "load archives written by `images save`, "
+                        "checked against their index (and in installed mode the release manifest)",
+                        ("qrosetta images load qrosetta-images", "qrosetta images load dir qiskit")),
     "profiles": Spec("stack.commands:cmd_profiles", "profiles@0", "profiles and their services",
                      ("qrosetta profiles", "qrosetta profiles --json")),
     "doctor": Spec("stack.commands:cmd_doctor", "doctor@0", "host checks, each with its fix",
@@ -163,7 +182,7 @@ SPECS = {
 }
 ALIASES = {"rm": "remove"}
 GROUPS = {"jobs": "jobs list", "show": "show summary", "config": "config show",
-          "circuits": "circuits algorithms"}
+          "circuits": "circuits algorithms", "images": "images list"}
 EXPERIMENTAL_RUN_FLAGS = (("order", "--order"), ("execution_target", "--execution-target"),
                           ("bypass_limits", "--bypass-limits"), ("keep_statevectors", "--keep-statevectors"),
                           ("set", "--set"))
@@ -288,6 +307,7 @@ def build_parser():
     p.add_argument("--profile", metavar="P", help="build this profile's services and core")
     p.add_argument("--yes", "-y", action="store_true", help="build even while runs are in flight")
 
+    _add_images(sub)
     _add(sub, "profiles")
     _add(sub, "doctor")
 
@@ -317,6 +337,37 @@ def build_parser():
     p = _add(sub, "help")
     p.add_argument("topic", nargs="*", metavar="COMMAND", help="a command, or `all`")
     return parser
+
+
+def _add_images(sub):
+    p = _add(sub, "pull")
+    p.add_argument("services", nargs="*", metavar="NAME", help="service keys")
+    p.add_argument("--profile", metavar="P", help="this profile's services and core")
+    p.add_argument("--core", action="store_true", help="the core services (web server and API)")
+    p.add_argument("--all", action="store_true", help="every service the release publishes")
+    p.add_argument("--require-signature", action="store_true",
+                   help="refuse an image whose cosign signature is not verified (needs cosign)")
+    p.add_argument("--yes", "-y", action="store_true", help="pull even while runs are in flight")
+
+    gsub = _group(sub, "images", "this stack's images: list, verify, save, load",
+                  ("qrosetta images", "qrosetta images verify", "qrosetta images load qrosetta-images"))
+    sub.choices["images"].add_argument("--profile", metavar="P", help=argparse.SUPPRESS)
+    p = _add(gsub, "images list", aliases=("ls",))
+    p.add_argument("--profile", metavar="P", help="only this profile's services")
+    p = _add(gsub, "images verify")
+    p.add_argument("services", nargs="*", metavar="NAME", help="service keys (default: every service)")
+    p.add_argument("--profile", metavar="P", help="this profile's services")
+    p.add_argument("--require-signature", action="store_true", help="fail an image whose cosign signature is "
+                   "not verified (release images; needs cosign)")
+    p = _add(gsub, "images save")
+    p.add_argument("services", nargs="*", metavar="NAME", help="service keys (default: every image of the stack)")
+    p.add_argument("--profile", metavar="P", help="this profile's services")
+    p.add_argument("-o", "--output", required=True, metavar="DIR", help="a new or empty directory")
+    p.add_argument("--yes", "-y", action="store_true", help="save even while runs are in flight")
+    p = _add(gsub, "images load")
+    p.add_argument("path", metavar="DIR", help="the directory `images save` wrote, or its qrosetta-images.json")
+    p.add_argument("services", nargs="*", metavar="NAME", help="load only these services' images")
+    p.add_argument("--yes", "-y", action="store_true", help="load even while runs are in flight")
 
 
 def _save_flags(p, crate_toggle=True):
@@ -525,7 +576,8 @@ def help_all():
         lines.append(f"{group}:")
         for name, spec in SPECS.items():
             if spec.group == group:
-                alias = {"remove": " (alias rm)", "jobs list": " (alias ls; bare jobs)"}.get(name, "")
+                alias = {"remove": " (alias rm)", "jobs list": " (alias ls; bare jobs)",
+                         "images list": " (alias ls; bare images)"}.get(name, "")
                 lines.append(f"  {name + alias:<22} {_help(spec)}")
         lines.append("")
     lines.append("Global options: --json, --server URL|NAME, --config FILE, --project-dir DIR (anywhere on the line).")

@@ -20,6 +20,15 @@ esac
 
 case "${1:-}" in
   build)
+    # qrosetta recognises an image as its stack's by these two labels (qrosetta_cli/stack/ownership.py).
+    case " ${LABELS:-} " in
+      *" org.qrosetta.image.project="[!\ ]*) ;;
+      *) echo "image.sh: LABELS lacks org.qrosetta.image.project" >&2; exit 1 ;;
+    esac
+    case " ${LABELS:-} " in
+      *" org.qrosetta.service="[!\ ]*) ;;
+      *) echo "image.sh: LABELS lacks org.qrosetta.service" >&2; exit 1 ;;
+    esac
     args=()
     for label in ${LABELS:-}; do
       args+=(--label "$label")
@@ -34,6 +43,7 @@ case "${1:-}" in
       --label "org.opencontainers.image.version=$VERSION" \
       --label "org.opencontainers.image.revision=$GITHUB_SHA" \
       --label "org.opencontainers.image.source=${GITHUB_SERVER_URL:?}/${GITHUB_REPOSITORY:?}" \
+      --label "org.qrosetta.third-party-notices=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/THIRD_PARTY_NOTICES.md" \
       "${args[@]}" -t "${IMAGE:?}" .
     ;;
   self-test)
