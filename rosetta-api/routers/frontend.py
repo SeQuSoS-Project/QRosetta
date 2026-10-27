@@ -8,6 +8,7 @@ from config import settings
 from routers.errors import responses
 from schemas import AgreementThresholds
 from schemas.auth import EMAIL_MAX_LENGTH, PASSWORD_MAX_BYTES, PASSWORD_MIN_CHARS
+from schemas.listings import CompilerList, RunnerList, ServerConfig
 from services.preparation_limits import bundled_over_prep_limit
 from services.report_summary import outcome_catalog
 from services.request_defaults import request_defaults
@@ -54,7 +55,8 @@ async def read_index():
         headers={"Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"}
     )
 
-@router.get("/runners", responses=responses(401, 403, 429))
+@router.get("/runners", responses={200: {"model": RunnerList, "description": "Every registered runner."},
+                                   **responses(401, 403, 429)})
 async def get_runners(request: Request, fresh: bool = False):
     """Enabled status, availability, max optimization level, and per-level descriptions for
     every runner.
@@ -86,7 +88,7 @@ async def get_runners(request: Request, fresh: bool = False):
         return JSONResponse(content=await fresh_rows("runners", request, client_address(request)))
     return JSONResponse(content=await runner_rows())
 
-@router.get("/config")
+@router.get("/config", responses={200: {"model": ServerConfig, "description": "The handshake, limits, request defaults and gate state."}})
 async def get_config():
     """Server-side circuit limits, request bounds, agreement-threshold defaults and the
     execution mode.
@@ -209,7 +211,8 @@ async def get_config():
     })
 
 
-@router.get("/compilers", responses=responses(401, 403, 429))
+@router.get("/compilers", responses={200: {"model": CompilerList, "description": "Every registered compile-only service."},
+                                     **responses(401, 403, 429)})
 async def get_compilers(request: Request, fresh: bool = False):
     """Compile-only services: id, display name, enabled and available state, the
     description of each optimization level, and ``versions`` as the running image reports

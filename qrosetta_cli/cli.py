@@ -64,6 +64,39 @@ SPECS = {
     "api": Spec("client.commands:cmd_api", "api@0", "one raw request to the server, with auth, envelope and exit codes",
                 ("qrosetta api GET /runners", "qrosetta api GET /config --json",
                  "qrosetta api POST /generate_circuit -f algorithm=ghz -f n_qubits=3"), group="Server"),
+    "info": Spec("client.reads:cmd_info", "info@1", "the server's version, API levels, features, mode, run gate, "
+                 "request defaults and limits", ("qrosetta info", "qrosetta info --json"), group="Server"),
+    "backends": Spec("client.reads:cmd_backends", "backends@0", "the server's simulators: availability, default "
+                     "selection, levels, device, precision, bit order and profiles",
+                     ("qrosetta backends", "qrosetta backends --ids", "qrosetta backends --levels",
+                      "qrosetta backends --fresh"), group="Server"),
+    "compilers": Spec("client.reads:cmd_compilers", "compilers@0", "the server's compile-only services: "
+                      "availability, levels, profiles and versions",
+                      ("qrosetta compilers", "qrosetta compilers --ids", "qrosetta compilers --levels"), group="Server"),
+    "circuits algorithms": Spec("client.reads:cmd_circuits", "circuits@0", "preset algorithms the server generates "
+                                "(algorithm:ID:QUBITS)", ("qrosetta circuits algorithms",
+                                                          "qrosetta circuits algorithms --max-qubits 4"),
+                                group="Server"),
+    "circuits examples": Spec("client.reads:cmd_circuits", "circuits@0", "bundled example circuits (example:NAME)",
+                              ("qrosetta circuits examples", "qrosetta circuits examples --filter rotation"),
+                              group="Server"),
+    "circuits mqt": Spec("client.reads:cmd_circuits", "circuits@0", "bundled MQT Bench circuits "
+                         "(mqt:ALGORITHM:QUBITS)", ("qrosetta circuits mqt", "qrosetta circuits mqt --max-qubits 5"),
+                         group="Server"),
+    "circuits qasmbench": Spec("client.reads:cmd_circuits", "circuits@0", "bundled QASMBench circuits "
+                               "(qasmbench:NAME)", ("qrosetta circuits qasmbench",
+                                                    "qrosetta circuits qasmbench --filter adder"), group="Server"),
+    "circuits get": Spec("client.reads:cmd_circuits_get", "circuit@0", "one circuit's OpenQASM 2.0 text, to stdout "
+                         "or a file", ("qrosetta circuits get algorithm:ghz:3",
+                                       "qrosetta circuits get mqt:ghz:4 -o ghz4.qasm",
+                                       "qrosetta circuits get example:rotation_1q --json"), group="Server"),
+    "login": Spec("client.account:cmd_login", "session@0", "sign in and store the token for this server "
+                  "(password from a prompt or --password-stdin)",
+                  ("qrosetta login", "qrosetta login --email me@example.org --password-stdin"), group="Account"),
+    "logout": Spec("client.account:cmd_logout", "session@0", "delete the token stored for this server",
+                   ("qrosetta logout", "qrosetta logout --server http://localhost:8080"), group="Account"),
+    "whoami": Spec("client.account:cmd_whoami", "session@0", "the account the stored token (or QROSETTA_TOKEN) "
+                   "signs in as", ("qrosetta whoami", "qrosetta whoami --json"), group="Account"),
     "version": Spec("commands:cmd_version", "version@1", "CLI version, install mode, manifest and server version",
                     ("qrosetta version", "qrosetta version --json"), group="Help"),
     "config path": Spec("commands:cmd_config_path", "config@0", "print the config file path",
@@ -105,7 +138,8 @@ SPECS = {
                           group="Results"),
 }
 ALIASES = {"rm": "remove"}
-GROUPS = {"jobs": "jobs list", "show": "show summary", "config": "config show"}
+GROUPS = {"jobs": "jobs list", "show": "show summary", "config": "config show",
+          "circuits": "circuits algorithms"}
 EXPERIMENTAL_RUN_FLAGS = (("order", "--order"), ("execution_target", "--execution-target"),
                           ("bypass_limits", "--bypass-limits"), ("keep_statevectors", "--keep-statevectors"),
                           ("set", "--set"))
@@ -245,6 +279,7 @@ def build_parser():
         _add(csub, name)
 
     _add_runs(sub)
+    _add_reads(sub)
 
     p = _add(sub, "help")
     p.add_argument("topic", nargs="*", metavar="COMMAND", help="a command, or `all`")
@@ -373,6 +408,39 @@ def _add_runs(sub):
             p.add_argument("--yes", "-y", action="store_true", help="download reports over 1 GiB without asking")
 
 
+def _add_reads(sub):
+    for name in ("backends", "compilers"):
+        p = _add(sub, name)
+        p.add_argument("--ids", action="store_true", help="print only the keys a run without -b uses, one per line"
+                       if name == "backends" else "print only the available compiler ids, one per line")
+        p.add_argument("--levels", action="store_true", help="print each optimization level's description")
+        p.add_argument("--fresh", action="store_true", help="probe every service now instead of reading the "
+                       "server's 60-second cache (needs `qrosetta login`; 6 a minute)")
+    _add(sub, "info")
+
+    gsub = _group(sub, "circuits", "the server's circuit catalogs, and one circuit's text",
+                  ("qrosetta circuits algorithms", "qrosetta circuits get algorithm:ghz:3"))
+    sub.choices["circuits"].set_defaults(catalog="algorithms")
+    for catalog in ("algorithms", "examples", "mqt", "qasmbench"):
+        p = _add(gsub, f"circuits {catalog}")
+        p.set_defaults(catalog=catalog)
+        p.add_argument("--max-qubits", type=int, metavar="N", help="only entries a circuit of at most N qubits "
+                       "can come from" if catalog != "qasmbench" else argparse.SUPPRESS)
+        p.add_argument("--filter", metavar="TEXT", help="only entries whose names or descriptions contain TEXT "
+                       "(case-insensitive)")
+    p = _add(gsub, "circuits get")
+    p.add_argument("ref", metavar="REF", help="algorithm:ID:QUBITS[,seed=S], example:NAME, mqt:ALGORITHM:QUBITS, "
+                   "qasmbench:NAME, a file, or - for stdin")
+    p.add_argument("-o", "--output", metavar="PATH|-", help="write the text here (default: stdout)")
+
+    p = _add(sub, "login")
+    p.add_argument("--email", metavar="EMAIL", help="the account's email (asked for on a terminal otherwise)")
+    p.add_argument("--password-stdin", action="store_true", help="read the password from the first line of stdin "
+                   "(otherwise it is asked for on the terminal; it is never an argument)")
+    _add(sub, "logout")
+    _add(sub, "whoami")
+
+
 def get_started():
     lines = []
     for title, rows in GET_STARTED:
@@ -386,7 +454,7 @@ def get_started():
 
 def help_all():
     lines = []
-    for group in ("Lifecycle", "Runs", "Results", "Server", "Config", "Help"):
+    for group in ("Lifecycle", "Runs", "Results", "Server", "Account", "Config", "Help"):
         lines.append(f"{group}:")
         for name, spec in SPECS.items():
             if spec.group == group:

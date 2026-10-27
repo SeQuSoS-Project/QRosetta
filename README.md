@@ -168,6 +168,10 @@ without it. Locally, leaving it empty generates a random key per process.
 ./qrosetta remove --images           # also remove the images (about 20 GB for a full build)
 ./qrosetta remove --data --confirm qsimulators   # also delete the database and saved runs
 ./qrosetta profiles                  # profiles and their services
+./qrosetta info                      # server version, API levels, request defaults and limits
+./qrosetta backends                  # simulators: availability, levels, precision, bit order, profiles
+./qrosetta circuits algorithms       # circuit catalogs; `circuits get algorithm:ghz:3` prints one circuit
+./qrosetta login                     # sign in; the token goes to ~/.local/state/qrosetta/credentials.json (0600)
 ./qrosetta api GET /runners          # one raw request to the server
 ./qrosetta help all                  # every command
 ```

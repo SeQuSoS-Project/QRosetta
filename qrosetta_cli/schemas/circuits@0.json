@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "qrosetta.cli/circuits@0: one catalog as the server lists it, after --max-qubits and --filter",
+  "type": "object",
+  "properties": {
+    "catalog": {
+      "enum": [
+        "algorithms",
+        "examples",
+        "mqt",
+        "qasmbench"
+      ]
+    },
+    "path": {
+      "type": "string"
+    },
+    "items": {
+      "type": [
+        "array",
+        "object"
+      ]
+    },
+    "total": {
+      "type": "integer"
+    },
+    "filter": {
+      "type": "object",
+      "properties": {
+        "max_qubits": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "max_qubits",
+        "text"
+      ]
+    }
+  },
+  "required": [
+    "catalog",
+    "path",
+    "items",
+    "total",
+    "filter"
+  ]
+}

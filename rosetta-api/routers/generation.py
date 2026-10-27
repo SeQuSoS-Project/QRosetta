@@ -16,11 +16,13 @@ from services.quickload import quickload_sets
 from config import settings
 from services.security import limiter
 from routers.errors import responses
+from schemas.listings import (AlgorithmList, ExampleList, ExampleText, MqtIndex, QasmText,
+                              QasmbenchIndex)
 
 logger = get_logger("rosetta-api")
 router = APIRouter()
 
-@router.get("/algorithms")
+@router.get("/algorithms", responses={200: {"model": AlgorithmList, "description": "The preset circuit families."}})
 async def get_algorithms():
     """List the preset circuit families available from the circuit generator (e.g. 'ghz',
     'bell', 'qft', 'bv', 'grover'), with each one's supported qubit-count range.
@@ -39,14 +41,14 @@ async def get_quickload():
         library.algorithm_list(settings.MAX_QUBITS_MEASURED, settings.MAX_QUBITS_STATEVECTOR),
         settings.MAX_QUBITS_STATEVECTOR)
 
-@router.get("/examples")
+@router.get("/examples", responses={200: {"model": ExampleList, "description": "The listed bundled examples."}})
 async def get_examples():
     """List the bundled example circuits: file name, title, description, the mode each is
     meant for, and its qubit count."""
     return examples.list_examples()
 
 
-@router.get("/examples/{name}", responses=responses((404, "No bundled example circuit has that name.")))
+@router.get("/examples/{name}", responses={200: {"model": ExampleText, "description": "The example's text."}, **responses((404, "No bundled example circuit has that name."))})
 async def get_example(name: str):
     """One bundled example circuit's OpenQASM 2.0 text. 404 for a name that is not one."""
     qasm = examples.read_example(name)
@@ -55,7 +57,7 @@ async def get_example(name: str):
     return {"name": name, "qasm": qasm}
 
 
-@router.post("/generate_circuit", responses=responses((400, "Unknown algorithm, or a qubit count outside its range or over max_qubits_measured.")))
+@router.post("/generate_circuit", responses={200: {"model": QasmText, "description": "The generated circuit."}, **responses((400, "Unknown algorithm, or a qubit count outside its range or over max_qubits_measured."))})
 @limiter.limit(settings.RUN_RATE_LIMIT)
 async def generate_circuit_endpoint(request: Request, payload: GenerateCircuitPayload):
     """Build one preset circuit's OpenQASM 2.0 text server-side, without running it."""
@@ -101,19 +103,19 @@ async def visualize_quirk(request: Request, payload: QasmPayload):
         raise HTTPException(status_code=400, detail="Cannot draw this circuit in Quirk: its "
                                                     "text could not be parsed.")
 
-@router.get("/benchmarks/mqt/list")
+@router.get("/benchmarks/mqt/list", responses={200: {"model": MqtIndex, "description": "Algorithm -> bundled qubit sizes."}})
 async def list_mqt_bench():
     """List the bundled MQT Bench algorithm-level circuits, mapped to their available qubit
     sizes (MQT Bench circuits are pre-generated at fixed sizes, baked into the image)."""
     return benchmark_library.list_mqt()
 
-@router.get("/benchmarks/qasmbench/list")
+@router.get("/benchmarks/qasmbench/list", responses={200: {"model": QasmbenchIndex, "description": "Circuit names."}})
 async def list_qasmbench():
     """List the names of every bundled QASMBench circuit (each is a fixed size; there is no
     qubit-count parameter)."""
     return benchmark_library.list_qasmbench()
 
-@router.get("/benchmarks/mqt", responses=responses((400, "Qubit count over max_qubits_measured."), (404, "No bundled MQT Bench circuit for that algorithm and qubit count.")))
+@router.get("/benchmarks/mqt", responses={200: {"model": QasmText, "description": "The circuit."}, **responses((400, "Qubit count over max_qubits_measured."), (404, "No bundled MQT Bench circuit for that algorithm and qubit count."))})
 @limiter.limit(settings.RUN_RATE_LIMIT)
 async def get_mqt_bench(request: Request, algorithm: str, qubits: int = 3):
     """Fetch one bundled MQT Bench circuit's OpenQASM 2.0 text, by algorithm name and qubit
@@ -129,7 +131,7 @@ async def get_mqt_bench(request: Request, algorithm: str, qubits: int = 3):
         logger.error("MQT Bench lookup failed for algorithm=%s qubits=%s", algorithm, qubits, exc_info=True)
         raise HTTPException(status_code=500, detail="Benchmark circuit could not be loaded")
 
-@router.get("/benchmarks/qasmbench", responses=responses((400, "Invalid circuit name."), (404, "No bundled QASMBench circuit has that name.")))
+@router.get("/benchmarks/qasmbench", responses={200: {"model": QasmText, "description": "The circuit."}, **responses((400, "Invalid circuit name."), (404, "No bundled QASMBench circuit has that name."))})
 @limiter.limit(settings.RUN_RATE_LIMIT)
 async def get_qasmbench(request: Request, circuit: str):
     """Fetch one bundled QASMBench circuit's OpenQASM 2.0 text, by name (see GET

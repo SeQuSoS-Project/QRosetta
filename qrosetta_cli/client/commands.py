@@ -20,7 +20,7 @@ def status_error(status, retry_after=None):
         return Exit.REFUSED, {413: "request_too_large", 422: "request_invalid"}.get(status, "refused"), ROUTES_HINT
     if status in (401, 403):
         return (Exit.AUTH, "unauthorised" if status == 401 else "forbidden",
-                "set QROSETTA_TOKEN to a token from POST /auth/token (`qrosetta login` arrives with the run commands)")
+                "qrosetta login (or set QROSETTA_TOKEN to a token from POST /auth/token)")
     if status == 404:
         return Exit.NOT_FOUND, "not_found", ROUTES_HINT
     if status in (429, 503):
