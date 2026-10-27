@@ -12,6 +12,8 @@ import schemas
 from services.security import limiter
 from services.publication import ParameterError, UnknownArtifact, list_artifacts, render_artifact
 from services.publication.theme import MIME_TYPES
+from services.publication.view_listing import views_listing
+from schemas.reports import PublicationViews
 from routers.errors import file_response, responses
 from services.job_manager import finished_job_or_error
 from services.job_store import JOB_NOT_FOUND, report_or_task
@@ -99,6 +101,22 @@ _JOB_409 = (409, "The job has not finished, failed before any runner ran, or is 
 
 
 _SUPPLIED_400 = "a field of the report that holds a value of the wrong type or shape"
+
+
+def _scale_range() -> tuple:
+    metadata = schemas.PublicationRenderRequest.model_fields["scale"].metadata
+    return (next(m.ge for m in metadata if getattr(m, "ge", None) is not None),
+            next(m.le for m in metadata if getattr(m, "le", None) is not None))
+
+
+@router.get("/publication/views", responses={200: {"model": PublicationViews, "description": "Every export view with its artifacts, parameters and formats."}})
+@limiter.limit("120/minute")
+async def publication_views(request: Request):
+    """Every export view of the Exports tab, in its order: the artifact ids it renders (with the
+    formats POST /jobs/{job_id}/publication/render takes), the formats of an export item of
+    the view, and its parameters with their type, allowed values and default. Which views a
+    given report offers: GET /jobs/{job_id}/publication/artifacts."""
+    return views_listing(_scale_range())
 
 
 @router.post("/publication/artifacts", response_model=List[PublicationArtifact],

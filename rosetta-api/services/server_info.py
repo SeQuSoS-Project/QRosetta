@@ -19,6 +19,7 @@ FEATURES = {
     "selftest": 1,
     "crate_readme": 1,
     "circuit_texts": 1,
+    "publication_views": 1,
 }
 
 
