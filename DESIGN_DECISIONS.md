@@ -939,7 +939,7 @@ The target for a runner or compiler image is the newest CPython (3.13 first, els
 
 *Rule.* A sign-in for an email with no account checks the password against a bcrypt hash of a random password made once per process, so it takes as long as a wrong password for a real account; both answer 401 "Incorrect email or password". Registration still answers 400 "Email already registered" for a taken email: without email verification there is no other way to tell the user, and registration is limited to 5 a minute per client address.
 
-*Evidence (2026-10-28).* In process, median of 30 sign-ins each: known email with a wrong password 171 ms, unknown email 5.4 ms before; after, both about 168 ms (bcrypt cost 12). The difference told anyone which emails had accounts at 10 guesses a minute per address.
+*Evidence (2026-10-28).* In process, median of 30 sign-ins each: known email with a wrong password 166.8 ms, unknown email 4.6 ms before; after, 167.2 and 167.1 ms (bcrypt cost 12; the quieter of two runs, the other at host load 10). Through nginx on the running stack (the code before this change), medians of 4: 373 ms vs 5.8 ms. The difference told anyone which emails had accounts at 10 guesses a minute per address.
 
 ## Upstream behaviour not worked around
 
