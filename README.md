@@ -380,6 +380,8 @@ run them; see the README there.
 
 ## Security
 
+Report vulnerabilities privately, as `SECURITY.md` describes; never in a public issue.
+
 - Only Nginx is publicly reachable; runners expose no ports and the API is not on the public
   network.
 - The API, runner and compiler containers run as an unprivileged `appuser`. In the nginx
@@ -410,11 +412,12 @@ This work has been supported by the Business Finland through project SeQuSoS (Gr
 
 See `CONTRIBUTING.md` for the full guide to adding a simulator backend or an algorithm
 template, and `DESIGN_DECISIONS.md` for the measurement and analysis rules with the evidence
-behind each.
+behind each. Contributors follow the Code of Conduct (`CODE_OF_CONDUCT.md`); `SUPPORT.md` says
+where to ask for help and what to attach.
 
 ## Versions
 
-Each release is a git tag, and its release notes list what changed. `v1.0.0` (June 2026) was the first
+Each release is a git tag; `CHANGELOG.md` lists what changed in each. `v1.0.0` (June 2026) was the first
 public snapshot. Do not reuse its results: its Qrisp adapter returned an all-zero state and all-zero
 counts when the SDK call failed (fixed in 5bb0574, July 2026), and the bit-order labels of several
 adapters were corrected after it. Use the newest release.
@@ -428,4 +431,5 @@ entity).
 
 ## Citing
 
-See `CITATION.cff`.
+See `CITATION.cff`; `.zenodo.json` and `codemeta.json` carry the same title, version, authors and
+licence (`rosetta-api/tests/unit/test_citation_metadata.py`).

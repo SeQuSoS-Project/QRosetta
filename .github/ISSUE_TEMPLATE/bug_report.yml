@@ -1,0 +1,59 @@
+name: Bug report
+description: Something fails, or a result looks wrong.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Vulnerabilities go to SECURITY.md, not here. Remove passwords, tokens, `SECRET_KEY`, `.env`
+        contents and database or S3 credentials from everything you paste or attach.
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where did it happen?
+      multiple: true
+      options:
+        - qrosetta command (local stack)
+        - qrosetta command (client of another server)
+        - Web page
+        - HTTP API
+        - A runner or compile-only service
+        - Shared server (Kubernetes)
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      description: Include the exact command or the page steps, and the error text.
+    validations:
+      required: true
+  - type: textarea
+    id: version
+    attributes:
+      label: qrosetta version --json
+      description: The output of `qrosetta version --json` (or `./qrosetta version --json` in a checkout).
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: qrosetta doctor --json
+      description: For problems building, starting or reaching the local stack.
+      render: json
+  - type: textarea
+    id: result
+    attributes:
+      label: Circuit and result
+      description: |
+        For a wrong or missing result: the circuit, and the report
+        (`qrosetta export report --result job:<id> -o report.json`) or the RO-Crate
+        (`qrosetta export crate --result job:<id>`, or Export RO-Crate on the Exports tab).
+        Drag the files here. Attach them only if they may be public.
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version
+      description: For problems with the web page.

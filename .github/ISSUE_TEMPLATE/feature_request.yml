@@ -1,0 +1,27 @@
+name: Feature request
+description: A new backend, compiler, analysis, command or page feature.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What do you want to do that you cannot do now?
+      description: The research task or workflow, with an example circuit or command if there is one.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you add or change?
+  - type: textarea
+    id: measurement
+    attributes:
+      label: Does it change what is measured or how results are compared?
+      description: |
+        Timing windows, preprocessing, thresholds and verdict rules follow DESIGN_DECISIONS.md and
+        change only with evidence. Say which rule it touches, if any.
+  - type: input
+    id: sdk
+    attributes:
+      label: SDK or tool and version
+      description: For a new backend or compile-only service.

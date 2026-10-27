@@ -699,6 +699,12 @@ Compilers are separate from the simulators: their output is a circuit, which is 
 
 *Evidence (2026-10-27).* A crate of a stopped playlist or of the browser's fallback copy read like a complete run: each execution was a Completed CreateAction and nothing stated the planned set.
 
+### Citation metadata
+
+*Rule.* `CITATION.cff`, `.zenodo.json` and `codemeta.json` (CodeMeta 3.0) give one title, version, licence, author list (names, affiliations, ORCIDs where given), repository, description and keyword list; the version is `qrosetta_cli.__version__`, so a release changes all four together; `pyproject.toml` names the same authors, licence and repository ([`rosetta-api/tests/unit/test_citation_metadata.py`](rosetta-api/tests/unit/test_citation_metadata.py)).
+
+*Evidence (2026-10-28).* When a repository holds both `CITATION.cff` and `.zenodo.json`, Zenodo archives a GitHub release with `.zenodo.json` only (help.zenodo.org, "Describe your software"), so a correction made in one file alone does not reach the DOI record. Before this, neither file named a version.
+
 ### cirq statevector bits
 
 *Rule.* cirq amplitudes can differ run to run by ~1e-17 (numpy 1.26 SIMD complex loops depend on buffer alignment). Left as is: disabling SIMD would slow cirq and bias timings. Compare replayed statevectors by fidelity, not sha256.
