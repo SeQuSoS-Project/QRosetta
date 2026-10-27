@@ -647,6 +647,15 @@ ruff check . && ruff format --check qrosetta_cli && scripts/lint/check.sh
 Code that runs inside a timed window, and the images that carry it, is not changed to satisfy a
 lint rule; its findings stay in the baseline until the image is next requalified.
 
+Workflows are checked by the CI job `actionlint` (actionlint with ShellCheck, then
+[zizmor](https://docs.zizmor.sh) from `scripts/lint/zizmor-requirements.txt`) and by
+`test_supply_chain_workflows.py`. When you add an action, pin it to the full commit of a release at
+least 7 days old, with `# vX.Y.Z` after it, and use the commit the other workflows already use for
+that action. Keep `permissions: contents: read` at the top, give a job only the extra permissions
+it uses with a comment saying why, set `persist-credentials: false` on every checkout, and pass
+`${{ }}` values to scripts through `env:`. Locally: `zizmor --persona pedantic .` from the
+repository root (add `--offline` without a GitHub token).
+
 The unit job on Python 3.12 also records line coverage (`[tool.coverage]` in `pyproject.toml`)
 and uploads `coverage.xml` as the artifact `coverage-unit-py3.12`. There is no threshold.
 

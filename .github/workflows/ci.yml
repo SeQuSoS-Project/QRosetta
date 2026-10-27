@@ -1,8 +1,14 @@
+# Unit tests, the CLI on every supported Python, static checks, lint, secret scan, actionlint and
+# zizmor. Every action is pinned to a commit (the comment gives its release; one commit per action
+# across the workflows); the token is read-only and no checkout keeps it.
 name: CI
 
 on:
   push:
   pull_request:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -12,21 +18,25 @@ jobs:
   unit-tests:
     name: unit tests (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
         # 3.10 matches the python:3.10-slim API image; 3.12 is an upper bound.
         python-version: ["3.10", "3.12"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node (parity harness)
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -52,7 +62,7 @@ jobs:
 
       - name: Upload coverage report
         if: matrix.python-version == '3.12' && !cancelled()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-unit-py3.12
           path: rosetta-api/coverage.xml
@@ -69,16 +79,20 @@ jobs:
   unit-tests-qiskit:
     name: unit tests with Qiskit (compiler-side checks)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node (parity harness)
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           cache: pip
@@ -104,21 +118,25 @@ jobs:
     # server code fails here. The client half also runs on macOS and Windows.
     name: CLI (py${{ matrix.python-version }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        python-version: ["3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.11", "3.12", "3.13", "3.14", "3.15"]
         include:
           - os: macos-latest
             python-version: "3.12"
           - os: windows-latest
             python-version: "3.12"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ matrix.python-version }}
           allow-prereleases: true
@@ -152,16 +170,20 @@ jobs:
   static-checks:
     name: static checks
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
 
@@ -183,6 +205,9 @@ jobs:
             rosetta-api/main.py rosetta-api/config.py \
             runners/*/main.py shared/qrosetta_commons
 
+      - name: LICENSE and Licence.txt are identical
+        run: cmp LICENSE Licence.txt
+
       - name: Check for unused imports
         run: |
           pip install pyflakes==3.2.0
@@ -196,11 +221,15 @@ jobs:
     # every Dockerfile, each failing only on findings above scripts/lint/*.txt.
     name: lint
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
 
@@ -231,10 +260,13 @@ jobs:
   secret-scan:
     name: secret scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Install gitleaks
         env:
@@ -255,8 +287,9 @@ jobs:
           "$RUNNER_TEMP/gitleaks" git --config .gitleaks.toml --redact --no-banner .
 
   actionlint:
-    # Lints every workflow under .github/workflows, with the run scripts checked by ShellCheck.
-    # Both tools are pinned release binaries checked against their published sha256.
+    # Lints every workflow under .github/workflows, with the run scripts checked by ShellCheck, then
+    # audits the workflows and dependabot.yml with zizmor. actionlint and ShellCheck are pinned
+    # release binaries checked against their published sha256; zizmor is a hash-pinned wheel.
     name: actionlint
     runs-on: ubuntu-latest
     permissions:
@@ -287,3 +320,20 @@ jobs:
 
       - name: Lint the workflows
         run: '"$RUNNER_TEMP/actionlint" -color -shellcheck "$RUNNER_TEMP/shellcheck"'
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Install zizmor
+        run: >
+          python -m pip install --require-hashes --no-deps --only-binary=:all:
+          -r scripts/lint/zizmor-requirements.txt
+
+      # Online audits (impostor commits, release comments that do not match the pinned commit, known
+      # vulnerable actions) read public repositories through the job's read-only token.
+      - name: Audit the workflows with zizmor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: zizmor --format=github .
