@@ -8,16 +8,21 @@ from qrosetta_cli import mode as modes, output
 from qrosetta_cli.context import Result
 from qrosetta_cli.errors import CliError, Exit
 from qrosetta_cli.output import progress, result
-from qrosetta_cli.stack import actions, guard, hostload, profiles, serve
+from qrosetta_cli.stack import actions, guard, hostload, installed, profiles, serve
 from qrosetta_cli.stack import ownership as own
 from qrosetta_cli.stack import project as st
 from qrosetta_cli.stack.engine import Engine, choose_engine
 
 
 def open_stack(ctx):
-    """(mode, engine, stack) for the checkout's compose project."""
+    """(mode, engine, stack) for the checkout's compose project, or in installed mode for the
+    compose file generated from the release manifest."""
     mode = modes.detect(ctx.opt("project_dir"), ctx.env, ctx.checkout)
-    project_dir = modes.require_checkout(mode)
+    release = None
+    if mode.name == "checkout":
+        project_dir = mode.project_dir
+    else:
+        project_dir, release = installed.prepare(ctx.env)
     if ctx.engine_factory:
         engine = ctx.engine_factory(project_dir)
     else:
@@ -25,7 +30,9 @@ def open_stack(ctx):
         engine = Engine(choice.name, project_dir, env=ctx.env, info=choice.info, reason=choice.reason)
     engine.env.update(hostload.compose_env(ctx.env))
     engine.check_compose()
-    return mode, engine, st.load_stack(engine)
+    stack = st.load_stack(engine)
+    stack.release = release
+    return mode, engine, stack
 
 
 def _bind(ctx):
@@ -49,6 +56,8 @@ def check_host(allow_emulation, system=None, machine=None):
 def cmd_start(ctx):
     args = ctx.args
     check_host(args.allow_emulation)
+    if modes.detect(ctx.opt("project_dir"), ctx.env, ctx.checkout).name == "installed":
+        installed.require_published()
     hostload.ensure_token(ctx.env)
     _, engine, stack = open_stack(ctx)
     if ctx.cfg.get("lifecycle", "cpu_quota") is False:
@@ -62,9 +71,13 @@ def cmd_start(ctx):
     requested = serve.requested_services(stack, args.services, args.profile, ctx.cfg)
     services, missing, compose_env = serve.plan_start(engine, stack, requested, ctx.env)
     if missing:
-        keys = " ".join(stack.services[s].id for s in missing)
-        progress(f"Not started (no image): {', '.join(stack.services[s].id for s in missing)}. "
-                 f"`qrosetta build {keys}` builds them.")
+        names = ", ".join(stack.services[s].id for s in missing)
+        if stack.release:
+            progress(f"Not started (no image): {names}. "
+                     + "; ".join(f"`{engine.name} pull {stack.image_for(s)}`" for s in missing) + ".")
+        else:
+            keys = " ".join(stack.services[s].id for s in missing)
+            progress(f"Not started (no image): {names}. `qrosetta build {keys}` builds them.")
     running = {c.service for c in found.containers if c.running}
     adding = bool(running)
     to_start = [s for s in services if s not in running]

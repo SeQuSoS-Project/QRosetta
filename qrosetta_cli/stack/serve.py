@@ -119,8 +119,10 @@ def plan_start(engine, stack, requested=None, env=None):
     blocking = [s for s in missing if s in core or requested]
     if blocking:
         keys = " ".join(stack.services[s].id for s in blocking)
+        hint = (f"{engine.name} pull {stack.image_for(blocking[0])}" if stack.release
+                else f"qrosetta build {keys}")
         raise CliError(f"No image for {', '.join(stack.services[s].id for s in blocking)}.", Exit.ENGINE,
-                       "image_missing", hint=f"qrosetta build {keys}")
+                       "image_missing", hint=hint)
     extra = {}
     if not env.get("QROSETTA_GIT_SHA"):
         for svc in core:

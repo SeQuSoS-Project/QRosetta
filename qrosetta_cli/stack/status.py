@@ -25,15 +25,18 @@ def memory_by_container(engine, names):
 
 def image_record(engine, stack, service, images):
     """The image block of one service: state, ref, digest, image id, baked commit, release.
-    Classification uses the baked commit, never tags. Without a release manifest (it arrives
-    with release 2.0.0) nothing can be `pulled` or `loaded`: an image with a baked commit is
-    `built`, one without is `unknown`."""
+    Classification uses the baked commit or the release manifest's digest, never tags. In
+    installed mode an image is `pulled` when it carries the digest the manifest names; otherwise
+    an image with a baked commit is `built`, one without is `unknown`."""
     ref = stack.image_for(service)
     img = images.get(ref)
     if img is None:
         return {"state": "missing", "ref": ref, "digest": None, "image_id": None, "git_sha": None, "release": None}
-    digest = next((d.split("@", 1)[1] for d in img.digests if "@" in d), None)
     sha = img.git_sha
+    if stack.release and "@" in ref and ref in img.digests:
+        return {"state": "pulled", "ref": ref, "digest": ref.split("@", 1)[1], "image_id": img.id,
+                "git_sha": sha, "release": stack.release.get("platform_version")}
+    digest = next((d.split("@", 1)[1] for d in img.digests if "@" in d), None)
     state = "built" if sha != "unknown" else "unknown"
     return {"state": state, "ref": ref, "digest": digest, "image_id": img.id, "git_sha": sha, "release": None}
 
@@ -41,7 +44,9 @@ def image_record(engine, stack, service, images):
 def image_text(record):
     if record["state"] == "missing":
         return "missing"
-    sha = record["git_sha"] or "unknown"
+    if record["state"] == "pulled":
+        return f"pulled {record['release']} {record['digest'].split(':')[-1][:12]}"
+    sha =record["git_sha"] or "unknown"
     if record["state"] == "built":
         return f"built from {sha}" + (" (source not identifiable)" if sha.endswith("-dirty") else "")
     ident = (record["digest"] or record["image_id"] or "").split(":")[-1][:12]

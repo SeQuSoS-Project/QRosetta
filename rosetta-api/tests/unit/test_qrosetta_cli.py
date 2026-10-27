@@ -63,15 +63,6 @@ def test_project_dir_precedence(tmp_path, capsys):
     assert err.value.code == Exit.USAGE and "No compose file" in err.value.message
 
 
-def test_installed_mode_is_refused_for_lifecycle_until_the_manifest_exists(monkeypatch):
-    monkeypatch.setattr(modes, "PACKAGE_PARENT", "/nonexistent")
-    mode = modes.detect(None, {}, None)
-    assert mode.name == "installed"
-    with pytest.raises(CliError) as err:
-        modes.require_checkout(mode)
-    assert err.value.code == Exit.INCOMPATIBLE and "--project-dir" in err.value.hint
-
-
 def test_project_name_comes_from_qrosetta_project_only():
     assert project_name({}) == "qsimulators"
     assert project_name({"COMPOSE_PROJECT_NAME": "myapp"}) == "qsimulators"
