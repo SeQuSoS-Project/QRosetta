@@ -202,6 +202,10 @@ limits, the counts keys and the statistics all changed (see Changed).
 - Failed runs and unmeasured metrics show "—" instead of 0.
 - Figures use the long backend names and the circuit's name, and slides are 16:9.
 - The compose project is named `qsimulators`, and service images stop within a second.
+- The page passes axe-core 4.14.0's WCAG 2.2 AA rules: white text on the yellow and emerald buttons
+  is one shade darker, popover links and buttons, the mode checkboxes and the Bench rows are at
+  least 24 px tall, the Backends table and the manual's tables take keyboard focus, the share page's
+  links are underlined, and focus scrolls clear of the fixed notices.
 - `README.MD` is now `README.md`.
 
 ### Removed
@@ -253,6 +257,9 @@ limits, the counts keys and the statistics all changed (see Changed).
 - Outside local mode the API refuses to start without `SECRET_KEY` instead of falling back to a
   built-in signing key.
 - Untrusted data is escaped wherever the page writes HTML, and imported playlists are validated.
+- Displayed text that holds a bidirectional control character or a right-to-left letter is
+  isolated in a `<bdi>`, so an override in a runner error or an uploaded report cannot reorder the
+  text around it.
 - The 1 MiB request limit covers POST, PUT and PATCH, and nginx caps bodies at 5 MB, chunked ones
   included. Exception text is no longer returned to clients.
 - Runner keys in supplied reports are validated and every ZIP member path is checked, so an export
