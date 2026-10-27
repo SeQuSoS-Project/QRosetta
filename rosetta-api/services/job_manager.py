@@ -11,7 +11,8 @@ import asyncio
 import random
 import time
 from fastapi import HTTPException
-from services import prep_worker
+from services import prep_worker, report_provenance, specimens, timing_caveats
+from services.report_provenance import run_completeness
 from services.availability import filter_available
 from services.compilation import compile_circuit, queue_compile_statuses
 from services.job_store import (JOB_NOT_FOUND, JobStorageFull, JobTable, full_report,
@@ -231,7 +232,7 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
         performance_report = {}
         resource_report = {}
 
-    return {
+    report = {
         "input_qasm": qasm_string,
         **context,
         "api_preprocessing_applied": list(circuit["api_preprocessing_applied"]),
@@ -247,6 +248,8 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
         "resource_report": resource_report,
         "raw_results": aggregated_results,
     }
+    report_provenance.annotate(report)
+    return report
 
 
 async def run_compile_only(qasm_string: str, optimization_level: int = 0, timeout_seconds: int = settings.DEFAULT_TIMEOUT_SEC, runner_statuses: dict = None, apply_preprocessing: bool = True, thresholds: dict = None, bypass_limits: bool = False, compilers: dict = None):
@@ -257,7 +260,7 @@ async def run_compile_only(qasm_string: str, optimization_level: int = 0, timeou
                            effective_thresholds(thresholds), {}, bypass_limits, 1)
     queue_compile_statuses(runner_statuses, compilers)
     compiled = await compile_circuit(qasm_string, apply_preprocessing, compilers, timeout_seconds, runner_statuses)
-    return {
+    report = {
         "input_qasm": qasm_string,
         **context,
         "simulated": False,
@@ -271,6 +274,8 @@ async def run_compile_only(qasm_string: str, optimization_level: int = 0, timeou
         "resource_report": {},
         "raw_results": [],
     }
+    report_provenance.annotate(report)
+    return report
 
 
 async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = settings.DEFAULT_TIMEOUT_SEC, target_simulators: list = None, runner_statuses: dict = None, runner_phases: dict = None, apply_preprocessing: bool = True, seed: int = None, thresholds: dict = None, bypass_limits: bool = False, timing_repeats: int = 1, exclusive: bool = False, compilers: dict = None):
@@ -356,6 +361,7 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
     except Exception as e:
         report.update({"finished_at": utc_now_iso(), "error": f"Error during comparison: {str(e)}",
                        "raw_results": aggregated_results})
+        report_provenance.annotate(report)
         return report
 
     report.update({
@@ -365,6 +371,7 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
         "resource_report": resource_report,
         "raw_results": aggregated_results,
     })
+    report_provenance.annotate(report)
     return report
 
 
@@ -629,11 +636,14 @@ async def _run_single_job(job_id: str, execution_target: str, runner_statuses: d
         report = await run_coro
         every_runner_failed = all_runners_failed(report)
         if report_failed_before_dispatch(report):
+            report["run_completeness"] = run_completeness("failed", 1, 1, 0, str(report["error"]))
             job = _failed_job(execution_target, str(report["error"]), runner_statuses, report)
         elif every_runner_failed:
+            report["run_completeness"] = run_completeness("failed", 1, 1, 0, every_runner_failed)
             job = _failed_job(execution_target, every_runner_failed, runner_statuses, report,
                               keep_full=True)
         else:
+            report["run_completeness"] = run_completeness("completed", 1, 1, 1)
             job = _completed_job(execution_target, report, runner_statuses)
         await ACTIVE_JOBS.store(job_id, job)
     except Exception as e:
@@ -782,12 +792,14 @@ async def _run_batch_suite(job_id: str, payload: BatchPayload, runner_statuses: 
                   for t in payload.tasks],
     }
     ACTIVE_JOBS[job_id]["progress"] = progress
-    displayed, outcomes, errors = [], [], []
+    displayed, outcomes, errors, task_specimens, task_caveats = [], [], [], [], []
 
     async def store(index: int, report: dict):
         displayed.append(display_report(report))
         outcomes.append(_task_outcome(report))
         errors.append(report.get("error"))
+        task_specimens.append(report.get("specimens"))
+        task_caveats.append(report.get("timing_caveats"))
         return await asyncio.to_thread(spill_task_report, job_id, index, report)
 
     started_at = utc_now_iso()
@@ -806,19 +818,28 @@ async def _run_batch_suite(job_id: str, payload: BatchPayload, runner_statuses: 
     if payload.mode == "measured":
         full_report["seed"] = batch_seed
         full_report["seed_derivation"] = SEED_DERIVATION
-    results = {**full_report, "benchmark_summary": displayed}
+    full_report["specimens"] = specimens.combine(task_specimens)
+    full_report["timing_caveats"] = timing_caveats.combine(task_caveats)
+    full_report["timing_caveats_version"] = timing_caveats.TIMING_CAVEATS_VERSION
     target = payload.execution_target
+    planned, with_results = len(payload.tasks), sum(o == "ok" for o in outcomes)
     if outcomes and all(o == "before_dispatch" for o in outcomes):
-        job = _failed_job(target, f"All {len(outcomes)} task(s) failed before dispatch; first "
-                                  f"error: {errors[0]}",
-                          runner_statuses, full_report, results=results, progress=progress)
+        error = f"All {len(outcomes)} task(s) failed before dispatch; first error: {errors[0]}"
+        full_report["run_completeness"] = run_completeness("failed", planned, len(outcomes), 0, error)
+        job = _failed_job(target, error, runner_statuses, full_report,
+                          results={**full_report, "benchmark_summary": displayed}, progress=progress)
     elif outcomes and all(o != "ok" for o in outcomes):
         produced = "no runner returned a result" if getattr(payload, "simulate", True) else \
             "no compile produced a circuit"
-        job = _failed_job(target, f"All {len(outcomes)} task(s) failed: {produced}",
-                          runner_statuses, full_report, keep_full=True, results=results,
+        error = f"All {len(outcomes)} task(s) failed: {produced}"
+        full_report["run_completeness"] = run_completeness("failed", planned, len(outcomes), 0, error)
+        job = _failed_job(target, error, runner_statuses, full_report, keep_full=True,
+                          results={**full_report, "benchmark_summary": displayed},
                           progress=progress)
     else:
-        job = _completed_job(target, full_report, runner_statuses, results=results,
+        full_report["run_completeness"] = run_completeness("completed", planned, len(outcomes),
+                                                           with_results)
+        job = _completed_job(target, full_report, runner_statuses,
+                             results={**full_report, "benchmark_summary": displayed},
                              progress=progress)
     await ACTIVE_JOBS.store(job_id, job)

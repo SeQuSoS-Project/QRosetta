@@ -27,6 +27,11 @@ class RunnerResult(RunnerPerformanceMetrics):
     qubit_ordering: Optional[str] = Field(None, description="'lsb' or 'msb': how this backend labels basis states.")
     precision: Optional[str] = Field(None, description="'complex64' or 'complex128'.")
     runner_seed: Optional[int] = Field(None, description="Measured mode: the seed this run received, derived from the report's seed and this result's key.")
+    image_identity: Optional[Dict[str, Any]] = Field(None, description="What the runner's serving process read about its image: source (release, built_locally or 'not recorded'), release, git_sha, container (the runtime's view) and host_hypervisor_cpu_flag.")
+    build_files: Optional[Dict[str, str]] = Field(None, description="sha256 of each build file the image copied (Dockerfile, requirements.lock).")
+    runner_image: Optional[str] = Field(None, description="The image the API created a Kubernetes Job with, else the image the runtime showed the runner, else 'not recorded'; runner_image_basis says which.")
+    specimen: Optional[Dict[str, Any]] = Field(None, description="kind (published_release, built_locally or 'not recorded'), release, image_git_sha and runner_image of a result that ran.")
+    timing_caveats: Optional[List[Dict[str, Any]]] = Field(None, description="Conditions that limit how far this run's timings compare: {code, text, fields, detail?}.")
 
 
 class PairwiseAgreement(_Open):
@@ -75,6 +80,10 @@ class SingleCircuitReport(_Open):
     task_qubits: Optional[int] = Field(None, description="Playlist task only: the circuit's qubit count.")
     task_request: Optional[Dict[str, Any]] = Field(None, description="Playlist task only: how the task asked for its circuit (source, algorithm, qubits, literal_qasm, name).")
     error: Optional[str] = Field(None, description="Set when the circuit (or task) failed before any runner ran.")
+    specimens: Optional[Dict[str, Any]] = Field(None, description="statement (all_published, all_built_locally, mixed, unknown, none_ran), meaning, backends, image_git_shas, no_result, notes.")
+    timing_caveats: Optional[List[Dict[str, Any]]] = Field(None, description="Report-level timing caveats: {code, text, fields, backends, detail?}; rules versioned by timing_caveats_version.")
+    timing_caveats_version: Optional[str] = Field(None, description="Version of the timing caveat rules, separate from analysis_version.")
+    run_completeness: Optional[Dict[str, Any]] = Field(None, description="Finished jobs: job_status, planned_tasks, recorded_tasks, tasks_with_results, stopped_early, reason.")
 
 
 class BatchReport(_Open):
@@ -82,6 +91,9 @@ class BatchReport(_Open):
     mode: Literal["statevector", "measured"] = Field(..., description="Run mode of every task.")
     benchmark_summary: List[SingleCircuitReport] = Field(..., description="One report per task, in task order. A task that failed before dispatch is {task_name, task_qubits, task_request, error}.")
     seed: Optional[int] = Field(None, description="Measured mode: the master seed shared by every task.")
+    specimens: Optional[Dict[str, Any]] = Field(None, description="The tasks' specimens records combined by backend key.")
+    timing_caveats: Optional[List[Dict[str, Any]]] = Field(None, description="The tasks' report-level timing caveats combined by code.")
+    run_completeness: Optional[Dict[str, Any]] = Field(None, description="job_status, planned_tasks, recorded_tasks, tasks_with_results, stopped_early, reason.")
 
 
 class ExperimentResults(_Open):

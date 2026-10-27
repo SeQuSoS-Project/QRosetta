@@ -3,6 +3,7 @@ import asyncio
 import hashlib
 import json
 import zipfile
+from pathlib import Path
 
 import pytest
 
@@ -31,6 +32,11 @@ def _bundle(job):
         return {name[len(top):]: zf.read(name) for name in zf.namelist()}
 
 
+_QISKIT_LOCK_SHA = hashlib.sha256(
+    (Path(__file__).resolve().parents[3] / "runners/pytket-qiskit-runner/requirements.lock").read_bytes()
+).hexdigest()
+
+
 def _fake_summary(batch_seed):
     return [{
         "task_name": "bell (2q)",
@@ -39,7 +45,8 @@ def _fake_summary(batch_seed):
         "seed_derivation": "recorded derivation",
         "raw_results": [
             {"simulator": "qiskit", "statevector": [0.0, 0.707, 0.0, 0.707],
-             "sdk_versions": {"qiskit": "2.4.1"}},
+             "sdk_versions": {"qiskit": "2.4.1"},
+             "build_files": {"requirements.lock": _QISKIT_LOCK_SHA}},
             {"simulator": "qibo", "error": "boom: mat_dict not defined"},
         ],
         "divergence_report": {"pairwise_agreement": [{"agreement": "agree_after_bit_reversal"}]},
@@ -85,8 +92,10 @@ def test_experiment_completes_and_freezes_bundle(monkeypatch):
     assert "manifest.json" in files
     assert "README.txt" in files
     assert "errors/qibo.log" in files
-    assert {"runners/pytket-qiskit-runner/requirements.lock",
-            "runners/qibo-runner/requirements.lock"} <= set(files)
+    assert "runners/pytket-qiskit-runner/requirements.lock" in files
+    assert "runners/qibo-runner/requirements.lock" not in files
+    lock_notes = json.loads(files["manifest.json"])["runner_lock_files"]
+    assert lock_notes["runners/qibo-runner/requirements.lock"].startswith("not included: no result")
     assert job["bundle_name"] == "experiment_demo"
 
     # one shared seed across both axes (never re-generated per axis)

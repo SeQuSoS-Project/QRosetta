@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from config import settings
 from qrosetta_commons.helpers import TIMING_STATISTIC, get_logger
 from qrosetta_commons.seeds import derive_runner_seed
+from services.specimens import runner_image_record
 from services.dispatcher_http import dispatch_http_local
 
 EXECUTION_MODE = settings.EXECUTION_MODE
@@ -103,7 +104,8 @@ def annotate_result(result: dict, spec: dict, sent_payload: dict, dispatched_at:
     Fields: simulator, optimization_level (applied), optimization_level_requested,
     dispatch_status, timeout_kind (``"queue"`` for a run that never left the runner's
     queue, ``"run"`` otherwise; only on timeouts), dispatched_at, completed_at,
-    timing_samples, timing_statistic, runner_image, dispatch_phase, concurrent_runs (runs
+    timing_samples, timing_statistic, runner_image and runner_image_basis
+    (``specimens.runner_image_record``), dispatch_phase, concurrent_runs (runs
     dispatched in the same phase, this one included; ``annotate_overlaps`` adds the runs of
     other dispatches in flight beside it), and for seeded runs runner_seed, seed,
     seed_honoured. ``seed_honoured`` is None for a failed run, which sampled nothing.
@@ -118,7 +120,7 @@ def annotate_result(result: dict, spec: dict, sent_payload: dict, dispatched_at:
     result["completed_at"] = utc_now_iso()
     result["timing_samples"] = int(result.get("timing_repeats") or 1)
     result.setdefault("timing_statistic", TIMING_STATISTIC)
-    result["runner_image"] = runner_image or "not recorded"
+    result["runner_image"], result["runner_image_basis"] = runner_image_record(runner_image, result)
     result["dispatch_phase"] = spec.get("phase", 1)
     result["concurrent_runs"] = spec.get("concurrent_runs", 1)
     seed = sent_payload.get("seed")

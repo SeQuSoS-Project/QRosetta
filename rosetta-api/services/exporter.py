@@ -24,7 +24,9 @@ from services.analysis.divergence.common import (
     ANALYSIS_VERSION, DEFAULT_FIDELITY_TOLERANCE, DEFAULT_HELLINGER_THRESHOLD,
     DEFAULT_JS_THRESHOLD, DEFAULT_NORM_TOLERANCE, DEFAULT_PHASE_TOLERANCE,
 )
+from services.export_provenance import root_properties, run_records
 from services.export_results import digest, encoded, results_json_source
+from services.specimens import ran
 from services.report_filters import (
     DISPLAY_PLACEHOLDER_PREFIX,
     OMITTED_FOR_DISPLAY,
@@ -439,24 +441,59 @@ def _read_runner_lock(dir_name: str) -> Optional[bytes]:
     return None
 
 
-def runner_lock_files(simulators, runner_services: dict) -> Dict[str, bytes]:
-    """{``runners/<runner dir>/requirements.lock``: bytes} for each runner key in
-    ``simulators`` whose lock file is on disk; ``runner_services`` maps canonical ids to
+LOCK_NOT_REPORTED = ("not included: the image reports no build-file hashes (built before runner "
+                     "images recorded them), so this server's copy cannot be matched to it")
+LOCK_NOT_ON_SERVER = "not included: this server's source tree has no copy of the file"
+LOCK_NO_RESULT = "not included: no result came back from the runner image"
+
+
+def runner_lock_files(results, runner_services: dict) -> tuple:
+    """``({crate path: bytes}, {crate path: note})`` of runner requirements.lock files.
+
+    For each runner directory of the runner results in ``results``, this server's copy of
+    ``runners/<dir>/requirements.lock`` is included only when its sha256 equals the
+    ``build_files['requirements.lock']`` hash of every result the runner image returned;
+    otherwise the note says why it is not. ``runner_services`` maps canonical ids to
     registry entries."""
-    out: Dict[str, bytes] = {}
-    for runner in simulators:
-        dir_name = _runner_dir_name(runner_services.get(_canonical_sim_id(runner), {}))
-        if not dir_name or f"runners/{dir_name}/requirements.lock" in out:
+    reported: Dict[str, dict] = {}
+    for r in results:
+        if not isinstance(r, dict) or not r.get("simulator"):
             continue
-        data = _read_runner_lock(dir_name)
-        if data is not None:
-            out[f"runners/{dir_name}/requirements.lock"] = data
-    return out
+        dir_name = _runner_dir_name(runner_services.get(_canonical_sim_id(str(r["simulator"])), {}))
+        if not dir_name:
+            continue
+        entry = reported.setdefault(f"runners/{dir_name}/requirements.lock",
+                                    {"dir": dir_name, "hashes": set(), "commits": set()})
+        if not ran(r):
+            continue
+        files = r.get("build_files")
+        lock = files.get("requirements.lock") if isinstance(files, dict) else None
+        entry["hashes"].add(lock if isinstance(lock, str) else None)
+        entry["commits"].add(str(r.get("image_git_sha") or NOT_RECORDED))
+    out: Dict[str, bytes] = {}
+    notes: Dict[str, str] = {}
+    for path, entry in reported.items():
+        data = _read_runner_lock(entry["dir"])
+        if not entry["hashes"]:
+            notes[path] = LOCK_NO_RESULT
+        elif data is None:
+            notes[path] = LOCK_NOT_ON_SERVER
+        elif None in entry["hashes"]:
+            notes[path] = LOCK_NOT_REPORTED
+        elif entry["hashes"] == {hashlib.sha256(data).hexdigest()}:
+            out[path] = data
+        else:
+            notes[path] = (
+                "not included: the image reports requirements.lock sha256 "
+                f"{', '.join(sorted(entry['hashes']))}, this server's copy has "
+                f"{hashlib.sha256(data).hexdigest()} (image built from commit "
+                f"{', '.join(sorted(entry['commits']))})")
+    return out, notes
 
 
-def _runner_lock_files(ctx: "ExportContext") -> Dict[str, bytes]:
-    """runner_lock_files for every runner the report used."""
-    return runner_lock_files(_extract_runners_used(ctx), ctx.runner_services)
+def _runner_lock_files(ctx: "ExportContext") -> tuple:
+    """runner_lock_files for every runner result of the report."""
+    return runner_lock_files(_iter_raw_results(ctx), ctx.runner_services)
 
 
 def _get_runner_version(runner_id: str) -> str:
@@ -714,8 +751,11 @@ def _recorded_registry(ctx: ExportContext) -> tuple:
     return ctx.runner_services, "exporting server configuration (not recorded at run time)"
 
 
-def _build_provenance(ctx: ExportContext) -> dict:
-    """provenance.json: run configuration, per-runner registry entries, seeds and images."""
+def _build_provenance(ctx: ExportContext, lock_notes: Optional[Dict[str, str]] = None,
+                      lock_paths: Optional[List[str]] = None) -> dict:
+    """provenance.json: run configuration, per-runner registry entries, seeds, images, the
+    run records of ``export_provenance.run_records`` and why each runner lock file is or is
+    not in the crate."""
     runners_used = _extract_runners_used(ctx)
     registry, registry_source = _recorded_registry(ctx)
     tasks = _iter_tasks(ctx)
@@ -737,6 +777,8 @@ def _build_provenance(ctx: ExportContext) -> dict:
             "optimization_levels": {str(k): v for k, v in svc.get("optimization_levels", {}).items()},
             "sdk_versions": _extract_sdk_versions(ctx, name),
             "runner_image": first.get("runner_image", NOT_RECORDED),
+            "runner_image_basis": first.get("runner_image_basis", NOT_RECORDED),
+            "image_identity": first.get("image_identity", NOT_RECORDED),
         }
         if is_batch:
             entry["preprocessing_applied_by_task"] = {
@@ -778,6 +820,12 @@ def _build_provenance(ctx: ExportContext) -> dict:
         provenance["hardware_anchor"] = ctx.hardware_anchor
     provenance["report_source"] = ctx.report_source
     provenance["report_source_meaning"] = REPORT_SOURCES[ctx.report_source]
+    provenance.update(run_records(ctx.results, [t.report for t in tasks], _trusted(ctx)))
+    if _trusted(ctx):
+        locks = {path: ("included: its sha256 equals the build_files hash every result of the "
+                        "runner image reports") for path in lock_paths or []}
+        locks.update(lock_notes or {})
+        provenance["runner_lock_files"] = dict(sorted(locks.items()))
     compiles = compile_provenance([(t.task_id, t.report) for t in tasks])
     if compiles:
         provenance["compile_only_services"] = compiles
@@ -815,7 +863,8 @@ def _build_ro_crate_metadata(ctx: ExportContext,
                              artifact_paths: Optional[List[str]] = None,
                              artifact_descriptions: Optional[Dict[str, str]] = None,
                              lock_paths: Optional[List[str]] = None,
-                             compiler_files: Optional[Dict[str, tuple]] = None) -> dict:
+                             compiler_files: Optional[Dict[str, tuple]] = None,
+                             lock_notes: Optional[Dict[str, str]] = None) -> dict:
     """Build the RO-Crate 1.1 metadata descriptor (JSON-LD). ``compiler_files`` maps each
     compiler build file's crate path to (bytes, check), as ``compiler_build_files`` returns."""
     graph: List[dict] = []
@@ -894,6 +943,14 @@ def _build_ro_crate_metadata(ctx: ExportContext,
         "value": ctx.report_source,
         "description": REPORT_SOURCES[ctx.report_source],
     })
+    run_properties = root_properties(run_records(ctx.results, [t.report for t in tasks], trusted),
+                                     trusted)
+    graph.extend(run_properties)
+    root_entity["additionalProperty"] += [{"@id": prop["@id"]} for prop in run_properties]
+    completeness = next(p for p in run_properties if p["@id"] == "#run-completeness")
+    if completeness["value"] != "complete":
+        root_entity["description"] += (f" Run completeness: {completeness['value']}. "
+                                       f"{completeness['description']}")
 
     if ctx.author_name:
         author_id = "#author"
@@ -1243,11 +1300,15 @@ def _build_ro_crate_metadata(ctx: ExportContext,
                 "name": "requirements.lock",
                 "description": (
                     f"Full pinned Python environment (pip freeze) of the {runner_id} runner "
-                    "image, as committed in the exporting server's source tree."
+                    "image, as committed in the exporting server's source tree; included "
+                    "because its sha256 equals the build_files hash every result of the "
+                    "runner image reports."
                 ),
                 "encodingFormat": "text/plain",
             })
             root_entity["hasPart"].append({"@id": lock_path})
+        elif lock_path in (lock_notes or {}):
+            node["description"] += f" Its requirements.lock is {lock_notes[lock_path]}."
         if requirements:
             node["softwareRequirements"] = requirements
         graph.append(node)
@@ -1357,14 +1418,14 @@ def write_ro_crate(ctx: ExportContext, fh) -> None:
 
     results_json = results_json_source(ctx.results, ctx.include_statevectors, ctx.report_source,
                                        ctx.task_loader)
-    provenance_data = _build_provenance(ctx)
+    runner_locks, lock_notes = _runner_lock_files(ctx) if _trusted(ctx) else ({}, {})
+    provenance_data = _build_provenance(ctx, lock_notes, sorted(runner_locks))
     publication_files, artifact_descriptions = _generate_publication_artifacts(ctx)
     _add_compiled_metrics_table(ctx, publication_files, artifact_descriptions)
     compiler_files = compiler_build_files([t.report for t in _iter_tasks(ctx)], settings.get_compiler_services(),
                                           trusted=_trusted(ctx))
-    runner_locks = _runner_lock_files(ctx) if _trusted(ctx) else {}
     metadata = _build_ro_crate_metadata(ctx, sorted(publication_files), artifact_descriptions,
-                                        sorted(runner_locks), compiler_files)
+                                        sorted(runner_locks), compiler_files, lock_notes)
 
     files: Dict[str, Any] = {}
     files.update(publication_files)
