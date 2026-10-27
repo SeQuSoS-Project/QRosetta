@@ -74,6 +74,10 @@
         "object",
         "null"
       ]
+    },
+    "slug": {
+      "type": "string",
+      "description": "the invocation's slug, the part of its directory name after the time stamp (before any -N clash suffix)"
     }
   },
   "required": [

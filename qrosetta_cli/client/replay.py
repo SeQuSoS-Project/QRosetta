@@ -96,10 +96,15 @@ def load(path):
 
 
 def original_slug(path):
-    """The slug of the invocation a saved plan.json or request.json belongs to."""
+    """The slug of the invocation a saved plan.json or request.json belongs to: its plan.json's
+    `slug`, else read from the directory name (which cannot tell a clash suffix from a slug
+    ending in a number)."""
     here = os.path.dirname(os.path.abspath(path))
     if os.path.basename(path) != results.PLAN_FILE:
         here = os.path.dirname(here)
+    slug = (results.read_json(os.path.join(here, results.PLAN_FILE)) or {}).get("slug")
+    if isinstance(slug, str) and slug:
+        return slug
     name = os.path.basename(here)
     m = re.match(r"^\d{8}-\d{6}Z-(.+?)(?:-\d+)?$", name)
     return m.group(1) if m else name

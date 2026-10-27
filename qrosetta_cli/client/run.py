@@ -353,8 +353,10 @@ def cmd_run(ctx):
         return Result(0, doc, schema="plan@1")
 
     parent = results.parent_dir(ctx)
-    invocation = results.new_invocation(parent, results.slugify(slug_name), args.output)
+    slug = results.slugify(slug_name)
+    invocation = results.new_invocation(parent, slug, args.output)
     doc = plan_document(ctx, conn, req, plan, invocation, replay_of, force, fail_on, planner)
+    doc["slug"] = slug
     plan_path = os.path.join(invocation, results.PLAN_FILE)
     results.write_json(plan_path, doc)
     output.progress(f"Results: {invocation}")

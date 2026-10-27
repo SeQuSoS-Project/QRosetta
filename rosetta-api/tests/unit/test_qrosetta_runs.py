@@ -402,7 +402,21 @@ def test_replay_of_request_json_and_the_api_level_check(env, circuit, capsys):
     latest = os.path.realpath(os.path.join(env["QROSETTA_RESULTS_DIR"], "latest"))
     plan = json.load(open(os.path.join(latest, "plan.json")))
     assert plan["replay_force"] is True and plan["replay_of"] == original
-    assert re.search(r"-bell-3(-\d+)?$", os.path.basename(latest))
+    assert re.fullmatch(r"\d{8}-\d{6}Z-bell(-\d+)?", os.path.basename(latest))
+    assert plan["slug"] == "bell"
+
+
+def test_a_replay_keeps_a_slug_that_ends_in_a_number(env, tmp_path):
+    server = Scripted()
+    path = tmp_path / "qft-16.qasm"
+    path.write_text(QASM)
+    assert run(["run", str(path)], env, server) == 0
+    (first,) = invocations(env)
+    assert json.load(open(os.path.join(first, "plan.json")))["slug"] == "qft-16"
+    assert run(["run", "--request", os.path.join(first, "plan.json")], env, server) == 0
+    latest = os.path.realpath(os.path.join(env["QROSETTA_RESULTS_DIR"], "latest"))
+    assert json.load(open(os.path.join(latest, "plan.json")))["slug"] == "qft-16"
+    assert re.fullmatch(r"\d{8}-\d{6}Z-qft-16(-\d+)?", os.path.basename(latest))
 
 
 def test_show_summary_and_export_from_the_saved_files(env, circuit, capsys, tmp_path):
