@@ -1,0 +1,36 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Quantum Rosetta: start",
+      "detail": "Runs the local stack in this terminal. Ctrl-C asks: standby or remove. Terminating the task or closing its terminal puts the stack on standby.",
+      "type": "process",
+      "command": "${workspaceFolder}/qrosetta",
+      "args": ["start"],
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "reveal": "always", "focus": true }
+    },
+    {
+      "label": "Quantum Rosetta: stop (standby)",
+      "type": "process",
+      "command": "${workspaceFolder}/qrosetta",
+      "args": ["stop"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Quantum Rosetta: remove containers",
+      "detail": "Removes containers and networks; images and saved runs stay.",
+      "type": "process",
+      "command": "${workspaceFolder}/qrosetta",
+      "args": ["remove"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Quantum Rosetta: status",
+      "type": "process",
+      "command": "${workspaceFolder}/qrosetta",
+      "args": ["status"],
+      "problemMatcher": []
+    }
+  ]
+}
