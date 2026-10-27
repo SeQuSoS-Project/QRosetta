@@ -576,7 +576,12 @@ other spelling):
    it, signs it with cosign (keyless), attaches a build-provenance attestation, records its
    image id (the config digest from the registry manifest, which must equal the pulled image's
    id), and attaches an SPDX SBOM made by syft (`anchore/sbom-action`) as an attestation
-   (`actions/attest-sbom`).
+   (`actions/attest-sbom`). It writes each image's source notice with
+   `scripts/release/image_notice.py` (every Debian or Alpine source package at its installed
+   version, with its source address) and uploads it as the artifact `notice-<id>`; attach the
+   `NOTICE-<id>.txt` files to the GitHub release of the version (`THIRD_PARTY_NOTICES.md` says
+   they are there). Step 2 also writes each notice on every run, and discards it, so a dry run
+   fails when a notice cannot be written.
 4. `wheel` writes the manifest (with the pushed digests, image ids and the signing workflow's
    identity, if any), builds the sdist and the wheel, and checks them with `check_dist.py`
    against the tag.
