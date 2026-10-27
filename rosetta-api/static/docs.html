@@ -6,27 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QRosetta Documentation</title>
     <link rel="stylesheet" href="css/tailwind.css?v=1.0.29">
-    <style>
-        :root { --accent: #4f46e5; }
-        html { scroll-padding-top: 5rem; }
-        .doc-prose h2 { font-size: 1.5rem; font-weight: 700; color: #1e1b4b; margin-top: 2.5rem; margin-bottom: .75rem; scroll-margin-top: 5rem; }
-        .doc-prose h3 { font-size: 1.1rem; font-weight: 600; color: #312e81; margin-top: 1.75rem; margin-bottom: .5rem; }
-        .doc-prose p, .doc-prose li { color: #374151; line-height: 1.7; }
-        .doc-prose p { margin-bottom: .9rem; }
-        .doc-prose ul { list-style: disc; padding-left: 1.25rem; margin-bottom: .9rem; }
-        .doc-prose ul li { margin-bottom: .35rem; }
-        .doc-prose code { background: #eef2ff; color: #3730a3; padding: .1rem .35rem; border-radius: .3rem; font-size: .85em; }
-        .doc-prose pre { background: #0b1020; color: #e5e7eb; padding: 1rem; border-radius: .6rem; overflow-x: auto; font-size: .82rem; margin-bottom: 1rem; }
-        .doc-prose pre code { background: none; color: inherit; padding: 0; }
-        .doc-prose .table-scroll { overflow-x: auto; margin-bottom: 1rem; }
-        .doc-prose table { width: 100%; border-collapse: collapse; font-size: .9rem; }
-        .doc-prose th, .doc-prose td { border: 1px solid #e5e7eb; padding: .5rem .7rem; text-align: left; vertical-align: top; }
-        .doc-prose thead th { background: #eef2ff; color: #312e81; font-weight: 600; }
-        .toc-link.active { color: var(--accent); font-weight: 600; border-left-color: var(--accent); }
-        .callout { border-left: 4px solid; border-radius: .4rem; padding: .85rem 1rem; margin: 1.1rem 0; font-size: .92rem; }
-        .callout-tip { background: #ecfdf5; border-color: #059669; color: #065f46; }
-        .callout-note { background: #eff6ff; border-color: #2563eb; color: #1e3a8a; }
-    </style>
+    <link rel="stylesheet" href="css/docs.css?v=1.0.29">
 </head>
 
 <body class="bg-gray-50 text-gray-900 antialiased">
@@ -2035,9 +2015,12 @@
                     History list itself does not show the source. The session's expiry is measured on the
                     server's clock (from the sign-in token's issue time), so a computer clock that is
                     fast or slow does not end it early. Logout and <strong>Delete Account</strong> are in
-                    the menu under your email address in the header; Delete Account removes the account
-                    with its saved runs and circuits, and a session token issued before the deletion stops
-                    working.
+                    the menu under your email address in the header; Delete Account asks for the account's
+                    password (<code>DELETE /auth/me</code> takes it in the body, with the sign-in rate
+                    limit) and then removes the account with its saved runs and circuits, and a session
+                    token issued before the deletion stops working. The sign-in token is kept in this
+                    browser's local storage; the page is served with a Content-Security-Policy that runs
+                    only scripts from this server and cannot be framed by another site.
                 </p>
                 <p>
                     Separately, and independent of an account, the Execution chip offers
@@ -2465,23 +2448,7 @@
         </main>
     </div>
 
-    <script>
-        // Scrollspy: highlight the TOC entry for the section currently in view.
-        (function () {
-            var links = Array.prototype.slice.call(document.querySelectorAll('.toc-link'));
-            var sections = links.map(function (l) { return document.querySelector(l.getAttribute('href')); });
-            function onScroll() {
-                var y = window.scrollY + 90;
-                var idx = 0;
-                for (var i = 0; i < sections.length; i++) {
-                    if (sections[i] && sections[i].offsetTop <= y) idx = i;
-                }
-                links.forEach(function (l, i) { l.classList.toggle('active', i === idx); });
-            }
-            window.addEventListener('scroll', onScroll, { passive: true });
-            onScroll();
-        })();
-    </script>
+    <script defer src="js/docs_toc.js?v=1.0.29"></script>
 </body>
 
 </html>

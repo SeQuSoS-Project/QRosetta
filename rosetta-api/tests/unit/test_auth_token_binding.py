@@ -61,7 +61,7 @@ def test_token_carries_uid_and_iat(client):
 
 def test_deleted_account_token_rejected_for_reregistered_email(client):
     old = _register_and_login(client, "reuse@example.com")
-    assert client.delete("/auth/me", headers={"Authorization": f"Bearer {old}"}).status_code == 204
+    assert client.request("DELETE", "/auth/me", json={"password": "testpass123"}, headers={"Authorization": f"Bearer {old}"}).status_code == 204
     assert _me(client, old).status_code == 401
 
     db = _Session()

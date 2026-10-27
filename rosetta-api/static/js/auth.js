@@ -297,8 +297,38 @@ export async function verifySession() {
     }
 }
 
-export async function handleDeleteAccount() {
-    if (!confirm("Are you sure you want to permanently delete your account? This action cannot be undone.")) {
+const _deletePassword = () => /** @type {HTMLInputElement} */ (document.getElementById('delete-account-password'));
+
+function _showDeleteError(message) {
+    const box = document.getElementById('delete-account-error');
+    box.textContent = message;
+    box.classList.toggle('hidden', !message);
+    if (message) _deletePassword().setAttribute('aria-invalid', 'true');
+    else _deletePassword().removeAttribute('aria-invalid');
+}
+
+/** Open the Delete Account dialog, which asks for the account's password. */
+export function handleDeleteAccount() {
+    _deletePassword().value = '';
+    _showDeleteError('');
+    openModal(document.getElementById('delete-account-modal'),
+        { initialFocus: '#delete-account-password', onEscape: closeDeleteAccountModal });
+}
+
+export function closeDeleteAccountModal() {
+    const modal = document.getElementById('delete-account-modal');
+    _deletePassword().value = '';
+    _showDeleteError('');
+    if (isModalOpen(modal)) closeModal(modal, { returnFocus: '#account-menu summary' });
+    else modal.classList.add('hidden');
+}
+
+/** Delete the signed-in account after the server checks the password typed in the dialog. */
+export async function submitDeleteAccount() {
+    const password = _deletePassword().value;
+    if (!password) {
+        _showDeleteError("Enter your password.");
+        _deletePassword().focus();
         return;
     }
 
@@ -306,17 +336,21 @@ export async function handleDeleteAccount() {
     try {
         const res = await fetch(`${BASE_URL}/auth/me`, {
             method: 'DELETE',
-            headers: getAuthHeaders()
+            headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ password }),
         });
 
+        if (res.status === 429) throw new Error(_rateLimitedText(res, 'account deletion attempts'));
         if (!res.ok) throw new Error(await formatApiError(res));
 
+        closeDeleteAccountModal();
         forgetAccountJobs(signedInAccount());
         handleLogout();
         alert("Your account and its saved runs were deleted, and you are signed out.");
     } catch (e) {
         console.error("Account deletion failed:", e);
-        alert("The account was not deleted. " + e.message);
+        _showDeleteError("The account was not deleted. " + e.message);
+        _deletePassword().focus();
     } finally {
         setSideLoading(false);
     }

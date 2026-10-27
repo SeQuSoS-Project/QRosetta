@@ -1,0 +1,20 @@
+/* Styles of the manual page (docs.html). */
+:root { --accent: #4f46e5; }
+html { scroll-padding-top: 5rem; }
+.doc-prose h2 { font-size: 1.5rem; font-weight: 700; color: #1e1b4b; margin-top: 2.5rem; margin-bottom: .75rem; scroll-margin-top: 5rem; }
+.doc-prose h3 { font-size: 1.1rem; font-weight: 600; color: #312e81; margin-top: 1.75rem; margin-bottom: .5rem; }
+.doc-prose p, .doc-prose li { color: #374151; line-height: 1.7; }
+.doc-prose p { margin-bottom: .9rem; }
+.doc-prose ul { list-style: disc; padding-left: 1.25rem; margin-bottom: .9rem; }
+.doc-prose ul li { margin-bottom: .35rem; }
+.doc-prose code { background: #eef2ff; color: #3730a3; padding: .1rem .35rem; border-radius: .3rem; font-size: .85em; }
+.doc-prose pre { background: #0b1020; color: #e5e7eb; padding: 1rem; border-radius: .6rem; overflow-x: auto; font-size: .82rem; margin-bottom: 1rem; }
+.doc-prose pre code { background: none; color: inherit; padding: 0; }
+.doc-prose .table-scroll { overflow-x: auto; margin-bottom: 1rem; }
+.doc-prose table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.doc-prose th, .doc-prose td { border: 1px solid #e5e7eb; padding: .5rem .7rem; text-align: left; vertical-align: top; }
+.doc-prose thead th { background: #eef2ff; color: #312e81; font-weight: 600; }
+.toc-link.active { color: var(--accent); font-weight: 600; border-left-color: var(--accent); }
+.callout { border-left: 4px solid; border-radius: .4rem; padding: .85rem 1rem; margin: 1.1rem 0; font-size: .92rem; }
+.callout-tip { background: #ecfdf5; border-color: #059669; color: #065f46; }
+.callout-note { background: #eff6ff; border-color: #2563eb; color: #1e3a8a; }

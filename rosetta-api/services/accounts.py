@@ -76,6 +76,12 @@ def authenticate(db: Session, email: str, password: str) -> models.User:
     return user
 
 
+def confirm_password(user: models.User, password: str) -> None:
+    """InvalidCredentials unless ``password`` is the account's current password."""
+    if not user.hashed_password or not verify_password(password, user.hashed_password):
+        raise InvalidCredentials(user.email)
+
+
 def delete_account(db: Session, user: models.User) -> None:
     """Delete the account, its saved circuits, and its run history.
 

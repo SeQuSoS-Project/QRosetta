@@ -11,7 +11,7 @@ import db.models as models
 import schemas
 import services.accounts as accounts
 from db.database import get_db
-from services.security import access_token_for, address_key, get_current_user, limiter
+from services.security import access_token_for, address_key, get_current_user, limiter, rate_limit_key
 from config import settings
 from routers.errors import responses
 from qrosetta_commons.helpers import get_logger
@@ -87,10 +87,20 @@ def read_users_me(current_user: models.User = Depends(get_current_user)):
     return current_user
 
 
-@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
-def delete_user_me(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT, responses=responses(
+    (403, "The password does not match the account's."), 422))
+@limiter.limit(settings.LOGIN_RATE_LIMIT, key_func=rate_limit_key)
+def delete_user_me(request: Request, body: schemas.AccountDeletion,
+                   current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Permanently delete the account for the bearer token in the Authorization header,
-    along with its saved circuits and run history (including each run's stored report)."""
+    along with its saved circuits and run history (including each run's stored report).
+    The body carries the account's current password; 403 when it does not match, and
+    nothing is deleted. Limited per account at the sign-in rate
+    (``limits.login_rate_limit``); every attempt counts."""
+    try:
+        accounts.confirm_password(current_user, body.password)
+    except accounts.InvalidCredentials:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Incorrect password")
     try:
         accounts.delete_account(db, current_user)
     except accounts.StoredReportsNotDeleted:

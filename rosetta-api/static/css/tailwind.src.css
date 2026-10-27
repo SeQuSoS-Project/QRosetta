@@ -144,3 +144,26 @@ input[name="run-source"]:focus-visible + .qr-seg-option { outline: 2px solid cur
   [data-busy-disable][aria-disabled="true"], #btn-run[aria-disabled="true"], button:disabled { color: GrayText; border-color: GrayText; }
   #tab-content .overflow-x-auto { background: Canvas; }
 }
+
+/* Spinner and the rotated column headers of the agreement matrix. */
+.loader {
+    border-top-color: #3b82f6;
+    animation: spin 1s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .loader { animation: none; }
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.matrix-table th.sim-header {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    white-space: nowrap;
+    padding-bottom: 8px;
+}

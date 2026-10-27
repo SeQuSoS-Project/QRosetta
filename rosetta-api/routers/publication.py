@@ -87,7 +87,7 @@ async def _render_response(results: dict, artifact_id: str, fmt: str, scale: int
     return StreamingResponse(
         io.BytesIO(data),
         media_type=mime,
-        headers={"Content-Disposition": f'inline; filename="{artifact_id}.{fmt}"'},
+        headers={"Content-Disposition": f'attachment; filename="{artifact_id}.{fmt}"'},
     )
 
 

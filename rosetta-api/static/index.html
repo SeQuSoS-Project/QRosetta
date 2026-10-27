@@ -59,29 +59,6 @@
     <link rel="modulepreload" href="js/qasm_text.js">
     <link rel="modulepreload" href="js/text_diff.js">
     <!-- /modulepreload -->
-    <style>
-        .loader {
-            border-top-color: #3b82f6;
-            animation: spin 1s linear infinite;
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-            .loader { animation: none; }
-        }
-
-        @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
-        }
-
-        .matrix-table th.sim-header {
-            writing-mode: vertical-rl;
-            transform: rotate(180deg);
-            white-space: nowrap;
-            padding-bottom: 8px;
-        }
-    </style>
 </head>
 
 <body class="h-full font-sans text-gray-900">
@@ -111,11 +88,11 @@
                         <div id="auth-container" class="flex items-center gap-2">
                             <a href="docs.html" target="_blank" rel="noopener"
                                 class="text-sm font-medium text-gray-600 hover:text-indigo-700 bg-white px-2 sm:px-3 py-1.5 rounded-md border border-gray-200 transition-colors">Docs</a>
-                            <button id="btn-login-modal" onclick="openAuthModal()"
+                            <button id="btn-login-modal"
                                 class="whitespace-nowrap text-sm font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-2 sm:px-3 py-1.5 rounded-md border border-indigo-200 transition-colors">Login
                                 / Register</button>
                             <div id="user-profile" class="hidden flex items-center gap-2">
-                                <button onclick="openHistoryModal()"
+                                <button id="btn-history"
                                     class="text-xs font-medium text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-1 rounded border border-blue-200 transition-colors">History</button>
                                 <details id="account-menu" class="relative">
                                     <summary class="list-none cursor-pointer flex items-center gap-1 text-sm font-medium text-gray-700 bg-white px-2 py-1 rounded border border-gray-200 hover:bg-gray-50">
@@ -125,9 +102,9 @@
                                         <p class="text-xs text-gray-500">Signed in as</p>
                                         <p id="user-email-full" class="text-sm text-gray-800 break-all"></p>
                                         <div class="flex flex-wrap gap-2 pt-1">
-                                            <button onclick="handleLogout()"
+                                            <button id="btn-logout"
                                                 class="text-xs font-medium text-gray-600 hover:text-gray-800 bg-gray-50 px-2 py-1 rounded border border-gray-200 transition-colors">Logout</button>
-                                            <button onclick="handleDeleteAccount()"
+                                            <button id="btn-delete-account"
                                                 class="text-xs font-medium text-red-600 hover:text-red-800 bg-red-50 px-2 py-1 rounded border border-red-200 transition-colors">Delete
                                                 Account</button>
                                         </div>
@@ -164,9 +141,9 @@
                             <label for="algo-qubits" class="block text-xs font-medium text-gray-600">Qubits</label>
                             <input autocomplete="off" type="number" id="algo-qubits" value="3" min="2" max="18" class="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                         </div>
-                        <button data-busy-disable type="button" id="btn-load" onclick="generateCircuit()" title="Put the selected circuit in the editor"
+                        <button data-busy-disable type="button" id="btn-load" title="Put the selected circuit in the editor"
                             class="py-2 px-4 rounded-md border border-transparent text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">Load</button>
-                        <button data-busy-disable type="button" onclick="addToBatch()" title="Add the selected circuit to the playlist"
+                        <button id="btn-add-to-batch" data-busy-disable type="button" title="Add the selected circuit to the playlist"
                             class="py-2 px-4 rounded-md border border-transparent text-sm font-medium text-indigo-700 bg-indigo-100 hover:bg-indigo-200">+ Add</button>
                     </div>
                     <p id="algo-description" class="text-xs text-gray-500"></p>
@@ -184,17 +161,16 @@
                         </div>
                     </div>
                     <div id="editor-context-bar" class="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                        <button type="button" onclick="document.getElementById('qasm-upload').click()" class="text-blue-600 hover:text-blue-800 font-medium">⬆ Import QASM</button>
-                        <button type="button" onclick="exportQasm()" class="text-blue-600 hover:text-blue-800 font-medium">⬇ Export QASM</button>
-                        <button type="button" onclick="copyCircuitQasm(this)" title="Copy circuit QASM" class="text-gray-600 hover:text-gray-900 font-medium">⧉ Copy</button>
-                        <button type="button" onclick="generateAndVisualize()" id="btn-visualize" class="text-purple-600 hover:text-purple-800 font-medium">📊 Visualize</button>
-                        <button data-busy-disable type="button" onclick="addEditorToPlaylist()" title="Add the circuit in the editor to the playlist" class="text-yellow-700 hover:text-yellow-900 font-medium">+ Add to Playlist</button>
-                        <input autocomplete="off" type="file" id="qasm-upload" class="hidden" accept=".qasm,.txt" onchange="importQasm(this)">
+                        <button id="btn-import-qasm" type="button" class="text-blue-600 hover:text-blue-800 font-medium">⬆ Import QASM</button>
+                        <button id="btn-export-qasm" type="button" class="text-blue-600 hover:text-blue-800 font-medium">⬇ Export QASM</button>
+                        <button id="btn-copy-qasm" type="button" title="Copy circuit QASM" class="text-gray-600 hover:text-gray-900 font-medium">⧉ Copy</button>
+                        <button type="button" id="btn-visualize" class="text-purple-600 hover:text-purple-800 font-medium">📊 Visualize</button>
+                        <button id="btn-editor-to-playlist" data-busy-disable type="button" title="Add the circuit in the editor to the playlist" class="text-yellow-700 hover:text-yellow-900 font-medium">+ Add to Playlist</button>
+                        <input autocomplete="off" type="file" id="qasm-upload" class="hidden" accept=".qasm,.txt">
                     </div>
                     <label for="qasm-input" class="sr-only">OpenQASM 2.0 editor</label>
                     <textarea autocomplete="off" id="qasm-input" spellcheck="false"
-                        class="w-full p-3 font-mono text-sm text-gray-800 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
-                        style="height: 38vh; min-height: 200px;"></textarea>
+                        class="w-full p-3 font-mono text-sm text-gray-800 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y h-[38vh] min-h-[200px]"></textarea>
                 </section>
 
                 <!-- === PLAYLIST === -->
@@ -202,17 +178,17 @@
                     <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                         <h2 id="ws-playlist" class="text-lg font-semibold text-yellow-900">Playlist (<span id="queue-count">0</span>)</h2>
                         <div class="flex gap-3 text-xs">
-                            <button type="button" onclick="document.getElementById('playlist-upload').click()" class="text-yellow-800 hover:text-yellow-900 font-medium">⬆ Import JSON</button>
-                            <button type="button" onclick="exportPlaylist()" class="text-yellow-800 hover:text-yellow-900 font-medium">⬇ Export JSON</button>
-                            <input autocomplete="off" type="file" id="playlist-upload" class="hidden" accept=".json" onchange="importPlaylist(this)">
-                            <button data-busy-disable type="button" onclick="clearBatch()" class="text-red-600 hover:text-red-800">Clear</button>
+                            <button id="btn-import-playlist" type="button" class="text-yellow-800 hover:text-yellow-900 font-medium">⬆ Import JSON</button>
+                            <button id="btn-export-playlist" type="button" class="text-yellow-800 hover:text-yellow-900 font-medium">⬇ Export JSON</button>
+                            <input autocomplete="off" type="file" id="playlist-upload" class="hidden" accept=".json">
+                            <button id="btn-clear-playlist" data-busy-disable type="button" class="text-red-600 hover:text-red-800">Clear</button>
                         </div>
                     </div>
                     <div class="flex flex-wrap items-center gap-2">
                         <label for="preset-select" class="text-xs font-medium text-yellow-800 whitespace-nowrap">Quick Load:</label>
                         <select autocomplete="off" id="preset-select" class="flex-1 min-w-[12rem] text-xs border-yellow-300 bg-white rounded p-1"></select>
-                        <button data-busy-disable type="button" onclick="applyPreset()" class="text-xs font-medium py-1 px-2 rounded border border-yellow-300 bg-white text-yellow-700 hover:bg-yellow-100">Apply</button>
-                        <button type="button" onclick="openGeneratorModal()" title="Add circuits of chosen algorithms at random qubit counts"
+                        <button id="btn-apply-preset" data-busy-disable type="button" class="text-xs font-medium py-1 px-2 rounded border border-yellow-300 bg-white text-yellow-700 hover:bg-yellow-100">Apply</button>
+                        <button id="btn-open-generator" type="button" title="Add circuits of chosen algorithms at random qubit counts"
                             class="text-xs font-medium py-1 px-2 rounded border border-yellow-300 bg-white text-yellow-700 hover:bg-yellow-100">Auto-Gen</button>
                         <button type="button" id="btn-bench" title="Add several MQT Bench or QASMBench circuits"
                             class="text-xs font-medium py-1 px-2 rounded border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100">Bench</button>
@@ -222,26 +198,26 @@
                             <h3 id="bench-popover-title" class="qr-popover-title">Benchmarks</h3>
                             <fieldset class="flex items-center gap-3 text-xs text-indigo-900">
                                 <legend class="sr-only">Suite</legend>
-                                <label class="flex items-center gap-1"><input autocomplete="off" type="radio" name="bench-suite" value="mqt" checked onchange="toggleBenchSuite()"> MQT Bench</label>
-                                <label class="flex items-center gap-1"><input autocomplete="off" type="radio" name="bench-suite" value="qasmbench" onchange="toggleBenchSuite()"> QASMBench</label>
+                                <label class="flex items-center gap-1"><input autocomplete="off" type="radio" name="bench-suite" value="mqt" checked> MQT Bench</label>
+                                <label class="flex items-center gap-1"><input autocomplete="off" type="radio" name="bench-suite" value="qasmbench"> QASMBench</label>
                             </fieldset>
                         </div>
                         <div class="qr-popover-body">
                             <div class="qr-section">
                                 <div class="flex gap-2">
-                                    <input autocomplete="off" type="text" id="bench-filter" oninput="bmRenderChecklist()" placeholder="Filter by name" aria-label="Filter by name" class="qr-input flex-1">
-                                    <input autocomplete="off" type="number" id="bench-max-qubits" min="1" oninput="bmRenderChecklist()" placeholder="≤ qubits" aria-label="At most this many qubits" class="qr-input w-24">
+                                    <input autocomplete="off" type="text" id="bench-filter" placeholder="Filter by name" aria-label="Filter by name" class="qr-input flex-1">
+                                    <input autocomplete="off" type="number" id="bench-max-qubits" min="1" placeholder="≤ qubits" aria-label="At most this many qubits" class="qr-input w-24">
                                 </div>
-                                <label class="qr-option text-xs"><input autocomplete="off" type="checkbox" id="bench-select-all" onchange="bmToggleSelectAll()"><span>Select all shown</span></label>
+                                <label class="qr-option text-xs"><input autocomplete="off" type="checkbox" id="bench-select-all"><span>Select all shown</span></label>
                             </div>
                             <div class="qr-section">
                                 <div id="bench-checklist" class="text-xs space-y-1"></div>
                             </div>
                         </div>
                         <div class="qr-popover-footer">
-                                <button data-busy-disable type="button" onclick="bmAddSelectedToBatch()"
+                                <button id="btn-bench-add-selected" data-busy-disable type="button"
                                     class="flex-1 py-1.5 px-2 rounded-md text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700">+ Add selected to Playlist (<span id="bench-selected-count">0</span>)</button>
-                                <button type="button" onclick="bmAddAllShown()" title="Every circuit the list shows: with no filter and no qubit cap, the whole suite"
+                                <button id="btn-bench-add-all" type="button" title="Every circuit the list shows: with no filter and no qubit cap, the whole suite"
                                     class="py-1.5 px-2 rounded-md text-xs font-medium text-emerald-800 bg-emerald-50 border border-emerald-300 hover:bg-emerald-100">+ Add all shown (<span id="bench-shown-count">0</span>)</button>
                         </div>
                     </div>
@@ -259,17 +235,17 @@
                             <legend class="sr-only">Run</legend>
                             <span class="font-medium text-gray-700" aria-hidden="true">Run</span>
                             <div class="inline-flex rounded-md border border-gray-300 overflow-hidden text-sm">
-                                <label class="cursor-pointer"><input autocomplete="off" type="radio" name="run-source" value="editor" checked onchange="updateWorkspace()" class="peer sr-only">
+                                <label class="cursor-pointer"><input autocomplete="off" type="radio" name="run-source" value="editor" checked class="peer sr-only">
                                     <span class="qr-seg-option block px-3 py-1 bg-white text-gray-700 peer-checked:bg-blue-600 peer-checked:text-white">Editor code</span></label>
-                                <label class="cursor-pointer border-l border-gray-300"><input autocomplete="off" type="radio" name="run-source" value="list" onchange="updateWorkspace()" class="peer sr-only">
+                                <label class="cursor-pointer border-l border-gray-300"><input autocomplete="off" type="radio" name="run-source" value="list" class="peer sr-only">
                                     <span id="run-source-list-label" class="qr-seg-option block px-3 py-1 bg-white text-gray-700 peer-checked:bg-yellow-600 peer-checked:text-white peer-disabled:opacity-50 peer-disabled:cursor-not-allowed">Playlist (<span id="run-source-count">0</span>)</span></label>
                             </div>
                         </fieldset>
                         <fieldset class="flex flex-wrap items-center gap-x-3 gap-y-1">
                             <legend class="sr-only">Mode</legend>
                             <span class="font-medium text-gray-700" aria-hidden="true">Mode</span>
-                            <label class="inline-flex items-center" title="Every backend returns its final statevector; pairs are compared by fidelity."><input autocomplete="off" type="checkbox" id="mode-statevector" checked onchange="updateWorkspace()"><span class="ml-1.5">Statevector</span></label>
-                            <label class="inline-flex items-center" title="Every backend samples measurement outcomes; pairs are compared with a shot-noise test."><input autocomplete="off" type="checkbox" id="mode-measured" onchange="updateWorkspace()"><span class="ml-1.5">Measured</span></label>
+                            <label class="inline-flex items-center" title="Every backend returns its final statevector; pairs are compared by fidelity."><input autocomplete="off" type="checkbox" id="mode-statevector" checked><span class="ml-1.5">Statevector</span></label>
+                            <label class="inline-flex items-center" title="Every backend samples measurement outcomes; pairs are compared with a shot-noise test."><input autocomplete="off" type="checkbox" id="mode-measured"><span class="ml-1.5">Measured</span></label>
                         </fieldset>
                         <label class="flex items-center gap-1 flex-1 min-w-[12rem] text-xs text-gray-600"><span class="font-medium text-gray-700 whitespace-nowrap">Run Name (Optional)</span>
                             <input autocomplete="off" type="text" id="single-run-name" maxlength="400" placeholder="E.g., GHZ Final Opt" class="flex-1 min-w-0 border border-gray-300 rounded px-2 py-1 text-xs"></label>
@@ -290,7 +266,7 @@
                     <p id="run-limit-warning" role="status" class="hidden text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1"></p>
                     <p id="run-blocked-msg" role="status" class="hidden p-2 text-xs text-red-800 bg-red-50 border border-red-200 rounded"></p>
                     <div id="single-validation-msg" role="alert" class="hidden p-2 text-xs text-red-800 bg-red-50 border border-red-200 rounded"></div>
-                    <button onclick="runWorkspace()" id="btn-run"
+                    <button id="btn-run"
                         class="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:hover:bg-gray-400 disabled:cursor-not-allowed disabled:shadow-none">
                         Run Editor Code
                     </button>
@@ -388,7 +364,7 @@
                         <h3 id="pop-thresholds-title" class="qr-popover-title">Agreement Thresholds</h3>
                         <div class="flex items-center gap-3">
                             <a href="docs.html#stat" target="_blank" rel="noopener" class="qr-header-link">Details</a>
-                            <button type="button" onclick="resetAgreementThresholds()" class="qr-action">Reset to defaults</button>
+                            <button id="btn-reset-thresholds" type="button" class="qr-action">Reset to defaults</button>
                         </div>
                     </div>
                     <div class="qr-popover-body">
@@ -434,7 +410,7 @@
                             <p class="text-sm text-gray-600 mt-1 mb-4 flex flex-wrap items-center gap-x-1.5">
                                 <span id="loader-progress"></span><span id="loader-progress-sep" class="hidden" aria-hidden="true">·</span>
                                 <span id="loader-elapsed">0 s elapsed</span>
-                                <button type="button" id="btn-stop-waiting" onclick="stopWaiting()" title="The job keeps running on the server. Its results can be shown later from this page or after reopening it, for 30 minutes after it finishes."
+                                <button type="button" id="btn-stop-waiting" title="The job keeps running on the server. Its results can be shown later from this page or after reopening it, for 30 minutes after it finishes."
                                     class="ml-2 text-indigo-700 hover:text-indigo-900 underline">Stop waiting</button>
                             </p>
                             <div id="batch-progress"></div>
@@ -443,7 +419,7 @@
                     </div>
 
                     <div id="back-button-container" class="hidden p-4 border-b border-gray-200">
-                        <button onclick="renderSuiteSummary(getState().currentSuiteData, getState().currentSuiteTitle)"
+                        <button id="btn-back-to-suite"
                             class="text-sm font-medium text-blue-600 hover:text-blue-500">&larr; Back to Suite
                             Summary</button>
                     </div>
@@ -491,20 +467,18 @@
         <div class="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-gray-200 bg-gray-50">
             <h2 id="visualizer-title" class="flex-1 min-w-0 text-sm font-semibold text-gray-900">Quirk view of the editor circuit</h2>
             <a id="quirk-open-link" href="about:blank" target="_blank" rel="noopener" class="px-3 py-1 rounded border border-purple-300 bg-white text-purple-700 hover:bg-purple-50 text-sm font-medium">Open in Quirk</a>
-            <button type="button" id="visualizer-close" onclick="closeVisualizer()" class="px-3 py-1 rounded border border-red-300 bg-red-100 text-red-700 hover:bg-red-200 text-sm font-bold">❌ Close</button>
+            <button type="button" id="visualizer-close" class="px-3 py-1 rounded border border-red-300 bg-red-100 text-red-700 hover:bg-red-200 text-sm font-bold">❌ Close</button>
             <p id="visualizer-keys" class="basis-full text-xs text-gray-600">Escape closes this view. Inside the Quirk frame, Quirk receives the keys: Tab out of the frame first, or use Close.</p>
             <p class="lg:hidden basis-full text-xs text-gray-600">Quirk's page is wider than this screen: scroll inside it sideways, or use Open in Quirk for a tab of its own.</p>
         </div>
         <div class="flex-1 min-h-0 relative overflow-hidden">
-            <iframe id="quirk-iframe" title="Quirk circuit simulator" src="about:blank" class="border-0 w-full"
-                style="height: calc(100% + 120px); margin-top: -120px;"></iframe>
+            <iframe id="quirk-iframe" title="Quirk circuit simulator" src="about:blank" class="border-0 w-full h-[calc(100%+120px)] -mt-[120px]"></iframe>
         </div>
     </div>
     <div id="gen-modal" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-labelledby="modal-title" role="dialog"
         aria-modal="true">
         <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"
-                onclick="closeGeneratorModal()"></div>
+            <div id="gen-modal-backdrop" class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
             <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
             <div
                 class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
@@ -536,9 +510,9 @@
                     </div>
                 </div>
                 <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                    <button data-busy-disable type="button" onclick="runAutoGeneration()"
+                    <button id="btn-run-autogen" data-busy-disable type="button"
                         class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none sm:ml-3 sm:w-auto sm:text-sm">Generate</button>
-                    <button type="button" onclick="closeGeneratorModal()"
+                    <button id="btn-cancel-generator" type="button"
                         class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">Cancel</button>
                 </div>
             </div>
@@ -549,8 +523,7 @@
     <div id="auth-modal" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-labelledby="auth-modal-title"
         role="dialog" aria-modal="true">
         <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"
-                onclick="closeAuthModal()"></div>
+            <div id="auth-modal-backdrop" class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
             <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
             <div
                 class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full">
@@ -570,18 +543,17 @@
                             <div>
                                 <label for="login-password" class="block text-sm font-medium text-gray-700">Password</label>
                                 <input type="password" id="login-password" aria-describedby="login-error" autocomplete="current-password"
-                                    class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2"
-                                    onkeydown="if(event.key === 'Enter') handleLoginSubmit()">
+                                    class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2">
                             </div>
                         </div>
                     </div>
                     <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse border-t border-gray-200">
-                        <button type="button" onclick="handleLoginSubmit()"
+                        <button id="btn-login-submit" type="button"
                             class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:ml-3 sm:w-auto sm:text-sm">Login</button>
-                        <button type="button" onclick="closeAuthModal()"
+                        <button id="btn-login-cancel" type="button"
                             class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">Cancel</button>
                         <div class="mt-3 sm:mt-0 w-full flex items-center justify-center sm:justify-start">
-                            <button type="button" onclick="toggleAuthMode('register')"
+                            <button id="btn-show-register" type="button"
                                 class="text-sm text-indigo-600 hover:text-indigo-500 font-medium">Create an
                                 account</button>
                         </div>
@@ -603,19 +575,18 @@
                             <div>
                                 <label for="register-password" class="block text-sm font-medium text-gray-700">Password</label>
                                 <input type="password" id="register-password" aria-describedby="register-password-hint register-error" autocomplete="new-password"
-                                    class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2"
-                                    onkeydown="if(event.key === 'Enter') handleRegisterSubmit()">
+                                    class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2">
                                 <span id="register-password-hint" class="block mt-1 text-xs text-gray-600">At least 8 characters and at most 72 bytes: up to 72 plain ASCII characters, fewer with accented letters or symbols, which take 2 to 4 bytes each.</span>
                             </div>
                         </div>
                     </div>
                     <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse border-t border-gray-200">
-                        <button type="button" onclick="handleRegisterSubmit()"
+                        <button id="btn-register-submit" type="button"
                             class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:ml-3 sm:w-auto sm:text-sm">Register</button>
-                        <button type="button" onclick="closeAuthModal()"
+                        <button id="btn-register-cancel" type="button"
                             class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">Cancel</button>
                         <div class="mt-3 sm:mt-0 w-full flex items-center justify-center sm:justify-start">
-                            <button type="button" onclick="toggleAuthMode('login')"
+                            <button id="btn-show-login" type="button"
                                 class="text-sm text-indigo-600 hover:text-indigo-500 font-medium">Already have an
                                 account?</button>
                         </div>
@@ -625,12 +596,42 @@
             </div>
         </div>
     </div>
+    <!-- === DELETE ACCOUNT MODAL === -->
+    <div id="delete-account-modal" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-labelledby="delete-account-title"
+        aria-describedby="delete-account-text" role="dialog" aria-modal="true">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div id="delete-account-backdrop" class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            <div
+                class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full">
+                <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900" id="delete-account-title">Delete Account</h3>
+                    <div class="mt-4 space-y-4">
+                        <p id="delete-account-text" class="text-sm text-gray-700">Your account, its saved circuits and its run history will be deleted permanently. This cannot be undone. Enter your password to confirm.</p>
+                        <div id="delete-account-error" role="alert"
+                            class="hidden text-sm text-red-600 bg-red-50 p-2 rounded border border-red-200"></div>
+                        <div>
+                            <label for="delete-account-password" class="block text-sm font-medium text-gray-700">Password</label>
+                            <input type="password" id="delete-account-password" aria-describedby="delete-account-error" autocomplete="current-password"
+                                class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2">
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse border-t border-gray-200">
+                    <button id="btn-delete-account-confirm" type="button"
+                        class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm">Delete
+                        Account</button>
+                    <button id="btn-delete-account-cancel" type="button"
+                        class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
     <!-- === HISTORY MODAL === -->
     <div id="history-modal" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-labelledby="history-modal-title"
         role="dialog" aria-modal="true">
         <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"
-                onclick="closeHistoryModal()"></div>
+            <div id="history-modal-backdrop" class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
             <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
             <div
                 class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full">
@@ -638,12 +639,11 @@
                     <div class="flex justify-between items-center mb-4">
                         <div class="flex items-center">
                             <input autocomplete="off" type="checkbox" id="history-select-all" aria-label="Select all runs"
-                                class="mr-3 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                                onclick="toggleSelectAllHistory()">
+                                class="mr-3 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
                             <h3 class="text-lg leading-6 font-medium text-gray-900" id="history-modal-title">Your Run
                                 History</h3>
                         </div>
-                        <button type="button" onclick="closeHistoryModal()" class="text-gray-500 hover:text-gray-700">
+                        <button id="btn-history-close" type="button" class="text-gray-500 hover:text-gray-700">
                             <span class="sr-only">Close</span>
                             <svg class="h-6 w-6" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -658,10 +658,10 @@
                         </ul>
                     </div>
                     <div class="mt-4 flex justify-end space-x-3 border-t border-gray-200 pt-4">
-                        <button onclick="downloadSelectedHistory()"
+                        <button id="btn-history-download"
                             class="inline-flex justify-center flex-1 rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:text-sm">Download
                             Selected</button>
-                        <button onclick="deleteSelectedHistory()"
+                        <button id="btn-history-delete"
                             class="inline-flex justify-center flex-1 rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:text-sm">Delete
                             Selected</button>
                     </div>

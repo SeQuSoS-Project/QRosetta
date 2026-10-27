@@ -1,7 +1,8 @@
-"""The inline on*= handlers in index.html, the names js/main.js puts on window, and the
-modules that export them must all agree.
-"""
+"""The pages carry no inline script, event handler or style (their Content-Security-Policy
+allows scripts and styles from this origin only), and every control main.js wires exists in
+index.html."""
 import re
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -9,80 +10,136 @@ import pytest
 _STATIC = Path(__file__).resolve().parents[2] / "static"
 _INDEX = _STATIC / "index.html"
 _MAIN = _STATIC / "js" / "main.js"
-
-# Names that appear in an on*= attribute but are language keywords, not handlers.
-_NOT_HANDLERS = {"if", "return", "this", "function", "for", "while", "typeof", "new"}
+_PAGES = sorted(_STATIC.glob("*.html"))
 
 pytestmark = pytest.mark.skipif(
     not _INDEX.exists(), reason="frontend not present in this checkout")
 
 
-def _handlers_in_html() -> set:
-    html = _INDEX.read_text()
-    found = set(re.findall(r'\son[a-z]+="\s*([A-Za-z_$][\w$]*)\s*\(', html))
-    return found - _NOT_HANDLERS
+class _Page(HTMLParser):
+    """Elements of one page: ids, input names, inline handlers, styles and scripts."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.ids = []
+        self.input_names = set()
+        self.handlers = []
+        self.style_attrs = []
+        self.style_elements = 0
+        self.inline_scripts = 0
+        self.script_urls = []
+        self._in_script = False
+        self._script_text = ""
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        line = self.getpos()[0]
+        if "id" in a:
+            self.ids.append(a["id"])
+        if tag == "input" and a.get("name"):
+            self.input_names.add(a["name"])
+        for name, value in attrs:
+            if name.startswith("on"):
+                self.handlers.append(f"line {line}: <{tag} {name}=\"{value}\">")
+            if name == "style":
+                self.style_attrs.append(f"line {line}: <{tag} style=\"{value}\">")
+            if name in ("href", "src", "action", "formaction") and (value or "").strip().lower().startswith("javascript:"):
+                self.handlers.append(f"line {line}: <{tag} {name}=\"{value}\">")
+        if tag == "style":
+            self.style_elements += 1
+        if tag == "script":
+            self._in_script = "src" not in a
+            self._script_text = ""
+            if "src" in a:
+                self.script_urls.append(a["src"])
+
+    def handle_data(self, data):
+        if self._in_script:
+            self._script_text += data
+
+    def handle_endtag(self, tag):
+        if tag == "script":
+            if self._in_script and self._script_text.strip():
+                self.inline_scripts += 1
+            self._in_script = False
 
 
-def _names_attached_to_window() -> set:
-    """The identifiers listed in main.js's Object.assign(window, {...})."""
-    block = re.search(r"Object\.assign\(window,\s*\{(.*?)\n\}\);", _MAIN.read_text(), re.S)
-    assert block, "main.js no longer has an Object.assign(window, {...}) block"
-    return set(re.findall(r"^\s*([A-Za-z_$][\w$]*),\s*$", block.group(1), re.M))
+def _parse(path: Path) -> _Page:
+    page = _Page()
+    page.feed(path.read_text())
+    return page
 
 
-def _exported_names() -> dict:
-    """Exported name -> module filename, across the frontend."""
-    exported = {}
+def _controls() -> list:
+    """(selector, event type) of every entry in main.js's CONTROLS table."""
+    block = re.search(r"const CONTROLS = \[(.*?)\n\];", _MAIN.read_text(), re.S)
+    assert block, "main.js no longer has a CONTROLS table"
+    return re.findall(r"^\s*\['([^']+)', '([a-z]+)', ", block.group(1), re.M)
+
+
+@pytest.mark.parametrize("page", _PAGES, ids=lambda p: p.name)
+def test_page_has_no_inline_handlers_scripts_or_styles(page):
+    parsed = _parse(page)
+    assert not parsed.handlers, f"{page.name}: inline event handlers or javascript: URLs:\n" + "\n".join(parsed.handlers)
+    assert parsed.inline_scripts == 0, f"{page.name}: inline <script> blocks; move them to a file under js/"
+    assert parsed.style_elements == 0, f"{page.name}: <style> elements; move them to a file under css/"
+    assert not parsed.style_attrs, f"{page.name}: style attributes; use classes:\n" + "\n".join(parsed.style_attrs)
+    assert all(not re.match(r"[a-z]+:|//", url) for url in parsed.script_urls), (
+        f"{page.name}: scripts from another origin: {parsed.script_urls}")
+
+
+def test_index_ids_are_unique():
+    ids = _parse(_INDEX).ids
+    assert len(ids) == len(set(ids)), sorted({i for i in ids if ids.count(i) > 1})
+
+
+def test_every_wired_control_exists_in_index():
+    page = _parse(_INDEX)
+    ids = set(page.ids)
+    missing = []
+    for selector, _ in _controls():
+        if selector.startswith("#"):
+            if selector[1:] not in ids:
+                missing.append(selector)
+        else:
+            m = re.fullmatch(r'input\[name="([\w-]+)"\]', selector)
+            assert m, f"main.js CONTROLS uses a selector this test cannot check: {selector}"
+            if m.group(1) not in page.input_names:
+                missing.append(selector)
+    assert not missing, f"main.js wires controls index.html does not have: {missing}"
+
+
+def test_controls_table_has_no_duplicates():
+    controls = _controls()
+    assert len(controls) == len(set(controls)), [c for c in controls if controls.count(c) > 1]
+
+
+def test_nothing_is_published_on_window_but_the_state_store():
     for path in sorted((_STATIC / "js").glob("*.js")):
-        for line in path.read_text().split("\n"):
-            m = re.match(
-                r"^export\s+(?:async\s+)?(?:function\s+([A-Za-z_$][\w$]*)"
-                r"|(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=|class\s+([A-Za-z_$][\w$]*))",
-                line,
-            )
-            if m:
-                exported[next(g for g in m.groups() if g)] = path.name
-    return exported
+        text = path.read_text()
+        assert "Object.assign(window" not in text, f"{path.name} publishes names on window"
+        for name in re.findall(r"^\s*window\.([A-Za-z_$][\w$]*)\s*=", text, re.M):
+            if name.startswith("on"):
+                continue
+            assert (path.name, name) in {("state.js", "dispatch"), ("state.js", "getState")}, f"{path.name}: window.{name}"
 
 
-def test_every_inline_handler_is_attached_to_window():
-    missing = sorted(_handlers_in_html() - _names_attached_to_window())
-    assert not missing, (
-        f"index.html calls {missing} from an inline handler, but main.js does not put them "
-        "on window. Those controls would do nothing when clicked."
-    )
-
-
-def test_every_attached_name_is_actually_exported():
-    exported = _exported_names()
-    unresolved = sorted(n for n in _names_attached_to_window() if n not in exported)
-    assert not unresolved, f"main.js attaches names no module exports: {unresolved}"
-
-
-def test_no_stale_names_attached():
-    """Every name main.js attaches is used by an on*= attribute in index.html."""
-    stale = sorted(_names_attached_to_window() - _handlers_in_html())
-    assert not stale, f"main.js attaches unused names: {stale}"
-
-
-def test_generated_markup_has_no_inline_handlers():
-    """Markup built in JS wires its controls with addEventListener. An on*= attribute in a
-    template literal or string resolves against window, where module functions are absent."""
+def test_generated_markup_has_no_inline_handlers_or_styles():
+    """Markup built in JS wires its controls with addEventListener and styles them with
+    classes or the CSSOM; an on*= or style= attribute in markup is blocked by the policy."""
     offenders = []
     for path in sorted((_STATIC / "js").glob("*.js")):
         for lineno, line in enumerate(path.read_text().split("\n"), 1):
             if re.search(r"""\son(?:click|dbl\w+|change|input|submit|key\w+|mouse\w+|pointer\w+|focus\w*|blur|load|error|drag\w*|drop|scroll|toggle)\s*=\s*\\?["'`]""", line) or re.search(
-                    r"""setAttribute\(\s*['"]on[a-z]+['"]""", line):
+                    r"""setAttribute\(\s*['"](?:on[a-z]+|style)['"]""", line) or re.search(
+                    r"""<[a-zA-Z][^>]*\sstyle\s*=\s*\\?["'`]""", line):
                 offenders.append(f"{path.name}:{lineno}: {line.strip()}")
     assert not offenders, (
-        "Inline event handlers in JS-generated markup (use addEventListener):\n"
-        + "\n".join(offenders)
+        "Inline event handlers or style attributes in JS-generated markup:\n" + "\n".join(offenders)
     )
 
 
 def test_index_loads_exactly_one_module_entry_point():
     html = _INDEX.read_text()
-    assert 'type="module"' in html, "index.html should load the frontend as a module"
-    assert not re.search(r'<script defer src="js/', html), (
-        "index.html still loads individual scripts; the module graph is the entry point now"
-    )
+    assert len(re.findall(r"<script\b", html)) == 1
+    assert re.search(r'<script type="module" src="js/main\.js[^"]*"></script>', html)
