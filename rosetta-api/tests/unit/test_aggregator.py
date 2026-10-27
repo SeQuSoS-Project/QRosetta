@@ -20,7 +20,8 @@ async def test_compile_comparison_reports(mock_comparator, mock_results):
 
     div, perf, res = await compile_comparison_reports(mock_results)
 
-    assert div == {"divergence": 0.0}
+    assert div["divergence"] == 0.0
+    assert div["backend_verdicts"]["backends"] == [] and div["backend_verdicts"]["mode"] == "statevector"
     assert perf == {"performance": 1.0}
     assert res == {"resources": 100}
 
@@ -38,7 +39,8 @@ async def test_compile_measurement_reports(mock_comparator, mock_results):
 
     div, perf, res = await compile_measurement_reports(mock_results, n_shots=1000)
 
-    assert div == {"counts_div": 0.0}
+    assert div["counts_div"] == 0.0
+    assert div["backend_verdicts"]["mode"] == "measured"
     assert perf == {"performance": 2.0}
     assert res == {"resources": 200}
 
