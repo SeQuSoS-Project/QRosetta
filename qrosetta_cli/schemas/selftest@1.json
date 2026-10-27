@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "qrosetta.cli/selftest@1: selftest.json and the selftest command's data: status, backends, jobs with the server's evaluation, failures and warnings",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "PASS",
+        "FAIL"
+      ]
+    },
+    "server": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "results_dir": {
+      "type": "string"
+    },
+    "selftest_version": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "expected_sha256": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "backends_under_test": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "not_tested": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "backend": {
+            "type": "string"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "backend",
+          "reason"
+        ]
+      }
+    },
+    "jobs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "part": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "dir": {
+            "type": "string"
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "save_status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "evaluation": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "job_id",
+          "dir",
+          "evaluation"
+        ]
+      }
+    },
+    "failures": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "cli_rules_applied": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "status",
+    "backends_under_test",
+    "jobs",
+    "failures",
+    "warnings"
+  ]
+}

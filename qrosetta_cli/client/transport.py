@@ -49,6 +49,12 @@ def origin(url):
     return f"{parts.scheme}://{parts.netloc}"
 
 
+class _SinkError(Exception):
+    def __init__(self, error):
+        super().__init__(str(error))
+        self.error = error
+
+
 class Transport:
     """The interface every transport implements."""
 
@@ -57,6 +63,18 @@ class Transport:
 
     def request(self, method, path, query=None, body=None, headers=None, timeout=None):
         raise NotImplementedError
+
+    def download(self, method, path, sink, query=None, body=None, headers=None, timeout=None, on_headers=None):
+        """Like `request`, but a 2xx body goes to `sink` and the Response carries none;
+        `on_headers(headers)` runs before the body is read. This default reads the body
+        whole; HttpTransport streams it."""
+        resp = self.request(method, path, query=query, body=body, headers=headers, timeout=timeout)
+        if 200 <= resp.status < 300:
+            if on_headers:
+                on_headers(resp.headers)
+            sink.write(resp.body)
+            return Response(resp.status, resp.headers, b"")
+        return resp
 
 
 class HttpTransport(Transport):
@@ -72,7 +90,7 @@ class HttpTransport(Transport):
             handlers.append(urllib.request.ProxyHandler({}))
         self._opener = urllib.request.build_opener(*handlers)
 
-    def request(self, method, path, query=None, body=None, headers=None, timeout=None):
+    def _request(self, method, path, query, body, headers):
         url = self.url + path
         if query:
             url += ("&" if "?" in path else "?") + urllib.parse.urlencode(query, doseq=True)
@@ -80,10 +98,31 @@ class HttpTransport(Transport):
         hdrs.update(headers or {})
         if self.token:
             hdrs["Authorization"] = f"Bearer {self.token}"
-        req = urllib.request.Request(url, data=body, method=method.upper(), headers=hdrs)
+        return urllib.request.Request(url, data=body, method=method.upper(), headers=hdrs)
+
+    def request(self, method, path, query=None, body=None, headers=None, timeout=None):
+        return self.download(method, path, None, query, body, headers, timeout)
+
+    def download(self, method, path, sink, query=None, body=None, headers=None, timeout=None, on_headers=None):
+        req = self._request(method, path, query, body, headers)
         try:
             with self._opener.open(req, timeout=timeout or self.timeout) as resp:
-                return Response(resp.status, {k.lower(): v for k, v in resp.headers.items()}, resp.read())
+                hdrs = {k.lower(): v for k, v in resp.headers.items()}
+                if sink is None:
+                    return Response(resp.status, hdrs, resp.read())
+                if on_headers:
+                    on_headers(hdrs)
+                while True:
+                    chunk = resp.read(1 << 20)
+                    if not chunk:
+                        break
+                    try:
+                        sink.write(chunk)
+                    except OSError as exc:
+                        raise _SinkError(exc) from None
+                return Response(resp.status, hdrs, b"")
+        except _SinkError as exc:
+            raise exc.error from None
         except urllib.error.HTTPError as exc:
             return Response(exc.code, {k.lower(): v for k, v in (exc.headers or {}).items()}, exc.read() or b"")
         except (urllib.error.URLError, socket.timeout, TimeoutError, ConnectionError, OSError) as exc:

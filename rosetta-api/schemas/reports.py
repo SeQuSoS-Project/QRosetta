@@ -175,11 +175,18 @@ class PairVerdictEntry(PairVerdict):
     simulators: Any = Field(None, description="The pair's simulators, as recorded.")
 
 
+_OUTCOMES_DESCRIPTION = ("Outcome name -> count: each pair under its verdict, no_comparison (1 when no pair was "
+                         "compared), runs_without_output (runs whose status is not ok, plus 1 for a circuit "
+                         "that failed before any runner ran). outcome_roles gives each name's role.")
+
+
 class TaskSummary(_Open):
     """Verdicts of one circuit's report."""
     report_analysis_version: Optional[str] = Field(None, description="The analysis version the report records (null for reports that record none).")
     pair_verdicts: List[PairVerdictEntry] = Field(..., description="One per pair record, in pairwise_agreement order.")
     backend_verdicts: BackendVerdicts
+    outcomes: Dict[str, int] = Field(..., description=_OUTCOMES_DESCRIPTION)
+    runs: Dict[str, Any] = Field(..., description="total, returned (status ok), without_output, and circuit_failed (the circuit never reached a runner).")
 
 
 class ReportSummary(_Open):
@@ -190,4 +197,7 @@ class ReportSummary(_Open):
     report_analysis_version: Optional[str] = Field(None, description="Single-circuit report: the analysis version it records.")
     pair_verdicts: Optional[List[PairVerdictEntry]] = Field(None, description="Single-circuit report: one per pair record, in pairwise_agreement order.")
     backend_verdicts: Optional[BackendVerdicts] = Field(None, description="Single-circuit report: per-backend counts.")
+    outcomes: Dict[str, int] = Field(..., description=_OUTCOMES_DESCRIPTION + " A playlist's are the sums over its tasks.")
+    outcome_roles: Dict[str, Literal["difference", "not_established", "runs_without_output", "agreement"]] = Field(..., description="Each outcome name's role: difference (a pair differs; BY-only included), not_established (inconclusive, not comparable, unassessed, or nothing compared), runs_without_output, agreement.")
+    runs: Optional[Dict[str, Any]] = Field(None, description="Runs: total, returned, without_output; a playlist's are sums, with circuits_failed.")
     benchmark_summary: Optional[List[TaskSummary]] = Field(None, description="Playlist report: one summary per task, in task order; null for a single-circuit report.")

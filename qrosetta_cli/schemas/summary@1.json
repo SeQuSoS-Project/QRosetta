@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "qrosetta.cli/summary@1: show summary: per job, the server's summary verbatim with its source and save status",
+  "type": "object",
+  "properties": {
+    "result": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "selftest": {
+      "type": "object"
+    },
+    "jobs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string"
+          },
+          "dir": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "save_status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "summary": {
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "job_id",
+          "dir",
+          "save_status",
+          "summary"
+        ]
+      }
+    }
+  },
+  "required": [
+    "result",
+    "jobs"
+  ]
+}
