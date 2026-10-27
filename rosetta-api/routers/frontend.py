@@ -11,6 +11,7 @@ from services.availability import runner_availability
 from services.compilation import COMPILER_SERVICES
 from services.preparation_limits import bundled_over_prep_limit
 from services.request_defaults import request_defaults
+from services.server_info import server_block
 
 router = APIRouter()
 
@@ -87,6 +88,11 @@ async def get_config():
     """Server-side circuit limits, request bounds, agreement-threshold defaults and the
     execution mode.
 
+    ``server`` is the handshake: ``platform_version``, ``api_levels`` ([min, max], the API
+    levels this server serves; a breaking change raises the maximum and the previous level
+    stays served), ``analysis_version`` (the comparison code that labels new reports),
+    ``git_sha`` (the API image's commit) and ``features`` ({name: version}).
+
     ``limits`` holds the bounds the run endpoints validate against: qubit caps per mode,
     ``timeout_min``/``timeout_max`` (seconds; larger requests are clamped to
     ``timeout_max``), ``timeout_default`` (every run endpoint), ``shots_min``/``shots_max``,
@@ -126,6 +132,7 @@ async def get_config():
     ``compile_only`` says what makes /compare or /run_batch_suite a compile-only request.
     """
     return JSONResponse(content={
+        "server": server_block(),
         "max_qubits_statevector": settings.MAX_QUBITS_STATEVECTOR,
         "max_qubits_measured": settings.MAX_QUBITS_MEASURED,
         "max_qubits_compile": settings.MAX_QUBITS_COMPILE,

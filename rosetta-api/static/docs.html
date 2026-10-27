@@ -1685,6 +1685,14 @@
                     <li>an experiment: <code>{experiment_summary}</code> only; the per-circuit data is in the
                         bundle.</li>
                 </ul>
+                <p id="api-handshake">
+                    <code>GET /config</code> starts with <code>server</code>, which a script reads before
+                    anything else: <code>platform_version</code>, <code>api_levels</code> (<code>[min, max]</code>,
+                    the API levels this server serves; a change that removes or renames a route or field raises
+                    the maximum, and the previous level stays served), <code>analysis_version</code> (the
+                    comparison code that labels new reports), <code>git_sha</code> (the commit of the API
+                    image) and <code>features</code>, a map from feature name to version that only grows.
+                </p>
                 <p>
                     In measured mode the verdict of a pair is <code>measured_assessment</code>
                     (<code>distinguishable</code> is the disagreement), together with
