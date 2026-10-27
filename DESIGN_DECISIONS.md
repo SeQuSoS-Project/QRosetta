@@ -730,6 +730,12 @@ Compilers are separate from the simulators: their output is a circuit, which is 
 
 *Evidence (2026-10-08).* pydantic 2.9.2 dropped nested validators: `RunHistoryUpdate(run_name='a\x00b')` passed.
 
+### Database schema migrations
+
+*Rule.* The schema is versioned with Alembic (`rosetta-api/migrations/`); the API upgrades to head in its startup handler, never on import ([`rosetta-api/db/migrate.py`](rosetta-api/db/migrate.py)), under a lock: an exclusive `flock` on `<database>.migrate-lock` for SQLite, `pg_advisory_xact_lock` for PostgreSQL. A database without `alembic_version` that holds any of the four tables is brought to revision `0001` (missing tables, nullable columns and indexes added; a missing non-nullable column stops startup) and stamped. `create_all` and `add_missing_nullable_columns` are gone. `test_db_migrations.py` checks that the baseline emits the models' DDL on SQLite and PostgreSQL and that autogenerate finds no difference from the models.
+
+*Evidence (2026-10-28).* `add_missing_nullable_columns` added `run_histories.job_id` to databases created before it without the column's index: a copy of the local stack's database (54 users, 132 runs, 69 share links) had no `ix_run_histories_job_id`; adopting the copy added the index, kept every row, and left no difference from the models. Eight processes running the former import-time `create_all` on one new SQLite file at once: 19 of 20 trials had a process fail with `table users already exists`; the same with `upgrade_database`: 0 of 20. The unit tests' xdist workers all inherited the controller's `DATABASE_URL`, so this race broke collection on the integration branch. Four processes in `test_concurrent_starts_migrate_once` failed in 4 of 6 runs with the lock removed and passed in 5 of 5 with it.
+
 ## Interface and API behaviour
 
 ### Outcome names and roles

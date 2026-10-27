@@ -1,16 +1,35 @@
-"""Unit-test setup: job reports spill to a temporary directory, not the server's; each test
-process has its own SQLite database there, not ./data; every test starts with empty rate-limit
-counters, and runs are not refused for the free space left on the disk that holds the spill
-directory."""
+"""Unit-test setup: each test process (each xdist worker, and the controller) has its own job
+spill directory and SQLite database in a temporary directory, not the server's or ./data, with
+the schema at head; every test starts with empty rate-limit counters, and runs are not refused
+for the free space left on the disk that holds the spill directory."""
 import os
 import sys
 import tempfile
 
 import pytest
 
-os.environ.setdefault("QROSETTA_JOB_SPILL_DIR", tempfile.mkdtemp(prefix="qrosetta-test-jobs-"))
-os.environ.setdefault("DATABASE_URL", "sqlite:///" + os.path.join(tempfile.mkdtemp(prefix="qrosetta-test-db-"),
-                                                                 "qa_rosetta.db"))
+
+def _own_per_process(name: str, make) -> None:
+    """Set ``name`` unless the caller set it. xdist workers inherit the controller's environment,
+    so a value this conftest set in another process (recorded under ``_QROSETTA_TEST_<name>``)
+    is replaced, not kept: every worker gets its own."""
+    marker = f"_QROSETTA_TEST_{name}"
+    if name in os.environ and os.environ.get(marker) != os.environ[name]:
+        return
+    os.environ[name] = os.environ[marker] = make()
+
+
+_own_per_process("QROSETTA_JOB_SPILL_DIR", lambda: tempfile.mkdtemp(prefix="qrosetta-test-jobs-"))
+_own_per_process("DATABASE_URL", lambda: "sqlite:///" + os.path.join(
+    tempfile.mkdtemp(prefix="qrosetta-test-db-"), "qa_rosetta.db"))
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _database_at_head():
+    from db.database import engine
+    from db.migrate import upgrade_database
+    upgrade_database(engine)
+    yield
 
 
 @pytest.fixture(autouse=True)
