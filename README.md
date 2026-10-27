@@ -352,8 +352,9 @@ PYTHONPATH=.:../shared pytest tests/unit/ -n auto
 `PYTHONPATH` includes `../shared` so the working copy of `qrosetta_commons` is tested even
 when an older copy is installed in the virtualenv.
 
-`tests/integration/` holds live-stack checks that need the whole stack running. CI does not
-run them; see the README there.
+`tests/integration/` holds live-stack checks that need a running stack. CI builds nginx, the
+API and three runners from each commit and runs the end-to-end tests and the runner contract
+probes against them; the rest need the full stack. See the README there.
 
 ## Project layout
 
