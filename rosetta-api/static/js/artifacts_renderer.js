@@ -12,6 +12,7 @@ import { makeItem, presetItems, renderExportPanel, resetExportPanel } from './ex
 import { _displayRunnerName, makeButton as button, makeEl as el } from './render_helpers.js';
 import { dispatch, getState } from './state.js';
 import { formatBytes } from './request_limits.js';
+import { pairVerdictOrNull } from './run_status.js';
 import { _stripStatevectors, copyImageToClipboard, copyText, downloadBlob, hasStatevectors, shownCircuitName } from './utils.js';
 
 const PNG_SCALES = [[1, '150 dpi'], [2, '300 dpi'], [4, '600 dpi']];
@@ -38,14 +39,19 @@ const FIGURE_RAW_FIELDS = [
 const PAIR_FIELDS = ['simulators', 'mode', 'agreement', 'measured_assessment', 'marginal_assessment'];
 const _pick = (obj, keys) => Object.fromEntries(keys.filter(k => obj && k in obj).map(k => [k, obj[k]]));
 
-/** The fields of a report that figures read: per-backend counts and timings, pair labels,
- * matrices and the ranking reports. Keeps an upload for a figure small. */
-function figureReport(results) {
+/** The fields of a report that figures read: per-backend counts and timings, pair labels and
+ * the verdicts the page shows (read from `shown`, the report as displayed, whose pairs are in the
+ * same order), matrices and the ranking reports. Keeps an upload for a figure small. */
+function figureReport(results, shown) {
     const div = results.divergence_report || {};
+    const shownPairs = shown?.divergence_report?.pairwise_agreement || [];
     const out = _pick(results, ['n_shots', 'seed', 'circuit_name', 'task_name', 'run_name', 'timing_samples',
         'performance_report', 'resource_report']);
     out.divergence_report = Object.assign({}, div, {
-        pairwise_agreement: (div.pairwise_agreement || []).map(r => _pick(r, PAIR_FIELDS)),
+        pairwise_agreement: (div.pairwise_agreement || []).map((r, i) => {
+            const verdict = pairVerdictOrNull(shownPairs[i]);
+            return verdict ? { ..._pick(r, PAIR_FIELDS), pair_verdict: verdict } : _pick(r, PAIR_FIELDS);
+        }),
     });
     out.raw_results = (results.raw_results || []).map(r => _pick(r, FIGURE_RAW_FIELDS));
     return out;
@@ -68,7 +74,7 @@ async function _fetchFigureBlob(id, fmt, scale, params = {}, signal = undefined)
         if (resp.status !== 404 && resp.status !== 409) throw new Error(await formatApiError(resp));
         S.jobCopyGone = true;
     }
-    const report = ['svg', 'png', 'pdf'].includes(fmt) ? figureReport(S.stripped) : S.stripped;
+    const report = ['svg', 'png', 'pdf'].includes(fmt) ? figureReport(S.stripped, S.results) : S.stripped;
     const resp = await fetch(`${BASE_URL}/publication/render`, {
         method: 'POST',
         headers: getAuthHeaders({ 'Content-Type': 'application/json' }),

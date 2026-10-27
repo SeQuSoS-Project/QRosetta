@@ -9,6 +9,7 @@ from itertools import combinations
 import pytest
 
 from tests.unit.frontend_harness import call_js, requires_node
+from tests.unit.server_verdicts import with_server_verdicts
 
 pytestmark = requires_node
 
@@ -53,11 +54,11 @@ def _groups(*sets):
 
 
 def _headline(report):
-    return call_js(["overview_renderer.js"], [("headlineSentences", [report])])[0]
+    return call_js(["overview_renderer.js"], [("headlineSentences", [with_server_verdicts(report)])])[0]
 
 
 def _many(reports):
-    return call_js(["overview_renderer.js"], [("headlineSentences", [r]) for r in reports])
+    return call_js(["overview_renderer.js"], [("headlineSentences", [with_server_verdicts(r)]) for r in reports])
 
 
 def _assert_well_formed(out):
@@ -187,8 +188,8 @@ def test_timeout_advice_depends_on_the_server_maximum():
             {"simulator": "c", "dispatch_status": "timeout", "error": "TIMEOUT"}]
     base = {"raw_results": raws, "divergence_report": {"simulators": ["a", "b"], "pairwise_agreement": [
         {"simulators": ["a", "b"], "mode": "statevector", "agreement": "agree_directly", "metrics": {}}]}}
-    steps = call_js(["overview_renderer.js"], [("nextSteps", [{**base, "timeout_seconds": 300}]),
-                                               ("nextSteps", [{**base, "timeout_seconds": 60}])])
+    steps = call_js(["overview_renderer.js"], [("nextSteps", [with_server_verdicts({**base, "timeout_seconds": 300})]),
+                                               ("nextSteps", [with_server_verdicts({**base, "timeout_seconds": 60})])])
     assert any("already at the server maximum (300 s)" in s for s in steps[0])
     assert any("raise the timeout" in s for s in steps[1])
 
@@ -203,7 +204,7 @@ def test_lower_bound_recommendation_is_worded_as_at_least():
              for lb in (True,)]
     report = {"n_shots": 8200, "raw_results": [{"simulator": s, "dispatch_status": "ok"} for s in "ab"],
               "divergence_report": {"simulators": ["a", "b"], "pairwise_agreement": pairs}}
-    steps = call_js(["overview_renderer.js"], [("nextSteps", [report])])[0]
+    steps = call_js(["overview_renderer.js"], [("nextSteps", [with_server_verdicts(report)])])[0]
     assert any("at least 82,000 shots per backend" in s or "at least 82000 shots per backend" in s for s in steps), steps
 
 
@@ -257,7 +258,7 @@ def test_outlier_plus_an_unrelated_pair_lists_that_pair():
 def test_backend_rows_order_run_numbers_numerically():
     names = [f"qiskit~opt0~run{n}" for n in (1, 2, 10, 11)] + ["cirq"]
     report = _report(names, lambda a, b: "agree")
-    v = call_js(["backend_verdicts.js"], [("backendVerdicts", [report])])[0]
+    v = call_js(["backend_verdicts.js"], [("backendVerdicts", [with_server_verdicts(report)])])[0]
     rows = call_js(["overview_renderer.js"], [("backendRows", [v])])[0]
     assert [r["key"] for r in rows] == ["cirq", "qiskit~opt0~run1", "qiskit~opt0~run2", "qiskit~opt0~run10",
                                         "qiskit~opt0~run11"]

@@ -1,9 +1,10 @@
-"""backendVerdicts/headlineModel (static/js/backend_verdicts.js): per-backend counts follow
-isDisagreement exactly, keep marginal and full-distribution counts apart, and name failed
-backends."""
+"""Per-backend counts and headline model as the page reads them (backend_verdicts.js over the
+server's verdicts.py and headline.py): counts follow the pair badges exactly, keep marginal
+and full-distribution counts apart, and name failed backends."""
 from itertools import combinations
 
 from tests.unit.frontend_harness import call_js, requires_node
+from tests.unit.server_verdicts import with_server_verdicts
 
 pytestmark = requires_node
 
@@ -27,13 +28,14 @@ def _report(pairs, sims, n_shots=None, raws=None):
 
 
 def _verdicts(report):
+    report = with_server_verdicts(report)
     v, h = call_js(MODULES, [("backendVerdicts", [report]),
                              ("headlineModel", [call_js(MODULES, [("backendVerdicts", [report])])[0]])])
     return {b["key"]: b for b in v["backends"]}, v, h
 
 
 def _disagreement_counts(report):
-    pairs = report["divergence_report"]["pairwise_agreement"]
+    pairs = with_server_verdicts(report)["divergence_report"]["pairwise_agreement"]
     flags = call_js(MODULES, [("isDisagreement", [p]) for p in pairs])
     counts = {}
     for p, flag in zip(pairs, flags):
