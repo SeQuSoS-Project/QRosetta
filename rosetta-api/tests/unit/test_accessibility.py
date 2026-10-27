@@ -16,6 +16,7 @@ _VOID = {"input", "br", "img", "meta", "link", "hr", "source", "area", "col", "w
 # Modal dialog id -> the module that opens and closes it.
 MODALS = {
     "auth-modal": "auth.js",
+    "delete-account-modal": "auth.js",
     "history-modal": "history.js",
     "gen-modal": "batch.js",
     "visualizer-panel": "renderers.js",

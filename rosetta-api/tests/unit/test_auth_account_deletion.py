@@ -66,7 +66,7 @@ def test_delete_account_with_saved_circuit_and_run_history_succeeds(client, tmp_
     r = client.post(f"/history/runs?circuit_id={circuit_id}", json={"raw_results": []}, headers=headers)
     assert r.status_code == 201, r.text
 
-    r = client.delete("/auth/me", headers=headers)
+    r = client.request("DELETE", "/auth/me", json={"password": "testpass123"}, headers=headers)
     assert r.status_code == 204, r.text
 
     r = client.post("/auth/token", data={"username": "delete-me-1@example.com", "password": "testpass123"})
@@ -81,13 +81,13 @@ def test_delete_account_with_only_a_saved_circuit_succeeds(client, monkeypatch, 
                      headers=headers)
     assert r.status_code == 201, r.text
 
-    r = client.delete("/auth/me", headers=headers)
+    r = client.request("DELETE", "/auth/me", json={"password": "testpass123"}, headers=headers)
     assert r.status_code == 204, r.text
 
 
 def test_delete_account_with_no_saved_data_succeeds(client):
     headers = _register_and_login(client, "delete-me-3@example.com")
-    r = client.delete("/auth/me", headers=headers)
+    r = client.request("DELETE", "/auth/me", json={"password": "testpass123"}, headers=headers)
     assert r.status_code == 204, r.text
 
 
@@ -115,7 +115,7 @@ def test_run_cannot_link_another_accounts_circuit(client, tmp_path, monkeypatch)
     assert _stored_reports(tmp_path) == []
     assert client.get("/history/runs", headers=other).json() == []
 
-    assert client.delete("/auth/me", headers=owner).status_code == 204
+    assert client.request("DELETE", "/auth/me", json={"password": "testpass123"}, headers=owner).status_code == 204
 
 
 def test_owner_can_delete_account_when_another_run_names_its_circuit(client, tmp_path, monkeypatch):
@@ -131,7 +131,7 @@ def test_owner_can_delete_account_when_another_run_names_its_circuit(client, tmp
     db.commit()
     db.close()
 
-    assert client.delete("/auth/me", headers=owner).status_code == 204
+    assert client.request("DELETE", "/auth/me", json={"password": "testpass123"}, headers=owner).status_code == 204
     runs = client.get("/history/runs", headers=other).json()
     assert [(r["id"], r["circuit_id"]) for r in runs] == [(run_id, None)]
 
@@ -144,7 +144,7 @@ def test_failed_report_deletion_leaves_the_account_intact(client, tmp_path, monk
     def fail(keys):
         raise RuntimeError("storage down")
     monkeypatch.setattr("services.accounts.delete_run_reports", fail)
-    r = client.delete("/auth/me", headers=headers)
+    r = client.request("DELETE", "/auth/me", json={"password": "testpass123"}, headers=headers)
     assert r.status_code == 500 and r.json()["detail"] == "Failed to delete stored run reports"
     assert len(client.get("/history/runs", headers=headers).json()) == 1
     assert len(_stored_reports(tmp_path)) == 1
@@ -158,7 +158,7 @@ def test_failed_database_step_keeps_the_stored_reports(client, tmp_path, monkeyp
     def fail(db, run_ids):
         raise RuntimeError("database down")
     monkeypatch.setattr("services.accounts.delete_links", fail)
-    assert client.delete("/auth/me", headers=headers).status_code == 500
+    assert client.request("DELETE", "/auth/me", json={"password": "testpass123"}, headers=headers).status_code == 500
     assert len(client.get("/history/runs", headers=headers).json()) == 1
     assert len(_stored_reports(tmp_path)) == 1
 
@@ -188,3 +188,30 @@ def test_failed_row_deletion_keeps_the_stored_reports(client, tmp_path, monkeypa
     assert r.status_code == 500
     assert [run["id"] for run in client.get("/history/runs", headers=headers).json()] == [run_id]
     assert len(_stored_reports(tmp_path)) == 1
+
+
+def test_delete_account_needs_the_current_password(client, tmp_path, monkeypatch):
+    """A bearer token alone does not delete the account: a stolen token or a framed click
+    without the password leaves it, its circuits and its runs in place."""
+    monkeypatch.setattr("services.storage.MOCK_S3_DIR", str(tmp_path))
+    headers = _register_and_login(client, "needs-password@example.com")
+    run_id = client.post("/history/runs", json={"raw_results": []}, headers=headers).json()["id"]
+
+    assert client.request("DELETE", "/auth/me", headers=headers).status_code == 422
+    assert client.request("DELETE", "/auth/me", json={}, headers=headers).status_code == 422
+    assert client.request("DELETE", "/auth/me", json={"password": ""}, headers=headers).status_code == 422
+    for wrong in ("testpass124", "x" * 100):
+        r = client.request("DELETE", "/auth/me", json={"password": wrong}, headers=headers)
+        assert r.status_code == 403 and r.json()["detail"] == "Incorrect password"
+    assert [run["id"] for run in client.get("/history/runs", headers=headers).json()] == [run_id]
+    assert client.get("/auth/me", headers=headers).status_code == 200
+
+    r = client.request("DELETE", "/auth/me", json={"password": "testpass123"}, headers=headers)
+    assert r.status_code == 204
+    assert client.get("/auth/me", headers=headers).status_code == 401
+
+
+def test_delete_account_password_attempts_are_rate_limited():
+    from routers.auth import delete_user_me
+    from routers.rate_limit import is_rate_limited
+    assert is_rate_limited(delete_user_me)

@@ -53,6 +53,13 @@ class UserCreate(BaseModel):
             raise ValueError(f"password must be at most {PASSWORD_MAX_BYTES} bytes (UTF-8)")
         return value
 
+class AccountDeletion(BaseModel):
+    """Request body for DELETE /auth/me."""
+    model_config = ConfigDict(extra="forbid")
+
+    password: str = Field(..., min_length=1, description="The account's current password; the account is deleted only when it matches.")
+
+
 class UserResponse(BaseModel):
     """An account, as returned by /auth/register and GET /auth/me."""
     id: int = Field(..., description="Unique account id.")
