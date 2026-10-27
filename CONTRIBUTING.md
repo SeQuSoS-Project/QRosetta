@@ -478,6 +478,71 @@ baseline is normalised (references inlined, titles and descriptions dropped), so
 upgrade that keeps the same fields reports nothing, and anything it does report is a change
 older CLIs would see.
 
+## Packaging the `qrosetta` command
+
+The `qrosetta` package on PyPI holds `qrosetta_cli/` and nothing else: no dependencies, Python
+3.11 or later, and a `qrosetta` console script. The API, the frontend, the runners and the
+compilers ship as container images. `pyproject.toml` at the repository root describes the
+package.
+
+**Version.** `__version__` in `qrosetta_cli/__init__.py` is the platform version, and the
+package takes its version from it. `PLATFORM_VERSION`'s default in `rosetta-api/config.py`
+and `ARG QROSETTA_VERSION` in `rosetta-api/Dockerfile` repeat the number;
+`tests/unit/test_release_version.py` fails when the three differ, so a version change edits all
+three in one commit.
+
+**Building the wheel locally.** Keep temporary files out of `/tmp`:
+
+```bash
+python3 -m venv ~/.tmp/qr-build
+~/.tmp/qr-build/bin/pip install build==1.3.0
+# Optional: a release manifest without image digests (needs PyYAML, pydantic, pydantic-settings)
+python scripts/release/make_manifest.py --git-sha "$(git rev-parse HEAD)"
+TMPDIR=~/.tmp ~/.tmp/qr-build/bin/python -m build --outdir ~/.tmp/qr-wheel .
+python3 scripts/release/check_dist.py ~/.tmp/qr-wheel --version 1.0.0 --require-manifest
+```
+
+`check_dist.py` refuses a wheel with files outside `qrosetta_cli/`, another version, a
+dependency, or without `LICENSE`, `THIRD_PARTY_NOTICES.md`, the JSON schemas or (with
+`--require-manifest`) the manifest. The build leaves `build/` and `qrosetta.egg-info/` in the
+checkout; both are ignored by git, as is the generated `qrosetta_cli/release/manifest.json`.
+
+**Installed mode.** Install the wheel into a fresh virtual environment and run `qrosetta` from
+outside the checkout. Without `--project-dir` or `QROSETTA_PROJECT_DIR`, and with the package
+outside a checkout, `qrosetta` looks for no repository. Stack commands then need a release
+manifest that names a published digest for every distributable image. Until one exists,
+`start` and `status` exit 12 and print the source route (`git clone`, `./qrosetta build`,
+`./qrosetta start`). With published digests, every stack command writes
+`$XDG_STATE_HOME/qrosetta/compose.yaml` from the manifest: the repository's services with
+`build` removed and each `image` set by digest, under the same compose project
+(`QROSETTA_PROJECT`, default `qsimulators`) and ownership labels as a checkout. `qrosetta` pulls
+nothing yet; `start` prints the `docker pull` (or `podman pull`) command for each missing image.
+
+**A release.** `.github/workflows/release-images.yml` runs on a tag `v<version>`, and the tag
+must equal `__version__`:
+
+1. `plan` lists the images to build with `scripts/release/make_manifest.py --list-images`:
+   every service in `docker-compose.yml` that `config.py` enables, except myQLM and cuQuantum,
+   whose licences do not let the project distribute their images.
+2. `images` builds each one with `scripts/release/image.sh` (build arguments
+   `QROSETTA_GIT_SHA`, `QROSETTA_IMAGE_SOURCE=release`, `QROSETTA_RELEASE`) and runs its
+   self-test: `main.py --self-test` for runners and compilers, an import of `main` for the API,
+   `nginx -t` for nginx. Nothing is pushed.
+3. `publish-images` runs only when the repository variable `QROSETTA_PUBLISH_IMAGES` is `true`.
+   It rebuilds each image, pushes it to `ghcr.io/<owner>/qrosetta-<container name>:<version>`,
+   pulls it back by digest and self-tests it, signs it with cosign (keyless) and attaches a
+   build-provenance attestation.
+4. `wheel` writes the manifest (with the pushed digests, if any), builds the sdist and the
+   wheel, and checks them with `check_dist.py` against the tag.
+5. `publish-pypi` uploads them through PyPI Trusted Publishing (environment `pypi`), and only
+   when step 3 ran and succeeded, so no wheel on PyPI names an image that was not published.
+
+`workflow_dispatch` is a dry run: the same image builds and self-tests, then a wheel versioned
+`<release>.dev<run number>` with a manifest that names no digest goes to TestPyPI (environment
+`testpypi`). Before the first run, register `release-images.yml` as a trusted publisher of the
+`qrosetta` project on PyPI and TestPyPI with those environment names, and create both
+environments in the repository settings.
+
 ## Secrets and private files
 
 Run `scripts/install_hooks.sh` once after cloning. It installs a pinned, checksum-verified
