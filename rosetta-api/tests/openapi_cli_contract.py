@@ -57,6 +57,11 @@ EXPERIMENTAL_ROUTES = (
     "POST /experiments",
     "GET /experiments/{job_id}/bundle",
     "GET /jobs/{job_id}/circuit-texts",
+    "GET /publication/views",
+    "GET /jobs/{job_id}/publication/artifacts",
+    "POST /publication/artifacts",
+    "POST /jobs/{job_id}/publication/render",
+    "POST /publication/render",
     "GET /openapi.json",
 )
 

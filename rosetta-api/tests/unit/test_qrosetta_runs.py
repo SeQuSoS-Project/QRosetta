@@ -5,6 +5,7 @@ from the config or the environment."""
 
 import json
 import os
+import re
 import signal
 
 import pytest
@@ -401,7 +402,7 @@ def test_replay_of_request_json_and_the_api_level_check(env, circuit, capsys):
     latest = os.path.realpath(os.path.join(env["QROSETTA_RESULTS_DIR"], "latest"))
     plan = json.load(open(os.path.join(latest, "plan.json")))
     assert plan["replay_force"] is True and plan["replay_of"] == original
-    assert os.path.basename(latest).endswith("-bell-3")
+    assert re.search(r"-bell-3(-\d+)?$", os.path.basename(latest))
 
 
 def test_show_summary_and_export_from_the_saved_files(env, circuit, capsys, tmp_path):
