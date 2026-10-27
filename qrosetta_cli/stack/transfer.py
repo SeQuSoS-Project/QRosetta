@@ -128,6 +128,9 @@ def check_entry(stack, directory, entry):
     if ids is not None and config_digest not in ids:
         problems.append(f"image id {config_digest} is not the one release "
                         f"{stack.release.get('platform_version')} records")
+    foreign = sorted({t for t in archive.embedded_tags(path) if st.normalise_tag(t) != st.normalise_tag(tag)})
+    if foreign:
+        problems.append(f"the archive would tag the image {', '.join(foreign)} on load; qrosetta applies only {tag}")
     if problems:
         raise CliError(f"{entry['service']}: {'; '.join(problems)}; not loaded.", Exit.ENGINE, "archive_refused",
                        hint="qrosetta images save -o DIR (on the machine that has the images)")

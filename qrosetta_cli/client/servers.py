@@ -4,6 +4,7 @@ envelope's `server` block."""
 import json
 import os
 import stat
+import urllib.parse
 from dataclasses import dataclass
 
 from qrosetta_cli import config as cfgmod, output
@@ -53,17 +54,28 @@ def select(flag, env, cfg):
     return resolve(LOCAL, "default", cfg)
 
 
+def check_url(url, source):
+    """A server URL must be http:// or https:// with a host."""
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        raise usage(f"The server URL {url!r} (from {source}) is not an http:// or https:// URL with a host.",
+                    hint="qrosetta config show", reason="server_url")
+    return url
+
+
 def resolve(value, source, cfg):
     if "://" in value:
-        return Server(value.rstrip("/"), value.rstrip("/"), source)
+        url = check_url(value.rstrip("/"), source)
+        return Server(url, url, source)
     table = cfg.get("servers", value)
     if table is None and value != LOCAL:
         names = sorted((cfg.get("servers") or {}).keys())
         raise usage(f"Unknown server {value!r} (from {source}). Configured: {', '.join(names) or 'none'}.",
                     hint="qrosetta config show", reason="unknown_server")
     table = table or {}
-    url = table.get("url") or bind_url(cfg.get("lifecycle", "bind"))
-    return Server(value, url.rstrip("/"), source, bool(table.get("allow_insecure_http")))
+    url = check_url((table.get("url") or bind_url(cfg.get("lifecycle", "bind"))).rstrip("/"),
+                    f"[servers.{value}] url")
+    return Server(value, url, source, bool(table.get("allow_insecure_http")))
 
 
 def credentials_path(cfg, env):

@@ -748,6 +748,12 @@ Compilers are separate from the simulators: their output is a circuit, which is 
 
 *Evidence (2026-10-28).* `report_validation.py` had no count caps, the heatmaps draw n x n cells under one global lock with no timeout, and the render route allows 120 requests a minute, so one report with thousands of keys could hold every render for minutes (`test_v1_05_supplied_report_caps.py`).
 
+### What the CLI trusts
+
+*Rule.* The CLI reaches servers over http:// and https:// only (a server URL needs a host; its opener has no file, ftp or data handler), sends a token over plain HTTP only to loopback or a server with `allow_insecure_http`, and follows a redirect to another origin without the Authorization header. It names files and directories after a server's job id only when the id is a canonical UUID (else exit 12 `bad_job_id`, nothing written for it). `qrosetta images load` refuses an archive whose manifest.json RepoTags or OCI index name any tag other than the one qrosetta computes for that service, so `<engine> load` cannot retag another image.
+
+*Evidence (2026-10-28).* urllib's redirect handler copied Authorization to the redirect target; `QROSETTA_SERVER=file:///...` passed the `://` check and reached urllib's FileHandler; `job_id` went into result paths unchecked; `<engine> load` applies tags embedded in an archive and the fake engine did not model it (`test_v1_06_cli_trust_boundaries.py`).
+
 ### Name fields
 
 *Rule.* One combined validator per name type (`label_type`), never nested. A version-independent code-point list; blank names are refused.

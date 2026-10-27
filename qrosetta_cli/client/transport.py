@@ -77,18 +77,42 @@ class Transport:
         return resp
 
 
+class _SameOriginAuthRedirect(urllib.request.HTTPRedirectHandler):
+    """Follows redirects, but the Authorization header only to the origin it was sent to."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is not None and origin(newurl) != origin(req.full_url):
+            for name in [k for k in new.headers if k.lower() == "authorization"]:
+                del new.headers[name]
+            new.unredirected_hdrs.pop("Authorization", None)
+        return new
+
+
+def _opener(loopback):
+    """An opener for http and https only (no file:, ftp: or data: handlers)."""
+    opener = urllib.request.OpenerDirector()
+    for handler in (urllib.request.ProxyHandler({} if loopback else None), urllib.request.UnknownHandler(),
+                    urllib.request.HTTPHandler(), urllib.request.HTTPSHandler(context=ssl.create_default_context()),
+                    urllib.request.HTTPDefaultErrorHandler(), _SameOriginAuthRedirect(),
+                    urllib.request.HTTPErrorProcessor()):
+        opener.add_handler(handler)
+    return opener
+
+
 class HttpTransport(Transport):
-    """Requests to one server origin. Loopback URLs bypass proxies; no_proxy is honoured
-    otherwise; TLS certificates are always verified (SSL_CERT_FILE selects a bundle)."""
+    """Requests to one server origin over http or https. Loopback URLs bypass proxies; no_proxy
+    is honoured otherwise; TLS certificates are always verified (SSL_CERT_FILE selects a
+    bundle); a redirect to another origin is followed without the Authorization header."""
 
     def __init__(self, url, token=None, timeout=DEFAULT_TIMEOUT_SEC):
         self.url = url.rstrip("/")
+        parts = urllib.parse.urlsplit(self.url)
+        if parts.scheme not in ("http", "https") or not parts.hostname:
+            raise CliError(f"{self.url} is not an http:// or https:// URL with a host.", Exit.USAGE, "server_url")
         self.token = token
         self.timeout = timeout
-        handlers = [urllib.request.HTTPSHandler(context=ssl.create_default_context())]
-        if is_loopback(self.url):
-            handlers.append(urllib.request.ProxyHandler({}))
-        self._opener = urllib.request.build_opener(*handlers)
+        self._opener = _opener(is_loopback(self.url))
 
     def _request(self, method, path, query, body, headers):
         url = self.url + path
