@@ -283,7 +283,7 @@ pull NAME ...`, `pull --profile minimal`, `pull --core` or `pull --all` pulls th
 checks that the pulled image has the manifest's digest and the `org.qrosetta.image.project` and
 `org.qrosetta.service` labels of its service. When `cosign` is on the `PATH` it first checks the
 image's signature against the release workflow's identity; `--require-signature` refuses an
-image whose signature is not verified. myQLM and cuQuantum are never published (their licences,
+image whose signature is not verified. myQLM, cuQuantum and BQSKit are never published (their licences,
 `THIRD_PARTY_NOTICES.md`); `pull` names them and the checkout command that builds them. In a
 checkout `pull` exits 12 and prints the `qrosetta build` command.
 

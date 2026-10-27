@@ -15,14 +15,17 @@ files from other projects, each under its own licence.
 ## Container images
 
 Each runner and compiler image installs one simulator SDK or compiler and its dependencies. Their
-exact versions are in that image's `requirements.lock`, and each package keeps its own licence. Two
-images have terms that restrict redistribution:
+exact versions are in that image's `requirements.lock`, and each package keeps its own licence. Three
+images are built on the user's machine and not published by this project:
 
 - **myQLM** (`runners/myqlm-runner`) is distributed by Eviden under its own licence agreement. Its
   image is built on the user's machine and is not published by this project.
 - **cuQuantum** (`runners/cuquantum-runner`) uses NVIDIA's CUDA and cuStateVec libraries under
   NVIDIA's licence terms. Its image is built on the user's machine and is not published by this
   project.
+- **BQSKit** (`compilers/bqskit-compiler`) installs `bqskitrs` 0.4.1, which links NLopt (LGPL-2.1)
+  statically and has no published source for that version (below). Until upstream publishes it, the
+  image is built on the user's machine and is not published by this project.
 
 Compilers built from source (staq, Synthetiq, Quartz) are downloaded at image build time from the
 upstream sources named in each Dockerfile, under their upstream licences: staq MIT, Synthetiq MIT,

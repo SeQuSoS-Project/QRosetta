@@ -1,4 +1,4 @@
-""".github/workflows/release-images.yml, read statically: myQLM and cuQuantum are never built or
+""".github/workflows/release-images.yml, read statically: myQLM, cuQuantum and BQSKit are never built or
 pushed, the publish jobs use the trusted environments, only publish jobs get an OIDC token, the
 PyPI upload needs published images and a final version (a pre-release tag goes to TestPyPI only),
 every published image gets an SBOM attestation and its image id recorded, every image carries the
@@ -15,7 +15,7 @@ from tests.unit._qrosetta_fake import REPO
 
 WORKFLOW = REPO / ".github" / "workflows" / "release-images.yml"
 IMAGE_SCRIPT = REPO / "scripts" / "release" / "image.sh"
-NEVER_PUBLISHED = ("myqlm", "cuquantum")
+NEVER_PUBLISHED = ("myqlm", "cuquantum", "bqskit")
 
 
 @pytest.fixture(scope="module")
@@ -97,7 +97,7 @@ def test_wheel_version_is_checked_against_the_tag(wf):
     assert 'GITHUB_REF_NAME#v}" != "$base"' in _runs(wf["jobs"]["plan"])
 
 
-def test_myqlm_and_cuquantum_are_never_built_or_pushed(wf, text):
+def test_non_distributable_images_are_never_built_or_pushed(wf, text):
     code = "\n".join(line for line in text.lower().splitlines() if not line.lstrip().startswith("#"))
     for name in NEVER_PUBLISHED:
         assert name not in code
@@ -113,9 +113,11 @@ def test_myqlm_and_cuquantum_are_never_built_or_pushed(wf, text):
 
 @pytest.mark.parametrize("sid,dockerfile", [("myqlm", "runners/myqlm-runner/Dockerfile"),
                                             ("cuquantum", "runners/cuquantum-runner/Dockerfile"),
+                                            ("bqskit", "compilers/bqskit-compiler/Dockerfile"),
+                                            ("qiskit", "compilers/bqskit-compiler/Dockerfile"),
                                             ("qiskit", "runners/cuquantum-runner/Dockerfile")])
 @pytest.mark.parametrize("action", ["build", "self-test"])
-def test_the_image_script_refuses_myqlm_and_cuquantum(tmp_path, sid, dockerfile, action):
+def test_the_image_script_refuses_non_distributable_images(tmp_path, sid, dockerfile, action):
     docker = tmp_path / "docker"
     docker.write_text("#!/bin/sh\necho called > \"$(dirname \"$0\")/called\"\n")
     docker.chmod(0o755)

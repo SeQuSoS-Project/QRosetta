@@ -3,17 +3,17 @@
 #   image.sh build      builds $DOCKERFILE from the repository root as $IMAGE
 #   image.sh self-test  runs $SELF_TEST inside $IMAGE without a network
 # Environment: ID, DOCKERFILE, LABELS (space-separated key=value), VERSION, IMAGE, SELF_TEST,
-# GITHUB_SHA, GITHUB_SERVER_URL, GITHUB_REPOSITORY. myQLM and cuQuantum are never built here:
+# GITHUB_SHA, GITHUB_SERVER_URL, GITHUB_REPOSITORY. myQLM, cuQuantum and BQSKit are never built here:
 # their licences do not allow the project to distribute their images (THIRD_PARTY_NOTICES.md).
 set -euo pipefail
 
 case "${ID:?}" in
-  myqlm|cuquantum)
+  myqlm|cuquantum|bqskit)
     echo "image.sh: $ID is not distributable and is never built by the release pipeline" >&2
     exit 1 ;;
 esac
 case "${DOCKERFILE:-}" in
-  *myqlm-runner/*|*cuquantum-runner/*)
+  *myqlm-runner/*|*cuquantum-runner/*|*bqskit-compiler/*)
     echo "image.sh: $DOCKERFILE belongs to an image the release pipeline never builds" >&2
     exit 1 ;;
 esac

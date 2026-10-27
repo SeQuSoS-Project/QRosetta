@@ -527,8 +527,8 @@ must equal `__version__`, spelled as canonical PEP 440 (`check_dist.py --prerele
 other spelling):
 
 1. `plan` lists the images to build with `scripts/release/make_manifest.py --list-images`:
-   every service in `docker-compose.yml` that `config.py` enables, except myQLM and cuQuantum,
-   whose licences do not let the project distribute their images. It also records whether the
+   every service in `docker-compose.yml` that `config.py` enables, except myQLM, cuQuantum and
+   BQSKit, whose licences do not let the project distribute their images. It also records whether the
    version is a pre-release (`aN`, `bN`, `rcN` or `.devN`).
 2. `images` builds each one with `scripts/release/image.sh` (build arguments
    `QROSETTA_GIT_SHA`, `QROSETTA_IMAGE_SOURCE=release`, `QROSETTA_RELEASE`) and runs its

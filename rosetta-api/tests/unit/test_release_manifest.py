@@ -1,5 +1,5 @@
 """scripts/release/make_manifest.py: the release's services come from docker-compose.yml and
-config.py's registries; myQLM and cuQuantum are never distributable and never get a digest; the
+config.py's registries; myQLM, cuQuantum and BQSKit are never distributable and never get a digest; the
 compose file installed mode generates from the manifest differs from the repository's only in
 `build` (removed) and `image` (by digest)."""
 
@@ -20,7 +20,7 @@ _spec = importlib.util.spec_from_file_location("make_manifest", REPO / "scripts"
 mm = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(mm)
 
-NEVER_PUBLISHED = {"myqlm", "cuquantum"}
+NEVER_PUBLISHED = {"myqlm", "cuquantum", "bqskit"}
 
 
 def _digest(i):
@@ -47,16 +47,16 @@ def test_services_come_from_compose_and_the_enabled_registry(records):
         assert r["infra_host"] == compose[r["compose_service"]]["container_name"]
 
 
-def test_myqlm_and_cuquantum_are_not_distributable_and_never_built(records):
+def test_non_distributable_images_are_never_built(records):
     assert {r["id"] for r in records if not r["distributable"]} == NEVER_PUBLISHED == set(mm.NOT_DISTRIBUTABLE)
     built = mm.release_images(records)
     assert not {i["id"] for i in built} & NEVER_PUBLISHED
-    assert not any("myqlm" in i["dockerfile"] or "cuquantum" in i["dockerfile"] for i in built)
-    assert len(built) == len(records) - 2
+    assert not any(name in i["dockerfile"] for name in ("myqlm", "cuquantum", "bqskit") for i in built)
+    assert len(built) == len(records) - len(NEVER_PUBLISHED)
 
 
 @pytest.mark.parametrize("sid", sorted(NEVER_PUBLISHED))
-def test_a_digest_for_myqlm_or_cuquantum_is_refused(records, sid):
+def test_a_digest_for_a_non_distributable_image_is_refused(records, sid):
     digests = dict(_all_digests(records), **{sid: _digest(999)})
     with pytest.raises(mm.ManifestError, match=f"refusing to emit a digest for {sid}"):
         mm.build_manifest("1.0.0", "abc", digests=digests, records=records)

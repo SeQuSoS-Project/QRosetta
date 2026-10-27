@@ -31,6 +31,8 @@ NOT_DISTRIBUTABLE = {
              "transfer; the image is built on the user's machine",
     "cuquantum": "NVIDIA's CUDA and cuStateVec libraries are under NVIDIA's licence terms, which have not "
                  "been reviewed for redistribution; the image is built on the user's machine",
+    "bqskit": "bqskitrs 0.4.1 links NLopt (LGPL-2.1) statically and has no published source for that "
+              "version; the image is built on the user's machine",
 }
 DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 REPOSITORY = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
