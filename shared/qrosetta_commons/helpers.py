@@ -1048,9 +1048,18 @@ class ExecutionSlots:
         return result
 
 
+def register_health_endpoint(app) -> None:
+    """``GET /health``: 200 while the serving process answers. It reads nothing and never
+    waits for an execution slot, so it answers while a run is in progress."""
+
+    @app.get("/health")
+    async def service_health():
+        return {"status": "ok"}
+
+
 def register_runner_endpoints(app, process_run, process_run_measured, max_concurrent=None,
                               capabilities=None):
-    """Register ``/run`` and ``/run_measured`` on a runner app.
+    """Register ``/run``, ``/run_measured`` and ``/health`` on a runner app.
 
     Both endpoints share one ``ExecutionSlots`` (``RUNNER_MAX_CONCURRENT``, default 1), so
     concurrent requests to this runner queue instead of sharing its CPU and memory.
@@ -1063,6 +1072,7 @@ def register_runner_endpoints(app, process_run, process_run_measured, max_concur
 
     slots = ExecutionSlots(max_concurrent)
     app.router.add_event_handler("startup", _image_identity.load)
+    register_health_endpoint(app)
 
     @app.get("/capabilities")
     async def runner_capabilities():

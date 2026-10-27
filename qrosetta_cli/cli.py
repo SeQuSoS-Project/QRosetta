@@ -267,7 +267,7 @@ def build_parser():
     p.add_argument("services", nargs="*", metavar="NAME", help="service keys (default: every service with an image)")
     p.add_argument("--profile", metavar="P", help="start this profile's services (core always added)")
     p.add_argument("--detach", "-d", action="store_true",
-                   help="return when every started runner and compiler is ready (up to 180 s)")
+                   help="return when the API and every started runner and compiler are ready (up to 180 s)")
     p.add_argument("--on-exit", choices=EXIT_ACTIONS, help="what Ctrl-C, SIGTERM or SIGHUP does (default: "
                    "$QROSETTA_ON_EXIT, config lifecycle.on_exit, else ask on a terminal, standby otherwise)")
     p.add_argument("--bind", metavar="ADDR:PORT", help="publish the web server here (default: config "

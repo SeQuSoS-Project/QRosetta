@@ -94,6 +94,7 @@ def test_native_components_and_build_files_are_reported(monkeypatch):
     body = TestClient(app).get("/capabilities").json()
     assert body["available"] is True and body["native_components"][0]["name"] == "tool"
     assert body["build_files"] == {"Dockerfile": "ab" * 32} and "sdk_versions" in body
+    assert TestClient(app).get("/health").json() == {"status": "ok"}
 
 
 def test_build_file_hashes_cover_every_file_in_the_directory(tmp_path, monkeypatch):

@@ -246,6 +246,16 @@ def check_live(rep, config, transport, env=None):
             rep.add("server", "PASS", handshake.describe(block))
         except CliError as exc:
             rep.add("server", "WARN", exc.message, exc.hint or "")
+    try:
+        api = handshake.readiness(transport, block)
+    except CliError as exc:
+        api = (False, exc.message)
+    if api is None:
+        rep.add("ready", "SKIP", "the running server has no readiness check (GET /ready)")
+    elif api[0]:
+        rep.add("ready", "PASS", "the API's database and job storage work (GET /ready)")
+    else:
+        rep.add("ready", "FAIL", api[1], "qrosetta logs api --tail 50")
     headers = hostload.auth_headers(env or {})
     for path, label in (("/runners", "runners"), ("/compilers", "compilers")):
         try:

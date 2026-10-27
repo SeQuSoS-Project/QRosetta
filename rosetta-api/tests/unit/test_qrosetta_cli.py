@@ -301,6 +301,46 @@ def test_start_detach_names_runners_that_never_became_ready(fake, project, env, 
     assert "cannot resolve qiskit on the internal network" in err and err.strip().splitlines()[-1] == "qrosetta doctor"
 
 
+READY_BLOCK = {"platform_version": "2.0.0", "api_levels": [1, 1], "features": {"readiness": 1}}
+
+
+def test_start_detach_waits_for_the_api_to_be_ready(fake, project, env, capsys, monkeypatch):
+    monkeypatch.setattr(serve, "_sleep", lambda s: None)
+    answers = iter([(503, {"detail": "Not ready: the database does not answer."}),
+                    (200, {"status": "ready", "checks": {}})])
+
+    class Settling(FakeServer):
+        def request(self, method, path, query=None, body=None, headers=None, timeout=None):
+            if path == "/ready":
+                self.status["/ready"] = next(answers)
+            return super().request(method, path, query, body, headers, timeout)
+
+    server = Settling(fresh=True, block=READY_BLOCK)
+    assert cli(_stopped(fake), project, env, ["start", "-d"], server=server) == 0
+    assert [p for _, p, _, _ in server.requests].count("/ready") == 2
+    assert "qiskit ready" in capsys.readouterr().err
+
+
+def test_start_detach_names_the_reason_the_api_never_became_ready(fake, project, env, capsys, monkeypatch):
+    clock = iter(range(0, 10000, 50))
+    monkeypatch.setattr(serve, "_clock", lambda: next(clock))
+    monkeypatch.setattr(serve, "_sleep", lambda s: None)
+    server = FakeServer(fresh=True, block=READY_BLOCK,
+                        status={"/ready": (503, {"detail": "Not ready: the job storage directory does not "
+                                                           "accept new files."})})
+    assert cli(_stopped(fake), project, env, ["start", "-d"], server=server) == Exit.ENGINE
+    err = capsys.readouterr().err
+    assert "was not ready within" in err and "job storage directory does not accept new files" in err
+    assert not any(p == "/runners" for _, p, _, _ in server.requests)
+
+
+def test_start_detach_skips_readiness_on_a_server_without_it(fake, project, env, monkeypatch):
+    monkeypatch.setattr(serve, "_sleep", lambda s: None)
+    server = FakeServer(fresh=True, block={**READY_BLOCK, "features": {}})
+    assert cli(_stopped(fake), project, env, ["start", "-d"], server=server) == 0
+    assert "/ready" not in [p for _, p, _, _ in server.requests]
+
+
 def test_start_adds_only_missing_services_and_respects_runs_in_flight(fake, project, env, capsys, monkeypatch):
     monkeypatch.setattr(serve, "_sleep", lambda s: None)
     busy = FakeServer(gate={"exclusive_running": True, "shared_running": 0}, fresh=True)

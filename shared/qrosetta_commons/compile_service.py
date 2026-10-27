@@ -14,7 +14,8 @@ from qrosetta_commons.cpu import apply_cpu_affinity
 from qrosetta_commons.helpers import (
     GATE_METRICS_FROM_QASM, IMAGE_GIT_SHA, MAX_QUBITS_COMPILE, ExecutionSlots, _stamp_code_sha,
     check_qubits_limit, count_qasm_gates_and_depth, count_qasm_gates_by_name,
-    add_file_arguments, batch_environment, get_num_qubits_from_qasm, get_sdk_versions, run_cli_job,
+    add_file_arguments, batch_environment, get_num_qubits_from_qasm, get_sdk_versions,
+    register_health_endpoint, run_cli_job,
 )
 
 COMPILE_MAX_QUBITS = MAX_QUBITS_COMPILE
@@ -124,7 +125,7 @@ def _with_build_record(result):
 
 
 def register_compiler_endpoint(app, process_compile, max_concurrent=None) -> None:
-    """Register ``POST /compile`` and ``GET /capabilities`` (available, with
+    """Register ``POST /compile``, ``GET /health`` and ``GET /capabilities`` (available, with
     ``compiler_versions()``). Compile requests share one ``ExecutionSlots`` queue of
     ``COMPILER_MAX_CONCURRENT`` slots (default 2; compiles are not timed) and each runs in a
     killable spawned process, as runner requests do, without the timing instrument."""
@@ -134,6 +135,7 @@ def register_compiler_endpoint(app, process_compile, max_concurrent=None) -> Non
         max_concurrent = int(os.getenv("COMPILER_MAX_CONCURRENT", "2"))
     slots = ExecutionSlots(max_concurrent)
     app.router.add_event_handler("startup", _image_identity.load)
+    register_health_endpoint(app)
 
     @app.get("/capabilities")
     async def compiler_capabilities():

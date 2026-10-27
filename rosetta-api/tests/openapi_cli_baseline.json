@@ -5618,6 +5618,50 @@
     "status": 200
    }
   },
+  "GET /ready": {
+   "parameters": {},
+   "request": null,
+   "response": {
+    "media": [
+     "application/json"
+    ],
+    "schema": {
+     "properties": {
+      "checks": {
+       "additionalProperties": {
+        "enum": [
+         "failed",
+         "ok",
+         "timeout"
+        ],
+        "type": [
+         "string"
+        ]
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "status": {
+       "enum": [
+        "ready"
+       ],
+       "type": [
+        "string"
+       ]
+      }
+     },
+     "required": [
+      "checks",
+      "status"
+     ],
+     "type": [
+      "object"
+     ]
+    },
+    "status": 200
+   }
+  },
   "GET /runners": {
    "parameters": {
     "query:fresh": {

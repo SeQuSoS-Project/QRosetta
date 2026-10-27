@@ -59,3 +59,18 @@ def check(config, features=()):
             raise CliError(f"This server does not offer {fname}@{minimum}.", Exit.INCOMPATIBLE,
                            "feature_missing", hint=UPGRADE_HINT)
     return block
+
+
+def readiness(transport, block, timeout=5):
+    """(ready, detail) from GET /ready: whether the server's database and job storage work, and
+    the server's reason when they do not. None when the server does not offer it (no
+    `readiness` feature in its handshake block)."""
+    offered = (block or {}).get("features") or {}
+    if not isinstance(offered.get("readiness"), int):
+        return None
+    resp = transport.request("GET", "/ready", timeout=timeout)
+    if resp.status == 200:
+        return True, None
+    data = resp.json()
+    detail = data.get("detail") if isinstance(data, dict) else None
+    return False, detail if isinstance(detail, str) else f"GET /ready answered HTTP {resp.status}"
