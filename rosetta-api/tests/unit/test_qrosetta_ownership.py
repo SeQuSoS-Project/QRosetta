@@ -149,6 +149,67 @@ def test_a_wrong_confirmation_deletes_nothing(project, tmp_path):
     assert not f.destructive_calls() and "qr_db" in f.volumes
 
 
+@pytest.mark.parametrize("argv,busy,answer", [
+    (["remove", "--all", "--confirm", "qr"], False, ""), (["rm", "--all"], False, "qr\n"),
+    (["remove", "--all", "--confirm", "qr", "--force"], True, "")])
+def test_remove_all_lists_everything_first_and_never_touches_a_decoy(project, tmp_path, capsys, argv, busy, answer):
+    f, decoys = decoyed()
+    f.calls.clear()
+    server = FakeServer(gate=BUSY) if busy else None
+    assert run(f, project, argv + ["--json"], tmp_path, server=server, answer=answer) == Exit.OK
+    check_calls(f, decoys)
+    out, err = capsys.readouterr()
+    listing = err[:err.index("Stopping")]
+    assert "--all removes these objects of Quantum Rosetta's compose project `qr`:" in listing
+    assert "containers (3): braket-runner (running), nginx-reverse-proxy, rosetta-api (running)" in listing
+    assert "networks (1): qr_isolated_net" in listing and "images (1, " in listing and "qr-qiskit_runner" in listing
+    assert "data volumes: qr_db (32.9 MiB)" in listing
+    assert "qr-api has no qrosetta label" in listing and "is also tagged registry.example/team/nginx:1" in listing
+    assert "Containers of another project use this stack's container names" in listing
+    assert "rm -f qiskit-runner" in listing and "Pod pod-mixed also holds containers" in listing
+    assert "Kept: results directories" in listing
+    assert f.commands("rmi") == [["rmi", "i-qiskit"]] and f.commands("volume", "rm") == [["volume", "rm", "qr_db"]]
+    assert f.commands("network", "rm") == [["network", "rm", "n-qr_isolated_net"]]
+    assert not {"c-rosetta-api", "c-nginx-reverse-proxy", "c-braket-runner", "i-qiskit"} & (set(f.containers)
+                                                                                          | set(f.images))
+    present = set(f.containers) | set(f.networks) | set(f.volumes) | set(f.images) | set(f.pods)
+    assert {d for d in decoys if d.startswith(("c-", "n-", "i-")) or d in ("myapp_db", "mixed")} <= present
+    data = json.loads(out)["data"]
+    assert data["all"] is True and data["images"] is True and data["data"] is True
+    assert data["removed"]["volumes"] == ["qr_db"] and data["removed"]["images"] == ["qr-qiskit_runner"]
+
+
+@pytest.mark.parametrize("argv,answer,tty", [(["remove", "--all"], "yes\n", True),
+                                             (["remove", "--all", "--confirm", "myapp"], "", True),
+                                             (["remove", "--all"], "", False)])
+def test_remove_all_without_the_project_name_deletes_nothing(project, tmp_path, capsys, argv, answer, tty):
+    f, decoys = decoyed()
+    if tty:
+        assert run(f, project, argv, tmp_path, answer=answer) == Exit.USAGE
+    else:
+        env = {"QROSETTA_PROJECT": "qr", "HOME": str(tmp_path), "XDG_RUNTIME_DIR": str(tmp_path / "run"),
+               "XDG_STATE_HOME": str(tmp_path / "state"), "XDG_CONFIG_HOME": str(tmp_path / "config")}
+        assert main(argv, checkout=str(project), env=env, tty=False,
+                    engine_factory=lambda d: Engine(f.engine, d, run=f, popen=f.popen, env=env),
+                    transport_factory=Unreachable()) == Exit.USAGE
+    assert not f.destructive_calls() and "qr_db" in f.volumes and "i-qiskit" in f.images
+    err = capsys.readouterr().err
+    assert "--all removes these objects" in err and "qrosetta remove --all --confirm qr" in err
+
+
+def test_remove_all_refuses_while_runs_are_in_flight(project, tmp_path, capsys):
+    f, decoys = decoyed()
+    assert run(f, project, ["remove", "--all", "--confirm", "qr"], tmp_path, server=FakeServer(gate=BUSY)) == Exit.BUSY
+    assert not f.destructive_calls() and "--force" in capsys.readouterr().err
+
+
+def test_remove_all_ends_with_what_it_removed(project, tmp_path, capsys):
+    f, decoys = decoyed()
+    assert run(f, project, ["remove", "--all", "--confirm", "qr"], tmp_path) == Exit.OK
+    assert capsys.readouterr().out.strip() == ("Removed the containers, pods, networks, images (100 B) and data of "
+                                               "Quantum Rosetta (compose project qr).")
+
+
 def test_foreign_volume_with_this_stacks_volume_name_is_never_deleted(project, tmp_path, capsys):
     f, decoys = decoyed(volume_is_foreign=True)
     assert run(f, project, ["remove", "--data", "--confirm", "qr"], tmp_path) == 0

@@ -490,7 +490,8 @@ class Server:
     def _exit(self, action):
         with self.notice("remove" if action == "remove" else "stop", None, True):
             if action == "remove":
-                return actions.remove_stack(self.engine, self.stack)
+                actions.remove_stack(self.engine, self.stack)
+                return 0
             return actions.report_left(actions.stop_stack(self.engine, self.stack))
 
 

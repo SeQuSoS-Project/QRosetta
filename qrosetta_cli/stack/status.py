@@ -5,7 +5,7 @@ now gives the container's service another configuration."""
 
 from qrosetta_cli.errors import CliError
 from qrosetta_cli.output import progress, result
-from qrosetta_cli.stack import actions
+from qrosetta_cli.stack import actions, quota
 from qrosetta_cli.stack import ownership as own
 from qrosetta_cli.stack import project as st
 from qrosetta_cli.stack.actions import human_bytes, parse_size
@@ -169,10 +169,13 @@ def status(ctx, engine, stack, mode):
     volumes = found.volumes
     sizes = actions.volume_sizes(engine) if volumes else {}
     result("Data: " + (", ".join(f"{v.name} {human_bytes(sizes.get(v.name))}" for v in volumes) if volumes else "none"))
+    cpu = quota.block(stack, ctx.env)
+    if not cpu["enabled"]:
+        result(quota.describe_off(cpu["since"]))
     return {"url": url, "published": address, "project": stack.name, "project_dir": stack.project_dir,
             "mode": mode.name, "engine": {"name": engine.name, "version": engine.version or None,
                                           "rootless": engine.rootless if engine.info else None},
-            "server": block, "services": rows,
+            "server": block, "services": rows, "cpu_quota": cpu,
             "data_volumes": [{"name": v.name, "bytes": sizes.get(v.name)} for v in volumes],
             "foreign": own.leftovers(engine, found)}
 

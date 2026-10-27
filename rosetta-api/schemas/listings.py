@@ -163,6 +163,7 @@ class RunnerRow(FreshProbe):
     qubit_ordering: PerEndpoint = Field(..., description="'lsb' or 'msb' per endpoint.")
     default_selected: bool = Field(..., description="A run that names no backends uses this runner when it is available.")
     profiles: List[str] = Field(..., description="Built-in profiles the runner belongs to.")
+    versions: Optional[Dict[str, Any]] = Field(None, description="image_git_sha, image_identity (source, release, git_sha) and build_files as the running image's /capabilities reports them; null when the runner did not report them.")
     backend: Optional[str]
     version: Optional[str]
 
@@ -177,7 +178,7 @@ class CompilerRow(FreshProbe):
     available: bool
     unavailable_reason: Optional[str]
     optimization_levels: Dict[str, str] = Field(..., description="Level (as a string) -> pipeline description.")
-    versions: Optional[Dict[str, Any]] = Field(..., description="sdk_versions, native_components, build_files and image_git_sha as the running image reports them; null when no long-lived service answered.")
+    versions: Optional[Dict[str, Any]] = Field(..., description="sdk_versions, native_components, build_files, image_git_sha and image_identity as the running image reports them; null when no long-lived service answered.")
     default_selected: bool
     profiles: List[str]
     backend: Optional[str]

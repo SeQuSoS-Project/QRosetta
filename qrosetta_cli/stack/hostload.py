@@ -11,27 +11,14 @@ import secrets
 import threading
 from contextlib import contextmanager
 
-from qrosetta_cli import config as cfgmod, output
+from qrosetta_cli import output
 from qrosetta_cli.errors import CliError
+from qrosetta_cli.localstack import read_token, token_headers, token_path
 
-TOKEN_FILE = "lifecycle.token"
 COMPOSE_VAR = "QROSETTA_LIFECYCLE_TOKEN_PATH"
 ROUTE = "/local/host-load"
 HEARTBEAT_SEC = 10
 REQUEST_TIMEOUT_SEC = 5
-
-
-def token_path(env):
-    return os.path.join(cfgmod.qr_dir("runtime", env), TOKEN_FILE)
-
-
-def read_token(env):
-    """The token, or None when the file is missing, unreadable or empty."""
-    try:
-        with open(token_path(env), encoding="utf-8") as fh:
-            return fh.read().strip() or None
-    except OSError:
-        return None
 
 
 def ensure_token(env):
@@ -63,8 +50,7 @@ def compose_env(env):
 
 
 def auth_headers(env):
-    token = read_token(env)
-    return {"Authorization": f"Bearer {token}"} if token else {}
+    return token_headers(env)
 
 
 class Notice:

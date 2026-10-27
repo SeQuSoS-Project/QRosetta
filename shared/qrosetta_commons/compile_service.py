@@ -137,7 +137,8 @@ def register_compiler_endpoint(app, process_compile, max_concurrent=None) -> Non
 
     @app.get("/capabilities")
     async def compiler_capabilities():
-        return {"available": True, "reason": None, "device": None, **compiler_versions()}
+        return {"available": True, "reason": None, "device": None, **compiler_versions(),
+                "image_identity": _image_identity.capability_fields()["image_identity"]}
 
     @app.post("/compile")
     async def compile_circuit(payload: CompilePayload):

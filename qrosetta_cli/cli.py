@@ -46,11 +46,13 @@ Ctrl-C stops waiting; the job keeps running, and `qrosetta wait job:ID` saves it
 
 SPECS = {
     "start": Spec("stack.commands:cmd_start", "start@0", "start the stack, or add services to a running one",
-                  ("qrosetta start -d --profile minimal", "qrosetta start", "qrosetta start -d qiskit cirq")),
+                  ("qrosetta start -d --profile minimal", "qrosetta start", "qrosetta start -d qiskit cirq",
+                   "qrosetta start -d --no-cpu-quota")),
     "stop": Spec("stack.commands:cmd_stop", "stop@0", "standby: stop the containers, keep everything",
                  ("qrosetta stop", "qrosetta stop --force")),
     "remove": Spec("stack.commands:cmd_remove", "remove@0", "remove containers, pods and networks; optionally images and data",
-                   ("qrosetta remove", "qrosetta remove --images", "qrosetta remove --data --confirm qsimulators")),
+                   ("qrosetta remove", "qrosetta remove --images", "qrosetta remove --data --confirm qsimulators",
+                    "qrosetta remove --all --confirm qsimulators")),
     "status": Spec("stack.commands:cmd_status", "status@1", "services, state, memory, image provenance and URL",
                    ("qrosetta status", "qrosetta status --json")),
     "logs": Spec("stack.commands:cmd_logs", "logs@0", "container logs, passed through",
@@ -254,6 +256,13 @@ def build_parser():
     p.add_argument("--yes", "-y", action="store_true", help="start services even while runs are in flight")
     p.add_argument("--allow-emulation", action="store_true",
                    help="start on a host that is not Linux x86_64 (timings carry no promise)")
+    quota_flags = p.add_mutually_exclusive_group()
+    quota_flags.add_argument("--no-cpu-quota", dest="cpu_quota", action="store_false", default=None,
+                             help="start every service without its compose CPU limit, for hosts that do not "
+                             "delegate the cgroup cpu controller; memory limits stay, results record it, and "
+                             "the choice is kept for later starts")
+    quota_flags.add_argument("--cpu-quota", dest="cpu_quota", action="store_true", default=None,
+                             help="start with the compose CPU limits again (the default)")
 
     p = _add(sub, "stop")
     p.add_argument("--force", action="store_true", help="stop even while runs are in flight (they end)")
@@ -261,7 +270,9 @@ def build_parser():
     p = _add(sub, "remove", aliases=("rm",))
     p.add_argument("--images", action="store_true", help="also remove the stack's images")
     p.add_argument("--data", action="store_true", help="also delete the database and saved run reports")
-    p.add_argument("--confirm", metavar="NAME", help="the compose project's name, which --data requires "
+    p.add_argument("--all", action="store_true", help="containers, networks, the stack's images and its data "
+                   "volume in one command; lists them first and needs --confirm")
+    p.add_argument("--confirm", metavar="NAME", help="the compose project's name, which --data and --all require "
                    "(on a terminal it may be typed at the prompt instead)")
     p.add_argument("--force", action="store_true", help="remove even while runs are in flight (they end)")
 

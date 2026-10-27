@@ -177,6 +177,8 @@ without it. Locally, leaving it empty generates a random key per process.
 ./qrosetta remove                    # remove containers and networks; keep images and data
 ./qrosetta remove --images           # also remove the images (about 20 GB for a full build)
 ./qrosetta remove --data --confirm qsimulators   # also delete the database and saved runs
+./qrosetta remove --all --confirm qsimulators    # containers, networks, images and data, listed first
+./qrosetta start -d --no-cpu-quota   # start without the compose CPU limits (hosts without cpu delegation)
 ./qrosetta profiles                  # profiles and their services
 ./qrosetta info                      # server version, API levels, request defaults and limits
 ./qrosetta backends                  # simulators: availability, levels, precision, bit order, profiles
@@ -221,7 +223,27 @@ On standby the containers are stopped and hold no memory; `start` brings them ba
 10 seconds. Running and idle, the 24 containers used 3.0 to 6.1 GiB (`qrosetta status`, page
 cache included). `remove` keeps the images and the `qsimulators_rosetta_db_data` volume, which
 holds the SQLite database (accounts, saved circuits, run history) and the saved run reports. Results of jobs that were not saved are lost
-whenever the API container stops.
+whenever the API container stops. `remove --all` removes the containers, pods, networks, this
+stack's images and its data volume in one command: it first lists every object with its size and
+what it leaves alone, then needs `--confirm <project>` or, on a terminal, the project name typed
+at its prompt. Results directories, the config file and qrosetta's state and cache directories
+stay.
+
+Each runner and compiler runs under a 1.0-CPU quota (`cpus: "1.0"` in `docker-compose.yml`). A
+rootless engine can set it only when systemd delegates the cgroup `cpu` controller to your user;
+`qrosetta doctor` checks this, and on a host that does not delegate it `start` stops before
+compose with the drop-in that delegates it (needs sudo and a reboot). `start --no-cpu-quota`
+runs every service without its CPU limit instead: qrosetta writes a compose override,
+`~/.local/state/qrosetta/compose.no-cpu-quota.yaml`, that resets only
+`deploy.resources.limits.cpus` (memory limits stay; `docker-compose.yml` is not edited), and
+needs Docker Compose 2.24 or later for its `!reset` tag. The choice is kept as a stack setting
+(`~/.local/state/qrosetta/stack-settings.json`), so later `start`, `status` and `logs` give
+compose the same files; `[lifecycle] cpu_quota = false` in the config makes it the default, and
+`start --cpu-quota` restores the quota. `start` warns every time it starts without the quota,
+`status` and `config show` print the setting, and plan.json records it with the override's
+sha256. Runs record it themselves: each result has `cpu_environment.cpu_quota_cores` null, the
+summary carries the "no CPU quota" timing caveat, and `selftest` turns its `cpu_quota_cores` FAIL
+into a WARN. Timings from such a stack are not comparable with runs under the quota.
 
 `qrosetta` acts only on what carries two labels for its project: compose's
 `com.docker.compose.project` and `org.qrosetta.project`, which `docker-compose.yml` puts on every
