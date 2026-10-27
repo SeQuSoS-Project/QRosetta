@@ -130,7 +130,7 @@ Requires Docker Engine 20.10+ and Docker Compose v2.
 git clone https://github.com/SeQuSoS-Project/qrosetta.git
 cd qrosetta
 cp .env.example .env      # the cloud credentials in it are needed only for deployment
-./scripts/safe_boot.sh    # or: docker compose up --build
+./scripts/safe_boot.sh    # builds the images, then runs ./qrosetta start
 ```
 
 The first build takes a while: it compiles dependencies for 16 separate containers.
@@ -142,6 +142,49 @@ The first build takes a while: it compiles dependencies for 16 separate containe
 
 `SECRET_KEY` must be set whenever `EXECUTION_MODE` is not `local`; the API refuses to start
 without it. Locally, leaving it empty generates a random key per process.
+
+### Starting and stopping
+
+`./qrosetta` (Python 3, standard library only) starts, stops and removes the local stack:
+
+```bash
+./qrosetta build [service ...]   # build images with scripts/safe_boot.sh (default: every enabled service)
+./qrosetta start                 # start in this terminal and follow the logs
+./qrosetta start --detach        # start in the background and return
+./qrosetta status                # state and memory per service, image and data disk use, URL
+./qrosetta logs [service]        # follow the logs
+./qrosetta stop                  # standby: stop every container, keep containers, images and data
+./qrosetta remove                # remove containers and networks; keep images and data
+./qrosetta remove --images       # also remove the images (about 20 GB for a full build)
+./qrosetta remove --data         # also delete the database and saved runs; asks you to type 'delete'
+```
+
+`start` never builds. It names the services that have no image (`qrosetta build <service>`
+builds one) and starts the rest; without the nginx or API image it starts nothing. When it
+stops, it runs the exit action. On Ctrl-C it asks "Keep on standby or remove?" and takes standby
+after 10 seconds without an answer. SIGTERM and SIGHUP, which VS Code sends when a task is
+stopped or its terminal closed, put the stack on standby. `--on-exit standby|remove|ask` or
+`QROSETTA_ON_EXIT` sets the action; without a terminal, `ask` means standby. Pressing Ctrl-C
+again while the containers stop prints a warning; a third Ctrl-C stops waiting and lists the
+containers still running.
+
+On standby the containers are stopped and hold no memory; `start` brings them back in about
+10 seconds. Running and idle, the 24 containers use about 6 GiB. `remove` keeps the images and
+the `<project>_rosetta_db_data` volume, which holds the SQLite database (accounts, saved
+circuits, run history) and the saved run reports. Results of jobs that were not saved are lost
+whenever the API container stops.
+
+`stop` and `remove` find containers by their compose project label. They also act on containers
+of another compose project (an older checkout) that use this stack's container names, because
+those block `start`. Docker and podman both work; `QROSETTA_ENGINE=docker|podman` chooses one
+when both are installed. Podman needs Docker Compose v2 as its compose provider
+(`podman compose version` prints "Docker Compose version"). `--project-dir` or `QROSETTA_HOME`
+points the command at another directory holding the compose file; the project name follows
+Compose (`COMPOSE_PROJECT_NAME`, else the directory name).
+
+In VS Code, *Terminal → Run Task → Quantum Rosetta: start* (`.vscode/tasks.json`) runs
+`qrosetta start` in a terminal panel; stopping the task puts the stack on standby. The other
+tasks run `stop`, `remove` and `status`.
 
 ### Deploying
 
@@ -174,6 +217,8 @@ run them; see the README there.
 ```text
 .
 ├── docker-compose.yml       Orchestration, healthchecks, resource limits
+├── qrosetta                 Start, stop and remove the local stack (runs qrosetta_cli/)
+├── qrosetta_cli/            The command's package (standard library only)
 ├── nginx/                   Reverse proxy for the local stack
 ├── infra/                   Rahti manifests and the Cloud Run frontend image
 ├── rosetta-api/             The orchestrator
