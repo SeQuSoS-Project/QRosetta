@@ -82,6 +82,7 @@ function _createdNotice(token, expiresAt) {
     const row = _el('div', 'flex items-center gap-2');
     const field = /** @type {HTMLInputElement} */ (_el('input', 'flex-1 min-w-0 font-mono text-xs border border-gray-300 rounded px-2 py-1 bg-white'));
     field.readOnly = true;
+    field.setAttribute('aria-label', 'Share link');
     field.value = shareUrl(token);
     field.onfocus = () => field.select();
     row.appendChild(field);

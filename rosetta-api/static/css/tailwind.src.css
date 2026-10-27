@@ -12,7 +12,7 @@
   .qr-popover { @apply flex flex-col bg-white border border-indigo-200 rounded-lg shadow-xl overflow-hidden; }
   .qr-popover-header { @apply flex flex-shrink-0 items-center justify-between gap-2 px-3 py-2 bg-indigo-50 border-b border-indigo-100; }
   .qr-popover-title { @apply text-sm font-semibold text-indigo-900; }
-  .qr-header-link { @apply text-xs text-indigo-700 underline hover:text-indigo-900; }
+  .qr-header-link { @apply inline-flex min-h-6 items-center text-xs text-indigo-700 underline hover:text-indigo-900; }
   .qr-popover-body { @apply flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 divide-y divide-gray-100; }
   .qr-popover-footer { @apply flex flex-shrink-0 flex-wrap gap-2 px-3 py-2 bg-gray-50 border-t border-gray-200; }
   .qr-section { @apply py-3 space-y-1.5; }
@@ -30,7 +30,7 @@
   .qr-option { @apply flex cursor-pointer items-start gap-2 text-sm text-gray-800; }
   .qr-option > input { @apply mt-0.5 flex-shrink-0; }
   .qr-option-help { @apply mt-0.5 block text-xs leading-snug text-gray-500; }
-  .qr-action { @apply rounded border border-indigo-200 bg-white px-2 py-0.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50; }
+  .qr-action { @apply inline-flex min-h-6 items-center rounded border border-indigo-200 bg-white px-2 py-0.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50; }
 
   /* Buttons disabled while a run or a circuit load is in progress. */
   [data-busy-disable]:disabled { @apply cursor-not-allowed opacity-50; }
@@ -129,6 +129,12 @@
 /* A busy button that keeps keyboard focus: aria-disabled instead of disabled. */
 [data-busy-disable][aria-disabled="true"] { cursor: not-allowed; opacity: 0.5; }
 #btn-run[aria-disabled="true"] { background-color: #9ca3af; box-shadow: none; cursor: not-allowed; }
+
+/* Below the two-column width the page scrolls as a whole: room under the content for the
+   history-save notice, so the last controls can scroll clear of it. */
+@media (max-width: 1023px) {
+  body:has(#history-save-notice:not(.hidden)) footer { margin-bottom: 8rem; }
+}
 
 /* Run source segments: the focus ring sits inside the segment, in the segment's text colour. */
 input[name="run-source"]:focus-visible + .qr-seg-option { outline: 2px solid currentColor; outline-offset: -4px; }

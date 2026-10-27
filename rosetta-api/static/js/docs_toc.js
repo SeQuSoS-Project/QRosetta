@@ -1,4 +1,5 @@
-// Manual page (docs.html): highlights the table-of-contents entry of the section in view.
+// Manual page (docs.html): highlights the table-of-contents entry of the section in view, and
+// makes each table's sideways-scrolling box a named region that takes keyboard focus.
 // Loaded as a classic script with defer; no imports.
 
 (function () {
@@ -14,4 +15,17 @@
     }
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
+
+    var headings = Array.prototype.slice.call(document.querySelectorAll('.doc-prose h2, .doc-prose h3, .doc-prose h4'));
+    var seen = {};
+    Array.prototype.forEach.call(document.querySelectorAll('.table-scroll'), function (box) {
+        var name = 'Table';
+        headings.forEach(function (h) {
+            if (h.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING) name = 'Table: ' + h.textContent.trim();
+        });
+        seen[name] = (seen[name] || 0) + 1;
+        box.tabIndex = 0;
+        box.setAttribute('role', 'region');
+        box.setAttribute('aria-label', seen[name] > 1 ? name + ' (' + seen[name] + ')' : name);
+    });
 })();

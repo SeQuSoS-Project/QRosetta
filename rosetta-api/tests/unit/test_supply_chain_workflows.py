@@ -1,6 +1,8 @@
-"""The supply-chain workflows, read statically: CodeQL, Scorecard, the monthly rebuild check, the
-actionlint job and .github/dependabot.yml. Actions are pinned to commits with least-privilege
-tokens; the rebuild check builds no non-distributable image and pushes nothing; Dependabot
+"""The workflows and .github/dependabot.yml, read statically. Every action in every workflow is
+pinned to a commit, one commit per action; checkouts keep no token; no workflow takes a
+pull_request_target or workflow_run trigger or expands an expression inside a script; ci.yml and
+the supply-chain workflows hold least-privilege tokens; the CLI matrix equals the package's
+classifiers. The rebuild check builds no non-distributable image and pushes nothing; Dependabot
 groups its updates and labels runner and compiler updates sealed-image. Also the Trivy scan and
 the OCI labels of scripts/release/image.sh, oci_labels.py and safe_boot.sh."""
 
@@ -17,6 +19,7 @@ from tests.unit._qrosetta_fake import REPO
 
 WORKFLOWS = REPO / ".github" / "workflows"
 OWNED = ("codeql.yml", "scorecard.yml", "rebuild-check.yml")
+ALL = tuple(sorted(p.name for p in WORKFLOWS.glob("*.y*ml")))
 IMAGE_SCRIPT = REPO / "scripts" / "release" / "image.sh"
 SAFE_BOOT = REPO / "scripts" / "safe_boot.sh"
 NEVER_PUBLISHED = ("myqlm", "cuquantum", "bqskit")
@@ -38,7 +41,7 @@ def _uses(text):
     return USES.findall(text)
 
 
-@pytest.mark.parametrize("name", OWNED)
+@pytest.mark.parametrize("name", ALL)
 def test_actions_are_pinned_to_commits_with_their_release(name):
     found = _uses((WORKFLOWS / name).read_text())
     assert found
@@ -47,9 +50,9 @@ def test_actions_are_pinned_to_commits_with_their_release(name):
         assert re.match(r"\s*# v\d+(\.\d+)*$", comment), f"{ref} has no release comment"
 
 
-def test_one_commit_per_action_across_the_pinned_workflows():
-    refs = [ref for name in OWNED + ("release-images.yml",) for ref, _ in _uses((WORKFLOWS / name).read_text())]
-    refs += [step["uses"] for step in _load("ci.yml")["jobs"]["actionlint"]["steps"] if "uses" in step]
+def test_one_commit_per_action_across_the_workflows():
+    assert {"ci.yml", "release-images.yml", *OWNED} <= set(ALL)
+    refs = [ref for name in ALL for ref, _ in _uses((WORKFLOWS / name).read_text())]
     commits = {}
     for ref in refs:
         path, sha = ref.split("@")
@@ -76,7 +79,24 @@ def test_tokens_are_read_only_unless_a_job_needs_more(name):
         assert "packages" not in perms and "attestations" not in perms
 
 
-@pytest.mark.parametrize("name", OWNED)
+def test_ci_tokens_are_read_only():
+    wf = _load("ci.yml")
+    assert wf["permissions"] == {"contents": "read"}
+    for job_name, job in wf["jobs"].items():
+        assert job["permissions"] == {"contents": "read"}, job_name
+
+
+@pytest.mark.parametrize("name", ALL)
+def test_no_untrusted_triggers_and_no_expressions_inside_scripts(name):
+    wf = _load(name)
+    triggers = wf["on"] if isinstance(wf["on"], (dict, list)) else [wf["on"]]
+    assert not {"pull_request_target", "workflow_run"} & set(triggers)
+    for job_name, job in wf["jobs"].items():
+        for step in job.get("steps", []):
+            assert "${{" not in step.get("run", ""), (job_name, step.get("name"))
+
+
+@pytest.mark.parametrize("name", ALL)
 def test_checkouts_keep_no_credentials(name):
     for job in _load(name)["jobs"].values():
         for step in job["steps"]:
@@ -140,6 +160,29 @@ def test_the_rebuild_check_builds_release_images_from_scratch_and_pushes_nothing
                     "scripts/release/image.sh scan"]
 
 
+RUNNER_OS = {"ubuntu-latest": "POSIX :: Linux", "macos-latest": "MacOS", "windows-latest": "Microsoft :: Windows"}
+
+
+def test_the_cli_matrix_equals_the_package_classifiers():
+    pyproject = (REPO / "pyproject.toml").read_text()
+    pythons = re.findall(r'"Programming Language :: Python :: (3\.\d+)"', pyproject)
+    systems = re.findall(r'"Operating System :: ([^"]+)"', pyproject)
+    matrix = _load("ci.yml")["jobs"]["cli"]["strategy"]["matrix"]
+    assert matrix["python-version"] == pythons
+    assert re.search(r'^requires-python = ">=([\d.]+)"$', pyproject, re.M).group(1) == pythons[0]
+    include = matrix.get("include", [])
+    assert {row["python-version"] for row in include} <= set(pythons)
+    assert sorted({RUNNER_OS[os_] for os_ in matrix["os"] + [row["os"] for row in include]}) == sorted(systems)
+
+
+def test_licence_txt_is_a_copy_of_license_and_ci_checks_it():
+    assert (REPO / "Licence.txt").read_bytes() == (REPO / "LICENSE").read_bytes()
+    runs = [s.get("run") for s in _load("ci.yml")["jobs"]["static-checks"]["steps"]]
+    assert "cmp LICENSE Licence.txt" in runs
+    files = re.search(r"^license-files = \[(.*)\]$", (REPO / "pyproject.toml").read_text(), re.M).group(1)
+    assert files == '"LICENSE", "THIRD_PARTY_NOTICES.md"'
+
+
 def test_actionlint_lints_every_workflow_with_checked_binaries():
     job = _load("ci.yml")["jobs"]["actionlint"]
     assert job["permissions"] == {"contents": "read"}
@@ -149,6 +192,18 @@ def test_actionlint_lints_every_workflow_with_checked_binaries():
     assert install["run"].count("sha256sum -c -") == 2
     lint = next(s for s in job["steps"] if s.get("name") == "Lint the workflows")
     assert lint["run"].startswith('"$RUNNER_TEMP/actionlint"') and '-shellcheck "$RUNNER_TEMP/shellcheck"' in lint["run"]
+
+
+def test_zizmor_audits_the_workflows_from_a_hash_pinned_wheel():
+    steps = {s.get("name"): s for s in _load("ci.yml")["jobs"]["actionlint"]["steps"]}
+    install = steps["Install zizmor"]["run"]
+    assert "--require-hashes" in install and "--no-deps" in install and "--only-binary=:all:" in install
+    requirements = install.split(" -r ")[1].strip()
+    pins = [line for line in (REPO / requirements).read_text().splitlines() if line and not line.startswith("#")]
+    assert len(pins) == 1 and re.fullmatch(r"zizmor==[\d.]+ --hash=sha256:[0-9a-f]{64}", pins[0])
+    audit = steps["Audit the workflows with zizmor"]
+    assert audit["run"].startswith("zizmor ") and "--offline" not in audit["run"]
+    assert audit["env"] == {"GH_TOKEN": "${{ github.token }}"}
 
 
 def _dependabot():

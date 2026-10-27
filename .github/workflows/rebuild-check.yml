@@ -97,8 +97,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write
-      actions: read
+      security-events: write  # upload SARIF to code scanning
+      actions: read  # read the run's metadata for the SARIF upload
     strategy:
       fail-fast: false
       matrix:

@@ -501,7 +501,12 @@ export function _agreementLegend(keys, docsCode = null) {
         wrap.appendChild(item);
     });
     const link = docsCode ? docsLink(docsCode, 'What the colours mean') : null;
-    if (link) wrap.appendChild(link);
+    if (link) {
+        const item = document.createElement('span');
+        item.setAttribute('role', 'listitem');
+        item.appendChild(link);
+        wrap.appendChild(item);
+    }
     return wrap;
 }
 
@@ -581,7 +586,7 @@ export function _agreementHeatmap(report, pairs, config) {
     table.appendChild(caption);
     const thead = document.createElement('thead');
     const hrow = document.createElement('tr');
-    hrow.appendChild(document.createElement('th'));
+    hrow.appendChild(document.createElement('td'));
     sims.forEach(s => {
         const th = document.createElement('th');
         th.className = 'sim-header px-1 text-gray-600 font-medium align-bottom';

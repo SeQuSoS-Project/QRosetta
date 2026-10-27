@@ -2,6 +2,7 @@
 // run's circuit texts and renders them with the Circuits view.
 
 import { BASE_URL, formatApiError } from './api.js';
+import { watchBidi } from './bidi_isolation.js';
 import { renderCircuitExplorer } from './circuit_explorer_renderer.js';
 import { visibleFormatCharacters } from './qasm_text.js';
 
@@ -108,5 +109,6 @@ async function main() {
     }
 }
 
+watchBidi(document.body);
 window.addEventListener('hashchange', main);
 main();

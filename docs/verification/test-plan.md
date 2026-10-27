@@ -19,7 +19,7 @@ In scope, tested:
 1. Local mode (Docker Compose) on Linux, with rootless podman 5.x and Docker Compose v2 as provider (the
    reference host: EL10, SELinux enforcing) and with Docker Engine and Compose v2.
 2. The CLI: stack commands on Linux; client commands on Linux, macOS and Windows (the CI matrix, Python
-   3.11-3.14, and 3.15 once A9 adds it).
+   3.11-3.15).
 3. The page in current Firefox and Chromium, including the share page and the docs pages.
 4. Exports (RO-Crate, report JSON, publication figures and tables) and client-supplied reports.
 5. The release workflow, statically (`test_release_workflow.py`, `test_release_manifest.py`) and through
@@ -40,7 +40,7 @@ tested); the disabled braket and projectq runners; publishing (owner only).
 | Level | What | Where |
 |---|---|---|
 | Unit and static | `rosetta-api/tests/unit/` (pytest-xdist), type gate (`scripts/check_frontend_types.sh`), parity harnesses, OpenAPI CLI contract, gitleaks | CI on every push |
-| CLI | bare `cli` job (Python 3.11-3.14; client half also on macOS and Windows) | CI |
+| CLI | bare `cli` job (Python 3.11-3.15; client half also on macOS and Windows) | CI |
 | Integration, live | `tests/integration/` against a running stack; V3 adds a CI job with nginx, API, qiskit, qulacs and cirq, and an E2E smoke test through nginx and `./qrosetta` | locally today; CI after V3 |
 | Known answers and metamorphic relations | `GET /selftest`; V4 per-gate table, relabelling, inverse, register split, null effect, cross-mode | live stack |
 | Equivalence | `scripts/harness_bench/equivalence.py`, `prep_equivalence.py`, `scripts/adapter_paths/compare_paths.py`, B2 requalification harness | before any change to analysis, preparation or an image |

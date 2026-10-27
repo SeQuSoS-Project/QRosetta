@@ -90,7 +90,7 @@ export function bmAddToQueue(items) {
 export async function bmLoadChecklist() {
     const list = document.getElementById('bench-checklist');
     if (!list) return;
-    list.innerHTML = '<div class="text-emerald-500 italic">loading…</div>';
+    list.innerHTML = '<div class="text-emerald-700 italic">loading…</div>';
     try {
         await bmSuiteEntries(bmCurrentSuite());
         bmRenderChecklist();
@@ -116,14 +116,14 @@ export function bmRenderChecklist() {
 
     list.innerHTML = '';
     if (entries.length === 0) {
-        list.innerHTML = '<div class="text-emerald-500 italic">no matches</div>';
+        list.innerHTML = '<div class="text-emerald-700 italic">no matches</div>';
         bmUpdateSelectedCount();
         return;
     }
     for (const e of entries) {
         const id = `bm-${suite}-${e.algorithm}-${e.qubits}`;
         const row = document.createElement('label');
-        row.className = 'flex items-center gap-2 cursor-pointer hover:bg-emerald-50 rounded px-1';
+        row.className = 'flex items-center gap-2 min-h-6 cursor-pointer hover:bg-emerald-50 rounded px-1';
         row.innerHTML =
             `<input type="checkbox" class="bm-check" data-suite="${_escapeHtml(e.suite)}" data-algo="${_escapeHtml(e.algorithm)}" `
             + `data-qubits="${_escapeHtml(e.qubits)}" data-label="${_escapeHtml(e.label)}" id="${_escapeHtml(id)}">`

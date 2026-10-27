@@ -426,7 +426,10 @@ export function renderBackendTable(panel, data, verdicts, model = headlineModel(
     if (!rows.length) return;
 
     const wrap = document.createElement('div');
-    wrap.className = 'overflow-x-auto mb-4 border rounded';
+    wrap.className = 'overflow-x-auto mb-4 border rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500';
+    wrap.tabIndex = 0;
+    wrap.setAttribute('role', 'region');
+    wrap.setAttribute('aria-label', 'Backends');
     const table = document.createElement('table');
     table.className = 'min-w-full text-xs';
     const caption = document.createElement('caption');
