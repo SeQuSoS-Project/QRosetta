@@ -93,4 +93,6 @@ memory/
 /test_runners.py
 
 # LaTeX paper draft (kept out of this code repo; edited locally / synced with Overleaf)
-/latex/rosetta-api/qa_rosetta.db
+/latex/
+
+rosetta-api/qa_rosetta.db
