@@ -301,21 +301,10 @@ behind each.
 
 ## Versions
 
-The tag `stable-pre-compilers` marks the last stable version before compile-only backends and
-the Compiler Explorer view were added: 14 simulator backends, with the circuit each backend
-executed recorded but not displayed side by side. Check it out to reproduce results produced
-before that work.
-
-Two later tags mark stable versions of the web interface:
-
-- `stable-pre-ui-redesign` (3dd0884): the last version with the Config, Batch, Bench and
-  Experiment drawers and eight result tabs.
-- `stable-ui-workspace` (0a7d863): after the first redesign step. The left column is one
-  workspace (Generate Circuits, Editor, Playlist, a Run footer, a Configuration panel); the Summary tab
-  opens with a headline naming the backends that differ; results have five tabs.
-- `stable-ui-left-column` (258b0f2): the left column after the second redesign step. Single
-  circuits come from the searchable Quantum Algorithms menu, bulk adding from the Playlist's
-  Bench popover, and the settings are chips in the Run footer, each opening a popover.
+Each release is a git tag, and its release notes list what changed. `v1.0.0` (June 2026) was the first
+public snapshot. Do not reuse its results: its Qrisp adapter returned an all-zero state and all-zero
+counts when the SDK call failed (fixed in 5bb0574, July 2026), and the bit-order labels of several
+adapters were corrected after it. Use the newest release.
 
 ## Citing
 
