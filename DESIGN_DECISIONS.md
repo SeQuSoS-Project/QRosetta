@@ -173,6 +173,24 @@ Units are MiB (1024²) throughout, although field names say `_mb`.
 
 *Evidence (2026-10-07).* An exception in `worker_batch_suite` left the job `processing` forever and the browser polled indefinitely. A compile-only playlist whose every compile errored completed as done.
 
+### Playlist length
+
+*Rule.* A playlist holds at most 400 circuits (`MAX_BATCH_TASKS`, published as `limits.max_batch_tasks`). `bypass_limits` lifts it.
+
+*Evidence (2026-10-27).* The two bundled suites together are 324 circuits: MQT Bench "Add all shown" gives 269, or 204 at the 18-qubit statevector cap, and QASMBench gives 55. A cap of 200 would have refused MQT Bench "Add all shown" on its own.
+
+### Job storage budget
+
+*Rule.* Stored job results may use at most `QROSETTA_JOB_SPILL_MAX_MIB` (10240) and must leave `QROSETTA_JOB_SPILL_MIN_FREE_MIB` (1024) free on the disk; both are published in `limits`. Over budget, a new run gets 503 with Retry-After. A playlist or experiment checks before writing each circuit or cell and fails with a message naming the limit, and its files are removed. A single-circuit report is always written, so jobs already running can overshoot the budget.
+
+*Evidence.* An 18-qubit, 14-backend task stores about 78 MB, and the storage directory had no bound.
+
+### Bundled circuits over the preparation limits
+
+*Rule.* With preprocessing on, a bundled circuit whose recorded preparation peak ([`rosetta-api/benchmarks/preparation_peaks.json`](rosetta-api/benchmarks/preparation_peaks.json), measured by [`scripts/harness_bench/prep_peaks.py`](scripts/harness_bench/prep_peaks.py)) reaches the preparation memory limit is refused with 400 at submission, and the page names it before sending. `limits` publishes `prep_max_mib` and `prep_timeout_sec`. A circuit not in the table that exceeds either limit still fails as a job, with a message naming the limit and its value.
+
+*Evidence (2026-10-27).* pytket 1.33.0, Python 3.12, one fresh process per circuit, two runs within 4 MiB of each other. grover-noancilla at 13, 14 and 15 qubits peaked at 598, 952 and 1,493 MiB, and above 2,048 MiB from 16 qubits. grover-v-chain at 13–16 qubits peaked at 517, 779, 1,192 and 1,861 MiB, and above 2,048 MiB from 17 qubits. Every other bundled circuit stayed at or below 392 MiB.
+
 ### API analysis threads
 
 *Rule.* The API image sets `OMP/OPENBLAS/MKL_NUM_THREADS=1`.
