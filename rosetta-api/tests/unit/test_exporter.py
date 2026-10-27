@@ -1,6 +1,8 @@
 # Unit tests for the FAIR data export engine (services/exporter.py).
 
+import hashlib
 import json
+from pathlib import Path
 import zipfile
 import io
 import pytest
@@ -810,7 +812,12 @@ class TestBatchWithFailedFirstTask:
 class TestRunnerLocksAndThresholds:
     def test_runner_requirements_lock_is_bundled_and_referenced(self):
         services = {"qiskit": {"enabled": True, "base_url": "http://pytket-qiskit-runner:8000"}}
-        data = build_ro_crate(_make_ctx(runner_services=services))
+        lock = (Path(__file__).resolve().parents[3]
+                / "runners/pytket-qiskit-runner/requirements.lock").read_bytes()
+        results = json.loads(json.dumps(SAMPLE_RESULTS_SV))
+        for r in results["raw_results"]:
+            r["build_files"] = {"requirements.lock": hashlib.sha256(lock).hexdigest()}
+        data = build_ro_crate(_make_ctx(results=results, runner_services=services))
         zf = zipfile.ZipFile(io.BytesIO(data), "r")
         lock = [n for n in zf.namelist() if n.endswith("runners/pytket-qiskit-runner/requirements.lock")]
         assert len(lock) == 1 and b"==" in zf.read(lock[0])

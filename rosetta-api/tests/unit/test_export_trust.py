@@ -10,6 +10,8 @@ from types import SimpleNamespace
 
 import pytest
 
+LOCK = b"qiskit==1.2.4\n"
+
 from config import settings
 from services.exporter import build_export_context, build_ro_crate, crate_name
 
@@ -22,7 +24,8 @@ def _report(**extra):
         "report_source": "server_job", "job_id": "genuine-job",
         "raw_results": [
             {"simulator": "qiskit", "statevector": [1, 0, 0, 0], "sdk_versions": {"qiskit": "9.9.9"},
-             "transpiled_qasm": QASM},
+             "transpiled_qasm": QASM,
+             "build_files": {"requirements.lock": hashlib.sha256(LOCK).hexdigest()}},
             {"simulator": "cirq", "error": "boom"},
         ],
         "divergence_report": {"pairwise_agreement": [], "agreement_thresholds": {
@@ -50,7 +53,7 @@ def _crate(report, route, payload=None):
 @pytest.fixture
 def runner_lock(monkeypatch):
     import services.exporter as exporter
-    monkeypatch.setattr(exporter, "_read_runner_lock", lambda name: b"qiskit==1.2.4\n")
+    monkeypatch.setattr(exporter, "_read_runner_lock", lambda name: LOCK)
 
 
 @pytest.mark.parametrize("route,source", [("client_request", "client_supplied"),

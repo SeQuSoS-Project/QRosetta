@@ -329,70 +329,78 @@ export function executionTags(r, { device = true } = {}) {
     return tags;
 }
 
-/** Smallest share of the simulation window held by the CPU quota that the UI tags. */
-export const THROTTLE_SHOWN_SHARE = 0.01;
+const _derivedCaveats = new WeakMap();
 
-/** Time the CPU quota held a run during its simulation window, as a note, or null when under THROTTLE_SHOWN_SHARE of the window. */
+/** Records the timing caveats POST /timing-caveats derived for results stored without them:
+ * each result's list, and the report-level list under the results array itself. */
+export function registerTimingCaveats(rawResults, derived) {
+    if (!Array.isArray(rawResults)) return;
+    rawResults.forEach((r, i) => {
+        if (r && typeof r === 'object') _derivedCaveats.set(r, derived?.results?.[i] || []);
+    });
+    _derivedCaveats.set(rawResults, Array.isArray(derived?.report) ? derived.report : []);
+}
+
+/** The server's timing caveats of one result: its recorded list, else the derived one, else null. */
+export function timingCaveatsOf(r) {
+    if (!r || typeof r !== 'object') return null;
+    if (Array.isArray(r.timing_caveats)) return r.timing_caveats;
+    return _derivedCaveats.get(r) ?? null;
+}
+
+/** The server's report-level timing caveats: the report's own list, else the one derived for its results, else null. */
+export function reportTimingCaveats(report) {
+    if (Array.isArray(report?.timing_caveats)) return report.timing_caveats;
+    return _derivedCaveats.get(report?.raw_results) ?? null;
+}
+
+/** True when some result of `rawResults` has no recorded or derived timing caveats. */
+export function needsTimingCaveats(rawResults) {
+    return Array.isArray(rawResults) && rawResults.some(r => r && typeof r === 'object' && timingCaveatsOf(r) === null);
+}
+
+/** The server's caveat `code` on result `r`, or null. */
+export function timingCaveat(r, code) {
+    return (timingCaveatsOf(r) || []).find(c => c && c.code === code) || null;
+}
+
+/** Note for a run the server tagged throttled (CPU quota held it during the simulation window), or null. */
 export function throttleText(r) {
-    const t = r?.simulation_throttled_sec;
-    if (typeof t !== 'number' || !(t > 0)) return null;
-    const sim = r?.simulation_time_sec;
-    if (typeof sim === 'number' && sim > 0 && t < THROTTLE_SHOWN_SHARE * sim) return null;
+    if (!timingCaveat(r, 'throttled')) return null;
+    const t = r.simulation_throttled_sec;
+    const sim = r.simulation_time_sec;
     const share = typeof sim === 'number' && sim > 0 ? ` (${fmtNum(100 * t / sim, 0)}% of the simulation window)` : '';
     return `the CPU quota held this runner for ${fmtNum(t, 4)} s${share}; that wait is part of simulation_time_sec`;
 }
 
-/** Smallest gap between container and process CPU time over the simulation window that the UI reports. */
-export const OUTSIDE_PROCESS_SHOWN_SEC = 0.005;
-
-/** Note for a run whose container used more CPU than its simulating process during the window, or null. */
+/** Note for a run the server tagged outside_process (its container used more CPU than its simulating process during the window), or null. */
 export function outsideProcessText(r) {
-    const cg = r?.simulation_cgroup_cpu_time_sec;
-    const own = r?.simulation_cpu_time_sec;
-    if (typeof cg !== 'number' || typeof own !== 'number') return null;
-    const gap = cg - own;
-    if (!(gap >= OUTSIDE_PROCESS_SHOWN_SEC && gap >= 0.1 * cg)) return null;
+    if (!timingCaveat(r, 'outside_process')) return null;
+    const cg = r.simulation_cgroup_cpu_time_sec;
+    const own = r.simulation_cpu_time_sec;
     return `the runner container used ${fmtNum(cg, 4)} s of CPU during the simulation window, `
-        + `the simulating process ${fmtNum(own, 4)} s: ${fmtNum(gap, 4)} s of work ran outside the measured process, `
+        + `the simulating process ${fmtNum(own, 4)} s: ${fmtNum(cg - own, 4)} s of work ran outside the measured process, `
         + 'so its CPU time and memory fields leave that work out';
 }
 
-/** Distinct maximum frequencies (MHz) of the CPUs a run's simulation windows were on, ascending. */
-export function simulationCoreSpeeds(r) {
-    const mhz = r?.cpu_environment?.cpu_max_mhz || {};
-    const speeds = new Set((Array.isArray(r?.simulation_cpus) ? r.simulation_cpus : [])
-        .map(c => mhz[c]).filter(v => typeof v === 'number'));
-    return [...speeds].sort((a, b) => a - b);
+/** Core speed classes (MHz) as text, e.g. "4000/4100 MHz vs 5300 MHz". */
+export function coreClassesText(classes) {
+    return classes.map(c => c.map(s => `${fmtInt(s)}`).join('/') + ' MHz').join(' vs ');
 }
 
-/** Maximum frequencies grouped into core classes: a class starts where a frequency exceeds the previous one by more than 10%. */
-export function coreClasses(speeds) {
-    const classes = [];
-    [...speeds].sort((a, b) => a - b).forEach(s => {
-        const last = classes[classes.length - 1];
-        if (last && s <= last[last.length - 1] * 1.1) last.push(s);
-        else classes.push([s]);
-    });
-    return classes;
-}
-
-/** Note for a run whose timed runs were on CPUs of different core classes (see coreClasses), or null. */
+/** Note for a run the server tagged mixed_cores (timed runs on CPUs of different speed classes), or null. */
 export function mixedCoresText(r) {
-    const classes = coreClasses(simulationCoreSpeeds(r));
-    if (classes.length < 2) return null;
-    return `its timed runs were on CPUs of different speed classes (maximum ${classes.map(c => c.map(s => `${fmtInt(s)}`).join('/') + ' MHz').join(' vs ')}), `
+    const classes = timingCaveat(r, 'mixed_cores')?.detail?.classes_mhz;
+    if (!Array.isArray(classes)) return null;
+    return `its timed runs were on CPUs of different speed classes (maximum ${coreClassesText(classes)}), `
         + 'so its samples mix faster and slower cores; simulation_cpus_samples in the raw JSON gives the CPUs of each run';
 }
 
-/** Ratio of the slowest to the fastest simulation sample above which the UI marks a run's repeats as unstable. */
-export const UNSTABLE_SPREAD = 1.3;
-
-/** Note for a run with three or more timed runs whose simulation times spread by more than UNSTABLE_SPREAD, or null. */
+/** Note for a run the server tagged unstable_repeats (simulation samples spread by more than 1.3×), or null. */
 export function unstableText(r) {
-    const s = Array.isArray(r?.simulation_time_samples) ? r.simulation_time_samples.filter(v => typeof v === 'number') : [];
-    if (s.length < 3) return null;
-    const lo = Math.min(...s), hi = Math.max(...s);
-    if (!(lo > 0) || hi / lo <= UNSTABLE_SPREAD) return null;
+    const detail = timingCaveat(r, 'unstable_repeats')?.detail;
+    if (!detail) return null;
+    const lo = detail.min_sec, hi = detail.max_sec;
     return `its timed runs ranged from ${fmtNum(lo, 4)} to ${fmtNum(hi, 4)} s (${fmtNum(hi / lo, 2)}×), from competing load or the `
         + 'backend\'s own run-to-run variation (quimb\'s randomised path search, for example); the median is less reliable than its n suggests';
 }

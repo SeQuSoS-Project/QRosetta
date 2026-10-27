@@ -24,6 +24,7 @@ from services import experiment_artifacts as art
 from services.analysis.divergence.verdicts import statevector_group
 from services.dispatcher import SEED_DERIVATION
 from services.export_compiled import compiled_metrics_csv, compiler_build_files
+from services import specimens, timing_caveats
 from services.exporter import runner_lock_files
 from services.job_store import job_dir, require_storage
 from services.run_registry import EXCLUSIVE, releases_exclusive
@@ -118,7 +119,8 @@ def statevector_label_groups(prevalence: list) -> dict:
 
 _BULKY_RESULT_FIELDS = frozenset({"statevector", "counts", "transpiled_qasm"})
 _KEPT_REPORT_FIELDS = ("task_name", "circuit_id", "error", "seed", "git_sha", "seed_derivation",
-                       "agreement_thresholds", "resolved_runners")
+                       "agreement_thresholds", "resolved_runners", "specimens", "timing_caveats",
+                       "timing_caveats_version")
 
 
 def _kept_record(report: dict) -> dict:
@@ -287,10 +289,10 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
         for sim, text in art.build_error_logs(conformance).items():
             files[f"errors/{art.slug(sim)}.log"] = text.encode("utf-8")
         files["README.txt"] = art.TRIAGE_README.encode("utf-8")
-        files.update(runner_lock_files(
-            sorted({str(e.get("simulator")) for r in all_reports for e in r.get("raw_results") or []
-                    if isinstance(e, dict) and e.get("simulator")}),
-            settings.get_runner_services()))
+        locks, lock_notes = runner_lock_files(
+            (e for r in all_reports for e in r.get("raw_results") or []),
+            settings.get_runner_services())
+        files.update(locks)
 
         if payload.mode == "measured":
             seed_derivation = art.recorded_value(all_reports, "seed_derivation") or SEED_DERIVATION
@@ -319,6 +321,10 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
         manifest["resolved_runners_per_axis"] = resolved_runners
         manifest["job_id"] = job_id
         manifest["runner_images"] = art.collect_runner_images(all_reports)
+        manifest["runner_lock_files"] = {path: "included: sha256 matches the image's build_files"
+                                         for path in sorted(locks)} | lock_notes
+        manifest["specimens"] = specimens.combine(r.get("specimens") for r in all_reports)
+        manifest["timing_caveats"] = timing_caveats.combine(r.get("timing_caveats") for r in all_reports)
         manifest["host_environment"] = art.collect_host_environment(all_reports)
         manifest["label"] = payload.label
         manifest["created_utc"] = datetime.now(timezone.utc).isoformat()

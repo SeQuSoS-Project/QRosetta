@@ -638,6 +638,30 @@ Compilers are separate from the simulators: their output is a circuit, which is 
 
 *Evidence (2026-10-08).* A client-supplied report could show a forged qiskit==9.9.9 as fact; commit links returned 404.
 
+### Image identity reported by the runner
+
+*Rule.* Each runner and compiler image writes `/usr/local/share/qrosetta-image/identity` at build (`source`, `release`, `git_sha` from the build arguments `QROSETTA_IMAGE_SOURCE`, `QROSETTA_RELEASE`, `QROSETTA_GIT_SHA`; compose passes `built_locally`, a release pipeline passes `release`, a plain `docker build` leaves `unknown`) and copies its Dockerfile and `requirements.lock` to `/usr/local/share/qrosetta-build/`. The new values are build arguments and a file, never `ENV`, so the container's environment, and with it the environment the timed child inherits through `spawn`, is unchanged. The serving process reads the file, the build-file hashes, the container runtime's view (Apptainer path and sha256, podman's `/run/.containerenv`) and the `hypervisor` CPU flag once at startup ([`shared/qrosetta_commons/image_identity.py`](shared/qrosetta_commons/image_identity.py)) and adds `image_identity` and `build_files` to each result after the child has returned, beside `queue_wait_sec`; the Kubernetes and batch CLI paths add them after `run_with_uniform_measurement` returns. `runner_image` is the Job's image in Kubernetes mode, else the image the runtime showed the runner (`runner_image_basis`). Each result that ran gets `specimen` and the report `specimens`: `all_published` (one release), `all_built_locally`, `mixed`, `unknown` or `none_ran`, with per-backend detail, the image commits and a note when they differ or are `-dirty`. The roll-up uses only values the image baked. ([`rosetta-api/tests/unit/test_image_identity.py`](rosetta-api/tests/unit/test_image_identity.py), [`test_specimens.py`](rosetta-api/tests/unit/test_specimens.py))
+
+*Evidence (2026-10-27).* Local results recorded `runner_image` "not recorded", and a crate could not say whether a backend ran a published image, a local build or a build from another commit. Through the real spawn path, the child's `os.environ` equals the serving process's environment and the child never reads the identity (`test_result_carries_identity_and_child_environment_is_unchanged`, measured and unmeasured). Images built before this change report `source` "not recorded" until rebuilt.
+
+### Runner lock files in crates
+
+*Rule.* A crate (and an experiment bundle) includes the server's copy of `runners/<runner>/requirements.lock` only when its sha256 equals `build_files["requirements.lock"]` in every result that runner's image returned. Otherwise the file is left out and the runner's entity, `provenance.json` `runner_lock_files` and the bundle manifest say why: no build-file hashes (image built before runners reported them), a different hash with the image's commit, no copy on the server, or no result from the image.
+
+*Evidence (2026-10-27).* The exporter attached the API tree's lock file for every runner used and described it as the runner image's environment, with no check; in a stack of mixed builds that file did not describe the image that ran. Compilers already had the hash check (Compiler build provenance).
+
+### Timing caveats
+
+*Rule.* [`rosetta-api/services/timing_caveats.py`](rosetta-api/services/timing_caveats.py) derives `timing_caveats` per result and per report from recorded fields only: `shared_dispatch`, `overlapping_runs`, `server_overlapping_runs`, `throttled` and `compilation_throttled` (≥ 1% of the window), `unstable_repeats` (> 1.3× with ≥ 3 samples), `mixed_cores` (classes 10% apart), `outside_process` (≥ 5 ms and ≥ 10%), `single_timed_run`, `no_cpu_quota`, `virtualised_host`, `emulated_cpu`, `non_x86_64`, and across backends `cross_backend_core_speeds`, `cross_backend_cpu_quota`, `cross_backend_image_commits`. Each has a code, a sentence and its fields. It is the only implementation of the page's "throttled", "outside process", "unstable" and "mixed cores" tags and its "Before comparing times" list; the page renders the server's records, and asks `POST /timing-caveats` for a report stored without them. The rules carry `timing_caveats_version`, not `ANALYSIS_VERSION`: they change no agreement label, and bumping the analysis version would mark unchanged agreement evidence as changed. The publication tables keep their own unstable rule (`tables.py` / `artifact_formats.js`, under the parity test).
+
+*Evidence (2026-10-27).* Against the JavaScript of 7e02220 ([`scripts/timing_caveats_equivalence/compare.py`](scripts/timing_caveats_equivalence/compare.py)): 351 saved reports (4,968 results, from play-test, Apptainer and Roihu runs) and 20,000 synthetic reports around every threshold (59,975 results): 0 differences in the four tags and the phrase list.
+
+### Run completeness
+
+*Rule.* Every finished job's report records `run_completeness` (`job_status`, `planned_tasks`, `recorded_tasks`, `tasks_with_results`, `stopped_early`, `reason`). The crate root states `#run-completeness`: `complete`, `partial`, `failed`, `not_recorded` (older reports) or `not_checked` (a report the server did not produce, such as the browser's copy exported after the server's copy expired); any value but `complete` is repeated in the root description.
+
+*Evidence (2026-10-27).* A crate of a stopped playlist or of the browser's fallback copy read like a complete run: each execution was a Completed CreateAction and nothing stated the planned set.
+
 ### cirq statevector bits
 
 *Rule.* cirq amplitudes can differ run to run by ~1e-17 (numpy 1.26 SIMD complex loops depend on buffer alignment). Left as is: disabling SIMD would slow cirq and bias timings. Compare replayed statevectors by fidelity, not sha256.

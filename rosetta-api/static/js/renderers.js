@@ -12,6 +12,7 @@ import { renderShareControls } from './share_links.js';
 import { renderRankingTable, splitRanking } from './ranking_renderer.js';
 import {
     TAG_AMBER, TAG_GRAY, _applyLegendDots, _cloneTemplate, _displayRunnerName, _makeStatusBadge, _tag, deviceTitle, isGpuRun,
+    needsTimingCaveats, registerTimingCaveats, reportTimingCaveats,
 } from './render_helpers.js';
 import {
     RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, isDisagreement, measuredAssessment, runnerStatus, statevectorGroup,
@@ -113,6 +114,35 @@ export function _effectiveOptMap(data, fallbackConfig = {}) {
     return map;
 }
 
+const _BULKY_RESULT_FIELDS = new Set(['statevector', 'counts', 'transpiled_qasm']);
+let _rankingShown = null;
+
+function _renderRankings(data, optMap, raws) {
+    const caveats = reportTimingCaveats(data);
+    if (data.performance_report) renderRankingTable(data.performance_report, 'execution_time_sec', 's', panelElements.performance, optMap, raws, caveats);
+    if (data.resource_report) renderRankingTable(data.resource_report, 'memory_usage_mb', 'MiB', panelElements.resources, optMap, raws, caveats);
+}
+
+/** For a report stored before the server recorded timing caveats: ask the server for them
+ * (POST /timing-caveats), then render the ranking tables again if the report is still shown. */
+async function _deriveTimingCaveats(data, optMap, raws) {
+    const slim = raws.map(r => (r && typeof r === 'object'
+        ? Object.fromEntries(Object.entries(r).filter(([k]) => !_BULKY_RESULT_FIELDS.has(k))) : {}));
+    try {
+        const res = await fetch(`${BASE_URL}/timing-caveats`, {
+            method: 'POST',
+            headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ raw_results: slim }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        registerTimingCaveats(raws, await res.json());
+    } catch (err) {
+        console.warn('Timing caveats unavailable for this report:', err);
+        return;
+    }
+    if (_rankingShown === data) _renderRankings(data, optMap, raws);
+}
+
 export function renderDetailReport(data, title, config = getState().currentRunnerConfig) {
     const hasCircuits = circuitPanes(data).length > 0;
     renderTabs(data.error ? ['summary', ...(hasCircuits ? ['circuits'] : []), 'export']
@@ -122,8 +152,9 @@ export function renderDetailReport(data, title, config = getState().currentRunne
     if (!data.error) {
         const optMap = _effectiveOptMap(data, config);
         const raws = data.raw_results || [];
-        if (data.performance_report) renderRankingTable(data.performance_report, 'execution_time_sec', 's', panelElements.performance, optMap, raws);
-        if (data.resource_report) renderRankingTable(data.resource_report, 'memory_usage_mb', 'MiB', panelElements.resources, optMap, raws);
+        _rankingShown = data;
+        _renderRankings(data, optMap, raws);
+        if (needsTimingCaveats(raws)) _deriveTimingCaveats(data, optMap, raws);
         if (data.divergence_report) renderDivergenceTables(data.divergence_report, panelElements.divergence, optMap, raws);
         if (data.divergence_report) renderAgreementPanel(data.divergence_report, panelElements.agreement, optMap);
     }

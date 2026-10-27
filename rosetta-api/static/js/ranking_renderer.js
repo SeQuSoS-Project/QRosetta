@@ -3,10 +3,11 @@
 
 import {
     QUEUE_WAIT_SHOWN_SEC, TAG_AMBER, TAG_GRAY, _applyLegendDots, _cloneTemplate, _displayRunnerName,
-    _makeStatusCell, _tag, bitOrderTag, cpuQuotaPhrase, executionTags, fmtInt, fmtNum, getOptBadge, isGpuRun, coreClasses, mixedCoresText, outsideProcessText, precisionTag, samplingTag, simulationCoreSpeeds, unstableText, queueWaitText, throttleText,
+    _makeStatusCell, _tag, bitOrderTag, coreClassesText, cpuQuotaPhrase, executionTags, fmtInt, fmtNum, getOptBadge, isGpuRun, mixedCoresText, outsideProcessText, precisionTag, samplingTag, unstableText, queueWaitText, throttleText,
     renderTooltip,
 } from './render_helpers.js';
 import { RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, runnerStatus, userFacingError } from './run_status.js';
+import { labelText } from './labels.js';
 
 const MISSING_METRIC_REASON = {
     execution_time_sec: 'missing_timing',
@@ -82,21 +83,31 @@ function _fillSimulatorCell(cell, simulatorName, config, raw, { memory = false }
 
 const UNSTABLE_LABEL = '1.3×';
 
-/** Conditions in this run that can bias a timing comparison, as short phrases. */
-function _timingCaveats(rawResults) {
-    const ok = (rawResults || []).filter(r => r && !r.error);
-    const caveats = [];
-    if (ok.some(r => typeof r.overlapping_runs === 'number' && r.overlapping_runs > 0)) caveats.push('backends ran at the same time');
-    if (!ok.every(r => r.exclusive === true) && ok.some(r => typeof r.server_overlapping_runs === 'number' && r.server_overlapping_runs > 0)) caveats.push('other jobs ran on the server');
-    if (ok.some(r => throttleText(r))) caveats.push('some runs were throttled by the CPU quota');
-    if (ok.some(r => unstableText(r))) caveats.push('some timed runs were unstable');
-    if (coreClasses(new Set(ok.flatMap(simulationCoreSpeeds))).length > 1) caveats.push('runs used CPUs of different speeds');
-    if (ok.some(r => outsideProcessText(r))) caveats.push('some work ran outside the measured process');
-    if (ok.length && ok.every(r => _timingCount(r) === 1)) caveats.push('one timed run per backend (n=1)');
-    return caveats;
+/** Short phrases for the server's report-level timing caveat codes; other codes use their labels.js wording. */
+const CAVEAT_PHRASES = {
+    overlapping_runs: 'backends ran at the same time',
+    server_overlapping_runs: 'other jobs ran on the server',
+    throttled: 'some runs were throttled by the CPU quota',
+    unstable_repeats: 'some timed runs were unstable',
+    cross_backend_core_speeds: 'runs used CPUs of different speeds',
+    outside_process: 'some work ran outside the measured process',
+    single_timed_run: 'one timed run per backend (n=1)',
+};
+
+/** Report-level codes the phrase list leaves out: covered by another phrase. */
+const CAVEATS_NOT_LISTED = new Set(['shared_dispatch', 'mixed_cores']);
+
+/** Conditions in this run that can bias a timing comparison, as short phrases, from the server's
+ * report-level timing caveats (none until they are known). */
+function _timingCaveats(reportCaveats) {
+    const codes = new Set((reportCaveats || []).map(c => c?.code));
+    const known = Object.keys(CAVEAT_PHRASES).filter(code => codes.has(code)).map(code => CAVEAT_PHRASES[code]);
+    const others = [...codes].filter(code => code && !(code in CAVEAT_PHRASES) && !CAVEATS_NOT_LISTED.has(code))
+        .map(code => { const t = labelText(code); return t.charAt(0).toLowerCase() + t.slice(1); });
+    return [...known, ...others];
 }
 
-function _timingNote(rawResults) {
+function _timingNote(rawResults, reportCaveats) {
     const ok = (rawResults || []).filter(r => r && !r.error);
     const samples = new Set(ok.map(_timingCount));
     let note = (samples.size === 1 && samples.has(1))
@@ -113,9 +124,9 @@ function _timingNote(rawResults) {
         : ` Each runner is limited to ${limit}.`;
     const throttled = ok.filter(r => throttleText(r)).length;
     if (!(samples.size === 1 && samples.has(1))) note += ' A ≈ next to a rank means its per-run totals overlap those of the next rank.';
-    const classes = coreClasses(new Set(ok.flatMap(simulationCoreSpeeds)));
-    if (classes.length > 1) {
-        note += ` The simulation windows ran on CPUs of different speed classes (maximum ${classes.map(c => c.map(s => fmtInt(s)).join('/') + ' MHz').join(' vs ')}), `
+    const classes = (reportCaveats || []).find(c => c?.code === 'cross_backend_core_speeds')?.detail?.classes_mhz;
+    if (Array.isArray(classes)) {
+        note += ` The simulation windows ran on CPUs of different speed classes (maximum ${coreClassesText(classes)}), `
             + 'so part of a difference between backends can be the core they ran on (tag "mixed cores" when one backend\'s own runs mixed them).';
     }
     const heldBack = Math.max(0, ...ok.filter(r => r.exclusive !== true).map(r => (typeof r.gate_wait_sec === 'number' ? r.gate_wait_sec : 0)));
@@ -271,7 +282,7 @@ function _statusOf(entry, raw) {
 }
 
 /** Render a performance (execution_time_sec) or resource (memory_usage_mb) report. */
-export function renderRankingTable(report, key, unit, panel, config = {}, rawResults = []) {
+export function renderRankingTable(report, key, unit, panel, config = {}, rawResults = [], reportCaveats = null) {
     if (!panel) return;
     panel.innerHTML = '';
 
@@ -285,9 +296,9 @@ export function renderRankingTable(report, key, unit, panel, config = {}, rawRes
     const allCpu = (rawResults || []).some(r => r && r.device) && !(rawResults || []).some(isGpuRun);
 
     const hFrag = _cloneTemplate('tpl-ranking-section-header');
-    const note = isMemory ? _memoryNote(rawResults, unranked) : _timingNote(rawResults);
+    const note = isMemory ? _memoryNote(rawResults, unranked) : _timingNote(rawResults, reportCaveats);
     const otherUnranked = isMemory ? unranked.filter(r => r.reason !== 'gpu_memory_not_measured') : unranked;
-    const caveats = isMemory ? [] : _timingCaveats(rawResults);
+    const caveats = isMemory ? [] : _timingCaveats(reportCaveats);
     hFrag.querySelector('.tpl-summary-text').textContent = `${report.summary || ''}`
         + (caveats.length ? ` Before comparing times: ${caveats.join('; ')}.` : '')
         + (allCpu ? ' Every run was on a CPU.' : (rawResults || []).some(isGpuRun) ? ' Runs tagged GPU simulated on a GPU; the others on a CPU.' : '')

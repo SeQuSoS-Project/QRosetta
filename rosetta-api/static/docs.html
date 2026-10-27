@@ -960,6 +960,30 @@
                         the same <code>runner_seed</code> in every task.</li>
                     <li><strong>Executed SDK versions</strong> are captured by each backend and written into
                         the provenance.</li>
+                    <li id="specimens"><strong>Which image each backend ran from.</strong> Every runner and
+                        compiler result carries <code>image_identity</code>, which the runner's serving
+                        process reads at startup from a file in the image and adds after the run returns: the
+                        <code>source</code> its image recorded at build (<code>release</code> for an image
+                        built by the release pipeline, <code>built_locally</code> for a local build, "not
+                        recorded" for images built before images recorded it), the release, the commit, what
+                        the container runtime shows the process (Apptainer's image path and sha256; a podman
+                        container's image and id only when privileged), and whether the host CPU reports the
+                        <code>hypervisor</code> flag. <code>build_files</code> holds the sha256 of the
+                        Dockerfile and <code>requirements.lock</code> the image copied. <code>runner_image</code>
+                        is the image the API created a Kubernetes Job with, else the image the runtime showed the
+                        runner (<code>runner_image_basis</code> says which). Each result that ran gets a
+                        <code>specimen</code> and the report a <code>specimens</code> roll-up:
+                        <code>all_published</code> (one release), <code>all_built_locally</code>,
+                        <code>mixed</code> or <code>unknown</code>, with each backend's detail and the image
+                        commits; differing commits mean the measurement code may differ between backends. An
+                        RO-Crate includes a runner's <code>requirements.lock</code> from the server's source tree
+                        only when its sha256 equals the hash every result of that runner reports, and otherwise
+                        says why it is absent. The crate root states <code>specimens</code>,
+                        <code>timing_caveats</code> and <code>run_completeness</code>
+                        (<code>complete</code>, <code>partial</code>, <code>failed</code>,
+                        <code>not_recorded</code> for older reports, or <code>not_checked</code> for a report the
+                        server did not produce, such as the browser's copy exported after the server's copy
+                        expired).</li>
                     <li><strong>Run configuration.</strong> Reports record the agreement thresholds sent, the
                         timeout and its scope, the optimization levels, <code>apply_preprocessing</code>, the
                         API-side preprocessing, the dispatched circuits, <code>started_at</code> /
@@ -1106,6 +1130,23 @@
             <section id="methodology">
                 <h2>Timing and memory methodology</h2>
                 <ul>
+                    <li id="timing-caveats"><strong>Timing caveats.</strong> The server records with every
+                        result, and for the report, the conditions that limit how far its timings compare
+                        across backends (<code>timing_caveats</code>, rules versioned by
+                        <code>timing_caveats_version</code>, separate from <code>analysis_version</code>
+                        because they change no agreement label). Each entry has a code, a sentence and the fields
+                        it was read from: <code>shared_dispatch</code> (not exclusive, other runs in the same
+                        phase), <code>overlapping_runs</code>, <code>server_overlapping_runs</code>,
+                        <code>throttled</code> and <code>compilation_throttled</code> (the CPU quota held the
+                        runner for at least 1% of the window), <code>unstable_repeats</code> (samples spread
+                        above 1.3×), <code>mixed_cores</code>, <code>outside_process</code> (container CPU at
+                        least 5 ms and 10% above the process's), <code>single_timed_run</code>,
+                        <code>no_cpu_quota</code>, <code>virtualised_host</code>, <code>emulated_cpu</code>,
+                        <code>non_x86_64</code>, and across backends <code>cross_backend_core_speeds</code>,
+                        <code>cross_backend_cpu_quota</code> and <code>cross_backend_image_commits</code>. The
+                        page's "throttled", "outside process", "unstable" and "mixed cores" tags and its
+                        "Before comparing times" list show these records; for a report stored before they were
+                        recorded the page asks the server (<code>POST /timing-caveats</code>).</li>
                     <li><strong>One warm-up, then the timed runs.</strong> Each backend runs the circuit once
                         and discards the result, then runs it <code>timing_repeats</code> times (default 1)
                         for the reported numbers. With one timed run every timing is a single sample

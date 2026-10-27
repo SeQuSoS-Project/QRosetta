@@ -61,6 +61,15 @@ def slow_records_pid(payload):
     return {"result": "should have been killed"}
 
 
+def reports_environment(payload):
+    """Returns this process's environment and whether it read the image identity."""
+    from qrosetta_commons import image_identity
+    return {"environ": dict(os.environ),
+            "identity_read": image_identity._identity.cache_info().currsize,
+            "build_files_read": image_identity.build_file_hashes.cache_info().currsize,
+            "execution_time_sec": 0.01}
+
+
 def reports_watched_pid(payload):
     """Reports whether the process ``payload['watch_pid']`` is alive when this run starts."""
     return {"watched_alive": process_alive(payload["watch_pid"])}

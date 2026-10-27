@@ -281,6 +281,30 @@ def test_compile_only_run_where_every_compile_failed_is_a_failed_job(fake_dispat
     assert [t["status"] for t in job["progress"]["tasks"]] == ["error", "error"]
 
 
+def test_reports_record_completeness_specimens_and_timing_caveats(fake_dispatch, monkeypatch):
+    job_manager.ACTIVE_JOBS["lc-one"] = job_manager.new_job()
+    asyncio.run(job_manager.worker_compare("lc-one", QASM, 0, {}, 30, [], "local"))
+    job = job_manager.ACTIVE_JOBS["lc-one"]
+    report = job_store.full_report(job)
+    assert report["run_completeness"] == {"job_status": job["status"], "planned_tasks": 1,
+                                          "recorded_tasks": 1, "tasks_with_results": 1,
+                                          "stopped_early": False}
+    assert report["specimens"]["statement"] == "none_ran"
+    assert report["timing_caveats_version"] and isinstance(report["timing_caveats"], list)
+    assert all("timing_caveats" in r for r in report["raw_results"])
+
+    _fake_task_runs(monkeypatch, 8)
+    payload = BatchPayload(mode="statevector",
+                           tasks=[BenchmarkTask(algorithm=f"t{i}", qasm_string=QASM) for i in range(2)])
+    job_manager.ACTIVE_JOBS["lc-two"] = job_manager.new_job()
+    asyncio.run(job_manager.worker_batch_suite("lc-two", payload))
+    job = job_manager.ACTIVE_JOBS["lc-two"]
+    top = job["results"]
+    assert top["run_completeness"]["planned_tasks"] == 2 and top["run_completeness"]["recorded_tasks"] == 2
+    assert top["run_completeness"]["job_status"] == "completed"
+    assert "specimens" in top and "timing_caveats" in top
+
+
 def test_report_download_of_a_job_whose_files_were_removed_is_404(client):
     job_manager.ACTIVE_JOBS["lc-gone"] = job_manager._completed_job("t", {"raw_results": []}, {})
     os.remove(job_manager.ACTIVE_JOBS["lc-gone"]["full_results"].path)

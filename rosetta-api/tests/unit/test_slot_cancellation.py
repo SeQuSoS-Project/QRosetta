@@ -116,17 +116,17 @@ def test_uncancelled_runs_return_the_same_fields():
     measured, compiled, failed = asyncio.run(main())
     assert sorted(measured) == [
         "circuit_depth", "cpu_environment", "cpu_time_sec", "execution_time_sec", "gate_count",
-        "gate_metrics_basis", "metric_scope", "process_finished_at", "process_peak_rss_mb",
+        "gate_metrics_basis", "image_identity", "metric_scope", "process_finished_at", "process_peak_rss_mb",
         "process_peak_rss_method", "process_started_at", "queue_wait_sec", "result",
         "simulation_cpus", "simulation_cpus_samples", "simulation_involuntary_switches_samples",
         "timing_repeats", "timing_statistic", "transpiled_qasm"]
     assert measured["result"] == "ok" and measured["gate_count"] == 2
-    assert sorted(compiled) == ["process_finished_at", "process_started_at", "queue_wait_sec",
-                                "result"]
+    assert sorted(compiled) == ["image_identity", "process_finished_at", "process_started_at",
+                                "queue_wait_sec", "result"]
     assert compiled["result"] == 6
     assert sorted(failed) == [
         "compilation_throttled_sec", "compilation_time_sec", "cpu_time_sec", "error",
-        "execution_time_sec", "memory_usage_mb", "process_finished_at", "process_peak_mb",
+        "execution_time_sec", "image_identity", "memory_usage_mb", "process_finished_at", "process_peak_mb",
         "process_peak_rss_mb", "process_started_at", "queue_wait_sec",
         "simulation_cgroup_cpu_time_sec", "simulation_cpu_time_sec", "simulation_throttled_sec",
         "simulation_time_sec"]

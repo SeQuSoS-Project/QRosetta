@@ -25,6 +25,7 @@ from pathlib import Path
 
 import numpy as np
 
+from qrosetta_commons import image_identity as _image_identity
 from qrosetta_commons.cpu import WindowProbe, apply_cpu_affinity, cpu_environment
 from qrosetta_commons.memory import MemoryMonitor, lifetime_peak_rss
 
@@ -994,6 +995,7 @@ class ExecutionSlots:
             result["never_started"] = True
             result["queue_wait_sec"] = waited
             _stamp_code_sha(result, func)
+            _image_identity.stamp(result)
             return result
         finally:
             self.waiting -= 1
@@ -1012,6 +1014,7 @@ class ExecutionSlots:
             result["process_started_at"] = started_at
             result["process_finished_at"] = finished_at
             _stamp_code_sha(result, func)
+            _image_identity.stamp(result)
         return result
 
 
@@ -1028,6 +1031,7 @@ def register_runner_endpoints(app, process_run, process_run_measured, max_concur
     from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
 
     slots = ExecutionSlots(max_concurrent)
+    app.add_event_handler("startup", _image_identity.load)
 
     if capabilities is not None:
         @app.get("/capabilities")
@@ -1153,6 +1157,7 @@ def run_cli_main(app, process_run, process_run_measured, cli_name,
             result["process_started_at"] = started_at
             result["process_finished_at"] = utc_iso()
             _stamp_code_sha(result, func)
+            _image_identity.stamp(result)
         return result
 
     run_cli_job(_process, args, parser)
