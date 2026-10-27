@@ -123,11 +123,14 @@ jobs:
           tests/unit/test_qrosetta_cli.py tests/unit/test_qrosetta_ownership.py
           tests/unit/test_qrosetta_contracts.py tests/unit/test_qrosetta_client.py
           tests/unit/test_qrosetta_doctor.py tests/unit/test_qrosetta_runs.py
+          tests/unit/test_qrosetta_reads.py
 
       - name: Client half
         if: runner.os != 'Linux'
         working-directory: rosetta-api
-        run: python -m pytest --noconftest -p no:cacheprovider -q tests/unit/test_qrosetta_client.py
+        run: >
+          python -m pytest --noconftest -p no:cacheprovider -q
+          tests/unit/test_qrosetta_client.py tests/unit/test_qrosetta_reads.py
 
   static-checks:
     name: static checks
