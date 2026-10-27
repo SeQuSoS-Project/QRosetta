@@ -124,7 +124,8 @@ The stack runs in two modes, selected by `EXECUTION_MODE`:
 
 ## Getting started
 
-Requires Docker Engine 20.10+ and Docker Compose v2.
+Requires Docker Engine 20.10+ or podman, with Docker Compose v2 as the compose provider (see
+[Starting and stopping](#starting-and-stopping)), and Python 3.
 
 ```bash
 git clone https://github.com/SeQuSoS-Project/qrosetta.git
@@ -176,18 +177,27 @@ again while the containers stop prints a warning; a third Ctrl-C stops waiting a
 containers still running.
 
 On standby the containers are stopped and hold no memory; `start` brings them back in about
-10 seconds. Running and idle, the 24 containers use about 6 GiB. `remove` keeps the images and
-the `<project>_rosetta_db_data` volume, which holds the SQLite database (accounts, saved
+10 seconds. Running and idle, the 24 containers used 3.0 to 6.1 GiB (`qrosetta status`, page
+cache included). `remove` keeps the images and the `qsimulators_rosetta_db_data` volume, which holds the SQLite database (accounts, saved
 circuits, run history) and the saved run reports. Results of jobs that were not saved are lost
 whenever the API container stops.
 
-`stop` and `remove` find containers by their compose project label. They also act on containers
-of another compose project (an older checkout) that use this stack's container names, because
-those block `start`. Docker and podman both work; `QROSETTA_ENGINE=docker|podman` chooses one
-when both are installed. Podman needs Docker Compose v2 as its compose provider
-(`podman compose version` prints "Docker Compose version"). `--project-dir` or `QROSETTA_HOME`
-points the command at another directory holding the compose file; the project name follows
-Compose (`COMPOSE_PROJECT_NAME`, else the directory name).
+`stop` and `remove` act only on the containers labelled with this compose project
+(`qsimulators`, set by `name:` in `docker-compose.yml`). The container names are fixed, so a
+container of another project (an older checkout started under a different project name) can
+hold one and block `start`. `start`, `stop`, `remove` and `status` then name each such container
+with its project and print the command that removes them; `qrosetta` itself leaves them alone.
+`--project-dir` or `QROSETTA_HOME` points the command at another directory holding the compose
+file.
+
+Docker and podman both work; `QROSETTA_ENGINE=docker|podman` chooses one when both are
+installed. Either way the compose provider must be Docker Compose v2: `docker compose version`
+or `podman compose version` prints "Docker Compose version v2..." or later. With Docker, install
+the `docker-compose-plugin` package (https://docs.docker.com/compose/install/linux/). With
+podman, download the `docker-compose` binary for your platform from
+https://github.com/docker/compose/releases, save it as `~/.docker/cli-plugins/docker-compose` and
+make it executable; `podman compose` then uses it instead of podman-compose, which `qrosetta`
+does not support.
 
 In VS Code, *Terminal → Run Task → Quantum Rosetta: start* (`.vscode/tasks.json`) runs
 `qrosetta start` in a terminal panel; stopping the task puts the stack on standby. The other
@@ -271,7 +281,8 @@ This work has been supported by the Business Finland through project SeQuSoS (Gr
 ## Contributing
 
 See `CONTRIBUTING.md` for the full guide to adding a simulator backend or an algorithm
-template.
+template, and `DESIGN_DECISIONS.md` for the measurement and analysis rules with the evidence
+behind each.
 
 ## Versions
 
