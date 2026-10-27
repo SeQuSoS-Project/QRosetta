@@ -39,7 +39,7 @@ limiter = Limiter(key_func=client_address)
 import secrets
 from datetime import datetime, timedelta, timezone
 import bcrypt
-from jose import jwt
+import jwt
 
 
 def _resolve_secret_key() -> str:
@@ -119,7 +119,6 @@ def token_matches_account(payload: dict, user) -> bool:
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError
 from sqlalchemy.orm import Session
 from db.database import get_db
 import db.models as models
@@ -154,7 +153,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         email: str = payload.get("sub")
         if email is None:
             raise credentials_exception
-    except JWTError:
+    except jwt.PyJWTError:
         raise credentials_exception
     user = db.query(models.User).filter(models.User.email == email).first()
     if user is None or not token_matches_account(payload, user):

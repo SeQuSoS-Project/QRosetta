@@ -14,7 +14,8 @@ from fastapi import HTTPException
 from services import prep_worker
 from services.availability import filter_available
 from services.compilation import compile_circuit, queue_compile_statuses
-from services.job_store import JOB_NOT_FOUND, JobTable, full_report, spill_task_report
+from services.job_store import (JOB_NOT_FOUND, JobStorageFull, JobTable, full_report,
+                                remove_job_files, spill_task_report, storage_problem)
 from services.run_registry import EXCLUSIVE, circuit_section, claim_exclusive, releases_exclusive
 from services.validator import validate_request
 from services.dispatcher import (
@@ -51,6 +52,8 @@ SEED_MAX = 2**31 - 1
 JOB_TTL_SEC = 1800
 
 EXCLUSIVE_RETRY_AFTER_SEC = 10
+
+STORAGE_RETRY_AFTER_SEC = 60
 
 _MAX_DISPLAY_STATEVECTOR_AMPLITUDES = 16384
 _MAX_DISPLAY_STATEVECTOR_B64_CHARS = 4 * -(-_MAX_DISPLAY_STATEVECTOR_AMPLITUDES * 16 // 3)
@@ -484,6 +487,24 @@ def require_exclusive_slot(payload, client: str, job_id: str) -> None:
             f"job per client runs at a time."))
 
 
+async def require_job_storage() -> None:
+    """503 with Retry-After when the job store is over its budget or its disk is nearly full
+    (``job_store.storage_problem``)."""
+    problem = await asyncio.to_thread(storage_problem)
+    if problem:
+        raise HTTPException(status_code=503, detail=problem,
+                            headers={"Retry-After": str(STORAGE_RETRY_AFTER_SEC)})
+
+
+def require_batch_size(n_tasks: int, bypass_limits: bool) -> None:
+    """400 for a playlist of more than MAX_BATCH_TASKS circuits, unless ``bypass_limits``."""
+    if n_tasks > settings.MAX_BATCH_TASKS and not bypass_limits:
+        raise HTTPException(status_code=400, detail=(
+            f"Playlist too long: {n_tasks} circuits, over the limit of {settings.MAX_BATCH_TASKS} "
+            f"in one run (limits.max_batch_tasks in GET /config). Split it and run the parts one "
+            f"after another."))
+
+
 def report_failed_before_dispatch(report: dict) -> bool:
     """True for a report whose circuit never reached a runner (top-level error, no results)."""
     return isinstance(report, dict) and bool(report.get("error")) and "raw_results" not in report
@@ -732,6 +753,18 @@ async def worker_batch_suite(job_id: str, payload: BatchPayload):
     start_job(job_id, runner_statuses)
     try:
         await _run_batch_suite(job_id, payload, runner_statuses)
+    except JobStorageFull as e:
+        progress = ACTIVE_JOBS.get(job_id, {}).get("progress")
+        done = progress["completed"] if progress else 0
+        if progress and done < len(progress["tasks"]):
+            progress["tasks"][done]["status"] = "error"
+            progress["current_index"] = None
+        logger.warning(f"Batch job {job_id} stopped at task {done + 1}: {e}")
+        await asyncio.to_thread(remove_job_files, job_id)
+        ACTIVE_JOBS[job_id] = _failed_job(
+            payload.execution_target,
+            f"The batch stopped at circuit {done + 1} of {len(payload.tasks)}, and the results "
+            f"of the batch were not kept. {e}", runner_statuses, progress=progress)
     except Exception as e:
         logger.error(f"Batch job {job_id} failed", exc_info=True)
         ACTIVE_JOBS[job_id] = _failed_job(payload.execution_target,

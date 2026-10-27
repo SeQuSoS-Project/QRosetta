@@ -2,12 +2,15 @@
 
 import httpx
 import json
+import os
 import time
+
+BASE_URL = os.environ.get("QROSETTA_BASE_URL", "http://localhost:8080")
 
 def _poll_job(job_id: str, timeout: int = 120) -> dict:
     deadline = time.time() + timeout
     while time.time() < deadline:
-        resp = httpx.get(f"http://localhost/jobs/{job_id}", timeout=10)
+        resp = httpx.get(f"{BASE_URL}/jobs/{job_id}", timeout=10)
         assert resp.status_code == 200, f"Job poll HTTP {resp.status_code}: {resp.text}"
         data = resp.json()
         if data.get("status") == "completed":
@@ -28,7 +31,7 @@ def run_integration_test():
     try:
         print("Starting integration test...")
 
-        response = httpx.post("http://localhost/run_batch_suite", json=test_payload, timeout=30)
+        response = httpx.post(f"{BASE_URL}/run_batch_suite", json=test_payload, timeout=30)
 
         assert response.status_code == 200, f"Expected status code 200, but got {response.status_code}"
 

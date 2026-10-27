@@ -167,6 +167,12 @@ export function updateAuthUI() {
     announceWorkspaceChange();
 }
 
+/** The message for a 429 from the sign-in or registration route, with the wait from Retry-After. */
+function _rateLimitedText(res, what) {
+    const wait = Number(res.headers.get('Retry-After'));
+    return `Too many ${what} from this network address. Try again in ${wait > 0 ? `${wait} s` : 'a minute'}.`;
+}
+
 export async function handleLoginSubmit() {
     const email = document.getElementById('login-email').value.trim();
     const password = document.getElementById('login-password').value;
@@ -191,6 +197,7 @@ export async function handleLoginSubmit() {
             res = await requestToken(password.trim());
         }
 
+        if (res.status === 429) throw new Error(_rateLimitedText(res, 'sign-in attempts'));
         const data = await res.json();
 
         if (!res.ok) {
@@ -245,6 +252,7 @@ export async function handleRegisterSubmit() {
             body: JSON.stringify(payload)
         });
 
+        if (res.status === 429) throw new Error(_rateLimitedText(res, 'registrations'));
         const data = await res.json().catch(() => ({}));
 
         if (!res.ok) {

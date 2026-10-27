@@ -1,7 +1,7 @@
 #!/bin/bash
 # One Quantum Rosetta request as one Slurm job: each line of <job_dir>/tasks.tsv is one runner
 # or compiler run, executed as its own srun step on one core with run_runner.sh.
-# Untested on Roihu (written 2026-10-21 from the CSC documentation; see README.md).
+# QR_SCRIPTS_DIR overrides the directory of run_runner.sh.
 #
 # Usage: sbatch --account=<project> --ntasks=<lines in tasks.tsv> compare_job.sh <job_dir> <sif_dir>
 # tasks.tsv: <key> TAB <image name without .sif> TAB <run|run_measured|compile>
@@ -14,7 +14,9 @@
 #SBATCH --hint=nomultithread
 set -euo pipefail
 JOB_DIR=$(realpath "${1:?job_dir}"); SIF_DIR=$(realpath "${2:?sif_dir}")
-HERE=$(cd "$(dirname "$0")" && pwd)
+# sbatch runs a spooled copy of this script, so its directory comes from the job's Command.
+SCRIPT=$(scontrol show job "${SLURM_JOB_ID:?run with sbatch}" | sed -n 's/^ *Command=\([^ ]*\).*/\1/p')
+HERE=${QR_SCRIPTS_DIR:-$(cd "$(dirname "$SCRIPT")" && pwd)}
 declare -A SHA
 while IFS=$'\t' read -r key image endpoint; do
   [ -z "$key" ] && continue

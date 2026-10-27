@@ -2,7 +2,13 @@
 file on local disk rather than in the worker's memory (in memory when the write fails), and
 deleted with the job. A batch writes each task's report to the job's directory as the task
 finishes (``spill_task_report``), so the batch report holds references that ``full_report``,
-``report_with_task_loader`` and ``write_report_json`` read back one task at a time."""
+``report_with_task_loader`` and ``write_report_json`` read back one task at a time.
+
+The directory has a budget (``settings.JOB_SPILL_MAX_MIB``) and a free-disk floor
+(``settings.JOB_SPILL_MIN_FREE_MIB``): ``storage_problem`` says when either is crossed, and
+``spill_task_report`` raises ``JobStorageFull`` then instead of writing. A single-circuit
+report is always written, so the budget can be exceeded by the reports of jobs already
+running."""
 
 import asyncio
 import json
@@ -12,6 +18,7 @@ import shutil
 import tempfile
 import uuid
 
+from config import settings
 from qrosetta_commons.helpers import get_logger
 
 logger = get_logger("rosetta-job-store")
@@ -22,6 +29,55 @@ JOB_NOT_FOUND = ("Job not found. Jobs are kept for 30 minutes after they finish 
                  "if the server restarts; submit the run again.")
 
 _JSON_OPTIONS = {"ensure_ascii": False, "allow_nan": False, "indent": None, "separators": (",", ":")}
+
+
+_MIB = 1024 * 1024
+
+
+class JobStorageFull(RuntimeError):
+    """The spill directory is over its budget or its disk is below the free-space floor."""
+
+
+def spill_usage_bytes() -> int:
+    """Bytes held by the files under SPILL_DIR (0 when it does not exist)."""
+    total = 0
+    for root, _dirs, files in os.walk(SPILL_DIR):
+        for name in files:
+            try:
+                total += os.lstat(os.path.join(root, name)).st_size
+            except OSError:
+                pass
+    return total
+
+
+def storage_problem():
+    """Why no new job report may be written to SPILL_DIR, or None: the files there hold
+    JOB_SPILL_MAX_MIB or more, or the disk holding it has less than JOB_SPILL_MIN_FREE_MIB
+    free."""
+    used = spill_usage_bytes()
+    budget = settings.JOB_SPILL_MAX_MIB
+    if used >= budget * _MIB:
+        return (f"The server's storage for job results is full: it holds {used / _MIB:,.0f} MiB "
+                f"and its limit is {budget:,} MiB (limits.job_storage_max_mib in GET /config). "
+                f"Finished jobs are deleted 30 minutes after they finish; submit again later.")
+    try:
+        os.makedirs(SPILL_DIR, exist_ok=True)
+        free = shutil.disk_usage(SPILL_DIR).free
+    except OSError:
+        return None
+    floor = settings.JOB_SPILL_MIN_FREE_MIB
+    if free < floor * _MIB:
+        return (f"The server is low on disk space for job results: {free / _MIB:,.0f} MiB free, "
+                f"and it keeps at least {floor:,} MiB free (limits.job_storage_min_free_mib in "
+                f"GET /config). Submit again later.")
+    return None
+
+
+def require_storage() -> None:
+    """Raise JobStorageFull with ``storage_problem``'s reason, if any."""
+    problem = storage_problem()
+    if problem:
+        raise JobStorageFull(problem)
 
 
 class SpilledReport:
@@ -78,7 +134,9 @@ def _write_pickle(obj, path: str) -> None:
 
 def spill_task_report(job_id, index: int, report: dict):
     """Write one batch task's report to the job's directory and return its reference; the
-    report itself when the write fails."""
+    report itself when the write fails. Raises JobStorageFull (``require_storage``) without
+    writing."""
+    require_storage()
     path = os.path.join(job_dir(job_id), f"task-{int(index):05d}.pickle")
     try:
         _write_pickle(report, path)

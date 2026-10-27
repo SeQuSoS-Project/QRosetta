@@ -21,7 +21,7 @@ from qrosetta_commons.contract_probes import (
 )
 
 
-BASE_URL = os.environ.get("QROSETTA_BASE_URL", "http://localhost")
+BASE_URL = os.environ.get("QROSETTA_BASE_URL", "http://localhost:8080")
 
 ACTIVE_STATEVECTOR_RUNNERS = [
     "qiskit",

@@ -35,7 +35,14 @@ systemd-run --user --scope -p CPUQuota=100% -p MemoryMax=1G \
   apptainer exec --containall --cleanenv -B $PWD:/c qulacs.sif python /c/scripts/roihu/cgroup_check.py ...
 ```
 
-On Roihu, run the same check inside an `srun` step. Slurm may limit a step to a set of CPUs (a cpuset) rather than a quota. Such a run would show no quota, and its affinity list (`cpu_environment.cpu_affinity`) would show the allowed CPUs.
+On Roihu (2026-10-22, Apptainer 1.4.5 with the setuid starter, `srun -n1 -c1 --mem-per-cpu=1G` on the `test` partition), the container's `/sys` has no cgroup filesystem: `/sys/fs/cgroup` is empty and both versions report null for every cgroup value. With the host's `/sys/fs/cgroup` bound in (`-B /sys/fs/cgroup`):
+
+| Environment | Version | Quota (cores) | Memory limit (MiB) | Container CPU (s) | Throttled (s) |
+|---|---|---|---|---|---|
+| Roihu Slurm step, `-B /sys/fs/cgroup` | old | null | null | 0.937 | 0.0 |
+| Roihu Slurm step, `-B /sys/fs/cgroup` | new | null | 1024 | 0.500 | 0.0 |
+
+Slurm limits the step to one core by cpuset (`cpu.max` is `max` at every level), so there is no quota and `cpu_environment.cpu_affinity` holds the allowed core. The 1 GiB limit is on the step's `user` directory, one level above the task. Compute nodes (AMD EPYC 9965, 2 × 192 cores) have SMT off.
 
 ## Running one job (`run_runner.sh`)
 
@@ -43,6 +50,7 @@ On Roihu, run the same check inside an `srun` step. Slurm may limit a step to a 
 - the working directory is `/home/appuser/app`;
 - it passes the compose environment (the five thread pins, `RUNNER_MAX_CONCURRENT=1`, and the qubit caps);
 - it uses `--containall --cleanenv`;
+- it binds the host's `/sys/fs/cgroup` read-only, without which the CPU probe reads no cgroup values under setuid Apptainer;
 - the payload directory is mounted read-only and the result directory writable.
 
 `run_runner.sh <image.sif> --self-test` runs the image's probes. Never use `apptainer run`, because it starts the HTTP server.
@@ -52,3 +60,7 @@ I tested it on 2026-10-21 on the local qulacs SIF, inside a `CPUQuota=100% Memor
 Both a Bell statevector job and a 1000-shot measured job, seed 7, wrote their results to files. Each result recorded the thread pins, `cpu_quota_cores: 1.0`, `memory_limit_mib: 1024`, `memory_method: vmhwm` and the image commit.
 
 Inside the job's cgroup, container CPU (`simulation_cgroup_cpu_time_sec`) was about 1 ms higher than process CPU. Apptainer's own helper processes share the job's cgroup, and their CPU time is counted there.
+
+## One request as one Slurm job (`compare_job.sh`)
+
+On 2026-10-22, on Roihu's `test` partition (`sbatch --ntasks=4`), a Bell circuit ran as four steps: qulacs and qiskit, each statevector and 1000 shots with seed 7, opt level 0, preprocessing on, 3 timing repeats. The SIFs were built from 0a8f9bd. All four steps ran on node rc4284, an AMD EPYC 9965, each on its own core (80–83). Every result had the same statevector or counts as the same payload run locally through `run_runner.sh`. Each recorded `memory_limit_mib: 1024`, `cpu_quota_cores: null`, the Slurm job and node, and the SIF sha256. Container CPU was 0.4–1.0 ms above process CPU, the Apptainer helpers' share described above.

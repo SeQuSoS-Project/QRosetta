@@ -1,7 +1,9 @@
 # Integration tests
 
-These require the **whole stack running** — they make real HTTP calls to `http://localhost`
-and execute circuits on the actual simulator containers. They are deliberately not part of
+These require the **whole stack running** — they make real HTTP calls to
+`http://localhost:8080` (set `QROSETTA_BASE_URL` for another address, for example when
+`QROSETTA_HTTP_BIND` publishes nginx elsewhere) and execute circuits on the actual
+simulator containers. They are deliberately not part of
 the unit suite and CI does not run them: they need 16 built images and take minutes.
 
 ```bash

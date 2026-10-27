@@ -13,7 +13,7 @@ import pytest
 from qrosetta_commons.compile_service import SELF_TEST_PROBES, _PROBE_HEADER
 from qrosetta_commons.helpers import count_qasm_gates_and_depth, get_num_qubits_from_qasm
 
-BASE_URL = os.environ.get("QROSETTA_BASE_URL", "http://localhost")
+BASE_URL = os.environ.get("QROSETTA_BASE_URL", "http://localhost:8080")
 CONTAINER_RUNTIME = shutil.which("podman") or shutil.which("docker")
 
 

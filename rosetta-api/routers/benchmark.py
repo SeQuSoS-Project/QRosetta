@@ -7,9 +7,11 @@ from services.security import client_address, get_optional_user
 from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from fastapi.responses import StreamingResponse
 import uuid
-from routers.errors import responses
+from routers.errors import BYPASS_401, responses
 from qrosetta_commons.helpers import get_logger
-from services.validator import validate_runner_config, validate_runner_ids, validate_submission
+from services.validator import (require_bypass_permission, validate_runner_config,
+                                validate_runner_ids, validate_submission)
+from services.preparation_limits import bundled_prep_problem
 from schemas import QasmPayload, MeasuredQasmPayload, BatchPayload, JobStatusResponse
 from schemas.reports import JobReport, JobStatus
 from services.security import limiter
@@ -23,6 +25,8 @@ from services.job_manager import (
     clamp_timeout,
     effective_thresholds,
     new_job,
+    require_batch_size,
+    require_job_storage,
     worker_compare,
     worker_compare_measured,
     worker_batch_suite
@@ -82,7 +86,10 @@ async def get_job_full_report(request: Request, job_id: str):
         headers={"Content-Disposition": f'attachment; filename="qrosetta_report_{job_id[:8]}.json"'},
     )
 
-@router.post("/compare", response_model=JobStatusResponse, responses=responses(400, 413, 422))
+_RUN_ERRORS = responses(400, BYPASS_401, 413, 422, 503)
+
+
+@router.post("/compare", response_model=JobStatusResponse, responses=_RUN_ERRORS)
 @limiter.limit(settings.RUN_RATE_LIMIT)
 async def compare_circuits_endpoint(request: Request, payload: QasmPayload, background_tasks: BackgroundTasks, user=Depends(get_optional_user)):
     """Dispatch one OpenQASM 2.0 circuit for an exact statevector comparison across the
@@ -92,7 +99,10 @@ async def compare_circuits_endpoint(request: Request, payload: QasmPayload, back
     parse as OpenQASM 2.0, has too many qubits, or has mid-circuit measurement, reset or
     classical control, and for unknown, disabled or unavailable runner ids; 413 for a
     circuit over MAX_QASM_SIZE. 400 also for a gate definition under a name a runner's
-    parser reserves, and a runner_config level above that runner's max."""
+    parser reserves, and a runner_config level above that runner's max. 401 for
+    bypass_limits without a signed-in account on a server that is not local; 503 while the
+    server's job storage is full."""
+    require_bypass_permission(payload.bypass_limits, user)
     await asyncio.to_thread(validate_submission, payload.qasm_string,
                             "statevector" if payload.simulate else "compile",
                             bypass_limits=payload.bypass_limits,
@@ -102,6 +112,7 @@ async def compare_circuits_endpoint(request: Request, payload: QasmPayload, back
     validate_runner_config(payload.runner_config)
     validate_compilers(payload.compilers)
     await require_available(payload.target_simulators)
+    await require_job_storage()
     timeout = clamp_timeout(payload.timeout_seconds)
     job_id = str(uuid.uuid4())
     require_exclusive_slot(payload, client_address(request), job_id)
@@ -112,7 +123,7 @@ async def compare_circuits_endpoint(request: Request, payload: QasmPayload, back
 
     return _job_envelope(job_id)
 
-@router.post("/compare_measured", response_model=JobStatusResponse, responses=responses(400, 413, 422))
+@router.post("/compare_measured", response_model=JobStatusResponse, responses=_RUN_ERRORS)
 @limiter.limit(settings.RUN_RATE_LIMIT)
 async def compare_measured_circuits_endpoint(request: Request, payload: MeasuredQasmPayload, background_tasks: BackgroundTasks, user=Depends(get_optional_user)):
     """Dispatch one OpenQASM 2.0 circuit for a shot-based measurement comparison across the
@@ -130,7 +141,11 @@ async def compare_measured_circuits_endpoint(request: Request, payload: Measured
 
     There is no ``simulate`` field: a compile-only run of a circuit with measurements goes
     to POST /compare with ``simulate: false``, which compiles the same input (terminal
-    measurements removed) and accepts circuits with measurements."""
+    measurements removed) and accepts circuits with measurements.
+
+    401 for bypass_limits without a signed-in account on a server that is not local; 503
+    while the server's job storage is full."""
+    require_bypass_permission(payload.bypass_limits, user)
     await asyncio.to_thread(validate_submission, payload.qasm_string, "measured",
                             bypass_limits=payload.bypass_limits,
                             apply_preprocessing=payload.apply_preprocessing)
@@ -138,6 +153,7 @@ async def compare_measured_circuits_endpoint(request: Request, payload: Measured
     validate_runner_config(payload.runner_config)
     validate_compilers(payload.compilers)
     await require_available(payload.target_simulators)
+    await require_job_storage()
     timeout = clamp_timeout(payload.timeout_seconds)
     job_id = str(uuid.uuid4())
     require_exclusive_slot(payload, client_address(request), job_id)
@@ -149,7 +165,8 @@ async def compare_measured_circuits_endpoint(request: Request, payload: Measured
     return _job_envelope(job_id)
 
 def _validate_batch_tasks(payload: BatchPayload) -> None:
-    """400 naming the first task that fails ``validate_submission`` or its mode's qubit cap."""
+    """400 naming the first task that fails ``validate_submission`` or its mode's qubit cap,
+    or, with preprocessing, a bundled circuit whose preparation exceeds the server's limit."""
     run_mode = payload.mode if payload.simulate else "compile"
     for index, task in enumerate(payload.tasks):
         label = f"tasks[{index}] ({task.name or task.algorithm or 'qasm'})"
@@ -160,14 +177,19 @@ def _validate_batch_tasks(payload: BatchPayload) -> None:
                                     statevector=payload.mode == "statevector" and payload.simulate)
             except HTTPException as exc:
                 raise HTTPException(status_code=exc.status_code, detail=f"{label}: {exc.detail}")
-        elif (task.source or "preset") in ("preset", "mqt") and not payload.bypass_limits:
+            continue
+        if (task.source or "preset") in ("preset", "mqt") and not payload.bypass_limits:
             cap = settings.max_qubits_for_mode(run_mode)
             if task.qubits and task.qubits > cap:
                 raise HTTPException(status_code=400, detail=(
                     f"{label}: {task.qubits} qubits is over the {run_mode} limit of {cap}."))
+        if payload.apply_preprocessing:
+            problem = bundled_prep_problem(task.source, task.algorithm, task.qubits)
+            if problem:
+                raise HTTPException(status_code=400, detail=f"{label}: {problem}")
 
 
-@router.post("/run_batch_suite", response_model=JobStatusResponse, responses=responses(400, 413, 422))
+@router.post("/run_batch_suite", response_model=JobStatusResponse, responses=_RUN_ERRORS)
 @limiter.limit(settings.RUN_RATE_LIMIT)
 async def run_batch_suite_endpoint(request: Request, payload: BatchPayload, background_tasks: BackgroundTasks, user=Depends(get_optional_user)):
     """Dispatch a list of circuits (presets, bundled benchmark circuits, or user-supplied
@@ -175,8 +197,12 @@ async def run_batch_suite_endpoint(request: Request, payload: BatchPayload, back
     Runs in the background; poll GET /jobs/{job_id} for progress and the per-task results.
     400 for no tasks, unknown/disabled/unavailable runner ids, a literal circuit that
     fails the same checks as /compare or /compare_measured, or a preset or MQT Bench task
-    over the mode's qubit limit (unless bypass_limits); the detail names the task as
-    ``tasks[i]`` (0-based index). 422 for an unknown mode or source. Preset and benchmark
+    over the mode's qubit limit (unless bypass_limits), more tasks than max_batch_tasks in
+    GET /config (unless bypass_limits), or, with apply_preprocessing, a bundled circuit whose
+    preparation is known to exceed prep_max_mib (GET /config lists them as
+    bundled_over_prep_limit); the detail names the task as ``tasks[i]`` (0-based index). 401
+    for bypass_limits without a signed-in account on a server that is not local; 503 while
+    the server's job storage is full. 422 for an unknown mode or source. Preset and benchmark
     tasks are generated in the background, and one that fails there is reported as that
     task's error.
 
@@ -184,13 +210,16 @@ async def run_batch_suite_endpoint(request: Request, payload: BatchPayload, back
     single-circuit report per task, in task order, each with ``task_name``, ``task_qubits``
     and ``task_request``; a task that failed before dispatch is ``{task_name, task_request,
     error}``) and the shared run settings."""
+    require_bypass_permission(payload.bypass_limits, user)
     if not payload.tasks:
         raise HTTPException(status_code=400, detail="No tasks given.")
+    require_batch_size(len(payload.tasks), payload.bypass_limits)
     validate_runner_ids(payload.target_simulators, payload.runner_config, payload.runner_phases)
     validate_runner_config(payload.runner_config)
     validate_compilers(payload.compilers)
     await asyncio.to_thread(_validate_batch_tasks, payload)
     await require_available(payload.target_simulators)
+    await require_job_storage()
     job_id = str(uuid.uuid4())
     require_exclusive_slot(payload, client_address(request), job_id)
 

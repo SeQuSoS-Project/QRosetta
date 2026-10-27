@@ -18,7 +18,7 @@ import base64
 import numpy as np
 import httpx
 
-BASE_URL = os.environ.get("QROSETTA_BASE_URL", "http://localhost")
+BASE_URL = os.environ.get("QROSETTA_BASE_URL", "http://localhost:8080")
 POLL_INTERVAL = 2.0
 JOB_TIMEOUT = 180
 

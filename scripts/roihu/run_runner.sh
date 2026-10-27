@@ -21,7 +21,8 @@ for var in SLURM_JOB_ID SLURM_STEP_ID SLURM_JOB_PARTITION SLURMD_NODENAME SLURM_
 done
 BINDS=()
 for bind in ${QR_EXTRA_BINDS:-}; do BINDS+=(-B "$bind"); done
-APPTAINER=(apptainer exec --containall --cleanenv --pwd /home/appuser/app "${ENV_ARGS[@]}" "${BINDS[@]}")
+APPTAINER=(apptainer exec --containall --cleanenv --pwd /home/appuser/app
+           -B /sys/fs/cgroup:/sys/fs/cgroup:ro "${ENV_ARGS[@]}" "${BINDS[@]}")
 if [ "$ENDPOINT" = --self-test ]; then
   exec "${APPTAINER[@]}" "$SIF" python main.py --self-test
 fi

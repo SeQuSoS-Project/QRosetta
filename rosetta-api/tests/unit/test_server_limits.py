@@ -1,0 +1,246 @@
+"""Server limits: who may set bypass_limits, the playlist length cap, the job storage budget,
+and bundled circuits refused for their known preparation memory."""
+import asyncio
+import os
+from types import SimpleNamespace
+
+import pytest
+from fastapi import FastAPI, HTTPException
+from fastapi.testclient import TestClient
+
+from config import settings
+from services import job_store
+from services.security import get_optional_user
+
+H = 'OPENQASM 2.0;\ninclude "qelib1.inc";\n'
+QASM = H + "qreg q[2];\nh q[0];\ncx q[0],q[1];\n"
+GHZ = {"algorithm": "ghz", "qubits": 2}
+
+
+@pytest.fixture
+def client(monkeypatch):
+    from routers import benchmark, experiment, frontend
+    from routers.errors import register_error_handlers
+    from services.security import limiter
+
+    monkeypatch.setattr(limiter, "enabled", False)
+    started = []
+
+    def fake_add_task(self, func, *args, **kwargs):
+        started.append((func.__name__, args))
+    monkeypatch.setattr("fastapi.BackgroundTasks.add_task", fake_add_task)
+
+    app = FastAPI()
+    app.state.limiter = limiter
+    register_error_handlers(app)
+    for module in (benchmark, experiment, frontend):
+        app.include_router(module.router)
+    c = TestClient(app)
+    c.app_ = app
+    c.started = started
+    return c
+
+
+def _sign_in(client):
+    client.app_.dependency_overrides[get_optional_user] = lambda: SimpleNamespace(id=7)
+
+
+BYPASS_REQUESTS = [
+    ("/compare", {"qasm_string": QASM, "bypass_limits": True}),
+    ("/compare_measured", {"qasm_string": QASM, "bypass_limits": True}),
+    ("/run_batch_suite", {"tasks": [GHZ], "mode": "statevector", "bypass_limits": True}),
+    ("/experiments", {"circuits": [GHZ], "bypass_limits": True}),
+]
+
+
+@pytest.mark.parametrize("path,body", BYPASS_REQUESTS, ids=[p for p, _ in BYPASS_REQUESTS])
+def test_anonymous_bypass_is_refused_on_a_server(client, monkeypatch, path, body):
+    monkeypatch.setattr(settings, "EXECUTION_MODE", "kubernetes")
+    r = client.post(path, json=body)
+    assert r.status_code == 401
+    assert r.headers["WWW-Authenticate"] == "Bearer"
+    assert "signed-in account" in r.json()["detail"]
+    assert not client.started
+    assert client.post(path, json={**body, "bypass_limits": False}).status_code == 200
+
+
+@pytest.mark.parametrize("path,body", BYPASS_REQUESTS, ids=[p for p, _ in BYPASS_REQUESTS])
+def test_signed_in_bypass_is_accepted_on_a_server(client, monkeypatch, path, body):
+    monkeypatch.setattr(settings, "EXECUTION_MODE", "kubernetes")
+    _sign_in(client)
+    assert client.post(path, json=body).status_code == 200
+    assert client.started
+
+
+def test_local_server_keeps_anonymous_bypass(client, monkeypatch):
+    monkeypatch.setattr(settings, "EXECUTION_MODE", "local")
+    circuits = [GHZ] * (settings.MAX_EXPERIMENT_CELLS + 1)
+    assert client.post("/experiments", json={"circuits": circuits, "bypass_limits": True}).status_code == 200
+
+
+def test_signed_in_bypass_lifts_the_experiment_cap_on_a_server(client, monkeypatch):
+    monkeypatch.setattr(settings, "EXECUTION_MODE", "kubernetes")
+    circuits = [GHZ] * (settings.MAX_EXPERIMENT_CELLS + 1)
+    assert client.post("/experiments", json={"circuits": circuits}).status_code == 400
+    _sign_in(client)
+    assert client.post("/experiments", json={"circuits": circuits, "bypass_limits": True}).status_code == 200
+
+
+def test_validator_honours_bypass_for_size_and_statements_only_locally(monkeypatch):
+    from services.validator import validate_request
+    monkeypatch.setattr(settings, "MAX_QASM_GATES", 3)
+    qasm = H + "qreg q[1];\n" + "x q[0];\n" * 4
+    monkeypatch.setattr(settings, "EXECUTION_MODE", "local")
+    validate_request(qasm, bypass_limits=True)
+    monkeypatch.setattr(settings, "EXECUTION_MODE", "kubernetes")
+    for bypass in (False, True):
+        with pytest.raises(HTTPException) as caught:
+            validate_request(qasm, bypass_limits=bypass)
+        assert caught.value.status_code == 400 and "gate statements" in caught.value.detail
+
+
+def test_signed_in_bypass_on_a_server_keeps_the_statement_limit(client, monkeypatch):
+    monkeypatch.setattr(settings, "EXECUTION_MODE", "kubernetes")
+    monkeypatch.setattr(settings, "MAX_QASM_GATES", 3)
+    _sign_in(client)
+    qasm = H + "qreg q[1];\n" + "x q[0];\n" * 4
+    r = client.post("/compare", json={"qasm_string": qasm, "bypass_limits": True})
+    assert r.status_code == 400 and "gate statements" in r.json()["detail"]
+    assert not client.started
+
+
+def test_config_says_whether_bypass_needs_an_account(client, monkeypatch):
+    monkeypatch.setattr(settings, "EXECUTION_MODE", "kubernetes")
+    assert client.get("/config").json()["bypass_limits_requires_account"] is True
+    monkeypatch.setattr(settings, "EXECUTION_MODE", "local")
+    assert client.get("/config").json()["bypass_limits_requires_account"] is False
+
+
+def test_playlist_over_the_task_limit_is_refused_unless_bypassed(client, monkeypatch):
+    monkeypatch.setattr(settings, "MAX_BATCH_TASKS", 3)
+    body = {"tasks": [GHZ] * 4, "mode": "measured"}
+    r = client.post("/run_batch_suite", json=body)
+    assert r.status_code == 400
+    assert "Playlist too long: 4 circuits" in r.json()["detail"] and "max_batch_tasks" in r.json()["detail"]
+    assert not client.started
+    compile_only = {**body, "simulate": False, "compilers": {"pyzx": [1]}, "mode": "statevector"}
+    assert client.post("/run_batch_suite", json=compile_only).status_code == 400
+    assert client.post("/run_batch_suite", json={**body, "tasks": [GHZ] * 3}).status_code == 200
+    assert client.post("/run_batch_suite", json={**body, "bypass_limits": True}).status_code == 200
+
+
+def test_default_task_limit_holds_both_bundled_suites():
+    from services import benchmark_library as bl
+    bundled = sum(len(sizes) for sizes in bl.list_mqt().values()) + len(bl.list_qasmbench())
+    assert settings.MAX_BATCH_TASKS >= bundled
+
+
+@pytest.fixture
+def spill_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr(job_store, "SPILL_DIR", str(tmp_path))
+    return tmp_path
+
+
+def test_storage_problem_names_the_budget(spill_dir, monkeypatch):
+    monkeypatch.setattr(settings, "JOB_SPILL_MAX_MIB", 1)
+    monkeypatch.setattr(settings, "JOB_SPILL_MIN_FREE_MIB", 0)
+    assert job_store.storage_problem() is None
+    (spill_dir / "job").mkdir()
+    (spill_dir / "job" / "task-00000.pickle").write_bytes(b"x" * (1024 * 1024))
+    problem = job_store.storage_problem()
+    assert "1 MiB" in problem and "job_storage_max_mib" in problem
+
+
+def test_storage_problem_names_the_free_space_floor(spill_dir, monkeypatch):
+    monkeypatch.setattr(settings, "JOB_SPILL_MAX_MIB", 10**9)
+    monkeypatch.setattr(settings, "JOB_SPILL_MIN_FREE_MIB", 10**12)
+    problem = job_store.storage_problem()
+    assert "low on disk space" in problem and "job_storage_min_free_mib" in problem
+
+
+def test_a_full_store_refuses_new_runs_with_503(client, monkeypatch):
+    import services.job_manager as job_manager
+    monkeypatch.setattr(job_manager, "storage_problem", lambda: "The server's storage for job results is full.")
+    for path, body in [("/compare", {"qasm_string": QASM}), ("/compare_measured", {"qasm_string": QASM}),
+                       ("/run_batch_suite", {"tasks": [GHZ], "mode": "statevector"}),
+                       ("/experiments", {"circuits": [GHZ]})]:
+        r = client.post(path, json=body)
+        assert r.status_code == 503, path
+        assert r.json()["detail"] == "The server's storage for job results is full."
+        assert int(r.headers["Retry-After"]) == job_manager.STORAGE_RETRY_AFTER_SEC
+    assert not client.started
+
+
+def test_task_report_is_not_written_over_the_budget(spill_dir, monkeypatch):
+    monkeypatch.setattr(job_store, "storage_problem", lambda: "full")
+    with pytest.raises(job_store.JobStorageFull, match="full"):
+        job_store.spill_task_report("job-x", 0, {"a": 1})
+    assert not os.path.exists(job_store.job_dir("job-x"))
+
+
+def test_batch_stops_and_names_the_limit_when_the_store_fills(spill_dir, monkeypatch):
+    import services.job_manager as job_manager
+    from schemas import BatchPayload
+
+    async def fake_run(qasm, *args, **kwargs):
+        return {"input_qasm": qasm, "raw_results": [{"simulator": "qiskit", "dispatch_status": "ok"}]}
+    monkeypatch.setattr(job_manager, "run_single_circuit_comparison", fake_run)
+    writes = []
+
+    def fake_storage_problem():
+        writes.append(1)
+        return "The server's storage for job results is full: limit 5 MiB." if len(writes) > 1 else None
+    monkeypatch.setattr(job_store, "storage_problem", fake_storage_problem)
+
+    payload = BatchPayload(tasks=[{"algorithm": "c", "qasm_string": QASM}] * 3, mode="statevector")
+    job_id = "batch-storage-full"
+    job_manager.ACTIVE_JOBS[job_id] = job_manager.new_job()
+    try:
+        asyncio.run(job_manager.worker_batch_suite(job_id, payload))
+        job = job_manager.ACTIVE_JOBS[job_id]
+        assert job["status"] == "failed"
+        assert job["error"].startswith("The batch stopped at circuit 2 of 3")
+        assert "limit 5 MiB" in job["error"]
+        assert [t["status"] for t in job["progress"]["tasks"]] == ["done", "error", "queued"]
+        assert not os.path.exists(job_store.job_dir(job_id))
+    finally:
+        job_manager.ACTIVE_JOBS.pop(job_id, None)
+
+
+def test_bundled_circuits_over_the_preparation_limit(monkeypatch):
+    from services.preparation_limits import bundled_over_prep_limit, bundled_prep_problem
+    monkeypatch.setattr(settings, "PREP_MAX_MIB", 1024)
+    problem = bundled_prep_problem("mqt", "grover-noancilla", 15)
+    assert "about 1,493 MiB" in problem and "1,024 MiB" in problem and "preprocessing off" in problem
+    assert "at least 2,048 MiB" in bundled_prep_problem("mqt", "grover-v-chain", 17)
+    assert bundled_prep_problem("mqt", "grover-noancilla", 14) is None
+    assert bundled_prep_problem("mqt", "qft", 15) is None
+    listed = bundled_over_prep_limit()
+    assert {"source": "mqt", "algorithm": "grover-v-chain", "qubits": 15} in listed
+    assert {"source": "mqt", "algorithm": "grover-v-chain", "qubits": 14} not in listed
+    monkeypatch.setattr(settings, "PREP_MAX_MIB", 4096)
+    assert bundled_over_prep_limit() == []
+
+
+def test_every_recorded_peak_names_a_bundled_circuit():
+    from services import benchmark_library as bl
+    from services.preparation_limits import _recorded
+    mqt = bl.list_mqt()
+    for source, algorithm, qubits in _recorded():
+        if source == "mqt":
+            assert qubits in mqt[algorithm], (algorithm, qubits)
+        else:
+            assert algorithm in bl.list_qasmbench(), algorithm
+
+
+def test_runs_with_a_bundled_circuit_over_the_preparation_limit_are_refused(client, monkeypatch):
+    monkeypatch.setattr(settings, "PREP_MAX_MIB", 1024)
+    task = {"source": "mqt", "algorithm": "grover-noancilla", "qubits": 15}
+    batch = {"tasks": [GHZ, task], "mode": "measured"}
+    r = client.post("/run_batch_suite", json=batch)
+    assert r.status_code == 400 and r.json()["detail"].startswith("tasks[1] (grover-noancilla): Preparing")
+    assert client.post("/run_batch_suite", json={**batch, "apply_preprocessing": False}).status_code == 200
+    experiment = {"circuits": [task], "mode": "measured"}
+    r = client.post("/experiments", json={**experiment, "preprocessing_modes": [True, False]})
+    assert r.status_code == 400 and "circuits[0]" in r.json()["detail"]
+    assert client.post("/experiments", json={**experiment, "preprocessing_modes": [False]}).status_code == 200
