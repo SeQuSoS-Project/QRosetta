@@ -17,6 +17,8 @@ FEATURES = {
     "plan": 1,
     "summary": 1,
     "selftest": 1,
+    "crate_readme": 1,
+    "circuit_texts": 1,
 }
 
 

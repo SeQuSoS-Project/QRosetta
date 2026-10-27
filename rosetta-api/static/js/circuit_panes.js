@@ -1,6 +1,7 @@
 // The circuit texts one run recorded, as panes for the Circuits view: the submitted
 // circuit, each dispatch group's circuit, each backend's executed circuit and, when the run
 // had compile-only services, their input and outputs. Pure; imports only other pure modules.
+// services/circuit_texts.py circuit_panes builds the same ids, order and texts for the API.
 
 import { qasmGateMetrics, splitLines } from './qasm_text.js';
 import { parseRunnerKey } from './runner_key.js';

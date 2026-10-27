@@ -201,3 +201,27 @@ class ReportSummary(_Open):
     outcome_roles: Dict[str, Literal["difference", "not_established", "runs_without_output", "agreement"]] = Field(..., description="Each outcome name's role: difference (a pair differs; BY-only included), not_established (inconclusive, not comparable, unassessed, or nothing compared), runs_without_output, agreement.")
     runs: Optional[Dict[str, Any]] = Field(None, description="Runs: total, returned, without_output; a playlist's are sums, with circuits_failed.")
     benchmark_summary: Optional[List[TaskSummary]] = Field(None, description="Playlist report: one summary per task, in task order; null for a single-circuit report.")
+
+
+class CircuitPane(_Open):
+    """One pane of the Circuits view: a circuit text the run recorded, with the share-link
+    allowlist's fields of its record (transforms, gate metrics, status, SDK versions)."""
+    id: str = Field(..., description="'input', 'dispatched:<group>', 'executed:<result key>', 'compile-input' or 'compiled:<compile key>'.")
+    kind: Literal["input", "dispatched", "executed", "compile-input", "compiled"]
+    key: Optional[str] = Field(None, description="Executed: the result key; compiled: the compile key; else null.")
+    group: Optional[str] = Field(None, description="Dispatched: the runner group; executed: the group whose dispatched circuit the backend received.")
+    text: Optional[str] = Field(None, description="The circuit text; null for a run or compile that recorded none.")
+
+
+class CircuitTextsCircuit(_Open):
+    """The panes of one circuit of the job."""
+    task: Optional[int] = Field(None, description="Playlist: the circuit's index in benchmark_summary; null for a single-circuit job.")
+    task_name: Optional[str] = Field(None, description="Playlist: the circuit's name.")
+    panes: List[CircuitPane]
+
+
+class CircuitTexts(_Open):
+    """GET /jobs/{job_id}/circuit-texts."""
+    job_id: str
+    report_source: Literal["server_job"]
+    circuits: List[CircuitTextsCircuit] = Field(..., description="One entry per circuit: one for a single-circuit job; for a playlist the task asked for, else every task in order.")

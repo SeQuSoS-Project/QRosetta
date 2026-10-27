@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from routers import frontend, generation, benchmark, auth, history, export, publication, experiment, share, plan, summary, selftest, timing
+from routers import circuits
 from routers.errors import document_route_errors, register_error_handlers
 from routers.rate_limit import RateLimitHeaders
 import db.models as models
@@ -130,5 +131,6 @@ app.include_router(plan.router)
 app.include_router(summary.router)
 app.include_router(selftest.router)
 app.include_router(timing.router)
+app.include_router(circuits.router)
 
 document_route_errors(app)
