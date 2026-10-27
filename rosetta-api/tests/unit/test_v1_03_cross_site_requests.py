@@ -10,6 +10,7 @@ import pytest
 pytest.importorskip("pytket")
 
 from fastapi.testclient import TestClient  # noqa: E402
+from limits import parse  # noqa: E402
 from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
@@ -27,6 +28,7 @@ BELL = 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[2];\nh q[0];\ncx q[0],q[1];
 COMPARE = json.dumps({"qasm_string": BELL, "target_simulators": ["qiskit"]}).encode()
 JSON = {"Content-Type": "application/json"}
 EVIL = "https://evil.example"
+REGISTER_LIMIT = parse(settings.REGISTER_RATE_LIMIT).amount
 
 
 @pytest.fixture
@@ -183,6 +185,19 @@ def test_v1_03_login_from_the_pages_own_origin_works_and_from_another_site_is_40
     assert signed_in.status_code == 200, signed_in.text
     assert signed_in.json()["access_token"]
     assert client.post("/auth/token", data=form, headers={"Origin": EVIL}).status_code == 403
+
+
+def test_v1_03_refused_requests_use_no_rate_limit_budget(accounts_db):
+    client = TestClient(app)
+    body = json.dumps({"email": "budget@example.org", "password": "correct-horse-1"}).encode()
+    for _ in range(3 * REGISTER_LIMIT):
+        assert client.post("/auth/register", content=body, headers={**JSON, "Origin": EVIL}).status_code == 403
+        assert client.post("/auth/register", content=body, headers={"Content-Type": "text/plain"}).status_code == 415
+    assert client.post("/auth/register", content=body, headers=JSON).status_code == 201
+    statuses = [client.post("/auth/register",
+                            json={"email": f"budget{i}@example.org", "password": "correct-horse-1"}).status_code
+                for i in range(REGISTER_LIMIT)]
+    assert statuses[-1] == 429
 
 
 def test_v1_03_nginx_passes_the_host_with_its_port_and_the_frontend_its_forwarded_host():
