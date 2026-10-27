@@ -10,7 +10,7 @@ import time
 
 import pytest
 
-from tests.unit._qrosetta_fake import FakeEngine, FakeServer
+from tests.unit._qrosetta_fake import FakeEngine, FakeServer, ours
 from tests.unit.test_qrosetta_cli import _safe_boot, cli, env, fake, project  # noqa: F401
 
 from qrosetta_cli.client.transport import Response  # noqa: E402
@@ -138,3 +138,28 @@ def test_start_writes_the_token_and_passes_it_to_compose(fake, project, env, mon
     assert fresh and all(a == f"Bearer {token}" for a in fresh)
     compose_envs = [e for cmd, e in fake.calls if "compose" in cmd]
     assert compose_envs and all(e.get(hostload.COMPOSE_VAR) == hostload.token_path(env) for e in compose_envs)
+
+
+def test_recreating_running_containers_holds_a_stop_notice(fake, project, env, monkeypatch, capsys):
+    monkeypatch.setattr(serve, "_sleep", lambda s: None)
+    fake.add("qiskit-runner", ours("qiskit_runner"), image="i-qiskit")
+    fake.rebuild("qiskit_runner", "j-qiskit")
+    server = NoticeServer(None, fresh=True)
+    assert cli(fake, project, env, ["start", "-d", "qiskit"], server=server) == 0
+    assert [d for d, _a in server.notices] == [{"action": "begin", "kind": "stop", "services": ["qiskit"]},
+                                               {"action": "end", "notice_id": "a" * 32}]
+    assert fake.recreated == ["c-qiskit-runner"]
+    capsys.readouterr()
+    fake.rebuild("api", "j-api")
+    server = NoticeServer(None, fresh=True)
+    original = server.request
+
+    def api_restarted(method, path, query=None, body=None, headers=None, timeout=None):
+        if path == hostload.ROUTE and json.loads(body)["action"] == "end":
+            return Response(404, {"content-type": "application/json"}, b'{"detail": "Not Found"}')
+        return original(method, path, query, body, headers, timeout)
+
+    server.request = api_restarted
+    assert cli(fake, project, env, ["start", "-d"], server=server) == 0
+    assert server.notices[0][0] == {"action": "begin", "kind": "stop", "services": ["api"]}
+    assert "not ended" not in capsys.readouterr().err
