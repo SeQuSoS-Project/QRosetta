@@ -63,6 +63,7 @@ services:
       - MAX_QUBITS_STATEVECTOR=${MAX_QUBITS_STATEVECTOR:-18}
       - MAX_QUBITS_MEASURED=${MAX_QUBITS_MEASURED:-24}
       - MAX_QUBITS_COMPILE=${MAX_QUBITS_COMPILE:-24}
+      - QROSETTA_JOB_TTL_SEC=${QROSETTA_JOB_TTL_SEC:-86400}
     volumes:
       - rosetta_db_data:/home/appuser/app/data
     networks:

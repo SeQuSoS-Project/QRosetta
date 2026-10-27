@@ -28,6 +28,8 @@ ENV HOME=/home/appuser
 ENV OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
 ARG QROSETTA_GIT_SHA=unknown
 ENV QROSETTA_IMAGE_GIT_SHA=${QROSETTA_GIT_SHA}
+ARG QROSETTA_VERSION=1.0.0
+ENV QROSETTA_VERSION=${QROSETTA_VERSION}
 USER appuser
 
 CMD ["sh", "-c", "exec gunicorn main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000} --timeout 330 --access-logfile -"]

@@ -5,6 +5,8 @@
 import { BASE_URL, formatApiError, getAuthHeaders } from './api.js';
 import { labelText } from './labels.js';
 import { downloadBlob } from './utils.js';
+import { durationText } from './request_limits.js';
+import { getState } from './state.js';
 
 const ASSESSMENTS = ['consistent_within_shot_noise', 'inconclusive_low_shots', 'ambiguous', 'distinguishable'];
 
@@ -115,7 +117,7 @@ export function renderExperimentResult(results, panel, { jobId, name, title, com
     panel.appendChild(card);
     _line(panel, null, 'The bundle holds the inputs, every per-circuit result, a conformance matrix, an agreement-prevalence '
         + 'table and a provenance manifest. Each error signature is marked untriaged, for you to classify as adapter, SDK, '
-        + 'by design or resource. The server keeps the bundle for 30 minutes.', 'text-gray-600 mb-3');
+        + `by design or resource. The server keeps the bundle for ${durationText(getState().jobTtlSec)}.`, 'text-gray-600 mb-3');
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'py-2 px-4 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700';

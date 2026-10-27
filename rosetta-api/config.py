@@ -40,6 +40,7 @@ class Settings(BaseSettings):
                                     "https://github.com/SeQuSoS-Project/QRosetta").rstrip("/")
 
     RUN_RATE_LIMIT: str = os.getenv("QROSETTA_RUN_RATE_LIMIT", "10/minute")
+    PLAN_RATE_LIMIT: str = os.getenv("QROSETTA_PLAN_RATE_LIMIT", "120/minute")
     LOGIN_RATE_LIMIT: str = os.getenv("QROSETTA_LOGIN_RATE_LIMIT", "10/minute")
     REGISTER_RATE_LIMIT: str = os.getenv("QROSETTA_REGISTER_RATE_LIMIT", "5/minute")
 
@@ -55,6 +56,8 @@ class Settings(BaseSettings):
     PREP_TIMEOUT_SEC: float = float(os.getenv("QROSETTA_PREP_TIMEOUT_SEC", "120"))
     JOB_SPILL_MAX_MIB: int = int(os.getenv("QROSETTA_JOB_SPILL_MAX_MIB", "10240"))
     JOB_SPILL_MIN_FREE_MIB: int = int(os.getenv("QROSETTA_JOB_SPILL_MIN_FREE_MIB", "1024"))
+    JOB_TTL_SEC: int = Field(default=1800, validation_alias="QROSETTA_JOB_TTL_SEC")
+    JOB_EVICTABLE_AFTER_SEC: int = 1800
     MIN_SHOTS: int = 1
     MAX_SHOTS: int = 1_000_000
     DEFAULT_SHOTS: int = 8200
@@ -82,6 +85,7 @@ class Settings(BaseSettings):
     MAX_QASM_SIZE: int = 1_000_000
     MAX_QASM_GATES: int = 10_000
     MAX_UPLOAD_BYTES: int = 1_048_576
+    MAX_PLAN_REQUEST_BYTES: int = 4 * 1_048_576
 
     CORS_ALLOW_ORIGINS: str = os.getenv("CORS_ALLOW_ORIGINS", "")
 
@@ -98,6 +102,11 @@ class Settings(BaseSettings):
     @classmethod
     def _at_least_one_slot(cls, value: int) -> int:
         return max(1, value)
+
+    @field_validator("JOB_TTL_SEC", mode="after")
+    @classmethod
+    def _at_least_a_minute(cls, value: int) -> int:
+        return max(60, value)
 
     def bypass_requires_account(self) -> bool:
         """bypass_limits needs a signed-in, active account on any server that is not local."""
@@ -121,12 +130,17 @@ class Settings(BaseSettings):
         Every entry sets ``honours_seed`` explicitly: False for a runner whose backend ignores
         the sampling seed it is passed (results then record ``seed_honoured: false``).
         ``requires_gpu`` marks a runner that is unavailable unless the deployment has a GPU
-        (see ``services.availability``).
+        (see ``services.availability``). ``precision`` and ``qubit_ordering`` give, per
+        endpoint, the amplitude dtype and the bit-order label the runner's own source passes to
+        the shared instrument; None where the runner computes it at run time (each result
+        records the value it ran with).
         """
         return {
 
             "qiskit": {
                 "base_url": self.PYTKET_QISKIT_RUNNER_URL,
+                "precision": {"statevector": "complex128", "measured": "complex128"},
+                "qubit_ordering": {"statevector": "lsb", "measured": "lsb"},
                 "builds_with_tket": True,
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": True,
@@ -140,6 +154,8 @@ class Settings(BaseSettings):
             },
             "cirq":   {
                 "base_url": self.PYTKET_CIRQ_RUNNER_URL,
+                "precision": {"statevector": "complex128", "measured": "complex64"},
+                "qubit_ordering": {"statevector": "msb", "measured": "msb"},
                 "builds_with_tket": True,
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": True,
@@ -152,6 +168,8 @@ class Settings(BaseSettings):
             },
             "qulacs": {
                 "base_url": self.PYTKET_QULACS_RUNNER_URL,
+                "precision": {"statevector": "complex128", "measured": "complex128"},
+                "qubit_ordering": {"statevector": "msb", "measured": "msb"},
                 "builds_with_tket": True,
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": True,
@@ -164,6 +182,8 @@ class Settings(BaseSettings):
             },
             "braket": {
                 "base_url": self.PYTKET_BRAKET_RUNNER_URL,
+                "precision": {"statevector": "complex128", "measured": "complex128"},
+                "qubit_ordering": {"statevector": "msb", "measured": "msb"},
                 "builds_with_tket": True,
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": False,
@@ -177,6 +197,8 @@ class Settings(BaseSettings):
 
             "projectq": {
                 "base_url": self.PYTKET_PROJECTQ_RUNNER_URL,
+                "precision": {"statevector": "complex128", "measured": "complex128"},
+                "qubit_ordering": {"statevector": "msb", "measured": "msb"},
                 "builds_with_tket": True,
                 "capabilities": ["statevector", "measured_sampled"],
                 "enabled": False,
@@ -189,6 +211,8 @@ class Settings(BaseSettings):
             },
             "quest":  {
                 "base_url": self.PYTKET_QUEST_RUNNER_URL,
+                "precision": {"statevector": "complex128", "measured": "complex128"},
+                "qubit_ordering": {"statevector": "msb", "measured": "msb"},
                 "builds_with_tket": True,
                 "capabilities": ["statevector", "measured_sampled"],
                 "enabled": True,
@@ -201,6 +225,8 @@ class Settings(BaseSettings):
             },
             "pennylane-lightning":  {
                 "base_url": self.PENNYLANE_LIGHTNING_RUNNER_URL,
+                "precision": {"statevector": "complex128", "measured": "complex128"},
+                "qubit_ordering": {"statevector": "msb", "measured": "msb"},
                 "capabilities": ["statevector", "measured_sampled"],
                 "enabled": True,
                 "honours_seed": True,
@@ -213,6 +239,8 @@ class Settings(BaseSettings):
             },
             "pennylane-default":  {
                 "base_url": self.PENNYLANE_DEFAULT_RUNNER_URL,
+                "precision": {"statevector": "complex128", "measured": "complex128"},
+                "qubit_ordering": {"statevector": "msb", "measured": "msb"},
                 "capabilities": ["statevector", "measured_sampled"],
                 "enabled": True,
                 "honours_seed": True,
@@ -225,6 +253,8 @@ class Settings(BaseSettings):
             },
             "qsim-cirq": {
                 "base_url": self.QSIM_CIRQ_RUNNER_URL,
+                "precision": {"statevector": "complex64", "measured": "complex64"},
+                "qubit_ordering": {"statevector": "msb", "measured": "msb"},
                 "builds_with_tket": True,
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": True,
@@ -237,6 +267,8 @@ class Settings(BaseSettings):
             },
             "qibo": {
                 "base_url": self.QIBO_RUNNER_URL,
+                "precision": {"statevector": "complex128", "measured": "complex128"},
+                "qubit_ordering": {"statevector": "msb", "measured": "msb"},
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": True,
                 "honours_seed": True,
@@ -248,6 +280,8 @@ class Settings(BaseSettings):
             },
             "qrisp": {
                 "base_url": self.QRISP_RUNNER_URL,
+                "precision": {"statevector": "complex64", "measured": "complex64"},
+                "qubit_ordering": {"statevector": "msb", "measured": "lsb"},
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": True,
                 "honours_seed": True,
@@ -257,6 +291,8 @@ class Settings(BaseSettings):
             },
             "myqlm": {
                 "base_url": self.MYQLM_RUNNER_URL,
+                "precision": {"statevector": "complex128", "measured": "complex128"},
+                "qubit_ordering": {"statevector": "msb", "measured": "msb"},
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": True,
                 "honours_seed": True,
@@ -266,6 +302,8 @@ class Settings(BaseSettings):
             },
             "pyquil": {
                 "base_url": self.PYQUIL_RUNNER_URL,
+                "precision": {"statevector": "complex128", "measured": "complex128"},
+                "qubit_ordering": {"statevector": "msb", "measured": "msb"},
                 "builds_with_tket": True,
                 # NumpyWavefunctionSimulator has no shot sampler; the runner samples the statevector.
                 "capabilities": ["statevector", "measured_sampled"],
@@ -279,6 +317,8 @@ class Settings(BaseSettings):
             },
             "torchquantum": {
                 "base_url": self.TORCHQUANTUM_RUNNER_URL,
+                "precision": {"statevector": "complex64", "measured": "complex64"},
+                "qubit_ordering": {"statevector": "msb", "measured": "msb"},
                 "capabilities": ["statevector", "measured_sampled"],
                 "enabled": True,
                 "honours_seed": True,
@@ -290,6 +330,8 @@ class Settings(BaseSettings):
             },
             "quimb": {
                 "base_url": self.QUIMB_RUNNER_URL,
+                "precision": {"statevector": "complex128", "measured": "complex128"},
+                "qubit_ordering": {"statevector": "msb", "measured": "msb"},
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": True,
                 "honours_seed": True,
@@ -299,6 +341,8 @@ class Settings(BaseSettings):
             },
             "cuquantum": {
                 "base_url": self.CUQUANTUM_RUNNER_URL,
+                "precision": {"statevector": None, "measured": None},
+                "qubit_ordering": {"statevector": "lsb", "measured": "lsb"},
                 "capabilities": ["statevector", "measured_native"],
                 "enabled": True,
                 "honours_seed": True,

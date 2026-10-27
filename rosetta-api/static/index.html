@@ -209,11 +209,7 @@
                     </div>
                     <div class="flex flex-wrap items-center gap-2">
                         <label for="preset-select" class="text-xs font-medium text-yellow-800 whitespace-nowrap">Quick Load:</label>
-                        <select autocomplete="off" id="preset-select" class="flex-1 min-w-[12rem] text-xs border-yellow-300 bg-white rounded p-1">
-                            <option value="each">Sanity Check (every algorithm, 5 qubits)</option>
-                            <option value="scaling">Scaling Test (GHZ, 5 qubits to the statevector limit)</option>
-                            <option value="largest">Memory Stress (Random, BV and VQE at the statevector limit)</option>
-                        </select>
+                        <select autocomplete="off" id="preset-select" class="flex-1 min-w-[12rem] text-xs border-yellow-300 bg-white rounded p-1"></select>
                         <button data-busy-disable type="button" onclick="applyPreset()" class="text-xs font-medium py-1 px-2 rounded border border-yellow-300 bg-white text-yellow-700 hover:bg-yellow-100">Apply</button>
                         <button type="button" onclick="openGeneratorModal()" title="Add circuits of chosen algorithms at random qubit counts"
                             class="text-xs font-medium py-1 px-2 rounded border border-yellow-300 bg-white text-yellow-700 hover:bg-yellow-100">Auto-Gen</button>

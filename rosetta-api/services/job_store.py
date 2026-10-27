@@ -25,8 +25,18 @@ logger = get_logger("rosetta-job-store")
 
 SPILL_DIR = os.getenv("QROSETTA_JOB_SPILL_DIR", os.path.join(tempfile.gettempdir(), "qrosetta-jobs"))
 
-JOB_NOT_FOUND = ("Job not found. Jobs are kept for 30 minutes after they finish and are lost "
-                 "if the server restarts; submit the run again.")
+def retention_text(seconds: int) -> str:
+    """A retention time in words: '30 minutes', '24 hours', '1 hour', '90 seconds'."""
+    seconds = int(seconds)
+    for unit, size in (("hour", 3600), ("minute", 60)):
+        if seconds >= size and seconds % size == 0:
+            n = seconds // size
+            return f"{n} {unit}{'' if n == 1 else 's'}"
+    return f"{seconds} second{'' if seconds == 1 else 's'}"
+
+
+JOB_NOT_FOUND = (f"Job not found. Jobs are kept for {retention_text(settings.JOB_TTL_SEC)} after "
+                 f"they finish and are lost if the server restarts; submit the run again.")
 
 _JSON_OPTIONS = {"ensure_ascii": False, "allow_nan": False, "indent": None, "separators": (",", ":")}
 
@@ -59,7 +69,10 @@ def storage_problem():
     if used >= budget * _MIB:
         return (f"The server's storage for job results is full: it holds {used / _MIB:,.0f} MiB "
                 f"and its limit is {budget:,} MiB (limits.job_storage_max_mib in GET /config). "
-                f"Finished jobs are deleted 30 minutes after they finish; submit again later.")
+                f"Finished jobs are deleted {retention_text(settings.JOB_TTL_SEC)} after they "
+                f"finish, and while the storage is full from "
+                f"{retention_text(settings.JOB_EVICTABLE_AFTER_SEC)} after they finish, oldest "
+                f"first; submit again later.")
     try:
         os.makedirs(SPILL_DIR, exist_ok=True)
         free = shutil.disk_usage(SPILL_DIR).free

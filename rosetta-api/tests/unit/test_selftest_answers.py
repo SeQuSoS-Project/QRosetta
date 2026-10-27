@@ -201,3 +201,8 @@ def test_runner_limits_match_the_compose_file():
         limits = service["deploy"]["resources"]["limits"]
         assert float(limits["cpus"]) == plan.RUNNER_CPU_QUOTA_CORES, name
         assert limits["memory"] == f"{plan.RUNNER_MEMORY_LIMIT_MIB // 1024}G", name
+
+
+def test_handshake_lists_the_selftest_and_summary_features():
+    from services.server_info import FEATURES
+    assert FEATURES["selftest"] == 1 and FEATURES["summary"] == 1

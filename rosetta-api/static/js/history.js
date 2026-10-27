@@ -6,7 +6,7 @@ import { onNextLogin, openAuthModal, updateAuthUI } from './auth.js';
 import { clearReport, renderDetailReport, renderSuiteSummary } from './renderers.js';
 import { dispatch, getState } from './state.js';
 import { downloadBlob, setLoading, setSideLoading } from './utils.js';
-import { labelProblem } from './request_limits.js';
+import { durationText, labelProblem } from './request_limits.js';
 import { closeModal, openModal } from './modal.js';
 
 /** Parse a server timestamp; one without a zone designator is UTC. */
@@ -89,7 +89,7 @@ function _offerSignInAndRetry(jobId, name) {
         }
     };
     showHistoryNotice('Your session has expired, so this run was not saved to your history. '
-        + 'Sign in again to save it; the server keeps the result for at least 30 minutes after the run finishes.', 'error', {
+        + `Sign in again to save it; the server keeps the result for at least ${durationText(getState().jobTtlSec)} after the run finishes.`, 'error', {
         label: 'Sign in and save',
         onClick: () => {
             onNextLogin(retry);

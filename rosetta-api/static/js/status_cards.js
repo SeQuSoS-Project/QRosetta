@@ -6,29 +6,40 @@
 import { BACKEND_COLUMNS, greyTabs, placeholderTable } from './empty_state.js';
 import { compareRunnerKeys, formatRunnerLabel, parseRunnerKey } from './runner_key.js';
 
-export const _STATUS_CFG = {
-    queued:   { color: 'bg-gray-300',    text: 'text-gray-500',   label: 'QUEUED',    pulse: false, terminal: false, untimed: true,
-                hint: 'Not started yet. Its time starts when it does.' },
-    spawning: { color: 'bg-amber-400',   text: 'text-amber-700',  label: 'SPAWNING',  pulse: true,  terminal: false },
-    running:  { color: 'bg-blue-500',    text: 'text-blue-700',   label: 'SENT',      pulse: true,  terminal: false,
-                hint: 'Sent to the backend. Each backend runs one request at a time, so this includes any wait behind another job; the wait is recorded as queue_wait_sec.' },
-    done:     { color: 'bg-green-500',   text: 'text-green-700',  label: 'DONE',      pulse: false, terminal: true  },
-    error:    { color: 'bg-orange-500',  text: 'text-orange-700', label: 'ERROR',     pulse: false, terminal: true  },
-    timeout:  { color: 'bg-purple-500',  text: 'text-purple-700', label: 'TIMEOUT',   pulse: false, terminal: true  },
-    offline:  { color: 'bg-gray-400',    text: 'text-gray-600',   label: 'OFFLINE',   pulse: false, terminal: true,
-                hint: 'The backend could not be reached.' },
+/** Look of each run status; the words and tooltips come from GET /config status_labels. */
+const _RUN_STYLE = {
+    queued:   { color: 'bg-gray-300',    text: 'text-gray-500',   pulse: false, terminal: false, untimed: true },
+    spawning: { color: 'bg-amber-400',   text: 'text-amber-700',  pulse: true,  terminal: false },
+    running:  { color: 'bg-blue-500',    text: 'text-blue-700',   pulse: true,  terminal: false },
+    done:     { color: 'bg-green-500',   text: 'text-green-700',  pulse: false, terminal: true  },
+    error:    { color: 'bg-orange-500',  text: 'text-orange-700', pulse: false, terminal: true  },
+    timeout:  { color: 'bg-purple-500',  text: 'text-purple-700', pulse: false, terminal: true  },
+    offline:  { color: 'bg-gray-400',    text: 'text-gray-600',   pulse: false, terminal: true  },
 };
 
-const _ANALYSING = { color: 'bg-indigo-500', text: 'text-indigo-700', label: 'ANALYSING', pulse: true, terminal: false,
-                    hint: 'Every backend has returned; the server is comparing the results. Measured runs with many outcomes can take tens of seconds here.' };
-
-const _TASK_CFG = {
-    queued:  _STATUS_CFG.queued,
-    running: { color: 'bg-blue-500', text: 'text-blue-700', label: 'RUNNING', pulse: true, terminal: false },
-    analysing: _ANALYSING,
-    done:    _STATUS_CFG.done,
-    error:   _STATUS_CFG.error,
+const _TASK_STYLE = {
+    queued:  _RUN_STYLE.queued,
+    running: { color: 'bg-blue-500', text: 'text-blue-700', pulse: true, terminal: false },
+    analysing: { color: 'bg-indigo-500', text: 'text-indigo-700', pulse: true, terminal: false },
+    done:    _RUN_STYLE.done,
+    error:   _RUN_STYLE.error,
 };
+
+/** @type {{ runs?: Object<string, { label: string, hint: string|null }>, tasks?: Object<string, { label: string, hint: string|null }> }} */
+let _labels = {};
+
+/** The status words and tooltips of GET /config status_labels. */
+export function setStatusLabels(labels) {
+    _labels = labels && typeof labels === 'object' ? labels : {};
+}
+
+/** Look, word and tooltip of `status` of `kind` ('runs' or 'tasks'); an unknown status looks and reads as queued. */
+export function _cfg(kind, status) {
+    const styles = kind === 'tasks' ? _TASK_STYLE : _RUN_STYLE;
+    const key = styles[status] ? status : 'queued';
+    const words = _labels[kind]?.[key];
+    return { ...styles[key], label: words?.label ?? key.toUpperCase(), hint: words?.hint ?? undefined };
+}
 
 export const _RUNNER_NAMES = {
     "qiskit": "Qiskit", "cirq": "Cirq", "qulacs": "Qulacs", "braket": "Braket",
@@ -126,25 +137,14 @@ function _tick() {
 }
 
 function _finishedText(statuses, keys, noun) {
-    const done = keys.filter(k => (_STATUS_CFG[statuses[k]] || _STATUS_CFG.queued).terminal).length;
+    const done = keys.filter(k => _cfg('runs', statuses[k]).terminal).length;
     return `${done} of ${keys.length} ${noun}${keys.length === 1 ? '' : 's'} finished`;
-}
-
-/** True when every backend and compile has finished. Once a circuit's runs were seen in progress
- * and all have finished, the server is analysing its results (it reports no status of its own
- * for this; a playlist keeps the previous circuit's statuses until the next one dispatches). */
-export function allRunsFinished(statuses) {
-    const keys = Object.keys(statuses || {});
-    return keys.length > 0 && keys.every(k => (_STATUS_CFG[statuses[k]] || _STATUS_CFG.queued).terminal);
 }
 
 function _renderProgress() {
     const host = _el('loader-progress');
     if (!host || !_view) return;
-    const current = _view.progress ? _view.progress.current_index : 'single';
-    const finished = allRunsFinished(_view.statuses);
-    if (!finished && Object.keys(_view.statuses).length) _view.activeFor = current;
-    const analysing = finished && _view.activeFor === current;
+    const analysing = _view.phase === 'analysing';
     if (analysing !== _view.analysing) {
         _view.analysing = analysing;
         setRunKicker(analysing ? 'Analysing results' : 'Running');
@@ -173,7 +173,7 @@ export function startRunView({ tabs = [], table = null, compilerIds = [], nameOf
     endRunView();
     const playlist = table?.caption === 'Playlist';
     _view = {
-        nameOf, compilerIds: new Set(compilerIds), tables: {}, phases: {}, statuses: {}, progress: null, analysing: false, activeFor: null,
+        nameOf, compilerIds: new Set(compilerIds), tables: {}, phases: {}, statuses: {}, progress: null, analysing: false, phase: null,
         backendCaption: playlist ? 'Backends (current circuit)' : 'Backends',
         backendColumns: !table || playlist ? BACKEND_COLUMNS : table.columns,
         timer: setInterval(_tick, 1000),
@@ -206,6 +206,14 @@ export function endRunView() {
     _el('loader-progress-sep')?.classList.add('hidden');
 }
 
+/** The job's phase from the job poll (`queued`, `dispatching`, `analysing`, `exporting`, `done`);
+ * the running circuit reads ANALYSING while it is `analysing`. */
+export function updateJobPhase(phase) {
+    if (!_view) return;
+    _view.phase = typeof phase === 'string' ? phase : null;
+    _renderProgress();
+}
+
 /** Each runner key's live status (`queued`, `running`, `done`, ...), from the job poll. */
 export function updateRunnerStatuses(statuses) {
     if (!statuses || typeof statuses !== 'object') return;
@@ -217,7 +225,7 @@ export function updateRunnerStatuses(statuses) {
         if (!groupKeys.length) continue;
         _ensureRows(group, groupKeys);
         groupKeys.forEach(key => {
-            const cfg = _STATUS_CFG[statuses[key]] || _STATUS_CFG.queued;
+            const cfg = _cfg('runs', statuses[key]);
             _setStatus(_view.tables[group].node, key, _chip(cfg, _seconds(key, statuses[key], cfg), key));
         });
     }
@@ -245,7 +253,7 @@ function _renderTasks() {
     }
     progress.tasks.forEach((task, i) => {
         const status = task.status === 'running' && _view.analysing ? 'analysing' : (task.status || 'queued');
-        const cfg = _TASK_CFG[status] || _TASK_CFG.queued;
+        const cfg = _cfg('tasks', status);
         _setStatus(t.node, String(i), _chip(cfg, _seconds(`task:${i}`, status, cfg), `task:${i}`));
     });
 }

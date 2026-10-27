@@ -302,6 +302,8 @@ short id (this id appears everywhere in results, config and the UI):
 ```python
 "my-sdk": {
     "base_url": self.MY_SDK_RUNNER_URL,
+    "precision": {"statevector": "complex128", "measured": "complex128"},
+    "qubit_ordering": {"statevector": "msb", "measured": "msb"},
     "capabilities": ["statevector", "measured_native"],  # or "measured_sampled" when shots are
                                                           # drawn from a computed statevector
     "enabled": True,
@@ -316,6 +318,10 @@ short id (this id appears everywhere in results, config and the UI):
 and add the `MY_SDK_RUNNER_URL: str = "http://my-sdk-runner:8000"` field near the other
 `*_RUNNER_URL` settings. `honours_seed` has no default: results record it as
 `seed_honoured`, so a runner that ignores its seed must say `False` (braket does).
+`precision` and `qubit_ordering` repeat, per endpoint, the values your `main.py` passes to
+`run_statevector_job` / `run_measured_job` (or `CompileResult(precision=...)`); use `None`
+for a value the runner computes at run time. `tests/unit/test_registry_precision_ordering.py`
+compares them with the source, and `GET /runners` publishes them.
 
 **`docker-compose.yml`**, add a service block (copy an existing runner's block):
 

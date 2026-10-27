@@ -5,12 +5,15 @@ from fastapi import APIRouter, Request
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from config import settings
+from routers.errors import responses
 from schemas import AgreementThresholds
 from schemas.auth import EMAIL_MAX_LENGTH, PASSWORD_MAX_BYTES, PASSWORD_MIN_CHARS
-from services.availability import runner_availability
-from services.compilation import COMPILER_SERVICES
 from services.preparation_limits import bundled_over_prep_limit
 from services.request_defaults import request_defaults
+from services.server_info import server_block
+from services.security import client_address
+from services.service_listing import compiler_rows, fresh_rows, runner_rows
+from services.status_labels import status_labels
 
 router = APIRouter()
 
@@ -50,8 +53,8 @@ async def read_index():
         headers={"Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"}
     )
 
-@router.get("/runners")
-async def get_runners():
+@router.get("/runners", responses=responses(401, 403, 429))
+async def get_runners(request: Request, fresh: bool = False):
     """Enabled status, availability, max optimization level, and per-level descriptions for
     every runner.
 
@@ -60,32 +63,42 @@ async def get_runners():
     via its GET /capabilities, or (Kubernetes, or a runner without that endpoint)
     ``requires_gpu`` on a deployment without QROSETTA_GPU_AVAILABLE. Probes are cached
     for 60 s. ``device`` is what the runner's /capabilities reported, else None.
-    """
-    services = settings.get_runner_services()
-    availability = await runner_availability()
-    result = []
-    for name, config in services.items():
-        opt_levels = config.get("optimization_levels", {})
+    ``precision`` and ``qubit_ordering`` are ``{"statevector": ..., "measured": ...}``: the
+    amplitude dtype (e.g. "complex128") and the bit-order label ("lsb" or "msb") the runner
+    declares for each endpoint; null where the runner sets it at run time, in which case
+    each result records the value used. ``default_selected`` is true for a runner a run that
+    names no backends uses when it is available (every enabled runner). ``profiles`` lists
+    the built-in profiles the runner belongs to (minimal, cpu, gpu, full). ``backend`` and
+    ``version`` are null.
 
-        opt_levels_str = {str(k): v for k, v in opt_levels.items()}
-        enabled = config.get("enabled", True)
-        info = availability.get(name) or {"available": False, "reason": "disabled", "device": None}
-        result.append({
-            "id": name,
-            "enabled": enabled,
-            "available": bool(enabled and info["available"]),
-            "unavailable_reason": None if (enabled and info["available"]) else (info["reason"] or "unavailable"),
-            "device": info.get("device"),
-            "requires_gpu": bool(config.get("requires_gpu", False)),
-            "max_level": max(opt_levels.keys()) if opt_levels else 0,
-            "optimization_levels": opt_levels_str,
-        })
-    return JSONResponse(content=result)
+    ``fresh=true`` probes every enabled service now instead of reading the cache, and adds
+    ``fresh`` (true when this round probed it), ``reason`` ("busy": a dispatch to it is in
+    flight, so it was not probed and reads available; "exclusive_run": an exclusive run holds
+    the server, so the last cached values are served; "no_long_lived_services" in Kubernetes
+    mode; "disabled"; "not_deployed"), ``error_kind`` ("dns", "connect", "timeout" or "http"
+    when the probe got no answer or an error status) and ``probed_at``. It needs a signed-in
+    account or the local lifecycle token as the bearer token (401 otherwise, 403 for a
+    deactivated account), is limited to 6 requests a minute per client (429 with
+    Retry-After), and serves a round younger than 5 s again.
+    """
+    if fresh:
+        return JSONResponse(content=await fresh_rows("runners", request, client_address(request)))
+    return JSONResponse(content=await runner_rows())
 
 @router.get("/config")
 async def get_config():
     """Server-side circuit limits, request bounds, agreement-threshold defaults and the
     execution mode.
+
+    ``server`` is the handshake: ``platform_version``, ``api_levels`` ([min, max], the API
+    levels this server serves; a breaking change raises the maximum and the previous level
+    stays served), ``analysis_version`` (the comparison code that labels new reports),
+    ``git_sha`` (the API image's commit) and ``features`` ({name: version}).
+
+    ``status_labels`` maps each live status to ``{label, hint}`` (hint null when there is
+    none): ``runs`` for the values of ``runner_statuses``, ``tasks`` for a playlist circuit's
+    status (and ``analysing``), ``phases`` for the job's ``phase``. A client shows a status
+    missing from the map upper-cased.
 
     ``limits`` holds the bounds the run endpoints validate against: qubit caps per mode,
     ``timeout_min``/``timeout_max`` (seconds; larger requests are clamped to
@@ -93,6 +106,9 @@ async def get_config():
     ``timing_repeats_max``, ``max_qasm_gate_statements`` (top-level operation statements;
     the header, includes, register declarations and gate definitions are not counted),
     ``max_request_bytes`` (every POST/PUT/PATCH body, the JSON as sent; 413 above it),
+    ``max_plan_request_bytes`` (the larger body limit of POST /plan, so a plan can report a
+    request over max_request_bytes), ``plan_rate_limit`` (requests per client address to
+    POST /plan),
     ``run_rate_limit`` (requests per client address to each run, export and lookup route;
     429 above it), ``login_rate_limit`` and ``register_rate_limit`` (requests per client
     address to POST /auth/token and POST /auth/register; 429 above them),
@@ -103,7 +119,11 @@ async def get_config():
     circuit with preprocessing on; a preparation over either is stopped and the run fails),
     ``job_storage_max_mib`` and ``job_storage_min_free_mib`` (the server's disk budget for
     the reports of unexpired jobs, and the free disk space it keeps; a run is refused with 503
-    while either is crossed, and a playlist or experiment stops), ``max_export_items``
+    while either is crossed, and a playlist or experiment stops), ``job_ttl_sec`` (seconds a
+    finished job, its report and bundle are kept; QROSETTA_JOB_TTL_SEC, 1800 by default and
+    86400 in the local compose file), ``job_evictable_after_sec`` (while the job storage is
+    over a limit, finished jobs older than this are deleted oldest first before a run is
+    refused), ``max_export_items``
     (publication items of one RO-Crate export),
     ``max_label_length`` (characters of a run, circuit, task or author name; control and
     invisible formatting characters are rejected) and the account limits
@@ -126,6 +146,8 @@ async def get_config():
     ``compile_only`` says what makes /compare or /run_batch_suite a compile-only request.
     """
     return JSONResponse(content={
+        "server": server_block(),
+        "status_labels": status_labels(),
         "max_qubits_statevector": settings.MAX_QUBITS_STATEVECTOR,
         "max_qubits_measured": settings.MAX_QUBITS_MEASURED,
         "max_qubits_compile": settings.MAX_QUBITS_COMPILE,
@@ -155,6 +177,8 @@ async def get_config():
             "shots_max": settings.MAX_SHOTS,
             "shots_default": settings.DEFAULT_SHOTS,
             "max_request_bytes": settings.MAX_UPLOAD_BYTES,
+            "max_plan_request_bytes": settings.MAX_PLAN_REQUEST_BYTES,
+            "plan_rate_limit": settings.PLAN_RATE_LIMIT,
             "run_rate_limit": settings.RUN_RATE_LIMIT,
             "login_rate_limit": settings.LOGIN_RATE_LIMIT,
             "register_rate_limit": settings.REGISTER_RATE_LIMIT,
@@ -165,6 +189,8 @@ async def get_config():
             "prep_timeout_sec": settings.PREP_TIMEOUT_SEC,
             "job_storage_max_mib": settings.JOB_SPILL_MAX_MIB,
             "job_storage_min_free_mib": settings.JOB_SPILL_MIN_FREE_MIB,
+            "job_ttl_sec": settings.JOB_TTL_SEC,
+            "job_evictable_after_sec": settings.JOB_EVICTABLE_AFTER_SEC,
             "max_export_items": settings.MAX_EXPORT_ITEMS,
             "max_label_length": settings.MAX_LABEL_LENGTH,
             "email_max_length": EMAIL_MAX_LENGTH,
@@ -177,26 +203,26 @@ async def get_config():
     })
 
 
-@router.get("/compilers")
-async def get_compilers():
+@router.get("/compilers", responses=responses(401, 403, 429))
+async def get_compilers(request: Request, fresh: bool = False):
     """Compile-only services: id, display name, enabled and available state, the
     description of each optimization level, and ``versions`` as the running image reports
     them (pip SDK versions, native components built from source, build-file sha256, image
     commit; null when no long-lived service answered, as in Kubernetes mode). A compiler
     turns a run's circuit into circuit text only; it is never simulated or compared (see
-    the compilers field of the run payloads)."""
-    availability = await runner_availability(services=COMPILER_SERVICES)
-    result = []
-    for cid, svc in COMPILER_SERVICES.items():
-        enabled = svc.get("enabled", True)
-        info = availability.get(cid) or {"available": False, "reason": "disabled"}
-        result.append({
-            "id": cid,
-            "name": svc["name"],
-            "enabled": enabled,
-            "available": bool(enabled and info["available"]),
-            "unavailable_reason": None if (enabled and info["available"]) else (info["reason"] or "unavailable"),
-            "optimization_levels": {str(k): v for k, v in svc["optimization_levels"].items()},
-            "versions": info.get("versions"),
-        })
-    return JSONResponse(content=result)
+    the compilers field of the run payloads). ``default_selected`` is false: a compiler
+    runs only when a request names it. ``profiles`` is ["compilers", "full"] for an enabled
+    compiler. ``backend`` and ``version`` are null. ``fresh=true`` as for GET /runners.
+    ``fresh=true`` probes every enabled service now instead of reading the cache, and adds
+    ``fresh`` (true when this round probed it), ``reason`` ("busy": a dispatch to it is in
+    flight, so it was not probed and reads available; "exclusive_run": an exclusive run holds
+    the server, so the last cached values are served; "no_long_lived_services" in Kubernetes
+    mode; "disabled"; "not_deployed"), ``error_kind`` ("dns", "connect", "timeout" or "http"
+    when the probe got no answer or an error status) and ``probed_at``. It needs a signed-in
+    account or the local lifecycle token as the bearer token (401 otherwise, 403 for a
+    deactivated account), is limited to 6 requests a minute per client (429 with
+    Retry-After), and serves a round younger than 5 s again.
+    """
+    if fresh:
+        return JSONResponse(content=await fresh_rows("compilers", request, client_address(request)))
+    return JSONResponse(content=await compiler_rows())

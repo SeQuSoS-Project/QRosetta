@@ -51,6 +51,38 @@ class RunRegistry:
 REGISTRY = RunRegistry()
 
 
+class ServicesInFlight:
+    """Runner and compiler ids with a dispatch in flight, from its gate request to its
+    release, counted per id."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._counts = {}
+
+    def enter(self, ids) -> list:
+        ids = list(ids)
+        with self._lock:
+            for i in ids:
+                self._counts[i] = self._counts.get(i, 0) + 1
+        return ids
+
+    def leave(self, ids) -> None:
+        with self._lock:
+            for i in ids:
+                left = self._counts.get(i, 0) - 1
+                if left > 0:
+                    self._counts[i] = left
+                else:
+                    self._counts.pop(i, None)
+
+    def busy(self) -> set:
+        with self._lock:
+            return set(self._counts)
+
+
+IN_FLIGHT = ServicesInFlight()
+
+
 class ExclusiveWaitTimeout(RuntimeError):
     """An exclusive dispatch waited longer than its cap for the server to become idle."""
 
@@ -99,6 +131,14 @@ class ExclusiveGate:
                 await cond.wait_for(lambda: not self._exclusive and self._waiting_exclusive == 0)
                 self._shared += 1
         return time.monotonic() - started
+
+    def try_acquire_shared(self) -> bool:
+        """Admit a shared dispatch only if that needs no wait: no exclusive dispatch is running
+        or waiting. Release it with ``release(False)``."""
+        if self._exclusive or self._waiting_exclusive:
+            return False
+        self._shared += 1
+        return True
 
     async def release(self, exclusive: bool) -> None:
         """End one admission. The count changes before the first await and the waiters are

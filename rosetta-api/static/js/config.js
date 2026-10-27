@@ -236,7 +236,7 @@ export function renderConfigPanel(runners) {
         const lockedNote = r.enabled === false ? 'Disabled on this server'
             : isUnavailable ? `Unavailable${r.unavailable_reason ? `: ${r.unavailable_reason}` : ' on this server'}` : '';
         if (isDisabled) anyLocked = true;
-        const isDefaultChecked = !deselected.has(r.id);
+        const isDefaultChecked = r.default_selected !== false && !deselected.has(r.id);
 
         let optionsHtml = '<option value="-1">Use Global</option>';
         if (max === 0) {

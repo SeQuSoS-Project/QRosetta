@@ -24,6 +24,7 @@ from services.job_manager import (
     finished_job_or_error,
     clamp_timeout,
     effective_thresholds,
+    job_phase,
     new_job,
     require_batch_size,
     require_job_storage,
@@ -38,7 +39,7 @@ router = APIRouter()
 
 def _job_envelope(job_id: str) -> dict:
     job = ACTIVE_JOBS[job_id]
-    return {"job_id": job_id, "status": job["status"], "target": job["target"],
+    return {"job_id": job_id, "status": job["status"], "phase": job_phase(job), "target": job["target"],
             "requested_target": job.get("requested_target")}
 
 @router.get("/jobs/{job_id}", response_model=None,
@@ -53,6 +54,7 @@ async def get_job_status(job_id: str):
     return {
         "job_id": job_id,
         "status": job_data["status"],
+        "phase": job_phase(job_data),
         "target": job_data["target"],
         "requested_target": job_data.get("requested_target"),
         "results": job_data.get("results"),

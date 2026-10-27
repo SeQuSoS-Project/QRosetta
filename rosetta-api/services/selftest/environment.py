@@ -74,7 +74,7 @@ def _registered(field):
         registered = registry_value(key, field, part)
         value = result.get(field)
         if registered is None:
-            return SKIP, f"the runner registry records no {field} for this backend", value
+            return SKIP, f"the runner registry records no {field} for this backend in {part} mode", value
         if value == registered:
             return PASS, f"{value}, as registered", value
         return FAIL, f"result reports {value!r}, the registry records {registered!r}", value

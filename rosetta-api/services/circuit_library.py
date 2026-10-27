@@ -46,6 +46,23 @@ def load_algorithms() -> Dict[str, Any]:
     _ALGORITHMS_CACHE = dict(sorted(loaded.items(), key=lambda kv: (rank.get(kv[0], len(rank)), kv[0])))
     return _ALGORITHMS_CACHE
 
+
+def algorithm_list(max_measured: int, max_statevector: int) -> list:
+    """The preset circuit families as GET /algorithms lists them, in menu order."""
+    return [
+        {
+            "id": algo["id"],
+            "name": algo.get("name", ""),
+            "min_qubits": algo.get("min_qubits", 2),
+            "max_qubits": algo.get("max_qubits", max_measured),
+            "max_qubits_statevector": min(algo.get("max_qubits", max_measured), max_statevector),
+            "max_qubits_measured": min(algo.get("max_qubits", max_measured), max_measured),
+            "default_qubits": algo.get("default_qubits", 3),
+            "description": algo.get("description", ""),
+        }
+        for algo in load_algorithms().values()
+    ]
+
 def generate_circuit(algorithm_id: str, n_qubits: int, seed: int = None) -> str:
     """Generates a circuit by dynamically executing the algorithm's code template.
 

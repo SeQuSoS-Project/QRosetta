@@ -16,8 +16,13 @@ from services.selftest.circuits import CIRCUITS, circuit_text
 from services.selftest.evaluate import NotSelftestJob, evaluate_report, evaluate_task
 from services.selftest.plan import N_SHOTS, SEED, THRESHOLDS
 
-BACKENDS = {"qiskit": ("lsb", "complex128"), "cirq": ("msb", "complex128"),
-            "qsim-cirq": ("msb", "complex64")}
+BACKENDS = ("qiskit", "cirq", "qsim-cirq")
+
+
+def _registered(key, field, part):
+    """The runner registry's ``field`` of ``key`` for ``part`` (statevector or measured)."""
+    from config import settings
+    return settings.get_runner_services()[key][field][part]
 SV = [n for n, p, *_ in CIRCUITS if p == "statevector"]
 MEASURED = [n for n, p, *_ in CIRCUITS if p == "measured"]
 
@@ -29,8 +34,8 @@ def _environment(**cpu):
 
 
 def _sv_result(key, state_lsb, ordering=None, encode_as=None):
-    ordering = ordering or BACKENDS[key][0]
-    precision = BACKENDS[key][1]
+    ordering = ordering or _registered(key, "qubit_ordering", "statevector")
+    precision = _registered(key, "precision", "statevector")
     state = reference.to_msb(state_lsb) if (encode_as or ordering) == "msb" else np.asarray(state_lsb)
     if precision == "complex64":
         state = state.astype(np.complex64)
@@ -69,13 +74,14 @@ def _counts_of(name, ordering):
 
 
 def _m_result(key, counts):
-    return {"simulator": key, "dispatch_status": "ok", "qubit_ordering": BACKENDS[key][0],
-            "precision": BACKENDS[key][1], "counts": counts, "optimization_level": 0,
+    return {"simulator": key, "dispatch_status": "ok",
+            "qubit_ordering": _registered(key, "qubit_ordering", "measured"),
+            "precision": _registered(key, "precision", "measured"), "counts": counts, "optimization_level": 0,
             **_environment()}
 
 
 def _m_report(counts_of=_counts_of):
-    tasks = [_task(name, [_m_result(k, counts_of(name, BACKENDS[k][0])) for k in BACKENDS])
+    tasks = [_task(name, [_m_result(k, counts_of(name, _registered(k, "qubit_ordering", "measured"))) for k in BACKENDS])
              for name in MEASURED]
     return {"mode": "measured", "seed": SEED, "benchmark_summary": tasks}
 
@@ -99,7 +105,10 @@ def test_correct_backends_pass_in_both_orders_and_precisions():
     worst = max(r["infidelity"] for r in sv["known_answer"])
     assert worst < 1e-12
     skipped = {r["check"] for r in sv["environment_checks"] if r["status"] == "SKIP"}
-    assert skipped == {"precision", "qubit_ordering", "host_virtualisation", "host_emulation", "provenance"}
+    assert skipped == {"host_virtualisation", "host_emulation", "provenance"}
+    for report in (_sv_report(), _m_report()):
+        rows = [r for r in evaluate(report)["environment_checks"] if r["check"] in ("precision", "qubit_ordering")]
+        assert len(rows) == 2 * len(BACKENDS) and all(r["status"] == "PASS" for r in rows), rows
 
 
 def _lsb_permuted(state, permutation):
@@ -156,7 +165,7 @@ def test_every_backend_agreeing_on_a_wrong_state_fails(kind):
 
 def test_every_backend_declaring_the_wrong_order_fails_on_one_hot():
     def mislabelled(key, state):
-        declared = BACKENDS[key][0]
+        declared = _registered(key, "qubit_ordering", "statevector")
         return _sv_result(key, state, ordering=declared, encode_as="lsb" if declared == "msb" else "msb")
     result = evaluate(_sv_report(result=mislabelled))
     failed = {(r["backend"], r["circuit"]) for r in _failed(result, "statevector")}
@@ -185,10 +194,10 @@ def _with(report, name, edit):
 
 
 WRONG_KEYS = {
-    "keys bit-reversed": ("m_probe_clbit_order", lambda r: r.update(counts={"10" if BACKENDS[r["simulator"]][0] == "lsb" else "01": N_SHOTS})),
-    "cregs in alphabetical order": ("m_probe_creg_declaration_order", lambda r: r.update(counts={"10" if BACKENDS[r["simulator"]][0] == "lsb" else "01": N_SHOTS})),
-    "keys over qubits, not classical bits": ("m_probe_unmeasured_clbit_first_creg", lambda r: r.update(counts={"10" if BACKENDS[r["simulator"]][0] == "lsb" else "01": N_SHOTS})),
-    "register spaces kept": ("m_probe_unmeasured_clbit_mid_creg", lambda r: r.update(counts={"101 0" if BACKENDS[r["simulator"]][0] == "lsb" else "0 101": N_SHOTS})),
+    "keys bit-reversed": ("m_probe_clbit_order", lambda r: r.update(counts={"10" if r["qubit_ordering"] == "lsb" else "01": N_SHOTS})),
+    "cregs in alphabetical order": ("m_probe_creg_declaration_order", lambda r: r.update(counts={"10" if r["qubit_ordering"] == "lsb" else "01": N_SHOTS})),
+    "keys over qubits, not classical bits": ("m_probe_unmeasured_clbit_first_creg", lambda r: r.update(counts={"10" if r["qubit_ordering"] == "lsb" else "01": N_SHOTS})),
+    "register spaces kept": ("m_probe_unmeasured_clbit_mid_creg", lambda r: r.update(counts={"101 0" if r["qubit_ordering"] == "lsb" else "0 101": N_SHOTS})),
     "shots lost": ("m_probe_one_hot", lambda r: r.update(counts={k: v - 1 for k, v in r["counts"].items()})),
     "GHZ all zeros (sampler cutoff)": ("m_ghz_3q", lambda r: r.update(counts={"000": N_SHOTS})),
     "GHZ biased 0.76/0.24": ("m_ghz_3q", lambda r: r.update(counts={"000": 6232, "111": N_SHOTS - 6232})),
@@ -290,24 +299,30 @@ def test_environment_checks(fields, check, status):
         assert result["caveats"] and all(r["status"] == "PASS" for r in result["known_answer"])
 
 
-def test_registry_order_and_precision_are_checked_when_recorded(monkeypatch):
+def test_registry_order_and_precision_are_checked_per_mode(monkeypatch):
     from config import settings
     real = settings.get_runner_services()
+    assert _registered("cirq", "precision", "statevector") != _registered("cirq", "precision", "measured")
+    sv, measured = _sv_report(), _m_report()
 
-    def registry(qiskit_order):
+    def registry(edit):
         out = copy.deepcopy(real)
-        out["qiskit"].update(qubit_ordering=qiskit_order, precision="complex128")
-        out["cirq"].update(qubit_ordering="msb", precision={"statevector": "complex128", "measured": "complex64"})
+        edit(out)
         return out
-    monkeypatch.setattr(type(settings), "get_runner_services", lambda self: registry("lsb"))
-    result = evaluate(_sv_report())
-    statuses = {(r["backend"], r["check"]): r["status"] for r in result["environment_checks"]}
-    assert statuses[("qiskit", "qubit_ordering")] == "PASS" and statuses[("cirq", "precision")] == "PASS"
-    assert statuses[("qsim-cirq", "precision")] == "SKIP"
-    monkeypatch.setattr(type(settings), "get_runner_services", lambda self: registry("msb"))
-    result = evaluate(_sv_report())
+    monkeypatch.setattr(type(settings), "get_runner_services",
+                        lambda self: registry(lambda r: r["qiskit"]["qubit_ordering"].update(statevector="msb")))
+    result = evaluate(sv)
     assert {r["backend"] for r in _failed(result, "statevector")} == {"qiskit"}
     assert {r["backend"] for r in _failed(result, "qubit_ordering")} == {"qiskit"}
+    assert evaluate(measured)["status"] == "PASS"
+    monkeypatch.setattr(type(settings), "get_runner_services",
+                        lambda self: registry(lambda r: r["cirq"]["precision"].update(measured="complex128")))
+    assert {r["backend"] for r in _failed(evaluate(measured), "precision")} == {"cirq"}
+    assert evaluate(sv)["status"] == "PASS"
+    monkeypatch.setattr(type(settings), "get_runner_services",
+                        lambda self: registry(lambda r: r["qsim-cirq"].update(precision={"statevector": None, "measured": None})))
+    rows = [r for r in evaluate(sv)["environment_checks"] if r["check"] == "precision"]
+    assert {r["backend"]: r["status"] for r in rows}["qsim-cirq"] == "SKIP"
 
 
 @pytest.fixture
@@ -355,7 +370,7 @@ def _fake_runner(bit_reverse_cirq=False):
         state = reference.simulate_gates(circuit["n_qubits"], circuit["gates"])
         out = []
         for key, url in runner_urls.items():
-            ordering = BACKENDS[key][0]
+            ordering = _registered(key, "qubit_ordering", "statevector" if url.endswith("/run") else "measured")
             if url.endswith("/run"):
                 wrong = bit_reverse_cirq and key == "cirq"
                 out.append(_sv_result(key, state, encode_as="lsb" if wrong else None))
