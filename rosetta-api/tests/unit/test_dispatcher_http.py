@@ -37,20 +37,46 @@ def test_connect_error_is_unavailable():
     assert "OOM" not in r["error"] and "SIGABRT" not in r["error"]
 
 
-def test_late_disconnect_reads_as_timeout_or_oom_not_a_definite_crash():
-    # timeout budget 0 -> elapsed always >= 0.8*0 -> the "terminated near deadline" branch.
+def test_late_disconnect_names_the_causes_without_choosing_one():
     r = _run(_RaisingClient(httpx.RemoteProtocolError("peer closed")), timeout_s=0)
     assert "RUNNER TERMINATED" in r["error"]
-    assert "timeout / OOM" in r["error"]
-    # never the old absolute "almost certainly SIGABRT/OOM" claim
-    assert "almost certainly" not in r["error"]
+    for cause in ("container was stopped", "crashed or ran out of memory", "a time limit ended it",
+                  "network failed", "did not record which"):
+        assert cause in r["error"], cause
+    assert "likely" not in r["error"] and "almost certainly" not in r["error"]
+    assert "stopped_by_user" not in r
 
 
-def test_early_disconnect_is_connection_lost_not_crash():
-    # huge timeout budget -> elapsed is a tiny fraction -> "connection lost", not "terminated".
+def test_early_disconnect_is_connection_lost_and_names_the_causes():
     r = _run(_RaisingClient(httpx.ReadError("reset")), timeout_s=10**9)
-    assert "CONNECTION LOST" in r["error"]
-    assert "RUNNER TERMINATED" not in r["error"]
+    assert "CONNECTION LOST" in r["error"] and "RUNNER TERMINATED" not in r["error"]
+    assert "crashed or ran out of memory" in r["error"] and "network failed" in r["error"]
+    assert "time limit" not in r["error"] and "likely" not in r["error"]
+
+
+def test_a_disconnect_under_a_stop_notice_records_the_stop(monkeypatch):
+    from services import host_load
+
+    async def scenario():
+        await host_load.reset()
+        notice = await host_load.begin("stop", ["qiskit"])
+        try:
+            lost = await safe_request(_RaisingClient(httpx.ReadError("reset")), "http://runner/run", {},
+                                      "qiskit~opt1~run1", 300)
+            offline = await safe_request(_RaisingClient(httpx.ConnectError("refused")), "http://runner/run",
+                                         {}, "qiskit", 300)
+            other = await safe_request(_RaisingClient(httpx.ReadError("reset")), "http://runner/run", {},
+                                       "cirq", 300)
+        finally:
+            await host_load.end(notice["notice_id"])
+            await host_load.reset()
+        return lost, offline, other
+
+    lost, offline, other = asyncio.run(scenario())
+    assert lost["stopped_by_user"] is True and lost["error"].startswith("STOPPED BY USER")
+    assert lost["dispatch_status"] == "error"
+    assert offline["stopped_by_user"] is True and offline["dispatch_status"] == "offline"
+    assert "stopped_by_user" not in other and "CONNECTION LOST" in other["error"]
 
 
 def test_compiler_failures_name_the_compiler_not_a_runner():

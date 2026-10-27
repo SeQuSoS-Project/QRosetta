@@ -279,6 +279,52 @@ def _pending_pod_state(core_api, namespace: str, job_name: str) -> tuple[str | N
     return "starting", (reasons[0] if reasons else "ContainerCreating")
 
 
+def _terminated_state(core_api, namespace: str, job_name: str) -> dict:
+    """``{reason, exit_code, signal, pod_reason}`` of the Job's failed pod as Kubernetes
+    recorded it (its first terminated container); empty when it cannot be read."""
+    try:
+        pods = core_api.list_namespaced_pod(
+            namespace=namespace, label_selector=f"job-name={job_name}",
+            _request_timeout=10).items
+    except Exception as e:
+        logger.warning(f"[K8s] Could not read the pod of '{job_name}': {e}")
+        return {}
+    if not pods:
+        return {}
+    status = pods[0].status
+    out = {"pod_reason": getattr(status, "reason", None)}
+    for cs in status.container_statuses or []:
+        term = cs.state.terminated if cs.state else None
+        if term is not None:
+            out.update(reason=term.reason, exit_code=term.exit_code, signal=term.signal)
+            break
+    return out
+
+
+def _failed_pod_message(sim_name: str, state: dict) -> str:
+    """The error of a failed pod: the cause Kubernetes recorded when it names one (OOMKilled,
+    DeadlineExceeded), else its exit code or signal and the causes they are consistent with."""
+    logs = "Server operators can see details in the runner pod logs."
+    reason, code, sig = state.get("reason"), state.get("exit_code"), state.get("signal")
+    if reason == "OOMKilled":
+        return (f"The {sim_name} pod was killed for exceeding its memory limit (Kubernetes reason "
+                f"OOMKilled, exit code {code}) before returning a result. {logs}")
+    if state.get("pod_reason") == "DeadlineExceeded":
+        return (f"The {sim_name} pod was stopped at its Job deadline (Kubernetes reason "
+                f"DeadlineExceeded) before returning a result. {logs}")
+    if sig:
+        how = f"was killed by signal {sig}"
+    elif isinstance(code, int) and code > 128:
+        how = f"exited with code {code} (killed by signal {code - 128})"
+    elif code is not None:
+        how = f"exited with code {code}" + (f" ({reason})" if reason else "")
+    else:
+        how = "exited with an error"
+    return (f"The {sim_name} pod {how} before returning a result; Kubernetes recorded no cause. "
+            f"Possible causes: the process crashed or ran out of memory, or the pod was stopped. "
+            f"{logs}")
+
+
 def _pod_refusal_resource(core_api, namespace: str, job_name: str) -> str | None:
     """The resource named in the Job's latest 'exceeded quota' FailedCreate event
     (e.g. 'limits.cpu'), 'unknown' for a quota refusal naming none, None otherwise."""
@@ -495,7 +541,8 @@ def _await_job(batch_api, core_api, namespace: str, job_name: str, sim_name: str
     if terminal_state == "failed":
         if status_callback:
             status_callback("error")
-        return _k8s_error(sim_name, f"The {sim_name} pod exited with an error before returning a result (likely out of memory or time). Server operators can see details in its pod logs.", "error")
+        return _k8s_error(sim_name, _failed_pod_message(
+            sim_name, _terminated_state(core_api, namespace, job_name)), "error")
 
     if terminal_state == "succeeded":
         logger.info(f"[K8s] Fetching S3 result for {sim_name} (job_id={job_id})")

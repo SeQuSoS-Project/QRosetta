@@ -59,7 +59,10 @@ def test_crash_fails_fast_not_at_deadline():
     t0 = time.monotonic()
     r = _call(fx.boom, {"hard_timeout_seconds": 30})
     elapsed = time.monotonic() - t0
-    assert "before returning a result" in r["error"]  # OOM-style message
+    assert "without returning a result" in r["error"]
+    assert "killed by signal 9 (SIGKILL)" in r["error"] and "did not record what sent it" in r["error"]
+    assert "likely" not in r["error"]
+    assert r["process_exit_code"] == -9 and r["process_exit_signal"] == "SIGKILL"
     assert "container logs" not in r["error"] and "timed_out" not in r
     assert elapsed < 10, f"crash detection waited for the deadline: {elapsed:.1f}s"
 
