@@ -810,7 +810,7 @@ def _safe_boot(project):
 def test_build_passes_this_project_to_safe_boot(fake, project, env, monkeypatch):
     _safe_boot(project)
     seen = {}
-    monkeypatch.setattr(subprocess, "call", lambda cmd, env, cwd: seen.update(env) or 0)
+    monkeypatch.setattr(subprocess, "call", lambda cmd, env, cwd, **kw: seen.update(env) or 0)
     assert cli(fake, project, dict(env, COMPOSE_PROJECT_NAME="myapp"), ["build", "api"]) == 0
     assert seen["COMPOSE_PROJECT_NAME"] == "qr" and seen["QROSETTA_PROJECT"] == "qr"
     assert seen["QR_BUILD_SERVICES"] == "api" and seen["COMPOSE_FILE"] == str(project / "docker-compose.yml")
@@ -821,18 +821,18 @@ def test_build_passes_this_project_to_safe_boot(fake, project, env, monkeypatch)
 def test_build_exits_16_when_the_baked_commit_is_unknown(fake, project, env, monkeypatch, capsys):
     _safe_boot(project)
     fake.add_image("i-api", ["localhost/qr-api:latest"], image_labels("api"), sha="unknown")
-    monkeypatch.setattr(subprocess, "call", lambda cmd, env, cwd: 0)
+    monkeypatch.setattr(subprocess, "call", lambda cmd, env, cwd, **kw: 0)
     assert cli(fake, project, env, ["build", "api"]) == Exit.ENGINE
     err = capsys.readouterr().err
     assert "without a baked commit: api" in err and err.strip().splitlines()[-1].endswith("qrosetta build api")
-    monkeypatch.setattr(subprocess, "call", lambda cmd, env, cwd: 2)
+    monkeypatch.setattr(subprocess, "call", lambda cmd, env, cwd, **kw: 2)
     assert cli(fake, project, env, ["build", "api"]) == Exit.ENGINE
 
 
 def test_build_refuses_while_runs_are_in_flight(fake, project, env, monkeypatch):
     _safe_boot(project)
     called = []
-    monkeypatch.setattr(subprocess, "call", lambda cmd, env, cwd: called.append(cmd) or 0)
+    monkeypatch.setattr(subprocess, "call", lambda cmd, env, cwd, **kw: called.append(cmd) or 0)
     busy = FakeServer(gate={"exclusive_running": False, "shared_running": 1})
     assert cli(fake, project, env, ["build", "api"], server=busy) == Exit.BUSY and not called
     assert cli(fake, project, env, ["build", "api", "--yes"], server=busy) == 0 and called

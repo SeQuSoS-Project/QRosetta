@@ -15,6 +15,46 @@ from qrosetta_cli import config as cfgmod
 from qrosetta_cli.errors import CliError, Exit, usage
 from qrosetta_cli.mode import BASE_FILES
 
+READ_TIMEOUT_SEC = 120
+CHANGE_TIMEOUT_SEC = 900
+TRANSFER_TIMEOUT_SEC = 4 * 3600
+_TRANSFER_VERBS = frozenset({"build", "pull", "push", "load", "save"})
+_CHANGE_VERBS = frozenset({"up", "start", "stop", "restart", "rm", "rmi", "create", "tag"})
+
+
+def default_timeout(args):
+    """Seconds an engine or compose command may run: TRANSFER_TIMEOUT_SEC for image transfers
+    and builds, CHANGE_TIMEOUT_SEC for commands that change containers, networks, volumes or
+    tags, READ_TIMEOUT_SEC for the rest (inspect, ps, ls, config, port, stats, version)."""
+    verbs = set(args[:2])
+    if verbs & _TRANSFER_VERBS:
+        return TRANSFER_TIMEOUT_SEC
+    if verbs & _CHANGE_VERBS:
+        return CHANGE_TIMEOUT_SEC
+    return READ_TIMEOUT_SEC
+
+
+def timed_out(cmd, seconds):
+    """The CliError for an engine command that did not finish within `seconds`."""
+    return CliError(f"`{' '.join(str(c) for c in cmd[:4])} ...` did not finish within {seconds:g} s and was "
+                    "stopped; the container engine may be hung. qrosetta released its lock and ended its "
+                    "host-load notice.", Exit.ENGINE, "engine_timeout", hint="qrosetta doctor")
+
+
+def wait_spawned(proc, timeout, cmd):
+    """Wait for a spawned command; past `timeout` seconds stop it and raise `timed_out`."""
+    try:
+        return proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+        raise timed_out(cmd, timeout) from None
+
+
 COMPOSE_INSTALL = (
     "Install Docker Compose v2: on Ubuntu or Debian `sudo apt install docker-compose-v2` (with podman add "
     "--no-install-recommends, so docker.io is not pulled in). Elsewhere, with Docker install the "
@@ -227,16 +267,18 @@ class Engine:
         return base + list(args)
 
     def cli(self, *args, check=False, timeout=None):
-        """Run `<engine> args...` and capture its output."""
-        return self._call([self.name, *args], check, timeout)
+        """Run `<engine> args...` and capture its output; `timeout` defaults to
+        `default_timeout(args)`."""
+        return self._call([self.name, *args], check, timeout or default_timeout(args))
 
     def tool(self, *argv, timeout=None):
         """Run another program (cosign) with the engine's environment and capture its output."""
-        return self._call(list(argv), False, timeout)
+        return self._call(list(argv), False, timeout or READ_TIMEOUT_SEC)
 
     def compose(self, *args, check=False, timeout=None):
-        """Run `<engine> compose args...` and capture its output."""
-        return self._call(self.compose_args(*args), check, timeout)
+        """Run `<engine> compose args...` and capture its output; `timeout` defaults to
+        `default_timeout(args)`."""
+        return self._call(self.compose_args(*args), check, timeout or default_timeout(args))
 
     def _call(self, cmd, check, timeout):
         try:
@@ -244,6 +286,8 @@ class Engine:
                                env=self.env, timeout=timeout, start_new_session=True)
         except FileNotFoundError as exc:
             raise CliError(f"{cmd[0]} not found: {exc}", Exit.ENGINE, "engine_missing", hint="qrosetta doctor") from exc
+        except subprocess.TimeoutExpired:
+            raise timed_out(cmd, timeout) from None
         if check and result.returncode != 0:
             from qrosetta_cli.stack.explain import engine_error
             raise engine_error(result.stderr or result.stdout, f"`{' '.join(cmd[:4])} ...` failed")

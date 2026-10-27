@@ -816,6 +816,12 @@ Compilers are separate from the simulators: their output is a circuit, which is 
 
 *Evidence (2026-10-28).* The job worker, the analysis step, the experiment worker and the bundled-file reader stored `str(e)`, so an OSError showed container paths (§13.3); only the batch path had been reduced to the type (`test_v1_02_exception_text.py`).
 
+### Engine call timeouts
+
+*Rule.* Every engine and compose command qrosetta runs has a timeout: 4 hours for builds and image transfers (build, pull, push, load, save, and `scripts/safe_boot.sh`), 15 minutes for commands that change containers, networks, volumes or tags (including `compose up`), 2 minutes for the rest. A command past its timeout is stopped and the qrosetta command exits 16 `engine_timeout`; the engine lock is released and the host-load notice ended on the way out. A heartbeat answered 404 (the server no longer holds the notice: it expired or the server restarted) stops the heartbeats with a warning, and no end is sent.
+
+*Evidence (2026-10-28).* Engine calls had no timeouts apart from `info`, `--version`, `compose version`, cosign and sysctl, so a hung podman kept the engine lock while the heartbeat kept the host-load notice, and with it the run gate, open; heartbeat 404s were ignored (`test_v1_12_engine_timeouts.py`).
+
 ### CLI retries
 
 *Rule.* The CLI repeats a request that starts no work on the server (GET, and POST to the export, summary, publication and plan routes) when it gets no answer, the transfer breaks off, or the server answers 502, 503, 504 or 429 with Retry-After of at most 30 s: up to three more times, after 1, 2 and 4 s; a download starts again from the beginning. A run (POST /compare, /compare_measured, /run_batch_suite, /experiments) is never sent twice. A download shorter than its Content-Length is a broken transfer. Waiting for a job allows up to five failed polls in a row. Downloads give the server 330 s per socket operation (nginx's own read timeout), since a crate is built before its first byte.
