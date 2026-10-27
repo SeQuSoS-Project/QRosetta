@@ -3,6 +3,7 @@ interval runs count as server_overlapping_host_load, the gate an exclusive run w
 after the last heartbeat, and the stop marks that make a lost run read stopped_by_user."""
 
 import asyncio
+from pathlib import Path
 
 import pytest
 
@@ -165,3 +166,14 @@ def test_host_load_is_a_timing_caveat():
     assert [c["code"] for c in report if c["code"] == "host_load"] == ["host_load"]
     assert "host_load" not in [c["code"] for c in timing_caveats.result_caveats(
         {**result, "server_overlapping_host_load": 0})]
+
+
+def test_the_compose_file_mounts_the_token_into_the_api_only():
+    import yaml
+    repo = Path(__file__).resolve().parents[3]
+    doc = yaml.safe_load((repo / "docker-compose.yml").read_text())
+    assert doc["secrets"]["lifecycle_token"]["file"] == "${QROSETTA_LIFECYCLE_TOKEN_PATH:-./infra/lifecycle-token.none}"
+    assert (repo / "infra" / "lifecycle-token.none").stat().st_size == 0
+    with_secret = [name for name, svc in doc["services"].items() if svc.get("secrets")]
+    assert with_secret == ["api"]
+    assert "QROSETTA_LIFECYCLE_TOKEN_FILE=/run/secrets/lifecycle_token" in doc["services"]["api"]["environment"]

@@ -149,6 +149,10 @@ async def get_config():
     ``when_omitted`` where that value stands for something the server decides (a generated
     seed, every available runner, the agreement thresholds in ``agreement_thresholds``).
     ``compile_only`` says what makes /compare or /run_batch_suite a compile-only request.
+    ``exclusive`` gives ``enabled``, ``max_wait_sec`` and the run gate now:
+    ``exclusive_running``, ``exclusive_waiting``, ``shared_running`` (dispatches and fresh-probe
+    rounds), ``saves_running`` (gated saves of a report or crate) and ``host_load_running``
+    (open host-load notices of the qrosetta command).
     """
     return JSONResponse(content={
         "server": server_block(),

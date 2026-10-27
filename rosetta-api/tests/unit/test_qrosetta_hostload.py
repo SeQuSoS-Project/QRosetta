@@ -53,17 +53,6 @@ def test_the_token_file_is_private_by_its_directory_and_kept(env):
     assert hostload.compose_env({**env, "XDG_RUNTIME_DIR": env["XDG_RUNTIME_DIR"] + "-other"}) == {}
 
 
-def test_the_compose_file_mounts_the_token_into_the_api_only():
-    import yaml
-    from tests.unit._qrosetta_fake import REPO
-    doc = yaml.safe_load(open(os.path.join(REPO, "docker-compose.yml")))
-    assert doc["secrets"]["lifecycle_token"]["file"] == "${QROSETTA_LIFECYCLE_TOKEN_PATH:-./infra/lifecycle-token.none}"
-    assert os.path.getsize(os.path.join(REPO, "infra", "lifecycle-token.none")) == 0
-    with_secret = [name for name, svc in doc["services"].items() if svc.get("secrets")]
-    assert with_secret == ["api"]
-    assert "QROSETTA_LIFECYCLE_TOKEN_FILE=/run/secrets/lifecycle_token" in doc["services"]["api"]["environment"]
-
-
 def _ctx(env, server):
     return Context(args=None, env=env, cfg=None, transport_factory=server)
 
