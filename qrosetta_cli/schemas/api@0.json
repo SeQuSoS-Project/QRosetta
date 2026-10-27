@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "qrosetta.cli/api@0: the envelope's data",
+  "type": [
+    "object",
+    "array",
+    "string",
+    "number",
+    "boolean",
+    "null"
+  ]
+}

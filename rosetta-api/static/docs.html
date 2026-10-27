@@ -1629,6 +1629,7 @@
                     <tbody>
                         <tr><td><code>GET /jobs/{job_id}</code></td><td>Job status, progress and the browser copy of the report.</td></tr>
                         <tr><td><code>GET /jobs/{job_id}/report</code></td><td>The untruncated report as JSON (the <em>Download full report</em> button): the report object itself, without the job envelope. 404 if the job is unknown or expired, 409 if it has not completed.</td></tr>
+                        <tr><td><code>GET /jobs/{job_id}/summary</code></td><td>Each pair's verdict (<code>pair_verdicts</code>, in <code>pairwise_agreement</code> order) and the per-backend counts with the headline model (<code>backend_verdicts</code>); a playlist has one such entry per circuit in <code>benchmark_summary</code>. <code>analysis_version</code> names the rule applied, <code>report_analysis_version</code> the analysis that produced the pair records. <code>GET /history/runs/{run_id}/summary</code> does the same for a saved run and <code>POST /summary</code> (body <code>{"results": report}</code>, 120 requests a minute) for a report in the body. The verdicts are always computed from the pair records, so for a report produced under the same <code>analysis_version</code> they equal the recorded <code>pair_verdict</code> and <code>backend_verdicts</code>. Same 404 and 409 cases.</td></tr>
                         <tr><td><code>GET /jobs/{job_id}/publication/artifacts</code></td><td>The figures and tables the server copy offers: each one's <code>id</code> (the <code>artifact_id</code> to render), label, group, formats and caption at default parameters; <code>?task=</code> picks a playlist circuit. <code>POST /publication/artifacts</code> does the same for a report in the body. Rendering an id the report does not offer is a 404 whose detail lists the ids it does.</td></tr>
                         <tr><td><code>POST /jobs/{job_id}/export</code></td><td>An RO-Crate ZIP built from the server copy; body (optional; every field has a default): <code>include_statevectors</code>, <code>author_name</code>, <code>author_affiliation</code>, <code>publication_artifacts</code>. Same 404 and 409 cases. <code>publication_artifacts.items</code> lists views as <code>{"view", "params", "formats"}</code>: each figure is written to <code>figures/&lt;name&gt;.&lt;format&gt;</code> with <code>figures/&lt;name&gt;.spec.json</code> (the view, its parameters, the caption and the analysis version), each table to <code>tables/&lt;name&gt;.&lt;ext&gt;</code>, the glossary to <code>reference/</code>; the name is the view id followed by every parameter that differs from its default. A playlist crate draws each view for every circuit under <code>figures/&lt;circuit&gt;/</code>. An unknown view, parameter or format is a 400.</td></tr>
                         <tr><td><code>POST /jobs/{job_id}/publication/render</code></td><td>One figure or table drawn from the server copy (body: <code>artifact_id</code>, <code>format</code>, <code>scale</code>, <code>params</code>, and <code>task</code>, the circuit's index, for a playlist job). Same 404 and 409 cases; 400 for a parameter or format the view does not take. <code>POST /publication/render</code> takes a report in the body instead.</td></tr>
@@ -1738,6 +1739,21 @@
                     JS and Hellinger distances with their thresholds and ignores shot noise, so a check
                     that reads only <code>agreement</code> can pass a distinguishable pair or fail a
                     consistent one. In statevector mode <code>agreement</code> is the verdict.
+                </p>
+                <p>
+                    Each pair also records <code>pair_verdict</code>, the verdict every view of the page
+                    shows: <code>verdict</code> is <code>not_comparable</code>, <code>differs_by_only</code>
+                    (measured: significant under Benjamini–Yekutieli only, not under Holm, and no single-bit
+                    marginal differs), <code>differs</code>, <code>inconclusive</code>, <code>agrees</code>,
+                    <code>bit_order</code> (agrees after the bit reversal the declared orderings imply) or
+                    <code>unassessed</code>, beside the flags <code>differs</code> (the badge),
+                    <code>differs_by_only</code>, <code>agrees</code> and <code>inconclusive</code>.
+                    <code>divergence_report.backend_verdicts</code> holds the per-backend counts of the
+                    Backends table and <code>headline_model</code>, the backends the Summary headline names.
+                    Reports from analysis versions before <code>divergence-2026.10.27.1</code> lack these
+                    fields; <code>GET /jobs/{job_id}/summary</code>,
+                    <code>GET /history/runs/{run_id}/summary</code> and <code>POST /summary</code> compute them
+                    for any report with this server's rule, and the page uses them for such reports.
                 </p>
                 <p>
                     Live statuses in <code>runner_statuses</code> use the same keys as the results: a

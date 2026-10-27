@@ -1,5 +1,6 @@
-// Per-runner outcome (ok / error / timeout / offline) and agreement-label groups.
-// Leaf module: no imports.
+// Per-runner outcome (ok / error / timeout / offline) and pair verdicts. The verdicts come from
+// the server: a report records them (pair_verdict, divergence_report.backend_verdicts), and for
+// one that does not, the server's summary is attached here. Leaf module: no imports.
 
 export function isConnectionError(errorMsg) {
     if (!errorMsg) return false;
@@ -45,45 +46,132 @@ export function statusBySimulator(rawResults) {
     return map;
 }
 
+const _pairVerdicts = new WeakMap();
+const _reportVerdicts = new WeakMap();
+
 /**
- * The label a pair would carry without the normalisation note: for
- * agree_after_normalization, the label the normalised vectors received.
+ * @typedef {{ verdict: string, differs: boolean, differs_by_only: boolean, differs_full: boolean,
+ *             differs_marginal: boolean, agrees: boolean, inconclusive: boolean, assessment: any,
+ *             statevector_group: 'agree'|'bit_order'|'disagree'|'not_comparable'|'other',
+ *             effective_agreement: any, unaligned_basis: string|null }} PairVerdict
  */
-export function effectiveAgreement(p) {
-    if (p?.agreement === 'agree_after_normalization') return p.metrics?.normalized_agreement || 'agree_directly';
-    return p?.agreement;
+
+/**
+ * A pair's verdict record: its recorded pair_verdict, else the one the server's summary gave
+ * for it (attachSummary). Throws for a pair that has neither.
+ * @returns {PairVerdict}
+ */
+export function pairVerdict(p) {
+    const recorded = p?.pair_verdict;
+    if (recorded && typeof recorded === 'object' && typeof recorded.differs === 'boolean') return recorded;
+    const attached = p && typeof p === 'object' ? _pairVerdicts.get(p) : undefined;
+    if (attached) return attached;
+    throw new Error('A pair of this report has no verdict from the server.');
 }
 
-const VERDICT_TO_ASSESSMENT = {
-    consistent: 'consistent_within_shot_noise',
-    inconclusive_low_shots: 'inconclusive_low_shots',
-    distinguishable: 'distinguishable',
-    ambiguous: 'ambiguous',
-};
+/** The pair's verdict record, or null when it has none. */
+export function pairVerdictOrNull(p) {
+    try { return pairVerdict(p); } catch { return null; }
+}
+
+/** A single-circuit report's per-backend counts as the server records them (snake_case):
+ * divergence_report.backend_verdicts, else the server's summary attached to the report. */
+export function reportBackendVerdicts(report) {
+    const recorded = report?.divergence_report?.backend_verdicts;
+    if (recorded && typeof recorded === 'object' && Array.isArray(recorded.backends)
+        && recorded.headline_model && typeof recorded.headline_model === 'object') return recorded;
+    const attached = report && typeof report === 'object' ? _reportVerdicts.get(report) : undefined;
+    if (attached) return attached;
+    throw new Error('This report has no per-backend verdicts from the server.');
+}
+
+/** The circuit reports of a playlist report, else the report itself. */
+function _tasks(report) {
+    return Array.isArray(report?.benchmark_summary) ? report.benchmark_summary : [report];
+}
+
+function _pairsOf(task) {
+    const pairs = task?.divergence_report?.pairwise_agreement;
+    return Array.isArray(pairs) ? pairs : [];
+}
+
+function _hasVerdicts(task) {
+    if (!task || typeof task !== 'object') return true;
+    const pairs = _pairsOf(task);
+    if (!pairs.length && !(Array.isArray(task.raw_results) && task.raw_results.length)) return true;
+    if (pairs.some(p => p && typeof p === 'object' && pairVerdictOrNull(p) === null)) return false;
+    try { reportBackendVerdicts(task); return true; } catch { return false; }
+}
+
+/** True when some circuit of the report has results or pairs but no verdicts from the server. */
+export function lacksVerdicts(report) {
+    return !_tasks(report).every(_hasVerdicts);
+}
 
 /**
- * Shot-noise assessment of a measured pair: measured_assessment when the report has it,
- * else derived from the statistical-test verdict; null when neither is recorded.
+ * Attach a summary (GET /jobs/{id}/summary, GET /history/runs/{id}/summary or POST /summary)
+ * to the report it was computed from, so pairVerdict and reportBackendVerdicts read it. The
+ * report itself is not changed.
+ */
+export function attachSummary(report, summary) {
+    const tasks = _tasks(report);
+    const parts = Array.isArray(summary?.benchmark_summary) ? summary.benchmark_summary : [summary];
+    if (parts.length !== tasks.length) throw new Error('The verdict summary does not match this report.');
+    tasks.forEach((task, i) => {
+        if (!task || typeof task !== 'object') return;
+        const pairs = _pairsOf(task);
+        const verdicts = Array.isArray(parts[i]?.pair_verdicts) ? parts[i].pair_verdicts : [];
+        if (verdicts.length !== pairs.length) throw new Error('The verdict summary does not match this report.');
+        pairs.forEach((p, j) => { if (p && typeof p === 'object') _pairVerdicts.set(p, verdicts[j]); });
+        if (parts[i]?.backend_verdicts) _reportVerdicts.set(task, parts[i].backend_verdicts);
+    });
+}
+
+/** @param {any} obj @param {string[]} keys */
+const _pick = (obj, keys) => Object.fromEntries(keys.filter(k => k in obj).map(k => [k, obj[k]]));
+
+/** The fields of one circuit's report that POST /summary reads. */
+function _summaryTask(r) {
+    if (!r || typeof r !== 'object' || Array.isArray(r)) return r;
+    const out = _pick(r, ['n_shots', 'analysis_version']);
+    if (Array.isArray(r.raw_results)) {
+        out.raw_results = r.raw_results.map(x => (x && typeof x === 'object' && !Array.isArray(x)
+            ? _pick(x, ['simulator', 'dispatch_status', 'error']) : x));
+    } else if ('raw_results' in r) out.raw_results = r.raw_results;
+    const div = r.divergence_report;
+    if (div && typeof div === 'object' && !Array.isArray(div)) {
+        out.divergence_report = _pick(div, ['analysis_version', 'simulators', 'ordering_map', 'pairwise_agreement']);
+    } else if ('divergence_report' in r) out.divergence_report = div;
+    return out;
+}
+
+/** The body of POST /summary for a report: the fields the verdicts read, without statevectors,
+ * counts or circuit texts. */
+export function summaryInput(report) {
+    if (Array.isArray(report?.benchmark_summary)) return { results: { benchmark_summary: report.benchmark_summary.map(_summaryTask) } };
+    return { results: _summaryTask(report) };
+}
+
+/** The pair's agreement label, or for agree_after_normalization the label its normalised vectors received. */
+export function effectiveAgreement(p) {
+    return pairVerdict(p).effective_agreement;
+}
+
+/**
+ * Shot-noise assessment of a pair, as the server reads it from the record.
  * @returns {'consistent_within_shot_noise'|'inconclusive_low_shots'|'distinguishable'|'ambiguous'|'not_comparable'|null}
  */
 export function measuredAssessment(p) {
-    if (!p) return null;
-    const recorded = p.measured_assessment ?? p.metrics?.measured_assessment;
-    if (recorded) return recorded;
-    if (p.agreement === 'not_comparable') return 'not_comparable';
-    const verdict = p.metrics?.statistical_test?.verdict;
-    return VERDICT_TO_ASSESSMENT[verdict] || null;
+    return pairVerdict(p).assessment;
 }
 
 /**
  * The basis ('direct' or 'bit_reversal') in which a pair matches although its declared
- * qubit orderings imply the other one, or null.
+ * qubit orderings imply the other one, 'unrecorded', or null.
  * @returns {string|null}
  */
 export function unalignedBasis(p) {
-    const v = p?.metrics?.unaligned_basis_match ?? p?.unaligned_basis_match;
-    if (typeof v === 'string' && v) return v;
-    return v === true || p?.agreement === 'unaligned_basis_match' ? 'unrecorded' : null;
+    return pairVerdict(p).unaligned_basis;
 }
 
 /** True when a pair matches only in a basis its declared qubit orderings do not imply. */
@@ -94,18 +182,11 @@ export function unalignedBasisMatch(p) {
 /**
  * Group of a statevector pair: 'agree' (directly, up to a global phase, or after
  * normalisation), 'bit_order' (after the bit reversal the declared orderings imply),
- * 'disagree' (residual, only after an undeclared qubit permutation, or only in an
- * unaligned basis), 'not_comparable', or 'other'.
+ * 'disagree', 'not_comparable', or 'other'.
  * @returns {'agree'|'bit_order'|'disagree'|'not_comparable'|'other'}
  */
 export function statevectorGroup(p) {
-    if (p?.agreement === 'not_comparable') return 'not_comparable';
-    if (unalignedBasisMatch(p)) return 'disagree';
-    const label = effectiveAgreement(p);
-    if (label === 'residual_disagreement' || label === 'agree_after_qubit_permutation') return 'disagree';
-    if (label === 'agree_directly' || label === 'agree_up_to_global_phase') return 'agree';
-    if (label === 'agree_after_bit_reversal') return 'bit_order';
-    return 'other';
+    return pairVerdict(p).statevector_group;
 }
 
 /** Global phase offset (rad) of a statevector pair in the basis its declared orderings imply, or null. */
@@ -135,15 +216,9 @@ export function alignedFidelity(p) {
     return { value, reversed };
 }
 
-/** True when the pair's outputs disagree by the evidence the report records. */
+/** True when the pair is a disagreement. */
 export function isDisagreement(p) {
-    if (p?.mode === 'measured') {
-        if (p.marginal_assessment === 'marginal_distinguishable') return true;
-        const a = measuredAssessment(p);
-        if (a) return a === 'distinguishable';
-        return p.agreement === 'distance_exceeds_threshold';
-    }
-    return statevectorGroup(p) === 'disagree';
+    return pairVerdict(p).differs;
 }
 
 /** Power of the pair's shot-noise test to detect the target total-variation gap, or null. */

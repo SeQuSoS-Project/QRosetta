@@ -4,7 +4,6 @@
 
 import { BASE_URL, formatApiError, getAuthHeaders } from './api.js';
 import { labelText } from './labels.js';
-import { statevectorGroup } from './run_status.js';
 import { downloadBlob } from './utils.js';
 import { durationText } from './request_limits.js';
 import { getState } from './state.js';
@@ -47,9 +46,10 @@ function _prevalenceText(summary) {
         };
     }
     const groups = { agree: 0, bit_order: 0, disagree: 0, other: 0 };
+    const labelGroups = summary.statevector_label_groups || {};
     Object.entries(counts).forEach(([k, n]) => {
-        const g = statevectorGroup({ agreement: k, mode: 'statevector' });
-        groups[g === 'not_comparable' ? 'other' : g] += n;
+        const g = Object.prototype.hasOwnProperty.call(labelGroups, k) ? labelGroups[k] : 'other';
+        groups[g in groups ? g : 'other'] += n;
     });
     const parts = [`agree: ${groups.agree}`, `agree after the declared bit reversal: ${groups.bit_order}`,
         `disagree: ${groups.disagree}`];

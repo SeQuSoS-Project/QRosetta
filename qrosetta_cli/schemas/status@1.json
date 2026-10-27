@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "qrosetta.cli/status@1: the envelope's data",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "project": {
+      "type": "string"
+    },
+    "project_dir": {
+      "type": "string"
+    },
+    "mode": {
+      "type": "string"
+    },
+    "engine": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rootless": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "rootless"
+      ]
+    },
+    "services": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "backend": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "compose_service": {
+            "type": "string"
+          },
+          "container": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "enum": [
+              "running",
+              "stopped",
+              "not created"
+            ]
+          },
+          "memory_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "limit_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "image": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "enum": [
+                  "missing",
+                  "pulled",
+                  "pulled-other",
+                  "loaded",
+                  "built",
+                  "unknown"
+                ]
+              },
+              "ref": {
+                "type": "string"
+              },
+              "digest": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "image_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "git_sha": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "release": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "state",
+              "ref",
+              "digest",
+              "image_id",
+              "git_sha",
+              "release"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "backend",
+          "version",
+          "kind",
+          "compose_service",
+          "container",
+          "state",
+          "memory_bytes",
+          "limit_bytes",
+          "image"
+        ]
+      }
+    }
+  },
+  "required": [
+    "url",
+    "project",
+    "project_dir",
+    "mode",
+    "engine",
+    "services"
+  ]
+}

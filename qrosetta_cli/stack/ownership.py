@@ -11,7 +11,7 @@ is reported with the command that would remove it, and never touched."""
 import json
 from dataclasses import dataclass, field
 
-from qrosetta_cli import stack as st
+from qrosetta_cli.stack import project as st
 
 PROJECT_LABEL = "com.docker.compose.project"
 SERVICE_LABEL = "com.docker.compose.service"

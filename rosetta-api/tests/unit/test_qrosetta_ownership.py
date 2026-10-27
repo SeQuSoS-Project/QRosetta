@@ -3,21 +3,28 @@ and pods on a fake engine, and a static check that destructive engine calls get 
 only from the ownership scan."""
 
 import ast
-import sys
 
 import pytest
 
-from tests.unit._qrosetta_fake import REPO, FakeEngine, image_labels, ours
+from tests.unit._qrosetta_fake import REPO, FakeEngine, FakeServer, Unreachable, image_labels, ours
 
-from qrosetta_cli import ownership as own  # noqa: E402
 from qrosetta_cli.cli import main  # noqa: E402
-from qrosetta_cli.engine import Engine  # noqa: E402
+from qrosetta_cli.errors import Exit  # noqa: E402
+from qrosetta_cli.stack import ownership as own  # noqa: E402
+from qrosetta_cli.stack import serve  # noqa: E402
+from qrosetta_cli.stack.engine import Engine  # noqa: E402
 
 PROJECT_ONLY = {own.PROJECT_LABEL: "qr"}
-ENV = {"QROSETTA_PROJECT": "qr", "COMPOSE_PROJECT_NAME": "myapp", "COMPOSE_FILE": "evil.yml"}
 
 
-class Tty:
+class Lines:
+    def __init__(self, text):
+        self.text = text
+
+    def readline(self):
+        line, _, self.text = self.text.partition("\n")
+        return line + "\n" if line else ""
+
     def isatty(self):
         return True
 
@@ -56,11 +63,14 @@ def decoyed(volume_is_foreign=False):
     return f, decoys
 
 
-def run(f, project, argv, monkeypatch, answer="delete"):
+def run(f, project, argv, tmp_path, server=None, answer="qr\n"):
     (project / ".env").write_text("COMPOSE_PROJECT_NAME=myapp\n")
-    monkeypatch.setattr("builtins.input", lambda q: answer)
-    monkeypatch.setattr(sys, "stdin", Tty())
-    return main(argv, checkout=str(project), engine_factory=lambda d: Engine(f.engine, d, run=f, env=ENV))
+    env = {"QROSETTA_PROJECT": "qr", "COMPOSE_PROJECT_NAME": "myapp", "COMPOSE_FILE": "evil.yml",
+           "QROSETTA_TOKEN": "secret", "HOME": str(tmp_path), "XDG_RUNTIME_DIR": str(tmp_path / "run"),
+           "XDG_STATE_HOME": str(tmp_path / "state"), "XDG_CONFIG_HOME": str(tmp_path / "config")}
+    return main(argv, checkout=str(project), env=env, tty=True, stdin=Lines(answer),
+                engine_factory=lambda d: Engine(f.engine, d, run=f, popen=f.popen, env=env),
+                transport_factory=server or Unreachable())
 
 
 def check_calls(f, decoys):
@@ -69,6 +79,7 @@ def check_calls(f, decoys):
         args = cmd[1:]
         assert "prune" not in args and "--all" not in args, args
         assert not any(k.startswith("COMPOSE_") for k in env), env
+        assert "QROSETTA_TOKEN" not in env, env
         if args[0] == "compose":
             assert args[1:3] == ["-p", "qr"], args
             continue
@@ -90,43 +101,79 @@ def project(tmp_path):
     return tmp_path
 
 
-@pytest.mark.parametrize("argv", [["stop"], ["remove"], ["remove", "--images"], ["remove", "--data"],
-                                  ["remove", "--images", "--data"], ["status"]])
-def test_no_decoy_is_ever_targeted(project, monkeypatch, capsys, argv):
+BUSY = {"exclusive_running": False, "exclusive_waiting": 0, "shared_running": 3}
+
+
+@pytest.mark.parametrize("argv,busy", [
+    (["stop"], False), (["stop", "--force"], True), (["remove"], False), (["rm"], False),
+    (["remove", "--images"], False), (["remove", "--data"], False), (["remove", "--data", "--confirm", "qr"], False),
+    (["remove", "--images", "--data", "--confirm", "qr", "--force"], True), (["status"], False),
+    (["status", "--json"], False)])
+def test_no_decoy_is_ever_targeted(project, tmp_path, capsys, argv, busy):
     f, decoys = decoyed()
-    run(f, project, argv, monkeypatch)
+    server = FakeServer(gate=BUSY) if busy else None
+    expected = Exit.ENGINE if argv[0] == "stop" else Exit.OK
+    assert run(f, project, argv, tmp_path, server=server) == expected
     check_calls(f, decoys)
     present = set(f.containers) | set(f.networks) | set(f.volumes) | set(f.images) | set(f.pods)
     assert {d for d in decoys if d.startswith(("c-", "n-", "i-")) or d in ("myapp_db", "mixed")} <= present
-    out = capsys.readouterr().out
-    if argv[0] == "remove":
+    err = capsys.readouterr().err
+    if argv[0] in ("remove", "rm"):
         assert "c-rosetta-api" not in f.containers and "c-braket-runner" not in f.containers
-        assert "Pod pod-mixed also holds containers that are not this stack's (intruder)" in out
+        assert "Pod pod-mixed also holds containers that are not this stack's (intruder)" in err
     if "--images" in argv:
         assert f.commands("rmi") == [["rmi", "i-qiskit"]]
-        assert "qr-api has no qrosetta label" in out and "is also tagged registry.example/team/nginx:1" in out
-        assert "postgres:16 has no qrosetta label" in out
-        hint = next(line for line in out.splitlines() if "yourself" in line)
+        assert "qr-api has no qrosetta label" in err and "is also tagged registry.example/team/nginx:1" in err
+        assert "postgres:16 has no qrosetta label" in err
+        hint = next(line for line in err.splitlines() if "yourself" in line)
         assert sorted(hint.split("rmi ")[1].split()) == ["qr-api", "qr-braket_runner", "qr-nginx"]
     if "--data" in argv:
         assert "qr_db" not in f.volumes
 
 
-def test_foreign_volume_with_this_stacks_volume_name_is_never_deleted(project, monkeypatch, capsys):
+@pytest.mark.parametrize("argv", [["stop"], ["remove", "--images", "--data", "--confirm", "qr"]])
+def test_refusal_while_runs_are_in_flight_touches_nothing(project, tmp_path, argv):
+    f, decoys = decoyed()
+    assert run(f, project, argv, tmp_path, server=FakeServer(gate=BUSY)) == Exit.BUSY
+    check_calls(f, decoys)
+    assert not f.destructive_calls()
+
+
+def test_a_wrong_confirmation_deletes_nothing(project, tmp_path):
+    f, decoys = decoyed()
+    assert run(f, project, ["remove", "--data"], tmp_path, answer="yes\n") == Exit.USAGE
+    assert run(f, project, ["remove", "--data", "--confirm", "myapp"], tmp_path) == Exit.USAGE
+    assert not f.destructive_calls() and "qr_db" in f.volumes
+
+
+def test_foreign_volume_with_this_stacks_volume_name_is_never_deleted(project, tmp_path, capsys):
     f, decoys = decoyed(volume_is_foreign=True)
-    assert run(f, project, ["remove", "--data"], monkeypatch) == 0
+    assert run(f, project, ["remove", "--data", "--confirm", "qr"], tmp_path) == 0
     check_calls(f, decoys)
     assert "qr_db" in f.volumes and not f.commands("volume", "rm")
-    assert "compose did not create for this project: qr_db" in capsys.readouterr().out
+    assert "compose did not create for this project: qr_db" in capsys.readouterr().err
 
 
-def test_start_refuses_and_touches_nothing_while_decoys_hold_its_names(project, monkeypatch, capsys):
+def test_start_refuses_and_touches_nothing_while_decoys_hold_its_names(project, tmp_path, capsys):
     f, decoys = decoyed()
-    assert run(f, project, ["start", "--detach"], monkeypatch) == 1
+    assert run(f, project, ["start", "--detach"], tmp_path) == Exit.ENGINE
     check_calls(f, decoys)
     assert not f.destructive_calls()
     err = capsys.readouterr().err
     assert "qiskit-runner (project myapp, running)" in err and "api-by-hand" in err
+
+
+def test_foreground_exit_action_remove_touches_only_this_stack(project, tmp_path, monkeypatch):
+    f, decoys = decoyed()
+    env = {"QROSETTA_PROJECT": "qr", "HOME": str(tmp_path), "XDG_RUNTIME_DIR": str(tmp_path / "run")}
+    engine = Engine(f.engine, str(project), run=f, popen=f.popen, env=env)
+    from qrosetta_cli.stack import project as st
+    stack = st.load_stack(engine)
+    server = serve.Server(engine, stack, "remove", [], {}, tty=False)
+    monkeypatch.setattr(server, "_follow", lambda: (_ for _ in ()).throw(serve.Interrupted(2)))
+    assert server.run() == 0
+    check_calls(f, decoys)
+    assert "c-rosetta-api" not in f.containers and "c-pedantic_noyce" in f.containers
 
 
 def test_act_refuses_targets_not_made_by_the_scan():
@@ -137,7 +184,8 @@ def test_act_refuses_targets_not_made_by_the_scan():
 
 
 def _source_calls():
-    for path in sorted((REPO / "qrosetta_cli").glob("*.py")):
+    root = REPO / "qrosetta_cli"
+    for path in sorted(root.rglob("*.py")):
         tree = ast.parse(path.read_text())
         parents = {}
         for node in ast.walk(tree):
@@ -151,7 +199,7 @@ def _source_calls():
                     if isinstance(up, ast.FunctionDef):
                         fn = up.name
                         break
-                yield path.name, fn, node
+                yield path.relative_to(root).as_posix(), fn, node
 
 
 def _const(node):
@@ -168,21 +216,25 @@ def test_destructive_engine_calls_take_targets_only_from_the_ownership_scan():
                 verbs = [c for c in consts[:2] if c]
                 assert not set(verbs) & destructive, (module, fn, verbs)
             elif not (len(consts) > 1 and consts[1] == "inspect"):
-                assert (module, fn) == ("ownership.py", "act"), (module, fn)
+                assert (module, fn) == ("stack/ownership.py", "act"), (module, fn)
         if name == "compose":
             assert consts and consts[0] in ("config", "port", "version"), (module, fn, consts)
         if name == "spawn":
             first = call.args[0]
             assert isinstance(first, ast.List) and _const(first.elts[0]) in ("up", "logs"), (module, fn)
-    values = {_const(n) for p in (REPO / "qrosetta_cli").glob("*.py") for n in ast.walk(ast.parse(p.read_text()))}
+        for arg in call.args:
+            if isinstance(arg, ast.List):
+                words = {_const(e) for e in arg.elts}
+                assert not words & (destructive | {"down"}), (module, fn, words)
+    values = {_const(n) for p in (REPO / "qrosetta_cli").rglob("*.py") for n in ast.walk(ast.parse(p.read_text()))}
     assert not {"prune", "--all", "down", "kill"} & values
-    assert set(own.COMMANDS.values().__iter__().__next__()) and all(
-        "-a" not in cmd and "--all" not in cmd for cmd in own.COMMANDS.values())
+    assert all("-a" not in cmd and "--all" not in cmd for cmd in own.COMMANDS.values())
 
 
-def test_subprocess_is_used_only_by_the_engine_and_build():
+def test_subprocess_is_used_only_by_the_engine_build_and_config_edit():
+    allowed = {("stack/commands.py", "cmd_build"), ("commands.py", "cmd_config_edit")}
     for module, fn, call in _source_calls():
         f = call.func
         if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) and f.value.id in ("subprocess", "os"):
             if f.attr in ("run", "call", "Popen", "check_call", "check_output", "system", "popen", "execv", "execvp"):
-                assert (module, fn) == ("cli.py", "cmd_build"), (module, fn, f.attr)
+                assert (module, fn) in allowed, (module, fn, f.attr)

@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from config import server_git_sha, server_image_digests, settings
 from schemas import BatchPayload, BenchmarkTask, ExperimentPayload
 from services import experiment_artifacts as art
+from services.analysis.divergence.verdicts import statevector_group
 from services.dispatcher import SEED_DERIVATION
 from services.export_compiled import compiled_metrics_csv, compiler_build_files
 from services.exporter import runner_lock_files
@@ -106,6 +107,13 @@ def effective_config(payload: ExperimentPayload, seed, thresholds: dict,
 def _axis_label(mode: str, pp: bool) -> str:
     """Axis name, e.g. 'measured_preprocOn'."""
     return f"{mode}_preproc{'On' if pp else 'Off'}"
+
+
+def statevector_label_groups(prevalence: list) -> dict:
+    """Agreement label -> its statevector group (agree, bit_order, disagree, not_comparable,
+    other) for the classes the prevalence rows count."""
+    return {row["agreement_class"]: statevector_group({"agreement": row["agreement_class"], "mode": "statevector"})
+            for row in prevalence}
 
 
 _BULKY_RESULT_FIELDS = frozenset({"statevector", "counts", "transpiled_qasm"})
@@ -330,6 +338,7 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
                           "source": c["source"]} for c in resolved],
             "resolution_errors": resolution_errors,
             "conformance": conformance, "prevalence": prevalence,
+            "statevector_label_groups": statevector_label_groups(prevalence),
             "sdk_versions": sdk_versions, "error_count": n_err,
             "cells": cells, "bundle_ready": True, "bundle_name": bundle_name,
             "job_id": job_id,

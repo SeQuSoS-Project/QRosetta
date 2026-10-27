@@ -1,7 +1,7 @@
 // Run history: save completed runs, list, load, rename, download and delete them.
 
 import { announceWorkspaceChange, limitCodePoints, tabNav } from './dom.js';
-import { BASE_URL, formatApiError, getAuthHeaders } from './api.js';
+import { BASE_URL, formatApiError, getAuthHeaders, withVerdicts } from './api.js';
 import { onNextLogin, openAuthModal, updateAuthUI } from './auth.js';
 import { clearReport, renderDetailReport, renderSuiteSummary } from './renderers.js';
 import { dispatch, getState } from './state.js';
@@ -417,7 +417,7 @@ export async function loadHistoricalRun(runId, runName, createdAt) {
         });
         if (!response.ok) throw new Error(await formatApiError(response));
 
-        const data = await response.json();
+        const data = await withVerdicts(await response.json(), { runId });
         dispatch('SET_JOB_ID', null);
         dispatch('SET_SUITE_DATA', data);
         dispatch('SET_HISTORY_RUN_ID', runId);

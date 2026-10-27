@@ -1,5 +1,7 @@
 // Frontend logic for api functionality.
 
+import { formatBytes, jsonBytes } from './request_limits.js';
+import { attachSummary, lacksVerdicts, summaryInput } from './run_status.js';
 import { getState } from './state.js';
 import { renderBatchProgress, setRunKicker, updateJobPhase, updateRunnerStatuses } from './status_cards.js';
 
@@ -56,6 +58,46 @@ export async function formatApiError(res) {
         message = apiDetailText(data?.detail ?? data?.error ?? data?.message) || body;
     } catch (_) { /* body is not JSON */ }
     return apiErrorText(res.status, message, res.statusText);
+}
+
+/** GET a summary route; null when the server no longer holds the job or run (404). */
+async function _getSummary(path) {
+    const res = await fetch(`${BASE_URL}${path}`, { headers: getAuthHeaders() });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(await formatApiError(res));
+    return await res.json();
+}
+
+/**
+ * The report, with the server's verdicts attached when it does not record them (analysis
+ * versions before divergence-2026.10.27.1, or an analysis that failed): from the job's summary
+ * while the server holds the job, the saved run's summary for a run from History, else
+ * POST /summary with the fields it reads. Throws when the verdicts cannot be fetched.
+ * @param {any} report
+ * @param {{ jobId?: string|null, runId?: string|null }} [source]
+ */
+export async function withVerdicts(report, { jobId = null, runId = null } = {}) {
+    if (!lacksVerdicts(report)) return report;
+    let summary = null;
+    if (jobId) summary = await _getSummary(`/jobs/${encodeURIComponent(jobId)}/summary`);
+    if (!summary && runId) summary = await _getSummary(`/history/runs/${encodeURIComponent(runId)}/summary`);
+    if (!summary) {
+        const body = summaryInput(report);
+        const limit = getState().maxRequestBytes;
+        if (typeof limit === 'number' && jsonBytes(body) > limit) {
+            throw new Error(`The verdicts of this report could not be fetched: its pair records are ${formatBytes(jsonBytes(body))}, `
+                + `over the server's upload limit of ${formatBytes(limit)}.`);
+        }
+        const res = await fetch(`${BASE_URL}/summary`, {
+            method: 'POST',
+            headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error(`The verdicts of this report could not be fetched: ${await formatApiError(res)}`);
+        summary = await res.json();
+    }
+    attachSummary(report, summary);
+    return report;
 }
 
 let _stopPolling = false;
@@ -127,13 +169,13 @@ export async function pollJobStatus(jobId) {
                 renderBatchProgress(data.progress);
 
                 if (data.status === "completed") {
-                    resolve(data.results);
+                    resolve(await withVerdicts(data.results, { jobId }));
                 } else if (data.status === "failed") {
                     const r = data.results;
                     const hasResults = r && ((Array.isArray(r.raw_results) && r.raw_results.length > 0)
                         || (Array.isArray(r.benchmark_summary) && r.benchmark_summary.length > 0));
                     if (hasResults) {
-                        resolve({ ...r, job_error: data.error || 'Every backend failed on this circuit.' });
+                        resolve(await withVerdicts({ ...r, job_error: data.error || 'Every backend failed on this circuit.' }, { jobId }));
                     } else {
                         reject(Object.assign(new Error(data.error || data.results?.error || 'The job failed on the server without an error message.'), { terminal: true }));
                     }
