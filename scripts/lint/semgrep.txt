@@ -1,0 +1,16 @@
+# semgrep findings scripts/lint/check.sh accepts: file, code, count.
+# Lower or delete a line when you fix a finding; a count above its line fails the check.
+# Semgrep 1.180.0, registry packs p/python p/javascript p/security-audit p/secrets p/owasp-top-ten,
+# triaged 2026-10-28; the reason for each line follows it.
+infra/nginx-frontend.conf request-host-used 1  # X-Forwarded-Host, used by the API only to compare with Origin (same_origin.py), never to build a URL
+infra/rahti/api.yaml allow-privilege-escalation-no-securitycontext 1  # Kubernetes mode is experimental in v2.0.0; securityContext proposed (defects-V5 V5-05)
+nginx/Dockerfile missing-user 1  # nginx master runs as container root; open defect V5-04
+nginx/nginx.conf missing-internal 1  # @proxy is a named location, which is internal already
+nginx/nginx.conf request-host-used 1  # Host, used by the API only to compare with Origin, never to build a URL
+qrosetta_cli/client/account.py insecure-file-permissions 1  # chmod 0700 of the credentials directory: the restrictive mode is the point
+qrosetta_cli/stack/hostload.py insecure-file-permissions 1  # chmod 0700 of the lifecycle-token directory
+rosetta-api/db/migrate.py avoid-sqlalchemy-text 1  # ALTER TABLE from the baseline's own table and column names, quoted by the dialect's preparer
+rosetta-api/services/circuit_library.py exec-detected 1  # runs the repository's algorithm_templates/*.json, never request data
+rosetta-api/services/job_store.py avoid-pickle 2  # spill files this process wrote, in its own 0700 directory; others refused (V1-11)
+rosetta-api/services/job_store.py insecure-file-permissions 1  # chmod 0700 of the spill directory
+rosetta-api/services/prep_worker.py avoid-pickle 8  # pipe between the API and its own preparation child process

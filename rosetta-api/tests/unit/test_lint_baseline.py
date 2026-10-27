@@ -1,5 +1,5 @@
-"""scripts/lint/baseline.py: shellcheck and hadolint findings above the baseline fail, findings at or
-below it pass, and the committed baselines parse."""
+"""scripts/lint/baseline.py: shellcheck, hadolint and semgrep findings above the baseline fail,
+findings at or below it pass, and the committed baselines parse."""
 import importlib.util
 import json
 from pathlib import Path
@@ -62,7 +62,17 @@ def test_pre_commit_ruff_is_the_ci_ruff():
     assert f"# frozen: v{pins['ruff']}" in config
 
 
-@pytest.mark.parametrize("name", ["shellcheck.txt", "hadolint.txt"])
+def test_semgrep_findings_are_keyed_by_file_and_rule_name():
+    out = json.dumps({"results": [
+        {"path": "a.py", "check_id": "python.lang.security.audit.exec-detected.exec-detected", "start": {"line": 3}},
+        {"path": "a.py", "check_id": "python.lang.security.audit.exec-detected.exec-detected", "start": {"line": 9}}]})
+    rows = baseline.findings("semgrep", out)
+    assert [(r[0], r[1], r[2]) for r in rows] == [("a.py", "exec-detected", 3), ("a.py", "exec-detected", 9)]
+    assert baseline.compare(rows, {("a.py", "exec-detected"): 2}) == ([], [])
+    assert len(baseline.compare(rows, {("a.py", "exec-detected"): 1})[0]) == 2
+
+
+@pytest.mark.parametrize("name", ["shellcheck.txt", "hadolint.txt", "semgrep.txt"])
 def test_committed_baselines_name_existing_files(name):
     accepted = baseline.read_baseline((_REPO / "scripts" / "lint" / name).read_text())
     assert accepted

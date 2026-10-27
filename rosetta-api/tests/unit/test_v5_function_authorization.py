@@ -116,3 +116,11 @@ def test_cors_preflights_from_other_origins_are_not_allowed(w, origin, path):
 def test_simple_requests_from_other_origins_get_no_allow_origin(w, origin):
     answer = w.client.get("/config", headers={"Origin": origin})
     assert "access-control-allow-origin" not in answer.headers
+
+
+def test_the_redoc_script_from_the_cdn_carries_its_integrity_hash(w):
+    from routers.security_headers import REDOC_SCRIPT_INTEGRITY, REDOC_SCRIPT_URL
+    page = w.client.get("/redoc").text
+    assert page.count("<script src=") == 1
+    assert (f'<script src="{REDOC_SCRIPT_URL}" integrity="{REDOC_SCRIPT_INTEGRITY}" '
+            'crossorigin="anonymous">') in page

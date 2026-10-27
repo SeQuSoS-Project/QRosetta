@@ -25,6 +25,7 @@ SWAGGER_CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src
                "base-uri 'none'; form-action 'self'")
 
 REDOC_SCRIPT_URL = "https://cdn.jsdelivr.net/npm/redoc@2.1.5/bundles/redoc.standalone.js"
+REDOC_SCRIPT_INTEGRITY = "sha384-0GrsyTQc9Oqd8h+b2dbc4XdR2T/DYpy0tLNNstyx+LBMUyiBbcWPbEs9aRmUcaxD"
 REDOC_LOGO_URL = "https://cdn.redoc.ly/redoc/logo-mini.svg"
 
 REDOC_CSP = (f"default-src 'self'; script-src {REDOC_SCRIPT_URL}; style-src 'self' 'unsafe-inline'; "
