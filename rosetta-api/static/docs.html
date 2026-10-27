@@ -1649,6 +1649,28 @@
                     <code>GET /jobs/{job_id}</code> until <code>status</code> is <code>completed</code> or
                     <code>failed</code>. Its <code>results</code> is one of three shapes:
                 </p>
+                <p id="api-request-defaults">
+                    <code>GET /config</code> publishes <code>request_defaults</code>, the value the server
+                    uses for every request field a run omits, read from the request schemas. The page
+                    starts its controls from these values, so a script that omits a field gets what an
+                    unchanged page sends. <code>request_defaults.requests</code> has one entry per run
+                    endpoint (<code>compare</code>, <code>compare_measured</code>,
+                    <code>run_batch_suite</code>, <code>experiments</code>), each with
+                    <code>fields</code> and, for playlists and experiments, <code>items</code> (the fields
+                    of one task or circuit). A field with <code>server_fills: false</code> must be sent;
+                    any other field has a <code>default</code>, and where that default stands for a
+                    decision the server makes, <code>when_omitted</code> says which: an omitted
+                    <code>seed</code> (<code>null</code>) means the server generates a master seed and
+                    records it in the report, an empty <code>target_simulators</code> means every enabled
+                    backend that is available, and an omitted <code>thresholds</code> means the values in
+                    <code>request_defaults.agreement_thresholds</code>. The defaults are the same for every
+                    endpoint except <code>mode</code>, which a playlist must send and which an experiment
+                    takes as <code>measured</code> when omitted. <code>request_defaults.compile_only</code>
+                    says what makes <code>/compare</code> or <code>/run_batch_suite</code> compile-only
+                    (<code>simulate: false</code>, at least one entry in <code>compilers</code>, and empty
+                    <code>runner_config</code>, <code>runner_phases</code> and
+                    <code>target_simulators</code>).
+                </p>
                 <ul>
                     <li>a single-circuit report (<code>/compare</code>, <code>/compare_measured</code>):
                         <code>raw_results</code> is a list with one entry per run, keyed by

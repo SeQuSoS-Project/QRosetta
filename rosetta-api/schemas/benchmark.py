@@ -277,13 +277,16 @@ _SIMULATE_DESCRIPTION = (
 )
 
 
+COMPILE_ONLY_EMPTY_FIELDS = ("runner_config", "runner_phases", "target_simulators")
+
+
 def _check_compile_only(payload):
     """A compile-only request names compilers and no simulator settings."""
     if payload.simulate:
         return payload
     if not payload.compilers:
         raise ValueError("simulate=false needs at least one compile-only service in compilers")
-    named = [f for f in ("runner_config", "runner_phases", "target_simulators") if getattr(payload, f)]
+    named = [f for f in COMPILE_ONLY_EMPTY_FIELDS if getattr(payload, f)]
     if named:
         raise ValueError(f"simulate=false runs no simulator; leave {', '.join(named)} empty")
     return payload

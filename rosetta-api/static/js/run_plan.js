@@ -66,7 +66,7 @@ export function planRuns(ws) {
 
     if (!modes.length) {
         if (ws.preprocessing === 'both') return { runs: [], error: 'A compile-only run uses one preprocessing setting. Choose on or off.' };
-        const shared = { optimization_level: common.optimization_level ?? 0, timeout_seconds: common.timeout_seconds,
+        const shared = { optimization_level: common.optimization_level, timeout_seconds: common.timeout_seconds,
                          execution_target: common.execution_target, bypass_limits: !!common.bypass_limits,
                          apply_preprocessing: ws.preprocessing !== 'off', compilers, simulate: false };
         return { error: null, runs: [fromList
