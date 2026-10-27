@@ -1031,7 +1031,7 @@ def register_runner_endpoints(app, process_run, process_run_measured, max_concur
     from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
 
     slots = ExecutionSlots(max_concurrent)
-    app.add_event_handler("startup", _image_identity.load)
+    app.router.add_event_handler("startup", _image_identity.load)
 
     if capabilities is not None:
         @app.get("/capabilities")

@@ -30,6 +30,19 @@ def test_register_runner_endpoints_hard_timeout_flows_through():
     assert r.status_code == 200 and "TIMEOUT" in r.json()["error"]
 
 
+def test_runner_and_compiler_apps_load_the_image_identity_at_startup(monkeypatch):
+    from qrosetta_commons import compile_service, image_identity
+    calls = []
+    monkeypatch.setattr(image_identity, "load", lambda: calls.append(1))
+    runner, compiler = FastAPI(), FastAPI()
+    register_runner_endpoints(runner, fx.fast, fx.fast)
+    compile_service.register_compiler_endpoint(compiler, fx.fast)
+    for app in (runner, compiler):
+        with TestClient(app):
+            pass
+    assert calls == [1, 1]
+
+
 def test_run_cli_main_payload_branch(monkeypatch, capsys):
     monkeypatch.setattr("sys.argv", ["main.py", "--endpoint", "run", "--payload", '{"x": 21}'])
     run_cli_main(None, fx.fast, fx.fast, "Test")
