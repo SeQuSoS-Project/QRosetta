@@ -42,3 +42,25 @@ def starts_subprocess(payload):
     if payload.get("return_early"):
         return {"result": "ok"}
     time.sleep(60)
+
+
+def process_alive(pid):
+    """True when ``pid`` exists and is not a zombie."""
+    try:
+        with open(f"/proc/{pid}/stat") as fh:
+            return not fh.read().split(") ", 1)[1].startswith("Z")
+    except FileNotFoundError:
+        return False
+
+
+def slow_records_pid(payload):
+    """Writes its own pid, then sleeps."""
+    with open(payload["pid_file"], "w") as fh:
+        fh.write(str(os.getpid()))
+    time.sleep(payload.get("sleep", 60))
+    return {"result": "should have been killed"}
+
+
+def reports_watched_pid(payload):
+    """Reports whether the process ``payload['watch_pid']`` is alive when this run starts."""
+    return {"watched_alive": process_alive(payload["watch_pid"])}
