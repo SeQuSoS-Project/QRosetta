@@ -178,17 +178,32 @@ containers still running.
 
 On standby the containers are stopped and hold no memory; `start` brings them back in about
 10 seconds. Running and idle, the 24 containers used 3.0 to 6.1 GiB (`qrosetta status`, page
-cache included). `remove` keeps the images and the `qsimulators_rosetta_db_data` volume, which holds the SQLite database (accounts, saved
-circuits, run history) and the saved run reports. Results of jobs that were not saved are lost
+cache included). `remove` keeps the images and the `qsimulators_rosetta_db_data` volume, which
+holds the SQLite database (accounts, saved circuits, run history) and the saved run reports. Results of jobs that were not saved are lost
 whenever the API container stops.
 
-`stop` and `remove` act only on the containers labelled with this compose project
-(`qsimulators`, set by `name:` in `docker-compose.yml`). The container names are fixed, so a
-container of another project (an older checkout started under a different project name) can
-hold one and block `start`. `start`, `stop`, `remove` and `status` then name each such container
-with its project and print the command that removes them; `qrosetta` itself leaves them alone.
-`--project-dir` or `QROSETTA_HOME` points the command at another directory holding the compose
-file.
+`qrosetta` acts only on what carries two labels for its project: compose's
+`com.docker.compose.project` and `org.qrosetta.project`, which `docker-compose.yml` puts on every
+container and network. An image must carry `org.qrosetta.image.project` and
+`org.qrosetta.service` for the service it is named after, and no other tag; the data volume must
+have the name and compose labels compose gave it (compose offers to recreate, and empty, a volume
+whose labels change, so it carries no qrosetta label). Containers, networks, volumes and images
+are stopped or removed by ID; a pod only when every container in it is the stack's. Anything else
+is left alone, and `start`, `stop`, `remove` and `status` name it with the command that would
+remove it. `start` refuses while another project's container holds one of the stack's fixed
+container names, or while containers or networks of the project lack the qrosetta label.
+
+The project is `QROSETTA_PROJECT` (default `qsimulators`). `qrosetta` passes it to compose with
+`-p`, names the compose files with `-f`, and removes every `COMPOSE_*` variable from compose's
+environment, so `COMPOSE_PROJECT_NAME` in the shell or in `.env` never redirects it to another
+project. `--project-dir` or `QROSETTA_HOME` points the command at another directory holding the
+compose file.
+
+Containers and networks created before these labels existed carry only the compose label, and
+images built before them carry none. `qrosetta status` lists them; remove the containers and
+networks once with the commands it prints (images and data stay), and `qrosetta start` creates
+them again with the labels. `remove --images` removes only images built after the change; for
+older ones it prints the `rmi` command.
 
 Docker and podman both work; `QROSETTA_ENGINE=docker|podman` chooses one when both are
 installed. Either way the compose provider must be Docker Compose v2: `docker compose version`
