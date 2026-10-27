@@ -1,7 +1,8 @@
-"""Compares shellcheck or hadolint JSON output with a baseline of (file, code, count) lines.
+"""Compares shellcheck, hadolint or semgrep JSON output with a baseline of (file, code, count) lines.
 
 Usage: shellcheck -f json1 FILES | python3 scripts/lint/baseline.py shellcheck scripts/lint/shellcheck.txt
        hadolint --no-fail -f json FILES | python3 scripts/lint/baseline.py hadolint scripts/lint/hadolint.txt
+       semgrep scan --json ... | python3 scripts/lint/baseline.py semgrep scripts/lint/semgrep.txt
 Exit 1 when a file has more findings of a code than its baseline line allows; prints those findings.
 With --write, replaces the baseline with today's counts.
 """
@@ -19,6 +20,9 @@ def findings(tool, text):
         return [(r["file"], f"SC{r['code']}", r["line"], r["message"]) for r in rows]
     if tool == "hadolint":
         return [(r["file"], r["code"], r["line"], r["message"]) for r in data]
+    if tool == "semgrep":
+        return [(r["path"], r["check_id"].rsplit(".", 1)[-1], r["start"]["line"], r["check_id"])
+                for r in data.get("results", [])]
     raise ValueError(f"unknown tool {tool!r}")
 
 

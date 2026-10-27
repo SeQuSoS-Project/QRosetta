@@ -7,7 +7,7 @@
 // checks every selector against the HTML.
 
 import { generateCircuit } from './app.js';
-import { closeAuthModal, closeDeleteAccountModal, handleDeleteAccount, handleLoginSubmit, handleLogout, handleRegisterSubmit, openAuthModal, submitDeleteAccount, toggleAuthMode } from './auth.js';
+import { closeAuthModal, closeDeleteAccountModal, handleDeleteAccount, handleLoginSubmit, handleRegisterSubmit, openAuthModal, signOut, submitDeleteAccount, toggleAuthMode } from './auth.js';
 import { addEditorToPlaylist, addToBatch, applyPreset, clearBatch, closeGeneratorModal, importPlaylist, openGeneratorModal, runAutoGeneration } from './batch.js';
 import { bmAddAllShown, bmAddSelectedToBatch, bmRenderChecklist, bmToggleSelectAll, toggleBenchSuite } from './benchmarks_select.js';
 import { watchBidi } from './bidi_isolation.js';
@@ -37,7 +37,7 @@ const CONTROLS = [
     // Header and account
     ['#btn-login-modal', 'click', () => openAuthModal()],
     ['#btn-history', 'click', () => openHistoryModal()],
-    ['#btn-logout', 'click', () => handleLogout()],
+    ['#btn-logout', 'click', () => signOut()],
     ['#btn-delete-account', 'click', () => handleDeleteAccount()],
     // Generate Circuits and Editor
     ['#btn-load', 'click', () => generateCircuit()],

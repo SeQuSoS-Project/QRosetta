@@ -28,6 +28,12 @@
     "removed": {
       "type": "boolean"
     },
+    "revoked": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
     "user": {
       "type": "object"
     },

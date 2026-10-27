@@ -224,7 +224,7 @@ SPECS = {
     "logout": Spec(
         "client.account:cmd_logout",
         "session@0",
-        "delete the token stored for this server",
+        "sign out on the server (the account's earlier tokens stop working) and delete the stored token",
         ("qrosetta logout", "qrosetta logout --server http://localhost:8080"),
         group="Account",
     ),

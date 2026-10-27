@@ -47,11 +47,30 @@ class UserCreate(BaseModel):
     @field_validator("password")
     @classmethod
     def _valid_password(cls, value: str) -> str:
-        if len(value) < PASSWORD_MIN_CHARS:
-            raise ValueError(f"password must be at least {PASSWORD_MIN_CHARS} characters")
-        if password_too_long(value):
-            raise ValueError(f"password must be at most {PASSWORD_MAX_BYTES} bytes (UTF-8)")
-        return value
+        return check_new_password(value)
+
+
+def check_new_password(value: str) -> str:
+    """``value`` if it is an acceptable password for an account, else ValueError."""
+    if len(value) < PASSWORD_MIN_CHARS:
+        raise ValueError(f"password must be at least {PASSWORD_MIN_CHARS} characters")
+    if password_too_long(value):
+        raise ValueError(f"password must be at most {PASSWORD_MAX_BYTES} bytes (UTF-8)")
+    return value
+
+
+class PasswordChange(BaseModel):
+    """Request body for POST /auth/password."""
+    model_config = ConfigDict(extra="forbid")
+
+    current_password: str = Field(..., min_length=1, description="The account's current password.")
+    new_password: str = Field(..., description=f"The new password, at least {PASSWORD_MIN_CHARS} characters and at most {PASSWORD_MAX_BYTES} bytes as UTF-8.")
+
+    @field_validator("new_password")
+    @classmethod
+    def _valid_new_password(cls, value: str) -> str:
+        return check_new_password(value)
+
 
 class AccountDeletion(BaseModel):
     """Request body for DELETE /auth/me."""

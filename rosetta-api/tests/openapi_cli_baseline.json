@@ -609,6 +609,21 @@
           "integer"
          ]
         },
+        "max_report_pairs": {
+         "type": [
+          "integer"
+         ]
+        },
+        "max_report_runner_keys": {
+         "type": [
+          "integer"
+         ]
+        },
+        "max_report_tasks": {
+         "type": [
+          "integer"
+         ]
+        },
         "max_request_bytes": {
          "type": [
           "integer"
@@ -644,7 +659,22 @@
           "string"
          ]
         },
+        "render_rate_limit": {
+         "type": [
+          "string"
+         ]
+        },
+        "render_rate_limit_per_address": {
+         "type": [
+          "string"
+         ]
+        },
         "run_rate_limit": {
+         "type": [
+          "string"
+         ]
+        },
+        "run_rate_limit_per_address": {
          "type": [
           "string"
          ]
@@ -704,6 +734,9 @@
         "max_qubits_compile",
         "max_qubits_measured",
         "max_qubits_statevector",
+        "max_report_pairs",
+        "max_report_runner_keys",
+        "max_report_tasks",
         "max_request_bytes",
         "password_max_bytes",
         "password_min_chars",
@@ -711,7 +744,10 @@
         "prep_max_mib",
         "prep_timeout_sec",
         "register_rate_limit",
+        "render_rate_limit",
+        "render_rate_limit_per_address",
         "run_rate_limit",
+        "run_rate_limit_per_address",
         "shots_default",
         "shots_max",
         "shots_min",
@@ -1769,6 +1805,18 @@
                   "null"
                  ]
                 },
+                "process_exit_code": {
+                 "type": [
+                  "integer",
+                  "null"
+                 ]
+                },
+                "process_exit_signal": {
+                 "type": [
+                  "null",
+                  "string"
+                 ]
+                },
                 "process_peak_mb": {
                  "type": [
                   "null",
@@ -1810,6 +1858,12 @@
                   "object"
                  ]
                 },
+                "server_overlapping_host_load": {
+                 "type": [
+                  "integer",
+                  "null"
+                 ]
+                },
                 "simulation_time_sec": {
                  "type": [
                   "null",
@@ -1840,6 +1894,12 @@
                  ]
                 },
                 "statevector_omitted_for_display": {
+                 "type": [
+                  "boolean",
+                  "null"
+                 ]
+                },
+                "stopped_by_user": {
                  "type": [
                   "boolean",
                   "null"
@@ -2627,6 +2687,18 @@
                "null"
               ]
              },
+             "process_exit_code": {
+              "type": [
+               "integer",
+               "null"
+              ]
+             },
+             "process_exit_signal": {
+              "type": [
+               "null",
+               "string"
+              ]
+             },
              "process_peak_mb": {
               "type": [
                "null",
@@ -2668,6 +2740,12 @@
                "object"
               ]
              },
+             "server_overlapping_host_load": {
+              "type": [
+               "integer",
+               "null"
+              ]
+             },
              "simulation_time_sec": {
               "type": [
                "null",
@@ -2698,6 +2776,12 @@
               ]
              },
              "statevector_omitted_for_display": {
+              "type": [
+               "boolean",
+               "null"
+              ]
+             },
+             "stopped_by_user": {
               "type": [
                "boolean",
                "null"
@@ -2842,6 +2926,17 @@
         "object"
        ]
       },
+      "saves": {
+       "additionalProperties": {
+        "type": [
+         "object"
+        ]
+       },
+       "type": [
+        "null",
+        "object"
+       ]
+      },
       "status": {
        "type": [
         "string"
@@ -2872,6 +2967,14 @@
      "schema": {
       "type": [
        "string"
+      ]
+     }
+    },
+    "query:gated": {
+     "required": false,
+     "schema": {
+      "type": [
+       "boolean"
       ]
      }
     }
@@ -3510,6 +3613,18 @@
                 "null"
                ]
               },
+              "process_exit_code": {
+               "type": [
+                "integer",
+                "null"
+               ]
+              },
+              "process_exit_signal": {
+               "type": [
+                "null",
+                "string"
+               ]
+              },
               "process_peak_mb": {
                "type": [
                 "null",
@@ -3551,6 +3666,12 @@
                 "object"
                ]
               },
+              "server_overlapping_host_load": {
+               "type": [
+                "integer",
+                "null"
+               ]
+              },
               "simulation_time_sec": {
                "type": [
                 "null",
@@ -3581,6 +3702,12 @@
                ]
               },
               "statevector_omitted_for_display": {
+               "type": [
+                "boolean",
+                "null"
+               ]
+              },
+              "stopped_by_user": {
                "type": [
                 "boolean",
                 "null"
@@ -4368,6 +4495,18 @@
              "null"
             ]
            },
+           "process_exit_code": {
+            "type": [
+             "integer",
+             "null"
+            ]
+           },
+           "process_exit_signal": {
+            "type": [
+             "null",
+             "string"
+            ]
+           },
            "process_peak_mb": {
             "type": [
              "null",
@@ -4409,6 +4548,12 @@
              "object"
             ]
            },
+           "server_overlapping_host_load": {
+            "type": [
+             "integer",
+             "null"
+            ]
+           },
            "simulation_time_sec": {
             "type": [
              "null",
@@ -4439,6 +4584,12 @@
             ]
            },
            "statevector_omitted_for_display": {
+            "type": [
+             "boolean",
+             "null"
+            ]
+           },
+           "stopped_by_user": {
             "type": [
              "boolean",
              "null"
@@ -5824,6 +5975,12 @@
          "null",
          "string"
         ]
+       },
+       "versions": {
+        "type": [
+         "null",
+         "object"
+        ]
        }
       },
       "required": [
@@ -6071,6 +6228,15 @@
      ]
     },
     "status": 200
+   }
+  },
+  "POST /auth/logout": {
+   "parameters": {},
+   "request": null,
+   "response": {
+    "media": [],
+    "schema": null,
+    "status": 204
    }
   },
   "POST /auth/token": {
@@ -6868,6 +7034,14 @@
      "schema": {
       "type": [
        "string"
+      ]
+     }
+    },
+    "query:gated": {
+     "required": false,
+     "schema": {
+      "type": [
+       "boolean"
       ]
      }
     }

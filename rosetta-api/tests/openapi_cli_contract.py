@@ -40,6 +40,7 @@ CLI_ROUTES = (
     "POST /generate_circuit",
     "POST /auth/token",
     "GET /auth/me",
+    "POST /auth/logout",
     "POST /plan",
     "POST /compare",
     "POST /compare_measured",

@@ -14,6 +14,7 @@ class User(Base):
     auth_provider = Column(String, default="local", nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    tokens_valid_after = Column(DateTime(timezone=True), nullable=True)
 
 class SavedCircuit(Base):
     __tablename__ = "saved_circuits"

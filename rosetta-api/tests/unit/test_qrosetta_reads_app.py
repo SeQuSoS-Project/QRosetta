@@ -256,6 +256,8 @@ def test_login_whoami_logout(server, env, tmp_path, capsys):
     assert cli(["logout", "--json"], env, transport) == 0
     doc = envelope(capsys)
     assert doc["data"]["removed"] is True and json.loads(creds.read_text()) == {}
+    assert doc["data"]["revoked"] is True
+    assert client.get("/auth/me", headers={"Authorization": f"Bearer {token}"}).status_code == 401
     assert cli(["logout"], env, transport) == 0
     assert "No token stored" in capsys.readouterr().out
     assert cli(["whoami"], env, transport) == Exit.AUTH

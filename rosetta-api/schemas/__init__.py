@@ -28,6 +28,7 @@ from schemas.auth import (
     UserResponse,
     Token,
     AccountDeletion,
+    PasswordChange,
     PASSWORD_MAX_BYTES,
     normalize_email,
     password_too_long,
@@ -54,7 +55,7 @@ __all__ = [
     "PublicationArtifactsSelection", "PublicationItem", "PublicationJobRenderRequest",
     "PublicationRenderRequest", "PublicationArtifact", "PublicationArtifactsRequest", "SummaryRequest",
 
-    "UserCreate", "UserResponse", "Token", "AccountDeletion",
+    "UserCreate", "UserResponse", "Token", "AccountDeletion", "PasswordChange",
     "PASSWORD_MAX_BYTES", "normalize_email", "password_too_long",
 
     "SavedCircuitCreate", "SavedCircuitResponse",
