@@ -3,6 +3,7 @@ whatever the stack's state. Provenance is that of the image each container was c
 with the image now under the service's tag when that is another, and whether the compose file
 now gives the container's service another configuration."""
 
+from qrosetta_cli import manifest as mf
 from qrosetta_cli.errors import CliError
 from qrosetta_cli.output import progress, result
 from qrosetta_cli.stack import actions
@@ -32,18 +33,25 @@ def image_record(engine, stack, service, images):
     img = images.get(ref)
     if img is None:
         return {"state": "missing", "ref": ref, "digest": None, "image_id": None, "git_sha": None, "release": None}
-    return classify(stack, ref, img)
+    return classify(stack, ref, img, service)
 
 
-def classify(stack, ref, img):
-    """Classification uses the baked commit or the release manifest's digest, never tags. In
-    installed mode an image is `pulled` when it carries the digest the manifest names; otherwise
-    an image with a baked commit is `built`, one without is `unknown`."""
+def classify(stack, ref, img, service=None):
+    """Classification uses the baked commit, the release manifest's digest or the image id it
+    recorded, never tags. In installed mode an image is `pulled` when it carries the digest the
+    manifest names and `loaded` when its id is one the manifest records for the service (an
+    image from `images load` has no registry digest); otherwise an image with a baked commit is
+    `built`, one without is `unknown`."""
     sha = img.git_sha
+    release = stack.release.get("platform_version") if stack.release else None
     if stack.release and "@" in ref and ref in img.digests:
         return {"state": "pulled", "ref": ref, "digest": ref.split("@", 1)[1], "image_id": img.id,
-                "git_sha": sha, "release": stack.release.get("platform_version")}
+                "git_sha": sha, "release": release}
     digest = next((d.split("@", 1)[1] for d in img.digests if "@" in d), None)
+    sid = mf.by_compose_service(stack.release).get(service) if stack.release and service else None
+    if sid and mf.image_id_key(img.id) in mf.release_ids(stack.release, sid):
+        return {"state": "loaded", "ref": ref, "digest": digest, "image_id": img.id, "git_sha": sha,
+                "release": release}
     state = "built" if sha != "unknown" else "unknown"
     return {"state": state, "ref": ref, "digest": digest, "image_id": img.id, "git_sha": sha, "release": None}
 
@@ -57,7 +65,7 @@ def container_image_record(stack, service, container, tagged, by_id):
         return {"state": "unknown", "ref": ref, "digest": None, "image_id": None, "git_sha": None, "release": None,
                 "current": None}
     img = by_id.get(st.image_key(container.image))
-    record = classify(stack, ref, img) if img else {
+    record = classify(stack, ref, img, service) if img else {
         "state": "missing", "ref": ref, "digest": None, "image_id": container.image, "git_sha": None,
         "release": None}
     record["current"] = bool(tagged["image_id"]) and st.image_key(tagged["image_id"]) == st.image_key(container.image)
@@ -69,6 +77,8 @@ def image_text(record):
         return "missing"
     if record["state"] == "pulled":
         return f"pulled {record['release']} {record['digest'].split(':')[-1][:12]}"
+    if record["state"] == "loaded":
+        return f"loaded {record['release']} {st.image_key(record['image_id'])[:12]}"
     sha = record["git_sha"] or "unknown"
     if record["state"] == "built":
         return f"built from {sha}" + (" (source not identifiable)" if sha.endswith("-dirty") else "")

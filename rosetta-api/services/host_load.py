@@ -1,6 +1,7 @@
 """Host-load notices (POST /local/host-load): intervals in which the qrosetta command loads this
-host (start, stop, remove, build, pull, image probes). An open notice is a registry interval of
-kind ``host_load``, which runs overlapping it count as ``server_overlapping_host_load``, and it
+host (start, stop, remove, build, pull, image load and save, image probes). An open notice is a
+registry interval of kind ``host_load``, which runs overlapping it count as
+``server_overlapping_host_load``, and it
 holds the run gate like a shared dispatch, so an exclusive run waits until it ends. A notice
 ends with its end request, or NOTICE_TTL_SEC after its last heartbeat. A stop or remove notice
 marks its services: a run that then loses its connection to one of them records
@@ -13,7 +14,7 @@ from dataclasses import dataclass, field
 
 from services.run_registry import GATE, REGISTRY
 
-KINDS = ("start", "stop", "remove", "build", "pull", "probe")
+KINDS = ("start", "stop", "remove", "build", "pull", "load", "save", "probe")
 STOPPING_KINDS = frozenset({"stop", "remove"})
 NOTICE_TTL_SEC = 30.0
 HEARTBEAT_SEC = 10

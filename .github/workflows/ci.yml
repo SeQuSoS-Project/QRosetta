@@ -125,7 +125,7 @@ jobs:
           tests/unit/test_qrosetta_doctor.py tests/unit/test_qrosetta_runs.py
           tests/unit/test_qrosetta_reads.py tests/unit/test_qrosetta_hostload.py
           tests/unit/test_qrosetta_views.py tests/unit/test_job_link.py
-          tests/unit/test_qrosetta_installed.py
+          tests/unit/test_qrosetta_installed.py tests/unit/test_qrosetta_images.py
 
       - name: Client half
         if: runner.os != 'Linux'

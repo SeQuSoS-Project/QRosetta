@@ -3,9 +3,11 @@ engine answers listing, inspect and destructive commands from an in-memory state
 every call; the server answers /config, /runners and /compilers from dicts."""
 
 import hashlib
+import io
 import json
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
@@ -57,9 +59,9 @@ def _release_service(sid, kind, compose_service, container, distributable=True, 
                         "container_name": container, "networks": ["isolated_net"]}}
 
 
-def release_manifest(published=True):
+def release_manifest(published=True, image_ids=None, signed=False):
     """A release manifest for the fake stack: nginx, api and qiskit published by digest, myqlm
-    not distributable."""
+    not distributable; `image_ids` {service id: config digest}, `signed` names the signer."""
     services = {
         "nginx": _release_service("nginx", "core", "nginx", "nginx-reverse-proxy", published=published),
         "api": _release_service("api", "core", "api", "rosetta-api", published=published),
@@ -69,11 +71,19 @@ def release_manifest(published=True):
     services["api"]["compose"].update(volumes=["rosetta_db_data:/home/appuser/app/data", {
         "type": "bind", "source": "${QROSETTA_LIFECYCLE_TOKEN_PATH:-./infra/lifecycle-token.none}",
         "target": "/run/secrets/lifecycle_token", "read_only": True, "bind": {"selinux": "Z"}}])
-    return {"schema": mf.SCHEMA, "platform_version": "9.9.9", "git_sha": "abc123", "registry": REGISTRY,
-            "images_published": published,
-            "compose": {"name": "${QROSETTA_PROJECT:-qsimulators}",
-                        "networks": {"isolated_net": {"internal": True}}, "volumes": {"rosetta_db_data": None}},
-            "services": services}
+    for sid, image_id in (image_ids or {}).items():
+        services[sid]["image_id"] = image_id
+    manifest = {"schema": mf.SCHEMA, "platform_version": "9.9.9", "git_sha": "abc123", "registry": REGISTRY,
+                "images_published": published,
+                "compose": {"name": "${QROSETTA_PROJECT:-qsimulators}",
+                            "networks": {"isolated_net": {"internal": True}}, "volumes": {"rosetta_db_data": None}},
+                "services": services}
+    if signed:
+        manifest["signing"] = {"issuer": mf.OIDC_ISSUER, "identity": SIGNER}
+    return manifest
+
+
+SIGNER = "https://github.com/SeQuSoS-Project/QRosetta/.github/workflows/release-images.yml@refs/tags/v9.9.9"
 
 
 DESTRUCTIVE = {("stop",), ("kill",), ("rm",), ("rmi",), ("pod", "stop"), ("pod", "rm"), ("pod", "kill"),
@@ -88,8 +98,30 @@ def ours(service=""):
     return {own.PROJECT_LABEL: PROJECT, own.QR_LABEL: PROJECT, own.SERVICE_LABEL: service}
 
 
-def image_labels(service):
-    return {own.QR_IMAGE_PROJECT: PROJECT, own.QR_SERVICE: service}
+def image_labels(service, project=PROJECT):
+    return {own.QR_IMAGE_PROJECT: project, own.QR_SERVICE: service}
+
+
+def identity_step(source, release, sha):
+    """The build-history line podman records for the RUN that writes the identity file."""
+    return (f"|3 QROSETTA_GIT_SHA={sha} QROSETTA_IMAGE_SOURCE={source} QROSETTA_RELEASE={release} /bin/sh -c "
+            "mkdir -p /usr/local/share/qrosetta-image     && printf 'source=%s\\nrelease=%s\\ngit_sha=%s\\n' "
+            "\"$QROSETTA_IMAGE_SOURCE\" \"$QROSETTA_RELEASE\" \"$QROSETTA_GIT_SHA\"        > "
+            "/usr/local/share/qrosetta-image/identity")
+
+
+def write_archive(path, config):
+    """A `podman save` docker-archive holding one image with this configuration; its image id."""
+    data = json.dumps(config).encode()
+    digest = hashlib.sha256(data).hexdigest()
+    with tarfile.open(path, "w") as tar:
+        for name, blob in ((f"{digest}.json", data),
+                           ("manifest.json", json.dumps([{"Config": f"{digest}.json", "RepoTags": None,
+                                                          "Layers": []}]).encode())):
+            info = tarfile.TarInfo(name)
+            info.size = len(blob)
+            tar.addfile(info, io.BytesIO(blob))
+    return digest
 
 
 class FakeProcess:
@@ -123,6 +155,11 @@ class FakeEngine:
         self.config_edits = {}
         self.hash_supported = True
         self._env = {}
+        self.registry = {}
+        self.from_file = False
+        self.pull_errors = []
+        self.cosign = (0, "Verification for ... -- The following checks were performed", "")
+        self.cosign_calls = []
 
     def add(self, name, labels, running=True, pod="", image=""):
         cid = "c-" + name
@@ -139,9 +176,16 @@ class FakeEngine:
     def add_volume(self, name, labels):
         self.volumes[name] = {"Name": name, "Labels": dict(labels)}
 
-    def add_image(self, ident, tags, labels, size=100, sha="abc123", digests=()):
+    def add_image(self, ident, tags, labels, size=100, sha="abc123", digests=(), identity=None, env=()):
+        """An image; `identity` = (source, release) adds the build step that wrote the identity
+        file with that source and release and the baked commit."""
+        history = ["/bin/sh -c #(nop)  CMD [\"python\"]"]
+        if identity is not None:
+            history.insert(0, identity_step(identity[0], identity[1], sha))
         self.images[ident] = {"Id": ident, "Size": size, "RepoTags": list(tags), "RepoDigests": list(digests),
-                              "Config": {"Labels": dict(labels), "Env": [f"QROSETTA_IMAGE_GIT_SHA={sha}"]}}
+                              "Config": {"Labels": dict(labels),
+                                         "Env": [f"QROSETTA_IMAGE_GIT_SHA={sha}", *env]},
+                              "History": history}
 
     def config_hash(self, service, env):
         """What `compose config --hash` prints for `service` under `env`: a digest of its
@@ -179,11 +223,60 @@ class FakeEngine:
         self.add_image("i-qiskit", ["localhost/qr-qiskit_runner:latest"], image_labels("qiskit_runner"), size=900)
         return self
 
+    def publish(self, ref, ident, labels, sha="abc123", identity=("release", "9.9.9"), env=()):
+        """An image in the fake registry, pulled by `ref` (repo@sha256:...)."""
+        self.registry[ref] = dict(ident=ident, labels=labels, sha=sha, identity=identity, env=env)
+
     def __call__(self, cmd, **kwargs):
+        if cmd[0].endswith("cosign"):
+            self.cosign_calls.append(list(cmd))
+            rc, out, err = self.cosign
+            return subprocess.CompletedProcess(cmd, rc, out, err)
         self.calls.append((list(cmd), dict(kwargs.get("env") or {})))
         self._env = dict(kwargs.get("env") or {})
-        out, rc = self._answer(list(cmd[1:]))
-        return subprocess.CompletedProcess(cmd, rc, out, "" if rc == 0 else "error")
+        answer = self._answer(list(cmd[1:]))
+        out, rc = answer[:2]
+        err = answer[2] if len(answer) > 2 else ("" if rc == 0 else "error")
+        return subprocess.CompletedProcess(cmd, rc, out, err)
+
+    def _image_commands(self, a):
+        """pull, image history, save, load and tag; None for any other command."""
+        if a[0] == "pull":
+            if self.pull_errors:
+                return "", 125, self.pull_errors.pop(0)
+            spec = self.registry.get(a[1])
+            if spec is None:
+                return "", 125, f"Error: initializing source docker://{a[1]}: reading manifest: manifest unknown"
+            self.add_image(spec["ident"], [], spec["labels"], sha=spec["sha"], digests=[a[1]],
+                           identity=spec["identity"], env=spec["env"])
+            return spec["ident"] + "\n", 0
+        if a[:2] == ["image", "history"]:
+            img = next((i for i in self.images.values() if st.image_key(i["Id"]) == st.image_key(a[-1])), None)
+            if img is None:
+                return "", 125, "Error: image not known"
+            return "".join(json.dumps(line) + "\n" for line in img["History"]), 0
+        if a[0] == "save":
+            path, ident = a[a.index("-o") + 1], a[-1]
+            img = self.images[ident]
+            write_archive(path, {"config": img["Config"], "history": [{"created_by": h} for h in img["History"]]})
+            return "", 0
+        if a[0] == "load":
+            path = a[a.index("-i") + 1]
+            with tarfile.open(path) as tar:
+                manifest = json.loads(tar.extractfile("manifest.json").read())
+                data = tar.extractfile(manifest[0]["Config"]).read()
+            config = json.loads(data)
+            ident = hashlib.sha256(data).hexdigest()
+            self.images[ident] = {"Id": ident, "Size": len(data), "RepoTags": [], "RepoDigests": [],
+                                  "Config": config["config"], "History": [h["created_by"] for h in config["history"]]}
+            return f"Loaded image: sha256:{ident}\n", 0
+        if a[0] == "tag":
+            ident, ref = a[1], a[2]
+            for img in self.images.values():
+                img["RepoTags"] = [t for t in img["RepoTags"] if st.normalise_tag(t) != st.normalise_tag(ref)]
+            self.images[next(k for k, i in self.images.items() if i["Id"] == ident)]["RepoTags"].append(ref)
+            return "", 0
+        return None
 
     def popen(self, cmd, **kwargs):
         """Popen stand-in: records the call, applies `up` to the state, exits as the engine would.
@@ -220,6 +313,9 @@ class FakeEngine:
         return [args[i + 1] for i, a in enumerate(args) if a == "--filter"]
 
     def _answer(self, a):
+        handled = self._image_commands(a)
+        if handled is not None:
+            return handled
         if a[0] == "compose":
             project = a[a.index("-p") + 1]
             j = 1
@@ -233,6 +329,12 @@ class FakeEngine:
                     return "", 1
                 services = dict(CONFIG["services"], **self.extra_services)
                 return "".join(f"{s} {self.config_hash(s, self._env)}\n" for s in services), 0
+            if rest[:1] == ["config"] and self.from_file:
+                path = a[a.index("-f") + 1]
+                text = Path(path).read_text().split("\n", 1)[1].replace("${QROSETTA_PROJECT:-qsimulators}", project)
+                doc = json.loads(text)
+                return json.dumps(dict(doc, name=project, volumes={k: {"name": f"{project}_{k}"}
+                                                                   for k in doc.get("volumes") or {}})), 0
             if rest[:1] == ["config"]:
                 services = dict(CONFIG["services"], **self.extra_services)
                 return json.dumps(dict(CONFIG, services=services, name=self.config_name or project)), 0

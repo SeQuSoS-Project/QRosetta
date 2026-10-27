@@ -180,19 +180,39 @@ def image_scan(engine, stack):
     """(images qrosetta may remove, [(ref, reason, built here)] for the rest), from the images
     named after the stack's services. `built here` is False for an `image:` set in a compose file
     (a public image, for example), which the user is never told to remove."""
+    found, refused = owned_images(engine, stack)
+    owned, seen = [], set()
+    for _, img in found:
+        if img.id not in seen:
+            seen.add(img.id)
+            owned.append(_target("image", img.id, img.ref, img.size))
+    return owned, refused
+
+
+def image_refusal(stack, service, ref, img):
+    """Why the image under `ref` is not the service's own, or None: it must carry
+    org.qrosetta.image.project for this project and org.qrosetta.service for the service, and
+    no tag but `ref`."""
+    other = [t for t in img.tags if st.normalise_tag(t) != st.normalise_tag(ref)]
+    if img.labels.get(QR_IMAGE_PROJECT) != stack.name or img.labels.get(QR_SERVICE) != service:
+        return "has no qrosetta label for this service"
+    if other:
+        return f"is also tagged {', '.join(other)}"
+    return None
+
+
+def owned_images(engine, stack):
+    """([(compose service, image)] of the images named after the stack's services that pass
+    `image_refusal`, [(ref, reason, built here)] for the rest)."""
     refs = {stack.image_for(svc): svc for svc in stack.services}
-    owned, refused, seen = [], [], set()
+    owned, refused = [], []
     for ref, img in st.find_images(engine, list(refs)).items():
         service = refs[ref]
-        built = ref == f"{stack.name}-{service}"
-        other = [t for t in img.tags if st.normalise_tag(t) != st.normalise_tag(ref)]
-        if img.labels.get(QR_IMAGE_PROJECT) != stack.name or img.labels.get(QR_SERVICE) != service:
-            refused.append((ref, "has no qrosetta label for this service", built))
-        elif other:
-            refused.append((ref, f"is also tagged {', '.join(other)}", built))
-        elif img.id not in seen:
-            seen.add(img.id)
-            owned.append(_target("image", img.id, ref, img.size))
+        reason = image_refusal(stack, service, ref, img)
+        if reason:
+            refused.append((ref, reason, ref == f"{stack.name}-{service}"))
+        else:
+            owned.append((service, img))
     return owned, refused
 
 

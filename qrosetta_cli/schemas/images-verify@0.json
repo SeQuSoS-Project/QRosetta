@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "qrosetta.cli/images-verify@0: the envelope's data",
+  "type": [
+    "object",
+    "null"
+  ],
+  "properties": {
+    "project": {
+      "type": "string"
+    },
+    "mode": {
+      "type": "string"
+    },
+    "release": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "images": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "missing",
+              "pulled",
+              "pulled-other",
+              "loaded",
+              "built",
+              "unknown"
+            ]
+          },
+          "image_id": {
+            "type": "string"
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "check": {
+                  "type": "string"
+                },
+                "status": {
+                  "enum": [
+                    "PASS",
+                    "WARN",
+                    "FAIL",
+                    "SKIP"
+                  ]
+                },
+                "detail": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "check",
+                "status",
+                "detail"
+              ]
+            }
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "checks"
+        ]
+      }
+    },
+    "failed": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "images",
+    "failed"
+  ]
+}

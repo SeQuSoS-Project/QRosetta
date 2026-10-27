@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "qrosetta.cli/pull@0: the envelope's data",
+  "type": [
+    "object",
+    "null"
+  ],
+  "properties": {
+    "release": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "pulled": {
+      "type": "array"
+    },
+    "failed": {
+      "type": "array"
+    },
+    "not_published": {
+      "type": "array"
+    }
+  }
+}

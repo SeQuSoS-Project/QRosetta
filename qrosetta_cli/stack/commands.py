@@ -29,6 +29,8 @@ def open_stack(ctx):
         choice = choose_engine(ctx.env, ctx.cfg.get("lifecycle", "engine"))
         engine = Engine(choice.name, project_dir, env=ctx.env, info=choice.info, reason=choice.reason)
     engine.env.update(hostload.compose_env(ctx.env))
+    if release:
+        installed.localise(engine, release)
     engine.check_compose()
     stack = st.load_stack(engine)
     stack.release = release
@@ -111,8 +113,9 @@ def cmd_start(ctx):
     if missing:
         names = ", ".join(stack.services[s].id for s in missing)
         if stack.release:
-            progress(f"Not started (no image): {names}. "
-                     + "; ".join(f"`{engine.name} pull {stack.image_for(s)}`" for s in missing) + ".")
+            keys = " ".join(stack.services[s].id for s in missing)
+            progress(f"Not started (no image): {names}. `qrosetta pull {keys}` pulls them; "
+                     "`qrosetta images load DIR` loads them from the release's image archives.")
         else:
             keys = " ".join(stack.services[s].id for s in missing)
             progress(f"Not started (no image): {names}. `qrosetta build {keys}` builds them.")

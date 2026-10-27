@@ -1,7 +1,7 @@
 """The local lifecycle token and host-load notices (spec S24). `qrosetta start` writes the token
 to $XDG_RUNTIME_DIR/qrosetta/lifecycle.token and compose mounts it into the API as a secret
-file. Engine actions that load the host (start beside a running stack, stop, remove, build)
-open a notice with the API for their duration, kept alive by a heartbeat; runs that overlap it
+file. Engine actions that load the host (start beside a running stack, stop, remove, build,
+pull, image save and load) open a notice with the API for their duration, kept alive by a heartbeat; runs that overlap it
 record it, and an exclusive run waits for it. A notice that fails is a warning, never a
 failure of the command."""
 

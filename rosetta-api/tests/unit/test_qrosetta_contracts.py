@@ -70,7 +70,7 @@ def test_every_command_schema_ships_and_names_a_payload_type():
     for spec in SPECS.values():
         assert (SCHEMAS / f"{spec.schema}.json").is_file(), spec.schema
     stable_at_1 = {"status@1", "version@1", "run-result@1", "jobs@1", "job@1", "selftest@1", "summary@1", "export@1",
-                   "info@1"}
+                   "info@1", "images@1"}
     assert (SCHEMAS / "plan@1.json").is_file()
     assert {s.schema for s in SPECS.values() if s.schema.endswith("@1")} == stable_at_1
     assert all(s.schema.endswith("@0") for s in SPECS.values() if not s.stable)
@@ -312,10 +312,10 @@ def _cli_sources():
 
 
 _ENV_NAME = re.compile(r"^[A-Z][A-Z0-9_]+$")
-STANDARD_ENV = {"HOME", "USER", "XDG_RUNTIME_DIR", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME",
+STANDARD_ENV = {"HOME", "USER", "PATH", "XDG_RUNTIME_DIR", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME",
                 "VISUAL", "EDITOR"}
 PASSTHROUGH_ENV = {"QROSETTA_GIT_SHA"}
-IMAGE_METADATA = {"QROSETTA_IMAGE_GIT_SHA"}
+IMAGE_METADATA = {"QROSETTA_IMAGE_GIT_SHA", "QROSETTA_VERSION"}
 
 
 def _env_reads():
