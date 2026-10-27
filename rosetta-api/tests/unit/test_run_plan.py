@@ -137,7 +137,7 @@ def test_a_playlist_of_literal_circuits_is_told_to_split():
     assert len(problems) == 1 and "4 circuits" in problems[0] and "Split the playlist" in problems[0]
 
 
-def test_circuit_text_over_the_size_limit_is_named_unless_bypassed_locally():
+def test_circuit_text_over_the_size_limit_is_named_unless_bypassed():
     qasm = QASM + "// " + "x" * 1_000_000 + "\n"
     big = {"algorithm": "custom", "qubits": 2, "name": "huge", "qasm_string": qasm}
     roomy = dict(LIMITS, maxRequestBytes=10**8)
@@ -145,7 +145,6 @@ def test_circuit_text_over_the_size_limit_is_named_unless_bypassed_locally():
         f'Circuit "huge" has {len(qasm):,} characters; the server accepts circuits of up to 1,000,000.']
     bypass = dict(COMMON, bypass_limits=True)
     assert _problems(_ws(source="list", list=[big], common=bypass), roomy) == []
-    assert _problems(_ws(source="list", list=[big], common=bypass), dict(roomy, executionMode="kubernetes")) != []
 
 
 def test_playlist_over_the_task_limit_is_refused_unless_bypassed():

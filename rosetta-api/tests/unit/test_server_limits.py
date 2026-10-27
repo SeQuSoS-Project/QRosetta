@@ -1,14 +1,16 @@
-"""Server limits: the playlist length cap, the job storage budget, and bundled circuits
-refused for their known preparation memory."""
+"""Server limits: who may set bypass_limits, the playlist length cap, the job storage budget,
+and bundled circuits refused for their known preparation memory."""
 import asyncio
 import os
+from types import SimpleNamespace
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from config import settings
 from services import job_store
+from services.security import get_optional_user
 
 H = 'OPENQASM 2.0;\ninclude "qelib1.inc";\n'
 QASM = H + "qreg q[2];\nh q[0];\ncx q[0],q[1];\n"
@@ -34,8 +36,72 @@ def client(monkeypatch):
     for module in (benchmark, experiment, frontend):
         app.include_router(module.router)
     c = TestClient(app)
+    c.app_ = app
     c.started = started
     return c
+
+
+def _sign_in(client):
+    client.app_.dependency_overrides[get_optional_user] = lambda: SimpleNamespace(id=7)
+
+
+BYPASS_REQUESTS = [
+    ("/compare", {"qasm_string": QASM, "bypass_limits": True}),
+    ("/compare_measured", {"qasm_string": QASM, "bypass_limits": True}),
+    ("/run_batch_suite", {"tasks": [GHZ], "mode": "statevector", "bypass_limits": True}),
+    ("/experiments", {"circuits": [GHZ], "bypass_limits": True}),
+]
+
+
+@pytest.mark.parametrize("path,body", BYPASS_REQUESTS, ids=[p for p, _ in BYPASS_REQUESTS])
+def test_anonymous_bypass_is_refused_on_a_server(client, monkeypatch, path, body):
+    monkeypatch.setattr(settings, "EXECUTION_MODE", "kubernetes")
+    r = client.post(path, json=body)
+    assert r.status_code == 401
+    assert r.headers["WWW-Authenticate"] == "Bearer"
+    assert "signed-in account" in r.json()["detail"]
+    assert not client.started
+    assert client.post(path, json={**body, "bypass_limits": False}).status_code == 200
+
+
+@pytest.mark.parametrize("path,body", BYPASS_REQUESTS, ids=[p for p, _ in BYPASS_REQUESTS])
+def test_signed_in_bypass_is_accepted_on_a_server(client, monkeypatch, path, body):
+    monkeypatch.setattr(settings, "EXECUTION_MODE", "kubernetes")
+    _sign_in(client)
+    assert client.post(path, json=body).status_code == 200
+    assert client.started
+
+
+def test_local_server_keeps_anonymous_bypass(client, monkeypatch):
+    monkeypatch.setattr(settings, "EXECUTION_MODE", "local")
+    circuits = [GHZ] * (settings.MAX_EXPERIMENT_CELLS + 1)
+    assert client.post("/experiments", json={"circuits": circuits, "bypass_limits": True}).status_code == 200
+
+
+def test_signed_in_bypass_lifts_the_experiment_cap_on_a_server(client, monkeypatch):
+    monkeypatch.setattr(settings, "EXECUTION_MODE", "kubernetes")
+    circuits = [GHZ] * (settings.MAX_EXPERIMENT_CELLS + 1)
+    assert client.post("/experiments", json={"circuits": circuits}).status_code == 400
+    _sign_in(client)
+    assert client.post("/experiments", json={"circuits": circuits, "bypass_limits": True}).status_code == 200
+
+
+def test_validator_honours_bypass_in_every_mode(monkeypatch):
+    from services.validator import validate_request
+    monkeypatch.setattr(settings, "EXECUTION_MODE", "kubernetes")
+    monkeypatch.setattr(settings, "MAX_QASM_GATES", 3)
+    qasm = H + "qreg q[1];\n" + "x q[0];\n" * 4
+    with pytest.raises(HTTPException) as caught:
+        validate_request(qasm)
+    assert caught.value.status_code == 400
+    validate_request(qasm, bypass_limits=True)
+
+
+def test_config_says_whether_bypass_needs_an_account(client, monkeypatch):
+    monkeypatch.setattr(settings, "EXECUTION_MODE", "kubernetes")
+    assert client.get("/config").json()["bypass_limits_requires_account"] is True
+    monkeypatch.setattr(settings, "EXECUTION_MODE", "local")
+    assert client.get("/config").json()["bypass_limits_requires_account"] is False
 
 
 def test_playlist_over_the_task_limit_is_refused_unless_bypassed(client, monkeypatch):

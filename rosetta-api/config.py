@@ -97,6 +97,10 @@ class Settings(BaseSettings):
     def _at_least_one_slot(cls, value: int) -> int:
         return max(1, value)
 
+    def bypass_requires_account(self) -> bool:
+        """bypass_limits needs a signed-in, active account on any server that is not local."""
+        return self.EXECUTION_MODE != "local"
+
     def max_qubits_for_mode(self, mode: str) -> int:
         """Qubit cap for a run mode ("statevector", "measured" or "compile" for a compile-only
         run): statevector runs are capped lower than measured runs."""

@@ -31,6 +31,9 @@ import { announce, firstSentence, focusHeading, focusIsLost } from './announce.j
 const _checked = id => !!/** @type {HTMLInputElement|null} */ (document.getElementById(id))?.checked;
 const _radio = name => /** @type {HTMLInputElement|null} */ (document.querySelector(`input[name="${name}"]:checked`))?.value;
 
+/** Whether this browser may send bypass_limits: on a server that requires an account for it, only while signed in. */
+const _bypassAllowed = () => !getState().bypassRequiresAccount || !!getState().authToken;
+
 /** The execution target to send: the server's mode, or undefined when it is not known. */
 function _executionTarget() {
     const v = /** @type {HTMLSelectElement|null} */ (document.getElementById('execution-target-select'))?.value;
@@ -65,7 +68,7 @@ export function readWorkspace(validated = null) {
             runner_phases: getRunnerPhases(),
             target_simulators: getTargetSimulators(),
             execution_target: _executionTarget(),
-            bypass_limits: _checked('bypass-limits-checkbox'),
+            bypass_limits: _checked('bypass-limits-checkbox') && _bypassAllowed(),
             thresholds: getAgreementThresholds(),
         },
         limits: { maxLabelLength: getState().maxLabelLength },
@@ -77,8 +80,17 @@ function _requestLimits() {
     const st = getState();
     return { maxRequestBytes: st.maxRequestBytes, maxQasmSize: st.maxQasmSize,
              maxExperimentCells: st.maxExperimentCells, maxBatchTasks: st.maxBatchTasks,
-             prepMaxMib: st.prepMaxMib, bundledOverPrepLimit: st.bundledOverPrepLimit,
-             executionMode: st.executionMode };
+             prepMaxMib: st.prepMaxMib, bundledOverPrepLimit: st.bundledOverPrepLimit };
+}
+
+/** Bypass API Safety Limits: unticked and disabled, with a note, while the server needs a sign-in for it and there is none. */
+function _syncBypassControl() {
+    const box = /** @type {HTMLInputElement|null} */ (document.getElementById('bypass-limits-checkbox'));
+    if (!box) return;
+    const locked = !_bypassAllowed();
+    if (locked) box.checked = false;
+    box.disabled = locked;
+    document.getElementById('bypass-limits-signin')?.classList.toggle('hidden', !locked);
 }
 
 /** Run button colours by what it runs: the editor circuit blue, the playlist yellow, an experiment emerald. */
@@ -91,6 +103,7 @@ const RUN_THEMES = {
 /** Refresh everything that depends on the workspace: shots field, compiler line, counts, Run label. */
 let _lastModes = '';
 export function updateWorkspace() {
+    _syncBypassControl();
     const ws = readWorkspace({ shots: 1 });
     const modes = JSON.stringify(ws.modes);
     if (modes !== _lastModes) {

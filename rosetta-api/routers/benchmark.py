@@ -7,9 +7,10 @@ from services.security import client_address, get_optional_user
 from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from fastapi.responses import StreamingResponse
 import uuid
-from routers.errors import responses
+from routers.errors import BYPASS_401, responses
 from qrosetta_commons.helpers import get_logger
-from services.validator import validate_runner_config, validate_runner_ids, validate_submission
+from services.validator import (require_bypass_permission, validate_runner_config,
+                                validate_runner_ids, validate_submission)
 from services.preparation_limits import bundled_prep_problem
 from schemas import QasmPayload, MeasuredQasmPayload, BatchPayload, JobStatusResponse
 from schemas.reports import JobReport, JobStatus
@@ -85,7 +86,7 @@ async def get_job_full_report(request: Request, job_id: str):
         headers={"Content-Disposition": f'attachment; filename="qrosetta_report_{job_id[:8]}.json"'},
     )
 
-_RUN_ERRORS = responses(400, 413, 422, 503)
+_RUN_ERRORS = responses(400, BYPASS_401, 413, 422, 503)
 
 
 @router.post("/compare", response_model=JobStatusResponse, responses=_RUN_ERRORS)
@@ -98,8 +99,10 @@ async def compare_circuits_endpoint(request: Request, payload: QasmPayload, back
     parse as OpenQASM 2.0, has too many qubits, or has mid-circuit measurement, reset or
     classical control, and for unknown, disabled or unavailable runner ids; 413 for a
     circuit over MAX_QASM_SIZE. 400 also for a gate definition under a name a runner's
-    parser reserves, and a runner_config level above that runner's max. 503 while the
+    parser reserves, and a runner_config level above that runner's max. 401 for
+    bypass_limits without a signed-in account on a server that is not local; 503 while the
     server's job storage is full."""
+    require_bypass_permission(payload.bypass_limits, user)
     await asyncio.to_thread(validate_submission, payload.qasm_string,
                             "statevector" if payload.simulate else "compile",
                             bypass_limits=payload.bypass_limits,
@@ -140,7 +143,9 @@ async def compare_measured_circuits_endpoint(request: Request, payload: Measured
     to POST /compare with ``simulate: false``, which compiles the same input (terminal
     measurements removed) and accepts circuits with measurements.
 
-    503 while the server's job storage is full."""
+    401 for bypass_limits without a signed-in account on a server that is not local; 503
+    while the server's job storage is full."""
+    require_bypass_permission(payload.bypass_limits, user)
     await asyncio.to_thread(validate_submission, payload.qasm_string, "measured",
                             bypass_limits=payload.bypass_limits,
                             apply_preprocessing=payload.apply_preprocessing)
@@ -195,8 +200,9 @@ async def run_batch_suite_endpoint(request: Request, payload: BatchPayload, back
     over the mode's qubit limit (unless bypass_limits), more tasks than max_batch_tasks in
     GET /config (unless bypass_limits), or, with apply_preprocessing, a bundled circuit whose
     preparation is known to exceed prep_max_mib (GET /config lists them as
-    bundled_over_prep_limit); the detail names the task as ``tasks[i]`` (0-based index). 503
-    while the server's job storage is full. 422 for an unknown mode or source. Preset and benchmark
+    bundled_over_prep_limit); the detail names the task as ``tasks[i]`` (0-based index). 401
+    for bypass_limits without a signed-in account on a server that is not local; 503 while
+    the server's job storage is full. 422 for an unknown mode or source. Preset and benchmark
     tasks are generated in the background, and one that fails there is reported as that
     task's error.
 
@@ -204,6 +210,7 @@ async def run_batch_suite_endpoint(request: Request, payload: BatchPayload, back
     single-circuit report per task, in task order, each with ``task_name``, ``task_qubits``
     and ``task_request``; a task that failed before dispatch is ``{task_name, task_request,
     error}``) and the shared run settings."""
+    require_bypass_permission(payload.bypass_limits, user)
     if not payload.tasks:
         raise HTTPException(status_code=400, detail="No tasks given.")
     require_batch_size(len(payload.tasks), payload.bypass_limits)

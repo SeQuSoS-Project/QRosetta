@@ -43,6 +43,10 @@ ERROR_RESPONSES = {
           "X-RateLimit-Remaining and X-RateLimit-Reset (Unix time)."),
 }
 
+BYPASS_401 = (401, "bypass_limits was set without a signed-in, active account on a server whose "
+                   "execution mode is not 'local' (bypass_limits_requires_account in GET "
+                   "/config). Sent with WWW-Authenticate: Bearer.")
+
 _VALIDATION_422 = ("Request validation failed. Body: {\"detail\": [{\"loc\": [...], \"msg\": str, "
                    "\"type\": str}]}; submitted values are not echoed.")
 

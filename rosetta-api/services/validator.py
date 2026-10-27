@@ -324,6 +324,20 @@ def expanded_counts(qasm: str, statements: list = None) -> tuple:
     return count, call_count
 
 
+BYPASS_NEEDS_ACCOUNT = ("bypass_limits needs a signed-in account on this server. Sign in and "
+                        "send the request with your bearer token, or send it without "
+                        "bypass_limits.")
+
+
+def require_bypass_permission(bypass_limits: bool, user) -> None:
+    """401 when ``bypass_limits`` is set on a server that is not local
+    (``settings.bypass_requires_account``) by a request without a signed-in, active account
+    (``user`` from ``get_optional_user``, which is None for an inactive one)."""
+    if bypass_limits and user is None and settings.bypass_requires_account():
+        raise HTTPException(status_code=401, detail=BYPASS_NEEDS_ACCOUNT,
+                            headers={"WWW-Authenticate": "Bearer"})
+
+
 def validate_request(qasm: str, mode: str = "statevector", bypass_limits: bool = False,
                      apply_preprocessing: bool = True, check_reserved_names: bool = True):
     """Raise HTTPException for an oversized, too-complex, malformed, qubit-less or too-wide
@@ -332,11 +346,12 @@ def validate_request(qasm: str, mode: str = "statevector", bypass_limits: bool =
     the built-in semantics), or (with
     ``apply_preprocessing``) a '^' parameter expression the API cannot evaluate.
 
-    ``bypass_limits`` skips the size and gate-count checks in local mode only. Gate
-    statements are counted by ``count_gate_statements``.
+    ``bypass_limits`` skips the size and gate-count checks; the routes allow it only as
+    ``require_bypass_permission`` does. Gate statements are counted by
+    ``count_gate_statements``.
     """
     statements = None
-    if not (bypass_limits and settings.EXECUTION_MODE == "local"):
+    if not bypass_limits:
         if len(qasm) > settings.MAX_QASM_SIZE:
             raise HTTPException(
                 status_code=413,

@@ -4,23 +4,24 @@ GET /experiments/{id}/bundle streams the finished bundle's ZIP from disk."""
 from services.compilation import validate_compilers
 from services.job_manager import require_exclusive_slot, require_job_storage
 from services.preparation_limits import bundled_prep_problem
-from services.security import client_address
+from services.security import client_address, get_optional_user
 from config import settings
 import asyncio
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from qrosetta_commons.helpers import get_logger
 from schemas import ExperimentPayload, JobStatusResponse
-from routers.errors import file_response, responses
+from routers.errors import BYPASS_401, file_response, responses
 from services.availability import require_available
 from services.job_store import JOB_NOT_FOUND, file_chunks
 from services.security import limiter
 from services.job_manager import ACTIVE_JOBS, new_job
 from services.experiment import worker_experiment
-from services.validator import validate_runner_config, validate_runner_ids, validate_submission
+from services.validator import (require_bypass_permission, validate_runner_config,
+                                validate_runner_ids, validate_submission)
 
 logger = get_logger("rosetta-experiment-api")
 router = APIRouter()
@@ -46,18 +47,21 @@ def _validate_experiment_circuits(payload: ExperimentPayload) -> None:
 
 
 @router.post("/experiments", response_model=JobStatusResponse,
-             responses=responses(400, 413, 422, 503))
+             responses=responses(400, BYPASS_401, 413, 422, 503))
 @limiter.limit(settings.RUN_RATE_LIMIT)
-async def start_experiment(request: Request, payload: ExperimentPayload, background_tasks: BackgroundTasks):
+async def start_experiment(request: Request, payload: ExperimentPayload, background_tasks: BackgroundTasks,
+                           user=Depends(get_optional_user)):
     """Start a fleet-wide experiment: run every circuit in the payload across the fleet, over
     every preprocessing axis, and freeze the results into a citable bundle. Runs in the
     background; poll GET /jobs/{job_id} for status, then GET /experiments/{job_id}/bundle once
     complete. 400 for no circuits, more circuits x preprocessing axes than max_experiment_cells
     in GET /config (unless bypass_limits), unknown/disabled/unavailable runner ids, a literal
     circuit that fails the /compare or /compare_measured checks, or, with a preprocessing-on
-    axis, a bundled circuit listed in bundled_over_prep_limit of GET /config; 503 while the
+    axis, a bundled circuit listed in bundled_over_prep_limit of GET /config; 401 for
+    bypass_limits without a signed-in account on a server that is not local; 503 while the
     server's job storage is full; 422 for an unknown field, mode or source. The job's target
     is the server's EXECUTION_MODE."""
+    require_bypass_permission(payload.bypass_limits, user)
     if not payload.circuits:
         raise HTTPException(status_code=400, detail="No circuits selected.")
     cells = len(payload.circuits) * len(payload.preprocessing_modes)

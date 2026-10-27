@@ -107,9 +107,11 @@ async def get_config():
     ``email_max_length``, ``password_min_chars`` and ``password_max_bytes`` (UTF-8).
     ``default_n_shots`` is the shot count the measured, batch and experiment endpoints use
     when ``n_shots`` is omitted. The top-level keys repeat the qubit, size and gate limits.
-    ``bundled_over_prep_limit`` lists the bundled circuits (``source``, ``algorithm``,
-    ``qubits``) whose preparation with preprocessing on is known to reach ``prep_max_mib``;
-    runs that include one with preprocessing on are refused with 400.
+    ``bypass_limits_requires_account`` is true when only a signed-in, active account may set
+    bypass_limits (every execution mode except local). ``bundled_over_prep_limit`` lists the
+    bundled circuits (``source``, ``algorithm``, ``qubits``) whose preparation with
+    preprocessing on is known to reach ``prep_max_mib``; runs that include one with
+    preprocessing on are refused with 400.
     """
     return JSONResponse(content={
         "max_qubits_statevector": settings.MAX_QUBITS_STATEVECTOR,
@@ -123,6 +125,7 @@ async def get_config():
         "queue_max_wait_sec": settings.RUNNER_QUEUE_MAX_WAIT_SEC,
         "agreement_threshold_defaults": AgreementThresholds().model_dump(),
         "default_n_shots": settings.DEFAULT_SHOTS,
+        "bypass_limits_requires_account": settings.bypass_requires_account(),
         "bundled_over_prep_limit": bundled_over_prep_limit(),
         "limits": {
             "max_qubits_statevector": settings.MAX_QUBITS_STATEVECTOR,

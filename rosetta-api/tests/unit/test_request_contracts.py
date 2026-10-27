@@ -187,6 +187,7 @@ def test_config_exposes_mode_thresholds_and_limits(client):
         "password_min_chars": 8,
         "password_max_bytes": 72,
     }
+    assert cfg["bypass_limits_requires_account"] is (settings.EXECUTION_MODE != "local")
     assert {"source": "mqt", "algorithm": "grover-noancilla", "qubits": 15} in cfg["bundled_over_prep_limit"]
 
 
