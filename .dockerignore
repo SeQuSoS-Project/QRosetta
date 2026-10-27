@@ -32,3 +32,7 @@ examples
 # existing build/lib but never removes files deleted from the sources, so images could ship them.
 **/build
 **/*.egg-info
+
+# npm installs of the type checker and Tailwind (scripts/check_frontend_types.sh, build_css.sh)
+# land in rosetta-api/static/node_modules, which both nginx and the API serve as files.
+**/node_modules

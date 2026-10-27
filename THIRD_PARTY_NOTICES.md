@@ -11,6 +11,7 @@ files from other projects, each under its own licence.
 | `rosetta-api/benchmarks/qasmbench/*.qasm` | Subset of QASMBench, Battelle Memorial Institute / PNNL | Battelle licence; text in `rosetta-api/benchmarks/qasmbench/LICENSE` |
 | `shared/qrosetta_commons/qelib1_qiskit.inc` | `qelib1.inc` as distributed with Qiskit 2.5.2 | Apache-2.0 |
 | `compilers/quartz-compiler/shift10-normalise.patch`, `compilers/quartz-compiler/Nam_complete_ECC_set.json` | A patch to, and an ECC set generated with, Quartz (quantum-compiler/quartz) | Apache-2.0 (Quartz) |
+| `rosetta-api/static/vendor/swagger-ui/5.33.2/` | Unmodified files from the npm package `swagger-ui-dist` 5.33.2, SmartBear Software (Swagger UI, served by the `/docs` page); sha256 of each file in `rosetta-api/static/vendor/swagger-ui/manifest.json` | Apache-2.0; text in `LICENSE` and `NOTICE` there. `swagger-ui-bundle.js` includes React, DOMPurify 3.4.16 and other libraries, listed with their licences (MIT, BSD-3-Clause, and Apache-2.0 or MPL-2.0 for DOMPurify) in `swagger-ui-bundle.js.LICENSE.txt` there |
 
 ## Container images
 
