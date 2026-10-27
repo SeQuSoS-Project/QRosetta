@@ -1,8 +1,14 @@
-"""planRuns (static/js/run_plan.js): the requests one press of Run sends, and that every
-payload is accepted by the request schema it is sent to."""
+"""The requests one press of Run sends, planned by POST /plan (services/plan.py) from the
+body run_plan.js planRequest builds; every payload is accepted by the request schema it is
+sent to; the refusals read as the page words them (run_plan.js planProblemTexts)."""
+import contextlib
+
 import pytest
 
+from config import settings
 from schemas import BatchPayload, ExperimentPayload, MeasuredQasmPayload, QasmPayload
+from schemas.plan import PlanRequest
+from services import plan as plan_service
 from tests.unit.frontend_harness import call_js, requires_node
 
 pytestmark = requires_node
@@ -26,11 +32,17 @@ def _ws(**over):
     return ws
 
 
+def _request(ws):
+    (body,) = call_js(["run_plan.js"], [("planRequest", [ws, ws.get("runName", "")])])
+    return PlanRequest(**body)
+
+
 def _plan(ws):
-    (result,) = call_js(["run_plan.js"], [("planRuns", [ws])])
-    for run in result["runs"]:
+    runs, problem = plan_service.plan_runs(_request(ws))
+    for run in runs:
         SCHEMA[run["endpoint"]](**run["payload"])
-    return result
+    error = call_js(["run_plan.js"], [("planProblemTexts", [[problem], []])])[0][0] if problem else None
+    return {"runs": runs, "error": error}
 
 
 def test_editor_circuit_statevector_is_one_compare():
@@ -108,10 +120,52 @@ LIMITS = {"maxRequestBytes": 1_048_576, "maxQasmSize": 1_000_000, "maxExperiment
           "executionMode": "local"}
 
 
+@contextlib.contextmanager
+def _limits(limits):
+    names = {"maxRequestBytes": "MAX_UPLOAD_BYTES", "maxQasmSize": "MAX_QASM_SIZE",
+             "maxExperimentCells": "MAX_EXPERIMENT_CELLS", "maxBatchTasks": "MAX_BATCH_TASKS",
+             "prepMaxMib": "PREP_MAX_MIB", "executionMode": "EXECUTION_MODE"}
+    saved = {attr: getattr(settings, attr) for attr in names.values()}
+    saved_bundled = plan_service.bundled_over_prep_limit
+    try:
+        for key, attr in names.items():
+            if key in limits:
+                setattr(settings, attr, limits[key])
+        if "bundledOverPrepLimit" in limits:
+            plan_service.bundled_over_prep_limit = lambda: limits["bundledOverPrepLimit"]
+        yield
+    finally:
+        for attr, value in saved.items():
+            setattr(settings, attr, value)
+        plan_service.bundled_over_prep_limit = saved_bundled
+
+
 def _problems(ws, limits=LIMITS):
-    (result,) = call_js(["run_plan.js"], [("planRuns", [ws])])
-    (problems,) = call_js(["run_plan.js"], [("runLimitProblems", [result["runs"], limits])])
-    return problems
+    with _limits(limits):
+        runs, problem = plan_service.plan_runs(_request(ws))
+        problems = [problem] if problem else plan_service.limit_problems(runs)
+    (texts,) = call_js(["run_plan.js"], [("planProblemTexts", [problems, runs])])
+    return texts
+
+
+def test_the_page_holds_no_planner():
+    src = (__import__("pathlib").Path(__file__).resolve().parents[2] / "static" / "js" / "run_plan.js").read_text()
+    for name in ("planRuns", "runLimitProblems", "toBatchTask", "toExperimentCircuit", "jsonBytes",
+                 "preprocessing_modes", "maxBatchTasks"):
+        assert name not in src, name
+    workspace = (__import__("pathlib").Path(__file__).resolve().parents[2] / "static" / "js" / "workspace.js").read_text()
+    assert "${BASE_URL}/plan" in workspace and "planProblemTexts(plan.problems, plan.runs)" in workspace
+
+
+def test_plan_request_carries_only_the_set_values():
+    ws = _ws(common={"optimization_level": 1, "timeout_seconds": None}, shots=None, seed=None)
+    ws["common"] = {"optimization_level": 1}
+    (body,) = call_js(["run_plan.js"], [("planRequest", [ws, "  My run "])])
+    assert body["name"] == "  My run " and body["source"] == "single" and body["modes"] == ["statevector"]
+    assert body["settings"] == {"optimization_level": {"value": 1, "source": "flag"},
+                                "n_shots": {"value": None, "source": "flag"},
+                                "seed": {"value": None, "source": "flag"}}
+    assert body["circuits"] == [{"qasm_string": QASM, "name": "Bell (2q)"}]
 
 
 def test_experiment_over_the_cell_limit_is_refused_unless_bypassed():

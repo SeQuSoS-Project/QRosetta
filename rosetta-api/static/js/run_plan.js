@@ -1,8 +1,8 @@
-// What one press of Run sends: the requests built from the workspace (which circuits, which
-// modes, compile-only services, preprocessing, the shared settings), and the server limits
-// those requests would exceed. Pure: no DOM, no network.
+// What one press of Run asks POST /plan for (the circuits, modes, compile-only services,
+// preprocessing and shared settings of the workspace), the page's wording of the problems the
+// plan returns, and the Run button's label. Pure: no DOM, no network.
 
-import { charCount, formatBytes, groupDigits, jsonBytes, printableLabel } from './request_limits.js';
+import { formatBytes, groupDigits } from './request_limits.js';
 import { plannedRunKeys } from './runner_key.js';
 
 /** A circuit name without a trailing qubit-count suffix such as " (4q)". */
@@ -10,97 +10,33 @@ export function bareCircuitName(name) {
     return String(name ?? '').replace(/(\s*\(\d+q\))+\s*$/, '').trim();
 }
 
-/** A circuit-list item as a BenchmarkTask: only the fields the server defines. Names, and the
- * algorithm of a literal circuit (only a label then), are printable and at most `maxLabel` long. */
-export function toBatchTask(item, maxLabel = 200) {
-    const qasm = item.qasm_string || item.qasm;
-    const algorithm = qasm ? printableLabel(item.algorithm || 'custom', maxLabel) || 'custom' : String(item.algorithm || 'custom');
-    const task = { algorithm, qubits: parseInt(item.qubits) || 0 };
-    const name = printableLabel(bareCircuitName(item.name), maxLabel);
-    if (name && name !== task.algorithm) task.name = name;
-    if (qasm) task.qasm_string = qasm;
-    if (item.source) task.source = item.source;
-    return task;
-}
-
-/** A circuit-list item as an ExperimentCircuit; benchmark items stay references. */
-export function toExperimentCircuit(item, maxLabel = 200) {
-    const label = text => printableLabel(text, maxLabel) || null;
-    if (item.source === 'mqt' || item.source === 'qasmbench') {
-        return { source: item.source, algorithm: item.algorithm, qubits: parseInt(item.qubits) || 0,
-                 name: label(bareCircuitName(item.name)) || label(item.algorithm) };
-    }
-    const qasm = item.qasm_string || item.qasm;
-    if (qasm) {
-        return { source: 'qasm', qasm_string: qasm, name: label(bareCircuitName(item.name) || item.algorithm) || 'circuit',
-                 qubits: parseInt(item.qubits) || 0 };
-    }
-    return { source: 'preset', algorithm: item.algorithm, qubits: parseInt(item.qubits) || 0,
-             name: label(bareCircuitName(item.name)) };
-}
-
 const MODE_LABEL = { statevector: 'Statevector', measured: 'Measured' };
 
 /**
- * @typedef {{ endpoint: string, payload: object, title: string, kind: string, mode: string|null }} PlannedRun
+ * @typedef {{ endpoint: string, payload: object, title: string, kind: string, mode: string|null, sources?: object }} PlannedRun
+ * The POST /plan body for a workspace: the circuits (the playlist, or the editor circuit), the
+ * ticked modes, preprocessing, compile-only services, the run name as typed, and every shared
+ * setting the page sends, with source 'flag'. The server plans the requests from it.
  * @param {{ source: 'editor'|'list', editor: { qasm: string, name: string }, list: object[],
  *           modes: { statevector: boolean, measured: boolean }, compilers: object,
- *           preprocessing: 'on'|'off'|'both', runName: string, shots: number, seed: number|null,
- *           common: object, limits?: { maxLabelLength?: number } }} ws
- * @returns {{ runs: PlannedRun[], error: string|null }}
+ *           preprocessing: 'on'|'off'|'both', shots: number|null, seed: number|null, common: object }} ws
+ * @param {string} runName the Run Name field as typed
  */
-export function planRuns(ws) {
-    const modes = ['statevector', 'measured'].filter(m => ws.modes?.[m]);
-    const compilers = ws.compilers && Object.keys(ws.compilers).length ? ws.compilers : null;
+export function planRequest(ws, runName) {
     const fromList = ws.source === 'list';
-    const circuits = fromList ? (ws.list || []) : [];
-    if (fromList && !circuits.length) return { runs: [], error: 'The playlist is empty. Add circuits, or run the editor code.' };
-    if (!fromList && !String(ws.editor?.qasm || '').trim()) {
-        return { runs: [], error: 'The editor is empty. Enter, open or generate an OpenQASM 2.0 circuit.' };
-    }
-    if (!modes.length && !compilers) return { runs: [], error: 'Choose at least one of Statevector, Measured or Compile-only services.' };
-    const what = fromList ? `Playlist of ${circuits.length} circuit${circuits.length === 1 ? '' : 's'}` : (bareCircuitName(ws.editor?.name) || 'Editor Run');
-    const base = ws.runName ? ws.runName : what;
-    const common = ws.common || {};
-    const maxLabel = ws.limits?.maxLabelLength ?? 200;
-
-    if (!modes.length) {
-        if (ws.preprocessing === 'both') return { runs: [], error: 'A compile-only run uses one preprocessing setting. Choose on or off.' };
-        const shared = { optimization_level: common.optimization_level, timeout_seconds: common.timeout_seconds,
-                         execution_target: common.execution_target, bypass_limits: !!common.bypass_limits,
-                         apply_preprocessing: ws.preprocessing !== 'off', compilers, simulate: false };
-        return { error: null, runs: [fromList
-            ? { endpoint: '/run_batch_suite', kind: 'batch', mode: null, title: `${base} (compile only)`,
-                payload: { ...shared, mode: 'statevector', tasks: circuits.map(c => toBatchTask(c, maxLabel)) } }
-            : { endpoint: '/compare', kind: 'single', mode: null, title: `${base} (compile only)`,
-                payload: { ...shared, qasm_string: ws.editor.qasm } }] };
-    }
-
-    const runs = modes.map((mode, i) => {
-        const measured = mode === 'measured';
-        const payload = { ...common, compilers: i === 0 && compilers ? compilers : {} };
-        if (measured) {
-            payload.n_shots = ws.shots;
-            payload.seed = ws.seed ?? null;
-        }
-        const title = `${base} (${MODE_LABEL[mode]}${measured ? `, ${ws.shots} shots` : ''})`;
-        if (ws.preprocessing === 'both') {
-            const list = fromList ? circuits.map(c => toExperimentCircuit(c, maxLabel))
-                : [{ source: 'qasm', qasm_string: ws.editor.qasm, name: printableLabel(bareCircuitName(ws.editor.name), maxLabel) || 'editor circuit' }];
-            return { endpoint: '/experiments', kind: 'experiment', mode,
-                     title: `${title} · preprocessing on and off`,
-                     payload: { ...payload, mode, circuits: list, preprocessing_modes: [true, false],
-                                label: printableLabel(ws.runName, maxLabel) || null } };
-        }
-        payload.apply_preprocessing = ws.preprocessing !== 'off';
-        if (fromList) {
-            return { endpoint: '/run_batch_suite', kind: 'batch', mode, title,
-                     payload: { ...payload, mode, tasks: circuits.map(c => toBatchTask(c, maxLabel)) } };
-        }
-        return { endpoint: measured ? '/compare_measured' : '/compare', kind: 'single', mode, title,
-                 payload: { ...payload, qasm_string: ws.editor.qasm } };
-    });
-    return { runs, error: null };
+    const values = { ...(ws.common || {}), n_shots: ws.shots, seed: ws.seed ?? null };
+    const settings = Object.fromEntries(Object.entries(values)
+        .filter(([, value]) => value !== undefined)
+        .map(([field, value]) => [field, { value, source: 'flag' }]));
+    return {
+        source: fromList ? 'playlist' : 'single',
+        circuits: fromList ? (ws.list || []) : [{ qasm_string: ws.editor?.qasm ?? '', name: ws.editor?.name ?? '' }],
+        modes: ['statevector', 'measured'].filter(m => ws.modes?.[m]),
+        preprocessing: ws.preprocessing,
+        compilers: ws.compilers || {},
+        name: runName,
+        settings,
+    };
 }
 
 /** The Run button's label for a workspace. With countsInvalid (the multi-run counts cannot be sent) it names no run count. */
@@ -120,94 +56,6 @@ export function runButtonLabel(ws, backendCount, { countsInvalid = false } = {})
     return `${verb} · ${modeText}${both} · ${targets}`;
 }
 
-/** The literal circuits of a planned request: [name, qasm] pairs. */
-function _literalCircuits(payload) {
-    if (typeof payload.qasm_string === 'string') return [['The editor circuit', payload.qasm_string]];
-    const list = payload.tasks || payload.circuits || [];
-    return list.filter(c => typeof c.qasm_string === 'string')
-        .map(c => [`Circuit "${c.name || c.algorithm || 'custom'}"`, c.qasm_string]);
-}
-
-/** Key of a bundled circuit as GET /config lists it in bundled_over_prep_limit (a QASMBench name carries its size). */
-function _bundledKey(source, algorithm, qubits) {
-    return `${source}:${algorithm}:${source === 'qasmbench' ? 0 : (parseInt(qubits) || 0)}`;
-}
-
-/** The bundled circuits of a planned request that the server prepares with preprocessing on. */
-function _bundledPrepared(payload) {
-    const on = Array.isArray(payload.preprocessing_modes) ? payload.preprocessing_modes.includes(true) : payload.apply_preprocessing !== false;
-    if (!on) return [];
-    return (payload.tasks || payload.circuits || []).filter(c => c.source === 'mqt' || c.source === 'qasmbench');
-}
-
-/**
- * Why the server would refuse a planned request before running it: an experiment with more
- * circuit-axis runs than allowed, a playlist with more circuits than allowed, a circuit text over
- * the size limit, a bundled circuit whose preparation with preprocessing on is known to exceed the
- * server's memory limit for it, or a request body over the upload limit. bypass_limits lifts the
- * first three as the server does (the payload carries it only when the server accepts it, and the
- * circuit size only in local mode); the preparation and body limits always apply.
- * @param {PlannedRun[]} runs
- * @param {{ maxRequestBytes?: number, maxQasmSize?: number, maxExperimentCells?: number, maxBatchTasks?: number,
- *           prepMaxMib?: number, bundledOverPrepLimit?: { source: string, algorithm: string, qubits: number }[],
- *           executionMode?: string|null }} limits
- * @returns {string[]}
- */
-export function runLimitProblems(runs, limits = {}) {
-    const problems = [];
-    const overPrep = new Set((limits.bundledOverPrepLimit || []).map(c => _bundledKey(c.source, c.algorithm, c.qubits)));
-    for (const run of runs) {
-        const p = run.payload || {};
-        const bypass = !!p.bypass_limits;
-        if (run.kind === 'batch' && limits.maxBatchTasks && !bypass && (p.tasks || []).length > limits.maxBatchTasks) {
-            problems.push(`${run.title}: the playlist has ${groupDigits(p.tasks.length)} circuits; the server runs at most `
-                + `${groupDigits(limits.maxBatchTasks)} in one run. Split the playlist (Import/Export JSON keeps a copy) and run `
-                + `the parts one after another.`);
-        }
-        if (overPrep.size) {
-            const heavy = _bundledPrepared(p).filter(c => overPrep.has(_bundledKey(c.source, c.algorithm, c.qubits)));
-            if (heavy.length) {
-                const names = heavy.map(c => (c.source === 'qasmbench' || !c.qubits) ? c.algorithm : `${c.algorithm} (${c.qubits}q)`);
-                const shown = names.length > 5 ? `${names.slice(0, 5).join(', ')} and ${names.length - 5} more` : names.join(', ');
-                const limit = limits.prepMaxMib ? `the server's ${groupDigits(limits.prepMaxMib)} MiB limit` : "the server's limit";
-                problems.push(`${run.title}: with SDK Preprocessing on, preparing ${shown} takes more memory than ${limit} `
-                    + `for circuit preparation. Remove ${heavy.length === 1 ? 'it' : 'them'}, or set SDK Preprocessing to Off.`);
-            }
-        }
-        if (run.kind === 'experiment' && limits.maxExperimentCells && !bypass) {
-            const n = (p.circuits || []).length;
-            const axes = (p.preprocessing_modes || []).length;
-            if (n * axes > limits.maxExperimentCells) {
-                problems.push(`${run.title}: SDK Preprocessing Both runs every circuit once per setting, so ${n} circuits make `
-                    + `${n * axes} experiment runs; the server allows ${limits.maxExperimentCells}. Run at most `
-                    + `${Math.floor(limits.maxExperimentCells / axes)} circuits at a time, or choose preprocessing On or Off.`);
-            }
-        }
-        if (limits.maxQasmSize && !(bypass && limits.executionMode === 'local')) {
-            for (const [what, qasm] of _literalCircuits(p)) {
-                const n = charCount(qasm);
-                if (n > limits.maxQasmSize) {
-                    problems.push(`${what} has ${groupDigits(n)} characters; the server accepts circuits of up to ${groupDigits(limits.maxQasmSize)}.`);
-                }
-            }
-        }
-        if (limits.maxRequestBytes) {
-            const bytes = jsonBytes(p);
-            if (bytes > limits.maxRequestBytes) {
-                const literal = _literalCircuits(p);
-                const why = literal.length > 1
-                    ? `The ${literal.length} circuits from the editor or from files travel in this one request. Split the playlist `
-                      + `(Import/Export JSON keeps a copy) and run the parts one after another.`
-                    : 'Line breaks and quotes in the circuit text take two bytes each in the request. Shorten the circuit, '
-                      + 'for example by removing comments and blank lines.';
-                problems.push(`${run.title}: the request is ${formatBytes(bytes)}, over the server's upload limit of `
-                    + `${formatBytes(limits.maxRequestBytes)}. ${why}`);
-            }
-        }
-    }
-    return [...new Set(problems)];
-}
-
 /** The page's wording of a plan-level problem code from POST /plan. */
 const PLAN_ERROR_TEXT = {
     playlist_empty: 'The playlist is empty. Add circuits, or run the editor code.',
@@ -216,13 +64,10 @@ const PLAN_ERROR_TEXT = {
     compile_only_needs_one_setting: 'A compile-only run uses one preprocessing setting. Choose on or off.',
 };
 
-/** Problem codes the page refuses a press of Run on; any other code is left to the run route. */
-export const PAGE_REFUSAL_CODES = new Set([...Object.keys(PLAN_ERROR_TEXT), 'playlist_too_long', 'bundled_over_prep_limit',
-    'experiment_too_many_cells', 'circuit_too_large', 'request_too_large']);
-
 /**
  * The page's wording of the problems POST /plan returned for `runs` (its planned runs), without
- * duplicates. Codes outside PAGE_REFUSAL_CODES are left out.
+ * duplicates: the plan-level codes and the server limits. Any other code (invalid_request,
+ * bypass_needs_account, circuit_refused) is left out, and the run route answers it as before.
  * @param {{ code: string, params?: any, run_index?: number|null }[]} problems
  * @param {{ title: string }[]} runs
  * @returns {string[]}

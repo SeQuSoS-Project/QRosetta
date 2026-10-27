@@ -1706,7 +1706,7 @@
                 </p>
                 <p id="api-plan">
                     <code>POST /plan</code> turns a workspace into the run requests the Run button would send,
-                    without running anything: <code>source</code> (<code>single</code> or
+                    without running anything; the page plans every press of Run through it. Its body has <code>source</code> (<code>single</code> or
                     <code>playlist</code>), <code>circuits</code> (playlist items: <code>algorithm</code>,
                     <code>qubits</code>, <code>name</code>, <code>qasm_string</code>, <code>source</code>; one
                     <code>{qasm_string, name}</code> for a single circuit), <code>modes</code>,
