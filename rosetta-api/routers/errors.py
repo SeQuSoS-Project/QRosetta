@@ -2,7 +2,8 @@
 
 Validation errors list ``{loc, msg, type}`` per problem. Submitted values are never echoed
 back, so a rejected password or a non-finite number cannot reach the response. A request
-body that cannot be decoded is a 422, like one that is not valid JSON.
+body that cannot be decoded is a 422, like one that is not valid JSON. A body sent to a JSON
+route without a JSON Content-Type is a 415.
 """
 
 import re
@@ -33,6 +34,7 @@ ERROR_RESPONSES = {
     404: "Unknown or expired job id.",
     409: "The job exists but is in the wrong state or of the wrong kind for this request.",
     413: "Request body over the upload limit, or circuit text over MAX_QASM_SIZE.",
+    415: "The request has a body whose Content-Type is not application/json.",
     503: ("The server's job storage is over its budget (limits.job_storage_max_mib in GET "
           "/config) or its disk is nearly full (limits.job_storage_min_free_mib) after finished "
           "jobs older than limits.job_evictable_after_sec were deleted; finished jobs are "
@@ -51,6 +53,9 @@ ERROR_RESPONSES = {
 BYPASS_401 = (401, "bypass_limits was set without a signed-in, active account on a server whose "
                    "execution mode is not 'local' (bypass_limits_requires_account in GET "
                    "/config). Sent with WWW-Authenticate: Bearer.")
+
+CROSS_SITE_403 = ("A request from a page on another site (an Origin header that is neither this "
+                  "server's own origin nor an allowed CORS origin, or is null) is refused with 403.")
 
 _VALIDATION_422 = ("Request validation failed. Body: {\"detail\": [{\"loc\": [...], \"msg\": str, "
                    "\"type\": str}]}; submitted values are not echoed.")
@@ -84,9 +89,12 @@ def _depends_on(dependant, target) -> bool:
 
 def document_route_errors(app: FastAPI) -> None:
     """Declare the codes that shared machinery returns: 413 on routes with a request body
-    (the upload limit), 401 and 403 on routes that require a bearer token, 429 on
-    rate-limited routes. A code a route already declares keeps its description."""
+    (the upload limit), 415 on routes with a JSON body, 403 on state-changing routes (pages
+    on other sites), 401 and 403 on routes that require a bearer token, 429 on rate-limited
+    routes. A code a route already declares keeps its description."""
+    from fastapi import params
     from fastapi.routing import APIRoute
+    from routers.same_origin import STATE_CHANGING_METHODS
     from routers.rate_limit import is_rate_limited
     from services.security import get_current_user
     for route in app.routes:
@@ -95,13 +103,26 @@ def document_route_errors(app: FastAPI) -> None:
         extra = []
         if route.body_field is not None:
             extra.append(413)
+            if not isinstance(route.body_field.field_info, params.Form):
+                extra.append(415)
         if _depends_on(route.dependant, get_current_user):
             extra += [401, 403]
         if is_rate_limited(route.endpoint):
             extra.append(429)
         for code, entry in responses(*extra).items():
             route.responses.setdefault(code, entry)
+        if route.methods & STATE_CHANGING_METHODS:
+            _add_cross_site_403(route)
     app.openapi_schema = None
+
+
+def _add_cross_site_403(route) -> None:
+    """Add the cross-site refusal to a state-changing route's 403 entry, or declare one."""
+    entry = route.responses.get(403)
+    if entry is None:
+        route.responses[403] = {"description": CROSS_SITE_403 + _DETAIL_BODY}
+    elif CROSS_SITE_403 not in entry.get("description", ""):
+        route.responses[403] = {**entry, "description": f"{entry.get('description', '')} {CROSS_SITE_403}".strip()}
 
 
 def _clean_msg(msg: str) -> str:
@@ -134,7 +155,12 @@ def validation_error_items(errors) -> list:
     return items
 
 
+UNSUPPORTED_MEDIA_DETAIL = "Send the request body as JSON, with Content-Type: application/json."
+
+
 async def _validation_handler(request: Request, exc: RequestValidationError):
+    if isinstance(exc.body, (bytes, bytearray)) and exc.body:
+        return JSONResponse(status_code=415, content={"detail": UNSUPPORTED_MEDIA_DETAIL})
     return JSONResponse(status_code=422, content={"detail": validation_error_items(exc.errors())})
 
 

@@ -1,6 +1,6 @@
-"""Framework settings of the API app: a JSON body sent without Content-Type is read as JSON,
-response models go through JSONResponse (json.dumps, no NaN), and the login form parser
-refuses more than 1,000 fields."""
+"""Framework settings of the API app: a body is read as JSON only with a JSON Content-Type
+(any other is a 415), response models go through JSONResponse (json.dumps, no NaN), and the
+login form parser refuses more than 1,000 fields."""
 import pytest
 
 pytest.importorskip("pytket")
@@ -12,12 +12,27 @@ from fastapi.testclient import TestClient  # noqa: E402
 from main import app  # noqa: E402
 
 
-def test_a_json_body_without_content_type_is_read_as_json():
+def test_a_json_body_without_content_type_is_a_415():
     response = TestClient(app).post("/plan", content=b'{"unknown_field": 1}')
+    assert response.status_code == 415
+    assert response.json() == {"detail": "Send the request body as JSON, with Content-Type: application/json."}
+
+
+@pytest.mark.parametrize("content_type", ["application/json", "application/json; charset=utf-8",
+                                          "application/vnd.qrosetta+json"])
+def test_a_json_content_type_is_read_as_json(content_type):
+    response = TestClient(app).post("/plan", content=b'{"unknown_field": 1}',
+                                    headers={"Content-Type": content_type})
     assert response.status_code == 422
     errors = response.json()["detail"]
     assert {"loc": ["body", "unknown_field"], "msg": "Extra inputs are not permitted",
             "type": "extra_forbidden"} in errors
+
+
+def test_an_empty_body_without_content_type_is_a_missing_body():
+    response = TestClient(app).post("/plan")
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["type"] == "missing"
 
 
 def test_response_models_are_serialised_by_json_response():
