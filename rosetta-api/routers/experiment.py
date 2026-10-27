@@ -2,7 +2,7 @@
 GET /experiments/{id}/bundle streams the finished bundle's ZIP from disk."""
 
 from services.compilation import validate_compilers
-from services.job_manager import require_exclusive_slot
+from services.job_manager import require_exclusive_slot, require_job_storage
 from services.security import client_address
 from config import settings
 import asyncio
@@ -38,7 +38,8 @@ def _validate_experiment_circuits(payload: ExperimentPayload) -> None:
                 raise HTTPException(status_code=exc.status_code, detail=f"circuits[{index}] ({label}): {exc.detail}")
 
 
-@router.post("/experiments", response_model=JobStatusResponse, responses=responses(400, 413, 422))
+@router.post("/experiments", response_model=JobStatusResponse,
+             responses=responses(400, 413, 422, 503))
 @limiter.limit(settings.RUN_RATE_LIMIT)
 async def start_experiment(request: Request, payload: ExperimentPayload, background_tasks: BackgroundTasks):
     """Start a fleet-wide experiment: run every circuit in the payload across the fleet, over
@@ -46,8 +47,9 @@ async def start_experiment(request: Request, payload: ExperimentPayload, backgro
     background; poll GET /jobs/{job_id} for status, then GET /experiments/{job_id}/bundle once
     complete. 400 for no circuits, more circuits x preprocessing axes than max_experiment_cells
     in GET /config (unless bypass_limits), unknown/disabled/unavailable runner ids, or a literal
-    circuit that fails the /compare or /compare_measured checks; 422 for an unknown field,
-    mode or source. The job's target is the server's EXECUTION_MODE."""
+    circuit that fails the /compare or /compare_measured checks; 503 while the server's job
+    storage is full; 422 for an unknown field, mode or source. The job's target is the
+    server's EXECUTION_MODE."""
     if not payload.circuits:
         raise HTTPException(status_code=400, detail="No circuits selected.")
     cells = len(payload.circuits) * len(payload.preprocessing_modes)
@@ -62,6 +64,7 @@ async def start_experiment(request: Request, payload: ExperimentPayload, backgro
     validate_compilers(payload.compilers)
     await asyncio.to_thread(_validate_experiment_circuits, payload)
     await require_available(payload.target_simulators)
+    await require_job_storage()
 
     job_id = str(uuid.uuid4())
     require_exclusive_slot(payload, client_address(request), job_id)

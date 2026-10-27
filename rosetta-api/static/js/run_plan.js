@@ -130,11 +130,13 @@ function _literalCircuits(payload) {
 
 /**
  * Why the server would refuse a planned request before running it: an experiment with more
- * circuit-axis runs than allowed, a circuit text over the size limit, or a request body over
- * the upload limit. bypass_limits lifts the first two as the server does (the circuit size only
- * in local mode, where the option is offered); the body limit always applies.
+ * circuit-axis runs than allowed, a playlist with more circuits than allowed, a circuit text over
+ * the size limit, or a request body over the upload limit. bypass_limits lifts the first three as
+ * the server does (the circuit size only in local mode, where the option is offered); the body
+ * limit always applies.
  * @param {PlannedRun[]} runs
- * @param {{ maxRequestBytes?: number, maxQasmSize?: number, maxExperimentCells?: number, executionMode?: string|null }} limits
+ * @param {{ maxRequestBytes?: number, maxQasmSize?: number, maxExperimentCells?: number, maxBatchTasks?: number,
+ *           executionMode?: string|null }} limits
  * @returns {string[]}
  */
 export function runLimitProblems(runs, limits = {}) {
@@ -142,6 +144,11 @@ export function runLimitProblems(runs, limits = {}) {
     for (const run of runs) {
         const p = run.payload || {};
         const bypass = !!p.bypass_limits;
+        if (run.kind === 'batch' && limits.maxBatchTasks && !bypass && (p.tasks || []).length > limits.maxBatchTasks) {
+            problems.push(`${run.title}: the playlist has ${groupDigits(p.tasks.length)} circuits; the server runs at most `
+                + `${groupDigits(limits.maxBatchTasks)} in one run. Split the playlist (Import/Export JSON keeps a copy) and run `
+                + `the parts one after another.`);
+        }
         if (run.kind === 'experiment' && limits.maxExperimentCells && !bypass) {
             const n = (p.circuits || []).length;
             const axes = (p.preprocessing_modes || []).length;

@@ -76,7 +76,8 @@ export function readWorkspace(validated = null) {
 function _requestLimits() {
     const st = getState();
     return { maxRequestBytes: st.maxRequestBytes, maxQasmSize: st.maxQasmSize,
-             maxExperimentCells: st.maxExperimentCells, executionMode: st.executionMode };
+             maxExperimentCells: st.maxExperimentCells, maxBatchTasks: st.maxBatchTasks,
+             executionMode: st.executionMode };
 }
 
 /** Run button colours by what it runs: the editor circuit blue, the playlist yellow, an experiment emerald. */

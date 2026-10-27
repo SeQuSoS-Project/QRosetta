@@ -148,6 +148,19 @@ def test_circuit_text_over_the_size_limit_is_named_unless_bypassed_locally():
     assert _problems(_ws(source="list", list=[big], common=bypass), dict(roomy, executionMode="kubernetes")) != []
 
 
+def test_playlist_over_the_task_limit_is_refused_unless_bypassed():
+    many = [{"algorithm": "ghz", "qubits": 3, "name": f"g{i}"} for i in range(5)]
+    limits = dict(LIMITS, maxBatchTasks=4)
+    (problem,) = _problems(_ws(source="list", list=many), limits)
+    assert "the playlist has 5 circuits" in problem and "at most 4 in one run" in problem
+    assert _problems(_ws(source="list", list=many[:4]), limits) == []
+    bypass = dict(COMMON, bypass_limits=True)
+    assert _problems(_ws(source="list", list=many, common=bypass), limits) == []
+    compile_only = _ws(source="list", list=many, modes={"statevector": False, "measured": False},
+                       compilers={"pyzx": [1]})
+    assert len(_problems(compile_only, limits)) == 1
+
+
 def test_names_are_printable_and_bounded_everywhere():
     long = "n" * 250
     item = {"algorithm": "x‮" + long, "qubits": 2, "name": "a​b\u0007" + long, "qasm_string": QASM}

@@ -442,6 +442,10 @@
                         (<code>grover-noancilla</code> and <code>grover-v-chain</code>) from 15 qubits exceed the
                         memory limit: their nested multi-controlled gates expand in pytket to 2.5 GiB at 16
                         qubits and 4 GiB at 17.</li>
+                    <li>A playlist run holds at most 400 circuits (<code>limits.max_batch_tasks</code>), enough for
+                        both bundled suites (269 MQT Bench and 55 QASMBench circuits) in one playlist; a longer one
+                        is refused with HTTP 400, and the page says so before sending it. Split it and run the parts
+                        one after another.</li>
                     <li>A custom <code>gate</code> definition with a name pytket's QASM parser treats
                         specially is rejected with HTTP 400, and the message names the gate. pytket turns
                         some names (<code>sleep</code>, <code>order2</code>…<code>order20</code>,
@@ -1586,6 +1590,19 @@
                     <code>statevector_omitted_for_display</code>. The server keeps a finished job, with its
                     untruncated report, for 30 to 40 minutes: jobs older than 30 minutes are removed by a
                     sweep that runs every 10 minutes.
+                </p>
+                <p>
+                    These reports are kept on the API's local disk, within a budget of 10,240 MiB
+                    (<code>limits.job_storage_max_mib</code>; server setting
+                    <code>QROSETTA_JOB_SPILL_MAX_MIB</code>), and the server keeps at least 1,024 MiB of that
+                    disk free (<code>limits.job_storage_min_free_mib</code>;
+                    <code>QROSETTA_JOB_SPILL_MIN_FREE_MIB</code>). One 18-qubit statevector circuit run on 14
+                    backends takes about 78 MB. While either limit is crossed, a new run is refused with HTTP 503
+                    and a <code>Retry-After</code> header, and the message says which limit. A playlist or
+                    experiment that is already running checks before it writes each circuit's result; when the
+                    storage is full it stops, and the job fails with a message naming the circuit it stopped at
+                    and the limit. A single-circuit run always keeps its report, so reports of runs already in
+                    progress can take the storage past its budget.
                 </p>
                 <div class="table-scroll"><table>
                     <thead><tr><th>Endpoint</th><th>Returns</th></tr></thead>

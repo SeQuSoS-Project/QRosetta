@@ -24,7 +24,7 @@ from services import experiment_artifacts as art
 from services.dispatcher import SEED_DERIVATION
 from services.export_compiled import compiled_metrics_csv, compiler_build_files
 from services.exporter import runner_lock_files
-from services.job_store import job_dir
+from services.job_store import job_dir, require_storage
 from services.run_registry import EXCLUSIVE, releases_exclusive
 from services.job_manager import (
     ACTIVE_JOBS, _resolve_seed, effective_thresholds, run_batch_tasks, start_job, task_label,
@@ -173,7 +173,9 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
 
     Runs every resolved circuit on every preprocessing axis with one master seed, and
     writes the bundle to ``ACTIVE_JOBS[job_id]["bundle_path"]``. The number of
-    circuit-axis cells is capped at MAX_EXPERIMENT_CELLS unless bypass_limits is set.
+    circuit-axis cells is capped at MAX_EXPERIMENT_CELLS unless bypass_limits is set. Before
+    each cell is written, ``job_store.require_storage`` stops the experiment when the job
+    store is full (the job fails with its reason).
     """
     EXCLUSIVE.set(payload.exclusive)
     runner_statuses = {}
@@ -223,6 +225,7 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
                     runners["dispatched"].update(report["resolved_runners"]["dispatched"])
                     for skip in report["resolved_runners"]["skipped"]:
                         runners["skipped"].setdefault(skip["id"], skip["reason"])
+                await asyncio.to_thread(require_storage)
                 rows, perf_rows, record = await asyncio.to_thread(
                     _freeze_cell, report, circuit, axis, staging, payload.keep_statevectors)
                 axis_conformance.extend(rows)

@@ -94,7 +94,11 @@ async def get_config():
     ``run_rate_limit`` (requests per client address to each run, export and lookup route;
     429 above it), ``access_token_expire_sec`` (lifetime of a sign-in token),
     ``max_experiment_cells`` (circuits x preprocessing axes of one experiment, unless
-    bypass_limits), ``max_export_items`` (publication items of one RO-Crate export),
+    bypass_limits), ``max_batch_tasks`` (circuits of one playlist run, unless bypass_limits),
+    ``job_storage_max_mib`` and ``job_storage_min_free_mib`` (the server's disk budget for
+    the reports of unexpired jobs, and the free disk space it keeps; a run is refused with 503
+    while either is crossed, and a playlist or experiment stops), ``max_export_items``
+    (publication items of one RO-Crate export),
     ``max_label_length`` (characters of a run, circuit, task or author name; control and
     invisible formatting characters are rejected) and the account limits
     ``email_max_length``, ``password_min_chars`` and ``password_max_bytes`` (UTF-8).
@@ -131,6 +135,9 @@ async def get_config():
             "run_rate_limit": settings.RUN_RATE_LIMIT,
             "access_token_expire_sec": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
             "max_experiment_cells": settings.MAX_EXPERIMENT_CELLS,
+            "max_batch_tasks": settings.MAX_BATCH_TASKS,
+            "job_storage_max_mib": settings.JOB_SPILL_MAX_MIB,
+            "job_storage_min_free_mib": settings.JOB_SPILL_MIN_FREE_MIB,
             "max_export_items": settings.MAX_EXPORT_ITEMS,
             "max_label_length": settings.MAX_LABEL_LENGTH,
             "email_max_length": EMAIL_MAX_LENGTH,

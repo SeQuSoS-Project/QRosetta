@@ -33,6 +33,9 @@ ERROR_RESPONSES = {
     404: "Unknown or expired job id.",
     409: "The job exists but is in the wrong state or of the wrong kind for this request.",
     413: "Request body over the upload limit, or circuit text over MAX_QASM_SIZE.",
+    503: ("The server's job storage is over its budget (limits.job_storage_max_mib in GET "
+          "/config) or its disk is nearly full (limits.job_storage_min_free_mib); finished "
+          "jobs are deleted 30 minutes after they finish. Retry-After gives the seconds to wait."),
     429: ("Too many requests: this client address has used up the route's rate limit "
           "(Retry-After gives the seconds until the window resets), or, for a run with "
           "exclusive=true, this client already has an exclusive job that has not finished. "

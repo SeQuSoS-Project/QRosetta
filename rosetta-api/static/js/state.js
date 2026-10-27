@@ -22,6 +22,9 @@ export const Store = {
         maxRequestBytes: 1048576,
         maxQasmSize: 1000000,
         maxExperimentCells: 200,
+        maxBatchTasks: 400,
+        jobStorageMaxMib: 10240,
+        jobStorageMinFreeMib: 1024,
         maxExportItems: 60,
         maxLabelLength: 200,
         emailMaxLength: 254,
@@ -90,6 +93,9 @@ export const Store = {
                 this.state.maxRequestBytes = num(limits.max_request_bytes) ?? this.state.maxRequestBytes;
                 this.state.maxQasmSize = num(payload.max_qasm_size) ?? this.state.maxQasmSize;
                 this.state.maxExperimentCells = num(limits.max_experiment_cells) ?? this.state.maxExperimentCells;
+                this.state.maxBatchTasks = num(limits.max_batch_tasks) ?? this.state.maxBatchTasks;
+                this.state.jobStorageMaxMib = num(limits.job_storage_max_mib) ?? this.state.jobStorageMaxMib;
+                this.state.jobStorageMinFreeMib = num(limits.job_storage_min_free_mib) ?? this.state.jobStorageMinFreeMib;
                 this.state.maxExportItems = num(limits.max_export_items) ?? this.state.maxExportItems;
                 this.state.maxLabelLength = num(limits.max_label_length) ?? this.state.maxLabelLength;
                 this.state.emailMaxLength = num(limits.email_max_length) ?? this.state.emailMaxLength;

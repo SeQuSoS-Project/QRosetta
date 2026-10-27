@@ -352,7 +352,7 @@ class BenchmarkTask(_Request):
 class BatchPayload(_Request):
     """Request body for POST /run_batch_suite — run a list of circuits (BenchmarkTask entries)
     across the simulator fleet in a single job."""
-    tasks: List[BenchmarkTask] = Field(..., description="The circuits to run, in order.")
+    tasks: List[BenchmarkTask] = Field(..., description="The circuits to run, in order; at most max_batch_tasks in GET /config unless bypass_limits (which lifts it in every execution mode).")
     n_shots: Int = Field(settings.DEFAULT_SHOTS, ge=settings.MIN_SHOTS, le=settings.MAX_SHOTS, description=_SHOTS_DESCRIPTION + " Used only when mode is 'measured'.")
     mode: RunMode = Field(..., description="'statevector' or 'measured'.")
     optimization_level: OptimizationLevel = Field(0, description=_OPT_LEVEL_DESCRIPTION)
