@@ -84,7 +84,14 @@ async def visualize_quirk(request: Request, payload: QasmPayload):
     400 for a circuit the API refuses at submit, more than 16 qubits, reset, classical control
     or a gate after a measurement on the same qubit, or a drawing that exceeds the memory or
     time limit of circuit preparation (it runs in the preparation process)."""
-    n_qubits = get_num_qubits_from_qasm(payload.qasm_string)
+    try:
+        n_qubits = get_num_qubits_from_qasm(payload.qasm_string)
+    except ValueError:
+        n_qubits = None
+    if n_qubits is None:
+        await asyncio.to_thread(validate_request, payload.qasm_string, mode="measured")
+        raise HTTPException(status_code=400, detail="Cannot draw this circuit in Quirk: its register sizes could "
+                                                    "not be read.")
     if n_qubits > QUIRK_MAX_QUBITS:
         raise HTTPException(
             status_code=400,

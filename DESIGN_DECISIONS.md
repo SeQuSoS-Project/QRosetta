@@ -440,11 +440,12 @@ With `apply_preprocessing=True` (the default) the API and the runners apply tran
 - calls reaching an opaque gate;
 - `/* */` comments (bundled circuits exempt);
 - register names not starting a–z;
-- use before declaration.
+- use before declaration;
+- a register size, index or if-value of more than 30 digits (checked before any is converted to an integer).
 
 Spaced indices `q [0]` are normalised with preprocessing on (`API:` note).
 
-*Evidence.* `qreg q[1]; qreg q[2]` merged into a different circuit, and all backends agreed on it. An unequal broadcast was rewritten; opaque calls were dropped silently; block comments were silently removed. 328 bundled files pass.
+*Evidence.* `qreg q[1]; qreg q[2]` merged into a different circuit, and all backends agreed on it. An unequal broadcast was rewritten; opaque calls were dropped silently; block comments were silently removed. 328 bundled files pass. 2026-10-28: a 5,000-digit register size or index raised Python's integer-string limit (ValueError) and the route answered 500; `/visualize/quirk` read register sizes before validating (`test_v1_13_pathological_numbers.py`).
 
 ### Expanded-gate broadcast width
 

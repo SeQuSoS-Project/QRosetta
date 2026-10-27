@@ -624,7 +624,10 @@ def task_qubits(task, qasm_string: str = None) -> int:
     """Qubit count of a task: read from its QASM when available, else the declared field."""
     text = qasm_string or getattr(task, "qasm_string", None)
     if text:
-        n = get_num_qubits_from_qasm(text)
+        try:
+            n = get_num_qubits_from_qasm(text)
+        except ValueError:
+            n = None
         if n:
             return n
     return int(getattr(task, "qubits", 0) or 0)
