@@ -1,6 +1,7 @@
 """`qrosetta status`: services and their state, memory per running container, image and data disk use."""
 
 from qrosetta_cli import actions
+from qrosetta_cli import ownership as own
 from qrosetta_cli import stack as st
 from qrosetta_cli.actions import human_bytes, parse_size, say
 from qrosetta_cli.serve import announce_running
@@ -20,7 +21,8 @@ def memory_by_container(engine, names):
 
 
 def status(engine, stack):
-    containers, conflicts = st.scan(engine, stack)
+    found = own.scan(engine, stack)
+    containers = found.containers + found.legacy
     running = [c for c in containers if c.running]
     memory = memory_by_container(engine, [c.name for c in running])
 
@@ -38,14 +40,16 @@ def status(engine, stack):
         c = by_service.get(service)
         used, limit = memory.get(c.name, (None, None)) if c else (None, None)
         state = "running" if c and c.running else "stopped" if c else "not created"
+        if c in found.legacy:
+            state += " (no qrosetta label)"
         rows.append((service, state, human_bytes(used) if used is not None else "",
                      human_bytes(limit) if limit else ""))
     widths = [max(len(r[i]) for r in rows) for i in range(4)]
     for r in rows:
         say("  ".join(cell.ljust(widths[i]) for i, cell in enumerate(r)).rstrip())
 
-    if conflicts:
-        say("\n" + st.conflict_help(engine, stack, conflicts))
+    for line in own.leftovers(engine, found):
+        say("\n" + line)
 
     total = sum(u for u, _ in memory.values() if u)
     if running:
@@ -54,9 +58,11 @@ def status(engine, stack):
     refs = [stack.image_for(s) for s in stack.services]
     images = st.find_images(engine, refs)
     size = sum({img.id: img.size for img in images.values()}.values())
+    labelled = len(own.image_scan(engine, stack)[0])
     say(f"Images: {len(images)} of {len(refs)} present, up to {human_bytes(size)} "
-        "(layers shared between images counted once per image)")
-    volumes = st.find_volumes(engine, stack)
+        "(layers shared between images counted once per image); "
+        f"{labelled} removable by `qrosetta remove --images`")
+    volumes = found.volumes
     if volumes:
         sizes = actions.volume_sizes(engine)
         say("Data: " + ", ".join(f"{v.name} {human_bytes(sizes.get(v.name))}" for v in volumes))

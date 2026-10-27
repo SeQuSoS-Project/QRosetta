@@ -9,6 +9,7 @@ import sys
 import time
 
 from qrosetta_cli import actions
+from qrosetta_cli import ownership as own
 from qrosetta_cli import stack as st
 from qrosetta_cli.actions import say
 from qrosetta_cli.engine import CliError
@@ -16,7 +17,6 @@ from qrosetta_cli.engine import CliError
 EXIT_ACTIONS = ("standby", "remove", "ask")
 ASK_TIMEOUT_SEC = 10
 HANDLED_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
-STANDBY_HINT = "On standby: containers, images and data are kept. `qrosetta start` restarts it; `qrosetta remove` removes it."
 
 
 class Interrupted(Exception):
@@ -103,9 +103,12 @@ def plan_start(engine, stack, requested=None, env=None):
     return [s for s in candidates if s not in missing], missing, extra
 
 
-def check_conflicts(engine, stack, conflicts):
-    if conflicts:
-        raise CliError(st.conflict_help(engine, stack, conflicts))
+def check_startable(engine, found):
+    """Refuse to start while containers, networks or volumes that are not this stack's hold its
+    names; compose would otherwise recreate, replace or mount them."""
+    lines = own.blockers(engine, found)
+    if lines:
+        raise CliError("Not started. " + "\n".join(lines))
 
 
 def prompt(question, timeout=ASK_TIMEOUT_SEC, stdin=None):
@@ -179,7 +182,7 @@ class Server:
             try:
                 return self._exit(action) or status
             except Abandoned:
-                left = [c for c in st.find_containers(self.engine, self.stack) if c.running]
+                left = own.scan(self.engine, self.stack).running()
                 say(f"Stopped waiting. Still running: {', '.join(c.name for c in left) or 'nothing'}.")
                 if left:
                     say("`qrosetta stop` stops them; `qrosetta remove` removes them.")
@@ -204,7 +207,7 @@ class Server:
             self.child = self.engine.spawn(["logs", "-f", "--tail", tail])
             self.child.wait()
             self.child = None
-            if not any(c.running for c in st.find_containers(self.engine, self.stack)):
+            if not own.scan(self.engine, self.stack).running():
                 say("Every Quantum Rosetta container has stopped.")
                 return 0
             tail = "0"
@@ -239,6 +242,4 @@ class Server:
         if action == "remove":
             return actions.remove_stack(self.engine, self.stack)
         left = actions.stop_stack(self.engine, self.stack)
-        if not left:
-            say(STANDBY_HINT)
         return actions.report_left(left, self.stack)

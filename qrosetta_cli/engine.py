@@ -1,6 +1,7 @@
 """Container engine detection (docker or podman) and the subprocess calls made through it."""
 
 import os
+import re
 import shutil
 import subprocess
 
@@ -45,27 +46,63 @@ def detect_engine(env=None, which=shutil.which, run=subprocess.run):
     raise CliError("Neither docker nor podman is installed. Install one of them with Compose v2.")
 
 
+DEFAULT_PROJECT = "qsimulators"
+_PROJECT_NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
+_BASE_FILES = ("compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml")
+
+
+def project_name(env=None):
+    """QROSETTA_PROJECT, else qsimulators. COMPOSE_PROJECT_NAME is never read."""
+    env = os.environ if env is None else env
+    name = env.get("QROSETTA_PROJECT", "").strip() or DEFAULT_PROJECT
+    if not _PROJECT_NAME.fullmatch(name):
+        raise CliError(f"QROSETTA_PROJECT={name!r} is not a compose project name "
+                       "(lowercase letters, digits, '-' and '_', starting with a letter or digit).")
+    return name
+
+
+def compose_files(project_dir):
+    """The compose file in project_dir and its override file, if any."""
+    for base in _BASE_FILES:
+        path = os.path.join(project_dir, base)
+        if os.path.isfile(path):
+            stem, ext = os.path.splitext(base)
+            override = os.path.join(project_dir, f"{stem}.override{ext}")
+            return [path] + ([override] if os.path.isfile(override) else [])
+    raise CliError(f"No compose file in {project_dir}.")
+
+
+def child_env(project, base=None):
+    """The environment for compose and safe_boot.sh: no COMPOSE_* variable from the caller (they
+    could name another project or file); this project set explicitly."""
+    base = os.environ if base is None else base
+    env = {k: v for k, v in base.items() if not k.startswith("COMPOSE_")}
+    env["QROSETTA_PROJECT"] = project
+    env["PODMAN_COMPOSE_WARNING_LOGS"] = "false"
+    return env
+
+
 class Engine:
-    """Runs engine and compose commands in the project directory.
+    """Runs engine and compose commands in the project directory. Every compose call names the
+    project (-p) and the compose files (-f) explicitly.
 
     Captured commands run in their own session, so a Ctrl-C at the terminal reaches only this
     process, which decides what to stop."""
 
-    def __init__(self, name, project_dir, project_name=None, run=subprocess.run,
-                 popen=subprocess.Popen):
+    def __init__(self, name, project_dir, project=None, run=subprocess.run,
+                 popen=subprocess.Popen, env=None):
         self.name = name
         self.project_dir = project_dir
-        self.project_name = project_name
+        self.project = project or project_name(env)
+        self.files = compose_files(project_dir)
         self._run = run
         self._popen = popen
-        self.env = dict(os.environ)
-        if name == "podman":
-            self.env["PODMAN_COMPOSE_WARNING_LOGS"] = "false"
+        self.env = child_env(self.project, env)
 
     def compose_args(self, *args):
-        base = [self.name, "compose"]
-        if self.project_name:
-            base += ["-p", self.project_name]
+        base = [self.name, "compose", "-p", self.project, "--project-directory", self.project_dir]
+        for path in self.files:
+            base += ["-f", path]
         return base + list(args)
 
     def cli(self, *args, check=False, timeout=None):

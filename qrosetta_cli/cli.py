@@ -6,6 +6,7 @@ import subprocess
 import sys
 
 from qrosetta_cli import actions
+from qrosetta_cli import ownership as own
 from qrosetta_cli import serve
 from qrosetta_cli import stack as st
 from qrosetta_cli.actions import say
@@ -47,8 +48,9 @@ def build_parser():
 
 
 def cmd_start(engine, stack, args):
-    containers, conflicts = st.scan(engine, stack)
-    serve.check_conflicts(engine, stack, conflicts)
+    found = own.scan(engine, stack)
+    serve.check_startable(engine, found)
+    containers = found.containers
     services, missing, compose_env = serve.plan_start(engine, stack, args.services)
     if missing:
         say(f"Not started (no image): {', '.join(missing)}. `qrosetta build <service>` builds one.")
@@ -67,8 +69,6 @@ def cmd_start(engine, stack, args):
 
 def cmd_stop(engine, stack, args):
     left = actions.stop_stack(engine, stack)
-    if not left:
-        say(serve.STANDBY_HINT)
     return actions.report_left(left, stack)
 
 
@@ -77,13 +77,9 @@ def cmd_remove(engine, stack, args):
 
 
 def cmd_logs(engine, stack, args):
-    cmd = ["logs", "--tail", str(args.tail)]
-    if not args.no_follow:
-        cmd.append("-f")
-    if args.service:
-        cmd.append(stack.resolve_service(args.service))
+    extra = ([] if args.no_follow else ["-f"]) + ([stack.resolve_service(args.service)] if args.service else [])
     try:
-        return engine.spawn(cmd, own_session=False).wait()
+        return engine.spawn(["logs", "--tail", str(args.tail), *extra], own_session=False).wait()
     except KeyboardInterrupt:
         return 0
 
@@ -93,7 +89,8 @@ def cmd_build(engine, stack, args):
     if not os.path.isfile(script):
         raise CliError(f"Building needs a source checkout with scripts/safe_boot.sh; {stack.project_dir} has none.")
     services = [stack.resolve_service(s) for s in args.services]
-    env = dict(engine.env, QR_BUILD_ONLY="1", QR_ENGINE=engine.name, QR_BUILD_SERVICES=" ".join(services))
+    env = dict(engine.env, QR_BUILD_ONLY="1", QR_ENGINE=engine.name, QR_BUILD_SERVICES=" ".join(services),
+               COMPOSE_PROJECT_NAME=engine.project, COMPOSE_FILE=os.pathsep.join(engine.files))
     try:
         return subprocess.call(["bash", script], env=env, cwd=stack.project_dir)
     except KeyboardInterrupt:

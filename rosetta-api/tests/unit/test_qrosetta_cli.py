@@ -1,122 +1,40 @@
-"""qrosetta_cli: argument handling, discovery by compose labels, and the engine commands each
-subcommand runs, against a fake engine."""
+"""qrosetta_cli: argument handling, project selection, and the engine commands each subcommand
+runs, against a fake engine."""
 
-import json
 import signal
 import subprocess
-import sys
-from pathlib import Path
 
 import pytest
 
-_REPO = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(_REPO))
+from tests.unit._qrosetta_fake import REPO, FakeEngine, image_labels, ours
 
 from qrosetta_cli import actions, serve, stack as st  # noqa: E402
+from qrosetta_cli import ownership as own  # noqa: E402
 from qrosetta_cli.cli import main  # noqa: E402
-from qrosetta_cli.engine import CliError, Engine, detect_engine  # noqa: E402
+from qrosetta_cli.engine import CliError, Engine, detect_engine, project_name  # noqa: E402
 
-CONFIG = {
-    "name": "qr",
-    "services": {
-        "nginx": {"container_name": "nginx-reverse-proxy", "depends_on": {"api": {}},
-                  "ports": [{"target": 80, "published": "8080"}]},
-        "api": {"container_name": "rosetta-api"},
-        "qiskit_runner": {"container_name": "qiskit-runner"},
-        "braket_runner": {"container_name": "braket-runner"},
-    },
-    "volumes": {"db": {"name": "qr_db"}},
-}
-
-
-class FakeEngineState:
-    """Answers the engine and compose commands qrosetta_cli runs, from an in-memory state."""
-
-    def __init__(self, engine="podman"):
-        self.engine = engine
-        self.calls = []
-        self.containers = {}
-        self.networks = {"qr_isolated_net": "qr", "qr_public_net": "qr"}
-        self.volumes = {"qr_db": ("qr", "db"), "old_db": ("old", "db")}
-        self.images = {"qr-nginx": ("sha256:n", 100, ["localhost/qr-nginx:latest"], "abc123"),
-                       "qr-api": ("sha256:a", 700, ["localhost/qr-api:latest", "registry/x/api:latest"], "abc123"),
-                       "qr-qiskit_runner": ("sha256:q", 900, ["localhost/qr-qiskit_runner:latest"], "abc123")}
-        self.port = "127.0.0.1:8080"
-
-    def add(self, name, service, project="qr", running=True, pod=""):
-        self.containers[name] = {"Id": "id-" + name, "Name": name, "Pod": pod,
-                                 "State": {"Running": running},
-                                 "Config": {"Labels": {st.PROJECT_LABEL: project, st.SERVICE_LABEL: service}}}
-
-    def __call__(self, cmd, **kwargs):
-        self.calls.append(list(cmd))
-        out, rc = self._answer(list(cmd[1:]))
-        return subprocess.CompletedProcess(cmd, rc, out, "" if rc == 0 else "error")
-
-    def _answer(self, a):
-        if a[:2] == ["compose", "version"]:
-            return "Docker Compose version v2.30.0\n", 0
-        if a[0] == "compose" and "config" in a:
-            return json.dumps(CONFIG), 0
-        if a[0] == "compose" and "port" in a:
-            return (self.port + "\n", 0) if self.port else ("", 1)
-        if a[:2] == ["ps", "-a"]:
-            return "\n".join(c["Id"] for c in self.containers.values()), 0
-        if a[:2] == ["container", "inspect"]:
-            return json.dumps([c for c in self.containers.values() if c["Id"] in a[2:]]), 0
-        if a[0] == "stop":
-            for name in a[1:]:
-                self.containers[name]["State"]["Running"] = False
-            return "", 0
-        if a[:2] == ["rm", "-f"]:
-            for name in a[2:]:
-                self.containers.pop(name, None)
-            return "", 0
-        if a[:2] == ["network", "ls"]:
-            project = a[3].split("=")[-1]
-            return "\n".join(n for n, p in self.networks.items() if p == project), 0
-        if a[:2] == ["network", "rm"]:
-            for n in a[2:]:
-                self.networks.pop(n, None)
-            return "", 0
-        if a[:2] == ["volume", "ls"]:
-            key = a[-1].split("=")[-1]
-            return "\n".join(v for v, (_, k) in self.volumes.items() if k == key), 0
-        if a[:2] == ["volume", "inspect"]:
-            return json.dumps([{"Name": v, "Labels": {st.PROJECT_LABEL: self.volumes[v][0]}} for v in a[2:]]), 0
-        if a[:2] == ["volume", "rm"]:
-            for v in a[2:]:
-                self.volumes.pop(v, None)
-            return "", 0
-        if a[:2] == ["image", "inspect"]:
-            items = [{"Id": i, "Size": size, "RepoTags": tags, "Config": {"Env": [f"QROSETTA_IMAGE_GIT_SHA={sha}"]}}
-                     for ref, (i, size, tags, sha) in self.images.items() if ref in a[2:]]
-            return json.dumps(items), 0 if len(items) == len(a) - 2 else 125
-        if a[:2] == ["pod", "ps"]:
-            return "", 0
-        if a[:2] == ["system", "df"]:
-            return ("Images space usage:\n\nREPOSITORY TAG\n\nLocal Volumes space usage:\n\n"
-                    "VOLUME NAME  LINKS  SIZE\nqr_db  1  34.48MB\nold_db  0  81.92kB\n"), 0
-        return "", 0
-
-    def commands(self, verb):
-        """Calls of `verb`, with the names after its flags sorted."""
-        out = []
-        for c in self.calls:
-            if c[1:2] == [verb]:
-                flags = [x for x in c[2:] if x.startswith("-")]
-                out.append([verb, *flags, *sorted(x for x in c[2:] if not x.startswith("-"))])
-        return out
+ENV = {"QROSETTA_PROJECT": "qr", "PATH": "/usr/bin"}
 
 
 @pytest.fixture
 def fake():
-    return FakeEngineState()
+    return FakeEngine().standard()
 
 
-def make(fake, tmp_path):
-    engine = Engine(fake.engine, str(tmp_path), run=fake)
+@pytest.fixture
+def project(tmp_path):
+    (tmp_path / "docker-compose.yml").write_text("services: {}\n")
+    return tmp_path
+
+
+def make(fake, project, popen=None, env=ENV):
+    kwargs = {"popen": popen} if popen else {}
+    engine = Engine(fake.engine, str(project), run=fake, env=env, **kwargs)
     return engine, st.load_stack(engine)
+
+
+def factory(fake, env=ENV):
+    return lambda d: Engine(fake.engine, d, run=fake, env=env)
 
 
 def test_project_dir_precedence(tmp_path):
@@ -133,6 +51,32 @@ def test_project_dir_precedence(tmp_path):
         st.find_project_dir(str(tmp_path), {}, None)
 
 
+def test_project_name_comes_from_qrosetta_project_only():
+    assert project_name({}) == "qsimulators"
+    assert project_name({"COMPOSE_PROJECT_NAME": "myapp"}) == "qsimulators"
+    assert project_name({"QROSETTA_PROJECT": "dev2"}) == "dev2"
+    with pytest.raises(CliError):
+        project_name({"QROSETTA_PROJECT": "My App"})
+
+
+def test_compose_calls_name_project_and_files_and_drop_compose_variables(fake, project):
+    (project / "docker-compose.override.yml").write_text("services: {}\n")
+    (project / ".env").write_text("COMPOSE_PROJECT_NAME=myapp\nCOMPOSE_FILE=other.yml\n")
+    env = dict(ENV, COMPOSE_PROJECT_NAME="myapp", COMPOSE_FILE="evil.yml")
+    engine, stack = make(fake, project, env=env)
+    assert stack.name == "qr"
+    cmd, child = next((c, e) for c, e in fake.calls if c[1] == "compose")
+    assert cmd[2:6] == ["-p", "qr", "--project-directory", str(project)]
+    assert cmd[6:10] == ["-f", str(project / "docker-compose.yml"), "-f", str(project / "docker-compose.override.yml")]
+    assert not any(k.startswith("COMPOSE_") for k in child) and child["QROSETTA_PROJECT"] == "qr"
+
+
+def test_a_different_reported_project_is_refused(fake, project):
+    fake.config_name = "myapp"
+    with pytest.raises(CliError, match="'myapp', not 'qr'"):
+        make(fake, project)
+
+
 def test_engine_detection():
     shim = lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, "podman version 5.8.2\n", "")
     real = lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, "Docker version 27.0.1\n", "")
@@ -147,6 +91,12 @@ def test_engine_detection():
         detect_engine({"QROSETTA_ENGINE": "lxc"}, both, real)
 
 
+def test_compose_v1_or_podman_compose_is_refused_with_install_steps(project):
+    run = lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, "podman-compose version 1.2.0\n", "")
+    with pytest.raises(CliError, match="Docker Compose v2.*podman-compose version 1.2.0.*cli-plugins/docker-compose"):
+        Engine("podman", str(project), run=run, env=ENV).check_compose()
+
+
 def test_exit_action_defaults():
     assert serve.exit_action(None, {}, tty=True) == "ask"
     assert serve.exit_action(None, {}, tty=False) == "standby"
@@ -157,114 +107,78 @@ def test_exit_action_defaults():
         serve.exit_action(None, {"QROSETTA_ON_EXIT": "delete"}, tty=True)
 
 
-def test_discovery_is_this_project_only_and_names_conflicts(fake, tmp_path):
-    fake.add("rosetta-api", "api")
-    fake.add("nginx-reverse-proxy", "nginx", project="oldcheckout", running=False)
-    fake.add("qiskit-runner", "", project="")
-    fake.add("someone-else", "web", project="unrelated")
-    fake.add("rosetta-api-copy", "api", project="unrelated")
-    engine, stack = make(fake, tmp_path)
-    ours, conflicts = st.scan(engine, stack)
-    assert [c.name for c in ours] == ["rosetta-api"]
-    assert [(c.name, c.project) for c in conflicts] == [("nginx-reverse-proxy", "oldcheckout"),
-                                                       ("qiskit-runner", "")]
-    text = st.conflict_help(engine, stack, conflicts)
-    assert "nginx-reverse-proxy (project oldcheckout, stopped)" in text
-    assert "qiskit-runner (no compose project, running)" in text
-    assert text.endswith("podman rm -f nginx-reverse-proxy qiskit-runner")
-    assert stack.core_services() == ["nginx", "api"]
-    assert stack.resolve_service("rosetta-api") == "api"
-
-
-def test_stop_stops_only_running_and_keeps_everything(fake, tmp_path):
-    fake.add("rosetta-api", "api")
-    fake.add("qiskit-runner", "qiskit_runner")
-    fake.add("nginx-reverse-proxy", "nginx", running=False)
-    engine, stack = make(fake, tmp_path)
+def test_stop_stops_running_containers_by_id_and_keeps_everything(fake, project):
+    fake.add("qiskit-runner", ours("qiskit_runner"), running=False)
+    engine, stack = make(fake, project)
     assert actions.stop_stack(engine, stack) == []
-    assert fake.commands("stop") == [["stop", "qiskit-runner", "rosetta-api"]]
-    assert not fake.commands("rm") and not fake.commands("rmi")
-    assert len(fake.containers) == 3 and "qr_db" in fake.volumes
+    assert fake.commands("stop") == [["stop", "c-nginx-reverse-proxy", "c-rosetta-api"]]
+    assert not fake.commands("rm") and not fake.commands("rmi") and len(fake.containers) == 3
 
 
-def test_stop_stops_pods_on_podman(fake, tmp_path):
-    fake.add("rosetta-api", "api", pod="pod123")
-    engine, stack = make(fake, tmp_path)
+def test_stop_stops_a_pod_holding_only_this_stack(fake, project):
+    fake.add("qiskit-runner", ours("qiskit_runner"), pod="p1")
+    engine, stack = make(fake, project)
     actions.stop_stack(engine, stack)
-    assert ["pod", "stop", "pod123"] in [c[1:] for c in fake.calls]
+    assert fake.commands("pod", "stop") == [["pod", "stop", "p1"]]
 
 
-def test_remove_keeps_images_and_data_by_default(fake, tmp_path):
-    fake.add("rosetta-api", "api")
-    fake.add("nginx-reverse-proxy", "nginx", project="oldcheckout")
-    fake.networks["oldcheckout_public_net"] = "oldcheckout"
-    engine, stack = make(fake, tmp_path)
+def test_remove_keeps_images_and_data_by_default(fake, project):
+    engine, stack = make(fake, project)
     assert actions.remove_stack(engine, stack) == 0
-    assert fake.commands("stop") == [["stop", "rosetta-api"]]
-    assert fake.commands("rm") == [["rm", "-f", "rosetta-api"]]
-    assert fake.networks == {"oldcheckout_public_net": "oldcheckout"}
-    assert fake.containers["nginx-reverse-proxy"]["State"]["Running"]
-    assert not fake.commands("rmi") and set(fake.volumes) == {"qr_db", "old_db"}
+    assert fake.commands("rm") == [["rm", "-f", "c-nginx-reverse-proxy", "c-rosetta-api"]]
+    assert fake.commands("network", "rm") == [["network", "rm", "n-qr_isolated_net"]]
+    assert fake.containers == {} and fake.networks == {}
+    assert not fake.commands("rmi") and "qr_db" in fake.volumes and len(fake.images) == 3
 
 
-def test_stop_leaves_other_projects_alone_and_says_how_to_remove_them(fake, tmp_path, capsys):
-    fake.add("rosetta-api", "api", project="oldcheckout")
-    engine, stack = make(fake, tmp_path)
-    assert actions.stop_stack(engine, stack) == []
-    assert not fake.commands("stop")
-    assert "podman rm -f rosetta-api" in capsys.readouterr().out
-
-
-def test_remove_images_untags_shared_images(fake, tmp_path, capsys):
-    engine, stack = make(fake, tmp_path)
-    found, freed, kept = actions.image_plan(engine, stack)
-    assert set(found) == {"qr-nginx", "qr-api", "qr-qiskit_runner"}
-    assert freed == 1000 and [i.ref for i in kept] == ["qr-api"]
+def test_remove_images_removes_labelled_images_by_id(fake, project, capsys):
+    engine, stack = make(fake, project)
     assert actions.remove_stack(engine, stack, images=True) == 0
-    assert fake.commands("rmi")[0][1:] == ["qr-api", "qr-nginx", "qr-qiskit_runner"]
-    assert "registry/x/api:latest" in capsys.readouterr().out
+    assert fake.commands("rmi") == [["rmi", "i-api", "i-nginx", "i-qiskit"]]
+    assert "Removing 3 images, 1.7 KiB" in capsys.readouterr().out
 
 
-def test_remove_data_needs_typed_confirmation(fake, tmp_path, capsys):
-    fake.add("rosetta-api", "api")
-    engine, stack = make(fake, tmp_path)
+def test_remove_data_needs_typed_confirmation(fake, project, capsys):
+    engine, stack = make(fake, project)
     assert actions.remove_stack(engine, stack, data=True, ask=lambda q: "yes", tty=True) == 1
     assert not fake.commands("rm") and "qr_db" in fake.volumes
     out = capsys.readouterr().out
-    assert "qr_db (32.9 MiB)" in out and "old_db" not in out and "saved run reports" in out
+    assert "qr_db (32.9 MiB)" in out and "saved run reports" in out
     with pytest.raises(CliError, match="terminal"):
         actions.remove_stack(engine, stack, data=True, tty=False)
     assert not fake.commands("rm")
     assert actions.remove_stack(engine, stack, data=True, ask=lambda q: "delete", tty=True) == 0
-    assert set(fake.volumes) == {"old_db"} and fake.containers == {}
+    assert fake.volumes == {} and fake.containers == {}
 
 
-def test_plan_start_requires_core_images(fake, tmp_path):
-    engine, stack = make(fake, tmp_path)
+def test_plan_start_requires_core_images(fake, project):
+    engine, stack = make(fake, project)
     services, missing, env = serve.plan_start(engine, stack, None, env={})
     assert services == ["nginx", "api", "qiskit_runner"] and missing == ["braket_runner"]
     assert env == {"QROSETTA_GIT_SHA": "abc123"}
     assert serve.plan_start(engine, stack, None, env={"QROSETTA_GIT_SHA": "x"})[2] == {}
     with pytest.raises(CliError, match="qrosetta build braket_runner"):
         serve.plan_start(engine, stack, ["braket_runner"], env={})
-    del fake.images["qr-api"]
+    del fake.images["i-api"]
     with pytest.raises(CliError, match="No image for api"):
         serve.plan_start(engine, stack, None, env={})
 
 
-def test_start_refuses_names_held_by_another_project(fake, tmp_path):
-    fake.add("rosetta-api", "api", project="oldcheckout", running=False)
-    engine, stack = make(fake, tmp_path)
-    with pytest.raises(CliError, match="rosetta-api \\(project oldcheckout, stopped\\).*podman rm -f rosetta-api"):
-        serve.check_conflicts(engine, stack, st.scan(engine, stack)[1])
-    factory = lambda d: Engine(fake.engine, d, run=fake)
-    (tmp_path / "docker-compose.yml").write_text("services: {}\n")
-    assert main(["start", "--detach"], checkout=str(tmp_path), engine_factory=factory) == 1
-    assert not fake.commands("rm") and not fake.commands("stop")
+def test_start_refuses_while_unlabelled_or_foreign_objects_hold_its_names(fake, project, capsys):
+    fake.add("braket-runner", {"com.docker.compose.project": "oldcheckout"}, running=False)
+    fake.add("qiskit-runner", {"com.docker.compose.project": "qr", "com.docker.compose.service": "qiskit_runner"})
+    fake.add_network("qr_public_net", {"com.docker.compose.project": "qr"})
+    assert main(["start", "--detach"], checkout=str(project), engine_factory=factory(fake)) == 1
+    err = capsys.readouterr().err
+    assert "braket-runner (project oldcheckout, stopped)" in err and "podman rm -f braket-runner" in err
+    assert "without the qrosetta label" in err and "podman rm -f qiskit-runner" in err
+    assert "podman network rm qr_public_net" in err
+    assert not fake.destructive_calls()
+    assert not [c for c, _ in fake.calls if "up" in c]
 
 
-def test_announce_says_whether_other_machines_can_reach_it(fake, tmp_path, capsys):
-    engine, stack = make(fake, tmp_path)
+def test_announce_says_whether_other_machines_can_reach_it(fake, project, capsys):
+    engine, stack = make(fake, project)
     serve.announce_running(engine, stack)
     out = capsys.readouterr().out
     assert "http://localhost:8080" in out and "Published on 127.0.0.1:8080 (this machine only)" in out
@@ -273,19 +187,13 @@ def test_announce_says_whether_other_machines_can_reach_it(fake, tmp_path, capsy
     assert "reachable from other machines" in capsys.readouterr().out
 
 
-def test_compose_v1_or_podman_compose_is_refused_with_install_steps(tmp_path):
-    run = lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, "podman-compose version 1.2.0\n", "")
-    with pytest.raises(CliError, match="Docker Compose v2.*podman-compose version 1.2.0.*cli-plugins/docker-compose"):
-        Engine("podman", str(tmp_path), run=run).check_compose()
-
-
 @pytest.mark.parametrize("port,url", [("0.0.0.0:8080", "http://localhost:8080"),
                                       ("127.0.0.1:80", "http://localhost"),
                                       ("192.168.1.5:8080", "http://192.168.1.5:8080"),
                                       ("[::]:9000", "http://localhost:9000"), ("", None)])
-def test_url_from_compose_port(fake, tmp_path, port, url):
+def test_url_from_compose_port(fake, project, port, url):
     fake.port = port
-    engine, stack = make(fake, tmp_path)
+    engine, stack = make(fake, project)
     assert serve.stack_url(engine, stack) == url
 
 
@@ -299,28 +207,27 @@ def test_sizes():
 
 
 class FakeProcess:
-    def __init__(self, on_wait=None):
+    pid = None
+
+    def __init__(self, on_wait=None, code=0):
         self.on_wait = on_wait
+        self.code = code
         self.terminated = False
 
     def wait(self, timeout=None):
         if self.on_wait:
             hook, self.on_wait = self.on_wait, None
             hook()
-        return 0
+        return self.code
 
     def poll(self):
         return None if not self.terminated else 0
-
-    pid = None
 
     def send_signal(self, signum):
         self.terminated = True
 
 
-def _server(fake, tmp_path, action, signum, answer=None, tty=True):
-    fake.add("rosetta-api", "api")
-    fake.add("nginx-reverse-proxy", "nginx")
+def _server(fake, project, action, signum, answer=None, tty=True):
     spawned = []
     server = None
 
@@ -330,38 +237,37 @@ def _server(fake, tmp_path, action, signum, answer=None, tty=True):
             return FakeProcess(lambda: server._handle(signum, None))
         return FakeProcess()
 
-    engine = Engine(fake.engine, str(tmp_path), run=fake, popen=popen)
-    stack = st.load_stack(engine)
+    engine, stack = make(fake, project, popen=popen)
     server = serve.Server(engine, stack, action, ["nginx", "api"], {}, tty=tty, ask=lambda q: answer)
     return server, spawned
 
 
 @pytest.mark.parametrize("signum", [signal.SIGINT, signal.SIGTERM, signal.SIGHUP])
-def test_foreground_signal_puts_stack_on_standby(fake, tmp_path, signum):
-    server, spawned = _server(fake, tmp_path, "standby", signum)
+def test_foreground_signal_puts_stack_on_standby(fake, project, signum):
+    server, spawned = _server(fake, project, "standby", signum)
     assert server.run() == 0
-    assert spawned[0][-4:] == ["up", "-d", "--no-build", "nginx", "api"][-4:]
+    assert spawned[0][-5:] == ["up", "-d", "--no-build", "nginx", "api"]
     assert any("logs" in c for c in spawned)
-    assert fake.commands("stop") == [["stop", "nginx-reverse-proxy", "rosetta-api"]]
+    assert fake.commands("stop") == [["stop", "c-nginx-reverse-proxy", "c-rosetta-api"]]
     assert len(fake.containers) == 2
 
 
-def test_ask_on_ctrl_c_removes_when_answered_r(fake, tmp_path):
-    server, _ = _server(fake, tmp_path, "ask", signal.SIGINT, answer="r\n")
+def test_ask_on_ctrl_c_removes_when_answered_r(fake, project):
+    server, _ = _server(fake, project, "ask", signal.SIGINT, answer="r\n")
     assert server.run() == 0
-    assert fake.containers == {} and "qr_db" in fake.volumes
+    assert fake.containers == {} and "qr_db" in fake.volumes and len(fake.images) == 3
 
 
-def test_ask_falls_back_to_standby_on_hangup_or_no_answer(fake, tmp_path):
-    server, _ = _server(fake, tmp_path, "ask", signal.SIGHUP, answer="r\n")
+def test_ask_falls_back_to_standby_on_hangup_or_no_answer(fake, project):
+    server, _ = _server(fake, project, "ask", signal.SIGHUP, answer="r\n")
     assert server.run() == 0 and len(fake.containers) == 2
-    fake2 = FakeEngineState()
-    server, _ = _server(fake2, tmp_path, "ask", signal.SIGINT, answer=None)
+    fake2 = FakeEngine().standard()
+    server, _ = _server(fake2, project, "ask", signal.SIGINT, answer=None)
     assert server.run() == 0 and len(fake2.containers) == 2 and fake2.commands("stop")
 
 
-def test_ctrl_c_during_shutdown_warns_then_abandons(fake, tmp_path):
-    server, _ = _server(fake, tmp_path, "standby", signal.SIGINT)
+def test_ctrl_c_during_shutdown_warns_then_abandons(fake, project):
+    server, _ = _server(fake, project, "standby", signal.SIGINT)
     server.phase = "shutdown"
     server._handle(signal.SIGTERM, None)
     server._handle(signal.SIGINT, None)
@@ -369,35 +275,43 @@ def test_ctrl_c_during_shutdown_warns_then_abandons(fake, tmp_path):
         server._handle(signal.SIGINT, None)
 
 
-def test_main_runs_subcommands_with_injected_engine(fake, tmp_path, capsys):
-    (tmp_path / "docker-compose.yml").write_text("services: {}\n")
-    fake.add("rosetta-api", "api")
-    factory = lambda d: Engine(fake.engine, d, run=fake)
-    assert main(["stop"], checkout=str(tmp_path), engine_factory=factory) == 0
+def test_failed_up_stops_what_started(fake, project):
+    engine, stack = make(fake, project, popen=lambda cmd, **kw: FakeProcess(code=1))
+    server = serve.Server(engine, stack, "ask", ["api"], {}, tty=True, ask=lambda q: "r")
+    assert server.run() == 1
+    assert fake.commands("stop") == [["stop", "c-nginx-reverse-proxy", "c-rosetta-api"]]
+    assert len(fake.containers) == 2
+
+
+def test_main_runs_subcommands_with_injected_engine(fake, project, capsys):
+    assert main(["stop"], checkout=str(project), engine_factory=factory(fake)) == 0
     assert "standby" in capsys.readouterr().out
-    assert main(["status"], checkout=str(tmp_path), engine_factory=factory) == 0
+    assert main(["status"], checkout=str(project), engine_factory=factory(fake)) == 0
     assert "stopped" in capsys.readouterr().out
-    assert main(["logs", "nosuch"], checkout=str(tmp_path), engine_factory=factory) == 1
+    assert main(["logs", "nosuch"], checkout=str(project), engine_factory=factory(fake)) == 1
     assert "Unknown service" in capsys.readouterr().err
     with pytest.raises(SystemExit):
-        main(["start", "--on-exit", "explode"], checkout=str(tmp_path), engine_factory=factory)
+        main(["start", "--on-exit", "explode"], checkout=str(project), engine_factory=factory(fake))
 
 
-def test_safe_boot_hands_start_to_qrosetta():
-    text = (_REPO / "scripts" / "safe_boot.sh").read_text()
+def test_build_passes_this_project_to_safe_boot(fake, project, monkeypatch):
+    (project / "scripts").mkdir()
+    (project / "scripts" / "safe_boot.sh").write_text("")
+    seen = {}
+    monkeypatch.setattr(subprocess, "call", lambda cmd, env, cwd: seen.update(env) or 0)
+    env = dict(ENV, COMPOSE_PROJECT_NAME="myapp")
+    assert main(["build", "api"], checkout=str(project), engine_factory=factory(fake, env)) == 0
+    assert seen["COMPOSE_PROJECT_NAME"] == "qr" and seen["QROSETTA_PROJECT"] == "qr"
+    assert seen["QR_BUILD_SERVICES"] == "api" and seen["COMPOSE_FILE"] == str(project / "docker-compose.yml")
+
+
+def test_safe_boot_hands_start_to_qrosetta_and_labels_its_builds():
+    text = (REPO / "scripts" / "safe_boot.sh").read_text()
     assert 'exec ./qrosetta start "${CORE_SERVICES[@]}" "${SUCCESSFUL_RUNNERS[@]}"' in text
-    assert "docker compose logs -f" not in text
-    assert (_REPO / "qrosetta").stat().st_mode & 0o111
+    assert 'export COMPOSE_PROJECT_NAME="$QROSETTA_PROJECT"' in text
+    assert '" --label "' in text
+    assert (REPO / "qrosetta").stat().st_mode & 0o111
 
 
-def test_failed_up_stops_what_started(fake, tmp_path):
-    fake.add("rosetta-api", "api")
-
-    class Failing(FakeProcess):
-        def wait(self, timeout=None):
-            return 1
-
-    engine = Engine(fake.engine, str(tmp_path), run=fake, popen=lambda cmd, **kw: Failing())
-    server = serve.Server(engine, st.load_stack(engine), "ask", ["api"], {}, tty=True, ask=lambda q: "r")
-    assert server.run() == 1
-    assert fake.commands("stop") == [["stop", "rosetta-api"]] and len(fake.containers) == 1
+def test_image_labels_match_the_ownership_check():
+    assert image_labels("api") == {own.QR_IMAGE_PROJECT: "qr", own.QR_SERVICE: "api"}

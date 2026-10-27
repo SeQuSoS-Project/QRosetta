@@ -4,10 +4,11 @@ import os
 import re
 import sys
 
+from qrosetta_cli import ownership as own
 from qrosetta_cli.engine import CliError
-from qrosetta_cli import stack as st
 
 DATA_CONFIRMATION = "delete"
+STANDBY_HINT = "On standby: containers, images and data are kept. `qrosetta start` restarts it; `qrosetta remove` removes it."
 
 
 def say(*parts):
@@ -77,53 +78,35 @@ def volume_sizes(engine):
 
 
 def stop_stack(engine, stack):
-    """Stop every running container of the stack and its pods; containers, images and data stay.
-    Returns the containers still running afterwards."""
-    containers, conflicts = st.scan(engine, stack)
-    running = [c for c in containers if c.running]
+    """Stop this stack's running containers and pods; containers, images and data stay.
+    Returns the containers still running afterwards (this stack's, and unlabelled ones of the
+    project that qrosetta does not stop)."""
+    found = own.scan(engine, stack)
+    running = [c for c in found.containers if c.running]
     if running:
         say(f"Stopping {len(running)} containers...")
-        engine.cli("stop", *[c.name for c in running])
-    pods = st.find_pods(engine, stack, containers)
-    if pods:
-        engine.cli("pod", "stop", *pods)
-    left = [c for c in st.find_containers(engine, stack) if c.running]
+        own.act(engine, "container", "stop", [c.target for c in running])
+    own.act(engine, "pod", "stop", found.pods)
     if not running:
-        say("Nothing was running.")
-    if conflicts:
-        say(st.conflict_help(engine, stack, conflicts))
-    return left
+        say("Nothing of this stack was running.")
+    after = own.scan(engine, stack)
+    if after.containers and not after.running():
+        say(STANDBY_HINT)
+    for line in own.leftovers(engine, after, found.shared_pods):
+        say(line)
+    return after.running()
 
 
 def report_left(left, stack):
     if left:
         say(f"Still running: {', '.join(c.name for c in left)}")
-        say("Run `qrosetta stop` again, or stop them with your container engine.")
     return 1 if left else 0
 
 
-def image_plan(engine, stack):
-    """The stack's images, and the bytes their removal frees (an image that also carries another
-    tag is only untagged)."""
-    refs = [stack.image_for(s) for s in stack.services]
-    found = st.find_images(engine, refs)
-    names = {st.normalise_tag(r) for r in found}
-    removing = {t for img in found.values() for t in img.tags if st.normalise_tag(t) in names}
-    freed, kept, seen = 0, [], set()
-    for img in found.values():
-        if img.id in seen:
-            continue
-        seen.add(img.id)
-        if set(img.tags) <= removing:
-            freed += img.size
-        else:
-            kept.append(img)
-    return found, freed, kept
-
-
-def confirm_data(volumes, sizes, ask=input, tty=None):
+def confirm_data(volumes, sizes, ask=None, tty=None):
     """Ask the user to type DATA_CONFIRMATION after naming every volume and what it holds."""
     tty = sys.stdin.isatty() if tty is None else tty
+    ask = ask or input
     say("--data deletes these volumes:")
     for vol in volumes:
         say(f"  {vol.name} ({human_bytes(sizes.get(vol.name))})")
@@ -137,50 +120,51 @@ def confirm_data(volumes, sizes, ask=input, tty=None):
     return answer.strip() == DATA_CONFIRMATION
 
 
-def remove_stack(engine, stack, images=False, data=False, ask=input, tty=None):
-    """Remove containers, pods and networks; with images/data also the images and volumes.
-    Returns an exit status."""
-    containers, conflicts = st.scan(engine, stack)
-    volumes = st.find_volumes(engine, stack) if data else []
-    if data and volumes and not confirm_data(volumes, volume_sizes(engine), ask, tty):
+def remove_stack(engine, stack, images=False, data=False, ask=None, tty=None):
+    """Remove this stack's containers, pods and networks; with images/data also its images and
+    volumes. Returns an exit status."""
+    found = own.scan(engine, stack)
+    volumes = found.volumes if data else []
+    if volumes and not confirm_data(volumes, volume_sizes(engine), ask, tty):
         say("Kept the data volumes; nothing was removed.")
         return 1
-    running = [c for c in containers if c.running]
+    running = [c for c in found.containers if c.running]
     if running:
         say(f"Stopping {len(running)} containers...")
-        engine.cli("stop", *[c.name for c in running])
-    if containers:
-        say(f"Removing {len(containers)} containers...")
-        engine.cli("rm", "-f", *[c.name for c in containers])
-    pods = st.find_pods(engine, stack, containers)
-    if pods:
-        engine.cli("pod", "rm", "-f", *pods)
-    nets = st.find_networks(engine, stack)
-    if nets:
-        engine.cli("network", "rm", *nets)
+        own.act(engine, "container", "stop", [c.target for c in running])
+    if found.containers:
+        say(f"Removing {len(found.containers)} containers...")
+        own.act(engine, "container", "remove", [c.target for c in found.containers])
+    own.act(engine, "pod", "remove", found.pods)
+    own.act(engine, "network", "remove", found.networks)
     status = 0
     if images:
-        found, freed, kept = image_plan(engine, stack)
-        if found:
-            say(f"Removing {len(found)} images, about {human_bytes(freed)}.")
-            for img in kept:
-                other = [t for t in img.tags if st.normalise_tag(t) != st.normalise_tag(img.ref)]
-                say(f"  {img.ref} is also tagged {', '.join(other)}; only its name is removed.")
-            out = engine.cli("rmi", *found)
+        owned, refused = own.image_scan(engine, stack)
+        if owned:
+            say(f"Removing {len(owned)} images, {human_bytes(sum(t.size for t in owned))}.")
+            out = own.act(engine, "image", "remove", owned)
             if out.returncode != 0:
                 say(out.stderr.strip())
                 status = 1
+        if refused:
+            say("Images qrosetta does not remove:")
+            for ref, reason, _ in refused:
+                say(f"  {ref} {reason}")
+            built = [ref for ref, _, mine in refused if mine]
+            if built:
+                say(f"To remove the names this stack builds yourself: {engine.name} rmi {' '.join(built)}")
     if volumes:
-        out = engine.cli("volume", "rm", *[v.name for v in volumes])
+        out = own.act(engine, "volume", "remove", volumes)
         if out.returncode != 0:
             say(out.stderr.strip())
             status = 1
-    left = st.find_containers(engine, stack)
-    if left:
-        say(f"Not removed: {', '.join(c.name for c in left)}")
-        return 1
+    after = own.scan(engine, stack)
+    if after.containers:
+        say(f"Not removed: {', '.join(c.name for c in after.containers)}")
+        status = 1
     kept_what = [w for w, flag in (("images", images), ("data", data)) if not flag]
-    say(f"Removed containers, pods and networks{'; kept ' + ' and '.join(kept_what) if kept_what else ''}.")
-    if conflicts:
-        say(st.conflict_help(engine, stack, conflicts))
+    say(f"Removed this stack's containers, pods and networks"
+        f"{'; kept ' + ' and '.join(kept_what) if kept_what else ''}.")
+    for line in own.leftovers(engine, after, found.shared_pods):
+        say(line)
     return status
