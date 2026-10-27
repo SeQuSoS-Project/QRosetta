@@ -98,6 +98,9 @@ class Limits(_Open):
     job_ttl_sec: float
     job_evictable_after_sec: float
     max_export_items: int
+    max_report_tasks: int
+    max_report_runner_keys: int
+    max_report_pairs: int
     max_label_length: int
     email_max_length: int
     password_min_chars: int

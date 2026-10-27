@@ -14,6 +14,7 @@ import time
 from fastapi import HTTPException
 from services import prep_worker, report_provenance, specimens, timing_caveats
 from services.report_provenance import run_completeness
+from services.error_text import client_error_text, internal_error_text
 from services.availability import filter_available
 from services.compilation import compile_circuit, queue_compile_statuses
 from services.job_store import (JOB_NOT_FOUND, JobStorageFull, JobTable, full_report,
@@ -200,7 +201,8 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
     try:
         circuit = await prep_worker.prepare(prepare_statevector_dispatch, qasm_string, apply_preprocessing)
     except Exception as e:
-        return {"input_qasm": qasm_string, "error": str(e), **context}
+        logger.warning(f"Preparing the circuit failed (job {JOB_ID.get()})", exc_info=True)
+        return {"input_qasm": qasm_string, "error": client_error_text(e), **context}
 
     queue_compile_statuses(runner_statuses, compilers)
     runner_payload = {
@@ -234,8 +236,8 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
     try:
         divergence_report, performance_report, resource_report = await compile_comparison_reports(aggregated_results, thresholds)
     except Exception as e:
-        logger.warning(f"Analysis failed (returning raw results only): {e}")
-        divergence_report = {"error": f"Analysis failed: {e}"}
+        logger.error(f"Analysis failed for job {JOB_ID.get()} (returning raw results only)", exc_info=True)
+        divergence_report = {"error": internal_error_text("Analysis", e)}
         performance_report = {}
         resource_report = {}
 
@@ -307,7 +309,8 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
     try:
         circuits = await prep_worker.prepare(prepare_measured_dispatch, qasm_string, apply_preprocessing)
     except Exception as e:
-        return {"input_qasm": qasm_string, **seed_fields, **context, "error": str(e)}
+        logger.warning(f"Preparing the circuit failed (job {JOB_ID.get()})", exc_info=True)
+        return {"input_qasm": qasm_string, **seed_fields, **context, "error": client_error_text(e)}
 
     queue_compile_statuses(runner_statuses, compilers)
 
@@ -370,7 +373,8 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
     try:
         divergence_report, performance_report, resource_report = await compile_measurement_reports(aggregated_results, n_shots, thresholds)
     except Exception as e:
-        report.update({"finished_at": utc_now_iso(), "error": f"Error during comparison: {str(e)}",
+        logger.error(f"Analysis failed for job {JOB_ID.get()} (returning raw results only)", exc_info=True)
+        report.update({"finished_at": utc_now_iso(), "error": internal_error_text("Analysis", e),
                        "raw_results": aggregated_results})
         report_provenance.annotate(report)
         return report
@@ -620,7 +624,10 @@ def task_qubits(task, qasm_string: str = None) -> int:
     """Qubit count of a task: read from its QASM when available, else the declared field."""
     text = qasm_string or getattr(task, "qasm_string", None)
     if text:
-        n = get_num_qubits_from_qasm(text)
+        try:
+            n = get_num_qubits_from_qasm(text)
+        except ValueError:
+            n = None
         if n:
             return n
     return int(getattr(task, "qubits", 0) or 0)
@@ -716,7 +723,7 @@ async def _run_single_job(job_id: str, execution_target: str, runner_statuses: d
         await ACTIVE_JOBS.store(job_id, job)
     except Exception as e:
         logger.error(f"Job {job_id} failed", exc_info=True)
-        ACTIVE_JOBS[job_id] = _failed_job(execution_target, str(e), runner_statuses)
+        ACTIVE_JOBS[job_id] = _failed_job(execution_target, internal_error_message("job", e), runner_statuses)
 
 
 @releases_exclusive
@@ -799,7 +806,8 @@ async def run_batch_tasks(payload: BatchPayload, runner_statuses: dict, progress
                       else "done")
 
         except Exception as e:
-            reason = e.detail if isinstance(e, HTTPException) else str(e)
+            logger.warning(f"Batch task {task_name!r} failed (job {JOB_ID.get()})", exc_info=True)
+            reason = client_error_text(e)
             report = {
                 "task_name": task_name,
                 "task_qubits": task_qubits(task) or None,

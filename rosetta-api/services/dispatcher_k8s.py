@@ -19,6 +19,9 @@ from kubernetes import client as k8s_client, config as k8s_config
 from kubernetes.client.rest import ApiException
 from config import settings, server_image_digests
 from qrosetta_commons.helpers import get_logger, unmeasured_metrics
+from services.result_contract import (
+    MAX_RESULT_BYTES, ResultContractError, invalid_response_message, log_rejected, parse_result,
+)
 
 logger = get_logger("rosetta-api")
 
@@ -59,22 +62,34 @@ def _delete_s3_object(s3, bucket: str, key: str) -> None:
         logger.warning(f"[K8s] Could not delete s3://{bucket}/{key}: {type(e).__name__}: {e}")
 
 
-def _take_s3_result(s3, bucket: str, completed_key: str) -> dict:
-    """Read and parse the completed result, then delete it. Raises when the result cannot be
+def _rejected_result(sim_name: str, endpoint: str | None, reason: str) -> dict:
+    kind = "compiler" if endpoint == "compile" else "runner"
+    log_rejected(sim_name, reason)
+    return _k8s_error(sim_name, invalid_response_message(sim_name, kind, reason), "error")
+
+
+def _take_s3_result(s3, bucket: str, completed_key: str, sim_name: str = "",
+                    endpoint: str | None = None) -> dict:
+    """Read, check and delete the completed result. A result that breaks the contract
+    (``services.result_contract``) becomes the run's error. Raises when the object cannot be
     read; a failed delete does not discard a result already read."""
     obj = s3.get_object(Bucket=bucket, Key=completed_key)
-    result = json.loads(obj["Body"].read())
+    body = obj["Body"].read(MAX_RESULT_BYTES + 1)
+    try:
+        result = parse_result(body, endpoint)
+    except ResultContractError as e:
+        result = _rejected_result(sim_name, endpoint, str(e))
     _delete_s3_object(s3, bucket, completed_key)
     return result
 
 
-def _fetch_s3_result(s3, bucket, completed_key, sim_name, status_callback):
+def _fetch_s3_result(s3, bucket, completed_key, sim_name, status_callback, endpoint=None):
     """Phase 2: fetch and delete the completed result, retrying with exponential backoff."""
     for attempt in range(S3_FETCH_ATTEMPTS):
         if attempt > 0:
             time.sleep(min(S3_FETCH_BASE_DELAY_SEC * (2 ** (attempt - 1)), 16))
         try:
-            result = _take_s3_result(s3, bucket, completed_key)
+            result = _take_s3_result(s3, bucket, completed_key, sim_name, endpoint)
             logger.info(f"[K8s] Fetched S3 result for {sim_name} (attempt {attempt + 1})")
             if status_callback:
                 status_callback("error" if "error" in result else "done")
@@ -182,7 +197,8 @@ def _build_job_spec(sim_name: str, hostname: str, job_id: str, endpoint_type: st
 
 
 def _poll_pod_phase(core_api, namespace: str, job_name: str, sim_name: str, job_id: str,
-                    s3, bucket: str, completed_key: str, deadline: float, status_callback) -> str | dict:
+                    s3, bucket: str, completed_key: str, deadline: float, status_callback,
+                    endpoint: str | None = None) -> str | dict:
     """Phase 1: poll pod status until Succeeded/Failed or the deadline.
 
     A 403 on the first pod listing (no RBAC permission) switches to polling S3 directly;
@@ -237,7 +253,7 @@ def _poll_pod_phase(core_api, namespace: str, job_name: str, sim_name: str, job_
         else:
             time.sleep(RBAC_FALLBACK_POLL_SEC)
             try:
-                result = _take_s3_result(s3, bucket, completed_key)
+                result = _take_s3_result(s3, bucket, completed_key, sim_name, endpoint)
             except Exception:
                 continue
             logger.info(f"[K8s] Job for {sim_name} completed via RBAC fallback (job_id={job_id})")
@@ -516,7 +532,8 @@ def _run_k8s_job_inner(sim_name: str, url: str, local_payload: dict, timeout_sec
 
         try:
             return _await_job(batch_api, core_api, namespace, job_name, sim_name, job_id,
-                              s3, bucket, completed_key, timeout_seconds, status_callback)
+                              s3, bucket, completed_key, timeout_seconds, status_callback,
+                              endpoint_type)
         except Exception:
             _delete_job(batch_api, core_api, namespace, job_name)
             raise
@@ -527,12 +544,13 @@ def _run_k8s_job_inner(sim_name: str, url: str, local_payload: dict, timeout_sec
 
 
 def _await_job(batch_api, core_api, namespace: str, job_name: str, sim_name: str, job_id: str,
-               s3, bucket: str, completed_key: str, timeout_seconds: int, status_callback) -> dict:
+               s3, bucket: str, completed_key: str, timeout_seconds: int, status_callback,
+               endpoint: str | None = None) -> dict:
     """Poll a created Job to its end and return its result or the failure that ended it."""
     deadline = time.time() + timeout_seconds
     terminal_state = _poll_pod_phase(
         core_api, namespace, job_name, sim_name, job_id,
-        s3, bucket, completed_key, deadline, status_callback
+        s3, bucket, completed_key, deadline, status_callback, endpoint
     )
 
     if isinstance(terminal_state, dict):
@@ -549,7 +567,7 @@ def _await_job(batch_api, core_api, namespace: str, job_name: str, sim_name: str
     else:
         logger.warning(f"[K8s] Phase 1 timed out for {sim_name} — attempting S3 fetch (job_id={job_id})")
 
-    result = _fetch_s3_result(s3, bucket, completed_key, sim_name, status_callback)
+    result = _fetch_s3_result(s3, bucket, completed_key, sim_name, status_callback, endpoint)
     if result:
         return result
 

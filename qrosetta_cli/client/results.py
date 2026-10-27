@@ -8,6 +8,7 @@ import json
 import os
 import re
 import time
+import uuid
 from dataclasses import dataclass, field
 
 from qrosetta_cli import config as cfgmod, output
@@ -65,6 +66,19 @@ def new_invocation(parent, slug, exact=None):
         except FileExistsError:
             continue
     raise CliError(f"Could not create a directory under {parent}.", Exit.INTERNAL, "results_dir")
+
+
+def server_job_id(env, what):
+    """The job id a server returned, when it is a canonical UUID; it names files and directories."""
+    value = env.get("job_id") if isinstance(env, dict) else None
+    try:
+        valid = isinstance(value, str) and str(uuid.UUID(value)) == value
+    except ValueError:
+        valid = False
+    if not valid:
+        raise CliError(f"{what} answered without a valid job id; nothing was written for it.", Exit.INCOMPATIBLE,
+                       "bad_job_id", hint="qrosetta info")
+    return value
 
 
 def job_dir_name(kind, mode, job_id):

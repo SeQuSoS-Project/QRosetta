@@ -173,6 +173,12 @@ Units are MiB (1024²) throughout, although field names say `_mb`.
 
 *Evidence (2026-10-07).* An exception in `worker_batch_suite` left the job `processing` forever and the browser polled indefinitely. A compile-only playlist whose every compile errored completed as done.
 
+### Runner and compiler responses
+
+*Rule.* The API checks every runner and compiler response, over HTTP and from S3, before it uses it (`services/result_contract.py`): a JSON object of at most 256 MiB nested at most 32 levels, with no NaN or infinity, an `error` that is text, numeric metrics that are numbers or null, and, unless it is an error, the endpoint's own field (`statevector` text, `counts` mapping bit strings to non-negative integers, `transpiled_qasm` text). A response that fails is that backend's `error` ("INVALID RESPONSE", naming the rule it broke, never its content); the other backends of the job finish. HTTP bodies are read as a stream and reading stops at the cap; a malformed S3 result is not fetched again.
+
+*Evidence (2026-10-28).* A runner that returned valid JSON that was not an object (`null`, a list) raised TypeError in the dispatcher, which ended the `gather` for every backend of the job and failed the whole job with the exception text; a malformed S3 result was fetched six times and then reported as "not found" (`test_v1_01_runner_response_contract.py`).
+
 ### Playlist length
 
 *Rule.* A playlist holds at most 400 circuits (`MAX_BATCH_TASKS`, published as `limits.max_batch_tasks`). `bypass_limits` lifts it.
@@ -434,11 +440,12 @@ With `apply_preprocessing=True` (the default) the API and the runners apply tran
 - calls reaching an opaque gate;
 - `/* */` comments (bundled circuits exempt);
 - register names not starting a–z;
-- use before declaration.
+- use before declaration;
+- a register size, index or if-value of more than 30 digits (checked before any is converted to an integer).
 
 Spaced indices `q [0]` are normalised with preprocessing on (`API:` note).
 
-*Evidence.* `qreg q[1]; qreg q[2]` merged into a different circuit, and all backends agreed on it. An unequal broadcast was rewritten; opaque calls were dropped silently; block comments were silently removed. 328 bundled files pass.
+*Evidence.* `qreg q[1]; qreg q[2]` merged into a different circuit, and all backends agreed on it. An unequal broadcast was rewritten; opaque calls were dropped silently; block comments were silently removed. 328 bundled files pass. 2026-10-28: a 5,000-digit register size or index raised Python's integer-string limit (ValueError) and the route answered 500; `/visualize/quirk` read register sizes before validating (`test_v1_13_pathological_numbers.py`).
 
 ### Expanded-gate broadcast width
 
@@ -730,6 +737,30 @@ Compilers are separate from the simulators: their output is a circuit, which is 
 
 *Evidence (2026-10-28).* Users behind one NAT shared every limit. Reading the account from the database on every limited request would block the event loop (the key function is synchronous) for at most one extra budget per deactivated account for at most 30 minutes; the signature check costs 14 µs per request against 3 µs for the address alone. Without the ceiling, registering accounts (5 a minute per address) would multiply an address's run budget without bound. Before this, slowapi's default `key_style="url"` counted each path separately, so `/jobs/<id>/export` and `/jobs/<id>/publication/render` had a separate budget per job id.
 
+### Upload limit
+
+*Rule.* Every POST, PUT and PATCH body is limited in the API itself (`MAX_UPLOAD_BYTES`, 4 MiB on `/plan`), whatever is in front of it: a Content-Length over the limit is refused at once, and a body without one (chunked) is counted as it arrives and refused with 413 at the first chunk over the limit. nginx's 5 MB cap is a second bound, not the only one.
+
+*Evidence (2026-10-28).* The API checked only the Content-Length header, so a chunked body of any size reached the routes wherever nginx was not in front (a direct port, the Rahti `rosetta-api-route`) (`test_v1_04_chunked_upload_limit.py`).
+
+### Size of client-supplied reports
+
+*Rule.* A report a client supplies (export, saved-run upload, summary, publication catalog and render) holds at most `MAX_REPORT_TASKS` circuits (1000), at most `MAX_TOTAL_RUNS` runner results, compiled circuits and divergence-report backends per circuit (matrices at most that wide), and at most that many backends' pairs in `pairwise_agreement` and `divergences_found`; GET /config `limits` publishes them as `max_report_tasks`, `max_report_runner_keys` and `max_report_pairs`. No server job produces more. A figure render from the publication routes waits at most `RENDER_LOCK_WAIT_SEC` (20 s) for the matplotlib lock and then answers 503 with Retry-After 10; crate builds wait without a limit.
+
+*Evidence (2026-10-28).* `report_validation.py` had no count caps, the heatmaps draw n x n cells under one global lock with no timeout, and the render route allows 120 requests a minute, so one report with thousands of keys could hold every render for minutes (`test_v1_05_supplied_report_caps.py`).
+
+### What the CLI trusts
+
+*Rule.* The CLI reaches servers over http:// and https:// only (a server URL needs a host; its opener has no file, ftp or data handler), sends a token over plain HTTP only to loopback or a server with `allow_insecure_http`, and follows a redirect to another origin without the Authorization header. It names files and directories after a server's job id only when the id is a canonical UUID (else exit 12 `bad_job_id`, nothing written for it). `qrosetta images load` refuses an archive whose manifest.json RepoTags or OCI index name any tag other than the one qrosetta computes for that service, so `<engine> load` cannot retag another image.
+
+*Evidence (2026-10-28).* urllib's redirect handler copied Authorization to the redirect target; `QROSETTA_SERVER=file:///...` passed the `://` check and reached urllib's FileHandler; `job_id` went into result paths unchecked; `<engine> load` applies tags embedded in an archive and the fake engine did not model it (`test_v1_06_cli_trust_boundaries.py`).
+
+### Job spill directory
+
+*Rule.* At startup an existing `QROSETTA_JOB_SPILL_DIR` must be a directory (not a link) owned by the API process's user; it is removed and created again with mode 0700, and the API does not start otherwise. The API unpickles only files this process wrote (`job_store._write_pickle` records each one); `pickle.load` and `pickle.loads` appear only in `job_store.py`, `prep_worker.py` (its own child's pipe) and `qrosetta_commons/helpers.py` (`test_v1_11_spill_dir_and_pickles.py` checks it).
+
+*Evidence (2026-10-28).* `reset_spill_dir` ignored its own errors and `makedirs(exist_ok=True)` accepted a directory another user had created in a shared `/tmp`, so a pickle planted there would have been loaded by the API.
+
 ### Name fields
 
 *Rule.* One combined validator per name type (`label_type`), never nested. A version-independent code-point list; blank names are refused.
@@ -779,6 +810,24 @@ Compilers are separate from the simulators: their output is a circuit, which is 
 *Rule.* Every route declares the codes it raises ([`rosetta-api/tests/unit/test_openapi_contract.py`](rosetta-api/tests/unit/test_openapi_contract.py)). 422 means a schema failure; 400 means well formed but unsupported. X-RateLimit-* headers, and Retry-After on 429. `expires_in`; `RunHistory.job_id`; JSON 413 from nginx; nginx compresses responses. Non-UTF-8 JSON bodies are 422 `json_invalid`; non-finite numbers in a client-supplied report are 400; file and page responses declare their real media types. [`scripts/api_fuzz/run_fuzz.py`](scripts/api_fuzz/run_fuzz.py) (Schemathesis, in process) checks the contract.
 
 *Evidence (2026-10-21).* Fuzzing at 300 examples per operation, 17,412 calls: 0 findings after four fixes (media types, UTF-8 bodies, malformed supplied reports, and NaN stored in a saved run, which made every later read return 500).
+
+### Error text sent to clients
+
+*Rule.* Jobs, reports and responses carry an exception's message only when the API wrote it for the request: an HTTPException's detail, a ValueError (circuit resolution and preparation) or a PreparationFailed, and a full job store's reason. Any other exception reaches them as its type only (`Analysis failed (KeyError)`, `The experiment failed (MemoryError)`); its text and traceback go to the API log with the job id (`services/error_text.py`). Runner and compiler errors keep the SDK's message, which the page shows on purpose, with absolute file-system paths replaced by `<path>` (`qrosetta_commons.redact`); this runs in `runner_error`, `compiler_error` and the isolated child's error path, after the timed windows.
+
+*Evidence (2026-10-28).* The job worker, the analysis step, the experiment worker and the bundled-file reader stored `str(e)`, so an OSError showed container paths (§13.3); only the batch path had been reduced to the type (`test_v1_02_exception_text.py`).
+
+### Engine call timeouts
+
+*Rule.* Every engine and compose command qrosetta runs has a timeout: 4 hours for builds and image transfers (build, pull, push, load, save, and `scripts/safe_boot.sh`), 15 minutes for commands that change containers, networks, volumes or tags (including `compose up`), 2 minutes for the rest. A command past its timeout is stopped and the qrosetta command exits 16 `engine_timeout`; the engine lock is released and the host-load notice ended on the way out. A heartbeat answered 404 (the server no longer holds the notice: it expired or the server restarted) stops the heartbeats with a warning, and no end is sent.
+
+*Evidence (2026-10-28).* Engine calls had no timeouts apart from `info`, `--version`, `compose version`, cosign and sysctl, so a hung podman kept the engine lock while the heartbeat kept the host-load notice, and with it the run gate, open; heartbeat 404s were ignored (`test_v1_12_engine_timeouts.py`).
+
+### CLI retries
+
+*Rule.* The CLI repeats a request that starts no work on the server (GET, and POST to the export, summary, publication and plan routes) when it gets no answer, the transfer breaks off, or the server answers 502, 503, 504 or 429 with Retry-After of at most 30 s: up to three more times, after 1, 2 and 4 s; a download starts again from the beginning. A run (POST /compare, /compare_measured, /run_batch_suite, /experiments) is never sent twice. A download shorter than its Content-Length is a broken transfer. Waiting for a job allows up to five failed polls in a row. Downloads give the server 330 s per socket operation (nginx's own read timeout), since a crate is built before its first byte.
+
+*Evidence (2026-10-28).* `http.client.IncompleteRead` was not caught, so a dropped download ended `qrosetta run` as an internal error with no STATUS; `read(amt)` returned a short body without an error, so a cut-off download could be saved as complete; polls and downloads had no retry and a crate had 30 s to send its first byte (`test_v1_08_cli_transfer_retries.py`).
 
 ### API compatibility for older CLIs
 

@@ -63,8 +63,8 @@ def _read_bundled_qasm(base_dir: str, file_name: str, label: str) -> str:
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to read {label} {file_name}: {e}")
-        raise HTTPException(status_code=500, detail=f"Error reading {label} circuit: {str(e)}")
+        logger.error(f"Failed to read {label} {file_name}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error reading {label} circuit ({type(e).__name__}).")
 
 
 def get_qasmbench_circuit(circuit_name: str) -> str:

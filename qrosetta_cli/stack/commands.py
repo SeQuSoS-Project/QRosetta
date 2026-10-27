@@ -11,7 +11,7 @@ from qrosetta_cli.output import progress, result
 from qrosetta_cli.stack import actions, guard, hostload, installed, profiles, quota, serve
 from qrosetta_cli.stack import ownership as own
 from qrosetta_cli.stack import project as st
-from qrosetta_cli.stack.engine import Engine, choose_engine
+from qrosetta_cli.stack.engine import TRANSFER_TIMEOUT_SEC, Engine, choose_engine, timed_out
 
 
 def open_stack(ctx, cpu_quota=None):
@@ -249,7 +249,10 @@ def cmd_build(ctx):
     try:
         with guard.engine_lock(ctx.env, "build"), hostload.notice(
                 ctx, url, "build", [stack.services[s].id for s in requested]):
-            code = subprocess.call(["bash", script], env=env, cwd=stack.project_dir)
+            code = subprocess.call(["bash", script], env=env, cwd=stack.project_dir,
+                                   timeout=TRANSFER_TIMEOUT_SEC)
+    except subprocess.TimeoutExpired:
+        raise timed_out(["bash", script], TRANSFER_TIMEOUT_SEC) from None
     except KeyboardInterrupt:
         progress("qrosetta: interrupted. `qrosetta status` shows what is running.")
         return Result(int(Exit.SIGINT), None)

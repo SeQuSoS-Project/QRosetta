@@ -120,7 +120,7 @@ def cmd_selftest(ctx):
     for i, run in enumerate(runs):
         with waiting.submitting() as state:
             env = conn.post(run["endpoint"], run["payload"], what=f"POST {run['endpoint']}")
-        job_id = env["job_id"]
+        job_id = results.server_job_id(env, f"POST {run['endpoint']}")
         job_dir = os.path.join(invocation, results.job_dir_name("batch", run["mode"], job_id))
         os.mkdir(job_dir)
         results.write_json(os.path.join(job_dir, "request.json"),

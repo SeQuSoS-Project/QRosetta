@@ -3,6 +3,7 @@
 The glossary entries are mirrored by static/js/artifact_formats.js.
 """
 
+import contextvars
 import threading
 from contextlib import contextmanager
 
@@ -19,6 +20,34 @@ from services.analysis.divergence.common import ANALYSIS_VERSION
 logger = get_logger("rosetta-publication")
 
 _MPL_LOCK = threading.Lock()
+_LOCK_WAIT = contextvars.ContextVar("qrosetta_mpl_lock_wait", default=None)
+
+
+class RendererBusy(RuntimeError):
+    """The figure renderer stayed busy for longer than the caller would wait."""
+
+
+@contextmanager
+def mpl_lock():
+    """Hold _MPL_LOCK, waiting at most the seconds ``render_lock_wait`` set (no limit when
+    unset); RendererBusy when it stays held."""
+    wait = _LOCK_WAIT.get()
+    if not _MPL_LOCK.acquire(timeout=-1 if wait is None else wait):
+        raise RendererBusy(f"the figure renderer stayed busy for {wait} s")
+    try:
+        yield
+    finally:
+        _MPL_LOCK.release()
+
+
+@contextmanager
+def render_lock_wait(seconds):
+    """Within this block, figures wait at most ``seconds`` for the renderer (None: no limit)."""
+    token = _LOCK_WAIT.set(seconds)
+    try:
+        yield
+    finally:
+        _LOCK_WAIT.reset(token)
 
 SUPPORTED_FIGURE_FORMATS = ("svg", "png", "pdf")
 SUPPORTED_TABLE_FORMATS = ("latex", "csv", "html", "xlsx")

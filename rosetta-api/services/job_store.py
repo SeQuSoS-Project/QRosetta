@@ -8,14 +8,20 @@ The directory has a budget (``settings.JOB_SPILL_MAX_MIB``) and a free-disk floo
 (``settings.JOB_SPILL_MIN_FREE_MIB``): ``storage_problem`` says when either is crossed, and
 ``spill_task_report`` raises ``JobStorageFull`` then instead of writing. A single-circuit
 report is always written, so the budget can be exceeded by the reports of jobs already
-running."""
+running.
+
+The directory is the API process's own: at startup an existing one must be a directory (not a
+link) owned by the process's user, and it is removed and created again with mode 0700;
+otherwise the API does not start. Only files this process wrote are ever unpickled."""
 
 import asyncio
 import json
 import os
 import pickle
 import shutil
+import stat
 import tempfile
+import threading
 import uuid
 
 from config import settings
@@ -93,6 +99,29 @@ def require_storage() -> None:
         raise JobStorageFull(problem)
 
 
+class SpillDirRefused(RuntimeError):
+    """The spill directory exists but is not this process's own."""
+
+
+class ForeignSpillFile(RuntimeError):
+    """A spill file this process did not write."""
+
+
+_WRITTEN = set()
+_WRITTEN_LOCK = threading.Lock()
+
+
+def _remember(path: str) -> None:
+    with _WRITTEN_LOCK:
+        _WRITTEN.add(os.path.realpath(path))
+
+
+def _forget_under(path: str) -> None:
+    root = os.path.realpath(path)
+    with _WRITTEN_LOCK:
+        _WRITTEN.difference_update({p for p in _WRITTEN if p == root or p.startswith(root + os.sep)})
+
+
 class SpilledReport:
     """Reference to a report pickled at ``path``."""
 
@@ -102,14 +131,49 @@ class SpilledReport:
         self.path = path
 
     def load(self) -> dict:
-        with open(self.path, "rb") as fh:
+        """The report; FileNotFoundError once the file is removed, ForeignSpillFile for a file
+        this process did not write."""
+        real = os.path.realpath(self.path)
+        with _WRITTEN_LOCK:
+            known = real in _WRITTEN
+        if not known:
+            if not os.path.lexists(real):
+                raise FileNotFoundError(self.path)
+            raise ForeignSpillFile(f"{self.path} was not written by this process")
+        with open(real, "rb") as fh:
             return pickle.load(fh)
 
 
+def _own_private_dir(path: str) -> bool:
+    st = os.lstat(path)
+    return stat.S_ISDIR(st.st_mode) and st.st_uid == os.geteuid() and stat.S_IMODE(st.st_mode) & 0o077 == 0
+
+
 def reset_spill_dir() -> None:
-    """Remove reports left by a previous server process and recreate the directory."""
-    shutil.rmtree(SPILL_DIR, ignore_errors=True)
-    os.makedirs(SPILL_DIR, exist_ok=True)
+    """Remove reports left by a previous server process and create the directory again, mode
+    0700. SpillDirRefused when SPILL_DIR exists as a link, a file or another user's directory,
+    or is created by someone else between the removal and the creation."""
+    try:
+        st = os.lstat(SPILL_DIR)
+    except FileNotFoundError:
+        st = None
+    if st is not None:
+        if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.geteuid():
+            raise SpillDirRefused(
+                f"QROSETTA_JOB_SPILL_DIR {SPILL_DIR} exists and is not a directory owned by this "
+                f"process's user (uid {os.geteuid()}); remove it or set QROSETTA_JOB_SPILL_DIR to a "
+                f"directory of its own.")
+        shutil.rmtree(SPILL_DIR)
+    _forget_under(SPILL_DIR)
+    parent = os.path.dirname(os.path.abspath(SPILL_DIR))
+    os.makedirs(parent, exist_ok=True)
+    try:
+        os.mkdir(SPILL_DIR, 0o700)
+    except FileExistsError:
+        raise SpillDirRefused(f"{SPILL_DIR} was created by another process while the API started.") from None
+    os.chmod(SPILL_DIR, 0o700)
+    if not _own_private_dir(SPILL_DIR):
+        raise SpillDirRefused(f"{SPILL_DIR} is not a private directory of this process's user.")
 
 
 def _path(job_id) -> str:
@@ -127,6 +191,8 @@ def remove_job_files(job_id) -> None:
     except OSError:
         pass
     shutil.rmtree(job_dir(job_id), ignore_errors=True)
+    _forget_under(_path(job_id))
+    _forget_under(job_dir(job_id))
 
 
 def _write_pickle(obj, path: str) -> None:
@@ -137,6 +203,7 @@ def _write_pickle(obj, path: str) -> None:
         with open(tmp, "wb") as fh:
             pickle.dump(obj, fh, protocol=pickle.HIGHEST_PROTOCOL)
         os.replace(tmp, path)
+        _remember(path)
     except BaseException:
         try:
             os.remove(tmp)

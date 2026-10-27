@@ -1,6 +1,6 @@
 # FastAPI application entry point: middleware, static mounts and routers.
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from routers import frontend, generation, benchmark, auth, history, export, publication, experiment, share, plan, summary, selftest, timing
@@ -70,26 +70,65 @@ app = FastAPI(title="Quantum Rosetta API", version=settings.PLATFORM_VERSION, li
 app.state.limiter = limiter
 register_error_handlers(app)
 
-class LimitUploadSize(BaseHTTPMiddleware):
-    def __init__(self, app, max_upload_size: int, path_limits: dict = None) -> None:
-        super().__init__(app)
-        self.max_upload_size = max_upload_size
-        self.path_limits = path_limits or {}
+class BodyTooLarge(HTTPException):
+    """413 raised while a request body is read past its limit."""
+
+    def __init__(self, limit: int) -> None:
+        super().__init__(status_code=413, detail=f"Request body exceeds the upload limit of {limit} bytes")
+
+
+class LimitUploadSize:
+    """413 for a POST, PUT or PATCH body over the limit of its path: refused at once when
+    Content-Length says so, otherwise counted as it arrives (chunked bodies) and stopped at
+    the first byte over the limit."""
 
     _BODY_METHODS = frozenset({"POST", "PUT", "PATCH"})
 
-    async def dispatch(self, request: Request, call_next):
-        if request.method in self._BODY_METHODS:
-            raw_length = request.headers.get('content-length')
-            if raw_length is not None:
-                try:
-                    content_length = int(raw_length)
-                except ValueError:
-                    return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length header"})
-                limit = self.path_limits.get(request.url.path, self.max_upload_size)
-                if content_length > limit:
-                    return JSONResponse(status_code=413, content={"detail": f"Request body exceeds the upload limit of {limit} bytes"})
-        return await call_next(request)
+    def __init__(self, app, max_upload_size: int, path_limits: dict = None) -> None:
+        self.app = app
+        self.max_upload_size = max_upload_size
+        self.path_limits = path_limits or {}
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope["method"] not in self._BODY_METHODS:
+            await self.app(scope, receive, send)
+            return
+        limit = self.path_limits.get(scope["path"], self.max_upload_size)
+        headers = dict(scope.get("headers") or [])
+        raw_length = headers.get(b"content-length")
+        if raw_length is not None:
+            try:
+                content_length = int(raw_length)
+            except ValueError:
+                await JSONResponse(status_code=400, content={"detail": "Invalid Content-Length header"})(scope, receive, send)
+                return
+            if content_length > limit:
+                await JSONResponse(status_code=413, content={"detail": BodyTooLarge(limit).detail})(scope, receive, send)
+                return
+        received = 0
+        started = False
+
+        async def counted_receive():
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > limit:
+                    raise BodyTooLarge(limit)
+            return message
+
+        async def tracked_send(message):
+            nonlocal started
+            if message["type"] == "http.response.start":
+                started = True
+            await send(message)
+
+        try:
+            await self.app(scope, counted_receive, tracked_send)
+        except BodyTooLarge as exc:
+            if started:
+                raise
+            await JSONResponse(status_code=413, content={"detail": exc.detail})(scope, receive, send)
 
 SHARE_PAGE_HEADERS = {
     "Content-Security-Policy": ("default-src 'self'; script-src 'self'; style-src 'self'; "

@@ -61,6 +61,7 @@ class Notice:
         self.services = [s for s in services or [] if s]
         self.expect_server_gone = expect_server_gone
         self.notice_id = None
+        self.lost = False
         self._stop = threading.Event()
         self._thread = None
 
@@ -101,14 +102,25 @@ class Notice:
         self._thread.start()
 
     def _beat(self):
+        """Renew the notice every HEARTBEAT_SEC; a 404 (the server ended it, or restarted) ends
+        the heartbeats with a warning."""
         while not self._stop.wait(HEARTBEAT_SEC):
             try:
-                self._post({"action": "heartbeat", "notice_id": self.notice_id})
+                resp = self._post({"action": "heartbeat", "notice_id": self.notice_id})
             except CliError:
-                pass
+                continue
+            if resp.status == 404:
+                self.lost = True
+                output.warn(f"{self.kind}: the server no longer holds this host-load notice (it expired or the "
+                            "server restarted); runs from now on do not record this host load.",
+                            "host_load_lost")
+                return
 
     def end(self):
         if self.notice_id is None:
+            return
+        if self.lost:
+            self._stop.set()
             return
         self._stop.set()
         if self._thread is not None:

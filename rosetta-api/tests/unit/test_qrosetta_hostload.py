@@ -119,7 +119,7 @@ def test_stop_and_build_hold_notices(fake, project, env, monkeypatch, capsys):
         return real(method, path, *args, **kwargs)
 
     server.request = request
-    monkeypatch.setattr(subprocess, "call", lambda cmd, env, cwd: order.append("build") or 0)
+    monkeypatch.setattr(subprocess, "call", lambda cmd, env, cwd, **kw: order.append("build") or 0)
     assert cli(fake2, project, env, ["build", "api"], server=server) == 0
     assert order == ["begin", "build", "end"]
     assert server.notices[0][0] == {"action": "begin", "kind": "build", "services": ["api"]}

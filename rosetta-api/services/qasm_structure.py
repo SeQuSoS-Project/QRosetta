@@ -116,6 +116,22 @@ def _check_header(code: str, items: list) -> None:
                          f"time; it may only be the first statement.")
 
 
+MAX_INTEGER_DIGITS = 30
+_INTEGER_RE = re.compile(r"\[\s*(\d+)\s*\]|==\s*(\d+)")
+
+
+def _check_integers(code: str, items: list) -> None:
+    """400 for a register size, index or if-value written with more than MAX_INTEGER_DIGITS
+    digits, before any of them is converted to an integer."""
+    for offset, text in items:
+        for m in _INTEGER_RE.finditer(text):
+            digits = m.group(1) or m.group(2)
+            if len(digits) > MAX_INTEGER_DIGITS:
+                _bad_request(f"Line {_line(code, offset)}: the integer {digits[:12]}... has {len(digits)} "
+                             f"digits; register sizes, indices and if-values have at most "
+                             f"{MAX_INTEGER_DIGITS}.")
+
+
 def _check_empty_statements(code: str) -> None:
     m = _EMPTY_STATEMENT_RE.search(code)
     if m:
@@ -332,13 +348,15 @@ def check_structure(qasm: str) -> None:
     that neither the circuit nor an included qelib1.inc defines, a top-level call of an opaque
     gate or of a gate whose expansion calls one, a call with the wrong number of parameters or
     qubits or a repeated qubit, a name in a gate body's parameter that is not one of the
-    gate's parameters, a measure whose operands differ in size, or a broadcast over registers
-    of different sizes."""
+    gate's parameters, a measure whose operands differ in size, a broadcast over registers
+    of different sizes, or a register size, index or if-value of more than MAX_INTEGER_DIGITS
+    digits."""
     code = _blank_comments(qasm)
     items = list(_statements(code))
     if not any(_REG_RE.match(" ".join(t.split())) and t.startswith("qreg") for _, t in items):
         return
     _check_header(code, items)
+    _check_integers(code, items)
     _check_empty_statements(code)
     included = any(_INCLUDE_RE.match(" ".join(t.split())) and "qelib1.inc" in t for _, t in items)
     signatures = dict(_BUILTIN_SIGNATURES)

@@ -14,7 +14,7 @@ from qrosetta_cli.output import progress, result
 from qrosetta_cli.stack import actions, guard, hostload
 from qrosetta_cli.stack import ownership as own
 from qrosetta_cli.stack import project as st
-from qrosetta_cli.stack.engine import spawned_tail
+from qrosetta_cli.stack.engine import CHANGE_TIMEOUT_SEC, spawned_tail, wait_spawned
 from qrosetta_cli.stack.explain import engine_error, probe_message
 
 ASK_TIMEOUT_SEC = 10
@@ -276,7 +276,7 @@ def up(engine, services, adding, bind=None, recreate=False):
     """`compose up -d` for `services`; when adding to a running stack, the others are left alone."""
     proc = engine.spawn(["up", "-d", "--no-build", *up_flags(adding, recreate), *services], own_session=False,
                         capture_errors=True)
-    if proc.wait() != 0:
+    if wait_spawned(proc, CHANGE_TIMEOUT_SEC, [engine.name, "compose", "up"]) != 0:
         raise engine_error(spawned_tail(proc), "`compose up` failed", bind)
 
 
@@ -449,7 +449,7 @@ class Server:
     def _compose_up(self, services, recreate):
         self.child = self.engine.spawn(["up", "-d", "--no-build", *up_flags(self.adding, recreate), *services],
                                        capture_errors=True)
-        code = self.child.wait()
+        code = wait_spawned(self.child, CHANGE_TIMEOUT_SEC, [self.engine.name, "compose", "up"])
         tail = spawned_tail(self.child)
         self.child = None
         if code != 0:

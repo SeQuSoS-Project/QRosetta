@@ -26,7 +26,7 @@ from services.dispatcher import SEED_DERIVATION
 from services.export_compiled import compiled_metrics_csv, compiler_build_files
 from services import specimens, timing_caveats
 from services.exporter import runner_lock_files
-from services.job_store import job_dir, require_storage
+from services.job_store import JobStorageFull, job_dir, require_storage
 from services.run_registry import EXCLUSIVE, releases_exclusive
 from services.job_manager import (
     ACTIVE_JOBS, _resolve_seed, effective_thresholds, make_room_for_results, run_batch_tasks,
@@ -34,6 +34,7 @@ from services.job_manager import (
 )
 from qrosetta_commons.helpers import get_logger
 from services.circuit_resolver import resolve_circuit_qasm
+from services.error_text import client_error_text, internal_error_text, is_client_error
 
 logger = get_logger("rosetta-experiment")
 
@@ -76,7 +77,8 @@ def resolve_circuits(payload: ExperimentPayload) -> tuple:
                 entry.source, entry.algorithm, entry.qubits, entry.qasm_string, mode=payload.mode
             )
         except Exception as e:
-            qasm, error = None, str(e)
+            logger.warning(f"Resolving experiment circuit {i} failed", exc_info=True)
+            qasm, error = None, client_error_text(e)
         qubits = task_qubits(entry, qasm)
         name = entry.name or (
             (f"{entry.algorithm}_{qubits}q" if qubits else entry.algorithm)
@@ -175,6 +177,14 @@ def write_bundle_zip(zip_path: str, files: dict, staging: str, top: str = "") ->
                 with open(staged[rel_path], "rb") as fh:
                     zf.writestr(member, fh.read())
     os.replace(tmp, zip_path)
+
+
+def _failure_text(exc: Exception) -> str:
+    """A failed experiment's error: the reason for a full job store or a request the API
+    refused, else the exception type only."""
+    if isinstance(exc, JobStorageFull):
+        return str(exc)
+    return client_error_text(exc) if is_client_error(exc) else internal_error_text("The experiment", exc)
 
 
 @releases_exclusive
@@ -368,5 +378,6 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
         await asyncio.to_thread(shutil.rmtree, job_dir(job_id), True)
         ACTIVE_JOBS[job_id] = {"status": "failed", "kind": "experiment",
                                "target": payload.execution_target,
-                               "error": str(e), "runner_statuses": runner_statuses,
+                               "error": _failure_text(e),
+                               "runner_statuses": runner_statuses,
                                "finished_at": time.time()}

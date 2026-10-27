@@ -4,13 +4,64 @@ streamed to a .part file that is renamed into place only when complete."""
 
 import json
 import os
+import re
 import shutil
 
-from qrosetta_cli.client import handshake
+from qrosetta_cli import output
+from qrosetta_cli.client import handshake, waiting
 from qrosetta_cli.client.commands import status_error
+from qrosetta_cli.client.transport import Transient
 from qrosetta_cli.errors import CliError, Exit
 
 LARGE_DOWNLOAD = 1 << 30
+DOWNLOAD_TIMEOUT_SEC = 330
+RETRY_DELAYS_SEC = (1, 2, 4)
+RETRY_STATUSES = (502, 503, 504)
+MAX_RETRY_AFTER_SEC = 30
+_READ_POSTS = re.compile(r"^(/jobs/[^/]+)?/(export|summary|publication/render|publication/artifacts)$|^/plan$")
+
+
+def repeatable(method, path):
+    """True for a request that starts no work on the server: GET, and the POST routes that only
+    read a report (export, summary, publication, plan). A run is never sent twice."""
+    return method.upper() in ("GET", "HEAD") or (method.upper() == "POST" and bool(_READ_POSTS.match(path)))
+
+
+def _retry_delay(resp, attempt):
+    """Seconds to wait before repeating a request that got `resp`, or None for no retry."""
+    if attempt >= len(RETRY_DELAYS_SEC):
+        return None
+    if resp.status in RETRY_STATUSES:
+        return RETRY_DELAYS_SEC[attempt]
+    if resp.status == 429:
+        try:
+            after = int(resp.headers.get("retry-after") or "")
+        except ValueError:
+            return None
+        return after if 0 <= after <= MAX_RETRY_AFTER_SEC else None
+    return None
+
+
+def with_retries(method, path, send, retry=None):
+    """`send()` once, or up to len(RETRY_DELAYS_SEC) more times with backoff when the request is
+    `repeatable` (or `retry` says so) and it failed in transit or got 429/502/503/504."""
+    retry = repeatable(method, path) if retry is None else retry
+    attempt = 0
+    while True:
+        try:
+            resp = send()
+        except Transient as exc:
+            if not retry or attempt >= len(RETRY_DELAYS_SEC):
+                raise
+            delay = RETRY_DELAYS_SEC[attempt]
+            output.progress(f"{exc.message} Trying again in {delay} s.")
+        else:
+            delay = _retry_delay(resp, attempt) if retry else None
+            if delay is None:
+                return resp
+            output.progress(f"{method.upper()} {path} answered HTTP {resp.status}; trying again in {delay} s.")
+        waiting.pause(delay)
+        attempt += 1
 
 
 def http_error(method, path, resp, what=None, hint=None):
@@ -72,10 +123,11 @@ class Conn:
         return int(gate.get("shared_running") or 0) + int(bool(gate.get("exclusive_running")))
 
     def request(self, method, path, payload=None, query=None, ok=(200,), timeout=None, what=None, hint=None,
-                headers=None):
+                headers=None, retry=None):
         body = body_bytes(payload) if payload is not None else None
         headers = dict(headers or {}, **({"Content-Type": "application/json"} if body is not None else {}))
-        resp = self.transport.request(method, path, query=query, body=body, headers=headers, timeout=timeout)
+        resp = with_retries(method, path, lambda: self.transport.request(
+            method, path, query=query, body=body, headers=headers, timeout=timeout), retry)
         if resp.status not in ok:
             raise http_error(method, path, resp, what, hint)
         return resp
@@ -86,10 +138,12 @@ class Conn:
     def post(self, path, payload=None, **kwargs):
         return self.request("POST", path, payload=payload, **kwargs).json()
 
-    def download(self, method, path, dest, payload=None, query=None, confirm_large=None, timeout=None):
+    def download(self, method, path, dest, payload=None, query=None, confirm_large=None, timeout=None, retry=None):
         """Stream a 2xx body to `dest` through `dest.part`; returns the bytes written. An error
         status raises the CliError of `http_error`; Content-Length is checked against the free
-        space first, and `confirm_large(size)` decides a body over 1 GiB."""
+        space first, and `confirm_large(size)` decides a body over 1 GiB. Each socket operation
+        may take DOWNLOAD_TIMEOUT_SEC (a crate is built before its first byte); a transfer cut off
+        part way is started again from the beginning (`with_retries`)."""
         body = body_bytes(payload) if payload is not None else None
         headers = {"Content-Type": "application/json"} if body is not None else {}
         part = dest + ".part"
@@ -108,10 +162,13 @@ class Conn:
                     raise CliError(f"{dest}: {size} bytes not downloaded.", Exit.USAGE, "large_download",
                                    hint="add --yes to download it")
 
-        try:
+        def send():
             with open(part, "wb") as fh:
-                resp = self.transport.download(method, path, fh, query=query, body=body, headers=headers,
-                                               timeout=timeout, on_headers=check)
+                return self.transport.download(method, path, fh, query=query, body=body, headers=headers,
+                                               timeout=timeout or DOWNLOAD_TIMEOUT_SEC, on_headers=check)
+
+        try:
+            resp = with_retries(method, path, send, retry)
             if not 200 <= resp.status < 300:
                 raise http_error(method, path, resp)
             size = os.path.getsize(part)

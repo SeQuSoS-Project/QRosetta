@@ -10,11 +10,13 @@ import time
 from contextlib import contextmanager
 
 from qrosetta_cli import output
+from qrosetta_cli.client.transport import Transient
 from qrosetta_cli.errors import CliError, Exit
 
 POLL_FIRST_SEC = 1.5
 POLL_EVERY_SEC = 3.0
 SUBMIT_GRACE_SEC = 10
+POLL_FAILURES_ALLOWED = 5
 FINISHED = ("completed", "failed", "cancelled")
 
 
@@ -63,13 +65,20 @@ def status_line(env, labels, title):
     return " · ".join(parts)
 
 
+def _poll_failure(exc):
+    return isinstance(exc, Transient) or exc.http_status in (502, 503, 504)
+
+
 def wait_job(conn, job_id, title, wait_timeout=None):
     """Poll until the job finishes and return its final envelope. WaitTimeout after
-    `wait_timeout` seconds; a 404 is exit 14 (unknown or expired)."""
+    `wait_timeout` seconds; a 404 is exit 14 (unknown or expired). A poll that gets no answer
+    or a 502/503/504 (after the request's own retries) is repeated at the next interval, up to
+    POLL_FAILURES_ALLOWED polls in a row."""
     labels = conn.config.get("status_labels") or {}
     start = clock()
     delay = POLL_FIRST_SEC
     last = None
+    failures = 0
     while True:
         if wait_timeout is not None:
             left = wait_timeout - (clock() - start)
@@ -77,7 +86,16 @@ def wait_job(conn, job_id, title, wait_timeout=None):
                 raise WaitTimeout()
             delay = min(delay, left)
         pause(delay)
-        env = conn.get(f"/jobs/{job_id}", what=f"job {job_id[:8]}", hint="qrosetta jobs")
+        try:
+            env = conn.get(f"/jobs/{job_id}", what=f"job {job_id[:8]}", hint="qrosetta jobs")
+        except CliError as exc:
+            if not _poll_failure(exc) or failures >= POLL_FAILURES_ALLOWED:
+                raise
+            failures += 1
+            output.progress(f"{title}: {exc.message} Polling again in {POLL_EVERY_SEC:g} s.")
+            delay = POLL_EVERY_SEC
+            continue
+        failures = 0
         line = status_line(env, labels, title)
         if line != last:
             output.progress(line)

@@ -62,6 +62,31 @@ def read_archive(path):
     return "sha256:" + hashlib.sha256(data).hexdigest(), config
 
 
+def embedded_tags(path):
+    """The image names a `load` of this archive would apply by itself: manifest.json RepoTags
+    and, in an OCI layout, the io.containerd.image.name annotations of index.json."""
+    tags = []
+    try:
+        with tarfile.open(path, "r:*") as tar:
+            manifest = json.loads(_member(tar, "manifest.json"))
+            entries = manifest if isinstance(manifest, list) else []
+            for entry in (e for e in entries if isinstance(e, dict)):
+                tags += [t for t in entry.get("RepoTags") or [] if isinstance(t, str)]
+            try:
+                index = json.loads(_member(tar, "index.json"))
+            except KeyError:
+                index = {}
+            items = index.get("manifests") if isinstance(index, dict) else None
+            for item in (i for i in items or [] if isinstance(i, dict)):
+                name = (item.get("annotations") or {}).get("io.containerd.image.name")
+                if isinstance(name, str):
+                    tags.append(name)
+    except (OSError, tarfile.TarError, ValueError, KeyError, AttributeError) as exc:
+        raise CliError(f"{path} is not an image archive of `docker save` or `podman save`: {exc}", Exit.ENGINE,
+                       "archive_invalid", hint="qrosetta images save -o DIR (on the machine that has the images)")
+    return tags
+
+
 def _member(tar, name):
     info = tar.getmember(name)
     if not info.isfile() or info.size > _MAX_CONFIG_BYTES:

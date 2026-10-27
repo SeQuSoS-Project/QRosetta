@@ -69,17 +69,69 @@ def _pane(pane_id, kind, key, text):
     return {"id": pane_id, "kind": kind, "key": key, "group": None, "text": text}
 
 
+MAX_CRATE_MEMBERS = 65_535
+MAX_CRATE_DIRECTORY_BYTES = 64 << 20
+MAX_CRATE_METADATA_BYTES = 256 << 20
+MAX_CRATE_TEXT_BYTES = 1 << 30
+_EOCD = b"PK\x05\x06"
+
+
+def _crate_error(path, why):
+    return CliError(f"{path} cannot be read as an RO-Crate: {why}.", Exit.INCOMPATIBLE, "crate_unreadable",
+                    hint="qrosetta export crate")
+
+
+def _check_directory(path):
+    """Refuse a ZIP whose end record declares more members or a larger central directory than
+    a crate has, before zipfile reads that directory."""
+    with open(path, "rb") as fh:
+        fh.seek(0, os.SEEK_END)
+        size = fh.tell()
+        fh.seek(max(0, size - (1 << 16) - 22))
+        tail = fh.read()
+    at = tail.rfind(_EOCD)
+    if at < 0 or len(tail) - at < 22:
+        raise _crate_error(path, "it is not a ZIP file")
+    entries = int.from_bytes(tail[at + 10:at + 12], "little")
+    directory = int.from_bytes(tail[at + 12:at + 16], "little")
+    if entries >= MAX_CRATE_MEMBERS or directory > MAX_CRATE_DIRECTORY_BYTES:
+        raise _crate_error(path, f"it declares more than {MAX_CRATE_MEMBERS - 1} files or a file list over "
+                                 f"{MAX_CRATE_DIRECTORY_BYTES >> 20} MiB")
+
+
+def _read_member(zf, info, limit, path):
+    if info.file_size > limit:
+        raise _crate_error(path, f"{info.filename} is larger than {limit >> 20} MiB")
+    return zf.read(info)
+
+
 def crate_texts(path):
     """The panes a crate's circuit files give, per circuit: circuit.qasm (circuits/<task>.qasm),
     dispatched_circuits/ and transpiled_circuits/ per backend, the compile input and
-    compiled_circuits/. Dispatched panes are per backend, since a crate names no groups."""
-    with zipfile.ZipFile(path) as zf:
-        meta_name = next(n for n in zf.namelist() if n.endswith("/ro-crate-metadata.json"))
-        top = meta_name.split("/", 1)[0]
-        graph = {e.get("@id"): e for e in json.loads(zf.read(meta_name)).get("@graph", [])}
-        parts = [p.get("@id") for p in (graph.get("./") or {}).get("hasPart", []) if isinstance(p, dict)]
-        texts = {p: zf.read(f"{top}/{p}").decode("utf-8") for p in parts
-                 if isinstance(p, str) and p.endswith(".qasm") and f"{top}/{p}" in zf.namelist()}
+    compiled_circuits/. Dispatched panes are per backend, since a crate names no groups. A
+    ZIP with too many files, a metadata file or circuit texts over the size caps, or no
+    ro-crate-metadata.json is refused (exit 12) before its contents are read."""
+    _check_directory(path)
+    try:
+        with zipfile.ZipFile(path) as zf:
+            infos = {i.filename: i for i in zf.infolist()}
+            if len(infos) >= MAX_CRATE_MEMBERS:
+                raise _crate_error(path, f"it holds more than {MAX_CRATE_MEMBERS - 1} files")
+            meta_name = next((n for n in infos if n.endswith("/ro-crate-metadata.json")), None)
+            if meta_name is None:
+                raise _crate_error(path, "it has no ro-crate-metadata.json")
+            top = meta_name.split("/", 1)[0]
+            metadata = json.loads(_read_member(zf, infos[meta_name], MAX_CRATE_METADATA_BYTES, path))
+            entities = metadata.get("@graph", []) if isinstance(metadata, dict) else []
+            graph = {e.get("@id"): e for e in entities if isinstance(e, dict)}
+            parts = [p.get("@id") for p in (graph.get("./") or {}).get("hasPart", []) if isinstance(p, dict)]
+            wanted = [infos[f"{top}/{p}"] for p in dict.fromkeys(parts)
+                      if isinstance(p, str) and p.endswith(".qasm") and f"{top}/{p}" in infos]
+            if sum(i.file_size for i in wanted) > MAX_CRATE_TEXT_BYTES:
+                raise _crate_error(path, f"its circuit files hold more than {MAX_CRATE_TEXT_BYTES >> 30} GiB")
+            texts = {i.filename[len(top) + 1:]: zf.read(i).decode("utf-8") for i in wanted}
+    except (zipfile.BadZipFile, json.JSONDecodeError, UnicodeDecodeError, OSError, EOFError) as exc:
+        raise _crate_error(path, f"{type(exc).__name__}") from None
     tasks = [p[len("circuits/"):-len(".qasm")] for p in parts if isinstance(p, str) and p.startswith("circuits/")]
 
     def panes(task):

@@ -110,13 +110,14 @@ def identity_step(source, release, sha):
             "/usr/local/share/qrosetta-image/identity")
 
 
-def write_archive(path, config):
-    """A `podman save` docker-archive holding one image with this configuration; its image id."""
+def write_archive(path, config, repo_tags=None):
+    """A `podman save` docker-archive holding one image with this configuration and the
+    RepoTags a `load` applies; its image id."""
     data = json.dumps(config).encode()
     digest = hashlib.sha256(data).hexdigest()
     with tarfile.open(path, "w") as tar:
         for name, blob in ((f"{digest}.json", data),
-                           ("manifest.json", json.dumps([{"Config": f"{digest}.json", "RepoTags": None,
+                           ("manifest.json", json.dumps([{"Config": f"{digest}.json", "RepoTags": repo_tags,
                                                           "Layers": []}]).encode())):
             info = tarfile.TarInfo(name)
             info.size = len(blob)
@@ -269,6 +270,10 @@ class FakeEngine:
             ident = hashlib.sha256(data).hexdigest()
             self.images[ident] = {"Id": ident, "Size": len(data), "RepoTags": [], "RepoDigests": [],
                                   "Config": config["config"], "History": [h["created_by"] for h in config["history"]]}
+            for ref in manifest[0].get("RepoTags") or []:
+                for img in self.images.values():
+                    img["RepoTags"] = [t for t in img["RepoTags"] if st.normalise_tag(t) != st.normalise_tag(ref)]
+                self.images[ident]["RepoTags"].append(ref)
             return f"Loaded image: sha256:{ident}\n", 0
         if a[0] == "tag":
             ident, ref = a[1], a[2]

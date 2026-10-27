@@ -127,6 +127,8 @@ jobs:
           tests/unit/test_qrosetta_views.py tests/unit/test_job_link.py
           tests/unit/test_qrosetta_installed.py tests/unit/test_qrosetta_quota.py
           tests/unit/test_qrosetta_imageprobes.py tests/unit/test_qrosetta_images.py
+          tests/unit/test_v1_06_cli_trust_boundaries.py tests/unit/test_v1_07_cli_crate_reader.py
+          tests/unit/test_v1_08_cli_transfer_retries.py tests/unit/test_v1_12_engine_timeouts.py
 
       - name: Client half
         if: runner.os != 'Linux'
