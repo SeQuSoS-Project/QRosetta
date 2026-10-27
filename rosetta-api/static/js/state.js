@@ -10,6 +10,7 @@ export const Store = {
         currentSuiteTitle: '',
         batchQueue: [],
         allAlgorithms: [],
+        quickLoadSets: /** @type {{ id: string, label: string, items: { algorithm: string, qubits: number, name: string }[] }[]} */ ([]),
         currentAlgoName: "Custom",
         currentRunnerConfig: {},
         currentJobId: null,
@@ -75,6 +76,9 @@ export const Store = {
                 break;
             case 'SET_ALGORITHMS':
                 this.state.allAlgorithms = payload;
+                break;
+            case 'SET_QUICK_LOAD_SETS':
+                this.state.quickLoadSets = Array.isArray(payload) ? payload : [];
                 break;
             case 'SET_CURRENT_ALGO_NAME':
                 this.state.currentAlgoName = payload;

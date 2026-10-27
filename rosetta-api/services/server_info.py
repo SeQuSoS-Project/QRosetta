@@ -8,6 +8,8 @@ API_LEVELS = (1, 1)
 
 FEATURES = {
     "request_defaults": 1,
+    "quickload": 1,
+    "profiles": 1,
 }
 
 

@@ -12,6 +12,7 @@ from services import prep_worker
 from services.validator import validate_request
 from services.circuit_resolver import RoundTripIntegrityError
 from services.quirk_converter import QUIRK_MAX_QUBITS, QuirkUnsupported, quirk_url
+from services.quickload import quickload_sets
 from config import settings
 from services.security import limiter
 from routers.errors import responses
@@ -25,22 +26,18 @@ async def get_algorithms():
     'bell', 'qft', 'bv', 'grover'), with each one's supported qubit-count range.
     ``max_qubits`` is the generator's own maximum; ``max_qubits_statevector`` and
     ``max_qubits_measured`` are the largest size a run in that mode accepts."""
-    algorithms = library.load_algorithms()
-    return [
-        {
-            "id": algo["id"],
-            "name": algo.get("name", ""),
-            "min_qubits": algo.get("min_qubits", 2),
-            "max_qubits": algo.get("max_qubits", settings.MAX_QUBITS_MEASURED),
-            "max_qubits_statevector": min(algo.get("max_qubits", settings.MAX_QUBITS_MEASURED),
-                                          settings.MAX_QUBITS_STATEVECTOR),
-            "max_qubits_measured": min(algo.get("max_qubits", settings.MAX_QUBITS_MEASURED),
-                                       settings.MAX_QUBITS_MEASURED),
-            "default_qubits": algo.get("default_qubits", 3),
-            "description": algo.get("description", "")
-        }
-        for algo in algorithms.values()
-    ]
+    return library.algorithm_list(settings.MAX_QUBITS_MEASURED, settings.MAX_QUBITS_STATEVECTOR)
+
+
+@router.get("/quickload")
+async def get_quickload():
+    """The playlist's Quick Load sets: ``id``, ``label`` and ``items``, playlist items
+    (``algorithm``, ``qubits``, ``name``) that reference preset circuits, which the server
+    generates when the playlist runs. Qubit counts are clamped to each algorithm's range
+    and to the statevector limit (``limits.max_qubits_statevector`` in GET /config)."""
+    return quickload_sets(
+        library.algorithm_list(settings.MAX_QUBITS_MEASURED, settings.MAX_QUBITS_STATEVECTOR),
+        settings.MAX_QUBITS_STATEVECTOR)
 
 @router.get("/examples")
 async def get_examples():

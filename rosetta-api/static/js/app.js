@@ -5,7 +5,7 @@ import { BASE_URL, apiDetailText, getAuthHeaders } from './api.js';
 import { updateAuthUI, verifySession } from './auth.js';
 import { initAutosave } from './autosave.js';
 import { loadCompilers } from './compilers_config.js';
-import { renderBatchQueue } from './batch.js';
+import { renderBatchQueue, renderQuickLoadOptions } from './batch.js';
 import { initBenchPopover } from './benchmarks_select.js';
 import { editorHasEdits, getDynamicMaxQubits, loadRunners, updateContextBar } from './config.js';
 import { saveRunToHistory, showHistoryNotice } from './history.js';
@@ -240,12 +240,15 @@ window.onload = async () => {
 
     let restored = false;
     try {
-        const [algorithmsResponse, configResponse] = await Promise.all([
+        const [algorithmsResponse, configResponse, quickLoadResponse] = await Promise.all([
             fetch(`${BASE_URL}/algorithms`, { headers: getAuthHeaders() }),
             fetch(`${BASE_URL}/config`),
+            fetch(`${BASE_URL}/quickload`).catch(() => null),
         ]);
         if (!algorithmsResponse.ok) throw new Error('Failed to fetch algorithms');
         dispatch('SET_ALGORITHMS', await algorithmsResponse.json());
+        if (quickLoadResponse?.ok) dispatch('SET_QUICK_LOAD_SETS', await quickLoadResponse.json().catch(() => []));
+        renderQuickLoadOptions();
         if (configResponse.ok) {
             const config = await configResponse.json();
             dispatch('SET_CONFIG_LIMITS', config);

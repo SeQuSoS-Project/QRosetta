@@ -3,6 +3,8 @@
 from config import settings
 from services.availability import runner_availability
 from services.compilation import COMPILER_SERVICES
+from services.profiles import (compiler_default_selected, compiler_profiles,
+                               runner_default_selected, runner_profiles)
 
 
 def _unavailable_reason(enabled: bool, info: dict):
@@ -24,6 +26,10 @@ def runner_row(name: str, config: dict, info: dict) -> dict:
         "optimization_levels": {str(k): v for k, v in opt_levels.items()},
         "precision": dict(config["precision"]),
         "qubit_ordering": dict(config["qubit_ordering"]),
+        "default_selected": runner_default_selected(config),
+        "profiles": runner_profiles(name, config),
+        "backend": None,
+        "version": None,
     }
 
 
@@ -38,6 +44,10 @@ def compiler_row(cid: str, svc: dict, info: dict) -> dict:
         "unavailable_reason": _unavailable_reason(enabled, info),
         "optimization_levels": {str(k): v for k, v in svc["optimization_levels"].items()},
         "versions": info.get("versions"),
+        "default_selected": compiler_default_selected(svc),
+        "profiles": compiler_profiles(svc),
+        "backend": None,
+        "version": None,
     }
 
 

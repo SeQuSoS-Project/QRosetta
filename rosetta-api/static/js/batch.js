@@ -11,25 +11,24 @@ import { bareCircuitName } from './run_plan.js';
 import { printableLabel } from './request_limits.js';
 import { closeModal, openModal } from './modal.js';
 
-/** Quick Load sets as preset references; the server generates each circuit when the batch runs. */
-export function presetItems(key, algorithms, cap) {
-    const meta = id => algorithms.find(a => a.id === id) || { id, name: id };
-    const item = (id, qubits) => {
-        const m = meta(id);
-        const lo = m.min_qubits ?? 1;
-        const hi = Math.min(m.max_qubits ?? cap, cap);
-        return { algorithm: id, qubits: Math.max(lo, Math.min(qubits, hi)), name: m.name || id };
-    };
-    if (key === 'each') return algorithms.map(a => item(a.id, 5));
-    if (key === 'scaling') return [...new Set([5, 10, 15, cap])].filter(q => q <= cap).map(q => item('ghz', q));
-    if (key === 'largest') return ['random', 'bv', 'vqe'].map(id => item(id, cap));
-    return [];
+/** The Quick Load menu: one option per set GET /quickload lists. */
+export function renderQuickLoadOptions() {
+    const select = document.getElementById('preset-select');
+    if (!select) return;
+    select.replaceChildren(...getState().quickLoadSets.map(set => {
+        const option = document.createElement('option');
+        option.value = set.id;
+        option.textContent = set.label;
+        return option;
+    }));
 }
 
+/** Replace the playlist with the chosen Quick Load set: preset references the server generates when the batch runs. */
 export function applyPreset() {
-    const val = document.getElementById('preset-select').value;
+    const val = /** @type {HTMLSelectElement} */ (document.getElementById('preset-select')).value;
     const st = getState();
-    const items = presetItems(val, st.allAlgorithms || [], st.maxQubitsStatevector);
+    const set = st.quickLoadSets.find(s => s.id === val);
+    const items = set ? set.items.map(item => ({ ...item })) : [];
     if (!items.length) return;
     if (st.batchQueue.length > 0 && !confirm("This will replace your current playlist. Continue?")) return;
     dispatch('SET_BATCH_QUEUE', items);

@@ -63,7 +63,10 @@ async def get_runners():
     ``precision`` and ``qubit_ordering`` are ``{"statevector": ..., "measured": ...}``: the
     amplitude dtype (e.g. "complex128") and the bit-order label ("lsb" or "msb") the runner
     declares for each endpoint; null where the runner sets it at run time, in which case
-    each result records the value used.
+    each result records the value used. ``default_selected`` is true for a runner a run that
+    names no backends uses when it is available (every enabled runner). ``profiles`` lists
+    the built-in profiles the runner belongs to (minimal, cpu, gpu, full). ``backend`` and
+    ``version`` are null.
     """
     return JSONResponse(content=await runner_rows())
 
@@ -175,5 +178,7 @@ async def get_compilers():
     them (pip SDK versions, native components built from source, build-file sha256, image
     commit; null when no long-lived service answered, as in Kubernetes mode). A compiler
     turns a run's circuit into circuit text only; it is never simulated or compared (see
-    the compilers field of the run payloads)."""
+    the compilers field of the run payloads). ``default_selected`` is false: a compiler
+    runs only when a request names it. ``profiles`` is ["compilers", "full"] for an enabled
+    compiler. ``backend`` and ``version`` are null."""
     return JSONResponse(content=await compiler_rows())
