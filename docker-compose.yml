@@ -1,3 +1,5 @@
+name: qsimulators
+
 services:
   # --- Service 1: Nginx ( The Bridge ) ---
   nginx:
