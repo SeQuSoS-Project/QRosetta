@@ -1,6 +1,9 @@
 # The project name and the org.qrosetta.project label come from QROSETTA_PROJECT (default
 # qsimulators); qrosetta stops and removes only what carries both. Volumes keep compose's own
 # labels: compose offers to recreate, and empty, a volume whose labels change.
+# org.qrosetta.id is the service's registry key in config.py, org.qrosetta.kind is core, runner
+# or compiler, and org.qrosetta.profiles lists the qrosetta profiles it belongs to
+# (test_runner_registry_sync.py checks all three).
 name: ${QROSETTA_PROJECT:-qsimulators}
 
 x-qrosetta-labels: &qrosetta-labels
@@ -17,7 +20,10 @@ services:
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: nginx
-    labels: *qrosetta-labels
+    labels:
+      <<: *qrosetta-labels
+      org.qrosetta.id: nginx
+      org.qrosetta.kind: core
     container_name: nginx-reverse-proxy
     ports:
       - "${QROSETTA_HTTP_BIND:-127.0.0.1:8080}:80"
@@ -43,7 +49,10 @@ services:
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: api
-    labels: *qrosetta-labels
+    labels:
+      <<: *qrosetta-labels
+      org.qrosetta.id: api
+      org.qrosetta.kind: core
     container_name: rosetta-api
     environment:
       - RUNNER_TIMEOUT_SEC=${RUNNER_TIMEOUT_SEC:-300}
@@ -81,7 +90,11 @@ services:
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: pytket_qiskit_runner
-    labels: *qrosetta-labels
+    labels:
+      <<: *qrosetta-labels
+      org.qrosetta.id: qiskit
+      org.qrosetta.kind: runner
+      org.qrosetta.profiles: "minimal,cpu,gpu,full"
     container_name: pytket-qiskit-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -109,7 +122,11 @@ services:
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: pytket_cirq_runner
-    labels: *qrosetta-labels
+    labels:
+      <<: *qrosetta-labels
+      org.qrosetta.id: cirq
+      org.qrosetta.kind: runner
+      org.qrosetta.profiles: "minimal,cpu,gpu,full"
     container_name: pytket-cirq-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -137,7 +154,11 @@ services:
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: pytket_qulacs_runner
-    labels: *qrosetta-labels
+    labels:
+      <<: *qrosetta-labels
+      org.qrosetta.id: qulacs
+      org.qrosetta.kind: runner
+      org.qrosetta.profiles: "minimal,cpu,gpu,full"
     container_name: pytket-qulacs-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -165,7 +186,10 @@ services:
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: pytket_braket_runner
-    labels: *qrosetta-labels
+    labels:
+      <<: *qrosetta-labels
+      org.qrosetta.id: braket
+      org.qrosetta.kind: runner
     container_name: pytket-braket-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -193,7 +217,10 @@ services:
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: pytket_projectq_runner
-    labels: *qrosetta-labels
+    labels:
+      <<: *qrosetta-labels
+      org.qrosetta.id: projectq
+      org.qrosetta.kind: runner
     container_name: pytket-projectq-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -221,7 +248,11 @@ services:
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: pytket_quest_runner
-    labels: *qrosetta-labels
+    labels:
+      <<: *qrosetta-labels
+      org.qrosetta.id: quest
+      org.qrosetta.kind: runner
+      org.qrosetta.profiles: "cpu,gpu,full"
     container_name: pytket-quest-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -249,7 +280,11 @@ services:
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: pennylane_lightning_runner
-    labels: *qrosetta-labels
+    labels:
+      <<: *qrosetta-labels
+      org.qrosetta.id: pennylane-lightning
+      org.qrosetta.kind: runner
+      org.qrosetta.profiles: "cpu,gpu,full"
     container_name: pennylane-lightning-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -277,7 +312,11 @@ services:
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: pennylane_default_runner
-    labels: *qrosetta-labels
+    labels:
+      <<: *qrosetta-labels
+      org.qrosetta.id: pennylane-default
+      org.qrosetta.kind: runner
+      org.qrosetta.profiles: "cpu,gpu,full"
     container_name: pennylane-default-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -305,7 +344,11 @@ services:
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: qibo_runner
-    labels: *qrosetta-labels
+    labels:
+      <<: *qrosetta-labels
+      org.qrosetta.id: qibo
+      org.qrosetta.kind: runner
+      org.qrosetta.profiles: "cpu,gpu,full"
     container_name: qibo-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -333,7 +376,11 @@ services:
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: qrisp_runner
-    labels: *qrosetta-labels
+    labels:
+      <<: *qrosetta-labels
+      org.qrosetta.id: qrisp
+      org.qrosetta.kind: runner
+      org.qrosetta.profiles: "cpu,gpu,full"
     container_name: qrisp-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -361,7 +408,11 @@ services:
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: myqlm_runner
-    labels: *qrosetta-labels
+    labels:
+      <<: *qrosetta-labels
+      org.qrosetta.id: myqlm
+      org.qrosetta.kind: runner
+      org.qrosetta.profiles: "cpu,gpu,full"
     container_name: myqlm-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -389,7 +440,11 @@ services:
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: pyquil_runner
-    labels: *qrosetta-labels
+    labels:
+      <<: *qrosetta-labels
+      org.qrosetta.id: pyquil
+      org.qrosetta.kind: runner
+      org.qrosetta.profiles: "cpu,gpu,full"
     container_name: pyquil-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -417,7 +472,11 @@ services:
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: qsim_cirq_runner
-    labels: *qrosetta-labels
+    labels:
+      <<: *qrosetta-labels
+      org.qrosetta.id: qsim-cirq
+      org.qrosetta.kind: runner
+      org.qrosetta.profiles: "cpu,gpu,full"
     container_name: qsim-cirq-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -445,7 +504,11 @@ services:
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: torch_quantum_runner
-    labels: *qrosetta-labels
+    labels:
+      <<: *qrosetta-labels
+      org.qrosetta.id: torchquantum
+      org.qrosetta.kind: runner
+      org.qrosetta.profiles: "cpu,gpu,full"
     container_name: torch-quantum-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -473,7 +536,11 @@ services:
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: quimb_runner
-    labels: *qrosetta-labels
+    labels:
+      <<: *qrosetta-labels
+      org.qrosetta.id: quimb
+      org.qrosetta.kind: runner
+      org.qrosetta.profiles: "cpu,gpu,full"
     container_name: quimb-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -501,7 +568,11 @@ services:
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: cuquantum_runner
-    labels: *qrosetta-labels
+    labels:
+      <<: *qrosetta-labels
+      org.qrosetta.id: cuquantum
+      org.qrosetta.kind: runner
+      org.qrosetta.profiles: "gpu,full"
     container_name: cuquantum-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -531,7 +602,11 @@ services:
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: bqskit_compiler
-    labels: *qrosetta-labels
+    labels:
+      <<: *qrosetta-labels
+      org.qrosetta.id: bqskit
+      org.qrosetta.kind: compiler
+      org.qrosetta.profiles: "compilers,full"
     container_name: bqskit-compiler
     environment:
       - OMP_NUM_THREADS=1
@@ -558,7 +633,11 @@ services:
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: pyzx_compiler
-    labels: *qrosetta-labels
+    labels:
+      <<: *qrosetta-labels
+      org.qrosetta.id: pyzx
+      org.qrosetta.kind: compiler
+      org.qrosetta.profiles: "compilers,full"
     container_name: pyzx-compiler
     environment:
       - OMP_NUM_THREADS=1
@@ -585,7 +664,11 @@ services:
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: qmap_compiler
-    labels: *qrosetta-labels
+    labels:
+      <<: *qrosetta-labels
+      org.qrosetta.id: qmap
+      org.qrosetta.kind: compiler
+      org.qrosetta.profiles: "compilers,full"
     container_name: qmap-compiler
     environment:
       - OMP_NUM_THREADS=1
@@ -612,7 +695,11 @@ services:
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: cirq_compiler
-    labels: *qrosetta-labels
+    labels:
+      <<: *qrosetta-labels
+      org.qrosetta.id: cirq-transformers
+      org.qrosetta.kind: compiler
+      org.qrosetta.profiles: "compilers,full"
     container_name: cirq-compiler
     environment:
       - OMP_NUM_THREADS=1
@@ -639,7 +726,11 @@ services:
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: staq_compiler
-    labels: *qrosetta-labels
+    labels:
+      <<: *qrosetta-labels
+      org.qrosetta.id: staq
+      org.qrosetta.kind: compiler
+      org.qrosetta.profiles: "compilers,full"
     container_name: staq-compiler
     environment:
       - OMP_NUM_THREADS=1
@@ -666,7 +757,11 @@ services:
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: qsynth_compiler
-    labels: *qrosetta-labels
+    labels:
+      <<: *qrosetta-labels
+      org.qrosetta.id: qsynth
+      org.qrosetta.kind: compiler
+      org.qrosetta.profiles: "compilers,full"
     container_name: qsynth-compiler
     environment:
       - OMP_NUM_THREADS=1
@@ -693,7 +788,11 @@ services:
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: quartz_compiler
-    labels: *qrosetta-labels
+    labels:
+      <<: *qrosetta-labels
+      org.qrosetta.id: quartz
+      org.qrosetta.kind: compiler
+      org.qrosetta.profiles: "compilers,full"
     container_name: quartz-compiler
     environment:
       - OMP_NUM_THREADS=1
@@ -720,7 +819,11 @@ services:
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: synthetiq_compiler
-    labels: *qrosetta-labels
+    labels:
+      <<: *qrosetta-labels
+      org.qrosetta.id: synthetiq
+      org.qrosetta.kind: compiler
+      org.qrosetta.profiles: "compilers,full"
     container_name: synthetiq-compiler
     environment:
       - OMP_NUM_THREADS=1

@@ -156,16 +156,30 @@ without it. Locally, leaving it empty generates a random key per process.
 `./qrosetta` (Python 3, standard library only) starts, stops and removes the local stack:
 
 ```bash
-./qrosetta build [service ...]   # build images with scripts/safe_boot.sh (default: every enabled service)
-./qrosetta start                 # start in this terminal and follow the logs
-./qrosetta start --detach        # start in the background and return
-./qrosetta status                # state and memory per service, image and data disk use, URL
-./qrosetta logs [service]        # follow the logs
-./qrosetta stop                  # standby: stop every container, keep containers, images and data
-./qrosetta remove                # remove containers and networks; keep images and data
-./qrosetta remove --images       # also remove the images (about 20 GB for a full build)
-./qrosetta remove --data         # also delete the database and saved runs; asks you to type 'delete'
+./qrosetta doctor                    # host checks, each problem with its fix
+./qrosetta build [NAME ...]          # build images with scripts/safe_boot.sh (default: every enabled service)
+./qrosetta build --profile minimal   # build the core services plus qiskit, qulacs and cirq
+./qrosetta start                     # start in this terminal and follow the logs
+./qrosetta start -d --profile minimal  # start in the background; return when its runners answer
+./qrosetta status                    # state, memory and image per service, data disk use, URL
+./qrosetta logs [NAME]               # follow the logs
+./qrosetta stop                      # standby: stop every container, keep containers, images and data
+./qrosetta remove                    # remove containers and networks; keep images and data
+./qrosetta remove --images           # also remove the images (about 20 GB for a full build)
+./qrosetta remove --data --confirm qsimulators   # also delete the database and saved runs
+./qrosetta profiles                  # profiles and their services
+./qrosetta api GET /runners          # one raw request to the server
+./qrosetta help all                  # every command
 ```
+
+Services are named by their registry keys (`qiskit`, `cirq-transformers`, `api`, `nginx`), taken
+from the `org.qrosetta.id` label in `docker-compose.yml`; compose service and container names
+are accepted too. Profiles come from the `org.qrosetta.profiles` labels. Data goes to stdout and
+progress, warnings and errors to stderr; `--json` prints one JSON object instead. Exit codes:
+0 = done; 10 and above = a problem, and the last line names the fix (16 an engine or image
+problem, 15 refused because runs are in flight, 17 a failed `doctor` check). `stop`, `remove`,
+`build` and adding services with `start` are refused while the server reports runs in flight;
+`stop --force`, `remove --force`, `build --yes` and `start --yes` go ahead.
 
 `start` never builds. It names the services that have no image (`qrosetta build <service>`
 builds one) and starts the rest; without the nginx or API image it starts nothing. When it
@@ -196,8 +210,10 @@ container names, or while containers or networks of the project lack the qrosett
 The project is `QROSETTA_PROJECT` (default `qsimulators`). `qrosetta` passes it to compose with
 `-p`, names the compose files with `-f`, and removes every `COMPOSE_*` variable from compose's
 environment, so `COMPOSE_PROJECT_NAME` in the shell or in `.env` never redirects it to another
-project. `--project-dir` or `QROSETTA_HOME` points the command at another directory holding the
-compose file.
+project. `--project-dir` or `QROSETTA_PROJECT_DIR` (formerly `QROSETTA_HOME`, still read with a
+warning) points the command at another directory holding the compose file. The optional config
+file `~/.config/qrosetta/config.toml` (`qrosetta config path`, `qrosetta config show`) holds the
+server, engine, exit action and bind address; it holds no run setting.
 
 Containers and networks created before these labels existed carry only the compose label, and
 images built before them carry none. `qrosetta status` lists them; remove the containers and
@@ -205,14 +221,16 @@ networks once with the commands it prints (images and data stay), and `qrosetta 
 them again with the labels. `remove --images` removes only images built after the change; for
 older ones it prints the `rmi` command.
 
-Docker and podman both work; `QROSETTA_ENGINE=docker|podman` chooses one when both are
-installed. Either way the compose provider must be Docker Compose v2: `docker compose version`
-or `podman compose version` prints "Docker Compose version v2..." or later. With Docker, install
-the `docker-compose-plugin` package (https://docs.docker.com/compose/install/linux/). With
-podman, download the `docker-compose` binary for your platform from
+Docker and podman both work. `qrosetta` uses the first of docker and podman whose `info`
+answers (`qrosetta doctor` says which and why); `QROSETTA_ENGINE=docker|podman` or
+`[lifecycle] engine` in the config chooses one. Either way the compose provider must be Docker
+Compose v2: `docker compose version` or `podman compose version` prints "Docker Compose version
+v2..." or later. On Ubuntu and Debian, `sudo apt install docker-compose-v2` (with podman add
+`--no-install-recommends`, so docker.io is not pulled in). Elsewhere, with Docker install the
+`docker-compose-plugin` package (https://docs.docker.com/compose/install/linux/); with podman,
+download the `docker-compose` binary for your platform from
 https://github.com/docker/compose/releases, save it as `~/.docker/cli-plugins/docker-compose` and
-make it executable; `podman compose` then uses it instead of podman-compose, which `qrosetta`
-does not support.
+make it executable, and `podman compose` uses it. podman-compose 1.x is not supported.
 
 In VS Code, *Terminal → Run Task → Quantum Rosetta: start* (`.vscode/tasks.json`) runs
 `qrosetta start` in a terminal panel; stopping the task puts the stack on standby. The other

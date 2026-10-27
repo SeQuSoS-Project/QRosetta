@@ -238,3 +238,34 @@ def test_builds_with_tket_marks_exactly_the_runners_that_parse_with_pytket():
         source = (_REPO / "runners" / _infra_name(entry["base_url"]) / "main.py").read_text()
         parses = "circuit_from_qasm_str" in source and cid not in only_after_round_trip
         assert bool(entry.get("builds_with_tket")) == parses, cid
+
+
+MINIMAL_PROFILE = {"qiskit", "qulacs", "cirq"}
+
+
+def _expected_labels():
+    """Compose service -> (org.qrosetta.id, kind, profiles), from the registries (CLI spec S15, §6.9)."""
+    expected = {"nginx": ("nginx", "core", []), "api": ("api", "core", [])}
+    for cid, entry in _registry().items():
+        profiles = []
+        if entry.get("enabled", True):
+            profiles = (["minimal"] if cid in MINIMAL_PROFILE else []) + \
+                ([] if entry.get("requires_gpu") else ["cpu"]) + ["gpu", "full"]
+        expected[_infra_name(entry["base_url"]).replace("-", "_")] = (cid, "runner", profiles)
+    for cid, entry in _compilers().items():
+        profiles = ["compilers", "full"] if entry.get("enabled", True) else []
+        expected[_infra_name(entry["base_url"]).replace("-", "_")] = (cid, "compiler", profiles)
+    return expected
+
+
+def test_compose_labels_name_each_service_by_its_registry_key_kind_and_profiles():
+    services = yaml.safe_load(_COMPOSE.read_text()).get("services", {})
+    expected = _expected_labels()
+    assert set(services) == set(expected)
+    for name, (cid, kind, profiles) in expected.items():
+        labels = services[name].get("labels") or {}
+        assert labels.get("org.qrosetta.project") == "${QROSETTA_PROJECT:-qsimulators}", name
+        assert labels.get("org.qrosetta.id") == cid, name
+        assert labels.get("org.qrosetta.kind") == kind, name
+        got = [p for p in str(labels.get("org.qrosetta.profiles") or "").split(",") if p]
+        assert got == profiles, name

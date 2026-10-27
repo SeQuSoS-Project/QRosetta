@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "qrosetta.cli/version@1: the envelope's data",
+  "type": "object",
+  "properties": {
+    "cli_version": {
+      "type": "string"
+    },
+    "python": {
+      "type": "string"
+    },
+    "mode": {
+      "enum": [
+        "checkout",
+        "installed"
+      ]
+    },
+    "project_dir": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "cli_api_levels": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      }
+    },
+    "manifest": {
+      "type": "object",
+      "properties": {
+        "release": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "index": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "release",
+        "index"
+      ]
+    },
+    "server": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "cli_version",
+    "python",
+    "mode",
+    "project_dir",
+    "cli_api_levels",
+    "manifest",
+    "server"
+  ]
+}

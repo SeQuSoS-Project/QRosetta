@@ -1,5 +1,6 @@
-"""A fake docker/podman engine for the qrosetta_cli tests: answers the listing, inspect and
-destructive commands from an in-memory state and records every call."""
+"""A fake docker/podman engine and a fake Quantum Rosetta server for the qrosetta_cli tests: the
+engine answers listing, inspect and destructive commands from an in-memory state and records
+every call; the server answers /config, /runners and /compilers from dicts."""
 
 import json
 import subprocess
@@ -10,17 +11,25 @@ REPO = Path(__file__).resolve().parents[3]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from qrosetta_cli import ownership as own  # noqa: E402
-from qrosetta_cli import stack as st  # noqa: E402
+from qrosetta_cli.client.transport import Response  # noqa: E402
+from qrosetta_cli.stack import ownership as own  # noqa: E402
+from qrosetta_cli.stack import project as st  # noqa: E402
 
 PROJECT = "qr"
+
+
+def _labels(key, kind, profiles=""):
+    labels = {"org.qrosetta.project": PROJECT, "org.qrosetta.id": key, "org.qrosetta.kind": kind}
+    return dict(labels, **({"org.qrosetta.profiles": profiles} if profiles else {}))
+
+
 CONFIG = {
     "services": {
         "nginx": {"container_name": "nginx-reverse-proxy", "depends_on": {"api": {}},
-                  "ports": [{"target": 80, "published": "8080"}]},
-        "api": {"container_name": "rosetta-api"},
-        "qiskit_runner": {"container_name": "qiskit-runner"},
-        "braket_runner": {"container_name": "braket-runner"},
+                  "ports": [{"target": 80, "published": "8080"}], "labels": _labels("nginx", "core")},
+        "api": {"container_name": "rosetta-api", "labels": _labels("api", "core")},
+        "qiskit_runner": {"container_name": "qiskit-runner", "labels": _labels("qiskit", "runner", "minimal,cpu,full")},
+        "braket_runner": {"container_name": "braket-runner", "labels": _labels("braket", "runner")},
     },
     "volumes": {"db": {"name": "qr_db"}},
 }
@@ -28,6 +37,8 @@ DESTRUCTIVE = {("stop",), ("kill",), ("rm",), ("rmi",), ("pod", "stop"), ("pod",
                ("network", "rm"), ("volume", "rm"), ("container", "rm"), ("container", "stop"),
                ("image", "rm"), ("system", "prune"), ("network", "prune"), ("volume", "prune"),
                ("image", "prune"), ("container", "prune"), ("pod", "prune")}
+INFO = {"version": {"Version": "5.8.2"}, "host": {"security": {"rootless": True}},
+        "store": {"graphRoot": "/home/u/.local/share/containers/storage"}}
 
 
 def ours(service=""):
@@ -36,6 +47,20 @@ def ours(service=""):
 
 def image_labels(service):
     return {own.QR_IMAGE_PROJECT: PROJECT, own.QR_SERVICE: service}
+
+
+class FakeProcess:
+    pid = None
+
+    def __init__(self, code=0, err=""):
+        self.code = code
+        self.qr_tail = [err] if err else []
+
+    def wait(self, timeout=None):
+        return self.code
+
+    def poll(self):
+        return self.code
 
 
 class FakeEngine:
@@ -50,6 +75,7 @@ class FakeEngine:
         self.port = "127.0.0.1:8080"
         self.config_name = None
         self.extra_services = {}
+        self.up_error = ""
 
     def add(self, name, labels, running=True, pod=""):
         cid = "c-" + name
@@ -86,6 +112,24 @@ class FakeEngine:
         out, rc = self._answer(list(cmd[1:]))
         return subprocess.CompletedProcess(cmd, rc, out, "" if rc == 0 else "error")
 
+    def popen(self, cmd, **kwargs):
+        """Popen stand-in: records the call, applies `up` to the state, exits as the engine would."""
+        self.calls.append((list(cmd), dict(kwargs.get("env") or {})))
+        args = list(cmd[1:])
+        if args[0] == "compose" and "up" in args:
+            if self.up_error:
+                return FakeProcess(1, self.up_error)
+            for service in args[args.index("up") + 1:]:
+                if service.startswith("-"):
+                    continue
+                name = CONFIG["services"].get(service, {}).get("container_name") or service
+                cid = "c-" + name
+                if cid in self.containers:
+                    self.containers[cid]["State"]["Running"] = True
+                else:
+                    self.add(name, ours(service))
+        return FakeProcess()
+
     def _filters(self, args):
         return [args[i + 1] for i, a in enumerate(args) if a == "--filter"]
 
@@ -104,6 +148,8 @@ class FakeEngine:
             if rest[:1] == ["port"]:
                 return (self.port + "\n", 0) if self.port else ("", 1)
             return "", 0
+        if a[:1] == ["info"]:
+            return json.dumps(INFO), 0
         if a[:2] == ["ps", "-a"]:
             filters = self._filters(a)
             labels = [f[len("label="):] for f in filters if f.startswith("label=")]
@@ -172,6 +218,9 @@ class FakeEngine:
         n = len(verb)
         return [[*c[1:1 + n], *sorted(c[1 + n:])] for c, _ in self.calls if c[1:1 + n] == list(verb)]
 
+    def compose_calls(self, verb):
+        return [c for c, _ in self.calls if c[1:2] == ["compose"] and verb in c]
+
     def destructive_calls(self):
         out = []
         for cmd, _ in self.calls:
@@ -179,3 +228,59 @@ class FakeEngine:
             if args and args[0] != "compose" and (tuple(args[:1]) in DESTRUCTIVE or tuple(args[:2]) in DESTRUCTIVE):
                 out.append(args)
         return out
+
+
+class FakeServer:
+    """A Transport stand-in (and its factory) answering /config, /runners and /compilers."""
+
+    kind = "http"
+
+    def __init__(self, url="http://localhost:8080", gate=None, runners=None, compilers=None, block=None,
+                 fresh=None, status=None):
+        self.url = url
+        self.gate = gate if gate is not None else {"enabled": True, "exclusive_running": False,
+                                                    "exclusive_waiting": 0, "shared_running": 0}
+        self.runners = runners if runners is not None else [{"id": "qiskit", "enabled": True, "available": True}]
+        self.compilers = compilers if compilers is not None else []
+        self.block = block
+        self.fresh = fresh
+        self.status = status or {}
+        self.requests = []
+        self.tokens = []
+
+    def __call__(self, server, token=None, timeout=None):
+        self.tokens.append(token)
+        self.url = server.url
+        return self
+
+    def request(self, method, path, query=None, body=None, headers=None, timeout=None):
+        self.requests.append((method, path, query, body))
+        if path in self.status:
+            code, payload = self.status[path]
+            return Response(code, {"content-type": "application/json"}, json.dumps(payload).encode())
+        if path == "/config":
+            data = {"limits": {}, "exclusive": self.gate}
+            if self.block is not None:
+                data["server"] = self.block
+            return Response(200, {"content-type": "application/json"}, json.dumps(data).encode())
+        if path in ("/runners", "/compilers"):
+            entries = [dict(e) for e in (self.runners if path == "/runners" else self.compilers)]
+            if query and query.get("fresh") and self.fresh is not None:
+                if self.fresh == "unauthorised":
+                    return Response(401, {}, b'{"detail": "Not authenticated"}')
+                for e in entries:
+                    e["fresh"] = True
+            return Response(200, {"content-type": "application/json"}, json.dumps(entries).encode())
+        return Response(404, {"content-type": "application/json"}, b'{"detail": "Not Found"}')
+
+
+class Unreachable:
+    """A transport factory whose server never answers."""
+
+    def __call__(self, server, token=None, timeout=None):
+        self.url = server.url
+        return self
+
+    def request(self, *args, **kwargs):
+        from qrosetta_cli.errors import CliError, Exit
+        raise CliError(f"No answer from {self.url}.", Exit.UNREACHABLE, "unreachable", hint="qrosetta status")
