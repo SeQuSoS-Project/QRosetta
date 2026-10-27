@@ -74,8 +74,10 @@ no two backends draw the same shot sequence. Any change the API makes to the cir
 is listed with an `API:` prefix in `preprocessing_applied`, and each dispatched circuit is
 written to the RO-Crate.
 
-The server keeps each finished job's untruncated report for 30 to 40 minutes (jobs older
-than 30 minutes are removed by a sweep every 10 minutes): `GET /jobs/{job_id}/report` returns
+The server keeps each finished job's untruncated report for `QROSETTA_JOB_TTL_SEC`: 24 hours in
+the local stack, 30 minutes by default otherwise (`GET /config` `limits.job_ttl_sec`; a sweep
+every 10 minutes removes older jobs). Recreating the API container, which `qrosetta start` does
+after a rebuild, removes every job; save a run to keep it. `GET /jobs/{job_id}/report` returns
 it as JSON and `POST /jobs/{job_id}/export` builds the RO-Crate from it. The copy sent to the
 browser omits statevectors of circuits over 14 qubits. `POST /export` builds a crate from a
 report in the request body, for runs loaded from history; every request body is limited to
@@ -263,12 +265,12 @@ tasks run `stop`, `remove` and `status`.
 
 ### Deploying a shared server
 
-A local stack needs none of this. The project's own hosted instance runs in `kubernetes` mode on
-CSC Rahti, with the frontend on Google Cloud Run:
+A local stack needs none of this. These scripts deploy the authors' own instance (`kubernetes`
+mode on CSC Rahti, frontend on Google Cloud Run) and name its hosts and namespace; adapt them
+for another cluster:
 
 ```bash
 ./scripts/rahti_push.sh [namespace] [service ...]   # CSC Rahti (OpenShift)
-./scripts/deploy.sh                                 # GCP Cloud Run: API
 ./scripts/deploy_frontend.sh                        # GCP Cloud Run: frontend
 ```
 
@@ -281,7 +283,7 @@ the manifests, and waits for the rollout.
 cd rosetta-api
 pip install -r requirements.txt -r tests/requirements.txt
 pip install ../shared
-PYTHONPATH=.:../shared pytest tests/unit/
+PYTHONPATH=.:../shared pytest tests/unit/ -n auto
 ```
 
 `PYTHONPATH` includes `../shared` so the working copy of `qrosetta_commons` is tested even
@@ -317,7 +319,8 @@ run them; see the README there.
 
 - Only Nginx is publicly reachable; runners expose no ports and the API is not on the public
   network.
-- All containers run as an unprivileged `appuser`.
+- The API, runner and compiler containers run as an unprivileged `appuser`. In the nginx
+  container the master process runs as root (the stock image) and the workers as `nginx`.
 - Passwords are hashed with bcrypt and never logged or stored in plaintext; sessions are JWT.
 - Every endpoint that reads or writes user data requires authentication and filters by the
   authenticated user.
@@ -356,6 +359,8 @@ adapters were corrected after it. Use the newest release.
 
 Apache License 2.0 (`LICENSE`). Bundled benchmark circuits and other third-party files keep their
 own licences, listed in `THIRD_PARTY_NOTICES.md`.
+RO-Crates the server builds declare their contents under CC BY 4.0 (the crate's `#license`
+entity).
 
 ## Citing
 
