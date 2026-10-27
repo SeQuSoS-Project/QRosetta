@@ -6,7 +6,8 @@ worker's resident memory is read every ``POLL_SEC``; above ``settings.PREP_MAX_M
 after ``settings.PREP_TIMEOUT_SEC``, the worker is killed and the call raises
 ``PreparationLimitExceeded``. A worker that exits during a call raises
 ``PreparationWorkerFailed``. The next call starts a new worker. An exception raised by
-``func`` is raised in the caller with the same type and message. ``func`` and its arguments
+``func`` is raised in the caller with the same type and message, apart from the order in which
+the message lists the items of a set. ``func`` and its arguments
 are pickled, so ``func`` must be a module-level function. The worker returns freed heap
 memory to the system after a call that leaves it more than ``TRIM_ABOVE_MIB`` above its
 starting size, and sets its OOM score to the maximum so that the kernel, when the container
@@ -101,12 +102,38 @@ def _picklable(value) -> bool:
         return False
 
 
+def _sets_in_original_order(copy, exc: BaseException) -> None:
+    """Give ``copy`` the set objects of ``exc`` wherever an argument or attribute holds an equal
+    set: an unpickled set can list the same items in another order."""
+    def same_set(value, original):
+        return isinstance(value, (set, frozenset)) and type(original) is type(value) and value == original
+
+    original = vars(exc)
+    for name, value in vars(copy).items():
+        if name in original and same_set(value, original[name]):
+            vars(copy)[name] = original[name]
+    if len(copy.args) == len(exc.args):
+        copy.args = tuple(o if same_set(v, o) else v for v, o in zip(copy.args, exc.args))
+
+
+def _same_exception(copy, exc: BaseException) -> bool:
+    """True when ``copy`` has the type and message of ``exc``, its sets listed in the order of
+    those of ``exc``."""
+    if type(copy) is not type(exc):
+        return False
+    try:
+        _sets_in_original_order(copy, exc)
+        return str(copy) == str(exc)
+    except Exception:
+        return False
+
+
 def _round_trips(candidate, exc: BaseException) -> bool:
     try:
         copy = pickle.loads(pickle.dumps(candidate))
     except Exception:
         return False
-    return type(copy) is type(exc) and str(copy) == str(exc)
+    return _same_exception(copy, exc)
 
 
 def _portable(exc: BaseException):
@@ -117,8 +144,13 @@ def _portable(exc: BaseException):
         return exc
     args = exc.args if _picklable(exc.args) else tuple(str(a) for a in exc.args)
     state = {k: (v if _picklable(v) else None) for k, v in vars(exc).items()}
+    try:
+        local = _rebuilt_exception(type(exc), args, state)
+        kept = str(local) == message
+    except Exception:
+        kept = False
     copy = _ExceptionCopy(type(exc), args, state)
-    if _round_trips(copy, exc):
+    if kept and _round_trips(copy, local):
         return copy
     return PreparationFailed(f"{type(exc).__name__}: {message}")
 

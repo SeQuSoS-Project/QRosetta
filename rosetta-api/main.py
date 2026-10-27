@@ -9,6 +9,7 @@ from routers import circuits
 from routers import health
 from routers.errors import document_route_errors, register_error_handlers
 from routers.rate_limit import RateLimitHeaders
+from routers.same_origin import RefuseCrossSite
 from routers.security_headers import SecurityHeaders
 from db.database import engine
 from db.migrate import upgrade_database
@@ -61,11 +62,11 @@ async def lifespan(app: FastAPI):
     cleanup_task.cancel()
 
 # default_response_class=JSONResponse serialises response models with json.dumps
-# (allow_nan=False, so a NaN is a 500, not null); strict_content_type=False reads a body sent
-# without Content-Type as JSON. DESIGN_DECISIONS.md, "Web framework versions".
+# (allow_nan=False, so a NaN is a 500, not null); strict_content_type=True reads a body as JSON
+# only with a JSON Content-Type. DESIGN_DECISIONS.md, "Web framework versions".
 app = FastAPI(title="Quantum Rosetta API", version=settings.PLATFORM_VERSION, lifespan=lifespan,
               docs_url=None, redoc_url=None, default_response_class=JSONResponse,
-              strict_content_type=False)
+              strict_content_type=True)
 
 app.state.limiter = limiter
 register_error_handlers(app)
@@ -143,6 +144,7 @@ app.add_middleware(
 
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(RateLimitHeaders)
+app.add_middleware(RefuseCrossSite)
 app.add_middleware(SecurityHeaders)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
