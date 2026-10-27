@@ -13,6 +13,7 @@ import services.storage as storage  # noqa: E402
 from routers import benchmark, export  # noqa: E402
 from services.exporter import ExportContext, build_ro_crate  # noqa: E402
 from services.job_manager import ACTIVE_JOBS, _STATEVECTOR_PLACEHOLDER  # noqa: E402
+from services.security import limiter  # noqa: E402
 
 QASM = 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[1];\nh q[0];\n'
 
@@ -69,7 +70,7 @@ def test_job_export_uses_server_copy_with_dispatched_circuits():
     ACTIVE_JOBS["job-x"] = {"status": "completed", "target": "local", "results": {},
                             "full_results": full, "finished_at": 0}
     app = FastAPI()
-    app.state.limiter = export.limiter
+    app.state.limiter = limiter
     app.include_router(export.router)
     app.include_router(benchmark.router)
     client = TestClient(app)

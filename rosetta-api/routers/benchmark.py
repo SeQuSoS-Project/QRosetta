@@ -14,7 +14,7 @@ from services.validator import (require_bypass_permission, validate_runner_confi
 from services.preparation_limits import bundled_prep_problem
 from schemas import QasmPayload, MeasuredQasmPayload, BatchPayload, JobStatusResponse
 from schemas.reports import JobReport, JobStatus
-from services.security import limiter
+from services.security import limiter, run_rate_limit
 from services.availability import require_available
 from services.job_store import JOB_NOT_FOUND, file_chunks, report_json_file
 from services.compilation import validate_compilers
@@ -106,7 +106,7 @@ _RUN_ERRORS = responses(400, BYPASS_401, 413, 422, 503)
 
 
 @router.post("/compare", response_model=JobStatusResponse, responses=_RUN_ERRORS)
-@limiter.limit(settings.RUN_RATE_LIMIT)
+@run_rate_limit
 async def compare_circuits_endpoint(request: Request, payload: QasmPayload, background_tasks: BackgroundTasks, user=Depends(get_optional_user)):
     """Dispatch one OpenQASM 2.0 circuit for an exact statevector comparison across the
     simulator fleet. Runs in the background; poll GET /jobs/{job_id} for the result, which
@@ -140,7 +140,7 @@ async def compare_circuits_endpoint(request: Request, payload: QasmPayload, back
     return _job_envelope(job_id)
 
 @router.post("/compare_measured", response_model=JobStatusResponse, responses=_RUN_ERRORS)
-@limiter.limit(settings.RUN_RATE_LIMIT)
+@run_rate_limit
 async def compare_measured_circuits_endpoint(request: Request, payload: MeasuredQasmPayload, background_tasks: BackgroundTasks, user=Depends(get_optional_user)):
     """Dispatch one OpenQASM 2.0 circuit for a shot-based measurement comparison across the
     simulator fleet. Runs in the background; poll GET /jobs/{job_id} for the result, which
@@ -206,7 +206,7 @@ def _validate_batch_tasks(payload: BatchPayload) -> None:
 
 
 @router.post("/run_batch_suite", response_model=JobStatusResponse, responses=_RUN_ERRORS)
-@limiter.limit(settings.RUN_RATE_LIMIT)
+@run_rate_limit
 async def run_batch_suite_endpoint(request: Request, payload: BatchPayload, background_tasks: BackgroundTasks, user=Depends(get_optional_user)):
     """Dispatch a list of circuits (presets, bundled benchmark circuits, or user-supplied
     QASM) across the simulator fleet in a single job, in either statevector or measured mode.

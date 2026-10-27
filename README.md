@@ -388,7 +388,8 @@ run them; see the README there.
 - Every endpoint that reads or writes user data requires authentication and filters by the
   authenticated user.
 - Circuit size, gate count, qubit count, upload size, and run fan-out are all capped
-  server-side; public endpoints are rate-limited.
+  server-side; public endpoints are rate-limited per signed-in account, else per client
+  address, with a per-address ceiling on runs, exports and rendering.
 - All `requirements.txt` files pin exact versions, with a `requirements.lock` alongside.
 
 ## Contributors

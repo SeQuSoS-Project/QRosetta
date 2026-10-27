@@ -14,7 +14,7 @@ from services.circuit_resolver import RoundTripIntegrityError
 from services.quirk_converter import QUIRK_MAX_QUBITS, QuirkUnsupported, quirk_url
 from services.quickload import quickload_sets
 from config import settings
-from services.security import limiter
+from services.security import run_rate_limit
 from routers.errors import responses
 from schemas.listings import (AlgorithmList, ExampleList, ExampleText, MqtIndex, QasmText,
                               QasmbenchIndex)
@@ -58,7 +58,7 @@ async def get_example(name: str):
 
 
 @router.post("/generate_circuit", responses={200: {"model": QasmText, "description": "The generated circuit."}, **responses((400, "Unknown algorithm, or a qubit count outside its range or over max_qubits_measured."))})
-@limiter.limit(settings.RUN_RATE_LIMIT)
+@run_rate_limit
 async def generate_circuit_endpoint(request: Request, payload: GenerateCircuitPayload):
     """Build one preset circuit's OpenQASM 2.0 text server-side, without running it."""
     if payload.qubits > settings.MAX_QUBITS_MEASURED:
@@ -75,7 +75,7 @@ async def generate_circuit_endpoint(request: Request, payload: GenerateCircuitPa
         raise HTTPException(status_code=500, detail="Circuit generation failed")
 
 @router.post("/visualize/quirk", response_model=VisualizerResponse, responses=responses((400, "The circuit is refused at submit, declares more than 16 qubits, or uses reset, classical control or a gate after a measurement on the same qubit, or its drawing exceeds the memory or time limit of circuit preparation.")))
-@limiter.limit(settings.RUN_RATE_LIMIT)
+@run_rate_limit
 async def visualize_quirk(request: Request, payload: QasmPayload):
     """Convert an OpenQASM 2.0 circuit of at most 16 qubits into a URL that opens it in Quirk
     (https://algassert.com/quirk), an interactive browser-based circuit visualizer. Every gate
@@ -116,7 +116,7 @@ async def list_qasmbench():
     return benchmark_library.list_qasmbench()
 
 @router.get("/benchmarks/mqt", responses={200: {"model": QasmText, "description": "The circuit."}, **responses((400, "Qubit count over max_qubits_measured."), (404, "No bundled MQT Bench circuit for that algorithm and qubit count."))})
-@limiter.limit(settings.RUN_RATE_LIMIT)
+@run_rate_limit
 async def get_mqt_bench(request: Request, algorithm: str, qubits: int = 3):
     """Fetch one bundled MQT Bench circuit's OpenQASM 2.0 text, by algorithm name and qubit
     count (see GET /benchmarks/mqt/list for the available combinations)."""
@@ -132,7 +132,7 @@ async def get_mqt_bench(request: Request, algorithm: str, qubits: int = 3):
         raise HTTPException(status_code=500, detail="Benchmark circuit could not be loaded")
 
 @router.get("/benchmarks/qasmbench", responses={200: {"model": QasmText, "description": "The circuit."}, **responses((400, "Invalid circuit name."), (404, "No bundled QASMBench circuit has that name."))})
-@limiter.limit(settings.RUN_RATE_LIMIT)
+@run_rate_limit
 async def get_qasmbench(request: Request, circuit: str):
     """Fetch one bundled QASMBench circuit's OpenQASM 2.0 text, by name (see GET
     /benchmarks/qasmbench/list for the available names)."""

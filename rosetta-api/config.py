@@ -40,6 +40,9 @@ class Settings(BaseSettings):
                                     "https://github.com/SeQuSoS-Project/QRosetta").rstrip("/")
 
     RUN_RATE_LIMIT: str = os.getenv("QROSETTA_RUN_RATE_LIMIT", "10/minute")
+    RUN_RATE_LIMIT_PER_ADDRESS: str = os.getenv("QROSETTA_RUN_RATE_LIMIT_PER_ADDRESS", "60/minute")
+    RENDER_RATE_LIMIT: str = os.getenv("QROSETTA_RENDER_RATE_LIMIT", "120/minute")
+    RENDER_RATE_LIMIT_PER_ADDRESS: str = os.getenv("QROSETTA_RENDER_RATE_LIMIT_PER_ADDRESS", "240/minute")
     PLAN_RATE_LIMIT: str = os.getenv("QROSETTA_PLAN_RATE_LIMIT", "120/minute")
     LOGIN_RATE_LIMIT: str = os.getenv("QROSETTA_LOGIN_RATE_LIMIT", "10/minute")
     REGISTER_RATE_LIMIT: str = os.getenv("QROSETTA_REGISTER_RATE_LIMIT", "5/minute")

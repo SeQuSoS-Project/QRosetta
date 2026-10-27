@@ -2,7 +2,7 @@
 reading the 60 s availability cache.
 
 Only a signed-in account or the local lifecycle token may ask, at most FRESH_RATE_LIMIT times a
-minute per client. A probe round younger than REUSE_SEC is served again. A service with a
+minute per account (all holders of the lifecycle token count as one client). A probe round younger than REUSE_SEC is served again. A service with a
 dispatch in flight is not probed (``reason`` "busy"). The round takes the run gate as a shared
 dispatch only when that needs no wait; while an exclusive run holds or waits for the gate,
 the last cached entries are served with ``fresh`` false and ``reason`` "exclusive_run".

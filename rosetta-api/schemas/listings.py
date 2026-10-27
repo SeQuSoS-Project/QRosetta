@@ -83,6 +83,9 @@ class Limits(_Open):
     max_plan_request_bytes: int
     plan_rate_limit: str
     run_rate_limit: str
+    run_rate_limit_per_address: str
+    render_rate_limit: str
+    render_rate_limit_per_address: str
     login_rate_limit: str
     register_rate_limit: str
     access_token_expire_sec: int

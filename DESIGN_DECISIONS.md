@@ -724,6 +724,12 @@ Compilers are separate from the simulators: their output is a circuit, which is 
 
 *Evidence (2026-10-07).* The API keyed on X-Real-IP, which the router passed through from the caller, and the hosted frontend set it to its own peer, so every visitor through that frontend shared one key.
 
+### Rate-limit keys
+
+*Rule.* A request whose bearer token has this server's signature, an unexpired `exp`, `iat`, `sub` and an integer `uid` is counted as `account:<uid>`; one carrying the local lifecycle token as `lifecycle`; every other request, including one with an expired, foreign or unsigned token, as `address:<client address>` ([`rosetta-api/services/security.py`](rosetta-api/services/security.py) `rate_limit_key`). The key function reads no database: a token of an account deactivated or deleted after it was issued keeps its account's count until it expires (30 minutes). Sign-in, registration and `POST /shared/circuits` are counted per client address only. Runs, exports, circuit lookups (every `limits.run_rate_limit` route) and the two publication render routes also count against a ceiling per client address, `limits.run_rate_limit_per_address` (60 a minute) and `limits.render_rate_limit_per_address` (240 a minute); a request must be within both, and the account's own limit is counted first, so an account over its limit does not use the ceiling. Counters are per route (`key_style="endpoint"`), not per URL. X-RateLimit-* report the limit with the fewest requests left. Fresh probes (`?fresh=true`) count per account, the lifecycle token as one client. The exclusive-run slot stays per client address. ([`rosetta-api/tests/unit/test_account_rate_limits.py`](rosetta-api/tests/unit/test_account_rate_limits.py))
+
+*Evidence (2026-10-28).* Users behind one NAT shared every limit. Reading the account from the database on every limited request would block the event loop (the key function is synchronous) for at most one extra budget per deactivated account for at most 30 minutes; the signature check costs 14 µs per request against 3 µs for the address alone. Without the ceiling, registering accounts (5 a minute per address) would multiply an address's run budget without bound. Before this, slowapi's default `key_style="url"` counted each path separately, so `/jobs/<id>/export` and `/jobs/<id>/publication/render` had a separate budget per job id.
+
 ### Name fields
 
 *Rule.* One combined validator per name type (`label_type`), never nested. A version-independent code-point list; blank names are refused.

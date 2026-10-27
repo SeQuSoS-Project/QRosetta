@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 import schemas
-from services.security import limiter
+from services.security import limiter, render_rate_limit
 from services.publication import ParameterError, UnknownArtifact, list_artifacts, render_artifact
 from services.publication.theme import MIME_TYPES
 from services.publication.view_listing import views_listing
@@ -147,7 +147,7 @@ async def job_publication_artifacts(request: Request, job_id: str,
     (400, "No report given, a runner key of the wrong form, a format or parameter the artifact "
           f"does not take, or {_SUPPLIED_400}."),
     _UNKNOWN_ARTIFACT)})
-@limiter.limit("120/minute")
+@render_rate_limit
 async def publication_render(request: Request, payload: schemas.PublicationRenderRequest):
     """Render a single publication figure (svg/png/pdf) or table with its view's ``params``
     from the report in the request body (subject to the 1 MB upload limit) and stream the
@@ -164,7 +164,7 @@ async def publication_render(request: Request, payload: schemas.PublicationRende
 
 @router.post("/jobs/{job_id}/publication/render", response_class=StreamingResponse,
              responses={**_RENDERED, **responses(_JOB_400, _JOB_404, _JOB_409)})
-@limiter.limit("120/minute")
+@render_rate_limit
 async def job_publication_render(request: Request, job_id: str,
                                  payload: schemas.PublicationJobRenderRequest):
     """Render a single publication figure or table from the server's copy of a finished
