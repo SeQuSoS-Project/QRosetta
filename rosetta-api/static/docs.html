@@ -1659,8 +1659,8 @@
                     ordinary job for an experiment bundle).
                 </p>
                 <p>
-                    Run, export, render and lookup routes are rate-limited per client address
-                    (<code>limits.run_rate_limit</code> in <code>GET /config</code> for runs, exports and circuit lookups, 10 a minute by default; rendering 120 a minute; full-report and bundle downloads and share-link reads 30 a minute; creating a share link 20 a minute). Each
+                    Run, export, render, lookup and account routes are rate-limited per client address
+                    (<code>limits.run_rate_limit</code> in <code>GET /config</code> for runs, exports and circuit lookups, 10 a minute by default; rendering 120 a minute; full-report and bundle downloads and share-link reads 30 a minute; creating a share link 20 a minute; signing in, <code>POST /auth/token</code>, <code>limits.login_rate_limit</code>, 10 a minute by default, counting failed attempts; registering, <code>POST /auth/register</code>, <code>limits.register_rate_limit</code>, 5 a minute by default). Each
                     response of a limited route carries <code>X-RateLimit-Limit</code>,
                     <code>X-RateLimit-Remaining</code> and <code>X-RateLimit-Reset</code> (Unix time); a 429
                     adds <code>Retry-After</code> in seconds. The exclusive-run 429 sends
