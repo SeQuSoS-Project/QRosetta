@@ -271,7 +271,20 @@ export async function handleRegisterSubmit() {
     }
 }
 
-/** Sign out; the signed-out account's results and saved runs leave the screen. */
+/** Sign out on the server, which then refuses every earlier token of the account on any
+ * device, and on this page. The page signs out even when the server cannot be reached. */
+export async function signOut() {
+    if (getState().authToken) {
+        try {
+            await fetch(`${BASE_URL}/auth/logout`, { method: 'POST', headers: getAuthHeaders() });
+        } catch (e) {
+            console.error("Sign-out request failed", e);
+        }
+    }
+    handleLogout();
+}
+
+/** Sign out on this page; the signed-out account's results and saved runs leave the screen. */
 export function handleLogout() {
     const hadFocus = document.getElementById('user-profile')?.contains(document.activeElement);
     _setToken(null);

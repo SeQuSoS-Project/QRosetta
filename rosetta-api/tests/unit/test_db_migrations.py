@@ -1,10 +1,11 @@
-"""Schema migrations (db/migrate.py, migrations/): the baseline equals db/models.py, a new
-database is created at head, a database from before Alembic (today's, an older one, v1.0.0's)
+"""Schema migrations (db/migrate.py, migrations/): the baseline equals db/models.py apart from
+the columns later revisions add, a new database is created at head, a database from before Alembic (today's, an older one, v1.0.0's)
 is brought to the baseline and stamped with its rows kept, an added revision applies, and
 concurrent starts do not race."""
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -43,17 +44,29 @@ def _diff_against_models(engine):
         return compare_metadata(MigrationContext.configure(conn), Base.metadata)
 
 
-def _ddl(metadata, dialect):
+ADDED_AFTER_BASELINE = {"users": {"tokens_valid_after"}}
+
+
+def _ddl(metadata, dialect, leave_out=None):
     statements = set()
     for table in metadata.sorted_tables:
-        statements.add(str(CreateTable(table).compile(dialect=dialect)).strip())
+        create = str(CreateTable(table).compile(dialect=dialect)).strip()
+        for column in (leave_out or {}).get(table.name, ()):
+            create, n = re.subn(rf"\n\t{column} [^\n]*", "", create)
+            assert n == 1, (table.name, column)
+        statements.add(create)
         statements |= {str(CreateIndex(i).compile(dialect=dialect)).strip() for i in table.indexes}
     return statements
 
 
 @pytest.mark.parametrize("dialect", [sqlite.dialect(), postgresql.dialect()], ids=["sqlite", "postgresql"])
 def test_baseline_emits_the_same_ddl_as_the_models(dialect):
-    assert _ddl(_baseline_metadata(MIGRATIONS_DIR), dialect) == _ddl(Base.metadata, dialect)
+    assert _ddl(_baseline_metadata(MIGRATIONS_DIR), dialect) == _ddl(Base.metadata, dialect, ADDED_AFTER_BASELINE)
+
+
+def _pre_alembic_schema(engine):
+    """The schema a database created by create_all before migrations has: the baseline's."""
+    _baseline_metadata(MIGRATIONS_DIR).create_all(bind=engine)
 
 
 def test_a_new_database_is_created_at_head(tmp_path):
@@ -72,21 +85,21 @@ def test_models_and_migrations_agree(tmp_path):
 
 
 def _seed(engine, *, share_link=True):
-    Session = sessionmaker(bind=engine)
-    with Session() as db:
-        user = models.User(email="kept@example.org", hashed_password="x")
-        db.add(user)
-        db.flush()
-        circuit = models.SavedCircuit(user_id=user.id, name="bell", qasm_string="OPENQASM 2.0;")
-        db.add(circuit)
-        db.flush()
-        run = models.RunHistory(user_id=user.id, circuit_id=circuit.id, s3_object_key="runs/a.json", run_name="r")
-        db.add(run)
-        db.flush()
+    """One row per table, written through the baseline's columns, so the rows fit a database at
+    the baseline as well as one at head."""
+    tables = _baseline_metadata(MIGRATIONS_DIR).tables
+    with engine.begin() as conn:
+        user_id = conn.execute(tables["users"].insert().values(
+            email="kept@example.org", hashed_password="x", auth_provider="local", is_active=True)).inserted_primary_key[0]
+        circuit_id, run_id = str(uuid.uuid4()), str(uuid.uuid4())
+        conn.execute(tables["saved_circuits"].insert().values(
+            id=circuit_id, user_id=user_id, name="bell", qasm_string="OPENQASM 2.0;"))
+        conn.execute(tables["run_histories"].insert().values(
+            id=run_id, user_id=user_id, circuit_id=circuit_id, s3_object_key="runs/a.json", run_name="r"))
         if share_link:
-            db.add(models.ShareLink(token_hash="0" * 64, user_id=user.id, run_id=run.id, label="lecture",
-                                    expires_at=datetime.now(timezone.utc) + timedelta(days=1)))
-        db.commit()
+            conn.execute(tables["share_links"].insert().values(
+                id=str(uuid.uuid4()), token_hash="0" * 64, user_id=user_id, run_id=run_id, label="lecture",
+                expires_at=datetime.now(timezone.utc) + timedelta(days=1)))
 
 
 def _counts(engine):
@@ -97,7 +110,7 @@ def _counts(engine):
 
 def test_a_database_from_before_migrations_is_stamped_and_keeps_its_rows(tmp_path):
     engine = _engine(tmp_path)
-    Base.metadata.create_all(bind=engine)
+    _pre_alembic_schema(engine)
     _seed(engine)
     before = _counts(engine)
     assert upgrade_database(engine) == {"from": None, "to": HEAD, "adopted": []}
@@ -107,7 +120,7 @@ def test_a_database_from_before_migrations_is_stamped_and_keeps_its_rows(tmp_pat
 
 def test_an_older_schema_gets_its_missing_nullable_columns_and_indexes_before_stamping(tmp_path):
     engine = _engine(tmp_path)
-    Base.metadata.create_all(bind=engine)
+    _pre_alembic_schema(engine)
     with engine.begin() as conn:
         conn.execute(text("DROP INDEX ix_run_histories_job_id"))
         conn.execute(text("ALTER TABLE share_links DROP COLUMN label"))
@@ -239,7 +252,7 @@ def test_concurrent_starts_migrate_once(tmp_path, pre_alembic):
     db_path = tmp_path / "shared.sqlite"
     if pre_alembic:
         engine = _engine(tmp_path, "shared.sqlite")
-        Base.metadata.create_all(bind=engine)
+        _pre_alembic_schema(engine)
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE share_links DROP COLUMN label"))
         engine.dispose()
@@ -268,7 +281,9 @@ def test_offline_postgresql_script_with_an_encoded_password():
     assert "CREATE TABLE users (\n    id SERIAL NOT NULL" in sql
     assert "expires_at TIMESTAMP WITH TIME ZONE NOT NULL" in sql
     assert "CREATE UNIQUE INDEX ix_share_links_token_hash ON share_links (token_hash);" in sql
-    assert f"INSERT INTO alembic_version (version_num) VALUES ('{HEAD}')" in sql
+    assert "INSERT INTO alembic_version (version_num) VALUES ('0001')" in sql
+    assert "ALTER TABLE users ADD COLUMN tokens_valid_after TIMESTAMP WITH TIME ZONE" in sql
+    assert f"UPDATE alembic_version SET version_num='{HEAD}'" in sql
     assert sql.rstrip().endswith("COMMIT;")
 
 

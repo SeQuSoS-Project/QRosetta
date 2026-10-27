@@ -34,7 +34,9 @@ def client_address(request) -> str:
     return get_remote_address(request)
 
 
+import math
 import secrets
+import time
 from datetime import datetime, timedelta, timezone
 import bcrypt
 import jwt
@@ -60,6 +62,8 @@ def _resolve_secret_key() -> str:
 SECRET_KEY = _resolve_secret_key()
 
 ALGORITHM = "HS256"
+
+REQUIRED_CLAIMS = ("exp", "iat", "sub")
 
 BCRYPT_MAX_PASSWORD_BYTES = 72
 
@@ -90,8 +94,23 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
 
 
 def access_token_for(user, expires_delta: timedelta | None = None) -> str:
-    """Access token bound to ``user``: ``sub`` is the email and ``uid`` the account id."""
+    """Access token bound to ``user``: ``sub`` is the email and ``uid`` the account id. Waits
+    until the account's ``tokens_valid_after`` has passed (at most one second after a sign-out),
+    so the new token's ``iat`` is not before it."""
+    valid_after = getattr(user, "tokens_valid_after", None)
+    if valid_after is not None:
+        wait = _as_utc(valid_after).timestamp() - time.time()
+        if wait > 0:
+            time.sleep(wait)
     return create_access_token({"sub": user.email, "uid": user.id}, expires_delta)
+
+
+def decode_access_token(token: str) -> dict:
+    """Claims of a token signed by this server with HS256 and carrying ``exp``, ``iat`` and
+    ``sub``; jwt.PyJWTError otherwise (bad signature, another algorithm, expired, ``iat`` in the
+    future, a required claim missing). Header fields such as ``kid`` and ``jku`` are not read."""
+    return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM],
+                      options={"require": list(REQUIRED_CLAIMS)})
 
 
 RATE_KEY_STATE = "qrosetta_rate_key"
@@ -117,8 +136,7 @@ def _signed_account_id(token: str):
     """The ``uid`` of a token with a valid signature, ``exp``, ``iat`` and ``sub``, else None.
     The database is not read."""
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM],
-                             options={"require": ["exp", "iat", "sub"]})
+        payload = decode_access_token(token)
     except jwt.PyJWTError:
         return None
     uid = payload.get("uid")
@@ -204,18 +222,29 @@ def _as_utc(value: datetime) -> datetime:
 
 
 def token_matches_account(payload: dict, user) -> bool:
-    """True when the token's ``uid`` is ``user.id`` and the account existed when the token
-    was issued (``created_at`` at most TOKEN_CLOCK_TOLERANCE_SEC after ``iat``). A token
-    without ``uid`` or ``iat`` does not match."""
+    """True when the token's ``uid`` is ``user.id``, the account existed when the token was
+    issued (``created_at`` at most TOKEN_CLOCK_TOLERANCE_SEC after ``iat``), and the token was
+    issued at or after the account's ``tokens_valid_after`` (set by sign-out and password
+    change). A token without ``uid`` or ``iat`` does not match."""
     uid, iat = payload.get("uid"), payload.get("iat")
     if isinstance(uid, bool) or not isinstance(uid, int) or uid != user.id:
         return False
     if isinstance(iat, bool) or not isinstance(iat, (int, float)):
         return False
+    valid_after = getattr(user, "tokens_valid_after", None)
+    if valid_after is not None and iat < _as_utc(valid_after).timestamp():
+        return False
     created = getattr(user, "created_at", None)
     if created is None:
         return True
     return _as_utc(created).timestamp() <= iat + TOKEN_CLOCK_TOLERANCE_SEC
+
+
+def revoke_tokens(user) -> datetime:
+    """Refuse every token issued to ``user`` so far: ``tokens_valid_after`` becomes the next
+    whole second, since ``iat`` is in whole seconds. The caller commits."""
+    user.tokens_valid_after = datetime.fromtimestamp(math.floor(time.time()) + 1, timezone.utc)
+    return user.tokens_valid_after
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -242,18 +271,19 @@ def get_optional_user(token: str | None = Depends(_optional_oauth2_scheme), db: 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     """The account a bearer token was issued to. 401 for an invalid or expired token, one
     whose ``uid`` is not the account now registered under its email, or one issued before
-    that account was created; 403 for a deactivated account."""
+    that account was created or before its last sign-out or password change; 403 for a
+    deactivated account."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        if email is None:
-            raise credentials_exception
+        payload = decode_access_token(token)
     except jwt.PyJWTError:
+        raise credentials_exception
+    email = payload.get("sub")
+    if not isinstance(email, str):
         raise credentials_exception
     user = db.query(models.User).filter(models.User.email == email).first()
     if user is None or not token_matches_account(payload, user):

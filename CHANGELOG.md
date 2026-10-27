@@ -264,6 +264,9 @@ limits, the counts keys and the statistics all changed (see Changed).
 - Only the account that submitted a job may save it, and a saved run may link only the caller's
   own circuit.
 - Share-link tokens are stored as SHA-256 hashes and travel in the URL fragment and a POST body.
+- Logout (page, `qrosetta logout`, `POST /auth/logout`) ends every session of the account on the
+  server; `POST /auth/password` changes the password and ends earlier sessions too. Tokens must
+  carry `exp`, `iat` and `sub`. A sign-in for an unknown email takes as long as a wrong password.
 - Kubernetes runner and compiler pods mount no service-account token.
 - Dependencies in the API image raised for advisories: anyio 4.14.2, certifi 2026.10.19, pyasn1
   0.6.4, urllib3 2.8.0, requests 2.33.1, Starlette 1.7.0; PyJWT replaces python-jose

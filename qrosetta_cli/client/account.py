@@ -200,24 +200,62 @@ def cmd_login(ctx):
     )
 
 
+def _sign_out_on_server(ctx, server, token):
+    """POST /auth/logout with `token`: True when the server now refuses the account's earlier
+    tokens (or already refused this one), False when it was not reached or refused the request,
+    None when it does not offer sign-out."""
+    try:
+        conn = Conn(ctx, with_token=False)
+    except CliError as exc:
+        if exc.reason in ("server_too_old", "api_levels"):
+            return None
+        output.warn(f"{server.url} was not reached ({exc.message}); the token stays valid until it expires.",
+                    "server_not_reached")
+        return False
+    if not conn.has("logout"):
+        return None
+    try:
+        resp = conn.transport.request("POST", "/auth/logout", headers={"Authorization": f"Bearer {token}"})
+    except CliError as exc:
+        output.warn(f"{server.url} was not reached ({exc.message}); the token stays valid until it expires.",
+                    "server_not_reached")
+        return False
+    if resp.status in (204, 401):
+        return True
+    output.warn(
+        f"{server.url} answered HTTP {resp.status} to the sign-out; the token stays valid until it expires.",
+        "logout_refused",
+    )
+    return False
+
+
 def cmd_logout(ctx):
     server = ctx.server()
     path = servers.credentials_path(ctx.cfg, ctx.env)
     store = _read_store(path)
     entry = store.pop(origin(server.url), None)
+    revoked = None
     if entry is None:
         output.result(f"No token stored for {server.url}.")
     else:
+        token = entry.get("token") if isinstance(entry, dict) else None
+        if isinstance(token, str) and token:
+            revoked = _sign_out_on_server(ctx, server, token)
         _write_store(path, store, ctx.env)
         expiry = _parse_iso(entry.get("expires_at")) if isinstance(entry, dict) else None
-        output.result(f"Signed out of {server.url}: the stored token is deleted.")
-        output.progress(
-            "The server cannot revoke a token; a copy of it stays valid "
-            f"{_when(expiry) if expiry else 'until it expires'}."
-        )
+        if revoked:
+            output.result(f"Signed out of {server.url}: the server refuses every earlier token of this account, "
+                          "on every device, and the stored token is deleted.")
+        else:
+            output.result(f"Signed out of {server.url}: the stored token is deleted.")
+        if revoked is None:
+            output.progress(
+                "This server cannot revoke a token; a copy of it stays valid "
+                f"{_when(expiry) if expiry else 'until it expires'}."
+            )
     if ctx.env.get("QROSETTA_TOKEN"):
         output.warn("QROSETTA_TOKEN is still set; commands keep sending it until it is unset.", "env_token")
-    return Result(0, {"server": server.url, "removed": entry is not None, "credentials": path})
+    return Result(0, {"server": server.url, "removed": entry is not None, "revoked": revoked, "credentials": path})
 
 
 def cmd_whoami(ctx):

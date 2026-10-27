@@ -1,4 +1,4 @@
-"""Account routes: register, token login, logout, and account deletion."""
+"""Account routes: register, token login, sign-out, password change, and account deletion."""
 
 from datetime import timedelta
 from typing import Annotated
@@ -75,10 +75,45 @@ def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    return _token_response(user)
+
+
+def _token_response(user) -> dict:
     access_token = access_token_for(
         user, expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES))
     return {"access_token": access_token, "token_type": "bearer",
             "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60}
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT, responses=responses(
+    (401, "The token is invalid, expired, or was issued before the account's last sign-out or password change."),
+    (403, "The account is deactivated.")))
+@limiter.limit(settings.LOGIN_RATE_LIMIT, key_func=rate_limit_key)
+def logout(request: Request, current_user: models.User = Depends(get_current_user),
+           db: Session = Depends(get_db)):
+    """Sign the account out everywhere: every access token issued to it until now, on any
+    browser or command line, is refused from now on (401). Signing in again issues a new token.
+    Limited per account at the sign-in rate (``limits.login_rate_limit``)."""
+    accounts.sign_out(db, current_user)
+    return None
+
+
+@router.post("/password", response_model=schemas.Token, responses=responses(
+    (401, "The token is invalid, expired, or was issued before the account's last sign-out or password change."),
+    (403, "The current password does not match, or the account is deactivated."), 422))
+@limiter.limit(settings.LOGIN_RATE_LIMIT, key_func=rate_limit_key)
+def change_password(request: Request, body: schemas.PasswordChange,
+                    current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Replace the account's password. The body carries the current password (403 when it does
+    not match, nothing changed) and the new one (422 under 8 characters or over 72 bytes).
+    Every access token issued before the change is refused from then on; the answer carries a
+    new token for the caller. Limited per account at the sign-in rate
+    (``limits.login_rate_limit``); every attempt counts."""
+    try:
+        accounts.change_password(db, current_user, body.current_password, body.new_password)
+    except accounts.InvalidCredentials:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Incorrect password")
+    return _token_response(current_user)
 
 
 @router.get("/me", response_model=schemas.UserResponse)

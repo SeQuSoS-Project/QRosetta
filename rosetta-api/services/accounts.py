@@ -1,4 +1,4 @@
-"""Account registration, authentication and deletion.
+"""Account registration, authentication, sign-out, password change and deletion.
 
 Raises the exceptions below; routers/auth.py maps them to HTTP status codes.
 """
@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 import db.models as models
 from qrosetta_commons.helpers import get_logger
-from services.security import get_password_hash, verify_password
+from services.security import get_password_hash, revoke_tokens, verify_password
 from services.share_links import delete_links
 from services.storage import delete_run_reports
 
@@ -30,6 +30,19 @@ class AccountDeactivated(ValueError):
 
 class StoredReportsNotDeleted(RuntimeError):
     """The account's stored run reports could not be removed, so nothing was deleted."""
+
+
+_UNKNOWN_ACCOUNT_HASH = None
+
+
+def _unknown_account_hash() -> str:
+    """A bcrypt hash of a random password, made once per process, checked when no account
+    matches, so a sign-in for an unknown email costs one bcrypt check like a wrong password."""
+    global _UNKNOWN_ACCOUNT_HASH
+    if _UNKNOWN_ACCOUNT_HASH is None:
+        import secrets
+        _UNKNOWN_ACCOUNT_HASH = get_password_hash(secrets.token_urlsafe(32))
+    return _UNKNOWN_ACCOUNT_HASH
 
 
 def _find_by_email(db: Session, email: str):
@@ -68,6 +81,7 @@ def authenticate(db: Session, email: str, password: str) -> models.User:
     """
     user = _find_by_email(db, email)
     if not user or not user.hashed_password:
+        verify_password(password, _unknown_account_hash())
         raise InvalidCredentials(email)
     if not verify_password(password, user.hashed_password):
         raise InvalidCredentials(email)
@@ -80,6 +94,22 @@ def confirm_password(user: models.User, password: str) -> None:
     """InvalidCredentials unless ``password`` is the account's current password."""
     if not user.hashed_password or not verify_password(password, user.hashed_password):
         raise InvalidCredentials(user.email)
+
+
+def sign_out(db: Session, user: models.User) -> None:
+    """Refuse every access token issued to the account so far, on every device."""
+    revoke_tokens(user)
+    db.commit()
+
+
+def change_password(db: Session, user: models.User, current_password: str, new_password: str) -> None:
+    """Replace the password after checking the current one (InvalidCredentials otherwise) and
+    refuse every access token issued so far."""
+    confirm_password(user, current_password)
+    user.hashed_password = get_password_hash(new_password)
+    revoke_tokens(user)
+    db.commit()
+    db.refresh(user)
 
 
 def delete_account(db: Session, user: models.User) -> None:

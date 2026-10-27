@@ -241,3 +241,60 @@ def test_whoami_reads_the_environment_token_and_its_expiry(env, capsys):
     assert run(["whoami", "--json"], dict(env, QROSETTA_TOKEN=token), api) == Exit.AUTH
     d = doc(capsys)
     assert d["error"]["reason"] == "token_expired" and d["error"]["hint"] == "qrosetta login"
+
+
+def _stored(tmp_path, token="stored.to.ken"):
+    creds = tmp_path / "state" / "qrosetta" / "credentials.json"
+    creds.parent.mkdir(parents=True, exist_ok=True)
+    creds.write_text(json.dumps({"http://localhost:8080": {"token": token, "expires_at": "2033-05-18T03:33:20Z"}}))
+    os.chmod(creds, 0o600)
+    return creds
+
+
+class _HeaderApi(Api):
+    """Api that also records the Authorization header of each request."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.authorizations = []
+
+    def request(self, method, path, query=None, body=None, headers=None, timeout=None):
+        self.authorizations.append((method, path, (headers or {}).get("Authorization")))
+        return super().request(method, path, query=query, body=body, headers=headers, timeout=timeout)
+
+
+@pytest.mark.parametrize("status, revoked", [(204, True), (401, True), (500, False)])
+def test_logout_signs_out_on_a_server_that_offers_it(env, tmp_path, capsys, status, revoked):
+    creds = _stored(tmp_path)
+    api = _HeaderApi(block={"platform_version": "2.0.0", "api_levels": [1, 1], "features": {**FEATURES, "logout": 1}},
+                     routes={("POST", "/auth/logout"): (status, {}, {})})
+    assert run(["logout", "--json"], env, api) == 0
+    d = doc(capsys)
+    assert d["data"]["removed"] is True and d["data"]["revoked"] is revoked
+    assert ("POST", "/auth/logout", "Bearer stored.to.ken") in api.authorizations
+    assert json.loads(creds.read_text()) == {}
+    assert "stored.to.ken" not in json.dumps(d)
+    assert [w["reason"] for w in d["warnings"]] == ([] if revoked else ["logout_refused"])
+
+
+def test_logout_on_a_server_without_sign_out_only_deletes_the_token(env, tmp_path, capsys):
+    creds = _stored(tmp_path)
+    api = _HeaderApi()
+    assert run(["logout"], env, api) == 0
+    assert "cannot revoke a token" in capsys.readouterr().err
+    assert not any(path == "/auth/logout" for _, path, _ in api.authorizations)
+    assert json.loads(creds.read_text()) == {}
+
+
+def test_logout_deletes_the_token_when_the_server_is_not_reached(env, tmp_path, capsys):
+    from qrosetta_cli.client.transport import Transient
+    creds = _stored(tmp_path)
+
+    class Down(Api):
+        def request(self, method, path, query=None, body=None, headers=None, timeout=None):
+            raise Transient("Connection refused.", Exit.UNREACHABLE, "unreachable")
+
+    assert run(["logout", "--json"], env, Down()) == 0
+    d = doc(capsys)
+    assert d["data"]["revoked"] is False and json.loads(creds.read_text()) == {}
+    assert [w["reason"] for w in d["warnings"]] == ["server_not_reached"]
