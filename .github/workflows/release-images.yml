@@ -9,11 +9,21 @@
 # their provenance and attaches an SPDX SBOM (syft) as an attestation, writes each image's
 # source notice (artifact notice-<id>, scripts/release/image_notice.py) for the release page, and
 # writes the release manifest with their digests and image ids into the wheel. With the variable
-# unset no image is pushed.
+# unset no image is pushed. No image is pushed either unless the openapi job has written the API
+# description from the tagged code (scripts/release/release_assets.py openapi).
 #
 # The wheel of a final version tag (X.Y.Z, X.Y.Z.postN) goes to PyPI, and only once the images
 # are published. The wheel of a pre-release tag (PEP 440 aN, bN, rcN or .devN) goes to TestPyPI
 # and never to PyPI.
+#
+# In the public repository, once the wheel is uploaded, release-assets collects the files of the
+# release page (wheel, sdist, an SPDX SBOM and a source notice per image, openapi-<version>.json,
+# the image list with its verify commands, SHA256SUMS) and attests their provenance
+# (qrosetta-<version>.intoto.jsonl). For a final version, publish-release then creates the GitHub
+# release as a draft, attaches those files, checks the attached copies against SHA256SUMS and
+# only then publishes it (immutable releases accept no asset after publication). A pre-release tag
+# gets no GitHub release, so Zenodo, which archives published GitHub releases, never sees it.
+# A final tag stops in plan when CHANGELOG.md has no dated section for its version.
 #
 # workflow_dispatch is a dry run: the same image builds and self-tests, then a wheel versioned
 # <release>.dev<run number>, with a manifest that names no image digest, goes to TestPyPI.
@@ -80,6 +90,43 @@ jobs:
       - name: Images a release builds
         id: images
         run: echo "images=$(python scripts/release/make_manifest.py --list-images)" >> "$GITHUB_OUTPUT"
+
+      - name: Release notes
+        if: github.event_name == 'push' && steps.version.outputs.prerelease == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: python scripts/release/release_assets.py notes --version "$VERSION" --check
+
+  openapi:
+    name: openapi.json
+    needs: plan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.10"
+
+      - name: Install the API's locked dependencies
+        run: python -m pip install -r rosetta-api/requirements.lock
+
+      - name: Write the API description
+        run: |
+          mkdir -p openapi
+          python scripts/release/release_assets.py openapi --out "openapi/openapi-$VERSION.json"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: openapi
+          path: openapi/
+          if-no-files-found: error
 
   images:
     name: image ${{ matrix.id }}
@@ -151,7 +198,7 @@ jobs:
 
   publish-images:
     name: publish image ${{ matrix.id }}
-    needs: [plan, images]
+    needs: [plan, images, openapi]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.QROSETTA_PUBLISH_IMAGES == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -256,6 +303,17 @@ jobs:
           sbom-path: sbom.spdx.json
           push-to-registry: true
 
+      - name: SBOM for the release page
+        run: |
+          mkdir -p sbom
+          cp sbom.spdx.json "sbom/sbom-$ID.spdx.json"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbom-${{ matrix.id }}
+          path: sbom/
+          if-no-files-found: error
+
       - name: Record the digest and image id
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
@@ -272,8 +330,8 @@ jobs:
 
   wheel:
     name: wheel and sdist
-    needs: [plan, images, publish-images]
-    if: ${{ !cancelled() && needs.images.result == 'success' && (needs.publish-images.result == 'success' || needs.publish-images.result == 'skipped') }}
+    needs: [plan, images, openapi, publish-images]
+    if: ${{ !cancelled() && needs.images.result == 'success' && needs.openapi.result == 'success' && (needs.publish-images.result == 'success' || needs.publish-images.result == 'skipped') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -335,6 +393,20 @@ jobs:
           path: dist/
           if-no-files-found: error
 
+      - name: Image list
+        if: needs.publish-images.result == 'success'
+        run: |
+          mkdir -p image-list
+          python scripts/release/release_assets.py images --manifest qrosetta_cli/release/manifest.json \
+            --out "image-list/qrosetta-$VERSION-images.txt"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: needs.publish-images.result == 'success'
+        with:
+          name: image-list
+          path: image-list/
+          if-no-files-found: error
+
   publish-testpypi:
     name: publish to TestPyPI (dry run or pre-release)
     needs: [plan, wheel]
@@ -381,3 +453,147 @@ jobs:
           python3 -c 'import json, sys; m = json.load(open("manifest.json")); sys.exit(0 if m["images_published"] else "the release manifest names no published images")'
 
       - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+
+  release-assets:
+    name: release assets
+    needs: [plan, openapi, publish-images, wheel, publish-testpypi, publish-pypi]
+    if: ${{ !cancelled() && github.repository == 'SeQuSoS-Project/QRosetta' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && needs.openapi.result == 'success' && needs.publish-images.result == 'success' && (needs.publish-pypi.result == 'success' || needs.publish-testpypi.result == 'success') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # keyless signature of the release files' provenance attestation
+      attestations: write  # store that attestation
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      IMAGES: ${{ needs.plan.outputs.images }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: assets
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: openapi
+          path: assets
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: image-list
+          path: assets
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: sbom-*
+          path: assets
+          merge-multiple: true
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: notice-*
+          path: assets
+          merge-multiple: true
+
+      - name: Check and sum the files
+        run: |
+          cd assets
+          n=$(printf '%s' "$IMAGES" | python3 -c 'import json, sys; print(len(json.load(sys.stdin)))')
+          for pattern in 'sbom-*.spdx.json' 'NOTICE-*.txt'; do
+            found=$(find . -maxdepth 1 -name "$pattern" | wc -l)
+            if [ "$found" -ne "$n" ]; then
+              echo "::error::$found files $pattern for $n images"
+              exit 1
+            fi
+          done
+          for name in "qrosetta-$VERSION-py3-none-any.whl" "qrosetta-$VERSION.tar.gz" \
+                      "openapi-$VERSION.json" "qrosetta-$VERSION-images.txt"; do
+            [ -f "$name" ] || { echo "::error::$name is missing"; exit 1; }
+          done
+          sha256sum -- * > ../SHA256SUMS
+          mv ../SHA256SUMS SHA256SUMS
+          cat SHA256SUMS
+
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        id: attest
+        with:
+          subject-checksums: assets/SHA256SUMS
+
+      - name: Provenance bundle
+        env:
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: cp "$BUNDLE" "assets/qrosetta-$VERSION.intoto.jsonl"
+
+      - name: Verify every file against the bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd assets
+          while read -r _ name; do
+            gh attestation verify "$name" --bundle "qrosetta-$VERSION.intoto.jsonl" -R "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release-images.yml" > /dev/null
+            echo "verified $name"
+          done < SHA256SUMS
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-assets
+          path: assets/
+          if-no-files-found: error
+
+  publish-release:
+    name: GitHub release (final versions)
+    needs: [plan, release-assets, publish-pypi]
+    if: ${{ !cancelled() && github.repository == 'SeQuSoS-Project/QRosetta' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && needs.plan.outputs.prerelease == 'false' && needs.publish-pypi.result == 'success' && needs.release-assets.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # create the draft release, attach its files and publish it
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-assets
+          path: assets
+
+      - name: A final version, and the files are the attested ones
+        run: |
+          if [ "$(python3 scripts/release/check_dist.py --prerelease "$VERSION")" != false ]; then
+            echo "::error::$VERSION is a pre-release; it gets no GitHub release"
+            exit 1
+          fi
+          cd assets
+          sha256sum -c SHA256SUMS
+
+      - name: Release notes
+        run: python3 scripts/release/release_assets.py notes --version "$VERSION" --repository "$GITHUB_REPOSITORY" --out notes.md
+
+      - name: Draft
+        run: |
+          state=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null || echo none)
+          if [ "$state" = false ]; then
+            echo "::error::release $TAG is already published"
+            exit 1
+          fi
+          if [ "$state" = true ]; then
+            gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes
+          fi
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
+            --title "Quantum Rosetta $VERSION" --notes-file notes.md --generate-notes assets/*
+
+      - name: Check the draft's files
+        run: |
+          mkdir attached
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir attached
+          diff <(cd assets && ls) <(cd attached && ls)
+          cd attached
+          sha256sum -c ../assets/SHA256SUMS
+          cmp "qrosetta-$VERSION.intoto.jsonl" "../assets/qrosetta-$VERSION.intoto.jsonl"
+
+      - name: Publish
+        run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest

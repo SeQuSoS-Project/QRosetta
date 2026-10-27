@@ -3,7 +3,9 @@ pushed, every built image is scanned before anything is published, the publish j
 environments, only publish jobs get an OIDC token, the PyPI upload needs published images and a
 final version (a pre-release tag goes to TestPyPI only), every published image gets an SBOM
 attestation and its image id recorded, every image carries the labels qrosetta recognises it by,
-and every third-party action is pinned to a commit."""
+every third-party action is pinned to a commit, and the GitHub release of a final version (never
+of a pre-release, a dry run or the internal repository) is drafted with its attested files,
+checked, and only then published."""
 
 import os
 import re
@@ -46,14 +48,19 @@ def test_triggers_are_version_tags_and_manual_dry_runs(wf):
 def test_only_publish_jobs_get_an_oidc_token(wf):
     assert wf["permissions"] == {"contents": "read"}
     with_token = {name for name, job in wf["jobs"].items() if (job.get("permissions") or {}).get("id-token") == "write"}
-    assert with_token == {"publish-images", "publish-testpypi", "publish-pypi"}
+    assert with_token == {"publish-images", "publish-testpypi", "publish-pypi", "release-assets"}
     for name, job in wf["jobs"].items():
         if name == "scan-results":
             assert job["permissions"] == {"contents": "read", "security-events": "write", "actions": "read"}
+        elif name == "release-assets":
+            assert job["permissions"] == {"contents": "read", "id-token": "write", "attestations": "write"}
         elif not name.startswith("publish"):
             assert job["permissions"] == {"contents": "read"}, name
     assert wf["jobs"]["publish-testpypi"]["permissions"] == {"id-token": "write"}
     assert wf["jobs"]["publish-pypi"]["permissions"] == {"id-token": "write"}
+    assert wf["jobs"]["publish-release"]["permissions"] == {"contents": "write"}
+    writers = {name for name, job in wf["jobs"].items() if (job.get("permissions") or {}).get("contents") == "write"}
+    assert writers == {"publish-release"}
 
 
 def test_packages_write_only_where_images_are_pushed_and_only_when_enabled(wf):
@@ -238,3 +245,99 @@ def test_every_image_is_scanned_before_anything_is_published(wf):
     assert results["strategy"]["matrix"] == {"include": "${{ fromJSON(needs.plan.outputs.images) }}"}
     sarif = next(s for s in results["steps"] if s.get("uses", "").startswith("github/codeql-action/upload-sarif@"))
     assert sarif["with"]["category"] == "trivy-${{ matrix.id }}"
+
+
+PUBLIC_ONLY = "github.repository == 'SeQuSoS-Project/QRosetta'"
+TAG_PUSH = "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')"
+
+
+def _step(job, prefix):
+    return next(s for s in _steps(job) if s.get("uses", "").startswith(prefix) or s.get("name") == prefix)
+
+
+def test_a_final_tag_needs_a_dated_changelog_section_before_anything_is_built(wf):
+    plan = wf["jobs"]["plan"]
+    notes = next(s for s in _steps(plan) if s.get("name") == "Release notes")
+    assert notes["if"] == "github.event_name == 'push' && steps.version.outputs.prerelease == 'false'"
+    assert 'release_assets.py notes --version "$VERSION" --check' in notes["run"]
+    assert all("plan" in (job.get("needs") or []) for name, job in wf["jobs"].items() if name != "plan")
+
+
+def test_no_image_is_pushed_before_the_api_description_is_written(wf):
+    job = wf["jobs"]["openapi"]
+    assert job["permissions"] == {"contents": "read"} and "if" not in job
+    assert "-r rosetta-api/requirements.lock" in _runs(job)
+    assert 'release_assets.py openapi --out "openapi/openapi-$VERSION.json"' in _runs(job)
+    assert _step(job, "actions/upload-artifact@")["with"]["name"] == "openapi"
+    assert "openapi" in wf["jobs"]["publish-images"]["needs"]
+    assert "needs.openapi.result == 'success'" in wf["jobs"]["wheel"]["if"]
+
+
+def test_every_published_image_leaves_its_sbom_and_notice_for_the_release_page(wf):
+    job = wf["jobs"]["publish-images"]
+    names = {s["with"]["name"] for s in _steps(job) if s.get("uses", "").startswith("actions/upload-artifact@")}
+    assert {"sbom-${{ matrix.id }}", "notice-${{ matrix.id }}", "digest-${{ matrix.id }}"} <= names
+    assert 'cp sbom.spdx.json "sbom/sbom-$ID.spdx.json"' in _runs(job)
+    wheel = wf["jobs"]["wheel"]
+    listing = next(s for s in _steps(wheel) if s.get("name") == "Image list")
+    assert listing["if"] == "needs.publish-images.result == 'success'"
+    assert "release_assets.py images --manifest qrosetta_cli/release/manifest.json" in listing["run"]
+
+
+def test_release_assets_are_collected_attested_and_verified_in_the_public_repository_only(wf):
+    job = wf["jobs"]["release-assets"]
+    for clause in (PUBLIC_ONLY, TAG_PUSH, "needs.publish-images.result == 'success'",
+                   "(needs.publish-pypi.result == 'success' || needs.publish-testpypi.result == 'success')"):
+        assert clause in job["if"], clause
+    assert "workflow_dispatch" not in job["if"]
+    downloads = [s["with"] for s in _steps(job) if s.get("uses", "").startswith("actions/download-artifact@")]
+    assert {d.get("name") or d.get("pattern") for d in downloads} == {"dist", "openapi", "image-list", "sbom-*",
+                                                                      "notice-*"}
+    assert all(d["path"] == "assets" for d in downloads)
+    assert not any(s.get("uses", "").startswith("actions/checkout@") for s in _steps(job)), \
+        "the job holding an OIDC token runs no code from the checkout"
+    assert "pip install" not in _runs(job)
+    attest = _step(job, "actions/attest-build-provenance@")
+    assert attest["with"] == {"subject-checksums": "assets/SHA256SUMS"}
+    runs = _runs(job)
+    assert 'cp "$BUNDLE" "assets/qrosetta-$VERSION.intoto.jsonl"' in runs
+    assert "gh attestation verify" in runs and '--bundle "qrosetta-$VERSION.intoto.jsonl"' in runs
+    assert "--signer-workflow" in runs
+    for name in ("qrosetta-$VERSION-py3-none-any.whl", "qrosetta-$VERSION.tar.gz", "openapi-$VERSION.json",
+                 "qrosetta-$VERSION-images.txt", "sbom-*.spdx.json", "NOTICE-*.txt"):
+        assert name in runs, name
+    assert _step(job, "actions/upload-artifact@")["with"]["name"] == "release-assets"
+
+
+def test_the_github_release_is_a_draft_until_its_files_are_checked(wf):
+    job = wf["jobs"]["publish-release"]
+    for clause in (PUBLIC_ONLY, TAG_PUSH, "needs.plan.outputs.prerelease == 'false'",
+                   "needs.publish-pypi.result == 'success'", "needs.release-assets.result == 'success'"):
+        assert clause in job["if"], clause
+    assert "workflow_dispatch" not in job["if"] and "prerelease == 'true'" not in job["if"]
+    assert {"plan", "release-assets", "publish-pypi"} <= set(job["needs"])
+    names = [s.get("name") for s in _steps(job)]
+    order = [names.index(n) for n in ("A final version, and the files are the attested ones", "Release notes",
+                                      "Draft", "Check the draft's files", "Publish")]
+    assert order == sorted(order)
+    final = _step(job, "A final version, and the files are the attested ones")["run"]
+    assert 'check_dist.py --prerelease "$VERSION")" != false' in final and "sha256sum -c SHA256SUMS" in final
+    draft = _step(job, "Draft")["run"]
+    assert "gh release create" in draft and "--draft" in draft and "--verify-tag" in draft
+    assert "--notes-file notes.md --generate-notes assets/*" in draft
+    assert "already published" in draft
+    check = _step(job, "Check the draft's files")["run"]
+    assert "gh release download" in check and "sha256sum -c ../assets/SHA256SUMS" in check
+    assert "diff <(cd assets && ls) <(cd attached && ls)" in check
+    publish = _step(job, "Publish")["run"]
+    assert "--draft=false" in publish
+    creates = [name for name, j in wf["jobs"].items() if "gh release" in _runs(j)]
+    assert creates == ["publish-release"]
+
+
+def test_release_note_categories_end_with_a_catch_all():
+    config = yaml.safe_load((REPO / ".github" / "release.yml").read_text())["changelog"]
+    categories = config["categories"]
+    assert categories[-1]["labels"] == ["*"]
+    assert all(c["labels"] and c["title"] for c in categories)
+    assert "skip-changelog" in config["exclude"]["labels"]
