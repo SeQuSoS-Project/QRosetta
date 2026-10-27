@@ -10,7 +10,7 @@ import os
 import httpx
 import json
 
-BASE_URL = os.environ.get("QROSETTA_BASE_URL", "http://localhost")
+BASE_URL = os.environ.get("QROSETTA_BASE_URL", "http://localhost:8080")
 
 BELL_QASM_SV = """\
 OPENQASM 2.0;

@@ -8,7 +8,7 @@ services:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
     container_name: nginx-reverse-proxy
     ports:
-      - "80:80"
+      - "${QROSETTA_HTTP_BIND:-127.0.0.1:8080}:80"
     depends_on:
       api:
         condition: service_healthy

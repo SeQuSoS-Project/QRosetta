@@ -135,10 +135,17 @@ cp .env.example .env      # the cloud credentials in it are needed only for depl
 
 The first build takes a while: it compiles dependencies for 16 separate containers.
 
-- Web UI — http://localhost. The page opens with a GHZ circuit ready; press **Run**, then
+- Web UI — http://localhost:8080. The page opens with a GHZ circuit ready; press **Run**, then
   read the Summary tab. The guide's Quickstart (`docs.html#quickstart`) walks through a first
   statevector and a first measured run.
-- API reference — http://localhost/docs (Swagger) and `docs.html` for the written guide
+- API reference — http://localhost:8080/docs (Swagger) and `docs.html` for the written guide
+
+nginx is published on `127.0.0.1:8080`, so only this machine can reach it. In local mode any
+client may skip the circuit-size, gate-count and experiment-size limits (`bypass_limits`), so
+publish it on other interfaces only on a network you trust: set
+`QROSETTA_HTTP_BIND` in `.env` or the environment, for example `QROSETTA_HTTP_BIND=0.0.0.0:8080`
+(every IPv4 interface) or `QROSETTA_HTTP_BIND=192.0.2.10:80` (one address; ports below 1024
+need a rootful engine). The integration tests read the address from `QROSETTA_BASE_URL`.
 
 `SECRET_KEY` must be set whenever `EXECUTION_MODE` is not `local`; the API refuses to start
 without it. Locally, leaving it empty generates a random key per process.
