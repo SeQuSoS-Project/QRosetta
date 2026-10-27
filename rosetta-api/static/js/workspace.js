@@ -80,7 +80,8 @@ function _requestLimits() {
     const st = getState();
     return { maxRequestBytes: st.maxRequestBytes, maxQasmSize: st.maxQasmSize,
              maxExperimentCells: st.maxExperimentCells, maxBatchTasks: st.maxBatchTasks,
-             prepMaxMib: st.prepMaxMib, bundledOverPrepLimit: st.bundledOverPrepLimit };
+             prepMaxMib: st.prepMaxMib, bundledOverPrepLimit: st.bundledOverPrepLimit,
+             executionMode: st.executionMode };
 }
 
 /** Bypass API Safety Limits: unticked and disabled, with a note, while the server needs a sign-in for it and there is none. */

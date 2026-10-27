@@ -189,11 +189,12 @@ _TARGET_DESCRIPTION = ("'local' or 'kubernetes'. Defaults to the server's EXECUT
                        "are dispatched according to the server's EXECUTION_MODE; the job's "
                        "'target' records the mode actually used and 'requested_target' this "
                        "value.")
-_BYPASS_DESCRIPTION = ("Skip the MAX_QASM_SIZE and MAX_QASM_GATES checks, and the playlist "
-                       "length limit (max_batch_tasks in GET /config). On a server whose "
-                       "EXECUTION_MODE is not 'local', only a request from a signed-in, active "
-                       "account may set it (bypass_limits_requires_account in GET /config); "
-                       "otherwise the request is refused with 401. The request body limit "
+_BYPASS_DESCRIPTION = ("Skip the playlist length limit (max_batch_tasks in GET /config) and, "
+                       "when the server's EXECUTION_MODE is 'local', the MAX_QASM_SIZE and "
+                       "MAX_QASM_GATES checks. On a server whose EXECUTION_MODE is not 'local', "
+                       "only a request from a signed-in, active account may set it "
+                       "(bypass_limits_requires_account in GET /config); otherwise the request "
+                       "is refused with 401. The request body limit "
                        "(max_request_bytes in GET /config), the qubit limits, the expanded-gate "
                        "and nested-gate-call limits, the circuit preparation limits, the syntax "
                        "checks and the measurement checks still apply.")

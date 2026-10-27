@@ -108,7 +108,9 @@ async def get_config():
     ``default_n_shots`` is the shot count the measured, batch and experiment endpoints use
     when ``n_shots`` is omitted. The top-level keys repeat the qubit, size and gate limits.
     ``bypass_limits_requires_account`` is true when only a signed-in, active account may set
-    bypass_limits (every execution mode except local). ``bundled_over_prep_limit`` lists the
+    bypass_limits (every execution mode except local); there it lifts the playlist and
+    experiment limits but not the circuit size and statement-count limits, which it lifts
+    only in local mode. ``bundled_over_prep_limit`` lists the
     bundled circuits (``source``, ``algorithm``, ``qubits``) whose preparation with
     preprocessing on is known to reach ``prep_max_mib``; runs that include one with
     preprocessing on are refused with 400.

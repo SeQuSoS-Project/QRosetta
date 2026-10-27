@@ -86,15 +86,27 @@ def test_signed_in_bypass_lifts_the_experiment_cap_on_a_server(client, monkeypat
     assert client.post("/experiments", json={"circuits": circuits, "bypass_limits": True}).status_code == 200
 
 
-def test_validator_honours_bypass_in_every_mode(monkeypatch):
+def test_validator_honours_bypass_for_size_and_statements_only_locally(monkeypatch):
     from services.validator import validate_request
-    monkeypatch.setattr(settings, "EXECUTION_MODE", "kubernetes")
     monkeypatch.setattr(settings, "MAX_QASM_GATES", 3)
     qasm = H + "qreg q[1];\n" + "x q[0];\n" * 4
-    with pytest.raises(HTTPException) as caught:
-        validate_request(qasm)
-    assert caught.value.status_code == 400
+    monkeypatch.setattr(settings, "EXECUTION_MODE", "local")
     validate_request(qasm, bypass_limits=True)
+    monkeypatch.setattr(settings, "EXECUTION_MODE", "kubernetes")
+    for bypass in (False, True):
+        with pytest.raises(HTTPException) as caught:
+            validate_request(qasm, bypass_limits=bypass)
+        assert caught.value.status_code == 400 and "gate statements" in caught.value.detail
+
+
+def test_signed_in_bypass_on_a_server_keeps_the_statement_limit(client, monkeypatch):
+    monkeypatch.setattr(settings, "EXECUTION_MODE", "kubernetes")
+    monkeypatch.setattr(settings, "MAX_QASM_GATES", 3)
+    _sign_in(client)
+    qasm = H + "qreg q[1];\n" + "x q[0];\n" * 4
+    r = client.post("/compare", json={"qasm_string": qasm, "bypass_limits": True})
+    assert r.status_code == 400 and "gate statements" in r.json()["detail"]
+    assert not client.started
 
 
 def test_config_says_whether_bypass_needs_an_account(client, monkeypatch):

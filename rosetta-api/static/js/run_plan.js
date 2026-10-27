@@ -145,11 +145,12 @@ function _bundledPrepared(payload) {
  * circuit-axis runs than allowed, a playlist with more circuits than allowed, a circuit text over
  * the size limit, a bundled circuit whose preparation with preprocessing on is known to exceed the
  * server's memory limit for it, or a request body over the upload limit. bypass_limits lifts the
- * first three as the server does (the payload carries it only when the server accepts it); the
- * preparation and body limits always apply.
+ * first three as the server does (the payload carries it only when the server accepts it, and the
+ * circuit size only in local mode); the preparation and body limits always apply.
  * @param {PlannedRun[]} runs
  * @param {{ maxRequestBytes?: number, maxQasmSize?: number, maxExperimentCells?: number, maxBatchTasks?: number,
- *           prepMaxMib?: number, bundledOverPrepLimit?: { source: string, algorithm: string, qubits: number }[] }} limits
+ *           prepMaxMib?: number, bundledOverPrepLimit?: { source: string, algorithm: string, qubits: number }[],
+ *           executionMode?: string|null }} limits
  * @returns {string[]}
  */
 export function runLimitProblems(runs, limits = {}) {
@@ -182,7 +183,7 @@ export function runLimitProblems(runs, limits = {}) {
                     + `${Math.floor(limits.maxExperimentCells / axes)} circuits at a time, or choose preprocessing On or Off.`);
             }
         }
-        if (limits.maxQasmSize && !bypass) {
+        if (limits.maxQasmSize && !(bypass && limits.executionMode === 'local')) {
             for (const [what, qasm] of _literalCircuits(p)) {
                 const n = charCount(qasm);
                 if (n > limits.maxQasmSize) {

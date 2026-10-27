@@ -346,12 +346,11 @@ def validate_request(qasm: str, mode: str = "statevector", bypass_limits: bool =
     the built-in semantics), or (with
     ``apply_preprocessing``) a '^' parameter expression the API cannot evaluate.
 
-    ``bypass_limits`` skips the size and gate-count checks; the routes allow it only as
-    ``require_bypass_permission`` does. Gate statements are counted by
-    ``count_gate_statements``.
+    ``bypass_limits`` skips the size and gate-count checks in local mode only. Gate
+    statements are counted by ``count_gate_statements``.
     """
     statements = None
-    if not bypass_limits:
+    if not (bypass_limits and settings.EXECUTION_MODE == "local"):
         if len(qasm) > settings.MAX_QASM_SIZE:
             raise HTTPException(
                 status_code=413,

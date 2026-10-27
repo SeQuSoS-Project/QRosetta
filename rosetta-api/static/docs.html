@@ -387,16 +387,17 @@
                         after phase 1 of both has finished. Without phases every backend runs at once. Phases
                         change which backends compete for the host at the same moment, not the per-runner
                         CPU quota.</li>
-                    <li><strong>Bypass API Safety Limits</strong> (<code>bypass_limits</code>). Skips the QASM
-                        size limit, the statement-count limit and the playlist length limit, and for an
-                        experiment the limit on circuits × preprocessing settings. The request-body limit,
-                        the qubit limits, the expanded-gate and nested-gate-call limits (which protect the
-                        runners' memory), the circuit preparation limits, the syntax checks and the
-                        measurement checks still apply. On a local server anyone may set it. On any other
-                        server only a signed-in account may (<code>bypass_limits_requires_account</code> in
-                        <code>GET /config</code>): a request that sets it without a valid sign-in is refused
-                        with HTTP 401, and while you are signed out the page disables the option and says
-                        so. The report records it.</li>
+                    <li><strong>Bypass API Safety Limits</strong> (<code>bypass_limits</code>). Skips the playlist
+                        length limit and, for an experiment, the limit on circuits × preprocessing settings;
+                        on a local server it also skips the QASM size limit and the statement-count limit.
+                        The request-body limit, the qubit limits, the expanded-gate and nested-gate-call
+                        limits (which protect the runners' memory), the circuit preparation limits, the
+                        syntax checks and the measurement checks still apply, and outside local mode so do
+                        the QASM size and statement-count limits. On a local server anyone may set it. On any
+                        other server only a signed-in account may (<code>bypass_limits_requires_account</code>
+                        in <code>GET /config</code>): a request that sets it without a valid sign-in is
+                        refused with HTTP 401, and while you are signed out the page disables the option and
+                        says so. The report records it.</li>
                     <li><strong>Apply SDK Preprocessing</strong>: on or off (<code>apply_preprocessing</code>), or both, which runs an experiment (<a href="#batch">Several circuits, several runs, and experiments</a>); see
                         <a href="#preprocessing">Circuit preprocessing</a>.</li>
                 </ul>
