@@ -110,7 +110,7 @@ def normalise(schema, components, seen=frozenset()):
         return node
     node = {}
     types = schema.get("type")
-    if types is None and "const" in schema:
+    if "const" in schema:
         node["enum"] = [schema["const"]]
     if isinstance(types, str):
         types = [types]
