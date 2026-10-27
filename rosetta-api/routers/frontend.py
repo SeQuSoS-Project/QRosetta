@@ -7,11 +7,10 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from config import settings
 from schemas import AgreementThresholds
 from schemas.auth import EMAIL_MAX_LENGTH, PASSWORD_MAX_BYTES, PASSWORD_MIN_CHARS
-from services.availability import runner_availability
-from services.compilation import COMPILER_SERVICES
 from services.preparation_limits import bundled_over_prep_limit
 from services.request_defaults import request_defaults
 from services.server_info import server_block
+from services.service_listing import compiler_rows, runner_rows
 
 router = APIRouter()
 
@@ -61,27 +60,12 @@ async def get_runners():
     via its GET /capabilities, or (Kubernetes, or a runner without that endpoint)
     ``requires_gpu`` on a deployment without QROSETTA_GPU_AVAILABLE. Probes are cached
     for 60 s. ``device`` is what the runner's /capabilities reported, else None.
+    ``precision`` and ``qubit_ordering`` are ``{"statevector": ..., "measured": ...}``: the
+    amplitude dtype (e.g. "complex128") and the bit-order label ("lsb" or "msb") the runner
+    declares for each endpoint; null where the runner sets it at run time, in which case
+    each result records the value used.
     """
-    services = settings.get_runner_services()
-    availability = await runner_availability()
-    result = []
-    for name, config in services.items():
-        opt_levels = config.get("optimization_levels", {})
-
-        opt_levels_str = {str(k): v for k, v in opt_levels.items()}
-        enabled = config.get("enabled", True)
-        info = availability.get(name) or {"available": False, "reason": "disabled", "device": None}
-        result.append({
-            "id": name,
-            "enabled": enabled,
-            "available": bool(enabled and info["available"]),
-            "unavailable_reason": None if (enabled and info["available"]) else (info["reason"] or "unavailable"),
-            "device": info.get("device"),
-            "requires_gpu": bool(config.get("requires_gpu", False)),
-            "max_level": max(opt_levels.keys()) if opt_levels else 0,
-            "optimization_levels": opt_levels_str,
-        })
-    return JSONResponse(content=result)
+    return JSONResponse(content=await runner_rows())
 
 @router.get("/config")
 async def get_config():
@@ -192,18 +176,4 @@ async def get_compilers():
     commit; null when no long-lived service answered, as in Kubernetes mode). A compiler
     turns a run's circuit into circuit text only; it is never simulated or compared (see
     the compilers field of the run payloads)."""
-    availability = await runner_availability(services=COMPILER_SERVICES)
-    result = []
-    for cid, svc in COMPILER_SERVICES.items():
-        enabled = svc.get("enabled", True)
-        info = availability.get(cid) or {"available": False, "reason": "disabled"}
-        result.append({
-            "id": cid,
-            "name": svc["name"],
-            "enabled": enabled,
-            "available": bool(enabled and info["available"]),
-            "unavailable_reason": None if (enabled and info["available"]) else (info["reason"] or "unavailable"),
-            "optimization_levels": {str(k): v for k, v in svc["optimization_levels"].items()},
-            "versions": info.get("versions"),
-        })
-    return JSONResponse(content=result)
+    return JSONResponse(content=await compiler_rows())
