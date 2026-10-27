@@ -47,8 +47,8 @@ def build_parser():
 
 
 def cmd_start(engine, stack, args):
-    containers = st.find_containers(engine, stack)
-    serve.check_conflicts(containers, stack)
+    containers, conflicts = st.scan(engine, stack)
+    serve.check_conflicts(engine, stack, conflicts)
     services, missing, compose_env = serve.plan_start(engine, stack, args.services)
     if missing:
         say(f"Not started (no image): {', '.join(missing)}. `qrosetta build <service>` builds one.")
@@ -56,8 +56,7 @@ def cmd_start(engine, stack, args):
         engine.env.update(compose_env)
         if engine.spawn(["up", "-d", "--no-build", *services], own_session=False).wait() != 0:
             raise CliError("`compose up` failed. `qrosetta status` shows what is running.")
-        url = serve.stack_url(engine, stack)
-        say(f"Quantum Rosetta is running at {url}" if url else "Quantum Rosetta is running.")
+        serve.announce_running(engine, stack)
         say("`qrosetta stop` puts it on standby; `qrosetta remove` removes it.")
         return 0
     if any(c.running for c in containers):

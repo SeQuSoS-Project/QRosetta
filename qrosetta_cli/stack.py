@@ -45,11 +45,8 @@ class Stack:
     services: dict
     volume_keys: list
 
-    def image_for(self, service, project=None):
-        svc = self.services[service]
-        if svc.image and project in (None, self.name):
-            return svc.image
-        return f"{project or self.name}-{service}"
+    def image_for(self, service):
+        return self.services[service].image or f"{self.name}-{service}"
 
     def core_services(self):
         """Services that publish a port, plus everything they depend on."""
@@ -109,48 +106,55 @@ def _inspect(engine, kind, ids):
         return []
 
 
-def find_containers(engine, stack):
-    """Containers of this compose project, and of any other project whose containers use this
-    stack's container names (stacks started from another checkout or an older script)."""
-    ids = engine.cli("ps", "-a", "-q", "--filter", f"label={PROJECT_LABEL}").stdout.split()
-    found = []
-    by_name = {svc.container_name: svc.name for svc in stack.services.values() if svc.container_name}
+def scan(engine, stack):
+    """(containers of this compose project, other containers that hold one of this stack's
+    container names). The second list blocks `start` and is never stopped or removed."""
+    ids = engine.cli("ps", "-a", "-q").stdout.split()
+    names = {svc.container_name for svc in stack.services.values() if svc.container_name}
+    ours, conflicts = [], []
     for item in _inspect(engine, "container", ids):
         labels = (item.get("Config") or {}).get("Labels") or {}
         name = (item.get("Name") or "").lstrip("/")
         project = labels.get(PROJECT_LABEL, "")
-        service = labels.get(SERVICE_LABEL, "")
-        if project != stack.name and by_name.get(name) != service:
+        if project != stack.name and name not in names:
             continue
         state = item.get("State") or {}
         running = bool(state.get("Running")) or state.get("Status") in ACTIVE_STATES
-        found.append(Container(id=item.get("Id", ""), name=name, project=project, service=service,
-                               running=running, pod=item.get("Pod") or ""))
-    return sorted(found, key=lambda c: (c.project != stack.name, c.project, c.name))
+        container = Container(id=item.get("Id", ""), name=name, project=project,
+                              service=labels.get(SERVICE_LABEL, ""), running=running,
+                              pod=item.get("Pod") or "")
+        (ours if project == stack.name else conflicts).append(container)
+    return sorted(ours, key=lambda c: c.name), sorted(conflicts, key=lambda c: c.name)
 
 
-def projects_of(stack, containers):
-    return sorted({stack.name} | {c.project for c in containers},
-                  key=lambda p: (p != stack.name, p))
+def find_containers(engine, stack):
+    return scan(engine, stack)[0]
 
 
-def find_pods(engine, projects, containers):
+def conflict_help(engine, stack, conflicts):
+    """Name the containers that hold this stack's names and the command that removes them."""
+    if not conflicts:
+        return ""
+    held = ", ".join(f"{c.name} ({'project ' + c.project if c.project else 'no compose project'}, "
+                     f"{'running' if c.running else 'stopped'})" for c in conflicts)
+    return (f"Containers outside project {stack.name} use this stack's container names: {held}. "
+            f"qrosetta leaves them alone. To remove them (this stops any that run): "
+            f"{engine.name} rm -f {' '.join(c.name for c in conflicts)}")
+
+
+def find_pods(engine, stack, containers):
     """Podman pods holding the stack (podman-compose creates `pod_<project>`)."""
     if engine.name != "podman":
         return []
     pods = {c.pod for c in containers if c.pod}
-    for project in projects:
-        pods.update(engine.cli("pod", "ps", "-q", "--filter", f"name=^pod_{project}$").stdout.split())
+    pods.update(engine.cli("pod", "ps", "-q", "--filter", f"name=^pod_{stack.name}$").stdout.split())
     return sorted(pods)
 
 
-def find_networks(engine, projects):
-    nets = []
-    for project in projects:
-        out = engine.cli("network", "ls", "--filter", f"label={PROJECT_LABEL}={project}",
-                         "--format", "{{.Name}}")
-        nets += [n for n in out.stdout.split() if n not in nets]
-    return nets
+def find_networks(engine, stack):
+    out = engine.cli("network", "ls", "--filter", f"label={PROJECT_LABEL}={stack.name}",
+                     "--format", "{{.Name}}")
+    return out.stdout.split()
 
 
 @dataclass
@@ -161,13 +165,14 @@ class Volume:
 
 
 def find_volumes(engine, stack):
-    """Named volumes created for this stack's volume keys by any compose project."""
+    """Named volumes this compose project created for its volume keys."""
     vols = []
     for key in stack.volume_keys:
         names = engine.cli("volume", "ls", "-q", "--filter", f"label={VOLUME_LABEL}={key}").stdout.split()
         for item in _inspect(engine, "volume", names):
             labels = item.get("Labels") or {}
-            vols.append(Volume(name=item.get("Name", ""), project=labels.get(PROJECT_LABEL, ""), key=key))
+            if labels.get(PROJECT_LABEL) == stack.name:
+                vols.append(Volume(name=item.get("Name", ""), project=stack.name, key=key))
     return vols
 
 

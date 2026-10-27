@@ -5,6 +5,14 @@ import shutil
 import subprocess
 
 
+COMPOSE_INSTALL = (
+    "With Docker, install the docker-compose-plugin package "
+    "(https://docs.docker.com/compose/install/linux/). With podman, download the docker-compose "
+    "binary for your platform from https://github.com/docker/compose/releases, save it as "
+    "~/.docker/cli-plugins/docker-compose and make it executable; `podman compose` then uses it "
+    "instead of podman-compose.")
+
+
 class CliError(Exception):
     """An error reported to the user as one message, without a traceback."""
 
@@ -90,5 +98,5 @@ class Engine:
         text = (out.stdout + out.stderr).strip()
         if out.returncode != 0 or "docker compose" not in text.lower():
             raise CliError(
-                f"`{self.name} compose` is not Docker Compose v2 ({text.splitlines()[0] if text else 'no output'}). "
-                "Install the docker-compose v2 plugin; podman uses it as its compose provider.")
+                f"qrosetta needs Docker Compose v2, and `{self.name} compose version` printed: "
+                f"{text.splitlines()[0] if text else 'nothing'}. " + COMPOSE_INSTALL)

@@ -79,20 +79,19 @@ def volume_sizes(engine):
 def stop_stack(engine, stack):
     """Stop every running container of the stack and its pods; containers, images and data stay.
     Returns the containers still running afterwards."""
-    containers = st.find_containers(engine, stack)
+    containers, conflicts = st.scan(engine, stack)
     running = [c for c in containers if c.running]
     if running:
         say(f"Stopping {len(running)} containers...")
         engine.cli("stop", *[c.name for c in running])
-    pods = st.find_pods(engine, st.projects_of(stack, containers), containers)
+    pods = st.find_pods(engine, stack, containers)
     if pods:
         engine.cli("pod", "stop", *pods)
     left = [c for c in st.find_containers(engine, stack) if c.running]
-    others = sorted({c.project for c in running if c.project != stack.name})
-    if others:
-        say(f"Also stopped containers of compose project(s) {', '.join(others)}, which use the same names.")
     if not running:
         say("Nothing was running.")
+    if conflicts:
+        say(st.conflict_help(engine, stack, conflicts))
     return left
 
 
@@ -103,10 +102,10 @@ def report_left(left, stack):
     return 1 if left else 0
 
 
-def image_plan(engine, stack, projects):
-    """Images named after the stack's services in each project, and the bytes their removal frees
-    (an image that also carries another tag is only untagged)."""
-    refs = [stack.image_for(s, p) for p in projects for s in stack.services]
+def image_plan(engine, stack):
+    """The stack's images, and the bytes their removal frees (an image that also carries another
+    tag is only untagged)."""
+    refs = [stack.image_for(s) for s in stack.services]
     found = st.find_images(engine, refs)
     names = {st.normalise_tag(r) for r in found}
     removing = {t for img in found.values() for t in img.tags if st.normalise_tag(t) in names}
@@ -127,7 +126,7 @@ def confirm_data(volumes, sizes, ask=input, tty=None):
     tty = sys.stdin.isatty() if tty is None else tty
     say("--data deletes these volumes:")
     for vol in volumes:
-        say(f"  {vol.name} ({human_bytes(sizes.get(vol.name))}, project {vol.project or '?'})")
+        say(f"  {vol.name} ({human_bytes(sizes.get(vol.name))})")
     say("They hold the local database (accounts, saved circuits, run history) and the saved run reports.")
     if not tty:
         raise CliError("--data needs a terminal to confirm; nothing was deleted.")
@@ -141,8 +140,7 @@ def confirm_data(volumes, sizes, ask=input, tty=None):
 def remove_stack(engine, stack, images=False, data=False, ask=input, tty=None):
     """Remove containers, pods and networks; with images/data also the images and volumes.
     Returns an exit status."""
-    containers = st.find_containers(engine, stack)
-    projects = st.projects_of(stack, containers)
+    containers, conflicts = st.scan(engine, stack)
     volumes = st.find_volumes(engine, stack) if data else []
     if data and volumes and not confirm_data(volumes, volume_sizes(engine), ask, tty):
         say("Kept the data volumes; nothing was removed.")
@@ -154,15 +152,15 @@ def remove_stack(engine, stack, images=False, data=False, ask=input, tty=None):
     if containers:
         say(f"Removing {len(containers)} containers...")
         engine.cli("rm", "-f", *[c.name for c in containers])
-    pods = st.find_pods(engine, projects, containers)
+    pods = st.find_pods(engine, stack, containers)
     if pods:
         engine.cli("pod", "rm", "-f", *pods)
-    nets = st.find_networks(engine, projects)
+    nets = st.find_networks(engine, stack)
     if nets:
         engine.cli("network", "rm", *nets)
     status = 0
     if images:
-        found, freed, kept = image_plan(engine, stack, projects)
+        found, freed, kept = image_plan(engine, stack)
         if found:
             say(f"Removing {len(found)} images, about {human_bytes(freed)}.")
             for img in kept:
@@ -183,4 +181,6 @@ def remove_stack(engine, stack, images=False, data=False, ask=input, tty=None):
         return 1
     kept_what = [w for w, flag in (("images", images), ("data", data)) if not flag]
     say(f"Removed containers, pods and networks{'; kept ' + ' and '.join(kept_what) if kept_what else ''}.")
+    if conflicts:
+        say(st.conflict_help(engine, stack, conflicts))
     return status

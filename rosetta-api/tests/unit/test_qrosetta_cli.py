@@ -157,15 +157,21 @@ def test_exit_action_defaults():
         serve.exit_action(None, {"QROSETTA_ON_EXIT": "delete"}, tty=True)
 
 
-def test_discovery_by_label_and_container_name(fake, tmp_path):
+def test_discovery_is_this_project_only_and_names_conflicts(fake, tmp_path):
     fake.add("rosetta-api", "api")
     fake.add("nginx-reverse-proxy", "nginx", project="oldcheckout", running=False)
+    fake.add("qiskit-runner", "", project="")
     fake.add("someone-else", "web", project="unrelated")
     fake.add("rosetta-api-copy", "api", project="unrelated")
     engine, stack = make(fake, tmp_path)
-    found = st.find_containers(engine, stack)
-    assert [(c.name, c.project) for c in found] == [("rosetta-api", "qr"), ("nginx-reverse-proxy", "oldcheckout")]
-    assert st.projects_of(stack, found) == ["qr", "oldcheckout"]
+    ours, conflicts = st.scan(engine, stack)
+    assert [c.name for c in ours] == ["rosetta-api"]
+    assert [(c.name, c.project) for c in conflicts] == [("nginx-reverse-proxy", "oldcheckout"),
+                                                       ("qiskit-runner", "")]
+    text = st.conflict_help(engine, stack, conflicts)
+    assert "nginx-reverse-proxy (project oldcheckout, stopped)" in text
+    assert "qiskit-runner (no compose project, running)" in text
+    assert text.endswith("podman rm -f nginx-reverse-proxy qiskit-runner")
     assert stack.core_services() == ["nginx", "api"]
     assert stack.resolve_service("rosetta-api") == "api"
 
@@ -190,19 +196,28 @@ def test_stop_stops_pods_on_podman(fake, tmp_path):
 
 def test_remove_keeps_images_and_data_by_default(fake, tmp_path):
     fake.add("rosetta-api", "api")
-    fake.add("nginx-reverse-proxy", "nginx", project="oldcheckout", running=False)
+    fake.add("nginx-reverse-proxy", "nginx", project="oldcheckout")
     fake.networks["oldcheckout_public_net"] = "oldcheckout"
     engine, stack = make(fake, tmp_path)
     assert actions.remove_stack(engine, stack) == 0
     assert fake.commands("stop") == [["stop", "rosetta-api"]]
-    assert fake.commands("rm") == [["rm", "-f", "nginx-reverse-proxy", "rosetta-api"]]
-    assert fake.networks == {}
+    assert fake.commands("rm") == [["rm", "-f", "rosetta-api"]]
+    assert fake.networks == {"oldcheckout_public_net": "oldcheckout"}
+    assert fake.containers["nginx-reverse-proxy"]["State"]["Running"]
     assert not fake.commands("rmi") and set(fake.volumes) == {"qr_db", "old_db"}
+
+
+def test_stop_leaves_other_projects_alone_and_says_how_to_remove_them(fake, tmp_path, capsys):
+    fake.add("rosetta-api", "api", project="oldcheckout")
+    engine, stack = make(fake, tmp_path)
+    assert actions.stop_stack(engine, stack) == []
+    assert not fake.commands("stop")
+    assert "podman rm -f rosetta-api" in capsys.readouterr().out
 
 
 def test_remove_images_untags_shared_images(fake, tmp_path, capsys):
     engine, stack = make(fake, tmp_path)
-    found, freed, kept = actions.image_plan(engine, stack, ["qr"])
+    found, freed, kept = actions.image_plan(engine, stack)
     assert set(found) == {"qr-nginx", "qr-api", "qr-qiskit_runner"}
     assert freed == 1000 and [i.ref for i in kept] == ["qr-api"]
     assert actions.remove_stack(engine, stack, images=True) == 0
@@ -216,12 +231,12 @@ def test_remove_data_needs_typed_confirmation(fake, tmp_path, capsys):
     assert actions.remove_stack(engine, stack, data=True, ask=lambda q: "yes", tty=True) == 1
     assert not fake.commands("rm") and "qr_db" in fake.volumes
     out = capsys.readouterr().out
-    assert "qr_db (32.9 MiB, project qr)" in out and "old_db" in out and "saved run reports" in out
+    assert "qr_db (32.9 MiB)" in out and "old_db" not in out and "saved run reports" in out
     with pytest.raises(CliError, match="terminal"):
         actions.remove_stack(engine, stack, data=True, tty=False)
     assert not fake.commands("rm")
     assert actions.remove_stack(engine, stack, data=True, ask=lambda q: "delete", tty=True) == 0
-    assert fake.volumes == {} and fake.containers == {}
+    assert set(fake.volumes) == {"old_db"} and fake.containers == {}
 
 
 def test_plan_start_requires_core_images(fake, tmp_path):
@@ -240,8 +255,28 @@ def test_plan_start_requires_core_images(fake, tmp_path):
 def test_start_refuses_names_held_by_another_project(fake, tmp_path):
     fake.add("rosetta-api", "api", project="oldcheckout", running=False)
     engine, stack = make(fake, tmp_path)
-    with pytest.raises(CliError, match="oldcheckout.*qrosetta remove"):
-        serve.check_conflicts(st.find_containers(engine, stack), stack)
+    with pytest.raises(CliError, match="rosetta-api \\(project oldcheckout, stopped\\).*podman rm -f rosetta-api"):
+        serve.check_conflicts(engine, stack, st.scan(engine, stack)[1])
+    factory = lambda d: Engine(fake.engine, d, run=fake)
+    (tmp_path / "docker-compose.yml").write_text("services: {}\n")
+    assert main(["start", "--detach"], checkout=str(tmp_path), engine_factory=factory) == 1
+    assert not fake.commands("rm") and not fake.commands("stop")
+
+
+def test_announce_says_whether_other_machines_can_reach_it(fake, tmp_path, capsys):
+    engine, stack = make(fake, tmp_path)
+    serve.announce_running(engine, stack)
+    out = capsys.readouterr().out
+    assert "http://localhost:8080" in out and "Published on 127.0.0.1:8080 (this machine only)" in out
+    fake.port = "0.0.0.0:8080"
+    serve.announce_running(engine, stack)
+    assert "reachable from other machines" in capsys.readouterr().out
+
+
+def test_compose_v1_or_podman_compose_is_refused_with_install_steps(tmp_path):
+    run = lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, "podman-compose version 1.2.0\n", "")
+    with pytest.raises(CliError, match="Docker Compose v2.*podman-compose version 1.2.0.*cli-plugins/docker-compose"):
+        Engine("podman", str(tmp_path), run=run).check_compose()
 
 
 @pytest.mark.parametrize("port,url", [("0.0.0.0:8080", "http://localhost:8080"),

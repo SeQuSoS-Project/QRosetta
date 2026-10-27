@@ -40,24 +40,45 @@ def exit_action(flag, env=None, tty=None):
     return "standby" if value == "ask" and not tty else value
 
 
-def stack_url(engine, stack):
-    """http://host:port of the published port, from `compose port`; None when nothing is published."""
+LOOPBACK = ("127.0.0.1", "::1", "localhost")
+
+
+def published(engine, stack):
+    """(URL, host:port as published) of the stack's published port, from `compose port`;
+    (None, None) when nothing is published."""
     for svc in stack.services.values():
         for port in svc.ports:
             target = port.get("target") if isinstance(port, dict) else None
             if not target:
                 continue
             out = engine.compose("port", svc.name, str(target))
-            host, _, number = out.stdout.strip().rpartition(":")
+            address = out.stdout.strip().splitlines()[0] if out.stdout.strip() else ""
+            host, _, number = address.rpartition(":")
             if out.returncode != 0 or not number.isdigit():
                 continue
             host = host.strip("[]")
-            if host in ("", "0.0.0.0", "::", "127.0.0.1", "::1"):
+            if host in ("", "0.0.0.0", "::") + LOOPBACK:
                 host = "localhost"
             elif ":" in host:
                 host = f"[{host}]"
-            return f"http://{host}" + ("" if number == "80" else f":{number}")
-    return None
+            return f"http://{host}" + ("" if number == "80" else f":{number}"), address
+    return None, None
+
+
+def stack_url(engine, stack):
+    return published(engine, stack)[0]
+
+
+def announce_running(engine, stack):
+    """Print the URL and the address the web server is published on."""
+    url, address = published(engine, stack)
+    if not url:
+        say("Quantum Rosetta is running.")
+        return
+    say(f"Quantum Rosetta is running at {url}")
+    host = address.rpartition(":")[0].strip("[]")
+    reach = "this machine only" if host in LOOPBACK else "reachable from other machines"
+    say(f"Published on {address} ({reach}); QROSETTA_HTTP_BIND in .env or the environment changes it.")
 
 
 def plan_start(engine, stack, requested=None, env=None):
@@ -82,13 +103,9 @@ def plan_start(engine, stack, requested=None, env=None):
     return [s for s in candidates if s not in missing], missing, extra
 
 
-def check_conflicts(containers, stack):
-    other = [c for c in containers if c.project != stack.name]
-    if other:
-        projects = ", ".join(sorted({c.project for c in other}))
-        raise CliError(f"Containers {', '.join(c.name for c in other)} belong to compose project(s) "
-                       f"{projects} and use this stack's names. `qrosetta remove` removes them "
-                       "(images and data stay).")
+def check_conflicts(engine, stack, conflicts):
+    if conflicts:
+        raise CliError(st.conflict_help(engine, stack, conflicts))
 
 
 def prompt(question, timeout=ASK_TIMEOUT_SEC, stdin=None):
@@ -177,8 +194,8 @@ class Server:
         if self.child.wait() != 0:
             raise CliError("`compose up` failed.")
         self.child = None
-        url = stack_url(self.engine, self.stack)
-        say(f"\nQuantum Rosetta is running at {url}" if url else "\nQuantum Rosetta is running.")
+        say("")
+        announce_running(self.engine, self.stack)
         say("Press Ctrl-C to stop it.\n")
 
     def _follow(self):
