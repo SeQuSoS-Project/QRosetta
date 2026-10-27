@@ -1,12 +1,22 @@
 """Builds the divergence, performance and resource reports from aggregated runner results.
 
-Agreement analysis is pairwise; no fleet-wide consensus is computed."""
+Agreement analysis is pairwise; no fleet-wide consensus is computed. Every divergence report
+records each pair's verdict and the per-backend counts (``analysis.divergence.verdicts``)."""
 
 import asyncio
 import services.analysis as comparator
+from services.analysis.divergence.verdicts import annotate_divergence_report
 from qrosetta_commons.helpers import get_logger
 
 logger = get_logger("rosetta-aggregator")
+
+
+def _with_verdicts(build, aggregated_results: list, n_shots, *args) -> dict:
+    """``build(aggregated_results, *args)`` with the pair verdicts and per-backend counts
+    recorded on it."""
+    report = build(aggregated_results, *args)
+    annotate_divergence_report(report, aggregated_results, n_shots)
+    return report
 
 
 async def _compile_reports(divergence_task_factory, aggregated_results: list):
@@ -37,7 +47,8 @@ async def compile_comparison_reports(aggregated_results: list, thresholds: dict 
     logger.info("Generating divergence report...")
     return await _compile_reports(
         lambda loop: loop.run_in_executor(
-            None, comparator.create_divergence_report, aggregated_results, thresholds
+            None, _with_verdicts, comparator.create_divergence_report, aggregated_results, None,
+            thresholds
         ),
         aggregated_results,
     )
@@ -51,7 +62,8 @@ async def compile_measurement_reports(aggregated_results: list, n_shots: int, th
     logger.info("Generating counts divergence report...")
     return await _compile_reports(
         lambda loop: loop.run_in_executor(
-            None, comparator.create_counts_report, aggregated_results, n_shots, thresholds
+            None, _with_verdicts, comparator.create_counts_report, aggregated_results, n_shots,
+            n_shots, thresholds
         ),
         aggregated_results,
     )

@@ -8,6 +8,7 @@ from pathlib import Path
 from qrosetta_commons.helpers import count_qasm_gates_and_depth, count_qasm_gates_by_name
 from services.publication.tables import _tbl_performance
 from tests.unit.frontend_harness import call_js, requires_node
+from tests.unit.server_verdicts import with_pair_verdict, with_server_verdicts
 from tests.unit.test_artifacts_parity import _repeated_timing
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -40,7 +41,7 @@ def test_disagreeing_lsb_msb_pair_shows_the_label_aligned_fidelity():
                     label_aligned_fidelity=0.7787, unaligned_basis_match="direct")
     same_order = _sv("cirq", "qrisp", "residual_disagreement", direct_fidelity=0.933, bit_reversed_fidelity=0.2,
                      label_aligned_basis="direct", label_aligned_fidelity=0.933)
-    out = call_js(["tables_renderer.js"], [("pairMetricText", [p]) for p in (residual, unaligned, same_order)])
+    out = call_js(["tables_renderer.js"], [("pairMetricText", [with_pair_verdict(p)]) for p in (residual, unaligned, same_order)])
     assert out[0] == "F(bit-rev)=0.9330"
     assert out[1] == "F(bit-rev)=0.7787; direct F=1.0000"
     assert out[2] == "F=0.9330"
@@ -55,7 +56,8 @@ def test_bit_reversal_pair_with_a_global_phase_shows_the_phase():
     no_field = _sv("qiskit", "myqlm", "agree_after_bit_reversal", bit_reversed_fidelity=1.0,
                    label_aligned_basis="bit_reversal", bit_reversed_relative_phase_rad=1.0, phase_tolerance=1e-6)
     out = call_js(["tables_renderer.js", "run_status.js"],
-                  [("pairMetricText", [p]), ("hasPhaseOffset", [p]), ("hasPhaseOffset", [no_field])])
+                  [("pairMetricText", [with_pair_verdict(p)]), ("hasPhaseOffset", [with_pair_verdict(p)]),
+                   ("hasPhaseOffset", [with_pair_verdict(no_field)])])
     assert out == ["F(bit-rev)=1.0000 · phase -1.5708 rad", True, True]
 
 
@@ -64,11 +66,11 @@ def test_measured_lsb_msb_pair_shows_the_label_aligned_js():
     p = _m("qiskit", "cirq", "distinguishable")
     p["agreement"] = "distance_exceeds_threshold"
     p["metrics"].update({"js_divergence": 0.21, "label_aligned_basis": "bit_reversal", "label_aligned_js_divergence": 0.45})
-    assert call_js(["tables_renderer.js"], [("pairMetricText", [p])]) == ["JS(bit-rev)=0.4500 nats"]
+    assert call_js(["tables_renderer.js"], [("pairMetricText", [with_pair_verdict(p)])]) == ["JS(bit-rev)=0.4500 nats"]
 
 
 def _headline(report):
-    return call_js(["overview_renderer.js"], [("headlineSentences", [report])])[0]
+    return call_js(["overview_renderer.js"], [("headlineSentences", [with_server_verdicts(report)])])[0]
 
 
 @requires_node
@@ -92,7 +94,7 @@ def test_headline_keeps_by_only_pairs_apart():
                    else _m(x, y, "consistent_within_shot_noise")) for x, y in combinations(sims, 2)]
     report = _report(pairs, sims, n_shots=8200)
     out = _headline(report)
-    v = call_js(["backend_verdicts.js"], [("backendVerdicts", [report])])[0]
+    v = call_js(["backend_verdicts.js"], [("backendVerdicts", [with_server_verdicts(report)])])[0]
     by_key = {b["key"]: b for b in v["backends"]}
     assert out["model"]["flagged"] == ["d"]
     assert by_key["a"]["differsByOnly"] == 1 and by_key["a"]["differsWith"] == ["d"]
