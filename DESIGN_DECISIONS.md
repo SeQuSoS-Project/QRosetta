@@ -786,6 +786,12 @@ Compilers are separate from the simulators: their output is a circuit, which is 
 
 *Evidence (2026-10-21).* Fuzzing at 300 examples per operation, 17,412 calls: 0 findings after four fixes (media types, UTF-8 bodies, malformed supplied reports, and NaN stored in a saved run, which made every later read return 500).
 
+### Error text sent to clients
+
+*Rule.* Jobs, reports and responses carry an exception's message only when the API wrote it for the request: an HTTPException's detail, a ValueError (circuit resolution and preparation) or a PreparationFailed, and a full job store's reason. Any other exception reaches them as its type only (`Analysis failed (KeyError)`, `The experiment failed (MemoryError)`); its text and traceback go to the API log with the job id (`services/error_text.py`). Runner and compiler errors keep the SDK's message, which the page shows on purpose, with absolute file-system paths replaced by `<path>` (`qrosetta_commons.redact`); this runs in `runner_error`, `compiler_error` and the isolated child's error path, after the timed windows.
+
+*Evidence (2026-10-28).* The job worker, the analysis step, the experiment worker and the bundled-file reader stored `str(e)`, so an OSError showed container paths (§13.3); only the batch path had been reduced to the type (`test_v1_02_exception_text.py`).
+
 ### API compatibility for older CLIs
 
 *Rule.* The routes the stable `qrosetta` commands read are held to a committed, normalised extract of `/openapi.json` ([`rosetta-api/tests/openapi_cli_baseline.json`](rosetta-api/tests/openapi_cli_baseline.json)). A change that removes a route, method, parameter or field, makes a request field required, narrows a request type or enum, changes a success status or media type, or lets a response field be missing or of a new type fails [`rosetta-api/tests/unit/test_openapi_cli_contract.py`](rosetta-api/tests/unit/test_openapi_cli_contract.py) unless the maximum of `API_LEVELS` (`GET /config` `server.api_levels`) was raised; the previous level stays served for 12 months. `GET /config`, `/runners`, `/compilers` and the circuit catalog routes document their responses with models in [`rosetta-api/schemas/listings.py`](rosetta-api/schemas/listings.py) that never filter them (`response_model` stays unset). The refresh command is in CONTRIBUTING.md.

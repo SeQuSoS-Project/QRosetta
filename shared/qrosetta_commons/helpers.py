@@ -28,6 +28,7 @@ import numpy as np
 from qrosetta_commons import image_identity as _image_identity
 from qrosetta_commons.cpu import WindowProbe, apply_cpu_affinity, cpu_environment
 from qrosetta_commons.memory import MemoryMonitor, lifetime_peak_rss
+from qrosetta_commons.redact import strip_absolute_paths
 
 MAX_QUBITS_STATEVECTOR = int(os.getenv("MAX_QUBITS_STATEVECTOR", "18"))
 MAX_QUBITS_MEASURED = int(os.getenv("MAX_QUBITS_MEASURED", "24"))
@@ -559,7 +560,7 @@ def _isolated_target(result_q, module_name, func_name, payload, measured=True, p
         func = getattr(module, func_name)
         result_q.put(("ok", run_with_uniform_measurement(func, payload) if measured else func(payload)))
     except Exception as e:
-        result_q.put(("err", f"{type(e).__name__}: {e}"))
+        result_q.put(("err", strip_absolute_paths(f"{type(e).__name__}: {e}")))
 
 
 def _isolated_error(message, timed_out=False):
@@ -791,8 +792,9 @@ def counts_result(*, simulator, counts, sampling_method, compilation_time, simul
 
 
 def runner_error(simulator: str, exc) -> dict:
-    """Assemble a runner error result from an exception."""
-    return {"simulator": simulator, "error": str(exc), **unmeasured_metrics()}
+    """Assemble a runner error result from an exception or message; absolute file-system
+    paths in the text are replaced by ``<path>``."""
+    return {"simulator": simulator, "error": strip_absolute_paths(str(exc)), **unmeasured_metrics()}
 
 
 class CompileResult:

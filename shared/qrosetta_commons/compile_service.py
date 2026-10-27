@@ -11,6 +11,7 @@ from pathlib import Path
 from qrosetta_commons import image_identity as _image_identity
 from qrosetta_commons.compile_errors import CompileRefused, OutputRejected
 from qrosetta_commons.cpu import apply_cpu_affinity
+from qrosetta_commons.redact import strip_absolute_paths
 from qrosetta_commons.helpers import (
     GATE_METRICS_FROM_QASM, IMAGE_GIT_SHA, MAX_QUBITS_COMPILE, ExecutionSlots, _stamp_code_sha,
     check_qubits_limit, count_qasm_gates_and_depth, count_qasm_gates_by_name,
@@ -90,10 +91,11 @@ def compiled_result(*, compiler: str, qasm: str, passes_applied, optimization_le
 
 def compiler_error(compiler: str, exc) -> dict:
     """``/compile`` failure. A CompileRefused or OutputRejected also sets ``refusal`` (its
-    message) and ``refusal_kind`` (``input`` or ``output_check``)."""
-    result = {"compiler": compiler, "error": f"{type(exc).__name__}: {exc}"}
+    message) and ``refusal_kind`` (``input`` or ``output_check``). Absolute file-system paths in
+    either text are replaced by ``<path>``."""
+    result = {"compiler": compiler, "error": strip_absolute_paths(f"{type(exc).__name__}: {exc}")}
     if isinstance(exc, (CompileRefused, OutputRejected)):
-        result["refusal"] = str(exc)
+        result["refusal"] = strip_absolute_paths(str(exc))
         result["refusal_kind"] = "input" if isinstance(exc, CompileRefused) else "output_check"
     return result
 
