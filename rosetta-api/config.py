@@ -40,6 +40,7 @@ class Settings(BaseSettings):
                                     "https://github.com/SeQuSoS-Project/QRosetta").rstrip("/")
 
     RUN_RATE_LIMIT: str = os.getenv("QROSETTA_RUN_RATE_LIMIT", "10/minute")
+    PLAN_RATE_LIMIT: str = os.getenv("QROSETTA_PLAN_RATE_LIMIT", "120/minute")
     LOGIN_RATE_LIMIT: str = os.getenv("QROSETTA_LOGIN_RATE_LIMIT", "10/minute")
     REGISTER_RATE_LIMIT: str = os.getenv("QROSETTA_REGISTER_RATE_LIMIT", "5/minute")
 
@@ -84,6 +85,7 @@ class Settings(BaseSettings):
     MAX_QASM_SIZE: int = 1_000_000
     MAX_QASM_GATES: int = 10_000
     MAX_UPLOAD_BYTES: int = 1_048_576
+    MAX_PLAN_REQUEST_BYTES: int = 4 * 1_048_576
 
     CORS_ALLOW_ORIGINS: str = os.getenv("CORS_ALLOW_ORIGINS", "")
 

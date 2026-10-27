@@ -1704,6 +1704,33 @@
                     <code>runner_statuses</code>, <code>tasks</code> for a playlist circuit, and
                     <code>phases</code> for the job's <code>phase</code>.
                 </p>
+                <p id="api-plan">
+                    <code>POST /plan</code> turns a workspace into the run requests the Run button would send,
+                    without running anything: <code>source</code> (<code>single</code> or
+                    <code>playlist</code>), <code>circuits</code> (playlist items: <code>algorithm</code>,
+                    <code>qubits</code>, <code>name</code>, <code>qasm_string</code>, <code>source</code>; one
+                    <code>{qasm_string, name}</code> for a single circuit), <code>modes</code>,
+                    <code>preprocessing</code> (<code>on</code>, <code>off</code> or <code>both</code>),
+                    <code>compilers</code>, <code>name</code> and <code>settings</code>, each request field
+                    given as <code>{value, source}</code> with source <code>flag</code>, <code>set</code> or
+                    <code>replay</code>. A field left out of <code>settings</code> stays out of the planned
+                    requests, so the run route applies its default. The answer lists <code>runs</code>
+                    (<code>endpoint</code>, <code>kind</code>, <code>mode</code>, <code>title</code>, the
+                    <code>payload</code> to send unchanged, and each payload field's <code>sources</code>)
+                    and <code>problems</code>, each with a <code>code</code>, <code>params</code>, a
+                    <code>message</code> and, where they apply, <code>run_index</code>,
+                    <code>circuit_index</code> and <code>line</code>: <code>playlist_empty</code>,
+                    <code>editor_empty</code>, <code>no_mode</code>,
+                    <code>compile_only_needs_one_setting</code>, <code>playlist_too_long</code>,
+                    <code>bundled_over_prep_limit</code>, <code>experiment_too_many_cells</code>,
+                    <code>circuit_too_large</code>, <code>request_too_large</code>,
+                    <code>invalid_request</code>, <code>bypass_needs_account</code>, and with
+                    <code>check_circuits: true</code> <code>circuit_refused</code> for every literal circuit
+                    the run route's checks refuse. Its body may be up to 4 MiB
+                    (<code>limits.max_plan_request_bytes</code>), so it can report a request over the 1 MiB
+                    run limit, and it takes 120 requests a minute per client
+                    (<code>limits.plan_rate_limit</code>).
+                </p>
                 <p>
                     In measured mode the verdict of a pair is <code>measured_assessment</code>
                     (<code>distinguishable</code> is the disagreement), together with

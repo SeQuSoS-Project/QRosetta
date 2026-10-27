@@ -106,6 +106,9 @@ async def get_config():
     ``timing_repeats_max``, ``max_qasm_gate_statements`` (top-level operation statements;
     the header, includes, register declarations and gate definitions are not counted),
     ``max_request_bytes`` (every POST/PUT/PATCH body, the JSON as sent; 413 above it),
+    ``max_plan_request_bytes`` (the larger body limit of POST /plan, so a plan can report a
+    request over max_request_bytes), ``plan_rate_limit`` (requests per client address to
+    POST /plan),
     ``run_rate_limit`` (requests per client address to each run, export and lookup route;
     429 above it), ``login_rate_limit`` and ``register_rate_limit`` (requests per client
     address to POST /auth/token and POST /auth/register; 429 above them),
@@ -174,6 +177,8 @@ async def get_config():
             "shots_max": settings.MAX_SHOTS,
             "shots_default": settings.DEFAULT_SHOTS,
             "max_request_bytes": settings.MAX_UPLOAD_BYTES,
+            "max_plan_request_bytes": settings.MAX_PLAN_REQUEST_BYTES,
+            "plan_rate_limit": settings.PLAN_RATE_LIMIT,
             "run_rate_limit": settings.RUN_RATE_LIMIT,
             "login_rate_limit": settings.LOGIN_RATE_LIMIT,
             "register_rate_limit": settings.REGISTER_RATE_LIMIT,

@@ -14,6 +14,7 @@ FEATURES = {
     "status_labels": 1,
     "job_retention": 1,
     "fresh_probes": 1,
+    "plan": 1,
 }
 
 

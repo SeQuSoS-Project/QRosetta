@@ -207,3 +207,69 @@ export function runLimitProblems(runs, limits = {}) {
     }
     return [...new Set(problems)];
 }
+
+/** The page's wording of a plan-level problem code from POST /plan. */
+const PLAN_ERROR_TEXT = {
+    playlist_empty: 'The playlist is empty. Add circuits, or run the editor code.',
+    editor_empty: 'The editor is empty. Enter, open or generate an OpenQASM 2.0 circuit.',
+    no_mode: 'Choose at least one of Statevector, Measured or Compile-only services.',
+    compile_only_needs_one_setting: 'A compile-only run uses one preprocessing setting. Choose on or off.',
+};
+
+/** Problem codes the page refuses a press of Run on; any other code is left to the run route. */
+export const PAGE_REFUSAL_CODES = new Set([...Object.keys(PLAN_ERROR_TEXT), 'playlist_too_long', 'bundled_over_prep_limit',
+    'experiment_too_many_cells', 'circuit_too_large', 'request_too_large']);
+
+/**
+ * The page's wording of the problems POST /plan returned for `runs` (its planned runs), without
+ * duplicates. Codes outside PAGE_REFUSAL_CODES are left out.
+ * @param {{ code: string, params?: any, run_index?: number|null }[]} problems
+ * @param {{ title: string }[]} runs
+ * @returns {string[]}
+ */
+export function planProblemTexts(problems, runs) {
+    const out = [];
+    for (const problem of problems || []) {
+        const p = problem.params || {};
+        const title = runs?.[problem.run_index ?? -1]?.title;
+        switch (problem.code) {
+        case 'playlist_too_long':
+            out.push(`${title}: the playlist has ${groupDigits(p.circuits)} circuits; the server runs at most `
+                + `${groupDigits(p.max)} in one run. Split the playlist (Import/Export JSON keeps a copy) and run `
+                + `the parts one after another.`);
+            break;
+        case 'bundled_over_prep_limit': {
+            const heavy = p.circuits || [];
+            const names = heavy.map(c => (c.source === 'qasmbench' || !c.qubits) ? c.algorithm : `${c.algorithm} (${c.qubits}q)`);
+            const shown = names.length > 5 ? `${names.slice(0, 5).join(', ')} and ${names.length - 5} more` : names.join(', ');
+            const limit = p.prep_max_mib ? `the server's ${groupDigits(p.prep_max_mib)} MiB limit` : "the server's limit";
+            out.push(`${title}: with SDK Preprocessing on, preparing ${shown} takes more memory than ${limit} `
+                + `for circuit preparation. Remove ${heavy.length === 1 ? 'it' : 'them'}, or set SDK Preprocessing to Off.`);
+            break;
+        }
+        case 'experiment_too_many_cells':
+            out.push(`${title}: SDK Preprocessing Both runs every circuit once per setting, so ${p.circuits} circuits make `
+                + `${p.cells} experiment runs; the server allows ${p.max}. Run at most `
+                + `${Math.floor(p.max / p.settings)} circuits at a time, or choose preprocessing On or Off.`);
+            break;
+        case 'circuit_too_large': {
+            const what = p.circuit == null ? 'The editor circuit' : `Circuit "${p.circuit}"`;
+            out.push(`${what} has ${groupDigits(p.characters)} characters; the server accepts circuits of up to ${groupDigits(p.max)}.`);
+            break;
+        }
+        case 'request_too_large': {
+            const why = p.literal_circuits > 1
+                ? `The ${p.literal_circuits} circuits from the editor or from files travel in this one request. Split the playlist `
+                  + `(Import/Export JSON keeps a copy) and run the parts one after another.`
+                : 'Line breaks and quotes in the circuit text take two bytes each in the request. Shorten the circuit, '
+                  + 'for example by removing comments and blank lines.';
+            out.push(`${title}: the request is ${formatBytes(p.bytes)}, over the server's upload limit of `
+                + `${formatBytes(p.max)}. ${why}`);
+            break;
+        }
+        default:
+            if (PLAN_ERROR_TEXT[problem.code]) out.push(PLAN_ERROR_TEXT[problem.code]);
+        }
+    }
+    return [...new Set(out)];
+}

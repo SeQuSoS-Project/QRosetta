@@ -173,6 +173,8 @@ def test_config_exposes_mode_thresholds_and_limits(client):
         "shots_max": settings.MAX_SHOTS,
         "shots_default": settings.DEFAULT_SHOTS,
         "max_request_bytes": settings.MAX_UPLOAD_BYTES,
+        "max_plan_request_bytes": settings.MAX_PLAN_REQUEST_BYTES,
+        "plan_rate_limit": settings.PLAN_RATE_LIMIT,
         "run_rate_limit": settings.RUN_RATE_LIMIT,
         "login_rate_limit": settings.LOGIN_RATE_LIMIT,
         "register_rate_limit": settings.REGISTER_RATE_LIMIT,
