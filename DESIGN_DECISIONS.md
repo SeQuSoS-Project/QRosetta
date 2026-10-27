@@ -496,7 +496,7 @@ Compilers are separate from the simulators: their output is a circuit, which is 
 
 *Rule.* Every BQSKit (tolerance 1e-6) and PyZX (1e-8) output up to 10 qubits is checked with Qiskit; "not checked above 10 qubits" otherwise. staq records its largest single-precision angle change. Raw SDK errors become `CompileRefused`.
 
-*Evidence.* Compilers can return a circuit with a different unitary without reporting an error; the PyZX, QMAP and Cirq entries in this section record such cases. The check turns such an output into a refusal.
+*Evidence.* No separate measurement was recorded for this rule. It follows from cases recorded in other entries of this section, where a compiler returned a circuit with a different unitary and reported no error: PyZX 0.10.6 `basic_optimization(to_basic_gates())` changed the unitary of 31–90% of random 3-qubit circuits; QMAP 3.10 mapped `cu3`/`cp` as `cx`; Cirq 1.7.0 imported some `cu3` gates with a −1 phase on the control's \|1⟩ branch.
 
 ### Compiler inputs
 
