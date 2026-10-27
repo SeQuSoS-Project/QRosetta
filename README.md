@@ -135,7 +135,7 @@ git clone https://github.com/SeQuSoS-Project/QRosetta.git
 cd QRosetta
 ./qrosetta doctor          # host checks, each problem with its fix
 ./qrosetta build           # builds every enabled service's image
-./qrosetta start -d        # starts the stack; returns when the runners answer
+./qrosetta start -d        # starts the stack; returns when the API is ready and the runners answer
 ./qrosetta selftest        # known-answer checks of every backend, results saved under ./qrosetta-results
 ./qrosetta run algorithm:ghz:3 -m statevector,measured
 ./qrosetta show summary    # the server's verdicts for the last run
@@ -170,7 +170,7 @@ without it. Locally, leaving it empty generates a random key per process.
 ./qrosetta build [NAME ...]          # build images with scripts/safe_boot.sh (default: every enabled service)
 ./qrosetta build --profile minimal   # build the core services plus qiskit, qulacs and cirq
 ./qrosetta start                     # start in this terminal and follow the logs
-./qrosetta start -d --profile minimal  # start in the background; return when its runners answer
+./qrosetta start -d --profile minimal  # start in the background; return when the API is ready and its runners answer
 ./qrosetta status                    # state, memory and image per service, data disk use, URL
 ./qrosetta logs [NAME]               # follow the logs
 ./qrosetta stop                      # standby: stop every container, keep containers, images and data

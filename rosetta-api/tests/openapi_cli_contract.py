@@ -27,6 +27,7 @@ BASELINE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "openapi_cli
 
 CLI_ROUTES = (
     "GET /config",
+    "GET /ready",
     "GET /runners",
     "GET /compilers",
     "GET /algorithms",

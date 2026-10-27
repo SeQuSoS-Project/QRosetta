@@ -161,6 +161,21 @@ def test_live_checks_with_a_running_server(env):
                      runners=[{"id": "qiskit", "enabled": True, "available": False, "error_kind": "dns"}])
     checks = _by_id(_doctor(env, FakeHost(env), server=new))
     assert checks["server"][0].status == "PASS" and "cannot resolve qiskit" in checks["runners"][0].message
+    assert checks["ready"][0].status == "SKIP"
+
+
+@pytest.mark.parametrize("answer,status,words", [
+    ((200, {"status": "ready", "checks": {"database": "ok", "job_storage": "ok"}}), "PASS", "database and job storage work"),
+    ((503, {"detail": "Not ready: the database does not answer.", "status": "not_ready"}), "FAIL",
+     "Not ready: the database does not answer."),
+    ((502, None), "FAIL", "GET /ready answered HTTP 502"),
+])
+def test_live_checks_read_the_servers_readiness(env, answer, status, words):
+    block = {"platform_version": "2.0.0", "api_levels": [1, 1], "features": {"readiness": 1}}
+    checks = _by_id(_doctor(env, FakeHost(env), server=FakeServer(block=block, status={"/ready": answer})))
+    assert checks["ready"][0].status == status and words in checks["ready"][0].message
+    if status == "FAIL":
+        assert checks["ready"][0].fix == "qrosetta logs api --tail 50"
 
 
 def test_doctor_command_exit_codes_and_envelope(env, monkeypatch, capsys):

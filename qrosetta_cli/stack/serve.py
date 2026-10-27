@@ -287,8 +287,9 @@ def _entries(transport, path, query, headers=None):
 
 
 def wait_ready(ctx, engine, stack, services, timeout=READY_TIMEOUT_SEC):
-    """Return when every started runner and compiler is available, polling every 2 s; fresh
-    probes (GET /runners?fresh=true) when the server offers them, else its cached availability."""
+    """Return when the API is ready (GET /ready, when the server offers it) and every started runner
+    and compiler is available, polling every 2 s; fresh probes (GET /runners?fresh=true) when the
+    server offers them, else its cached availability."""
     from qrosetta_cli.client import handshake, servers
     url = stack_url(engine, stack)
     wanted = {stack.services[s].id: stack.kind_of(s) for s in services if stack.kind_of(s) in ("runner", "compiler")}
@@ -300,13 +301,18 @@ def wait_ready(ctx, engine, stack, services, timeout=READY_TIMEOUT_SEC):
     deadline = started + timeout
     while True:
         try:
-            ctx.note_handshake(handshake.server_block(handshake.fetch_config(transport, timeout=5)))
-            break
+            block = handshake.server_block(handshake.fetch_config(transport, timeout=5))
+            ctx.note_handshake(block)
+            api = handshake.readiness(transport, block)
+            if api is None or api[0]:
+                break
+            why = api[1]
         except CliError as exc:
-            if _clock() >= deadline:
-                raise CliError(f"The API at {url} did not answer within {timeout} s: {exc.message}", Exit.ENGINE,
-                               "api_unhealthy", hint="qrosetta logs api --tail 50") from None
-            _sleep(READY_POLL_SEC)
+            why = exc.message
+        if _clock() >= deadline:
+            raise CliError(f"The API at {url} was not ready within {timeout} s. {why}", Exit.ENGINE,
+                           "api_unhealthy", hint="qrosetta logs api --tail 50")
+        _sleep(READY_POLL_SEC)
     fresh, ready, entries = None, set(), {}
     probe_headers = None if getattr(transport, "token", None) else (hostload.auth_headers(ctx.env) or None)
     progress(f"Waiting for {len(wanted)} runners and compilers...")
