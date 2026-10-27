@@ -113,7 +113,7 @@ def _sets_in_original_order(copy, exc: BaseException) -> None:
         if name in original and same_set(value, original[name]):
             vars(copy)[name] = original[name]
     if len(copy.args) == len(exc.args):
-        copy.args = tuple(o if same_set(v, o) else v for v, o in zip(copy.args, exc.args))
+        copy.args = tuple(o if same_set(v, o) else v for v, o in zip(copy.args, exc.args, strict=True))
 
 
 def _same_exception(copy, exc: BaseException) -> bool:
