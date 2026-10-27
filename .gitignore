@@ -58,6 +58,7 @@ rosetta_raw_report.json
 # Documentation & Notes (to be ignored)
 docs/*
 !docs/verification/
+!docs/RELEASING.md
 BUGS.md
 TODO
 app.py
