@@ -2,6 +2,7 @@
 each subcommand runs, the stdout/stderr split and exit codes, against a fake engine and server."""
 
 import json
+import platform
 import signal
 import subprocess
 
@@ -280,6 +281,9 @@ def test_start_detach_waits_for_fresh_probes(fake, project, env, capsys, monkeyp
     assert cli(_stopped(fake), project, env, ["start", "-d"], server=server) == 0
     up = fake.compose_calls("up")[0]
     assert up[-6:] == ["up", "-d", "--no-build", "nginx", "api", "qiskit_runner"]
+    up_env = next(e for c, e in fake.calls if c[1:2] == ["compose"] and "up" in c)
+    assert up_env["QROSETTA_HOST_OS"] == platform.system()
+    assert up_env["QROSETTA_HOST_ARCH"] == platform.machine()
     assert any(q == {"fresh": "true"} for _, p, q, _ in server.requests if p == "/runners")
     out, err = capsys.readouterr()
     assert "qiskit ready" in err and out.strip().splitlines()[0] == "Quantum Rosetta is running at http://localhost:8080"
@@ -568,6 +572,26 @@ def test_start_refuses_other_hosts_unless_emulation_is_allowed(capsys):
     assert err.value.code == Exit.ENGINE and err.value.hint == "qrosetta start --allow-emulation"
     check_host(True, "Darwin", "arm64")
     assert "under emulation" in capsys.readouterr().err
+
+
+def test_start_passes_the_native_host_os_and_machine_to_compose():
+    from qrosetta_cli.stack.commands import host_compose_env
+
+    def sysctl(answer):
+        def run(cmd, **_kw):
+            assert cmd == ["sysctl", "-n", "sysctl.proc_translated"]
+            return subprocess.CompletedProcess(cmd, 0, stdout=answer, stderr="")
+        return run
+
+    def no_call(*_a, **_kw):
+        raise AssertionError("sysctl is read only for an x86_64 Python on macOS")
+
+    assert host_compose_env("Linux", "x86_64", run=no_call) == {
+        "QROSETTA_HOST_OS": "Linux", "QROSETTA_HOST_ARCH": "x86_64"}
+    assert host_compose_env("Darwin", "arm64", run=no_call)["QROSETTA_HOST_ARCH"] == "arm64"
+    assert host_compose_env("Darwin", "x86_64", run=sysctl("1\n"))["QROSETTA_HOST_ARCH"] == "arm64"
+    assert host_compose_env("Darwin", "x86_64", run=sysctl("0\n"))["QROSETTA_HOST_ARCH"] == "x86_64"
+    assert host_compose_env("Darwin", "x86_64", run=sysctl(""))["QROSETTA_HOST_ARCH"] == "x86_64"
 
 
 def test_image_labels_match_the_ownership_check():

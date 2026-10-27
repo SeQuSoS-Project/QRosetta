@@ -68,6 +68,8 @@ export const LABELS = {
         definition: 'The host CPU reports the hypervisor flag: the runner ran in a virtual machine.' },
     emulated_cpu: { short: 'Emulated CPU', anchor: 'timing-caveats',
         definition: 'The CPU model the runner saw is an emulated one, so timings do not describe native execution.' },
+    emulated_image: { short: 'Image emulated on this host', anchor: 'timing-caveats',
+        definition: 'The runner\'s image is built for another machine architecture than the host\'s, so it ran under emulation and its timings do not describe native execution.' },
     non_x86_64: { short: 'Not x86_64', anchor: 'timing-caveats',
         definition: 'The runner reported a machine architecture other than x86_64.' },
     cross_backend_core_speeds: { short: 'Backends on CPUs of different speeds', anchor: 'timing-caveats',

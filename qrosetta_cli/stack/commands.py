@@ -42,8 +42,24 @@ def check_host(allow_emulation, system=None, machine=None):
     if not allow_emulation:
         raise CliError(f"This host is {system} {machine}; Quantum Rosetta images are linux/amd64 only.", Exit.ENGINE,
                        "wrong_architecture", hint="qrosetta start --allow-emulation")
-    output.warn(f"starting on {system} {machine} under emulation; results do not record it until release 2.0.0, "
-                "so their timings are not comparable with linux/amd64 runs.", "emulation")
+    output.warn(f"starting on {system} {machine} under emulation; results of images built from this version on "
+                "record it, and their timings are not comparable with linux/amd64 runs.", "emulation")
+
+
+def host_compose_env(system=None, machine=None, run=subprocess.run):
+    """QROSETTA_HOST_OS and QROSETTA_HOST_ARCH for compose: this host's OS and native machine
+    (an x86_64 Python under Rosetta reports arm64 here), which runners compare with their image's."""
+    system = system or platform.system()
+    machine = machine or platform.machine()
+    if system == "Darwin" and machine.lower() == "x86_64":
+        try:
+            translated = run(["sysctl", "-n", "sysctl.proc_translated"], capture_output=True, text=True,
+                             timeout=5).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            translated = ""
+        if translated == "1":
+            machine = "arm64"
+    return {"QROSETTA_HOST_OS": system, "QROSETTA_HOST_ARCH": machine}
 
 
 def cmd_start(ctx):
@@ -51,6 +67,7 @@ def cmd_start(ctx):
     check_host(args.allow_emulation)
     hostload.ensure_token(ctx.env)
     _, engine, stack = open_stack(ctx)
+    engine.env.update(host_compose_env())
     if ctx.cfg.get("lifecycle", "cpu_quota") is False:
         output.warn("[lifecycle] cpu_quota = false is not applied by this version (the --no-cpu-quota override "
                     "arrives with release 2.0.0); the stack starts with its CPU quotas.", "cpu_quota_ignored")

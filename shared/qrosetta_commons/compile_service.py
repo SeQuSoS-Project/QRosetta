@@ -195,6 +195,7 @@ def run_compiler_cli_main(app, process_compile, cli_name: str, levels=(), equiva
     parser.add_argument("--s3-job-id", default=None,
                         help="S3 job ID: upload the result to jobs/completed/<id>.json")
     args = parser.parse_args()
+    _image_identity.take_host_environment()
     if args.self_test:
         sys.exit(1 if run_compiler_self_test(process_compile, levels, equivalent,
                                              extra_probes=extra_probes, probes=probes) else 0)

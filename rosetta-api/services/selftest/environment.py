@@ -97,13 +97,17 @@ def _emulation(result, _key, _part):
     model = str(cpu.get("cpu_model") or "")
     if _ROSETTA_CPU_MODEL in model:
         return FAIL, f"CPU model {model!r} is Rosetta translation: the image runs emulated", model
-    emulation = cpu.get("emulation")
+    emulation = cpu["emulation"] if "emulation" in cpu else \
+        _dict(result.get("image_identity")).get("emulation")
+    record = _dict(emulation)
     if isinstance(emulation, dict):
         emulation = emulation.get("emulated")
+    archs = (f" (image {record['image_arch']}, host {record['host_arch']})"
+             if record.get("image_arch") and record.get("host_arch") else "")
     if emulation is True:
-        return FAIL, "emulation recorded: the image architecture differs from the host's", True
+        return FAIL, f"emulation recorded: the image architecture differs from the host's{archs}", True
     if emulation is False:
-        return PASS, "no emulation recorded", False
+        return PASS, f"no emulation recorded{archs}", False
     return SKIP, "emulation signature not recorded by this runner", None
 
 

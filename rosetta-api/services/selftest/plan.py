@@ -10,7 +10,7 @@ from services.selftest.circuits import (
     load_expected,
 )
 
-SELFTEST_VERSION = "selftest-2026.10.27.1"
+SELFTEST_VERSION = "selftest-2026.10.27.2"
 PLAN_SCHEMA = "qrosetta.selftest_plan@1"
 EXPECTED_SHA256 = "f6f6dfef4c3d573905f120fc123b8c2b33441aba430f570aec57e541c43d3717"
 
@@ -83,9 +83,11 @@ ENVIRONMENT_CHECKS = [
      "warn": "true: a virtual machine; timings are not comparable with bare-metal runs, "
              "known-answer checks are unaffected", "fail": None,
      "skip": "not recorded"},
-    {"check": "host_emulation", "field": "cpu_environment.emulation, cpu_environment.cpu_model",
-     "pass": "emulation recorded as false", "warn": None,
-     "fail": "emulation recorded, or a CPU model naming Rosetta (VirtualApple)",
+    {"check": "host_emulation",
+     "field": "cpu_environment.emulation or image_identity.emulation.emulated, cpu_environment.cpu_model",
+     "pass": "emulation recorded as false (the image's architecture equals the host's)", "warn": None,
+     "fail": "emulation recorded (the image's architecture differs from the host's), or a CPU model "
+             "naming Rosetta (VirtualApple)",
      "skip": "not recorded"},
     {"check": "provenance", "field": "image_source, else image_identity.source and git_sha",
      "pass": "release, pulled or loaded", "warn": "built_locally or pulled-other",

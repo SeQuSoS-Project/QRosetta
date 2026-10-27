@@ -1170,6 +1170,7 @@ def run_cli_main(app, process_run, process_run_measured, cli_name,
                         help="S3 job ID: download payload from jobs/pending/<id>.json, "
                              "upload result to jobs/completed/<id>.json")
     args = parser.parse_args()
+    _image_identity.take_host_environment()
 
     if args.self_test:
         sys.exit(1 if run_self_test(process_run, process_run_measured,
