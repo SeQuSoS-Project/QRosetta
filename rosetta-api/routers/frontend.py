@@ -8,6 +8,7 @@ from fastapi.openapi.docs import get_redoc_html
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from config import settings
 from routers.errors import responses
+from routers.security_headers import REDOC_SCRIPT_URL
 from schemas import AgreementThresholds
 from schemas.auth import EMAIL_MAX_LENGTH, PASSWORD_MAX_BYTES, PASSWORD_MIN_CHARS
 from schemas.listings import CompilerList, RunnerList, ServerConfig
@@ -23,8 +24,6 @@ from services.status_labels import status_labels
 router = APIRouter()
 
 SWAGGER_UI_VERSION = "5.33.2"
-REDOC_VERSION = "2.1.5"
-_CDN = "https://cdn.jsdelivr.net/npm"
 
 
 def _root_path(request: Request) -> str:
@@ -68,10 +67,11 @@ async def swagger_ui(request: Request):
 
 @router.get("/redoc", include_in_schema=False)
 async def redoc(request: Request):
-    """The API reference as ReDoc (pinned version)."""
+    """The API reference as ReDoc (pinned version, loaded from jsDelivr; the page has its own
+    Content-Security-Policy, routers/security_headers.REDOC_CSP)."""
     return get_redoc_html(
         openapi_url=_openapi_url(request), title=f"{request.app.title} - ReDoc",
-        redoc_js_url=f"{_CDN}/redoc@{REDOC_VERSION}/bundles/redoc.standalone.js",
+        redoc_js_url=REDOC_SCRIPT_URL,
         redoc_favicon_url="data:,", with_google_fonts=False)
 
 

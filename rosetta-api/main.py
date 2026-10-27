@@ -1,6 +1,6 @@
 # FastAPI application entry point: middleware, static mounts and routers.
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from routers import frontend, generation, benchmark, auth, history, export, publication, experiment, share, plan, summary, selftest, timing
@@ -9,10 +9,10 @@ from routers import circuits
 from routers import health
 from routers.errors import document_route_errors, register_error_handlers
 from routers.rate_limit import RateLimitHeaders
+from routers.security_headers import SecurityHeaders
 from db.database import engine
 from db.migrate import upgrade_database
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import JSONResponse
 from services.security import limiter
 from services.job_manager import ACTIVE_JOBS, expired_job_ids
@@ -130,30 +130,8 @@ class LimitUploadSize:
                 raise
             await JSONResponse(status_code=413, content={"detail": exc.detail})(scope, receive, send)
 
-SHARE_PAGE_HEADERS = {
-    "Content-Security-Policy": ("default-src 'self'; script-src 'self'; style-src 'self'; "
-                                "img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; "
-                                "form-action 'none'"),
-    "X-Content-Type-Options": "nosniff",
-    "X-Frame-Options": "DENY",
-    "Referrer-Policy": "no-referrer",
-    "Cache-Control": "no-store",
-}
-
-
-class SharePageHeaders(BaseHTTPMiddleware):
-    """The read-only share page gets its security headers on every path that serves it."""
-
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
-        if request.url.path.endswith("/share.html"):
-            response.headers.update(SHARE_PAGE_HEADERS)
-        return response
-
-
 app.add_middleware(LimitUploadSize, max_upload_size=settings.MAX_UPLOAD_BYTES,
                    path_limits={"/plan": settings.MAX_PLAN_REQUEST_BYTES})
-app.add_middleware(SharePageHeaders)
 
 app.add_middleware(
     CORSMiddleware,
@@ -165,6 +143,7 @@ app.add_middleware(
 
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(RateLimitHeaders)
+app.add_middleware(SecurityHeaders)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/js", StaticFiles(directory="static/js"), name="js")
