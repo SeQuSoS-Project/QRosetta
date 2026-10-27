@@ -1,0 +1,201 @@
+{
+  "circuits": {
+    "m_ghz_3q": {
+      "check": "ghz_sampling",
+      "file": "m_ghz_3q.qasm",
+      "n_qubits": 3,
+      "p_all_zero": 0.4999999999999999,
+      "part": "measured",
+      "qasm_sha256": "ad6de3bf6c92ab4c70ced19bee2b03a09148c60bbaa45d4bf7dc7290d917e16a",
+      "support": {
+        "lsb": [
+          "000",
+          "111"
+        ],
+        "msb": [
+          "000",
+          "111"
+        ]
+      }
+    },
+    "m_probe_clbit_order": {
+      "check": "counts_key",
+      "counts_key": {
+        "lsb": "01",
+        "msb": "10"
+      },
+      "file": "m_probe_clbit_order.qasm",
+      "n_qubits": 2,
+      "part": "measured",
+      "qasm_sha256": "527e8d040d6fa613d6bbac97375f68a0d18c977f9e2c017356e1a3d8868a20b8"
+    },
+    "m_probe_creg_declaration_order": {
+      "check": "counts_key",
+      "counts_key": {
+        "lsb": "01",
+        "msb": "10"
+      },
+      "file": "m_probe_creg_declaration_order.qasm",
+      "n_qubits": 2,
+      "part": "measured",
+      "qasm_sha256": "5dc6525a2f4443cbf0609fc66c62c608200e0b7a017fb322b46f0a453b1c2d29"
+    },
+    "m_probe_one_hot": {
+      "check": "counts_key",
+      "counts_key": {
+        "lsb": "001",
+        "msb": "100"
+      },
+      "file": "m_probe_one_hot.qasm",
+      "n_qubits": 3,
+      "part": "measured",
+      "qasm_sha256": "8518462d11167d18c1e3156d3e5993b55af0c8081658955adf795b9174743dfd"
+    },
+    "m_probe_unmeasured_clbit_first_creg": {
+      "check": "counts_key",
+      "counts_key": {
+        "lsb": "100",
+        "msb": "001"
+      },
+      "file": "m_probe_unmeasured_clbit_first_creg.qasm",
+      "n_qubits": 2,
+      "part": "measured",
+      "qasm_sha256": "eca04e9ab7a0785bde908eee0fa9d1aff4afb07bfb5a0d7d70d6151998c5ef05"
+    },
+    "m_probe_unmeasured_clbit_mid_creg": {
+      "check": "counts_key",
+      "counts_key": {
+        "lsb": "1010",
+        "msb": "0101"
+      },
+      "file": "m_probe_unmeasured_clbit_mid_creg.qasm",
+      "n_qubits": 3,
+      "part": "measured",
+      "qasm_sha256": "9310a9a91b54ded4bb6c2f1bcdf28e4ffc20ec48fbb8fadc5a0ac20586430fdb"
+    },
+    "sv_distinct_amplitudes": {
+      "check": "statevector",
+      "file": "sv_distinct_amplitudes.qasm",
+      "n_qubits": 3,
+      "part": "statevector",
+      "qasm_sha256": "919c4364de05fb597f8165cd471c78ea78c0e5aacfbeb95ef9d046ad62eb2a5c",
+      "statevector_lsb": [
+        [
+          0.7918457225019732,
+          0.0
+        ],
+        [
+          0.043685068358626636,
+          0.0
+        ],
+        [
+          0.17721576411919934,
+          0.0
+        ],
+        [
+          0.07337384213242032,
+          0.0
+        ],
+        [
+          0.426052942402031,
+          0.2327537832395026
+        ],
+        [
+          0.023504770417169692,
+          0.012840714602106474
+        ],
+        [
+          0.25366195053050034,
+          0.13857615515344476
+        ],
+        [
+          0.10502537404464644,
+          0.05737562333736576
+        ]
+      ]
+    },
+    "sv_ghz_3q": {
+      "check": "statevector",
+      "file": "sv_ghz_3q.qasm",
+      "n_qubits": 3,
+      "part": "statevector",
+      "qasm_sha256": "8928e3ba6304814a3e25b0f178cc935915c9ae08ead1b35ba399ba44e3230fbd",
+      "statevector_lsb": [
+        [
+          0.7071067811865475,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.7071067811865475,
+          0.0
+        ]
+      ]
+    },
+    "sv_one_hot_idle": {
+      "check": "statevector",
+      "file": "sv_one_hot_idle.qasm",
+      "n_qubits": 3,
+      "part": "statevector",
+      "qasm_sha256": "bd22412bed79c0c7bd9265335736ddd6a38abfe50cb86eef8da1b41a1bc69a4a",
+      "statevector_lsb": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ]
+      ]
+    }
+  },
+  "generator": "services/selftest/reference.py"
+}
