@@ -367,6 +367,18 @@ The default thresholds (fidelity 1e-5, phase 1e-6 rad, norm 1e-4, JS 0.01 nats, 
 
 *Evidence (2026-10-27).* The figure builder had a second, simpler copy of the rule that read only the top-level `measured_assessment`, without the page's fallbacks for older reports. The page's previous JavaScript, kept frozen as a test reference, and the Python rule gave the same verdict for all 21,837 pairs of 1,085 reports (13 recorded, 72 built by the analysis, 1,000 synthetic), with the same counts, runner statuses and headline models in all five headline kinds ([`rosetta-api/tests/unit/test_verdict_equivalence.py`](rosetta-api/tests/unit/test_verdict_equivalence.py)). On 200 reports (4,804 pairs) the analysis output differed only in the analysis version and the added fields.
 
+### Run planning
+
+*Rule.* One planner on the server ([`rosetta-api/services/plan.py`](rosetta-api/services/plan.py), `POST /plan`) turns a workspace into the exact requests a run sends and the problems that would make the server refuse them, as codes. The page submits the returned requests unchanged, and the command-line client uses the same endpoint, so both send identical requests for identical choices.
+
+*Evidence (2026-10-27).* On 748 page workspaces covering every problem code, the server planner produced the same requests, refusal texts and request sizes as the page's former JavaScript planner, which was then removed.
+
+### Fresh readiness probes
+
+*Rule.* `GET /runners?fresh=true` (and `/compilers`) probes the services at most 6 times a minute per client, only for a signed-in account or the local lifecycle token, and reuses a result younger than 5 s. It never probes a service with a run in flight, and while an exclusive run holds or waits for the gate it returns the cached answers instead of probing.
+
+*Evidence (2026-10-27).* Unbounded probes would add unrecorded load to the runners during other jobs' timed windows.
+
 ### Summary headline
 
 *Rule.* The headline is built from differing pairs only; inconclusive pairs are neither agreement nor difference. Kinds `named` / `camps` / `pairs` / `spread`. Sizes are taken against the backends not named (median and range of TV; lowest fidelity). BY-only pairs are counted apart. A chance caveat is shown for minority flags. Red only for named backends. [`rosetta-api/tests/unit/test_headline_cases.py`](rosetta-api/tests/unit/test_headline_cases.py), [`rosetta-api/tests/unit/test_headline_magnitude.py`](rosetta-api/tests/unit/test_headline_magnitude.py).
