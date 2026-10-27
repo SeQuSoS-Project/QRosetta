@@ -14,6 +14,7 @@ with reason ``NOT_DEPLOYED``.
 """
 
 import asyncio
+import socket
 import time
 
 import httpx
@@ -43,24 +44,48 @@ def _registry_entry(svc: dict) -> dict:
     return {"available": True, "reason": None, "device": None}
 
 
+_DNS_MESSAGES = ("name or service not known", "temporary failure in name resolution",
+                 "nodename nor servname", "no address associated", "name does not resolve")
+
+
+def error_kind(exc: BaseException) -> str:
+    """Why a probe got no answer: ``dns`` (the name did not resolve), ``timeout`` or
+    ``connect`` (refused, reset, or any other transport failure)."""
+    seen = set()
+    node = exc
+    while node is not None and id(node) not in seen:
+        seen.add(id(node))
+        if isinstance(node, socket.gaierror) or any(m in str(node).lower() for m in _DNS_MESSAGES):
+            return "dns"
+        node = node.__cause__ or node.__context__
+    return "timeout" if isinstance(exc, httpx.TimeoutException) else "connect"
+
+
 async def _probe(client: httpx.AsyncClient, svc: dict) -> dict:
+    return (await probe_with_kind(client, svc))[0]
+
+
+async def probe_with_kind(client: httpx.AsyncClient, svc: dict) -> tuple:
+    """``(availability entry, error kind)`` from ``GET <base_url>/capabilities``; the kind is
+    ``dns``, ``connect`` or ``timeout`` when no answer came, ``http`` for an error status
+    other than 404/405, else None."""
     try:
         response = await client.get(f"{svc['base_url']}/capabilities")
-    except (httpx.ConnectError, httpx.ConnectTimeout, httpx.TimeoutException, httpx.NetworkError):
-        return {"available": False, "reason": UNREACHABLE, "device": None}
+    except (httpx.ConnectError, httpx.ConnectTimeout, httpx.TimeoutException, httpx.NetworkError) as exc:
+        return {"available": False, "reason": UNREACHABLE, "device": None}, error_kind(exc)
     except Exception as exc:
         logger.warning(f"Capability probe of {svc['base_url']} failed: {type(exc).__name__}")
-        return {"available": False, "reason": UNREACHABLE, "device": None}
+        return {"available": False, "reason": UNREACHABLE, "device": None}, error_kind(exc)
     if response.status_code in (404, 405):
-        return _registry_entry(svc)
+        return _registry_entry(svc), None
     if response.status_code != 200:
-        return {"available": True, "reason": None, "device": None}
+        return {"available": True, "reason": None, "device": None}, "http"
     try:
         body = response.json()
     except ValueError:
-        return {"available": True, "reason": None, "device": None}
+        return {"available": True, "reason": None, "device": None}, None
     if not isinstance(body, dict):
-        return {"available": True, "reason": None, "device": None}
+        return {"available": True, "reason": None, "device": None}, None
     available = bool(body.get("available", True))
     reason = body.get("reason")
     info = {"available": available,
@@ -69,7 +94,7 @@ async def _probe(client: httpx.AsyncClient, svc: dict) -> dict:
     versions = _reported_versions(body)
     if versions:
         info["versions"] = versions
-    return info
+    return info, None
 
 
 def _string_map(value) -> dict:
@@ -126,6 +151,25 @@ async def runner_availability(names=None, services=None) -> dict:
 
 def clear_cache() -> None:
     _cache.clear()
+
+
+async def probe_now(names, services: dict, timeout: float) -> dict:
+    """``{name: (entry, error kind)}``: probe ``names`` now, ignoring the cache, and store the
+    entries in it as fresh."""
+    now = time.monotonic()
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        probed = await asyncio.gather(*(probe_with_kind(client, services[n]) for n in names))
+    out = {}
+    for name, (info, kind) in zip(names, probed):
+        _cache[name] = (now, info)
+        out[name] = (dict(info), kind)
+    return out
+
+
+def cached_entry(name: str):
+    """The last probe result for ``name`` whatever its age, or None."""
+    cached = _cache.get(name)
+    return dict(cached[1]) if cached else None
 
 
 async def require_available(target_simulators) -> None:

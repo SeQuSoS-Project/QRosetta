@@ -5,12 +5,14 @@ from fastapi import APIRouter, Request
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from config import settings
+from routers.errors import responses
 from schemas import AgreementThresholds
 from schemas.auth import EMAIL_MAX_LENGTH, PASSWORD_MAX_BYTES, PASSWORD_MIN_CHARS
 from services.preparation_limits import bundled_over_prep_limit
 from services.request_defaults import request_defaults
 from services.server_info import server_block
-from services.service_listing import compiler_rows, runner_rows
+from services.security import client_address
+from services.service_listing import compiler_rows, fresh_rows, runner_rows
 from services.status_labels import status_labels
 
 router = APIRouter()
@@ -51,8 +53,8 @@ async def read_index():
         headers={"Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"}
     )
 
-@router.get("/runners")
-async def get_runners():
+@router.get("/runners", responses=responses(401, 403, 429))
+async def get_runners(request: Request, fresh: bool = False):
     """Enabled status, availability, max optimization level, and per-level descriptions for
     every runner.
 
@@ -68,7 +70,19 @@ async def get_runners():
     names no backends uses when it is available (every enabled runner). ``profiles`` lists
     the built-in profiles the runner belongs to (minimal, cpu, gpu, full). ``backend`` and
     ``version`` are null.
+
+    ``fresh=true`` probes every enabled service now instead of reading the cache, and adds
+    ``fresh`` (true when this round probed it), ``reason`` ("busy": a dispatch to it is in
+    flight, so it was not probed and reads available; "exclusive_run": an exclusive run holds
+    the server, so the last cached values are served; "no_long_lived_services" in Kubernetes
+    mode; "disabled"; "not_deployed"), ``error_kind`` ("dns", "connect", "timeout" or "http"
+    when the probe got no answer or an error status) and ``probed_at``. It needs a signed-in
+    account or the local lifecycle token as the bearer token (401 otherwise, 403 for a
+    deactivated account), is limited to 6 requests a minute per client (429 with
+    Retry-After), and serves a round younger than 5 s again.
     """
+    if fresh:
+        return JSONResponse(content=await fresh_rows("runners", request, client_address(request)))
     return JSONResponse(content=await runner_rows())
 
 @router.get("/config")
@@ -184,8 +198,8 @@ async def get_config():
     })
 
 
-@router.get("/compilers")
-async def get_compilers():
+@router.get("/compilers", responses=responses(401, 403, 429))
+async def get_compilers(request: Request, fresh: bool = False):
     """Compile-only services: id, display name, enabled and available state, the
     description of each optimization level, and ``versions`` as the running image reports
     them (pip SDK versions, native components built from source, build-file sha256, image
@@ -193,5 +207,17 @@ async def get_compilers():
     turns a run's circuit into circuit text only; it is never simulated or compared (see
     the compilers field of the run payloads). ``default_selected`` is false: a compiler
     runs only when a request names it. ``profiles`` is ["compilers", "full"] for an enabled
-    compiler. ``backend`` and ``version`` are null."""
+    compiler. ``backend`` and ``version`` are null. ``fresh=true`` as for GET /runners.
+    ``fresh=true`` probes every enabled service now instead of reading the cache, and adds
+    ``fresh`` (true when this round probed it), ``reason`` ("busy": a dispatch to it is in
+    flight, so it was not probed and reads available; "exclusive_run": an exclusive run holds
+    the server, so the last cached values are served; "no_long_lived_services" in Kubernetes
+    mode; "disabled"; "not_deployed"), ``error_kind`` ("dns", "connect", "timeout" or "http"
+    when the probe got no answer or an error status) and ``probed_at``. It needs a signed-in
+    account or the local lifecycle token as the bearer token (401 otherwise, 403 for a
+    deactivated account), is limited to 6 requests a minute per client (429 with
+    Retry-After), and serves a round younger than 5 s again.
+    """
+    if fresh:
+        return JSONResponse(content=await fresh_rows("compilers", request, client_address(request)))
     return JSONResponse(content=await compiler_rows())
