@@ -138,7 +138,7 @@ def submitting():
     """Around a submit request: the first SIGINT is noted and the answer awaited (up to
     SUBMIT_GRACE_SEC); a second SIGINT, or no answer in time, raises CliError 130 saying a job
     may exist without a known id. The yielded dict's `interrupted` is True after a first SIGINT."""
-    state = {"interrupted": False, "timer": None}
+    state: dict = {"interrupted": False, "timer": None}
     if not _main_thread():
         yield state
         return

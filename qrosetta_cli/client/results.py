@@ -190,7 +190,7 @@ def update_latest(parent, invocation):
 class Target:
     """What a result reference names: an invocation directory and its jobs, or one job."""
 
-    invocation: str = None
+    invocation: str | None = None
     jobs: list = field(default_factory=list)
     source: str = ""
 
@@ -198,7 +198,7 @@ class Target:
 @dataclass
 class JobRef:
     job_id: str
-    dir: str = None
+    dir: str | None = None
     entry: dict = field(default_factory=dict)
 
     def request(self):

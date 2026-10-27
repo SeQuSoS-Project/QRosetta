@@ -53,7 +53,7 @@ def with_retries(method, path, send, retry=None):
         except Transient as exc:
             if not retry or attempt >= len(RETRY_DELAYS_SEC):
                 raise
-            delay = RETRY_DELAYS_SEC[attempt]
+            delay: int | None = RETRY_DELAYS_SEC[attempt]
             output.progress(f"{exc.message} Trying again in {delay} s.")
         else:
             delay = _retry_delay(resp, attempt) if retry else None

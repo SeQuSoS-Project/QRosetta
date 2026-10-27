@@ -4,7 +4,9 @@
 # `semgrep` (not part of `all`: it needs the network for its rule packs) runs Semgrep over the
 # Python, JavaScript, nginx and Kubernetes files against semgrep.txt; $SEMGREP names the binary
 # (CI installs it from semgrep-requirements.txt).
-# Usage: scripts/lint/check.sh [shellcheck|hadolint|semgrep|all] [--write]
+# `mypy` (not part of `all`; CI's types job installs it) type-checks qrosetta_cli and
+# shared/qrosetta_commons with [tool.mypy] from pyproject.toml against mypy.txt; $MYPY names the binary.
+# Usage: scripts/lint/check.sh [shellcheck|hadolint|semgrep|mypy|all] [--write]
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
@@ -46,5 +48,19 @@ if [ "$tool" = semgrep ]; then
         exit 1
     }
     compare semgrep "$out" || status=1
+fi
+if [ "$tool" = mypy ]; then
+    out=""
+    for target in "qrosetta_cli" "shared/qrosetta_commons --python-version 3.10"; do
+        rc=0
+        # shellcheck disable=SC2086
+        part=$("${MYPY:-mypy}" -O json $target) || rc=$?
+        if [ "$rc" -gt 1 ]; then
+            echo "mypy exited with $rc on $target" >&2
+            exit 1
+        fi
+        out+="$part"$'\n'
+    done
+    compare mypy "$out" || status=1
 fi
 exit "$status"

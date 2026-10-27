@@ -609,3 +609,10 @@ def test_replay_takes_no_run_settings(env, circuit):
     assert run(["run", "--request", plan, "--shots", "10"], env, server) == Exit.USAGE
     assert run(["run", "--request", plan, circuit], env, server) == Exit.USAGE
     assert len(server.plans) == 1
+
+
+@pytest.mark.parametrize("argv", [["wait"], ["wait", "--all"], ["wait", "--all", "job:0123abcd"]])
+def test_wait_with_nothing_unfinished_is_not_found(env, capsys, argv):
+    assert run([*argv, "--json"], env, Scripted()) == Exit.NOT_FOUND
+    doc = envelope(capsys)
+    assert doc["error"]["reason"] == "job_unknown" and "No unfinished job" in doc["error"]["message"]

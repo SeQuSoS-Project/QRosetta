@@ -545,15 +545,7 @@ def cmd_wait(ctx):
                 )
             targets.append(entry)
     else:
-        pending = [e for e in known if _unfinished(e)]
-        if not pending:
-            raise CliError(
-                f"No unfinished job for {conn.url} in the job index.",
-                Exit.NOT_FOUND,
-                "job_unknown",
-                hint="qrosetta jobs",
-            )
-        targets = pending[-1:]
+        targets = [e for e in known if _unfinished(e)][-1:]
     fail_on = _fail_on(ctx, conn) if ctx.opt("fail_on") else []
     follower = None
     for entry in targets:
@@ -584,5 +576,12 @@ def cmd_wait(ctx):
         inv = entry.get("invocation")
         if inv and results.invocation_complete(inv):
             results.update_latest(os.path.dirname(inv), inv)
+    if follower is None:
+        raise CliError(
+            f"No unfinished job for {conn.url} in the job index.",
+            Exit.NOT_FOUND,
+            "job_unknown",
+            hint="qrosetta jobs",
+        )
     follower.closing_hint(None)
     return Result(follower.code(), follower.data(), follower.outcome())

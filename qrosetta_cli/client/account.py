@@ -151,7 +151,7 @@ def cmd_login(ctx):
     email = _email(ctx)
     password = _password(ctx, email)
     conn = Conn(ctx, with_token=False)
-    body = urllib.parse.urlencode({"username": email, "password": password}).encode()
+    body: bytes | None = urllib.parse.urlencode({"username": email, "password": password}).encode()
     password = None
     resp = conn.transport.request(
         "POST", "/auth/token", body=body, headers={"Content-Type": "application/x-www-form-urlencoded"}

@@ -44,9 +44,9 @@ class Stack:
     project_dir: str
     services: dict
     volume_names: dict
-    release: dict = None
+    release: dict | None = None
     cpu_quota: bool = True
-    cpu_override_sha256: str = None
+    cpu_override_sha256: str | None = None
 
     @property
     def volume_keys(self):

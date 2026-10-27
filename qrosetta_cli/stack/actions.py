@@ -55,7 +55,7 @@ def volume_sizes(engine):
     for line in lines:
         if line.strip().lower().startswith("local volumes space usage"):
             break
-    sizes = {}
+    sizes: dict = {}
     for line in lines:
         cols = line.split()
         if not cols:

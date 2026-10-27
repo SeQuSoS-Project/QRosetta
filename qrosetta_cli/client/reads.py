@@ -124,7 +124,8 @@ def compatibility(config):
     cli = handshake.CLI_API_LEVELS
     ok = bool(levels) and not (levels[1] < cli[0] or levels[0] > cli[1])
     offered = (block or {}).get("features") or {}
-    missing, needed_by = [], {}
+    missing: list = []
+    needed_by: dict = {}
     for command, name, version in COMMAND_FEATURES:
         have = offered.get(name)
         if not isinstance(have, int) or have < version:
@@ -401,7 +402,7 @@ def _filter(catalog, items, max_qubits, needle):
 
 def _print_catalog(catalog, items):
     if catalog == "algorithms":
-        rows = [
+        rows: list[tuple] = [
             (
                 a.get("id", "?"),
                 f"{a.get('min_qubits', '?')}-{a.get('max_qubits', '?')}",

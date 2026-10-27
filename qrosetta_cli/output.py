@@ -6,11 +6,12 @@ import os
 import select
 import sys
 from datetime import UTC, datetime
+from typing import Any
 
 from qrosetta_cli import __version__
 from qrosetta_cli.errors import Exit
 
-_state = {"json": False, "warnings": [], "notices": set(), "notice_enabled": True}
+_state: dict[str, Any] = {"json": False, "warnings": [], "notices": set(), "notice_enabled": True}
 
 
 def configure(json_mode=False, experimental_notice=True):

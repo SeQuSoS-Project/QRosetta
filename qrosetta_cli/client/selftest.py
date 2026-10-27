@@ -98,6 +98,7 @@ def cmd_selftest(ctx):
         raise CliError("No backend is available to test.", Exit.UNREACHABLE, "no_backends", hint="qrosetta status")
     quota_off = conn.local and localstack.cpu_quota(ctx.env, ctx.cfg)[0] is False
     output.progress(f"Backends under test: {', '.join(keys)}")
+    images: dict
     if ctx.opt("no_images"):
         images = {"status": "skipped", "reason": "--no-images", "server_git_sha": None, "images": []}
     else:
@@ -138,7 +139,9 @@ def cmd_selftest(ctx):
 
     saver = save.Saver(conn, {"report", "summary", "crate"}, False, {}, confirm_large(ctx, interactive=False))
     follower = Follower(ctx, conn, saver, [])
-    jobs, applied, lines = [], [], list(image_lines)
+    jobs: list = []
+    applied: list = []
+    lines = list(image_lines)
     for i, run in enumerate(runs):
         with waiting.submitting() as state:
             env = conn.post(run["endpoint"], run["payload"], what=f"POST {run['endpoint']}")
@@ -180,7 +183,7 @@ def cmd_selftest(ctx):
         )
         if state["interrupted"]:
             raise follower.stop_message(job_id, Exit.SIGINT, len(runs) - i - 1)
-        found = {}
+        found: dict = {}
 
         def evaluate(env, job_id=job_id, job_dir=job_dir, run=run, found=found):
             evaluation = {

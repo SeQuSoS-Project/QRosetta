@@ -89,7 +89,7 @@ def save_set(conn, args):
 
 def crate_options(args):
     """The POST /jobs/{id}/export body from the crate flags."""
-    body = {}
+    body: dict = {}
     if getattr(args, "statevectors", False):
         body["include_statevectors"] = True
     for flag, field in (
@@ -100,7 +100,7 @@ def crate_options(args):
     ):
         if getattr(args, flag, None):
             body[field] = getattr(args, flag)
-    items = []
+    items: list = []
     for spec in getattr(args, "item", None) or []:
         if spec.startswith("@"):
             try:

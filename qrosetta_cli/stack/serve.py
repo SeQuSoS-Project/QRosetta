@@ -187,9 +187,9 @@ class Stale:
 
     service: str
     running: bool
-    image_id: str = None
-    git_sha: str = None
-    current: st.Image = None
+    image_id: str | None = None
+    git_sha: str | None = None
+    current: st.Image | None = None
     config: bool = False
 
     @property

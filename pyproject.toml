@@ -187,6 +187,20 @@ extend-immutable-calls = [
 "rosetta-api/tests/unit/test_qrosetta_views_app.py" = ["F811"]
 "rosetta-api/tests/unit/test_v1_06_cli_trust_boundaries.py" = ["F811"]
 
+# Type checking (mypy) of qrosetta_cli/ and shared/qrosetta_commons/, run by `scripts/lint/check.sh
+# mypy` against the baseline scripts/lint/mypy.txt (qrosetta_commons with --python-version 3.10, the
+# runner images' oldest Python). Installed packages are not read, so every environment, CI's included,
+# checks the same thing; third-party imports are Any.
+[tool.mypy]
+python_version = "3.11"
+no_site_packages = true
+ignore_missing_imports = true
+check_untyped_defs = true
+strict_equality = true
+warn_unreachable = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+
 # Coverage of the unit suite, run from rosetta-api/ with --cov-config=../pyproject.toml: the API
 # code there, the shared library and the CLI. Reported only; no threshold yet.
 [tool.coverage.run]

@@ -129,7 +129,7 @@ def _selftest_lines(doc):
 
 def cmd_show_summary(ctx):
     args = ctx.args
-    cache = {}
+    cache: dict = {}
     server_url = None
     if (args.result or "").startswith("job:"):
         server_url = _conn(ctx, cache).url

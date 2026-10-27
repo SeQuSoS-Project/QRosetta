@@ -24,7 +24,7 @@ def _server_status(conn, job_id):
 
 def cmd_jobs(ctx):
     offline = ctx.opt("offline")
-    conns = {}
+    conns: dict = {}
     rows = []
     for entry in jobindex.entries(ctx.env):
         d = entry.get("dir")

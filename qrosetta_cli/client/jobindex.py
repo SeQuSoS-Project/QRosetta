@@ -12,7 +12,7 @@ from qrosetta_cli.errors import usage
 try:
     import fcntl
 except ImportError:
-    fcntl = None
+    fcntl = None  # type: ignore[assignment]
 
 
 def path(env):
@@ -40,7 +40,7 @@ def append(env, entry):
 
 def entries(env):
     """Every job, its lines merged, in the order of first appearance."""
-    merged = {}
+    merged: dict = {}
     try:
         with open(path(env), encoding="utf-8") as fh:
             for line in fh:
