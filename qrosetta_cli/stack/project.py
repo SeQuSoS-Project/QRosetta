@@ -1,27 +1,16 @@
-"""The Quantum Rosetta compose project: where it lives, its services, volumes and images."""
+"""The Quantum Rosetta compose project: its services (keyed by org.qrosetta.id), profiles,
+volumes and images."""
 
+import difflib
 import json
-import os
 from dataclasses import dataclass, field
 
-from qrosetta_cli.engine import CliError, compose_files
+from qrosetta_cli.errors import CliError, Exit, usage
 
-
-def find_project_dir(flag=None, env=None, checkout=None):
-    """The directory holding the compose file: --project-dir, else QROSETTA_HOME, else the
-    checkout the `qrosetta` script lives in."""
-    env = os.environ if env is None else env
-    for source, path in (("--project-dir", flag), ("QROSETTA_HOME", env.get("QROSETTA_HOME")),
-                         ("this checkout", checkout)):
-        if not path:
-            continue
-        path = os.path.abspath(os.path.expanduser(path))
-        try:
-            compose_files(path)
-        except CliError:
-            raise CliError(f"No compose file in {path} (from {source}).") from None
-        return path
-    raise CliError("Cannot find the Quantum Rosetta directory: pass --project-dir or set QROSETTA_HOME.")
+ID_LABEL = "org.qrosetta.id"
+KIND_LABEL = "org.qrosetta.kind"
+PROFILES_LABEL = "org.qrosetta.profiles"
+KINDS = ("core", "runner", "compiler")
 
 
 @dataclass
@@ -31,6 +20,20 @@ class Service:
     image: str
     ports: list = field(default_factory=list)
     depends_on: list = field(default_factory=list)
+    labels: dict = field(default_factory=dict)
+
+    @property
+    def id(self):
+        """The service key (S15 org.qrosetta.id), else the compose service name."""
+        return self.labels.get(ID_LABEL) or self.name
+
+    @property
+    def kind(self):
+        return self.labels.get(KIND_LABEL) or "unknown"
+
+    @property
+    def profiles(self):
+        return [p for p in (self.labels.get(PROFILES_LABEL) or "").split(",") if p]
 
 
 @dataclass
@@ -58,14 +61,30 @@ class Stack:
             i += 1
         return core
 
+    def by_id(self):
+        return {svc.id: svc for svc in self.services.values()}
+
+    def kind_of(self, service):
+        svc = self.services[service]
+        if svc.kind != "unknown":
+            return svc.kind
+        return "core" if service in self.core_services() else "unknown"
+
     def resolve_service(self, name):
-        """A compose service name, or the container name of one."""
+        """The compose service for a service key (org.qrosetta.id); compose service names and
+        container names are accepted as aliases."""
+        for svc in self.services.values():
+            if svc.id == name:
+                return svc.name
         if name in self.services:
             return name
         for svc in self.services.values():
             if svc.container_name == name:
                 return svc.name
-        raise CliError(f"Unknown service {name!r}. Services: {', '.join(self.services)}.")
+        keys = sorted(self.by_id())
+        close = difflib.get_close_matches(name, keys + list(self.services), n=1)
+        hint = f"did you mean {close[0]}?" if close else "qrosetta status lists the services"
+        raise usage(f"Unknown service {name!r}. Services: {', '.join(keys)}.", hint=hint, reason="unknown_service")
 
 
 def load_stack(engine):
@@ -74,21 +93,37 @@ def load_stack(engine):
     try:
         cfg = json.loads(out.stdout)
     except json.JSONDecodeError as exc:
-        raise CliError(f"`{engine.name} compose config` did not return JSON: {exc}") from exc
+        raise CliError(f"`{engine.name} compose config` did not return JSON: {exc}", Exit.ENGINE,
+                       "compose_config", hint="qrosetta doctor") from exc
     if cfg.get("name") != engine.project:
         raise CliError(f"Compose reports project {cfg.get('name')!r}, not {engine.project!r}; "
-                       "nothing was done.")
+                       "nothing was done.", Exit.ENGINE, "project_mismatch",
+                       hint=f"set name: ${{QROSETTA_PROJECT:-qsimulators}} in {engine.files[0]}")
     services = {}
     for name, svc in cfg.get("services", {}).items():
         deps = svc.get("depends_on") or {}
         services[name] = Service(
             name=name, container_name=svc.get("container_name") or "",
             image=svc.get("image") or "", ports=svc.get("ports") or [],
-            depends_on=list(deps) if isinstance(deps, (dict, list)) else [])
+            depends_on=list(deps) if isinstance(deps, (dict, list)) else [],
+            labels=_labels(svc.get("labels")))
     volumes = {key: (v or {}).get("name") or f"{cfg['name']}_{key}"
                for key, v in (cfg.get("volumes") or {}).items()}
     return Stack(name=cfg["name"], project_dir=engine.project_dir, services=services,
                  volume_names=volumes)
+
+
+def _labels(raw):
+    if isinstance(raw, dict):
+        return {str(k): str(v) for k, v in raw.items()}
+    if isinstance(raw, list):
+        return dict(str(item).split("=", 1) for item in raw if "=" in str(item))
+    return {}
+
+
+def profile_members(stack, name):
+    """Compose services whose org.qrosetta.profiles label lists `name`."""
+    return [s for s, svc in stack.services.items() if name in svc.profiles]
 
 
 @dataclass
@@ -99,6 +134,11 @@ class Image:
     tags: list
     env: dict
     labels: dict
+    digests: list = field(default_factory=list)
+
+    @property
+    def git_sha(self):
+        return self.env.get("QROSETTA_IMAGE_GIT_SHA") or "unknown"
 
 
 def normalise_tag(tag):
@@ -126,5 +166,6 @@ def find_images(engine, refs):
         for ref in refs:
             if normalise_tag(ref) in normal:
                 found[ref] = Image(ref=ref, id=item.get("Id", ""), size=int(item.get("Size") or 0),
-                                   tags=tags, env=env, labels=config.get("Labels") or item.get("Labels") or {})
+                                   tags=tags, env=env, labels=config.get("Labels") or item.get("Labels") or {},
+                                   digests=item.get("RepoDigests") or [])
     return found

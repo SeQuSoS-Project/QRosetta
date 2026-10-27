@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "qrosetta.cli/doctor@0: the envelope's data",
+  "type": "object",
+  "properties": {
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "PASS",
+              "INFO",
+              "WARN",
+              "FAIL",
+              "SKIP"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "fix": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "message",
+          "fix"
+        ]
+      }
+    },
+    "failed": {
+      "type": "integer"
+    },
+    "warnings": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "checks",
+    "failed",
+    "warnings"
+  ]
+}

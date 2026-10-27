@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "qrosetta --json envelope",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string",
+      "pattern": "^qrosetta\\.cli/[a-z-]+@[0-9]+$"
+    },
+    "cli_version": {
+      "type": "string"
+    },
+    "server": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "http",
+            "exec"
+          ]
+        },
+        "url": {
+          "type": "string"
+        },
+        "platform_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "api_levels": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "integer"
+          }
+        }
+      },
+      "required": [
+        "kind",
+        "url",
+        "platform_version",
+        "api_levels"
+      ]
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "exit_code": {
+      "type": "integer"
+    },
+    "outcome": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "data": {},
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "message"
+        ]
+      }
+    },
+    "error": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "hint": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "http_status": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "detail": {}
+      },
+      "required": [
+        "code",
+        "reason",
+        "message",
+        "hint",
+        "http_status",
+        "detail"
+      ]
+    }
+  },
+  "required": [
+    "schema",
+    "cli_version",
+    "server",
+    "ok",
+    "exit_code",
+    "outcome",
+    "data",
+    "warnings",
+    "error"
+  ],
+  "additionalProperties": false
+}
