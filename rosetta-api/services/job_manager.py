@@ -8,6 +8,7 @@ task's report at a time. Both copies are evicted together (``expired_job_ids``).
 """
 
 import asyncio
+import contextvars
 import random
 import time
 from fastapi import HTTPException
@@ -46,6 +47,10 @@ from services.circuit_resolver import (
 logger = get_logger("rosetta-job-manager")
 
 ACTIVE_JOBS = JobTable()
+
+JOB_ID = contextvars.ContextVar("qrosetta_job_id", default=None)
+
+JOB_PHASES = ("queued", "dispatching", "analysing", "exporting", "done")
 
 SEED_MAX = 2**31 - 1
 
@@ -185,6 +190,7 @@ def _dispatched_circuit_record(group: str, circuit: dict, results: list) -> dict
 async def run_single_circuit_comparison(qasm_string: str, optimization_level: int = 0, runner_config: dict = None, timeout_seconds: int = settings.DEFAULT_TIMEOUT_SEC, target_simulators: list = None, runner_statuses: dict = None, runner_phases: dict = None, apply_preprocessing: bool = True, thresholds: dict = None, bypass_limits: bool = False, timing_repeats: int = 1, exclusive: bool = False, compilers: dict = None):
     """Run one circuit on the statevector fleet, then any requested compilers, and return
     the full (untruncated) report."""
+    set_phase("dispatching")
     started_at = utc_now_iso()
     thresholds = effective_thresholds(thresholds)
     context = _run_context(optimization_level, runner_config, timeout_seconds,
@@ -222,6 +228,7 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
     await asyncio.to_thread(_apply_api_preprocessing, aggregated_results, "statevector", circuit)
     compiled = await compile_circuit(qasm_string, apply_preprocessing, compilers, timeout_seconds,
                                      runner_statuses, prepared=circuit)
+    set_phase("analysing")
 
     try:
         divergence_report, performance_report, resource_report = await compile_comparison_reports(aggregated_results, thresholds)
@@ -252,11 +259,13 @@ async def run_single_circuit_comparison(qasm_string: str, optimization_level: in
 async def run_compile_only(qasm_string: str, optimization_level: int = 0, timeout_seconds: int = settings.DEFAULT_TIMEOUT_SEC, runner_statuses: dict = None, apply_preprocessing: bool = True, thresholds: dict = None, bypass_limits: bool = False, compilers: dict = None):
     """Run only the requested compile-only services on one circuit; no simulator is
     dispatched, so the report has no simulator results and records ``simulated: False``."""
+    set_phase("dispatching")
     started_at = utc_now_iso()
     context = _run_context(optimization_level, {}, timeout_seconds, apply_preprocessing,
                            effective_thresholds(thresholds), {}, bypass_limits, 1)
     queue_compile_statuses(runner_statuses, compilers)
     compiled = await compile_circuit(qasm_string, apply_preprocessing, compilers, timeout_seconds, runner_statuses)
+    set_phase("analysing")
     return {
         "input_qasm": qasm_string,
         **context,
@@ -280,6 +289,7 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
     ``seed`` is the master seed (generated when None); each runner receives a seed
     derived from it and its result key.
     """
+    set_phase("dispatching")
     started_at = utc_now_iso()
     seed = _resolve_seed(seed)
     thresholds = effective_thresholds(thresholds)
@@ -328,6 +338,7 @@ async def run_single_circuit_measurement(qasm_string: str, n_shots: int, optimiz
     await asyncio.to_thread(_apply_api_preprocessing, results_native, "measured_native", circuits["measured_native"])
     aggregated_results = results_native + results_sampled
     compiled = await compile_circuit(qasm_string, apply_preprocessing, compilers, timeout_seconds, runner_statuses)
+    set_phase("analysing")
 
     api_notes = []
     for group in ("measured_native", "measured_sampled"):
@@ -385,11 +396,36 @@ def new_job(requested_target: str = None, owner_user_id: int = None) -> dict:
 
 
 def start_job(job_id: str, runner_statuses: dict) -> None:
-    """Mark a job as processing and record the asyncio task running it."""
+    """Mark a job as processing and record the asyncio task running it; ``set_phase`` in this
+    task then updates this job."""
     job = ACTIVE_JOBS[job_id]
     job["status"] = "processing"
+    job["phase"] = "dispatching"
     job["runner_statuses"] = runner_statuses
     job["worker"] = asyncio.current_task()
+    JOB_ID.set(job_id)
+
+
+def set_phase(phase: str) -> None:
+    """Record what the job of the running worker task is doing: ``dispatching`` (preparing
+    circuits, waiting for the gate, runs and compiles), ``analysing`` (the pairwise
+    comparison and the report) or ``exporting`` (writing the job's results to the job store).
+    No effect outside a worker or once the job has finished."""
+    job_id = JOB_ID.get()
+    job = ACTIVE_JOBS.get(job_id) if job_id else None
+    if isinstance(job, dict) and job.get("status") == "processing":
+        job["phase"] = phase
+
+
+def job_phase(job: dict) -> str:
+    """The phase GET /jobs/{job_id} reports: ``queued`` until the worker starts, ``done``
+    once the job completed or failed, else the worker's last ``set_phase``."""
+    status = job.get("status")
+    if status in ("completed", "failed"):
+        return "done"
+    if status == "pending":
+        return "queued"
+    return job.get("phase") or "dispatching"
 
 
 def expired_job_ids(now: float = None, ttl: float = JOB_TTL_SEC) -> list:
@@ -635,6 +671,7 @@ async def _run_single_job(job_id: str, execution_target: str, runner_statuses: d
                               keep_full=True)
         else:
             job = _completed_job(execution_target, report, runner_statuses)
+        set_phase("exporting")
         await ACTIVE_JOBS.store(job_id, job)
     except Exception as e:
         logger.error(f"Job {job_id} failed", exc_info=True)
@@ -685,6 +722,7 @@ async def run_batch_tasks(payload: BatchPayload, runner_statuses: dict, progress
         gi = task_offset + idx
         task_name = task_label(task.name or task.algorithm, task_qubits(task), task.source)
         logger.info(f"--- Running task: {task_name} ---")
+        set_phase("dispatching")
         if progress is not None:
             progress["current_index"] = gi
             progress["tasks"][gi]["status"] = "running"
@@ -821,4 +859,5 @@ async def _run_batch_suite(job_id: str, payload: BatchPayload, runner_statuses: 
     else:
         job = _completed_job(target, full_report, runner_statuses, results=results,
                              progress=progress)
+    set_phase("exporting")
     await ACTIVE_JOBS.store(job_id, job)

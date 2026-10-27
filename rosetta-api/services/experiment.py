@@ -27,8 +27,8 @@ from services.exporter import runner_lock_files
 from services.job_store import job_dir, require_storage
 from services.run_registry import EXCLUSIVE, releases_exclusive
 from services.job_manager import (
-    ACTIVE_JOBS, _resolve_seed, effective_thresholds, run_batch_tasks, start_job, task_label,
-    task_qubits,
+    ACTIVE_JOBS, _resolve_seed, effective_thresholds, run_batch_tasks, set_phase, start_job,
+    task_label, task_qubits,
 )
 from qrosetta_commons.helpers import get_logger
 from services.circuit_resolver import resolve_circuit_qasm
@@ -264,6 +264,7 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
             art.collect_sdk_versions(axis_records, into=sdk_versions)
 
         progress["current_index"] = None
+        set_phase("exporting")
 
         files: dict = _compiled_files(compiled_reports)
         for c in resolved:

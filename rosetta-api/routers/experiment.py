@@ -18,7 +18,7 @@ from routers.errors import BYPASS_401, file_response, responses
 from services.availability import require_available
 from services.job_store import JOB_NOT_FOUND, file_chunks
 from services.security import limiter
-from services.job_manager import ACTIVE_JOBS, new_job
+from services.job_manager import ACTIVE_JOBS, job_phase, new_job
 from services.experiment import worker_experiment
 from services.validator import (require_bypass_permission, validate_runner_config,
                                 validate_runner_ids, validate_submission)
@@ -85,7 +85,7 @@ async def start_experiment(request: Request, payload: ExperimentPayload, backgro
     payload.execution_target = settings.EXECUTION_MODE
     background_tasks.add_task(worker_experiment, job_id, payload)
     return {"job_id": job_id, "status": ACTIVE_JOBS[job_id]["status"],
-            "target": ACTIVE_JOBS[job_id]["target"], "requested_target": requested_target}
+            "phase": job_phase(ACTIVE_JOBS[job_id]), "target": ACTIVE_JOBS[job_id]["target"], "requested_target": requested_target}
 
 
 def _open_bundle(path: str):

@@ -130,21 +130,10 @@ function _finishedText(statuses, keys, noun) {
     return `${done} of ${keys.length} ${noun}${keys.length === 1 ? '' : 's'} finished`;
 }
 
-/** True when every backend and compile has finished. Once a circuit's runs were seen in progress
- * and all have finished, the server is analysing its results (it reports no status of its own
- * for this; a playlist keeps the previous circuit's statuses until the next one dispatches). */
-export function allRunsFinished(statuses) {
-    const keys = Object.keys(statuses || {});
-    return keys.length > 0 && keys.every(k => (_STATUS_CFG[statuses[k]] || _STATUS_CFG.queued).terminal);
-}
-
 function _renderProgress() {
     const host = _el('loader-progress');
     if (!host || !_view) return;
-    const current = _view.progress ? _view.progress.current_index : 'single';
-    const finished = allRunsFinished(_view.statuses);
-    if (!finished && Object.keys(_view.statuses).length) _view.activeFor = current;
-    const analysing = finished && _view.activeFor === current;
+    const analysing = _view.phase === 'analysing';
     if (analysing !== _view.analysing) {
         _view.analysing = analysing;
         setRunKicker(analysing ? 'Analysing results' : 'Running');
@@ -173,7 +162,7 @@ export function startRunView({ tabs = [], table = null, compilerIds = [], nameOf
     endRunView();
     const playlist = table?.caption === 'Playlist';
     _view = {
-        nameOf, compilerIds: new Set(compilerIds), tables: {}, phases: {}, statuses: {}, progress: null, analysing: false, activeFor: null,
+        nameOf, compilerIds: new Set(compilerIds), tables: {}, phases: {}, statuses: {}, progress: null, analysing: false, phase: null,
         backendCaption: playlist ? 'Backends (current circuit)' : 'Backends',
         backendColumns: !table || playlist ? BACKEND_COLUMNS : table.columns,
         timer: setInterval(_tick, 1000),
@@ -204,6 +193,14 @@ export function endRunView() {
     _view = null;
     ['loader-tabs', 'runner-status-grid', 'batch-progress', 'loader-progress', 'loader-kicker'].forEach(id => _el(id)?.replaceChildren());
     _el('loader-progress-sep')?.classList.add('hidden');
+}
+
+/** The job's phase from the job poll (`queued`, `dispatching`, `analysing`, `exporting`, `done`);
+ * the running circuit reads ANALYSING while it is `analysing`. */
+export function updateJobPhase(phase) {
+    if (!_view) return;
+    _view.phase = typeof phase === 'string' ? phase : null;
+    _renderProgress();
 }
 
 /** Each runner key's live status (`queued`, `running`, `done`, ...), from the job poll. */

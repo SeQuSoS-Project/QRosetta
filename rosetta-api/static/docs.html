@@ -148,11 +148,10 @@
                 <p>
                     While a run is in progress the Status column shows each backend's state: QUEUED (not
                     started yet; no time is shown), SENT, then DONE, ERROR, TIMEOUT or OFFLINE with the
-                    seconds it took. Once every backend and compile of the circuit has finished and the
-                    server is still comparing the results, the progress line says <em>analysing
+                    seconds it took. While the server compares the results of the circuit (the job's
+                    <code>phase</code> is <code>analysing</code>), the progress line says <em>analysing
                     results</em> and a playlist's running circuit reads ANALYSING; for measured runs with
-                    many outcomes this can take tens of seconds. The server reports no status of its own
-                    for this step, so the page infers it.
+                    many outcomes this can take tens of seconds.
                 </p>
                 <p>
                     Each browser tab keeps its own editor circuit, ticked modes (Statevector,
@@ -1709,6 +1708,12 @@
                     <code>&lt;id&gt;~opt&lt;L&gt;~run&lt;N&gt;</code>, and a compile is always
                     <code>&lt;id&gt;~opt&lt;L&gt;~run1</code>, as in <code>compiled_circuits</code>.
                     <code>progress</code> (playlists and experiments) stays on the job after it finishes.
+                    <code>phase</code> says what the job is doing: <code>queued</code> (accepted, not
+                    started), <code>dispatching</code> (preparing circuits, waiting for the run gate, runs
+                    and compiles), <code>analysing</code> (the pairwise comparison and the report; the
+                    running view shows ANALYSING), <code>exporting</code> (writing the job's results to the
+                    server's job store) and <code>done</code>; a playlist moves between dispatching and
+                    analysing once per circuit.
                 </p>
                 <p>
                     Errors have the body <code>{"detail": ...}</code>. A 422 means the request does not match

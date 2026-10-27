@@ -10,6 +10,7 @@ FEATURES = {
     "request_defaults": 1,
     "quickload": 1,
     "profiles": 1,
+    "job_phase": 1,
 }
 
 
