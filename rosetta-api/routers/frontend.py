@@ -10,6 +10,7 @@ from schemas.auth import EMAIL_MAX_LENGTH, PASSWORD_MAX_BYTES, PASSWORD_MIN_CHAR
 from services.availability import runner_availability
 from services.compilation import COMPILER_SERVICES
 from services.preparation_limits import bundled_over_prep_limit
+from services.request_defaults import request_defaults
 
 router = APIRouter()
 
@@ -116,6 +117,13 @@ async def get_config():
     bundled circuits (``source``, ``algorithm``, ``qubits``) whose preparation with
     preprocessing on is known to reach ``prep_max_mib``; runs that include one with
     preprocessing on are refused with 400.
+    ``request_defaults`` lists every field of the run request bodies per endpoint
+    (``requests``: compare, compare_measured, run_batch_suite, experiments; ``items`` for the
+    playlist tasks and experiment circuits): ``server_fills`` false for a field the request
+    must carry, else ``default``, the value the server uses when the field is omitted, and
+    ``when_omitted`` where that value stands for something the server decides (a generated
+    seed, every available runner, the agreement thresholds in ``agreement_thresholds``).
+    ``compile_only`` says what makes /compare or /run_batch_suite a compile-only request.
     """
     return JSONResponse(content={
         "max_qubits_statevector": settings.MAX_QUBITS_STATEVECTOR,
@@ -129,6 +137,7 @@ async def get_config():
         "queue_max_wait_sec": settings.RUNNER_QUEUE_MAX_WAIT_SEC,
         "agreement_threshold_defaults": AgreementThresholds().model_dump(),
         "default_n_shots": settings.DEFAULT_SHOTS,
+        "request_defaults": request_defaults(),
         "bypass_limits_requires_account": settings.bypass_requires_account(),
         "bundled_over_prep_limit": bundled_over_prep_limit(),
         "limits": {

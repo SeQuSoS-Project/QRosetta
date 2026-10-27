@@ -8,6 +8,7 @@ import { _multiRunEnabled, _orderingEnabled, getEnabledRunnerIds, getTargetSimul
 import { bindPopover } from './popover.js';
 import { THRESHOLD_INPUT_IDS, thresholdDefaults } from './utils.js';
 import { announceWorkspaceChange } from './dom.js';
+import { getState } from './state.js';
 
 const PLAIN = ['bg-white', 'text-gray-700', 'border-gray-300', 'hover:bg-gray-50'];
 const CHANGED = ['bg-indigo-600', 'text-white', 'border-indigo-600', 'hover:bg-indigo-700'];
@@ -19,20 +20,22 @@ const _el = id => /** @type {HTMLInputElement|null} */ (document.getElementById(
 function _summaries() {
     const enabled = getEnabledRunnerIds().length;
     const selected = getTargetSimulators().length;
-    const level = /** @type {HTMLSelectElement|null} */ (document.getElementById('opt-global'))?.value || '0';
+    const st = getState();
+    const defaultLevel = String(st.defaultOptimizationLevel);
+    const level = /** @type {HTMLSelectElement|null} */ (document.getElementById('opt-global'))?.value || defaultLevel;
     const backendParts = [`Backends: ${enabled ? `${selected}${selected === enabled ? '' : ` of ${enabled}`}` : 'loading'}`, `Global Opt ${level}`];
     if (_multiRunEnabled) backendParts.push('multi-run');
     if (_orderingEnabled) backendParts.push('custom order');
 
     const timeout = _el('timeout-input');
-    const repeats = parseInt(_el('timing-repeats-input')?.value || '1', 10);
+    const repeats = parseInt(_el('timing-repeats-input')?.value || String(st.defaultTimingRepeats), 10);
     const exclusive = !!_el('exclusive-checkbox')?.checked;
     const executionParts = [`Execution: ${timeout?.value || '—'} s`, `${repeats} repeat${repeats === 1 ? '' : 's'}`];
     if (exclusive) executionParts.push('exclusive');
     const autosave = !!_el('autosave-toggle')?.checked;
     if (autosave) executionParts.push('auto-save');
 
-    const pre = /** @type {HTMLInputElement|null} */ (document.querySelector('input[name="preprocessing"]:checked'))?.value || 'on';
+    const pre = /** @type {HTMLInputElement|null} */ (document.querySelector('input[name="preprocessing"]:checked'))?.value || st.defaultPreprocessing;
     const bypass = !!_el('bypass-limits-checkbox')?.checked;
     const preText = `SDK Preprocessing: ${{ on: 'On', off: 'Off', both: 'Both' }[pre] || pre}${bypass ? ' · limits bypassed' : ''}`;
 
@@ -47,10 +50,10 @@ function _summaries() {
     const seed = String(_el('seed-input')?.value ?? '').trim();
 
     return {
-        'chip-backends': [backendParts.join(' · '), selected !== enabled || level !== '0' || _multiRunEnabled || _orderingEnabled],
+        'chip-backends': [backendParts.join(' · '), selected !== enabled || level !== defaultLevel || _multiRunEnabled || _orderingEnabled],
         'chip-execution': [executionParts.join(' · '),
-            !!(timeout && timeout.value !== timeout.defaultValue) || repeats !== 1 || exclusive || autosave],
-        'chip-preprocessing': [preText, pre !== 'on' || bypass],
+            !!(timeout && timeout.value !== timeout.defaultValue) || repeats !== st.defaultTimingRepeats || exclusive !== st.defaultExclusive || autosave],
+        'chip-preprocessing': [preText, pre !== st.defaultPreprocessing || bypass !== st.defaultBypassLimits],
         'chip-compilers': [`Compile-only services: ${levels ? `${levels} level${levels === 1 ? '' : 's'}` : 'none'}`, levels > 0],
         'chip-thresholds': [`Agreement Thresholds: ${thresholdsChanged ? 'changed' : 'default'}`, thresholdsChanged],
         'chip-seed': [`Seed: ${seed || 'random'}`, seed !== ''],

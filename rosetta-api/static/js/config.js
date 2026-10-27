@@ -175,8 +175,10 @@ export function renderConfigPanel(runners) {
     const maxGlobal = Math.max(...runners.map(r => r.max_level ?? 0), 0);
     let globalOpts = '';
     const GLOBAL_LABELS = ['None', 'Light', 'Medium', 'Heavy'];
-    for (let i = 0; i <= Math.min(maxGlobal, 3); i++) {
-        globalOpts += `<option value="${i}">${i} — ${GLOBAL_LABELS[i] ?? i}</option>`;
+    const topGlobal = Math.min(maxGlobal, 3);
+    const defaultGlobal = Math.min(getState().defaultOptimizationLevel, topGlobal);
+    for (let i = 0; i <= topGlobal; i++) {
+        globalOpts += `<option value="${i}"${i === defaultGlobal ? ' selected' : ''}>${i} — ${GLOBAL_LABELS[i] ?? i}</option>`;
     }
     const global = _section();
     global.innerHTML = `
@@ -320,7 +322,7 @@ export function toggleMultiRunMode(cb) {
 
 /** On entering independent-runs mode, give each ticked backend with no counts one run at its current level. */
 function _seedRunCounts() {
-    const globalLevel = parseInt(/** @type {HTMLSelectElement|null} */ (document.getElementById('opt-global'))?.value || '0', 10);
+    const globalLevel = parseInt(/** @type {HTMLSelectElement|null} */ (document.getElementById('opt-global'))?.value || String(getState().defaultOptimizationLevel), 10);
     document.querySelectorAll('.sim-checkbox:checked:not([data-locked])').forEach(node => {
         const sim = /** @type {HTMLElement} */ (node).dataset.sim;
         const counts = Array.from(document.querySelectorAll(`.runner-count-input[data-runner="${sim}"]`));
