@@ -12,6 +12,7 @@ FEATURES = {
     "profiles": 1,
     "job_phase": 1,
     "status_labels": 1,
+    "job_retention": 1,
 }
 
 

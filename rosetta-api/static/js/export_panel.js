@@ -7,7 +7,7 @@ import { ICONS, PRESETS, VIEW_UI_BY_ID, itemFormats } from './export_view_ui.js'
 import { makeButton as button, makeEl as el } from './render_helpers.js';
 import { readPref, writePref } from './session_store.js';
 import { dispatch, getState } from './state.js';
-import { printableLabel } from './request_limits.js';
+import { durationText, printableLabel } from './request_limits.js';
 import { limitCodePoints } from './dom.js';
 import {
     copyText, crateSources, downloadBlob, downloadFullReport, exportRoCrate, hasStatevectors,
@@ -342,7 +342,7 @@ function _reportOnly(ctx, note) {
     if (getState().currentJobId) {
         const full = button('qr-btn justify-start', 'Download full report', ICONS.download);
         full.id = 'download-btn';
-        full.title = "The server's untruncated report of this job, kept for 30 minutes after it completes";
+        full.title = `The server's untruncated report of this job, kept for ${durationText(getState().jobTtlSec)} after it completes`;
         full.addEventListener('click', () => downloadFullReport());
         grid.append(full);
     }

@@ -139,8 +139,8 @@
                     button that waits for it again. This browser records every job it submitted: when the
                     page is opened again (after a reload, Back and Forward, or in a new tab), <em>Earlier
                     runs from this browser</em> above the results lists the jobs whose results were not
-                    shown, and finished jobs whose results the server still keeps (30 minutes after they
-                    finish), each with Show results and Dismiss. A job the server no longer has (it answers
+                    shown, and finished jobs whose results the server still keeps (<a href="#endpoints">its retention
+                    time</a> after they finish), each with Show results and Dismiss. A job the server no longer has (it answers
                     404 for the job, for example after a restart) is dropped from the list when the list is
                     shown. The list follows jobs started or dismissed in another tab. Logging out forgets
                     the jobs submitted while signed in and clears their results from the screen.
@@ -551,7 +551,7 @@
                     <code>circuits</code> and <code>preprocessing_modes</code> (<code>[true]</code>,
                     <code>[false]</code> or <code>[true, false]</code>); the bundle is
                     <code>GET /experiments/{job_id}/bundle</code>. The bundle is written to the API's local
-                    disk as the cells finish and deleted with the job after its retention time (30 minutes);
+                    disk as the cells finish and deleted with the job after its retention time;
                     experiments are not saved to the run history.
                     One experiment runs at most 200 circuit × preprocessing combinations
                     (<code>limits.max_experiment_cells</code> in <code>GET /config</code>), so <strong>Both</strong>
@@ -1602,8 +1602,11 @@
                     The report sent to the browser replaces statevectors longer than 2<sup>14</sup>
                     amplitudes (circuits over 14 qubits) with a placeholder and sets
                     <code>statevector_omitted_for_display</code>. The server keeps a finished job, with its
-                    untruncated report, for 30 to 40 minutes: jobs older than 30 minutes are removed by a
-                    sweep that runs every 10 minutes.
+                    untruncated report, for its retention time (<code>limits.job_ttl_sec</code> in
+                    <code>GET /config</code>; server setting <code>QROSETTA_JOB_TTL_SEC</code>): 30 minutes by
+                    default, and 24 hours on a local stack started from the repository's compose file. Jobs
+                    past it are removed by a sweep that runs every 10 minutes, so a job can stay up to 10
+                    minutes longer.
                 </p>
                 <p>
                     These reports are kept on the API's local disk, within a budget of 10,240 MiB
@@ -1616,7 +1619,10 @@
                     experiment that is already running checks before it writes each circuit's result; when the
                     storage is full it stops, and the job fails with a message naming the circuit it stopped at
                     and the limit. A single-circuit run always keeps its report, so reports of runs already in
-                    progress can take the storage past its budget.
+                    progress can take the storage past its budget. Before a run is refused, and before a
+                    running playlist or experiment stops, the server deletes finished jobs that finished more
+                    than 30 minutes ago (<code>limits.job_evictable_after_sec</code>), oldest first, until
+                    the storage is back within both limits.
                 </p>
                 <div class="table-scroll"><table>
                     <thead><tr><th>Endpoint</th><th>Returns</th></tr></thead>

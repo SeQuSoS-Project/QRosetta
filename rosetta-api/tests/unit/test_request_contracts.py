@@ -183,6 +183,8 @@ def test_config_exposes_mode_thresholds_and_limits(client):
         "prep_timeout_sec": settings.PREP_TIMEOUT_SEC,
         "job_storage_max_mib": settings.JOB_SPILL_MAX_MIB,
         "job_storage_min_free_mib": settings.JOB_SPILL_MIN_FREE_MIB,
+        "job_ttl_sec": settings.JOB_TTL_SEC,
+        "job_evictable_after_sec": settings.JOB_EVICTABLE_AFTER_SEC,
         "max_export_items": settings.MAX_EXPORT_ITEMS,
         "max_label_length": settings.MAX_LABEL_LENGTH,
         "email_max_length": 254,

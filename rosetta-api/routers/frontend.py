@@ -102,7 +102,11 @@ async def get_config():
     circuit with preprocessing on; a preparation over either is stopped and the run fails),
     ``job_storage_max_mib`` and ``job_storage_min_free_mib`` (the server's disk budget for
     the reports of unexpired jobs, and the free disk space it keeps; a run is refused with 503
-    while either is crossed, and a playlist or experiment stops), ``max_export_items``
+    while either is crossed, and a playlist or experiment stops), ``job_ttl_sec`` (seconds a
+    finished job, its report and bundle are kept; QROSETTA_JOB_TTL_SEC, 1800 by default and
+    86400 in the local compose file), ``job_evictable_after_sec`` (while the job storage is
+    over a limit, finished jobs older than this are deleted oldest first before a run is
+    refused), ``max_export_items``
     (publication items of one RO-Crate export),
     ``max_label_length`` (characters of a run, circuit, task or author name; control and
     invisible formatting characters are rejected) and the account limits
@@ -166,6 +170,8 @@ async def get_config():
             "prep_timeout_sec": settings.PREP_TIMEOUT_SEC,
             "job_storage_max_mib": settings.JOB_SPILL_MAX_MIB,
             "job_storage_min_free_mib": settings.JOB_SPILL_MIN_FREE_MIB,
+            "job_ttl_sec": settings.JOB_TTL_SEC,
+            "job_evictable_after_sec": settings.JOB_EVICTABLE_AFTER_SEC,
             "max_export_items": settings.MAX_EXPORT_ITEMS,
             "max_label_length": settings.MAX_LABEL_LENGTH,
             "email_max_length": EMAIL_MAX_LENGTH,

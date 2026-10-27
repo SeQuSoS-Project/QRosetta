@@ -15,9 +15,9 @@ import { clearHistoryState, saveRunToHistory } from './history.js';
 import { confirmUnsavedRun, signedInAccount } from './auth.js';
 import { clearReport, renderDetailReport, renderSuiteSummary, showTab } from './renderers.js';
 import { planRuns, runButtonLabel, runLimitProblems } from './run_plan.js';
-import { labelProblem, printableLabel } from './request_limits.js';
+import { durationText, labelProblem, printableLabel } from './request_limits.js';
 import { showRunErrors, validateRunInputs } from './run_inputs.js';
-import { FINISHED_KEEP_MS, forgetJob, isJobsStorageKey, listJobs, markJobFinished, markJobStopped, recordJob, saveEditorCircuit, saveRunModes } from './session_store.js';
+import { finishedKeepMs, forgetJob, isJobsStorageKey, listJobs, markJobFinished, markJobStopped, recordJob, saveEditorCircuit, saveRunModes } from './session_store.js';
 import { dispatch, getState } from './state.js';
 import { getAgreementThresholds, getSeed, setLoading } from './utils.js';
 import { batchItemLabel, renderBatchQueue } from './batch.js';
@@ -135,7 +135,7 @@ export function updateWorkspace() {
     if (note) {
         note.textContent = getState().authToken
             ? 'Runs are saved to your History.'
-            : 'Not signed in: results are kept for 30 minutes.';
+            : `Not signed in: results are kept for ${durationText(getState().jobTtlSec)}.`;
     }
     _showLimitWarning(ws);
     _renderEmptyState(ws);
@@ -301,7 +301,7 @@ function _renderStopped(entry) {
     const box = _el('div', 'p-4 bg-gray-50 border border-gray-300 rounded text-sm text-gray-800 space-y-2');
     box.setAttribute('role', 'status');
     box.appendChild(_el('h3', 'text-base font-semibold text-gray-900', 'Stopped waiting'));
-    box.appendChild(_el('p', '', `${job.title}: the job keeps running on the server, which keeps its results for 30 minutes after it finishes. `
+    box.appendChild(_el('p', '', `${job.title}: the job keeps running on the server, which keeps its results for ${durationText(getState().jobTtlSec)} after it finishes. `
         + 'Show results waits for it again; reopening this page also offers it.'));
     const id = _el('p', 'text-xs text-gray-600', 'Job ID: ');
     id.appendChild(_el('code', 'font-mono select-all', job.job_id));
@@ -575,7 +575,7 @@ function _recentJobRow(job) {
     const name = job.run_name || job.title;
     const short = `job ${job.job_id.slice(0, 8)}`;
     const text = job.state === 'finished'
-        ? `${name} (${short}) finished at ${_clock(job.finished_at)}; the server keeps its results until ${_clock(job.finished_at + FINISHED_KEEP_MS)}.`
+        ? `${name} (${short}) finished at ${_clock(job.finished_at)}; the server keeps its results until ${_clock(job.finished_at + finishedKeepMs())}.`
         : job.state === 'stopped'
             ? `${name} (${short}), submitted at ${_clock(job.submitted_at)}: you stopped waiting for it.`
             : `${name} (${short}), submitted at ${_clock(job.submitted_at)}: its results were not shown yet.`;

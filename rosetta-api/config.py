@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     PREP_TIMEOUT_SEC: float = float(os.getenv("QROSETTA_PREP_TIMEOUT_SEC", "120"))
     JOB_SPILL_MAX_MIB: int = int(os.getenv("QROSETTA_JOB_SPILL_MAX_MIB", "10240"))
     JOB_SPILL_MIN_FREE_MIB: int = int(os.getenv("QROSETTA_JOB_SPILL_MIN_FREE_MIB", "1024"))
+    JOB_TTL_SEC: int = Field(default=1800, validation_alias="QROSETTA_JOB_TTL_SEC")
+    JOB_EVICTABLE_AFTER_SEC: int = 1800
     MIN_SHOTS: int = 1
     MAX_SHOTS: int = 1_000_000
     DEFAULT_SHOTS: int = 8200
@@ -98,6 +100,11 @@ class Settings(BaseSettings):
     @classmethod
     def _at_least_one_slot(cls, value: int) -> int:
         return max(1, value)
+
+    @field_validator("JOB_TTL_SEC", mode="after")
+    @classmethod
+    def _at_least_a_minute(cls, value: int) -> int:
+        return max(60, value)
 
     def bypass_requires_account(self) -> bool:
         """bypass_limits needs a signed-in, active account on any server that is not local."""

@@ -27,6 +27,7 @@ def test_state_defaults_match_the_server_limits():
     assert _state_default("jobStorageMaxMib") == settings.JOB_SPILL_MAX_MIB
     assert _state_default("jobStorageMinFreeMib") == type(settings).model_fields["JOB_SPILL_MIN_FREE_MIB"].default
     assert _state_default("maxExportItems") == settings.MAX_EXPORT_ITEMS
+    assert _state_default("jobTtlSec") == type(settings).model_fields["JOB_TTL_SEC"].default
     assert _state_default("maxLabelLength") == settings.MAX_LABEL_LENGTH
 
 

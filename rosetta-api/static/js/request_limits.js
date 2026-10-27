@@ -99,6 +99,15 @@ export function jsonBytes(value) {
     return new TextEncoder().encode(JSON.stringify(value)).length;
 }
 
+/** A retention time in words, as the server writes it: "30 minutes", "24 hours", "1 hour", "90 seconds". */
+export function durationText(seconds) {
+    const n = Math.round(Number(seconds) || 0);
+    for (const [unit, size] of /** @type {[string, number][]} */ ([['hour', 3600], ['minute', 60]])) {
+        if (n >= size && n % size === 0) return `${n / size} ${unit}${n / size === 1 ? '' : 's'}`;
+    }
+    return `${n} second${n === 1 ? '' : 's'}`;
+}
+
 /** `n` with thousands separators. */
 export function groupDigits(n) {
     return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');

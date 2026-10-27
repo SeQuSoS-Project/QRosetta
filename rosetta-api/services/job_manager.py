@@ -54,7 +54,7 @@ JOB_PHASES = ("queued", "dispatching", "analysing", "exporting", "done")
 
 SEED_MAX = 2**31 - 1
 
-JOB_TTL_SEC = 1800
+JOB_TTL_SEC = settings.JOB_TTL_SEC
 
 EXCLUSIVE_RETRY_AFTER_SEC = 10
 
@@ -428,10 +428,11 @@ def job_phase(job: dict) -> str:
     return job.get("phase") or "dispatching"
 
 
-def expired_job_ids(now: float = None, ttl: float = JOB_TTL_SEC) -> list:
-    """Jobs to evict: finished more than ``ttl`` ago, or submitted more than ``ttl`` ago and
-    unfinished with no task running them (a worker that died). A job whose worker is still
-    running is never evicted."""
+def expired_job_ids(now: float = None, ttl: float = None) -> list:
+    """Jobs to evict: finished more than ``ttl`` (default ``settings.JOB_TTL_SEC``) ago, or
+    submitted more than ``ttl`` ago and unfinished with no task running them (a worker that
+    died). A job whose worker is still running is never evicted."""
+    ttl = settings.JOB_TTL_SEC if ttl is None else ttl
     cutoff = (time.time() if now is None else now) - ttl
     expired = []
     for job_id, job in list(ACTIVE_JOBS.items()):
@@ -523,10 +524,40 @@ def require_exclusive_slot(payload, client: str, job_id: str) -> None:
             f"job per client runs at a time."))
 
 
+def evictable_job_ids(now: float = None) -> list:
+    """Finished jobs that finished more than ``settings.JOB_EVICTABLE_AFTER_SEC`` ago, oldest
+    first: the ones removed before the job store refuses work for lack of space."""
+    cutoff = (time.time() if now is None else now) - settings.JOB_EVICTABLE_AFTER_SEC
+    finished = [(job.get("finished_at", 0), job_id) for job_id, job in list(ACTIVE_JOBS.items())
+                if isinstance(job, dict) and job.get("status") in ("completed", "failed")
+                and job.get("finished_at", 0) < cutoff]
+    return [job_id for _finished, job_id in sorted(finished)]
+
+
+async def make_room_for_results():
+    """While the job store is over its budget or its disk is nearly full, evict finished jobs
+    older than ``JOB_EVICTABLE_AFTER_SEC``, oldest first; return the problem that remains, or
+    None."""
+    problem = await asyncio.to_thread(storage_problem)
+    if not problem:
+        return None
+    for job_id in evictable_job_ids():
+        job = ACTIVE_JOBS.get(job_id)
+        if not isinstance(job, dict) or job.get("status") not in ("completed", "failed"):
+            continue
+        dict.pop(ACTIVE_JOBS, job_id, None)
+        await asyncio.to_thread(remove_job_files, job_id)
+        logger.info(f"Evicted finished job {job_id} to free job storage")
+        problem = await asyncio.to_thread(storage_problem)
+        if not problem:
+            return None
+    return problem
+
+
 async def require_job_storage() -> None:
     """503 with Retry-After when the job store is over its budget or its disk is nearly full
-    (``job_store.storage_problem``)."""
-    problem = await asyncio.to_thread(storage_problem)
+    (``job_store.storage_problem``) after ``make_room_for_results``."""
+    problem = await make_room_for_results()
     if problem:
         raise HTTPException(status_code=503, detail=problem,
                             headers={"Retry-After": str(STORAGE_RETRY_AFTER_SEC)})
@@ -823,6 +854,7 @@ async def _run_batch_suite(job_id: str, payload: BatchPayload, runner_statuses: 
     displayed, outcomes, errors = [], [], []
 
     async def store(index: int, report: dict):
+        await make_room_for_results()
         displayed.append(display_report(report))
         outcomes.append(_task_outcome(report))
         errors.append(report.get("error"))
