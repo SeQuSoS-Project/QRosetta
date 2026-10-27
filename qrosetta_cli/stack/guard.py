@@ -40,9 +40,9 @@ def refuse_if_busy(ctx, url, command, flag, overridden, effect):
     if not overridden:
         raise CliError(f"{count} dispatch{'es are' if count != 1 else ' is'} in flight on this server; {effect}.",
                        Exit.BUSY, "runs_in_flight", hint=f"qrosetta {command} {flag}")
-    output.warn(f"{count} dispatch{'es' if count != 1 else ''} in flight; continuing because of {flag}. This "
-                "server cannot record the stop yet (host-load notices arrive with release 2.0.0), so a run that "
-                "loses its runner reports a lost connection.", "runs_in_flight")
+    output.warn(f"{count} dispatch{'es' if count != 1 else ''} in flight; continuing because of {flag}. The "
+                f"server is told of the {command} (a host-load notice): runs beside it record it, and a run "
+                "that loses its runner to a stop records stopped_by_user.", "runs_in_flight")
     return count
 
 

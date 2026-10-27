@@ -383,6 +383,14 @@ export function outsideProcessText(r) {
         + 'so its CPU time and memory fields leave that work out';
 }
 
+/** Note for a run the server tagged host_load (host-load notices of the qrosetta command open during the run), or null. */
+export function hostLoadText(r) {
+    if (!timingCaveat(r, 'host_load')) return null;
+    const n = r.server_overlapping_host_load;
+    return `the qrosetta command reported ${fmtInt(n)} interval(s) of load it put on this host (starting, stopping, `
+        + 'building, pulling or probing containers) while this run executed (server_overlapping_host_load)';
+}
+
 /** Core speed classes (MHz) as text, e.g. "4000/4100 MHz vs 5300 MHz". */
 export function coreClassesText(classes) {
     return classes.map(c => c.map(s => `${fmtInt(s)}`).join('/') + ' MHz').join(' vs ');

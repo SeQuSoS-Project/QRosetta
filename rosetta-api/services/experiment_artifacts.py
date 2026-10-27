@@ -36,7 +36,8 @@ PERFORMANCE_FIELDS = [
     "simulation_cgroup_cpu_time_sec", "simulation_throttled_sec", "compilation_throttled_sec", "execution_time_sec",
     "memory_usage_mb", "process_peak_mb", "process_peak_rss_mb",
     "theoretical_statevector_mb", "gate_count", "circuit_depth", "queue_wait_sec",
-    "concurrent_runs", "overlapping_runs", "server_overlapping_runs", "dispatch_phase",
+    "concurrent_runs", "overlapping_runs", "server_overlapping_runs", "server_overlapping_host_load",
+    "dispatch_phase",
     "exclusive", "exclusive_wait_sec",
     "cpu_model", "cpu_quota_cores", "cpu_affinity_setting", "memory_limit_mib",
     "simulation_cpus", "simulation_cpu_max_mhz", "simulation_time_samples",
@@ -87,7 +88,9 @@ TRIAGE_README = (
     "                             simulation_cpus_samples the CPUs of each ('|' between runs).\n"
     "                             exclusive is true when the job ran one backend at a time\n"
     "                             with no other run on the server; server_overlapping_runs\n"
-    "                             counts runs of other jobs that overlapped this one.\n"
+    "                             counts runs of other jobs that overlapped this one, and\n"
+    "                             server_overlapping_host_load the host-load notices of the\n"
+    "                             qrosetta command (start, stop, build, ...) open during it.\n"
     "                             concurrent_runs is the number of runs dispatched in the\n"
     "                             same phase or in a phase in flight beside it (itself\n"
     "                             included); overlapping_runs counts the\n"
@@ -267,7 +270,8 @@ def build_performance_rows(axis_label: str, summary: list) -> list:
                 row[key] = entry.get(key) if ok else None
             row["queue_wait_sec"] = entry.get("queue_wait_sec")
             for key in ("concurrent_runs", "overlapping_runs", "server_overlapping_runs",
-                        "dispatch_phase", "exclusive", "exclusive_wait_sec"):
+                        "server_overlapping_host_load", "dispatch_phase", "exclusive",
+                        "exclusive_wait_sec"):
                 row[key] = entry.get(key)
             row["cpu_affinity_setting"] = env.get("cpu_affinity_setting")
             row["memory_limit_mib"] = env.get("memory_limit_mib")

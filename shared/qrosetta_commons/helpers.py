@@ -569,6 +569,39 @@ def _isolated_error(message, timed_out=False):
     return result
 
 
+_SIGNAL_CAUSES = {
+    "SIGKILL": "The kernel sends SIGKILL when memory runs out, and a forced stop sends it too",
+    "SIGTERM": "SIGTERM is sent when the process or its container is asked to stop",
+    "SIGSEGV": "the process crashed", "SIGBUS": "the process crashed", "SIGILL": "the process crashed",
+    "SIGFPE": "the process crashed", "SIGABRT": "the process aborted",
+}
+
+
+def _ended_without_result(exitcode, kind: str) -> dict:
+    """The error of an isolated child that ended without a result: its exit code or the signal
+    that ended it, and the causes either is consistent with. Nothing here records which cause
+    it was."""
+    logs = f"Server operators can see details in the {kind} logs."
+    if isinstance(exitcode, int) and exitcode < 0:
+        try:
+            name = signal.Signals(-exitcode).name
+        except ValueError:
+            name = f"signal {-exitcode}"
+        cause = _SIGNAL_CAUSES.get(name)
+        message = (f"The {kind} process ended without returning a result: it was killed by signal "
+                   f"{-exitcode} ({name}). " + (f"{cause}; " if cause else "")
+                   + "this server did not record what sent it. " + logs)
+        result = _isolated_error(message)
+        result.update(process_exit_code=exitcode, process_exit_signal=name)
+        return result
+    message = (f"The {kind} process exited with code {exitcode} without returning a result. "
+               f"Possible causes: the process crashed or ran out of memory, or it was stopped; "
+               f"this server did not record which. " + logs)
+    result = _isolated_error(message)
+    result.update(process_exit_code=exitcode, process_exit_signal=None)
+    return result
+
+
 def _kill_process_group(proc) -> None:
     """SIGKILL whatever is left of the child's process group (subprocesses it started)."""
     try:
@@ -639,10 +672,7 @@ def _run_isolated_blocking(module_name, func_name, payload, timeout_s, measured=
                 f"TIMEOUT ({timeout_s}s): the runner process ({scope}) exceeded {timeout_s} s "
                 f"and was terminated.", timed_out=True)
         _kill_process_group(proc)
-        return _isolated_error(
-            f"The runner process was terminated (exit code {proc.exitcode}) before returning "
-            f"a result, most likely out of memory. Server operators can see details in the "
-            f"runner logs.")
+        return _ended_without_result(proc.exitcode, "runner" if measured else "compiler")
 
     proc.join(5)
     if proc.is_alive():

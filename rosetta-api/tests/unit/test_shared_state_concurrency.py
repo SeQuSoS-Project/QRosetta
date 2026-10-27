@@ -86,7 +86,8 @@ def test_gate_never_admits_an_exclusive_run_beside_another_and_ends_open(actors)
             if not task.cancelled():
                 task.result()
         assert gate.status() == {"exclusive_running": False, "exclusive_waiting": 0,
-                                 "shared_running": 0}
+                                 "shared_running": 0, "saves_running": 0,
+                                 "host_load_running": 0}
 
     asyncio.run(scenario())
 

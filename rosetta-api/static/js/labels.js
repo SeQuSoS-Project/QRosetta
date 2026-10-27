@@ -48,6 +48,8 @@ export const LABELS = {
         definition: 'Other runs of this job were executing while this run executed.' },
     server_overlapping_runs: { short: 'Other jobs ran on the server', anchor: 'timing-caveats',
         definition: 'Runs of other jobs on this server were executing while this run executed.' },
+    host_load: { short: 'Host load from qrosetta', anchor: 'timing-caveats',
+        definition: 'The qrosetta command reported load it put on this host (starting, stopping, building, pulling or probing containers) while this run executed.' },
     throttled: { short: 'Throttled by the CPU quota', anchor: 'timing-caveats',
         definition: 'The CPU quota held the runner for at least 1% of the simulation window; that wait is part of simulation_time_sec.' },
     compilation_throttled: { short: 'Compilation throttled by the CPU quota', anchor: 'timing-caveats',

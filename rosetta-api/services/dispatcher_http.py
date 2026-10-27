@@ -1,5 +1,6 @@
 """HTTP dispatcher for runners running as long-lived Docker Compose services."""
 
+from services import host_load
 from services.run_registry import DISPATCH_TOKEN, REGISTRY
 import time
 import httpx
@@ -22,12 +23,20 @@ def _runner_error(sim_name: str, message: str, dispatch_status: str = "error") -
     }
 
 
+def _stopped_by_user(sim_name: str, message: str, dispatch_status: str = "error") -> dict:
+    result = _runner_error(sim_name, message, dispatch_status)
+    result["stopped_by_user"] = True
+    return result
+
+
 async def safe_request(client, url, payload, sim_name, timeout_s, http_timeout=None):
     """Dispatch to one runner and classify transport failures.
 
     Failures carry ``dispatch_status``: ``timeout`` when httpx's read budget expires,
     ``offline`` when the runner cannot be reached, ``error`` otherwise. A dropped
-    connection is reported with status ``error``, since the cause is not known.
+    connection is reported with status ``error``; its message names the possible causes
+    unless a stop notice (``services.host_load``) covers the service, which records
+    ``stopped_by_user``.
     """
     kind = "compiler" if str(url).rstrip("/").endswith("/compile") else "runner"
     t0 = time.perf_counter()
@@ -39,6 +48,10 @@ async def safe_request(client, url, payload, sim_name, timeout_s, http_timeout=N
         response.raise_for_status()
         return response.json()
     except (httpx.ConnectError, httpx.ConnectTimeout):
+        if host_load.stopped_by_user(sim_name):
+            return _stopped_by_user(sim_name, (
+                f"STOPPED BY USER: the {sim_name} {kind} was being stopped on this host (qrosetta stop "
+                f"or remove) and could not be reached; the run did not start."), "offline")
         return _runner_error(
             sim_name,
             f"UNAVAILABLE: the {sim_name} {kind} could not be reached. Server operators can "
@@ -51,18 +64,26 @@ async def safe_request(client, url, payload, sim_name, timeout_s, http_timeout=N
             f"resources; reduce the qubit count or raise the timeout.", "timeout")
     except (httpx.RemoteProtocolError, httpx.ReadError) as e:
         elapsed = time.perf_counter() - t0
-        if elapsed >= 0.8 * float(timeout_s):
+        if host_load.stopped_by_user(sim_name):
+            return _stopped_by_user(sim_name, (
+                f"STOPPED BY USER after ~{elapsed:.0f}s: the {sim_name} {kind} was stopped on this "
+                f"host (qrosetta stop --force or remove) while this run was in flight; its result "
+                f"was lost."))
+        near_deadline = elapsed >= 0.8 * float(timeout_s)
+        causes = (f"The {kind} process or its container ended, or the network connection failed; "
+                  f"this server did not record which. Possible causes: the container was stopped, "
+                  f"the process crashed or ran out of memory, "
+                  f"{'a time limit ended it, ' if near_deadline else ''}or the network failed. "
+                  f"Server operators can see details in the {kind} logs.")
+        if near_deadline:
             return _runner_error(
                 sim_name,
                 f"{kind.upper()} TERMINATED after ~{elapsed:.0f}s: the {sim_name} {kind} closed the "
-                f"connection near the {timeout_s}s deadline. The {kind} process was terminated "
-                f"(likely out of memory or time; timeout / OOM kill). Server operators can see "
-                f"details in the {kind} logs.")
+                f"connection near the {timeout_s}s deadline without returning a result. {causes}")
         return _runner_error(
             sim_name,
             f"CONNECTION LOST after ~{elapsed:.0f}s to the {sim_name} {kind} "
-            f"({type(e).__name__}). The {kind} process was terminated (likely out of memory "
-            f"or time). Server operators can see details in the {kind} logs.")
+            f"({type(e).__name__}) before it returned a result. {causes}")
     except httpx.HTTPStatusError as e:
         return _runner_error(
             sim_name, f"HTTP {e.response.status_code} from the {sim_name} {kind}.")
@@ -110,8 +131,9 @@ async def dispatch_http_local(runner_urls: dict, runner_payload: dict, timeout_s
             result = await safe_request(client, spec["url"], local_payload, key, timeout_seconds,
                                         _http_timeout(local_payload["max_queue_wait_seconds"]))
         finally:
-            other_job_runs = REGISTRY.finish(run_id)
-        result["server_overlapping_runs"] = other_job_runs
+            overlaps = REGISTRY.finish_counts(run_id)
+        result["server_overlapping_runs"] = overlaps["runs"]
+        result["server_overlapping_host_load"] = overlaps["host_load"]
         annotate_result(result, spec, local_payload, dispatched_at,
                         dispatch_status=result.pop("dispatch_status", None),
                         runner_image=LOCAL_RUNNER_IMAGE)

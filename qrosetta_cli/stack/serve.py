@@ -10,7 +10,7 @@ from qrosetta_cli import output
 from qrosetta_cli.config import EXIT_ACTIONS
 from qrosetta_cli.errors import CliError, Exit, usage
 from qrosetta_cli.output import progress, result
-from qrosetta_cli.stack import actions, guard
+from qrosetta_cli.stack import actions, guard, hostload
 from qrosetta_cli.stack import ownership as own
 from qrosetta_cli.stack import project as st
 from qrosetta_cli.stack.engine import spawned_tail
@@ -149,8 +149,8 @@ def up(engine, services, adding, bind=None):
         raise engine_error(spawned_tail(proc), "`compose up` failed", bind)
 
 
-def _entries(transport, path, query):
-    resp = transport.request("GET", path, query=query, timeout=30)
+def _entries(transport, path, query, headers=None):
+    resp = transport.request("GET", path, query=query, headers=headers, timeout=30)
     data = resp.json()
     return resp.status, data if isinstance(data, list) else []
 
@@ -177,17 +177,19 @@ def wait_ready(ctx, engine, stack, services, timeout=READY_TIMEOUT_SEC):
                                "api_unhealthy", hint="qrosetta logs api --tail 50") from None
             _sleep(READY_POLL_SEC)
     fresh, ready, entries = None, set(), {}
+    probe_headers = None if getattr(transport, "token", None) else (hostload.auth_headers(ctx.env) or None)
     progress(f"Waiting for {len(wanted)} runners and compilers...")
     while True:
         for path in ("/runners", "/compilers"):
             if not any(k == ("runner" if path == "/runners" else "compiler") for k in wanted.values()):
                 continue
-            status, data = _entries(transport, path, {"fresh": "true"} if fresh is not False else None)
+            status, data = _entries(transport, path, {"fresh": "true"} if fresh is not False else None,
+                                    probe_headers if fresh is not False else None)
             if fresh is None:
                 if status in (401, 403):
                     fresh = False
-                    output.warn("fresh probes need `qrosetta login` or the lifecycle token (release 2.0.0); "
-                                "readiness comes from the server's 60-second cache.", "fresh_probes_unauthorised")
+                    output.warn("fresh probes need `qrosetta login` or the lifecycle token, and the server took "
+                                "neither; readiness comes from its 60-second cache.", "fresh_probes_unauthorised")
                     status, data = _entries(transport, path, None)
                 elif data and not any("fresh" in e for e in data if isinstance(e, dict)):
                     fresh = False
@@ -234,12 +236,13 @@ class Server:
     starts the exit action; while it runs, Ctrl-C once warns and twice more stops waiting."""
 
     def __init__(self, engine, stack, action, services, compose_env, tty=False, ask=None, adding=False,
-                 lock=None, bind=None):
+                 lock=None, bind=None, notice=None):
         self.engine, self.stack, self.action = engine, stack, action
         self.services, self.adding, self.bind = services, adding, bind
         self.ask = ask or (lambda q: output.prompt(q, timeout=ASK_TIMEOUT_SEC))
         self.tty = tty
         self.lock = lock or (lambda what: _null_lock())
+        self.notice = notice or (lambda kind, services=None, gone=False: _null_lock())
         self.engine.env.update(compose_env)
         self.phase = "running"
         self.extra_sigints = 0
@@ -294,7 +297,8 @@ class Server:
     def _up(self):
         if self.services:
             progress(f"Starting {len(self.services)} services...")
-            with self.lock("start"):
+            ids = [self.stack.services[s].id for s in self.services]
+            with self.lock("start"), (self.notice("start", ids) if self.adding else _null_lock()):
                 deps = ["--no-deps"] if self.adding else []
                 self.child = self.engine.spawn(["up", "-d", "--no-build", *deps, *self.services], capture_errors=True)
                 code = self.child.wait()
@@ -344,9 +348,10 @@ class Server:
         return "remove" if (answer or "").strip().lower() in ("r", "remove") else "standby"
 
     def _exit(self, action):
-        if action == "remove":
-            return actions.remove_stack(self.engine, self.stack)
-        return actions.report_left(actions.stop_stack(self.engine, self.stack))
+        with self.notice("remove" if action == "remove" else "stop", None, True):
+            if action == "remove":
+                return actions.remove_stack(self.engine, self.stack)
+            return actions.report_left(actions.stop_stack(self.engine, self.stack))
 
 
 class _null_lock:

@@ -3,7 +3,7 @@
 
 import {
     QUEUE_WAIT_SHOWN_SEC, TAG_AMBER, TAG_GRAY, _applyLegendDots, _cloneTemplate, _displayRunnerName,
-    _makeStatusCell, _tag, bitOrderTag, coreClassesText, cpuQuotaPhrase, executionTags, fmtInt, fmtNum, getOptBadge, isGpuRun, mixedCoresText, outsideProcessText, precisionTag, samplingTag, unstableText, queueWaitText, throttleText,
+    _makeStatusCell, _tag, bitOrderTag, coreClassesText, cpuQuotaPhrase, executionTags, fmtInt, fmtNum, getOptBadge, isGpuRun, hostLoadText, mixedCoresText, outsideProcessText, precisionTag, samplingTag, unstableText, queueWaitText, throttleText,
     renderTooltip,
 } from './render_helpers.js';
 import { RUNNER_STATUS_LABEL, RUNNER_STATUS_STYLE, runnerStatus, userFacingError } from './run_status.js';
@@ -66,6 +66,8 @@ function _fillSimulatorCell(cell, simulatorName, config, raw, { memory = false }
     if (unstable) td.appendChild(_tag('unstable', TAG_AMBER, unstable.charAt(0).toUpperCase() + unstable.slice(1)));
     const mixed = mixedCoresText(raw);
     if (mixed) td.appendChild(_tag('mixed cores', TAG_AMBER, mixed.charAt(0).toUpperCase() + mixed.slice(1)));
+    const hostLoad = hostLoadText(raw);
+    if (hostLoad) td.appendChild(_tag('host load', TAG_AMBER, hostLoad.charAt(0).toUpperCase() + hostLoad.slice(1)));
     const outside = outsideProcessText(raw);
     if (outside) td.appendChild(_tag('outside process', TAG_AMBER, outside.charAt(0).toUpperCase() + outside.slice(1)));
     if (memory && raw?.memory_method && raw.memory_method !== 'vmhwm') {
@@ -87,6 +89,7 @@ const UNSTABLE_LABEL = '1.3×';
 const CAVEAT_PHRASES = {
     overlapping_runs: 'backends ran at the same time',
     server_overlapping_runs: 'other jobs ran on the server',
+    host_load: 'the qrosetta command loaded the host',
     throttled: 'some runs were throttled by the CPU quota',
     unstable_repeats: 'some timed runs were unstable',
     cross_backend_core_speeds: 'runs used CPUs of different speeds',

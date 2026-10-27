@@ -32,7 +32,7 @@ def test_dispatcher_messages_lose_operator_instructions():
         _error(httpx.TimeoutException("slow")),
         _error(httpx.RemoteProtocolError("peer closed"), timeout_s=0),
         _error(httpx.ReadError("reset"), timeout_s=10**9),
-        "The runner pod exited with an error before returning a result (likely out of memory or time). "
+        "The runner pod exited with code 1 before returning a result; Kubernetes recorded no cause. "
         "Server operators can see details in the runner pod logs.",
     ]
     rewritten = _rewrite(*messages)

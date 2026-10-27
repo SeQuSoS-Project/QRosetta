@@ -1,5 +1,5 @@
-"""Server-wide record of runner runs, for counting runs of other jobs that overlapped a run,
-and the gate that lets an exclusive job run with no other runs on the server."""
+"""Server-wide record of runner runs and host-load intervals, for counting what overlapped a
+run, and the gate that lets an exclusive job run with no other runs on the server."""
 
 import asyncio
 import contextvars
@@ -15,37 +15,55 @@ _KEEP_SEC = 3600.0
 
 
 class RunRegistry:
-    """Start and end times of every run dispatched in the last hour, by dispatch token."""
+    """Start and end times of every run dispatched in the last hour, by dispatch token, and
+    of every host-load interval (kind ``host_load``, ``services.host_load``)."""
 
     def __init__(self):
         self._lock = threading.Lock()
         self._ids = itertools.count()
         self._runs = {}
 
-    def start(self, token) -> int:
+    def start(self, token, kind: str = "run", started: float = None) -> int:
         with self._lock:
             run_id = next(self._ids)
-            self._runs[run_id] = [token, time.time(), None]
+            self._runs[run_id] = [token, time.time() if started is None else started, None, kind]
             return run_id
 
-    def finish(self, run_id) -> int:
-        """Mark ``run_id`` finished; return how many runs of other tokens overlapped it."""
+    def end(self, run_id, ended: float = None) -> None:
+        """Close an interval without counting what overlapped it (host-load intervals)."""
+        with self._lock:
+            entry = self._runs.get(run_id)
+            if entry is not None and entry[2] is None:
+                entry[2] = time.time() if ended is None else ended
+
+    def finish_counts(self, run_id) -> dict:
+        """Mark run ``run_id`` finished; return ``{"runs": n, "host_load": m}``: the runs of
+        other tokens and the host-load intervals that overlapped it."""
         now = time.time()
         with self._lock:
             entry = self._runs[run_id]
             entry[2] = now
-            token, start, end = entry
-            overlapping = sum(
-                1 for other, (tok, s, e) in self._runs.items()
-                if other != run_id and tok != token and s < end and (e is None or e > start))
+            token, start, end, _kind = entry
+            counts = {"runs": 0, "host_load": 0}
+            for other, (tok, s, e, kind) in self._runs.items():
+                if other == run_id or tok == token or not (s < end and (e is None or e > start)):
+                    continue
+                if kind == "run":
+                    counts["runs"] += 1
+                elif kind == "host_load":
+                    counts["host_load"] += 1
             cutoff = now - _KEEP_SEC
-            for other in [k for k, (_t, _s, e) in self._runs.items() if e is not None and e < cutoff]:
+            for other in [k for k, (_t, _s, e, _k) in self._runs.items() if e is not None and e < cutoff]:
                 del self._runs[other]
-            return overlapping
+            return counts
+
+    def finish(self, run_id) -> int:
+        """Mark ``run_id`` finished; return how many runs of other tokens overlapped it."""
+        return self.finish_counts(run_id)["runs"]
 
     def active(self) -> int:
         with self._lock:
-            return sum(1 for _t, _s, e in self._runs.values() if e is None)
+            return sum(1 for _t, _s, e, kind in self._runs.values() if e is None and kind == "run")
 
 
 REGISTRY = RunRegistry()
@@ -89,13 +107,20 @@ class ExclusiveWaitTimeout(RuntimeError):
 
 class ExclusiveGate:
     """Shared/exclusive admission for dispatches: an exclusive dispatch waits until no other
-    dispatch is running and holds new ones back until it ends."""
+    dispatch is running and holds new ones back until it ends.
+
+    Two other holders: a gated save (``try_acquire_save``) is admitted only while no dispatch
+    runs or waits for exclusive admission, and holds new dispatches back like an exclusive
+    one; a host-load notice (``hold_host_load``) holds the gate like a shared dispatch, so an
+    exclusive dispatch waits for it, without holding back shared ones."""
 
     def __init__(self):
         self._cond = None
         self._shared = 0
         self._exclusive = False
         self._waiting_exclusive = 0
+        self._saves = 0
+        self._host_load = 0
 
     def _condition(self):
         if self._cond is None:
@@ -103,9 +128,11 @@ class ExclusiveGate:
         return self._cond
 
     def status(self) -> dict:
-        """Dispatches running and waiting at this moment."""
+        """Dispatches running and waiting at this moment, and the gated saves and host-load
+        notices holding the gate."""
         return {"exclusive_running": self._exclusive, "exclusive_waiting": self._waiting_exclusive,
-                "shared_running": self._shared}
+                "shared_running": self._shared, "saves_running": self._saves,
+                "host_load_running": self._host_load}
 
     async def acquire(self, exclusive: bool, max_wait: float = None) -> float:
         """Wait for admission; return the seconds waited. An exclusive dispatch that is not
@@ -117,7 +144,8 @@ class ExclusiveGate:
                 self._waiting_exclusive += 1
                 try:
                     await asyncio.wait_for(
-                        cond.wait_for(lambda: not self._exclusive and self._shared == 0),
+                        cond.wait_for(lambda: not self._exclusive and self._shared == 0
+                                      and self._saves == 0 and self._host_load == 0),
                         timeout=max_wait)
                 except asyncio.TimeoutError:
                     raise ExclusiveWaitTimeout(
@@ -128,16 +156,33 @@ class ExclusiveGate:
                     cond.notify_all()
                 self._exclusive = True
             else:
-                await cond.wait_for(lambda: not self._exclusive and self._waiting_exclusive == 0)
+                await cond.wait_for(lambda: not self._exclusive and self._waiting_exclusive == 0
+                                    and self._saves == 0)
                 self._shared += 1
         return time.monotonic() - started
 
     def try_acquire_shared(self) -> bool:
-        """Admit a shared dispatch only if that needs no wait: no exclusive dispatch is running
-        or waiting. Release it with ``release(False)``."""
+        """Admit a shared dispatch only if that needs no wait on an exclusive one: none is
+        running or waiting. Release it with ``release(False)``."""
         if self._exclusive or self._waiting_exclusive:
             return False
         self._shared += 1
+        return True
+
+    def try_acquire_save(self) -> bool:
+        """Admit a gated save only while no dispatch is running and none waits for exclusive
+        admission. Release it with ``release_save()``."""
+        if self._exclusive or self._waiting_exclusive or self._shared:
+            return False
+        self._saves += 1
+        return True
+
+    def hold_host_load(self) -> bool:
+        """Hold the gate for a host-load notice unless an exclusive dispatch is running (then
+        False, and nothing is held). Release it with ``release_host_load()``."""
+        if self._exclusive:
+            return False
+        self._host_load += 1
         return True
 
     async def release(self, exclusive: bool) -> None:
@@ -148,6 +193,14 @@ class ExclusiveGate:
             self._exclusive = False
         else:
             self._shared -= 1
+        await asyncio.shield(self._notify_waiters())
+
+    async def release_save(self) -> None:
+        self._saves -= 1
+        await asyncio.shield(self._notify_waiters())
+
+    async def release_host_load(self) -> None:
+        self._host_load -= 1
         await asyncio.shield(self._notify_waiters())
 
     async def _notify_waiters(self) -> None:
