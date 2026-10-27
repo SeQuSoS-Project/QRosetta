@@ -515,33 +515,52 @@ manifest that names a published digest for every distributable image. Until one 
 `./qrosetta start`). With published digests, every stack command writes
 `$XDG_STATE_HOME/qrosetta/compose.yaml` from the manifest: the repository's services with
 `build` removed and each `image` set by digest, under the same compose project
-(`QROSETTA_PROJECT`, default `qsimulators`) and ownership labels as a checkout. `qrosetta` pulls
-nothing yet; `start` prints the `docker pull` (or `podman pull`) command for each missing image.
+(`QROSETTA_PROJECT`, default `qsimulators`) and ownership labels as a checkout. `start` names the
+missing images with the `qrosetta pull` command that fetches them. `qrosetta images load DIR`
+loads archives written by `qrosetta images save`; a loaded image has no repo digest, so it is
+tagged `<project>-<compose service>:<release>`, accepted only when its config digest is the
+`image_id` the manifest records, and the generated compose file names that tag for any service
+whose image by digest is absent (`stack/installed.py`, `localise`).
 
 **A release.** `.github/workflows/release-images.yml` runs on a tag `v<version>`, and the tag
-must equal `__version__`:
+must equal `__version__`, spelled as canonical PEP 440 (`check_dist.py --prerelease` refuses any
+other spelling):
 
 1. `plan` lists the images to build with `scripts/release/make_manifest.py --list-images`:
    every service in `docker-compose.yml` that `config.py` enables, except myQLM and cuQuantum,
-   whose licences do not let the project distribute their images.
+   whose licences do not let the project distribute their images. It also records whether the
+   version is a pre-release (`aN`, `bN`, `rcN` or `.devN`).
 2. `images` builds each one with `scripts/release/image.sh` (build arguments
    `QROSETTA_GIT_SHA`, `QROSETTA_IMAGE_SOURCE=release`, `QROSETTA_RELEASE`) and runs its
    self-test: `main.py --self-test` for runners and compilers, an import of `main` for the API,
-   `nginx -t` for nginx. Nothing is pushed.
-3. `publish-images` runs only when the repository variable `QROSETTA_PUBLISH_IMAGES` is `true`.
-   It rebuilds each image, pushes it to `ghcr.io/<owner>/qrosetta-<container name>:<version>`,
-   pulls it back by digest and self-tests it, signs it with cosign (keyless) and attaches a
-   build-provenance attestation.
-4. `wheel` writes the manifest (with the pushed digests, if any), builds the sdist and the
-   wheel, and checks them with `check_dist.py` against the tag.
-5. `publish-pypi` uploads them through PyPI Trusted Publishing (environment `pypi`), and only
-   when step 3 ran and succeeded, so no wheel on PyPI names an image that was not published.
+   `nginx -t` for nginx. Nothing is pushed. `image.sh` refuses to build without the
+   `org.qrosetta.image.project` and `org.qrosetta.service` labels, by which an installed
+   `qrosetta` recognises a pulled image as its stack's, and adds `org.qrosetta.third-party-notices`.
+3. `publish-images` runs only when the repository variable `QROSETTA_PUBLISH_IMAGES` is `true`,
+   on any version tag. It rebuilds each image, pushes it to
+   `ghcr.io/<owner>/qrosetta-<container name>:<version>`, pulls it back by digest and self-tests
+   it, signs it with cosign (keyless), attaches a build-provenance attestation, records its
+   image id (the config digest from the registry manifest, which must equal the pulled image's
+   id), and attaches an SPDX SBOM made by syft (`anchore/sbom-action`) as an attestation
+   (`actions/attest-sbom`).
+4. `wheel` writes the manifest (with the pushed digests, image ids and the signing workflow's
+   identity, if any), builds the sdist and the wheel, and checks them with `check_dist.py`
+   against the tag.
+5. A final version (`X.Y.Z`, `X.Y.Z.postN`) goes to PyPI through Trusted Publishing (environment
+   `pypi`), and only when step 3 ran and succeeded, so no wheel on PyPI names an image that was
+   not published; the job checks the wheel's version again before uploading. A pre-release tag
+   goes to TestPyPI (environment `testpypi`) and never to PyPI.
 
 `workflow_dispatch` is a dry run: the same image builds and self-tests, then a wheel versioned
-`<release>.dev<run number>` with a manifest that names no digest goes to TestPyPI (environment
-`testpypi`). Before the first run, register `release-images.yml` as a trusted publisher of the
-`qrosetta` project on PyPI and TestPyPI with those environment names, and create both
-environments in the repository settings.
+`<release>.dev<run number>` with a manifest that names no digest goes to TestPyPI. Before the
+first run, register `release-images.yml` as a trusted publisher of the `qrosetta` project on PyPI
+and TestPyPI with those environment names, and create both environments in the repository
+settings.
+
+**Image archives without a registry.** On a machine that has pulled (or built) the images,
+`qrosetta images save --profile minimal -o DIR` writes one archive per image and
+`DIR/qrosetta-images.json`; `qrosetta images load DIR` on the target machine checks each archive
+against the index before loading it. These archives are what the Zenodo record carries.
 
 ## Secrets and private files
 

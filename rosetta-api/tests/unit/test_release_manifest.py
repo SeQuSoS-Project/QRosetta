@@ -144,3 +144,30 @@ def test_main_writes_the_manifest_and_refuses_another_version(tmp_path, capsys):
     assert mm.main(["--list-images"]) == 0
     listed = json.loads(capsys.readouterr().out)
     assert not {i["id"] for i in listed} & NEVER_PUBLISHED
+
+
+def test_image_ids_and_the_signer_are_recorded_for_published_images(records, tmp_path):
+    digests = _all_digests(records)
+    ids = {sid: _digest(1000 + i) for i, sid in enumerate(digests)}
+    manifest = mm.build_manifest("1.0.0", "abc", digests=digests, records=records, image_ids=ids,
+                                 signer_repository="SeQuSoS-Project/QRosetta")
+    for sid, entry in manifest["services"].items():
+        assert entry["image_id"] == (ids[sid] if sid not in NEVER_PUBLISHED else None)
+        if sid not in NEVER_PUBLISHED:
+            assert mf.release_ids(manifest, sid) == {ids[sid], digests[sid]}
+    assert manifest["signing"] == {
+        "issuer": "https://token.actions.githubusercontent.com",
+        "identity": "https://github.com/SeQuSoS-Project/QRosetta/.github/workflows/release-images.yml@refs/tags/v1.0.0"}
+    assert mf.signer(manifest) == (manifest["signing"]["identity"], manifest["signing"]["issuer"])
+    assert "signing" not in mm.build_manifest("1.0.0", "abc", records=records, signer_repository="o/r")
+    with pytest.raises(mm.ManifestError, match="not a sha256 digest"):
+        mm.build_manifest("1.0.0", "abc", digests=digests, records=records, image_ids={"qiskit": "abc"})
+    with pytest.raises(mm.ManifestError, match="which has no digest"):
+        mm.build_manifest("1.0.0", "abc", digests=digests, records=records, image_ids={"myqlm": _digest(1)})
+    with pytest.raises(mm.ManifestError, match="is not OWNER/REPOSITORY"):
+        mm.build_manifest("1.0.0", "abc", digests=digests, records=records, signer_repository="QRosetta")
+    pushed = tmp_path / "digests"
+    pushed.mkdir()
+    (pushed / "qiskit.json").write_text(json.dumps({"qiskit": {"digest": _digest(7), "image_id": _digest(8)}}))
+    (pushed / "api.json").write_text(json.dumps({"api": _digest(9)}))
+    assert mm.read_pushed(str(pushed)) == ({"qiskit": _digest(7), "api": _digest(9)}, {"qiskit": _digest(8)})
