@@ -8,7 +8,6 @@ Run against the live stack:
 """
 import os
 import httpx
-import json
 
 BASE_URL = os.environ.get("QROSETTA_BASE_URL", "http://localhost:8080")
 

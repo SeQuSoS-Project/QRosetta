@@ -35,7 +35,7 @@ def load_algorithms() -> Dict[str, Any]:
         if filename.endswith(".json"):
             filepath = os.path.join(algorithms_dir, filename)
             try:
-                with open(filepath, "r") as f:
+                with open(filepath) as f:
                     data = json.load(f)
                     if "id" in data and "code" in data:
                         loaded[data["id"]] = data

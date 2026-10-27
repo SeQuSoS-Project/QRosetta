@@ -93,7 +93,7 @@ def main() -> int:
             try:
                 qc = get_benchmark(benchmark_name=algo, level="alg", circuit_size=q)
                 qasm = _to_qasm(qc)
-            except Exception as e:
+            except Exception:
                 # Unsupported sizes are expected; the first error is reported if all fail.
                 if first_error is None:
                     import traceback

@@ -18,7 +18,7 @@ fi
 config="$top/.gitleaks.toml"
 [ -f "$config" ] || config="$hooks_dir/gitleaks.toml"
 
-while read -r local_ref local_sha remote_ref remote_sha; do
+while read -r local_ref local_sha _remote_ref remote_sha; do
     [ "$local_sha" = "$zero" ] && continue
     if [ "$remote_sha" = "$zero" ] || ! git cat-file -e "$remote_sha^{commit}" 2>/dev/null; then
         range="$local_sha --not --remotes=$remote"

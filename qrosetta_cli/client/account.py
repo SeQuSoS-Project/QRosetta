@@ -9,7 +9,7 @@ import os
 import sys
 import time
 import urllib.parse
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from qrosetta_cli import config as cfgmod, output
 from qrosetta_cli.client import servers
@@ -20,12 +20,12 @@ from qrosetta_cli.errors import CliError, Exit, usage
 
 
 def _iso(epoch):
-    return datetime.fromtimestamp(epoch, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.fromtimestamp(epoch, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _parse_iso(text):
     try:
-        return datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
+        return datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC).timestamp()
     except (TypeError, ValueError):
         return None
 
@@ -35,7 +35,7 @@ def _when(epoch, now=None):
     if epoch is None:
         return "unknown expiry"
     now = time.time() if now is None else now
-    clock = datetime.fromtimestamp(epoch, timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    clock = datetime.fromtimestamp(epoch, UTC).strftime("%Y-%m-%d %H:%M UTC")
     minutes = int(round(abs(epoch - now) / 60))
     return f"until {clock}, in {minutes} min" if epoch > now else f"expired at {clock}, {minutes} min ago"
 

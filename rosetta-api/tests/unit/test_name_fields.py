@@ -7,7 +7,6 @@ import typing
 import pytest
 from pydantic import BaseModel, BeforeValidator, ValidationError
 
-import schemas
 import schemas.benchmark as benchmark
 from schemas.benchmark import printable_name
 

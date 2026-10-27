@@ -121,7 +121,7 @@ def _requirement_names(path: Path) -> set:
         line = line.split("#", 1)[0].strip()
         if not line or line.startswith("-"):
             continue
-        names.add(_normalise(re.split(r"[\[<>=!~;\s]", line, 1)[0]))
+        names.add(_normalise(re.split(r"[\[<>=!~;\s]", line, maxsplit=1)[0]))
     return names
 
 

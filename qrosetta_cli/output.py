@@ -5,7 +5,7 @@ import json
 import os
 import select
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from qrosetta_cli import __version__
 from qrosetta_cli.errors import Exit
@@ -103,7 +103,7 @@ def discard_output():
 
 
 def utc_now():
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def envelope(schema, code, data=None, error=None, server=None, outcome=None):

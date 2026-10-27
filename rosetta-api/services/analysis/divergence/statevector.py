@@ -1,6 +1,6 @@
 """Statevector primitives: parsing, validation, normalisation, and bit-order transforms."""
 
-from functools import lru_cache
+from functools import cache
 from itertools import permutations
 
 import numpy as np
@@ -82,7 +82,7 @@ def _bit_reversed_statevector(sv):
     return _permute_statevector(sv, tuple(reversed(range(n_qubits))))
 
 
-@lru_cache(maxsize=None)
+@cache
 def _qubit_permutation_gather(n_qubits):
     """Return (permutations, gather) for every non-identity, non-reversal qubit permutation.
 

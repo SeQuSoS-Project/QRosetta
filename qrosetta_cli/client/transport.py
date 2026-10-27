@@ -4,7 +4,6 @@ and a later in-image transport provide the same `request` method (spec Q3 `serve
 import http.client
 import ipaddress
 import json
-import socket
 import ssl
 import urllib.error
 import urllib.parse
@@ -168,7 +167,7 @@ class HttpTransport(Transport):
             raise Transient(f"The connection to {self.url} broke off during {method.upper()} {path} "
                             f"({type(exc).__name__}).", Exit.UNREACHABLE, "connection_lost",
                             hint="try again; qrosetta status shows the server") from None
-        except (urllib.error.URLError, socket.timeout, TimeoutError, ConnectionError, OSError) as exc:
+        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as exc:
             reason = getattr(exc, "reason", exc)
             raise Transient(f"No answer from {self.url}: {reason}.", Exit.UNREACHABLE, "unreachable",
                             hint="qrosetta status") from None
