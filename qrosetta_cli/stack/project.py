@@ -42,6 +42,7 @@ class Stack:
     project_dir: str
     services: dict
     volume_names: dict
+    release: dict = None
 
     @property
     def volume_keys(self):
@@ -149,7 +150,8 @@ def normalise_tag(tag):
 
 
 def find_images(engine, refs):
-    """The images among `refs` that exist, keyed by ref."""
+    """The images among `refs` that exist, keyed by ref; a ref by digest matches the image's
+    repo digests, any other ref its tags."""
     if not refs:
         return {}
     out = engine.cli("image", "inspect", *refs)
@@ -163,8 +165,9 @@ def find_images(engine, refs):
         normal = {normalise_tag(t) for t in tags}
         config = item.get("Config") or {}
         env = dict(e.split("=", 1) for e in (config.get("Env") or []) if "=" in e)
+        digests = set(item.get("RepoDigests") or [])
         for ref in refs:
-            if normalise_tag(ref) in normal:
+            if (ref in digests) if "@" in ref else (normalise_tag(ref) in normal):
                 found[ref] = Image(ref=ref, id=item.get("Id", ""), size=int(item.get("Size") or 0),
                                    tags=tags, env=env, labels=config.get("Labels") or item.get("Labels") or {},
                                    digests=item.get("RepoDigests") or [])

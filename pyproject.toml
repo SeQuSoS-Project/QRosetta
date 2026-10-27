@@ -1,0 +1,53 @@
+# The `qrosetta` package: the command-line tool in qrosetta_cli/ only. The API, the frontend,
+# the runners and the compilers ship as container images. Built and published by
+# .github/workflows/release-images.yml; CONTRIBUTING.md (Packaging) describes a local build.
+
+[build-system]
+requires = ["setuptools==80.10.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qrosetta"
+dynamic = ["version"]
+description = "Command-line tool for Quantum Rosetta: starts the local container stack and runs circuits against a Quantum Rosetta server"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
+authors = [
+    { name = "Shaswato Sarker" },
+    { name = "Majid Haghparast" },
+    { name = "Tommi Mikkonen" },
+]
+keywords = ["quantum computing", "quantum simulation", "benchmarking", "reproducibility", "OpenQASM"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = []
+
+[project.scripts]
+qrosetta = "qrosetta_cli.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/SeQuSoS-Project/QRosetta"
+Source = "https://github.com/SeQuSoS-Project/QRosetta"
+
+[tool.setuptools]
+packages = ["qrosetta_cli", "qrosetta_cli.client", "qrosetta_cli.stack"]
+include-package-data = false
+
+[tool.setuptools.package-data]
+qrosetta_cli = ["schemas/*.json", "release/manifest.json"]
+
+[tool.setuptools.dynamic]
+version = { attr = "qrosetta_cli.__version__" }

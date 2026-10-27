@@ -5,7 +5,7 @@ import platform
 import subprocess
 import sys
 
-from qrosetta_cli import __version__, config as cfgmod, mode as modes, output
+from qrosetta_cli import __version__, config as cfgmod, manifest, mode as modes, output
 from qrosetta_cli.context import Result
 from qrosetta_cli.errors import CliError, Exit, usage
 from qrosetta_cli.output import progress, result
@@ -26,12 +26,19 @@ def cmd_version(ctx):
     py = platform.python_version()
     result(f"qrosetta {__version__} (Python {py}, {mode.name} mode{': ' + mode.project_dir if mode.project_dir else ''})")
     result(f"CLI API levels {handshake.CLI_API_LEVELS[0]}-{handshake.CLI_API_LEVELS[1]}")
-    result("Release manifest: none (images are built from the checkout; the manifest arrives with release 2.0.0)")
+    block_manifest = {"release": None, "index": None}
+    if mode.name == "installed":
+        release = manifest.load()
+        result(f"Release manifest: {manifest.describe(release)}")
+        block_manifest.update(release=(release or {}).get("platform_version"),
+                              images_published=manifest.images_published(release))
+    else:
+        result("Release manifest: none (images are built from the checkout; the manifest arrives with release 2.0.0)")
     result(f"Server {server.url} ({server.source}): {state}")
     return Result(0, {"cli_version": __version__, "python": py, "mode": mode.name,
                       "project_dir": mode.project_dir or None,
                       "cli_api_levels": list(handshake.CLI_API_LEVELS),
-                      "manifest": {"release": None, "index": None},
+                      "manifest": block_manifest,
                       "server": dict(ctx.server_block or {}, handshake=block, reachable=state != "not answering")})
 
 

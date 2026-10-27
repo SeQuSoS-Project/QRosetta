@@ -3,11 +3,14 @@ and pods on a fake engine, and a static check that destructive engine calls get 
 only from the ownership scan."""
 
 import ast
+import json
 
 import pytest
 
-from tests.unit._qrosetta_fake import REPO, FakeEngine, FakeServer, Unreachable, image_labels, ours
+from tests.unit._qrosetta_fake import REPO, FakeEngine, FakeServer, Unreachable, image_labels, ours, release_manifest
 
+from qrosetta_cli import manifest as mf  # noqa: E402
+from qrosetta_cli import mode as modes  # noqa: E402
 from qrosetta_cli.cli import main  # noqa: E402
 from qrosetta_cli.errors import Exit  # noqa: E402
 from qrosetta_cli.stack import ownership as own  # noqa: E402
@@ -174,6 +177,30 @@ def test_foreground_exit_action_remove_touches_only_this_stack(project, tmp_path
     assert server.run() == 0
     check_calls(f, decoys)
     assert "c-rosetta-api" not in f.containers and "c-pedantic_noyce" in f.containers
+
+
+@pytest.mark.parametrize("argv", [["stop"], ["remove", "--images", "--data", "--confirm", "qr"], ["status"]])
+def test_installed_mode_keeps_every_ownership_rule(project, tmp_path, monkeypatch, argv):
+    monkeypatch.setattr(modes, "PACKAGE_PARENT", str(tmp_path / "site-packages"))
+    monkeypatch.setattr(mf, "PATH", str(tmp_path / "manifest.json"))
+    (tmp_path / "manifest.json").write_text(json.dumps(release_manifest()))
+    f, decoys = decoyed()
+    env = {"QROSETTA_PROJECT": "qr", "COMPOSE_PROJECT_NAME": "myapp", "COMPOSE_FILE": "evil.yml",
+           "QROSETTA_TOKEN": "secret", "HOME": str(tmp_path), "XDG_RUNTIME_DIR": str(tmp_path / "run"),
+           "XDG_STATE_HOME": str(tmp_path / "state"), "XDG_CONFIG_HOME": str(tmp_path / "config")}
+    opened = []
+
+    def factory(directory):
+        opened.append(directory)
+        return Engine(f.engine, directory, run=f, popen=f.popen, env=env)
+
+    expected = Exit.ENGINE if argv[0] == "stop" else Exit.OK
+    assert main(argv, checkout=None, env=env, tty=True, stdin=Lines("qr\n"), engine_factory=factory,
+                transport_factory=Unreachable()) == expected
+    assert opened == [str(tmp_path / "state" / "qrosetta")]
+    check_calls(f, decoys)
+    present = set(f.containers) | set(f.networks) | set(f.volumes) | set(f.images) | set(f.pods)
+    assert {d for d in decoys if d.startswith(("c-", "n-", "i-")) or d in ("myapp_db", "mixed")} <= present
 
 
 def test_act_refuses_targets_not_made_by_the_scan():

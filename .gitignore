@@ -38,6 +38,9 @@ build/
 dist/
 *.egg-info/
 
+# Release manifest: written by scripts/release/make_manifest.py in the release workflow
+qrosetta_cli/release/manifest.json
+
 # OS
 .DS_Store
 Thumbs.db

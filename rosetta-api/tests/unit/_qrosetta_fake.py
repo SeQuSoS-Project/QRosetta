@@ -11,6 +11,7 @@ REPO = Path(__file__).resolve().parents[3]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+from qrosetta_cli import manifest as mf  # noqa: E402
 from qrosetta_cli.client.transport import Response  # noqa: E402
 from qrosetta_cli.stack import ownership as own  # noqa: E402
 from qrosetta_cli.stack import project as st  # noqa: E402
@@ -33,6 +34,41 @@ CONFIG = {
     },
     "volumes": {"db": {"name": "qr_db"}},
 }
+
+RELEASE_DIGEST = "sha256:" + "ab" * 32
+REGISTRY = "ghcr.io/sequsos-project"
+
+
+def _release_service(sid, kind, compose_service, container, distributable=True, published=True):
+    repository = f"{REGISTRY}/qrosetta-{container}" if distributable else None
+    ref = f"{repository}@{RELEASE_DIGEST}" if distributable and published else None
+    return {"kind": kind, "ids": [sid], "compose_service": compose_service, "infra_host": container,
+            "distributable": distributable, "requires_gpu": False, "profiles": [], "sdk_versions": {},
+            "repository": repository, "ref": ref,
+            "compose": {"labels": {"org.qrosetta.project": "${QROSETTA_PROJECT:-qsimulators}",
+                                   "org.qrosetta.id": sid, "org.qrosetta.kind": kind},
+                        "container_name": container, "networks": ["isolated_net"]}}
+
+
+def release_manifest(published=True):
+    """A release manifest for the fake stack: nginx, api and qiskit published by digest, myqlm
+    not distributable."""
+    services = {
+        "nginx": _release_service("nginx", "core", "nginx", "nginx-reverse-proxy", published=published),
+        "api": _release_service("api", "core", "api", "rosetta-api", published=published),
+        "qiskit": _release_service("qiskit", "runner", "qiskit_runner", "qiskit-runner", published=published),
+        "myqlm": _release_service("myqlm", "runner", "myqlm_runner", "myqlm-runner", distributable=False),
+    }
+    services["api"]["compose"].update(volumes=["rosetta_db_data:/home/appuser/app/data"], secrets=["lifecycle_token"])
+    return {"schema": mf.SCHEMA, "platform_version": "9.9.9", "git_sha": "abc123", "registry": REGISTRY,
+            "images_published": published,
+            "compose": {"name": "${QROSETTA_PROJECT:-qsimulators}",
+                        "networks": {"isolated_net": {"internal": True}}, "volumes": {"rosetta_db_data": None},
+                        "secrets": {"lifecycle_token": {
+                            "file": "${QROSETTA_LIFECYCLE_TOKEN_PATH:-./infra/lifecycle-token.none}"}}},
+            "services": services}
+
+
 DESTRUCTIVE = {("stop",), ("kill",), ("rm",), ("rmi",), ("pod", "stop"), ("pod", "rm"), ("pod", "kill"),
                ("network", "rm"), ("volume", "rm"), ("container", "rm"), ("container", "stop"),
                ("image", "rm"), ("system", "prune"), ("network", "prune"), ("volume", "prune"),
@@ -92,8 +128,8 @@ class FakeEngine:
     def add_volume(self, name, labels):
         self.volumes[name] = {"Name": name, "Labels": dict(labels)}
 
-    def add_image(self, ident, tags, labels, size=100, sha="abc123"):
-        self.images[ident] = {"Id": ident, "Size": size, "RepoTags": list(tags),
+    def add_image(self, ident, tags, labels, size=100, sha="abc123", digests=()):
+        self.images[ident] = {"Id": ident, "Size": size, "RepoTags": list(tags), "RepoDigests": list(digests),
                               "Config": {"Labels": dict(labels), "Env": [f"QROSETTA_IMAGE_GIT_SHA={sha}"]}}
 
     def standard(self):
@@ -193,7 +229,8 @@ class FakeEngine:
             return "", 0
         if a[:2] == ["image", "inspect"]:
             items = [i for i in self.images.values()
-                     if {st.normalise_tag(t) for t in i["RepoTags"]} & {st.normalise_tag(r) for r in a[2:]}]
+                     if {st.normalise_tag(t) for t in i["RepoTags"]} & {st.normalise_tag(r) for r in a[2:]}
+                     or set(i["RepoDigests"]) & set(a[2:])]
             return json.dumps(items), 0
         if a[0] == "rmi":
             for i in a[1:]:

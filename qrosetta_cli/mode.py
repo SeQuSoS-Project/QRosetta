@@ -5,7 +5,7 @@ import os
 from dataclasses import dataclass
 
 from qrosetta_cli import output
-from qrosetta_cli.errors import CliError, Exit, usage
+from qrosetta_cli.errors import usage
 
 BASE_FILES = ("compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml")
 PACKAGE_PARENT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -55,11 +55,3 @@ def detect(flag=None, env=None, checkout=None):
         return Mode("checkout", PACKAGE_PARENT, "this checkout")
     return Mode("installed", "", "installed package")
 
-
-def require_checkout(mode):
-    if mode.name != "checkout":
-        raise CliError("This qrosetta is installed without a checkout, and installed mode needs the "
-                       "release manifest that arrives with release 2.0.0.", Exit.INCOMPATIBLE,
-                       "installed_mode_unavailable",
-                       hint="qrosetta --project-dir DIR status, with DIR a Quantum Rosetta checkout")
-    return mode.project_dir
