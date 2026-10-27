@@ -20,7 +20,7 @@ The other files need the full stack and are run by hand.
 | --- | --- |
 | `QROSETTA_BASE_URL` | The stack's address (default `http://localhost:8080`). |
 | `QROSETTA_TEST_RUNNERS` | A comma list: run only on these runners (for a stack that runs only some). The end-to-end tests default to `qiskit,qulacs,cirq`, the contract test to every active runner. |
-| `QROSETTA_E2E_REQUIRE_CURRENT` | `1` requires the Origin, Content-Type, security-header, `/health`/`/ready` and password-on-deletion checks. Without it they run only when `GET /config` lists the `readiness` feature, so the end-to-end test also passes against a server from before 2026-10-28. |
+| `QROSETTA_E2E_REQUIRE_CURRENT` | `1` requires the Origin, Content-Type, security-header, `/health`/`/ready`, password-on-deletion and sign-out checks. Without it the first five run only when `GET /config` lists the `readiness` feature and sign-out only when it lists `logout`, so the end-to-end test also passes against a server from before 2026-10-28. |
 
 The end-to-end tests are a user of the stack: they create an account
 `overnight-e2e-<random>@example.invalid` and delete it, run one job at a time, and never set
@@ -33,7 +33,7 @@ The unit suite, which CI does run on every push, lives in `rosetta-api/tests/uni
 | File | Checks |
 | --- | --- |
 | `test_runner_contract_asymmetric.py` | **The important one.** Runs a deliberately asymmetric circuit through every enabled runner and checks the statevector and counts against the expected result. A symmetric smoke test (Bell, GHZ) passes even when a runner returns the all-zeros state or has its bit-order label backwards; this one does not. |
-| `test_e2e_nginx.py` | End-to-end through nginx: routing (`/`, `/docs` Swagger, `/docs.html` from disk, `/openapi.json`, unknown path → JSON 404); `/health` and `/ready`; security headers, a foreign Origin (403) and a non-JSON body (415); register and sign in; QFT-4 statevector (every amplitude 1/4) and measured on the chosen runners; the Summary (every pair agrees, every run returned); save; a share link read through `share.html`'s route, revoked, then 404; account deletion (password required), after which the token, the login and the remaining link are refused. |
+| `test_e2e_nginx.py` | End-to-end through nginx: routing (`/`, `/docs` Swagger, `/docs.html` from disk, `/openapi.json`, unknown path → JSON 404); `/health` and `/ready`; security headers, a foreign Origin (403) and a non-JSON body (415); register and sign in; QFT-4 statevector (every amplitude 1/4) and measured on the chosen runners; the Summary (every pair agrees, every run returned); save; a share link read through `share.html`'s route, revoked, then 404; sign-out (`POST /auth/logout`), after which the old token gets 401 and a new sign-in works; account deletion (password required), after which the token, the login and the remaining link are refused. |
 | `test_e2e_cli.py` | The same QFT-4 through `./qrosetta run` (both modes, `--fail-on differs,runs_without_output`), `show summary` from the saved file and from the server, and `export crate`. The CLI gets empty config, state and runtime directories. |
 | `integration_test_live.py` | Older smoke test through nginx: the stack is up and a comparison completes. |
 | `test_opt_levels.py` | Each runner accepts its advertised optimization levels and reports the level it actually ran at. |
