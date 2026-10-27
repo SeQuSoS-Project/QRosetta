@@ -379,6 +379,12 @@ The default thresholds (fidelity 1e-5, phase 1e-6 rad, norm 1e-4, JS 0.01 nats, 
 
 *Evidence (2026-10-27).* Unbounded probes would add unrecorded load to the runners during other jobs' timed windows.
 
+### Self-test known answers
+
+*Rule.* The self-test (`GET /selftest`, evaluated by `GET /jobs/{id}/selftest-result`) runs fixed circuits with fixed settings and compares every backend with an expected answer computed by an independent numpy reference ([`rosetta-api/services/selftest/reference.py`](rosetta-api/services/selftest/reference.py)), pinned in [`rosetta-api/circuits/selftest/expected.json`](rosetta-api/circuits/selftest/expected.json). It never compares backends with each other, so it fails when every backend agrees on the same wrong answer. Statevectors must reach fidelity 1 − 1e-5 with the expected state in the backend's declared bit order; five classical-bit circuits must give their single expected key; GHZ-3 must stay on its support and within six standard deviations of balance. A virtual machine or a self-built image is a warning; emulation, an unknown image or a modified checkout is a failure.
+
+*Evidence (2026-10-27).* The statevector circuit's expected state has fidelity at most 0.834 with any qubit reordering, 0.559 with bit reversal, at most 0.874 with a cx control and target swapped, and 0.795 with the rz sign flipped; single-precision rounding changes it by less than 1e-7. Six wrong states returned identically by every backend, which the agreement analysis labels as agreeing, and eight wrong counts-key cases all fail ([`rosetta-api/tests/unit/test_selftest_evaluate.py`](rosetta-api/tests/unit/test_selftest_evaluate.py)).
+
 ### Summary headline
 
 *Rule.* The headline is built from differing pairs only; inconclusive pairs are neither agreement nor difference. Kinds `named` / `camps` / `pairs` / `spread`. Sizes are taken against the backends not named (median and range of TV; lowest fidelity). BY-only pairs are counted apart. A chance caveat is shown for minority flags. Red only for named backends. [`rosetta-api/tests/unit/test_headline_cases.py`](rosetta-api/tests/unit/test_headline_cases.py), [`rosetta-api/tests/unit/test_headline_magnitude.py`](rosetta-api/tests/unit/test_headline_magnitude.py).
