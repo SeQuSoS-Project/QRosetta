@@ -1,6 +1,7 @@
-# Unit tests, the CLI on every supported Python, static checks, lint, secret scan, actionlint and
-# zizmor. Every action is pinned to a commit (the comment gives its release; one commit per action
-# across the workflows); the token is read-only and no checkout keeps it.
+# Unit tests, the CLI on every supported Python, static checks, lint, secret scan, an integration
+# run of a built stack, actionlint and zizmor. Every action is pinned to a commit (the comment gives
+# its release; one commit per action across the workflows); the token is read-only and no checkout
+# keeps it.
 name: CI
 
 on:
@@ -285,6 +286,80 @@ jobs:
       - name: No secrets anywhere in history
         run: |
           "$RUNNER_TEMP/gitleaks" git --config .gitleaks.toml --redact --no-banner .
+
+  integration:
+    # Builds nginx, the API and three runners from this commit with the repository's compose file
+    # (resource limits as on a user's machine: the hosted runner's rootful Docker applies the CPU
+    # quota), starts them, and runs the end-to-end tests through nginx, the qrosetta client commands
+    # and the runner contract probes against them. No secrets: the stack runs in local mode with an
+    # ephemeral signing key, and the tests create and delete their own account.
+    name: integration (nginx, API, qiskit, qulacs, cirq)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      SERVICES: nginx api pytket_qiskit_runner pytket_qulacs_runner pytket_cirq_runner
+      RUNNER_HOSTS: pytket-qiskit-runner pytket-qulacs-runner pytket-cirq-runner
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Build the images
+        run: |
+          docker compose version
+          # shellcheck disable=SC2086
+          QROSETTA_GIT_SHA="${GITHUB_SHA::7}" docker compose build $SERVICES
+
+      - name: Start the stack
+        run: |
+          # shellcheck disable=SC2086
+          QROSETTA_GIT_SHA="${GITHUB_SHA::7}" docker compose up -d --no-build --wait --wait-timeout 300 $SERVICES
+
+      - name: Wait for the runners
+        run: |
+          for host in $RUNNER_HOSTS; do
+            for attempt in $(seq 60); do
+              if docker compose exec -T api python3 -c \
+                "import urllib.request; urllib.request.urlopen('http://$host:8000/capabilities', timeout=5)"; then
+                echo "$host answers (attempt $attempt)"
+                continue 2
+              fi
+              sleep 3
+            done
+            echo "$host did not answer within 3 minutes"
+            exit 1
+          done
+          curl -fsS http://127.0.0.1:8080/config > /dev/null
+
+      - name: Install the test dependencies
+        run: |
+          python -m pip install -r tests/integration/requirements.txt
+          python -m pip install ./shared
+
+      - name: End-to-end, CLI and runner contract tests
+        env:
+          QROSETTA_BASE_URL: http://127.0.0.1:8080
+          QROSETTA_TEST_RUNNERS: qiskit,qulacs,cirq
+          QROSETTA_E2E_REQUIRE_CURRENT: "1"
+        run: >
+          python -m pytest -v -p no:cacheprovider
+          tests/integration/test_e2e_nginx.py tests/integration/test_e2e_cli.py
+          tests/integration/test_runner_contract_asymmetric.py
+
+      - name: Service logs
+        if: failure()
+        run: docker compose logs --no-color --tail 300
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose down --volumes
 
   actionlint:
     # Lints every workflow under .github/workflows, with the run scripts checked by ShellCheck, then

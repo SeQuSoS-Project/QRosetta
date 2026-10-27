@@ -3,13 +3,13 @@
 Run against the live stack:
     python3 tests/integration/test_runner_contract_asymmetric.py
 
+QROSETTA_TEST_RUNNERS (a comma list) limits the run to some of the active runners, for a stack
+that runs only those.
+
 The probe circuits and their checks live in ``qrosetta_commons.contract_probes``, shared with
 each runner's in-process ``--self-test``; see that module for what each probe catches. Here
 they are sent through the API, so every runner receives the circuit text the API dispatches.
 """
-
-import os
-import time
 
 import httpx
 
@@ -19,9 +19,8 @@ from qrosetta_commons.contract_probes import (
     check_measured_subset, check_mid_circuit, check_one_hot_counts, check_one_hot_statevector,
     check_statevector_shape, decode_complex128_base64,
 )
+from live_stack import poll_job, selected_runners, send
 
-
-BASE_URL = os.environ.get("QROSETTA_BASE_URL", "http://localhost:8080")
 
 ACTIVE_STATEVECTOR_RUNNERS = [
     "qiskit",
@@ -45,19 +44,14 @@ ACTIVE_STATEVECTOR_RUNNERS = [
 REGISTER_BROADCAST_QASM = "qreg q[1]; qreg r[2]; x q[0]; cx q[0],r;"
 REGISTER_BROADCAST_INDEX = 7
 
+RUNNERS = selected_runners(ACTIVE_STATEVECTOR_RUNNERS)
 
-def _poll_job(job_id: str, timeout: int = 180) -> dict:
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        resp = httpx.get(f"{BASE_URL}/jobs/{job_id}", timeout=10)
-        assert resp.status_code == 200, f"Job poll HTTP {resp.status_code}: {resp.text}"
-        data = resp.json()
-        if data.get("status") in ("completed", "failed") and data.get("results"):
-            return data["results"]
-        if data.get("status") == "failed":
-            raise AssertionError(f"Job failed: {data.get('error')}")
-        time.sleep(1)
-    raise TimeoutError(f"Job {job_id} did not complete within {timeout}s")
+
+def _poll_job(client: httpx.Client, job_id: str, timeout: int = 180) -> dict:
+    data = poll_job(client, job_id, timeout)
+    if not data.get("results"):
+        raise AssertionError(f"Job failed: {data.get('error')}")
+    return data["results"]
 
 
 def _raw_result_by_runner(results: dict) -> dict:
@@ -65,12 +59,13 @@ def _raw_result_by_runner(results: dict) -> dict:
 
 
 def _submit(endpoint: str, payload: dict) -> dict:
-    payload = {"target_simulators": ACTIVE_STATEVECTOR_RUNNERS, "timeout_seconds": 300,
+    payload = {"target_simulators": RUNNERS, "timeout_seconds": 300,
                "execution_target": "local", **payload}
-    resp = httpx.post(f"{BASE_URL}/{endpoint}", json=payload, timeout=30)
-    assert resp.status_code == 200, f"HTTP {resp.status_code}: {resp.text}"
-    by_runner = _raw_result_by_runner(_poll_job(resp.json()["job_id"]))
-    missing = [runner for runner in ACTIVE_STATEVECTOR_RUNNERS if runner not in by_runner]
+    with httpx.Client(timeout=30) as client:
+        resp = send(client, "POST", f"/{endpoint}", json=payload)
+        assert resp.status_code == 200, f"HTTP {resp.status_code}: {resp.text}"
+        by_runner = _raw_result_by_runner(_poll_job(client, resp.json()["job_id"]))
+    missing = [runner for runner in RUNNERS if runner not in by_runner]
     assert not missing, f"Missing {endpoint} results: {missing}"
     return by_runner
 
@@ -91,14 +86,14 @@ def _assert_no_failures(failures: list) -> None:
 def test_active_runner_statevector_ordering_contract():
     print("--- Asymmetric statevector contract probe ---")
     by_runner = _run_statevector(ONE_HOT_QASM)
-    _assert_no_failures([f"{runner}: {msg}" for runner in ACTIVE_STATEVECTOR_RUNNERS
+    _assert_no_failures([f"{runner}: {msg}" for runner in RUNNERS
                          for msg in check_one_hot_statevector(by_runner[runner])])
 
 
 def test_active_runner_measured_ordering_contract():
     print("--- Asymmetric measured contract probe ---")
     by_runner = _run_measured(ONE_HOT_QASM, N_SHOTS)
-    _assert_no_failures([f"{runner}: {msg}" for runner in ACTIVE_STATEVECTOR_RUNNERS
+    _assert_no_failures([f"{runner}: {msg}" for runner in RUNNERS
                          for msg in check_one_hot_counts(by_runner[runner], N_SHOTS)])
 
 
@@ -107,7 +102,7 @@ def test_statevector_shape_probes():
     failures = []
     for name, (body, preprocessing, _n, _expected) in STATEVECTOR_SHAPE_PROBES.items():
         by_runner = _run_statevector(QASM_HEADER + body, preprocessing)
-        failures += [f"{name}/{runner}: {msg}" for runner in ACTIVE_STATEVECTOR_RUNNERS
+        failures += [f"{name}/{runner}: {msg}" for runner in RUNNERS
                      for msg in check_statevector_shape(name, by_runner[runner])]
     _assert_no_failures(failures)
 
@@ -129,7 +124,7 @@ def check_register_broadcast(result: dict) -> list:
 def test_register_broadcast_without_preprocessing():
     print("--- Register-broadcast probe (apply_preprocessing=False) ---")
     by_runner = _run_statevector(QASM_HEADER + REGISTER_BROADCAST_QASM, False)
-    _assert_no_failures([f"{runner}: {msg}" for runner in ACTIVE_STATEVECTOR_RUNNERS
+    _assert_no_failures([f"{runner}: {msg}" for runner in RUNNERS
                          for msg in check_register_broadcast(by_runner[runner])])
 
 
@@ -138,7 +133,7 @@ def test_counts_keys_are_classical_bits():
     failures = []
     for name, (body, _expected) in CLASSICAL_BIT_PROBES.items():
         by_runner = _run_measured(QASM_HEADER + body)
-        failures += [f"{name}/{runner}: {msg}" for runner in ACTIVE_STATEVECTOR_RUNNERS
+        failures += [f"{name}/{runner}: {msg}" for runner in RUNNERS
                      for msg in check_classical_bits(name, by_runner[runner])]
     _assert_no_failures(failures)
 
@@ -146,14 +141,14 @@ def test_counts_keys_are_classical_bits():
 def test_counts_measure_only_the_measured_qubits():
     print("--- Measured-subset probe ---")
     by_runner = _run_measured(QASM_HEADER + SUBSET_QASM)
-    _assert_no_failures([f"{runner}: {msg}" for runner in ACTIVE_STATEVECTOR_RUNNERS
+    _assert_no_failures([f"{runner}: {msg}" for runner in RUNNERS
                          for msg in check_measured_subset(by_runner[runner])])
 
 
 def test_mid_circuit_measurement_is_simulated_or_refused():
     print("--- Mid-circuit measurement probe ---")
     by_runner = _run_measured(QASM_HEADER + MID_CIRCUIT_QASM)
-    _assert_no_failures([f"{runner}: {msg}" for runner in ACTIVE_STATEVECTOR_RUNNERS
+    _assert_no_failures([f"{runner}: {msg}" for runner in RUNNERS
                          for msg in check_mid_circuit(by_runner[runner])])
 
 
