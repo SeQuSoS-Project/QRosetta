@@ -1014,7 +1014,12 @@
                     <li><strong>RO-Crate export.</strong> A run exports as an RO-Crate conforming to the
                         Process Run Crate profile, with the inputs, dispatched and executed circuits, per-backend
                         results (counts, or statevector hashes unless statevectors are included), agreement
-                        evidence and provenance. Every file in <code>ro-crate-metadata.json</code> has its
+                        evidence and provenance. <code>README.txt</code> at the crate's root explains it to
+                        a reader without this manual: the report source, completeness, which images
+                        ran (<code>specimens</code>), the timing caveats, where each kind of file is, the
+                        software version and commit, and a command that checks every file's hash; it is
+                        written from <code>ro-crate-metadata.json</code>. Every file in
+                        <code>ro-crate-metadata.json</code> has its
                         <code>sha256</code> and <code>contentSize</code> (bytes); the agreement thresholds
                         and, in measured mode, the test's α, target power and total-variation gap are
                         PropertyValues of <code>#agreement-analysis</code>. Links to the source code point at

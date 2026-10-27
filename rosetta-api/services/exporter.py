@@ -25,6 +25,7 @@ from services.analysis.divergence.common import (
     DEFAULT_JS_THRESHOLD, DEFAULT_NORM_TOLERANCE, DEFAULT_PHASE_TOLERANCE,
 )
 from services.export_provenance import root_properties, run_records
+from services.export_readme import README_PATH, add_readme_entity, crate_readme
 from services.export_results import digest, encoded, results_json_source
 from services.specimens import ran
 from services.report_filters import (
@@ -859,6 +860,19 @@ def _statevector_description(ctx: ExportContext) -> str:
 
 # --- ro-crate-metadata.json ------------------------------------------------------------
 
+PLATFORM_DESCRIPTION = (
+    "Microservices platform for cross-simulator quantum circuit benchmarking "
+    "using OpenQASM 2.0 as the canonical input format. Orchestrates each backend "
+    "execution and computes cross-simulator agreement evidence.")
+
+
+def _platform_note(ctx: ExportContext, trusted: bool, platform_version) -> str:
+    """The platform entity's description after PLATFORM_DESCRIPTION: the supplied version of
+    an untrusted report and what the source links point at."""
+    return (("" if trusted else f" Platform version as supplied in the report: {platform_version}.")
+            + _source_link_note(ctx))
+
+
 def _build_ro_crate_metadata(ctx: ExportContext,
                              artifact_paths: Optional[List[str]] = None,
                              artifact_descriptions: Optional[Dict[str, str]] = None,
@@ -1079,13 +1093,7 @@ def _build_ro_crate_metadata(ctx: ExportContext,
         "@id": "#quantum-rosetta",
         "@type": "SoftwareApplication",
         "name": "Quantum Rosetta",
-        "description": (
-            "Microservices platform for cross-simulator quantum circuit benchmarking "
-            "using OpenQASM 2.0 as the canonical input format. Orchestrates each backend "
-            "execution and computes cross-simulator agreement evidence."
-            + ("" if trusted else f" Platform version as supplied in the report: {platform_version}.")
-            + _source_link_note(ctx)
-        ),
+        "description": PLATFORM_DESCRIPTION + _platform_note(ctx, trusted, platform_version),
         "url": _source_url(ctx),
         "codeRepository": settings.REPOSITORY_URL,
     }
@@ -1439,14 +1447,19 @@ def write_ro_crate(ctx: ExportContext, fh) -> None:
     for task in _iter_tasks(ctx):
         for f in _dispatched_circuit_files(task) + _transpiled_circuit_files(task) + _compiled_files(task):
             files[f["path"]] = f["qasm"].encode("utf-8")
+    add_readme_entity(metadata)
+    platform = next(e for e in metadata["@graph"] if e.get("@id") == "#quantum-rosetta")
+    readme = crate_readme(metadata, dir_name, platform["description"][len(PLATFORM_DESCRIPTION):])
     results_digest = digest(encoded(results_json()))
-    _describe_files(metadata, files, {"results.json": results_digest})
+    _describe_files(metadata, {README_PATH: readme.encode("utf-8"), **files},
+                    {"results.json": results_digest})
 
     with zipfile.ZipFile(fh, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr(
             f"{dir_name}/ro-crate-metadata.json",
             json.dumps(metadata, indent=2, ensure_ascii=False),
         )
+        zf.writestr(_member(dir_name, README_PATH), readme.encode("utf-8"))
         for rel_path, data in files.items():
             if data is _STREAMED:
                 _write_streamed(zf, _member(dir_name, rel_path), results_digest[1],
