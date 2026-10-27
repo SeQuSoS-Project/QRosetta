@@ -69,6 +69,8 @@ rosetta-api/data/s3_storage_mock/
 # Testing & Coverage
 .pytest_cache/
 .coverage
+.coverage.*
+coverage.xml
 htmlcov/
 .tox/
 

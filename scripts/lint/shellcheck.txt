@@ -1,0 +1,4 @@
+# shellcheck findings scripts/lint/check.sh accepts: file, code, count.
+# Lower or delete a line when you fix a finding; a count above its line fails the check.
+scripts/deploy.sh SC2046 1
+scripts/deploy_frontend.sh SC2046 1

@@ -596,6 +596,38 @@ settings.
 `DIR/qrosetta-images.json`; `qrosetta images load DIR` on the target machine checks each archive
 against the index before loading it. These archives are what the Zenodo record carries.
 
+## Lint gates
+
+The CI job `lint` fails only on findings that are not already recorded:
+
+- `ruff check .` with the rules in `[tool.ruff]` of `pyproject.toml`: pyflakes (`F`), syntax
+  errors (`E9`), bugbear (`B`), pyupgrade (`UP`, without the annotation-spelling rules) and bandit
+  (`S`, outside tests). Findings present when the gate was added are listed per file in
+  `[tool.ruff.lint.per-file-ignores]`: reviewed false positives with the reason, code in the
+  measured images (runners, compilers, `shared/qrosetta_commons`), and an unreviewed baseline.
+  Delete an entry when you fix its file; a new file gets no entry.
+- `scripts/lint/check.sh`: shellcheck over `scripts/**/*.sh` and the git hooks, hadolint over
+  every Dockerfile, compared with `scripts/lint/shellcheck.txt` and `scripts/lint/hadolint.txt`
+  (file, code, count). A count above its line fails; a count below it is printed so you can
+  lower the line. `scripts/lint/check.sh --write` rewrites both files.
+
+Locally, with the tools from `scripts/lint/requirements.txt` and a
+[hadolint](https://github.com/hadolint/hadolint/releases) binary on `PATH` (or in `$HADOLINT`):
+
+```bash
+ruff check . && scripts/lint/check.sh
+```
+
+`.pre-commit-config.yaml` runs ruff and the secret check below on each commit if you use
+[pre-commit](https://pre-commit.com): run `scripts/install_hooks.sh` first, then
+`pre-commit install`, which replaces only the pre-commit hook.
+
+Code that runs inside a timed window, and the images that carry it, is not changed to satisfy a
+lint rule; its findings stay in the baseline until the image is next requalified.
+
+The unit job on Python 3.12 also records line coverage (`[tool.coverage]` in `pyproject.toml`)
+and uploads `coverage.xml` as the artifact `coverage-unit-py3.12`. There is no threshold.
+
 ## Secrets and private files
 
 Run `scripts/install_hooks.sh` once after cloning. It installs a pinned, checksum-verified

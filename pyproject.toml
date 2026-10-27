@@ -56,3 +56,143 @@ qrosetta_cli = ["schemas/*.json", "release/manifest.json"]
 
 [tool.setuptools.dynamic]
 version = { attr = "qrosetta_cli.__version__" }
+
+# Lint and format settings (ruff); they do not change the wheel. CONTRIBUTING.md (Lint gates)
+# describes the CI jobs and the per-file baseline at the end of this file.
+[tool.ruff]
+# The API image and most runner images run Python 3.10; the CLI needs 3.11 (requires-python above).
+target-version = "py310"
+per-file-target-version = { "qrosetta_cli/**" = "py311" }
+line-length = 120
+# Frozen scripts of a published experiment run.
+extend-exclude = ["experiments"]
+
+[tool.ruff.format]
+# Only qrosetta_cli/ is formatted with ruff; the rest of the tree keeps its own layout for now.
+exclude = ["rosetta-api/**", "runners/**", "compilers/**", "shared/**", "scripts/**", "tests/**"]
+
+[tool.ruff.lint]
+select = ["F", "E9", "B", "UP", "S"]
+ignore = [
+    # Annotation spelling (List -> list, Optional[X] -> X | None): a tree-wide rewrite, not a bug.
+    "UP006", "UP007", "UP035", "UP045",
+    # Fires on every subprocess call with an argument list; shell=True is S602/S604, still selected.
+    "S603",
+]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+    "fastapi.Body", "fastapi.Depends", "fastapi.File", "fastapi.Form", "fastapi.Header", "fastapi.Path",
+    "fastapi.Query", "fastapi.Security",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests: assert is the idiom, credentials and temp paths are fixtures, and zip() pairs equal-length
+# expectations. The security rules apply to shipped code.
+"rosetta-api/tests/**" = ["S", "B905"]
+"tests/**" = ["S", "B905"]
+
+# Reviewed, not defects.
+"qrosetta_cli/client/refs.py" = ["S105"]  # "token" names a command-line token, not a secret
+"qrosetta_cli/localstack.py" = ["S105"]  # TOKEN_FILE is a file name
+"rosetta-api/services/security.py" = ["S105", "B904"]  # PROXY_TOKEN_HEADER is a header name
+"qrosetta_cli/client/servers.py" = ["S104"]  # maps a 0.0.0.0 bind to the URL "localhost"
+"qrosetta_cli/stack/serve.py" = ["S104"]  # same mapping for a published port
+"qrosetta_cli/stack/doctor.py" = ["S108"]  # reports free space in /var/tmp; writes nothing there
+"qrosetta_cli/stack/explain.py" = ["S108"]  # names /var/tmp in an explanation
+"qrosetta_cli/client/transport.py" = ["S310"]  # the server URL is checked to be http or https
+"qrosetta_cli/stack/commands.py" = ["S607"]  # bash from PATH, as the engine is
+"scripts/release/make_manifest.py" = ["S607"]  # git from PATH
+"rosetta-api/services/circuit_library.py" = ["S102"]  # exec() of the repository's algorithm_templates/
+"rosetta-api/services/job_store.py" = ["S301"]  # unpickles only the API's own spill files
+"rosetta-api/services/prep_worker.py" = ["S301", "B904"]  # unpickles only its own child's pipe
+"rosetta-api/services/job_manager.py" = ["S311", "B904", "B905"]  # random draws a simulation seed
+"rosetta-api/services/dispatcher_k8s.py" = ["S110", "S112", "B904"]  # retried or best-effort calls
+"rosetta-api/services/exporter.py" = ["S110"]  # lock-file version scan is best-effort
+"rosetta-api/services/analysis/divergence/headline.py" = ["B023"]  # closure called inside its iteration
+"scripts/api_fuzz/run_fuzz.py" = ["B023", "S311"]  # closures called inside their iteration; seeded fuzzing
+"scripts/harness_bench/bench.py" = ["B008"]  # default argument binds each case's input once
+"scripts/adapter_paths/compare_paths.py" = ["B905", "S311"]
+"scripts/adapter_paths/time_paths.py" = ["B007", "S311"]
+"scripts/harness_bench/e2e.py" = ["S311"]
+"scripts/harness_bench/save_report.py" = ["S311"]
+"scripts/harness_bench/prep_equivalence.py" = ["S112"]
+"scripts/circuit_texts_equivalence/compare.py" = ["B905", "S607"]
+"scripts/timing_caveats_equivalence/compare.py" = ["B905", "S311", "S607"]
+
+# Sealed: runner and compiler code and qrosetta_commons ship in the measured images, which change
+# only with requalification (CLAUDE.md §3.4). Findings present on 2026-10-28.
+"compilers/bqskit-compiler/main.py" = ["B904"]
+"compilers/cirq-compiler/main.py" = ["B904"]
+"compilers/pyzx-compiler/main.py" = ["B904"]
+"compilers/qmap-compiler/main.py" = ["B904"]
+"runners/cuquantum-runner/main.py" = ["S607"]
+"runners/pytket-cirq-runner/main.py" = ["B905"]
+"runners/pytket-qulacs-runner/main.py" = ["B905", "S311"]
+"runners/qrisp-runner/main.py" = ["B905"]
+"runners/qsim-cirq-runner/main.py" = ["B905"]
+"shared/qrosetta_commons/aer_split.py" = ["B905"]
+"shared/qrosetta_commons/compile_service.py" = ["S104"]
+"shared/qrosetta_commons/counts.py" = ["B905"]
+"shared/qrosetta_commons/helpers.py" = ["B904", "S104", "UP033"]
+"shared/qrosetta_commons/image_identity.py" = ["UP033"]
+"shared/qrosetta_commons/qasm_expressions.py" = ["B904", "B905"]
+"shared/qrosetta_commons/qelib1.py" = ["UP033"]
+"shared/qrosetta_commons/seeds.py" = ["UP012"]
+
+# Baseline: findings present on 2026-10-28, not yet reviewed (raise without from, zip without
+# strict=). Remove an entry when its file is fixed; new files get no entry.
+"qrosetta_cli/client/reads.py" = ["B905"]
+"qrosetta_cli/stack/archive.py" = ["B904"]
+"rosetta-api/routers/auth.py" = ["B904"]
+"rosetta-api/routers/benchmark.py" = ["B904"]
+"rosetta-api/routers/circuits.py" = ["B904"]
+"rosetta-api/routers/experiment.py" = ["B904"]
+"rosetta-api/routers/export.py" = ["B904"]
+"rosetta-api/routers/generation.py" = ["B904"]
+"rosetta-api/routers/history.py" = ["B904"]
+"rosetta-api/routers/local.py" = ["B904"]
+"rosetta-api/routers/publication.py" = ["B904"]
+"rosetta-api/routers/selftest.py" = ["B904"]
+"rosetta-api/routers/share.py" = ["B904"]
+"rosetta-api/routers/summary.py" = ["B904"]
+"rosetta-api/services/analysis/divergence/marginals.py" = ["B905"]
+"rosetta-api/services/analysis/divergence/reports.py" = ["B905"]
+"rosetta-api/services/analysis/divergence/statistics.py" = ["B905"]
+"rosetta-api/services/analysis/timing.py" = ["B905"]
+"rosetta-api/services/availability.py" = ["B905"]
+"rosetta-api/services/benchmark_library.py" = ["B904"]
+"rosetta-api/services/circuit_resolver.py" = ["B904", "B905"]
+"rosetta-api/services/experiment.py" = ["B905"]
+"rosetta-api/services/publication/figures.py" = ["B905"]
+"rosetta-api/services/publication/figures_counts.py" = ["B905"]
+"rosetta-api/services/publication/items.py" = ["B905"]
+"rosetta-api/services/publication/tables.py" = ["B905"]
+"rosetta-api/services/readiness.py" = ["B905"]
+"rosetta-api/services/selftest/evaluate.py" = ["B905"]
+"rosetta-api/services/share_links.py" = ["B904"]
+"rosetta-api/services/storage.py" = ["B904"]
+"rosetta-api/services/validator.py" = ["B904", "B905"]
+"rosetta-api/tests/unit/test_compile_service.py" = ["UP031"]
+"rosetta-api/tests/unit/test_request_contracts.py" = ["UP031"]
+"rosetta-api/tests/unit/test_export_streaming.py" = ["B023"]
+"rosetta-api/tests/unit/test_qrosetta_contracts.py" = ["B007"]
+"rosetta-api/tests/unit/test_runner_registry_sync.py" = ["B007"]
+"tests/integration/test_qsim_cirq_runner.py" = ["F841"]
+# pytest fixtures imported from a helper module and named as test arguments.
+"rosetta-api/tests/unit/test_gated_saves.py" = ["F811"]
+"rosetta-api/tests/unit/test_qrosetta_hostload.py" = ["F811"]
+"rosetta-api/tests/unit/test_qrosetta_runs_app.py" = ["F811"]
+"rosetta-api/tests/unit/test_qrosetta_views_app.py" = ["F811"]
+"rosetta-api/tests/unit/test_v1_06_cli_trust_boundaries.py" = ["F811"]
+
+# Coverage of the unit suite, run from rosetta-api/ with --cov-config=../pyproject.toml: the API
+# code there, the shared library and the CLI. Reported only; no threshold yet.
+[tool.coverage.run]
+source = ["."]
+source_pkgs = ["qrosetta_commons", "qrosetta_cli"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+skip_empty = true
+precision = 1

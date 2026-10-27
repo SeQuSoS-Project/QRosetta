@@ -1,0 +1,4 @@
+# Lint tools for CI (.github/workflows/ci.yml, job lint) and scripts/lint/check.sh; ruff's version
+# matches the rev in .pre-commit-config.yaml (test_lint_baseline.py).
+ruff==0.16.10
+shellcheck-py==0.11.0.1
