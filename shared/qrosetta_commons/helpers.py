@@ -341,6 +341,7 @@ _SPAWN_CTX = _multiprocessing.get_context("spawn")
 
 DEFAULT_HARD_TIMEOUT_SEC = int(os.getenv("RUNNER_HARD_TIMEOUT_SEC", "300"))
 CANCEL_KILL_WAIT_SEC = 10
+_PR_SET_PDEATHSIG = 1
 
 _QASM_NON_GATE_KEYWORDS = {
     "openqasm", "include", "qreg", "creg", "barrier", "measure", "reset", "if", "gate", "opaque",
@@ -536,7 +537,20 @@ def run_with_uniform_measurement(func, payload):
     return result
 
 
-def _isolated_target(result_q, module_name, func_name, payload, measured=True):
+def _die_with_parent(parent_pid) -> None:
+    """Linux: have the kernel SIGKILL this process when the thread that spawned it ends
+    (prctl PR_SET_PDEATHSIG), and SIGKILL it now if ``parent_pid`` is no longer its parent."""
+    if not sys.platform.startswith("linux"):
+        return
+    import ctypes
+    ctypes.CDLL(None, use_errno=True).prctl(_PR_SET_PDEATHSIG, signal.SIGKILL)
+    if os.getppid() != parent_pid:
+        os.kill(os.getpid(), signal.SIGKILL)
+
+
+def _isolated_target(result_q, module_name, func_name, payload, measured=True, parent_pid=None):
+    if parent_pid is not None:
+        _die_with_parent(parent_pid)
     try:
         os.setpgid(0, 0)
         apply_cpu_affinity()
@@ -582,12 +596,15 @@ def _run_isolated_blocking(module_name, func_name, payload, timeout_s, measured=
     run_with_uniform_measurement; otherwise it is called once, directly. The child leads its
     own process group, which is killed when the child ends, so a subprocess it started
     cannot outlive it. When ``cancel`` is set before a result arrives, the child and its
-    group are killed and None is returned."""
+    group are killed and None is returned. The kernel SIGKILLs the child when the thread
+    that called this exits (PR_SET_PDEATHSIG follows the forking thread), so the caller must
+    be a thread that lives at least until the call returns, such as an executor thread."""
     if cancel is not None and cancel.is_set():
         return None
     result_q = _SPAWN_CTX.Queue()
     proc = _SPAWN_CTX.Process(
-        target=_isolated_target, args=(result_q, module_name, func_name, payload, measured))
+        target=_isolated_target,
+        args=(result_q, module_name, func_name, payload, measured, os.getpid()))
     proc.start()
 
     deadline = time.monotonic() + timeout_s
