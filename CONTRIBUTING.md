@@ -453,6 +453,40 @@ Before offering a level, run `python main.py --self-test` in the image and compi
 circuits through it with an independent equivalence check. Do not offer a pipeline that
 changes the unitary of an input beyond its stated tolerance; record why in the manual's known issues instead.
 
+## Changing the database schema
+
+The tables live in `rosetta-api/db/models.py`; every change to them comes with an Alembic
+revision in `rosetta-api/migrations/versions/`. The API runs `upgrade head` when it starts
+(`rosetta-api/db/migrate.py`), so a deployed database follows the code without a manual step.
+`tests/unit/test_db_migrations.py::test_models_and_migrations_agree` fails when the models and
+the revisions disagree.
+
+Write the revision against a scratch database at head, from `rosetta-api/`:
+
+```bash
+export DATABASE_URL=sqlite:///$HOME/.tmp/schema-scratch.db
+PYTHONPATH=.:../shared python -m db.migrate
+PYTHONPATH=.:../shared alembic revision --autogenerate --rev-id 0002 -m "add users display name"
+```
+
+Revision ids are sequential four-digit numbers (`0001` is the baseline), so two branches that
+both add `0002` conflict visibly instead of creating two heads. Read the generated file before
+committing it: autogenerate does not see renames (it writes a drop and an add) and does not
+compare server defaults. Migrations run in batch mode (`render_as_batch`), which SQLite needs
+for anything beyond adding a column; keep the generated `with op.batch_alter_table(...)` blocks.
+A new column on an existing table is nullable, or carries a `server_default`, so rows already
+stored get a value. Check the PostgreSQL SQL without a server:
+
+```bash
+DATABASE_URL=postgresql://user:pass@host/db PYTHONPATH=.:../shared alembic upgrade head --sql
+```
+
+Upgrade a database by starting the API or with `python -m db.migrate`; plain `alembic upgrade`
+does not take the migration lock and fails on a database created before migrations existed.
+A database created by `create_all` before migrations (v1.0.0 onwards) is brought to the
+baseline first: missing tables, nullable columns and indexes are added, then it is stamped
+`0001`. A missing non-nullable column stops startup with the column named.
+
 ## Changing a route the `qrosetta` command reads
 
 Released `qrosetta` commands keep talking to newer servers, so the routes their stable commands

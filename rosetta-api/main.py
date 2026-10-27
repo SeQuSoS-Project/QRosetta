@@ -8,8 +8,8 @@ from routers import local as local_routes
 from routers import circuits
 from routers.errors import document_route_errors, register_error_handlers
 from routers.rate_limit import RateLimitHeaders
-import db.models as models
-from db.database import add_missing_nullable_columns, engine
+from db.database import engine
+from db.migrate import upgrade_database
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import JSONResponse
@@ -41,8 +41,16 @@ async def _cleanup_old_jobs():
         if expired:
             logger.info(f"Evicted {len(expired)} expired jobs from ACTIVE_JOBS")
 
+def _upgrade_schema():
+    migration = upgrade_database(engine)
+    if migration["adopted"] is not None:
+        logger.info(f"Database predates migrations; brought to the baseline (added: {migration['adopted'] or 'nothing'})")
+    if migration["from"] != migration["to"]:
+        logger.info(f"Database schema upgraded from {migration['from']} to {migration['to']}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _upgrade_schema()
     reset_spill_dir()
     cleanup_task = asyncio.create_task(_cleanup_old_jobs())
     yield
@@ -54,10 +62,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Quantum Rosetta API", version=settings.PLATFORM_VERSION, lifespan=lifespan,
               docs_url=None, redoc_url=None, default_response_class=JSONResponse,
               strict_content_type=False)
-
-models.Base.metadata.create_all(bind=engine)
-for _column in add_missing_nullable_columns(models.Base.metadata, engine):
-    logger.info(f"Added missing column {_column}")
 
 app.state.limiter = limiter
 register_error_handlers(app)

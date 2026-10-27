@@ -14,7 +14,7 @@ secretGroup = 1
 keywords = ["://"]
 [[rules.allowlists]]
 regexTarget = "match"
-regexes = ['''://username:password@''', '''://[^:]+:(?:password|changeme|postgres|example)@''']
+regexes = ['''://username:password@''', '''://[^:]+:(?:password|changeme|postgres|example|p(?:%23|#)ss(?:%25|%)word)@''']
 
 [[rules]]
 id = "openstack-ec2-credential-table"
