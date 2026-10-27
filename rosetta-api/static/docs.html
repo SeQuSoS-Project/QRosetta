@@ -115,6 +115,7 @@
 
                         <section id="quickstart">
                 <h2>Quickstart: your first run</h2>
+                <p>On a local install started with <code>scripts/safe_boot.sh</code> or <code>docker compose up</code>, the page is at <code>http://localhost:8080</code>, reachable from this machine only; <code>QROSETTA_HTTP_BIND</code> (in <code>.env</code> or the environment, default <code>127.0.0.1:8080</code>) sets the address and port nginx is published on, for example <code>0.0.0.0:8080</code> for every interface. Publish it beyond this machine only on a trusted network: in local mode any client may skip the circuit-size, gate-count and experiment-size limits.</p>
                 <p>The page opens with a three-qubit GHZ circuit in the editor, Statevector ticked and every backend the server offers selected.</p>
                 <ol class="list-decimal pl-5 space-y-1 mb-4 text-gray-700">
                     <li>Press <strong>Run Editor Code</strong>, at the bottom of the left column, where Run, Mode, Run Name and the settings chips always stay in view. The button label says what will run, for example "Run Editor Code · Statevector · 14 backends", or "40 runs on 14 backends" in multi-run mode. While the run is in progress, the results area shows the table the result will fill, with each backend's state in its Status column.</li>
@@ -1659,8 +1660,8 @@
                     ordinary job for an experiment bundle).
                 </p>
                 <p>
-                    Run, export, render and lookup routes are rate-limited per client address
-                    (<code>limits.run_rate_limit</code> in <code>GET /config</code> for runs, exports and circuit lookups, 10 a minute by default; rendering 120 a minute; full-report and bundle downloads and share-link reads 30 a minute; creating a share link 20 a minute). Each
+                    Run, export, render, lookup and account routes are rate-limited per client address
+                    (<code>limits.run_rate_limit</code> in <code>GET /config</code> for runs, exports and circuit lookups, 10 a minute by default; rendering 120 a minute; full-report and bundle downloads and share-link reads 30 a minute; creating a share link 20 a minute; signing in, <code>POST /auth/token</code>, <code>limits.login_rate_limit</code>, 10 a minute by default, counting failed attempts; registering, <code>POST /auth/register</code>, <code>limits.register_rate_limit</code>, 5 a minute by default). Each
                     response of a limited route carries <code>X-RateLimit-Limit</code>,
                     <code>X-RateLimit-Remaining</code> and <code>X-RateLimit-Reset</code> (Unix time); a 429
                     adds <code>Retry-After</code> in seconds. The exclusive-run 429 sends

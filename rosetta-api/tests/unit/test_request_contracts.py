@@ -174,6 +174,8 @@ def test_config_exposes_mode_thresholds_and_limits(client):
         "shots_default": settings.DEFAULT_SHOTS,
         "max_request_bytes": settings.MAX_UPLOAD_BYTES,
         "run_rate_limit": settings.RUN_RATE_LIMIT,
+        "login_rate_limit": settings.LOGIN_RATE_LIMIT,
+        "register_rate_limit": settings.REGISTER_RATE_LIMIT,
         "access_token_expire_sec": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         "max_experiment_cells": settings.MAX_EXPERIMENT_CELLS,
         "max_export_items": settings.MAX_EXPORT_ITEMS,

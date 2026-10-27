@@ -40,6 +40,8 @@ class Settings(BaseSettings):
                                     "https://github.com/SeQuSoS-Project/QRosetta").rstrip("/")
 
     RUN_RATE_LIMIT: str = os.getenv("QROSETTA_RUN_RATE_LIMIT", "10/minute")
+    LOGIN_RATE_LIMIT: str = os.getenv("QROSETTA_LOGIN_RATE_LIMIT", "10/minute")
+    REGISTER_RATE_LIMIT: str = os.getenv("QROSETTA_REGISTER_RATE_LIMIT", "5/minute")
 
     RUNNER_TIMEOUT_SEC: int = 300
     MIN_TIMEOUT_SEC: int = 10

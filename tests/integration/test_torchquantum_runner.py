@@ -10,7 +10,7 @@ import os
 import httpx
 import time
 
-BASE_URL = os.environ.get("QROSETTA_BASE_URL", "http://localhost")
+BASE_URL = os.environ.get("QROSETTA_BASE_URL", "http://localhost:8080")
 
 def _poll_job(job_id: str, timeout: int = 180) -> dict:
     deadline = time.time() + timeout
