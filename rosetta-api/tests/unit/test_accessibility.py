@@ -174,7 +174,7 @@ def _background_colours():
     css = (_STATIC / "css" / "tailwind.css").read_text()
     colours = {}
     for name, r, g, b in re.findall(r"\.(?:[\w-]+\\:)?bg-([a-z]+-\d{2,3})\{[^}]*?background-color:rgb\((\d+) (\d+) (\d+)", css):
-        colours.setdefault(name, "#%02x%02x%02x" % (int(r), int(g), int(b)))
+        colours.setdefault(name, f"#{int(r):02x}{int(g):02x}{int(b):02x}")
     return colours
 
 
