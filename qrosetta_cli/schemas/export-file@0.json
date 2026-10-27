@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "qrosetta.cli/export-file@0: the file export figure or export views wrote (null for stdout)",
+  "type": "object",
+  "properties": {
+    "path": {"type": ["string", "null"]},
+    "job_id": {"type": "string"},
+    "artifact_id": {"type": "string"},
+    "format": {"type": "string"},
+    "params": {"type": "object"},
+    "report_source": {"enum": ["server_job", "client_supplied"]}
+  },
+  "required": ["path"]
+}

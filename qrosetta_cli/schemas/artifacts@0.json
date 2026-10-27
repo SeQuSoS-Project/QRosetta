@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "qrosetta.cli/artifacts@0: the figures and tables a result offers (show artifacts)",
+  "type": "object",
+  "properties": {
+    "job_id": {"type": "string"},
+    "source": {"type": "string"},
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"},
+          "view_id": {"type": ["string", "null"]},
+          "formats": {"type": "array", "items": {"type": "string"}}
+        },
+        "required": ["id", "formats"]
+      }
+    }
+  },
+  "required": ["job_id", "artifacts"]
+}

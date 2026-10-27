@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "qrosetta.cli/circuits@0: a result's circuit texts (show circuits); with --pane, that one pane",
+  "type": "object",
+  "properties": {
+    "job_id": {"type": "string"},
+    "dir": {"type": ["string", "null"]},
+    "source": {"type": "string"},
+    "report_source": {"type": ["string", "null"]},
+    "task": {"type": ["integer", "null"]},
+    "pane": {"type": "object"},
+    "circuits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "task": {"type": ["integer", "null"]},
+          "task_name": {"type": ["string", "null"]},
+          "panes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {"type": "string"},
+                "kind": {"enum": ["input", "dispatched", "executed", "compile-input", "compiled"]},
+                "key": {"type": ["string", "null"]},
+                "group": {"type": ["string", "null"]},
+                "text": {"type": ["string", "null"]}
+              },
+              "required": ["id", "kind", "text"]
+            }
+          }
+        },
+        "required": ["panes"]
+      }
+    }
+  },
+  "required": ["job_id", "source"]
+}

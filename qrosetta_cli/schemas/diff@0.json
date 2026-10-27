@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "qrosetta.cli/diff@0: a unified diff of two circuit texts (show diff); display only",
+  "type": "object",
+  "properties": {
+    "job_id": {"type": "string"},
+    "source": {"type": "string"},
+    "a": {"type": "string"},
+    "b": {"type": "string"},
+    "ignore": {"type": "array", "items": {"enum": ["comments", "header", "whitespace"]}},
+    "identical": {"type": "boolean"},
+    "diff": {"type": "string"}
+  },
+  "required": ["job_id", "a", "b", "identical", "diff"]
+}
