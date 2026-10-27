@@ -64,3 +64,12 @@ def slow_records_pid(payload):
 def reports_watched_pid(payload):
     """Reports whether the process ``payload['watch_pid']`` is alive when this run starts."""
     return {"watched_alive": process_alive(payload["watch_pid"])}
+
+
+def serve_one_slow_run(pid_file, measured):
+    """Acts as a runner worker: awaits one slow run through ExecutionSlots until killed."""
+    import asyncio
+    from qrosetta_commons.helpers import ExecutionSlots
+    asyncio.run(ExecutionSlots(1).run(
+        slow_records_pid, {"pid_file": pid_file, "sleep": 30, "hard_timeout_seconds": 60},
+        measured=measured))
