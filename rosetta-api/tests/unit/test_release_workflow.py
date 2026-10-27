@@ -1,8 +1,9 @@
 """.github/workflows/release-images.yml, read statically: myQLM, cuQuantum and BQSKit are never built or
-pushed, the publish jobs use the trusted environments, only publish jobs get an OIDC token, the
-PyPI upload needs published images and a final version (a pre-release tag goes to TestPyPI only),
-every published image gets an SBOM attestation and its image id recorded, every image carries the
-labels qrosetta recognises it by, and every third-party action is pinned to a commit."""
+pushed, every built image is scanned before anything is published, the publish jobs use the trusted
+environments, only publish jobs get an OIDC token, the PyPI upload needs published images and a
+final version (a pre-release tag goes to TestPyPI only), every published image gets an SBOM
+attestation and its image id recorded, every image carries the labels qrosetta recognises it by,
+and every third-party action is pinned to a commit."""
 
 import os
 import re
@@ -47,7 +48,9 @@ def test_only_publish_jobs_get_an_oidc_token(wf):
     with_token = {name for name, job in wf["jobs"].items() if (job.get("permissions") or {}).get("id-token") == "write"}
     assert with_token == {"publish-images", "publish-testpypi", "publish-pypi"}
     for name, job in wf["jobs"].items():
-        if not name.startswith("publish"):
+        if name == "scan-results":
+            assert job["permissions"] == {"contents": "read", "security-events": "write", "actions": "read"}
+        elif not name.startswith("publish"):
             assert job["permissions"] == {"contents": "read"}, name
     assert wf["jobs"]["publish-testpypi"]["permissions"] == {"id-token": "write"}
     assert wf["jobs"]["publish-pypi"]["permissions"] == {"id-token": "write"}
@@ -220,3 +223,18 @@ def test_every_release_image_gets_both_ownership_labels():
         labels = dict(item.split("=", 1) for item in image["labels"].split())
         assert labels == {"org.qrosetta.image.project": "qsimulators",
                           "org.qrosetta.service": image["compose_service"]}
+
+
+def test_every_image_is_scanned_before_anything_is_published(wf):
+    images = wf["jobs"]["images"]
+    names = [s.get("name") for s in images["steps"]]
+    assert names.index("Build") < names.index("Self-test") < names.index("Scan")
+    assert next(s for s in images["steps"] if s.get("name") == "Scan")["run"] == "scripts/release/image.sh scan"
+    assert "images" in wf["jobs"]["publish-images"]["needs"]
+    assert "needs.images.result == 'success'" in wf["jobs"]["wheel"]["if"]
+    upload = next(s for s in images["steps"] if s.get("uses", "").startswith("actions/upload-artifact@"))
+    assert upload["with"]["name"] == "trivy-${{ matrix.id }}" and "!cancelled()" in upload["if"]
+    results = wf["jobs"]["scan-results"]
+    assert results["strategy"]["matrix"] == {"include": "${{ fromJSON(needs.plan.outputs.images) }}"}
+    sarif = next(s for s in results["steps"] if s.get("uses", "").startswith("github/codeql-action/upload-sarif@"))
+    assert sarif["with"]["category"] == "trivy-${{ matrix.id }}"

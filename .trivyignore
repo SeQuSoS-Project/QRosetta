@@ -1,0 +1,4 @@
+# Vulnerabilities that `scripts/release/image.sh scan` accepts (Trivy's ignore file: one ID per
+# line). Each entry names the image, why the fixed version cannot be taken now (for a runner or
+# compiler: the SDK version is part of what the image measures, and changing it needs
+# requalification), who accepted it, and the date it is reviewed again.

@@ -1,11 +1,14 @@
 # Release pipeline (packaging plan §8.2; CONTRIBUTING.md, Packaging).
 #
-# A tag v<version> builds every distributable image (all but myQLM and cuQuantum, listed by
-# scripts/release/make_manifest.py --list-images) and runs its self-test. When the repository
-# variable QROSETTA_PUBLISH_IMAGES is 'true' it also pushes them to GHCR, signs them with cosign,
-# attests their provenance and attaches an SPDX SBOM (syft) as an attestation, and writes the
-# release manifest with their digests and image ids into the wheel. With the variable unset no
-# image is pushed.
+# A tag v<version> builds every distributable image (all but myQLM, cuQuantum and BQSKit, listed by
+# scripts/release/make_manifest.py --list-images), runs its self-test and scans it with Trivy
+# (scripts/release/image.sh scan): a CRITICAL vulnerability with a fixed version, not accepted in
+# .trivyignore, fails the image and so the release; the SARIF report goes to code scanning in
+# the public repository (job scan-results). When the repository variable
+# QROSETTA_PUBLISH_IMAGES is 'true' it also pushes them to GHCR, signs them with cosign, attests
+# their provenance and attaches an SPDX SBOM (syft) as an attestation, and writes the release
+# manifest with their digests and image ids into the wheel. With the variable unset no image is
+# pushed.
 #
 # The wheel of a final version tag (X.Y.Z, X.Y.Z.postN) goes to PyPI, and only once the images
 # are published. The wheel of a pre-release tag (PEP 440 aN, bN, rcN or .devN) goes to TestPyPI
@@ -67,9 +70,11 @@ jobs:
             version="$(printf '%s' "$base" | sed -E 's/^([0-9]+(\.[0-9]+)*).*/\1/').dev${GITHUB_RUN_NUMBER}"
           fi
           prerelease=$(python scripts/release/check_dist.py --prerelease "$version")
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
-          echo "registry=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=$version"
+            echo "prerelease=$prerelease"
+            echo "registry=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Images a release builds
         id: images
@@ -102,6 +107,43 @@ jobs:
 
       - name: Self-test
         run: scripts/release/image.sh self-test
+
+      - name: Scan
+        run: scripts/release/image.sh scan
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() && hashFiles('trivy/trivy.sarif') != '' }}
+        with:
+          name: trivy-${{ matrix.id }}
+          path: trivy/trivy.sarif
+          if-no-files-found: error
+
+  scan-results:
+    name: code scanning ${{ matrix.id }}
+    needs: [plan, images]
+    if: ${{ !cancelled() && github.repository == 'SeQuSoS-Project/QRosetta' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.images) }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        id: download
+        continue-on-error: true
+        with:
+          name: trivy-${{ matrix.id }}
+          path: trivy
+
+      - uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        if: steps.download.outcome == 'success'
+        with:
+          sarif_file: trivy/trivy.sarif
+          category: trivy-${{ matrix.id }}
 
   publish-images:
     name: publish image ${{ matrix.id }}
