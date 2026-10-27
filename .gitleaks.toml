@@ -44,11 +44,14 @@ regex = '''\bSECRET_KEY["']?\s*[:=]\s*["']([A-Za-z0-9/+_=-]{16,})["']'''
 secretGroup = 1
 keywords = ["secret_key"]
 
+[[rules]]
+id = "openshift-user-token"
+description = "OpenShift OAuth access token (oc whoami -t, oc login --token); same id as the default rule, so it replaces it and holds with gitleaks builds that lack it"
+regex = '''\bsha256~([A-Za-z0-9_-]{43})(?:[^A-Za-z0-9_-]|$)'''
+secretGroup = 1
+keywords = ["sha256~"]
+
 [[allowlists]]
 description = "Values replaced when the history was rewritten"
 regexTarget = "match"
 regexes = ['''\*\*\*REMOVED\*\*\*''']
-
-[[allowlists]]
-description = "Placeholder files"
-paths = ['''(^|/)\.env\.example$''']

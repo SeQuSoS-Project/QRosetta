@@ -93,7 +93,9 @@ async def get_config():
     the header, includes, register declarations and gate definitions are not counted),
     ``max_request_bytes`` (every POST/PUT/PATCH body, the JSON as sent; 413 above it),
     ``run_rate_limit`` (requests per client address to each run, export and lookup route;
-    429 above it), ``access_token_expire_sec`` (lifetime of a sign-in token),
+    429 above it), ``login_rate_limit`` and ``register_rate_limit`` (requests per client
+    address to POST /auth/token and POST /auth/register; 429 above them),
+    ``access_token_expire_sec`` (lifetime of a sign-in token),
     ``max_experiment_cells`` (circuits x preprocessing axes of one experiment, unless
     bypass_limits), ``max_batch_tasks`` (circuits of one playlist run, unless bypass_limits),
     ``prep_max_mib`` and ``prep_timeout_sec`` (memory and wall-clock limits of preparing one
@@ -145,6 +147,8 @@ async def get_config():
             "shots_default": settings.DEFAULT_SHOTS,
             "max_request_bytes": settings.MAX_UPLOAD_BYTES,
             "run_rate_limit": settings.RUN_RATE_LIMIT,
+            "login_rate_limit": settings.LOGIN_RATE_LIMIT,
+            "register_rate_limit": settings.REGISTER_RATE_LIMIT,
             "access_token_expire_sec": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
             "max_experiment_cells": settings.MAX_EXPERIMENT_CELLS,
             "max_batch_tasks": settings.MAX_BATCH_TASKS,

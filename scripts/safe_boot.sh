@@ -176,5 +176,9 @@ echo "   Active Runners: ${SUCCESSFUL_RUNNERS[*]}"
 
 docker compose up -d --no-build "${CORE_SERVICES[@]}" "${SUCCESSFUL_RUNNERS[@]}"
 
+PUBLISHED=$(docker compose port nginx 80 2>/dev/null | head -n1)
+PUBLISHED=${PUBLISHED:-${QROSETTA_HTTP_BIND:-127.0.0.1:8080}}
+echo ">>> Web UI: http://${PUBLISHED/0.0.0.0/localhost} (nginx published on ${PUBLISHED}; QROSETTA_HTTP_BIND changes it)"
+
 echo ">>> Attaching to container logs (Press Ctrl+C to stop watching logs)..."
 docker compose logs -f
