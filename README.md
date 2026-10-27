@@ -190,12 +190,19 @@ are accepted too. Profiles come from the `org.qrosetta.profiles` labels. Data go
 progress, warnings and errors to stderr; `--json` prints one JSON object instead. Exit codes:
 0 = done; 10 and above = a problem, and the last line names the fix (16 an engine or image
 problem, 15 refused because runs are in flight, 17 a failed `doctor` check). `stop`, `remove`,
-`build` and adding services with `start` are refused while the server reports runs in flight;
-`stop --force`, `remove --force`, `build --yes` and `start --yes` go ahead.
+`build`, and `start` when it adds or recreates services of a running stack, are refused while
+the server reports runs in flight; `stop --force`, `remove --force`, `build --yes` and
+`start --yes` go ahead.
 
 `start` never builds. It names the services that have no image (`qrosetta build <service>`
-builds one) and starts the rest; without the nginx or API image it starts nothing. When it
-stops, it runs the exit action. On Ctrl-C it asks "Keep on standby or remove?" and takes standby
+builds one) and starts the rest; without the nginx or API image it starts nothing. A container
+keeps the image it was created from when `build` puts a new image under its tag, so `start`
+recreates, with `compose up --force-recreate`, every requested service whose container (running
+or on standby) was created from another image than the one now under its tag, and prints each
+one with the commit of both images. `status` shows the commit of the image each container was
+created from; when the tag now holds another image it names both and prints the `start`
+command that recreates those containers. When a foreground `start` stops, it runs the exit
+action. On Ctrl-C it asks "Keep on standby or remove?" and takes standby
 after 10 seconds without an answer. SIGTERM and SIGHUP, which VS Code sends when a task is
 stopped or its terminal closed, put the stack on standby. `--on-exit standby|remove|ask` or
 `QROSETTA_ON_EXIT` sets the action; without a terminal, `ask` means standby. Pressing Ctrl-C

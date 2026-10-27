@@ -149,26 +149,45 @@ def normalise_tag(tag):
     return tag if ":" in tag.rsplit("/", 1)[-1] else tag + ":latest"
 
 
+def image_key(ident):
+    """An image ID without the `sha256:` prefix docker writes and podman leaves out."""
+    return (ident or "").split(":", 1)[-1] if (ident or "").startswith("sha256:") else (ident or "")
+
+
+def _image(ref, item):
+    config = item.get("Config") or {}
+    env = dict(e.split("=", 1) for e in (config.get("Env") or []) if "=" in e)
+    return Image(ref=ref, id=item.get("Id", ""), size=int(item.get("Size") or 0), tags=item.get("RepoTags") or [],
+                 env=env, labels=config.get("Labels") or item.get("Labels") or {},
+                 digests=item.get("RepoDigests") or [])
+
+
+def _inspect_images(engine, refs):
+    out = engine.cli("image", "inspect", *refs)
+    try:
+        return json.loads(out.stdout or "[]") or []
+    except json.JSONDecodeError:
+        return []
+
+
+def images_by_id(engine, ids):
+    """The images among `ids` that exist, keyed by `image_key` of their ID."""
+    ids = sorted({i for i in ids if i})
+    keys = {image_key(i) for i in ids}
+    return {image_key(item.get("Id")): _image(item.get("Id", ""), item)
+            for item in (_inspect_images(engine, ids) if ids else []) if image_key(item.get("Id")) in keys}
+
+
 def find_images(engine, refs):
     """The images among `refs` that exist, keyed by ref; a ref by digest matches the image's
     repo digests, any other ref its tags."""
     if not refs:
         return {}
-    out = engine.cli("image", "inspect", *refs)
-    try:
-        items = json.loads(out.stdout or "[]") or []
-    except json.JSONDecodeError:
-        items = []
     found = {}
-    for item in items:
-        tags = item.get("RepoTags") or []
-        normal = {normalise_tag(t) for t in tags}
-        config = item.get("Config") or {}
-        env = dict(e.split("=", 1) for e in (config.get("Env") or []) if "=" in e)
+    for item in _inspect_images(engine, refs):
+        normal = {normalise_tag(t) for t in item.get("RepoTags") or []}
         digests = set(item.get("RepoDigests") or [])
         for ref in refs:
             if (ref in digests) if "@" in ref else (normalise_tag(ref) in normal):
-                found[ref] = Image(ref=ref, id=item.get("Id", ""), size=int(item.get("Size") or 0),
-                                   tags=tags, env=env, labels=config.get("Labels") or item.get("Labels") or {},
-                                   digests=item.get("RepoDigests") or [])
+                found[ref] = _image(ref, item)
     return found

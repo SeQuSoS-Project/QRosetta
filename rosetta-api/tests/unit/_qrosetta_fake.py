@@ -112,11 +112,12 @@ class FakeEngine:
         self.config_name = None
         self.extra_services = {}
         self.up_error = ""
+        self.recreated = []
 
-    def add(self, name, labels, running=True, pod=""):
+    def add(self, name, labels, running=True, pod="", image=""):
         cid = "c-" + name
         self.containers[cid] = {"Id": cid, "Name": name, "Pod": pod, "State": {"Running": running},
-                                "Config": {"Labels": dict(labels)}}
+                                "Image": image, "Config": {"Labels": dict(labels)}}
         if pod:
             self.pods.setdefault(pod, {"Id": pod, "Name": "pod-" + pod, "InfraContainerID": "",
                                        "Containers": []})["Containers"].append({"Id": cid, "Name": name})
@@ -132,10 +133,23 @@ class FakeEngine:
         self.images[ident] = {"Id": ident, "Size": size, "RepoTags": list(tags), "RepoDigests": list(digests),
                               "Config": {"Labels": dict(labels), "Env": [f"QROSETTA_IMAGE_GIT_SHA={sha}"]}}
 
+    def tagged(self, service):
+        """The ID of the image under the service's tag, or ''."""
+        ref = st.normalise_tag(f"{PROJECT}-{service}")
+        return next((i["Id"] for i in self.images.values()
+                     if ref in {st.normalise_tag(t) for t in i["RepoTags"]}), "")
+
+    def rebuild(self, service, ident, sha="new456"):
+        """A build of `service`: the tag moves to a new image; the old one stays, untagged."""
+        for img in self.images.values():
+            img["RepoTags"] = [t for t in img["RepoTags"]
+                               if st.normalise_tag(t) != st.normalise_tag(f"{PROJECT}-{service}")]
+        self.add_image(ident, [f"localhost/{PROJECT}-{service}:latest"], image_labels(service), sha=sha)
+
     def standard(self):
         """This stack, owned: running API and nginx, its network, volume and images."""
-        self.add("rosetta-api", ours("api"))
-        self.add("nginx-reverse-proxy", ours("nginx"))
+        self.add("rosetta-api", ours("api"), image="i-api")
+        self.add("nginx-reverse-proxy", ours("nginx"), image="i-nginx")
         self.add_network("qr_isolated_net", {own.PROJECT_LABEL: PROJECT, own.QR_LABEL: PROJECT})
         self.add_volume("qr_db", {own.PROJECT_LABEL: PROJECT, own.VOLUME_LABEL: "db"})
         self.add_image("i-nginx", ["localhost/qr-nginx:latest"], image_labels("nginx"))
@@ -149,21 +163,29 @@ class FakeEngine:
         return subprocess.CompletedProcess(cmd, rc, out, "" if rc == 0 else "error")
 
     def popen(self, cmd, **kwargs):
-        """Popen stand-in: records the call, applies `up` to the state, exits as the engine would."""
+        """Popen stand-in: records the call, applies `up` to the state, exits as the engine would.
+        Like compose for this project, `up` starts an existing container as it is and replaces it
+        on the image under its tag only with --force-recreate."""
         self.calls.append((list(cmd), dict(kwargs.get("env") or {})))
         args = list(cmd[1:])
         if args[0] == "compose" and "up" in args:
             if self.up_error:
                 return FakeProcess(1, self.up_error)
+            project = args[args.index("-p") + 1]
             for service in args[args.index("up") + 1:]:
                 if service.startswith("-"):
                     continue
                 name = CONFIG["services"].get(service, {}).get("container_name") or service
                 cid = "c-" + name
-                if cid in self.containers:
-                    self.containers[cid]["State"]["Running"] = True
-                else:
-                    self.add(name, ours(service))
+                c = self.containers.get(cid)
+                labels = c and c["Config"]["Labels"]
+                if c and labels.get(own.PROJECT_LABEL) == project and labels.get(own.SERVICE_LABEL) == service:
+                    if "--force-recreate" in args:
+                        c["Image"] = self.tagged(service)
+                        self.recreated.append(cid)
+                    c["State"]["Running"] = True
+                elif c is None:
+                    self.add(name, ours(service), image=self.tagged(service))
         return FakeProcess()
 
     def _filters(self, args):
@@ -230,7 +252,7 @@ class FakeEngine:
         if a[:2] == ["image", "inspect"]:
             items = [i for i in self.images.values()
                      if {st.normalise_tag(t) for t in i["RepoTags"]} & {st.normalise_tag(r) for r in a[2:]}
-                     or set(i["RepoDigests"]) & set(a[2:])]
+                     or set(i["RepoDigests"]) & set(a[2:]) or st.image_key(i["Id"]) in map(st.image_key, a[2:])]
             return json.dumps(items), 0
         if a[0] == "rmi":
             for i in a[1:]:

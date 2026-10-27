@@ -5,6 +5,7 @@ import os
 import signal
 import subprocess
 import time
+from dataclasses import dataclass
 
 from qrosetta_cli import output
 from qrosetta_cli.config import EXIT_ACTIONS
@@ -133,6 +134,59 @@ def plan_start(engine, stack, requested=None, env=None):
     return [s for s in candidates if s not in missing], missing, extra
 
 
+@dataclass
+class Stale:
+    """A container of this stack created from an image other than the one now under its tag."""
+    service: str
+    running: bool
+    image_id: str
+    git_sha: str
+    current: st.Image
+
+
+def stale_containers(engine, stack, found, services):
+    """The containers among `services` that the ownership scan accepted and that were created
+    from an image other than the one now under the service's tag; services without an image
+    under their tag, or whose container's image the engine does not report, are left out."""
+    containers = {c.service: c for c in found.containers if c.service in services and c.image}
+    if not containers:
+        return []
+    tagged = st.find_images(engine, [stack.image_for(s) for s in containers])
+    old = st.images_by_id(engine, [c.image for c in containers.values()])
+    stale = []
+    for service in services:
+        c, img = containers.get(service), tagged.get(stack.image_for(service))
+        if c is None or img is None or st.image_key(c.image) == st.image_key(img.id):
+            continue
+        before = old.get(st.image_key(c.image))
+        stale.append(Stale(service, c.running, c.image, before.git_sha if before else None, img))
+    return stale
+
+
+def _image_words(sha, ident):
+    built = f"built from {sha}" if sha and sha != "unknown" else "no baked commit"
+    return f"{built} (image {st.image_key(ident)[:12]})"
+
+
+def describe_stale(stack, stale):
+    """Progress lines naming each container to recreate, its image and the one under its tag."""
+    lines = ["Recreating 1 service whose container was created from another image than the one now under its tag:"
+             if len(stale) == 1 else f"Recreating {len(stale)} services whose containers were created from other "
+             "images than the ones now under their tags:"]
+    for s in stale:
+        lines.append(f"  {stack.services[s.service].id} ({'running' if s.running else 'stopped'}): "
+                     f"{_image_words(s.git_sha, s.image_id)} -> {_image_words(s.current.git_sha, s.current.id)}")
+    return lines
+
+
+def stale_notice(stack, stale):
+    """(host-load notice kind, service ids, whether the API restarts) for recreating `stale`:
+    `stop` when a running container is replaced, so runs on it record stopped_by_user."""
+    kind = "stop" if any(s.running for s in stale) else "start"
+    gone = any(s.running and stack.kind_of(s.service) == "core" for s in stale)
+    return kind, [stack.services[s.service].id for s in stale], gone
+
+
 def check_startable(engine, found):
     """Refuse to start while containers, networks or volumes that are not this stack's hold its
     names; compose would otherwise recreate, replace or mount them."""
@@ -143,10 +197,16 @@ def check_startable(engine, found):
                        hint=first_cmd if first_cmd.startswith(engine.name) else "qrosetta status")
 
 
-def up(engine, services, adding, bind=None):
+def up_flags(adding, recreate=False):
+    """`--force-recreate` replaces the containers of the named services on the images now under
+    their tags; `--no-deps` leaves the other services of a running stack alone."""
+    return (["--force-recreate"] if recreate else []) + (["--no-deps"] if adding else [])
+
+
+def up(engine, services, adding, bind=None, recreate=False):
     """`compose up -d` for `services`; when adding to a running stack, the others are left alone."""
-    deps = ["--no-deps"] if adding else []
-    proc = engine.spawn(["up", "-d", "--no-build", *deps, *services], own_session=False, capture_errors=True)
+    proc = engine.spawn(["up", "-d", "--no-build", *up_flags(adding, recreate), *services], own_session=False,
+                        capture_errors=True)
     if proc.wait() != 0:
         raise engine_error(spawned_tail(proc), "`compose up` failed", bind)
 
@@ -238,9 +298,10 @@ class Server:
     starts the exit action; while it runs, Ctrl-C once warns and twice more stops waiting."""
 
     def __init__(self, engine, stack, action, services, compose_env, tty=False, ask=None, adding=False,
-                 lock=None, bind=None, notice=None):
+                 lock=None, bind=None, notice=None, stale=()):
         self.engine, self.stack, self.action = engine, stack, action
         self.services, self.adding, self.bind = services, adding, bind
+        self.stale = list(stale)
         self.ask = ask or (lambda q: output.prompt(q, timeout=ASK_TIMEOUT_SEC))
         self.tty = tty
         self.lock = lock or (lambda what: _null_lock())
@@ -297,20 +358,27 @@ class Server:
                 signal.signal(s, handler)
 
     def _up(self):
+        if self.stale:
+            kind, ids, gone = stale_notice(self.stack, self.stale)
+            with self.lock("start"), (self.notice(kind, ids, gone) if self.adding else _null_lock()):
+                self._compose_up([s.service for s in self.stale], True)
         if self.services:
             progress(f"Starting {len(self.services)} services...")
             ids = [self.stack.services[s].id for s in self.services]
             with self.lock("start"), (self.notice("start", ids) if self.adding else _null_lock()):
-                deps = ["--no-deps"] if self.adding else []
-                self.child = self.engine.spawn(["up", "-d", "--no-build", *deps, *self.services], capture_errors=True)
-                code = self.child.wait()
-                tail = spawned_tail(self.child)
-                self.child = None
-                if code != 0:
-                    raise engine_error(tail, "`compose up` failed", self.bind)
+                self._compose_up(self.services, False)
         progress("")
         announce_running(self.engine, self.stack)
         result("Press Ctrl-C to stop it.")
+
+    def _compose_up(self, services, recreate):
+        self.child = self.engine.spawn(["up", "-d", "--no-build", *up_flags(self.adding, recreate), *services],
+                                       capture_errors=True)
+        code = self.child.wait()
+        tail = spawned_tail(self.child)
+        self.child = None
+        if code != 0:
+            raise engine_error(tail, "`compose up` failed", self.bind)
 
     def _follow(self):
         tail = "20"

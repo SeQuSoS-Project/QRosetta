@@ -311,6 +311,89 @@ def test_start_adds_only_missing_services_and_respects_runs_in_flight(fake, proj
     assert up[-5:] == ["up", "-d", "--no-build", "--no-deps", "qiskit_runner"]
 
 
+def _rebuilt(fake, *services):
+    """`qrosetta build` while the stack runs: each service's tag moves to a new image."""
+    fake.add("qiskit-runner", ours("qiskit_runner"), image="i-qiskit")
+    for service in services:
+        fake.rebuild(service, "j-" + service.split("_")[0])
+    return fake
+
+
+def test_start_recreates_running_containers_built_from_an_older_image(fake, project, env, capsys, monkeypatch):
+    monkeypatch.setattr(serve, "_sleep", lambda s: None)
+    _rebuilt(fake, "api", "qiskit_runner")
+    assert cli(fake, project, env, ["start", "-d", "--json"], server=FakeServer(fresh=True)) == 0
+    ups = fake.compose_calls("up")
+    assert [c[c.index("up"):] for c in ups] == [
+        ["up", "-d", "--no-build", "--force-recreate", "--no-deps", "api", "qiskit_runner"]]
+    assert fake.recreated == ["c-rosetta-api", "c-qiskit-runner"]
+    assert fake.containers["c-rosetta-api"]["Image"] == "j-api"
+    assert fake.containers["c-qiskit-runner"]["Image"] == "j-qiskit"
+    assert fake.containers["c-nginx-reverse-proxy"]["Image"] == "i-nginx"
+    assert not fake.destructive_calls()
+    out, err = capsys.readouterr()
+    assert "Recreating 2 services" in err
+    assert "api (running): built from abc123 (image i-api) -> built from new456 (image j-api)" in err
+    assert "already running" not in err
+    assert json.loads(out)["data"]["recreated"] == ["api", "qiskit"]
+
+
+def test_start_does_not_recreate_containers_on_the_image_under_their_tag(fake, project, env, capsys, monkeypatch):
+    monkeypatch.setattr(serve, "_sleep", lambda s: None)
+    _rebuilt(fake)
+    fake.containers["c-rosetta-api"]["Image"] = "sha256:i-api"
+    assert st.image_key("sha256:i-api") == st.image_key("i-api") == "i-api"
+    assert cli(fake, project, env, ["start", "-d"], server=FakeServer(fresh=True)) == 0
+    assert not fake.compose_calls("up") and not fake.recreated
+    assert "Every requested service is already running" in capsys.readouterr().err
+
+
+def test_recreating_running_containers_is_refused_while_runs_are_in_flight(fake, project, env, capsys, monkeypatch):
+    monkeypatch.setattr(serve, "_sleep", lambda s: None)
+    _rebuilt(fake, "qiskit_runner")
+    busy = FakeServer(gate={"exclusive_running": False, "shared_running": 1}, fresh=True)
+    assert cli(fake, project, env, ["start", "-d"], server=busy) == Exit.BUSY
+    err = capsys.readouterr().err
+    assert "recreating the containers of qiskit on new images stops them" in err
+    assert err.strip().splitlines()[-1] == "qrosetta start --yes"
+    assert not fake.compose_calls("up") and fake.containers["c-qiskit-runner"]["Image"] == "i-qiskit"
+    assert cli(fake, project, env, ["start", "-d", "--yes"], server=busy) == 0
+    assert fake.recreated == ["c-qiskit-runner"]
+
+
+def test_start_from_standby_recreates_stopped_containers_built_from_an_older_image(fake, project, env, capsys,
+                                                                                    monkeypatch):
+    monkeypatch.setattr(serve, "_sleep", lambda s: None)
+    _stopped(_rebuilt(fake, "api"))
+    assert cli(fake, project, env, ["start", "-d"], server=FakeServer(fresh=True)) == 0
+    ups = [c[c.index("up"):] for c in fake.compose_calls("up")]
+    assert ups == [["up", "-d", "--no-build", "--force-recreate", "api"],
+                   ["up", "-d", "--no-build", "nginx", "qiskit_runner"]]
+    assert fake.recreated == ["c-rosetta-api"] and fake.containers["c-rosetta-api"]["Image"] == "j-api"
+    assert all(c["State"]["Running"] for c in fake.containers.values())
+    assert "api (stopped): built from abc123" in capsys.readouterr().err
+
+
+def test_foreground_start_recreates_like_detach(fake, project, env, capsys, monkeypatch):
+    monkeypatch.setattr(serve.Server, "_follow", lambda self: 0)
+    _rebuilt(fake, "nginx")
+    assert cli(fake, project, env, ["start", "--on-exit", "standby"], server=FakeServer()) == 0
+    ups = [c[c.index("up"):] for c in fake.compose_calls("up")]
+    assert ups == [["up", "-d", "--no-build", "--force-recreate", "--no-deps", "nginx"]]
+    assert fake.recreated == ["c-nginx-reverse-proxy"]
+    assert "nginx (running): built from abc123" in capsys.readouterr().err
+
+
+def test_foreground_start_from_standby_recreates_then_starts_the_rest(project, env, monkeypatch):
+    monkeypatch.setattr(serve.Server, "_follow", lambda self: 0)
+    fake = _stopped(_rebuilt(FakeEngine().standard(), "qiskit_runner"))
+    assert cli(fake, project, env, ["start", "--on-exit", "standby"], server=FakeServer()) == 0
+    ups = [c[c.index("up"):] for c in fake.compose_calls("up")]
+    assert ups == [["up", "-d", "--no-build", "--force-recreate", "qiskit_runner"],
+                   ["up", "-d", "--no-build", "nginx", "api"]]
+    assert fake.containers["c-qiskit-runner"]["Image"] == "j-qiskit"
+
+
 def test_start_profile_from_compose_labels(fake, project, env, monkeypatch):
     monkeypatch.setattr(serve, "_sleep", lambda s: None)
     assert cli(_stopped(fake), project, env, ["start", "-d", "--profile", "minimal"], server=FakeServer(fresh=True)) == 0
@@ -463,6 +546,39 @@ def test_status_json_validates_and_carries_the_server_block(fake, project, env, 
     rows = {r["id"]: r for r in doc["data"]["services"]}
     assert rows["qiskit"]["image"]["state"] == "built" and rows["braket"]["image"]["state"] == "missing"
     assert rows["api"]["kind"] == "core" and rows["api"]["state"] == "running"
+
+
+def test_status_names_the_image_a_container_runs_when_its_tag_moved(fake, project, env, capsys):
+    from tests.unit.test_qrosetta_contracts import validate_envelope
+    _rebuilt(fake, "qiskit_runner")
+    assert cli(fake, project, env, ["status"]) == 0
+    out = capsys.readouterr().out
+    row = next(line for line in out.splitlines() if line.startswith("qiskit "))
+    assert row.endswith("built from abc123; newer image built from new456")
+    assert next(line for line in out.splitlines() if line.startswith("api ")).endswith("built from abc123")
+    assert ("1 container was created from an image other than the one now under its tag; "
+            "`qrosetta start -d qiskit` recreates it on that image.") in out
+    assert cli(fake, project, env, ["status", "--json"]) == 0
+    doc = json.loads(capsys.readouterr().out)
+    validate_envelope(doc)
+    rows = {r["id"]: r for r in doc["data"]["services"]}
+    assert rows["qiskit"]["image"]["image_id"] == "j-qiskit" and rows["qiskit"]["image"]["git_sha"] == "new456"
+    assert rows["qiskit"]["container_image"] == {"state": "built", "ref": "qr-qiskit_runner", "digest": None,
+                                                 "image_id": "i-qiskit", "git_sha": "abc123", "release": None,
+                                                 "current": False}
+    assert rows["api"]["container_image"]["current"] is True and rows["braket"]["container_image"] is None
+
+
+def test_status_of_a_container_whose_image_is_gone_or_unreported(fake, project, env, capsys):
+    _rebuilt(fake, "qiskit_runner")
+    del fake.images["i-qiskit"]
+    fake.containers["c-rosetta-api"]["Image"] = ""
+    assert cli(fake, project, env, ["status"]) == 0
+    out = capsys.readouterr().out
+    assert next(line for line in out.splitlines() if line.startswith("qiskit ")).endswith(
+        "image i-qiskit (removed); newer image built from new456")
+    assert next(line for line in out.splitlines() if line.startswith("api ")).endswith("built from abc123")
+    assert "`qrosetta start -d qiskit`" in out
 
 
 def test_main_runs_subcommands_with_injected_engine(fake, project, env, capsys):

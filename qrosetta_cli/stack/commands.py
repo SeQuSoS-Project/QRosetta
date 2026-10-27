@@ -98,30 +98,45 @@ def cmd_start(ctx):
     running = {c.service for c in found.containers if c.running}
     adding = bool(running)
     to_start = [s for s in services if s not in running]
+    stale = serve.stale_containers(engine, stack, found, services)
+    recreated = [s.service for s in stale]
+    fresh_start = [s for s in to_start if s not in recreated]
     url = serve.stack_url(engine, stack) if adding else None
     if adding:
-        guard.refuse_if_busy(ctx, url, "start", "--yes", args.yes,
-                             "starting services now adds load beside their timed windows")
+        replaced = [stack.services[s.service].id for s in stale if s.running]
+        effect = (f"recreating the containers of {', '.join(replaced)} on new images stops them, and runs on "
+                  "them report a lost connection" if replaced
+                  else "starting services now adds load beside their timed windows")
+        guard.refuse_if_busy(ctx, url, "start", "--yes", args.yes, effect)
     engine.env.update(compose_env)
-    ids = [stack.services[s].id for s in to_start]
+    if stale:
+        progress("\n".join(serve.describe_stale(stack, stale)))
+    ids = [stack.services[s].id for s in fresh_start]
     if args.detach:
-        with hostload.notice(ctx, url if to_start else None, "start", ids):
-            if to_start:
-                progress(f"Starting {len(to_start)} services" + (" beside the running ones" if adding else "") + "...")
+        if stale:
+            kind, stale_ids, gone = serve.stale_notice(stack, stale)
+            with hostload.notice(ctx, url, kind, stale_ids, expect_server_gone=gone), \
+                    guard.engine_lock(ctx.env, "start"):
+                serve.up(engine, recreated, adding, bind, recreate=True)
+        with hostload.notice(ctx, url if fresh_start else None, "start", ids):
+            if fresh_start:
+                progress(f"Starting {len(fresh_start)} services"
+                         + (" beside the running ones" if adding else "") + "...")
                 with guard.engine_lock(ctx.env, "start"):
-                    serve.up(engine, to_start, adding, bind)
-            else:
+                    serve.up(engine, fresh_start, adding, bind)
+            elif not stale:
                 progress("Every requested service is already running.")
             ready = serve.wait_ready(ctx, engine, stack, services)
         url = serve.announce_running(engine, stack)
         progress("`qrosetta stop` puts it on standby; `qrosetta remove` removes it.")
         return Result(0, {"url": url, "started": [stack.services[s].id for s in to_start],
+                          "recreated": [stack.services[s].id for s in recreated],
                           "not_started": [stack.services[s].id for s in missing], "ready": ready})
     if adding:
         progress("Quantum Rosetta is already running; this terminal now controls it.")
     action = serve.exit_action(args.on_exit, ctx.env, ctx.tty, ctx.cfg.get("lifecycle", "on_exit"))
-    server = serve.Server(engine, stack, action, to_start, {}, tty=ctx.tty, adding=adding,
-                          lock=serve.lock_for(ctx.env), bind=bind, notice=_notices(ctx, engine, stack))
+    server = serve.Server(engine, stack, action, fresh_start, {}, tty=ctx.tty, adding=adding,
+                          lock=serve.lock_for(ctx.env), bind=bind, notice=_notices(ctx, engine, stack), stale=stale)
     return Result(server.run(), None)
 
 

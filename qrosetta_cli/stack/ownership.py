@@ -69,6 +69,7 @@ class Container:
     running: bool
     pod: str = ""
     target: Target = None
+    image: str = ""
 
 
 @dataclass
@@ -112,7 +113,7 @@ def _containers(engine, ids):
             id=item.get("Id", ""), name=(item.get("Name") or "").lstrip("/"),
             project=labels.get(PROJECT_LABEL, ""), service=labels.get(SERVICE_LABEL, ""),
             running=bool(state.get("Running")) or state.get("Status") in ACTIVE_STATES,
-            pod=item.get("Pod") or "")))
+            pod=item.get("Pod") or "", image=item.get("Image") or "")))
     return result
 
 

@@ -166,6 +166,60 @@ def test_start_refuses_and_touches_nothing_while_decoys_hold_its_names(project, 
     assert "qiskit-runner (project myapp, running)" in err and "api-by-hand" in err
 
 
+def stale_with_decoys(running=True):
+    """This stack with every container on an image its tag no longer holds, beside containers of
+    another project and an unlabelled one created from the same old images."""
+    f = FakeEngine().standard()
+    f.add("qiskit-runner", ours("qiskit_runner"), image="i-qiskit")
+    for c in f.containers.values():
+        c["State"]["Running"] = running
+    decoys = {
+        f.add("myapp-api", {own.PROJECT_LABEL: "myapp", own.QR_LABEL: "myapp", own.SERVICE_LABEL: "api"},
+              image="i-api"),
+        f.add("myapp-qiskit", {own.PROJECT_LABEL: "myapp", own.SERVICE_LABEL: "qiskit_runner"}, image="i-qiskit"),
+        f.add("pedantic_noyce", {}, image="i-nginx"),
+    }
+    for service in ("nginx", "api", "qiskit_runner"):
+        f.rebuild(service, "j-" + service)
+    return f, decoys
+
+
+@pytest.mark.parametrize("argv,running", [(["start", "-d", "--yes"], True), (["start", "-d"], False),
+                                          (["start", "--on-exit", "standby", "--yes"], True)])
+def test_start_recreates_only_this_stacks_containers(project, tmp_path, monkeypatch, argv, running):
+    monkeypatch.setattr(serve, "_sleep", lambda s: None)
+    monkeypatch.setattr(serve.Server, "_follow", lambda self: 0)
+    f, decoys = stale_with_decoys(running)
+    server = FakeServer(gate=BUSY if running else None, fresh=True)
+    assert run(f, project, argv, tmp_path, server=server) == Exit.OK
+    check_calls(f, decoys)
+    assert not f.destructive_calls()
+    recreate = [c for c, _ in f.calls if "--force-recreate" in c]
+    assert len(recreate) == 1 and recreate[0][-3:] == ["nginx", "api", "qiskit_runner"]
+    assert sorted(f.recreated) == ["c-nginx-reverse-proxy", "c-qiskit-runner", "c-rosetta-api"]
+    assert {f.containers[d]["Image"] for d in decoys} == {"i-api", "i-qiskit", "i-nginx"}
+    assert all(f.containers[d]["State"]["Running"] for d in decoys)
+
+
+def test_start_recreates_nothing_while_an_unlabelled_container_of_the_project_runs_an_old_image(project, tmp_path):
+    f, decoys = stale_with_decoys()
+    decoys.add(f.add("api-by-hand", dict(PROJECT_ONLY, **{own.SERVICE_LABEL: "api"}), image="i-api"))
+    assert run(f, project, ["start", "-d", "--yes"], tmp_path, server=FakeServer(fresh=True)) == Exit.ENGINE
+    check_calls(f, decoys)
+    assert not f.compose_calls("up") and not f.recreated and not f.destructive_calls()
+
+
+def test_status_compares_only_this_stacks_containers_with_their_tags(project, tmp_path, capsys):
+    f, decoys = stale_with_decoys()
+    assert run(f, project, ["status", "--json"], tmp_path) == Exit.OK
+    check_calls(f, decoys)
+    rows = {r["id"]: r for r in json.loads(capsys.readouterr().out)["data"]["services"]}
+    assert {k: rows[k]["container_image"]["image_id"] for k in ("nginx", "api", "qiskit")} == {
+        "nginx": "i-nginx", "api": "i-api", "qiskit": "i-qiskit"}
+    assert {r["container"] for r in rows.values() if r["container_image"]} == {
+        "nginx-reverse-proxy", "rosetta-api", "qiskit-runner"}
+
+
 def test_foreground_exit_action_remove_touches_only_this_stack(project, tmp_path, monkeypatch):
     f, decoys = decoyed()
     env = {"QROSETTA_PROJECT": "qr", "HOME": str(tmp_path), "XDG_RUNTIME_DIR": str(tmp_path / "run")}
