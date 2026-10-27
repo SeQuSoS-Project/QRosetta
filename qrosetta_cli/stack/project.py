@@ -21,6 +21,7 @@ class Service:
     ports: list = field(default_factory=list)
     depends_on: list = field(default_factory=list)
     labels: dict = field(default_factory=dict)
+    environment: dict = field(default_factory=dict)
 
     @property
     def id(self):
@@ -107,7 +108,7 @@ def load_stack(engine):
             name=name, container_name=svc.get("container_name") or "",
             image=svc.get("image") or "", ports=svc.get("ports") or [],
             depends_on=list(deps) if isinstance(deps, (dict, list)) else [],
-            labels=_labels(svc.get("labels")))
+            labels=_labels(svc.get("labels")), environment=_labels(svc.get("environment")))
     volumes = {key: (v or {}).get("name") or f"{cfg['name']}_{key}"
                for key, v in (cfg.get("volumes") or {}).items()}
     return Stack(name=cfg["name"], project_dir=engine.project_dir, services=services,

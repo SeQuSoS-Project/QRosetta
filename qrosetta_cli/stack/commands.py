@@ -69,6 +69,28 @@ def host_compose_env(system=None, machine=None, run=subprocess.run):
     return {"QROSETTA_HOST_OS": system, "QROSETTA_HOST_ARCH": machine}
 
 
+def set_up_env(ctx, engine, bind=None):
+    """Put in the engine's environment the variables `start` gives compose besides the caller's:
+    this host's OS and machine, the lifecycle token's path (start writes the token there) and the
+    bind address. `status` sets them too, so `compose config --hash` gives there what it gives
+    `start`; QROSETTA_GIT_SHA comes from `serve.git_sha_env`."""
+    engine.env.update(host_compose_env())
+    engine.env[hostload.COMPOSE_VAR] = hostload.token_path(ctx.env)
+    if bind:
+        engine.env["QROSETTA_HTTP_BIND"] = bind
+
+
+def _recreate_effect(stack, stale):
+    """What recreating the running containers among `stale` does to runs in flight, or None."""
+    replaced = [stack.services[s.service].id for s in stale if s.running]
+    if not replaced:
+        return None
+    how = {frozenset({"image"}): " on new images", frozenset({"config"}): " with their new compose configuration"}
+    kinds = frozenset(r for s in stale if s.running for r in s.reasons)
+    return (f"recreating the containers of {', '.join(replaced)}{how.get(kinds, '')} stops them, and runs on them "
+            "report a lost connection")
+
+
 def cmd_start(ctx):
     args = ctx.args
     check_host(args.allow_emulation)
@@ -76,17 +98,16 @@ def cmd_start(ctx):
         installed.require_published()
     hostload.ensure_token(ctx.env)
     _, engine, stack = open_stack(ctx)
-    engine.env.update(host_compose_env())
     if ctx.cfg.get("lifecycle", "cpu_quota") is False:
         output.warn("[lifecycle] cpu_quota = false is not applied by this version (the --no-cpu-quota override "
                     "arrives with release 2.0.0); the stack starts with its CPU quotas.", "cpu_quota_ignored")
     bind = _bind(ctx)
-    if bind:
-        engine.env["QROSETTA_HTTP_BIND"] = bind
+    set_up_env(ctx, engine, bind)
     found = own.scan(engine, stack)
     serve.check_startable(engine, found)
     requested = serve.requested_services(stack, args.services, args.profile, ctx.cfg)
     services, missing, compose_env = serve.plan_start(engine, stack, requested, ctx.env)
+    engine.env.update(compose_env)
     if missing:
         names = ", ".join(stack.services[s].id for s in missing)
         if stack.release:
@@ -98,17 +119,14 @@ def cmd_start(ctx):
     running = {c.service for c in found.containers if c.running}
     adding = bool(running)
     to_start = [s for s in services if s not in running]
-    stale = serve.stale_containers(engine, stack, found, services)
+    hashes = serve.config_hashes(engine) if any(c.config_hash for c in found.containers) else None
+    stale = serve.stale_containers(engine, stack, found, services, hashes)
     recreated = [s.service for s in stale]
     fresh_start = [s for s in to_start if s not in recreated]
     url = serve.stack_url(engine, stack) if adding else None
     if adding:
-        replaced = [stack.services[s.service].id for s in stale if s.running]
-        effect = (f"recreating the containers of {', '.join(replaced)} on new images stops them, and runs on "
-                  "them report a lost connection" if replaced
-                  else "starting services now adds load beside their timed windows")
+        effect = _recreate_effect(stack, stale) or "starting services now adds load beside their timed windows"
         guard.refuse_if_busy(ctx, url, "start", "--yes", args.yes, effect)
-    engine.env.update(compose_env)
     if stale:
         progress("\n".join(serve.describe_stale(stack, stale)))
     ids = [stack.services[s].id for s in fresh_start]
@@ -131,6 +149,7 @@ def cmd_start(ctx):
         progress("`qrosetta stop` puts it on standby; `qrosetta remove` removes it.")
         return Result(0, {"url": url, "started": [stack.services[s].id for s in to_start],
                           "recreated": [stack.services[s].id for s in recreated],
+                          "recreations": [{"id": stack.services[s.service].id, "reasons": s.reasons} for s in stale],
                           "not_started": [stack.services[s].id for s in missing], "ready": ready})
     if adding:
         progress("Quantum Rosetta is already running; this terminal now controls it.")
@@ -177,6 +196,7 @@ def cmd_remove(ctx):
 
 def cmd_status(ctx):
     mode, engine, stack = open_stack(ctx)
+    set_up_env(ctx, engine, ctx.cfg.get("lifecycle", "bind"))
     from qrosetta_cli.stack.status import status
     return Result(0, status(ctx, engine, stack, mode))
 

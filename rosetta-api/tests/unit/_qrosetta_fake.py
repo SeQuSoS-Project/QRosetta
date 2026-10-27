@@ -2,6 +2,7 @@
 engine answers listing, inspect and destructive commands from an in-memory state and records
 every call; the server answers /config, /runners and /compilers from dicts."""
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -28,12 +29,18 @@ CONFIG = {
     "services": {
         "nginx": {"container_name": "nginx-reverse-proxy", "depends_on": {"api": {}},
                   "ports": [{"target": 80, "published": "8080"}], "labels": _labels("nginx", "core")},
-        "api": {"container_name": "rosetta-api", "labels": _labels("api", "core")},
+        "api": {"container_name": "rosetta-api", "labels": _labels("api", "core"),
+                "environment": {"QROSETTA_GIT_SHA": "unknown"}},
         "qiskit_runner": {"container_name": "qiskit-runner", "labels": _labels("qiskit", "runner", "minimal,cpu,full")},
         "braket_runner": {"container_name": "braket-runner", "labels": _labels("braket", "runner")},
     },
     "volumes": {"db": {"name": "qr_db"}},
 }
+
+# The variables docker-compose.yml interpolates into each service's configuration (build args
+# are not part of compose's config hash).
+HASHED_VARS = {"nginx": ("QROSETTA_HTTP_BIND",), "api": ("QROSETTA_GIT_SHA", "QROSETTA_LIFECYCLE_TOKEN_PATH")}
+RUNNER_VARS = ("QROSETTA_HOST_OS", "QROSETTA_HOST_ARCH")
 
 RELEASE_DIGEST = "sha256:" + "ab" * 32
 REGISTRY = "ghcr.io/sequsos-project"
@@ -113,6 +120,9 @@ class FakeEngine:
         self.extra_services = {}
         self.up_error = ""
         self.recreated = []
+        self.config_edits = {}
+        self.hash_supported = True
+        self._env = {}
 
     def add(self, name, labels, running=True, pod="", image=""):
         cid = "c-" + name
@@ -132,6 +142,18 @@ class FakeEngine:
     def add_image(self, ident, tags, labels, size=100, sha="abc123", digests=()):
         self.images[ident] = {"Id": ident, "Size": size, "RepoTags": list(tags), "RepoDigests": list(digests),
                               "Config": {"Labels": dict(labels), "Env": [f"QROSETTA_IMAGE_GIT_SHA={sha}"]}}
+
+    def config_hash(self, service, env):
+        """What `compose config --hash` prints for `service` under `env`: a digest of its
+        configuration, the variables compose interpolates into it, and any edit of the file."""
+        config = dict(CONFIG["services"], **self.extra_services).get(service, {})
+        values = {k: env.get(k) for k in HASHED_VARS.get(service, RUNNER_VARS)}
+        text = json.dumps([config, values, self.config_edits.get(service, 0)], sort_keys=True)
+        return hashlib.sha256(text.encode()).hexdigest()
+
+    def edit_config(self, service):
+        """An edit of the compose file that changes `service`'s configuration."""
+        self.config_edits[service] = self.config_edits.get(service, 0) + 1
 
     def tagged(self, service):
         """The ID of the image under the service's tag, or ''."""
@@ -159,19 +181,23 @@ class FakeEngine:
 
     def __call__(self, cmd, **kwargs):
         self.calls.append((list(cmd), dict(kwargs.get("env") or {})))
+        self._env = dict(kwargs.get("env") or {})
         out, rc = self._answer(list(cmd[1:]))
         return subprocess.CompletedProcess(cmd, rc, out, "" if rc == 0 else "error")
 
     def popen(self, cmd, **kwargs):
         """Popen stand-in: records the call, applies `up` to the state, exits as the engine would.
         Like compose for this project, `up` starts an existing container as it is and replaces it
-        on the image under its tag only with --force-recreate."""
+        on the image under its tag with --force-recreate, or when its config-hash label differs
+        from the hash under the call's environment. Created and replaced containers carry that
+        hash."""
         self.calls.append((list(cmd), dict(kwargs.get("env") or {})))
         args = list(cmd[1:])
         if args[0] == "compose" and "up" in args:
             if self.up_error:
                 return FakeProcess(1, self.up_error)
             project = args[args.index("-p") + 1]
+            env = dict(kwargs.get("env") or {})
             for service in args[args.index("up") + 1:]:
                 if service.startswith("-"):
                     continue
@@ -179,13 +205,15 @@ class FakeEngine:
                 cid = "c-" + name
                 c = self.containers.get(cid)
                 labels = c and c["Config"]["Labels"]
+                digest = self.config_hash(service, env)
                 if c and labels.get(own.PROJECT_LABEL) == project and labels.get(own.SERVICE_LABEL) == service:
-                    if "--force-recreate" in args:
+                    if "--force-recreate" in args or labels.get(own.CONFIG_HASH_LABEL, digest) != digest:
                         c["Image"] = self.tagged(service)
+                        labels[own.CONFIG_HASH_LABEL] = digest
                         self.recreated.append(cid)
                     c["State"]["Running"] = True
                 elif c is None:
-                    self.add(name, ours(service), image=self.tagged(service))
+                    self.add(name, dict(ours(service), **{own.CONFIG_HASH_LABEL: digest}), image=self.tagged(service))
         return FakeProcess()
 
     def _filters(self, args):
@@ -200,6 +228,11 @@ class FakeEngine:
             rest = a[j:]
             if rest[:1] == ["version"]:
                 return "Docker Compose version v2.30.0\n", 0
+            if rest[:2] == ["config", "--hash"]:
+                if not self.hash_supported:
+                    return "", 1
+                services = dict(CONFIG["services"], **self.extra_services)
+                return "".join(f"{s} {self.config_hash(s, self._env)}\n" for s in services), 0
             if rest[:1] == ["config"]:
                 services = dict(CONFIG["services"], **self.extra_services)
                 return json.dumps(dict(CONFIG, services=services, name=self.config_name or project)), 0
