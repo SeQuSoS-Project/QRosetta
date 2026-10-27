@@ -810,6 +810,12 @@ Compilers are separate from the simulators: their output is a circuit, which is 
 
 *Evidence (2026-10-28).* The job worker, the analysis step, the experiment worker and the bundled-file reader stored `str(e)`, so an OSError showed container paths (§13.3); only the batch path had been reduced to the type (`test_v1_02_exception_text.py`).
 
+### CLI retries
+
+*Rule.* The CLI repeats a request that starts no work on the server (GET, and POST to the export, summary, publication and plan routes) when it gets no answer, the transfer breaks off, or the server answers 502, 503, 504 or 429 with Retry-After of at most 30 s: up to three more times, after 1, 2 and 4 s; a download starts again from the beginning. A run (POST /compare, /compare_measured, /run_batch_suite, /experiments) is never sent twice. A download shorter than its Content-Length is a broken transfer. Waiting for a job allows up to five failed polls in a row. Downloads give the server 330 s per socket operation (nginx's own read timeout), since a crate is built before its first byte.
+
+*Evidence (2026-10-28).* `http.client.IncompleteRead` was not caught, so a dropped download ended `qrosetta run` as an internal error with no STATUS; `read(amt)` returned a short body without an error, so a cut-off download could be saved as complete; polls and downloads had no retry and a crate had 30 s to send its first byte (`test_v1_08_cli_transfer_retries.py`).
+
 ### API compatibility for older CLIs
 
 *Rule.* The routes the stable `qrosetta` commands read are held to a committed, normalised extract of `/openapi.json` ([`rosetta-api/tests/openapi_cli_baseline.json`](rosetta-api/tests/openapi_cli_baseline.json)). A change that removes a route, method, parameter or field, makes a request field required, narrows a request type or enum, changes a success status or media type, or lets a response field be missing or of a new type fails [`rosetta-api/tests/unit/test_openapi_cli_contract.py`](rosetta-api/tests/unit/test_openapi_cli_contract.py) unless the maximum of `API_LEVELS` (`GET /config` `server.api_levels`) was raised; the previous level stays served for 12 months. `GET /config`, `/runners`, `/compilers` and the circuit catalog routes document their responses with models in [`rosetta-api/schemas/listings.py`](rosetta-api/schemas/listings.py) that never filter them (`response_model` stays unset). The refresh command is in CONTRIBUTING.md.

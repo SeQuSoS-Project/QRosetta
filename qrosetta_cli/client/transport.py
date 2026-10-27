@@ -1,6 +1,7 @@
 """Transport: how the client half reaches a server. HttpTransport speaks HTTP with urllib; tests
 and a later in-image transport provide the same `request` method (spec Q3 `server.kind`)."""
 
+import http.client
 import ipaddress
 import json
 import socket
@@ -47,6 +48,11 @@ def is_loopback(url):
 def origin(url):
     parts = urllib.parse.urlsplit(url)
     return f"{parts.scheme}://{parts.netloc}"
+
+
+class Transient(CliError):
+    """A request that failed in transit: no answer, or a transfer cut off part way. Repeating a
+    request that starts no work may succeed."""
 
 
 class _SinkError(Exception):
@@ -136,20 +142,33 @@ class HttpTransport(Transport):
                     return Response(resp.status, hdrs, resp.read())
                 if on_headers:
                     on_headers(hdrs)
+                received = 0
                 while True:
                     chunk = resp.read(1 << 20)
                     if not chunk:
                         break
+                    received += len(chunk)
                     try:
                         sink.write(chunk)
                     except OSError as exc:
                         raise _SinkError(exc) from None
+                declared = hdrs.get("content-length")
+                if declared and declared.isdigit() and received != int(declared):
+                    raise http.client.IncompleteRead(b"", int(declared) - received)
                 return Response(resp.status, hdrs, b"")
         except _SinkError as exc:
             raise exc.error from None
         except urllib.error.HTTPError as exc:
-            return Response(exc.code, {k.lower(): v for k, v in (exc.headers or {}).items()}, exc.read() or b"")
+            try:
+                body = exc.read() or b""
+            except (http.client.HTTPException, OSError):
+                body = b""
+            return Response(exc.code, {k.lower(): v for k, v in (exc.headers or {}).items()}, body)
+        except http.client.HTTPException as exc:
+            raise Transient(f"The connection to {self.url} broke off during {method.upper()} {path} "
+                            f"({type(exc).__name__}).", Exit.UNREACHABLE, "connection_lost",
+                            hint="try again; qrosetta status shows the server") from None
         except (urllib.error.URLError, socket.timeout, TimeoutError, ConnectionError, OSError) as exc:
             reason = getattr(exc, "reason", exc)
-            raise CliError(f"No answer from {self.url}: {reason}.", Exit.UNREACHABLE, "unreachable",
-                           hint="qrosetta status") from None
+            raise Transient(f"No answer from {self.url}: {reason}.", Exit.UNREACHABLE, "unreachable",
+                            hint="qrosetta status") from None
