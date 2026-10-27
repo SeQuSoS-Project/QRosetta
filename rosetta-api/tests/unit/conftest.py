@@ -1,6 +1,7 @@
-"""Unit-test setup: job reports spill to a temporary directory, not the server's, every test
-starts with empty rate-limit counters, and runs are not refused for the free space left on
-the disk that holds the spill directory."""
+"""Unit-test setup: job reports spill to a temporary directory, not the server's; each test
+process has its own SQLite database there, not ./data; every test starts with empty rate-limit
+counters, and runs are not refused for the free space left on the disk that holds the spill
+directory."""
 import os
 import sys
 import tempfile
@@ -8,6 +9,8 @@ import tempfile
 import pytest
 
 os.environ.setdefault("QROSETTA_JOB_SPILL_DIR", tempfile.mkdtemp(prefix="qrosetta-test-jobs-"))
+os.environ.setdefault("DATABASE_URL", "sqlite:///" + os.path.join(tempfile.mkdtemp(prefix="qrosetta-test-db-"),
+                                                                 "qa_rosetta.db"))
 
 
 @pytest.fixture(autouse=True)
