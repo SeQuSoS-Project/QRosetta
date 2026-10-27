@@ -7,9 +7,12 @@ from dataclasses import dataclass, field
 
 @dataclass
 class Result:
-    """A command's outcome: exit code, the envelope's data, and its server block."""
+    """A command's outcome: exit code, the envelope's data, its `outcome` block (the --fail-on
+    rule version, names and matches of a run), and a payload schema other than the command's."""
     code: int = 0
     data: object = None
+    outcome: dict = None
+    schema: str = None
 
 
 @dataclass
