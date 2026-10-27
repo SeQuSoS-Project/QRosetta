@@ -434,14 +434,23 @@
                         about 710 MiB in the PennyLane runners and twelve levels at about 1,090 MiB, while
                         8,192 top-level calls of one definition take about 340 MiB. The bundled benchmark circuits are exempt.</li>
                     <li>With <code>apply_preprocessing</code> on, the API prepares each circuit (the pytket
-                        round-trip) in a separate process limited to 1,024 MiB and 120 s (server settings
+                        round-trip) in a separate process limited to 1,024 MiB and 120 s
+                        (<code>limits.prep_max_mib</code> and <code>limits.prep_timeout_sec</code>; server settings
                         <code>QROSETTA_PREP_MAX_MIB</code> and <code>QROSETTA_PREP_TIMEOUT_SEC</code>). A
                         preparation that exceeds either is stopped, and the run fails with a message naming
-                        the limit; with <code>apply_preprocessing=false</code> the circuit text is dispatched
-                        without the round-trip. Among the bundled circuits, the MQT Bench Grover circuits
+                        the limit and its value; with <code>apply_preprocessing=false</code> the circuit text is
+                        dispatched without the round-trip. How much memory a preparation takes cannot be told
+                        from the circuit text, so only circuits whose preparation has been measured are refused
+                        before they run. Among the bundled circuits, the MQT Bench Grover circuits
                         (<code>grover-noancilla</code> and <code>grover-v-chain</code>) from 15 qubits exceed the
-                        memory limit: their nested multi-controlled gates expand in pytket to 2.5 GiB at 16
-                        qubits and 4 GiB at 17.</li>
+                        memory limit: their nested multi-controlled gates expand in pytket to about 1.5 GiB
+                        (<code>grover-noancilla</code>) and 1.2 GiB (<code>grover-v-chain</code>) at 15 qubits, and
+                        more than 2 GiB from 16 and 17 qubits; every other bundled circuit stays under 400 MiB.
+                        <code>GET /config</code> lists the bundled circuits over the server's limit as
+                        <code>bundled_over_prep_limit</code>. A run that includes one with preprocessing on is
+                        refused with HTTP 400 naming the circuit, and the page says so before sending it.
+                        Written versions of these circuits are refused earlier, by the expanded-gate and
+                        nested-gate-call limits.</li>
                     <li>A playlist run holds at most 400 circuits (<code>limits.max_batch_tasks</code>), enough for
                         both bundled suites (269 MQT Bench and 55 QASMBench circuits) in one playlist; a longer one
                         is refused with HTTP 400, and the page says so before sending it. Split it and run the parts

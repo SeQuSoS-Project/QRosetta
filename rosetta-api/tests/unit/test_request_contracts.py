@@ -177,6 +177,8 @@ def test_config_exposes_mode_thresholds_and_limits(client):
         "access_token_expire_sec": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         "max_experiment_cells": settings.MAX_EXPERIMENT_CELLS,
         "max_batch_tasks": settings.MAX_BATCH_TASKS,
+        "prep_max_mib": settings.PREP_MAX_MIB,
+        "prep_timeout_sec": settings.PREP_TIMEOUT_SEC,
         "job_storage_max_mib": settings.JOB_SPILL_MAX_MIB,
         "job_storage_min_free_mib": settings.JOB_SPILL_MIN_FREE_MIB,
         "max_export_items": settings.MAX_EXPORT_ITEMS,
@@ -185,6 +187,7 @@ def test_config_exposes_mode_thresholds_and_limits(client):
         "password_min_chars": 8,
         "password_max_bytes": 72,
     }
+    assert {"source": "mqt", "algorithm": "grover-noancilla", "qubits": 15} in cfg["bundled_over_prep_limit"]
 
 
 H = 'OPENQASM 2.0;\ninclude "qelib1.inc";\n'

@@ -22,6 +22,8 @@ def test_state_defaults_match_the_server_limits():
     assert _state_default("maxQasmSize") == settings.MAX_QASM_SIZE
     assert _state_default("maxExperimentCells") == settings.MAX_EXPERIMENT_CELLS
     assert _state_default("maxBatchTasks") == settings.MAX_BATCH_TASKS
+    assert _state_default("prepMaxMib") == settings.PREP_MAX_MIB
+    assert _state_default("prepTimeoutSec") == settings.PREP_TIMEOUT_SEC
     assert _state_default("jobStorageMaxMib") == settings.JOB_SPILL_MAX_MIB
     assert _state_default("jobStorageMinFreeMib") == type(settings).model_fields["JOB_SPILL_MIN_FREE_MIB"].default
     assert _state_default("maxExportItems") == settings.MAX_EXPORT_ITEMS

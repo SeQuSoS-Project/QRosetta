@@ -161,6 +161,24 @@ def test_playlist_over_the_task_limit_is_refused_unless_bypassed():
     assert len(_problems(compile_only, limits)) == 1
 
 
+GROVER = {"source": "mqt", "algorithm": "grover-noancilla", "qubits": 15, "name": "grover-noancilla (15q)",
+          "qasm_string": None}
+OVER_PREP = dict(LIMITS, prepMaxMib=1024,
+                 bundledOverPrepLimit=[{"source": "mqt", "algorithm": "grover-noancilla", "qubits": 15}])
+
+
+def test_bundled_circuit_over_the_preparation_limit_is_named_with_preprocessing_on():
+    items = [LIST[0], GROVER]
+    (problem,) = _problems(_ws(source="list", list=items), OVER_PREP)
+    assert "grover-noancilla (15q)" in problem and "1,024 MiB" in problem and "Remove it" in problem
+    assert _problems(_ws(source="list", list=items, preprocessing="off"), OVER_PREP) == []
+    assert len(_problems(_ws(source="list", list=items, preprocessing="both"), OVER_PREP)) == 1
+    smaller = dict(GROVER, qubits=14, name="grover-noancilla (14q)")
+    assert _problems(_ws(source="list", list=[smaller]), OVER_PREP) == []
+    bypass = dict(COMMON, bypass_limits=True)
+    assert len(_problems(_ws(source="list", list=items, common=bypass), OVER_PREP)) == 1
+
+
 def test_names_are_printable_and_bounded_everywhere():
     long = "n" * 250
     item = {"algorithm": "x‮" + long, "qubits": 2, "name": "a​b\u0007" + long, "qasm_string": QASM}

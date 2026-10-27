@@ -1,4 +1,5 @@
-"""Server limits: the playlist length cap and the job storage budget."""
+"""Server limits: the playlist length cap, the job storage budget, and bundled circuits
+refused for their known preparation memory."""
 import asyncio
 import os
 
@@ -126,3 +127,42 @@ def test_batch_stops_and_names_the_limit_when_the_store_fills(spill_dir, monkeyp
         assert not os.path.exists(job_store.job_dir(job_id))
     finally:
         job_manager.ACTIVE_JOBS.pop(job_id, None)
+
+
+def test_bundled_circuits_over_the_preparation_limit(monkeypatch):
+    from services.preparation_limits import bundled_over_prep_limit, bundled_prep_problem
+    monkeypatch.setattr(settings, "PREP_MAX_MIB", 1024)
+    problem = bundled_prep_problem("mqt", "grover-noancilla", 15)
+    assert "about 1,493 MiB" in problem and "1,024 MiB" in problem and "preprocessing off" in problem
+    assert "at least 2,048 MiB" in bundled_prep_problem("mqt", "grover-v-chain", 17)
+    assert bundled_prep_problem("mqt", "grover-noancilla", 14) is None
+    assert bundled_prep_problem("mqt", "qft", 15) is None
+    listed = bundled_over_prep_limit()
+    assert {"source": "mqt", "algorithm": "grover-v-chain", "qubits": 15} in listed
+    assert {"source": "mqt", "algorithm": "grover-v-chain", "qubits": 14} not in listed
+    monkeypatch.setattr(settings, "PREP_MAX_MIB", 4096)
+    assert bundled_over_prep_limit() == []
+
+
+def test_every_recorded_peak_names_a_bundled_circuit():
+    from services import benchmark_library as bl
+    from services.preparation_limits import _recorded
+    mqt = bl.list_mqt()
+    for source, algorithm, qubits in _recorded():
+        if source == "mqt":
+            assert qubits in mqt[algorithm], (algorithm, qubits)
+        else:
+            assert algorithm in bl.list_qasmbench(), algorithm
+
+
+def test_runs_with_a_bundled_circuit_over_the_preparation_limit_are_refused(client, monkeypatch):
+    monkeypatch.setattr(settings, "PREP_MAX_MIB", 1024)
+    task = {"source": "mqt", "algorithm": "grover-noancilla", "qubits": 15}
+    batch = {"tasks": [GHZ, task], "mode": "measured"}
+    r = client.post("/run_batch_suite", json=batch)
+    assert r.status_code == 400 and r.json()["detail"].startswith("tasks[1] (grover-noancilla): Preparing")
+    assert client.post("/run_batch_suite", json={**batch, "apply_preprocessing": False}).status_code == 200
+    experiment = {"circuits": [task], "mode": "measured"}
+    r = client.post("/experiments", json={**experiment, "preprocessing_modes": [True, False]})
+    assert r.status_code == 400 and "circuits[0]" in r.json()["detail"]
+    assert client.post("/experiments", json={**experiment, "preprocessing_modes": [False]}).status_code == 200

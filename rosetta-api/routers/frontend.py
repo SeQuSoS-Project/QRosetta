@@ -9,6 +9,7 @@ from schemas import AgreementThresholds
 from schemas.auth import EMAIL_MAX_LENGTH, PASSWORD_MAX_BYTES, PASSWORD_MIN_CHARS
 from services.availability import runner_availability
 from services.compilation import COMPILER_SERVICES
+from services.preparation_limits import bundled_over_prep_limit
 
 router = APIRouter()
 
@@ -95,6 +96,8 @@ async def get_config():
     429 above it), ``access_token_expire_sec`` (lifetime of a sign-in token),
     ``max_experiment_cells`` (circuits x preprocessing axes of one experiment, unless
     bypass_limits), ``max_batch_tasks`` (circuits of one playlist run, unless bypass_limits),
+    ``prep_max_mib`` and ``prep_timeout_sec`` (memory and wall-clock limits of preparing one
+    circuit with preprocessing on; a preparation over either is stopped and the run fails),
     ``job_storage_max_mib`` and ``job_storage_min_free_mib`` (the server's disk budget for
     the reports of unexpired jobs, and the free disk space it keeps; a run is refused with 503
     while either is crossed, and a playlist or experiment stops), ``max_export_items``
@@ -104,6 +107,9 @@ async def get_config():
     ``email_max_length``, ``password_min_chars`` and ``password_max_bytes`` (UTF-8).
     ``default_n_shots`` is the shot count the measured, batch and experiment endpoints use
     when ``n_shots`` is omitted. The top-level keys repeat the qubit, size and gate limits.
+    ``bundled_over_prep_limit`` lists the bundled circuits (``source``, ``algorithm``,
+    ``qubits``) whose preparation with preprocessing on is known to reach ``prep_max_mib``;
+    runs that include one with preprocessing on are refused with 400.
     """
     return JSONResponse(content={
         "max_qubits_statevector": settings.MAX_QUBITS_STATEVECTOR,
@@ -117,6 +123,7 @@ async def get_config():
         "queue_max_wait_sec": settings.RUNNER_QUEUE_MAX_WAIT_SEC,
         "agreement_threshold_defaults": AgreementThresholds().model_dump(),
         "default_n_shots": settings.DEFAULT_SHOTS,
+        "bundled_over_prep_limit": bundled_over_prep_limit(),
         "limits": {
             "max_qubits_statevector": settings.MAX_QUBITS_STATEVECTOR,
             "max_qubits_measured": settings.MAX_QUBITS_MEASURED,
@@ -136,6 +143,8 @@ async def get_config():
             "access_token_expire_sec": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
             "max_experiment_cells": settings.MAX_EXPERIMENT_CELLS,
             "max_batch_tasks": settings.MAX_BATCH_TASKS,
+            "prep_max_mib": settings.PREP_MAX_MIB,
+            "prep_timeout_sec": settings.PREP_TIMEOUT_SEC,
             "job_storage_max_mib": settings.JOB_SPILL_MAX_MIB,
             "job_storage_min_free_mib": settings.JOB_SPILL_MIN_FREE_MIB,
             "max_export_items": settings.MAX_EXPORT_ITEMS,

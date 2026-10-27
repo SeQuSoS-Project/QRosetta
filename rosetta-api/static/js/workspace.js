@@ -77,6 +77,7 @@ function _requestLimits() {
     const st = getState();
     return { maxRequestBytes: st.maxRequestBytes, maxQasmSize: st.maxQasmSize,
              maxExperimentCells: st.maxExperimentCells, maxBatchTasks: st.maxBatchTasks,
+             prepMaxMib: st.prepMaxMib, bundledOverPrepLimit: st.bundledOverPrepLimit,
              executionMode: st.executionMode };
 }
 

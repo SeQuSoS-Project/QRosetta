@@ -3,6 +3,7 @@ GET /experiments/{id}/bundle streams the finished bundle's ZIP from disk."""
 
 from services.compilation import validate_compilers
 from services.job_manager import require_exclusive_slot, require_job_storage
+from services.preparation_limits import bundled_prep_problem
 from services.security import client_address
 from config import settings
 import asyncio
@@ -26,10 +27,16 @@ router = APIRouter()
 
 
 def _validate_experiment_circuits(payload: ExperimentPayload) -> None:
-    """400 naming the first literal circuit that fails ``validate_submission``."""
+    """400 naming the first literal circuit that fails ``validate_submission``, or, when an
+    axis has preprocessing on, the first bundled circuit whose preparation exceeds the
+    server's limit."""
     for index, circuit in enumerate(payload.circuits):
+        label = circuit.name or circuit.algorithm or f"circuit {index}"
+        if circuit.source in ("mqt", "qasmbench") and True in payload.preprocessing_modes:
+            problem = bundled_prep_problem(circuit.source, circuit.algorithm, circuit.qubits)
+            if problem:
+                raise HTTPException(status_code=400, detail=f"circuits[{index}] ({label}): {problem}")
         if circuit.qasm_string:
-            label = circuit.name or circuit.algorithm or f"circuit {index}"
             try:
                 validate_submission(circuit.qasm_string, payload.mode, bypass_limits=payload.bypass_limits,
                                     apply_preprocessing=True in payload.preprocessing_modes,
@@ -46,10 +53,11 @@ async def start_experiment(request: Request, payload: ExperimentPayload, backgro
     every preprocessing axis, and freeze the results into a citable bundle. Runs in the
     background; poll GET /jobs/{job_id} for status, then GET /experiments/{job_id}/bundle once
     complete. 400 for no circuits, more circuits x preprocessing axes than max_experiment_cells
-    in GET /config (unless bypass_limits), unknown/disabled/unavailable runner ids, or a literal
-    circuit that fails the /compare or /compare_measured checks; 503 while the server's job
-    storage is full; 422 for an unknown field, mode or source. The job's target is the
-    server's EXECUTION_MODE."""
+    in GET /config (unless bypass_limits), unknown/disabled/unavailable runner ids, a literal
+    circuit that fails the /compare or /compare_measured checks, or, with a preprocessing-on
+    axis, a bundled circuit listed in bundled_over_prep_limit of GET /config; 503 while the
+    server's job storage is full; 422 for an unknown field, mode or source. The job's target
+    is the server's EXECUTION_MODE."""
     if not payload.circuits:
         raise HTTPException(status_code=400, detail="No circuits selected.")
     cells = len(payload.circuits) * len(payload.preprocessing_modes)

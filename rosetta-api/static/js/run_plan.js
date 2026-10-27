@@ -128,19 +128,34 @@ function _literalCircuits(payload) {
         .map(c => [`Circuit "${c.name || c.algorithm || 'custom'}"`, c.qasm_string]);
 }
 
+/** Key of a bundled circuit as GET /config lists it in bundled_over_prep_limit (a QASMBench name carries its size). */
+function _bundledKey(source, algorithm, qubits) {
+    return `${source}:${algorithm}:${source === 'qasmbench' ? 0 : (parseInt(qubits) || 0)}`;
+}
+
+/** The bundled circuits of a planned request that the server prepares with preprocessing on. */
+function _bundledPrepared(payload) {
+    const on = Array.isArray(payload.preprocessing_modes) ? payload.preprocessing_modes.includes(true) : payload.apply_preprocessing !== false;
+    if (!on) return [];
+    return (payload.tasks || payload.circuits || []).filter(c => c.source === 'mqt' || c.source === 'qasmbench');
+}
+
 /**
  * Why the server would refuse a planned request before running it: an experiment with more
  * circuit-axis runs than allowed, a playlist with more circuits than allowed, a circuit text over
- * the size limit, or a request body over the upload limit. bypass_limits lifts the first three as
- * the server does (the circuit size only in local mode, where the option is offered); the body
- * limit always applies.
+ * the size limit, a bundled circuit whose preparation with preprocessing on is known to exceed the
+ * server's memory limit for it, or a request body over the upload limit. bypass_limits lifts the
+ * first three as the server does (the circuit size only in local mode, where the option is
+ * offered); the preparation and body limits always apply.
  * @param {PlannedRun[]} runs
  * @param {{ maxRequestBytes?: number, maxQasmSize?: number, maxExperimentCells?: number, maxBatchTasks?: number,
+ *           prepMaxMib?: number, bundledOverPrepLimit?: { source: string, algorithm: string, qubits: number }[],
  *           executionMode?: string|null }} limits
  * @returns {string[]}
  */
 export function runLimitProblems(runs, limits = {}) {
     const problems = [];
+    const overPrep = new Set((limits.bundledOverPrepLimit || []).map(c => _bundledKey(c.source, c.algorithm, c.qubits)));
     for (const run of runs) {
         const p = run.payload || {};
         const bypass = !!p.bypass_limits;
@@ -148,6 +163,16 @@ export function runLimitProblems(runs, limits = {}) {
             problems.push(`${run.title}: the playlist has ${groupDigits(p.tasks.length)} circuits; the server runs at most `
                 + `${groupDigits(limits.maxBatchTasks)} in one run. Split the playlist (Import/Export JSON keeps a copy) and run `
                 + `the parts one after another.`);
+        }
+        if (overPrep.size) {
+            const heavy = _bundledPrepared(p).filter(c => overPrep.has(_bundledKey(c.source, c.algorithm, c.qubits)));
+            if (heavy.length) {
+                const names = heavy.map(c => (c.source === 'qasmbench' || !c.qubits) ? c.algorithm : `${c.algorithm} (${c.qubits}q)`);
+                const shown = names.length > 5 ? `${names.slice(0, 5).join(', ')} and ${names.length - 5} more` : names.join(', ');
+                const limit = limits.prepMaxMib ? `the server's ${groupDigits(limits.prepMaxMib)} MiB limit` : "the server's limit";
+                problems.push(`${run.title}: with SDK Preprocessing on, preparing ${shown} takes more memory than ${limit} `
+                    + `for circuit preparation. Remove ${heavy.length === 1 ? 'it' : 'them'}, or set SDK Preprocessing to Off.`);
+            }
         }
         if (run.kind === 'experiment' && limits.maxExperimentCells && !bypass) {
             const n = (p.circuits || []).length;

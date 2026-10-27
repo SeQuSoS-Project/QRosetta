@@ -10,6 +10,7 @@ import uuid
 from routers.errors import responses
 from qrosetta_commons.helpers import get_logger
 from services.validator import validate_runner_config, validate_runner_ids, validate_submission
+from services.preparation_limits import bundled_prep_problem
 from schemas import QasmPayload, MeasuredQasmPayload, BatchPayload, JobStatusResponse
 from schemas.reports import JobReport, JobStatus
 from services.security import limiter
@@ -159,7 +160,8 @@ async def compare_measured_circuits_endpoint(request: Request, payload: Measured
     return _job_envelope(job_id)
 
 def _validate_batch_tasks(payload: BatchPayload) -> None:
-    """400 naming the first task that fails ``validate_submission`` or its mode's qubit cap."""
+    """400 naming the first task that fails ``validate_submission`` or its mode's qubit cap,
+    or, with preprocessing, a bundled circuit whose preparation exceeds the server's limit."""
     run_mode = payload.mode if payload.simulate else "compile"
     for index, task in enumerate(payload.tasks):
         label = f"tasks[{index}] ({task.name or task.algorithm or 'qasm'})"
@@ -170,11 +172,16 @@ def _validate_batch_tasks(payload: BatchPayload) -> None:
                                     statevector=payload.mode == "statevector" and payload.simulate)
             except HTTPException as exc:
                 raise HTTPException(status_code=exc.status_code, detail=f"{label}: {exc.detail}")
-        elif (task.source or "preset") in ("preset", "mqt") and not payload.bypass_limits:
+            continue
+        if (task.source or "preset") in ("preset", "mqt") and not payload.bypass_limits:
             cap = settings.max_qubits_for_mode(run_mode)
             if task.qubits and task.qubits > cap:
                 raise HTTPException(status_code=400, detail=(
                     f"{label}: {task.qubits} qubits is over the {run_mode} limit of {cap}."))
+        if payload.apply_preprocessing:
+            problem = bundled_prep_problem(task.source, task.algorithm, task.qubits)
+            if problem:
+                raise HTTPException(status_code=400, detail=f"{label}: {problem}")
 
 
 @router.post("/run_batch_suite", response_model=JobStatusResponse, responses=_RUN_ERRORS)
@@ -185,9 +192,11 @@ async def run_batch_suite_endpoint(request: Request, payload: BatchPayload, back
     Runs in the background; poll GET /jobs/{job_id} for progress and the per-task results.
     400 for no tasks, unknown/disabled/unavailable runner ids, a literal circuit that
     fails the same checks as /compare or /compare_measured, or a preset or MQT Bench task
-    over the mode's qubit limit (unless bypass_limits), or more tasks than max_batch_tasks in
-    GET /config (unless bypass_limits); the detail names the task as ``tasks[i]`` (0-based
-    index). 503 while the server's job storage is full. 422 for an unknown mode or source. Preset and benchmark
+    over the mode's qubit limit (unless bypass_limits), more tasks than max_batch_tasks in
+    GET /config (unless bypass_limits), or, with apply_preprocessing, a bundled circuit whose
+    preparation is known to exceed prep_max_mib (GET /config lists them as
+    bundled_over_prep_limit); the detail names the task as ``tasks[i]`` (0-based index). 503
+    while the server's job storage is full. 422 for an unknown mode or source. Preset and benchmark
     tasks are generated in the background, and one that fails there is reported as that
     task's error.
 
