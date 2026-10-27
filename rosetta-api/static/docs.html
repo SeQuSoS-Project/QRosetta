@@ -147,6 +147,13 @@
                     the jobs submitted while signed in and clears their results from the screen.
                 </p>
                 <p>
+                    The page opens any job by its ID from a link of the form <code>/#job=&lt;job ID&gt;</code>,
+                    which the <code>qrosetta</code> command prints after <code>run</code>, <code>wait</code>
+                    and <code>selftest</code>: it waits for the job as Show results does and shows its results,
+                    without adding it to this browser's list or saving it to the account. When the server no
+                    longer has the job, the results area says so.
+                </p>
+                <p>
                     While a run is in progress the Status column shows each backend's state: QUEUED (not
                     started yet; no time is shown), SENT, then DONE, ERROR, TIMEOUT or OFFLINE with the
                     seconds it took. While the server compares the results of the circuit (the job's
