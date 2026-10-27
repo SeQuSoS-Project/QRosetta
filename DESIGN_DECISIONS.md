@@ -736,6 +736,12 @@ Compilers are separate from the simulators: their output is a circuit, which is 
 
 *Evidence (2026-10-28).* Users behind one NAT shared every limit. Reading the account from the database on every limited request would block the event loop (the key function is synchronous) for at most one extra budget per deactivated account for at most 30 minutes; the signature check costs 14 µs per request against 3 µs for the address alone. Without the ceiling, registering accounts (5 a minute per address) would multiply an address's run budget without bound. Before this, slowapi's default `key_style="url"` counted each path separately, so `/jobs/<id>/export` and `/jobs/<id>/publication/render` had a separate budget per job id.
 
+### Upload limit
+
+*Rule.* Every POST, PUT and PATCH body is limited in the API itself (`MAX_UPLOAD_BYTES`, 4 MiB on `/plan`), whatever is in front of it: a Content-Length over the limit is refused at once, and a body without one (chunked) is counted as it arrives and refused with 413 at the first chunk over the limit. nginx's 5 MB cap is a second bound, not the only one.
+
+*Evidence (2026-10-28).* The API checked only the Content-Length header, so a chunked body of any size reached the routes wherever nginx was not in front (a direct port, the Rahti `rosetta-api-route`) (`test_v1_04_chunked_upload_limit.py`).
+
 ### Name fields
 
 *Rule.* One combined validator per name type (`label_type`), never nested. A version-independent code-point list; blank names are refused.
