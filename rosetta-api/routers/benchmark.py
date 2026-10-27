@@ -18,6 +18,7 @@ from services.security import limiter
 from services.availability import require_available
 from services.job_store import JOB_NOT_FOUND, file_chunks, report_json_file
 from services.compilation import validate_compilers
+from services import gated_saves
 from config import settings
 from services.job_manager import (
     ACTIVE_JOBS,
@@ -61,6 +62,7 @@ async def get_job_status(job_id: str):
         "error": job_data.get("error"),
         "runner_statuses": job_data.get("runner_statuses"),
         "progress": job_data.get("progress"),
+        "saves": gated_saves.public_record(job_data),
     }
 
 def _report_file(job_id: str):
@@ -72,21 +74,33 @@ def _report_file(job_id: str):
         raise HTTPException(status_code=404, detail=JOB_NOT_FOUND)
 
 
+_GATE_BUSY_409 = (409, "The job has not finished, failed before any runner ran, or is an experiment; or, "
+                       "with gated=true, gate_busy: a dispatch is in flight (sent with Retry-After).")
+
+
 @router.get("/jobs/{job_id}/report", responses={
     200: {"model": JobReport, "description": "The report itself as a JSON attachment (no job envelope)."},
-    **responses(404, (409, "The job has not finished, failed before any runner ran, or is an experiment."))})
+    **responses(404, _GATE_BUSY_409)})
 @limiter.limit("30/minute")
-async def get_job_full_report(request: Request, job_id: str):
+async def get_job_full_report(request: Request, job_id: str, gated: bool = False):
     """Download the untruncated report of a finished /compare, /compare_measured or
     /run_batch_suite job as JSON, including statevectors that GET /jobs/{job_id} replaces
     with a placeholder. A job whose runners all failed is 'failed' but still has a report.
     404 if the job id is unknown or expired; 409 if the job has not finished, failed before
-    any runner ran, or is an experiment (use GET /experiments/{job_id}/bundle)."""
+    any runner ran, or is an experiment (use GET /experiments/{job_id}/bundle).
+
+    ``gated=true`` writes and sends the report only while no dispatch is in flight on this
+    server, and dispatches submitted meanwhile wait until it has been sent (their
+    ``gate_wait_sec``); while one is in flight it answers 409 with a detail starting
+    ``gate_busy`` and Retry-After. The job records its save requests under ``saves``."""
+    job = finished_job_or_error(job_id, "download")
+    headers = {"Content-Disposition": f'attachment; filename="qrosetta_report_{job_id[:8]}.json"'}
+    if gated:
+        lease, fh = await gated_saves.build_gated(job, "report", _report_file, job_id)
+        return StreamingResponse(media_type="application/json", headers=headers, **lease.body(file_chunks(fh)))
+    gated_saves.note_ungated(job, "report")
     fh = await asyncio.to_thread(_report_file, job_id)
-    return StreamingResponse(
-        file_chunks(fh), media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="qrosetta_report_{job_id[:8]}.json"'},
-    )
+    return StreamingResponse(file_chunks(fh), media_type="application/json", headers=headers)
 
 _RUN_ERRORS = responses(400, BYPASS_401, 413, 422, 503)
 

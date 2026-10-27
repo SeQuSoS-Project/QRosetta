@@ -17,6 +17,8 @@ FEATURES = {
     "plan": 1,
     "summary": 1,
     "selftest": 1,
+    "gated_saves": 1,
+    "host_load": 1,
 }
 
 

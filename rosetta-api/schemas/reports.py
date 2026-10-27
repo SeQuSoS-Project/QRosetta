@@ -32,6 +32,10 @@ class RunnerResult(RunnerPerformanceMetrics):
     runner_image: Optional[str] = Field(None, description="The image the API created a Kubernetes Job with, else the image the runtime showed the runner, else 'not recorded'; runner_image_basis says which.")
     specimen: Optional[Dict[str, Any]] = Field(None, description="kind (published_release, built_locally or 'not recorded'), release, image_git_sha and runner_image of a result that ran.")
     timing_caveats: Optional[List[Dict[str, Any]]] = Field(None, description="Conditions that limit how far this run's timings compare: {code, text, fields, detail?}.")
+    server_overlapping_host_load: Optional[int] = Field(None, description="Local dispatch: host-load notices (qrosetta start, stop, remove, build, pull or image probes on this host) open at some time this run was in flight; null where not recorded (Kubernetes, or a run that never reached a runner).")
+    stopped_by_user: Optional[bool] = Field(None, description="True when the run lost its runner or compiler while a stop notice (qrosetta stop --force or remove) covered that service; the error says so.")
+    process_exit_code: Optional[int] = Field(None, description="When the runner's isolated process ended without a result: its exit code (negative: the signal number that ended it, as Python reports it).")
+    process_exit_signal: Optional[str] = Field(None, description="When that process was ended by a signal: the signal's name, e.g. SIGKILL. A SIGKILL is what the kernel sends when memory runs out, and also what a forced stop sends, so it does not identify the cause alone.")
 
 
 class PairVerdict(_Open):
@@ -167,6 +171,7 @@ class SavedRunReport(RootModel[Union[SingleCircuitReport, BatchReport]]):
 
 class JobStatus(JobStatusResponse):
     """GET /jobs/{job_id}."""
+    saves: Optional[Dict[str, Dict[str, Any]]] = Field(None, description="Save requests for this job's report and crate (keys report, crate), each with gate_busy_refusals (gated requests answered 409 gate_busy), first_refused_at, gated_admitted_at, deferred_sec (from the first refusal to admission), ungated_requests and ungated_with_dispatches_in_flight (ungated requests that started while a dispatch was in flight); null before any.")
     results: Optional[Union[SingleCircuitReport, BatchReport, ExperimentResults]] = Field(None, description="The report (display copy), once status is 'completed', and for a failed job that reached the runners. Statevectors over 14 qubits are replaced by a placeholder (statevector_omitted_for_display); GET /jobs/{job_id}/report returns the full report.")
 
 

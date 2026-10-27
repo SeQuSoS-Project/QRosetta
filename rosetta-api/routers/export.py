@@ -12,6 +12,7 @@ from services.security import limiter
 from services.exporter import build_export_context, crate_name, export_skeleton_task, write_ro_crate
 from services.publication.views import ParameterError
 from services.report_validation import REPORT_SHAPE_ERRORS, reject_invalid_report, unreadable_report
+from services import gated_saves
 from services.job_manager import finished_job_or_error, report_failed_before_dispatch
 from services.job_store import JOB_NOT_FOUND, file_chunks, report_with_task_loader, written_file
 from qrosetta_commons.helpers import get_logger
@@ -41,12 +42,17 @@ def _job_crate_file(job_id: str, payload):
         raise HTTPException(status_code=404, detail=JOB_NOT_FOUND)
 
 
-async def _crate_response(build, *args, supplied: bool = False) -> StreamingResponse:
+async def _crate_response(build, *args, supplied: bool = False, gated_job: dict = None) -> StreamingResponse:
     """Write the RO-Crate ZIP (``build(*args)`` -> (context, file)) off the event loop to a
     temporary file and stream it as an attachment. A report in the request body
-    (``supplied``) that the builder cannot read is a 400."""
+    (``supplied``) that the builder cannot read is a 400. With ``gated_job`` the crate is
+    built and sent under a gated save of that job (``services.gated_saves``)."""
+    lease = None
     try:
-        ctx, fh = await asyncio.to_thread(build, *args)
+        if gated_job is not None:
+            lease, (ctx, fh) = await gated_saves.build_gated(gated_job, "crate", build, *args)
+        else:
+            ctx, fh = await asyncio.to_thread(build, *args)
     except HTTPException:
         raise
     except ParameterError as exc:
@@ -58,11 +64,10 @@ async def _crate_response(build, *args, supplied: bool = False) -> StreamingResp
         logger.error("RO-Crate export failed", exc_info=True)
         raise HTTPException(status_code=500, detail="Export failed")
 
-    return StreamingResponse(
-        file_chunks(fh),
-        media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{crate_name(ctx)}.zip"'},
-    )
+    headers = {"Content-Disposition": f'attachment; filename="{crate_name(ctx)}.zip"'}
+    if lease is not None:
+        return StreamingResponse(media_type="application/zip", headers=headers, **lease.body(file_chunks(fh)))
+    return StreamingResponse(file_chunks(fh), media_type="application/zip", headers=headers)
 
 
 _CRATE = file_response("The RO-Crate ZIP, sent as an attachment.", "application/zip")
@@ -86,15 +91,26 @@ async def export_ro_crate(request: Request, payload: schemas.ExportRequest):
 
 
 @router.post("/jobs/{job_id}/export", response_class=StreamingResponse, responses={**_CRATE, **responses(
-    (400, "An export option the report cannot take (e.g. a publication view parameter)."), 404, 409, 422)})
+    (400, "An export option the report cannot take (e.g. a publication view parameter)."), 404,
+    (409, "The job has not finished, failed before any runner ran, or is an experiment; or, with "
+          "gated=true, gate_busy: a dispatch is in flight (sent with Retry-After)."), 422)})
 @limiter.limit(settings.RUN_RATE_LIMIT)
 async def export_job_ro_crate(request: Request, job_id: str,
-                              payload: schemas.ExportPayload | None = None):
+                              payload: schemas.ExportPayload | None = None, gated: bool = False):
     """Build an RO-Crate ZIP from the server's untruncated copy of a finished /compare,
     /compare_measured or /run_batch_suite job, including one whose runners all failed.
     With ``include_statevectors=true`` it carries every statevector the runners returned.
     The body is optional; every option has a default. 404 if the job id is unknown or
     expired; 409 if the job has not finished, failed before any runner ran, or is an
     experiment (use GET /experiments/{job_id}/bundle); 400 for an export option the report
-    cannot take."""
-    return await _crate_response(_job_crate_file, job_id, payload or schemas.ExportPayload())
+    cannot take.
+
+    ``gated=true`` builds and sends the crate only while no dispatch is in flight on this
+    server, and dispatches submitted meanwhile wait until it has been sent (their
+    ``gate_wait_sec``); while one is in flight it answers 409 with a detail starting
+    ``gate_busy`` and Retry-After. The job records its save requests under ``saves``."""
+    job = finished_job_or_error(job_id, "export")
+    if not gated:
+        gated_saves.note_ungated(job, "crate")
+    return await _crate_response(_job_crate_file, job_id, payload or schemas.ExportPayload(),
+                                 gated_job=job if gated else None)

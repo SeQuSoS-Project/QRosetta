@@ -83,7 +83,8 @@ def test_a_release_cancelled_while_the_gate_is_busy_still_opens_it():
         except asyncio.CancelledError:
             pass
         assert gate.status() == {"exclusive_running": False, "exclusive_waiting": 0,
-                                 "shared_running": 0}
+                                 "shared_running": 0, "saves_running": 0,
+                                 "host_load_running": 0}
         await asyncio.wait_for(gate.acquire(False), timeout=1)
         await gate.release(False)
 
@@ -103,7 +104,8 @@ def test_a_release_cancelled_while_the_gate_is_busy_still_opens_it():
         await asyncio.wait_for(shared_waiter, timeout=1)
         await gate.release(True)
         assert gate.status() == {"exclusive_running": False, "exclusive_waiting": 0,
-                                 "shared_running": 0}
+                                 "shared_running": 0, "saves_running": 0,
+                                 "host_load_running": 0}
 
     asyncio.run(scenario())
 
