@@ -49,4 +49,4 @@ ENV STAQ_VERSION=${STAQ_VERSION} \
     STAQ_CXXFLAGS=${STAQ_CXXFLAGS}
 USER appuser
 
-CMD ["sh", "-c", "gunicorn main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000} --timeout 330 --access-logfile -"]
+CMD ["sh", "-c", "exec gunicorn main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000} --timeout 330 --access-logfile -"]
