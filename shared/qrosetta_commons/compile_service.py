@@ -133,7 +133,7 @@ def register_compiler_endpoint(app, process_compile, max_concurrent=None) -> Non
     if max_concurrent is None:
         max_concurrent = int(os.getenv("COMPILER_MAX_CONCURRENT", "2"))
     slots = ExecutionSlots(max_concurrent)
-    app.add_event_handler("startup", _image_identity.load)
+    app.router.add_event_handler("startup", _image_identity.load)
 
     @app.get("/capabilities")
     async def compiler_capabilities():

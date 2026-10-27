@@ -39,7 +39,7 @@ def register(request: Request, user: schemas.UserCreate, db: Session = Depends(g
 
 
 @router.post("/token", response_model=schemas.Token, responses=responses(
-    (400, "Password over 72 bytes (UTF-8)."),
+    (400, "Password over 72 bytes (UTF-8), or a form of more than 1,000 fields."),
     (401, "Unrecognised email or wrong password. Sent with WWW-Authenticate: Bearer."),
     (403, "The account is deactivated."), 422))
 @limiter.limit(settings.LOGIN_RATE_LIMIT)
@@ -51,7 +51,8 @@ def login_for_access_token(
     """Exchange an email + password (sent as OAuth2 password-grant form fields, username =
     email, matched case-insensitively) for a bearer access token valid for ``expires_in``
     seconds (1800 by default); there is no refresh token. 400 for a password over
-    72 bytes, 401 on an unrecognized email or wrong password, 403 on a deactivated account.
+    72 bytes or a form of more than 1,000 fields, 401 on an unrecognized email or wrong
+    password, 403 on a deactivated account. Empty fields count as missing (422).
     Limited per client address (``limits.login_rate_limit`` in GET /config, 10 a minute by
     default); every attempt that passes form validation counts, successful or not."""
     if schemas.password_too_long(form_data.password):

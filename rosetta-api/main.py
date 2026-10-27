@@ -46,8 +46,12 @@ async def lifespan(app: FastAPI):
     yield
     cleanup_task.cancel()
 
+# default_response_class=JSONResponse serialises response models with json.dumps
+# (allow_nan=False, so a NaN is a 500, not null); strict_content_type=False reads a body sent
+# without Content-Type as JSON. DESIGN_DECISIONS.md, "Web framework versions".
 app = FastAPI(title="Quantum Rosetta API", version=settings.PLATFORM_VERSION, lifespan=lifespan,
-              docs_url=None, redoc_url=None)
+              docs_url=None, redoc_url=None, default_response_class=JSONResponse,
+              strict_content_type=False)
 
 models.Base.metadata.create_all(bind=engine)
 for _column in add_missing_nullable_columns(models.Base.metadata, engine):
