@@ -306,6 +306,11 @@ public snapshot. Do not reuse its results: its Qrisp adapter returned an all-zer
 counts when the SDK call failed (fixed in 5bb0574, July 2026), and the bit-order labels of several
 adapters were corrected after it. Use the newest release.
 
+## Licence
+
+Apache License 2.0 (`LICENSE`). Bundled benchmark circuits and other third-party files keep their
+own licences, listed in `THIRD_PARTY_NOTICES.md`.
+
 ## Citing
 
 See `CITATION.cff`.
