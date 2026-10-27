@@ -299,7 +299,7 @@ Units are MiB (1024²) throughout, although field names say `_mb`.
 
 ### Single-bit marginal tests
 
-*Rule.* A secondary, pre-specified analysis on every comparable measured pair with ≥ 2-bit keys: per classical bit a 2×2 table (counts of 0/1), chi-square + Williams G, Holm over all tested bits of all pairs at α (FWER), both required; expected count < 5 or constant in both → bit not tested. Output `marginal_assessment` + `metrics.marginal_test`; it never changes `measured_assessment` or its power calibration and never yields agreement. It is counted as a disagreement by `isDisagreement` (badges, Agreement tab chip, Summary block), in crates (`by_marginal_assessment`) and in experiment prevalence rows (`count_basis=marginal_assessment`). [`rosetta-api/services/analysis/divergence/marginals.py`](rosetta-api/services/analysis/divergence/marginals.py); ANALYSIS_VERSION divergence-2026.10.08.3.
+*Rule.* A secondary, pre-specified analysis on every comparable measured pair with ≥ 2-bit keys: per classical bit a 2×2 table (counts of 0/1), chi-square + Williams G, Holm over all tested bits of all pairs at α (FWER), both required; expected count < 5 or constant in both → bit not tested. Output `marginal_assessment` + `metrics.marginal_test`; it never changes `measured_assessment` or its power calibration and never yields agreement. It is counted as a disagreement by the verdict rule (the pair's recorded `pair_verdict`, shown by the badges, the Agreement tab chip and the Summary block), in crates (`by_marginal_assessment`) and in experiment prevalence rows (`count_basis=marginal_assessment`). [`rosetta-api/services/analysis/divergence/marginals.py`](rosetta-api/services/analysis/divergence/marginals.py); ANALYSIS_VERSION divergence-2026.10.08.3.
 
 *Evidence (added 2026-10-02).* BY was tried first. On a 22-qubit job with Qrisp wrong on 19 bits, ~228 true flags loosened BY and 5 correct-correct pairs were flagged; Holm on the same report kept all 13 Qrisp pairs and dropped the 5. Holm Monte Carlo (14 backends × 16 bits × 8200 shots, 40 runs): global null 1/40 runs with any flag; one backend +0.05 on 4 bits: 1/40 runs with a false flag on a correct pair, per-pair power 1.000.
 
@@ -360,6 +360,12 @@ The default thresholds (fidelity 1e-5, phase 1e-6 rad, norm 1e-4, JS 0.01 nats, 
 *Rule.* Unmeasured metrics are null in results and "—" in every table; matrices use null for pairs not compared.
 
 *Evidence.* Failed runs printed as 0.000000 s; matrices used a -1 sentinel.
+
+### One implementation of the verdict rule
+
+*Rule.* Pair verdicts, per-backend counts and the Summary headline model are computed only in [`rosetta-api/services/analysis/divergence/verdicts.py`](rosetta-api/services/analysis/divergence/verdicts.py) and [`headline.py`](rosetta-api/services/analysis/divergence/headline.py). Every new report records each pair's `pair_verdict` and the report's `backend_verdicts`; the page and the figures read them. For an older or uploaded report the server computes them with the same function (`GET /jobs/{id}/summary`, `GET /history/runs/{id}/summary`, `POST /summary`). A change to the rule bumps the analysis version (divergence-2026.10.27.1).
+
+*Evidence (2026-10-27).* The figure builder had a second, simpler copy of the rule that read only the top-level `measured_assessment`, without the page's fallbacks for older reports. The page's previous JavaScript, kept frozen as a test reference, and the Python rule gave the same verdict for all 21,837 pairs of 1,085 reports (13 recorded, 72 built by the analysis, 1,000 synthetic), with the same counts, runner statuses and headline models in all five headline kinds ([`rosetta-api/tests/unit/test_verdict_equivalence.py`](rosetta-api/tests/unit/test_verdict_equivalence.py)). On 200 reports (4,804 pairs) the analysis output differed only in the analysis version and the added fields.
 
 ### Summary headline
 
