@@ -4,7 +4,7 @@ outside process, unstable, mixed cores) and its "Before comparing times" list ar
 these records. Derived only from fields the results already carry; nothing here changes a
 timing, a metric or an agreement label."""
 
-TIMING_CAVEATS_VERSION = "timing-caveats-2026.10.27.1"
+TIMING_CAVEATS_VERSION = "timing-caveats-2026.10.27.2"
 
 THROTTLE_SHOWN_SHARE = 0.01
 OUTSIDE_PROCESS_SHOWN_SEC = 0.005
@@ -17,6 +17,7 @@ TEXT = {
     "shared_dispatch": "Dispatched beside other runs of the same job (not an exclusive run); runs in one phase share the host's cores and memory bandwidth.",
     "overlapping_runs": "Other runs of this job were executing while this run executed.",
     "server_overlapping_runs": "Runs of other jobs on this server were executing while this run executed.",
+    "host_load": "The qrosetta command reported load it put on this host (starting, stopping, building, pulling or probing containers) while this run executed.",
     "throttled": "The CPU quota held the runner for at least 1% of the simulation window; that wait is part of simulation_time_sec.",
     "compilation_throttled": "The CPU quota held the runner for at least 1% of the compilation window; that wait is part of compilation_time_sec.",
     "unstable_repeats": "The timed runs spread by more than 1.3x between the fastest and the slowest simulation time.",
@@ -139,6 +140,8 @@ def result_caveats(result: dict) -> list:
         out.append(_caveat("overlapping_runs", ["overlapping_runs"]))
     if (_num(result.get("server_overlapping_runs")) or 0) > 0:
         out.append(_caveat("server_overlapping_runs", ["server_overlapping_runs", "exclusive"]))
+    if (_num(result.get("server_overlapping_host_load")) or 0) > 0:
+        out.append(_caveat("host_load", ["server_overlapping_host_load"]))
     if _throttled(result, "simulation_throttled_sec", "simulation_time_sec"):
         out.append(_caveat("throttled", ["simulation_throttled_sec", "simulation_time_sec"]))
     if _throttled(result, "compilation_throttled_sec", "compilation_time_sec"):

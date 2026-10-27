@@ -8,7 +8,7 @@ from qrosetta_cli import mode as modes, output
 from qrosetta_cli.context import Result
 from qrosetta_cli.errors import CliError, Exit
 from qrosetta_cli.output import progress, result
-from qrosetta_cli.stack import actions, guard, profiles, serve
+from qrosetta_cli.stack import actions, guard, hostload, profiles, serve
 from qrosetta_cli.stack import ownership as own
 from qrosetta_cli.stack import project as st
 from qrosetta_cli.stack.engine import Engine, choose_engine
@@ -23,6 +23,7 @@ def open_stack(ctx):
     else:
         choice = choose_engine(ctx.env, ctx.cfg.get("lifecycle", "engine"))
         engine = Engine(choice.name, project_dir, env=ctx.env, info=choice.info, reason=choice.reason)
+    engine.env.update(hostload.compose_env(ctx.env))
     engine.check_compose()
     return mode, engine, st.load_stack(engine)
 
@@ -48,6 +49,7 @@ def check_host(allow_emulation, system=None, machine=None):
 def cmd_start(ctx):
     args = ctx.args
     check_host(args.allow_emulation)
+    hostload.ensure_token(ctx.env)
     _, engine, stack = open_stack(ctx)
     if ctx.cfg.get("lifecycle", "cpu_quota") is False:
         output.warn("[lifecycle] cpu_quota = false is not applied by this version (the --no-cpu-quota override "
@@ -66,18 +68,21 @@ def cmd_start(ctx):
     running = {c.service for c in found.containers if c.running}
     adding = bool(running)
     to_start = [s for s in services if s not in running]
+    url = serve.stack_url(engine, stack) if adding else None
     if adding:
-        guard.refuse_if_busy(ctx, serve.stack_url(engine, stack), "start", "--yes", args.yes,
+        guard.refuse_if_busy(ctx, url, "start", "--yes", args.yes,
                              "starting services now adds load beside their timed windows")
     engine.env.update(compose_env)
+    ids = [stack.services[s].id for s in to_start]
     if args.detach:
-        if to_start:
-            progress(f"Starting {len(to_start)} services" + (" beside the running ones" if adding else "") + "...")
-            with guard.engine_lock(ctx.env, "start"):
-                serve.up(engine, to_start, adding, bind)
-        else:
-            progress("Every requested service is already running.")
-        ready = serve.wait_ready(ctx, engine, stack, services)
+        with hostload.notice(ctx, url if to_start else None, "start", ids):
+            if to_start:
+                progress(f"Starting {len(to_start)} services" + (" beside the running ones" if adding else "") + "...")
+                with guard.engine_lock(ctx.env, "start"):
+                    serve.up(engine, to_start, adding, bind)
+            else:
+                progress("Every requested service is already running.")
+            ready = serve.wait_ready(ctx, engine, stack, services)
         url = serve.announce_running(engine, stack)
         progress("`qrosetta stop` puts it on standby; `qrosetta remove` removes it.")
         return Result(0, {"url": url, "started": [stack.services[s].id for s in to_start],
@@ -86,17 +91,25 @@ def cmd_start(ctx):
         progress("Quantum Rosetta is already running; this terminal now controls it.")
     action = serve.exit_action(args.on_exit, ctx.env, ctx.tty, ctx.cfg.get("lifecycle", "on_exit"))
     server = serve.Server(engine, stack, action, to_start, {}, tty=ctx.tty, adding=adding,
-                          lock=serve.lock_for(ctx.env), bind=bind)
+                          lock=serve.lock_for(ctx.env), bind=bind, notice=_notices(ctx, engine, stack))
     return Result(server.run(), None)
+
+
+def _notices(ctx, engine, stack):
+    """A factory of host-load notices for the stack's server, found when each one begins."""
+    return lambda kind, services=None, gone=False: hostload.notice(
+        ctx, serve.stack_url(engine, stack), kind, services, expect_server_gone=gone)
 
 
 def cmd_stop(ctx):
     _, engine, stack = open_stack(ctx)
     found = own.scan(engine, stack)
+    url = None
     if any(c.running for c in found.containers):
-        guard.refuse_if_busy(ctx, serve.stack_url(engine, stack), "stop", "--force", ctx.args.force,
+        url = serve.stack_url(engine, stack)
+        guard.refuse_if_busy(ctx, url, "stop", "--force", ctx.args.force,
                              "stopping now ends them, and their runs report a lost connection")
-    with guard.engine_lock(ctx.env, "stop"):
+    with guard.engine_lock(ctx.env, "stop"), hostload.notice(ctx, url, "stop", expect_server_gone=True):
         left = actions.stop_stack(engine, stack)
     actions.report_left(left)
     return Result(0, {"stopped": True})
@@ -106,10 +119,12 @@ def cmd_remove(ctx):
     args = ctx.args
     _, engine, stack = open_stack(ctx)
     found = own.scan(engine, stack)
+    url = None
     if any(c.running for c in found.containers):
-        guard.refuse_if_busy(ctx, serve.stack_url(engine, stack), "remove", "--force", args.force,
+        url = serve.stack_url(engine, stack)
+        guard.refuse_if_busy(ctx, url, "remove", "--force", args.force,
                              "removing now ends them, and their runs report a lost connection")
-    with guard.engine_lock(ctx.env, "remove"):
+    with guard.engine_lock(ctx.env, "remove"), hostload.notice(ctx, url, "remove", expect_server_gone=True):
         actions.remove_stack(engine, stack, images=args.images, data=args.data, confirm=args.confirm,
                              tty=ctx.tty, ask=lambda q: output.prompt(q, stdin=ctx.stdin))
     return Result(0, {"images": args.images, "data": args.data})
@@ -146,13 +161,16 @@ def cmd_build(ctx):
     if args.profile:
         requested += [c for c in stack.core_services() if c not in requested]
     found = own.scan(engine, stack)
+    url = None
     if any(c.running for c in found.containers):
-        guard.refuse_if_busy(ctx, serve.stack_url(engine, stack), "build", "--yes", args.yes,
+        url = serve.stack_url(engine, stack)
+        guard.refuse_if_busy(ctx, url, "build", "--yes", args.yes,
                              "a build now loads the host beside their timed windows")
     env = dict(engine.env, QR_BUILD_ONLY="1", QR_ENGINE=engine.name, QR_BUILD_SERVICES=" ".join(requested),
                COMPOSE_PROJECT_NAME=engine.project, COMPOSE_FILE=os.pathsep.join(engine.files))
     try:
-        with guard.engine_lock(ctx.env, "build"):
+        with guard.engine_lock(ctx.env, "build"), hostload.notice(
+                ctx, url, "build", [stack.services[s].id for s in requested]):
             code = subprocess.call(["bash", script], env=env, cwd=stack.project_dir)
     except KeyboardInterrupt:
         progress("qrosetta: interrupted. `qrosetta status` shows what is running.")
