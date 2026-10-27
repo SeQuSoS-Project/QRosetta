@@ -26,6 +26,9 @@ declare function getState(): {
   executionMode: string;
 };
 
+/** Swagger UI's UMD bundle (vendor/swagger-ui), loaded by the /docs page before js/api_docs_main.js. */
+declare const SwaggerUIBundle: any;
+
 interface Window {
   dispatch: typeof dispatch;
   getState: typeof getState;

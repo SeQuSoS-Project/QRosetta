@@ -1,0 +1,2 @@
+# Vendored files stay byte for byte as published; tests compare their sha256 with the manifest.
+rosetta-api/static/vendor/** -text -diff linguist-vendored

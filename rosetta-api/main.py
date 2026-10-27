@@ -130,6 +130,7 @@ app.add_middleware(RateLimitHeaders)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/js", StaticFiles(directory="static/js"), name="js")
 app.mount("/css", StaticFiles(directory="static/css"), name="css")
+app.mount("/vendor", StaticFiles(directory="static/vendor"), name="vendor")
 
 app.include_router(frontend.router)
 app.include_router(generation.router)

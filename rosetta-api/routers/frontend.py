@@ -1,8 +1,10 @@
 """Frontend routes: the index page, the runner registry, and client-facing limits."""
 
+import html
+
 from services.run_registry import GATE
 from fastapi import APIRouter, Request
-from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+from fastapi.openapi.docs import get_redoc_html
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from config import settings
 from routers.errors import responses
@@ -19,23 +21,48 @@ from services.status_labels import status_labels
 
 router = APIRouter()
 
-SWAGGER_UI_VERSION = "5.17.14"
+SWAGGER_UI_VERSION = "5.33.2"
 REDOC_VERSION = "2.1.5"
 _CDN = "https://cdn.jsdelivr.net/npm"
 
 
+def _root_path(request: Request) -> str:
+    return request.scope.get("root_path", "").rstrip("/")
+
+
 def _openapi_url(request: Request) -> str:
-    return request.scope.get("root_path", "").rstrip("/") + request.app.openapi_url
+    return _root_path(request) + request.app.openapi_url
+
+
+def swagger_ui_page(request: Request) -> str:
+    """Swagger UI from static/vendor, started by js/api_docs_main.js (no inline script)."""
+    root = _root_path(request)
+    assets = f"{root}/vendor/swagger-ui/{SWAGGER_UI_VERSION}"
+    title = html.escape(f"{request.app.title} - Swagger UI")
+    openapi_url = html.escape(_openapi_url(request), quote=True)
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
+<link rel="stylesheet" href="{assets}/swagger-ui.css">
+<link rel="icon" type="image/png" sizes="32x32" href="{assets}/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="{assets}/favicon-16x16.png">
+</head>
+<body>
+<div id="swagger-ui" data-openapi-url="{openapi_url}"></div>
+<script src="{assets}/swagger-ui-bundle.js"></script>
+<script type="module" src="{root}/js/api_docs_main.js"></script>
+</body>
+</html>
+"""
 
 
 @router.get("/docs", include_in_schema=False)
 async def swagger_ui(request: Request):
-    """The interactive API reference (Swagger UI at a pinned version)."""
-    return get_swagger_ui_html(
-        openapi_url=_openapi_url(request), title=f"{request.app.title} - Swagger UI",
-        swagger_js_url=f"{_CDN}/swagger-ui-dist@{SWAGGER_UI_VERSION}/swagger-ui-bundle.js",
-        swagger_css_url=f"{_CDN}/swagger-ui-dist@{SWAGGER_UI_VERSION}/swagger-ui.css",
-        swagger_favicon_url="data:,")
+    """The interactive API reference (Swagger UI, vendored at a pinned version)."""
+    return HTMLResponse(swagger_ui_page(request))
 
 
 @router.get("/redoc", include_in_schema=False)

@@ -206,12 +206,11 @@ def test_api_reference_pages_load_pinned_assets():
     import re
     from main import app
     c = TestClient(app)
-    for path in ("/docs", "/redoc"):
-        html = c.get(path).text
-        urls = re.findall(r"https://cdn\.jsdelivr\.net/npm/[^\"']+", html)
-        assert urls, path
-        assert all(re.search(r"@\d+\.\d+\.\d+/", u) for u in urls), urls
-        assert "fonts.googleapis" not in html and "tiangolo" not in html
+    html = c.get("/redoc").text
+    urls = re.findall(r"https://cdn\.jsdelivr\.net/npm/[^\"']+", html)
+    assert urls
+    assert all(re.search(r"@\d+\.\d+\.\d+/", u) for u in urls), urls
+    assert "fonts.googleapis" not in html and "tiangolo" not in html
 
 
 def _walk(node, path=""):
