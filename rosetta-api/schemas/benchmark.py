@@ -189,11 +189,15 @@ _TARGET_DESCRIPTION = ("'local' or 'kubernetes'. Defaults to the server's EXECUT
                        "are dispatched according to the server's EXECUTION_MODE; the job's "
                        "'target' records the mode actually used and 'requested_target' this "
                        "value.")
-_BYPASS_DESCRIPTION = ("Skip the MAX_QASM_SIZE and MAX_QASM_GATES checks when the server's "
-                       "EXECUTION_MODE is 'local'; ignored otherwise. The request body limit "
+_BYPASS_DESCRIPTION = ("Skip the playlist length limit (max_batch_tasks in GET /config) and, "
+                       "when the server's EXECUTION_MODE is 'local', the MAX_QASM_SIZE and "
+                       "MAX_QASM_GATES checks. On a server whose EXECUTION_MODE is not 'local', "
+                       "only a request from a signed-in, active account may set it "
+                       "(bypass_limits_requires_account in GET /config); otherwise the request "
+                       "is refused with 401. The request body limit "
                        "(max_request_bytes in GET /config), the qubit limits, the expanded-gate "
-                       "and nested-gate-call limits, the syntax checks and the measurement "
-                       "checks still apply.")
+                       "and nested-gate-call limits, the circuit preparation limits, the syntax "
+                       "checks and the measurement checks still apply.")
 _SEED_DESCRIPTION = ("Master seed, a non-negative integer. Each runner result receives its own "
                      "seed derived from it and the result key (see the report's "
                      "seed_derivation and each result's runner_seed), so a replay with the "
@@ -352,7 +356,7 @@ class BenchmarkTask(_Request):
 class BatchPayload(_Request):
     """Request body for POST /run_batch_suite — run a list of circuits (BenchmarkTask entries)
     across the simulator fleet in a single job."""
-    tasks: List[BenchmarkTask] = Field(..., description="The circuits to run, in order.")
+    tasks: List[BenchmarkTask] = Field(..., description="The circuits to run, in order; at most max_batch_tasks in GET /config unless bypass_limits.")
     n_shots: Int = Field(settings.DEFAULT_SHOTS, ge=settings.MIN_SHOTS, le=settings.MAX_SHOTS, description=_SHOTS_DESCRIPTION + " Used only when mode is 'measured'.")
     mode: RunMode = Field(..., description="'statevector' or 'measured'.")
     optimization_level: OptimizationLevel = Field(0, description=_OPT_LEVEL_DESCRIPTION)
@@ -404,7 +408,7 @@ class ExperimentPayload(_Request):
     exclusive: StrictBool = Field(False, description=_EXCLUSIVE_DESCRIPTION)
     target_simulators: List[str] = Field(default_factory=list, description="Which runner ids to include. Empty means every enabled runner.")
     execution_target: ExecutionTarget = Field(default_factory=_default_execution_target, description=_TARGET_DESCRIPTION)
-    bypass_limits: StrictBool = Field(False, description=_BYPASS_DESCRIPTION + " For experiments it also lifts the cap on circuits x preprocessing axes (max_experiment_cells in GET /config), in every execution mode.")
+    bypass_limits: StrictBool = Field(False, description=_BYPASS_DESCRIPTION + " For experiments it also lifts the cap on circuits x preprocessing axes (max_experiment_cells in GET /config).")
     preprocessing_modes: List[StrictBool] = Field(default_factory=lambda: [True], min_length=1, max_length=2, description="The preprocessing axis: the whole circuit set runs once per value in this list (True = preprocessing applied, False = raw circuit). One or both of true and false, each at most once.")
     seed: Optional[Seed] = Field(None, description=_SEED_DESCRIPTION + " One master seed covers every circuit and axis and is recorded in the manifest.")
     thresholds: Optional[AgreementThresholds] = Field(None, description="Override the default agreement thresholds for this experiment.")

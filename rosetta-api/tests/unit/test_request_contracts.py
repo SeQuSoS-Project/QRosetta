@@ -178,12 +178,19 @@ def test_config_exposes_mode_thresholds_and_limits(client):
         "register_rate_limit": settings.REGISTER_RATE_LIMIT,
         "access_token_expire_sec": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         "max_experiment_cells": settings.MAX_EXPERIMENT_CELLS,
+        "max_batch_tasks": settings.MAX_BATCH_TASKS,
+        "prep_max_mib": settings.PREP_MAX_MIB,
+        "prep_timeout_sec": settings.PREP_TIMEOUT_SEC,
+        "job_storage_max_mib": settings.JOB_SPILL_MAX_MIB,
+        "job_storage_min_free_mib": settings.JOB_SPILL_MIN_FREE_MIB,
         "max_export_items": settings.MAX_EXPORT_ITEMS,
         "max_label_length": settings.MAX_LABEL_LENGTH,
         "email_max_length": 254,
         "password_min_chars": 8,
         "password_max_bytes": 72,
     }
+    assert cfg["bypass_limits_requires_account"] is (settings.EXECUTION_MODE != "local")
+    assert {"source": "mqt", "algorithm": "grover-noancilla", "qubits": 15} in cfg["bundled_over_prep_limit"]
 
 
 H = 'OPENQASM 2.0;\ninclude "qelib1.inc";\n'

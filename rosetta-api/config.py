@@ -53,6 +53,8 @@ class Settings(BaseSettings):
     EXCLUSIVE_MAX_WAIT_SEC: float = float(os.getenv("QROSETTA_EXCLUSIVE_MAX_WAIT_SEC", "600"))
     PREP_MAX_MIB: int = int(os.getenv("QROSETTA_PREP_MAX_MIB", "1024"))
     PREP_TIMEOUT_SEC: float = float(os.getenv("QROSETTA_PREP_TIMEOUT_SEC", "120"))
+    JOB_SPILL_MAX_MIB: int = int(os.getenv("QROSETTA_JOB_SPILL_MAX_MIB", "10240"))
+    JOB_SPILL_MIN_FREE_MIB: int = int(os.getenv("QROSETTA_JOB_SPILL_MIN_FREE_MIB", "1024"))
     MIN_SHOTS: int = 1
     MAX_SHOTS: int = 1_000_000
     DEFAULT_SHOTS: int = 8200
@@ -86,6 +88,7 @@ class Settings(BaseSettings):
     MAX_RUNS_PER_RUNNER: int = 16
     MAX_TOTAL_RUNS: int = 48
     MAX_EXPERIMENT_CELLS: int = 200
+    MAX_BATCH_TASKS: int = 400
     MAX_EXPORT_ITEMS: int = 60
     MAX_LABEL_LENGTH: int = 200
 
@@ -95,6 +98,10 @@ class Settings(BaseSettings):
     @classmethod
     def _at_least_one_slot(cls, value: int) -> int:
         return max(1, value)
+
+    def bypass_requires_account(self) -> bool:
+        """bypass_limits needs a signed-in, active account on any server that is not local."""
+        return self.EXECUTION_MODE != "local"
 
     def max_qubits_for_mode(self, mode: str) -> int:
         """Qubit cap for a run mode ("statevector", "measured" or "compile" for a compile-only

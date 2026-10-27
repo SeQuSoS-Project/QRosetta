@@ -223,13 +223,6 @@ window.onload = async () => {
             const config = await configResponse.json();
             dispatch('SET_CONFIG_LIMITS', config);
             _applyServerConfig(config);
-            // The API honours bypass_limits only in local mode.
-            if (config.execution_mode !== 'local') {
-                const bypassContainer = document.getElementById('bypass-limits-container');
-                if (bypassContainer) bypassContainer.classList.add('hidden');
-                const bypassCheckbox = document.getElementById('bypass-limits-checkbox');
-                if (bypassCheckbox) bypassCheckbox.checked = false;
-            }
         }
         loadRunners();
         loadCompilers();

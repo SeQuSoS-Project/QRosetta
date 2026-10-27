@@ -4,7 +4,7 @@
 # fails only if its count exceeds TS2339_BASELINE; lower the baseline as it shrinks.
 set -u
 
-TS2339_BASELINE=52
+TS2339_BASELINE=51
 
 cd "$(dirname "$0")/../rosetta-api/static" || exit 1
 

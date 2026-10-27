@@ -1,5 +1,6 @@
-"""Unit-test setup: job reports spill to a temporary directory, not the server's, and every
-test starts with empty rate-limit counters."""
+"""Unit-test setup: job reports spill to a temporary directory, not the server's, every test
+starts with empty rate-limit counters, and runs are not refused for the free space left on
+the disk that holds the spill directory."""
 import os
 import sys
 import tempfile
@@ -15,3 +16,9 @@ def _fresh_rate_limits():
     if security is not None:
         security.limiter.reset()
     yield
+
+
+@pytest.fixture(autouse=True)
+def _no_free_disk_floor(monkeypatch):
+    from config import settings
+    monkeypatch.setattr(settings, "JOB_SPILL_MIN_FREE_MIB", 0)

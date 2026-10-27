@@ -1,0 +1,23 @@
+{
+ "description": "Peak resident memory (MiB) of the API's circuit preparation with preprocessing on (the pytket round-trip) for the bundled circuits whose peak exceeded 512 MiB in statevector or measured mode; every other bundled circuit peaked at 392 MiB or less. Each value is the larger of the two modes, measured in a fresh process that first imported the preparation worker's modules (about 110 MiB). peak_mib_at_least marks a preparation stopped at that size. services/preparation_limits.py refuses these circuits at submission when the value reaches the server's preparation memory limit.",
+ "measured": "2026-10-27, scripts/harness_bench/prep_peaks.py, pytket 1.33.0, Python 3.12, rosetta-api venv on an i9-13950HX host",
+ "circuits": [
+  {"source": "mqt", "algorithm": "grover-noancilla", "qubits": 13, "peak_mib": 598},
+  {"source": "mqt", "algorithm": "grover-noancilla", "qubits": 14, "peak_mib": 952},
+  {"source": "mqt", "algorithm": "grover-noancilla", "qubits": 15, "peak_mib": 1493},
+  {"source": "mqt", "algorithm": "grover-noancilla", "qubits": 16, "peak_mib_at_least": 2048},
+  {"source": "mqt", "algorithm": "grover-noancilla", "qubits": 17, "peak_mib_at_least": 2048},
+  {"source": "mqt", "algorithm": "grover-noancilla", "qubits": 18, "peak_mib_at_least": 2048},
+  {"source": "mqt", "algorithm": "grover-noancilla", "qubits": 19, "peak_mib_at_least": 2048},
+  {"source": "mqt", "algorithm": "grover-v-chain", "qubits": 13, "peak_mib": 517},
+  {"source": "mqt", "algorithm": "grover-v-chain", "qubits": 14, "peak_mib": 779},
+  {"source": "mqt", "algorithm": "grover-v-chain", "qubits": 15, "peak_mib": 1192},
+  {"source": "mqt", "algorithm": "grover-v-chain", "qubits": 16, "peak_mib": 1861},
+  {"source": "mqt", "algorithm": "grover-v-chain", "qubits": 17, "peak_mib_at_least": 2048},
+  {"source": "mqt", "algorithm": "grover-v-chain", "qubits": 18, "peak_mib_at_least": 2048},
+  {"source": "mqt", "algorithm": "grover-v-chain", "qubits": 19, "peak_mib_at_least": 2048},
+  {"source": "mqt", "algorithm": "grover-v-chain", "qubits": 20, "peak_mib_at_least": 2048},
+  {"source": "mqt", "algorithm": "grover-v-chain", "qubits": 21, "peak_mib_at_least": 2048},
+  {"source": "mqt", "algorithm": "grover-v-chain", "qubits": 22, "peak_mib_at_least": 2048}
+ ]
+}

@@ -388,12 +388,17 @@
                         after phase 1 of both has finished. Without phases every backend runs at once. Phases
                         change which backends compete for the host at the same moment, not the per-runner
                         CPU quota.</li>
-                    <li><strong>Bypass API Safety Limits</strong> (<code>bypass_limits</code>, local mode
-                        only). Skips the QASM size limit and the statement-count limit, and for an
-                        experiment the limit on circuits × preprocessing settings. The request-body limit,
-                        the qubit limits, the expanded-gate and nested-gate-call limits (which protect the
-                        runners' memory), the syntax checks and the measurement checks still apply, and the
-                        server ignores the flag for the QASM limits outside local mode. The report records it.</li>
+                    <li><strong>Bypass API Safety Limits</strong> (<code>bypass_limits</code>). Skips the playlist
+                        length limit and, for an experiment, the limit on circuits × preprocessing settings;
+                        on a local server it also skips the QASM size limit and the statement-count limit.
+                        The request-body limit, the qubit limits, the expanded-gate and nested-gate-call
+                        limits (which protect the runners' memory), the circuit preparation limits, the
+                        syntax checks and the measurement checks still apply, and outside local mode so do
+                        the QASM size and statement-count limits. On a local server anyone may set it. On any
+                        other server only a signed-in account may (<code>bypass_limits_requires_account</code>
+                        in <code>GET /config</code>): a request that sets it without a valid sign-in is
+                        refused with HTTP 401, and while you are signed out the page disables the option and
+                        says so. The report records it.</li>
                     <li><strong>Apply SDK Preprocessing</strong>: on or off (<code>apply_preprocessing</code>), or both, which runs an experiment (<a href="#batch">Several circuits, several runs, and experiments</a>); see
                         <a href="#preprocessing">Circuit preprocessing</a>.</li>
                 </ul>
@@ -435,14 +440,27 @@
                         about 710 MiB in the PennyLane runners and twelve levels at about 1,090 MiB, while
                         8,192 top-level calls of one definition take about 340 MiB. The bundled benchmark circuits are exempt.</li>
                     <li>With <code>apply_preprocessing</code> on, the API prepares each circuit (the pytket
-                        round-trip) in a separate process limited to 1,024 MiB and 120 s (server settings
+                        round-trip) in a separate process limited to 1,024 MiB and 120 s
+                        (<code>limits.prep_max_mib</code> and <code>limits.prep_timeout_sec</code>; server settings
                         <code>QROSETTA_PREP_MAX_MIB</code> and <code>QROSETTA_PREP_TIMEOUT_SEC</code>). A
                         preparation that exceeds either is stopped, and the run fails with a message naming
-                        the limit; with <code>apply_preprocessing=false</code> the circuit text is dispatched
-                        without the round-trip. Among the bundled circuits, the MQT Bench Grover circuits
+                        the limit and its value; with <code>apply_preprocessing=false</code> the circuit text is
+                        dispatched without the round-trip. How much memory a preparation takes cannot be told
+                        from the circuit text, so only circuits whose preparation has been measured are refused
+                        before they run. Among the bundled circuits, the MQT Bench Grover circuits
                         (<code>grover-noancilla</code> and <code>grover-v-chain</code>) from 15 qubits exceed the
-                        memory limit: their nested multi-controlled gates expand in pytket to 2.5 GiB at 16
-                        qubits and 4 GiB at 17.</li>
+                        memory limit: their nested multi-controlled gates expand in pytket to about 1.5 GiB
+                        (<code>grover-noancilla</code>) and 1.2 GiB (<code>grover-v-chain</code>) at 15 qubits, and
+                        more than 2 GiB from 16 and 17 qubits; every other bundled circuit stays under 400 MiB.
+                        <code>GET /config</code> lists the bundled circuits over the server's limit as
+                        <code>bundled_over_prep_limit</code>. A run that includes one with preprocessing on is
+                        refused with HTTP 400 naming the circuit, and the page says so before sending it.
+                        Written versions of these circuits are refused earlier, by the expanded-gate and
+                        nested-gate-call limits.</li>
+                    <li>A playlist run holds at most 400 circuits (<code>limits.max_batch_tasks</code>), enough for
+                        both bundled suites (269 MQT Bench and 55 QASMBench circuits) in one playlist; a longer one
+                        is refused with HTTP 400, and the page says so before sending it. Split it and run the parts
+                        one after another.</li>
                     <li>A custom <code>gate</code> definition with a name pytket's QASM parser treats
                         specially is rejected with HTTP 400, and the message names the gate. pytket turns
                         some names (<code>sleep</code>, <code>order2</code>…<code>order20</code>,
@@ -1587,6 +1605,19 @@
                     <code>statevector_omitted_for_display</code>. The server keeps a finished job, with its
                     untruncated report, for 30 to 40 minutes: jobs older than 30 minutes are removed by a
                     sweep that runs every 10 minutes.
+                </p>
+                <p>
+                    These reports are kept on the API's local disk, within a budget of 10,240 MiB
+                    (<code>limits.job_storage_max_mib</code>; server setting
+                    <code>QROSETTA_JOB_SPILL_MAX_MIB</code>), and the server keeps at least 1,024 MiB of that
+                    disk free (<code>limits.job_storage_min_free_mib</code>;
+                    <code>QROSETTA_JOB_SPILL_MIN_FREE_MIB</code>). One 18-qubit statevector circuit run on 14
+                    backends takes about 78 MB. While either limit is crossed, a new run is refused with HTTP 503
+                    and a <code>Retry-After</code> header, and the message says which limit. A playlist or
+                    experiment that is already running checks before it writes each circuit's result; when the
+                    storage is full it stops, and the job fails with a message naming the circuit it stopped at
+                    and the limit. A single-circuit run always keeps its report, so reports of runs already in
+                    progress can take the storage past its budget.
                 </p>
                 <div class="table-scroll"><table>
                     <thead><tr><th>Endpoint</th><th>Returns</th></tr></thead>
