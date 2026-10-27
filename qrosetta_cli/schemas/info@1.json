@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "qrosetta.cli/info@1: GET /config verbatim and the CLI's compatibility with it",
+  "type": "object",
+  "properties": {
+    "config": {
+      "type": "object"
+    },
+    "compatibility": {
+      "type": "object",
+      "properties": {
+        "cli_api_levels": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "server_api_levels": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "integer"
+          }
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "missing_features": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+@[0-9]+$"
+          }
+        }
+      },
+      "required": [
+        "cli_api_levels",
+        "server_api_levels",
+        "ok",
+        "missing_features"
+      ]
+    }
+  },
+  "required": [
+    "config",
+    "compatibility"
+  ]
+}

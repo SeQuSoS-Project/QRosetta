@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "qrosetta.cli/circuit@0: one circuit's text and where it was written",
+  "type": "object",
+  "properties": {
+    "ref": {
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "algorithm",
+        "example",
+        "mqt",
+        "qasmbench",
+        "file",
+        "stdin"
+      ]
+    },
+    "name": {
+      "type": "string"
+    },
+    "qasm": {
+      "type": "string"
+    },
+    "path": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "ref",
+    "kind",
+    "name",
+    "qasm",
+    "path"
+  ]
+}

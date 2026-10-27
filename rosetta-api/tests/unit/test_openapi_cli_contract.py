@@ -183,10 +183,10 @@ def test_every_server_route_the_cli_client_names_is_in_the_contract():
     matched = set()
     for module, sample in _client_route_literals():
         routes = [r for r in app.routes if getattr(r, "path_regex", None) and r.path_regex.match(sample)]
-        for route in routes:
-            names = {f"{m} {route.path}" for m in (route.methods or ())}
+        names = {f"{m} {route.path}" for route in routes for m in (route.methods or ())}
+        if names:
             assert names & covered, f"{module} reads {sample} ({sorted(names)}): add it to CLI_ROUTES or EXPERIMENTAL_ROUTES"
-            matched |= names & covered
+        matched |= names & covered
     assert {"GET /config", "POST /plan", "GET /jobs/{job_id}/summary"} <= matched
 
 

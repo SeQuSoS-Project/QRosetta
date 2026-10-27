@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "qrosetta.cli/backends@0: GET /runners verbatim, whether it was a fresh probe round, and the keys a run without -b uses",
+  "type": "object",
+  "properties": {
+    "runners": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "fresh": {
+      "type": "boolean"
+    },
+    "default_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "runners",
+    "fresh",
+    "default_ids"
+  ]
+}

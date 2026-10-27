@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "qrosetta.cli/session@0: login, logout or whoami; never the token",
+  "type": "object",
+  "properties": {
+    "server": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string"
+    },
+    "expires_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "expires_in": {
+      "type": [
+        "integer",
+        "number",
+        "null"
+      ]
+    },
+    "credentials": {
+      "type": "string"
+    },
+    "removed": {
+      "type": "boolean"
+    },
+    "user": {
+      "type": "object"
+    },
+    "token_source": {
+      "enum": [
+        "QROSETTA_TOKEN",
+        "credentials file"
+      ]
+    }
+  },
+  "required": [
+    "server"
+  ]
+}
