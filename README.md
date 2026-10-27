@@ -124,17 +124,25 @@ The stack runs in two modes, selected by `EXECUTION_MODE`:
 
 ## Getting started
 
-Requires Docker Engine 20.10+ or podman, with Docker Compose v2 as the compose provider (see
-[Starting and stopping](#starting-and-stopping)), and Python 3.
+Requires Linux on x86_64, rootless podman 4.4+ (recommended) or Docker Engine 20.10+, with
+Docker Compose v2 as the compose provider (see [Starting and stopping](#starting-and-stopping)),
+and Python 3.11+. A full build needs about 25 GB of disk for the images.
 
 ```bash
-git clone https://github.com/SeQuSoS-Project/qrosetta.git
-cd qrosetta
-cp .env.example .env      # the cloud credentials in it are needed only for deployment
-./scripts/safe_boot.sh    # builds the images, then runs ./qrosetta start
+git clone https://github.com/SeQuSoS-Project/QRosetta.git
+cd QRosetta
+./qrosetta doctor          # host checks, each problem with its fix
+./qrosetta build           # builds every enabled service's image
+./qrosetta start -d        # starts the stack; returns when the runners answer
+./qrosetta selftest        # known-answer checks of every backend, results saved under ./qrosetta-results
+./qrosetta run algorithm:ghz:3 -m statevector,measured
+./qrosetta show summary    # the server's verdicts for the last run
 ```
 
-The first build takes a while: it compiles dependencies for 16 separate containers.
+The first build takes a while: it installs dependencies for 24 separate images, and compiles
+staq, Synthetiq and Quartz from source. `./qrosetta build --profile minimal` builds the core
+services plus Qiskit, Qulacs and Cirq. `.env` (copied from `.env.example`) is needed only to
+deploy a shared server; a local stack runs without it.
 
 - Web UI — http://localhost:8080. The page opens with a GHZ circuit ready; press **Run**, then
   read the Summary tab. The guide's Quickstart (`docs.html#quickstart`) walks through a first
@@ -240,7 +248,10 @@ In VS Code, *Terminal → Run Task → Quantum Rosetta: start* (`.vscode/tasks.j
 `qrosetta start` in a terminal panel; stopping the task puts the stack on standby. The other
 tasks run `stop`, `remove` and `status`.
 
-### Deploying
+### Deploying a shared server
+
+A local stack needs none of this. The project's own hosted instance runs in `kubernetes` mode on
+CSC Rahti, with the frontend on Google Cloud Run:
 
 ```bash
 ./scripts/rahti_push.sh [namespace] [service ...]   # CSC Rahti (OpenShift)
