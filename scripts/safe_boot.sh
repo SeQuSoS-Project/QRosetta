@@ -9,6 +9,10 @@ cd "$(dirname "$0")/.." || exit 1
 
 docker() { command "${QR_ENGINE:-docker}" "$@"; }
 
+# The compose project (image names, labels) is QROSETTA_PROJECT, as for qrosetta.
+export QROSETTA_PROJECT="${QROSETTA_PROJECT:-qsimulators}"
+export COMPOSE_PROJECT_NAME="$QROSETTA_PROJECT"
+
 echo ">>> [INIT] Starting safe boot..."
 
 # Matches the UI max, config.py default and the Kubernetes manifest.
@@ -82,6 +86,7 @@ d = json.load(sys.stdin)
 svc = d["services"][sys.argv[1]]
 b = svc["build"]
 args = " ".join("--build-arg " + shlex.quote(f"{k}={v}") for k, v in (b.get("args") or {}).items())
+args += "".join(" --label " + shlex.quote(f"{k}={v}") for k, v in (b.get("labels") or {}).items())
 image = svc.get("image") or d["name"] + "-" + sys.argv[1]
 print(shlex.quote(image), shlex.quote(b["dockerfile"]), shlex.quote(b["context"]), args)
 ' "$1") || return 1
