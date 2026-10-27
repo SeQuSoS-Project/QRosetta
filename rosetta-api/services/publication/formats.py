@@ -18,7 +18,7 @@ from typing import Any
 import matplotlib.pyplot as plt
 from openpyxl import Workbook
 
-from .theme import BASE_DPI, FIXED_CANVAS_SIZES, _MPL_LOCK, figure_size
+from .theme import BASE_DPI, FIXED_CANVAS_SIZES, figure_size, mpl_lock
 
 
 def _savefig_bytes(fig, fmt: str, scale: int = 1, tight: bool = True) -> bytes:
@@ -35,11 +35,11 @@ def _savefig_bytes(fig, fmt: str, scale: int = 1, tight: bool = True) -> bytes:
 def _render_figure(build_fig, fmt: str, scale: int = 1, size: str = "auto",
                    title: bool = True) -> bytes:
     """Build a figure at the ``size`` preset, render it as ``fmt`` and close it, holding
-    _MPL_LOCK throughout. ``title=False`` removes the figure title and each axes' centred
+    _MPL_LOCK throughout (``theme.mpl_lock``). ``title=False`` removes the figure title and each axes' centred
     title; panel labels, drawn on the left, stay. A preset in FIXED_CANVAS_SIZES (the 16:9
     slide) keeps its canvas, with the content laid out inside it; the others are cropped to
     their content."""
-    with _MPL_LOCK, figure_size(size):
+    with mpl_lock(), figure_size(size):
         fig = build_fig()
         try:
             if not title:

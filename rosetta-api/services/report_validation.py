@@ -4,6 +4,7 @@ import math
 
 from fastapi import HTTPException
 
+from config import settings
 from schemas.benchmark import has_control_characters
 from services.export_compiled import compiler_keys
 from services.exporter import invalid_runner_keys
@@ -44,6 +45,48 @@ def _non_finite_path(value):
     return None
 
 
+_PAIR_LISTS = ("pairwise_agreement", "divergences_found")
+
+
+def report_caps() -> dict:
+    """Size caps on a client-supplied report, published in GET /config ``limits``: playlist
+    circuits, runner results (and compiled circuits, and backends in a divergence report)
+    per circuit, and pairwise comparisons per circuit. No server job produces more."""
+    keys = settings.MAX_TOTAL_RUNS
+    return {"max_report_tasks": settings.MAX_REPORT_TASKS, "max_report_runner_keys": keys,
+            "max_report_pairs": keys * (keys - 1) // 2}
+
+
+def _size_problems(reports: list) -> list:
+    caps = report_caps()
+    if len(reports) > caps["max_report_tasks"]:
+        return [f"benchmark_summary holds {len(reports)} circuits; at most "
+                f"{caps['max_report_tasks']} are accepted"]
+    keys, pairs = caps["max_report_runner_keys"], caps["max_report_pairs"]
+    for report in reports:
+        for field in ("raw_results", "compiled_circuits"):
+            value = report.get(field)
+            if isinstance(value, list) and len(value) > keys:
+                return [f"{field} holds {len(value)} entries; at most {keys} per circuit are accepted"]
+        divergence = report.get("divergence_report")
+        if not isinstance(divergence, dict):
+            continue
+        for field, value in divergence.items():
+            if not isinstance(value, list):
+                continue
+            matrix = bool(value) and all(isinstance(row, list) for row in value)
+            if field in _PAIR_LISTS:
+                limit = pairs
+            elif field == "simulators" or matrix:
+                limit = keys
+            else:
+                continue
+            if len(value) > limit or (matrix and any(len(row) > keys for row in value)):
+                return [f"divergence_report.{field} holds more than {limit} entries; at most "
+                        f"{keys} backends and {pairs} pairs per circuit are accepted"]
+    return []
+
+
 def report_problems(results) -> list:
     """Reasons a client-supplied report cannot be used; [] when it is usable."""
     if not isinstance(results, dict):
@@ -55,6 +98,9 @@ def report_problems(results) -> list:
         if not isinstance(summary, list) or not all(isinstance(t, dict) for t in summary):
             return ["benchmark_summary must be a list of task reports"]
         reports = summary
+    size = _size_problems(reports)
+    if size:
+        return size
     for report in reports:
         raw = report.get("raw_results")
         if raw is not None and (not isinstance(raw, list)

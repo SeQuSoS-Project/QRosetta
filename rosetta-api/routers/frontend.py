@@ -13,6 +13,7 @@ from schemas.auth import EMAIL_MAX_LENGTH, PASSWORD_MAX_BYTES, PASSWORD_MIN_CHAR
 from schemas.listings import CompilerList, RunnerList, ServerConfig
 from services.preparation_limits import bundled_over_prep_limit
 from services.report_summary import outcome_catalog
+from services.report_validation import report_caps
 from services.request_defaults import request_defaults
 from services.server_info import server_block
 from services.security import rate_limit_key
@@ -237,6 +238,7 @@ async def get_config():
             "job_ttl_sec": settings.JOB_TTL_SEC,
             "job_evictable_after_sec": settings.JOB_EVICTABLE_AFTER_SEC,
             "max_export_items": settings.MAX_EXPORT_ITEMS,
+            **report_caps(),
             "max_label_length": settings.MAX_LABEL_LENGTH,
             "email_max_length": EMAIL_MAX_LENGTH,
             "password_min_chars": PASSWORD_MIN_CHARS,

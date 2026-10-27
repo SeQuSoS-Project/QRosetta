@@ -11,7 +11,8 @@ from fastapi.responses import StreamingResponse
 import schemas
 from services.security import limiter, render_rate_limit
 from services.publication import ParameterError, UnknownArtifact, list_artifacts, render_artifact
-from services.publication.theme import MIME_TYPES
+from services.publication.theme import MIME_TYPES, RendererBusy, render_lock_wait
+from config import settings
 from services.publication.view_listing import views_listing
 from schemas.reports import PublicationViews
 from routers.errors import file_response, responses
@@ -49,14 +50,26 @@ async def _supplied_catalog(results: dict) -> list:
         raise unreadable_report(exc)
 
 
+RENDER_RETRY_AFTER_SEC = 10
+
+
+def _render_waiting_briefly(*args):
+    with render_lock_wait(settings.RENDER_LOCK_WAIT_SEC):
+        return render_artifact(*args)
+
+
 async def _render_response(results: dict, artifact_id: str, fmt: str, scale: int, params: dict,
                            supplied: bool):
     """Render one artifact off the event loop and stream it; 404 for an artifact this report
     does not offer (the detail lists those it does), 400 for a format or parameter it does
-    not take, and, for a client-supplied report, for a field of the wrong type or shape."""
+    not take, and, for a client-supplied report, for a field of the wrong type or shape; 503
+    with Retry-After when the figure renderer stays busy for RENDER_LOCK_WAIT_SEC."""
     try:
         data, mime, _ = await asyncio.to_thread(
-            render_artifact, results, _mode(results), artifact_id, fmt, scale, params, False)
+            _render_waiting_briefly, results, _mode(results), artifact_id, fmt, scale, params, False)
+    except RendererBusy:
+        raise HTTPException(status_code=503, headers={"Retry-After": str(RENDER_RETRY_AFTER_SEC)},
+                            detail="The figure renderer is busy with other requests; try again shortly.")
     except UnknownArtifact:
         catalog = await (_supplied_catalog(results) if supplied else asyncio.to_thread(_catalog, results))
         ids = [a["id"] for a in catalog]
@@ -95,6 +108,7 @@ def _job_circuit_report(job_id: str, task: Optional[int]) -> dict:
 _RENDERED = file_response("The rendered figure or table, in the media type of its format.",
                           *sorted(set(MIME_TYPES.values())))
 _UNKNOWN_ARTIFACT = (404, "An artifact this report does not offer; the detail lists the ids it does.")
+_RENDER_BUSY = (503, "The figure renderer stayed busy for RENDER_LOCK_WAIT_SEC; try again after Retry-After seconds.")
 _JOB_404 = (404, "Unknown or expired job id, a task index the playlist does not have, or an artifact the report does not offer (the detail lists the ids it does).")
 _JOB_400 = (400, "A playlist job without task, or a format or parameter the artifact does not take.")
 _JOB_409 = (409, "The job has not finished, failed before any runner ran, or is an experiment.")
@@ -146,7 +160,7 @@ async def job_publication_artifacts(request: Request, job_id: str,
 @router.post("/publication/render", response_class=StreamingResponse, responses={**_RENDERED, **responses(
     (400, "No report given, a runner key of the wrong form, a format or parameter the artifact "
           f"does not take, or {_SUPPLIED_400}."),
-    _UNKNOWN_ARTIFACT)})
+    _UNKNOWN_ARTIFACT, _RENDER_BUSY)})
 @render_rate_limit
 async def publication_render(request: Request, payload: schemas.PublicationRenderRequest):
     """Render a single publication figure (svg/png/pdf) or table with its view's ``params``
@@ -163,7 +177,7 @@ async def publication_render(request: Request, payload: schemas.PublicationRende
 
 
 @router.post("/jobs/{job_id}/publication/render", response_class=StreamingResponse,
-             responses={**_RENDERED, **responses(_JOB_400, _JOB_404, _JOB_409)})
+             responses={**_RENDERED, **responses(_JOB_400, _JOB_404, _JOB_409, _RENDER_BUSY)})
 @render_rate_limit
 async def job_publication_render(request: Request, job_id: str,
                                  payload: schemas.PublicationJobRenderRequest):

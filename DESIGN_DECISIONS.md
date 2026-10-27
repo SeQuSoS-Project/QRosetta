@@ -742,6 +742,12 @@ Compilers are separate from the simulators: their output is a circuit, which is 
 
 *Evidence (2026-10-28).* The API checked only the Content-Length header, so a chunked body of any size reached the routes wherever nginx was not in front (a direct port, the Rahti `rosetta-api-route`) (`test_v1_04_chunked_upload_limit.py`).
 
+### Size of client-supplied reports
+
+*Rule.* A report a client supplies (export, saved-run upload, summary, publication catalog and render) holds at most `MAX_REPORT_TASKS` circuits (1000), at most `MAX_TOTAL_RUNS` runner results, compiled circuits and divergence-report backends per circuit (matrices at most that wide), and at most that many backends' pairs in `pairwise_agreement` and `divergences_found`; GET /config `limits` publishes them as `max_report_tasks`, `max_report_runner_keys` and `max_report_pairs`. No server job produces more. A figure render from the publication routes waits at most `RENDER_LOCK_WAIT_SEC` (20 s) for the matplotlib lock and then answers 503 with Retry-After 10; crate builds wait without a limit.
+
+*Evidence (2026-10-28).* `report_validation.py` had no count caps, the heatmaps draw n x n cells under one global lock with no timeout, and the render route allows 120 requests a minute, so one report with thousands of keys could hold every render for minutes (`test_v1_05_supplied_report_caps.py`).
+
 ### Name fields
 
 *Rule.* One combined validator per name type (`label_type`), never nested. A version-independent code-point list; blank names are refused.
