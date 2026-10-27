@@ -436,6 +436,7 @@ class JobStatusResponse(BaseModel):
     POST endpoint (/compare, /compare_measured, /run_batch_suite, /experiments)."""
     job_id: str = Field(..., description="Identifier to poll via GET /jobs/{job_id}.")
     status: str = Field(..., description="'pending', 'processing', 'completed', or 'failed'. 'failed' means the circuit could not be dispatched (e.g. it does not parse), every runner returned an error, or every task of a batch failed. A failed job that reached the runners still carries its report in results.")
+    phase: Optional[str] = Field(None, description="What the job is doing: 'queued' (accepted, not started), 'dispatching' (preparing circuits, waiting for the run gate, runs and compiles), 'analysing' (the pairwise comparison and the report), 'exporting' (writing the job's results to the server's job store) or 'done' (completed or failed). A playlist moves between dispatching and analysing once per circuit.")
     target: str = Field(..., description="The execution mode this job was dispatched with ('local' or 'kubernetes').")
     requested_target: Optional[str] = Field(None, description="The execution_target value the request carried (the server's EXECUTION_MODE when omitted).")
     results: Optional[Dict[str, Any]] = Field(None, description="The report, present once status is 'completed' (and for a failed job that reached the runners); null in the response to the POST that created the job. GET /jobs/{job_id} documents its shapes.")

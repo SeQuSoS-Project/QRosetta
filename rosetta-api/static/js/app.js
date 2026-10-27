@@ -5,22 +5,23 @@ import { BASE_URL, apiDetailText, getAuthHeaders } from './api.js';
 import { updateAuthUI, verifySession } from './auth.js';
 import { initAutosave } from './autosave.js';
 import { loadCompilers } from './compilers_config.js';
-import { renderBatchQueue } from './batch.js';
+import { renderBatchQueue, renderQuickLoadOptions } from './batch.js';
 import { initBenchPopover } from './benchmarks_select.js';
 import { editorHasEdits, getDynamicMaxQubits, loadRunners, updateContextBar } from './config.js';
 import { saveRunToHistory, showHistoryNotice } from './history.js';
 import { setRunSaver } from './share_links.js';
 import { announceWorkspaceChange, initDomRefs, limitCodePoints, qasmInput, setAllButtons, welcomeMessage } from './dom.js';
 import { shotsRange, timeoutRange } from './run_inputs.js';
-import { loadBatchQueue, loadEditorCircuit, loadLoadedSelection, loadRunModes, loadRunName, saveEditorCircuit, saveLoadedSelection, saveRunName } from './session_store.js';
+import { setFinishedKeepMs, loadBatchQueue, loadEditorCircuit, loadLoadedSelection, loadRunModes, loadRunName, saveEditorCircuit, saveLoadedSelection, saveRunName } from './session_store.js';
 import { knownIssuesLink } from './labels.js';
-import { loadQubitProblem } from './request_limits.js';
+import { durationText, loadQubitProblem } from './request_limits.js';
 import { dispatch, getState } from './state.js';
 import { resetAgreementThresholds, setLoading } from './utils.js';
 import { fetchSelection, loadCircuitSources, menuGroups, nearestSize, selectionFor } from './circuit_sources.js';
 import { initCircuitPicker } from './circuit_picker.js';
 import { offerRecentJobs, updateWorkspace } from './workspace.js';
 import { initSettingsBar } from './settings_bar.js';
+import { setStatusLabels } from './status_cards.js';
 
 const EXECUTION_MODE_LABELS = {
     local: 'This server: local runner services',
@@ -50,6 +51,14 @@ function _setDefaultRadio(name, value) {
         r.defaultChecked = r.value === value;
         if (untouched) r.checked = r.value === value;
     });
+}
+
+/** How long the server keeps a finished job (limits.job_ttl_sec): the recent-jobs offer and the Stop waiting tooltip. */
+function _applyRetention() {
+    const seconds = getState().jobTtlSec;
+    setFinishedKeepMs(seconds * 1000);
+    const stop = document.getElementById('btn-stop-waiting');
+    if (stop) stop.title = `The job keeps running on the server. Its results can be shown later from this page or after reopening it, for ${durationText(seconds)} after it finishes.`;
 }
 
 /** Execution-target menu, timeout and shots bounds, run-setting defaults (request_defaults)
@@ -240,15 +249,20 @@ window.onload = async () => {
 
     let restored = false;
     try {
-        const [algorithmsResponse, configResponse] = await Promise.all([
+        const [algorithmsResponse, configResponse, quickLoadResponse] = await Promise.all([
             fetch(`${BASE_URL}/algorithms`, { headers: getAuthHeaders() }),
             fetch(`${BASE_URL}/config`),
+            fetch(`${BASE_URL}/quickload`).catch(() => null),
         ]);
         if (!algorithmsResponse.ok) throw new Error('Failed to fetch algorithms');
         dispatch('SET_ALGORITHMS', await algorithmsResponse.json());
+        if (quickLoadResponse?.ok) dispatch('SET_QUICK_LOAD_SETS', await quickLoadResponse.json().catch(() => []));
+        renderQuickLoadOptions();
         if (configResponse.ok) {
             const config = await configResponse.json();
             dispatch('SET_CONFIG_LIMITS', config);
+            setStatusLabels(config.status_labels);
+            _applyRetention();
             _applyServerConfig(config);
         }
         loadRunners();

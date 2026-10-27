@@ -10,6 +10,7 @@ export const Store = {
         currentSuiteTitle: '',
         batchQueue: [],
         allAlgorithms: [],
+        quickLoadSets: /** @type {{ id: string, label: string, items: { algorithm: string, qubits: number, name: string }[] }[]} */ ([]),
         currentAlgoName: "Custom",
         currentRunnerConfig: {},
         currentJobId: null,
@@ -27,6 +28,7 @@ export const Store = {
         prepTimeoutSec: 120,
         jobStorageMaxMib: 10240,
         jobStorageMinFreeMib: 1024,
+        jobTtlSec: 1800,
         bundledOverPrepLimit: /** @type {{ source: string, algorithm: string, qubits: number }[]} */ ([]),
         bypassRequiresAccount: false,
         maxExportItems: 60,
@@ -76,6 +78,9 @@ export const Store = {
             case 'SET_ALGORITHMS':
                 this.state.allAlgorithms = payload;
                 break;
+            case 'SET_QUICK_LOAD_SETS':
+                this.state.quickLoadSets = Array.isArray(payload) ? payload : [];
+                break;
             case 'SET_CURRENT_ALGO_NAME':
                 this.state.currentAlgoName = payload;
                 break;
@@ -121,6 +126,7 @@ export const Store = {
                 this.state.prepTimeoutSec = num(limits.prep_timeout_sec) ?? this.state.prepTimeoutSec;
                 this.state.jobStorageMaxMib = num(limits.job_storage_max_mib) ?? this.state.jobStorageMaxMib;
                 this.state.jobStorageMinFreeMib = num(limits.job_storage_min_free_mib) ?? this.state.jobStorageMinFreeMib;
+                this.state.jobTtlSec = num(limits.job_ttl_sec) ?? this.state.jobTtlSec;
                 if (Array.isArray(payload.bundled_over_prep_limit)) this.state.bundledOverPrepLimit = payload.bundled_over_prep_limit;
                 if (typeof payload.bypass_limits_requires_account === 'boolean') {
                     this.state.bypassRequiresAccount = payload.bypass_limits_requires_account;

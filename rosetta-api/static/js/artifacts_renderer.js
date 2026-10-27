@@ -11,7 +11,7 @@ import { ICONS, SIZE_TAGS, VIEW_UI, VIEW_UI_BY_ID, defaultFormats } from './expo
 import { makeItem, presetItems, renderExportPanel, resetExportPanel } from './export_panel.js';
 import { _displayRunnerName, makeButton as button, makeEl as el } from './render_helpers.js';
 import { dispatch, getState } from './state.js';
-import { formatBytes } from './request_limits.js';
+import { durationText, formatBytes } from './request_limits.js';
 import { pairVerdictOrNull } from './run_status.js';
 import { _stripStatevectors, copyImageToClipboard, copyText, downloadBlob, hasStatevectors, shownCircuitName } from './utils.js';
 
@@ -83,7 +83,7 @@ async function _fetchFigureBlob(id, fmt, scale, params = {}, signal = undefined)
     });
     if (resp.status === 413) {
         throw new Error(`this report is larger than the server's upload limit of ${formatBytes(getState().maxRequestBytes)}, so the server cannot draw it from the copy in this browser. `
-            + 'A run from this session is drawn from the server copy for 30 minutes after it completes; an RO-Crate exported from a saved run includes the figures.');
+            + `A run from this session is drawn from the server copy for ${durationText(getState().jobTtlSec)} after it completes; an RO-Crate exported from a saved run includes the figures.`);
     }
     if (!resp.ok) throw new Error(await formatApiError(resp));
     return await resp.blob();

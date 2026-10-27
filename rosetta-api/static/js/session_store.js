@@ -13,8 +13,17 @@ const RUN_NAME_KEY = 'rosetta_run_name';
 
 /** An unfinished job is offered for this long after it was submitted. */
 export const UNFINISHED_MAX_AGE_MS = 6 * 60 * 60 * 1000;
-/** A finished job is offered for as long as the server keeps its results (JOB_TTL_SEC). */
-export const FINISHED_KEEP_MS = 30 * 60 * 1000;
+let _finishedKeepMs = 30 * 60 * 1000;
+
+/** A finished job is offered for as long as the server keeps its results (limits.job_ttl_sec). */
+export function finishedKeepMs() {
+    return _finishedKeepMs;
+}
+
+/** Set how long the server keeps a finished job, in milliseconds. */
+export function setFinishedKeepMs(ms) {
+    if (Number.isFinite(ms) && ms > 0) _finishedKeepMs = ms;
+}
 const MAX_JOBS = 12;
 
 function _area(kind) {
@@ -71,7 +80,7 @@ export function writePref(key, value) {
  */
 
 function _expired(job, now) {
-    if (job.state === 'finished') return !(typeof job.finished_at === 'number' && now - job.finished_at <= FINISHED_KEEP_MS);
+    if (job.state === 'finished') return !(typeof job.finished_at === 'number' && now - job.finished_at <= _finishedKeepMs);
     return now - job.submitted_at > UNFINISHED_MAX_AGE_MS;
 }
 

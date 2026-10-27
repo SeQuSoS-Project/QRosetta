@@ -3,7 +3,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
-from routers import frontend, generation, benchmark, auth, history, export, publication, experiment, share, summary
+from routers import frontend, generation, benchmark, auth, history, export, publication, experiment, share, plan, summary
 from routers.errors import document_route_errors, register_error_handlers
 from routers.rate_limit import RateLimitHeaders
 import db.models as models
@@ -57,9 +57,10 @@ app.state.limiter = limiter
 register_error_handlers(app)
 
 class LimitUploadSize(BaseHTTPMiddleware):
-    def __init__(self, app, max_upload_size: int) -> None:
+    def __init__(self, app, max_upload_size: int, path_limits: dict = None) -> None:
         super().__init__(app)
         self.max_upload_size = max_upload_size
+        self.path_limits = path_limits or {}
 
     _BODY_METHODS = frozenset({"POST", "PUT", "PATCH"})
 
@@ -71,8 +72,9 @@ class LimitUploadSize(BaseHTTPMiddleware):
                     content_length = int(raw_length)
                 except ValueError:
                     return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length header"})
-                if content_length > self.max_upload_size:
-                    return JSONResponse(status_code=413, content={"detail": f"Request body exceeds the upload limit of {self.max_upload_size} bytes"})
+                limit = self.path_limits.get(request.url.path, self.max_upload_size)
+                if content_length > limit:
+                    return JSONResponse(status_code=413, content={"detail": f"Request body exceeds the upload limit of {limit} bytes"})
         return await call_next(request)
 
 SHARE_PAGE_HEADERS = {
@@ -96,7 +98,8 @@ class SharePageHeaders(BaseHTTPMiddleware):
         return response
 
 
-app.add_middleware(LimitUploadSize, max_upload_size=settings.MAX_UPLOAD_BYTES)
+app.add_middleware(LimitUploadSize, max_upload_size=settings.MAX_UPLOAD_BYTES,
+                   path_limits={"/plan": settings.MAX_PLAN_REQUEST_BYTES})
 app.add_middleware(SharePageHeaders)
 
 app.add_middleware(
@@ -123,6 +126,7 @@ app.include_router(export.router)
 app.include_router(publication.router)
 app.include_router(experiment.router)
 app.include_router(share.router)
+app.include_router(plan.router)
 app.include_router(summary.router)
 
 document_route_errors(app)

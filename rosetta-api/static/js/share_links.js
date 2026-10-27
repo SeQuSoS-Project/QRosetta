@@ -3,6 +3,7 @@
 
 import { BASE_URL, formatApiError, getAuthHeaders } from './api.js';
 import { dispatch, getState } from './state.js';
+import { durationText } from './request_limits.js';
 import { makeCopyIconButton } from './utils.js';
 
 let _saveRun = null;
@@ -99,7 +100,7 @@ async function _savedRunId(notice) {
     const { authToken, currentHistoryRunId, currentJobId } = getState();
     if (!authToken) {
         notice.replaceChildren(_el('p', 'text-xs text-gray-700',
-            'Sign in first (Login / Register at the top of the page). A run started without signing in can still be saved while the server keeps it, at least 30 minutes after it finished.'));
+            `Sign in first (Login / Register at the top of the page). A run started without signing in can still be saved while the server keeps it, at least ${durationText(getState().jobTtlSec)} after it finished.`));
         return null;
     }
     if (currentHistoryRunId) return currentHistoryRunId;
@@ -111,7 +112,7 @@ async function _savedRunId(notice) {
     const runId = await _saveRun(currentJobId);
     if (!runId) {
         notice.replaceChildren(_el('p', 'text-xs text-red-700',
-            'The run could not be saved (see the notice above the results). The server keeps a job for at least 30 minutes after it finishes.'));
+            `The run could not be saved (see the notice above the results). The server keeps a job for at least ${durationText(getState().jobTtlSec)} after it finishes.`));
         return null;
     }
     if (getState().currentJobId === currentJobId) dispatch('SET_HISTORY_RUN_ID', runId);

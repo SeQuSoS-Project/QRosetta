@@ -123,13 +123,11 @@ def test_large_measured_runs_are_warned_about():
     assert "24-qubit" in text and "60 s" in text and "300 s" in text
 
 
-@requires_node
-def test_analysing_phase_needs_every_run_finished():
-    assert call_js(["status_cards.js"], [
-        ("allRunsFinished", [{"qiskit": "done", "cirq": "timeout", "pyzx": "error"}]),
-        ("allRunsFinished", [{"qiskit": "done", "cirq": "running"}]),
-        ("allRunsFinished", [{}]),
-    ]) == [True, False, False]
+def test_analysing_comes_from_the_job_phase():
+    src = (JS / "status_cards.js").read_text()
+    assert "allRunsFinished" not in src and "activeFor" not in src
+    assert "_view.phase === 'analysing'" in src
+    assert "updateJobPhase(data.phase)" in (JS / "api.js").read_text()
 
 
 def test_queued_statuses_show_no_timer():

@@ -14,10 +14,10 @@ import { renderExperimentResult } from './experiment.js';
 import { clearHistoryState, saveRunToHistory } from './history.js';
 import { confirmUnsavedRun, signedInAccount } from './auth.js';
 import { clearReport, renderDetailReport, renderSuiteSummary, showTab } from './renderers.js';
-import { planRuns, runButtonLabel, runLimitProblems } from './run_plan.js';
-import { labelProblem, printableLabel } from './request_limits.js';
+import { planProblemTexts, planRequest, runButtonLabel } from './run_plan.js';
+import { durationText, labelProblem, printableLabel } from './request_limits.js';
 import { showRunErrors, validateRunInputs } from './run_inputs.js';
-import { FINISHED_KEEP_MS, forgetJob, isJobsStorageKey, listJobs, markJobFinished, markJobStopped, recordJob, saveEditorCircuit, saveRunModes } from './session_store.js';
+import { finishedKeepMs, forgetJob, isJobsStorageKey, listJobs, markJobFinished, markJobStopped, recordJob, saveEditorCircuit, saveRunModes } from './session_store.js';
 import { dispatch, getState } from './state.js';
 import { getAgreementThresholds, getSeed, setLoading } from './utils.js';
 import { batchItemLabel, renderBatchQueue } from './batch.js';
@@ -46,7 +46,7 @@ function _editorCircuitName() {
     return name && !/^Custom\b/.test(name) ? name : null;
 }
 
-/** The workspace as planRuns() reads it; `shots` and `timeout` come from validated inputs. */
+/** The workspace as planRequest() reads it; `shots` and `timeout` come from validated inputs. */
 export function readWorkspace(validated = null) {
     const compilers = getCompilerSelection();
     return {
@@ -73,15 +73,6 @@ export function readWorkspace(validated = null) {
         },
         limits: { maxLabelLength: getState().maxLabelLength },
     };
-}
-
-/** The server limits runLimitProblems() checks, from GET /config. */
-function _requestLimits() {
-    const st = getState();
-    return { maxRequestBytes: st.maxRequestBytes, maxQasmSize: st.maxQasmSize,
-             maxExperimentCells: st.maxExperimentCells, maxBatchTasks: st.maxBatchTasks,
-             prepMaxMib: st.prepMaxMib, bundledOverPrepLimit: st.bundledOverPrepLimit,
-             executionMode: st.executionMode };
 }
 
 /** Bypass API Safety Limits: unticked and disabled, with a note, while the server needs a sign-in for it and there is none. */
@@ -135,7 +126,7 @@ export function updateWorkspace() {
     if (note) {
         note.textContent = getState().authToken
             ? 'Runs are saved to your History.'
-            : 'Not signed in: results are kept for 30 minutes.';
+            : `Not signed in: results are kept for ${durationText(getState().jobTtlSec)}.`;
     }
     _showLimitWarning(ws);
     _renderEmptyState(ws);
@@ -301,7 +292,7 @@ function _renderStopped(entry) {
     const box = _el('div', 'p-4 bg-gray-50 border border-gray-300 rounded text-sm text-gray-800 space-y-2');
     box.setAttribute('role', 'status');
     box.appendChild(_el('h3', 'text-base font-semibold text-gray-900', 'Stopped waiting'));
-    box.appendChild(_el('p', '', `${job.title}: the job keeps running on the server, which keeps its results for 30 minutes after it finishes. `
+    box.appendChild(_el('p', '', `${job.title}: the job keeps running on the server, which keeps its results for ${durationText(getState().jobTtlSec)} after it finishes. `
         + 'Show results waits for it again; reopening this page also offers it.'));
     const id = _el('p', 'text-xs text-gray-600', 'Job ID: ');
     id.appendChild(_el('code', 'font-mono select-all', job.job_id));
@@ -476,16 +467,27 @@ function _historyName(runName, run, runs) {
     return `${base}${suffix}`;
 }
 
-/** The problems that keep the workspace from being submitted, or [] when Run would submit it.
- * `v` is the result of validateRunInputs(). Shows nothing. */
-function _submitProblems(v) {
+/** Plan the workspace with POST /plan: `{ ws, runs, problems }`, where `problems` keep the
+ * workspace from being submitted ([] when Run would submit `runs`). `v` is the result of
+ * validateRunInputs(). Shows nothing. */
+async function _planWorkspace(v) {
     const ws = readWorkspace(v);
     const problems = [];
     const nameProblem = labelProblem(_rawRunName(), getState().maxLabelLength, 'The run name');
     if (nameProblem) problems.push(`Run Name: ${nameProblem}`);
-    const { runs, error } = planRuns(ws);
-    if (error) return [...problems, error];
-    return [...problems, ...runLimitProblems(runs, _requestLimits())];
+    const raw = /** @type {HTMLInputElement|null} */ (document.getElementById('single-run-name'))?.value || '';
+    try {
+        const res = await fetch(`${BASE_URL}/plan`, {
+            method: 'POST',
+            headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify(planRequest(ws, raw)),
+        });
+        if (!res.ok) return { ws, runs: [], problems: [...problems, `The run could not be planned: ${await formatApiError(res)}`] };
+        const plan = await res.json();
+        return { ws, runs: plan.runs || [], problems: [...problems, ...planProblemTexts(plan.problems, plan.runs)] };
+    } catch (e) {
+        return { ws, runs: [], problems: [...problems, `The server could not be reached to plan the run (${e instanceof Error ? e.message : String(e)}).`] };
+    }
 }
 
 const _rawRunName = () => /** @type {HTMLInputElement|null} */ (document.getElementById('single-run-name'))?.value.trim() || '';
@@ -498,14 +500,22 @@ function _showRefusal(problems) {
     showRunErrors('single-validation-msg', problems);
 }
 
+let _refreshTimer = undefined;
+let _refreshSeq = 0;
+
 /** After a refused press of Run: check the workspace again, so the box lists only what still blocks it. */
 function _refreshRefusal() {
     if (!_refusalShown) return;
-    const draft = readWorkspace();
-    const v = validateRunInputs({ shotsId: 'shots-single', measured: draft.modes.measured });
-    const problems = v.ok ? _submitProblems(v) : v.errors;
-    const backends = (draft.modes.statevector || draft.modes.measured) ? runnerSelectionProblem() : null;
-    _showRefusal(backends ? [backends, ...problems] : problems);
+    clearTimeout(_refreshTimer);
+    _refreshTimer = setTimeout(async () => {
+        const seq = ++_refreshSeq;
+        const draft = readWorkspace();
+        const v = validateRunInputs({ shotsId: 'shots-single', measured: draft.modes.measured });
+        const problems = v.ok ? (await _planWorkspace(v)).problems : v.errors;
+        if (seq !== _refreshSeq || !_refusalShown) return;
+        const backends = (draft.modes.statevector || draft.modes.measured) ? runnerSelectionProblem() : null;
+        _showRefusal(backends ? [backends, ...problems] : problems);
+    }, 300);
 }
 
 /** Validate the workspace, plan its jobs and run them. */
@@ -525,11 +535,9 @@ export async function runWorkspace() {
         if (countProblems.length) { _showRefusal(countProblems); return; }
         dispatch('SET_RUNNER_CONFIG', getRunnerConfig());
     }
-    const problems = _submitProblems(v);
+    const { ws, runs, problems } = await _planWorkspace(v);
     if (problems.length) { _showRefusal(problems); return; }
     _showRefusal([]);
-    const ws = readWorkspace(v);
-    const { runs } = planRuns(ws);
     if (ws.source === 'editor') saveEditorCircuit(qasmInput.value, getState().currentAlgoName);
     document.getElementById('resume-job-banner')?.classList.add('hidden');
     await _runAll(runs, ws);
@@ -575,7 +583,7 @@ function _recentJobRow(job) {
     const name = job.run_name || job.title;
     const short = `job ${job.job_id.slice(0, 8)}`;
     const text = job.state === 'finished'
-        ? `${name} (${short}) finished at ${_clock(job.finished_at)}; the server keeps its results until ${_clock(job.finished_at + FINISHED_KEEP_MS)}.`
+        ? `${name} (${short}) finished at ${_clock(job.finished_at)}; the server keeps its results until ${_clock(job.finished_at + finishedKeepMs())}.`
         : job.state === 'stopped'
             ? `${name} (${short}), submitted at ${_clock(job.submitted_at)}: you stopped waiting for it.`
             : `${name} (${short}), submitted at ${_clock(job.submitted_at)}: its results were not shown yet.`;

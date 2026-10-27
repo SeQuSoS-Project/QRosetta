@@ -3,7 +3,7 @@
 import { formatBytes, jsonBytes } from './request_limits.js';
 import { attachSummary, lacksVerdicts, summaryInput } from './run_status.js';
 import { getState } from './state.js';
-import { renderBatchProgress, setRunKicker, updateRunnerStatuses } from './status_cards.js';
+import { renderBatchProgress, setRunKicker, updateJobPhase, updateRunnerStatuses } from './status_cards.js';
 
 export let BASE_URL = '';
 if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
@@ -161,6 +161,7 @@ export async function pollJobStatus(jobId) {
                 if (settled) return;
                 networkErrorCount = 0;
 
+                updateJobPhase(data.phase);
                 if (data.runner_statuses) {
                     updateRunnerStatuses(data.runner_statuses);
                 }
