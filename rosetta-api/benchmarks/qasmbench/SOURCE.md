@@ -1,6 +1,8 @@
 # QASMBench (bundled subset)
 
-Source: https://github.com/pnnl/QASMBench (PNNL / Battelle, BSD/MIT-style — see LICENSE).
+Source: https://github.com/pnnl/QASMBench (PNNL / Battelle, BSD/MIT-style — see LICENSE), at commit
+`357b942396d5c2b7cbc1c229c585a6ef5ccaebac` (2025-01-20): every bundled `.qasm` file and `LICENSE` is
+byte-identical to the file of the same name in that commit's tree.
 
 Bundled here: the base `*.qasm` circuits (excluding the repo's `*_transpiled.qasm`
 siblings) that are runnable on this platform — i.e. ≤ MAX_QUBITS_MEASURED qubits,

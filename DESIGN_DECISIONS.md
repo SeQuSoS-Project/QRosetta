@@ -731,6 +731,18 @@ The target for a runner or compiler image is the newest CPython (3.13 first, els
 
 *Evidence.* 382/4096 amplitudes differed by ≤ 5.7e-17 on a 12-qubit circuit; bit-stable with NPY_DISABLE_CPU_FEATURES.
 
+### Licences of bundled circuits in exports
+
+*Rule.* An RO-Crate or experiment bundle that contains a bundled MQT Bench or QASMBench circuit (a playlist or experiment entry with `source` `mqt` or `qasmbench`, not literal text) also contains that suite's licence text under `licenses/`; in a crate the circuit's File entity names it as its `license` and says where the circuit comes from (mqt.bench 1.1.9; pnnl/QASMBench at commit 357b942). The crate's own licence (CC BY 4.0) stays on the crate. A circuit pasted into the editor is literal text and gets no licence file ([`rosetta-api/services/bundled_licences.py`](rosetta-api/services/bundled_licences.py), [`rosetta-api/tests/unit/test_bundled_licences.py`](rosetta-api/tests/unit/test_bundled_licences.py)).
+
+*Evidence (2026-10-28).* Crates and experiment bundles copied bundled circuits verbatim and declared the whole crate CC BY 4.0. MIT asks that its notice accompany copies; the Battelle licence asks that redistributions retain its copyright notice and disclaimers. The 58 QASMBench files and their `LICENSE` have the git blob hashes of the files of the same names at pnnl/QASMBench commit 357b942 (2025-01-20) and differ from its parent in two files, so that commit is the version bundled.
+
+### Source notice of a published image
+
+*Rule.* Every image the release workflow publishes gets `NOTICE-<id>.txt`, written by [`scripts/release/image_notice.py`](scripts/release/image_notice.py) from the pushed image: its digest, the base image of the final stage, and each Debian source package at its installed version with its snapshot.debian.org address (nginx: each Alpine origin with its aports commit). The base image's archive date is the snapshot date Debian's official images write in a comment of their apt sources; an install date is printed only when an apt source line names snapshot.debian.org. The script reads the image through a created container that it removes and never starts ([`rosetta-api/tests/unit/test_image_notice.py`](rosetta-api/tests/unit/test_image_notice.py)).
+
+*Evidence (2026-10-28).* Generated for all 21 release images from the local stack's builds: 87 to 149 Debian packages from 61 to 80 source packages per image (71 Alpine packages from 59 origins for nginx), base archive date 20260316T000000Z; six nginx.org packages in nginx have no aports commit and are named with their packager. The apt sources of every image point at deb.debian.org, so packages a Dockerfile adds (build-essential in qrisp, quimb and torchquantum; libgomp1 in quartz and synthetiq) have no recorded archive date until the Dockerfiles use a snapshot.
+
 ## Security and accounts
 
 ### Share links

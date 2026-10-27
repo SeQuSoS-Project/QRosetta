@@ -22,6 +22,7 @@ from config import server_git_sha, server_image_digests, settings
 from schemas import BatchPayload, BenchmarkTask, ExperimentPayload
 from services import experiment_artifacts as art
 from services.analysis.divergence.verdicts import statevector_group
+from services.bundled_licences import bundled_source, licence_files
 from services.dispatcher import SEED_DERIVATION
 from services.export_compiled import compiled_metrics_csv, compiler_build_files
 from services import specimens, timing_caveats
@@ -290,6 +291,7 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
         files: dict = _compiled_files(compiled_reports)
         for c in resolved:
             files[f"inputs/{c['id']}.qasm"] = art.qasm_bytes(c["qasm"])
+        files.update(licence_files(bundled_source(c["request"]) for c in resolved))
         files["conformance_matrix.csv"] = art.csv_string(
             conformance, art.CONFORMANCE_FIELDS).encode("utf-8")
         files["performance.csv"] = art.csv_string(

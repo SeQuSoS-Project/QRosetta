@@ -6,9 +6,10 @@
 # .trivyignore, fails the image and so the release; the SARIF report goes to code scanning in
 # the public repository (job scan-results). When the repository variable
 # QROSETTA_PUBLISH_IMAGES is 'true' it also pushes them to GHCR, signs them with cosign, attests
-# their provenance and attaches an SPDX SBOM (syft) as an attestation, and writes the release
-# manifest with their digests and image ids into the wheel. With the variable unset no image is
-# pushed.
+# their provenance and attaches an SPDX SBOM (syft) as an attestation, writes each image's
+# source notice (artifact notice-<id>, scripts/release/image_notice.py) for the release page, and
+# writes the release manifest with their digests and image ids into the wheel. With the variable
+# unset no image is pushed.
 #
 # The wheel of a final version tag (X.Y.Z, X.Y.Z.postN) goes to PyPI, and only once the images
 # are published. The wheel of a pre-release tag (PEP 440 aN, bN, rcN or .devN) goes to TestPyPI
@@ -111,6 +112,9 @@ jobs:
       - name: Scan
         run: scripts/release/image.sh scan
 
+      - name: Source notice
+        run: python3 scripts/release/image_notice.py --image "$IMAGE" --dockerfile "$DOCKERFILE" > /dev/null
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() && hashFiles('trivy/trivy.sarif') != '' }}
         with:
@@ -191,6 +195,22 @@ jobs:
           docker image rm "$REPOSITORY:$VERSION"
           docker pull "$REPOSITORY@$DIGEST"
           IMAGE="$REPOSITORY@$DIGEST" scripts/release/image.sh self-test
+
+      - name: Source notice
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          mkdir -p notices
+          python3 scripts/release/image_notice.py --image "$REPOSITORY@$DIGEST" --dockerfile "$DOCKERFILE" \
+            --name "$REPOSITORY:$VERSION" --id "$DIGEST" \
+            --notices-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/THIRD_PARTY_NOTICES.md" \
+            > "notices/NOTICE-$ID.txt"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: notice-${{ matrix.id }}
+          path: notices/
+          if-no-files-found: error
 
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 

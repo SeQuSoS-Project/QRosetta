@@ -24,6 +24,7 @@ from services.analysis.divergence.common import (
     ANALYSIS_VERSION, DEFAULT_FIDELITY_TOLERANCE, DEFAULT_HELLINGER_THRESHOLD,
     DEFAULT_JS_THRESHOLD, DEFAULT_NORM_TOLERANCE, DEFAULT_PHASE_TOLERANCE,
 )
+from services.bundled_licences import BUNDLED, bundled_source, circuit_note, licence_files
 from services.export_provenance import root_properties, run_records
 from services.export_readme import README_PATH, add_readme_entity, crate_readme
 from services.export_results import digest, encoded, results_json_source
@@ -254,6 +255,13 @@ def export_skeleton_task(task):
 
 def _circuit_path(task: _TaskView) -> str:
     return "circuit.qasm" if task.task_id is None else f"circuits/{task.task_id}.qasm"
+
+
+def _bundled_task_source(task: _TaskView) -> Optional[str]:
+    """``mqt`` or ``qasmbench`` for a task whose input circuit is a bundled benchmark file."""
+    if not task.input_qasm or not isinstance(task.report, dict):
+        return None
+    return bundled_source(task.report.get("task_request"))
 
 
 RUNNER_KEY_RE = re.compile(r"^[a-z0-9][a-z0-9-]*(~opt\d+~run\d+)?$")
@@ -989,7 +997,7 @@ def _build_ro_crate_metadata(ctx: ExportContext,
     for task in tasks:
         if not task.input_qasm:
             continue
-        graph.append({
+        circuit = {
             "@id": _circuit_path(task),
             "@type": "File",
             "name": f"{task.task_id}.qasm" if task.task_id else "circuit.qasm",
@@ -1000,6 +1008,22 @@ def _build_ro_crate_metadata(ctx: ExportContext,
             ),
             "encodingFormat": "text/x-qasm",
             "programmingLanguage": {"@id": "#openqasm2"},
+        }
+        source = _bundled_task_source(task)
+        if source:
+            circuit["description"] += circuit_note(source)
+            circuit["license"] = {"@id": BUNDLED[source]["path"]}
+        graph.append(circuit)
+    for source in sorted({s for s in map(_bundled_task_source, tasks) if s}):
+        entry = BUNDLED[source]
+        root_entity["hasPart"].append({"@id": entry["path"]})
+        graph.append({
+            "@id": entry["path"],
+            "@type": "File",
+            "name": f"{entry['name']} licence",
+            "description": (f"Licence of the {entry['name']} circuits in this crate ({entry['origin']}; "
+                            f"{entry['url']}). The crate's own licence does not cover them."),
+            "encodingFormat": "text/plain",
         })
 
     results_desc = (
@@ -1442,6 +1466,7 @@ def write_ro_crate(ctx: ExportContext, fh) -> None:
     for task in _iter_tasks(ctx):
         if task.input_qasm:
             files[_circuit_path(task)] = task.input_qasm.encode("utf-8")
+    files.update(licence_files(map(_bundled_task_source, _iter_tasks(ctx))))
     files["results.json"] = _STREAMED
     files["provenance.json"] = json.dumps(provenance_data, indent=2, ensure_ascii=False).encode("utf-8")
     for task in _iter_tasks(ctx):
