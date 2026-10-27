@@ -99,7 +99,10 @@ export function greyTabs(labels) {
 /** The table of a model, styled like the Summary's Backends table. Each body row carries its
  * key as data-key; its second cell (Status) has the class qr-status-cell. */
 export function placeholderTable(table) {
-    const wrap = _el('div', 'overflow-x-auto mb-4 border rounded');
+    const wrap = _el('div', 'overflow-x-auto mb-4 border rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500');
+    wrap.tabIndex = 0;
+    wrap.setAttribute('role', 'region');
+    wrap.setAttribute('aria-label', table.caption);
     const el = _el('table', 'min-w-full text-xs');
     el.appendChild(_el('caption', 'text-left text-xs font-semibold text-gray-700 px-2 py-1 bg-gray-50', table.caption));
     const head = _el('tr');

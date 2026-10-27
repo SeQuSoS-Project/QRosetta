@@ -169,6 +169,31 @@ def test_every_heatmap_class_has_a_symbol_readable_on_its_colour():
         assert _contrast(colour, text) >= 3, (colour, text)
 
 
+def _background_colours():
+    """bg-<hue>-<shade> -> hex, read from the built css/tailwind.css (any variant's rule)."""
+    css = (_STATIC / "css" / "tailwind.css").read_text()
+    colours = {}
+    for name, r, g, b in re.findall(r"\.(?:[\w-]+\\:)?bg-([a-z]+-\d{2,3})\{[^}]*?background-color:rgb\((\d+) (\d+) (\d+)", css):
+        colours.setdefault(name, "#%02x%02x%02x" % (int(r), int(g), int(b)))
+    return colours
+
+
+def test_white_text_backgrounds_reach_4_5_to_1():
+    colours = _background_colours()
+    pairs = []
+    for path in [_STATIC / "index.html", _STATIC / "share.html", *sorted(_JS.glob("*.js"))]:
+        for i, line in enumerate(path.read_text().splitlines(), 1):
+            if "text-white" in line:
+                pairs += [(f"{path.name}:{i}", name)
+                          for name in re.findall(r"(?:(?<![\w:-])|peer-checked:)bg-([a-z]+-\d{2,3})\b", line)]
+    themes = re.search(r"const RUN_THEMES = \{(.*?)\};", (_JS / "workspace.js").read_text(), re.S).group(1)
+    pairs += [("workspace.js RUN_THEMES", name) for name in re.findall(r"'bg-([a-z]+-\d{2,3})'", themes)]
+    assert pairs and all(name in colours for _, name in pairs), [p for p in pairs if p[1] not in colours]
+    low = [(where, name, round(_contrast(colours[name], "#ffffff"), 2)) for where, name in pairs
+           if _contrast(colours[name], "#ffffff") < 4.5]
+    assert not low, low
+
+
 @requires_node
 @pytest.mark.parametrize("text,first", [
     ("14 of 14 backends returned a result. Qiskit differs.", "14 of 14 backends returned a result."),

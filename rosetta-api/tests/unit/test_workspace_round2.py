@@ -149,7 +149,7 @@ def test_quirk_opens_as_a_full_page_overlay_with_a_new_tab_link():
 def test_account_actions_sit_in_a_menu_with_their_labels():
     html = (STATIC / "index.html").read_text()
     menu = html[html.index('<details id="account-menu"'):html.index("</details>")]
-    assert ">Logout</button>" in menu and "Delete\n" in menu and "text-red-600" in menu
+    assert ">Logout</button>" in menu and "Delete\n" in menu and "text-red-700" in menu
     assert 'id="user-email-display"' in menu
 
 

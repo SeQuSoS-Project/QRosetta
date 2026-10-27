@@ -10,7 +10,9 @@ import { generateCircuit } from './app.js';
 import { closeAuthModal, closeDeleteAccountModal, handleDeleteAccount, handleLoginSubmit, handleLogout, handleRegisterSubmit, openAuthModal, submitDeleteAccount, toggleAuthMode } from './auth.js';
 import { addEditorToPlaylist, addToBatch, applyPreset, clearBatch, closeGeneratorModal, importPlaylist, openGeneratorModal, runAutoGeneration } from './batch.js';
 import { bmAddAllShown, bmAddSelectedToBatch, bmRenderChecklist, bmToggleSelectAll, toggleBenchSuite } from './benchmarks_select.js';
+import { watchBidi } from './bidi_isolation.js';
 import { runWorkspace, stopWaiting, updateWorkspace } from './workspace.js';
+import { keepFocusClearOf } from './notice_focus.js';
 import { closeHistoryModal, deleteSelectedHistory, downloadSelectedHistory, openHistoryModal, toggleSelectAllHistory } from './history.js';
 import { closeVisualizer, generateAndVisualize, renderSuiteSummary } from './renderers.js';
 import { getState } from './state.js';
@@ -23,6 +25,8 @@ import './tables_renderer.js';
 import { initTooltips } from './tooltip.js';
 
 initTooltips();
+watchBidi(document.body);
+keepFocusClearOf(['busy-toast', 'history-save-notice']);
 
 /** @param {() => void} action */
 const onEnter = action => (/** @type {Event} */ e) => { if (/** @type {KeyboardEvent} */ (e).key === 'Enter') action(); };
