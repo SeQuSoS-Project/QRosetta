@@ -2,8 +2,12 @@
 # Build core services and each runner separately, start whatever built, then follow logs.
 # QR_BUILD_JOBS builds that many images at a time (default 1); build logs and times go to
 # QR_BUILD_LOG_DIR (default ~/.tmp/qrosetta-build); QR_BUILD_ONLY=1 stops after building.
+# QR_BUILD_SERVICES builds only the named compose services; QR_ENGINE runs podman instead of docker.
+# Starting is `qrosetta start`, which puts the stack on standby or removes it on Ctrl-C.
 
 cd "$(dirname "$0")/.." || exit 1
+
+docker() { command "${QR_ENGINE:-docker}" "$@"; }
 
 echo ">>> [INIT] Starting safe boot..."
 
@@ -55,6 +59,17 @@ COMPILERS=(
   "quartz_compiler"
   "synthetiq_compiler"
 )
+
+BUILD_CORE=("${CORE_SERVICES[@]}")
+BUILD_OTHERS=("${RUNNERS[@]}" "${COMPILERS[@]}")
+if [ -n "${QR_BUILD_SERVICES:-}" ]; then
+  read -ra REQUESTED <<< "$QR_BUILD_SERVICES"
+  BUILD_CORE=()
+  BUILD_OTHERS=()
+  for svc in "${REQUESTED[@]}"; do
+    if [[ " ${CORE_SERVICES[*]} " == *" $svc "* ]]; then BUILD_CORE+=("$svc"); else BUILD_OTHERS+=("$svc"); fi
+  done
+fi
 
 # Builds one compose service with `docker build`, tagged as compose names it. Under podman,
 # `docker compose build` goes through the API service, which stages layers in /var/tmp
@@ -124,9 +139,9 @@ result_of() { cat "$LOG_DIR/$1.result" 2>/dev/null || echo "0 failed"; }
 echo ">>> Starting Graceful Build (${BUILD_JOBS} at a time; logs in $LOG_DIR)..."
 BOOT_START=$SECONDS
 
-echo "[INFO] Building Core Services: ${CORE_SERVICES[*]}"
-build_all "${CORE_SERVICES[@]}"
-for core in "${CORE_SERVICES[@]}"; do
+echo "[INFO] Building Core Services: ${BUILD_CORE[*]}"
+build_all "${BUILD_CORE[@]}"
+for core in "${BUILD_CORE[@]}"; do
   read -r _ status < <(result_of "$core")
   if [ "$status" != ok ]; then
     tail -20 "$LOG_DIR/$core.log"
@@ -137,11 +152,11 @@ done
 echo "[SUCCESS] Core services built successfully."
 
 SKIPPED=()
-if [ "${QR_BUILD_DISABLED:-0}" != 1 ]; then
+if [ "${QR_BUILD_DISABLED:-0}" != 1 ] && [ -z "${QR_BUILD_SERVICES:-}" ]; then
   mapfile -t SKIPPED < <(disabled_services)
 fi
 TO_BUILD=()
-for svc in "${RUNNERS[@]}" "${COMPILERS[@]}"; do
+for svc in "${BUILD_OTHERS[@]}"; do
   if [[ " ${SKIPPED[*]} " == *" $svc "* ]]; then
     echo "   - Skipping $svc: its runner is disabled in config.py (QR_BUILD_DISABLED=1 builds it)."
   else
@@ -154,7 +169,7 @@ build_all "${TO_BUILD[@]}"
 
 SUCCESSFUL_RUNNERS=()
 echo "[BUILD] Build times (seconds):"
-for svc in "${CORE_SERVICES[@]}" "${TO_BUILD[@]}"; do
+for svc in "${BUILD_CORE[@]}" "${TO_BUILD[@]}"; do
   read -r seconds status < <(result_of "$svc")
   printf '   %-30s %6s  %s\n' "$svc" "$seconds" "$status"
   if [ "$status" = ok ] && [[ " ${CORE_SERVICES[*]} " != *" $svc "* ]]; then
@@ -174,7 +189,4 @@ echo ">>> Launching application..."
 echo "   Core Services: ${CORE_SERVICES[*]}"
 echo "   Active Runners: ${SUCCESSFUL_RUNNERS[*]}"
 
-docker compose up -d --no-build "${CORE_SERVICES[@]}" "${SUCCESSFUL_RUNNERS[@]}"
-
-echo ">>> Attaching to container logs (Press Ctrl+C to stop watching logs)..."
-docker compose logs -f
+exec ./qrosetta start "${CORE_SERVICES[@]}" "${SUCCESSFUL_RUNNERS[@]}"
