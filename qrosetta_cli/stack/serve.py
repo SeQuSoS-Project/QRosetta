@@ -43,8 +43,11 @@ def exit_action(flag, env=None, tty=False, configured=None):
     env = os.environ if env is None else env
     value = (flag or env.get("QROSETTA_ON_EXIT") or configured or "").strip().lower()
     if value and value not in EXIT_ACTIONS:
-        raise usage(f"The exit action must be one of {', '.join(EXIT_ACTIONS)}, not {value!r}.",
-                    hint="qrosetta start --on-exit standby", reason="on_exit_invalid")
+        raise usage(
+            f"The exit action must be one of {', '.join(EXIT_ACTIONS)}, not {value!r}.",
+            hint="qrosetta start --on-exit standby",
+            reason="on_exit_invalid",
+        )
     value = value or ("ask" if tty else "standby")
     return "standby" if value == "ask" and not tty else value
 
@@ -53,8 +56,11 @@ def check_bind(bind):
     """host:port, with a warning when other machines could reach it (there is no TLS)."""
     host, sep, port = bind.rpartition(":")
     if not sep or not port.isdigit() or not host:
-        raise usage(f"--bind takes ADDRESS:PORT, not {bind!r}.", hint="qrosetta start -d --bind 127.0.0.1:8080",
-                    reason="bind_invalid")
+        raise usage(
+            f"--bind takes ADDRESS:PORT, not {bind!r}.",
+            hint="qrosetta start -d --bind 127.0.0.1:8080",
+            reason="bind_invalid",
+        )
     if host.strip("[]") not in LOOPBACK:
         output.warn(f"{bind} is reachable from other machines, over plain HTTP without TLS.", "bind_public")
     return bind
@@ -105,6 +111,7 @@ def requested_services(stack, names, profile, cfg=None):
     wanted = [stack.resolve_service(s) for s in names or []]
     if profile:
         from qrosetta_cli.stack.profiles import members
+
         wanted += [s for s in members(stack, profile, cfg) if s not in wanted]
     return wanted or None
 
@@ -121,8 +128,12 @@ def plan_start(engine, stack, requested=None, env=None):
     if blocking:
         keys = " ".join(stack.services[s].id for s in blocking)
         hint = f"qrosetta pull {keys}" if stack.release else f"qrosetta build {keys}"
-        raise CliError(f"No image for {', '.join(stack.services[s].id for s in blocking)}.", Exit.ENGINE,
-                       "image_missing", hint=hint)
+        raise CliError(
+            f"No image for {', '.join(stack.services[s].id for s in blocking)}.",
+            Exit.ENGINE,
+            "image_missing",
+            hint=hint,
+        )
     return [s for s in candidates if s not in missing], missing, git_sha_env(stack, images, env)
 
 
@@ -146,8 +157,11 @@ def config_hashes(engine):
     environment, which is the one `up` gets; None when this compose does not print them."""
     out = engine.compose("config", "--hash", "*")
     if out.returncode != 0:
-        output.warn(f"`{engine.name} compose config --hash` failed, so containers are compared with their "
-                    "images only, not with the compose configuration.", "config_hash_unavailable")
+        output.warn(
+            f"`{engine.name} compose config --hash` failed, so containers are compared with their "
+            "images only, not with the compose configuration.",
+            "config_hash_unavailable",
+        )
         return None
     hashes = {}
     for line in out.stdout.splitlines():
@@ -170,6 +184,7 @@ class Stale:
     """A container of this stack created from an image other than the one now under its tag
     (`current` set), or from another compose configuration than the compose file now gives
     (`config`), or both."""
+
     service: str
     running: bool
     image_id: str = None
@@ -205,8 +220,16 @@ def stale_containers(engine, stack, found, services, hashes=None):
         if not moved and not config:
             continue
         before = old.get(st.image_key(c.image)) if moved else None
-        stale.append(Stale(service, c.running, c.image if moved else None,
-                           before.git_sha if before else None, img if moved else None, config))
+        stale.append(
+            Stale(
+                service,
+                c.running,
+                c.image if moved else None,
+                before.git_sha if before else None,
+                img if moved else None,
+                config,
+            )
+        )
     return stale
 
 
@@ -224,27 +247,37 @@ def describe_stale(stack, stale):
     one = len(stale) == 1
     kinds = {r for s in stale for r in s.reasons}
     if kinds == {"image"}:
-        head = ("1 service whose container was created from another image than the one now under its tag" if one
-                else f"{len(stale)} services whose containers were created from other images than the ones now "
-                "under their tags")
+        head = (
+            "1 service whose container was created from another image than the one now under its tag"
+            if one
+            else f"{len(stale)} services whose containers were created from other images than the ones now "
+            "under their tags"
+        )
     elif kinds == {"config"}:
-        head = ("1 service whose container was created from another compose configuration than the compose "
-                "file now gives" if one else f"{len(stale)} services whose containers were created from other "
-                "compose configurations than the compose file now gives")
+        head = (
+            "1 service whose container was created from another compose configuration than the compose file now gives"
+            if one
+            else f"{len(stale)} services whose containers were created from other "
+            "compose configurations than the compose file now gives"
+        )
     else:
-        head = ("1 service whose container was created from another image and compose configuration than the "
-                "current ones" if one else f"{len(stale)} services whose containers were created from other "
-                "images or compose configurations than the current ones")
+        head = (
+            "1 service whose container was created from another image and compose configuration than the current ones"
+            if one
+            else f"{len(stale)} services whose containers were created from other "
+            "images or compose configurations than the current ones"
+        )
     lines = [f"Recreating {head}:"]
     for s in stale:
         words = []
         if s.current:
-            words.append(f"{REASON_WORDS['image']}, {_image_words(s.git_sha, s.image_id)} -> "
-                         f"{_image_words(s.current.git_sha, s.current.id)}")
+            words.append(
+                f"{REASON_WORDS['image']}, {_image_words(s.git_sha, s.image_id)} -> "
+                f"{_image_words(s.current.git_sha, s.current.id)}"
+            )
         if s.config:
             words.append(REASON_WORDS["config"])
-        lines.append(f"  {stack.services[s.service].id} ({'running' if s.running else 'stopped'}): "
-                     + "; ".join(words))
+        lines.append(f"  {stack.services[s.service].id} ({'running' if s.running else 'stopped'}): " + "; ".join(words))
     return lines
 
 
@@ -262,8 +295,12 @@ def check_startable(engine, found):
     lines = own.blockers(engine, found)
     if lines:
         first_cmd = next((line.split(": ")[-1] for line in lines if f"{engine.name} " in line), "qrosetta status")
-        raise CliError("Not started. " + "\n".join(lines), Exit.ENGINE, "name_conflict",
-                       hint=first_cmd if first_cmd.startswith(engine.name) else "qrosetta status")
+        raise CliError(
+            "Not started. " + "\n".join(lines),
+            Exit.ENGINE,
+            "name_conflict",
+            hint=first_cmd if first_cmd.startswith(engine.name) else "qrosetta status",
+        )
 
 
 def up_flags(adding, recreate=False):
@@ -274,8 +311,9 @@ def up_flags(adding, recreate=False):
 
 def up(engine, services, adding, bind=None, recreate=False):
     """`compose up -d` for `services`; when adding to a running stack, the others are left alone."""
-    proc = engine.spawn(["up", "-d", "--no-build", *up_flags(adding, recreate), *services], own_session=False,
-                        capture_errors=True)
+    proc = engine.spawn(
+        ["up", "-d", "--no-build", *up_flags(adding, recreate), *services], own_session=False, capture_errors=True
+    )
     if wait_spawned(proc, CHANGE_TIMEOUT_SEC, [engine.name, "compose", "up"]) != 0:
         raise engine_error(spawned_tail(proc), "`compose up` failed", bind)
 
@@ -291,6 +329,7 @@ def wait_ready(ctx, engine, stack, services, timeout=READY_TIMEOUT_SEC):
     and compiler is available, polling every 2 s; fresh probes (GET /runners?fresh=true) when the
     server offers them, else its cached availability."""
     from qrosetta_cli.client import handshake, servers
+
     url = stack_url(engine, stack)
     wanted = {stack.services[s].id: stack.kind_of(s) for s in services if stack.kind_of(s) in ("runner", "compiler")}
     if not url or not wanted:
@@ -310,8 +349,12 @@ def wait_ready(ctx, engine, stack, services, timeout=READY_TIMEOUT_SEC):
         except CliError as exc:
             why = exc.message
         if _clock() >= deadline:
-            raise CliError(f"The API at {url} was not ready within {timeout} s. {why}", Exit.ENGINE,
-                           "api_unhealthy", hint="qrosetta logs api --tail 50")
+            raise CliError(
+                f"The API at {url} was not ready within {timeout} s. {why}",
+                Exit.ENGINE,
+                "api_unhealthy",
+                hint="qrosetta logs api --tail 50",
+            )
         _sleep(READY_POLL_SEC)
     fresh, ready, entries = None, set(), {}
     probe_headers = None if getattr(transport, "token", None) else (hostload.auth_headers(ctx.env) or None)
@@ -320,19 +363,28 @@ def wait_ready(ctx, engine, stack, services, timeout=READY_TIMEOUT_SEC):
         for path in ("/runners", "/compilers"):
             if not any(k == ("runner" if path == "/runners" else "compiler") for k in wanted.values()):
                 continue
-            status, data = _entries(transport, path, {"fresh": "true"} if fresh is not False else None,
-                                    probe_headers if fresh is not False else None)
+            status, data = _entries(
+                transport,
+                path,
+                {"fresh": "true"} if fresh is not False else None,
+                probe_headers if fresh is not False else None,
+            )
             if fresh is None:
                 if status in (401, 403):
                     fresh = False
-                    output.warn("fresh probes need `qrosetta login` or the lifecycle token, and the server took "
-                                "neither; readiness comes from its 60-second cache.", "fresh_probes_unauthorised")
+                    output.warn(
+                        "fresh probes need `qrosetta login` or the lifecycle token, and the server took "
+                        "neither; readiness comes from its 60-second cache.",
+                        "fresh_probes_unauthorised",
+                    )
                     status, data = _entries(transport, path, None)
                 elif data and not any("fresh" in e for e in data if isinstance(e, dict)):
                     fresh = False
-                    output.warn("this server has no on-demand probes (GET /runners?fresh=true); readiness comes "
-                                "from its 60-second cache, so a runner can read ready up to a minute late.",
-                                "fresh_probes_missing")
+                    output.warn(
+                        "this server has no on-demand probes (GET /runners?fresh=true); readiness comes "
+                        "from its 60-second cache, so a runner can read ready up to a minute late.",
+                        "fresh_probes_missing",
+                    )
                 elif data:
                     fresh = True
             for entry in data:
@@ -347,13 +399,19 @@ def wait_ready(ctx, engine, stack, services, timeout=READY_TIMEOUT_SEC):
             lines, hints = [], []
             for key in sorted(set(wanted) - ready):
                 kind = (entries.get(key) or {}).get("error_kind")
-                message, hint = probe_message(kind, key) if kind else (
-                    f"{key} not ready ({(entries.get(key) or {}).get('unavailable_reason') or 'no answer'})",
-                    f"qrosetta logs {key} --tail 50")
+                message, hint = (
+                    probe_message(kind, key)
+                    if kind
+                    else (
+                        f"{key} not ready ({(entries.get(key) or {}).get('unavailable_reason') or 'no answer'})",
+                        f"qrosetta logs {key} --tail 50",
+                    )
+                )
                 lines.append(message)
                 hints.append(hint)
-            raise CliError(f"Not ready after {timeout} s: " + "; ".join(lines) + ".", Exit.ENGINE, "not_ready",
-                           hint=hints[0])
+            raise CliError(
+                f"Not ready after {timeout} s: " + "; ".join(lines) + ".", Exit.ENGINE, "not_ready", hint=hints[0]
+            )
         _sleep(READY_POLL_SEC)
 
 
@@ -372,8 +430,21 @@ class Server:
     """Foreground run of the stack. Signal handling by phase: while running, the first signal
     starts the exit action; while it runs, Ctrl-C once warns and twice more stops waiting."""
 
-    def __init__(self, engine, stack, action, services, compose_env, tty=False, ask=None, adding=False,
-                 lock=None, bind=None, notice=None, stale=()):
+    def __init__(
+        self,
+        engine,
+        stack,
+        action,
+        services,
+        compose_env,
+        tty=False,
+        ask=None,
+        adding=False,
+        lock=None,
+        bind=None,
+        notice=None,
+        stale=(),
+    ):
         self.engine, self.stack, self.action = engine, stack, action
         self.services, self.adding, self.bind = services, adding, bind
         self.stale = list(stale)
@@ -435,20 +506,21 @@ class Server:
     def _up(self):
         if self.stale:
             kind, ids, gone = stale_notice(self.stack, self.stale)
-            with self.lock("start"), (self.notice(kind, ids, gone) if self.adding else _null_lock()):
+            with self.lock("start"), self.notice(kind, ids, gone) if self.adding else _null_lock():
                 self._compose_up([s.service for s in self.stale], True)
         if self.services:
             progress(f"Starting {len(self.services)} services...")
             ids = [self.stack.services[s].id for s in self.services]
-            with self.lock("start"), (self.notice("start", ids) if self.adding else _null_lock()):
+            with self.lock("start"), self.notice("start", ids) if self.adding else _null_lock():
                 self._compose_up(self.services, False)
         progress("")
         announce_running(self.engine, self.stack)
         result("Press Ctrl-C to stop it.")
 
     def _compose_up(self, services, recreate):
-        self.child = self.engine.spawn(["up", "-d", "--no-build", *up_flags(self.adding, recreate), *services],
-                                       capture_errors=True)
+        self.child = self.engine.spawn(
+            ["up", "-d", "--no-build", *up_flags(self.adding, recreate), *services], capture_errors=True
+        )
         code = wait_spawned(self.child, CHANGE_TIMEOUT_SEC, [self.engine.name, "compose", "up"])
         tail = spawned_tail(self.child)
         self.child = None

@@ -36,9 +36,14 @@ def default_timeout(args):
 
 def timed_out(cmd, seconds):
     """The CliError for an engine command that did not finish within `seconds`."""
-    return CliError(f"`{' '.join(str(c) for c in cmd[:4])} ...` did not finish within {seconds:g} s and was "
-                    "stopped; the container engine may be hung. qrosetta released its lock and ended its "
-                    "host-load notice.", Exit.ENGINE, "engine_timeout", hint="qrosetta doctor")
+    return CliError(
+        f"`{' '.join(str(c) for c in cmd[:4])} ...` did not finish within {seconds:g} s and was "
+        "stopped; the container engine may be hung. qrosetta released its lock and ended its "
+        "host-load notice.",
+        Exit.ENGINE,
+        "engine_timeout",
+        hint="qrosetta doctor",
+    )
 
 
 def wait_spawned(proc, timeout, cmd):
@@ -60,12 +65,14 @@ COMPOSE_INSTALL = (
     "--no-install-recommends, so docker.io is not pulled in). Elsewhere, with Docker install the "
     "docker-compose-plugin package (https://docs.docker.com/compose/install/linux/); with podman, save the "
     "docker-compose binary from https://github.com/docker/compose/releases as "
-    "~/.docker/cli-plugins/docker-compose and make it executable. podman-compose 1.x is not supported.")
+    "~/.docker/cli-plugins/docker-compose and make it executable. podman-compose 1.x is not supported."
+)
 
 
 @dataclass
 class Choice:
     """The engine qrosetta uses, why, and what its `info` reported."""
+
     name: str
     reason: str
     info: dict = field(default_factory=dict)
@@ -130,15 +137,26 @@ def choose_engine(env=None, configured=None, which=shutil.which, run=subprocess.
         forced, source = configured.strip().lower(), "config lifecycle.engine"
     if forced:
         if forced not in ("docker", "podman"):
-            raise usage(f"{source} must be docker or podman, not {forced!r}.", hint="qrosetta config show",
-                        reason="engine_invalid")
+            raise usage(
+                f"{source} must be docker or podman, not {forced!r}.",
+                hint="qrosetta config show",
+                reason="engine_invalid",
+            )
         if not which(forced):
-            raise CliError(f"{source} chooses {forced}, which is not on PATH.", Exit.ENGINE, "engine_missing",
-                           hint="qrosetta doctor")
+            raise CliError(
+                f"{source} chooses {forced}, which is not on PATH.",
+                Exit.ENGINE,
+                "engine_missing",
+                hint="qrosetta doctor",
+            )
         info, err = query_info(forced, run)
         if info is None:
-            raise CliError(f"{forced} (chosen by {source}) does not answer: {_last(err)}", Exit.ENGINE,
-                           "engine_unavailable", hint="qrosetta doctor")
+            raise CliError(
+                f"{forced} (chosen by {source}) does not answer: {_last(err)}",
+                Exit.ENGINE,
+                "engine_unavailable",
+                hint="qrosetta doctor",
+            )
         return Choice(forced, f"chosen by {source}", info)
     docker, podman = which("docker"), which("podman")
     notes, docker_err = [], ""
@@ -153,16 +171,21 @@ def choose_engine(env=None, configured=None, which=shutil.which, run=subprocess.
         info, podman_err = query_info("podman", run)
         if info is not None:
             if docker_err:
-                why = ("docker: permission denied for this user" if "permission denied" in docker_err.lower()
-                       else f"docker does not answer: {_last(docker_err)}")
+                why = (
+                    "docker: permission denied for this user"
+                    if "permission denied" in docker_err.lower()
+                    else f"docker does not answer: {_last(docker_err)}"
+                )
             else:
                 why = notes[0] if notes else "docker is not installed"
             return Choice("podman", f"using podman ({why})", info, notes)
-        raise CliError(f"podman does not answer: {_last(podman_err)}", Exit.ENGINE, "engine_unavailable",
-                       hint="qrosetta doctor")
+        raise CliError(
+            f"podman does not answer: {_last(podman_err)}", Exit.ENGINE, "engine_unavailable", hint="qrosetta doctor"
+        )
     if docker_err:
-        raise CliError(f"docker does not answer: {_last(docker_err)}", Exit.ENGINE, "engine_unavailable",
-                       hint="qrosetta doctor")
+        raise CliError(
+            f"docker does not answer: {_last(docker_err)}", Exit.ENGINE, "engine_unavailable", hint="qrosetta doctor"
+        )
     raise CliError("Neither docker nor podman is installed.", Exit.ENGINE, "engine_missing", hint="qrosetta doctor")
 
 
@@ -185,9 +208,12 @@ def project_name(env=None):
     env = os.environ if env is None else env
     name = env.get("QROSETTA_PROJECT", "").strip() or DEFAULT_PROJECT
     if not _PROJECT_NAME.fullmatch(name):
-        raise usage(f"QROSETTA_PROJECT={name!r} is not a compose project name "
-                    "(lowercase letters, digits, '-' and '_', starting with a letter or digit).",
-                    hint="export QROSETTA_PROJECT=qsimulators", reason="project_invalid")
+        raise usage(
+            f"QROSETTA_PROJECT={name!r} is not a compose project name "
+            "(lowercase letters, digits, '-' and '_', starting with a letter or digit).",
+            hint="export QROSETTA_PROJECT=qsimulators",
+            reason="project_invalid",
+        )
     return name
 
 
@@ -199,8 +225,9 @@ def compose_files(project_dir):
             stem, ext = os.path.splitext(base)
             override = os.path.join(project_dir, f"{stem}.override{ext}")
             return [path] + ([override] if os.path.isfile(override) else [])
-    raise usage(f"No compose file in {project_dir}.", hint="qrosetta --project-dir DIR status",
-                reason="project_dir_invalid")
+    raise usage(
+        f"No compose file in {project_dir}.", hint="qrosetta --project-dir DIR status", reason="project_dir_invalid"
+    )
 
 
 def child_env(project, base=None):
@@ -232,8 +259,17 @@ class Engine:
     Captured commands run in their own session, so a Ctrl-C at the terminal reaches only this
     process, which decides what to stop."""
 
-    def __init__(self, name, project_dir, project=None, run=subprocess.run,
-                 popen=subprocess.Popen, env=None, info=None, reason=""):
+    def __init__(
+        self,
+        name,
+        project_dir,
+        project=None,
+        run=subprocess.run,
+        popen=subprocess.Popen,
+        env=None,
+        info=None,
+        reason="",
+    ):
         self.name = name
         self.project_dir = project_dir
         self.project = project or project_name(env)
@@ -282,14 +318,22 @@ class Engine:
 
     def _call(self, cmd, check, timeout):
         try:
-            result = self._run(cmd, capture_output=True, text=True, cwd=self.project_dir,
-                               env=self.env, timeout=timeout, start_new_session=True)
+            result = self._run(
+                cmd,
+                capture_output=True,
+                text=True,
+                cwd=self.project_dir,
+                env=self.env,
+                timeout=timeout,
+                start_new_session=True,
+            )
         except FileNotFoundError as exc:
             raise CliError(f"{cmd[0]} not found: {exc}", Exit.ENGINE, "engine_missing", hint="qrosetta doctor") from exc
         except subprocess.TimeoutExpired:
             raise timed_out(cmd, timeout) from None
         if check and result.returncode != 0:
             from qrosetta_cli.stack.explain import engine_error
+
             raise engine_error(result.stderr or result.stdout, f"`{' '.join(cmd[:4])} ...` failed")
         return result
 
@@ -318,8 +362,11 @@ class Engine:
         if out.returncode != 0 or "docker compose" not in text.lower():
             raise CliError(
                 f"qrosetta needs Docker Compose v2, and `{self.name} compose version` printed: "
-                f"{text.splitlines()[0] if text else 'nothing'}. " + COMPOSE_INSTALL, Exit.ENGINE,
-                "compose_missing", hint="qrosetta doctor")
+                f"{text.splitlines()[0] if text else 'nothing'}. " + COMPOSE_INSTALL,
+                Exit.ENGINE,
+                "compose_missing",
+                hint="qrosetta doctor",
+            )
 
 
 def spawned_tail(proc):

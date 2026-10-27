@@ -7,7 +7,7 @@ logarithm, so it is in nats and bounded by ln 2.
 
 import numbers
 import re
-from functools import lru_cache
+from functools import cache
 from itertools import permutations
 
 import numpy as np
@@ -82,7 +82,7 @@ def _permute_counts(counts, permutation):
     return permuted_counts
 
 
-@lru_cache(maxsize=None)
+@cache
 def _key_permutation_table(n_bits):
     """Return (permutations, table) for every non-identity, non-reversal key permutation.
 

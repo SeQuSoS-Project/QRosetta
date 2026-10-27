@@ -40,15 +40,22 @@ class Server:
     def block(self, handshake=None):
         """The envelope's server object."""
         handshake = handshake or {}
-        return {"kind": "http", "url": self.url, "platform_version": handshake.get("platform_version"),
-                "api_levels": handshake.get("api_levels")}
+        return {
+            "kind": "http",
+            "url": self.url,
+            "platform_version": handshake.get("platform_version"),
+            "api_levels": handshake.get("api_levels"),
+        }
 
 
 def select(flag, env, cfg):
     """--server (a URL when it contains ://, else a [servers.NAME] table), else QROSETTA_SERVER,
     else default_server, else the local stack."""
-    for value, source in ((flag, "--server"), (env.get("QROSETTA_SERVER"), "env QROSETTA_SERVER"),
-                          (cfg.get("default_server"), "config default_server")):
+    for value, source in (
+        (flag, "--server"),
+        (env.get("QROSETTA_SERVER"), "env QROSETTA_SERVER"),
+        (cfg.get("default_server"), "config default_server"),
+    ):
         if value:
             return resolve(value, source, cfg)
     return resolve(LOCAL, "default", cfg)
@@ -58,8 +65,11 @@ def check_url(url, source):
     """A server URL must be http:// or https:// with a host."""
     parts = urllib.parse.urlsplit(url)
     if parts.scheme not in ("http", "https") or not parts.hostname:
-        raise usage(f"The server URL {url!r} (from {source}) is not an http:// or https:// URL with a host.",
-                    hint="qrosetta config show", reason="server_url")
+        raise usage(
+            f"The server URL {url!r} (from {source}) is not an http:// or https:// URL with a host.",
+            hint="qrosetta config show",
+            reason="server_url",
+        )
     return url
 
 
@@ -70,11 +80,13 @@ def resolve(value, source, cfg):
     table = cfg.get("servers", value)
     if table is None and value != LOCAL:
         names = sorted((cfg.get("servers") or {}).keys())
-        raise usage(f"Unknown server {value!r} (from {source}). Configured: {', '.join(names) or 'none'}.",
-                    hint="qrosetta config show", reason="unknown_server")
+        raise usage(
+            f"Unknown server {value!r} (from {source}). Configured: {', '.join(names) or 'none'}.",
+            hint="qrosetta config show",
+            reason="unknown_server",
+        )
     table = table or {}
-    url = check_url((table.get("url") or bind_url(cfg.get("lifecycle", "bind"))).rstrip("/"),
-                    f"[servers.{value}] url")
+    url = check_url((table.get("url") or bind_url(cfg.get("lifecycle", "bind"))).rstrip("/"), f"[servers.{value}] url")
     return Server(value, url, source, bool(table.get("allow_insecure_http")))
 
 
@@ -90,8 +102,12 @@ def check_private(path):
     except OSError:
         return False
     if os.name == "posix" and mode & (stat.S_IRWXG | stat.S_IRWXO):
-        raise CliError(f"{path} is readable by other users; qrosetta does not use it.", Exit.AUTH,
-                       "credentials_permissions", hint=f"chmod 600 {path}")
+        raise CliError(
+            f"{path} is readable by other users; qrosetta does not use it.",
+            Exit.AUTH,
+            "credentials_permissions",
+            hint=f"chmod 600 {path}",
+        )
     return True
 
 
@@ -118,9 +134,12 @@ def plain_http_ok(server, token):
         return True
     output.warn(f"{server.url} is plain HTTP; requests and answers are not encrypted.", "insecure_http")
     if token and not server.allow_insecure_http:
-        raise CliError(f"Not sending a token to {server.url} over plain HTTP.", Exit.AUTH, "insecure_http",
-                       hint=f"set allow_insecure_http = true in [servers.{server.name}] of the config file, "
-                       "or use https")
+        raise CliError(
+            f"Not sending a token to {server.url} over plain HTTP.",
+            Exit.AUTH,
+            "insecure_http",
+            hint=f"set allow_insecure_http = true in [servers.{server.name}] of the config file, or use https",
+        )
     return True
 
 

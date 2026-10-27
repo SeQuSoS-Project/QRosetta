@@ -25,8 +25,11 @@ def user_profiles(cfg):
 
 def _user_members(stack, name, cfg, seen):
     if name in seen:
-        raise usage(f"Profile {name!r} extends itself through {' -> '.join(seen)}.", hint=f"edit {cfg.path}",
-                    reason="profile_cycle")
+        raise usage(
+            f"Profile {name!r} extends itself through {' -> '.join(seen)}.",
+            hint=f"edit {cfg.path}",
+            reason="profile_cycle",
+        )
     table = user_profiles(cfg)[name]
     base = table.get("extends")
     chosen = members(stack, base, cfg, seen + [name]) if base else []
@@ -46,16 +49,32 @@ def members(stack, name, cfg=None, seen=None):
         output.experimental("user profiles")
         return _user_members(stack, name, cfg, seen or [])
     known = list(builtin) + sorted(user_profiles(cfg))
-    raise usage(f"Unknown profile {name!r}. Profiles: {', '.join(known) or 'none'}.", hint="qrosetta profiles",
-                reason="unknown_profile")
+    raise usage(
+        f"Unknown profile {name!r}. Profiles: {', '.join(known) or 'none'}.",
+        hint="qrosetta profiles",
+        reason="unknown_profile",
+    )
 
 
 def listing(stack, cfg):
     """[{name, source, services: [service keys]}] for the profiles command."""
-    rows = [{"name": name, "source": "compose labels", "experimental": False,
-             "services": sorted(stack.services[s].id for s in svcs)} for name, svcs in built_in(stack).items()]
+    rows = [
+        {
+            "name": name,
+            "source": "compose labels",
+            "experimental": False,
+            "services": sorted(stack.services[s].id for s in svcs),
+        }
+        for name, svcs in built_in(stack).items()
+    ]
     for name in sorted(user_profiles(cfg)):
         svcs = members(stack, name, cfg)
-        rows.append({"name": name, "source": "config", "experimental": True,
-                     "services": sorted(stack.services[s].id for s in svcs)})
+        rows.append(
+            {
+                "name": name,
+                "source": "config",
+                "experimental": True,
+                "services": sorted(stack.services[s].id for s in svcs),
+            }
+        )
     return rows

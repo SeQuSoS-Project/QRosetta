@@ -74,8 +74,14 @@ def http_error(method, path, resp, what=None, hint=None):
     text = detail.get("detail", detail) if isinstance(detail, dict) else detail
     if resp.status == 404:
         code, reason = Exit.NOT_FOUND, "not_found"
-    return CliError(f"{what or f'{method} {path}'} answered HTTP {resp.status}: {text}", code, reason, hint,
-                    http_status=resp.status, detail=detail)
+    return CliError(
+        f"{what or f'{method} {path}'} answered HTTP {resp.status}: {text}",
+        code,
+        reason,
+        hint,
+        http_status=resp.status,
+        detail=detail,
+    )
 
 
 def body_bytes(payload):
@@ -122,12 +128,27 @@ class Conn:
         gate = (config or self.config).get("exclusive") or {}
         return int(gate.get("shared_running") or 0) + int(bool(gate.get("exclusive_running")))
 
-    def request(self, method, path, payload=None, query=None, ok=(200,), timeout=None, what=None, hint=None,
-                headers=None, retry=None):
+    def request(
+        self,
+        method,
+        path,
+        payload=None,
+        query=None,
+        ok=(200,),
+        timeout=None,
+        what=None,
+        hint=None,
+        headers=None,
+        retry=None,
+    ):
         body = body_bytes(payload) if payload is not None else None
         headers = dict(headers or {}, **({"Content-Type": "application/json"} if body is not None else {}))
-        resp = with_retries(method, path, lambda: self.transport.request(
-            method, path, query=query, body=body, headers=headers, timeout=timeout), retry)
+        resp = with_retries(
+            method,
+            path,
+            lambda: self.transport.request(method, path, query=query, body=body, headers=headers, timeout=timeout),
+            retry,
+        )
         if resp.status not in ok:
             raise http_error(method, path, resp, what, hint)
         return resp
@@ -156,16 +177,32 @@ class Conn:
             if size > 0:
                 free = shutil.disk_usage(os.path.dirname(dest) or ".").free
                 if size > free:
-                    raise CliError(f"{dest}: the server sends {size} bytes and {free} are free.", Exit.REFUSED,
-                                   "disk_full", hint=f"free space under {os.path.dirname(dest)}")
+                    raise CliError(
+                        f"{dest}: the server sends {size} bytes and {free} are free.",
+                        Exit.REFUSED,
+                        "disk_full",
+                        hint=f"free space under {os.path.dirname(dest)}",
+                    )
                 if size > LARGE_DOWNLOAD and confirm_large is not None and not confirm_large(size):
-                    raise CliError(f"{dest}: {size} bytes not downloaded.", Exit.USAGE, "large_download",
-                                   hint="add --yes to download it")
+                    raise CliError(
+                        f"{dest}: {size} bytes not downloaded.",
+                        Exit.USAGE,
+                        "large_download",
+                        hint="add --yes to download it",
+                    )
 
         def send():
             with open(part, "wb") as fh:
-                return self.transport.download(method, path, fh, query=query, body=body, headers=headers,
-                                               timeout=timeout or DOWNLOAD_TIMEOUT_SEC, on_headers=check)
+                return self.transport.download(
+                    method,
+                    path,
+                    fh,
+                    query=query,
+                    body=body,
+                    headers=headers,
+                    timeout=timeout or DOWNLOAD_TIMEOUT_SEC,
+                    on_headers=check,
+                )
 
         try:
             resp = with_retries(method, path, send, retry)

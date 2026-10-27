@@ -1,8 +1,7 @@
 """Tests for services/aggregator.py."""
 
 import pytest
-import asyncio
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from services.aggregator import compile_comparison_reports, compile_measurement_reports
 
 @pytest.fixture

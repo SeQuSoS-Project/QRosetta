@@ -14,6 +14,7 @@ def in_flight(ctx, url):
     if not url:
         return None, ""
     from qrosetta_cli.client import handshake, servers
+
     server = servers.Server("local", url, "compose port")
     try:
         config = handshake.fetch_config(ctx.transport(server=server, timeout=5))
@@ -38,11 +39,18 @@ def refuse_if_busy(ctx, url, command, flag, overridden, effect):
     if count == 0:
         return 0
     if not overridden:
-        raise CliError(f"{count} dispatch{'es are' if count != 1 else ' is'} in flight on this server; {effect}.",
-                       Exit.BUSY, "runs_in_flight", hint=f"qrosetta {command} {flag}")
-    output.warn(f"{count} dispatch{'es' if count != 1 else ''} in flight; continuing because of {flag}. The "
-                f"server is told of the {command} (a host-load notice): runs beside it record it, and a run "
-                "that loses its runner to a stop records stopped_by_user.", "runs_in_flight")
+        raise CliError(
+            f"{count} dispatch{'es are' if count != 1 else ' is'} in flight on this server; {effect}.",
+            Exit.BUSY,
+            "runs_in_flight",
+            hint=f"qrosetta {command} {flag}",
+        )
+    output.warn(
+        f"{count} dispatch{'es' if count != 1 else ''} in flight; continuing because of {flag}. The "
+        f"server is told of the {command} (a host-load notice): runs beside it record it, and a run "
+        "that loses its runner to a stop records stopped_by_user.",
+        "runs_in_flight",
+    )
     return count
 
 
@@ -63,8 +71,12 @@ def engine_lock(env, what):
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             holder = os.pread(fd, 200, 0).decode("utf-8", "replace").strip() or "unknown"
-            raise CliError(f"Another qrosetta command is changing the stack (process {holder}).", Exit.BUSY,
-                           "engine_locked", hint="qrosetta status") from None
+            raise CliError(
+                f"Another qrosetta command is changing the stack (process {holder}).",
+                Exit.BUSY,
+                "engine_locked",
+                hint="qrosetta status",
+            ) from None
         os.ftruncate(fd, 0)
         os.pwrite(fd, f"{os.getpid()} {what}".encode(), 0)
         try:

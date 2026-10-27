@@ -8,7 +8,9 @@ from qrosetta_cli.errors import CliError, Exit
 from qrosetta_cli.output import progress, result
 from qrosetta_cli.stack import ownership as own
 
-STANDBY_HINT = "On standby: containers, images and data are kept. `qrosetta start` restarts it; `qrosetta remove` removes it."
+STANDBY_HINT = (
+    "On standby: containers, images and data are kept. `qrosetta start` restarts it; `qrosetta remove` removes it."
+)
 
 
 def human_bytes(n):
@@ -23,8 +25,17 @@ def human_bytes(n):
     return f"{value:.1f} TiB"
 
 
-_UNITS = {"b": 1, "kb": 1e3, "kib": 1024, "mb": 1e6, "mib": 1024 ** 2, "gb": 1e9,
-          "gib": 1024 ** 3, "tb": 1e12, "tib": 1024 ** 4}
+_UNITS = {
+    "b": 1,
+    "kb": 1e3,
+    "kib": 1024,
+    "mb": 1e6,
+    "mib": 1024**2,
+    "gb": 1e9,
+    "gib": 1024**3,
+    "tb": 1e12,
+    "tib": 1024**4,
+}
 
 
 def parse_size(text):
@@ -84,8 +95,9 @@ def stop_stack(engine, stack, quiet=False):
 def report_left(left):
     """Exit 16 when containers still run after stop or remove."""
     if left:
-        raise CliError(f"Still running: {', '.join(c.name for c in left)}.", Exit.ENGINE, "still_running",
-                       hint="qrosetta status")
+        raise CliError(
+            f"Still running: {', '.join(c.name for c in left)}.", Exit.ENGINE, "still_running", hint="qrosetta status"
+        )
     return 0
 
 
@@ -97,11 +109,19 @@ def confirm_project(project, flag, given=None, ask=None, tty=False, what="them")
     if given is not None:
         if given == project:
             return True
-        raise CliError(f"--confirm {given!r} does not name {label}; nothing was deleted.", Exit.USAGE,
-                       "confirmation_mismatch", hint=hint)
+        raise CliError(
+            f"--confirm {given!r} does not name {label}; nothing was deleted.",
+            Exit.USAGE,
+            "confirmation_mismatch",
+            hint=hint,
+        )
     if not tty:
-        raise CliError(f"--{flag} needs --confirm {project} without a terminal; nothing was deleted.", Exit.USAGE,
-                       "confirmation_needed", hint=hint)
+        raise CliError(
+            f"--{flag} needs --confirm {project} without a terminal; nothing was deleted.",
+            Exit.USAGE,
+            "confirmation_needed",
+            hint=hint,
+        )
     answer = (ask or output.prompt)(f"Type the name of {label} ({project}) to delete {what}: ")
     if (answer or "").strip() == project:
         return True
@@ -121,25 +141,33 @@ def removal_listing(engine, stack, found, owned_images, refused_images, sizes):
     """Lines naming everything `remove --all` removes, with sizes, and what it leaves alone."""
     lines = [f"--all removes these objects of Quantum Rosetta's compose project `{stack.name}`:"]
     if found.containers:
-        lines.append(f"  containers ({len(found.containers)}): " + ", ".join(
-            f"{c.name}{' (running)' if c.running else ''}" for c in found.containers))
+        lines.append(
+            f"  containers ({len(found.containers)}): "
+            + ", ".join(f"{c.name}{' (running)' if c.running else ''}" for c in found.containers)
+        )
     if found.pods:
         lines.append(f"  pods ({len(found.pods)}): {', '.join(p.name for p in found.pods)}")
     if found.networks:
         lines.append(f"  networks ({len(found.networks)}): {', '.join(n.name for n in found.networks)}")
     if owned_images:
-        lines.append(f"  images ({len(owned_images)}, {human_bytes(sum(t.size for t in owned_images))}): "
-                     + ", ".join(t.name for t in owned_images))
+        lines.append(
+            f"  images ({len(owned_images)}, {human_bytes(sum(t.size for t in owned_images))}): "
+            + ", ".join(t.name for t in owned_images)
+        )
     if found.volumes:
-        lines.append("  data volumes: " + ", ".join(f"{v.name} ({human_bytes(sizes.get(v.name))})"
-                                                     for v in found.volumes)
-                     + "; they hold the local database (accounts, saved circuits, run history) and the "
-                     "saved run reports")
+        lines.append(
+            "  data volumes: "
+            + ", ".join(f"{v.name} ({human_bytes(sizes.get(v.name))})" for v in found.volumes)
+            + "; they hold the local database (accounts, saved circuits, run history) and the "
+            "saved run reports"
+        )
     if len(lines) == 1:
         lines.append("  nothing: no container, pod, network, image or data volume of this stack exists")
     if refused_images:
-        lines.append("Left alone (qrosetta removes only images with its labels and no other tag): "
-                     + "; ".join(f"{ref} {reason}" for ref, reason, _ in refused_images))
+        lines.append(
+            "Left alone (qrosetta removes only images with its labels and no other tag): "
+            + "; ".join(f"{ref} {reason}" for ref, reason, _ in refused_images)
+        )
     lines += own.leftovers(engine, found, found.shared_pods)
     lines.append("Kept: results directories, the config file, and qrosetta's state and cache directories.")
     return lines
@@ -196,14 +224,22 @@ def remove_stack(engine, stack, images=False, data=False, confirm=None, ask=None
         progress(line)
     if failures:
         raise CliError(f"Not removed: {'; '.join(failures)}.", Exit.ENGINE, "remove_failed", hint="qrosetta status")
-    removed = {"containers": [c.name for c in found.containers], "pods": [p.name for p in found.pods],
-               "networks": [n.name for n in found.networks], "images": [t.name for t in owned],
-               "image_bytes": sum(t.size for t in owned), "volumes": [v.name for v in volumes]}
+    removed = {
+        "containers": [c.name for c in found.containers],
+        "pods": [p.name for p in found.pods],
+        "networks": [n.name for n in found.networks],
+        "images": [t.name for t in owned],
+        "image_bytes": sum(t.size for t in owned),
+        "volumes": [v.name for v in volumes],
+    }
     if everything:
-        result(f"Removed the containers, pods, networks, images ({human_bytes(removed['image_bytes'])}) and data "
-               f"of Quantum Rosetta (compose project {stack.name}).")
+        result(
+            f"Removed the containers, pods, networks, images ({human_bytes(removed['image_bytes'])}) and data "
+            f"of Quantum Rosetta (compose project {stack.name})."
+        )
         return removed
     kept_what = [w for w, flag in (("images", images), ("data", data)) if not flag]
-    result(f"Removed this stack's containers, pods and networks"
-           f"{'; kept ' + ' and '.join(kept_what) if kept_what else ''}.")
+    result(
+        f"Removed this stack's containers, pods and networks{'; kept ' + ' and '.join(kept_what) if kept_what else ''}."
+    )
     return removed

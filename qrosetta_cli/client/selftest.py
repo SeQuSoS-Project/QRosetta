@@ -44,16 +44,22 @@ def backends_under_test(ctx, conn, runner_rows=None):
     known = {r.get("id"): r for r in rows}
     for key in wanted:
         if key not in known:
-            raise usage(f"--backends {key}: no such backend on this server.", hint="qrosetta api GET /runners",
-                        reason="unknown_key")
+            raise usage(
+                f"--backends {key}: no such backend on this server.",
+                hint="qrosetta api GET /runners",
+                reason="unknown_key",
+            )
     if wanted:
         keys = wanted
     elif conn.local:
         keys = [r["id"] for r in rows if r.get("available")]
     else:
         keys = [r["id"] for r in rows if r.get("available") and r.get("default_selected")]
-    left = [(r["id"], r.get("unavailable_reason") or ("not selected" if r.get("available") else "unavailable"))
-            for r in rows if r.get("enabled") and r["id"] not in keys]
+    left = [
+        (r["id"], r.get("unavailable_reason") or ("not selected" if r.get("available") else "unavailable"))
+        for r in rows
+        if r.get("enabled") and r["id"] not in keys
+    ]
     return keys, left
 
 
@@ -79,8 +85,12 @@ def _apply_cli_rule(evaluation, quota_off, applied):
 def cmd_selftest(ctx):
     conn = Conn(ctx, features=("plan",))
     if not conn.has(FEATURE):
-        raise CliError("This server offers no self-test (GET /selftest); nothing was run.", Exit.INCOMPATIBLE,
-                       "feature_missing", hint="upgrade the server to one whose GET /config lists the selftest feature")
+        raise CliError(
+            "This server offers no self-test (GET /selftest); nothing was run.",
+            Exit.INCOMPATIBLE,
+            "feature_missing",
+            hint="upgrade the server to one whose GET /config lists the selftest feature",
+        )
     plan = conn.get("/selftest", what="GET /selftest")
     runner_rows, runner_why = _runner_rows(ctx, conn)
     keys, left = backends_under_test(ctx, conn, runner_rows)
@@ -98,18 +108,30 @@ def cmd_selftest(ctx):
         payload = dict(job.get("request") or {}, target_simulators=keys)
         limit = conn.limit("max_request_bytes")
         if limit and len(body_bytes(payload)) > limit:
-            raise CliError(f"The self-test's {job.get('part')} request is over the server's {limit} bytes.",
-                           Exit.REFUSED, "request_too_large", hint="qrosetta selftest --backends KEYS")
-        runs.append({"endpoint": job.get("endpoint", "/run_batch_suite"), "kind": "batch", "mode": job.get("part"),
-                     "title": f"Self-test ({job.get('part')})", "payload": payload,
-                     "sources": {k: "selftest_plan" for k in payload} | {"target_simulators": "flag" if
-                                                                          ctx.opt("backends") else "server_default"},
-                     "evaluate": job.get("evaluate")})
+            raise CliError(
+                f"The self-test's {job.get('part')} request is over the server's {limit} bytes.",
+                Exit.REFUSED,
+                "request_too_large",
+                hint="qrosetta selftest --backends KEYS",
+            )
+        runs.append(
+            {
+                "endpoint": job.get("endpoint", "/run_batch_suite"),
+                "kind": "batch",
+                "mode": job.get("part"),
+                "title": f"Self-test ({job.get('part')})",
+                "payload": payload,
+                "sources": {k: "selftest_plan" for k in payload}
+                | {"target_simulators": "flag" if ctx.opt("backends") else "server_default"},
+                "evaluate": job.get("evaluate"),
+            }
+        )
     parent = results.parent_dir(ctx)
     invocation = results.new_invocation(parent, "selftest", ctx.opt("output"))
     doc = plan_document(ctx, conn, {"selftest": True, "backends": keys}, {"runs": runs, "problems": []}, invocation)
-    doc["selftest_plan"] = {k: plan.get(k) for k in ("selftest_version", "expected_sha256", "expected_source",
-                                                       "tolerances", "pass_rule")}
+    doc["selftest_plan"] = {
+        k: plan.get(k) for k in ("selftest_version", "expected_sha256", "expected_source", "tolerances", "pass_rule")
+    }
     plan_path = os.path.join(invocation, results.PLAN_FILE)
     results.write_json(plan_path, doc)
     output.progress(f"Results: {invocation}")
@@ -123,47 +145,87 @@ def cmd_selftest(ctx):
         job_id = results.server_job_id(env, f"POST {run['endpoint']}")
         job_dir = os.path.join(invocation, results.job_dir_name("batch", run["mode"], job_id))
         os.mkdir(job_dir)
-        results.write_json(os.path.join(job_dir, "request.json"),
-                           {"job_id": job_id, "endpoint": run["endpoint"], "kind": "batch", "mode": run["mode"],
-                            "title": run["title"], "payload": run["payload"], "sources": run["sources"],
-                            "server_defaults": {}})
+        results.write_json(
+            os.path.join(job_dir, "request.json"),
+            {
+                "job_id": job_id,
+                "endpoint": run["endpoint"],
+                "kind": "batch",
+                "mode": run["mode"],
+                "title": run["title"],
+                "payload": run["payload"],
+                "sources": run["sources"],
+                "server_defaults": {},
+            },
+        )
         results.write_json(os.path.join(job_dir, "job.json"), env)
         doc["job_dirs"].append(os.path.basename(job_dir))
         results.write_json(plan_path, doc)
-        jobindex.append(ctx.env, {"job_id": job_id, "server": origin(conn.url), "endpoint": run["endpoint"],
-                                  "kind": "batch", "mode": run["mode"], "title": run["title"], "dir": job_dir,
-                                  "invocation": invocation, "submitted_at": output.utc_now(),
-                                  "save": {"items": ["crate", "report", "summary"], "minimal": False, "crate": {}},
-                                  "fail_on": [], "detached": False})
+        jobindex.append(
+            ctx.env,
+            {
+                "job_id": job_id,
+                "server": origin(conn.url),
+                "endpoint": run["endpoint"],
+                "kind": "batch",
+                "mode": run["mode"],
+                "title": run["title"],
+                "dir": job_dir,
+                "invocation": invocation,
+                "submitted_at": output.utc_now(),
+                "save": {"items": ["crate", "report", "summary"], "minimal": False, "crate": {}},
+                "fail_on": [],
+                "detached": False,
+            },
+        )
         if state["interrupted"]:
             raise follower.stop_message(job_id, Exit.SIGINT, len(runs) - i - 1)
         found = {}
 
         def evaluate(env, job_id=job_id, job_dir=job_dir, run=run, found=found):
-            evaluation = {"status": "FAIL", "plan": [{"check": "job", "status": "FAIL",
-                                                      "reason": f"job {env.get('status')}: {env.get('error') or ''}"}]}
+            evaluation = {
+                "status": "FAIL",
+                "plan": [
+                    {"check": "job", "status": "FAIL", "reason": f"job {env.get('status')}: {env.get('error') or ''}"}
+                ],
+            }
             if env.get("status") == "completed":
                 method, path = _route(run["evaluate"], job_id)
                 try:
                     evaluation = conn.request(method, path, what="self-test evaluation").json()
                 except CliError as exc:
-                    evaluation = {"status": "FAIL", "plan": [{"check": "evaluation", "status": "FAIL",
-                                                              "reason": exc.message}]}
+                    evaluation = {
+                        "status": "FAIL",
+                        "plan": [{"check": "evaluation", "status": "FAIL", "reason": exc.message}],
+                    }
             found["evaluation"] = _apply_cli_rule(evaluation, quota_off, applied)
             results.write_json(os.path.join(job_dir, "selftest-result.json"), found["evaluation"])
 
-        entry = follower.follow(job_id, job_dir, run["title"], "batch", time.time(), remaining=len(runs) - i - 1,
-                                before_save=evaluate)
-        evaluation = found.get("evaluation") or {"status": "FAIL", "plan": [
-            {"check": "job", "status": "FAIL", "reason": "the job did not finish"}]}
-        jobs.append({"part": run["mode"], "job_id": job_id, "dir": job_dir, "status": entry.get("status"),
-                     "save_status": entry.get("save_status"), "evaluation": evaluation})
+        entry = follower.follow(
+            job_id, job_dir, run["title"], "batch", time.time(), remaining=len(runs) - i - 1, before_save=evaluate
+        )
+        evaluation = found.get("evaluation") or {
+            "status": "FAIL",
+            "plan": [{"check": "job", "status": "FAIL", "reason": "the job did not finish"}],
+        }
+        jobs.append(
+            {
+                "part": run["mode"],
+                "job_id": job_id,
+                "dir": job_dir,
+                "status": entry.get("status"),
+                "save_status": entry.get("save_status"),
+                "evaluation": evaluation,
+            }
+        )
     fails, warns = list(image_fails), list(image_warns)
     for job in jobs:
         ev = job["evaluation"]
         counts = ev.get("counts") or {}
-        lines.append(f"{job['part'].capitalize():<11} {ev.get('status')}"
-                     + (f" ({', '.join(f'{v} {k}' for k, v in counts.items())})" if counts else ""))
+        lines.append(
+            f"{job['part'].capitalize():<11} {ev.get('status')}"
+            + (f" ({', '.join(f'{v} {k}' for k, v in counts.items())})" if counts else "")
+        )
         for key in ("plan", "known_answer", "environment_checks"):
             for row in ev.get(key) or []:
                 where = ", ".join(x for x in (row.get("backend"), row.get("circuit")) if x)
@@ -182,19 +244,31 @@ def cmd_selftest(ctx):
     if left:
         lines.append("Not tested  " + "; ".join(f"{k}: {why}" for k, why in left))
     status = "FAIL" if fails else "PASS"
-    lines.append(f"{status}{f' ({len(fails)} failed)' if fails else ''}"
-                 f"{f' ({len(dict.fromkeys(warns))} warnings)' if warns and not fails else ''}. Results: "
-                 f"{invocation}{os.sep}")
+    lines.append(
+        f"{status}{f' ({len(fails)} failed)' if fails else ''}"
+        f"{f' ({len(dict.fromkeys(warns))} warnings)' if warns and not fails else ''}. Results: "
+        f"{invocation}{os.sep}"
+    )
     for line in lines:
         output.result(line)
     output.result("qrosetta show summary")
-    combined = {"schema": "qrosetta.cli/selftest@1", "cli_version": __version__, "created_at": output.utc_now(),
-                "server": conn.url, "status": status, "selftest_version": plan.get("selftest_version"),
-                "expected_sha256": plan.get("expected_sha256"), "backends_under_test": keys,
-                "not_tested": [{"backend": k, "reason": why} for k, why in left], "image_probes": images,
-                "jobs": jobs,
-                "failures": fails, "warnings": list(dict.fromkeys(warns)), "cli_rules_applied": applied,
-                "lines": lines}
+    combined = {
+        "schema": "qrosetta.cli/selftest@1",
+        "cli_version": __version__,
+        "created_at": output.utc_now(),
+        "server": conn.url,
+        "status": status,
+        "selftest_version": plan.get("selftest_version"),
+        "expected_sha256": plan.get("expected_sha256"),
+        "backends_under_test": keys,
+        "not_tested": [{"backend": k, "reason": why} for k, why in left],
+        "image_probes": images,
+        "jobs": jobs,
+        "failures": fails,
+        "warnings": list(dict.fromkeys(warns)),
+        "cli_rules_applied": applied,
+        "lines": lines,
+    }
     results.write_json(os.path.join(invocation, results.SELFTEST_FILE), combined)
     if results.invocation_complete(invocation):
         results.update_latest(parent, invocation)

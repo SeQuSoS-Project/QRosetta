@@ -27,7 +27,7 @@ from sqlalchemy.sql import func
 
 import db.models as models
 from db.database import Base
-from db.migrate import (BASELINE_REVISION, MIGRATIONS_DIR, SchemaAdoptionError, _baseline_metadata,
+from db.migrate import (MIGRATIONS_DIR, SchemaAdoptionError, _baseline_metadata,
                         alembic_config, current_revision, upgrade_database)
 
 API_DIR = Path(__file__).resolve().parents[2]

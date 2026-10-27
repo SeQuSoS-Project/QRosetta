@@ -41,20 +41,20 @@ for RUNNER in "${RUNNERS[@]}"; do
     IMAGE_URL="$REPO/$RUNNER:latest"
 
     echo "Building locally..."
-    docker build -t $IMAGE_URL -f ./$RUNNER/Dockerfile .
+    docker build -t "$IMAGE_URL" -f "./$RUNNER/Dockerfile" .
 
     echo "Pushing to Artifact Registry..."
-    docker push $IMAGE_URL
+    docker push "$IMAGE_URL"
 
     echo "Deploying to Cloud Run..."
-    URL=$(gcloud run deploy $RUNNER \
-        --image $IMAGE_URL \
+    URL=$(gcloud run deploy "$RUNNER" \
+        --image "$IMAGE_URL" \
         --ingress internal \
         --allow-unauthenticated \
-        --region $REGION \
+        --region "$REGION" \
         --memory 512Mi \
         --cpu 1 \
-        --timeout $CLOUD_TIMEOUT \
+        --timeout "$CLOUD_TIMEOUT" \
         --set-env-vars "MAX_QUBITS=$CLOUD_MAX_QUBITS" \
         --max-instances 3 \
         --format 'value(status.url)' \
@@ -80,22 +80,22 @@ API_ENV_VARS+=",PENNYLANE_DEFAULT_RUNNER_URL=${RUNNER_URLS['pennylane-default-ru
 
 API_IMAGE_URL="$REPO/rosetta-api:latest"
 echo "Building API locally..."
-docker build -t $API_IMAGE_URL -f ./rosetta-api/Dockerfile .
+docker build -t "$API_IMAGE_URL" -f ./rosetta-api/Dockerfile .
 
 echo "Pushing API to Artifact Registry..."
-docker push $API_IMAGE_URL
+docker push "$API_IMAGE_URL"
 
 echo "Deploying API to Cloud Run..."
 API_PUBLIC_URL=$(gcloud run deploy "rosetta-api" \
-    --image $API_IMAGE_URL \
-    --region $REGION \
+    --image "$API_IMAGE_URL" \
+    --region "$REGION" \
     --allow-unauthenticated \
     --ingress all \
     --network default \
     --vpc-egress all-traffic \
     --memory 512Mi \
     --cpu 1 \
-    --timeout $CLOUD_TIMEOUT \
+    --timeout "$CLOUD_TIMEOUT" \
     --set-env-vars "$API_ENV_VARS" \
     --max-instances 3 \
     --format 'value(status.url)' \

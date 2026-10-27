@@ -52,7 +52,7 @@ def _read_bundled_qasm(base_dir: str, file_name: str, label: str) -> str:
         raise HTTPException(status_code=404, detail=f"{label} circuit not found.")
 
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             qasm_str = f.read()
         reason = invalid_qasm_reason(qasm_str)
         if reason:
@@ -76,7 +76,7 @@ def get_qasmbench_circuit(circuit_name: str) -> str:
 
 def _valid_file(path: str) -> bool:
     try:
-        with open(path, "r", encoding="utf-8") as fh:
+        with open(path, encoding="utf-8") as fh:
             return invalid_qasm_reason(fh.read()) is None
     except OSError:
         return False

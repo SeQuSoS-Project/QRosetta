@@ -23,8 +23,11 @@ def _one_job(ctx, conn):
         jobs = [j for j in jobs if (j.mode() or "compile") == ctx.args.job]
     if len(jobs) != 1:
         modes = ", ".join(j.mode() or "compile" for j in target.jobs) or "none"
-        raise usage(f"This result holds {len(target.jobs)} jobs ({modes}); choose one with --job MODE.",
-                    hint="qrosetta export crate --job statevector", reason="several_jobs")
+        raise usage(
+            f"This result holds {len(target.jobs)} jobs ({modes}); choose one with --job MODE.",
+            hint="qrosetta export crate --job statevector",
+            reason="several_jobs",
+        )
     return jobs[0]
 
 
@@ -92,34 +95,48 @@ def cmd_export_crate(ctx):
             raise
         report = os.path.join(job.dir, "report.json") if job.dir else None
         if not report or not os.path.isfile(report):
-            raise CliError(f"Job {job.job_id[:8]} has expired on the server and no report.json is saved.",
-                           Exit.NOT_FOUND, "result_missing", hint="qrosetta jobs") from None
+            raise CliError(
+                f"Job {job.job_id[:8]} has expired on the server and no report.json is saved.",
+                Exit.NOT_FOUND,
+                "result_missing",
+                hint="qrosetta jobs",
+            ) from None
         if not args.allow_supplied:
             if not ctx.tty:
-                raise usage("The job has expired on the server; a crate from the saved report.json records "
-                            "report_source client_supplied.", hint="qrosetta export crate --allow-supplied",
-                            reason="supplied_needs_consent") from None
-            answer = output.prompt("The job has expired; build a crate from the saved report.json (recorded as "
-                                   "client_supplied)? [y/N] ", stdin=ctx.stdin)
+                raise usage(
+                    "The job has expired on the server; a crate from the saved report.json records "
+                    "report_source client_supplied.",
+                    hint="qrosetta export crate --allow-supplied",
+                    reason="supplied_needs_consent",
+                ) from None
+            answer = output.prompt(
+                "The job has expired; build a crate from the saved report.json (recorded as client_supplied)? [y/N] ",
+                stdin=ctx.stdin,
+            )
             if not answer or answer.strip().lower() not in ("y", "yes"):
-                raise usage("No crate built.", hint="qrosetta export crate --allow-supplied",
-                            reason="supplied_declined") from None
+                raise usage(
+                    "No crate built.", hint="qrosetta export crate --allow-supplied", reason="supplied_declined"
+                ) from None
         with open(report, "rb") as fh:
             text = fh.read()
         options = json.dumps(body, ensure_ascii=False).encode("utf-8")[1:-1]
         payload = b'{"results":' + text + (b"," + options if options else b"") + b"}"
         limit = conn.limit("max_request_bytes")
         if limit and len(payload) > limit:
-            raise CliError(f"{report} is too large to send ({len(payload)} bytes; the server accepts {limit}).",
-                           Exit.REFUSED, "request_too_large",
-                           hint="make the crate while the job lives (`run --crate`) or save the run to history") from None
+            raise CliError(
+                f"{report} is too large to send ({len(payload)} bytes; the server accepts {limit}).",
+                Exit.REFUSED,
+                "request_too_large",
+                hint="make the crate while the job lives (`run --crate`) or save the run to history",
+            ) from None
         if not args.output and job.dir:
             dest = os.path.join(job.dir, "ro-crate.client-supplied.zip")
             tmp = _tmp_for(dest, job)
         source = "client_supplied"
         with open(tmp, "wb") as out:
-            resp = conn.transport.download("POST", "/export", out, body=payload,
-                                           headers={"Content-Type": "application/json"})
+            resp = conn.transport.download(
+                "POST", "/export", out, body=payload, headers={"Content-Type": "application/json"}
+            )
         if not 200 <= resp.status < 300:
             os.unlink(tmp)
             raise http_error("POST", "/export", resp) from None

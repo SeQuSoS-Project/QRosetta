@@ -1,0 +1,20 @@
+# Optional pre-commit (https://pre-commit.com) hooks: ruff and the secret check of
+# scripts/hooks/pre-commit. Run scripts/install_hooks.sh first (it installs gitleaks and the pre-push
+# hook), then `pre-commit install`, which replaces only the pre-commit hook. CI runs the same checks.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: f12be1ebaa5351c1fc76472de98db2c3446c8253  # frozen: v0.16.10
+    hooks:
+      - id: ruff-check
+      - id: ruff-format
+        files: ^qrosetta_cli/.*\.py$
+
+  - repo: local
+    hooks:
+      - id: secrets
+        name: credential files and secrets in staged changes (gitleaks)
+        entry: scripts/hooks/pre-commit
+        language: script
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]

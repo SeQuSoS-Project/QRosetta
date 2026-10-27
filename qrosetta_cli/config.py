@@ -11,9 +11,21 @@ from qrosetta_cli.errors import CliError, Exit, usage
 EXIT_ACTIONS = ("standby", "remove", "ask")
 RESERVED_PROFILES = ("minimal", "cpu", "gpu", "compilers", "full", "core", "all", "none", "default")
 
-CLI_ENV = ("QROSETTA_SERVER", "QROSETTA_TOKEN", "QROSETTA_CONFIG", "QROSETTA_PROJECT_DIR", "QROSETTA_HOME",
-           "QROSETTA_PROJECT", "QROSETTA_ENGINE", "QROSETTA_ON_EXIT", "QROSETTA_RESULTS_DIR", "QROSETTA_SIF_DIR",
-           "NO_COLOR", "CLICOLOR_FORCE", "TERM")
+CLI_ENV = (
+    "QROSETTA_SERVER",
+    "QROSETTA_TOKEN",
+    "QROSETTA_CONFIG",
+    "QROSETTA_PROJECT_DIR",
+    "QROSETTA_HOME",
+    "QROSETTA_PROJECT",
+    "QROSETTA_ENGINE",
+    "QROSETTA_ON_EXIT",
+    "QROSETTA_RESULTS_DIR",
+    "QROSETTA_SIF_DIR",
+    "NO_COLOR",
+    "CLICOLOR_FORCE",
+    "TERM",
+)
 SHARED_WITH_COMPOSE = ("QROSETTA_PROJECT",)
 
 _STR, _BOOL, _LIST = "string", "boolean", "list of strings"
@@ -23,8 +35,11 @@ SCHEMA = {
     "lifecycle": {"engine": ("docker", "podman"), "on_exit": EXIT_ACTIONS, "bind": _STR, "cpu_quota": _BOOL},
     "results": {"dir": _STR},
     "auth": {"credentials": _STR},
-    "output": {"color": ("auto", "always", "never"), "progress": ("auto", "plain", "none"),
-               "experimental_notice": _BOOL},
+    "output": {
+        "color": ("auto", "always", "never"),
+        "progress": ("auto", "plain", "none"),
+        "experimental_notice": _BOOL,
+    },
     "profiles": {"*": {"services": _LIST, "extends": _STR}},
 }
 
@@ -110,8 +125,12 @@ def _check(node, schema, where, path):
         here = f"{where}.{key}" if where else key
         rule = schema.get(key, schema.get("*"))
         if rule is None:
-            raise usage(f"{path}: unknown key '{here}'. The config file holds no measurement setting; "
-                        "run settings are flags of `qrosetta run`.", hint=f"edit {path}", reason="config_unknown_key")
+            raise usage(
+                f"{path}: unknown key '{here}'. The config file holds no measurement setting; "
+                "run settings are flags of `qrosetta run`.",
+                hint=f"edit {path}",
+                reason="config_unknown_key",
+            )
         if isinstance(rule, dict):
             _check(value, rule, here, path)
         elif rule == _STR and not isinstance(value, str):
@@ -121,17 +140,23 @@ def _check(node, schema, where, path):
         elif rule == _LIST and not (isinstance(value, list) and all(isinstance(v, str) for v in value)):
             raise usage(f"{path}: '{here}' must be a list of strings.", hint=f"edit {path}", reason="config_invalid")
         elif isinstance(rule, tuple) and value not in rule:
-            raise usage(f"{path}: '{here}' must be one of {', '.join(rule)}, not {value!r}.",
-                        hint=f"edit {path}", reason="config_invalid")
+            raise usage(
+                f"{path}: '{here}' must be one of {', '.join(rule)}, not {value!r}.",
+                hint=f"edit {path}",
+                reason="config_invalid",
+            )
 
 
 def validate(data, path):
     """Refuse unknown keys, wrong types and reserved user-profile names."""
     _check(data, SCHEMA, "", path)
-    for name in (data.get("profiles") or {}):
+    for name in data.get("profiles") or {}:
         if name in RESERVED_PROFILES or name.startswith("qrosetta-"):
-            raise usage(f"{path}: profile name '{name}' is reserved for built-in profiles.",
-                        hint=f"edit {path}", reason="config_reserved_profile")
+            raise usage(
+                f"{path}: profile name '{name}' is reserved for built-in profiles.",
+                hint=f"edit {path}",
+                reason="config_reserved_profile",
+            )
     return data
 
 
@@ -143,14 +168,19 @@ def load(flag=None, env=None):
     cfg = Config(path=path, explicit=bool(chosen))
     if not os.path.isfile(path):
         if chosen:
-            raise CliError(f"Config file {path} does not exist.", Exit.NOT_FOUND, "config_missing",
-                           hint="qrosetta config init")
+            raise CliError(
+                f"Config file {path} does not exist.", Exit.NOT_FOUND, "config_missing", hint="qrosetta config init"
+            )
         return cfg
     try:
         import tomllib
     except ImportError:
-        raise CliError(f"Reading {path} needs Python 3.11 or later (tomllib).", Exit.USAGE,
-                       "python_too_old", hint=f"move {path} aside, or run qrosetta with Python 3.11+") from None
+        raise CliError(
+            f"Reading {path} needs Python 3.11 or later (tomllib).",
+            Exit.USAGE,
+            "python_too_old",
+            hint=f"move {path} aside, or run qrosetta with Python 3.11+",
+        ) from None
     try:
         with open(path, "rb") as fh:
             data = tomllib.load(fh)

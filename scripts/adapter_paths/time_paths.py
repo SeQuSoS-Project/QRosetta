@@ -1,6 +1,6 @@
 """Median compilation/simulation/total time of the old and new adapter, statevector or (with
 argument ``measured``, 8200 shots, seed 1) measured mode."""
-import json, logging, math, random, statistics, sys
+import json, logging, random, statistics, sys
 logging.disable(logging.CRITICAL)
 sys.path.insert(0, ".")
 import main_old, main

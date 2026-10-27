@@ -1,7 +1,6 @@
 # Unit and integration tests.
 
 import httpx
-import json
 import os
 import time
 

@@ -4,7 +4,7 @@ local mock-S3 files to the CSC Allas bucket. Fresh deployments do not need it.
 import os
 import sys
 from pathlib import Path
-from urllib.parse import quote_plus, urlparse, urlunparse
+from urllib.parse import quote_plus
 
 try:
     from sqlalchemy import create_engine, MetaData, select, inspect
@@ -14,7 +14,7 @@ except ImportError:
     sys.exit(1)
 
 try:
-    import psycopg2
+    import psycopg2  # noqa: F401
 except ImportError:
     print("Error: psycopg2-binary is not installed. Please install it with: pip install psycopg2-binary")
     sys.exit(1)
@@ -71,7 +71,7 @@ def sync_database():
         print("Error: Local SQLite DB is completely empty (0 bytes).")
         sys.exit(1)
 
-    print(f"Connecting to local SQLite...")
+    print("Connecting to local SQLite...")
     local_engine = create_engine(local_db_url)
 
     print("Connecting to remote PostgreSQL...")

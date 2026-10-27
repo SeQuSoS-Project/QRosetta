@@ -28,11 +28,18 @@ def cmd_jobs(ctx):
     rows = []
     for entry in jobindex.entries(ctx.env):
         d = entry.get("dir")
-        row = {"job_id": entry["job_id"], "server": entry.get("server"), "endpoint": entry.get("endpoint"),
-               "kind": entry.get("kind"), "mode": entry.get("mode"), "title": entry.get("title"),
-               "submitted_at": entry.get("submitted_at"), "dir": d,
-               "save_status": results.read_status(d) if d and os.path.isdir(d) else None,
-               "server_status": None}
+        row = {
+            "job_id": entry["job_id"],
+            "server": entry.get("server"),
+            "endpoint": entry.get("endpoint"),
+            "kind": entry.get("kind"),
+            "mode": entry.get("mode"),
+            "title": entry.get("title"),
+            "submitted_at": entry.get("submitted_at"),
+            "dir": d,
+            "save_status": results.read_status(d) if d and os.path.isdir(d) else None,
+            "server_status": None,
+        }
         if not offline and row["server"]:
             if row["server"] not in conns:
                 try:
@@ -48,9 +55,11 @@ def cmd_jobs(ctx):
         output.result(f"{'JOB':<10} {'SUBMITTED':<21} {'MODE':<12} {'SERVER':<12} {'SAVED':<18} DIR")
         for r in rows:
             mode = r["mode"] or ("compile" if r["kind"] else "-")
-            output.result(f"{r['job_id'][:8]:<10} {r['submitted_at'] or '-':<21} {mode:<12} "
-                          f"{(r['server_status'] or ('-' if offline else '?')):<12} {(r['save_status'] or 'not saved'):<18} "
-                          f"{r['dir'] or '-'}")
+            output.result(
+                f"{r['job_id'][:8]:<10} {r['submitted_at'] or '-':<21} {mode:<12} "
+                f"{(r['server_status'] or ('-' if offline else '?')):<12} {(r['save_status'] or 'not saved'):<18} "
+                f"{r['dir'] or '-'}"
+            )
     return Result(0, {"index": jobindex.path(ctx.env), "offline": bool(offline), "jobs": rows})
 
 
@@ -69,5 +78,11 @@ def cmd_jobs_status(ctx):
         output.result(f"Error: {env['error']}")
     if entry and entry.get("dir"):
         output.result(f"Results: {entry['dir']} ({results.read_status(entry['dir']) or 'not saved'})")
-    return Result(0, {"job": env, "dir": (entry or {}).get("dir"),
-                      "save_status": results.read_status(entry["dir"]) if entry and entry.get("dir") else None})
+    return Result(
+        0,
+        {
+            "job": env,
+            "dir": (entry or {}).get("dir"),
+            "save_status": results.read_status(entry["dir"]) if entry and entry.get("dir") else None,
+        },
+    )

@@ -27,8 +27,9 @@ def _int(text, token, what):
     try:
         value = int(text)
     except (TypeError, ValueError):
-        raise usage(f"{token}: {what} must be a whole number, not {text!r}.", hint="qrosetta run --help",
-                    reason="bad_reference") from None
+        raise usage(
+            f"{token}: {what} must be a whole number, not {text!r}.", hint="qrosetta run --help", reason="bad_reference"
+        ) from None
     return value
 
 
@@ -40,14 +41,18 @@ def parse(token):
     if not m or DRIVE.match(token):
         base = os.path.basename(token)
         return CircuitRef("file", token, name=os.path.splitext(base)[0] or base)
-    kind, rest = m.group(1), token[m.end():]
+    kind, rest = m.group(1), token[m.end() :]
     if kind not in KINDS:
-        raise usage(f"unknown reference type {kind!r}; write ./{token} for a file.", hint="qrosetta run --help",
-                    reason="unknown_reference")
+        raise usage(
+            f"unknown reference type {kind!r}; write ./{token} for a file.",
+            hint="qrosetta run --help",
+            reason="unknown_reference",
+        )
     if kind in ("example", "qasmbench"):
         if not rest:
-            raise usage(f"{token}: name the {kind} after the colon.", hint="qrosetta run --help",
-                        reason="bad_reference")
+            raise usage(
+                f"{token}: name the {kind} after the colon.", hint="qrosetta run --help", reason="bad_reference"
+            )
         name = rest[:-5] if kind == "example" and rest.endswith(".qasm") else rest
         return CircuitRef(kind, token, name=name)
     head, _, tail = rest.partition(",")
@@ -57,14 +62,20 @@ def parse(token):
     ref = CircuitRef(kind, token, name=algo, qubits=_int(qubits, token, "the qubit count"))
     if tail:
         if kind != "algorithm":
-            raise usage(f"{token}: only algorithm: references take KEY=VALUE settings.", hint="qrosetta run --help",
-                        reason="bad_reference")
+            raise usage(
+                f"{token}: only algorithm: references take KEY=VALUE settings.",
+                hint="qrosetta run --help",
+                reason="bad_reference",
+            )
         for pair in tail.split(","):
             key, sep, value = pair.rpartition("=")
             if not sep or key not in ALGORITHM_KEYS:
-                raise usage(f"{token}: unknown setting {pair!r}; algorithm references take "
-                            f"{', '.join(k + '=N' for k in ALGORITHM_KEYS)}.", hint="qrosetta run --help",
-                            reason="bad_reference")
+                raise usage(
+                    f"{token}: unknown setting {pair!r}; algorithm references take "
+                    f"{', '.join(k + '=N' for k in ALGORITHM_KEYS)}.",
+                    hint="qrosetta run --help",
+                    reason="bad_reference",
+                )
             ref.params[key] = _int(value, token, key)
     return ref
 
@@ -74,11 +85,19 @@ def _read_file(path):
         with open(path, encoding="utf-8") as fh:
             return fh.read()
     except OSError as exc:
-        raise CliError(f"Cannot read {path}: {exc.strerror}.", Exit.NOT_FOUND, "input_missing",
-                       hint="qrosetta run FILE, with FILE a readable OpenQASM 2.0 file") from None
+        raise CliError(
+            f"Cannot read {path}: {exc.strerror}.",
+            Exit.NOT_FOUND,
+            "input_missing",
+            hint="qrosetta run FILE, with FILE a readable OpenQASM 2.0 file",
+        ) from None
     except UnicodeDecodeError:
-        raise CliError(f"{path} is not UTF-8 text.", Exit.REFUSED, "input_not_text",
-                       hint="qrosetta run FILE, with FILE an OpenQASM 2.0 text file") from None
+        raise CliError(
+            f"{path} is not UTF-8 text.",
+            Exit.REFUSED,
+            "input_not_text",
+            hint="qrosetta run FILE, with FILE an OpenQASM 2.0 text file",
+        ) from None
 
 
 def text(conn, ref, stdin):
@@ -93,16 +112,25 @@ def text(conn, ref, stdin):
         return ref.name, body["qasm"]
     if ref.kind == "algorithm":
         payload = {"algorithm": ref.name, "qubits": ref.qubits, **ref.params}
-        body = conn.post("/generate_circuit", payload, what=f"algorithm {ref.name!r}",
-                         hint="qrosetta api GET /algorithms")
+        body = conn.post(
+            "/generate_circuit", payload, what=f"algorithm {ref.name!r}", hint="qrosetta api GET /algorithms"
+        )
         suffix = f"-seed{ref.params['seed']}" if "seed" in ref.params else ""
         return f"{ref.name}-{ref.qubits}q{suffix}", body["qasm"]
     if ref.kind == "mqt":
-        body = conn.get("/benchmarks/mqt", query={"algorithm": ref.name, "qubits": ref.qubits},
-                        what=f"MQT Bench {ref.name!r}", hint="qrosetta api GET /benchmarks/mqt/list")
+        body = conn.get(
+            "/benchmarks/mqt",
+            query={"algorithm": ref.name, "qubits": ref.qubits},
+            what=f"MQT Bench {ref.name!r}",
+            hint="qrosetta api GET /benchmarks/mqt/list",
+        )
         return f"{ref.name}-{ref.qubits}q", body["qasm"]
-    body = conn.get("/benchmarks/qasmbench", query={"circuit": ref.name}, what=f"QASMBench {ref.name!r}",
-                    hint="qrosetta api GET /benchmarks/qasmbench/list")
+    body = conn.get(
+        "/benchmarks/qasmbench",
+        query={"circuit": ref.name},
+        what=f"QASMBench {ref.name!r}",
+        hint="qrosetta api GET /benchmarks/qasmbench/list",
+    )
     return ref.name, body["qasm"]
 
 

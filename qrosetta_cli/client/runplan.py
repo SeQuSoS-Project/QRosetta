@@ -13,33 +13,61 @@ from qrosetta_cli.client import refs
 from qrosetta_cli.client.commands import parse_value
 from qrosetta_cli.errors import CliError, Exit, usage
 
-RUN_ENDPOINTS = {"/compare": "compare", "/compare_measured": "compare_measured",
-                 "/run_batch_suite": "run_batch_suite", "/experiments": "experiments"}
-PLANNER_FIELDS = ("qasm_string", "tasks", "circuits", "mode", "simulate", "compilers", "apply_preprocessing",
-                  "preprocessing_modes", "label")
+RUN_ENDPOINTS = {
+    "/compare": "compare",
+    "/compare_measured": "compare_measured",
+    "/run_batch_suite": "run_batch_suite",
+    "/experiments": "experiments",
+}
+PLANNER_FIELDS = (
+    "qasm_string",
+    "tasks",
+    "circuits",
+    "mode",
+    "simulate",
+    "compilers",
+    "apply_preprocessing",
+    "preprocessing_modes",
+    "label",
+)
 FLAG_FIELDS = {
-    "n_shots": "--shots", "seed": "--seed", "target_simulators": "--backends", "optimization_level": "--opt-level",
-    "runner_config": "--opt-level KEY=N", "timeout_seconds": "--timeout", "timing_repeats": "--repeats",
-    "exclusive": "--exclusive", "thresholds": "--threshold", "runner_phases": "--order",
-    "execution_target": "--execution-target", "bypass_limits": "--bypass-limits",
+    "n_shots": "--shots",
+    "seed": "--seed",
+    "target_simulators": "--backends",
+    "optimization_level": "--opt-level",
+    "runner_config": "--opt-level KEY=N",
+    "timeout_seconds": "--timeout",
+    "timing_repeats": "--repeats",
+    "exclusive": "--exclusive",
+    "thresholds": "--threshold",
+    "runner_phases": "--order",
+    "execution_target": "--execution-target",
+    "bypass_limits": "--bypass-limits",
     "keep_statevectors": "--keep-statevectors",
 }
 MODES = ("statevector", "measured", "compile")
 _DURATION = re.compile(r"(\d+(?:\.\d+)?)([hms]?)")
 
 PROBLEM_TEXT = {
-    "playlist_too_long": lambda p: f"{p.get('circuits')} circuits; the server runs at most {p.get('max')} per run. "
-                                   "Split the playlist file.",
-    "experiment_too_many_cells": lambda p: f"{p.get('circuits')} circuits x {p.get('settings')} settings = "
-                                           f"{p.get('cells')} runs; the server allows {p.get('max')}. Use "
-                                           "--preprocessing on or off, or fewer circuits.",
-    "circuit_too_large": lambda p: f"{p.get('circuit') or 'the circuit'}: {p.get('characters')} characters; "
-                                   f"the server accepts {p.get('max')}.",
-    "bundled_over_prep_limit": lambda p: f"{', '.join(_bundled(c) for c in p.get('circuits') or [])}: preparation "
-                                         "with preprocessing on exceeds the server's memory limit. Use "
-                                         "--preprocessing off or remove them.",
-    "request_too_large": lambda p: f"this run's request is {p.get('bytes')} bytes; the server accepts "
-                                   f"{p.get('max')}. Split the playlist.",
+    "playlist_too_long": lambda p: (
+        f"{p.get('circuits')} circuits; the server runs at most {p.get('max')} per run. Split the playlist file."
+    ),
+    "experiment_too_many_cells": lambda p: (
+        f"{p.get('circuits')} circuits x {p.get('settings')} settings = "
+        f"{p.get('cells')} runs; the server allows {p.get('max')}. Use "
+        "--preprocessing on or off, or fewer circuits."
+    ),
+    "circuit_too_large": lambda p: (
+        f"{p.get('circuit') or 'the circuit'}: {p.get('characters')} characters; the server accepts {p.get('max')}."
+    ),
+    "bundled_over_prep_limit": lambda p: (
+        f"{', '.join(_bundled(c) for c in p.get('circuits') or [])}: preparation "
+        "with preprocessing on exceeds the server's memory limit. Use "
+        "--preprocessing off or remove them."
+    ),
+    "request_too_large": lambda p: (
+        f"this run's request is {p.get('bytes')} bytes; the server accepts {p.get('max')}. Split the playlist."
+    ),
     "compile_only_needs_one_setting": lambda p: "--mode compile needs --preprocessing on or off.",
     "bypass_needs_account": lambda p: "--bypass-limits needs `qrosetta login` on this server.",
 }
@@ -74,8 +102,11 @@ def parse_duration(text, flag):
         total += float(m.group(1)) * {"h": 3600, "m": 60, "s": 1, "": 1}[m.group(2)]
         pos = m.end()
     if not text or pos != len(text):
-        raise usage(f"{flag} {text!r}: write a duration such as 90, 90s, 5m or 1h30m.", hint="qrosetta run --help",
-                    reason="bad_duration")
+        raise usage(
+            f"{flag} {text!r}: write a duration such as 90, 90s, 5m or 1h30m.",
+            hint="qrosetta run --help",
+            reason="bad_duration",
+        )
     return total
 
 
@@ -90,7 +121,9 @@ def _int(text, flag):
     try:
         return int(text)
     except (TypeError, ValueError):
-        raise usage(f"{flag}: {text!r} is not a whole number.", hint="qrosetta run --help", reason="bad_value") from None
+        raise usage(
+            f"{flag}: {text!r} is not a whole number.", hint="qrosetta run --help", reason="bad_value"
+        ) from None
 
 
 def _key_value(pair, flag):
@@ -104,8 +137,11 @@ def _check_keys(keys, known, flag):
     for key in keys:
         if key not in known:
             close = difflib.get_close_matches(key, list(known), n=1)
-            raise usage(f"{flag} {key}: no such key on this server" + (f"; did you mean {close[0]}?" if close else "."),
-                        hint="qrosetta api GET /runners", reason="unknown_key")
+            raise usage(
+                f"{flag} {key}: no such key on this server" + (f"; did you mean {close[0]}?" if close else "."),
+                hint="qrosetta api GET /runners",
+                reason="unknown_key",
+            )
 
 
 class Settings:
@@ -117,8 +153,11 @@ class Settings:
 
     def put(self, name, value, flag, source="flag"):
         if name in self.values:
-            raise usage(f"{flag}: {name} is already set by {self.flags[name]}.", hint="qrosetta run --help",
-                        reason="setting_twice")
+            raise usage(
+                f"{flag}: {name} is already set by {self.flags[name]}.",
+                hint="qrosetta run --help",
+                reason="setting_twice",
+            )
         self.values[name] = {"value": value, "source": source}
         self.flags[name] = flag
 
@@ -185,14 +224,18 @@ def settings_from_args(args, conn):
             key, value = _key_value(pair, "--threshold")
             if names and key not in names:
                 close = difflib.get_close_matches(key, list(names), n=1)
-                raise usage(f"--threshold {key}: the server's thresholds are {', '.join(names)}"
-                            + (f"; did you mean {close[0]}?" if close else "."), hint="qrosetta run --help",
-                            reason="unknown_threshold")
+                raise usage(
+                    f"--threshold {key}: the server's thresholds are {', '.join(names)}"
+                    + (f"; did you mean {close[0]}?" if close else "."),
+                    hint="qrosetta run --help",
+                    reason="unknown_threshold",
+                )
             try:
                 thresholds[key] = float(value)
             except ValueError:
-                raise usage(f"--threshold {pair}: {value!r} is not a number.", hint="qrosetta run --help",
-                            reason="bad_value") from None
+                raise usage(
+                    f"--threshold {pair}: {value!r} is not a number.", hint="qrosetta run --help", reason="bad_value"
+                ) from None
         s.put("thresholds", thresholds, "--threshold")
     if args.order:
         phases = {}
@@ -206,8 +249,11 @@ def settings_from_args(args, conn):
         key, value = _key_value(pair, "--set")
         if key in FLAG_FIELDS or key in PLANNER_FIELDS:
             flag = FLAG_FIELDS.get(key) or "the circuit, --mode, --preprocessing, --compiler or --name"
-            raise usage(f"--set {key}: that field has its own option ({flag}).", hint="qrosetta run --help",
-                        reason="set_has_flag")
+            raise usage(
+                f"--set {key}: that field has its own option ({flag}).",
+                hint="qrosetta run --help",
+                reason="set_has_flag",
+            )
         if key in seen:
             raise usage(f"--set {key} is given twice.", hint="qrosetta run --help", reason="setting_twice")
         seen.add(key)
@@ -237,15 +283,20 @@ def modes_from_args(args):
         modes.append("compile")
     for m in modes:
         if m not in MODES:
-            raise usage(f"--mode {m}: choose statevector, measured or compile.", hint="qrosetta run --help",
-                        reason="bad_mode")
+            raise usage(
+                f"--mode {m}: choose statevector, measured or compile.", hint="qrosetta run --help", reason="bad_mode"
+            )
     if "compile" in modes:
         if len(set(modes)) > 1:
-            raise usage("--mode compile runs no simulation, so it cannot be combined with another mode.",
-                        hint="qrosetta run --help", reason="bad_mode")
+            raise usage(
+                "--mode compile runs no simulation, so it cannot be combined with another mode.",
+                hint="qrosetta run --help",
+                reason="bad_mode",
+            )
         if not args.compiler:
-            raise usage("--mode compile needs at least one --compiler KEY=L.", hint="qrosetta compilers",
-                        reason="bad_mode")
+            raise usage(
+                "--mode compile needs at least one --compiler KEY=L.", hint="qrosetta compilers", reason="bad_mode"
+            )
         return [], True, "flag"
     if not modes:
         return ["statevector"], False, "cli_default"
@@ -257,14 +308,21 @@ def _read_playlist(path):
         with open(path, encoding="utf-8") as fh:
             items = json.load(fh)
     except OSError as exc:
-        raise CliError(f"Cannot read {path}: {exc.strerror}.", Exit.NOT_FOUND, "input_missing",
-                       hint="qrosetta run --playlist FILE") from None
+        raise CliError(
+            f"Cannot read {path}: {exc.strerror}.", Exit.NOT_FOUND, "input_missing", hint="qrosetta run --playlist FILE"
+        ) from None
     except json.JSONDecodeError as exc:
-        raise usage(f"{path} is not JSON: {exc}.", hint="qrosetta run --playlist FILE, with FILE the page's playlist "
-                    "format", reason="playlist_invalid") from None
+        raise usage(
+            f"{path} is not JSON: {exc}.",
+            hint="qrosetta run --playlist FILE, with FILE the page's playlist format",
+            reason="playlist_invalid",
+        ) from None
     if not isinstance(items, list) or not all(isinstance(i, dict) for i in items):
-        raise usage(f"{path}: a playlist file is a JSON array of objects.", hint="qrosetta run --help",
-                    reason="playlist_invalid")
+        raise usage(
+            f"{path}: a playlist file is a JSON array of objects.",
+            hint="qrosetta run --help",
+            reason="playlist_invalid",
+        )
     return items
 
 
@@ -277,11 +335,14 @@ def circuits_from_args(args, conn, stdin):
     if args.playlist or len(parsed) > 1:
         items = _read_playlist(args.playlist) if args.playlist else []
         items += [refs.playlist_item(conn, r, stdin) for r in parsed]
-        name = (os.path.splitext(os.path.basename(args.playlist))[0] if args.playlist else "playlist")
+        name = os.path.splitext(os.path.basename(args.playlist))[0] if args.playlist else "playlist"
         return "playlist", items, name
     if not parsed:
-        raise usage("Name a circuit: a file, -, or a reference such as algorithm:ghz:3.",
-                    hint="qrosetta run algorithm:ghz:3", reason="no_circuit")
+        raise usage(
+            "Name a circuit: a file, -, or a reference such as algorithm:ghz:3.",
+            hint="qrosetta run algorithm:ghz:3",
+            reason="no_circuit",
+        )
     name, qasm = refs.text(conn, parsed[0], stdin)
     return "single", [{"qasm_string": qasm, "name": name}], name
 
@@ -292,14 +353,24 @@ def build(args, conn, stdin):
     modes, compile_only, mode_source = modes_from_args(args)
     compilers = compilers_from_args(args, conn)
     source, circuits, circuit_name = circuits_from_args(args, conn, stdin)
-    req = {"source": source, "circuits": circuits, "modes": modes, "compilers": compilers,
-           "settings": settings.as_plan(), "check_circuits": False}
+    req = {
+        "source": source,
+        "circuits": circuits,
+        "modes": modes,
+        "compilers": compilers,
+        "settings": settings.as_plan(),
+        "check_circuits": False,
+    }
     if args.preprocessing is not None:
         req["preprocessing"] = args.preprocessing
     if args.name:
         req["name"] = args.name
-    planner = {"modes": mode_source, "preprocessing": "flag" if args.preprocessing else "server_default",
-               "compilers": "flag" if compilers else "none", "name": "flag" if args.name else "none"}
+    planner = {
+        "modes": mode_source,
+        "preprocessing": "flag" if args.preprocessing else "server_default",
+        "compilers": "flag" if compilers else "none",
+        "name": "flag" if args.name else "none",
+    }
     return req, settings, planner, args.name or circuit_name
 
 
@@ -310,7 +381,9 @@ def request_fields(conn):
     fields = set()
     for endpoint in RUN_ENDPOINTS:
         op = ((doc.get("paths") or {}).get(endpoint) or {}).get("post") or {}
-        schema = (((op.get("requestBody") or {}).get("content") or {}).get("application/json") or {}).get("schema") or {}
+        schema = (((op.get("requestBody") or {}).get("content") or {}).get("application/json") or {}).get(
+            "schema"
+        ) or {}
         ref = schema.get("$ref", "")
         model = schemas.get(ref.rsplit("/", 1)[-1], {}) if ref else schema
         fields |= set((model.get("properties") or {}).keys())
@@ -324,16 +397,21 @@ def check_server_fields(conn, settings):
     listed = request_fields(conn)
     for name in settings.values:
         if name not in listed:
-            raise CliError(f"{settings.flags[name]}: this server's run requests have no {name} field.",
-                           Exit.INCOMPATIBLE, "field_missing", hint=f"drop {settings.flags[name]}, or upgrade the server")
+            raise CliError(
+                f"{settings.flags[name]}: this server's run requests have no {name} field.",
+                Exit.INCOMPATIBLE,
+                "field_missing",
+                hint=f"drop {settings.flags[name]}, or upgrade the server",
+            )
 
 
 def defaults_for(conn, endpoint):
     """{field: default} the server fills for a run route (request_defaults in /config)."""
     kind = RUN_ENDPOINTS.get(endpoint)
     spec = ((conn.config.get("request_defaults") or {}).get("requests") or {}).get(kind) or {}
-    return {name: entry.get("default") for name, entry in (spec.get("fields") or {}).items()
-            if entry.get("server_fills")}
+    return {
+        name: entry.get("default") for name, entry in (spec.get("fields") or {}).items() if entry.get("server_fills")
+    }
 
 
 def request_record(conn, run, planner, job_id):
@@ -361,8 +439,16 @@ def request_record(conn, run, planner, job_id):
     omitted = {k: v for k, v in defaults_for(conn, run["endpoint"]).items() if k not in payload}
     for name in omitted:
         sources[name] = "server_default"
-    return {"job_id": job_id, "endpoint": run["endpoint"], "kind": run.get("kind"), "mode": run.get("mode"),
-            "title": run.get("title"), "payload": payload, "sources": sources, "server_defaults": omitted}
+    return {
+        "job_id": job_id,
+        "endpoint": run["endpoint"],
+        "kind": run.get("kind"),
+        "mode": run.get("mode"),
+        "title": run.get("title"),
+        "payload": payload,
+        "sources": sources,
+        "server_defaults": omitted,
+    }
 
 
 def differing_settings(conn, plan_settings, endpoint):

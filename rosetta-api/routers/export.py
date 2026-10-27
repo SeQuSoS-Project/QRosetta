@@ -1,6 +1,5 @@
 """RO-Crate export routes: from a report in the request body, or from a job's server copy."""
 
-from config import settings
 import asyncio
 
 from fastapi import APIRouter, HTTPException, Request

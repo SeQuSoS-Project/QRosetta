@@ -24,8 +24,12 @@ FORMATS_BY_EXTENSION = {v: k for k, v in EXTENSIONS.items()}
 
 def _views(conn):
     if not conn.has(VIEWS_FEATURE):
-        raise CliError("This server offers no GET /publication/views.", Exit.INCOMPATIBLE, "feature_missing",
-                       hint="qrosetta show artifacts lists what a result offers")
+        raise CliError(
+            "This server offers no GET /publication/views.",
+            Exit.INCOMPATIBLE,
+            "feature_missing",
+            hint="qrosetta show artifacts lists what a result offers",
+        )
     return conn.request("GET", "/publication/views", what="GET /publication/views")
 
 
@@ -45,13 +49,16 @@ def _param_line(p):
 def cmd_show_views(ctx):
     listing = _views(Server(ctx).conn).json()
     for view in listing.get("views") or []:
-        arts = "; ".join(f"{a['kind']} {a['artifact_id']} ({', '.join(a['formats'])})" for a in view.get("artifacts", []))
+        arts = "; ".join(
+            f"{a['kind']} {a['artifact_id']} ({', '.join(a['formats'])})" for a in view.get("artifacts", [])
+        )
         output.result(f"{view['id']}  {arts}")
         for p in view.get("params") or []:
             output.result(_param_line(p))
     scale = listing.get("scale") or {}
-    output.progress(f"Raster scale {scale.get('min')}-{scale.get('max')}. Which of these a result offers: "
-                    "qrosetta show artifacts")
+    output.progress(
+        f"Raster scale {scale.get('min')}-{scale.get('max')}. Which of these a result offers: qrosetta show artifacts"
+    )
     return Result(0, listing)
 
 
@@ -82,14 +89,21 @@ def _supplied_body(path, task, extra, limit):
     if task is not None:
         tasks = json.loads(text).get("benchmark_summary")
         if not isinstance(tasks, list) or not 0 <= task < len(tasks):
-            raise usage(f"--task {task}: the saved report has no such circuit.", hint="qrosetta show circuits",
-                        reason="bad_task")
+            raise usage(
+                f"--task {task}: the saved report has no such circuit.",
+                hint="qrosetta show circuits",
+                reason="bad_task",
+            )
         text = json.dumps(tasks[task], ensure_ascii=False).encode("utf-8")
     options = json.dumps(extra, ensure_ascii=False).encode("utf-8")[1:-1]
     body = b'{"results":' + text + (b"," + options if options else b"") + b"}"
     if limit and len(body) > limit:
-        raise CliError(f"{path} is too large to send ({len(body)} bytes; the server accepts {limit}).",
-                       Exit.REFUSED, "request_too_large", hint="render it while the job lives") from None
+        raise CliError(
+            f"{path} is too large to send ({len(body)} bytes; the server accepts {limit}).",
+            Exit.REFUSED,
+            "request_too_large",
+            hint="render it while the job lives",
+        ) from None
     return body
 
 
@@ -105,25 +119,32 @@ def cmd_show_artifacts(ctx):
     task = ctx.opt("task")
     source = "server job"
     try:
-        catalog = conn.get(f"/jobs/{job.job_id}/publication/artifacts",
-                           query={"task": str(task)} if task is not None else None,
-                           what=f"artifacts of job {job.job_id[:8]}")
+        catalog = conn.get(
+            f"/jobs/{job.job_id}/publication/artifacts",
+            query={"task": str(task)} if task is not None else None,
+            what=f"artifacts of job {job.job_id[:8]}",
+        )
     except CliError as exc:
         report = _saved_report(job)
         if not _expired(exc) or not report:
             raise
         body = _supplied_body(report, task, {}, conn.limit("max_request_bytes"))
-        resp = conn.transport.request("POST", "/publication/artifacts", body=body,
-                                      headers={"Content-Type": "application/json"})
+        resp = conn.transport.request(
+            "POST", "/publication/artifacts", body=body, headers={"Content-Type": "application/json"}
+        )
         if resp.status != 200:
             raise http_error("POST", "/publication/artifacts", resp) from None
         catalog, source = resp.json(), "client-supplied report (the saved report.json)"
-    output.result(f"{job.request().get('title') or 'Job'} (job {job.job_id[:8]}): "
-                  f"saved {results.read_status(job.dir) if job.dir else 'not saved'}; {source}")
+    output.result(
+        f"{job.request().get('title') or 'Job'} (job {job.job_id[:8]}): "
+        f"saved {results.read_status(job.dir) if job.dir else 'not saved'}; {source}"
+    )
     width = max([len("ARTIFACT")] + [len(a.get("id", "")) for a in catalog])
     output.result(f"{'ARTIFACT':<{width}}  {'VIEW':<22}  FORMATS")
     for a in catalog:
-        output.result(f"{a.get('id', ''):<{width}}  {(a.get('view_id') or '-'):<22}  {', '.join(a.get('formats') or [])}")
+        output.result(
+            f"{a.get('id', ''):<{width}}  {(a.get('view_id') or '-'):<22}  {', '.join(a.get('formats') or [])}"
+        )
     output.progress("One of them as a file: qrosetta export figure ARTIFACT [--format F] [--param K=V]")
     return Result(0, {"job_id": job.job_id, "source": source, "artifacts": catalog})
 
@@ -138,8 +159,11 @@ def _params(values):
             except (OSError, json.JSONDecodeError) as exc:
                 raise usage(f"--param {value}: {exc}", hint="qrosetta export figure --help", reason="param") from None
             if not isinstance(loaded, dict):
-                raise usage(f"--param {value}: the file holds no JSON object.", hint="qrosetta export figure --help",
-                            reason="param")
+                raise usage(
+                    f"--param {value}: the file holds no JSON object.",
+                    hint="qrosetta export figure --help",
+                    reason="param",
+                )
             params.update(loaded)
             continue
         key, sep, raw = value.partition("=")
@@ -157,8 +181,11 @@ def _format(ctx, conn, artifact):
         ext = out.rsplit(".", 1)[1].lower()
         return FORMATS_BY_EXTENSION.get(ext, ext)
     if out == "-":
-        raise usage("Writing to stdout needs --format.", hint=f"qrosetta export figure {artifact} --format svg -o -",
-                    reason="format_missing")
+        raise usage(
+            "Writing to stdout needs --format.",
+            hint=f"qrosetta export figure {artifact} --format svg -o -",
+            reason="format_missing",
+        )
     if conn.has(VIEWS_FEATURE):
         for view in _views(conn).json().get("views") or []:
             for a in view.get("artifacts") or []:
@@ -169,6 +196,7 @@ def _format(ctx, conn, artifact):
 
 def file_name(artifact, params, fmt):
     """<artifact>[_<key>-<value>...].<extension>"""
+
     def text(value):
         if isinstance(value, list):
             return "-".join(text(v) for v in value)
@@ -199,21 +227,29 @@ def cmd_export_figure(ctx):
         dest = os.path.join(job.dir or os.getcwd(), file_name(artifact, params, fmt))
     source = "server_job"
     try:
-        resp = conn.request("POST", f"/jobs/{job.job_id}/publication/render", payload=body,
-                            what=f"render of {artifact}")
+        resp = conn.request(
+            "POST", f"/jobs/{job.job_id}/publication/render", payload=body, what=f"render of {artifact}"
+        )
     except CliError as exc:
         report = _saved_report(job)
         if not _expired(exc) or not report:
             raise
         extra = {k: v for k, v in body.items() if k != "task"}
         raw = _supplied_body(report, task, extra, conn.limit("max_request_bytes"))
-        resp = conn.transport.request("POST", "/publication/render", body=raw,
-                                      headers={"Content-Type": "application/json"})
+        resp = conn.transport.request(
+            "POST", "/publication/render", body=raw, headers={"Content-Type": "application/json"}
+        )
         if resp.status != 200:
             raise http_error("POST", "/publication/render", resp) from None
         source = "client_supplied"
-    data = {"path": None, "job_id": job.job_id, "artifact_id": artifact, "format": fmt, "params": params,
-            "report_source": source}
+    data = {
+        "path": None,
+        "job_id": job.job_id,
+        "artifact_id": artifact,
+        "format": fmt,
+        "params": params,
+        "report_source": source,
+    }
     if dest == "-":
         output.raw(resp.body)
         return Result(0, data)

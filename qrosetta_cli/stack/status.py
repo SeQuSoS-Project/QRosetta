@@ -45,13 +45,18 @@ def classify(stack, ref, img, service=None):
     sha = img.git_sha
     release = stack.release.get("platform_version") if stack.release else None
     if stack.release and "@" in ref and ref in img.digests:
-        return {"state": "pulled", "ref": ref, "digest": ref.split("@", 1)[1], "image_id": img.id,
-                "git_sha": sha, "release": release}
+        return {
+            "state": "pulled",
+            "ref": ref,
+            "digest": ref.split("@", 1)[1],
+            "image_id": img.id,
+            "git_sha": sha,
+            "release": release,
+        }
     digest = next((d.split("@", 1)[1] for d in img.digests if "@" in d), None)
     sid = mf.by_compose_service(stack.release).get(service) if stack.release and service else None
     if sid and mf.image_id_key(img.id) in mf.release_ids(stack.release, sid):
-        return {"state": "loaded", "ref": ref, "digest": digest, "image_id": img.id, "git_sha": sha,
-                "release": release}
+        return {"state": "loaded", "ref": ref, "digest": digest, "image_id": img.id, "git_sha": sha, "release": release}
     state = "built" if sha != "unknown" else "unknown"
     return {"state": state, "ref": ref, "digest": digest, "image_id": img.id, "git_sha": sha, "release": None}
 
@@ -62,12 +67,28 @@ def container_image_record(stack, service, container, tagged, by_id):
     container's image). An image that no longer exists is `missing` with its id."""
     ref = stack.image_for(service)
     if not container.image:
-        return {"state": "unknown", "ref": ref, "digest": None, "image_id": None, "git_sha": None, "release": None,
-                "current": None}
+        return {
+            "state": "unknown",
+            "ref": ref,
+            "digest": None,
+            "image_id": None,
+            "git_sha": None,
+            "release": None,
+            "current": None,
+        }
     img = by_id.get(st.image_key(container.image))
-    record = classify(stack, ref, img, service) if img else {
-        "state": "missing", "ref": ref, "digest": None, "image_id": container.image, "git_sha": None,
-        "release": None}
+    record = (
+        classify(stack, ref, img, service)
+        if img
+        else {
+            "state": "missing",
+            "ref": ref,
+            "digest": None,
+            "image_id": container.image,
+            "git_sha": None,
+            "release": None,
+        }
+    )
     record["current"] = bool(tagged["image_id"]) and st.image_key(tagged["image_id"]) == st.image_key(container.image)
     return record
 
@@ -97,8 +118,11 @@ def _image_cell(row):
     running, tagged = row.get("container_image"), row["image"]
     if not running or running["current"] is not False:
         return image_text(tagged)
-    ran = (f"image {st.image_key(running['image_id'])[:12]} (removed)" if running["state"] == "missing"
-           else image_text(running))
+    ran = (
+        f"image {st.image_key(running['image_id'])[:12]} (removed)"
+        if running["state"] == "missing"
+        else image_text(running)
+    )
     if tagged["state"] == "missing":
         return f"{ran}; no image under its tag"
     return f"{ran}; newer image {image_text(tagged)}"
@@ -120,12 +144,23 @@ def collect(engine, stack, found, env=None):
         used, limit = memory.get(c.name, (None, None)) if c else (None, None)
         state = "running" if c and c.running else "stopped" if c else "not created"
         tagged = image_record(engine, stack, service, images)
-        rows.append({"id": svc.id, "backend": None, "version": None, "kind": stack.kind_of(service),
-                     "compose_service": service, "container": c.name if c else svc.container_name or None,
-                     "state": state, "qrosetta_label": c is None or c not in found.legacy,
-                     "memory_bytes": used, "limit_bytes": limit, "image": tagged,
-                     "container_image": container_image_record(stack, service, c, tagged, by_id) if c else None,
-                     "config_current": _config_current(c, hashes)})
+        rows.append(
+            {
+                "id": svc.id,
+                "backend": None,
+                "version": None,
+                "kind": stack.kind_of(service),
+                "compose_service": service,
+                "container": c.name if c else svc.container_name or None,
+                "state": state,
+                "qrosetta_label": c is None or c not in found.legacy,
+                "memory_bytes": used,
+                "limit_bytes": limit,
+                "image": tagged,
+                "container_image": container_image_record(stack, service, c, tagged, by_id) if c else None,
+                "config_current": _config_current(c, hashes),
+            }
+        )
     return rows, images, memory
 
 
@@ -137,6 +172,7 @@ def status(ctx, engine, stack, mode):
     block = None
     if url:
         from qrosetta_cli.client import handshake, servers
+
         try:
             server = servers.Server("local", url, "compose port")
             block = handshake.server_block(handshake.fetch_config(ctx.transport(server=server, timeout=5)))
@@ -154,15 +190,28 @@ def status(ctx, engine, stack, mode):
     table = [("SERVICE", "KIND", "STATE", "MEMORY", "LIMIT", "IMAGE")]
     for r in rows:
         state = r["state"] + ("" if r["qrosetta_label"] else " (no qrosetta label)")
-        table.append((r["id"], r["kind"], state,
-                      human_bytes(r["memory_bytes"]) if r["memory_bytes"] is not None else "",
-                      human_bytes(r["limit_bytes"]) if r["limit_bytes"] else "", row_image_text(r)))
+        table.append(
+            (
+                r["id"],
+                r["kind"],
+                state,
+                human_bytes(r["memory_bytes"]) if r["memory_bytes"] is not None else "",
+                human_bytes(r["limit_bytes"]) if r["limit_bytes"] else "",
+                row_image_text(r),
+            )
+        )
     widths = [max(len(row[i]) for row in table) for i in range(len(table[0]))]
     for row in table:
         result("  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row)).rstrip())
 
-    outdated = [r for r in rows if r["qrosetta_label"] and r["container_image"]
-                and r["container_image"]["current"] is False and r["image"]["state"] != "missing"]
+    outdated = [
+        r
+        for r in rows
+        if r["qrosetta_label"]
+        and r["container_image"]
+        and r["container_image"]["current"] is False
+        and r["image"]["state"] != "missing"
+    ]
     changed = [r for r in rows if r["qrosetta_label"] and r["config_current"] is False]
     if outdated or changed:
         result("\n" + _recreate_text(rows, outdated, changed))
@@ -173,21 +222,34 @@ def status(ctx, engine, stack, mode):
         result(f"\nMemory in use: {human_bytes(total)} across {len(running)} running containers")
     size = sum({img.id: img.size for img in images.values()}.values())
     removable = len(own.image_scan(engine, stack)[0])
-    result(f"Images: {len(images)} of {len(stack.services)} present, up to {human_bytes(size)} "
-           "(layers shared between images counted once per image); "
-           f"{removable} removable by `qrosetta remove --images`")
+    result(
+        f"Images: {len(images)} of {len(stack.services)} present, up to {human_bytes(size)} "
+        "(layers shared between images counted once per image); "
+        f"{removable} removable by `qrosetta remove --images`"
+    )
     volumes = found.volumes
     sizes = actions.volume_sizes(engine) if volumes else {}
     result("Data: " + (", ".join(f"{v.name} {human_bytes(sizes.get(v.name))}" for v in volumes) if volumes else "none"))
     cpu = quota.block(stack, ctx.env)
     if not cpu["enabled"]:
         result(quota.describe_off(cpu["since"]))
-    return {"url": url, "published": address, "project": stack.name, "project_dir": stack.project_dir,
-            "mode": mode.name, "engine": {"name": engine.name, "version": engine.version or None,
-                                          "rootless": engine.rootless if engine.info else None},
-            "server": block, "services": rows, "cpu_quota": cpu,
-            "data_volumes": [{"name": v.name, "bytes": sizes.get(v.name)} for v in volumes],
-            "foreign": own.leftovers(engine, found)}
+    return {
+        "url": url,
+        "published": address,
+        "project": stack.name,
+        "project_dir": stack.project_dir,
+        "mode": mode.name,
+        "engine": {
+            "name": engine.name,
+            "version": engine.version or None,
+            "rootless": engine.rootless if engine.info else None,
+        },
+        "server": block,
+        "services": rows,
+        "cpu_quota": cpu,
+        "data_volumes": [{"name": v.name, "bytes": sizes.get(v.name)} for v in volumes],
+        "foreign": own.leftovers(engine, found),
+    }
 
 
 def _config_current(container, hashes):
@@ -203,24 +265,37 @@ def _recreate_text(rows, outdated, changed):
     recreate = [r for r in rows if r in outdated or r in changed]
     command = f"`qrosetta start -d {' '.join(r['id'] for r in recreate)}`"
     if len(recreate) == 1 and not changed:
-        return ("1 container was created from an image other than the one now under its tag; "
-                f"{command} recreates it on that image.")
+        return (
+            "1 container was created from an image other than the one now under its tag; "
+            f"{command} recreates it on that image."
+        )
     if not changed:
-        return (f"{len(recreate)} containers were created from images other than the ones now under their tags; "
-                f"{command} recreates them on those images.")
+        return (
+            f"{len(recreate)} containers were created from images other than the ones now under their tags; "
+            f"{command} recreates them on those images."
+        )
     if len(recreate) == 1 and not outdated:
-        return ("1 container was created from another compose configuration than the compose file now gives; "
-                f"{command} recreates it with the current one.")
+        return (
+            "1 container was created from another compose configuration than the compose file now gives; "
+            f"{command} recreates it with the current one."
+        )
     if not outdated:
-        return (f"{len(recreate)} containers were created from other compose configurations than the compose "
-                f"file now gives; {command} recreates them with the current ones.")
+        return (
+            f"{len(recreate)} containers were created from other compose configurations than the compose "
+            f"file now gives; {command} recreates them with the current ones."
+        )
     if len(recreate) == 1:
-        return ("1 container was created from another image and compose configuration than the current ones; "
-                f"{command} recreates it.")
-    return (f"{len(recreate)} containers were created from other images or compose configurations than the "
-            f"current ones (IMAGE column); {command} recreates them.")
+        return (
+            "1 container was created from another image and compose configuration than the current ones; "
+            f"{command} recreates it."
+        )
+    return (
+        f"{len(recreate)} containers were created from other images or compose configurations than the "
+        f"current ones (IMAGE column); {command} recreates them."
+    )
 
 
 def _server_text(block):
     from qrosetta_cli.client import handshake
+
     return handshake.describe(block)

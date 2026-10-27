@@ -1,7 +1,7 @@
 #!/bin/bash
 # Regenerate rosetta-api/static/css/tailwind.css from the classes used in the HTML and JS.
 # Run after changing Tailwind classes, then commit css/tailwind.css.
-set -eu
+set -euo pipefail
 
 cd "$(dirname "$0")/../rosetta-api/static"
 

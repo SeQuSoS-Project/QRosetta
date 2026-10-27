@@ -4,7 +4,6 @@ and a later in-image transport provide the same `request` method (spec Q3 `serve
 import http.client
 import ipaddress
 import json
-import socket
 import ssl
 import urllib.error
 import urllib.parse
@@ -98,10 +97,15 @@ class _SameOriginAuthRedirect(urllib.request.HTTPRedirectHandler):
 def _opener(loopback):
     """An opener for http and https only (no file:, ftp: or data: handlers)."""
     opener = urllib.request.OpenerDirector()
-    for handler in (urllib.request.ProxyHandler({} if loopback else None), urllib.request.UnknownHandler(),
-                    urllib.request.HTTPHandler(), urllib.request.HTTPSHandler(context=ssl.create_default_context()),
-                    urllib.request.HTTPDefaultErrorHandler(), _SameOriginAuthRedirect(),
-                    urllib.request.HTTPErrorProcessor()):
+    for handler in (
+        urllib.request.ProxyHandler({} if loopback else None),
+        urllib.request.UnknownHandler(),
+        urllib.request.HTTPHandler(),
+        urllib.request.HTTPSHandler(context=ssl.create_default_context()),
+        urllib.request.HTTPDefaultErrorHandler(),
+        _SameOriginAuthRedirect(),
+        urllib.request.HTTPErrorProcessor(),
+    ):
         opener.add_handler(handler)
     return opener
 
@@ -165,10 +169,14 @@ class HttpTransport(Transport):
                 body = b""
             return Response(exc.code, {k.lower(): v for k, v in (exc.headers or {}).items()}, body)
         except http.client.HTTPException as exc:
-            raise Transient(f"The connection to {self.url} broke off during {method.upper()} {path} "
-                            f"({type(exc).__name__}).", Exit.UNREACHABLE, "connection_lost",
-                            hint="try again; qrosetta status shows the server") from None
-        except (urllib.error.URLError, socket.timeout, TimeoutError, ConnectionError, OSError) as exc:
+            raise Transient(
+                f"The connection to {self.url} broke off during {method.upper()} {path} ({type(exc).__name__}).",
+                Exit.UNREACHABLE,
+                "connection_lost",
+                hint="try again; qrosetta status shows the server",
+            ) from None
+        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as exc:
             reason = getattr(exc, "reason", exc)
-            raise Transient(f"No answer from {self.url}: {reason}.", Exit.UNREACHABLE, "unreachable",
-                            hint="qrosetta status") from None
+            raise Transient(
+                f"No answer from {self.url}: {reason}.", Exit.UNREACHABLE, "unreachable", hint="qrosetta status"
+            ) from None

@@ -31,10 +31,26 @@ class Exit(IntEnum):
 NAMES = {code: code.name.lower() for code in Exit}
 NAMES.update({Exit.SIGHUP: "sighup", Exit.SIGINT: "sigint", Exit.SIGPIPE: "sigpipe", Exit.SIGTERM: "sigterm"})
 
-PRIORITY = (Exit.INTERNAL, Exit.USAGE, Exit.INCOMPATIBLE, Exit.UNREACHABLE, Exit.AUTH, Exit.NOT_FOUND,
-            Exit.REFUSED, Exit.BUSY, Exit.ENGINE, Exit.CHECKS_FAILED, Exit.SELFTEST_FAILED, Exit.JOB_FAILED,
-            Exit.JOB_CANCELLED, Exit.WAIT_TIMEOUT, Exit.DISAGREEMENT, Exit.NOT_ESTABLISHED,
-            Exit.RUNS_WITHOUT_OUTPUT, Exit.OK)
+PRIORITY = (
+    Exit.INTERNAL,
+    Exit.USAGE,
+    Exit.INCOMPATIBLE,
+    Exit.UNREACHABLE,
+    Exit.AUTH,
+    Exit.NOT_FOUND,
+    Exit.REFUSED,
+    Exit.BUSY,
+    Exit.ENGINE,
+    Exit.CHECKS_FAILED,
+    Exit.SELFTEST_FAILED,
+    Exit.JOB_FAILED,
+    Exit.JOB_CANCELLED,
+    Exit.WAIT_TIMEOUT,
+    Exit.DISAGREEMENT,
+    Exit.NOT_ESTABLISHED,
+    Exit.RUNS_WITHOUT_OUTPUT,
+    Exit.OK,
+)
 SIGNALS = (Exit.SIGHUP, Exit.SIGINT, Exit.SIGPIPE, Exit.SIGTERM)
 
 
@@ -72,8 +88,14 @@ class CliError(Exception):
         self.detail = detail
 
     def as_dict(self):
-        return {"code": name(self.code), "reason": self.reason, "message": self.message,
-                "hint": self.hint, "http_status": self.http_status, "detail": self.detail}
+        return {
+            "code": name(self.code),
+            "reason": self.reason,
+            "message": self.message,
+            "hint": self.hint,
+            "http_status": self.http_status,
+            "detail": self.detail,
+        }
 
 
 def usage(message, hint=None, reason="usage"):

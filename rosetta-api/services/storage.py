@@ -82,7 +82,7 @@ def fetch_run_report(s3_object_key: str) -> dict:
         if not os.path.exists(full_path):
             raise RuntimeError(f"Failed to fetch run report: File not found at {full_path}")
 
-        with open(full_path, "r", encoding="utf-8") as f:
+        with open(full_path, encoding="utf-8") as f:
             return json.load(f)
 
 def delete_run_reports(s3_object_keys: List[str]):
