@@ -61,6 +61,7 @@
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#bitorder">Bit order per backend</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#stat">Shot-noise test</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#reproducibility">Reproducibility</a></li>
+                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#selftest">Self-test</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#methodology">Timing/memory methodology</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#resources">Resources, queueing, timeouts</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#compilers">Compile-only services</a></li>
@@ -1028,6 +1029,78 @@
                         even when the counts are identical, and a changed adapter can change that backend's
                         output. Re-derive the verdicts on the new version rather than comparing labels.</li>
                 </ol>
+            </section>
+
+            <section id="selftest">
+                <h2>Self-test</h2>
+                <p>
+                    The self-test checks an installation against known answers: each backend's result is
+                    compared with an expected answer computed without any backend, so it fails even when
+                    every backend returns the same wrong state. <code>GET /selftest</code> returns the plan;
+                    the <code>qrosetta selftest</code> command runs it, and a script can run it the same way.
+                </p>
+                <ol>
+                    <li>Read <code>GET /selftest</code>. Its <code>jobs</code> hold two request bodies for
+                        <code>POST /run_batch_suite</code>, a statevector playlist and a measured playlist,
+                        with every field set: optimization level 0, preprocessing on, one timed run, 8,200
+                        shots, master seed 20261027 and the agreement thresholds written out. Add
+                        <code>target_simulators</code>, the backends to test, and change nothing else; the
+                        plan does not follow the server's request defaults.</li>
+                    <li>Submit both, wait for each job to finish, and read
+                        <code>GET /jobs/{job_id}/selftest-result</code> for each. It evaluates the server's
+                        own copy of the report (<code>report_source</code> <code>server_job</code>), 120
+                        requests a minute. 404 if the job is unknown or expired; 409 if it has not finished,
+                        failed before any runner ran, is an experiment, or is not a playlist of the plan.</li>
+                </ol>
+                <p>
+                    The statevector playlist has three 3-qubit circuits: <code>x q[0]</code> with two idle
+                    qubits; <code>ry(0.3)</code>, <code>ry(0.7)</code>, <code>ry(1.1)</code>, <code>cx
+                    q[0],q[1]</code>, <code>cx q[1],q[2]</code>, <code>rz(0.5) q[2]</code>, whose eight
+                    amplitudes all differ in magnitude; and GHZ-3. The expected states come from a small
+                    numpy simulator that builds each gate from its <code>qelib1.inc</code> matrix
+                    (<code>services/selftest/reference.py</code>); they are committed in
+                    <code>circuits/selftest/expected.json</code>, whose sha256 the plan reports as
+                    <code>expected_sha256</code>. A backend passes a circuit when its result is
+                    <code>ok</code>, declares <code>lsb</code> or <code>msb</code> (and the order the runner
+                    registry records, when it records one), has 2<sup>n</sup> finite amplitudes, a norm
+                    within 10<sup>-4</sup> of 1, and fidelity at least 1 − 10<sup>-5</sup> with the expected
+                    state in its declared order, both vectors normalised. For the second circuit the
+                    fidelity of the expected state with a wrong one is at most 0.834 under any qubit
+                    permutation, 0.559 under bit reversal, 0.874 with either <code>cx</code> reversed and
+                    0.795 with the <code>rz</code> sign flipped; with one gate deleted it is at most 0.984.
+                    Rounding the expected state to <code>complex64</code> changes the fidelity by less than
+                    10<sup>-7</sup>. GHZ-3 does not change under any qubit permutation, so it checks
+                    support and amplitudes, not bit order.
+                </p>
+                <p>
+                    The measured playlist runs five classical-bit probes, whose circuits put every shot on
+                    one counts key, and GHZ-3. A probe passes only when the counts are exactly
+                    <code>{key: 8200}</code> for the backend's declared order; the probes check the
+                    counts-key rules of <a href="#bitorder">Bit order per backend</a> through the API's own
+                    circuit preparation. GHZ-3 passes with only the all-0 and all-1 keys, 8,200 shots in
+                    total, and p(all-0) within 6σ of 0.5 (± 0.0331).
+                </p>
+                <p>
+                    Each result is also checked for the environment it records: CPU quota 1.0 core (FAIL
+                    otherwise), every thread variable 1 (FAIL), the VmHWM memory method (WARN for the
+                    sampling fallback), a 1,024 MiB memory limit (WARN), <code>precision</code> and
+                    <code>qubit_ordering</code> as the runner registry records them for the job's mode
+                    (FAIL; SKIP where the registry records null, as for cuQuantum's precision), a hypervisor flag (WARN: timings are not comparable with
+                    bare-metal runs), emulation (FAIL), and the image source (release PASS; built locally
+                    or pulled from another release WARN; unknown or a <code>-dirty</code> commit FAIL).
+                    A field the runners do not record gives SKIP. The job's circuits and recorded settings
+                    must equal the plan's, and every backend named in <code>target_simulators</code> must
+                    return a result for every circuit.
+                </p>
+                <p>
+                    <code>status</code> is FAIL when any row fails, else WARN when any row warns, else
+                    PASS; <code>backends</code> gives each backend's worst row. The circuits use only
+                    <code>x</code>, <code>h</code>, <code>ry</code>, <code>rz</code>, <code>cx</code> and
+                    <code>measure</code>, so a PASS says nothing about gates with
+                    <a href="#known-issues">known backend issues</a> (<code>cu3</code>, <code>cu1</code>,
+                    <code>csx</code>, <code>QubitUnitary</code>), mid-circuit measurement, larger circuits,
+                    other optimization levels or preprocessing off.
+                </p>
             </section>
 
             <section id="methodology">
