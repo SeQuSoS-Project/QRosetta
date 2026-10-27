@@ -9,6 +9,7 @@ from routers.errors import responses
 from schemas import AgreementThresholds
 from schemas.auth import EMAIL_MAX_LENGTH, PASSWORD_MAX_BYTES, PASSWORD_MIN_CHARS
 from services.preparation_limits import bundled_over_prep_limit
+from services.report_summary import outcome_catalog
 from services.request_defaults import request_defaults
 from services.server_info import server_block
 from services.security import client_address
@@ -100,6 +101,10 @@ async def get_config():
     status (and ``analysing``), ``phases`` for the job's ``phase``. A client shows a status
     missing from the map upper-cased.
 
+    ``summary_outcomes`` lists the outcome names the summaries count, ``roles`` (name ->
+    difference, not_established, runs_without_output or agreement), with the
+    ``analysis_version`` of the rule that assigns them.
+
     ``limits`` holds the bounds the run endpoints validate against: qubit caps per mode,
     ``timeout_min``/``timeout_max`` (seconds; larger requests are clamped to
     ``timeout_max``), ``timeout_default`` (every run endpoint), ``shots_min``/``shots_max``,
@@ -148,6 +153,7 @@ async def get_config():
     return JSONResponse(content={
         "server": server_block(),
         "status_labels": status_labels(),
+        "summary_outcomes": outcome_catalog(),
         "max_qubits_statevector": settings.MAX_QUBITS_STATEVECTOR,
         "max_qubits_measured": settings.MAX_QUBITS_MEASURED,
         "max_qubits_compile": settings.MAX_QUBITS_COMPILE,
