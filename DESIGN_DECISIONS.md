@@ -789,9 +789,11 @@ The target for a runner or compiler image is the newest CPython (3.13 first, els
 
 ### Client address
 
-*Rule.* Rate limits key on the last X-Forwarded-For entry, or on `X-Qrosetta-Client-Ip` with `QROSETTA_PROXY_TOKEN`.
+*Rule.* The client address (`security.client_address`, used by every rate-limit key and the exclusive-run slot) is `X-Qrosetta-Client-Ip` when the request carries the matching `QROSETTA_PROXY_TOKEN`; else the last X-Forwarded-For entry when the socket peer is a trusted proxy; else the socket peer. `QROSETTA_TRUSTED_PROXIES` lists the trusted proxies as comma-separated IP addresses, CIDR networks, host names or `*` (any peer). Unset, it is `nginx` in local mode (the compose service name, resolved on `isolated_net`) and `*` in Kubernetes mode; set and empty, no peer is trusted. A host name is resolved again when a peer outside the list sends X-Forwarded-For, at most once every 5 s, and the request waits at most 0.5 s for it, so a recreated nginx container is trusted at its new address. `GET /config` publishes nothing about the list. ([`rosetta-api/tests/unit/test_v5_06_trusted_proxies.py`](rosetta-api/tests/unit/test_v5_06_trusted_proxies.py))
 
 *Evidence (2026-10-07).* The API keyed on X-Real-IP, which the router passed through from the caller, and the hosted frontend set it to its own peer, so every visitor through that frontend shared one key.
+
+*Evidence (2026-10-28, V5-06).* From inside `pytket-qulacs-runner`, 12 failed sign-ins sent straight to `rosetta-api:8000`, each with a different X-Forwarded-For, all got 401 and none 429; without the header the 11th got 429. Every runner and compiler shares `isolated_net` with the API. nginx's address on that network is assigned per container (10.89.0.26 on the running stack), so the default names the service rather than an address. Kubernetes keeps `*` because the OpenShift router's source addresses are not fixed, so a runner Job pod there can still choose its key; set the router's network in `QROSETTA_TRUSTED_PROXIES` to close it.
 
 ### Rate-limit keys
 

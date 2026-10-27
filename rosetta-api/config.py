@@ -74,6 +74,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     SECRET_KEY: str = os.getenv("SECRET_KEY", "")
     PROXY_TOKEN: str = Field(default="", validation_alias="QROSETTA_PROXY_TOKEN")
+    TRUSTED_PROXIES: str | None = Field(default=None, validation_alias="QROSETTA_TRUSTED_PROXIES")
 
     STORAGE_MODE: str = os.getenv("STORAGE_MODE", "local")
     S3_ENDPOINT_URL: str = os.getenv("S3_ENDPOINT_URL", "https://s3.amazonaws.com")
