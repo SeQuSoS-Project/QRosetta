@@ -96,3 +96,24 @@ def test_nginx_locations_add_no_security_header_of_their_own(conf):
     for block in re.findall(r"location [^{]*\{(.*?)\n\s*\}", text, re.S):
         for name in ["Content-Security-Policy", *COMMON_HEADERS]:
             assert f"add_header {name}" not in block, (conf, name)
+
+
+def test_unhandled_errors_carry_the_headers():
+    """The fallback 500 handler runs outside the middleware stack and sends them itself."""
+    from fastapi import FastAPI
+
+    from routers.errors import register_error_handlers
+    from routers.security_headers import SecurityHeaders
+    app = FastAPI()
+    register_error_handlers(app)
+    app.add_middleware(SecurityHeaders)
+
+    @app.get("/boom")
+    def boom():
+        raise RuntimeError("boom")
+
+    r = TestClient(app, raise_server_exceptions=False).get("/boom")
+    assert r.status_code == 500
+    assert r.headers["content-security-policy"] == NON_HTML_CSP
+    for key, value in COMMON_HEADERS.items():
+        assert r.headers[key] == value

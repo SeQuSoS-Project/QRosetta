@@ -54,6 +54,12 @@ def content_security_policy(path: str, content_type: str) -> str:
     return NON_HTML_CSP
 
 
+def security_headers(path: str, content_type: str) -> dict:
+    """Every header above for a response at ``path`` of ``content_type``; the handler of
+    unhandled errors, which runs outside the middleware stack, sends them itself."""
+    return {"Content-Security-Policy": content_security_policy(path, content_type), **COMMON_HEADERS}
+
+
 class SecurityHeaders:
     """ASGI middleware adding the headers above to every HTTP response; a header the route
     set itself is kept. The share page is also sent with Cache-Control: no-store."""

@@ -15,6 +15,7 @@ from slowapi.errors import RateLimitExceeded
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from qrosetta_commons.helpers import get_logger
+from routers.security_headers import security_headers
 
 logger = get_logger("rosetta-errors")
 
@@ -205,7 +206,8 @@ async def _rate_limit_handler(request: Request, exc: RateLimitExceeded):
 
 async def _unhandled_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled error on {request.method} {request.url.path}", exc_info=exc)
-    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"},
+                        headers=security_headers(request.url.path, "application/json"))
 
 
 def register_error_handlers(app: FastAPI) -> None:
