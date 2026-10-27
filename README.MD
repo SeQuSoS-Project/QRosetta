@@ -124,13 +124,14 @@ The stack runs in two modes, selected by `EXECUTION_MODE`:
 
 ## Getting started
 
-Requires Docker Engine 20.10+ and Docker Compose v2.
+Requires Docker Engine 20.10+ or podman, with Docker Compose v2 as the compose provider (see
+[Starting and stopping](#starting-and-stopping)), and Python 3.
 
 ```bash
 git clone https://github.com/SeQuSoS-Project/qrosetta.git
 cd qrosetta
 cp .env.example .env      # the cloud credentials in it are needed only for deployment
-./scripts/safe_boot.sh    # or: docker compose up --build
+./scripts/safe_boot.sh    # builds the images, then runs ./qrosetta start
 ```
 
 The first build takes a while: it compiles dependencies for 16 separate containers.
@@ -149,6 +150,73 @@ need a rootful engine). The integration tests read the address from `QROSETTA_BA
 
 `SECRET_KEY` must be set whenever `EXECUTION_MODE` is not `local`; the API refuses to start
 without it. Locally, leaving it empty generates a random key per process.
+
+### Starting and stopping
+
+`./qrosetta` (Python 3, standard library only) starts, stops and removes the local stack:
+
+```bash
+./qrosetta build [service ...]   # build images with scripts/safe_boot.sh (default: every enabled service)
+./qrosetta start                 # start in this terminal and follow the logs
+./qrosetta start --detach        # start in the background and return
+./qrosetta status                # state and memory per service, image and data disk use, URL
+./qrosetta logs [service]        # follow the logs
+./qrosetta stop                  # standby: stop every container, keep containers, images and data
+./qrosetta remove                # remove containers and networks; keep images and data
+./qrosetta remove --images       # also remove the images (about 20 GB for a full build)
+./qrosetta remove --data         # also delete the database and saved runs; asks you to type 'delete'
+```
+
+`start` never builds. It names the services that have no image (`qrosetta build <service>`
+builds one) and starts the rest; without the nginx or API image it starts nothing. When it
+stops, it runs the exit action. On Ctrl-C it asks "Keep on standby or remove?" and takes standby
+after 10 seconds without an answer. SIGTERM and SIGHUP, which VS Code sends when a task is
+stopped or its terminal closed, put the stack on standby. `--on-exit standby|remove|ask` or
+`QROSETTA_ON_EXIT` sets the action; without a terminal, `ask` means standby. Pressing Ctrl-C
+again while the containers stop prints a warning; a third Ctrl-C stops waiting and lists the
+containers still running.
+
+On standby the containers are stopped and hold no memory; `start` brings them back in about
+10 seconds. Running and idle, the 24 containers used 3.0 to 6.1 GiB (`qrosetta status`, page
+cache included). `remove` keeps the images and the `qsimulators_rosetta_db_data` volume, which
+holds the SQLite database (accounts, saved circuits, run history) and the saved run reports. Results of jobs that were not saved are lost
+whenever the API container stops.
+
+`qrosetta` acts only on what carries two labels for its project: compose's
+`com.docker.compose.project` and `org.qrosetta.project`, which `docker-compose.yml` puts on every
+container and network. An image must carry `org.qrosetta.image.project` and
+`org.qrosetta.service` for the service it is named after, and no other tag; the data volume must
+have the name and compose labels compose gave it (compose offers to recreate, and empty, a volume
+whose labels change, so it carries no qrosetta label). Containers, networks, volumes and images
+are stopped or removed by ID; a pod only when every container in it is the stack's. Anything else
+is left alone, and `start`, `stop`, `remove` and `status` name it with the command that would
+remove it. `start` refuses while another project's container holds one of the stack's fixed
+container names, or while containers or networks of the project lack the qrosetta label.
+
+The project is `QROSETTA_PROJECT` (default `qsimulators`). `qrosetta` passes it to compose with
+`-p`, names the compose files with `-f`, and removes every `COMPOSE_*` variable from compose's
+environment, so `COMPOSE_PROJECT_NAME` in the shell or in `.env` never redirects it to another
+project. `--project-dir` or `QROSETTA_HOME` points the command at another directory holding the
+compose file.
+
+Containers and networks created before these labels existed carry only the compose label, and
+images built before them carry none. `qrosetta status` lists them; remove the containers and
+networks once with the commands it prints (images and data stay), and `qrosetta start` creates
+them again with the labels. `remove --images` removes only images built after the change; for
+older ones it prints the `rmi` command.
+
+Docker and podman both work; `QROSETTA_ENGINE=docker|podman` chooses one when both are
+installed. Either way the compose provider must be Docker Compose v2: `docker compose version`
+or `podman compose version` prints "Docker Compose version v2..." or later. With Docker, install
+the `docker-compose-plugin` package (https://docs.docker.com/compose/install/linux/). With
+podman, download the `docker-compose` binary for your platform from
+https://github.com/docker/compose/releases, save it as `~/.docker/cli-plugins/docker-compose` and
+make it executable; `podman compose` then uses it instead of podman-compose, which `qrosetta`
+does not support.
+
+In VS Code, *Terminal → Run Task → Quantum Rosetta: start* (`.vscode/tasks.json`) runs
+`qrosetta start` in a terminal panel; stopping the task puts the stack on standby. The other
+tasks run `stop`, `remove` and `status`.
 
 ### Deploying
 
@@ -181,6 +249,8 @@ run them; see the README there.
 ```text
 .
 ├── docker-compose.yml       Orchestration, healthchecks, resource limits
+├── qrosetta                 Start, stop and remove the local stack (runs qrosetta_cli/)
+├── qrosetta_cli/            The command's package (standard library only)
 ├── nginx/                   Reverse proxy for the local stack
 ├── infra/                   Rahti manifests and the Cloud Run frontend image
 ├── rosetta-api/             The orchestrator
@@ -226,7 +296,8 @@ This work has been supported by the Business Finland through project SeQuSoS (Gr
 ## Contributing
 
 See `CONTRIBUTING.md` for the full guide to adding a simulator backend or an algorithm
-template.
+template, and `DESIGN_DECISIONS.md` for the measurement and analysis rules with the evidence
+behind each.
 
 ## Versions
 

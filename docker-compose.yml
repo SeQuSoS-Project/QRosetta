@@ -1,3 +1,11 @@
+# The project name and the org.qrosetta.project label come from QROSETTA_PROJECT (default
+# qsimulators); qrosetta stops and removes only what carries both. Volumes keep compose's own
+# labels: compose offers to recreate, and empty, a volume whose labels change.
+name: ${QROSETTA_PROJECT:-qsimulators}
+
+x-qrosetta-labels: &qrosetta-labels
+  org.qrosetta.project: ${QROSETTA_PROJECT:-qsimulators}
+
 services:
   # --- Service 1: Nginx ( The Bridge ) ---
   nginx:
@@ -6,6 +14,10 @@ services:
       dockerfile: ./nginx/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      labels:
+        org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+        org.qrosetta.service: nginx
+    labels: *qrosetta-labels
     container_name: nginx-reverse-proxy
     ports:
       - "${QROSETTA_HTTP_BIND:-127.0.0.1:8080}:80"
@@ -28,6 +40,10 @@ services:
       dockerfile: ./rosetta-api/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      labels:
+        org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+        org.qrosetta.service: api
+    labels: *qrosetta-labels
     container_name: rosetta-api
     environment:
       - RUNNER_TIMEOUT_SEC=${RUNNER_TIMEOUT_SEC:-300}
@@ -62,6 +78,10 @@ services:
       dockerfile: ./runners/pytket-qiskit-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      labels:
+        org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+        org.qrosetta.service: pytket_qiskit_runner
+    labels: *qrosetta-labels
     container_name: pytket-qiskit-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -86,6 +106,10 @@ services:
       dockerfile: ./runners/pytket-cirq-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      labels:
+        org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+        org.qrosetta.service: pytket_cirq_runner
+    labels: *qrosetta-labels
     container_name: pytket-cirq-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -110,6 +134,10 @@ services:
       dockerfile: ./runners/pytket-qulacs-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      labels:
+        org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+        org.qrosetta.service: pytket_qulacs_runner
+    labels: *qrosetta-labels
     container_name: pytket-qulacs-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -134,6 +162,10 @@ services:
       dockerfile: ./runners/pytket-braket-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      labels:
+        org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+        org.qrosetta.service: pytket_braket_runner
+    labels: *qrosetta-labels
     container_name: pytket-braket-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -158,6 +190,10 @@ services:
       dockerfile: ./runners/pytket-projectq-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      labels:
+        org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+        org.qrosetta.service: pytket_projectq_runner
+    labels: *qrosetta-labels
     container_name: pytket-projectq-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -182,6 +218,10 @@ services:
       dockerfile: ./runners/pytket-quest-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      labels:
+        org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+        org.qrosetta.service: pytket_quest_runner
+    labels: *qrosetta-labels
     container_name: pytket-quest-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -206,6 +246,10 @@ services:
       dockerfile: ./runners/pennylane-lightning-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      labels:
+        org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+        org.qrosetta.service: pennylane_lightning_runner
+    labels: *qrosetta-labels
     container_name: pennylane-lightning-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -230,6 +274,10 @@ services:
       dockerfile: ./runners/pennylane-default-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      labels:
+        org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+        org.qrosetta.service: pennylane_default_runner
+    labels: *qrosetta-labels
     container_name: pennylane-default-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -254,6 +302,10 @@ services:
       dockerfile: ./runners/qibo-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      labels:
+        org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+        org.qrosetta.service: qibo_runner
+    labels: *qrosetta-labels
     container_name: qibo-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -278,6 +330,10 @@ services:
       dockerfile: ./runners/qrisp-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      labels:
+        org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+        org.qrosetta.service: qrisp_runner
+    labels: *qrosetta-labels
     container_name: qrisp-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -302,6 +358,10 @@ services:
       dockerfile: ./runners/myqlm-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      labels:
+        org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+        org.qrosetta.service: myqlm_runner
+    labels: *qrosetta-labels
     container_name: myqlm-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -326,6 +386,10 @@ services:
       dockerfile: ./runners/pyquil-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      labels:
+        org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+        org.qrosetta.service: pyquil_runner
+    labels: *qrosetta-labels
     container_name: pyquil-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -350,6 +414,10 @@ services:
       dockerfile: ./runners/qsim-cirq-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      labels:
+        org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+        org.qrosetta.service: qsim_cirq_runner
+    labels: *qrosetta-labels
     container_name: qsim-cirq-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -374,6 +442,10 @@ services:
       dockerfile: ./runners/torch-quantum-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      labels:
+        org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+        org.qrosetta.service: torch_quantum_runner
+    labels: *qrosetta-labels
     container_name: torch-quantum-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -398,6 +470,10 @@ services:
       dockerfile: ./runners/quimb-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      labels:
+        org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+        org.qrosetta.service: quimb_runner
+    labels: *qrosetta-labels
     container_name: quimb-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -422,6 +498,10 @@ services:
       dockerfile: ./runners/cuquantum-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      labels:
+        org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+        org.qrosetta.service: cuquantum_runner
+    labels: *qrosetta-labels
     container_name: cuquantum-runner
     environment:
       - OMP_NUM_THREADS=1
@@ -448,6 +528,10 @@ services:
       dockerfile: ./compilers/bqskit-compiler/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      labels:
+        org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+        org.qrosetta.service: bqskit_compiler
+    labels: *qrosetta-labels
     container_name: bqskit-compiler
     environment:
       - OMP_NUM_THREADS=1
@@ -471,6 +555,10 @@ services:
       dockerfile: ./compilers/pyzx-compiler/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      labels:
+        org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+        org.qrosetta.service: pyzx_compiler
+    labels: *qrosetta-labels
     container_name: pyzx-compiler
     environment:
       - OMP_NUM_THREADS=1
@@ -494,6 +582,10 @@ services:
       dockerfile: ./compilers/qmap-compiler/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      labels:
+        org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+        org.qrosetta.service: qmap_compiler
+    labels: *qrosetta-labels
     container_name: qmap-compiler
     environment:
       - OMP_NUM_THREADS=1
@@ -517,6 +609,10 @@ services:
       dockerfile: ./compilers/cirq-compiler/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      labels:
+        org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+        org.qrosetta.service: cirq_compiler
+    labels: *qrosetta-labels
     container_name: cirq-compiler
     environment:
       - OMP_NUM_THREADS=1
@@ -540,6 +636,10 @@ services:
       dockerfile: ./compilers/staq-compiler/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      labels:
+        org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+        org.qrosetta.service: staq_compiler
+    labels: *qrosetta-labels
     container_name: staq-compiler
     environment:
       - OMP_NUM_THREADS=1
@@ -563,6 +663,10 @@ services:
       dockerfile: ./compilers/qsynth-compiler/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      labels:
+        org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+        org.qrosetta.service: qsynth_compiler
+    labels: *qrosetta-labels
     container_name: qsynth-compiler
     environment:
       - OMP_NUM_THREADS=1
@@ -586,6 +690,10 @@ services:
       dockerfile: ./compilers/quartz-compiler/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      labels:
+        org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+        org.qrosetta.service: quartz_compiler
+    labels: *qrosetta-labels
     container_name: quartz-compiler
     environment:
       - OMP_NUM_THREADS=1
@@ -609,6 +717,10 @@ services:
       dockerfile: ./compilers/synthetiq-compiler/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      labels:
+        org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+        org.qrosetta.service: synthetiq_compiler
+    labels: *qrosetta-labels
     container_name: synthetiq-compiler
     environment:
       - OMP_NUM_THREADS=1
@@ -630,8 +742,10 @@ services:
 networks:
   public_net:
     driver: bridge
+    labels: *qrosetta-labels
   isolated_net:
     internal: true
+    labels: *qrosetta-labels
 
 # --- VOLUMES ---
 volumes:

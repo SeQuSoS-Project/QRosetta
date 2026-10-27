@@ -363,8 +363,8 @@ table in `rosetta-api/static/docs.html` (`#bitorder`).
 
   `PYTHONPATH` must include `../shared`: an older `qrosetta_commons` installed in the
   virtualenv otherwise shadows the working copy.
-- Build and start the runner (`docker compose build my_sdk_runner && docker compose up -d
-  my_sdk_runner`). Runners expose no port and ship no curl, so exercise them from inside the
+- Build and start the runner (`./qrosetta build my_sdk_runner && ./qrosetta start --detach
+  my_sdk_runner`, which also starts nginx and the API). Runners expose no port and ship no curl, so exercise them from inside the
   container:
 
   ```bash

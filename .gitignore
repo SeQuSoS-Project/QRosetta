@@ -42,8 +42,9 @@ dist/
 .DS_Store
 Thumbs.db
 
-# VS Code
-.vscode/
+# VS Code: only the shared tasks (qrosetta start/stop/remove/status) are tracked
+.vscode/*
+!.vscode/tasks.json
 
 # Project Specific & Reports
 export/

@@ -1,0 +1,12 @@
+#!/usr/bin/env python3
+"""Runs the Quantum Rosetta command-line tool (qrosetta_cli) from this checkout."""
+
+import os
+import sys
+
+CHECKOUT = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, CHECKOUT)
+
+from qrosetta_cli.cli import main  # noqa: E402
+
+sys.exit(main(checkout=CHECKOUT))
