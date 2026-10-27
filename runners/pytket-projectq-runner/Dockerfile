@@ -40,8 +40,14 @@ RUN chown -R appuser:appuser /home/appuser/app && \
     chgrp -R 0 /home/appuser && \
     chmod -R g=u,o=rX /home/appuser
 ENV HOME=/home/appuser
+COPY runners/pytket-projectq-runner/Dockerfile runners/pytket-projectq-runner/requirements.lock /usr/local/share/qrosetta-build/
 ARG QROSETTA_GIT_SHA=unknown
 ENV QROSETTA_IMAGE_GIT_SHA=${QROSETTA_GIT_SHA}
+ARG QROSETTA_IMAGE_SOURCE=unknown
+ARG QROSETTA_RELEASE=
+RUN mkdir -p /usr/local/share/qrosetta-image \
+    && printf 'source=%s\nrelease=%s\ngit_sha=%s\n' "$QROSETTA_IMAGE_SOURCE" "$QROSETTA_RELEASE" "$QROSETTA_GIT_SHA" \
+       > /usr/local/share/qrosetta-image/identity
 USER appuser
 
 # Original CMD (Preserves consistency with your other runners)

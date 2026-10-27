@@ -8,6 +8,7 @@ import os
 import sys
 from pathlib import Path
 
+from qrosetta_commons import image_identity as _image_identity
 from qrosetta_commons.compile_errors import CompileRefused, OutputRejected
 from qrosetta_commons.cpu import apply_cpu_affinity
 from qrosetta_commons.helpers import (
@@ -132,6 +133,7 @@ def register_compiler_endpoint(app, process_compile, max_concurrent=None) -> Non
     if max_concurrent is None:
         max_concurrent = int(os.getenv("COMPILER_MAX_CONCURRENT", "2"))
     slots = ExecutionSlots(max_concurrent)
+    app.add_event_handler("startup", _image_identity.load)
 
     @app.get("/capabilities")
     async def compiler_capabilities():
@@ -205,6 +207,7 @@ def run_compiler_cli_main(app, process_compile, cli_name: str, levels=(), equiva
         if isinstance(result, dict):
             result["queue_wait_sec"] = 0.0
             _stamp_code_sha(result, process_compile)
+            _image_identity.stamp(result)
             batch = batch_environment()
             if batch:
                 result.setdefault("batch_environment", batch)

@@ -78,6 +78,8 @@ services:
       dockerfile: ./runners/pytket-qiskit-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+        - QROSETTA_IMAGE_SOURCE=${QROSETTA_IMAGE_SOURCE:-built_locally}
+        - QROSETTA_RELEASE=${QROSETTA_RELEASE:-}
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: pytket_qiskit_runner
@@ -106,6 +108,8 @@ services:
       dockerfile: ./runners/pytket-cirq-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+        - QROSETTA_IMAGE_SOURCE=${QROSETTA_IMAGE_SOURCE:-built_locally}
+        - QROSETTA_RELEASE=${QROSETTA_RELEASE:-}
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: pytket_cirq_runner
@@ -134,6 +138,8 @@ services:
       dockerfile: ./runners/pytket-qulacs-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+        - QROSETTA_IMAGE_SOURCE=${QROSETTA_IMAGE_SOURCE:-built_locally}
+        - QROSETTA_RELEASE=${QROSETTA_RELEASE:-}
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: pytket_qulacs_runner
@@ -162,6 +168,8 @@ services:
       dockerfile: ./runners/pytket-braket-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+        - QROSETTA_IMAGE_SOURCE=${QROSETTA_IMAGE_SOURCE:-built_locally}
+        - QROSETTA_RELEASE=${QROSETTA_RELEASE:-}
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: pytket_braket_runner
@@ -190,6 +198,8 @@ services:
       dockerfile: ./runners/pytket-projectq-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+        - QROSETTA_IMAGE_SOURCE=${QROSETTA_IMAGE_SOURCE:-built_locally}
+        - QROSETTA_RELEASE=${QROSETTA_RELEASE:-}
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: pytket_projectq_runner
@@ -218,6 +228,8 @@ services:
       dockerfile: ./runners/pytket-quest-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+        - QROSETTA_IMAGE_SOURCE=${QROSETTA_IMAGE_SOURCE:-built_locally}
+        - QROSETTA_RELEASE=${QROSETTA_RELEASE:-}
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: pytket_quest_runner
@@ -246,6 +258,8 @@ services:
       dockerfile: ./runners/pennylane-lightning-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+        - QROSETTA_IMAGE_SOURCE=${QROSETTA_IMAGE_SOURCE:-built_locally}
+        - QROSETTA_RELEASE=${QROSETTA_RELEASE:-}
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: pennylane_lightning_runner
@@ -274,6 +288,8 @@ services:
       dockerfile: ./runners/pennylane-default-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+        - QROSETTA_IMAGE_SOURCE=${QROSETTA_IMAGE_SOURCE:-built_locally}
+        - QROSETTA_RELEASE=${QROSETTA_RELEASE:-}
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: pennylane_default_runner
@@ -302,6 +318,8 @@ services:
       dockerfile: ./runners/qibo-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+        - QROSETTA_IMAGE_SOURCE=${QROSETTA_IMAGE_SOURCE:-built_locally}
+        - QROSETTA_RELEASE=${QROSETTA_RELEASE:-}
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: qibo_runner
@@ -330,6 +348,8 @@ services:
       dockerfile: ./runners/qrisp-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+        - QROSETTA_IMAGE_SOURCE=${QROSETTA_IMAGE_SOURCE:-built_locally}
+        - QROSETTA_RELEASE=${QROSETTA_RELEASE:-}
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: qrisp_runner
@@ -358,6 +378,8 @@ services:
       dockerfile: ./runners/myqlm-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+        - QROSETTA_IMAGE_SOURCE=${QROSETTA_IMAGE_SOURCE:-built_locally}
+        - QROSETTA_RELEASE=${QROSETTA_RELEASE:-}
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: myqlm_runner
@@ -386,6 +408,8 @@ services:
       dockerfile: ./runners/pyquil-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+        - QROSETTA_IMAGE_SOURCE=${QROSETTA_IMAGE_SOURCE:-built_locally}
+        - QROSETTA_RELEASE=${QROSETTA_RELEASE:-}
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: pyquil_runner
@@ -414,6 +438,8 @@ services:
       dockerfile: ./runners/qsim-cirq-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+        - QROSETTA_IMAGE_SOURCE=${QROSETTA_IMAGE_SOURCE:-built_locally}
+        - QROSETTA_RELEASE=${QROSETTA_RELEASE:-}
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: qsim_cirq_runner
@@ -442,6 +468,8 @@ services:
       dockerfile: ./runners/torch-quantum-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+        - QROSETTA_IMAGE_SOURCE=${QROSETTA_IMAGE_SOURCE:-built_locally}
+        - QROSETTA_RELEASE=${QROSETTA_RELEASE:-}
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: torch_quantum_runner
@@ -470,6 +498,8 @@ services:
       dockerfile: ./runners/quimb-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+        - QROSETTA_IMAGE_SOURCE=${QROSETTA_IMAGE_SOURCE:-built_locally}
+        - QROSETTA_RELEASE=${QROSETTA_RELEASE:-}
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: quimb_runner
@@ -498,6 +528,8 @@ services:
       dockerfile: ./runners/cuquantum-runner/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+        - QROSETTA_IMAGE_SOURCE=${QROSETTA_IMAGE_SOURCE:-built_locally}
+        - QROSETTA_RELEASE=${QROSETTA_RELEASE:-}
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: cuquantum_runner
@@ -528,6 +560,8 @@ services:
       dockerfile: ./compilers/bqskit-compiler/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+        - QROSETTA_IMAGE_SOURCE=${QROSETTA_IMAGE_SOURCE:-built_locally}
+        - QROSETTA_RELEASE=${QROSETTA_RELEASE:-}
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: bqskit_compiler
@@ -555,6 +589,8 @@ services:
       dockerfile: ./compilers/pyzx-compiler/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+        - QROSETTA_IMAGE_SOURCE=${QROSETTA_IMAGE_SOURCE:-built_locally}
+        - QROSETTA_RELEASE=${QROSETTA_RELEASE:-}
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: pyzx_compiler
@@ -582,6 +618,8 @@ services:
       dockerfile: ./compilers/qmap-compiler/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+        - QROSETTA_IMAGE_SOURCE=${QROSETTA_IMAGE_SOURCE:-built_locally}
+        - QROSETTA_RELEASE=${QROSETTA_RELEASE:-}
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: qmap_compiler
@@ -609,6 +647,8 @@ services:
       dockerfile: ./compilers/cirq-compiler/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+        - QROSETTA_IMAGE_SOURCE=${QROSETTA_IMAGE_SOURCE:-built_locally}
+        - QROSETTA_RELEASE=${QROSETTA_RELEASE:-}
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: cirq_compiler
@@ -636,6 +676,8 @@ services:
       dockerfile: ./compilers/staq-compiler/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+        - QROSETTA_IMAGE_SOURCE=${QROSETTA_IMAGE_SOURCE:-built_locally}
+        - QROSETTA_RELEASE=${QROSETTA_RELEASE:-}
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: staq_compiler
@@ -663,6 +705,8 @@ services:
       dockerfile: ./compilers/qsynth-compiler/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+        - QROSETTA_IMAGE_SOURCE=${QROSETTA_IMAGE_SOURCE:-built_locally}
+        - QROSETTA_RELEASE=${QROSETTA_RELEASE:-}
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: qsynth_compiler
@@ -690,6 +734,8 @@ services:
       dockerfile: ./compilers/quartz-compiler/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+        - QROSETTA_IMAGE_SOURCE=${QROSETTA_IMAGE_SOURCE:-built_locally}
+        - QROSETTA_RELEASE=${QROSETTA_RELEASE:-}
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: quartz_compiler
@@ -717,6 +763,8 @@ services:
       dockerfile: ./compilers/synthetiq-compiler/Dockerfile
       args:
         - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+        - QROSETTA_IMAGE_SOURCE=${QROSETTA_IMAGE_SOURCE:-built_locally}
+        - QROSETTA_RELEASE=${QROSETTA_RELEASE:-}
       labels:
         org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
         org.qrosetta.service: synthetiq_compiler

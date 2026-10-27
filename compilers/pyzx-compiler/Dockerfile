@@ -20,6 +20,11 @@ RUN chown -R appuser:appuser /home/appuser/app && \
 ENV HOME=/home/appuser
 ARG QROSETTA_GIT_SHA=unknown
 ENV QROSETTA_IMAGE_GIT_SHA=${QROSETTA_GIT_SHA}
+ARG QROSETTA_IMAGE_SOURCE=unknown
+ARG QROSETTA_RELEASE=
+RUN mkdir -p /usr/local/share/qrosetta-image \
+    && printf 'source=%s\nrelease=%s\ngit_sha=%s\n' "$QROSETTA_IMAGE_SOURCE" "$QROSETTA_RELEASE" "$QROSETTA_GIT_SHA" \
+       > /usr/local/share/qrosetta-image/identity
 ENV PYTHONHASHSEED=0
 USER appuser
 

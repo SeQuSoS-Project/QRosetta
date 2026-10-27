@@ -267,6 +267,12 @@ Follow the existing pattern (`runners/qibo-runner/Dockerfile` is a minimal examp
   SDK's own dependencies.
 - End with the same `gunicorn` + `uvicorn.workers.UvicornWorker` command line the other runners
   use.
+- Copy the Dockerfile and `requirements.lock` to `/usr/local/share/qrosetta-build/`, and end with
+  the `ARG QROSETTA_GIT_SHA` / `QROSETTA_IMAGE_SOURCE` / `QROSETTA_RELEASE` lines and the `RUN`
+  that writes `/usr/local/share/qrosetta-image/identity`, before `USER appuser`, as the other
+  runners do (results report them as `build_files` and `image_identity`; crates include the lock
+  file only when its hash matches). Pass the source and release as build arguments in the compose
+  block, never as `ENV`. `rosetta-api/tests/unit/test_image_identity.py` checks both.
 - Do not install curl or wget.
 
 If your SDK needs system packages (a C++ toolchain, BLAS, OpenMP), install them via `apt-get`
@@ -324,6 +330,10 @@ my_sdk_runner:
   build:
     context: .
     dockerfile: ./runners/my-sdk-runner/Dockerfile
+    args:
+      - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
+      - QROSETTA_IMAGE_SOURCE=${QROSETTA_IMAGE_SOURCE:-built_locally}
+      - QROSETTA_RELEASE=${QROSETTA_RELEASE:-}
   container_name: my-sdk-runner
   environment:
     - OMP_NUM_THREADS=1
