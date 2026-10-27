@@ -1,0 +1,8343 @@
+{
+ "api_levels": [
+  1,
+  1
+ ],
+ "routes": {
+  "GET /algorithms": {
+   "parameters": {},
+   "request": null,
+   "response": {
+    "media": [
+     "application/json"
+    ],
+    "schema": {
+     "items": {
+      "properties": {
+       "default_qubits": {
+        "type": [
+         "integer"
+        ]
+       },
+       "description": {
+        "type": [
+         "string"
+        ]
+       },
+       "id": {
+        "type": [
+         "string"
+        ]
+       },
+       "max_qubits": {
+        "type": [
+         "integer"
+        ]
+       },
+       "max_qubits_measured": {
+        "type": [
+         "integer"
+        ]
+       },
+       "max_qubits_statevector": {
+        "type": [
+         "integer"
+        ]
+       },
+       "min_qubits": {
+        "type": [
+         "integer"
+        ]
+       },
+       "name": {
+        "type": [
+         "string"
+        ]
+       }
+      },
+      "required": [
+       "default_qubits",
+       "description",
+       "id",
+       "max_qubits",
+       "max_qubits_measured",
+       "max_qubits_statevector",
+       "min_qubits",
+       "name"
+      ],
+      "type": [
+       "object"
+      ]
+     },
+     "type": [
+      "array"
+     ]
+    },
+    "status": 200
+   }
+  },
+  "GET /auth/me": {
+   "parameters": {},
+   "request": null,
+   "response": {
+    "media": [
+     "application/json"
+    ],
+    "schema": {
+     "properties": {
+      "auth_provider": {
+       "type": [
+        "string"
+       ]
+      },
+      "created_at": {
+       "type": [
+        "string"
+       ]
+      },
+      "email": {
+       "type": [
+        "string"
+       ]
+      },
+      "id": {
+       "type": [
+        "integer"
+       ]
+      },
+      "is_active": {
+       "type": [
+        "boolean"
+       ]
+      }
+     },
+     "required": [
+      "auth_provider",
+      "created_at",
+      "email",
+      "id",
+      "is_active"
+     ],
+     "type": [
+      "object"
+     ]
+    },
+    "status": 200
+   }
+  },
+  "GET /benchmarks/mqt": {
+   "parameters": {
+    "query:algorithm": {
+     "required": true,
+     "schema": {
+      "type": [
+       "string"
+      ]
+     }
+    },
+    "query:qubits": {
+     "required": false,
+     "schema": {
+      "type": [
+       "integer"
+      ]
+     }
+    }
+   },
+   "request": null,
+   "response": {
+    "media": [
+     "application/json"
+    ],
+    "schema": {
+     "properties": {
+      "qasm": {
+       "type": [
+        "string"
+       ]
+      }
+     },
+     "required": [
+      "qasm"
+     ],
+     "type": [
+      "object"
+     ]
+    },
+    "status": 200
+   }
+  },
+  "GET /benchmarks/mqt/list": {
+   "parameters": {},
+   "request": null,
+   "response": {
+    "media": [
+     "application/json"
+    ],
+    "schema": {
+     "additionalProperties": {
+      "items": {
+       "type": [
+        "integer"
+       ]
+      },
+      "type": [
+       "array"
+      ]
+     },
+     "type": [
+      "object"
+     ]
+    },
+    "status": 200
+   }
+  },
+  "GET /benchmarks/qasmbench": {
+   "parameters": {
+    "query:circuit": {
+     "required": true,
+     "schema": {
+      "type": [
+       "string"
+      ]
+     }
+    }
+   },
+   "request": null,
+   "response": {
+    "media": [
+     "application/json"
+    ],
+    "schema": {
+     "properties": {
+      "qasm": {
+       "type": [
+        "string"
+       ]
+      }
+     },
+     "required": [
+      "qasm"
+     ],
+     "type": [
+      "object"
+     ]
+    },
+    "status": 200
+   }
+  },
+  "GET /benchmarks/qasmbench/list": {
+   "parameters": {},
+   "request": null,
+   "response": {
+    "media": [
+     "application/json"
+    ],
+    "schema": {
+     "items": {
+      "type": [
+       "string"
+      ]
+     },
+     "type": [
+      "array"
+     ]
+    },
+    "status": 200
+   }
+  },
+  "GET /compilers": {
+   "parameters": {
+    "query:fresh": {
+     "required": false,
+     "schema": {
+      "type": [
+       "boolean"
+      ]
+     }
+    }
+   },
+   "request": null,
+   "response": {
+    "media": [
+     "application/json"
+    ],
+    "schema": {
+     "items": {
+      "properties": {
+       "available": {
+        "type": [
+         "boolean"
+        ]
+       },
+       "backend": {
+        "type": [
+         "null",
+         "string"
+        ]
+       },
+       "default_selected": {
+        "type": [
+         "boolean"
+        ]
+       },
+       "enabled": {
+        "type": [
+         "boolean"
+        ]
+       },
+       "error_kind": {
+        "type": [
+         "null",
+         "string"
+        ]
+       },
+       "fresh": {
+        "type": [
+         "boolean",
+         "null"
+        ]
+       },
+       "id": {
+        "type": [
+         "string"
+        ]
+       },
+       "name": {
+        "type": [
+         "string"
+        ]
+       },
+       "optimization_levels": {
+        "additionalProperties": {
+         "type": [
+          "string"
+         ]
+        },
+        "type": [
+         "object"
+        ]
+       },
+       "probed_at": {
+        "type": [
+         "null",
+         "string"
+        ]
+       },
+       "profiles": {
+        "items": {
+         "type": [
+          "string"
+         ]
+        },
+        "type": [
+         "array"
+        ]
+       },
+       "reason": {
+        "type": [
+         "null",
+         "string"
+        ]
+       },
+       "unavailable_reason": {
+        "type": [
+         "null",
+         "string"
+        ]
+       },
+       "version": {
+        "type": [
+         "null",
+         "string"
+        ]
+       },
+       "versions": {
+        "type": [
+         "null",
+         "object"
+        ]
+       }
+      },
+      "required": [
+       "available",
+       "backend",
+       "default_selected",
+       "enabled",
+       "id",
+       "name",
+       "optimization_levels",
+       "profiles",
+       "unavailable_reason",
+       "version",
+       "versions"
+      ],
+      "type": [
+       "object"
+      ]
+     },
+     "type": [
+      "array"
+     ]
+    },
+    "status": 200
+   }
+  },
+  "GET /config": {
+   "parameters": {},
+   "request": null,
+   "response": {
+    "media": [
+     "application/json"
+    ],
+    "schema": {
+     "properties": {
+      "agreement_threshold_defaults": {
+       "properties": {
+        "fidelity_tolerance": {
+         "type": [
+          "number"
+         ]
+        },
+        "hellinger_threshold": {
+         "type": [
+          "number"
+         ]
+        },
+        "js_threshold": {
+         "type": [
+          "number"
+         ]
+        },
+        "norm_tolerance": {
+         "type": [
+          "number"
+         ]
+        },
+        "phase_tolerance": {
+         "type": [
+          "number"
+         ]
+        }
+       },
+       "required": [
+        "fidelity_tolerance",
+        "hellinger_threshold",
+        "js_threshold",
+        "norm_tolerance",
+        "phase_tolerance"
+       ],
+       "type": [
+        "object"
+       ]
+      },
+      "bundled_over_prep_limit": {
+       "items": {
+        "properties": {
+         "algorithm": {
+          "type": [
+           "string"
+          ]
+         },
+         "qubits": {
+          "type": [
+           "integer"
+          ]
+         },
+         "source": {
+          "type": [
+           "string"
+          ]
+         }
+        },
+        "required": [
+         "algorithm",
+         "qubits",
+         "source"
+        ],
+        "type": [
+         "object"
+        ]
+       },
+       "type": [
+        "array"
+       ]
+      },
+      "bypass_limits_requires_account": {
+       "type": [
+        "boolean"
+       ]
+      },
+      "default_n_shots": {
+       "type": [
+        "integer"
+       ]
+      },
+      "exclusive": {
+       "properties": {
+        "enabled": {
+         "type": [
+          "boolean"
+         ]
+        },
+        "exclusive_running": {
+         "type": [
+          "boolean"
+         ]
+        },
+        "exclusive_waiting": {
+         "type": [
+          "integer"
+         ]
+        },
+        "max_wait_sec": {
+         "type": [
+          "number"
+         ]
+        },
+        "shared_running": {
+         "type": [
+          "integer"
+         ]
+        }
+       },
+       "required": [
+        "enabled",
+        "exclusive_running",
+        "exclusive_waiting",
+        "max_wait_sec",
+        "shared_running"
+       ],
+       "type": [
+        "object"
+       ]
+      },
+      "execution_mode": {
+       "type": [
+        "string"
+       ]
+      },
+      "limits": {
+       "properties": {
+        "access_token_expire_sec": {
+         "type": [
+          "integer"
+         ]
+        },
+        "email_max_length": {
+         "type": [
+          "integer"
+         ]
+        },
+        "job_evictable_after_sec": {
+         "type": [
+          "number"
+         ]
+        },
+        "job_storage_max_mib": {
+         "type": [
+          "number"
+         ]
+        },
+        "job_storage_min_free_mib": {
+         "type": [
+          "number"
+         ]
+        },
+        "job_ttl_sec": {
+         "type": [
+          "number"
+         ]
+        },
+        "login_rate_limit": {
+         "type": [
+          "string"
+         ]
+        },
+        "max_batch_tasks": {
+         "type": [
+          "integer"
+         ]
+        },
+        "max_expanded_gates": {
+         "type": [
+          "integer"
+         ]
+        },
+        "max_experiment_cells": {
+         "type": [
+          "integer"
+         ]
+        },
+        "max_export_items": {
+         "type": [
+          "integer"
+         ]
+        },
+        "max_label_length": {
+         "type": [
+          "integer"
+         ]
+        },
+        "max_nested_gate_calls": {
+         "type": [
+          "integer"
+         ]
+        },
+        "max_plan_request_bytes": {
+         "type": [
+          "integer"
+         ]
+        },
+        "max_qasm_gate_statements": {
+         "type": [
+          "integer"
+         ]
+        },
+        "max_qubits_compile": {
+         "type": [
+          "integer"
+         ]
+        },
+        "max_qubits_measured": {
+         "type": [
+          "integer"
+         ]
+        },
+        "max_qubits_statevector": {
+         "type": [
+          "integer"
+         ]
+        },
+        "max_request_bytes": {
+         "type": [
+          "integer"
+         ]
+        },
+        "password_max_bytes": {
+         "type": [
+          "integer"
+         ]
+        },
+        "password_min_chars": {
+         "type": [
+          "integer"
+         ]
+        },
+        "plan_rate_limit": {
+         "type": [
+          "string"
+         ]
+        },
+        "prep_max_mib": {
+         "type": [
+          "number"
+         ]
+        },
+        "prep_timeout_sec": {
+         "type": [
+          "number"
+         ]
+        },
+        "register_rate_limit": {
+         "type": [
+          "string"
+         ]
+        },
+        "run_rate_limit": {
+         "type": [
+          "string"
+         ]
+        },
+        "shots_default": {
+         "type": [
+          "integer"
+         ]
+        },
+        "shots_max": {
+         "type": [
+          "integer"
+         ]
+        },
+        "shots_min": {
+         "type": [
+          "integer"
+         ]
+        },
+        "timeout_default": {
+         "type": [
+          "number"
+         ]
+        },
+        "timeout_max": {
+         "type": [
+          "number"
+         ]
+        },
+        "timeout_min": {
+         "type": [
+          "number"
+         ]
+        },
+        "timing_repeats_max": {
+         "type": [
+          "integer"
+         ]
+        }
+       },
+       "required": [
+        "access_token_expire_sec",
+        "email_max_length",
+        "job_evictable_after_sec",
+        "job_storage_max_mib",
+        "job_storage_min_free_mib",
+        "job_ttl_sec",
+        "login_rate_limit",
+        "max_batch_tasks",
+        "max_expanded_gates",
+        "max_experiment_cells",
+        "max_export_items",
+        "max_label_length",
+        "max_nested_gate_calls",
+        "max_plan_request_bytes",
+        "max_qasm_gate_statements",
+        "max_qubits_compile",
+        "max_qubits_measured",
+        "max_qubits_statevector",
+        "max_request_bytes",
+        "password_max_bytes",
+        "password_min_chars",
+        "plan_rate_limit",
+        "prep_max_mib",
+        "prep_timeout_sec",
+        "register_rate_limit",
+        "run_rate_limit",
+        "shots_default",
+        "shots_max",
+        "shots_min",
+        "timeout_default",
+        "timeout_max",
+        "timeout_min",
+        "timing_repeats_max"
+       ],
+       "type": [
+        "object"
+       ]
+      },
+      "max_qasm_gates": {
+       "type": [
+        "integer"
+       ]
+      },
+      "max_qasm_size": {
+       "type": [
+        "integer"
+       ]
+      },
+      "max_qubits_compile": {
+       "type": [
+        "integer"
+       ]
+      },
+      "max_qubits_measured": {
+       "type": [
+        "integer"
+       ]
+      },
+      "max_qubits_statevector": {
+       "type": [
+        "integer"
+       ]
+      },
+      "max_runs_per_runner": {
+       "type": [
+        "integer"
+       ]
+      },
+      "max_total_runs": {
+       "type": [
+        "integer"
+       ]
+      },
+      "queue_max_wait_sec": {
+       "type": [
+        "number"
+       ]
+      },
+      "request_defaults": {
+       "properties": {
+        "agreement_thresholds": {
+         "type": [
+          "object"
+         ]
+        },
+        "compile_only": {
+         "type": [
+          "object"
+         ]
+        },
+        "requests": {
+         "additionalProperties": {
+          "type": [
+           "object"
+          ]
+         },
+         "type": [
+          "object"
+         ]
+        }
+       },
+       "required": [
+        "agreement_thresholds",
+        "compile_only",
+        "requests"
+       ],
+       "type": [
+        "object"
+       ]
+      },
+      "server": {
+       "properties": {
+        "analysis_version": {
+         "type": [
+          "string"
+         ]
+        },
+        "api_levels": {
+         "items": {
+          "type": [
+           "integer"
+          ]
+         },
+         "type": [
+          "array"
+         ]
+        },
+        "features": {
+         "additionalProperties": {
+          "type": [
+           "integer"
+          ]
+         },
+         "type": [
+          "object"
+         ]
+        },
+        "git_sha": {
+         "type": [
+          "string"
+         ]
+        },
+        "platform_version": {
+         "type": [
+          "string"
+         ]
+        }
+       },
+       "required": [
+        "analysis_version",
+        "api_levels",
+        "features",
+        "git_sha",
+        "platform_version"
+       ],
+       "type": [
+        "object"
+       ]
+      },
+      "status_labels": {
+       "properties": {
+        "phases": {
+         "additionalProperties": {
+          "properties": {
+           "hint": {
+            "type": [
+             "null",
+             "string"
+            ]
+           },
+           "label": {
+            "type": [
+             "string"
+            ]
+           }
+          },
+          "required": [
+           "hint",
+           "label"
+          ],
+          "type": [
+           "object"
+          ]
+         },
+         "type": [
+          "object"
+         ]
+        },
+        "runs": {
+         "additionalProperties": {
+          "properties": {
+           "hint": {
+            "type": [
+             "null",
+             "string"
+            ]
+           },
+           "label": {
+            "type": [
+             "string"
+            ]
+           }
+          },
+          "required": [
+           "hint",
+           "label"
+          ],
+          "type": [
+           "object"
+          ]
+         },
+         "type": [
+          "object"
+         ]
+        },
+        "tasks": {
+         "additionalProperties": {
+          "properties": {
+           "hint": {
+            "type": [
+             "null",
+             "string"
+            ]
+           },
+           "label": {
+            "type": [
+             "string"
+            ]
+           }
+          },
+          "required": [
+           "hint",
+           "label"
+          ],
+          "type": [
+           "object"
+          ]
+         },
+         "type": [
+          "object"
+         ]
+        }
+       },
+       "required": [
+        "phases",
+        "runs",
+        "tasks"
+       ],
+       "type": [
+        "object"
+       ]
+      },
+      "summary_outcomes": {
+       "properties": {
+        "analysis_version": {
+         "type": [
+          "string"
+         ]
+        },
+        "roles": {
+         "additionalProperties": {
+          "enum": [
+           "agreement",
+           "difference",
+           "not_established",
+           "runs_without_output"
+          ],
+          "type": [
+           "string"
+          ]
+         },
+         "type": [
+          "object"
+         ]
+        }
+       },
+       "required": [
+        "analysis_version",
+        "roles"
+       ],
+       "type": [
+        "object"
+       ]
+      }
+     },
+     "required": [
+      "agreement_threshold_defaults",
+      "bundled_over_prep_limit",
+      "bypass_limits_requires_account",
+      "default_n_shots",
+      "exclusive",
+      "execution_mode",
+      "limits",
+      "max_qasm_gates",
+      "max_qasm_size",
+      "max_qubits_compile",
+      "max_qubits_measured",
+      "max_qubits_statevector",
+      "max_runs_per_runner",
+      "max_total_runs",
+      "queue_max_wait_sec",
+      "request_defaults",
+      "server",
+      "status_labels",
+      "summary_outcomes"
+     ],
+     "type": [
+      "object"
+     ]
+    },
+    "status": 200
+   }
+  },
+  "GET /examples": {
+   "parameters": {},
+   "request": null,
+   "response": {
+    "media": [
+     "application/json"
+    ],
+    "schema": {
+     "items": {
+      "properties": {
+       "description": {
+        "type": [
+         "string"
+        ]
+       },
+       "mode": {
+        "type": [
+         "string"
+        ]
+       },
+       "name": {
+        "type": [
+         "string"
+        ]
+       },
+       "qubits": {
+        "type": [
+         "integer"
+        ]
+       },
+       "title": {
+        "type": [
+         "string"
+        ]
+       }
+      },
+      "required": [
+       "description",
+       "mode",
+       "name",
+       "qubits",
+       "title"
+      ],
+      "type": [
+       "object"
+      ]
+     },
+     "type": [
+      "array"
+     ]
+    },
+    "status": 200
+   }
+  },
+  "GET /examples/{name}": {
+   "parameters": {
+    "path:name": {
+     "required": true,
+     "schema": {
+      "type": [
+       "string"
+      ]
+     }
+    }
+   },
+   "request": null,
+   "response": {
+    "media": [
+     "application/json"
+    ],
+    "schema": {
+     "properties": {
+      "name": {
+       "type": [
+        "string"
+       ]
+      },
+      "qasm": {
+       "type": [
+        "string"
+       ]
+      }
+     },
+     "required": [
+      "name",
+      "qasm"
+     ],
+     "type": [
+      "object"
+     ]
+    },
+    "status": 200
+   }
+  },
+  "GET /jobs/{job_id}": {
+   "parameters": {
+    "path:job_id": {
+     "required": true,
+     "schema": {
+      "type": [
+       "string"
+      ]
+     }
+    }
+   },
+   "request": null,
+   "response": {
+    "media": [
+     "application/json"
+    ],
+    "schema": {
+     "properties": {
+      "error": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "job_id": {
+       "type": [
+        "string"
+       ]
+      },
+      "phase": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "progress": {
+       "type": [
+        "null",
+        "object"
+       ]
+      },
+      "requested_target": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "results": {
+       "anyOf": [
+        {
+         "properties": {
+          "benchmark_summary": {
+           "items": {
+            "properties": {
+             "compiled_circuits": {
+              "items": {
+               "properties": {
+                "compiler": {
+                 "type": [
+                  "string"
+                 ]
+                },
+                "compiler_id": {
+                 "type": [
+                  "string"
+                 ]
+                },
+                "dispatch_status": {
+                 "type": [
+                  "null",
+                  "string"
+                 ]
+                },
+                "error": {
+                 "type": [
+                  "null",
+                  "string"
+                 ]
+                },
+                "optimization_level": {
+                 "type": [
+                  "integer",
+                  "null"
+                 ]
+                },
+                "refusal": {
+                 "type": [
+                  "null",
+                  "string"
+                 ]
+                },
+                "transpiled_qasm": {
+                 "type": [
+                  "null",
+                  "string"
+                 ]
+                }
+               },
+               "required": [
+                "compiler",
+                "compiler_id"
+               ],
+               "type": [
+                "object"
+               ]
+              },
+              "type": [
+               "array",
+               "null"
+              ]
+             },
+             "dispatched_circuits": {
+              "items": {
+               "type": [
+                "object"
+               ]
+              },
+              "type": [
+               "array",
+               "null"
+              ]
+             },
+             "divergence_report": {
+              "properties": {
+               "backend_verdicts": {
+                "properties": {
+                 "backends": {
+                  "items": {
+                   "properties": {
+                    "agrees_with": {
+                     "items": {
+                      "type": [
+                       "string"
+                      ]
+                     },
+                     "type": [
+                      "array"
+                     ]
+                    },
+                    "bit_order": {
+                     "type": [
+                      "any",
+                      "null"
+                     ]
+                    },
+                    "by_only_with": {
+                     "items": {
+                      "type": [
+                       "string"
+                      ]
+                     },
+                     "type": [
+                      "array"
+                     ]
+                    },
+                    "compared": {
+                     "type": [
+                      "integer"
+                     ]
+                    },
+                    "compared_with": {
+                     "items": {
+                      "type": [
+                       "string"
+                      ]
+                     },
+                     "type": [
+                      "array"
+                     ]
+                    },
+                    "differs": {
+                     "type": [
+                      "integer"
+                     ]
+                    },
+                    "differs_by_only": {
+                     "type": [
+                      "integer"
+                     ]
+                    },
+                    "differs_full": {
+                     "type": [
+                      "integer"
+                     ]
+                    },
+                    "differs_marginal": {
+                     "type": [
+                      "integer"
+                     ]
+                    },
+                    "differs_with": {
+                     "items": {
+                      "type": [
+                       "string"
+                      ]
+                     },
+                     "type": [
+                      "array"
+                     ]
+                    },
+                    "inconclusive": {
+                     "type": [
+                      "integer"
+                     ]
+                    },
+                    "key": {
+                     "type": [
+                      "string"
+                     ]
+                    },
+                    "largest_tv": {
+                     "type": [
+                      "null",
+                      "number"
+                     ]
+                    },
+                    "not_comparable": {
+                     "type": [
+                      "integer"
+                     ]
+                    },
+                    "size_with": {
+                     "additionalProperties": {
+                      "type": [
+                       "number"
+                      ]
+                     },
+                     "type": [
+                      "object"
+                     ]
+                    },
+                    "status": {
+                     "enum": [
+                      "error",
+                      "offline",
+                      "ok",
+                      "timeout"
+                     ],
+                     "type": [
+                      "string"
+                     ]
+                    },
+                    "worst_fidelity": {
+                     "type": [
+                      "null",
+                      "number"
+                     ]
+                    }
+                   },
+                   "required": [
+                    "agrees_with",
+                    "by_only_with",
+                    "compared",
+                    "compared_with",
+                    "differs",
+                    "differs_by_only",
+                    "differs_full",
+                    "differs_marginal",
+                    "differs_with",
+                    "inconclusive",
+                    "key",
+                    "not_comparable",
+                    "size_with",
+                    "status"
+                   ],
+                   "type": [
+                    "object"
+                   ]
+                  },
+                  "type": [
+                   "array"
+                  ]
+                 },
+                 "by_only": {
+                  "type": [
+                   "integer"
+                  ]
+                 },
+                 "by_only_pairs": {
+                  "items": {
+                   "items": {
+                    "type": [
+                     "string"
+                    ]
+                   },
+                   "type": [
+                    "array"
+                   ]
+                  },
+                  "type": [
+                   "array"
+                  ]
+                 },
+                 "disagreeing": {
+                  "type": [
+                   "integer"
+                  ]
+                 },
+                 "inconclusive": {
+                  "type": [
+                   "integer"
+                  ]
+                 },
+                 "marginal_tested": {
+                  "type": [
+                   "boolean"
+                  ]
+                 },
+                 "mode": {
+                  "enum": [
+                   "measured",
+                   "statevector"
+                  ],
+                  "type": [
+                   "string"
+                  ]
+                 },
+                 "multi_run": {
+                  "type": [
+                   "boolean"
+                  ]
+                 },
+                 "not_comparable": {
+                  "type": [
+                   "integer"
+                  ]
+                 },
+                 "pairs": {
+                  "type": [
+                   "integer"
+                  ]
+                 }
+                },
+                "required": [
+                 "backends",
+                 "by_only",
+                 "by_only_pairs",
+                 "disagreeing",
+                 "inconclusive",
+                 "marginal_tested",
+                 "mode",
+                 "multi_run",
+                 "not_comparable",
+                 "pairs"
+                ],
+                "type": [
+                 "null",
+                 "object"
+                ]
+               },
+               "error": {
+                "type": [
+                 "null",
+                 "string"
+                ]
+               },
+               "fidelity_matrix": {
+                "items": {
+                 "items": {
+                  "type": [
+                   "null",
+                   "number"
+                  ]
+                 },
+                 "type": [
+                  "array"
+                 ]
+                },
+                "type": [
+                 "array",
+                 "null"
+                ]
+               },
+               "pairwise_agreement": {
+                "items": {
+                 "properties": {
+                  "agreement": {
+                   "type": [
+                    "string"
+                   ]
+                  },
+                  "marginal_assessment": {
+                   "type": [
+                    "null",
+                    "string"
+                   ]
+                  },
+                  "measured_assessment": {
+                   "enum": [
+                    "ambiguous",
+                    "consistent_within_shot_noise",
+                    "distinguishable",
+                    "inconclusive_low_shots",
+                    "not_comparable"
+                   ],
+                   "type": [
+                    "null",
+                    "string"
+                   ]
+                  },
+                  "metrics": {
+                   "type": [
+                    "null",
+                    "object"
+                   ]
+                  },
+                  "mode": {
+                   "enum": [
+                    "measured",
+                    "statevector"
+                   ],
+                   "type": [
+                    "string"
+                   ]
+                  },
+                  "pair_verdict": {
+                   "properties": {
+                    "agrees": {
+                     "type": [
+                      "boolean"
+                     ]
+                    },
+                    "assessment": {
+                     "type": [
+                      "any",
+                      "null"
+                     ]
+                    },
+                    "differs": {
+                     "type": [
+                      "boolean"
+                     ]
+                    },
+                    "differs_by_only": {
+                     "type": [
+                      "boolean"
+                     ]
+                    },
+                    "differs_full": {
+                     "type": [
+                      "boolean"
+                     ]
+                    },
+                    "differs_marginal": {
+                     "type": [
+                      "boolean"
+                     ]
+                    },
+                    "effective_agreement": {
+                     "type": [
+                      "any",
+                      "null"
+                     ]
+                    },
+                    "inconclusive": {
+                     "type": [
+                      "boolean"
+                     ]
+                    },
+                    "statevector_group": {
+                     "enum": [
+                      "agree",
+                      "bit_order",
+                      "disagree",
+                      "not_comparable",
+                      "other"
+                     ],
+                     "type": [
+                      "string"
+                     ]
+                    },
+                    "unaligned_basis": {
+                     "type": [
+                      "null",
+                      "string"
+                     ]
+                    },
+                    "verdict": {
+                     "enum": [
+                      "agrees",
+                      "bit_order",
+                      "differs",
+                      "differs_by_only",
+                      "inconclusive",
+                      "not_comparable",
+                      "unassessed"
+                     ],
+                     "type": [
+                      "string"
+                     ]
+                    }
+                   },
+                   "required": [
+                    "agrees",
+                    "differs",
+                    "differs_by_only",
+                    "differs_full",
+                    "differs_marginal",
+                    "inconclusive",
+                    "statevector_group",
+                    "verdict"
+                   ],
+                   "type": [
+                    "null",
+                    "object"
+                   ]
+                  },
+                  "simulators": {
+                   "items": {
+                    "type": [
+                     "string"
+                    ]
+                   },
+                   "type": [
+                    "array"
+                   ]
+                  }
+                 },
+                 "required": [
+                  "agreement",
+                  "mode",
+                  "simulators"
+                 ],
+                 "type": [
+                  "object"
+                 ]
+                },
+                "type": [
+                 "array",
+                 "null"
+                ]
+               },
+               "simulators": {
+                "items": {
+                 "type": [
+                  "string"
+                 ]
+                },
+                "type": [
+                 "array",
+                 "null"
+                ]
+               },
+               "statistical_test_summary": {
+                "type": [
+                 "null",
+                 "object"
+                ]
+               }
+              },
+              "required": [],
+              "type": [
+               "null",
+               "object"
+              ]
+             },
+             "error": {
+              "type": [
+               "null",
+               "string"
+              ]
+             },
+             "input_qasm": {
+              "type": [
+               "null",
+               "string"
+              ]
+             },
+             "n_shots": {
+              "type": [
+               "integer",
+               "null"
+              ]
+             },
+             "performance_report": {
+              "type": [
+               "null",
+               "object"
+              ]
+             },
+             "raw_results": {
+              "items": {
+               "properties": {
+                "build_files": {
+                 "additionalProperties": {
+                  "type": [
+                   "string"
+                  ]
+                 },
+                 "type": [
+                  "null",
+                  "object"
+                 ]
+                },
+                "compilation_time_sec": {
+                 "type": [
+                  "null",
+                  "number"
+                 ]
+                },
+                "counts": {
+                 "additionalProperties": {
+                  "type": [
+                   "integer"
+                  ]
+                 },
+                 "type": [
+                  "null",
+                  "object"
+                 ]
+                },
+                "dispatch_status": {
+                 "enum": [
+                  "error",
+                  "offline",
+                  "ok",
+                  "timeout"
+                 ],
+                 "type": [
+                  "null",
+                  "string"
+                 ]
+                },
+                "error": {
+                 "type": [
+                  "null",
+                  "string"
+                 ]
+                },
+                "execution_time_sec": {
+                 "type": [
+                  "null",
+                  "number"
+                 ]
+                },
+                "image_identity": {
+                 "type": [
+                  "null",
+                  "object"
+                 ]
+                },
+                "memory_usage_mb": {
+                 "type": [
+                  "null",
+                  "number"
+                 ]
+                },
+                "never_started": {
+                 "type": [
+                  "boolean",
+                  "null"
+                 ]
+                },
+                "optimization_level": {
+                 "type": [
+                  "integer",
+                  "null"
+                 ]
+                },
+                "precision": {
+                 "type": [
+                  "null",
+                  "string"
+                 ]
+                },
+                "preprocessing_applied": {
+                 "items": {
+                  "type": [
+                   "string"
+                  ]
+                 },
+                 "type": [
+                  "array",
+                  "null"
+                 ]
+                },
+                "process_peak_mb": {
+                 "type": [
+                  "null",
+                  "number"
+                 ]
+                },
+                "qubit_ordering": {
+                 "type": [
+                  "null",
+                  "string"
+                 ]
+                },
+                "queue_wait_sec": {
+                 "type": [
+                  "null",
+                  "number"
+                 ]
+                },
+                "runner_image": {
+                 "type": [
+                  "null",
+                  "string"
+                 ]
+                },
+                "runner_seed": {
+                 "type": [
+                  "integer",
+                  "null"
+                 ]
+                },
+                "sdk_versions": {
+                 "additionalProperties": {
+                  "type": [
+                   "string"
+                  ]
+                 },
+                 "type": [
+                  "null",
+                  "object"
+                 ]
+                },
+                "simulation_time_sec": {
+                 "type": [
+                  "null",
+                  "number"
+                 ]
+                },
+                "simulator": {
+                 "type": [
+                  "string"
+                 ]
+                },
+                "specimen": {
+                 "type": [
+                  "null",
+                  "object"
+                 ]
+                },
+                "statevector": {
+                 "items": {
+                  "type": [
+                   "any"
+                  ]
+                 },
+                 "type": [
+                  "array",
+                  "null",
+                  "string"
+                 ]
+                },
+                "statevector_omitted_for_display": {
+                 "type": [
+                  "boolean",
+                  "null"
+                 ]
+                },
+                "timed_out": {
+                 "type": [
+                  "boolean",
+                  "null"
+                 ]
+                },
+                "timing_caveats": {
+                 "items": {
+                  "type": [
+                   "object"
+                  ]
+                 },
+                 "type": [
+                  "array",
+                  "null"
+                 ]
+                },
+                "transpiled_qasm": {
+                 "type": [
+                  "null",
+                  "string"
+                 ]
+                }
+               },
+               "required": [
+                "simulator"
+               ],
+               "type": [
+                "object"
+               ]
+              },
+              "type": [
+               "array",
+               "null"
+              ]
+             },
+             "resource_report": {
+              "type": [
+               "null",
+               "object"
+              ]
+             },
+             "run_completeness": {
+              "type": [
+               "null",
+               "object"
+              ]
+             },
+             "seed": {
+              "type": [
+               "integer",
+               "null"
+              ]
+             },
+             "simulated": {
+              "type": [
+               "boolean",
+               "null"
+              ]
+             },
+             "specimens": {
+              "type": [
+               "null",
+               "object"
+              ]
+             },
+             "task_name": {
+              "type": [
+               "null",
+               "string"
+              ]
+             },
+             "task_qubits": {
+              "type": [
+               "integer",
+               "null"
+              ]
+             },
+             "task_request": {
+              "type": [
+               "null",
+               "object"
+              ]
+             },
+             "timing_caveats": {
+              "items": {
+               "type": [
+                "object"
+               ]
+              },
+              "type": [
+               "array",
+               "null"
+              ]
+             },
+             "timing_caveats_version": {
+              "type": [
+               "null",
+               "string"
+              ]
+             }
+            },
+            "required": [],
+            "type": [
+             "object"
+            ]
+           },
+           "type": [
+            "array"
+           ]
+          },
+          "mode": {
+           "enum": [
+            "measured",
+            "statevector"
+           ],
+           "type": [
+            "string"
+           ]
+          },
+          "run_completeness": {
+           "type": [
+            "null",
+            "object"
+           ]
+          },
+          "seed": {
+           "type": [
+            "integer",
+            "null"
+           ]
+          },
+          "specimens": {
+           "type": [
+            "null",
+            "object"
+           ]
+          },
+          "timing_caveats": {
+           "items": {
+            "type": [
+             "object"
+            ]
+           },
+           "type": [
+            "array",
+            "null"
+           ]
+          }
+         },
+         "required": [
+          "benchmark_summary",
+          "mode"
+         ],
+         "type": [
+          "object"
+         ]
+        },
+        {
+         "properties": {
+          "compiled_circuits": {
+           "items": {
+            "properties": {
+             "compiler": {
+              "type": [
+               "string"
+              ]
+             },
+             "compiler_id": {
+              "type": [
+               "string"
+              ]
+             },
+             "dispatch_status": {
+              "type": [
+               "null",
+               "string"
+              ]
+             },
+             "error": {
+              "type": [
+               "null",
+               "string"
+              ]
+             },
+             "optimization_level": {
+              "type": [
+               "integer",
+               "null"
+              ]
+             },
+             "refusal": {
+              "type": [
+               "null",
+               "string"
+              ]
+             },
+             "transpiled_qasm": {
+              "type": [
+               "null",
+               "string"
+              ]
+             }
+            },
+            "required": [
+             "compiler",
+             "compiler_id"
+            ],
+            "type": [
+             "object"
+            ]
+           },
+           "type": [
+            "array",
+            "null"
+           ]
+          },
+          "dispatched_circuits": {
+           "items": {
+            "type": [
+             "object"
+            ]
+           },
+           "type": [
+            "array",
+            "null"
+           ]
+          },
+          "divergence_report": {
+           "properties": {
+            "backend_verdicts": {
+             "properties": {
+              "backends": {
+               "items": {
+                "properties": {
+                 "agrees_with": {
+                  "items": {
+                   "type": [
+                    "string"
+                   ]
+                  },
+                  "type": [
+                   "array"
+                  ]
+                 },
+                 "bit_order": {
+                  "type": [
+                   "any",
+                   "null"
+                  ]
+                 },
+                 "by_only_with": {
+                  "items": {
+                   "type": [
+                    "string"
+                   ]
+                  },
+                  "type": [
+                   "array"
+                  ]
+                 },
+                 "compared": {
+                  "type": [
+                   "integer"
+                  ]
+                 },
+                 "compared_with": {
+                  "items": {
+                   "type": [
+                    "string"
+                   ]
+                  },
+                  "type": [
+                   "array"
+                  ]
+                 },
+                 "differs": {
+                  "type": [
+                   "integer"
+                  ]
+                 },
+                 "differs_by_only": {
+                  "type": [
+                   "integer"
+                  ]
+                 },
+                 "differs_full": {
+                  "type": [
+                   "integer"
+                  ]
+                 },
+                 "differs_marginal": {
+                  "type": [
+                   "integer"
+                  ]
+                 },
+                 "differs_with": {
+                  "items": {
+                   "type": [
+                    "string"
+                   ]
+                  },
+                  "type": [
+                   "array"
+                  ]
+                 },
+                 "inconclusive": {
+                  "type": [
+                   "integer"
+                  ]
+                 },
+                 "key": {
+                  "type": [
+                   "string"
+                  ]
+                 },
+                 "largest_tv": {
+                  "type": [
+                   "null",
+                   "number"
+                  ]
+                 },
+                 "not_comparable": {
+                  "type": [
+                   "integer"
+                  ]
+                 },
+                 "size_with": {
+                  "additionalProperties": {
+                   "type": [
+                    "number"
+                   ]
+                  },
+                  "type": [
+                   "object"
+                  ]
+                 },
+                 "status": {
+                  "enum": [
+                   "error",
+                   "offline",
+                   "ok",
+                   "timeout"
+                  ],
+                  "type": [
+                   "string"
+                  ]
+                 },
+                 "worst_fidelity": {
+                  "type": [
+                   "null",
+                   "number"
+                  ]
+                 }
+                },
+                "required": [
+                 "agrees_with",
+                 "by_only_with",
+                 "compared",
+                 "compared_with",
+                 "differs",
+                 "differs_by_only",
+                 "differs_full",
+                 "differs_marginal",
+                 "differs_with",
+                 "inconclusive",
+                 "key",
+                 "not_comparable",
+                 "size_with",
+                 "status"
+                ],
+                "type": [
+                 "object"
+                ]
+               },
+               "type": [
+                "array"
+               ]
+              },
+              "by_only": {
+               "type": [
+                "integer"
+               ]
+              },
+              "by_only_pairs": {
+               "items": {
+                "items": {
+                 "type": [
+                  "string"
+                 ]
+                },
+                "type": [
+                 "array"
+                ]
+               },
+               "type": [
+                "array"
+               ]
+              },
+              "disagreeing": {
+               "type": [
+                "integer"
+               ]
+              },
+              "inconclusive": {
+               "type": [
+                "integer"
+               ]
+              },
+              "marginal_tested": {
+               "type": [
+                "boolean"
+               ]
+              },
+              "mode": {
+               "enum": [
+                "measured",
+                "statevector"
+               ],
+               "type": [
+                "string"
+               ]
+              },
+              "multi_run": {
+               "type": [
+                "boolean"
+               ]
+              },
+              "not_comparable": {
+               "type": [
+                "integer"
+               ]
+              },
+              "pairs": {
+               "type": [
+                "integer"
+               ]
+              }
+             },
+             "required": [
+              "backends",
+              "by_only",
+              "by_only_pairs",
+              "disagreeing",
+              "inconclusive",
+              "marginal_tested",
+              "mode",
+              "multi_run",
+              "not_comparable",
+              "pairs"
+             ],
+             "type": [
+              "null",
+              "object"
+             ]
+            },
+            "error": {
+             "type": [
+              "null",
+              "string"
+             ]
+            },
+            "fidelity_matrix": {
+             "items": {
+              "items": {
+               "type": [
+                "null",
+                "number"
+               ]
+              },
+              "type": [
+               "array"
+              ]
+             },
+             "type": [
+              "array",
+              "null"
+             ]
+            },
+            "pairwise_agreement": {
+             "items": {
+              "properties": {
+               "agreement": {
+                "type": [
+                 "string"
+                ]
+               },
+               "marginal_assessment": {
+                "type": [
+                 "null",
+                 "string"
+                ]
+               },
+               "measured_assessment": {
+                "enum": [
+                 "ambiguous",
+                 "consistent_within_shot_noise",
+                 "distinguishable",
+                 "inconclusive_low_shots",
+                 "not_comparable"
+                ],
+                "type": [
+                 "null",
+                 "string"
+                ]
+               },
+               "metrics": {
+                "type": [
+                 "null",
+                 "object"
+                ]
+               },
+               "mode": {
+                "enum": [
+                 "measured",
+                 "statevector"
+                ],
+                "type": [
+                 "string"
+                ]
+               },
+               "pair_verdict": {
+                "properties": {
+                 "agrees": {
+                  "type": [
+                   "boolean"
+                  ]
+                 },
+                 "assessment": {
+                  "type": [
+                   "any",
+                   "null"
+                  ]
+                 },
+                 "differs": {
+                  "type": [
+                   "boolean"
+                  ]
+                 },
+                 "differs_by_only": {
+                  "type": [
+                   "boolean"
+                  ]
+                 },
+                 "differs_full": {
+                  "type": [
+                   "boolean"
+                  ]
+                 },
+                 "differs_marginal": {
+                  "type": [
+                   "boolean"
+                  ]
+                 },
+                 "effective_agreement": {
+                  "type": [
+                   "any",
+                   "null"
+                  ]
+                 },
+                 "inconclusive": {
+                  "type": [
+                   "boolean"
+                  ]
+                 },
+                 "statevector_group": {
+                  "enum": [
+                   "agree",
+                   "bit_order",
+                   "disagree",
+                   "not_comparable",
+                   "other"
+                  ],
+                  "type": [
+                   "string"
+                  ]
+                 },
+                 "unaligned_basis": {
+                  "type": [
+                   "null",
+                   "string"
+                  ]
+                 },
+                 "verdict": {
+                  "enum": [
+                   "agrees",
+                   "bit_order",
+                   "differs",
+                   "differs_by_only",
+                   "inconclusive",
+                   "not_comparable",
+                   "unassessed"
+                  ],
+                  "type": [
+                   "string"
+                  ]
+                 }
+                },
+                "required": [
+                 "agrees",
+                 "differs",
+                 "differs_by_only",
+                 "differs_full",
+                 "differs_marginal",
+                 "inconclusive",
+                 "statevector_group",
+                 "verdict"
+                ],
+                "type": [
+                 "null",
+                 "object"
+                ]
+               },
+               "simulators": {
+                "items": {
+                 "type": [
+                  "string"
+                 ]
+                },
+                "type": [
+                 "array"
+                ]
+               }
+              },
+              "required": [
+               "agreement",
+               "mode",
+               "simulators"
+              ],
+              "type": [
+               "object"
+              ]
+             },
+             "type": [
+              "array",
+              "null"
+             ]
+            },
+            "simulators": {
+             "items": {
+              "type": [
+               "string"
+              ]
+             },
+             "type": [
+              "array",
+              "null"
+             ]
+            },
+            "statistical_test_summary": {
+             "type": [
+              "null",
+              "object"
+             ]
+            }
+           },
+           "required": [],
+           "type": [
+            "null",
+            "object"
+           ]
+          },
+          "error": {
+           "type": [
+            "null",
+            "string"
+           ]
+          },
+          "input_qasm": {
+           "type": [
+            "null",
+            "string"
+           ]
+          },
+          "n_shots": {
+           "type": [
+            "integer",
+            "null"
+           ]
+          },
+          "performance_report": {
+           "type": [
+            "null",
+            "object"
+           ]
+          },
+          "raw_results": {
+           "items": {
+            "properties": {
+             "build_files": {
+              "additionalProperties": {
+               "type": [
+                "string"
+               ]
+              },
+              "type": [
+               "null",
+               "object"
+              ]
+             },
+             "compilation_time_sec": {
+              "type": [
+               "null",
+               "number"
+              ]
+             },
+             "counts": {
+              "additionalProperties": {
+               "type": [
+                "integer"
+               ]
+              },
+              "type": [
+               "null",
+               "object"
+              ]
+             },
+             "dispatch_status": {
+              "enum": [
+               "error",
+               "offline",
+               "ok",
+               "timeout"
+              ],
+              "type": [
+               "null",
+               "string"
+              ]
+             },
+             "error": {
+              "type": [
+               "null",
+               "string"
+              ]
+             },
+             "execution_time_sec": {
+              "type": [
+               "null",
+               "number"
+              ]
+             },
+             "image_identity": {
+              "type": [
+               "null",
+               "object"
+              ]
+             },
+             "memory_usage_mb": {
+              "type": [
+               "null",
+               "number"
+              ]
+             },
+             "never_started": {
+              "type": [
+               "boolean",
+               "null"
+              ]
+             },
+             "optimization_level": {
+              "type": [
+               "integer",
+               "null"
+              ]
+             },
+             "precision": {
+              "type": [
+               "null",
+               "string"
+              ]
+             },
+             "preprocessing_applied": {
+              "items": {
+               "type": [
+                "string"
+               ]
+              },
+              "type": [
+               "array",
+               "null"
+              ]
+             },
+             "process_peak_mb": {
+              "type": [
+               "null",
+               "number"
+              ]
+             },
+             "qubit_ordering": {
+              "type": [
+               "null",
+               "string"
+              ]
+             },
+             "queue_wait_sec": {
+              "type": [
+               "null",
+               "number"
+              ]
+             },
+             "runner_image": {
+              "type": [
+               "null",
+               "string"
+              ]
+             },
+             "runner_seed": {
+              "type": [
+               "integer",
+               "null"
+              ]
+             },
+             "sdk_versions": {
+              "additionalProperties": {
+               "type": [
+                "string"
+               ]
+              },
+              "type": [
+               "null",
+               "object"
+              ]
+             },
+             "simulation_time_sec": {
+              "type": [
+               "null",
+               "number"
+              ]
+             },
+             "simulator": {
+              "type": [
+               "string"
+              ]
+             },
+             "specimen": {
+              "type": [
+               "null",
+               "object"
+              ]
+             },
+             "statevector": {
+              "items": {
+               "type": [
+                "any"
+               ]
+              },
+              "type": [
+               "array",
+               "null",
+               "string"
+              ]
+             },
+             "statevector_omitted_for_display": {
+              "type": [
+               "boolean",
+               "null"
+              ]
+             },
+             "timed_out": {
+              "type": [
+               "boolean",
+               "null"
+              ]
+             },
+             "timing_caveats": {
+              "items": {
+               "type": [
+                "object"
+               ]
+              },
+              "type": [
+               "array",
+               "null"
+              ]
+             },
+             "transpiled_qasm": {
+              "type": [
+               "null",
+               "string"
+              ]
+             }
+            },
+            "required": [
+             "simulator"
+            ],
+            "type": [
+             "object"
+            ]
+           },
+           "type": [
+            "array",
+            "null"
+           ]
+          },
+          "resource_report": {
+           "type": [
+            "null",
+            "object"
+           ]
+          },
+          "run_completeness": {
+           "type": [
+            "null",
+            "object"
+           ]
+          },
+          "seed": {
+           "type": [
+            "integer",
+            "null"
+           ]
+          },
+          "simulated": {
+           "type": [
+            "boolean",
+            "null"
+           ]
+          },
+          "specimens": {
+           "type": [
+            "null",
+            "object"
+           ]
+          },
+          "task_name": {
+           "type": [
+            "null",
+            "string"
+           ]
+          },
+          "task_qubits": {
+           "type": [
+            "integer",
+            "null"
+           ]
+          },
+          "task_request": {
+           "type": [
+            "null",
+            "object"
+           ]
+          },
+          "timing_caveats": {
+           "items": {
+            "type": [
+             "object"
+            ]
+           },
+           "type": [
+            "array",
+            "null"
+           ]
+          },
+          "timing_caveats_version": {
+           "type": [
+            "null",
+            "string"
+           ]
+          }
+         },
+         "required": [],
+         "type": [
+          "object"
+         ]
+        },
+        {
+         "properties": {
+          "experiment_summary": {
+           "type": [
+            "object"
+           ]
+          }
+         },
+         "required": [
+          "experiment_summary"
+         ],
+         "type": [
+          "object"
+         ]
+        }
+       ],
+       "type": [
+        "null",
+        "object"
+       ]
+      },
+      "runner_statuses": {
+       "additionalProperties": {
+        "type": [
+         "string"
+        ]
+       },
+       "type": [
+        "null",
+        "object"
+       ]
+      },
+      "status": {
+       "type": [
+        "string"
+       ]
+      },
+      "target": {
+       "type": [
+        "string"
+       ]
+      }
+     },
+     "required": [
+      "job_id",
+      "status",
+      "target"
+     ],
+     "type": [
+      "object"
+     ]
+    },
+    "status": 200
+   }
+  },
+  "GET /jobs/{job_id}/report": {
+   "parameters": {
+    "path:job_id": {
+     "required": true,
+     "schema": {
+      "type": [
+       "string"
+      ]
+     }
+    }
+   },
+   "request": null,
+   "response": {
+    "media": [
+     "application/json"
+    ],
+    "schema": {
+     "anyOf": [
+      {
+       "properties": {
+        "benchmark_summary": {
+         "items": {
+          "properties": {
+           "compiled_circuits": {
+            "items": {
+             "properties": {
+              "compiler": {
+               "type": [
+                "string"
+               ]
+              },
+              "compiler_id": {
+               "type": [
+                "string"
+               ]
+              },
+              "dispatch_status": {
+               "type": [
+                "null",
+                "string"
+               ]
+              },
+              "error": {
+               "type": [
+                "null",
+                "string"
+               ]
+              },
+              "optimization_level": {
+               "type": [
+                "integer",
+                "null"
+               ]
+              },
+              "refusal": {
+               "type": [
+                "null",
+                "string"
+               ]
+              },
+              "transpiled_qasm": {
+               "type": [
+                "null",
+                "string"
+               ]
+              }
+             },
+             "required": [
+              "compiler",
+              "compiler_id"
+             ],
+             "type": [
+              "object"
+             ]
+            },
+            "type": [
+             "array",
+             "null"
+            ]
+           },
+           "dispatched_circuits": {
+            "items": {
+             "type": [
+              "object"
+             ]
+            },
+            "type": [
+             "array",
+             "null"
+            ]
+           },
+           "divergence_report": {
+            "properties": {
+             "backend_verdicts": {
+              "properties": {
+               "backends": {
+                "items": {
+                 "properties": {
+                  "agrees_with": {
+                   "items": {
+                    "type": [
+                     "string"
+                    ]
+                   },
+                   "type": [
+                    "array"
+                   ]
+                  },
+                  "bit_order": {
+                   "type": [
+                    "any",
+                    "null"
+                   ]
+                  },
+                  "by_only_with": {
+                   "items": {
+                    "type": [
+                     "string"
+                    ]
+                   },
+                   "type": [
+                    "array"
+                   ]
+                  },
+                  "compared": {
+                   "type": [
+                    "integer"
+                   ]
+                  },
+                  "compared_with": {
+                   "items": {
+                    "type": [
+                     "string"
+                    ]
+                   },
+                   "type": [
+                    "array"
+                   ]
+                  },
+                  "differs": {
+                   "type": [
+                    "integer"
+                   ]
+                  },
+                  "differs_by_only": {
+                   "type": [
+                    "integer"
+                   ]
+                  },
+                  "differs_full": {
+                   "type": [
+                    "integer"
+                   ]
+                  },
+                  "differs_marginal": {
+                   "type": [
+                    "integer"
+                   ]
+                  },
+                  "differs_with": {
+                   "items": {
+                    "type": [
+                     "string"
+                    ]
+                   },
+                   "type": [
+                    "array"
+                   ]
+                  },
+                  "inconclusive": {
+                   "type": [
+                    "integer"
+                   ]
+                  },
+                  "key": {
+                   "type": [
+                    "string"
+                   ]
+                  },
+                  "largest_tv": {
+                   "type": [
+                    "null",
+                    "number"
+                   ]
+                  },
+                  "not_comparable": {
+                   "type": [
+                    "integer"
+                   ]
+                  },
+                  "size_with": {
+                   "additionalProperties": {
+                    "type": [
+                     "number"
+                    ]
+                   },
+                   "type": [
+                    "object"
+                   ]
+                  },
+                  "status": {
+                   "enum": [
+                    "error",
+                    "offline",
+                    "ok",
+                    "timeout"
+                   ],
+                   "type": [
+                    "string"
+                   ]
+                  },
+                  "worst_fidelity": {
+                   "type": [
+                    "null",
+                    "number"
+                   ]
+                  }
+                 },
+                 "required": [
+                  "agrees_with",
+                  "by_only_with",
+                  "compared",
+                  "compared_with",
+                  "differs",
+                  "differs_by_only",
+                  "differs_full",
+                  "differs_marginal",
+                  "differs_with",
+                  "inconclusive",
+                  "key",
+                  "not_comparable",
+                  "size_with",
+                  "status"
+                 ],
+                 "type": [
+                  "object"
+                 ]
+                },
+                "type": [
+                 "array"
+                ]
+               },
+               "by_only": {
+                "type": [
+                 "integer"
+                ]
+               },
+               "by_only_pairs": {
+                "items": {
+                 "items": {
+                  "type": [
+                   "string"
+                  ]
+                 },
+                 "type": [
+                  "array"
+                 ]
+                },
+                "type": [
+                 "array"
+                ]
+               },
+               "disagreeing": {
+                "type": [
+                 "integer"
+                ]
+               },
+               "inconclusive": {
+                "type": [
+                 "integer"
+                ]
+               },
+               "marginal_tested": {
+                "type": [
+                 "boolean"
+                ]
+               },
+               "mode": {
+                "enum": [
+                 "measured",
+                 "statevector"
+                ],
+                "type": [
+                 "string"
+                ]
+               },
+               "multi_run": {
+                "type": [
+                 "boolean"
+                ]
+               },
+               "not_comparable": {
+                "type": [
+                 "integer"
+                ]
+               },
+               "pairs": {
+                "type": [
+                 "integer"
+                ]
+               }
+              },
+              "required": [
+               "backends",
+               "by_only",
+               "by_only_pairs",
+               "disagreeing",
+               "inconclusive",
+               "marginal_tested",
+               "mode",
+               "multi_run",
+               "not_comparable",
+               "pairs"
+              ],
+              "type": [
+               "null",
+               "object"
+              ]
+             },
+             "error": {
+              "type": [
+               "null",
+               "string"
+              ]
+             },
+             "fidelity_matrix": {
+              "items": {
+               "items": {
+                "type": [
+                 "null",
+                 "number"
+                ]
+               },
+               "type": [
+                "array"
+               ]
+              },
+              "type": [
+               "array",
+               "null"
+              ]
+             },
+             "pairwise_agreement": {
+              "items": {
+               "properties": {
+                "agreement": {
+                 "type": [
+                  "string"
+                 ]
+                },
+                "marginal_assessment": {
+                 "type": [
+                  "null",
+                  "string"
+                 ]
+                },
+                "measured_assessment": {
+                 "enum": [
+                  "ambiguous",
+                  "consistent_within_shot_noise",
+                  "distinguishable",
+                  "inconclusive_low_shots",
+                  "not_comparable"
+                 ],
+                 "type": [
+                  "null",
+                  "string"
+                 ]
+                },
+                "metrics": {
+                 "type": [
+                  "null",
+                  "object"
+                 ]
+                },
+                "mode": {
+                 "enum": [
+                  "measured",
+                  "statevector"
+                 ],
+                 "type": [
+                  "string"
+                 ]
+                },
+                "pair_verdict": {
+                 "properties": {
+                  "agrees": {
+                   "type": [
+                    "boolean"
+                   ]
+                  },
+                  "assessment": {
+                   "type": [
+                    "any",
+                    "null"
+                   ]
+                  },
+                  "differs": {
+                   "type": [
+                    "boolean"
+                   ]
+                  },
+                  "differs_by_only": {
+                   "type": [
+                    "boolean"
+                   ]
+                  },
+                  "differs_full": {
+                   "type": [
+                    "boolean"
+                   ]
+                  },
+                  "differs_marginal": {
+                   "type": [
+                    "boolean"
+                   ]
+                  },
+                  "effective_agreement": {
+                   "type": [
+                    "any",
+                    "null"
+                   ]
+                  },
+                  "inconclusive": {
+                   "type": [
+                    "boolean"
+                   ]
+                  },
+                  "statevector_group": {
+                   "enum": [
+                    "agree",
+                    "bit_order",
+                    "disagree",
+                    "not_comparable",
+                    "other"
+                   ],
+                   "type": [
+                    "string"
+                   ]
+                  },
+                  "unaligned_basis": {
+                   "type": [
+                    "null",
+                    "string"
+                   ]
+                  },
+                  "verdict": {
+                   "enum": [
+                    "agrees",
+                    "bit_order",
+                    "differs",
+                    "differs_by_only",
+                    "inconclusive",
+                    "not_comparable",
+                    "unassessed"
+                   ],
+                   "type": [
+                    "string"
+                   ]
+                  }
+                 },
+                 "required": [
+                  "agrees",
+                  "differs",
+                  "differs_by_only",
+                  "differs_full",
+                  "differs_marginal",
+                  "inconclusive",
+                  "statevector_group",
+                  "verdict"
+                 ],
+                 "type": [
+                  "null",
+                  "object"
+                 ]
+                },
+                "simulators": {
+                 "items": {
+                  "type": [
+                   "string"
+                  ]
+                 },
+                 "type": [
+                  "array"
+                 ]
+                }
+               },
+               "required": [
+                "agreement",
+                "mode",
+                "simulators"
+               ],
+               "type": [
+                "object"
+               ]
+              },
+              "type": [
+               "array",
+               "null"
+              ]
+             },
+             "simulators": {
+              "items": {
+               "type": [
+                "string"
+               ]
+              },
+              "type": [
+               "array",
+               "null"
+              ]
+             },
+             "statistical_test_summary": {
+              "type": [
+               "null",
+               "object"
+              ]
+             }
+            },
+            "required": [],
+            "type": [
+             "null",
+             "object"
+            ]
+           },
+           "error": {
+            "type": [
+             "null",
+             "string"
+            ]
+           },
+           "input_qasm": {
+            "type": [
+             "null",
+             "string"
+            ]
+           },
+           "n_shots": {
+            "type": [
+             "integer",
+             "null"
+            ]
+           },
+           "performance_report": {
+            "type": [
+             "null",
+             "object"
+            ]
+           },
+           "raw_results": {
+            "items": {
+             "properties": {
+              "build_files": {
+               "additionalProperties": {
+                "type": [
+                 "string"
+                ]
+               },
+               "type": [
+                "null",
+                "object"
+               ]
+              },
+              "compilation_time_sec": {
+               "type": [
+                "null",
+                "number"
+               ]
+              },
+              "counts": {
+               "additionalProperties": {
+                "type": [
+                 "integer"
+                ]
+               },
+               "type": [
+                "null",
+                "object"
+               ]
+              },
+              "dispatch_status": {
+               "enum": [
+                "error",
+                "offline",
+                "ok",
+                "timeout"
+               ],
+               "type": [
+                "null",
+                "string"
+               ]
+              },
+              "error": {
+               "type": [
+                "null",
+                "string"
+               ]
+              },
+              "execution_time_sec": {
+               "type": [
+                "null",
+                "number"
+               ]
+              },
+              "image_identity": {
+               "type": [
+                "null",
+                "object"
+               ]
+              },
+              "memory_usage_mb": {
+               "type": [
+                "null",
+                "number"
+               ]
+              },
+              "never_started": {
+               "type": [
+                "boolean",
+                "null"
+               ]
+              },
+              "optimization_level": {
+               "type": [
+                "integer",
+                "null"
+               ]
+              },
+              "precision": {
+               "type": [
+                "null",
+                "string"
+               ]
+              },
+              "preprocessing_applied": {
+               "items": {
+                "type": [
+                 "string"
+                ]
+               },
+               "type": [
+                "array",
+                "null"
+               ]
+              },
+              "process_peak_mb": {
+               "type": [
+                "null",
+                "number"
+               ]
+              },
+              "qubit_ordering": {
+               "type": [
+                "null",
+                "string"
+               ]
+              },
+              "queue_wait_sec": {
+               "type": [
+                "null",
+                "number"
+               ]
+              },
+              "runner_image": {
+               "type": [
+                "null",
+                "string"
+               ]
+              },
+              "runner_seed": {
+               "type": [
+                "integer",
+                "null"
+               ]
+              },
+              "sdk_versions": {
+               "additionalProperties": {
+                "type": [
+                 "string"
+                ]
+               },
+               "type": [
+                "null",
+                "object"
+               ]
+              },
+              "simulation_time_sec": {
+               "type": [
+                "null",
+                "number"
+               ]
+              },
+              "simulator": {
+               "type": [
+                "string"
+               ]
+              },
+              "specimen": {
+               "type": [
+                "null",
+                "object"
+               ]
+              },
+              "statevector": {
+               "items": {
+                "type": [
+                 "any"
+                ]
+               },
+               "type": [
+                "array",
+                "null",
+                "string"
+               ]
+              },
+              "statevector_omitted_for_display": {
+               "type": [
+                "boolean",
+                "null"
+               ]
+              },
+              "timed_out": {
+               "type": [
+                "boolean",
+                "null"
+               ]
+              },
+              "timing_caveats": {
+               "items": {
+                "type": [
+                 "object"
+                ]
+               },
+               "type": [
+                "array",
+                "null"
+               ]
+              },
+              "transpiled_qasm": {
+               "type": [
+                "null",
+                "string"
+               ]
+              }
+             },
+             "required": [
+              "simulator"
+             ],
+             "type": [
+              "object"
+             ]
+            },
+            "type": [
+             "array",
+             "null"
+            ]
+           },
+           "resource_report": {
+            "type": [
+             "null",
+             "object"
+            ]
+           },
+           "run_completeness": {
+            "type": [
+             "null",
+             "object"
+            ]
+           },
+           "seed": {
+            "type": [
+             "integer",
+             "null"
+            ]
+           },
+           "simulated": {
+            "type": [
+             "boolean",
+             "null"
+            ]
+           },
+           "specimens": {
+            "type": [
+             "null",
+             "object"
+            ]
+           },
+           "task_name": {
+            "type": [
+             "null",
+             "string"
+            ]
+           },
+           "task_qubits": {
+            "type": [
+             "integer",
+             "null"
+            ]
+           },
+           "task_request": {
+            "type": [
+             "null",
+             "object"
+            ]
+           },
+           "timing_caveats": {
+            "items": {
+             "type": [
+              "object"
+             ]
+            },
+            "type": [
+             "array",
+             "null"
+            ]
+           },
+           "timing_caveats_version": {
+            "type": [
+             "null",
+             "string"
+            ]
+           }
+          },
+          "required": [],
+          "type": [
+           "object"
+          ]
+         },
+         "type": [
+          "array"
+         ]
+        },
+        "mode": {
+         "enum": [
+          "measured",
+          "statevector"
+         ],
+         "type": [
+          "string"
+         ]
+        },
+        "run_completeness": {
+         "type": [
+          "null",
+          "object"
+         ]
+        },
+        "seed": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "specimens": {
+         "type": [
+          "null",
+          "object"
+         ]
+        },
+        "timing_caveats": {
+         "items": {
+          "type": [
+           "object"
+          ]
+         },
+         "type": [
+          "array",
+          "null"
+         ]
+        }
+       },
+       "required": [
+        "benchmark_summary",
+        "mode"
+       ],
+       "type": [
+        "object"
+       ]
+      },
+      {
+       "properties": {
+        "compiled_circuits": {
+         "items": {
+          "properties": {
+           "compiler": {
+            "type": [
+             "string"
+            ]
+           },
+           "compiler_id": {
+            "type": [
+             "string"
+            ]
+           },
+           "dispatch_status": {
+            "type": [
+             "null",
+             "string"
+            ]
+           },
+           "error": {
+            "type": [
+             "null",
+             "string"
+            ]
+           },
+           "optimization_level": {
+            "type": [
+             "integer",
+             "null"
+            ]
+           },
+           "refusal": {
+            "type": [
+             "null",
+             "string"
+            ]
+           },
+           "transpiled_qasm": {
+            "type": [
+             "null",
+             "string"
+            ]
+           }
+          },
+          "required": [
+           "compiler",
+           "compiler_id"
+          ],
+          "type": [
+           "object"
+          ]
+         },
+         "type": [
+          "array",
+          "null"
+         ]
+        },
+        "dispatched_circuits": {
+         "items": {
+          "type": [
+           "object"
+          ]
+         },
+         "type": [
+          "array",
+          "null"
+         ]
+        },
+        "divergence_report": {
+         "properties": {
+          "backend_verdicts": {
+           "properties": {
+            "backends": {
+             "items": {
+              "properties": {
+               "agrees_with": {
+                "items": {
+                 "type": [
+                  "string"
+                 ]
+                },
+                "type": [
+                 "array"
+                ]
+               },
+               "bit_order": {
+                "type": [
+                 "any",
+                 "null"
+                ]
+               },
+               "by_only_with": {
+                "items": {
+                 "type": [
+                  "string"
+                 ]
+                },
+                "type": [
+                 "array"
+                ]
+               },
+               "compared": {
+                "type": [
+                 "integer"
+                ]
+               },
+               "compared_with": {
+                "items": {
+                 "type": [
+                  "string"
+                 ]
+                },
+                "type": [
+                 "array"
+                ]
+               },
+               "differs": {
+                "type": [
+                 "integer"
+                ]
+               },
+               "differs_by_only": {
+                "type": [
+                 "integer"
+                ]
+               },
+               "differs_full": {
+                "type": [
+                 "integer"
+                ]
+               },
+               "differs_marginal": {
+                "type": [
+                 "integer"
+                ]
+               },
+               "differs_with": {
+                "items": {
+                 "type": [
+                  "string"
+                 ]
+                },
+                "type": [
+                 "array"
+                ]
+               },
+               "inconclusive": {
+                "type": [
+                 "integer"
+                ]
+               },
+               "key": {
+                "type": [
+                 "string"
+                ]
+               },
+               "largest_tv": {
+                "type": [
+                 "null",
+                 "number"
+                ]
+               },
+               "not_comparable": {
+                "type": [
+                 "integer"
+                ]
+               },
+               "size_with": {
+                "additionalProperties": {
+                 "type": [
+                  "number"
+                 ]
+                },
+                "type": [
+                 "object"
+                ]
+               },
+               "status": {
+                "enum": [
+                 "error",
+                 "offline",
+                 "ok",
+                 "timeout"
+                ],
+                "type": [
+                 "string"
+                ]
+               },
+               "worst_fidelity": {
+                "type": [
+                 "null",
+                 "number"
+                ]
+               }
+              },
+              "required": [
+               "agrees_with",
+               "by_only_with",
+               "compared",
+               "compared_with",
+               "differs",
+               "differs_by_only",
+               "differs_full",
+               "differs_marginal",
+               "differs_with",
+               "inconclusive",
+               "key",
+               "not_comparable",
+               "size_with",
+               "status"
+              ],
+              "type": [
+               "object"
+              ]
+             },
+             "type": [
+              "array"
+             ]
+            },
+            "by_only": {
+             "type": [
+              "integer"
+             ]
+            },
+            "by_only_pairs": {
+             "items": {
+              "items": {
+               "type": [
+                "string"
+               ]
+              },
+              "type": [
+               "array"
+              ]
+             },
+             "type": [
+              "array"
+             ]
+            },
+            "disagreeing": {
+             "type": [
+              "integer"
+             ]
+            },
+            "inconclusive": {
+             "type": [
+              "integer"
+             ]
+            },
+            "marginal_tested": {
+             "type": [
+              "boolean"
+             ]
+            },
+            "mode": {
+             "enum": [
+              "measured",
+              "statevector"
+             ],
+             "type": [
+              "string"
+             ]
+            },
+            "multi_run": {
+             "type": [
+              "boolean"
+             ]
+            },
+            "not_comparable": {
+             "type": [
+              "integer"
+             ]
+            },
+            "pairs": {
+             "type": [
+              "integer"
+             ]
+            }
+           },
+           "required": [
+            "backends",
+            "by_only",
+            "by_only_pairs",
+            "disagreeing",
+            "inconclusive",
+            "marginal_tested",
+            "mode",
+            "multi_run",
+            "not_comparable",
+            "pairs"
+           ],
+           "type": [
+            "null",
+            "object"
+           ]
+          },
+          "error": {
+           "type": [
+            "null",
+            "string"
+           ]
+          },
+          "fidelity_matrix": {
+           "items": {
+            "items": {
+             "type": [
+              "null",
+              "number"
+             ]
+            },
+            "type": [
+             "array"
+            ]
+           },
+           "type": [
+            "array",
+            "null"
+           ]
+          },
+          "pairwise_agreement": {
+           "items": {
+            "properties": {
+             "agreement": {
+              "type": [
+               "string"
+              ]
+             },
+             "marginal_assessment": {
+              "type": [
+               "null",
+               "string"
+              ]
+             },
+             "measured_assessment": {
+              "enum": [
+               "ambiguous",
+               "consistent_within_shot_noise",
+               "distinguishable",
+               "inconclusive_low_shots",
+               "not_comparable"
+              ],
+              "type": [
+               "null",
+               "string"
+              ]
+             },
+             "metrics": {
+              "type": [
+               "null",
+               "object"
+              ]
+             },
+             "mode": {
+              "enum": [
+               "measured",
+               "statevector"
+              ],
+              "type": [
+               "string"
+              ]
+             },
+             "pair_verdict": {
+              "properties": {
+               "agrees": {
+                "type": [
+                 "boolean"
+                ]
+               },
+               "assessment": {
+                "type": [
+                 "any",
+                 "null"
+                ]
+               },
+               "differs": {
+                "type": [
+                 "boolean"
+                ]
+               },
+               "differs_by_only": {
+                "type": [
+                 "boolean"
+                ]
+               },
+               "differs_full": {
+                "type": [
+                 "boolean"
+                ]
+               },
+               "differs_marginal": {
+                "type": [
+                 "boolean"
+                ]
+               },
+               "effective_agreement": {
+                "type": [
+                 "any",
+                 "null"
+                ]
+               },
+               "inconclusive": {
+                "type": [
+                 "boolean"
+                ]
+               },
+               "statevector_group": {
+                "enum": [
+                 "agree",
+                 "bit_order",
+                 "disagree",
+                 "not_comparable",
+                 "other"
+                ],
+                "type": [
+                 "string"
+                ]
+               },
+               "unaligned_basis": {
+                "type": [
+                 "null",
+                 "string"
+                ]
+               },
+               "verdict": {
+                "enum": [
+                 "agrees",
+                 "bit_order",
+                 "differs",
+                 "differs_by_only",
+                 "inconclusive",
+                 "not_comparable",
+                 "unassessed"
+                ],
+                "type": [
+                 "string"
+                ]
+               }
+              },
+              "required": [
+               "agrees",
+               "differs",
+               "differs_by_only",
+               "differs_full",
+               "differs_marginal",
+               "inconclusive",
+               "statevector_group",
+               "verdict"
+              ],
+              "type": [
+               "null",
+               "object"
+              ]
+             },
+             "simulators": {
+              "items": {
+               "type": [
+                "string"
+               ]
+              },
+              "type": [
+               "array"
+              ]
+             }
+            },
+            "required": [
+             "agreement",
+             "mode",
+             "simulators"
+            ],
+            "type": [
+             "object"
+            ]
+           },
+           "type": [
+            "array",
+            "null"
+           ]
+          },
+          "simulators": {
+           "items": {
+            "type": [
+             "string"
+            ]
+           },
+           "type": [
+            "array",
+            "null"
+           ]
+          },
+          "statistical_test_summary": {
+           "type": [
+            "null",
+            "object"
+           ]
+          }
+         },
+         "required": [],
+         "type": [
+          "null",
+          "object"
+         ]
+        },
+        "error": {
+         "type": [
+          "null",
+          "string"
+         ]
+        },
+        "input_qasm": {
+         "type": [
+          "null",
+          "string"
+         ]
+        },
+        "n_shots": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "performance_report": {
+         "type": [
+          "null",
+          "object"
+         ]
+        },
+        "raw_results": {
+         "items": {
+          "properties": {
+           "build_files": {
+            "additionalProperties": {
+             "type": [
+              "string"
+             ]
+            },
+            "type": [
+             "null",
+             "object"
+            ]
+           },
+           "compilation_time_sec": {
+            "type": [
+             "null",
+             "number"
+            ]
+           },
+           "counts": {
+            "additionalProperties": {
+             "type": [
+              "integer"
+             ]
+            },
+            "type": [
+             "null",
+             "object"
+            ]
+           },
+           "dispatch_status": {
+            "enum": [
+             "error",
+             "offline",
+             "ok",
+             "timeout"
+            ],
+            "type": [
+             "null",
+             "string"
+            ]
+           },
+           "error": {
+            "type": [
+             "null",
+             "string"
+            ]
+           },
+           "execution_time_sec": {
+            "type": [
+             "null",
+             "number"
+            ]
+           },
+           "image_identity": {
+            "type": [
+             "null",
+             "object"
+            ]
+           },
+           "memory_usage_mb": {
+            "type": [
+             "null",
+             "number"
+            ]
+           },
+           "never_started": {
+            "type": [
+             "boolean",
+             "null"
+            ]
+           },
+           "optimization_level": {
+            "type": [
+             "integer",
+             "null"
+            ]
+           },
+           "precision": {
+            "type": [
+             "null",
+             "string"
+            ]
+           },
+           "preprocessing_applied": {
+            "items": {
+             "type": [
+              "string"
+             ]
+            },
+            "type": [
+             "array",
+             "null"
+            ]
+           },
+           "process_peak_mb": {
+            "type": [
+             "null",
+             "number"
+            ]
+           },
+           "qubit_ordering": {
+            "type": [
+             "null",
+             "string"
+            ]
+           },
+           "queue_wait_sec": {
+            "type": [
+             "null",
+             "number"
+            ]
+           },
+           "runner_image": {
+            "type": [
+             "null",
+             "string"
+            ]
+           },
+           "runner_seed": {
+            "type": [
+             "integer",
+             "null"
+            ]
+           },
+           "sdk_versions": {
+            "additionalProperties": {
+             "type": [
+              "string"
+             ]
+            },
+            "type": [
+             "null",
+             "object"
+            ]
+           },
+           "simulation_time_sec": {
+            "type": [
+             "null",
+             "number"
+            ]
+           },
+           "simulator": {
+            "type": [
+             "string"
+            ]
+           },
+           "specimen": {
+            "type": [
+             "null",
+             "object"
+            ]
+           },
+           "statevector": {
+            "items": {
+             "type": [
+              "any"
+             ]
+            },
+            "type": [
+             "array",
+             "null",
+             "string"
+            ]
+           },
+           "statevector_omitted_for_display": {
+            "type": [
+             "boolean",
+             "null"
+            ]
+           },
+           "timed_out": {
+            "type": [
+             "boolean",
+             "null"
+            ]
+           },
+           "timing_caveats": {
+            "items": {
+             "type": [
+              "object"
+             ]
+            },
+            "type": [
+             "array",
+             "null"
+            ]
+           },
+           "transpiled_qasm": {
+            "type": [
+             "null",
+             "string"
+            ]
+           }
+          },
+          "required": [
+           "simulator"
+          ],
+          "type": [
+           "object"
+          ]
+         },
+         "type": [
+          "array",
+          "null"
+         ]
+        },
+        "resource_report": {
+         "type": [
+          "null",
+          "object"
+         ]
+        },
+        "run_completeness": {
+         "type": [
+          "null",
+          "object"
+         ]
+        },
+        "seed": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "simulated": {
+         "type": [
+          "boolean",
+          "null"
+         ]
+        },
+        "specimens": {
+         "type": [
+          "null",
+          "object"
+         ]
+        },
+        "task_name": {
+         "type": [
+          "null",
+          "string"
+         ]
+        },
+        "task_qubits": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        },
+        "task_request": {
+         "type": [
+          "null",
+          "object"
+         ]
+        },
+        "timing_caveats": {
+         "items": {
+          "type": [
+           "object"
+          ]
+         },
+         "type": [
+          "array",
+          "null"
+         ]
+        },
+        "timing_caveats_version": {
+         "type": [
+          "null",
+          "string"
+         ]
+        }
+       },
+       "required": [],
+       "type": [
+        "object"
+       ]
+      }
+     ],
+     "type": [
+      "object"
+     ]
+    },
+    "status": 200
+   }
+  },
+  "GET /jobs/{job_id}/selftest-result": {
+   "parameters": {
+    "path:job_id": {
+     "required": true,
+     "schema": {
+      "type": [
+       "string"
+      ]
+     }
+    }
+   },
+   "request": null,
+   "response": {
+    "media": [
+     "application/json"
+    ],
+    "schema": {
+     "properties": {
+      "backends": {
+       "additionalProperties": {
+        "enum": [
+         "FAIL",
+         "PASS",
+         "SKIP",
+         "WARN"
+        ],
+        "type": [
+         "string"
+        ]
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "caveats": {
+       "items": {
+        "type": [
+         "string"
+        ]
+       },
+       "type": [
+        "array"
+       ]
+      },
+      "counts": {
+       "additionalProperties": {
+        "type": [
+         "integer"
+        ]
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "environment_checks": {
+       "items": {
+        "properties": {
+         "backend": {
+          "type": [
+           "null",
+           "string"
+          ]
+         },
+         "check": {
+          "type": [
+           "string"
+          ]
+         },
+         "circuit": {
+          "type": [
+           "null",
+           "string"
+          ]
+         },
+         "reason": {
+          "type": [
+           "string"
+          ]
+         },
+         "status": {
+          "enum": [
+           "FAIL",
+           "PASS",
+           "SKIP",
+           "WARN"
+          ],
+          "type": [
+           "string"
+          ]
+         }
+        },
+        "required": [
+         "check",
+         "reason",
+         "status"
+        ],
+        "type": [
+         "object"
+        ]
+       },
+       "type": [
+        "array"
+       ]
+      },
+      "expected_sha256": {
+       "type": [
+        "string"
+       ]
+      },
+      "job_id": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "known_answer": {
+       "items": {
+        "properties": {
+         "backend": {
+          "type": [
+           "null",
+           "string"
+          ]
+         },
+         "check": {
+          "type": [
+           "string"
+          ]
+         },
+         "circuit": {
+          "type": [
+           "null",
+           "string"
+          ]
+         },
+         "reason": {
+          "type": [
+           "string"
+          ]
+         },
+         "status": {
+          "enum": [
+           "FAIL",
+           "PASS",
+           "SKIP",
+           "WARN"
+          ],
+          "type": [
+           "string"
+          ]
+         }
+        },
+        "required": [
+         "check",
+         "reason",
+         "status"
+        ],
+        "type": [
+         "object"
+        ]
+       },
+       "type": [
+        "array"
+       ]
+      },
+      "part": {
+       "enum": [
+        "measured",
+        "statevector"
+       ],
+       "type": [
+        "string"
+       ]
+      },
+      "plan": {
+       "items": {
+        "properties": {
+         "backend": {
+          "type": [
+           "null",
+           "string"
+          ]
+         },
+         "check": {
+          "type": [
+           "string"
+          ]
+         },
+         "circuit": {
+          "type": [
+           "null",
+           "string"
+          ]
+         },
+         "reason": {
+          "type": [
+           "string"
+          ]
+         },
+         "status": {
+          "enum": [
+           "FAIL",
+           "PASS",
+           "SKIP",
+           "WARN"
+          ],
+          "type": [
+           "string"
+          ]
+         }
+        },
+        "required": [
+         "check",
+         "reason",
+         "status"
+        ],
+        "type": [
+         "object"
+        ]
+       },
+       "type": [
+        "array"
+       ]
+      },
+      "report_source": {
+       "enum": [
+        "server_job"
+       ],
+       "type": [
+        "string"
+       ]
+      },
+      "schema": {
+       "type": [
+        "string"
+       ]
+      },
+      "selftest_version": {
+       "type": [
+        "string"
+       ]
+      },
+      "status": {
+       "enum": [
+        "FAIL",
+        "PASS",
+        "WARN"
+       ],
+       "type": [
+        "string"
+       ]
+      }
+     },
+     "required": [
+      "backends",
+      "caveats",
+      "counts",
+      "environment_checks",
+      "expected_sha256",
+      "known_answer",
+      "part",
+      "plan",
+      "report_source",
+      "schema",
+      "selftest_version",
+      "status"
+     ],
+     "type": [
+      "object"
+     ]
+    },
+    "status": 200
+   }
+  },
+  "GET /jobs/{job_id}/summary": {
+   "parameters": {
+    "path:job_id": {
+     "required": true,
+     "schema": {
+      "type": [
+       "string"
+      ]
+     }
+    }
+   },
+   "request": null,
+   "response": {
+    "media": [
+     "application/json"
+    ],
+    "schema": {
+     "properties": {
+      "analysis_version": {
+       "type": [
+        "string"
+       ]
+      },
+      "backend_verdicts": {
+       "properties": {
+        "backends": {
+         "items": {
+          "properties": {
+           "agrees_with": {
+            "items": {
+             "type": [
+              "string"
+             ]
+            },
+            "type": [
+             "array"
+            ]
+           },
+           "bit_order": {
+            "type": [
+             "any",
+             "null"
+            ]
+           },
+           "by_only_with": {
+            "items": {
+             "type": [
+              "string"
+             ]
+            },
+            "type": [
+             "array"
+            ]
+           },
+           "compared": {
+            "type": [
+             "integer"
+            ]
+           },
+           "compared_with": {
+            "items": {
+             "type": [
+              "string"
+             ]
+            },
+            "type": [
+             "array"
+            ]
+           },
+           "differs": {
+            "type": [
+             "integer"
+            ]
+           },
+           "differs_by_only": {
+            "type": [
+             "integer"
+            ]
+           },
+           "differs_full": {
+            "type": [
+             "integer"
+            ]
+           },
+           "differs_marginal": {
+            "type": [
+             "integer"
+            ]
+           },
+           "differs_with": {
+            "items": {
+             "type": [
+              "string"
+             ]
+            },
+            "type": [
+             "array"
+            ]
+           },
+           "inconclusive": {
+            "type": [
+             "integer"
+            ]
+           },
+           "key": {
+            "type": [
+             "string"
+            ]
+           },
+           "largest_tv": {
+            "type": [
+             "null",
+             "number"
+            ]
+           },
+           "not_comparable": {
+            "type": [
+             "integer"
+            ]
+           },
+           "size_with": {
+            "additionalProperties": {
+             "type": [
+              "number"
+             ]
+            },
+            "type": [
+             "object"
+            ]
+           },
+           "status": {
+            "enum": [
+             "error",
+             "offline",
+             "ok",
+             "timeout"
+            ],
+            "type": [
+             "string"
+            ]
+           },
+           "worst_fidelity": {
+            "type": [
+             "null",
+             "number"
+            ]
+           }
+          },
+          "required": [
+           "agrees_with",
+           "by_only_with",
+           "compared",
+           "compared_with",
+           "differs",
+           "differs_by_only",
+           "differs_full",
+           "differs_marginal",
+           "differs_with",
+           "inconclusive",
+           "key",
+           "not_comparable",
+           "size_with",
+           "status"
+          ],
+          "type": [
+           "object"
+          ]
+         },
+         "type": [
+          "array"
+         ]
+        },
+        "by_only": {
+         "type": [
+          "integer"
+         ]
+        },
+        "by_only_pairs": {
+         "items": {
+          "items": {
+           "type": [
+            "string"
+           ]
+          },
+          "type": [
+           "array"
+          ]
+         },
+         "type": [
+          "array"
+         ]
+        },
+        "disagreeing": {
+         "type": [
+          "integer"
+         ]
+        },
+        "inconclusive": {
+         "type": [
+          "integer"
+         ]
+        },
+        "marginal_tested": {
+         "type": [
+          "boolean"
+         ]
+        },
+        "mode": {
+         "enum": [
+          "measured",
+          "statevector"
+         ],
+         "type": [
+          "string"
+         ]
+        },
+        "multi_run": {
+         "type": [
+          "boolean"
+         ]
+        },
+        "not_comparable": {
+         "type": [
+          "integer"
+         ]
+        },
+        "pairs": {
+         "type": [
+          "integer"
+         ]
+        }
+       },
+       "required": [
+        "backends",
+        "by_only",
+        "by_only_pairs",
+        "disagreeing",
+        "inconclusive",
+        "marginal_tested",
+        "mode",
+        "multi_run",
+        "not_comparable",
+        "pairs"
+       ],
+       "type": [
+        "null",
+        "object"
+       ]
+      },
+      "benchmark_summary": {
+       "items": {
+        "properties": {
+         "backend_verdicts": {
+          "properties": {
+           "backends": {
+            "items": {
+             "properties": {
+              "agrees_with": {
+               "items": {
+                "type": [
+                 "string"
+                ]
+               },
+               "type": [
+                "array"
+               ]
+              },
+              "bit_order": {
+               "type": [
+                "any",
+                "null"
+               ]
+              },
+              "by_only_with": {
+               "items": {
+                "type": [
+                 "string"
+                ]
+               },
+               "type": [
+                "array"
+               ]
+              },
+              "compared": {
+               "type": [
+                "integer"
+               ]
+              },
+              "compared_with": {
+               "items": {
+                "type": [
+                 "string"
+                ]
+               },
+               "type": [
+                "array"
+               ]
+              },
+              "differs": {
+               "type": [
+                "integer"
+               ]
+              },
+              "differs_by_only": {
+               "type": [
+                "integer"
+               ]
+              },
+              "differs_full": {
+               "type": [
+                "integer"
+               ]
+              },
+              "differs_marginal": {
+               "type": [
+                "integer"
+               ]
+              },
+              "differs_with": {
+               "items": {
+                "type": [
+                 "string"
+                ]
+               },
+               "type": [
+                "array"
+               ]
+              },
+              "inconclusive": {
+               "type": [
+                "integer"
+               ]
+              },
+              "key": {
+               "type": [
+                "string"
+               ]
+              },
+              "largest_tv": {
+               "type": [
+                "null",
+                "number"
+               ]
+              },
+              "not_comparable": {
+               "type": [
+                "integer"
+               ]
+              },
+              "size_with": {
+               "additionalProperties": {
+                "type": [
+                 "number"
+                ]
+               },
+               "type": [
+                "object"
+               ]
+              },
+              "status": {
+               "enum": [
+                "error",
+                "offline",
+                "ok",
+                "timeout"
+               ],
+               "type": [
+                "string"
+               ]
+              },
+              "worst_fidelity": {
+               "type": [
+                "null",
+                "number"
+               ]
+              }
+             },
+             "required": [
+              "agrees_with",
+              "by_only_with",
+              "compared",
+              "compared_with",
+              "differs",
+              "differs_by_only",
+              "differs_full",
+              "differs_marginal",
+              "differs_with",
+              "inconclusive",
+              "key",
+              "not_comparable",
+              "size_with",
+              "status"
+             ],
+             "type": [
+              "object"
+             ]
+            },
+            "type": [
+             "array"
+            ]
+           },
+           "by_only": {
+            "type": [
+             "integer"
+            ]
+           },
+           "by_only_pairs": {
+            "items": {
+             "items": {
+              "type": [
+               "string"
+              ]
+             },
+             "type": [
+              "array"
+             ]
+            },
+            "type": [
+             "array"
+            ]
+           },
+           "disagreeing": {
+            "type": [
+             "integer"
+            ]
+           },
+           "inconclusive": {
+            "type": [
+             "integer"
+            ]
+           },
+           "marginal_tested": {
+            "type": [
+             "boolean"
+            ]
+           },
+           "mode": {
+            "enum": [
+             "measured",
+             "statevector"
+            ],
+            "type": [
+             "string"
+            ]
+           },
+           "multi_run": {
+            "type": [
+             "boolean"
+            ]
+           },
+           "not_comparable": {
+            "type": [
+             "integer"
+            ]
+           },
+           "pairs": {
+            "type": [
+             "integer"
+            ]
+           }
+          },
+          "required": [
+           "backends",
+           "by_only",
+           "by_only_pairs",
+           "disagreeing",
+           "inconclusive",
+           "marginal_tested",
+           "mode",
+           "multi_run",
+           "not_comparable",
+           "pairs"
+          ],
+          "type": [
+           "object"
+          ]
+         },
+         "outcomes": {
+          "additionalProperties": {
+           "type": [
+            "integer"
+           ]
+          },
+          "type": [
+           "object"
+          ]
+         },
+         "pair_verdicts": {
+          "items": {
+           "properties": {
+            "agrees": {
+             "type": [
+              "boolean"
+             ]
+            },
+            "assessment": {
+             "type": [
+              "any",
+              "null"
+             ]
+            },
+            "differs": {
+             "type": [
+              "boolean"
+             ]
+            },
+            "differs_by_only": {
+             "type": [
+              "boolean"
+             ]
+            },
+            "differs_full": {
+             "type": [
+              "boolean"
+             ]
+            },
+            "differs_marginal": {
+             "type": [
+              "boolean"
+             ]
+            },
+            "effective_agreement": {
+             "type": [
+              "any",
+              "null"
+             ]
+            },
+            "inconclusive": {
+             "type": [
+              "boolean"
+             ]
+            },
+            "simulators": {
+             "type": [
+              "any"
+             ]
+            },
+            "statevector_group": {
+             "enum": [
+              "agree",
+              "bit_order",
+              "disagree",
+              "not_comparable",
+              "other"
+             ],
+             "type": [
+              "string"
+             ]
+            },
+            "unaligned_basis": {
+             "type": [
+              "null",
+              "string"
+             ]
+            },
+            "verdict": {
+             "enum": [
+              "agrees",
+              "bit_order",
+              "differs",
+              "differs_by_only",
+              "inconclusive",
+              "not_comparable",
+              "unassessed"
+             ],
+             "type": [
+              "string"
+             ]
+            }
+           },
+           "required": [
+            "agrees",
+            "differs",
+            "differs_by_only",
+            "differs_full",
+            "differs_marginal",
+            "inconclusive",
+            "statevector_group",
+            "verdict"
+           ],
+           "type": [
+            "object"
+           ]
+          },
+          "type": [
+           "array"
+          ]
+         },
+         "report_analysis_version": {
+          "type": [
+           "null",
+           "string"
+          ]
+         },
+         "runs": {
+          "type": [
+           "object"
+          ]
+         }
+        },
+        "required": [
+         "backend_verdicts",
+         "outcomes",
+         "pair_verdicts",
+         "runs"
+        ],
+        "type": [
+         "object"
+        ]
+       },
+       "type": [
+        "array",
+        "null"
+       ]
+      },
+      "outcome_roles": {
+       "additionalProperties": {
+        "enum": [
+         "agreement",
+         "difference",
+         "not_established",
+         "runs_without_output"
+        ],
+        "type": [
+         "string"
+        ]
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "outcomes": {
+       "additionalProperties": {
+        "type": [
+         "integer"
+        ]
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "pair_verdicts": {
+       "items": {
+        "properties": {
+         "agrees": {
+          "type": [
+           "boolean"
+          ]
+         },
+         "assessment": {
+          "type": [
+           "any",
+           "null"
+          ]
+         },
+         "differs": {
+          "type": [
+           "boolean"
+          ]
+         },
+         "differs_by_only": {
+          "type": [
+           "boolean"
+          ]
+         },
+         "differs_full": {
+          "type": [
+           "boolean"
+          ]
+         },
+         "differs_marginal": {
+          "type": [
+           "boolean"
+          ]
+         },
+         "effective_agreement": {
+          "type": [
+           "any",
+           "null"
+          ]
+         },
+         "inconclusive": {
+          "type": [
+           "boolean"
+          ]
+         },
+         "simulators": {
+          "type": [
+           "any"
+          ]
+         },
+         "statevector_group": {
+          "enum": [
+           "agree",
+           "bit_order",
+           "disagree",
+           "not_comparable",
+           "other"
+          ],
+          "type": [
+           "string"
+          ]
+         },
+         "unaligned_basis": {
+          "type": [
+           "null",
+           "string"
+          ]
+         },
+         "verdict": {
+          "enum": [
+           "agrees",
+           "bit_order",
+           "differs",
+           "differs_by_only",
+           "inconclusive",
+           "not_comparable",
+           "unassessed"
+          ],
+          "type": [
+           "string"
+          ]
+         }
+        },
+        "required": [
+         "agrees",
+         "differs",
+         "differs_by_only",
+         "differs_full",
+         "differs_marginal",
+         "inconclusive",
+         "statevector_group",
+         "verdict"
+        ],
+        "type": [
+         "object"
+        ]
+       },
+       "type": [
+        "array",
+        "null"
+       ]
+      },
+      "report_analysis_version": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "report_source": {
+       "enum": [
+        "client_supplied",
+        "saved_run",
+        "server_job"
+       ],
+       "type": [
+        "string"
+       ]
+      },
+      "runs": {
+       "type": [
+        "null",
+        "object"
+       ]
+      },
+      "saved_from": {
+       "type": [
+        "null",
+        "string"
+       ]
+      }
+     },
+     "required": [
+      "analysis_version",
+      "outcome_roles",
+      "outcomes",
+      "report_source"
+     ],
+     "type": [
+      "object"
+     ]
+    },
+    "status": 200
+   }
+  },
+  "GET /runners": {
+   "parameters": {
+    "query:fresh": {
+     "required": false,
+     "schema": {
+      "type": [
+       "boolean"
+      ]
+     }
+    }
+   },
+   "request": null,
+   "response": {
+    "media": [
+     "application/json"
+    ],
+    "schema": {
+     "items": {
+      "properties": {
+       "available": {
+        "type": [
+         "boolean"
+        ]
+       },
+       "backend": {
+        "type": [
+         "null",
+         "string"
+        ]
+       },
+       "default_selected": {
+        "type": [
+         "boolean"
+        ]
+       },
+       "device": {
+        "type": [
+         "null",
+         "string"
+        ]
+       },
+       "enabled": {
+        "type": [
+         "boolean"
+        ]
+       },
+       "error_kind": {
+        "type": [
+         "null",
+         "string"
+        ]
+       },
+       "fresh": {
+        "type": [
+         "boolean",
+         "null"
+        ]
+       },
+       "id": {
+        "type": [
+         "string"
+        ]
+       },
+       "max_level": {
+        "type": [
+         "integer"
+        ]
+       },
+       "optimization_levels": {
+        "additionalProperties": {
+         "type": [
+          "string"
+         ]
+        },
+        "type": [
+         "object"
+        ]
+       },
+       "precision": {
+        "properties": {
+         "measured": {
+          "type": [
+           "null",
+           "string"
+          ]
+         },
+         "statevector": {
+          "type": [
+           "null",
+           "string"
+          ]
+         }
+        },
+        "required": [
+         "measured",
+         "statevector"
+        ],
+        "type": [
+         "object"
+        ]
+       },
+       "probed_at": {
+        "type": [
+         "null",
+         "string"
+        ]
+       },
+       "profiles": {
+        "items": {
+         "type": [
+          "string"
+         ]
+        },
+        "type": [
+         "array"
+        ]
+       },
+       "qubit_ordering": {
+        "properties": {
+         "measured": {
+          "type": [
+           "null",
+           "string"
+          ]
+         },
+         "statevector": {
+          "type": [
+           "null",
+           "string"
+          ]
+         }
+        },
+        "required": [
+         "measured",
+         "statevector"
+        ],
+        "type": [
+         "object"
+        ]
+       },
+       "reason": {
+        "type": [
+         "null",
+         "string"
+        ]
+       },
+       "requires_gpu": {
+        "type": [
+         "boolean"
+        ]
+       },
+       "unavailable_reason": {
+        "type": [
+         "null",
+         "string"
+        ]
+       },
+       "version": {
+        "type": [
+         "null",
+         "string"
+        ]
+       }
+      },
+      "required": [
+       "available",
+       "backend",
+       "default_selected",
+       "device",
+       "enabled",
+       "id",
+       "max_level",
+       "optimization_levels",
+       "precision",
+       "profiles",
+       "qubit_ordering",
+       "requires_gpu",
+       "unavailable_reason",
+       "version"
+      ],
+      "type": [
+       "object"
+      ]
+     },
+     "type": [
+      "array"
+     ]
+    },
+    "status": 200
+   }
+  },
+  "GET /selftest": {
+   "parameters": {},
+   "request": null,
+   "response": {
+    "media": [
+     "application/json"
+    ],
+    "schema": {
+     "properties": {
+      "circuits": {
+       "items": {
+        "properties": {
+         "check": {
+          "enum": [
+           "counts_key",
+           "ghz_sampling",
+           "statevector"
+          ],
+          "type": [
+           "string"
+          ]
+         },
+         "expected": {
+          "type": [
+           "object"
+          ]
+         },
+         "n_qubits": {
+          "type": [
+           "integer"
+          ]
+         },
+         "name": {
+          "type": [
+           "string"
+          ]
+         },
+         "part": {
+          "enum": [
+           "measured",
+           "statevector"
+          ],
+          "type": [
+           "string"
+          ]
+         },
+         "qasm": {
+          "type": [
+           "string"
+          ]
+         },
+         "qasm_sha256": {
+          "type": [
+           "string"
+          ]
+         },
+         "tests": {
+          "type": [
+           "string"
+          ]
+         }
+        },
+        "required": [
+         "check",
+         "expected",
+         "n_qubits",
+         "name",
+         "part",
+         "qasm",
+         "qasm_sha256",
+         "tests"
+        ],
+        "type": [
+         "object"
+        ]
+       },
+       "type": [
+        "array"
+       ]
+      },
+      "environment_checks": {
+       "items": {
+        "type": [
+         "object"
+        ]
+       },
+       "type": [
+        "array"
+       ]
+      },
+      "expected_sha256": {
+       "type": [
+        "string"
+       ]
+      },
+      "expected_source": {
+       "type": [
+        "string"
+       ]
+      },
+      "jobs": {
+       "items": {
+        "properties": {
+         "client_sets": {
+          "additionalProperties": {
+           "type": [
+            "string"
+           ]
+          },
+          "type": [
+           "object"
+          ]
+         },
+         "endpoint": {
+          "type": [
+           "string"
+          ]
+         },
+         "evaluate": {
+          "type": [
+           "string"
+          ]
+         },
+         "part": {
+          "enum": [
+           "measured",
+           "statevector"
+          ],
+          "type": [
+           "string"
+          ]
+         },
+         "request": {
+          "type": [
+           "object"
+          ]
+         }
+        },
+        "required": [
+         "client_sets",
+         "endpoint",
+         "evaluate",
+         "part",
+         "request"
+        ],
+        "type": [
+         "object"
+        ]
+       },
+       "type": [
+        "array"
+       ]
+      },
+      "known_answer_checks": {
+       "items": {
+        "type": [
+         "object"
+        ]
+       },
+       "type": [
+        "array"
+       ]
+      },
+      "not_tested": {
+       "type": [
+        "string"
+       ]
+      },
+      "pass_rule": {
+       "type": [
+        "string"
+       ]
+      },
+      "schema": {
+       "type": [
+        "string"
+       ]
+      },
+      "selftest_version": {
+       "type": [
+        "string"
+       ]
+      },
+      "tested": {
+       "type": [
+        "string"
+       ]
+      },
+      "tolerances": {
+       "additionalProperties": {
+        "type": [
+         "number"
+        ]
+       },
+       "type": [
+        "object"
+       ]
+      }
+     },
+     "required": [
+      "circuits",
+      "environment_checks",
+      "expected_sha256",
+      "expected_source",
+      "jobs",
+      "known_answer_checks",
+      "not_tested",
+      "pass_rule",
+      "schema",
+      "selftest_version",
+      "tested",
+      "tolerances"
+     ],
+     "type": [
+      "object"
+     ]
+    },
+    "status": 200
+   }
+  },
+  "POST /auth/token": {
+   "parameters": {},
+   "request": {
+    "media": "application/x-www-form-urlencoded",
+    "required": true,
+    "schema": {
+     "properties": {
+      "client_id": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "client_secret": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "grant_type": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "password": {
+       "type": [
+        "string"
+       ]
+      },
+      "scope": {
+       "type": [
+        "string"
+       ]
+      },
+      "username": {
+       "type": [
+        "string"
+       ]
+      }
+     },
+     "required": [
+      "password",
+      "username"
+     ],
+     "type": [
+      "object"
+     ]
+    }
+   },
+   "response": {
+    "media": [
+     "application/json"
+    ],
+    "schema": {
+     "properties": {
+      "access_token": {
+       "type": [
+        "string"
+       ]
+      },
+      "expires_in": {
+       "type": [
+        "integer"
+       ]
+      },
+      "token_type": {
+       "type": [
+        "string"
+       ]
+      }
+     },
+     "required": [
+      "access_token",
+      "expires_in",
+      "token_type"
+     ],
+     "type": [
+      "object"
+     ]
+    },
+    "status": 200
+   }
+  },
+  "POST /compare": {
+   "parameters": {},
+   "request": {
+    "media": "application/json",
+    "required": true,
+    "schema": {
+     "additionalProperties": false,
+     "properties": {
+      "apply_preprocessing": {
+       "type": [
+        "boolean"
+       ]
+      },
+      "bypass_limits": {
+       "type": [
+        "boolean"
+       ]
+      },
+      "compilers": {
+       "additionalProperties": {
+        "items": {
+         "type": [
+          "integer"
+         ]
+        },
+        "type": [
+         "array"
+        ]
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "exclusive": {
+       "type": [
+        "boolean"
+       ]
+      },
+      "execution_target": {
+       "enum": [
+        "kubernetes",
+        "local"
+       ],
+       "type": [
+        "string"
+       ]
+      },
+      "optimization_level": {
+       "type": [
+        "integer"
+       ]
+      },
+      "qasm_string": {
+       "type": [
+        "string"
+       ]
+      },
+      "runner_config": {
+       "additionalProperties": {
+        "items": {
+         "type": [
+          "integer"
+         ]
+        },
+        "type": [
+         "array",
+         "integer"
+        ]
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "runner_phases": {
+       "additionalProperties": {
+        "type": [
+         "integer"
+        ]
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "simulate": {
+       "type": [
+        "boolean"
+       ]
+      },
+      "target_simulators": {
+       "items": {
+        "type": [
+         "string"
+        ]
+       },
+       "type": [
+        "array"
+       ]
+      },
+      "thresholds": {
+       "additionalProperties": false,
+       "properties": {
+        "fidelity_tolerance": {
+         "type": [
+          "number"
+         ]
+        },
+        "hellinger_threshold": {
+         "type": [
+          "number"
+         ]
+        },
+        "js_threshold": {
+         "type": [
+          "number"
+         ]
+        },
+        "norm_tolerance": {
+         "type": [
+          "number"
+         ]
+        },
+        "phase_tolerance": {
+         "type": [
+          "number"
+         ]
+        }
+       },
+       "required": [],
+       "type": [
+        "null",
+        "object"
+       ]
+      },
+      "timeout_seconds": {
+       "type": [
+        "integer"
+       ]
+      },
+      "timing_repeats": {
+       "type": [
+        "integer"
+       ]
+      }
+     },
+     "required": [
+      "qasm_string"
+     ],
+     "type": [
+      "object"
+     ]
+    }
+   },
+   "response": {
+    "media": [
+     "application/json"
+    ],
+    "schema": {
+     "properties": {
+      "error": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "job_id": {
+       "type": [
+        "string"
+       ]
+      },
+      "phase": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "progress": {
+       "type": [
+        "null",
+        "object"
+       ]
+      },
+      "requested_target": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "results": {
+       "type": [
+        "null",
+        "object"
+       ]
+      },
+      "runner_statuses": {
+       "additionalProperties": {
+        "type": [
+         "string"
+        ]
+       },
+       "type": [
+        "null",
+        "object"
+       ]
+      },
+      "status": {
+       "type": [
+        "string"
+       ]
+      },
+      "target": {
+       "type": [
+        "string"
+       ]
+      }
+     },
+     "required": [
+      "job_id",
+      "status",
+      "target"
+     ],
+     "type": [
+      "object"
+     ]
+    },
+    "status": 200
+   }
+  },
+  "POST /compare_measured": {
+   "parameters": {},
+   "request": {
+    "media": "application/json",
+    "required": true,
+    "schema": {
+     "additionalProperties": false,
+     "properties": {
+      "apply_preprocessing": {
+       "type": [
+        "boolean"
+       ]
+      },
+      "bypass_limits": {
+       "type": [
+        "boolean"
+       ]
+      },
+      "compilers": {
+       "additionalProperties": {
+        "items": {
+         "type": [
+          "integer"
+         ]
+        },
+        "type": [
+         "array"
+        ]
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "exclusive": {
+       "type": [
+        "boolean"
+       ]
+      },
+      "execution_target": {
+       "enum": [
+        "kubernetes",
+        "local"
+       ],
+       "type": [
+        "string"
+       ]
+      },
+      "n_shots": {
+       "type": [
+        "integer"
+       ]
+      },
+      "optimization_level": {
+       "type": [
+        "integer"
+       ]
+      },
+      "qasm_string": {
+       "type": [
+        "string"
+       ]
+      },
+      "runner_config": {
+       "additionalProperties": {
+        "items": {
+         "type": [
+          "integer"
+         ]
+        },
+        "type": [
+         "array",
+         "integer"
+        ]
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "runner_phases": {
+       "additionalProperties": {
+        "type": [
+         "integer"
+        ]
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "seed": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "target_simulators": {
+       "items": {
+        "type": [
+         "string"
+        ]
+       },
+       "type": [
+        "array"
+       ]
+      },
+      "thresholds": {
+       "additionalProperties": false,
+       "properties": {
+        "fidelity_tolerance": {
+         "type": [
+          "number"
+         ]
+        },
+        "hellinger_threshold": {
+         "type": [
+          "number"
+         ]
+        },
+        "js_threshold": {
+         "type": [
+          "number"
+         ]
+        },
+        "norm_tolerance": {
+         "type": [
+          "number"
+         ]
+        },
+        "phase_tolerance": {
+         "type": [
+          "number"
+         ]
+        }
+       },
+       "required": [],
+       "type": [
+        "null",
+        "object"
+       ]
+      },
+      "timeout_seconds": {
+       "type": [
+        "integer"
+       ]
+      },
+      "timing_repeats": {
+       "type": [
+        "integer"
+       ]
+      }
+     },
+     "required": [
+      "qasm_string"
+     ],
+     "type": [
+      "object"
+     ]
+    }
+   },
+   "response": {
+    "media": [
+     "application/json"
+    ],
+    "schema": {
+     "properties": {
+      "error": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "job_id": {
+       "type": [
+        "string"
+       ]
+      },
+      "phase": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "progress": {
+       "type": [
+        "null",
+        "object"
+       ]
+      },
+      "requested_target": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "results": {
+       "type": [
+        "null",
+        "object"
+       ]
+      },
+      "runner_statuses": {
+       "additionalProperties": {
+        "type": [
+         "string"
+        ]
+       },
+       "type": [
+        "null",
+        "object"
+       ]
+      },
+      "status": {
+       "type": [
+        "string"
+       ]
+      },
+      "target": {
+       "type": [
+        "string"
+       ]
+      }
+     },
+     "required": [
+      "job_id",
+      "status",
+      "target"
+     ],
+     "type": [
+      "object"
+     ]
+    },
+    "status": 200
+   }
+  },
+  "POST /export": {
+   "parameters": {},
+   "request": {
+    "media": "application/json",
+    "required": true,
+    "schema": {
+     "additionalProperties": false,
+     "properties": {
+      "author_affiliation": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "author_name": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "circuit_name": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "format": {
+       "enum": [
+        "ro-crate"
+       ],
+       "type": [
+        "string"
+       ]
+      },
+      "include_statevectors": {
+       "type": [
+        "boolean"
+       ]
+      },
+      "name": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "publication_artifacts": {
+       "additionalProperties": false,
+       "properties": {
+        "categories": {
+         "items": {
+          "enum": [
+           "agreement",
+           "heatmaps",
+           "performance",
+           "statistical"
+          ],
+          "type": [
+           "string"
+          ]
+         },
+         "type": [
+          "array"
+         ]
+        },
+        "figure_formats": {
+         "items": {
+          "enum": [
+           "pdf",
+           "png",
+           "svg"
+          ],
+          "type": [
+           "string"
+          ]
+         },
+         "type": [
+          "array"
+         ]
+        },
+        "items": {
+         "items": {
+          "additionalProperties": false,
+          "properties": {
+           "formats": {
+            "items": {
+             "enum": [
+              "csv",
+              "html",
+              "latex",
+              "markdown",
+              "pdf",
+              "png",
+              "svg",
+              "text",
+              "xlsx"
+             ],
+             "type": [
+              "string"
+             ]
+            },
+            "type": [
+             "array"
+            ]
+           },
+           "params": {
+            "type": [
+             "object"
+            ]
+           },
+           "view": {
+            "enum": [
+             "agreement",
+             "agreement_distribution",
+             "counts",
+             "execution_time",
+             "fidelity_heatmap",
+             "glossary",
+             "hamming",
+             "hellinger_heatmap",
+             "js_divergence_heatmap",
+             "marginals",
+             "metadata",
+             "rank",
+             "resource_usage",
+             "statistical_test"
+            ],
+            "type": [
+             "string"
+            ]
+           }
+          },
+          "required": [
+           "formats",
+           "view"
+          ],
+          "type": [
+           "object"
+          ]
+         },
+         "type": [
+          "array"
+         ]
+        },
+        "table_formats": {
+         "items": {
+          "enum": [
+           "csv",
+           "html",
+           "latex",
+           "xlsx"
+          ],
+          "type": [
+           "string"
+          ]
+         },
+         "type": [
+          "array"
+         ]
+        }
+       },
+       "required": [],
+       "type": [
+        "null",
+        "object"
+       ]
+      },
+      "results": {
+       "type": [
+        "object"
+       ]
+      }
+     },
+     "required": [
+      "results"
+     ],
+     "type": [
+      "object"
+     ]
+    }
+   },
+   "response": {
+    "media": [
+     "application/zip"
+    ],
+    "schema": null,
+    "status": 200
+   }
+  },
+  "POST /generate_circuit": {
+   "parameters": {},
+   "request": {
+    "media": "application/json",
+    "required": true,
+    "schema": {
+     "additionalProperties": false,
+     "properties": {
+      "algorithm": {
+       "type": [
+        "string"
+       ]
+      },
+      "qubits": {
+       "type": [
+        "integer"
+       ]
+      },
+      "seed": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      }
+     },
+     "required": [
+      "algorithm",
+      "qubits"
+     ],
+     "type": [
+      "object"
+     ]
+    }
+   },
+   "response": {
+    "media": [
+     "application/json"
+    ],
+    "schema": {
+     "properties": {
+      "qasm": {
+       "type": [
+        "string"
+       ]
+      }
+     },
+     "required": [
+      "qasm"
+     ],
+     "type": [
+      "object"
+     ]
+    },
+    "status": 200
+   }
+  },
+  "POST /jobs/{job_id}/export": {
+   "parameters": {
+    "path:job_id": {
+     "required": true,
+     "schema": {
+      "type": [
+       "string"
+      ]
+     }
+    }
+   },
+   "request": {
+    "media": "application/json",
+    "required": false,
+    "schema": {
+     "additionalProperties": false,
+     "properties": {
+      "author_affiliation": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "author_name": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "circuit_name": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "format": {
+       "enum": [
+        "ro-crate"
+       ],
+       "type": [
+        "string"
+       ]
+      },
+      "include_statevectors": {
+       "type": [
+        "boolean"
+       ]
+      },
+      "name": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "publication_artifacts": {
+       "additionalProperties": false,
+       "properties": {
+        "categories": {
+         "items": {
+          "enum": [
+           "agreement",
+           "heatmaps",
+           "performance",
+           "statistical"
+          ],
+          "type": [
+           "string"
+          ]
+         },
+         "type": [
+          "array"
+         ]
+        },
+        "figure_formats": {
+         "items": {
+          "enum": [
+           "pdf",
+           "png",
+           "svg"
+          ],
+          "type": [
+           "string"
+          ]
+         },
+         "type": [
+          "array"
+         ]
+        },
+        "items": {
+         "items": {
+          "additionalProperties": false,
+          "properties": {
+           "formats": {
+            "items": {
+             "enum": [
+              "csv",
+              "html",
+              "latex",
+              "markdown",
+              "pdf",
+              "png",
+              "svg",
+              "text",
+              "xlsx"
+             ],
+             "type": [
+              "string"
+             ]
+            },
+            "type": [
+             "array"
+            ]
+           },
+           "params": {
+            "type": [
+             "object"
+            ]
+           },
+           "view": {
+            "enum": [
+             "agreement",
+             "agreement_distribution",
+             "counts",
+             "execution_time",
+             "fidelity_heatmap",
+             "glossary",
+             "hamming",
+             "hellinger_heatmap",
+             "js_divergence_heatmap",
+             "marginals",
+             "metadata",
+             "rank",
+             "resource_usage",
+             "statistical_test"
+            ],
+            "type": [
+             "string"
+            ]
+           }
+          },
+          "required": [
+           "formats",
+           "view"
+          ],
+          "type": [
+           "object"
+          ]
+         },
+         "type": [
+          "array"
+         ]
+        },
+        "table_formats": {
+         "items": {
+          "enum": [
+           "csv",
+           "html",
+           "latex",
+           "xlsx"
+          ],
+          "type": [
+           "string"
+          ]
+         },
+         "type": [
+          "array"
+         ]
+        }
+       },
+       "required": [],
+       "type": [
+        "null",
+        "object"
+       ]
+      }
+     },
+     "required": [],
+     "type": [
+      "null",
+      "object"
+     ]
+    }
+   },
+   "response": {
+    "media": [
+     "application/zip"
+    ],
+    "schema": null,
+    "status": 200
+   }
+  },
+  "POST /plan": {
+   "parameters": {},
+   "request": {
+    "media": "application/json",
+    "required": true,
+    "schema": {
+     "additionalProperties": false,
+     "properties": {
+      "check_circuits": {
+       "type": [
+        "boolean"
+       ]
+      },
+      "circuits": {
+       "items": {
+        "type": [
+         "object"
+        ]
+       },
+       "type": [
+        "array"
+       ]
+      },
+      "compilers": {
+       "type": [
+        "object"
+       ]
+      },
+      "modes": {
+       "items": {
+        "enum": [
+         "measured",
+         "statevector"
+        ],
+        "type": [
+         "string"
+        ]
+       },
+       "type": [
+        "array"
+       ]
+      },
+      "name": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "preprocessing": {
+       "enum": [
+        "both",
+        "off",
+        "on"
+       ],
+       "type": [
+        "string"
+       ]
+      },
+      "settings": {
+       "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+         "source": {
+          "enum": [
+           "flag",
+           "replay",
+           "set"
+          ],
+          "type": [
+           "string"
+          ]
+         },
+         "value": {
+          "type": [
+           "any"
+          ]
+         }
+        },
+        "required": [
+         "value"
+        ],
+        "type": [
+         "object"
+        ]
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "source": {
+       "enum": [
+        "playlist",
+        "single"
+       ],
+       "type": [
+        "string"
+       ]
+      }
+     },
+     "required": [
+      "source"
+     ],
+     "type": [
+      "object"
+     ]
+    }
+   },
+   "response": {
+    "media": [
+     "application/json"
+    ],
+    "schema": {
+     "properties": {
+      "problems": {
+       "items": {
+        "properties": {
+         "circuit_index": {
+          "type": [
+           "integer",
+           "null"
+          ]
+         },
+         "code": {
+          "type": [
+           "string"
+          ]
+         },
+         "line": {
+          "type": [
+           "integer",
+           "null"
+          ]
+         },
+         "message": {
+          "type": [
+           "string"
+          ]
+         },
+         "params": {
+          "type": [
+           "object"
+          ]
+         },
+         "run_index": {
+          "type": [
+           "integer",
+           "null"
+          ]
+         }
+        },
+        "required": [
+         "code",
+         "message"
+        ],
+        "type": [
+         "object"
+        ]
+       },
+       "type": [
+        "array"
+       ]
+      },
+      "runs": {
+       "items": {
+        "properties": {
+         "endpoint": {
+          "type": [
+           "string"
+          ]
+         },
+         "kind": {
+          "enum": [
+           "batch",
+           "experiment",
+           "single"
+          ],
+          "type": [
+           "string"
+          ]
+         },
+         "mode": {
+          "enum": [
+           "measured",
+           "statevector"
+          ],
+          "type": [
+           "null",
+           "string"
+          ]
+         },
+         "payload": {
+          "type": [
+           "object"
+          ]
+         },
+         "sources": {
+          "additionalProperties": {
+           "type": [
+            "string"
+           ]
+          },
+          "type": [
+           "object"
+          ]
+         },
+         "title": {
+          "type": [
+           "string"
+          ]
+         }
+        },
+        "required": [
+         "endpoint",
+         "kind",
+         "payload",
+         "sources",
+         "title"
+        ],
+        "type": [
+         "object"
+        ]
+       },
+       "type": [
+        "array"
+       ]
+      },
+      "schema": {
+       "type": [
+        "string"
+       ]
+      }
+     },
+     "required": [
+      "problems",
+      "runs"
+     ],
+     "type": [
+      "object"
+     ]
+    },
+    "status": 200
+   }
+  },
+  "POST /run_batch_suite": {
+   "parameters": {},
+   "request": {
+    "media": "application/json",
+    "required": true,
+    "schema": {
+     "additionalProperties": false,
+     "properties": {
+      "apply_preprocessing": {
+       "type": [
+        "boolean"
+       ]
+      },
+      "bypass_limits": {
+       "type": [
+        "boolean"
+       ]
+      },
+      "compilers": {
+       "additionalProperties": {
+        "items": {
+         "type": [
+          "integer"
+         ]
+        },
+        "type": [
+         "array"
+        ]
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "exclusive": {
+       "type": [
+        "boolean"
+       ]
+      },
+      "execution_target": {
+       "enum": [
+        "kubernetes",
+        "local"
+       ],
+       "type": [
+        "string"
+       ]
+      },
+      "mode": {
+       "enum": [
+        "measured",
+        "statevector"
+       ],
+       "type": [
+        "string"
+       ]
+      },
+      "n_shots": {
+       "type": [
+        "integer"
+       ]
+      },
+      "optimization_level": {
+       "type": [
+        "integer"
+       ]
+      },
+      "runner_config": {
+       "additionalProperties": {
+        "items": {
+         "type": [
+          "integer"
+         ]
+        },
+        "type": [
+         "array",
+         "integer"
+        ]
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "runner_phases": {
+       "additionalProperties": {
+        "type": [
+         "integer"
+        ]
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "seed": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "simulate": {
+       "type": [
+        "boolean"
+       ]
+      },
+      "target_simulators": {
+       "items": {
+        "type": [
+         "string"
+        ]
+       },
+       "type": [
+        "array"
+       ]
+      },
+      "tasks": {
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "algorithm": {
+          "type": [
+           "null",
+           "string"
+          ]
+         },
+         "name": {
+          "type": [
+           "null",
+           "string"
+          ]
+         },
+         "qasm_string": {
+          "type": [
+           "null",
+           "string"
+          ]
+         },
+         "qubits": {
+          "type": [
+           "integer",
+           "null"
+          ]
+         },
+         "source": {
+          "enum": [
+           "mqt",
+           "preset",
+           "qasm",
+           "qasmbench"
+          ],
+          "type": [
+           "null",
+           "string"
+          ]
+         }
+        },
+        "required": [],
+        "type": [
+         "object"
+        ]
+       },
+       "type": [
+        "array"
+       ]
+      },
+      "thresholds": {
+       "additionalProperties": false,
+       "properties": {
+        "fidelity_tolerance": {
+         "type": [
+          "number"
+         ]
+        },
+        "hellinger_threshold": {
+         "type": [
+          "number"
+         ]
+        },
+        "js_threshold": {
+         "type": [
+          "number"
+         ]
+        },
+        "norm_tolerance": {
+         "type": [
+          "number"
+         ]
+        },
+        "phase_tolerance": {
+         "type": [
+          "number"
+         ]
+        }
+       },
+       "required": [],
+       "type": [
+        "null",
+        "object"
+       ]
+      },
+      "timeout_seconds": {
+       "type": [
+        "integer"
+       ]
+      },
+      "timing_repeats": {
+       "type": [
+        "integer"
+       ]
+      }
+     },
+     "required": [
+      "mode",
+      "tasks"
+     ],
+     "type": [
+      "object"
+     ]
+    }
+   },
+   "response": {
+    "media": [
+     "application/json"
+    ],
+    "schema": {
+     "properties": {
+      "error": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "job_id": {
+       "type": [
+        "string"
+       ]
+      },
+      "phase": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "progress": {
+       "type": [
+        "null",
+        "object"
+       ]
+      },
+      "requested_target": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "results": {
+       "type": [
+        "null",
+        "object"
+       ]
+      },
+      "runner_statuses": {
+       "additionalProperties": {
+        "type": [
+         "string"
+        ]
+       },
+       "type": [
+        "null",
+        "object"
+       ]
+      },
+      "status": {
+       "type": [
+        "string"
+       ]
+      },
+      "target": {
+       "type": [
+        "string"
+       ]
+      }
+     },
+     "required": [
+      "job_id",
+      "status",
+      "target"
+     ],
+     "type": [
+      "object"
+     ]
+    },
+    "status": 200
+   }
+  },
+  "POST /summary": {
+   "parameters": {},
+   "request": {
+    "media": "application/json",
+    "required": true,
+    "schema": {
+     "additionalProperties": false,
+     "properties": {
+      "results": {
+       "type": [
+        "object"
+       ]
+      }
+     },
+     "required": [
+      "results"
+     ],
+     "type": [
+      "object"
+     ]
+    }
+   },
+   "response": {
+    "media": [
+     "application/json"
+    ],
+    "schema": {
+     "properties": {
+      "analysis_version": {
+       "type": [
+        "string"
+       ]
+      },
+      "backend_verdicts": {
+       "properties": {
+        "backends": {
+         "items": {
+          "properties": {
+           "agrees_with": {
+            "items": {
+             "type": [
+              "string"
+             ]
+            },
+            "type": [
+             "array"
+            ]
+           },
+           "bit_order": {
+            "type": [
+             "any",
+             "null"
+            ]
+           },
+           "by_only_with": {
+            "items": {
+             "type": [
+              "string"
+             ]
+            },
+            "type": [
+             "array"
+            ]
+           },
+           "compared": {
+            "type": [
+             "integer"
+            ]
+           },
+           "compared_with": {
+            "items": {
+             "type": [
+              "string"
+             ]
+            },
+            "type": [
+             "array"
+            ]
+           },
+           "differs": {
+            "type": [
+             "integer"
+            ]
+           },
+           "differs_by_only": {
+            "type": [
+             "integer"
+            ]
+           },
+           "differs_full": {
+            "type": [
+             "integer"
+            ]
+           },
+           "differs_marginal": {
+            "type": [
+             "integer"
+            ]
+           },
+           "differs_with": {
+            "items": {
+             "type": [
+              "string"
+             ]
+            },
+            "type": [
+             "array"
+            ]
+           },
+           "inconclusive": {
+            "type": [
+             "integer"
+            ]
+           },
+           "key": {
+            "type": [
+             "string"
+            ]
+           },
+           "largest_tv": {
+            "type": [
+             "null",
+             "number"
+            ]
+           },
+           "not_comparable": {
+            "type": [
+             "integer"
+            ]
+           },
+           "size_with": {
+            "additionalProperties": {
+             "type": [
+              "number"
+             ]
+            },
+            "type": [
+             "object"
+            ]
+           },
+           "status": {
+            "enum": [
+             "error",
+             "offline",
+             "ok",
+             "timeout"
+            ],
+            "type": [
+             "string"
+            ]
+           },
+           "worst_fidelity": {
+            "type": [
+             "null",
+             "number"
+            ]
+           }
+          },
+          "required": [
+           "agrees_with",
+           "by_only_with",
+           "compared",
+           "compared_with",
+           "differs",
+           "differs_by_only",
+           "differs_full",
+           "differs_marginal",
+           "differs_with",
+           "inconclusive",
+           "key",
+           "not_comparable",
+           "size_with",
+           "status"
+          ],
+          "type": [
+           "object"
+          ]
+         },
+         "type": [
+          "array"
+         ]
+        },
+        "by_only": {
+         "type": [
+          "integer"
+         ]
+        },
+        "by_only_pairs": {
+         "items": {
+          "items": {
+           "type": [
+            "string"
+           ]
+          },
+          "type": [
+           "array"
+          ]
+         },
+         "type": [
+          "array"
+         ]
+        },
+        "disagreeing": {
+         "type": [
+          "integer"
+         ]
+        },
+        "inconclusive": {
+         "type": [
+          "integer"
+         ]
+        },
+        "marginal_tested": {
+         "type": [
+          "boolean"
+         ]
+        },
+        "mode": {
+         "enum": [
+          "measured",
+          "statevector"
+         ],
+         "type": [
+          "string"
+         ]
+        },
+        "multi_run": {
+         "type": [
+          "boolean"
+         ]
+        },
+        "not_comparable": {
+         "type": [
+          "integer"
+         ]
+        },
+        "pairs": {
+         "type": [
+          "integer"
+         ]
+        }
+       },
+       "required": [
+        "backends",
+        "by_only",
+        "by_only_pairs",
+        "disagreeing",
+        "inconclusive",
+        "marginal_tested",
+        "mode",
+        "multi_run",
+        "not_comparable",
+        "pairs"
+       ],
+       "type": [
+        "null",
+        "object"
+       ]
+      },
+      "benchmark_summary": {
+       "items": {
+        "properties": {
+         "backend_verdicts": {
+          "properties": {
+           "backends": {
+            "items": {
+             "properties": {
+              "agrees_with": {
+               "items": {
+                "type": [
+                 "string"
+                ]
+               },
+               "type": [
+                "array"
+               ]
+              },
+              "bit_order": {
+               "type": [
+                "any",
+                "null"
+               ]
+              },
+              "by_only_with": {
+               "items": {
+                "type": [
+                 "string"
+                ]
+               },
+               "type": [
+                "array"
+               ]
+              },
+              "compared": {
+               "type": [
+                "integer"
+               ]
+              },
+              "compared_with": {
+               "items": {
+                "type": [
+                 "string"
+                ]
+               },
+               "type": [
+                "array"
+               ]
+              },
+              "differs": {
+               "type": [
+                "integer"
+               ]
+              },
+              "differs_by_only": {
+               "type": [
+                "integer"
+               ]
+              },
+              "differs_full": {
+               "type": [
+                "integer"
+               ]
+              },
+              "differs_marginal": {
+               "type": [
+                "integer"
+               ]
+              },
+              "differs_with": {
+               "items": {
+                "type": [
+                 "string"
+                ]
+               },
+               "type": [
+                "array"
+               ]
+              },
+              "inconclusive": {
+               "type": [
+                "integer"
+               ]
+              },
+              "key": {
+               "type": [
+                "string"
+               ]
+              },
+              "largest_tv": {
+               "type": [
+                "null",
+                "number"
+               ]
+              },
+              "not_comparable": {
+               "type": [
+                "integer"
+               ]
+              },
+              "size_with": {
+               "additionalProperties": {
+                "type": [
+                 "number"
+                ]
+               },
+               "type": [
+                "object"
+               ]
+              },
+              "status": {
+               "enum": [
+                "error",
+                "offline",
+                "ok",
+                "timeout"
+               ],
+               "type": [
+                "string"
+               ]
+              },
+              "worst_fidelity": {
+               "type": [
+                "null",
+                "number"
+               ]
+              }
+             },
+             "required": [
+              "agrees_with",
+              "by_only_with",
+              "compared",
+              "compared_with",
+              "differs",
+              "differs_by_only",
+              "differs_full",
+              "differs_marginal",
+              "differs_with",
+              "inconclusive",
+              "key",
+              "not_comparable",
+              "size_with",
+              "status"
+             ],
+             "type": [
+              "object"
+             ]
+            },
+            "type": [
+             "array"
+            ]
+           },
+           "by_only": {
+            "type": [
+             "integer"
+            ]
+           },
+           "by_only_pairs": {
+            "items": {
+             "items": {
+              "type": [
+               "string"
+              ]
+             },
+             "type": [
+              "array"
+             ]
+            },
+            "type": [
+             "array"
+            ]
+           },
+           "disagreeing": {
+            "type": [
+             "integer"
+            ]
+           },
+           "inconclusive": {
+            "type": [
+             "integer"
+            ]
+           },
+           "marginal_tested": {
+            "type": [
+             "boolean"
+            ]
+           },
+           "mode": {
+            "enum": [
+             "measured",
+             "statevector"
+            ],
+            "type": [
+             "string"
+            ]
+           },
+           "multi_run": {
+            "type": [
+             "boolean"
+            ]
+           },
+           "not_comparable": {
+            "type": [
+             "integer"
+            ]
+           },
+           "pairs": {
+            "type": [
+             "integer"
+            ]
+           }
+          },
+          "required": [
+           "backends",
+           "by_only",
+           "by_only_pairs",
+           "disagreeing",
+           "inconclusive",
+           "marginal_tested",
+           "mode",
+           "multi_run",
+           "not_comparable",
+           "pairs"
+          ],
+          "type": [
+           "object"
+          ]
+         },
+         "outcomes": {
+          "additionalProperties": {
+           "type": [
+            "integer"
+           ]
+          },
+          "type": [
+           "object"
+          ]
+         },
+         "pair_verdicts": {
+          "items": {
+           "properties": {
+            "agrees": {
+             "type": [
+              "boolean"
+             ]
+            },
+            "assessment": {
+             "type": [
+              "any",
+              "null"
+             ]
+            },
+            "differs": {
+             "type": [
+              "boolean"
+             ]
+            },
+            "differs_by_only": {
+             "type": [
+              "boolean"
+             ]
+            },
+            "differs_full": {
+             "type": [
+              "boolean"
+             ]
+            },
+            "differs_marginal": {
+             "type": [
+              "boolean"
+             ]
+            },
+            "effective_agreement": {
+             "type": [
+              "any",
+              "null"
+             ]
+            },
+            "inconclusive": {
+             "type": [
+              "boolean"
+             ]
+            },
+            "simulators": {
+             "type": [
+              "any"
+             ]
+            },
+            "statevector_group": {
+             "enum": [
+              "agree",
+              "bit_order",
+              "disagree",
+              "not_comparable",
+              "other"
+             ],
+             "type": [
+              "string"
+             ]
+            },
+            "unaligned_basis": {
+             "type": [
+              "null",
+              "string"
+             ]
+            },
+            "verdict": {
+             "enum": [
+              "agrees",
+              "bit_order",
+              "differs",
+              "differs_by_only",
+              "inconclusive",
+              "not_comparable",
+              "unassessed"
+             ],
+             "type": [
+              "string"
+             ]
+            }
+           },
+           "required": [
+            "agrees",
+            "differs",
+            "differs_by_only",
+            "differs_full",
+            "differs_marginal",
+            "inconclusive",
+            "statevector_group",
+            "verdict"
+           ],
+           "type": [
+            "object"
+           ]
+          },
+          "type": [
+           "array"
+          ]
+         },
+         "report_analysis_version": {
+          "type": [
+           "null",
+           "string"
+          ]
+         },
+         "runs": {
+          "type": [
+           "object"
+          ]
+         }
+        },
+        "required": [
+         "backend_verdicts",
+         "outcomes",
+         "pair_verdicts",
+         "runs"
+        ],
+        "type": [
+         "object"
+        ]
+       },
+       "type": [
+        "array",
+        "null"
+       ]
+      },
+      "outcome_roles": {
+       "additionalProperties": {
+        "enum": [
+         "agreement",
+         "difference",
+         "not_established",
+         "runs_without_output"
+        ],
+        "type": [
+         "string"
+        ]
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "outcomes": {
+       "additionalProperties": {
+        "type": [
+         "integer"
+        ]
+       },
+       "type": [
+        "object"
+       ]
+      },
+      "pair_verdicts": {
+       "items": {
+        "properties": {
+         "agrees": {
+          "type": [
+           "boolean"
+          ]
+         },
+         "assessment": {
+          "type": [
+           "any",
+           "null"
+          ]
+         },
+         "differs": {
+          "type": [
+           "boolean"
+          ]
+         },
+         "differs_by_only": {
+          "type": [
+           "boolean"
+          ]
+         },
+         "differs_full": {
+          "type": [
+           "boolean"
+          ]
+         },
+         "differs_marginal": {
+          "type": [
+           "boolean"
+          ]
+         },
+         "effective_agreement": {
+          "type": [
+           "any",
+           "null"
+          ]
+         },
+         "inconclusive": {
+          "type": [
+           "boolean"
+          ]
+         },
+         "simulators": {
+          "type": [
+           "any"
+          ]
+         },
+         "statevector_group": {
+          "enum": [
+           "agree",
+           "bit_order",
+           "disagree",
+           "not_comparable",
+           "other"
+          ],
+          "type": [
+           "string"
+          ]
+         },
+         "unaligned_basis": {
+          "type": [
+           "null",
+           "string"
+          ]
+         },
+         "verdict": {
+          "enum": [
+           "agrees",
+           "bit_order",
+           "differs",
+           "differs_by_only",
+           "inconclusive",
+           "not_comparable",
+           "unassessed"
+          ],
+          "type": [
+           "string"
+          ]
+         }
+        },
+        "required": [
+         "agrees",
+         "differs",
+         "differs_by_only",
+         "differs_full",
+         "differs_marginal",
+         "inconclusive",
+         "statevector_group",
+         "verdict"
+        ],
+        "type": [
+         "object"
+        ]
+       },
+       "type": [
+        "array",
+        "null"
+       ]
+      },
+      "report_analysis_version": {
+       "type": [
+        "null",
+        "string"
+       ]
+      },
+      "report_source": {
+       "enum": [
+        "client_supplied",
+        "saved_run",
+        "server_job"
+       ],
+       "type": [
+        "string"
+       ]
+      },
+      "runs": {
+       "type": [
+        "null",
+        "object"
+       ]
+      },
+      "saved_from": {
+       "type": [
+        "null",
+        "string"
+       ]
+      }
+     },
+     "required": [
+      "analysis_version",
+      "outcome_roles",
+      "outcomes",
+      "report_source"
+     ],
+     "type": [
+      "object"
+     ]
+    },
+    "status": 200
+   }
+  }
+ }
+}

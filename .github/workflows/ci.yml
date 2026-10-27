@@ -47,6 +47,14 @@ jobs:
         working-directory: rosetta-api
         run: python -m pytest tests/unit -q -n auto
 
+      # The routes the stable qrosetta commands read, against tests/openapi_cli_baseline.json:
+      # fails on a change that breaks an older CLI unless API_LEVELS was raised; prints every
+      # difference. Refresh: python -m tests.openapi_cli_contract --write (from rosetta-api/).
+      - name: OpenAPI contract for older CLIs
+        if: matrix.python-version == '3.12'
+        working-directory: rosetta-api
+        run: python -m tests.openapi_cli_contract --check
+
   unit-tests-qiskit:
     name: unit tests with Qiskit (compiler-side checks)
     runs-on: ubuntu-latest

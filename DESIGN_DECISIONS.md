@@ -750,6 +750,12 @@ Compilers are separate from the simulators: their output is a circuit, which is 
 
 *Evidence (2026-10-21).* Fuzzing at 300 examples per operation, 17,412 calls: 0 findings after four fixes (media types, UTF-8 bodies, malformed supplied reports, and NaN stored in a saved run, which made every later read return 500).
 
+### API compatibility for older CLIs
+
+*Rule.* The routes the stable `qrosetta` commands read are held to a committed, normalised extract of `/openapi.json` ([`rosetta-api/tests/openapi_cli_baseline.json`](rosetta-api/tests/openapi_cli_baseline.json)). A change that removes a route, method, parameter or field, makes a request field required, narrows a request type or enum, changes a success status or media type, or lets a response field be missing or of a new type fails [`rosetta-api/tests/unit/test_openapi_cli_contract.py`](rosetta-api/tests/unit/test_openapi_cli_contract.py) unless the maximum of `API_LEVELS` (`GET /config` `server.api_levels`) was raised; the previous level stays served for 12 months. `GET /config`, `/runners`, `/compilers` and the circuit catalog routes document their responses with models in [`rosetta-api/schemas/listings.py`](rosetta-api/schemas/listings.py) that never filter them (`response_model` stays unset). The refresh command is in CONTRIBUTING.md.
+
+*Evidence (2026-10-27).* CLI spec v3 S16: a pipx-installed CLI outlives server upgrades, and before this the five most-read routes documented no response schema, so a removed field would have shown up only as a CLI failure on a user's machine. Adding the documentation models left the status, headers and body bytes of 18 TestClient calls on those routes unchanged.
+
 ## Upstream behaviour not worked around
 
 The SDK behaviours below are reported by the comparison as disagreement. A workaround for only these backends would bias preprocessing, so none is applied.

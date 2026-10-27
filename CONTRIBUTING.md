@@ -453,6 +453,31 @@ Before offering a level, run `python main.py --self-test` in the image and compi
 circuits through it with an independent equivalence check. Do not offer a pipeline that
 changes the unitary of an input beyond its stated tolerance; record why in the manual's known issues instead.
 
+## Changing a route the `qrosetta` command reads
+
+Released `qrosetta` commands keep talking to newer servers, so the routes their stable commands
+read (`CLI_ROUTES` in `rosetta-api/tests/openapi_cli_contract.py`) only change additively: new
+routes, optional parameters and request fields, new response fields, new enum values in
+responses. `rosetta-api/tests/openapi_cli_baseline.json` holds those routes as the last
+refresh saw them, and `tests/unit/test_openapi_cli_contract.py` and the CI step "OpenAPI
+contract for older CLIs" fail when the app removes a route, method, parameter or field,
+makes a request field required, narrows what a request accepts, changes a success status or
+media type, or lets a response field be missing or take a type it did not.
+
+Such a change needs the maximum of `API_LEVELS` in `rosetta-api/services/server_info.py`
+raised in a platform major release, with the previous level still served for at least
+12 months. Then, or after an additive change, refresh the baseline from `rosetta-api/`:
+
+```bash
+PYTHONPATH=.:../shared python -m tests.openapi_cli_contract --write
+```
+
+It refuses to write over a breaking change whose API level was not raised. `--check` prints
+every difference without writing. Run it after upgrading FastAPI or pydantic too: the
+baseline is normalised (references inlined, titles and descriptions dropped), so a framework
+upgrade that keeps the same fields reports nothing, and anything it does report is a change
+older CLIs would see.
+
 ## Secrets and private files
 
 Run `scripts/install_hooks.sh` once after cloning. It installs a pinned, checksum-verified
