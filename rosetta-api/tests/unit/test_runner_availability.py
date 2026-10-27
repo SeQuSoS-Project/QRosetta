@@ -91,9 +91,40 @@ def test_runner_scaffold_serves_capabilities():
     from qrosetta_commons.helpers import register_runner_endpoints
     app = FastAPI()
     register_runner_endpoints(app, lambda p: {}, lambda p: {},
-                              capabilities=lambda: {"available": False, "reason": "no GPU"})
+                              capabilities=lambda: {"available": False, "reason": "no GPU", "gpu_name": None})
     body = TestClient(app).get("/capabilities").json()
-    assert body == {"available": False, "reason": "no GPU", "device": None}
+    assert {k: body[k] for k in ("available", "reason", "device")} == {"available": False, "reason": "no GPU",
+                                                                       "device": None}
+    assert "gpu_name" not in body and "image_git_sha" in body
+    assert set(body["image_identity"]) == {"source", "release", "git_sha"}
+
+
+def test_every_runner_serves_capabilities_with_its_image_identity(monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from qrosetta_commons import helpers, image_identity
+    monkeypatch.setattr(helpers, "IMAGE_GIT_SHA", "abc1234")
+    monkeypatch.setattr(image_identity, "_identity", lambda: {
+        "source": "built_locally", "release": None, "git_sha": "abc1234", "container": {}, "emulation": {}})
+    monkeypatch.setattr(image_identity, "build_file_hashes", lambda: {"Dockerfile": "ab" * 32})
+    app = FastAPI()
+    helpers.register_runner_endpoints(app, lambda p: {}, lambda p: {})
+    body = TestClient(app).get("/capabilities").json()
+    assert body == {"available": True, "reason": None, "device": None, "image_git_sha": "abc1234",
+                    "image_identity": {"source": "built_locally", "release": None, "git_sha": "abc1234"},
+                    "build_files": {"Dockerfile": "ab" * 32}}
+
+
+def test_runner_rows_carry_what_the_image_reports(monkeypatch):
+    from services import service_listing
+    body = {"available": True, "reason": None, "device": None, "image_git_sha": "abc1234",
+            "image_identity": {"source": "release", "release": "2.0.0", "git_sha": "abc1234", "extra": "x"},
+            "build_files": {"Dockerfile": "ab" * 32}}
+    _mock_transport(monkeypatch, lambda request: httpx.Response(200, json=body))
+    info = asyncio.run(availability.runner_availability(["qiskit"]))["qiskit"]
+    row = service_listing.runner_row("qiskit", settings.get_runner_services()["qiskit"], info)
+    assert row["versions"] == {"image_git_sha": "abc1234", "build_files": {"Dockerfile": "ab" * 32},
+                               "image_identity": {"source": "release", "release": "2.0.0", "git_sha": "abc1234"}}
 
 
 @pytest.mark.parametrize("mode", ["local", "kubernetes"])

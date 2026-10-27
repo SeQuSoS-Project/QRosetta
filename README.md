@@ -74,8 +74,10 @@ no two backends draw the same shot sequence. Any change the API makes to the cir
 is listed with an `API:` prefix in `preprocessing_applied`, and each dispatched circuit is
 written to the RO-Crate.
 
-The server keeps each finished job's untruncated report for 30 to 40 minutes (jobs older
-than 30 minutes are removed by a sweep every 10 minutes): `GET /jobs/{job_id}/report` returns
+The server keeps each finished job's untruncated report for `QROSETTA_JOB_TTL_SEC`: 24 hours in
+the local stack, 30 minutes by default otherwise (`GET /config` `limits.job_ttl_sec`; a sweep
+every 10 minutes removes older jobs). Recreating the API container, which `qrosetta start` does
+after a rebuild, removes every job; save a run to keep it. `GET /jobs/{job_id}/report` returns
 it as JSON and `POST /jobs/{job_id}/export` builds the RO-Crate from it. The copy sent to the
 browser omits statevectors of circuits over 14 qubits. `POST /export` builds a crate from a
 report in the request body, for runs loaded from history; every request body is limited to
@@ -175,6 +177,8 @@ without it. Locally, leaving it empty generates a random key per process.
 ./qrosetta remove                    # remove containers and networks; keep images and data
 ./qrosetta remove --images           # also remove the images (about 20 GB for a full build)
 ./qrosetta remove --data --confirm qsimulators   # also delete the database and saved runs
+./qrosetta remove --all --confirm qsimulators    # containers, networks, images and data, listed first
+./qrosetta start -d --no-cpu-quota   # start without the compose CPU limits (hosts without cpu delegation)
 ./qrosetta images                    # each service's image: missing, pulled, loaded, built or unknown
 ./qrosetta images verify             # labels, baked commit and build identity of every image
 ./qrosetta images save -o DIR        # write this stack's images to DIR for a machine without a registry
@@ -223,7 +227,27 @@ On standby the containers are stopped and hold no memory; `start` brings them ba
 10 seconds. Running and idle, the 24 containers used 3.0 to 6.1 GiB (`qrosetta status`, page
 cache included). `remove` keeps the images and the `qsimulators_rosetta_db_data` volume, which
 holds the SQLite database (accounts, saved circuits, run history) and the saved run reports. Results of jobs that were not saved are lost
-whenever the API container stops.
+whenever the API container stops. `remove --all` removes the containers, pods, networks, this
+stack's images and its data volume in one command: it first lists every object with its size and
+what it leaves alone, then needs `--confirm <project>` or, on a terminal, the project name typed
+at its prompt. Results directories, the config file and qrosetta's state and cache directories
+stay.
+
+Each runner and compiler runs under a 1.0-CPU quota (`cpus: "1.0"` in `docker-compose.yml`). A
+rootless engine can set it only when systemd delegates the cgroup `cpu` controller to your user;
+`qrosetta doctor` checks this, and on a host that does not delegate it `start` stops before
+compose with the drop-in that delegates it (needs sudo and a reboot). `start --no-cpu-quota`
+runs every service without its CPU limit instead: qrosetta writes a compose override,
+`~/.local/state/qrosetta/compose.no-cpu-quota.yaml`, that resets only
+`deploy.resources.limits.cpus` (memory limits stay; `docker-compose.yml` is not edited), and
+needs Docker Compose 2.24 or later for its `!reset` tag. The choice is kept as a stack setting
+(`~/.local/state/qrosetta/stack-settings.json`), so later `start`, `status` and `logs` give
+compose the same files; `[lifecycle] cpu_quota = false` in the config makes it the default, and
+`start --cpu-quota` restores the quota. `start` warns every time it starts without the quota,
+`status` and `config show` print the setting, and plan.json records it with the override's
+sha256. Runs record it themselves: each result has `cpu_environment.cpu_quota_cores` null, the
+summary carries the "no CPU quota" timing caveat, and `selftest` turns its `cpu_quota_cores` FAIL
+into a WARN. Timings from such a stack are not comparable with runs under the quota.
 
 `qrosetta` acts only on what carries two labels for its project: compose's
 `com.docker.compose.project` and `org.qrosetta.project`, which `docker-compose.yml` puts on every
@@ -304,12 +328,12 @@ tasks run `stop`, `remove` and `status`.
 
 ### Deploying a shared server
 
-A local stack needs none of this. The project's own hosted instance runs in `kubernetes` mode on
-CSC Rahti, with the frontend on Google Cloud Run:
+A local stack needs none of this. These scripts deploy the authors' own instance (`kubernetes`
+mode on CSC Rahti, frontend on Google Cloud Run) and name its hosts and namespace; adapt them
+for another cluster:
 
 ```bash
 ./scripts/rahti_push.sh [namespace] [service ...]   # CSC Rahti (OpenShift)
-./scripts/deploy.sh                                 # GCP Cloud Run: API
 ./scripts/deploy_frontend.sh                        # GCP Cloud Run: frontend
 ```
 
@@ -322,7 +346,7 @@ the manifests, and waits for the rollout.
 cd rosetta-api
 pip install -r requirements.txt -r tests/requirements.txt
 pip install ../shared
-PYTHONPATH=.:../shared pytest tests/unit/
+PYTHONPATH=.:../shared pytest tests/unit/ -n auto
 ```
 
 `PYTHONPATH` includes `../shared` so the working copy of `qrosetta_commons` is tested even
@@ -358,7 +382,8 @@ run them; see the README there.
 
 - Only Nginx is publicly reachable; runners expose no ports and the API is not on the public
   network.
-- All containers run as an unprivileged `appuser`.
+- The API, runner and compiler containers run as an unprivileged `appuser`. In the nginx
+  container the master process runs as root (the stock image) and the workers as `nginx`.
 - Passwords are hashed with bcrypt and never logged or stored in plaintext; sessions are JWT.
 - Every endpoint that reads or writes user data requires authentication and filters by the
   authenticated user.
@@ -397,6 +422,8 @@ adapters were corrected after it. Use the newest release.
 
 Apache License 2.0 (`LICENSE`). Bundled benchmark circuits and other third-party files keep their
 own licences, listed in `THIRD_PARTY_NOTICES.md`.
+RO-Crates the server builds declare their contents under CC BY 4.0 (the crate's `#license`
+entity).
 
 ## Citing
 

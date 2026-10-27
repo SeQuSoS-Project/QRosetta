@@ -71,9 +71,10 @@ class Conn:
         gate = (config or self.config).get("exclusive") or {}
         return int(gate.get("shared_running") or 0) + int(bool(gate.get("exclusive_running")))
 
-    def request(self, method, path, payload=None, query=None, ok=(200,), timeout=None, what=None, hint=None):
+    def request(self, method, path, payload=None, query=None, ok=(200,), timeout=None, what=None, hint=None,
+                headers=None):
         body = body_bytes(payload) if payload is not None else None
-        headers = {"Content-Type": "application/json"} if body is not None else {}
+        headers = dict(headers or {}, **({"Content-Type": "application/json"} if body is not None else {}))
         resp = self.transport.request(method, path, query=query, body=body, headers=headers, timeout=timeout)
         if resp.status not in ok:
             raise http_error(method, path, resp, what, hint)

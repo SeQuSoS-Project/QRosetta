@@ -440,6 +440,7 @@ class FakeServer:
         self.fresh = fresh
         self.status = status or {}
         self.requests = []
+        self.headers = []
         self.tokens = []
 
     def __call__(self, server, token=None, timeout=None):
@@ -449,6 +450,7 @@ class FakeServer:
 
     def request(self, method, path, query=None, body=None, headers=None, timeout=None):
         self.requests.append((method, path, query, body))
+        self.headers.append((path, query, dict(headers or {})))
         if path in self.status:
             code, payload = self.status[path]
             return Response(code, {"content-type": "application/json"}, json.dumps(payload).encode())

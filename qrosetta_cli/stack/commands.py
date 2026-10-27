@@ -4,19 +4,20 @@ import os
 import platform
 import subprocess
 
-from qrosetta_cli import mode as modes, output
+from qrosetta_cli import localstack, mode as modes, output
 from qrosetta_cli.context import Result
 from qrosetta_cli.errors import CliError, Exit
 from qrosetta_cli.output import progress, result
-from qrosetta_cli.stack import actions, guard, hostload, installed, profiles, serve
+from qrosetta_cli.stack import actions, guard, hostload, installed, profiles, quota, serve
 from qrosetta_cli.stack import ownership as own
 from qrosetta_cli.stack import project as st
 from qrosetta_cli.stack.engine import Engine, choose_engine
 
 
-def open_stack(ctx):
+def open_stack(ctx, cpu_quota=None):
     """(mode, engine, stack) for the checkout's compose project, or in installed mode for the
-    compose file generated from the release manifest."""
+    compose file generated from the release manifest. With the CPU quota off (`cpu_quota`, else
+    the recorded stack setting) compose also gets the override that removes the CPU limits."""
     mode = modes.detect(ctx.opt("project_dir"), ctx.env, ctx.checkout)
     release = None
     if mode.name == "checkout":
@@ -34,6 +35,9 @@ def open_stack(ctx):
     engine.check_compose()
     stack = st.load_stack(engine)
     stack.release = release
+    if cpu_quota is None:
+        cpu_quota = localstack.cpu_quota(ctx.env, ctx.cfg, stack.name)[0]
+    quota.apply(engine, stack, cpu_quota, ctx.env)
     return mode, engine, stack
 
 
@@ -99,10 +103,12 @@ def cmd_start(ctx):
     if modes.detect(ctx.opt("project_dir"), ctx.env, ctx.checkout).name == "installed":
         installed.require_published()
     hostload.ensure_token(ctx.env)
-    _, engine, stack = open_stack(ctx)
-    if ctx.cfg.get("lifecycle", "cpu_quota") is False:
-        output.warn("[lifecycle] cpu_quota = false is not applied by this version (the --no-cpu-quota override "
-                    "arrives with release 2.0.0); the stack starts with its CPU quotas.", "cpu_quota_ignored")
+    cpu_quota, _ = quota.wanted(ctx)
+    _, engine, stack = open_stack(ctx, cpu_quota)
+    quota.check_host(engine, cpu_quota)
+    setting = quota.record(ctx.env, stack.name, cpu_quota, stack.cpu_override_sha256)
+    if not cpu_quota:
+        output.warn(quota.describe_off(setting.get("since")), "cpu_quota_off")
     bind = _bind(ctx)
     set_up_env(ctx, engine, bind)
     found = own.scan(engine, stack)
@@ -153,7 +159,8 @@ def cmd_start(ctx):
         return Result(0, {"url": url, "started": [stack.services[s].id for s in to_start],
                           "recreated": [stack.services[s].id for s in recreated],
                           "recreations": [{"id": stack.services[s.service].id, "reasons": s.reasons} for s in stale],
-                          "not_started": [stack.services[s].id for s in missing], "ready": ready})
+                          "not_started": [stack.services[s].id for s in missing], "ready": ready,
+                          "cpu_quota": quota.block(stack, ctx.env)})
     if adding:
         progress("Quantum Rosetta is already running; this terminal now controls it.")
     action = serve.exit_action(args.on_exit, ctx.env, ctx.tty, ctx.cfg.get("lifecycle", "on_exit"))
@@ -191,10 +198,13 @@ def cmd_remove(ctx):
         url = serve.stack_url(engine, stack)
         guard.refuse_if_busy(ctx, url, "remove", "--force", args.force,
                              "removing now ends them, and their runs report a lost connection")
+    everything = bool(getattr(args, "all", False))
     with guard.engine_lock(ctx.env, "remove"), hostload.notice(ctx, url, "remove", expect_server_gone=True):
-        actions.remove_stack(engine, stack, images=args.images, data=args.data, confirm=args.confirm,
-                             tty=ctx.tty, ask=lambda q: output.prompt(q, stdin=ctx.stdin))
-    return Result(0, {"images": args.images, "data": args.data})
+        removed = actions.remove_stack(engine, stack, images=args.images, data=args.data, confirm=args.confirm,
+                                       tty=ctx.tty, ask=lambda q: output.prompt(q, stdin=ctx.stdin),
+                                       everything=everything)
+    return Result(0, {"images": args.images or everything, "data": args.data or everything, "all": everything,
+                      "removed": removed})
 
 
 def cmd_status(ctx):

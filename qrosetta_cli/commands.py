@@ -5,7 +5,7 @@ import platform
 import subprocess
 import sys
 
-from qrosetta_cli import __version__, config as cfgmod, manifest, mode as modes, output
+from qrosetta_cli import __version__, config as cfgmod, localstack, manifest, mode as modes, output
 from qrosetta_cli.context import Result
 from qrosetta_cli.errors import CliError, Exit, usage
 from qrosetta_cli.output import progress, result
@@ -59,8 +59,8 @@ def _effective(ctx):
     bind = cfg.get("lifecycle", "bind")
     add("lifecycle.bind", bind or "127.0.0.1:8080 (the compose default, QROSETTA_HTTP_BIND)",
         "config lifecycle.bind" if bind else "default")
-    quota = cfg.get("lifecycle", "cpu_quota")
-    add("lifecycle.cpu_quota", True if quota is None else quota, "default" if quota is None else "config lifecycle.cpu_quota")
+    quota, since, source = localstack.cpu_quota(env, cfg)
+    add("lifecycle.cpu_quota", quota, f"{source}, since {since}" if since else source)
     value, source = cfgmod.env_or_config(env, "QROSETTA_RESULTS_DIR", cfg, "results", "dir")
     add("results.dir", os.path.abspath(cfgmod.expand(value or "./qrosetta-results", env)), source)
     from qrosetta_cli.client import servers

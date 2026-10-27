@@ -27,6 +27,11 @@ def test_unlimited_quota_is_none(tmp_path, monkeypatch):
     assert cpu.cgroup_cpu_quota_cores() is None
 
 
+def test_no_cpu_controller_is_none(tmp_path, monkeypatch):
+    _cgroup(tmp_path, monkeypatch)
+    assert cpu.cgroup_cpu_quota_cores() is None
+
+
 def test_quota_from_cgroup_v1(tmp_path, monkeypatch):
     (tmp_path / "cpu").mkdir()
     (tmp_path / "cpu" / "cpu.cfs_quota_us").write_text("50000\n")

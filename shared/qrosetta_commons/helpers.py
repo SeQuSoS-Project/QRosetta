@@ -1053,25 +1053,28 @@ def register_runner_endpoints(app, process_run, process_run_measured, max_concur
     """Register ``/run`` and ``/run_measured`` on a runner app.
 
     Both endpoints share one ``ExecutionSlots`` (``RUNNER_MAX_CONCURRENT``, default 1), so
-    concurrent requests to this runner queue instead of sharing its CPU and memory. With
-    ``capabilities`` (a callable returning ``{"available": bool, "reason": str | None,
-    "device": str | None}``), ``GET /capabilities`` returns its result; the API treats a
-    runner without that endpoint as available.
+    concurrent requests to this runner queue instead of sharing its CPU and memory.
+    ``GET /capabilities`` answers from this serving process, never from a run's child:
+    ``available``, ``reason`` and ``device`` from ``capabilities`` (a callable returning them;
+    without one the runner is available), and the image's commit, identity file values and
+    build-file hashes.
     """
     from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
 
     slots = ExecutionSlots(max_concurrent)
     app.router.add_event_handler("startup", _image_identity.load)
 
-    if capabilities is not None:
-        @app.get("/capabilities")
-        async def runner_capabilities():
-            try:
-                info = dict(capabilities())
-            except Exception as exc:
-                return {"available": False, "reason": f"{type(exc).__name__}: {exc}", "device": None}
-            return {"available": bool(info.get("available", False)),
-                    "reason": info.get("reason"), "device": info.get("device")}
+    @app.get("/capabilities")
+    async def runner_capabilities():
+        image = {"image_git_sha": IMAGE_GIT_SHA, **_image_identity.capability_fields()}
+        if capabilities is None:
+            return {"available": True, "reason": None, "device": None, **image}
+        try:
+            info = dict(capabilities())
+        except Exception as exc:
+            return {"available": False, "reason": f"{type(exc).__name__}: {exc}", "device": None, **image}
+        return {"available": bool(info.get("available", False)),
+                "reason": info.get("reason"), "device": info.get("device"), **image}
 
     @app.post("/run")
     async def run_circuit(payload: CircuitPayload):

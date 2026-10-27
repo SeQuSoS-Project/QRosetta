@@ -58,6 +58,123 @@
         ]
       }
     },
+    "image_probes": {
+      "type": "object",
+      "description": "the image probes (spec 6.17 step 2) from one fresh probe round of GET /runners and GET /compilers: whether each image answers, the registry's precision and qubit ordering, and the commit the image reports against the API's",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "probed",
+            "not_probed",
+            "skipped"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "server_git_sha": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "runner",
+                  "compiler"
+                ]
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "PASS",
+                  "WARN",
+                  "FAIL"
+                ]
+              },
+              "fresh": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "probed_at": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "image_git_sha": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "image_source": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "checks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "check": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "PASS",
+                        "WARN",
+                        "FAIL",
+                        "SKIP"
+                      ]
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "check",
+                    "status",
+                    "reason"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "status",
+              "checks"
+            ]
+          }
+        }
+      },
+      "required": [
+        "status",
+        "images"
+      ]
+    },
     "jobs": {
       "type": "array",
       "items": {

@@ -51,8 +51,9 @@ ROWS = [
                       "systemctl --user enable --now podman.socket")),
     (r"cgroup controller [`'\"]?cpu[`'\"]? is not available|controller [`'\"]?cpu[`'\"]? (?:is )?not available",
      lambda m, t, b: ("The cgroup cpu controller is not delegated to your user, so CPU limits cannot be set. "
-                      "Delegate it with this drop-in, then reboot:\n" + DELEGATE_DROPIN,
-                      "cpu_controller_missing", "qrosetta doctor")),
+                      "Delegate it with this drop-in, then reboot:\n" + DELEGATE_DROPIN + "\nOr start without "
+                      "the CPU quota (results record it and carry a timing caveat).",
+                      "cpu_controller_missing", "qrosetta start -d --no-cpu-quota")),
     (r"newuidmap|cannot find mappings for user|insufficient UIDs or GIDs",
      lambda m, t, b: ("Your user has no subordinate UID/GID ranges, which rootless podman needs.",
                       "subuid_missing", SUBUID_FIX)),

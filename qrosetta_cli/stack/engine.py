@@ -203,6 +203,7 @@ class Engine:
         self.env = child_env(self.project, env)
         self.info = info or {}
         self.reason = reason
+        self.compose_version = None
 
     @property
     def rootless(self):
@@ -268,6 +269,8 @@ class Engine:
         """Fail unless `<engine> compose` is Docker Compose v2, which `config --format json` needs."""
         out = self.compose("version")
         text = (out.stdout + out.stderr).strip()
+        found = re.search(r"version v?(\d+)\.(\d+)", text, re.IGNORECASE)
+        self.compose_version = (int(found.group(1)), int(found.group(2))) if found else None
         if out.returncode != 0 or "docker compose" not in text.lower():
             raise CliError(
                 f"qrosetta needs Docker Compose v2, and `{self.name} compose version` printed: "

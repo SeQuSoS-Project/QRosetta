@@ -272,12 +272,7 @@ def process_run_measured(payload: dict) -> dict:
     return result
 
 
-register_runner_endpoints(app, process_run, process_run_measured)
-
-
-@app.get("/capabilities")
-def get_capabilities():
-    return capabilities()
+register_runner_endpoints(app, process_run, process_run_measured, capabilities=capabilities)
 
 
 if __name__ != "__mp_main__":
