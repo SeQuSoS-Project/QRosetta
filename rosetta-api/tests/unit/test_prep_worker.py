@@ -2,6 +2,7 @@
 that keep their type and message."""
 import asyncio
 import os
+import re
 import time
 
 import pytest
@@ -131,11 +132,33 @@ async def _outcome_async(coro):
         return type(exc), str(exc)
 
 
+def _token_order_free(outcome):
+    """The outcome with each run of Lark's '\t* TOKEN' lines sorted: Lark lists the expected
+    tokens of a set, whose order depends on the process's hash seed."""
+    kind, message = outcome
+    if not isinstance(message, str):
+        return outcome
+    return kind, re.sub(r"(?:\t\* [^\n]*\n)+",
+                        lambda m: "".join(sorted(m.group(0).splitlines(keepends=True))), message)
+
+
+def test_token_order_is_the_only_difference_ignored():
+    head = "Unexpected token Token('INAM', 'x') at line 5, column 1.\nExpected one of: \n"
+    tail = "Previous tokens: [Token('IARG', 'q[0]')]\n"
+    a = (ValueError, head + "\t* SEMICOLON\n\t* COMMA\n" + tail)
+    b = (ValueError, head + "\t* COMMA\n\t* SEMICOLON\n" + tail)
+    assert _token_order_free(a) == _token_order_free(b)
+    assert _token_order_free(a) != _token_order_free((ValueError, head + "\t* COMMA\n" + tail))
+    assert _token_order_free(a) != _token_order_free((TypeError, b[1]))
+    assert _token_order_free(a) != _token_order_free((ValueError, b[1].replace("line 5", "line 6")))
+
+
 @pytest.mark.parametrize("qasm", REFUSED)
 @pytest.mark.parametrize("func", [prepare_statevector_dispatch, prepare_measured_dispatch])
 def test_exceptions_keep_their_type_and_message(func, qasm):
     expected = _outcome(lambda: func(qasm, True))
-    assert run(_outcome_async(prep_worker.prepare(func, qasm, True))) == expected
+    actual = run(_outcome_async(prep_worker.prepare(func, qasm, True)))
+    assert _token_order_free(actual) == _token_order_free(expected)
     if func is prepare_statevector_dispatch:
         assert expected[0] != "returned"
 
