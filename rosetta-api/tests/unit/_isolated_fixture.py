@@ -49,7 +49,7 @@ def process_alive(pid):
     try:
         with open(f"/proc/{pid}/stat") as fh:
             return not fh.read().split(") ", 1)[1].startswith("Z")
-    except FileNotFoundError:
+    except (FileNotFoundError, ProcessLookupError):
         return False
 
 
