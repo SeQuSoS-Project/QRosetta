@@ -24,6 +24,8 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Science/Research",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
@@ -40,7 +42,10 @@ qrosetta = "qrosetta_cli.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/SeQuSoS-Project/QRosetta"
+Documentation = "https://github.com/SeQuSoS-Project/QRosetta#readme"
 Source = "https://github.com/SeQuSoS-Project/QRosetta"
+Issues = "https://github.com/SeQuSoS-Project/QRosetta/issues"
+Changelog = "https://github.com/SeQuSoS-Project/QRosetta/blob/main/CHANGELOG.md"
 
 [tool.setuptools]
 packages = ["qrosetta_cli", "qrosetta_cli.client", "qrosetta_cli.stack"]

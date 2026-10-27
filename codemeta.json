@@ -1,0 +1,64 @@
+{
+  "@context": "https://w3id.org/codemeta/3.0",
+  "type": "SoftwareSourceCode",
+  "name": "Quantum Rosetta (QRosetta): A Reproducible Microservice Platform for Cross-Simulator Benchmarking and Agreement Analysis",
+  "description": "QRosetta is a microservice platform for running one OpenQASM 2.0 circuit across heterogeneous quantum simulator backends and comparing their resource use, endpoint semantics, raw outputs, and pairwise agreement under a common runner contract.",
+  "version": "2.0.0.dev0",
+  "license": "https://spdx.org/licenses/Apache-2.0",
+  "codeRepository": "https://github.com/SeQuSoS-Project/QRosetta",
+  "url": "https://github.com/SeQuSoS-Project/QRosetta",
+  "issueTracker": "https://github.com/SeQuSoS-Project/QRosetta/issues",
+  "readme": "https://github.com/SeQuSoS-Project/QRosetta/blob/main/README.md",
+  "releaseNotes": "https://github.com/SeQuSoS-Project/QRosetta/blob/main/CHANGELOG.md",
+  "continuousIntegration": "https://github.com/SeQuSoS-Project/QRosetta/actions",
+  "developmentStatus": "https://www.repostatus.org/#active",
+  "programmingLanguage": ["Python", "JavaScript"],
+  "operatingSystem": ["Linux"],
+  "softwareRequirements": [
+    "Python 3.11 or newer (the qrosetta command)",
+    "Podman 4.4 or newer, or Docker Engine 20.10 or newer",
+    "Docker Compose v2"
+  ],
+  "keywords": [
+    "quantum computing",
+    "quantum simulation",
+    "benchmarking",
+    "reproducibility",
+    "OpenQASM",
+    "microservices"
+  ],
+  "author": [
+    {
+      "type": "Person",
+      "givenName": "Shaswato",
+      "familyName": "Sarker",
+      "affiliation": {"type": "Organization", "name": "University of Jyvaskyla"}
+    },
+    {
+      "type": "Person",
+      "givenName": "Majid",
+      "familyName": "Haghparast",
+      "affiliation": {"type": "Organization", "name": "University of Jyvaskyla"}
+    },
+    {
+      "type": "Person",
+      "givenName": "Tommi",
+      "familyName": "Mikkonen",
+      "affiliation": {"type": "Organization", "name": "University of Jyvaskyla"}
+    }
+  ],
+  "funding": [
+    {
+      "type": "schema:Grant",
+      "name": "SeQuSoS",
+      "identifier": "112/31/2024",
+      "funder": {"type": "Organization", "name": "Business Finland"}
+    },
+    {
+      "type": "schema:Grant",
+      "name": "Profi 8 - qSIME",
+      "identifier": "365343",
+      "funder": {"type": "Organization", "name": "Research Council of Finland"}
+    }
+  ]
+}
