@@ -123,7 +123,16 @@ def test_rate_limited_routes_send_rate_limit_headers_and_retry_after():
 
 
 def test_unlimited_routes_carry_no_rate_limit_headers():
-    assert "X-RateLimit-Limit" not in TestClient(app).get("/config").headers
+    client = TestClient(app)
+    for path in ("/config", "/health", "/ready"):
+        assert "X-RateLimit-Limit" not in client.get(path).headers, path
+
+
+def test_health_and_readiness_declare_their_answers(spec):
+    paths = spec["paths"]
+    assert set(paths["/health"]["get"]["responses"]) == {"200"}
+    assert set(paths["/ready"]["get"]["responses"]) == {"200", "503"}
+    assert "detail" in spec["components"]["schemas"]["NotReady"]["required"]
 
 
 def test_exclusive_slot_429_has_retry_after(monkeypatch):

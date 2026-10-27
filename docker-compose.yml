@@ -79,7 +79,7 @@ services:
     networks:
       - isolated_net
     healthcheck:
-      test: [ "CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/algorithms')" ]
+      test: [ "CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" ]
       interval: 5s
       timeout: 5s
       retries: 10

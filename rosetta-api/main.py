@@ -6,6 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from routers import frontend, generation, benchmark, auth, history, export, publication, experiment, share, plan, summary, selftest, timing
 from routers import local as local_routes
 from routers import circuits
+from routers import health
 from routers.errors import document_route_errors, register_error_handlers
 from routers.rate_limit import RateLimitHeaders
 import db.models as models
@@ -25,10 +26,13 @@ import logging
 logger = get_logger("rosetta-main")
 
 class _SuppressAlgorithmsFilter(logging.Filter):
-    """Drop GET /algorithms access log entries — they are frontend keepalive polls."""
+    """Drop 200 access log entries of GET /algorithms (frontend keepalive polls) and of the
+    health and readiness probes."""
+    _QUIET = ('GET /algorithms', 'GET /health ', 'GET /ready ')
+
     def filter(self, record: logging.LogRecord) -> bool:
         msg = record.getMessage()
-        return not ('GET /algorithms' in msg and '" 200' in msg)
+        return not ('" 200' in msg and any(path in msg for path in self._QUIET))
 
 logging.getLogger("uvicorn.access").addFilter(_SuppressAlgorithmsFilter())
 
@@ -138,5 +142,6 @@ app.include_router(selftest.router)
 app.include_router(timing.router)
 app.include_router(local_routes.router)
 app.include_router(circuits.router)
+app.include_router(health.router)
 
 document_route_errors(app)

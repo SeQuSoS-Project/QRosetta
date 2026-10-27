@@ -25,6 +25,30 @@ items:
           imagePullPolicy: IfNotPresent
           ports:
           - containerPort: 8000
+          # GET /health answers while the process serves; GET /ready also needs the database
+          # and the job spill directory. A restart loses every job held in memory, so liveness
+          # waits 6 minutes, longer than gunicorn's 330 s worker timeout.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 12
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8000
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           env:
           - name: OMP_NUM_THREADS
             value: "1"

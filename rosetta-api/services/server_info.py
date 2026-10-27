@@ -23,6 +23,7 @@ FEATURES = {
     "circuit_texts": 1,
     "publication_views": 1,
     "job_link": 1,
+    "readiness": 1,
 }
 
 
