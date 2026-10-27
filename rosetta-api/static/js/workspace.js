@@ -89,8 +89,8 @@ function _syncBypassControl() {
 /** Run button colours by what it runs: the editor circuit blue, the playlist yellow, an experiment emerald. */
 const RUN_THEMES = {
     editor: ['bg-blue-600', 'hover:bg-blue-700', 'focus:ring-blue-500'],
-    batch: ['bg-yellow-600', 'hover:bg-yellow-700', 'focus:ring-yellow-500'],
-    experiment: ['bg-emerald-600', 'hover:bg-emerald-700', 'focus:ring-emerald-500'],
+    batch: ['bg-yellow-700', 'hover:bg-yellow-800', 'focus:ring-yellow-600'],
+    experiment: ['bg-emerald-700', 'hover:bg-emerald-800', 'focus:ring-emerald-600'],
 };
 
 /** Refresh everything that depends on the workspace: shots field, compiler line, counts, Run label. */

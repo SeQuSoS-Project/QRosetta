@@ -120,7 +120,7 @@ export function renderExperimentResult(results, panel, { jobId, name, title, com
         + `by design or resource. The server keeps the bundle for ${durationText(getState().jobTtlSec)}.`, 'text-gray-600 mb-3');
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'py-2 px-4 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700';
+    button.className = 'py-2 px-4 rounded-md text-sm font-medium text-white bg-emerald-700 hover:bg-emerald-800';
     button.textContent = '⬇ Download bundle (ZIP)';
     button.onclick = () => downloadExperimentBundle(jobId, name);
     panel.appendChild(button);
