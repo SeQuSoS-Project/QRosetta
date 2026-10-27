@@ -188,8 +188,7 @@ class TestBuildRoCrate:
 
         zf = zipfile.ZipFile(io.BytesIO(zip_bytes), "r")
         names = zf.namelist()
-        # Should have exactly 4 files inside a directory
-        assert len(names) == 4
+        assert len(names) == 5
 
     def test_contains_expected_files(self):
         ctx = _make_ctx()

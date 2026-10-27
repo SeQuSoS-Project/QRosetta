@@ -1,5 +1,7 @@
 """The circuit texts of a run report, and nothing else: the subset a read-only share link
-serves. Fields keep their report names, so the Circuits view reads either."""
+serves (fields keep their report names, so the Circuits view reads either), and the same texts
+as the Circuits view's panes for GET /jobs/{id}/circuit-texts (circuit_panes mirrors
+static/js/circuit_panes.js circuitPanes; test_circuit_texts_route.py compares them)."""
 
 _RESULT_TEXT_FIELDS = ("simulator", "dispatch_group", "transpiled_qasm", "gate_metrics_basis",
                        "dispatch_status")
@@ -77,6 +79,92 @@ def single_circuit_texts(report: dict) -> dict:
         out["compiled_circuits"] = [_compiled_texts(record) for record in report["compiled_circuits"]
                                     if isinstance(record, dict)]
     return out
+
+
+def _object(value) -> bool:
+    """A JSON object or array: what the Circuits view treats as a record."""
+    return isinstance(value, (dict, list))
+
+
+def _field(record, key):
+    return record.get(key) if isinstance(record, dict) else None
+
+
+def _text(value):
+    return value if isinstance(value, str) else None
+
+
+def _key(record, field: str, fallback: str) -> str:
+    value = _field(record, field)
+    return value if isinstance(value, str) else fallback
+
+
+def circuit_panes(report) -> list:
+    """The panes of one circuit's report, in the Circuits view's order and with its ids
+    (static/js/circuit_panes.js ``circuitPanes``): ``input``, ``dispatched:<group>``,
+    ``executed:<key>``, ``compile-input`` and ``compiled:<key>``. Each has id, kind, key,
+    group and text, plus the share-link allowlist's fields of its record."""
+    if not isinstance(report, dict):
+        return []
+    panes = []
+    if isinstance(report.get("input_qasm"), str):
+        panes.append({"id": "input", "kind": "input", "key": None, "group": None,
+                      "text": report["input_qasm"]})
+    dispatched = report.get("dispatched_circuits")
+    for record in dispatched if isinstance(dispatched, list) else []:
+        if not (isinstance(record, dict) and isinstance(record.get("group"), str)
+                and isinstance(record.get("qasm"), str)):
+            continue
+        texts = _dispatched_texts(record)
+        panes.append({"id": f"dispatched:{record['group']}", "kind": "dispatched", "key": None,
+                      "group": record["group"], "text": record["qasm"],
+                      "api_preprocessing_applied": texts["api_preprocessing_applied"],
+                      "runners": texts["runners"]})
+    results = report.get("raw_results")
+    for index, result in enumerate(results if isinstance(results, list) else []):
+        if not _object(result):
+            continue
+        key = _key(result, "simulator", f"result {index + 1}")
+        texts = _result_texts(result) if isinstance(result, dict) else {"preprocessing_applied": []}
+        panes.append({"id": f"executed:{key}", "kind": "executed", "key": key,
+                      "group": _text(_field(result, "dispatch_group")),
+                      "text": _text(_field(result, "transpiled_qasm")),
+                      **{k: v for k, v in texts.items()
+                         if k not in ("simulator", "dispatch_group", "transpiled_qasm")}})
+    compile_input = report.get("compile_input")
+    if isinstance(compile_input, dict) and isinstance(compile_input.get("qasm"), str):
+        panes.append({"id": "compile-input", "kind": "compile-input", "key": None, "group": None,
+                      "text": compile_input["qasm"],
+                      "api_preprocessing_applied": _strings(compile_input.get("api_preprocessing_applied"))})
+    compiled = report.get("compiled_circuits")
+    for index, record in enumerate(compiled if isinstance(compiled, list) else []):
+        if not _object(record):
+            continue
+        key = _key(record, "compiler", f"compiler {index + 1}")
+        texts = _compiled_texts(record) if isinstance(record, dict) else {"passes_applied": []}
+        panes.append({"id": f"compiled:{key}", "kind": "compiled", "key": key, "group": None,
+                      "text": _text(_field(record, "transpiled_qasm")),
+                      **{k: v for k, v in texts.items() if k not in ("compiler", "transpiled_qasm")}})
+    return panes
+
+
+def task_panes(task, index=None) -> dict:
+    """``{task, task_name, panes}`` of one circuit's report; ``index`` is its playlist index."""
+    name = task.get("task_name") if isinstance(task, dict) else None
+    return {"task": index, "task_name": name if isinstance(name, str) else None,
+            "panes": circuit_panes(task)}
+
+
+def report_circuits(report) -> list:
+    """``task_panes`` of a single-circuit report, or of every task of a playlist report whose
+    tasks may already be ``task_panes`` results (``job_store.full_report``'s each_task)."""
+    if not isinstance(report, dict):
+        return []
+    tasks = report.get("benchmark_summary")
+    if not isinstance(tasks, list):
+        return [task_panes(report)]
+    return [{**task, "task": i} if isinstance(task, dict) and "panes" in task else task_panes(task, i)
+            for i, task in enumerate(tasks)]
 
 
 def circuit_texts(report) -> dict:

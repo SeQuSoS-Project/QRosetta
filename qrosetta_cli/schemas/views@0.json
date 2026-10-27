@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "qrosetta.cli/views@0: GET /publication/views as the server sent it (show views)",
+  "type": "object",
+  "properties": {
+    "views": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"},
+          "artifacts": {"type": "array"},
+          "item_formats": {"type": "array", "items": {"type": "string"}},
+          "params": {"type": "array"}
+        },
+        "required": ["id", "artifacts", "params"]
+      }
+    },
+    "scale": {"type": "object"}
+  },
+  "required": ["views"]
+}

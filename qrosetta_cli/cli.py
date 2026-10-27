@@ -136,6 +136,28 @@ SPECS = {
     "export report": Spec("client.export:cmd_export_report", "export@1", "write a result's full report JSON",
                           ("qrosetta export report", "qrosetta export report --result job:1a2b3c4d -o -"),
                           group="Results"),
+    "show circuits": Spec("client.circuits:cmd_show_circuits", "circuit-texts@0", "the circuit texts of a result: "
+                          "submitted, dispatched, executed, compiled",
+                          ("qrosetta show circuits", "qrosetta show circuits --pane executed:qiskit",
+                           "qrosetta show circuits --task 2"), stable=False, group="Results"),
+    "show diff": Spec("client.circuits:cmd_show_diff", "diff@0", "a unified diff of two circuit texts of a result "
+                      "(difflib; display only)",
+                      ("qrosetta show diff", "qrosetta show diff executed:qiskit",
+                       "qrosetta show diff dispatched:default executed:cirq --ignore comments,whitespace"),
+                      stable=False, group="Results"),
+    "show artifacts": Spec("client.figures:cmd_show_artifacts", "artifacts@0", "the figures and tables a result "
+                           "offers", ("qrosetta show artifacts", "qrosetta show artifacts --task 0"), stable=False,
+                           group="Results"),
+    "show views": Spec("client.figures:cmd_show_views", "views@0", "the export views with their parameters, "
+                       "defaults and formats", ("qrosetta show views",), stable=False, group="Results"),
+    "export figure": Spec("client.figures:cmd_export_figure", "export-file@0", "write one figure or table of a "
+                          "result", ("qrosetta export figure fidelity_heatmap",
+                                     "qrosetta export figure counts_overview --param layout=panels -o counts.pdf",
+                                     "qrosetta export figure agreement --format csv -o -"),
+                          stable=False, group="Results"),
+    "export views": Spec("client.figures:cmd_export_views", "export-file@0", "write the export views listing "
+                         "(GET /publication/views) as JSON", ("qrosetta export views", "qrosetta export views -o -"),
+                         stable=False, group="Results"),
 }
 ALIASES = {"rm": "remove"}
 GROUPS = {"jobs": "jobs list", "show": "show summary", "config": "config show",
@@ -383,16 +405,49 @@ def _add_runs(sub):
     p.add_argument("--results-dir", metavar="DIR", help="the parent results directory")
     p.add_argument("--yes", "-y", action="store_true", help="download reports over 1 GiB without asking")
 
-    gsub = _group(sub, "show", "print a result: summary", ("qrosetta show summary",))
-    p = _add(gsub, "show summary")
-    p.add_argument("--result", metavar="REF", help="latest (default), job:ID or a path")
-    p.add_argument("--task", type=int, metavar="N", help="one playlist circuit (0-based)")
-    p.add_argument("--job", metavar="MODE", help="one job of the result: statevector, measured or compile")
-    p.add_argument("--results-dir", metavar="DIR", help="the parent results directory")
+    gsub = _group(sub, "show", "print a result: summary, circuits, diff, artifacts; the export views",
+                  ("qrosetta show summary", "qrosetta show circuits", "qrosetta show views"))
+    for name in ("show summary", "show circuits", "show diff", "show artifacts"):
+        p = _add(gsub, name)
+        if name == "show diff":
+            p.add_argument("panes", nargs="*", metavar="PANE", help="A and B: pane ids or result keys (default: "
+                           "B's source and B; with none, the first derived pane and its source)")
+            p.add_argument("--ignore", action="append", metavar="LIST", help="any of comments, header, whitespace")
+        p.add_argument("--result", metavar="REF", help="latest (default), job:ID or a path")
+        p.add_argument("--task", type=int, metavar="N", help="one playlist circuit (0-based)")
+        p.add_argument("--job", metavar="MODE", help="one job of the result: statevector, measured or compile")
+        p.add_argument("--results-dir", metavar="DIR", help="the parent results directory")
+        if name == "show circuits":
+            p.add_argument("--pane", metavar="ID", help="print this pane's text only")
+    _add(gsub, "show views")
     sub.choices["show"].add_argument("--result", metavar="REF", help=argparse.SUPPRESS)
 
-    gsub = _group(sub, "export", "write a result's files: crate, report",
+    gsub = _group(sub, "export", "write a result's files: crate, report, figure; the export views",
                   ("qrosetta export crate", "qrosetta export report -o report.json"), required=True)
+    _add_exports(gsub)
+
+
+def _add_experimental_exports(gsub):
+    p = _add(gsub, "export figure")
+    p.add_argument("artifact", metavar="ARTIFACT", help="an artifact id from `qrosetta show artifacts`")
+    p.add_argument("--result", metavar="REF", help="latest (default), job:ID or a path")
+    p.add_argument("--job", metavar="MODE", help="one job of the result: statevector, measured or compile")
+    p.add_argument("--task", type=int, metavar="N", help="one playlist circuit (0-based)")
+    p.add_argument("--format", metavar="FMT", help="svg, png, pdf, csv, latex, ... (default: from -o's extension, "
+                   "else the artifact's first format)")
+    p.add_argument("--scale", type=int, choices=range(1, 5), metavar="1-4", help="raster resolution multiplier")
+    p.add_argument("--param", action="append", metavar="K=V|@FILE", help="a view parameter (repeatable); "
+                   "`qrosetta show views` lists them")
+    p.add_argument("-o", "--output", metavar="PATH|-", help="where to write (default: the job's directory); "
+                   "- for stdout")
+    p.add_argument("--results-dir", metavar="DIR", help="the parent results directory")
+    p = _add(gsub, "export views")
+    p.add_argument("-o", "--output", metavar="PATH|-", help="where to write (default: publication-views.json "
+                   "in the results directory); - for stdout")
+    p.add_argument("--results-dir", metavar="DIR", help="the parent results directory")
+
+
+def _add_exports(gsub):
     for name in ("export crate", "export report"):
         p = _add(gsub, name)
         p.add_argument("--result", metavar="REF", help="latest (default), job:ID or a path")
@@ -406,6 +461,7 @@ def _add_runs(sub):
                            "from the saved report.json (recorded as client_supplied)")
         else:
             p.add_argument("--yes", "-y", action="store_true", help="download reports over 1 GiB without asking")
+    _add_experimental_exports(gsub)
 
 
 def _add_reads(sub):

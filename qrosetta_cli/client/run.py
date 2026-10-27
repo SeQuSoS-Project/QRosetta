@@ -180,6 +180,16 @@ def crate_line(conn, job_id, info):
     return f"Crate: `qrosetta export crate --result job:{job_id[:8]}` (the server keeps the job {retention_text(ttl)})"
 
 
+JOB_LINK_FEATURE = "job_link"
+
+
+def page_link(conn, job_id):
+    """The page's link to the job, `<server>/#job=<id>`, when the server's page opens one."""
+    if not conn.has(JOB_LINK_FEATURE):
+        return None
+    return f"{conn.url.rstrip('/')}/#job={job_id}"
+
+
 class Follower:
     """Follows and saves jobs of one server for run and wait."""
 
@@ -244,13 +254,16 @@ class Follower:
         line = crate_line(self.conn, job_id, info)
         if line:
             output.result(line)
+        link = page_link(self.conn, job_id)
+        if link:
+            output.result(f"Open in the browser: {link}")
         request = results.read_json(os.path.join(job_dir, "request.json")) or {}
         backends = [b.get("key") for b in ((summary or {}).get("backend_verdicts") or {}).get("backends") or []] or \
             list((request.get("payload") or {}).get("target_simulators") or [])
         entry = {"job_id": job_id, "endpoint": request.get("endpoint"), "kind": kind, "mode": request.get("mode"),
                  "title": title, "status": env.get("status"), "save_status": info["status"], "dir": job_dir,
                  "files": job_files(info), "backends": backends,
-                 "concurrent_with_other_jobs": info["concurrent"], "summary": summary}
+                 "concurrent_with_other_jobs": info["concurrent"], "page_url": link, "summary": summary}
         self.jobs.append(entry)
         return entry
 
@@ -383,6 +396,8 @@ def cmd_run(ctx):
         if args.detach:
             output.result(f"Job {job_id} submitted; results go to {job_dir}{os.sep}")
             output.result(f"qrosetta wait job:{job_id[:8]}")
+            if page_link(conn, job_id):
+                output.result(f"Open in the browser: {page_link(conn, job_id)}")
             follower.jobs.append({"job_id": job_id, "endpoint": run["endpoint"], "kind": run.get("kind"),
                                   "mode": run.get("mode"), "title": title, "status": env.get("status"),
                                   "save_status": None, "dir": job_dir,

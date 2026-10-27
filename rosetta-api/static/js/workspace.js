@@ -24,6 +24,7 @@ import { batchItemLabel, renderBatchQueue } from './batch.js';
 import { exampleOptions } from './circuit_sources.js';
 import { emptyStateModel, renderEmptyState } from './empty_state.js';
 import { setRunKicker, startRunView } from './status_cards.js';
+import { linkedJobId, linkedJobKind, linkedJobTitle, missingJobText } from './job_link.js';
 import { _displayRunnerName } from './render_helpers.js';
 import { compareRunnerKeys, plannedRunKeys } from './runner_key.js';
 import { announce, firstSentence, focusHeading, focusIsLost } from './announce.js';
@@ -251,7 +252,8 @@ async function _await(job) {
         if (job.run_name) results.run_name = job.run_name;
         if (job.circuit_name && !results.circuit_name) results.circuit_name = job.circuit_name;
         let historyRunId = null;
-        if (job.kind !== 'experiment' && (job.account || null) === signedInAccount()) {
+        if (job.linked) job.kind = linkedJobKind({ results });
+        else if (job.kind !== 'experiment' && (job.account || null) === signedInAccount()) {
             historyRunId = await saveRunToHistory(job.job_id, job.run_name || null);
             autosaveRun(results, job.run_name || job.title);
         }
@@ -575,6 +577,44 @@ export async function resumeJob(job) {
     _show(0);
     _announceShown(_finished[0]);
     offerRecentJobs({ unfinishedOnly: true });
+}
+
+/** The results panel for a /#job=<id> link whose job the server no longer has. */
+function _renderLinkMissing(jobId) {
+    clearReport();
+    _revealResults();
+    const panel = document.getElementById('summary-panel');
+    if (!panel) return;
+    const box = _el('div', 'p-4 bg-gray-50 border border-gray-300 rounded text-sm text-gray-800 space-y-2');
+    box.setAttribute('role', 'status');
+    box.appendChild(_el('h3', 'text-base font-semibold text-gray-900', 'Job not on this server'));
+    box.appendChild(_el('p', '', missingJobText(jobId, durationText(getState().jobTtlSec))));
+    panel.replaceChildren(box);
+    panel.classList.remove('hidden');
+}
+
+/**
+ * Open the job a /#job=<id> link names, as Show results does for a job this browser submitted:
+ * wait for it and show its results. Nothing is recorded in this browser's job list or saved to
+ * history. A job the server does not have gets a message instead.
+ */
+export async function openLinkedJob() {
+    const jobId = linkedJobId(window.location.hash);
+    if (!jobId || getState().isProcessing) return;
+    let envelope = null;
+    try {
+        const res = await fetch(`${BASE_URL}/jobs/${encodeURIComponent(jobId)}`, { headers: getAuthHeaders() });
+        if (res.status === 404) {
+            _renderLinkMissing(jobId);
+            return;
+        }
+        if (res.ok) envelope = await res.json();
+    } catch (_) {
+        envelope = null;
+    }
+    if (getState().isProcessing) return;
+    await resumeJob({ job_id: jobId, kind: linkedJobKind(envelope), title: linkedJobTitle(envelope, jobId),
+                      submitted_at: Date.now(), linked: true });
 }
 
 /** One row of the recent-jobs offer: what the job is, its state, and Show results / Dismiss. */

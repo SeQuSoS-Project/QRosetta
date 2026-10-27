@@ -19,7 +19,7 @@ import { dispatch, getState } from './state.js';
 import { resetAgreementThresholds, setLoading } from './utils.js';
 import { fetchSelection, loadCircuitSources, menuGroups, nearestSize, selectionFor } from './circuit_sources.js';
 import { initCircuitPicker } from './circuit_picker.js';
-import { offerRecentJobs, updateWorkspace } from './workspace.js';
+import { offerRecentJobs, openLinkedJob, updateWorkspace } from './workspace.js';
 import { initSettingsBar } from './settings_bar.js';
 import { setStatusLabels } from './status_cards.js';
 
@@ -335,6 +335,8 @@ window.onload = async () => {
     initAutosave();
     updateWorkspace();
     offerRecentJobs();
+    openLinkedJob();
+    window.addEventListener('hashchange', () => { openLinkedJob(); });
 };
 
 /** For an MQT Bench algorithm, move the Qubits field to the nearest size the suite has. */

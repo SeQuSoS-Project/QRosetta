@@ -301,7 +301,7 @@ export function renderExportPanel(aside, ctx) {
         const [folder, ...rest] = p.split('/');
         list.append(el('li', '', rest.length ? `${folder}/${prefix}${rest.join('/')}` : `${prefix}${p}`));
     });
-    [['ro-crate-metadata.json'], ['results.json'], ['provenance.json'],
+    [['ro-crate-metadata.json'], ['README.txt'], ['results.json'], ['provenance.json'],
         [scope === 'report' ? 'circuit.qasm' : 'circuits/<circuit>.qasm'],
         ['dispatched_circuits/, transpiled_circuits/'], ['runners/<runner>/requirements.lock']].forEach(([p]) => {
         list.append(el('li', 'text-gray-500', p));

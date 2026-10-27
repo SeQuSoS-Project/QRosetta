@@ -206,3 +206,61 @@ class ReportSummary(_Open):
     outcome_roles: Dict[str, Literal["difference", "not_established", "runs_without_output", "agreement"]] = Field(..., description="Each outcome name's role: difference (a pair differs; BY-only included), not_established (inconclusive, not comparable, unassessed, or nothing compared), runs_without_output, agreement.")
     runs: Optional[Dict[str, Any]] = Field(None, description="Runs: total, returned, without_output; a playlist's are sums, with circuits_failed.")
     benchmark_summary: Optional[List[TaskSummary]] = Field(None, description="Playlist report: one summary per task, in task order; null for a single-circuit report.")
+
+
+class ViewParameter(_Open):
+    """One parameter of an export view."""
+    name: str
+    type: Literal["choice", "bool", "int", "float", "backends", "backend", "bits"] = Field(..., description="choice (one of choices), bool, int or float (from min to max), backends (a list of the report's backend keys), backend (one key with counts), bits (a list of 1 to max_items distinct classical-bit indices).")
+    default: Any = Field(None, description="The value an omitted parameter takes; null means default_when_null.")
+    choices: Optional[List[str]] = None
+    min: Optional[float] = None
+    max: Optional[float] = None
+    max_items: Optional[int] = None
+    default_when_null: Optional[str] = Field(None, description="What a null default stands for, worked out from the report.")
+    scope: str = Field(..., description="'every view', 'views with a figure' or 'this view'.")
+
+
+class ViewArtifact(_Open):
+    """An artifact a view renders, with the formats the render routes take for it."""
+    artifact_id: str
+    kind: Literal["figure", "table", "text"]
+    formats: List[str]
+
+
+class PublicationView(_Open):
+    """One export view of the Exports tab."""
+    id: str = Field(..., description="The view id, as in publication_artifacts.items[].view.")
+    artifacts: List[ViewArtifact] = Field(..., description="Its figure, table or text: the artifact_id to render with POST /jobs/{job_id}/publication/render.")
+    item_formats: List[str] = Field(..., description="The formats an export item of this view takes (POST /jobs/{job_id}/export).")
+    params: List[ViewParameter]
+
+
+class PublicationViews(_Open):
+    """GET /publication/views."""
+    views: List[PublicationView]
+    scale: Dict[str, int] = Field(..., description="The render routes' scale range: min and max.")
+
+
+class CircuitPane(_Open):
+    """One pane of the Circuits view: a circuit text the run recorded, with the share-link
+    allowlist's fields of its record (transforms, gate metrics, status, SDK versions)."""
+    id: str = Field(..., description="'input', 'dispatched:<group>', 'executed:<result key>', 'compile-input' or 'compiled:<compile key>'.")
+    kind: Literal["input", "dispatched", "executed", "compile-input", "compiled"]
+    key: Optional[str] = Field(None, description="Executed: the result key; compiled: the compile key; else null.")
+    group: Optional[str] = Field(None, description="Dispatched: the runner group; executed: the group whose dispatched circuit the backend received.")
+    text: Optional[str] = Field(None, description="The circuit text; null for a run or compile that recorded none.")
+
+
+class CircuitTextsCircuit(_Open):
+    """The panes of one circuit of the job."""
+    task: Optional[int] = Field(None, description="Playlist: the circuit's index in benchmark_summary; null for a single-circuit job.")
+    task_name: Optional[str] = Field(None, description="Playlist: the circuit's name.")
+    panes: List[CircuitPane]
+
+
+class CircuitTexts(_Open):
+    """GET /jobs/{job_id}/circuit-texts."""
+    job_id: str
+    report_source: Literal["server_job"]
+    circuits: List[CircuitTextsCircuit] = Field(..., description="One entry per circuit: one for a single-circuit job; for a playlist the task asked for, else every task in order.")
