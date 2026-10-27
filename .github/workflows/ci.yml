@@ -205,3 +205,37 @@ jobs:
       - name: No secrets anywhere in history
         run: |
           "$RUNNER_TEMP/gitleaks" git --config .gitleaks.toml --redact --no-banner .
+
+  actionlint:
+    # Lints every workflow under .github/workflows, with the run scripts checked by ShellCheck.
+    # Both tools are pinned release binaries checked against their published sha256.
+    name: actionlint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install actionlint and ShellCheck
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+          SHELLCHECK_VERSION: 0.11.0
+          SHELLCHECK_SHA256: b7af85e41cc99489dcc21d66c6d5f3685138f06d34651e6d34b42ec6d54fe6f6
+        run: |
+          actionlint="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          shellcheck="shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$actionlint" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${actionlint}"
+          curl -fsSL -o "$RUNNER_TEMP/$shellcheck" \
+            "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/${shellcheck}"
+          echo "${ACTIONLINT_SHA256}  $RUNNER_TEMP/$actionlint" | sha256sum -c -
+          echo "${SHELLCHECK_SHA256}  $RUNNER_TEMP/$shellcheck" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$actionlint" -C "$RUNNER_TEMP" actionlint
+          tar -xzf "$RUNNER_TEMP/$shellcheck" -C "$RUNNER_TEMP" --strip-components=1 \
+            "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
+
+      - name: Lint the workflows
+        run: '"$RUNNER_TEMP/actionlint" -color -shellcheck "$RUNNER_TEMP/shellcheck"'

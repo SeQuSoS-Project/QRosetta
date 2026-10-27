@@ -284,7 +284,11 @@ before the `pip install` steps, and pin the specific packages needed.
 `uvicorn[standard]`, `psutil`, `gunicorn`, plus whatever your SDK needs). `requirements.lock` is
 the full `pip freeze` output of a container built from that `requirements.txt`: build the image
 once, run `pip freeze` inside it, and commit the result with a comment noting the date. The
-Dockerfile installs from the lock file.
+Dockerfile installs from the lock file, and every exact pin in `requirements.txt` must have the
+same version in the lock (`test_requirements_lock_sync.py`). Dependabot does not read lock files,
+so a pull request of its that changes a `requirements.txt` fails that test until the lock is
+regenerated; for a runner or compiler it carries the label `sealed-image` and needs the image
+requalified (`DESIGN_DECISIONS.md`, Supported Python and base images) before it is merged.
 
 ## 7. Registering the runner
 
@@ -569,7 +573,14 @@ other spelling):
    self-test: `main.py --self-test` for runners and compilers, an import of `main` for the API,
    `nginx -t` for nginx. Nothing is pushed. `image.sh` refuses to build without the
    `org.qrosetta.image.project` and `org.qrosetta.service` labels, by which an installed
-   `qrosetta` recognises a pulled image as its stack's, and adds `org.qrosetta.third-party-notices`.
+   `qrosetta` recognises a pulled image as its stack's, and adds `org.qrosetta.third-party-notices`
+   and the `org.opencontainers.image.*` labels of `scripts/release/oci_labels.py` (title,
+   description, `Apache-2.0`, source repository, commit, version; `safe_boot.sh` adds the same to
+   local builds). `image.sh scan` then scans the image with Trivy (container image pinned by
+   digest): the SARIF report of HIGH and CRITICAL vulnerabilities with a fixed version goes to
+   code scanning (job `scan-results`, public repository only), and a CRITICAL one with a fixed
+   version fails the image, and so the release, unless `.trivyignore` lists it with the reason,
+   who accepted it and a review date.
 3. `publish-images` runs only when the repository variable `QROSETTA_PUBLISH_IMAGES` is `true`,
    on any version tag. It rebuilds each image, pushes it to
    `ghcr.io/<owner>/qrosetta-<container name>:<version>`, pulls it back by digest and self-tests
@@ -590,6 +601,11 @@ other spelling):
 first run, register `release-images.yml` as a trusted publisher of the `qrosetta` project on PyPI
 and TestPyPI with those environment names, and create both environments in the repository
 settings.
+
+**Monthly rebuild check.** `.github/workflows/rebuild-check.yml` builds the same images from
+scratch (`NO_CACHE=1`: no layer cache, base image pulled), self-tests and scans them, and pushes
+nothing. It fails when a pinned package or base image can no longer be fetched, a self-test no
+longer passes, or a CRITICAL vulnerability with a fix has been published since.
 
 **Image archives without a registry.** On a machine that has pulled (or built) the images,
 `qrosetta images save --profile minimal -o DIR` writes one archive per image and

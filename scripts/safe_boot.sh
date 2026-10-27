@@ -75,24 +75,30 @@ if [ -n "${QR_BUILD_SERVICES:-}" ]; then
   done
 fi
 
-# Builds one compose service with `docker build`, tagged as compose names it. Under podman,
+# Builds one compose service with `docker build`, tagged as compose names it, with the
+# org.opencontainers.image.* labels of scripts/release/oci_labels.py. Under podman,
 # `docker compose build` goes through the API service, which stages layers in /var/tmp
 # whatever TMPDIR or image_copy_tmp_dir says; the CLI honours both.
 build_service() {
-  local spec
+  local spec oci label
   spec=$(docker compose config --format json 2>/dev/null | python3 -c '
-import json, shlex, sys
+import json, os, shlex, sys
 d = json.load(sys.stdin)
 svc = d["services"][sys.argv[1]]
 b = svc["build"]
 args = " ".join("--build-arg " + shlex.quote(f"{k}={v}") for k, v in (b.get("args") or {}).items())
 args += "".join(" --label " + shlex.quote(f"{k}={v}") for k, v in (b.get("labels") or {}).items())
 image = svc.get("image") or d["name"] + "-" + sys.argv[1]
-print(shlex.quote(image), shlex.quote(b["dockerfile"]), shlex.quote(b["context"]), args)
+dockerfile = os.path.join(b["context"], b["dockerfile"])
+print(shlex.quote(image), shlex.quote(b["dockerfile"]), shlex.quote(b["context"]), shlex.quote(dockerfile), args)
 ' "$1") || return 1
   eval "set -- $spec"
-  local image=$1 dockerfile=$2 context=$3
-  shift 3
+  local image=$1 dockerfile=$2 context=$3 dockerfile_path=$4
+  shift 4
+  oci=$(python3 scripts/release/oci_labels.py "$dockerfile_path" --revision "$QROSETTA_GIT_SHA") || return 1
+  while IFS= read -r label; do
+    set -- "$@" --label "$label"
+  done <<< "$oci"
   (cd "$context" && docker build -t "$image" -f "$dockerfile" "$@" .)
 }
 

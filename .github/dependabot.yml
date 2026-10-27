@@ -1,0 +1,102 @@
+# Dependabot: weekly version updates, grouped into a few pull requests (DESIGN_DECISIONS.md,
+# "Dependency updates and image scanning").
+#
+# Dependabot reads requirements*.txt and pyproject.toml but not requirements.lock, which every
+# Dockerfile installs from. A pip pull request therefore changes only requirements.txt;
+# tests/unit/test_requirements_lock_sync.py fails until requirements.lock is regenerated from a
+# rebuilt image in the same pull request.
+#
+# Runner and compiler images are sealed: a change to their SDKs or base image changes what is
+# measured, so their pull requests carry the label sealed-image, are never merged automatically,
+# and need the image requalified first. Their pip entries open no version-update pull requests
+# (limit 0); they exist so that security-update pull requests, when enabled in the repository
+# settings, get the same label. Base-image updates keep the Python minor version: a move from
+# python:3.10 to 3.11 is a deliberate change, not a weekly update.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    labels: [dependencies]
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: pip
+    directories:
+      - /
+      - /rosetta-api
+      - /rosetta-api/tests
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    labels: [dependencies]
+    ignore:
+      # Allas (S3) rejects the payload checksums of boto3/botocore 1.36 and later.
+      - dependency-name: boto3
+        versions: [">=1.36.0"]
+      - dependency-name: botocore
+        versions: [">=1.36.0"]
+    groups:
+      api-python:
+        applies-to: version-updates
+        patterns: ["*"]
+      api-python-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: pip
+    directories:
+      - /runners/*
+      - /compilers/*
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 0
+    labels: [dependencies, sealed-image]
+    groups:
+      sealed-python-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directories:
+      - /runners/*
+      - /compilers/*
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    labels: [dependencies, sealed-image]
+    ignore:
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+    groups:
+      sealed-base-images:
+        patterns: ["*"]
+        group-by: dependency-name
+
+  - package-ecosystem: docker
+    directories:
+      - /rosetta-api
+      - /nginx
+      - /infra
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    labels: [dependencies]
+    ignore:
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+    groups:
+      core-base-images:
+        patterns: ["*"]
