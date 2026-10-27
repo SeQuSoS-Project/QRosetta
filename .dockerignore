@@ -1,5 +1,5 @@
 # Build context exclusions: credentials, host virtualenvs, caches and databases that no image may
-# carry, and directories no Dockerfile copies. test_v1_10_build_context.py checks the patterns.
+# carry, and directories no Dockerfile copies. test_build_context.py checks the patterns.
 .git
 .github
 **/.env
@@ -25,7 +25,6 @@ docker-compose.override.yml
 **/coverage.xml
 **/.mypy_cache
 **/.ruff_cache
-**/node_modules
 
 # Databases, saved reports and job files of a host run of the API or its tests.
 **/data
