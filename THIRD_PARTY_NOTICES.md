@@ -21,7 +21,8 @@ images have terms that restrict redistribution:
 - **myQLM** (`runners/myqlm-runner`) is distributed by Eviden under its own licence agreement. Its
   image is built on the user's machine and is not published by this project.
 - **cuQuantum** (`runners/cuquantum-runner`) uses NVIDIA's CUDA and cuStateVec libraries under
-  NVIDIA's licence terms.
+  NVIDIA's licence terms. Its image is built on the user's machine and is not published by this
+  project.
 
 Compilers built from source (staq, Synthetiq, Quartz) are downloaded at image build time from the
 upstream sources named in each Dockerfile, under their upstream licences.

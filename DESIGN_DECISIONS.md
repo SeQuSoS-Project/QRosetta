@@ -385,6 +385,18 @@ The default thresholds (fidelity 1e-5, phase 1e-6 rad, norm 1e-4, JS 0.01 nats, 
 
 *Evidence (2026-10-27).* The statevector circuit's expected state has fidelity at most 0.834 with any qubit reordering, 0.559 with bit reversal, at most 0.874 with a cx control and target swapped, and 0.795 with the rz sign flipped; single-precision rounding changes it by less than 1e-7. Six wrong states returned identically by every backend, which the agreement analysis labels as agreeing, and eight wrong counts-key cases all fail ([`rosetta-api/tests/unit/test_selftest_evaluate.py`](rosetta-api/tests/unit/test_selftest_evaluate.py)).
 
+### Image identity and specimens
+
+*Rule.* Each runner and compiler image records, at build time, whether it is a published release or built locally and from which commit, in a file inside the image (never an environment variable). The runner reads it once at startup and attaches it to each result after the simulation has finished. Every report and crate states whether all backends ran published images, all ran locally built ones, a mix, or unknown. A runner's dependency lock file is included in a crate only when its hash matches the hash the image itself reported.
+
+*Evidence (2026-10-27).* Before, local results recorded the runner image as "not recorded", and crates attached lock files from the server's copy without checking them. A test captures the simulating process's environment through the real launch path and finds it identical to the runner server's, with the identity never read inside it ([`rosetta-api/tests/unit/test_image_identity.py`](rosetta-api/tests/unit/test_image_identity.py)).
+
+### Timing caveats
+
+*Rule.* One server function ([`rosetta-api/services/timing_caveats.py`](rosetta-api/services/timing_caveats.py)) decides every timing caveat shown with a result: throttling, work outside the measured process, runs sharing the machine, a single timed repetition, no CPU quota, mixed core speeds, a virtualised or emulated host. The page shows what it returns, and crates carry it.
+
+*Evidence (2026-10-27).* The rules previously lived only in the page's JavaScript. Moving them gave 0 differences against that code on 351 saved and 20,000 synthetic reports ([`scripts/timing_caveats_equivalence/`](scripts/timing_caveats_equivalence/)).
+
 ### Summary headline
 
 *Rule.* The headline is built from differing pairs only; inconclusive pairs are neither agreement nor difference. Kinds `named` / `camps` / `pairs` / `spread`. Sizes are taken against the backends not named (median and range of TV; lowest fidelity). BY-only pairs are counted apart. A chance caveat is shown for minority flags. Red only for named backends. [`rosetta-api/tests/unit/test_headline_cases.py`](rosetta-api/tests/unit/test_headline_cases.py), [`rosetta-api/tests/unit/test_headline_magnitude.py`](rosetta-api/tests/unit/test_headline_magnitude.py).
