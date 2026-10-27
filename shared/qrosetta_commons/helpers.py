@@ -18,6 +18,7 @@ import resource as _resource
 import signal
 import statistics as _statistics
 import sys
+import threading as _threading
 import time
 from collections import Counter
 from pathlib import Path
@@ -339,6 +340,7 @@ def get_thread_env() -> dict:
 _SPAWN_CTX = _multiprocessing.get_context("spawn")
 
 DEFAULT_HARD_TIMEOUT_SEC = int(os.getenv("RUNNER_HARD_TIMEOUT_SEC", "300"))
+CANCEL_KILL_WAIT_SEC = 10
 
 _QASM_NON_GATE_KEYWORDS = {
     "openqasm", "include", "qreg", "creg", "barrier", "measure", "reset", "if", "gate", "opaque",
@@ -560,11 +562,29 @@ def _kill_process_group(proc) -> None:
         pass
 
 
-def _run_isolated_blocking(module_name, func_name, payload, timeout_s, measured=True):
-    """Run the processor in a spawned child; poll every 0.2 s for a result, a dead child
-    or the deadline. ``measured`` runs it through run_with_uniform_measurement; otherwise
-    it is called once, directly. The child leads its own process group, which is killed
-    when the child ends, so a subprocess it started cannot outlive it."""
+def _kill_cancelled_child(proc) -> None:
+    """SIGKILL a cancelled run's child and its process group and wait up to
+    CANCEL_KILL_WAIT_SEC for the child to be reaped."""
+    _kill_process_group(proc)
+    proc.kill()
+    proc.join(CANCEL_KILL_WAIT_SEC)
+    _kill_process_group(proc)
+    if proc.is_alive():
+        get_logger("qrosetta-runner").error(
+            f"Cancelled run: child process {proc.pid} still alive {CANCEL_KILL_WAIT_SEC} s "
+            f"after SIGKILL; its execution slot is released.")
+
+
+def _run_isolated_blocking(module_name, func_name, payload, timeout_s, measured=True,
+                           cancel=None):
+    """Run the processor in a spawned child; poll every 0.2 s for a result, a dead child,
+    the deadline or ``cancel`` (a threading.Event). ``measured`` runs it through
+    run_with_uniform_measurement; otherwise it is called once, directly. The child leads its
+    own process group, which is killed when the child ends, so a subprocess it started
+    cannot outlive it. When ``cancel`` is set before a result arrives, the child and its
+    group are killed and None is returned."""
+    if cancel is not None and cancel.is_set():
+        return None
     result_q = _SPAWN_CTX.Queue()
     proc = _SPAWN_CTX.Process(
         target=_isolated_target, args=(result_q, module_name, func_name, payload, measured))
@@ -577,9 +597,15 @@ def _run_isolated_blocking(module_name, func_name, payload, timeout_s, measured=
             outcome = result_q.get(timeout=0.2)
             break
         except _queue.Empty:
+            if cancel is not None and cancel.is_set():
+                break
             if not proc.is_alive() or time.monotonic() >= deadline:
                 break
     result_q.close()
+
+    if outcome is None and cancel is not None and cancel.is_set():
+        _kill_cancelled_child(proc)
+        return None
 
     if outcome is None:
         if proc.is_alive():
@@ -614,14 +640,31 @@ async def run_isolated(func, payload, default_timeout=None, measured=True):
     The wall-clock budget is ``payload['hard_timeout_seconds']``, else ``default_timeout``,
     else RUNNER_HARD_TIMEOUT_SEC. ``measured=False`` calls ``func`` once without the
     warm-up and timing of run_with_uniform_measurement (compile-only services).
+
+    If the awaiting task is cancelled, the child and its process group are killed and the
+    CancelledError is raised only after the child has been reaped (at most
+    CANCEL_KILL_WAIT_SEC after the kill); the run's result is discarded.
     """
     if default_timeout is None:
         default_timeout = DEFAULT_HARD_TIMEOUT_SEC
     timeout_s = payload.get("hard_timeout_seconds") or default_timeout
     loop = _asyncio.get_event_loop()
-    return await loop.run_in_executor(
+    cancel = _threading.Event()
+    future = loop.run_in_executor(
         None, _run_isolated_blocking, func.__module__, func.__name__, payload, int(timeout_s),
-        measured)
+        measured, cancel)
+    try:
+        return await _asyncio.shield(future)
+    except _asyncio.CancelledError:
+        cancel.set()
+        while not future.done():
+            try:
+                await _asyncio.wait([future])
+            except _asyncio.CancelledError:
+                pass
+        if not future.cancelled():
+            future.exception()
+        raise
 
 
 _UNSET = object()
@@ -905,7 +948,8 @@ class ExecutionSlots:
     ``run`` waits for a slot (at most ``payload['max_queue_wait_seconds']`` when set), then
     calls ``run_isolated``, whose hard timeout therefore starts after the wait. Every result
     carries ``queue_wait_sec``. A run whose wait budget expires is not started and returns
-    a ``timed_out`` / ``never_started`` error.
+    a ``timed_out`` / ``never_started`` error. A run cancelled while it executes keeps its
+    slot until ``run_isolated`` has killed and reaped its child.
     """
 
     def __init__(self, limit=None):
