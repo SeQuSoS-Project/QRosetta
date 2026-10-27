@@ -4,7 +4,7 @@ outside process, unstable, mixed cores) and its "Before comparing times" list ar
 these records. Derived only from fields the results already carry; nothing here changes a
 timing, a metric or an agreement label."""
 
-TIMING_CAVEATS_VERSION = "timing-caveats-2026.10.27.2"
+TIMING_CAVEATS_VERSION = "timing-caveats-2026.10.27.3"
 
 THROTTLE_SHOWN_SHARE = 0.01
 OUTSIDE_PROCESS_SHOWN_SEC = 0.005
@@ -27,6 +27,7 @@ TEXT = {
     "no_cpu_quota": "No CPU quota was in force for the runner, so its CPU share depended on other load on the host.",
     "virtualised_host": "The host CPU reports the hypervisor flag: the runner ran in a virtual machine.",
     "emulated_cpu": "The CPU model the runner saw is an emulated one, so timings do not describe native execution.",
+    "emulated_image": "The runner's image is built for another machine architecture than the host's, so it ran under emulation and its timings do not describe native execution.",
     "non_x86_64": "The runner reported a machine architecture other than x86_64.",
     "cross_backend_core_speeds": "The simulation windows of these backends ran on CPUs of different speed classes (maximum frequencies more than 10% apart).",
     "cross_backend_cpu_quota": "Backends ran under different CPU quotas.",
@@ -168,6 +169,10 @@ def result_caveats(result: dict) -> list:
     model = str(_dict(result.get("cpu_environment")).get("cpu_model") or "")
     if any(name in model for name in _EMULATED_CPU_MODELS):
         out.append(_caveat("emulated_cpu", ["cpu_environment.cpu_model"]))
+    emulation = _dict(_dict(result.get("image_identity")).get("emulation"))
+    if emulation.get("emulated") is True:
+        out.append(_caveat("emulated_image", ["image_identity.emulation"],
+                           image_arch=emulation.get("image_arch"), host_arch=emulation.get("host_arch")))
     machine = _dict(result.get("runtime_environment")).get("machine")
     if isinstance(machine, str) and machine and machine != "x86_64":
         out.append(_caveat("non_x86_64", ["runtime_environment.machine"]))

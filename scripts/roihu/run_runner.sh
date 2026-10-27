@@ -2,7 +2,8 @@
 # Run one job of a runner or compiler SIF the way compose runs its container: same working
 # directory and thread pins, payload and result as files. For a Slurm step on Roihu.
 # Slurm variables and QROSETTA_IMAGE_SHA256 (the SIF's sha256, computed once per job) are
-# passed into the container and recorded in each result as batch_environment.
+# passed into the container and recorded in each result as batch_environment; the node's OS
+# and machine (QROSETTA_HOST_OS/ARCH) are compared with the image's (image_identity.emulation).
 # Usage: run_runner.sh <image.sif> <run|run_measured|compile> <payload.json> <result.json>
 #        run_runner.sh <image.sif> --self-test
 set -euo pipefail
@@ -14,6 +15,7 @@ ENV_ARGS=(
   --env MAX_QUBITS_STATEVECTOR="${MAX_QUBITS_STATEVECTOR:-18}"
   --env MAX_QUBITS_MEASURED="${MAX_QUBITS_MEASURED:-24}"
   --env MAX_QUBITS_COMPILE="${MAX_QUBITS_COMPILE:-24}"
+  --env QROSETTA_HOST_OS="$(uname -s)" --env QROSETTA_HOST_ARCH="$(uname -m)"
 )
 for var in SLURM_JOB_ID SLURM_STEP_ID SLURM_JOB_PARTITION SLURMD_NODENAME SLURM_CPUS_PER_TASK \
            SLURM_CPU_BIND SLURM_MEM_PER_CPU SLURM_CLUSTER_NAME QROSETTA_IMAGE_SHA256; do

@@ -284,6 +284,12 @@ def _env_report(**fields):
      "host_virtualisation", "PASS"),
     ({"cpu_cpu_model": "VirtualApple @ 2.50GHz processor"}, "host_emulation", "FAIL"),
     ({"cpu_emulation": True}, "host_emulation", "FAIL"),
+    ({"image_identity": {"source": "release", "git_sha": "abc1234", "emulation": {
+        "emulated": True, "image_arch": "x86_64", "host_arch": "aarch64", "host_os": "Darwin"}}},
+     "host_emulation", "FAIL"),
+    ({"image_identity": {"source": "release", "git_sha": "abc1234", "emulation": {
+        "emulated": False, "image_arch": "x86_64", "host_arch": "x86_64", "host_os": "Linux"}}},
+     "host_emulation", "PASS"),
     ({"image_identity": {"source": "release", "git_sha": "abc1234"}}, "provenance", "PASS"),
     ({"image_identity": {"source": "built_locally", "git_sha": "abc1234"}}, "provenance", "WARN"),
     ({"image_source": "pulled-other", "image_git_sha": "abc1234"}, "provenance", "WARN"),
@@ -291,6 +297,10 @@ def _env_report(**fields):
     ({"image_identity": {"source": "built_locally", "git_sha": "abc1234-dirty"}}, "provenance", "FAIL"),
 ])
 def test_environment_checks(fields, check, status):
+    if check == "host_emulation" and status == "PASS":
+        report = _env_report(**fields)
+        assert all(r.get("image_identity", {}).get("emulation", {}).get("emulated") is False
+                   for t in report["benchmark_summary"] for r in t["raw_results"])
     result = evaluate(_env_report(**fields))
     rows = [r for r in result["environment_checks"] if r["check"] == check]
     assert {r["status"] for r in rows} == {status}, rows

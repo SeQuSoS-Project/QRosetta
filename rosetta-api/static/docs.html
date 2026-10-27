@@ -974,8 +974,12 @@
                         built by the release pipeline, <code>built_locally</code> for a local build, "not
                         recorded" for images built before images recorded it), the release, the commit, what
                         the container runtime shows the process (Apptainer's image path and sha256; a podman
-                        container's image and id only when privileged), and whether the host CPU reports the
-                        <code>hypervisor</code> flag. <code>build_files</code> holds the sha256 of the
+                        container's image and id only when privileged), whether the host CPU reports the
+                        <code>hypervisor</code> flag, and <code>emulation</code>: the machine the image's Python
+                        interpreter is built for (its ELF header), the host's OS and machine as
+                        <code>qrosetta start</code> passed them, and <code>emulated</code>, true when the two
+                        machines differ and null when the stack was started without <code>qrosetta start</code>.
+                        <code>build_files</code> holds the sha256 of the
                         Dockerfile and <code>requirements.lock</code> the image copied. <code>runner_image</code>
                         is the image the API created a Kubernetes Job with, else the image the runtime showed the
                         runner (<code>runner_image_basis</code> says which). Each result that ran gets a
@@ -1155,6 +1159,7 @@
                         above 1.3×), <code>mixed_cores</code>, <code>outside_process</code> (container CPU at
                         least 5 ms and 10% above the process's), <code>single_timed_run</code>,
                         <code>no_cpu_quota</code>, <code>virtualised_host</code>, <code>emulated_cpu</code>,
+                        <code>emulated_image</code> (the image's architecture differs from the host's),
                         <code>non_x86_64</code>, and across backends <code>cross_backend_core_speeds</code>,
                         <code>cross_backend_cpu_quota</code> and <code>cross_backend_image_commits</code>. The
                         page's "throttled", "outside process", "unstable" and "mixed cores" tags and its

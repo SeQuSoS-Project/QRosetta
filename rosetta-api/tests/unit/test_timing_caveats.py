@@ -68,6 +68,12 @@ def test_a_clean_exclusive_repeated_run_has_no_caveat():
     ({"image_identity": {"host_hypervisor_cpu_flag": True}}, "virtualised_host", True),
     ({"cpu_environment": {"cpu_quota_cores": 1.0, "cpu_model": "VirtualApple @ 2.50GHz"}}, "emulated_cpu", True),
     ({"runtime_environment": {"machine": "aarch64"}}, "non_x86_64", True),
+    ({"image_identity": {"emulation": {"emulated": True, "image_arch": "x86_64", "host_arch": "aarch64"}}},
+     "emulated_image", True),
+    ({"image_identity": {"emulation": {"emulated": False, "image_arch": "x86_64", "host_arch": "x86_64"}}},
+     "emulated_image", False),
+    ({"image_identity": {"emulation": {"emulated": None, "image_arch": "x86_64", "host_arch": None}}},
+     "emulated_image", False),
 ])
 def test_per_result_rules(fields, code, expected):
     assert (code in _codes(_ok(**fields))) is expected

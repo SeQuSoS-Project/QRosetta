@@ -27,7 +27,7 @@ class RunnerResult(RunnerPerformanceMetrics):
     qubit_ordering: Optional[str] = Field(None, description="'lsb' or 'msb': how this backend labels basis states.")
     precision: Optional[str] = Field(None, description="'complex64' or 'complex128'.")
     runner_seed: Optional[int] = Field(None, description="Measured mode: the seed this run received, derived from the report's seed and this result's key.")
-    image_identity: Optional[Dict[str, Any]] = Field(None, description="What the runner's serving process read about its image: source (release, built_locally or 'not recorded'), release, git_sha, container (the runtime's view) and host_hypervisor_cpu_flag.")
+    image_identity: Optional[Dict[str, Any]] = Field(None, description="What the runner's serving process read about its image: source (release, built_locally or 'not recorded'), release, git_sha, container (the runtime's view), host_hypervisor_cpu_flag and emulation (emulated, image_arch, host_arch, host_os, method).")
     build_files: Optional[Dict[str, str]] = Field(None, description="sha256 of each build file the image copied (Dockerfile, requirements.lock).")
     runner_image: Optional[str] = Field(None, description="The image the API created a Kubernetes Job with, else the image the runtime showed the runner, else 'not recorded'; runner_image_basis says which.")
     specimen: Optional[Dict[str, Any]] = Field(None, description="kind (published_release, built_locally or 'not recorded'), release, image_git_sha and runner_image of a result that ran.")
