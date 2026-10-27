@@ -39,10 +39,20 @@ def compose_document(manifest):
     return doc
 
 
-def _placeholders(doc, directory):
-    """Empty files at the relative default paths of file secrets, as the checkout carries them."""
+def _file_sources(doc):
+    """The `file` of every secret and the `source` of every long-syntax bind mount."""
     for secret in (doc.get("secrets") or {}).values():
-        path = (secret or {}).get("file") or ""
+        yield (secret or {}).get("file") or ""
+    for svc in (doc.get("services") or {}).values():
+        for vol in (svc or {}).get("volumes") or []:
+            if isinstance(vol, dict) and vol.get("type") == "bind":
+                yield vol.get("source") or ""
+
+
+def _placeholders(doc, directory):
+    """Empty files at the relative default paths of file secrets and bind mounts, as the checkout
+    carries them."""
+    for path in _file_sources(doc):
         match = _DEFAULTED.match(path)
         path = match.group(1) if match else path
         if not path or path.startswith("$") or os.path.isabs(path):

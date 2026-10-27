@@ -132,7 +132,10 @@ def test_a_published_release_generates_the_compose_file_in_the_state_directory(e
     assert doc["name"] == "${QROSETTA_PROJECT:-qsimulators}" and doc["networks"]["isolated_net"]["internal"] is True
     for svc in doc["services"].values():
         for volume in svc.get("volumes", []):
-            assert not volume.startswith(("/", ".", "~")), volume
+            if isinstance(volume, dict):
+                assert volume["source"] == "${QROSETTA_LIFECYCLE_TOKEN_PATH:-./infra/lifecycle-token.none}"
+            else:
+                assert not volume.startswith(("/", ".", "~")), volume
     assert (state / "infra" / "lifecycle-token.none").read_text() == ""
     for cmd, call_env in fake.calls:
         assert not any(k.startswith("COMPOSE_") for k in call_env)

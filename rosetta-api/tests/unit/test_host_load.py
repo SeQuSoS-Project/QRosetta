@@ -172,8 +172,13 @@ def test_the_compose_file_mounts_the_token_into_the_api_only():
     import yaml
     repo = Path(__file__).resolve().parents[3]
     doc = yaml.safe_load((repo / "docker-compose.yml").read_text())
-    assert doc["secrets"]["lifecycle_token"]["file"] == "${QROSETTA_LIFECYCLE_TOKEN_PATH:-./infra/lifecycle-token.none}"
     assert (repo / "infra" / "lifecycle-token.none").stat().st_size == 0
-    with_secret = [name for name, svc in doc["services"].items() if svc.get("secrets")]
-    assert with_secret == ["api"]
+    token_mounts = {name: [v for v in svc.get("volumes", []) if isinstance(v, dict)
+                           and v.get("target") == "/run/secrets/lifecycle_token"]
+                    for name, svc in doc["services"].items()}
+    assert [name for name, mounts in token_mounts.items() if mounts] == ["api"]
+    (mount,) = token_mounts["api"]
+    assert mount == {"type": "bind", "source": "${QROSETTA_LIFECYCLE_TOKEN_PATH:-./infra/lifecycle-token.none}",
+                     "target": "/run/secrets/lifecycle_token", "read_only": True, "bind": {"selinux": "Z"}}
+    assert "secrets" not in doc and not any(svc.get("secrets") for svc in doc["services"].values())
     assert "QROSETTA_LIFECYCLE_TOKEN_FILE=/run/secrets/lifecycle_token" in doc["services"]["api"]["environment"]

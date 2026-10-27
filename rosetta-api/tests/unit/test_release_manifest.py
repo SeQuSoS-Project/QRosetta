@@ -99,8 +99,9 @@ def test_generated_compose_equals_the_repository_compose_but_for_build_and_image
     manifest = mm.build_manifest("1.0.0", "abc", digests=_all_digests(records), records=records)
     doc = installed.compose_document(json.loads(json.dumps(manifest)))
     assert doc["name"] == repo["name"] == "${QROSETTA_PROJECT:-qsimulators}"
-    for key in ("networks", "volumes", "secrets"):
+    for key in ("networks", "volumes"):
         assert doc[key] == repo[key]
+    assert doc.get("secrets") == repo.get("secrets")
     assert doc["networks"]["isolated_net"]["internal"] is True
     published = {r["compose_service"] for r in records if r["distributable"]}
     assert set(doc["services"]) == published

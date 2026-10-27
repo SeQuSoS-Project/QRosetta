@@ -59,13 +59,13 @@ def release_manifest(published=True):
         "qiskit": _release_service("qiskit", "runner", "qiskit_runner", "qiskit-runner", published=published),
         "myqlm": _release_service("myqlm", "runner", "myqlm_runner", "myqlm-runner", distributable=False),
     }
-    services["api"]["compose"].update(volumes=["rosetta_db_data:/home/appuser/app/data"], secrets=["lifecycle_token"])
+    services["api"]["compose"].update(volumes=["rosetta_db_data:/home/appuser/app/data", {
+        "type": "bind", "source": "${QROSETTA_LIFECYCLE_TOKEN_PATH:-./infra/lifecycle-token.none}",
+        "target": "/run/secrets/lifecycle_token", "read_only": True, "bind": {"selinux": "Z"}}])
     return {"schema": mf.SCHEMA, "platform_version": "9.9.9", "git_sha": "abc123", "registry": REGISTRY,
             "images_published": published,
             "compose": {"name": "${QROSETTA_PROJECT:-qsimulators}",
-                        "networks": {"isolated_net": {"internal": True}}, "volumes": {"rosetta_db_data": None},
-                        "secrets": {"lifecycle_token": {
-                            "file": "${QROSETTA_LIFECYCLE_TOKEN_PATH:-./infra/lifecycle-token.none}"}}},
+                        "networks": {"isolated_net": {"internal": True}}, "volumes": {"rosetta_db_data": None}},
             "services": services}
 
 
