@@ -170,6 +170,17 @@ def image_identity() -> dict:
     return copy.deepcopy(_identity())
 
 
+def capability_fields() -> dict:
+    """What a service's GET /capabilities reports about its image: ``image_identity`` (source,
+    release and commit from the identity file) and ``build_files``, as read at startup."""
+    identity = _identity()
+    out = {"image_identity": {key: identity.get(key) for key in ("source", "release", "git_sha")}}
+    files = build_file_hashes()
+    if files:
+        out["build_files"] = dict(files)
+    return out
+
+
 def load() -> None:
     """Take the host environment and read the identity and build-file hashes once, so later
     stamps do no I/O and later children do not inherit QROSETTA_HOST_*."""

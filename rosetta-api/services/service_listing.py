@@ -29,6 +29,7 @@ def runner_row(name: str, config: dict, info: dict) -> dict:
         "qubit_ordering": dict(config["qubit_ordering"]),
         "default_selected": runner_default_selected(config),
         "profiles": runner_profiles(name, config),
+        "versions": info.get("versions"),
         "backend": None,
         "version": None,
     }

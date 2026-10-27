@@ -103,8 +103,12 @@ def _string_map(value) -> dict:
 
 
 def _reported_versions(body: dict) -> dict:
-    """The version fields a compile-only service's /capabilities reports, type-checked."""
+    """The version and image fields a service's /capabilities reports, type-checked."""
     out = {}
+    if isinstance(body.get("image_identity"), dict):
+        out["image_identity"] = {key: value for key, value in body["image_identity"].items()
+                                 if key in ("source", "release", "git_sha")
+                                 and (value is None or isinstance(value, str))}
     if isinstance(body.get("sdk_versions"), dict):
         out["sdk_versions"] = _string_map(body["sdk_versions"])
     if isinstance(body.get("native_components"), list):

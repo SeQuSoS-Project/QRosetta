@@ -7,7 +7,7 @@ import hashlib
 import os
 import time
 
-from qrosetta_cli import __version__, mode as modes, output
+from qrosetta_cli import __version__, localstack, mode as modes, output
 from qrosetta_cli.client import handshake, jobindex, outcomes, replay, results, runplan, save, waiting
 from qrosetta_cli.client.conn import Conn, body_bytes
 from qrosetta_cli.client.transport import origin
@@ -60,6 +60,14 @@ def confirm_large(ctx, interactive=True):
     return ask
 
 
+def stack_record(ctx):
+    """The local stack's CPU quota setting as `qrosetta start` recorded it (spec §6.1)."""
+    enabled, since, source = localstack.cpu_quota(ctx.env, ctx.cfg)
+    entry = localstack.stack_settings(ctx.env)
+    return {"cpu_quota": enabled, "cpu_quota_source": source, "cpu_quota_since": since,
+            "cpu_quota_override_sha256": entry.get("override_sha256") if not enabled else None}
+
+
 def _compose_record(ctx, conn):
     if not conn.local:
         return None
@@ -92,7 +100,7 @@ def plan_document(ctx, conn, req, plan, invocation, replay_of=None, replay_force
         "replay_of": replay_of,
         "replay_force": bool(replay_force),
         "fail_on": list(fail_on),
-        "stack": {"cpu_quota": ctx.cfg.get("lifecycle", "cpu_quota")} if conn.local else None,
+        "stack": stack_record(ctx) if conn.local else None,
         "compose": _compose_record(ctx, conn),
     }
 

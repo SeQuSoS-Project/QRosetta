@@ -1,14 +1,15 @@
 """`qrosetta selftest` (spec §6.17), the client half: the server's pinned self-test plan
 (GET /selftest) submitted as published with the backends under test added, each job saved with
 its report, summary and crate, the server's evaluation of each job, and selftest.json with the
-combined result. The CLI compares nothing; its one rule turns a cpu_quota_cores FAIL into a WARN
-on a local stack started without the CPU quota. Exit 9 when any check FAILs."""
+combined result. Before the jobs, each image's fresh probe row is checked (`imageprobes`). The
+CLI compares no result itself; its one rule turns a cpu_quota_cores FAIL into a WARN on a local
+stack started without the CPU quota. Exit 9 when any check FAILs."""
 
 import os
 import time
 
-from qrosetta_cli import __version__, output
-from qrosetta_cli.client import jobindex, results, save, waiting
+from qrosetta_cli import __version__, localstack, output
+from qrosetta_cli.client import imageprobes, jobindex, results, save, waiting
 from qrosetta_cli.client.conn import Conn, body_bytes
 from qrosetta_cli.client.run import Follower, confirm_large, plan_document
 from qrosetta_cli.client.transport import origin
@@ -26,20 +27,19 @@ def _split(values):
     return out
 
 
-def _runner_rows(conn):
-    try:
-        return conn.get("/runners", query={"fresh": "true"}), True
-    except CliError as exc:
-        if exc.code not in (Exit.AUTH, Exit.BUSY):
-            raise
-        output.progress("Readiness from the cached runner list (fresh probes need the lifecycle token or a "
-                        "sign-in).")
-        return conn.get("/runners"), False
+def _runner_rows(ctx, conn):
+    """(rows, None) from a fresh probe round, with the lifecycle token on a local stack, else
+    (the cached rows, why)."""
+    rows, why = imageprobes.fresh_rows(conn, "/runners", imageprobes.probe_headers(conn, ctx.env))
+    if why:
+        output.progress(f"Readiness from the cached runner list ({why}).")
+    return rows, why
 
 
-def backends_under_test(ctx, conn):
-    """(keys under test, [(key, reason)] enabled but not tested)."""
-    rows, _ = _runner_rows(conn)
+def backends_under_test(ctx, conn, runner_rows=None):
+    """(keys under test, [(key, reason)] enabled but not tested); `runner_rows` from
+    `_runner_rows`, else read here."""
+    rows = runner_rows if runner_rows is not None else _runner_rows(ctx, conn)[0]
     wanted = _split(ctx.opt("backends"))
     known = {r.get("id"): r for r in rows}
     for key in wanted:
@@ -82,15 +82,17 @@ def cmd_selftest(ctx):
         raise CliError("This server offers no self-test (GET /selftest); nothing was run.", Exit.INCOMPATIBLE,
                        "feature_missing", hint="upgrade the server to one whose GET /config lists the selftest feature")
     plan = conn.get("/selftest", what="GET /selftest")
-    keys, left = backends_under_test(ctx, conn)
+    runner_rows, runner_why = _runner_rows(ctx, conn)
+    keys, left = backends_under_test(ctx, conn, runner_rows)
     if not keys:
         raise CliError("No backend is available to test.", Exit.UNREACHABLE, "no_backends", hint="qrosetta status")
-    quota_off = conn.local and ctx.cfg.get("lifecycle", "cpu_quota") is False
+    quota_off = conn.local and localstack.cpu_quota(ctx.env, ctx.cfg)[0] is False
     output.progress(f"Backends under test: {', '.join(keys)}")
     if ctx.opt("no_images"):
-        image_line = "Images      skipped (--no-images)"
+        images = {"status": "skipped", "reason": "--no-images", "server_git_sha": None, "images": []}
     else:
-        image_line = "Images      not probed: the image contract probes arrive with the release lifecycle commands"
+        images = imageprobes.probe_images(conn, ctx.env, runner_rows, runner_why, keys)
+    image_lines, image_fails, image_warns = imageprobes.lines_and_findings(images)
     runs = []
     for job in plan.get("jobs") or []:
         payload = dict(job.get("request") or {}, target_simulators=keys)
@@ -114,7 +116,7 @@ def cmd_selftest(ctx):
 
     saver = save.Saver(conn, {"report", "summary", "crate"}, False, {}, confirm_large(ctx, interactive=False))
     follower = Follower(ctx, conn, saver, [])
-    jobs, applied, lines = [], [], [image_line]
+    jobs, applied, lines = [], [], list(image_lines)
     for i, run in enumerate(runs):
         with waiting.submitting() as state:
             env = conn.post(run["endpoint"], run["payload"], what=f"POST {run['endpoint']}")
@@ -156,7 +158,7 @@ def cmd_selftest(ctx):
             {"check": "job", "status": "FAIL", "reason": "the job did not finish"}]}
         jobs.append({"part": run["mode"], "job_id": job_id, "dir": job_dir, "status": entry.get("status"),
                      "save_status": entry.get("save_status"), "evaluation": evaluation})
-    fails, warns = [], []
+    fails, warns = list(image_fails), list(image_warns)
     for job in jobs:
         ev = job["evaluation"]
         counts = ev.get("counts") or {}
@@ -189,7 +191,8 @@ def cmd_selftest(ctx):
     combined = {"schema": "qrosetta.cli/selftest@1", "cli_version": __version__, "created_at": output.utc_now(),
                 "server": conn.url, "status": status, "selftest_version": plan.get("selftest_version"),
                 "expected_sha256": plan.get("expected_sha256"), "backends_under_test": keys,
-                "not_tested": [{"backend": k, "reason": why} for k, why in left], "jobs": jobs,
+                "not_tested": [{"backend": k, "reason": why} for k, why in left], "image_probes": images,
+                "jobs": jobs,
                 "failures": fails, "warnings": list(dict.fromkeys(warns)), "cli_rules_applied": applied,
                 "lines": lines}
     results.write_json(os.path.join(invocation, results.SELFTEST_FILE), combined)

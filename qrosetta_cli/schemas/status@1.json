@@ -227,6 +227,36 @@
           "image"
         ]
       }
+    },
+    "cpu_quota": {
+      "type": "object",
+      "description": "the CPU quota stack setting: off after `start --no-cpu-quota`, with the override compose is given",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "since": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "override": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "override_sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "enabled"
+      ]
     }
   },
   "required": [

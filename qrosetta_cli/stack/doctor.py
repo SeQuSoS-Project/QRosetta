@@ -9,9 +9,10 @@ import stat
 import subprocess
 from dataclasses import dataclass, field
 
+from qrosetta_cli import localstack
 from qrosetta_cli.errors import CliError, Exit
 from qrosetta_cli.output import result
-from qrosetta_cli.stack import engine as eng
+from qrosetta_cli.stack import engine as eng, hostload, quota
 from qrosetta_cli.stack.explain import DELEGATE_DROPIN, OTHER_BIND, SUBUID_FIX, probe_message
 
 GIB = 1024 ** 3
@@ -162,22 +163,26 @@ def check_podman(host, rep, choice):
         rep.add("subuid", "FAIL", f"no subuid/subgid entries for {host.user() or host.uid()}", SUBUID_FIX)
 
 
-def check_controllers(host, rep, choice):
+def check_controllers(host, rep, choice, quota_on=True):
     if not choice.rootless:
         return
-    if not host.exists("/sys/fs/cgroup/cgroup.controllers"):
+    have = quota.user_controllers(host.read, host.exists, host.uid())
+    if have == "v1":
         rep.add("cgroup", "FAIL", "rootless containers on cgroup v1: memory and CPU limits are absent",
                 "boot with cgroup v2 (systemd.unified_cgroup_hierarchy=1)")
         return
-    uid = host.uid()
-    path = f"/sys/fs/cgroup/user.slice/user-{uid}.slice/user@{uid}.service/cgroup.controllers"
-    have = set((host.read(path) or "").split())
-    missing = [c for c in ("cpu", "memory", "pids") if c not in have]
+    missing = [c for c in ("cpu", "memory", "pids") if c not in (have or set())]
     if not missing:
         rep.add("cgroup", "PASS", "cpu, memory and pids controllers delegated to your user")
-    else:
-        rep.add("cgroup", "FAIL", f"controllers not delegated to your user: {', '.join(missing)}; `start` cannot "
-                "apply the CPU and memory limits", DELEGATE_DROPIN)
+        return
+    without_flag = DELEGATE_DROPIN + f"\nor, without sudo: {quota.FLAG_HINT} (no CPU limits; results record it)"
+    if missing == ["cpu"] and not quota_on:
+        rep.add("cgroup", "WARN", "the cpu controller is not delegated to your user; the stack starts without "
+                "the CPU quota (--no-cpu-quota), so timings are not comparable with runs under it", DELEGATE_DROPIN)
+        return
+    rep.add("cgroup", "FAIL", f"controllers not delegated to your user: {', '.join(missing)}; `start` cannot "
+            "apply the " + ("CPU and memory limits" if "memory" in missing else "CPU limits"),
+            without_flag if missing == ["cpu"] else DELEGATE_DROPIN)
 
 
 def check_port(host, rep, bind, answers):
@@ -229,7 +234,7 @@ def check_extras(host, rep):
     rep.add("apptainer", "INFO", f"Apptainer at {tool}" if tool else "Apptainer not installed (HPC images only)")
 
 
-def check_live(rep, config, transport):
+def check_live(rep, config, transport, env=None):
     from qrosetta_cli.client import handshake
     block = handshake.server_block(config)
     if block is None:
@@ -241,9 +246,10 @@ def check_live(rep, config, transport):
             rep.add("server", "PASS", handshake.describe(block))
         except CliError as exc:
             rep.add("server", "WARN", exc.message, exc.hint or "")
+    headers = hostload.auth_headers(env or {})
     for path, label in (("/runners", "runners"), ("/compilers", "compilers")):
         try:
-            data = transport.request("GET", path, timeout=30).json()
+            data, how = _service_rows(transport, path, headers)
         except CliError as exc:
             rep.add(label, "WARN", exc.message, "qrosetta status")
             continue
@@ -252,14 +258,29 @@ def check_live(rep, config, transport):
         enabled = [e for e in data if isinstance(e, dict) and e.get("enabled")]
         down = [e for e in enabled if not e.get("available")]
         if not down:
-            rep.add(label, "PASS", f"{len(enabled)} {label} available")
+            rep.add(label, "PASS", f"{len(enabled)} {label} available ({how})")
             continue
         parts = []
         for e in down:
             kind = e.get("error_kind")
             parts.append(probe_message(kind, e["id"])[0] if kind else f"{e['id']} ({e.get('unavailable_reason')})")
-        rep.add(label, "WARN", f"{len(enabled) - len(down)} of {len(enabled)} {label} available; not available: "
-                + "; ".join(parts), "qrosetta start -d (adds the services that are not running)")
+        rep.add(label, "WARN", f"{len(enabled) - len(down)} of {len(enabled)} {label} available ({how}); not "
+                "available: " + "; ".join(parts), "qrosetta start -d (adds the services that are not running)")
+
+
+def _service_rows(transport, path, headers):
+    """(rows, how they were read): a fresh probe round with the lifecycle token when the server
+    takes it, else its cached availability."""
+    if headers:
+        resp = transport.request("GET", path, query={"fresh": "true"}, headers=headers, timeout=30)
+        data = resp.json()
+        if resp.status == 200 and isinstance(data, list) and any(isinstance(e, dict) and "fresh" in e for e in data):
+            return data, "probed now"
+        why = {401: "the server did not take the lifecycle token", 403: "the server did not take the lifecycle token",
+               429: "fresh probes are rate-limited"}.get(resp.status, "the server has no on-demand probes")
+    else:
+        why = "no lifecycle token"
+    return transport.request("GET", path, timeout=30).json(), f"cached availability: {why}"
 
 
 def run(ctx, host=None):
@@ -273,7 +294,7 @@ def run(ctx, host=None):
         check_compose(host, rep, choice)
         if choice.name == "podman":
             check_podman(host, rep, choice)
-        check_controllers(host, rep, choice)
+        check_controllers(host, rep, choice, localstack.cpu_quota(host.env, ctx.cfg)[0])
     bind = ctx.cfg.get("lifecycle", "bind") or servers.DEFAULT_BIND
     server = servers.Server(servers.LOCAL, servers.bind_url(bind), "lifecycle.bind")
     config, transport = None, None
@@ -289,7 +310,7 @@ def run(ctx, host=None):
     check_credentials(host, rep, servers.credentials_path(ctx.cfg, ctx.env))
     check_extras(host, rep)
     if config is not None:
-        check_live(rep, config, transport)
+        check_live(rep, config, transport, ctx.env)
     else:
         rep.add("server", "INFO", f"no Quantum Rosetta answers at {server.url}; live checks skipped")
     return rep

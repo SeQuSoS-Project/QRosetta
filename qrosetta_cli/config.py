@@ -46,6 +46,8 @@ TEMPLATE = """\
 # engine = "podman"                  # docker | podman; default: the first whose `info` answers
 # on_exit = "ask"                    # standby | remove | ask
 # bind = "127.0.0.1:8080"
+# cpu_quota = true                   # false: start every service without its CPU limit, as
+#                                    # `start --no-cpu-quota`; results record it
 
 [output]
 # experimental_notice = true
