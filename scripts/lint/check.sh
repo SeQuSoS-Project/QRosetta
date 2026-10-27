@@ -2,7 +2,8 @@
 # Runs shellcheck over the tracked shell scripts and hadolint over every Dockerfile, failing only on
 # findings above the baselines in this directory. Tools come from PATH or $SHELLCHECK / $HADOLINT.
 # `semgrep` (not part of `all`: it needs the network for its rule packs) runs Semgrep over the
-# Python, JavaScript, nginx and Kubernetes files against semgrep.txt; $SEMGREP names the binary.
+# Python, JavaScript, nginx and Kubernetes files against semgrep.txt; $SEMGREP names the binary
+# (CI installs it from semgrep-requirements.txt).
 # Usage: scripts/lint/check.sh [shellcheck|hadolint|semgrep|all] [--write]
 set -euo pipefail
 

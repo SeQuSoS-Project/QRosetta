@@ -6,19 +6,23 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from config import settings
+from services.trusted_proxies import TrustedProxies, default_spec
 
 PROXY_CLIENT_HEADER = "x-qrosetta-client-ip"
 PROXY_TOKEN_HEADER = "x-qrosetta-proxy-token"
+TRUSTED_PROXIES = TrustedProxies(settings.TRUSTED_PROXIES if settings.TRUSTED_PROXIES is not None
+                                 else default_spec(settings.EXECUTION_MODE))
 
 
 def client_address(request) -> str:
     """Client IP for rate limits and the exclusive slot.
 
     A request carrying QROSETTA_PROXY_TOKEN (sent by the Cloud Run frontend) is keyed by the
-    address that proxy saw (X-Qrosetta-Client-Ip). Any other is keyed by the last
-    X-Forwarded-For entry, which the nearest proxy (local nginx, the OpenShift router)
-    appends and a caller cannot set, else by the socket peer. X-Real-IP is not read: the
-    OpenShift router passes a caller's own value through.
+    address that proxy saw (X-Qrosetta-Client-Ip). A request whose socket peer is a trusted
+    proxy (QROSETTA_TRUSTED_PROXIES: local nginx, the OpenShift router) is keyed by the last
+    X-Forwarded-For entry, which that proxy appends and a caller cannot set. Any other request,
+    such as one sent straight to the API from another container, is keyed by its socket peer.
+    X-Real-IP is not read: the OpenShift router passes a caller's own value through.
     """
     token = settings.PROXY_TOKEN
     if token:
@@ -26,12 +30,13 @@ def client_address(request) -> str:
         proxied = request.headers.get(PROXY_CLIENT_HEADER, "").strip()
         if proxied and hmac.compare_digest(sent.encode(), token.encode()):
             return proxied
+    peer = get_remote_address(request)
     forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
+    if forwarded and TRUSTED_PROXIES.trusts(peer):
         last = forwarded.split(",")[-1].strip()
         if last:
             return last
-    return get_remote_address(request)
+    return peer
 
 
 import math

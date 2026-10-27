@@ -1,7 +1,9 @@
 """Unit-test setup: each test process (each xdist worker, and the controller) has its own job
 spill directory and SQLite database in a temporary directory, not the server's or ./data, with
 the schema at head; every test starts with empty rate-limit counters, and runs are not refused
-for the free space left on the disk that holds the spill directory."""
+for the free space left on the disk that holds the spill directory. X-Forwarded-For is trusted from
+any peer (TestClient's peer is "testclient"), so tests choose a client address with it;
+test_v5_06_trusted_proxies.py checks the list itself."""
 import os
 import sys
 import tempfile
@@ -19,6 +21,7 @@ def _own_per_process(name: str, make) -> None:
     os.environ[name] = os.environ[marker] = make()
 
 
+os.environ["QROSETTA_TRUSTED_PROXIES"] = "*"
 _own_per_process("QROSETTA_JOB_SPILL_DIR", lambda: tempfile.mkdtemp(prefix="qrosetta-test-jobs-"))
 _own_per_process("DATABASE_URL", lambda: "sqlite:///" + os.path.join(
     tempfile.mkdtemp(prefix="qrosetta-test-db-"), "qa_rosetta.db"))

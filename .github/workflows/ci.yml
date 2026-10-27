@@ -219,7 +219,7 @@ jobs:
 
   lint:
     # ruff (rules and per-file baseline in pyproject.toml), shellcheck over scripts/ and hadolint over
-    # every Dockerfile, each failing only on findings above scripts/lint/*.txt.
+    # every Dockerfile, then Semgrep, each failing only on findings above scripts/lint/*.txt.
     name: lint
     runs-on: ubuntu-latest
     permissions:
@@ -257,6 +257,20 @@ jobs:
         env:
           HADOLINT: ${{ runner.temp }}/hadolint
         run: scripts/lint/check.sh
+
+      # In its own virtual environment, apart from ruff and shellcheck: 66 packages pinned with their wheel hashes.
+      - name: Install Semgrep
+        run: |
+          python -m venv "$RUNNER_TEMP/semgrep"
+          "$RUNNER_TEMP/semgrep/bin/python" -m pip install --require-hashes --no-deps --only-binary=:all: \
+            -r scripts/lint/semgrep-requirements.txt
+
+      # The rule packs come from the Semgrep registry and are not versioned: a new rule that reports a
+      # finding fails this step until the finding is fixed or added to scripts/lint/semgrep.txt.
+      - name: Semgrep against its baseline
+        env:
+          SEMGREP: ${{ runner.temp }}/semgrep/bin/semgrep
+        run: scripts/lint/check.sh semgrep
 
   secret-scan:
     name: secret scan

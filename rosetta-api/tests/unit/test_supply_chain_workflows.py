@@ -206,6 +206,27 @@ def test_zizmor_audits_the_workflows_from_a_hash_pinned_wheel():
     assert audit["env"] == {"GH_TOKEN": "${{ github.token }}"}
 
 
+def test_semgrep_runs_in_the_lint_job_from_hash_pinned_wheels():
+    steps = {s.get("name"): s for s in _load("ci.yml")["jobs"]["lint"]["steps"]}
+    install = steps["Install Semgrep"]["run"]
+    assert "--require-hashes" in install and "--no-deps" in install and "--only-binary=:all:" in install
+    assert '-m venv "$RUNNER_TEMP/semgrep"' in install
+    requirements = REPO / re.search(r"-r (\S+)", install).group(1)
+    assert requirements == REPO / "scripts" / "lint" / "semgrep-requirements.txt"
+    text = "\n".join(line for line in requirements.read_text().splitlines() if not line.startswith("#"))
+    pins = {}
+    for line in filter(None, text.replace(" \\\n", " ").splitlines()):
+        match = re.fullmatch(r"([A-Za-z0-9_.-]+)==(\S+)((?: +--hash=sha256:[0-9a-f]{64})+)", line.strip())
+        assert match, line
+        pins[match.group(1).lower()] = match.group(2)
+    assert len(pins) > 1
+    baseline = (REPO / "scripts" / "lint" / "semgrep.txt").read_text()
+    assert f"Semgrep {pins['semgrep']}," in baseline
+    run = steps["Semgrep against its baseline"]
+    assert run["run"] == "scripts/lint/check.sh semgrep"
+    assert run["env"] == {"SEMGREP": "${{ runner.temp }}/semgrep/bin/semgrep"}
+
+
 def _dependabot():
     return yaml.safe_load((REPO / ".github" / "dependabot.yml").read_text())
 

@@ -649,12 +649,21 @@ The CI job `lint` fails only on findings that are not already recorded:
   every Dockerfile, compared with `scripts/lint/shellcheck.txt` and `scripts/lint/hadolint.txt`
   (file, code, count). A count above its line fails; a count below it is printed so you can
   lower the line. `scripts/lint/check.sh --write` rewrites both files.
+- `scripts/lint/check.sh semgrep`: Semgrep from `scripts/lint/semgrep-requirements.txt` (every
+  dependency pinned with its wheel hashes) with five registry rule packs, compared with
+  `scripts/lint/semgrep.txt`, where each line gives its reason. The packs are fetched from the
+  registry on every run and are not versioned, so a new rule can fail the job with no change in
+  the repository: fix the finding or add it to `semgrep.txt` with the reason.
 
 Locally, with the tools from `scripts/lint/requirements.txt` and a
 [hadolint](https://github.com/hadolint/hadolint/releases) binary on `PATH` (or in `$HADOLINT`):
 
 ```bash
 ruff check . && ruff format --check qrosetta_cli && scripts/lint/check.sh
+python3.12 -m venv ~/.cache/qrosetta-semgrep
+~/.cache/qrosetta-semgrep/bin/pip install --require-hashes --no-deps --only-binary=:all: \
+    -r scripts/lint/semgrep-requirements.txt
+SEMGREP=~/.cache/qrosetta-semgrep/bin/semgrep scripts/lint/check.sh semgrep
 ```
 
 `.pre-commit-config.yaml` runs ruff and the secret check below on each commit if you use

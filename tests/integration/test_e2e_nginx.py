@@ -1,6 +1,6 @@
 """End-to-end smoke test through nginx, as the page and a share-link reader use the stack:
 routing, an account, QFT-4 in both modes on a few runners with known answers, the Summary,
-a saved run, a share link from creation to revocation, and account deletion.
+a saved run, a share link from creation to revocation, sign-out, and account deletion.
 
 The account is overnight-e2e-<random>@example.invalid, created and deleted here. Run against
 the live stack:
@@ -8,8 +8,9 @@ the live stack:
 
 Servers before the 2026-10-28 hardening (no `readiness` feature in GET /config) do not check
 Origin or Content-Type, send no security headers and delete an account without its password;
-those checks are skipped there. QROSETTA_E2E_REQUIRE_CURRENT=1 requires them whatever the
-server says (CI, where the images are built from the commit under test).
+those checks are skipped there, and so is sign-out on a server without the `logout` feature.
+QROSETTA_E2E_REQUIRE_CURRENT=1 requires all of them whatever the server says (CI, where the
+images are built from the commit under test).
 """
 
 import math
@@ -26,6 +27,7 @@ RUNNERS = selected_runners(["qiskit", "qulacs", "cirq"])
 QFT_QUBITS = 4
 SEED = 20261028
 CURRENT_FEATURE = "readiness"
+LOGOUT_FEATURE = "logout"
 CROSS_SITE_DETAIL = "Requests from other sites are refused."
 SHARE_GONE_DETAIL = "This link does not exist, has expired or was revoked."
 NOT_SHARED = {
@@ -48,16 +50,31 @@ def _require_current() -> bool:
     return os.environ.get("QROSETTA_E2E_REQUIRE_CURRENT", "") not in ("", "0")
 
 
+def required(feature: str, features) -> bool:
+    """Whether the checks of ``feature`` run: the server lists it, or the current checks are required."""
+    return _require_current() or feature in (features or {})
+
+
+def server_state(config: dict) -> dict:
+    """GET /config's answer, its features, and which of the newer checks run against it."""
+    features = (config.get("server") or {}).get("features") or {}
+    return {
+        "config": config,
+        "features": features,
+        "current": required(CURRENT_FEATURE, features),
+        "logout": required(LOGOUT_FEATURE, features),
+    }
+
+
 @pytest.fixture(scope="module")
 def server():
-    """GET /config, and whether the server has the current request and header checks."""
+    """GET /config, and whether the server has the current request and header checks and sign-out."""
     resp = httpx.get(f"{BASE_URL}/config", timeout=10)
     assert resp.status_code == 200, resp.text
-    config = resp.json()
-    features = (config.get("server") or {}).get("features") or {}
-    current = _require_current() or CURRENT_FEATURE in features
-    print(f"  server {config['server'].get('git_sha')} at {BASE_URL}; current checks: {current}")
-    return {"config": config, "features": features, "current": current}
+    state = server_state(resp.json())
+    sha = state["config"]["server"].get("git_sha")
+    print(f"  server {sha} at {BASE_URL}; current checks: {state['current']}; sign-out: {state['logout']}")
+    return state
 
 
 @pytest.fixture(scope="module")
@@ -69,7 +86,8 @@ def browser():
 
 @pytest.fixture(scope="module")
 def account(browser):
-    """A fresh account and its bearer token; deleted at the end if a test has not done so."""
+    """A fresh account and its bearer token; deleted at the end if a test has not done so, signing
+    in again when a sign-out ended the token."""
     email = f"overnight-e2e-{secrets.token_hex(6)}@example.invalid"
     password = secrets.token_urlsafe(18)
     resp = send(browser, "POST", "/auth/register", json={"email": email, "password": password})
@@ -87,7 +105,12 @@ def account(browser):
     }
     yield state
     if not state["deleted"]:
-        browser.request("DELETE", f"{BASE_URL}/auth/me", headers=state["auth"], json={"password": password})
+        gone = browser.request("DELETE", f"{BASE_URL}/auth/me", headers=state["auth"], json={"password": password})
+        if gone.status_code == 401:
+            again = send(browser, "POST", "/auth/token", data={"username": email, "password": password})
+            if again.status_code == 200:
+                auth = {"Authorization": f"Bearer {again.json()['access_token']}"}
+                browser.request("DELETE", f"{BASE_URL}/auth/me", headers=auth, json={"password": password})
 
 
 def _keys(value) -> set:
@@ -273,6 +296,23 @@ def test_qft_save_share_revoke(browser, account):
     second = send(browser, "POST", f"/history/runs/{run_id}/share-links", headers=account["auth"], json={})
     assert second.status_code == 201, second.text
     account["open_link"] = second.json()["token"]
+
+
+def test_sign_out_ends_the_token(server, browser, account):
+    if not server["logout"]:
+        pytest.skip("this server has no POST /auth/logout")
+    old_auth = account["auth"]
+    out = send(browser, "POST", "/auth/logout", headers=old_auth)
+    assert out.status_code == 204, out.text
+    assert browser.get(f"{BASE_URL}/auth/me", headers=old_auth).status_code == 401
+    assert browser.get(f"{BASE_URL}/history/runs", headers=old_auth).status_code == 401
+
+    login = send(browser, "POST", "/auth/token", data={"username": account["email"], "password": account["password"]})
+    assert login.status_code == 200, login.text
+    account["token"] = login.json()["access_token"]
+    account["auth"] = {"Authorization": f"Bearer {account['token']}"}
+    me = browser.get(f"{BASE_URL}/auth/me", headers=account["auth"])
+    assert me.status_code == 200 and me.json()["email"] == account["email"], me.text
 
 
 def test_account_deletion_ends_the_token_and_links(server, browser, account):
