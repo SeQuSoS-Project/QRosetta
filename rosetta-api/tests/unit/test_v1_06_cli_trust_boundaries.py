@@ -5,7 +5,6 @@ import http.server
 import json
 import os
 import threading
-import uuid
 
 import pytest
 
@@ -92,7 +91,7 @@ def test_v1_06_an_environment_token_never_goes_to_a_plain_http_remote_host(tmp_p
     assert "secret-token" not in out.out + out.err
 
 
-@pytest.mark.parametrize("job_id", ["../../outside", "a/b", "", None, 7, str(uuid.uuid4()).upper()])
+@pytest.mark.parametrize("job_id", ["../../outside", "a/b", "", None, 7, "0F8FAD5B-D9CB-469F-A165-70867728950E"])
 def test_v1_06_a_job_id_that_is_not_a_uuid_names_no_file(job_id, tmp_path, monkeypatch, capsys):
     with pytest.raises(CliError) as err:
         results.server_job_id({"job_id": job_id}, "POST /compare")

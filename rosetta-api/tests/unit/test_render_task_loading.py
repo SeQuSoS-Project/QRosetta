@@ -1,5 +1,4 @@
 """Rendering one circuit of a playlist job reads that task's spilled report only."""
-import pickle
 
 import pytest
 from fastapi import HTTPException
@@ -20,7 +19,7 @@ def batch_job(tmp_path, monkeypatch):
     refs = []
     for i in range(4):
         path = tmp_path / f"task-{i}.pickle"
-        path.write_bytes(pickle.dumps({"task_name": f"t{i}", "raw_results": []}))
+        job_store._write_pickle({"task_name": f"t{i}", "raw_results": []}, str(path))
         refs.append(job_store.SpilledReport(str(path)))
     job = {"status": "completed", "full_results": {"mode": "statevector", "benchmark_summary": refs}}
     monkeypatch.setattr(publication, "finished_job_or_error", lambda job_id, action: job)

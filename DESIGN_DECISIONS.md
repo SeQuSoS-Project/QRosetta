@@ -754,6 +754,12 @@ Compilers are separate from the simulators: their output is a circuit, which is 
 
 *Evidence (2026-10-28).* urllib's redirect handler copied Authorization to the redirect target; `QROSETTA_SERVER=file:///...` passed the `://` check and reached urllib's FileHandler; `job_id` went into result paths unchecked; `<engine> load` applies tags embedded in an archive and the fake engine did not model it (`test_v1_06_cli_trust_boundaries.py`).
 
+### Job spill directory
+
+*Rule.* At startup an existing `QROSETTA_JOB_SPILL_DIR` must be a directory (not a link) owned by the API process's user; it is removed and created again with mode 0700, and the API does not start otherwise. The API unpickles only files this process wrote (`job_store._write_pickle` records each one); `pickle.load` and `pickle.loads` appear only in `job_store.py`, `prep_worker.py` (its own child's pipe) and `qrosetta_commons/helpers.py` (`test_v1_11_spill_dir_and_pickles.py` checks it).
+
+*Evidence (2026-10-28).* `reset_spill_dir` ignored its own errors and `makedirs(exist_ok=True)` accepted a directory another user had created in a shared `/tmp`, so a pickle planted there would have been loaded by the API.
+
 ### Name fields
 
 *Rule.* One combined validator per name type (`label_type`), never nested. A version-independent code-point list; blank names are refused.
