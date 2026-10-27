@@ -1,6 +1,7 @@
 """`qrosetta status`: services, state, memory, image provenance and URL (spec §6.4); exits 0
 whatever the stack's state. Provenance is that of the image each container was created from,
-with the image now under the service's tag when that is another."""
+with the image now under the service's tag when that is another, and whether the compose file
+now gives the container's service another configuration."""
 
 from qrosetta_cli.errors import CliError
 from qrosetta_cli.output import progress, result
@@ -8,7 +9,7 @@ from qrosetta_cli.stack import actions
 from qrosetta_cli.stack import ownership as own
 from qrosetta_cli.stack import project as st
 from qrosetta_cli.stack.actions import human_bytes, parse_size
-from qrosetta_cli.stack.serve import published
+from qrosetta_cli.stack.serve import config_changed, config_hashes, git_sha_env, published
 
 
 def memory_by_container(engine, names):
@@ -76,7 +77,13 @@ def image_text(record):
 
 
 def row_image_text(row):
-    """The image the container runs, and the one under the tag when that is another."""
+    """The image the container runs, the one under the tag when that is another, and whether the
+    compose configuration changed."""
+    text = _image_cell(row)
+    return text + "; compose configuration changed" if row.get("config_current") is False else text
+
+
+def _image_cell(row):
     running, tagged = row.get("container_image"), row["image"]
     if not running or running["current"] is not False:
         return image_text(tagged)
@@ -87,12 +94,16 @@ def row_image_text(row):
     return f"{ran}; newer image {image_text(tagged)}"
 
 
-def collect(engine, stack, found):
+def collect(engine, stack, found, env=None):
+    """Rows of every service. The compose config hashes are computed with QROSETTA_GIT_SHA as
+    `start` sets it from `env`, the caller's environment."""
     containers = {c.service: c for c in found.containers + found.legacy}
     running = [c for c in containers.values() if c.running]
     memory = memory_by_container(engine, [c.name for c in running])
     images = st.find_images(engine, [stack.image_for(s) for s in stack.services])
     by_id = st.images_by_id(engine, [c.image for c in containers.values()])
+    engine.env.update(git_sha_env(stack, images, {} if env is None else env))
+    hashes = config_hashes(engine) if any(c.config_hash for c in containers.values()) else None
     rows = []
     for service, svc in stack.services.items():
         c = containers.get(service)
@@ -103,13 +114,14 @@ def collect(engine, stack, found):
                      "compose_service": service, "container": c.name if c else svc.container_name or None,
                      "state": state, "qrosetta_label": c is None or c not in found.legacy,
                      "memory_bytes": used, "limit_bytes": limit, "image": tagged,
-                     "container_image": container_image_record(stack, service, c, tagged, by_id) if c else None})
+                     "container_image": container_image_record(stack, service, c, tagged, by_id) if c else None,
+                     "config_current": _config_current(c, hashes)})
     return rows, images, memory
 
 
 def status(ctx, engine, stack, mode):
     found = own.scan(engine, stack)
-    rows, images, memory = collect(engine, stack, found)
+    rows, images, memory = collect(engine, stack, found, ctx.env)
     running = [r for r in rows if r["state"] == "running"]
     url, address = published(engine, stack) if running else (None, None)
     block = None
@@ -141,12 +153,9 @@ def status(ctx, engine, stack, mode):
 
     outdated = [r for r in rows if r["qrosetta_label"] and r["container_image"]
                 and r["container_image"]["current"] is False and r["image"]["state"] != "missing"]
-    if outdated:
-        command = f"`qrosetta start -d {' '.join(r['id'] for r in outdated)}`"
-        result("\n1 container was created from an image other than the one now under its tag; "
-               f"{command} recreates it on that image." if len(outdated) == 1 else
-               f"\n{len(outdated)} containers were created from images other than the ones now under their tags; "
-               f"{command} recreates them on those images.")
+    changed = [r for r in rows if r["qrosetta_label"] and r["config_current"] is False]
+    if outdated or changed:
+        result("\n" + _recreate_text(rows, outdated, changed))
     for line in own.leftovers(engine, found):
         progress("\n" + line)
     total = sum(u for u, _ in memory.values() if u)
@@ -166,6 +175,37 @@ def status(ctx, engine, stack, mode):
             "server": block, "services": rows,
             "data_volumes": [{"name": v.name, "bytes": sizes.get(v.name)} for v in volumes],
             "foreign": own.leftovers(engine, found)}
+
+
+def _config_current(container, hashes):
+    """Whether the container has the configuration the compose file now gives its service; None
+    without a container or when either hash is unknown."""
+    changed = config_changed(container, hashes) if container else None
+    return None if changed is None else not changed
+
+
+def _recreate_text(rows, outdated, changed):
+    """The line after the table naming the `start` command that recreates the containers on
+    another image than the one under their tag or with another compose configuration."""
+    recreate = [r for r in rows if r in outdated or r in changed]
+    command = f"`qrosetta start -d {' '.join(r['id'] for r in recreate)}`"
+    if len(recreate) == 1 and not changed:
+        return ("1 container was created from an image other than the one now under its tag; "
+                f"{command} recreates it on that image.")
+    if not changed:
+        return (f"{len(recreate)} containers were created from images other than the ones now under their tags; "
+                f"{command} recreates them on those images.")
+    if len(recreate) == 1 and not outdated:
+        return ("1 container was created from another compose configuration than the compose file now gives; "
+                f"{command} recreates it with the current one.")
+    if not outdated:
+        return (f"{len(recreate)} containers were created from other compose configurations than the compose "
+                f"file now gives; {command} recreates them with the current ones.")
+    if len(recreate) == 1:
+        return ("1 container was created from another image and compose configuration than the current ones; "
+                f"{command} recreates it.")
+    return (f"{len(recreate)} containers were created from other images or compose configurations than the "
+            f"current ones (IMAGE column); {command} recreates them.")
 
 
 def _server_text(block):

@@ -205,6 +205,13 @@
               "current"
             ],
             "description": "The image the service's container was created from (null without a container); current: whether it is the image now under the tag in image, null when the engine does not report it."
+          },
+          "config_current": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether the container's compose config hash equals the one `compose config --hash` gives its service under the environment `start` uses; null without a container or when either hash is unknown."
           }
         },
         "required": [

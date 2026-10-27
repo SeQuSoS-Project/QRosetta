@@ -16,6 +16,7 @@ from qrosetta_cli.stack import project as st
 PROJECT_LABEL = "com.docker.compose.project"
 SERVICE_LABEL = "com.docker.compose.service"
 VOLUME_LABEL = "com.docker.compose.volume"
+CONFIG_HASH_LABEL = "com.docker.compose.config-hash"
 QR_LABEL = "org.qrosetta.project"
 QR_IMAGE_PROJECT = "org.qrosetta.image.project"
 QR_SERVICE = "org.qrosetta.service"
@@ -70,6 +71,7 @@ class Container:
     pod: str = ""
     target: Target = None
     image: str = ""
+    config_hash: str = ""
 
 
 @dataclass
@@ -113,7 +115,8 @@ def _containers(engine, ids):
             id=item.get("Id", ""), name=(item.get("Name") or "").lstrip("/"),
             project=labels.get(PROJECT_LABEL, ""), service=labels.get(SERVICE_LABEL, ""),
             running=bool(state.get("Running")) or state.get("Status") in ACTIVE_STATES,
-            pod=item.get("Pod") or "", image=item.get("Image") or "")))
+            pod=item.get("Pod") or "", image=item.get("Image") or "",
+            config_hash=labels.get(CONFIG_HASH_LABEL, ""))))
     return result
 
 

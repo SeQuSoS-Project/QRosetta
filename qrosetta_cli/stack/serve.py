@@ -124,42 +124,90 @@ def plan_start(engine, stack, requested=None, env=None):
                 else f"qrosetta build {keys}")
         raise CliError(f"No image for {', '.join(stack.services[s].id for s in blocking)}.", Exit.ENGINE,
                        "image_missing", hint=hint)
-    extra = {}
-    if not env.get("QROSETTA_GIT_SHA"):
-        for svc in core:
-            sha = images[stack.image_for(svc)].env.get("QROSETTA_IMAGE_GIT_SHA")
-            if sha and sha != "unknown":
-                extra["QROSETTA_GIT_SHA"] = sha
-                break
-    return [s for s in candidates if s not in missing], missing, extra
+    return [s for s in candidates if s not in missing], missing, git_sha_env(stack, images, env)
+
+
+def git_sha_env(stack, images, env):
+    """QROSETTA_GIT_SHA for compose when the caller sets none: the commit baked into the image of
+    a core service whose compose environment reads it (the API), else of the first core service
+    with one. `images` maps refs to images, as `find_images` returns them."""
+    if env.get("QROSETTA_GIT_SHA"):
+        return {}
+    core = stack.core_services()
+    for svc in sorted(core, key=lambda s: "QROSETTA_GIT_SHA" not in stack.services[s].environment):
+        img = images.get(stack.image_for(svc))
+        sha = img.env.get("QROSETTA_IMAGE_GIT_SHA") if img else None
+        if sha and sha != "unknown":
+            return {"QROSETTA_GIT_SHA": sha}
+    return {}
+
+
+def config_hashes(engine):
+    """{compose service: hash} as `compose config --hash` prints them under the engine's
+    environment, which is the one `up` gets; None when this compose does not print them."""
+    out = engine.compose("config", "--hash", "*")
+    if out.returncode != 0:
+        output.warn(f"`{engine.name} compose config --hash` failed, so containers are compared with their "
+                    "images only, not with the compose configuration.", "config_hash_unavailable")
+        return None
+    hashes = {}
+    for line in out.stdout.splitlines():
+        parts = line.split()
+        if len(parts) == 2:
+            hashes[parts[0]] = parts[1]
+    return hashes
+
+
+def config_changed(container, hashes):
+    """True when compose would give the container's service another configuration than the one
+    it was created with; None when either hash is unknown."""
+    if not hashes or not container.config_hash or not hashes.get(container.service):
+        return None
+    return hashes[container.service] != container.config_hash
 
 
 @dataclass
 class Stale:
-    """A container of this stack created from an image other than the one now under its tag."""
+    """A container of this stack created from an image other than the one now under its tag
+    (`current` set), or from another compose configuration than the compose file now gives
+    (`config`), or both."""
     service: str
     running: bool
-    image_id: str
-    git_sha: str
-    current: st.Image
+    image_id: str = None
+    git_sha: str = None
+    current: st.Image = None
+    config: bool = False
+
+    @property
+    def reasons(self):
+        return (["image"] if self.current else []) + (["config"] if self.config else [])
 
 
-def stale_containers(engine, stack, found, services):
+def stale_containers(engine, stack, found, services, hashes=None):
     """The containers among `services` that the ownership scan accepted and that were created
-    from an image other than the one now under the service's tag; services without an image
-    under their tag, or whose container's image the engine does not report, are left out."""
-    containers = {c.service: c for c in found.containers if c.service in services and c.image}
+    from an image other than the one now under the service's tag, or whose compose config hash
+    differs from `hashes` (`config_hashes`). A container is not compared with an image when its
+    service has no image under its tag or the engine does not report the container's image, nor
+    with the configuration when either hash is unknown."""
+    containers = {c.service: c for c in found.containers if c.service in services}
     if not containers:
         return []
-    tagged = st.find_images(engine, [stack.image_for(s) for s in containers])
-    old = st.images_by_id(engine, [c.image for c in containers.values()])
+    with_image = [c for c in containers.values() if c.image]
+    tagged = st.find_images(engine, [stack.image_for(c.service) for c in with_image]) if with_image else {}
+    old = st.images_by_id(engine, [c.image for c in with_image]) if with_image else {}
     stale = []
     for service in services:
-        c, img = containers.get(service), tagged.get(stack.image_for(service))
-        if c is None or img is None or st.image_key(c.image) == st.image_key(img.id):
+        c = containers.get(service)
+        if c is None:
             continue
-        before = old.get(st.image_key(c.image))
-        stale.append(Stale(service, c.running, c.image, before.git_sha if before else None, img))
+        img = tagged.get(stack.image_for(service)) if c.image else None
+        moved = img is not None and st.image_key(c.image) != st.image_key(img.id)
+        config = bool(config_changed(c, hashes))
+        if not moved and not config:
+            continue
+        before = old.get(st.image_key(c.image)) if moved else None
+        stale.append(Stale(service, c.running, c.image if moved else None,
+                           before.git_sha if before else None, img if moved else None, config))
     return stale
 
 
@@ -168,14 +216,36 @@ def _image_words(sha, ident):
     return f"{built} (image {st.image_key(ident)[:12]})"
 
 
+REASON_WORDS = {"image": "image rebuilt", "config": "compose configuration changed"}
+
+
 def describe_stale(stack, stale):
-    """Progress lines naming each container to recreate, its image and the one under its tag."""
-    lines = ["Recreating 1 service whose container was created from another image than the one now under its tag:"
-             if len(stale) == 1 else f"Recreating {len(stale)} services whose containers were created from other "
-             "images than the ones now under their tags:"]
+    """Progress lines naming each container to recreate and why: its image and the one under
+    its tag, and whether its compose configuration changed."""
+    one = len(stale) == 1
+    kinds = {r for s in stale for r in s.reasons}
+    if kinds == {"image"}:
+        head = ("1 service whose container was created from another image than the one now under its tag" if one
+                else f"{len(stale)} services whose containers were created from other images than the ones now "
+                "under their tags")
+    elif kinds == {"config"}:
+        head = ("1 service whose container was created from another compose configuration than the compose "
+                "file now gives" if one else f"{len(stale)} services whose containers were created from other "
+                "compose configurations than the compose file now gives")
+    else:
+        head = ("1 service whose container was created from another image and compose configuration than the "
+                "current ones" if one else f"{len(stale)} services whose containers were created from other "
+                "images or compose configurations than the current ones")
+    lines = [f"Recreating {head}:"]
     for s in stale:
+        words = []
+        if s.current:
+            words.append(f"{REASON_WORDS['image']}, {_image_words(s.git_sha, s.image_id)} -> "
+                         f"{_image_words(s.current.git_sha, s.current.id)}")
+        if s.config:
+            words.append(REASON_WORDS["config"])
         lines.append(f"  {stack.services[s.service].id} ({'running' if s.running else 'stopped'}): "
-                     f"{_image_words(s.git_sha, s.image_id)} -> {_image_words(s.current.git_sha, s.current.id)}")
+                     + "; ".join(words))
     return lines
 
 

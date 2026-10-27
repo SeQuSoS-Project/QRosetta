@@ -209,6 +209,33 @@ def test_start_recreates_nothing_while_an_unlabelled_container_of_the_project_ru
     assert not f.compose_calls("up") and not f.recreated and not f.destructive_calls()
 
 
+def test_start_recreates_on_a_changed_configuration_only_this_stacks_containers(project, tmp_path, monkeypatch):
+    monkeypatch.setattr(serve, "_sleep", lambda s: None)
+    f = FakeEngine().standard()
+    f.containers.clear()
+    assert run(f, project, ["start", "-d"], tmp_path, server=FakeServer(fresh=True)) == Exit.OK
+    stale = {own.CONFIG_HASH_LABEL: "0" * 64}
+    decoys = {
+        f.add("myapp-api", {own.PROJECT_LABEL: "myapp", own.QR_LABEL: "myapp", own.SERVICE_LABEL: "api", **stale}),
+        f.add("myapp-qiskit", {own.PROJECT_LABEL: "myapp", own.SERVICE_LABEL: "qiskit_runner", **stale}),
+        f.add("pedantic_noyce", {own.SERVICE_LABEL: "nginx", **stale}),
+    }
+    f.calls.clear()
+    f.recreated.clear()
+    assert run(f, project, ["start", "-d", "--yes"], tmp_path, server=FakeServer(gate=BUSY, fresh=True)) == Exit.OK
+    assert not f.compose_calls("up") and not f.recreated
+    f.edit_config("api")
+    assert run(f, project, ["start", "-d", "--yes"], tmp_path, server=FakeServer(gate=BUSY, fresh=True)) == Exit.OK
+    check_calls(f, decoys)
+    assert not f.destructive_calls() and f.recreated == ["c-rosetta-api"]
+    assert all(f.containers[d]["Config"]["Labels"][own.CONFIG_HASH_LABEL] == "0" * 64 for d in decoys)
+    decoys.add(f.add("api-by-hand", dict(PROJECT_ONLY, **{own.SERVICE_LABEL: "api"}, **stale)))
+    f.edit_config("qiskit_runner")
+    assert run(f, project, ["start", "-d", "--yes"], tmp_path, server=FakeServer(fresh=True)) == Exit.ENGINE
+    check_calls(f, decoys)
+    assert f.recreated == ["c-rosetta-api"] and not f.destructive_calls()
+
+
 def test_status_compares_only_this_stacks_containers_with_their_tags(project, tmp_path, capsys):
     f, decoys = stale_with_decoys()
     assert run(f, project, ["status", "--json"], tmp_path) == Exit.OK

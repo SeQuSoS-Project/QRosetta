@@ -196,12 +196,18 @@ the server reports runs in flight; `stop --force`, `remove --force`, `build --ye
 
 `start` never builds. It names the services that have no image (`qrosetta build <service>`
 builds one) and starts the rest; without the nginx or API image it starts nothing. A container
-keeps the image it was created from when `build` puts a new image under its tag, so `start`
-recreates, with `compose up --force-recreate`, every requested service whose container (running
-or on standby) was created from another image than the one now under its tag, and prints each
-one with the commit of both images. `status` shows the commit of the image each container was
-created from; when the tag now holds another image it names both and prints the `start`
-command that recreates those containers. When a foreground `start` stops, it runs the exit
+keeps the image it was created from when `build` puts a new image under its tag, and the
+configuration it was created with when `docker-compose.yml` changes (a new volume, variable or
+limit after a `git pull`). `start` recreates, with `compose up --force-recreate`, every requested
+service whose container (running or on standby) was created from another image than the one now
+under its tag, or whose `com.docker.compose.config-hash` label differs from what
+`compose config --hash` gives its service, and prints each one with its reason: "image rebuilt"
+with the commit of both images, "compose configuration changed", or both. The hash is computed
+with the environment `start` gives compose, including the address from `--bind` or
+`lifecycle.bind`, so a stack started with `--bind` is recreated on the default address by a
+later `start` without it. `status` shows the commit of the image each container was created
+from; when the tag now holds another image it names both, when the configuration changed it
+says so, and it prints the `start` command that recreates those containers. When a foreground `start` stops, it runs the exit
 action. On Ctrl-C it asks "Keep on standby or remove?" and takes standby
 after 10 seconds without an answer. SIGTERM and SIGHUP, which VS Code sends when a task is
 stopped or its terminal closed, put the stack on standby. `--on-exit standby|remove|ask` or

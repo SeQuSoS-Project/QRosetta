@@ -158,3 +158,25 @@ def test_published_start_names_pull_commands_for_images_not_yet_pulled(env, caps
     fake = published_engine(missing=("api",))
     assert run(["start", "-d"], env, fake=fake, server=FakeServer(fresh=True)) == Exit.ENGINE
     assert capsys.readouterr().err.strip().splitlines()[-1] == f"podman pull {refs['api']}"
+
+
+def test_installed_start_recreates_a_service_whose_generated_configuration_changed(env, tmp_path, capsys,
+                                                                                    monkeypatch):
+    monkeypatch.setattr(serve, "_sleep", lambda s: None)
+    ship(release())
+    fake = published_engine()
+    fake.containers.clear()
+    assert run(["start", "-d"], env, fake=fake, server=FakeServer(fresh=True)) == 0
+    fake.calls.clear()
+    assert run(["start", "-d"], env, fake=fake, server=FakeServer(fresh=True)) == 0
+    assert not fake.compose_calls("up") and not fake.recreated
+    fake.edit_config("api")
+    capsys.readouterr()
+    assert run(["start", "-d", "--json"], env, fake=fake, server=FakeServer(fresh=True)) == 0
+    state = tmp_path / "state" / "qrosetta"
+    hashed = [c for c, _ in fake.calls if "--hash" in c]
+    assert hashed and all(c[1:8] == ["compose", "-p", "qr", "--project-directory", str(state), "-f",
+                                     str(state / "compose.yaml")] for c in hashed)
+    assert [c[c.index("up"):] for c in fake.compose_calls("up")] == [
+        ["up", "-d", "--no-build", "--force-recreate", "--no-deps", "api"]]
+    assert json.loads(capsys.readouterr().out)["data"]["recreations"] == [{"id": "api", "reasons": ["config"]}]
