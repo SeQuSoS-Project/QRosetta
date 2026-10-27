@@ -21,6 +21,7 @@ import { fetchSelection, loadCircuitSources, menuGroups, nearestSize, selectionF
 import { initCircuitPicker } from './circuit_picker.js';
 import { offerRecentJobs, updateWorkspace } from './workspace.js';
 import { initSettingsBar } from './settings_bar.js';
+import { setStatusLabels } from './status_cards.js';
 
 const EXECUTION_MODE_LABELS = {
     local: 'This server: local runner services',
@@ -252,6 +253,7 @@ window.onload = async () => {
         if (configResponse.ok) {
             const config = await configResponse.json();
             dispatch('SET_CONFIG_LIMITS', config);
+            setStatusLabels(config.status_labels);
             _applyServerConfig(config);
         }
         loadRunners();

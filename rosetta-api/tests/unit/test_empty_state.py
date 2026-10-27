@@ -83,5 +83,6 @@ def test_sentence_names_the_runs():
 def test_running_view_reuses_the_placeholder_and_keeps_the_sent_label():
     text = (_STATIC / "js" / "status_cards.js").read_text()
     assert "from './empty_state.js'" in text and "placeholderTable(" in text and "greyTabs(" in text
-    assert re.search(r"running:\s*\{[^}]*label: 'SENT'", text)
+    from services.status_labels import STATUS_LABELS
+    assert STATUS_LABELS["runs"]["running"]["label"] == "SENT"
     assert "font-mono" not in text

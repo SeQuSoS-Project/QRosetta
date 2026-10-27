@@ -1693,6 +1693,10 @@
                     the maximum, and the previous level stays served), <code>analysis_version</code> (the
                     comparison code that labels new reports), <code>git_sha</code> (the commit of the API
                     image) and <code>features</code>, a map from feature name to version that only grows.
+                    <code>status_labels</code> gives the word and tooltip (<code>{label, hint}</code>) the
+                    page shows for each live status: <code>runs</code> for the values of
+                    <code>runner_statuses</code>, <code>tasks</code> for a playlist circuit, and
+                    <code>phases</code> for the job's <code>phase</code>.
                 </p>
                 <p>
                     In measured mode the verdict of a pair is <code>measured_assessment</code>

@@ -11,6 +11,7 @@ from services.preparation_limits import bundled_over_prep_limit
 from services.request_defaults import request_defaults
 from services.server_info import server_block
 from services.service_listing import compiler_rows, runner_rows
+from services.status_labels import status_labels
 
 router = APIRouter()
 
@@ -80,6 +81,11 @@ async def get_config():
     stays served), ``analysis_version`` (the comparison code that labels new reports),
     ``git_sha`` (the API image's commit) and ``features`` ({name: version}).
 
+    ``status_labels`` maps each live status to ``{label, hint}`` (hint null when there is
+    none): ``runs`` for the values of ``runner_statuses``, ``tasks`` for a playlist circuit's
+    status (and ``analysing``), ``phases`` for the job's ``phase``. A client shows a status
+    missing from the map upper-cased.
+
     ``limits`` holds the bounds the run endpoints validate against: qubit caps per mode,
     ``timeout_min``/``timeout_max`` (seconds; larger requests are clamped to
     ``timeout_max``), ``timeout_default`` (every run endpoint), ``shots_min``/``shots_max``,
@@ -120,6 +126,7 @@ async def get_config():
     """
     return JSONResponse(content={
         "server": server_block(),
+        "status_labels": status_labels(),
         "max_qubits_statevector": settings.MAX_QUBITS_STATEVECTOR,
         "max_qubits_measured": settings.MAX_QUBITS_MEASURED,
         "max_qubits_compile": settings.MAX_QUBITS_COMPILE,

@@ -11,6 +11,7 @@ FEATURES = {
     "quickload": 1,
     "profiles": 1,
     "job_phase": 1,
+    "status_labels": 1,
 }
 
 
