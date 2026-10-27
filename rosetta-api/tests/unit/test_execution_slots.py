@@ -42,3 +42,26 @@ def test_queue_wait_is_in_endpoint_results():
     register_runner_endpoints(app, fx.fast, fx.fast)
     r = TestClient(app).post("/run", json={"circuit_data": "x", "max_queue_wait_seconds": 30})
     assert r.status_code == 200 and r.json()["queue_wait_sec"] >= 0
+
+
+def test_health_answers_while_the_only_slot_runs():
+    import httpx
+
+    app = FastAPI()
+    register_runner_endpoints(app, fx.slow, fx.slow)
+
+    async def main():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
+            run = asyncio.create_task(client.post("/run", json={"circuit_data": "x", "hard_timeout_seconds": 3}))
+            await asyncio.sleep(1.0)
+            t0 = time.monotonic()
+            health = await client.get("/health")
+            waited = time.monotonic() - t0
+            busy = not run.done()
+            await run
+            return health, waited, busy
+
+    health, waited, busy = asyncio.run(main())
+    assert busy
+    assert health.status_code == 200 and health.json() == {"status": "ok"}
+    assert waited < 0.5
