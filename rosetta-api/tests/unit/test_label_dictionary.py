@@ -1,9 +1,10 @@
-"""Every code the backend can put in a pair record, run status or compile record has plain
+"""Every code the backend can put in a pair record, run status, timing caveat or compile record has plain
 wording and a docs anchor in static/js/labels.js."""
 import re
 from pathlib import Path
 
 from tests.unit.frontend_harness import call_js, requires_node
+from services.timing_caveats import TEXT as TIMING_CAVEAT_TEXT
 from tests.unit.test_artifacts_parity import _COUNT_REASONS, _SV_REASONS
 
 pytestmark = requires_node
@@ -23,12 +24,13 @@ def _emitted_codes():
         codes |= set(_REASON.findall(text))
     codes |= {"ok", "error", "timeout", "offline", "input", "output_check"}
     codes |= set(_SV_REASONS) | set(_COUNT_REASONS) | {"inconsistent_bitstring_lengths"}
+    codes |= set(TIMING_CAVEAT_TEXT)
     return sorted(codes)
 
 
 def test_every_emitted_code_has_wording_and_anchor():
     codes = _emitted_codes()
-    assert "low_power" in codes and "marginal_distinguishable" in codes
+    assert "low_power" in codes and "marginal_distinguishable" in codes and "throttled" in codes
     labels = call_js(["labels.js"], [("LABELS", [])])[0]
     missing = [c for c in codes if c not in labels]
     assert not missing, f"codes without wording in labels.js: {missing}"
