@@ -53,7 +53,6 @@ runners/pytket-qiskit-runner/Dockerfile DL3042 1
 runners/pytket-qiskit-runner/Dockerfile DL3066 1
 runners/pytket-quest-runner/Dockerfile DL3042 1
 runners/pytket-quest-runner/Dockerfile DL3066 1
-runners/pytket-qulacs-runner/Dockerfile DL3042 1
 runners/pytket-qulacs-runner/Dockerfile DL3066 1
 runners/qibo-runner/Dockerfile DL3042 1
 runners/qibo-runner/Dockerfile DL3066 1
