@@ -4,7 +4,6 @@ compilers/bqskit-compiler/Dockerfile DL3042 1
 compilers/bqskit-compiler/Dockerfile DL3066 1
 compilers/cirq-compiler/Dockerfile DL3042 1
 compilers/cirq-compiler/Dockerfile DL3066 1
-compilers/pyzx-compiler/Dockerfile DL3042 1
 compilers/pyzx-compiler/Dockerfile DL3066 1
 compilers/qmap-compiler/Dockerfile DL3042 1
 compilers/qmap-compiler/Dockerfile DL3066 1
