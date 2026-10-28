@@ -6,6 +6,8 @@ Simulator and compiler code, their images, and the timed windows (CLAUDE.md §3.
 
 Unless an entry says otherwise, timings were taken inside the API image (`localhost/qsimulators-api`: Python 3.10.20, numpy 1.26.4, scipy 1.14.0, OpenBLAS 1 thread). The container ran under a 1-CPU quota on an i9-13950HX, not pinned to one core. Reference and new code alternated, 5 samples each. Raw samples are in `results/`.
 
+From 2026-10-28 the API image runs Python 3.12.16. On the same code, its statevector reports take 5–14 % and its counts reports 1–7 % longer than on 3.10.20 (DESIGN_DECISIONS.md, API image on Python 3.12), so a later entry compares with earlier ones only after allowing for that.
+
 ## 2026-10-22: circuit preparation in a separate, limited process
 
 With `apply_preprocessing` on, `prepare_statevector_dispatch`, `prepare_measured_dispatch` and the Quirk drawing ran pytket in a thread of the API process. Bundled MQT circuits are exempt from `MAX_EXPANDED_GATES`, and pytket expands their nested gates without bound. They now run in one spawned worker process (`services/prep_worker.py`), reused across jobs and running one preparation at a time. The API reads the worker's RSS every 100 ms. Above `QROSETTA_PREP_MAX_MIB` (1,024) or after `QROSETTA_PREP_TIMEOUT_SEC` (120 s) it kills the worker, and the job fails with a message naming the limit. Preparation without preprocessing makes no pytket call and stays in a thread.

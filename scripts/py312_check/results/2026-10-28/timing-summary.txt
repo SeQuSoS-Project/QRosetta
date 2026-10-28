@@ -1,0 +1,20 @@
+# quiet rounds 5-7
+{'new': ('3.12.16', [4]), 'old': ('3.10.20', [4])}
+case                                   old ms     new ms  new/old    n
+sv_report_6q_14b                        70.59      80.41    1.139   30
+sv_report_7q_14b                       478.07     545.43    1.141   30
+sv_report_12q_14b                        8.44       8.85    1.049   30
+counts_report_6b_14b_8200              781.38     830.58    1.063   30
+counts_report_7b_14b_8200             2953.13    3144.20    1.065   30
+counts_report_12b_14b_8200            1507.79    1603.75    1.064   30
+counts_report_20b_14b_8200            2345.94    2374.79    1.012   30
+# rounds 1-4, load average above 8 at times
+{'new': ('3.12.16', [4]), 'old': ('3.10.20', [4])}
+case                                   old ms     new ms  new/old    n
+sv_report_6q_14b                        73.14     106.22    1.452   40
+sv_report_7q_14b                       497.65     676.57    1.360   40
+sv_report_12q_14b                       11.74       9.24    0.787   40
+counts_report_6b_14b_8200              899.99     841.94    0.935   40
+counts_report_7b_14b_8200             2999.11    3221.72    1.074   40
+counts_report_12b_14b_8200            1527.27    1622.90    1.063   40
+counts_report_20b_14b_8200            2488.38    2396.64    0.963   40

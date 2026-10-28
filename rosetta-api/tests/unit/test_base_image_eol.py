@@ -23,7 +23,6 @@ IMAGES = eol.load_images(REPO, TABLE)
 _PY310 = "Python 3.10 reached end of life on 2026-10-01; requalify on 3.12 or 3.13 (Wave B3)"
 _PY311 = "Python 3.11 reaches end of life in 2027-10; requalify on 3.12 or 3.13 (Wave B3)"
 EXPECTED_FAIL = {
-    "rosetta-api/Dockerfile": "Python 3.10 reached end of life on 2026-10-01; move to 3.12 (Wave B1)",
     "compilers/bqskit-compiler/Dockerfile": _PY310,
     "compilers/pyzx-compiler/Dockerfile": _PY310,
     "compilers/cirq-compiler/Dockerfile": _PY311,

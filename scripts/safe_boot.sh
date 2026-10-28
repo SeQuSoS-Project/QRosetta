@@ -99,6 +99,7 @@ print(shlex.quote(image), shlex.quote(b["dockerfile"]), shlex.quote(b["context"]
   while IFS= read -r label; do
     set -- "$@" --label "$label"
   done <<< "$oci"
+  set -- "$@" --build-arg "DEBIAN_SNAPSHOT=$(sed -n 's/^DEBIAN_SNAPSHOT=//p' release/debian-snapshot.conf)"
   (cd "$context" && docker build -t "$image" -f "$dockerfile" "$@" .)
 }
 

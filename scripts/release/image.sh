@@ -57,7 +57,9 @@ case "${1:-}" in
     while IFS= read -r label; do
       args+=(--label "$label")
     done <<< "$oci"
+    snapshot=$(sed -n 's/^DEBIAN_SNAPSHOT=//p' "$(dirname "$0")/../../release/debian-snapshot.conf")
     docker build -f "$DOCKERFILE" \
+      --build-arg "DEBIAN_SNAPSHOT=${snapshot:?}" \
       --build-arg "QROSETTA_GIT_SHA=$GITHUB_SHA" \
       --build-arg "QROSETTA_IMAGE_SOURCE=$IMAGE_SOURCE" \
       --build-arg "QROSETTA_RELEASE=$VERSION" \

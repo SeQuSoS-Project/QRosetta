@@ -262,7 +262,14 @@ Follow the existing pattern (`runners/qibo-runner/Dockerfile` is a minimal examp
   SDK needs; check its supported Python versions first).
 - Create and switch to a non-root user (`appuser`), with `HOME=/home/appuser` and group
   permissions set so the image also runs under OpenShift's arbitrary-UID model.
-- Install from `requirements.lock`, not `requirements.txt`, for the reproducible build.
+- Install from `requirements.lock`, not `requirements.txt`, for the reproducible build. A lock with
+  hashes is installed with `pip install --no-cache-dir --require-hashes -r requirements.lock`, and
+  `shared/` with `--no-deps --no-build-isolation --no-index` (nothing fetched).
+- Point apt at the Debian snapshot before any `apt-get`: declare `ARG DEBIAN_SNAPSHOT=<the value in
+  release/debian-snapshot.conf>` and rewrite `/etc/apt/sources.list.d/debian.sources` to
+  `https://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}` and `.../debian-security/...` with
+  `Check-Valid-Until: no`, as `rosetta-api/Dockerfile` does. `test_reproducible_builds.py` checks both
+  rules; `safe_boot.sh` and `scripts/release/image.sh` pass the file's value as the build argument.
 - Install the shared `qrosetta_commons` package from `shared/` as a separate step, after your
   SDK's own dependencies.
 - End with the same `gunicorn` + `uvicorn.workers.UvicornWorker` command line the other runners
@@ -289,6 +296,12 @@ same version in the lock (`test_requirements_lock_sync.py`). Dependabot does not
 so a pull request of its that changes a `requirements.txt` fails that test until the lock is
 regenerated; for a runner or compiler it carries the label `sealed-image` and needs the image
 requalified (`DESIGN_DECISIONS.md`, Supported Python and base images) before it is merged.
+
+`scripts/release/compile_lock.sh <service-dir> <base-image@sha256:...>` regenerates a lock with
+sha256 hashes: pip-tools runs pip's resolver inside the base image, with the current lock as
+constraints, so a pin moves only when `requirements.txt`, the base image's Python or a hand edit of
+the lock forces it. To move one package, edit its version in the lock and run the script. The API's
+lock is generated this way; runner and compiler locks move to it when their image is requalified.
 
 ## 7. Registering the runner
 
