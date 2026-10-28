@@ -200,7 +200,7 @@ def gate_parameter_lists(qasm: str):
         yield m.group(1), [p.strip() for p in params if p.strip()]
 
 
-_GATE_DEF_RE = re.compile(r"gate\s+([A-Za-z_]\w*)\s*(?:\(([^)]*)\))?[^{]*\{([^}]*)\}")
+_GATE_DEF_RE = re.compile(r"\bgate\s+([A-Za-z_]\w*)\s*(?:\(([^)]*)\))?[^{]*\{([^}]*)\}")
 
 
 def _moved(name, text, value, out):

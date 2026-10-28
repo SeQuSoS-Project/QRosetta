@@ -153,6 +153,10 @@ TRIAGE_README = (
     "    the per-pair records under results/.\n"
     "  * The exhaustive qubit-permutation search is bounded; larger pairs report\n"
     "    attempted=false with a reason. Disclose this bound in any prevalence analysis.\n"
+    "  * Cells hold the values as recorded. A cell that starts with =, +, - or @ is a\n"
+    "    value (a negative number, an SDK's error text, a circuit name), not a formula;\n"
+    "    import the files as CSV text, since a spreadsheet that opens them directly may\n"
+    "    evaluate such a cell.\n"
 )
 
 

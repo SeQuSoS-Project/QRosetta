@@ -32,7 +32,7 @@ def _require_safe_name(name: str) -> str:
 def invalid_qasm_reason(qasm: str):
     """Why a bundled file is not valid OpenQASM 2.0 (no header, or a measure into an
     undeclared register), or None."""
-    if not re.search(r"^\s*OPENQASM\s+2\.0\s*;", strip_qasm_comments(qasm), re.MULTILINE):
+    if not re.search(r"^[^\S\n]*OPENQASM\s+2\.0\s*;", strip_qasm_comments(qasm), re.MULTILINE):
         return "it has no 'OPENQASM 2.0;' header"
     try:
         parse_measurement_layout(qasm)

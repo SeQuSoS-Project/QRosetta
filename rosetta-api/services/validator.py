@@ -18,8 +18,8 @@ from services.qasm_structure import (
 )
 from services.reserved_gate_names import reserved_gate_reason
 
-_VERSION_RE = re.compile(r"^\s*OPENQASM\s+([^;\s]+)\s*;", re.MULTILINE)
-_QASM3_DECL_RE = re.compile(r"^\s*(?:qubit|bit)\s*(?:\[|\s+[A-Za-z_])", re.MULTILINE)
+_VERSION_RE = re.compile(r"^[^\S\n]*OPENQASM\s+([^;\s]+)\s*;", re.MULTILINE)
+_QASM3_DECL_RE = re.compile(r"^[^\S\n]*(?:qubit|bit)(?:\s*\[|\s+[A-Za-z_])", re.MULTILINE)
 _REG_KEYWORD_RE = re.compile(r"\b(qreg|creg)\b")
 _REG_DECL_RE = re.compile(r"^(qreg|creg)\s+[A-Za-z_]\w*\s*\[\s*\d+\s*\]$")
 _BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
@@ -123,9 +123,31 @@ def _top_level_statements(code: str):
         yield start, code[start:], False
 
 
+_BRACE_RE = re.compile(r"[{}]")
+
+
+def _check_braces(code: str) -> None:
+    """400 for a '}' with no open '{', a '{' inside a gate body, or a '{' never closed."""
+    def line(offset):
+        return code.count("\n", 0, offset) + 1
+
+    open_at = None
+    for m in _BRACE_RE.finditer(code):
+        if m.group(0) == "}" and open_at is None:
+            _bad_request(f"Syntax error on line {line(m.start())}: '}}' closes no gate body.")
+        if m.group(0) == "{" and open_at is not None:
+            _bad_request(f"Syntax error on line {line(m.start())}: '{{' inside the gate body "
+                         f"opened on line {line(open_at)}; gate bodies do not nest.")
+        open_at = m.start() if m.group(0) == "{" else None
+    if open_at is not None:
+        _bad_request(f"Syntax error on line {line(open_at)}: the gate body opened here has no "
+                     f"closing '}}'.")
+
+
 def check_qasm_syntax(qasm: str) -> None:
-    """400 for an OpenQASM 3 program, text that does not start with the OPENQASM header, a malformed qreg/creg declaration, or a final
-    statement with no semicolon (each with its line number)."""
+    """400 for an OpenQASM 3 program, text that does not start with the OPENQASM header,
+    unbalanced or nested braces, a malformed qreg/creg declaration, or a final statement with
+    no semicolon (each with its line number)."""
     code = _comment_free_keeping_lines(qasm)
     version = _VERSION_RE.search(code)
     if version and not version.group(1).startswith("2"):
@@ -136,6 +158,7 @@ def check_qasm_syntax(qasm: str) -> None:
         _bad_request(_QASM3_MESSAGE)
     if code.strip() and not code.lstrip().startswith("OPENQASM"):
         _bad_request(HEADER_MESSAGE)
+    _check_braces(code)
 
     for start, raw, terminated in _top_level_statements(code):
         stmt = " ".join(raw.split())
@@ -154,6 +177,21 @@ def check_qasm_syntax(qasm: str) -> None:
                 f"semicolon).")
 
 
+_CREG_SIZE_RE = re.compile(r"\bcreg\s+\w+\s*\[\s*(\d+)\s*\]")
+
+
+def check_classical_bits(qasm: str) -> None:
+    """400 for a circuit whose creg declarations add up to more than MAX_CLASSICAL_BITS bits
+    (a size of more than 30 digits counts as over the limit)."""
+    total = 0
+    for digits in _CREG_SIZE_RE.findall(_comment_free_keeping_lines(qasm)):
+        total += int(digits) if len(digits) <= 30 else settings.MAX_CLASSICAL_BITS + 1
+        if total > settings.MAX_CLASSICAL_BITS:
+            _bad_request(f"Circuit declares more than {settings.MAX_CLASSICAL_BITS} classical bits "
+                         f"in its creg declarations, the limit (limits.max_classical_bits in "
+                         f"GET /config).")
+
+
 def check_measurements(qasm: str) -> None:
     """400 for a ``measure`` whose operands differ in size, or an operand naming an
     undeclared register or bit."""
@@ -167,10 +205,17 @@ def check_measurements(qasm: str) -> None:
 
 
 def count_gate_statements(qasm: str, statements: list = None) -> int:
-    """Top-level operation statements (gates, measure, reset, barrier, if); the header,
-    includes, register declarations and gate definitions are not counted."""
+    """Operation statements (gates, measure, reset, barrier, if), at top level and inside gate
+    bodies; a gate or opaque definition with no statement in its body counts as one. The
+    header, includes and register declarations are not counted."""
     statements = split_statements(qasm) if statements is None else statements
-    return sum(1 for stmt in statements if not _NON_OPERATION_RE.match(stmt))
+    total = 0
+    for stmt in statements:
+        if _DEFINITION_RE.match(stmt):
+            total += max(1, len(gate_body_statements(stmt)))
+        elif not _NON_OPERATION_RE.match(stmt):
+            total += 1
+    return total
 
 
 def check_gate_names(qasm: str, statements: list = None) -> None:
@@ -350,26 +395,28 @@ def validate_request(qasm: str, mode: str = "statevector", bypass_limits: bool =
     statements are counted by ``count_gate_statements``.
     """
     statements = None
-    if not (bypass_limits and settings.EXECUTION_MODE == "local"):
-        if len(qasm) > settings.MAX_QASM_SIZE:
-            raise HTTPException(
-                status_code=413,
-                detail=f"Payload too large: {len(qasm)} characters exceeds the limit of {settings.MAX_QASM_SIZE}.",
-            )
+    limited = not (bypass_limits and settings.EXECUTION_MODE == "local")
+    if limited and len(qasm) > settings.MAX_QASM_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Payload too large: {len(qasm)} characters exceeds the limit of {settings.MAX_QASM_SIZE}.",
+        )
+    if check_reserved_names:
+        check_block_comments(qasm)
+    if limited:
         statements = split_statements(qasm)
         n_gates = count_gate_statements(qasm, statements)
         if n_gates > settings.MAX_QASM_GATES:
             raise HTTPException(
                 status_code=400,
                 detail=(f"Circuit too complex: {n_gates} gate statements exceeds the limit of "
-                        f"{settings.MAX_QASM_GATES} (the header, includes, register declarations "
-                        f"and gate definitions are not counted)."),
+                        f"{settings.MAX_QASM_GATES} (statements inside gate definitions count; "
+                        f"the header, includes and register declarations do not)."),
             )
 
-    if check_reserved_names:
-        check_block_comments(qasm)
     check_ascii(qasm)
     check_qasm_syntax(qasm)
+    check_classical_bits(qasm)
     check_structure(qasm)
     if check_reserved_names:
         check_gate_names(qasm, statements)

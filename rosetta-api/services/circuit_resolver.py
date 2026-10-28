@@ -70,7 +70,7 @@ _MEASURE_RE = re.compile(r"\bmeasure\b")
 _BARRIER_RE = re.compile(r"\bbarrier\b")
 _PASSTHROUGH_OPS = {"OPENQASM", "include", "qreg", "creg", "gate", "opaque"}
 _IF_RE = re.compile(r"^\s*if\s*\(")
-_PYTKET_CNX_RE = re.compile(r"^(\s*(?:if\s*\([^)]*\)\s*)?)c4x(\s+)([^;]*);", re.MULTILINE)
+_PYTKET_CNX_RE = re.compile(r"^([^\S\n]*(?:if[^\S\n]*\([^)\n]*\)\s*)?)c4x([^\S\n]+)([^;\n]*);", re.MULTILINE)
 _CNX_NAMES = {2: "cx", 3: "ccx", 4: "c3x", 5: "c4x"}
 
 _USE_MEASURED_MODE = ("Statevector mode reports the pre-measurement state of a unitary "

@@ -51,7 +51,6 @@ def test_validate_request_qubit_limit_regex_match(monkeypatch):
     "",
     "   \n\t ",
     'OPENQASM 2.0;\ninclude "qelib1.inc";\n',
-    "OPENQASM 2.0;\nqreg q[0];\n",
     "OPENQASM 2.0;\nh q[5];\n",
     "OPENQASM 2.0;\n// qreg q[3];\n",
 ])

@@ -1,0 +1,1 @@
+OPENQASM 2.0;qreg q[3];creg meas[3];measure q[1]->meas[0];,q[1];

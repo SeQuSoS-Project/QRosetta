@@ -1,13 +1,14 @@
 """Shape checks for reports a client submits (export, history, publication rendering)."""
 
 import math
+import sys
 
 from fastapi import HTTPException
 
 from config import settings
 from schemas.benchmark import has_control_characters
 from services.export_compiled import compiler_keys
-from services.exporter import invalid_runner_keys
+from services.exporter import RUNNER_KEY_RE, invalid_runner_keys
 
 
 MAX_REPORT_DEPTH = 64
@@ -30,14 +31,21 @@ def _depth(value, limit=MAX_REPORT_DEPTH + 1) -> int:
     return deepest
 
 
+_LARGEST_FLOAT_INT = int(sys.float_info.max)
+
+
 def _non_finite_path(value):
-    """Location of the first NaN or infinite number in ``value`` (``"a.b[2]"``), else None.
-    JSON has no such numbers, but Python's parser reads ``NaN`` and ``Infinity``."""
+    """``(location, problem)`` of the first NaN or infinite number in ``value``, or of an
+    integer beyond the double-precision range, which no conversion to float survives
+    (``"a.b[2]"``), else None. JSON has no NaN or Infinity, but Python's parser reads them, and
+    it reads integers of any length."""
     stack = [(value, "")]
     while stack:
         node, path = stack.pop()
         if isinstance(node, float) and not math.isfinite(node):
-            return path or "(top level)"
+            return path or "(top level)", "is NaN or infinite"
+        if isinstance(node, int) and not isinstance(node, bool) and abs(node) > _LARGEST_FLOAT_INT:
+            return path or "(top level)", "is an integer beyond the double-precision range"
         if isinstance(node, dict):
             stack.extend((child, f"{path}.{key}" if path else str(key)) for key, child in node.items())
         elif isinstance(node, list):
@@ -46,6 +54,7 @@ def _non_finite_path(value):
 
 
 _PAIR_LISTS = ("pairwise_agreement", "divergences_found")
+_BACKEND_MAPS = ("simulators", "ordering_map")
 
 
 def report_caps() -> dict:
@@ -68,10 +77,18 @@ def _size_problems(reports: list) -> list:
             value = report.get(field)
             if isinstance(value, list) and len(value) > keys:
                 return [f"{field} holds {len(value)} entries; at most {keys} per circuit are accepted"]
+        for section in ("performance_report", "resource_report"):
+            rows = report.get(section).get("ranking") if isinstance(report.get(section), dict) else None
+            if isinstance(rows, (list, dict)) and len(rows) > keys:
+                return [f"{section}.ranking holds {len(rows)} entries; at most {keys} per circuit "
+                        f"are accepted"]
         divergence = report.get("divergence_report")
         if not isinstance(divergence, dict):
             continue
         for field, value in divergence.items():
+            if isinstance(value, dict) and field in _BACKEND_MAPS and len(value) > keys:
+                return [f"divergence_report.{field} holds more than {keys} entries; at most "
+                        f"{keys} backends and {pairs} pairs per circuit are accepted"]
             if not isinstance(value, list):
                 continue
             matrix = bool(value) and all(isinstance(row, list) for row in value)
@@ -87,6 +104,78 @@ def _size_problems(reports: list) -> list:
     return []
 
 
+MAX_RUNNER_KEY_LENGTH = 64
+
+
+def _backend_keys(report: dict):
+    """(field, value) for every place a report names a backend: raw_results, the divergence
+    report's simulators, pairs and ordering map, and the performance and resource rankings."""
+    raw = report.get("raw_results")
+    for r in raw if isinstance(raw, list) else []:
+        if isinstance(r, dict) and "simulator" in r:
+            yield "raw_results[].simulator", r["simulator"]
+    divergence = report.get("divergence_report")
+    if isinstance(divergence, dict):
+        sims = divergence.get("simulators")
+        if sims is not None and not isinstance(sims, list):
+            yield "divergence_report.simulators", sims
+        for sim in sims if isinstance(sims, list) else []:
+            yield "divergence_report.simulators", sim
+        if isinstance(divergence.get("ordering_map"), dict):
+            for sim in divergence["ordering_map"]:
+                yield "divergence_report.ordering_map", sim
+        pairs = divergence.get("pairwise_agreement")
+        for pair in pairs if isinstance(pairs, list) else []:
+            if isinstance(pair, dict) and isinstance(pair.get("simulators"), list):
+                for sim in pair["simulators"]:
+                    yield "divergence_report.pairwise_agreement[].simulators", sim
+    for section in ("performance_report", "resource_report"):
+        rows = report.get(section).get("ranking") if isinstance(report.get(section), dict) else None
+        for row in rows if isinstance(rows, list) else []:
+            if isinstance(row, dict) and "simulator" in row:
+                yield f"{section}.ranking[].simulator", row["simulator"]
+
+
+def _backend_key_problems(reports: list) -> list:
+    """A backend named by anything but a runner key of at most MAX_RUNNER_KEY_LENGTH
+    characters; figures draw these as axis labels."""
+    for report in reports:
+        for field, value in _backend_keys(report):
+            if (not isinstance(value, str) or len(value) > MAX_RUNNER_KEY_LENGTH
+                    or not RUNNER_KEY_RE.match(value)):
+                shown = repr(value)[:40]
+                return [f"{field} holds {shown}; backends are named by runner ids or "
+                        f"<id>~opt<L>~run<N> of at most {MAX_RUNNER_KEY_LENGTH} characters"]
+    return []
+
+
+MAX_CODE_LENGTH = 64
+_PAIR_CODES = ("agreement", "measured_assessment", "marginal_assessment", "registered_transform",
+               "pair_verdict", "mode")
+
+
+def _code_problems(reports: list) -> list:
+    """A pair's agreement label or verdict code, or a verdict-count key, longer than
+    MAX_CODE_LENGTH characters; figures draw these as axis labels."""
+    for report in reports:
+        divergence = report.get("divergence_report")
+        if not isinstance(divergence, dict):
+            continue
+        pairs = divergence.get("pairwise_agreement")
+        values = [(f"divergence_report.pairwise_agreement[].{field}", pair.get(field))
+                  for pair in (pairs if isinstance(pairs, list) else []) if isinstance(pair, dict)
+                  for field in _PAIR_CODES]
+        summary = divergence.get("statistical_test_summary")
+        counts = summary.get("verdict_counts") if isinstance(summary, dict) else None
+        values += [("divergence_report.statistical_test_summary.verdict_counts", key)
+                   for key in (counts if isinstance(counts, dict) else {})]
+        for field, value in values:
+            if isinstance(value, str) and len(value) > MAX_CODE_LENGTH:
+                return [f"{field} holds a label of {len(value)} characters; labels and codes "
+                        f"have at most {MAX_CODE_LENGTH}"]
+    return []
+
+
 def report_problems(results) -> list:
     """Reasons a client-supplied report cannot be used; [] when it is usable."""
     if not isinstance(results, dict):
@@ -98,7 +187,7 @@ def report_problems(results) -> list:
         if not isinstance(summary, list) or not all(isinstance(t, dict) for t in summary):
             return ["benchmark_summary must be a list of task reports"]
         reports = summary
-    size = _size_problems(reports)
+    size = _size_problems(reports) or _backend_key_problems(reports) or _code_problems(reports)
     if size:
         return size
     for report in reports:
@@ -123,9 +212,9 @@ def report_problems(results) -> list:
     if depth > MAX_REPORT_DEPTH:
         problems.append(f"the report nests {depth} levels deep; at most {MAX_REPORT_DEPTH} are accepted")
     else:
-        where = _non_finite_path(results)
-        if where is not None:
-            problems.append(f"{where} is NaN or infinite; a report holds finite numbers or null")
+        found = _non_finite_path(results)
+        if found is not None:
+            problems.append(f"{found[0]} {found[1]}; a report holds finite numbers or null")
     for report in reports:
         keys = compiler_keys(report) if isinstance(report, dict) else []
         if "" in keys:

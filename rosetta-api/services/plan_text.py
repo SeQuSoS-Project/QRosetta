@@ -14,7 +14,6 @@ UNDEFINED = object()
 _WS = "\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
 _WS_SET = frozenset("\t\n\v\f\r \u00a0\u1680\u2028\u2029\u202f\u205f\u3000\ufeff"
                     + "".join(chr(c) for c in range(0x2000, 0x200B)))
-_QUBIT_SUFFIX = re.compile(rf"(?:[{_WS}]*\([0-9]+q\))+[{_WS}]*\Z")
 
 
 def js_trim(text: str) -> str:
@@ -127,10 +126,31 @@ def printable_label(value, max_length: int) -> str:
     return clean if len(clean) <= max_length else js_trim(clean[:max_length])
 
 
+def _without_qubit_suffix(text: str) -> str:
+    """``text`` without its trailing run of '(<digits>q)' groups and the whitespace before,
+    between and after them (the JavaScript regex /(\\s*\\(\\d+q\\))+\\s*$/), read from the
+    end in one pass."""
+    end = len(text)
+    while end and text[end - 1] in _WS_SET:
+        end -= 1
+    cut = None
+    while end >= 4 and text[end - 1] == ")" and text[end - 2] == "q":
+        k = end - 3
+        while k >= 0 and "0" <= text[k] <= "9":
+            k -= 1
+        if k == end - 3 or k < 0 or text[k] != "(":
+            break
+        end = k
+        while end and text[end - 1] in _WS_SET:
+            end -= 1
+        cut = end
+    return text if cut is None else text[:cut]
+
+
 def bare_circuit_name(value) -> str:
     """run_plan.js bareCircuitName: the name without a trailing ' (4q)'."""
     text = "" if value is UNDEFINED or value is None else js_string(value)
-    return js_trim(_QUBIT_SUFFIX.sub("", text, count=1))
+    return js_trim(_without_qubit_suffix(text))
 
 
 _SURROGATE = re.compile("[\ud800-\udfff]")

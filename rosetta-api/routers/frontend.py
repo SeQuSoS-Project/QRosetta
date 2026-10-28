@@ -145,8 +145,9 @@ async def get_config():
     ``limits`` holds the bounds the run endpoints validate against: qubit caps per mode,
     ``timeout_min``/``timeout_max`` (seconds; larger requests are clamped to
     ``timeout_max``), ``timeout_default`` (every run endpoint), ``shots_min``/``shots_max``,
-    ``timing_repeats_max``, ``max_qasm_gate_statements`` (top-level operation statements;
-    the header, includes, register declarations and gate definitions are not counted),
+    ``timing_repeats_max``, ``max_qasm_gate_statements`` (operation statements at top level
+    and inside gate definitions; the header, includes and register declarations are not
+    counted), ``max_classical_bits`` (classical bits over all creg declarations),
     ``max_request_bytes`` (every POST/PUT/PATCH body, the JSON as sent; 413 above it),
     ``max_plan_request_bytes`` (the larger body limit of POST /plan, so a plan can report a
     request over max_request_bytes), ``plan_rate_limit`` (requests per client to
@@ -223,6 +224,7 @@ async def get_config():
             "max_qasm_gate_statements": settings.MAX_QASM_GATES,
             "max_expanded_gates": settings.MAX_EXPANDED_GATES,
             "max_nested_gate_calls": settings.MAX_NESTED_GATE_CALLS,
+            "max_classical_bits": settings.MAX_CLASSICAL_BITS,
             "shots_min": settings.MIN_SHOTS,
             "shots_max": settings.MAX_SHOTS,
             "shots_default": settings.DEFAULT_SHOTS,

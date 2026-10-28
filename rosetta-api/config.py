@@ -88,6 +88,7 @@ class Settings(BaseSettings):
     MAX_QUBITS_COMPILE: int = 24
     MAX_QASM_SIZE: int = 1_000_000
     MAX_QASM_GATES: int = 10_000
+    MAX_CLASSICAL_BITS: int = 1024
     MAX_UPLOAD_BYTES: int = 1_048_576
     MAX_PLAN_REQUEST_BYTES: int = 4 * 1_048_576
 
