@@ -774,6 +774,7 @@ The target for a runner or compiler image is the newest CPython (3.13 first, els
 | Image | Python | Corpus | Self-test | Lock moves | Trivy CRITICAL/HIGH | Size MB |
 |---|---|---|---|---|---|---|
 | PyZX (`pyzx-compiler`) | 3.10.20 → 3.13.18 | 326 cases (300 random at levels 1–2, 8 deep, 18 self-test), all identical; every case compiled | identical, 10 of 10 pass | exceptiongroup dropped; setuptools 84.2.1 added in `requirements.txt` for the offline install of `shared/` | 6/75 → 0/8 (remaining: starlette 0.38.6, urllib3 2.7.0, and msgpack 1.1.2 and setuptools 70.3.0 found in vendored copies, not in the lock) | 510 → 532 |
+| Cirq (`cirq-compiler`, id `cirq-transformers`) | 3.11.15 → 3.13.18 | 326 cases (300 random at levels 0–1, 8 deep, 18 self-test), all identical: 224 compiled, 102 identical refusals of a `cu3` angle (see Cirq compiler) | identical, 10 of 10 pass | setuptools 84.2.1 added in `requirements.txt` for the offline install of `shared/` | 11/98 → 5/31 (remaining: pillow 12.3.0, starlette 0.38.6, urllib3 2.7.0, and msgpack 1.1.2 and setuptools 70.3.0 found in vendored copies, not in the lock) | 768 → 743 |
 
 ### Lint findings in the measured images
 
