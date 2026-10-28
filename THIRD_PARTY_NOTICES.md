@@ -55,8 +55,8 @@ The same command writes the notice of a locally built image: `python3
 scripts/release/image_notice.py --image IMAGE --engine podman --dockerfile PATH`.
 
 The images that compile programs from source (staq, Quartz and Synthetiq) do so in a build stage;
-their final images carry no compiler, linker or `make`. The qrisp, quimb and torchquantum runners,
-listed under `build-essential` below, are the only published images that keep a compiler toolchain.
+their final images carry no compiler, linker or `make`. The qrisp and quimb runners, listed under
+`build-essential` below, are the only published images that keep a compiler toolchain.
 
 ### Components under the GPL or the LGPL
 
@@ -66,7 +66,7 @@ where the corresponding source is published; the written offer below covers all 
 | Component | Licence | Images | Source |
 |---|---|---|---|
 | Debian 13 (trixie) base system of `python:3.10-slim` and `python:3.11-slim` (glibc, bash, coreutils, dpkg, tar and others) | GPL-2.0, GPL-3.0, LGPL-2.1 and others, per package | every image except nginx | Debian source packages of the versions in the image's SBOM, at <https://snapshot.debian.org/>; the base image digests are in each Dockerfile |
-| `build-essential` (GCC 14, binutils, make) and the packages it installs with it (dpkg-dev, perl, patch, fakeroot, the C library and Linux kernel headers), installed and kept in the image | GCC, binutils, make, patch: GPL-3.0-or-later; GCC's runtime libraries GPL-3.0-or-later with the GCC Runtime Library Exception 3.1; perl: GPL-1.0-or-later or Artistic-1.0; Linux headers: GPL-2.0 with the Linux syscall note | qrisp, quimb and torchquantum runners | Debian source packages, as above |
+| `build-essential` (GCC 14, binutils, make) and the packages it installs with it (dpkg-dev, perl, patch, fakeroot, the C library and Linux kernel headers), installed and kept in the image | GCC, binutils, make, patch: GPL-3.0-or-later; GCC's runtime libraries GPL-3.0-or-later with the GCC Runtime Library Exception 3.1; perl: GPL-1.0-or-later or Artistic-1.0; Linux headers: GPL-2.0 with the Linux syscall note | qrisp and quimb runners | Debian source packages, as above |
 | Alpine base system of `nginx:alpine` (BusyBox and others) | BusyBox GPL-2.0-only; others per package | nginx | <https://gitlab.alpinelinux.org/alpine/aports> at the Alpine release in the image's SBOM |
 | NLopt 2.7.1, statically linked into `bqskitrs` 0.4.1 (`bqskitrs/bqskitrs.abi3.so`) | LGPL-2.1-or-later | bqskit compiler | <https://github.com/stevengj/nlopt/archive/refs/tags/v2.7.1.tar.gz>; bqskitrs itself (BSD-3-Clause; see below) at <https://github.com/BQSKit/bqskitrs> |
 | libquadmath (from GCC), bundled in the Linux wheels of numpy, scipy, qiskit-aer and bqskitrs (`*.libs/libquadmath-*.so.0`) | LGPL-2.1-or-later | every image except nginx | GCC source at <https://gcc.gnu.org/>, release named in the library's `.comment` section (GCC 10.2.1, Red Hat devtoolset-10, for bqskitrs) |

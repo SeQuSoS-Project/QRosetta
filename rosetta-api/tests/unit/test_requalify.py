@@ -17,6 +17,7 @@ sys.path.insert(0, str(REPO / "scripts" / "requalify"))
 import candidate  # noqa: E402
 import compare  # noqa: E402
 import corpus  # noqa: E402
+import driver  # noqa: E402
 import registry  # noqa: E402
 import report  # noqa: E402
 import timing  # noqa: E402
@@ -108,9 +109,23 @@ def test_rewrite_keeps_every_other_line_and_names_what_it_left(tmp_path):
     ("x-1-cp312-cp312-manylinux_2_42_x86_64.whl", (3, 12), False),
     ("x-1-cp312-cp312-manylinux_2_28_aarch64.whl", (3, 12), False),
     ("x-1-cp312-cp312-win_amd64.whl", (3, 12), False),
+    ("torch-2.2.2+cpu-cp312-cp312-linux_x86_64.whl", (3, 12), True),
+    ("torch-2.2.2+cpu-cp312-cp312-linux_aarch64.whl", (3, 12), False),
 ])
 def test_wheel_fits(filename, py, fits):
     assert candidate.wheel_fits(filename, py, glibc=(2, 41)) is fits
+
+
+def test_local_version_pins_are_looked_up_in_the_extra_index(tmp_path):
+    lock = "--extra-index-url https://download.pytorch.org/whl/cpu\n\ntorch==2.2.2+cpu \\\n    --hash=sha256:0\n"
+    assert candidate.extra_indexes(lock) == ["https://download.pytorch.org/whl/cpu"]
+    pypi = candidate.PyPI(tmp_path, candidate.extra_indexes(lock))
+    page = tmp_path / "simple__https_download_pytorch_org_whl_cpu__torch.html"
+    page.write_text('<a href="/whl/cpu/torch-2.2.2%2Bcpu-cp312-cp312-linux_x86_64.whl#sha256=0">x</a>\n'
+                    '<a href="/whl/cpu/torch-2.2.2+cpu-cp312-cp312-linux_x86_64.whl#sha256=0">x</a>\n'
+                    '<a href="/whl/cpu/torch-2.2.20+cpu-cp313-cp313-linux_x86_64.whl#sha256=0">x</a>\n'
+                    '<a href="/whl/cpu/torch-2.3.0+cpu-cp313-cp313-linux_x86_64.whl#sha256=0">x</a>\n')
+    assert pypi.files("torch", "2.2.2+cpu") == ["torch-2.2.2+cpu-cp312-cp312-linux_x86_64.whl"]
 
 
 def test_parse_lock_reads_hashed_and_plain_locks():
@@ -241,3 +256,24 @@ def test_timing_summary_uses_accepted_rounds_only():
     assert summary["old"]["total_ms"] == 22.0 and summary["old"]["errors"] == 1 and summary["old"]["samples"] == 2
     assert summary["new"]["total_ms"] == 33.0 and summary["new"]["cpus"] == [4]
     assert summary["new"]["distinct_outputs"] == 1
+
+
+def test_import_check_names_the_module_that_fails(tmp_path, monkeypatch):
+    app = tmp_path / "app"
+    app.mkdir()
+    (app / "main.py").write_text("import pkg_resources_gone_for_the_test\n")
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    monkeypatch.delitem(sys.modules, "main", raising=False)
+    assert "pytest" in driver.sdk_modules(["PyTest"])
+    result = driver.import_check(["pytest"], app)
+    assert result["pytest"] is None
+    assert "ModuleNotFoundError: No module named 'pkg_resources_gone_for_the_test'" in result["main"]
+    monkeypatch.delitem(sys.modules, "main", raising=False)
+
+
+def test_import_regressions_are_the_imports_only_the_new_image_fails():
+    old = {"main": None, "qrisp": None, "broken_everywhere": "ImportError: x"}
+    assert compare.import_regressions(old, dict(old)) == {}
+    assert compare.import_regressions(old, {**old, "main": "ModuleNotFoundError: pkg_resources"}) == {
+        "main": "ModuleNotFoundError: pkg_resources"}
+    assert compare.import_regressions(old, {"main": None}) == {"qrisp": "not attempted in the new image"}

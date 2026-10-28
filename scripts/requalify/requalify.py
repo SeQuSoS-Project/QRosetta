@@ -90,8 +90,10 @@ def prepare(svc, service_id, new_base, cand_dir, relax, work, state):
     track_pull(new_base, state)
     new_python, glibc = base_facts(new_base)
     sdk = {cand.normalise(n) for n in registry.sdk_packages((service_dir / "main.py").read_text())}
-    pins = cand.parse_lock((service_dir / "requirements.lock").read_text())
-    rows = cand.wheel_check(pins, old_python, new_python, sdk, cand.PyPI(work / "pypi-cache"), glibc)
+    lock_text = (service_dir / "requirements.lock").read_text()
+    pins = cand.parse_lock(lock_text)
+    pypi = cand.PyPI(work / "pypi-cache", cand.extra_indexes(lock_text))
+    rows = cand.wheel_check(pins, old_python, new_python, sdk, pypi, glibc)
     record = {"service": service_id, "old_bases": old_bases, "new_base": new_base, "old_python": old_python,
               "new_python": new_python, "glibc": glibc, "sdk_packages": sorted(sdk), "wheel_check": rows,
               "stop": [], "replaced": {}, "relaxed": list(relax), "manual": []}
@@ -161,6 +163,34 @@ def build_images(svc, service_id, cand_dir, work, state):
                         "dockerfile": (ctx / svc["dir"] / "Dockerfile").read_text()}
         shutil.rmtree(ctx)
     return built
+
+
+def check_imports(svc, images, work):
+    """Import ``main`` and the SDK's top-level modules in both images; stop when the new image
+    fails an import the old one passes."""
+    in_dir = work / "imports-in"
+    if in_dir.exists():
+        shutil.rmtree(in_dir)
+    in_dir.mkdir(parents=True)
+    shutil.copy2(Path(__file__).with_name("driver.py"), in_dir / "driver.py")
+    sdk = registry.sdk_packages((REPO / svc["dir"] / "main.py").read_text())
+    (in_dir / "sdk.json").write_text(json.dumps(sdk))
+    memory = "1g" if svc["kind"] == "runner" else "2g"
+    results = {}
+    for label in ("old", "new"):
+        out = work / f"imports-{label}"
+        code, _ = engine.run_in_container(
+            images[label]["tag"], ["python", "/home/appuser/requal-in/driver.py", "imports", svc["kind"],
+                                   "/home/appuser/requal-in", "/home/appuser/requal-out"],
+            in_dir, out, work / f"imports-{label}.log", memory, timeout=1800)
+        if code != 0 or not (out / "imports.json").exists():
+            raise SystemExit(f"import check in the {label} image failed; log: {work / f'imports-{label}.log'}")
+        results[label] = json.loads((out / "imports.json").read_text())
+    regressions = compare.import_regressions(results["old"], results["new"])
+    if regressions:
+        text = "\n".join(f"--- {name}\n{error}" for name, error in sorted(regressions.items()))
+        raise SystemExit(f"the new image fails imports the old one passes:\n{text}")
+    return results
 
 
 def run_corpus(svc, images, cases, work):
@@ -260,6 +290,7 @@ def main(argv=None):
             return 0
         images = build_images(svc, args.service, cand_dir, work, state)
         evidence["images"] = {k: {kk: vv for kk, vv in v.items()} for k, v in images.items()}
+        evidence["imports"] = check_imports(svc, images, work)
         if not args.skip_corpus:
             cases = corpus.build(svc["kind"], svc["levels"], args.sv, args.measured, args.deep,
                                  args.single_register, args.max_gates)

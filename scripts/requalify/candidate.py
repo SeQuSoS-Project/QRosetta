@@ -6,6 +6,7 @@ list of pins that moved. Stdlib only."""
 import json
 import re
 import subprocess
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -108,6 +109,8 @@ def wheel_fits(filename, python, glibc=(2, 41), machine="x86_64"):
     for plat in plat_tags:
         if plat == "any":
             plat_ok = True
+        if plat == f"linux_{machine}":
+            plat_ok = True
         match = re.match(rf"manylinux_(\d+)_(\d+)_{machine}$", plat)
         if match and (int(match.group(1)), int(match.group(2))) <= glibc:
             plat_ok = True
@@ -128,12 +131,29 @@ def wheel_fits(filename, python, glibc=(2, 41), machine="x86_64"):
     return False
 
 
-class PyPI:
-    """PyPI JSON API with an on-disk cache."""
+def extra_indexes(lock_text):
+    """The ``--extra-index-url`` addresses a lock or requirements file names."""
+    return re.findall(r"^--extra-index-url[ =](\S+)", lock_text, re.M)
 
-    def __init__(self, cache_dir):
+
+class PyPI:
+    """PyPI JSON API with an on-disk cache. A pin with a local version (``torch==2.2.2+cpu``) is
+    looked up in the simple index of each extra index URL, where such builds are published."""
+
+    def __init__(self, cache_dir, extra_indexes=()):
         self.cache = Path(cache_dir)
         self.cache.mkdir(parents=True, exist_ok=True)
+        self.extra_indexes = list(extra_indexes)
+
+    def _simple(self, index, name):
+        cached = self.cache / ("simple__" + re.sub(r"\W+", "_", index) + "__" + name + ".html")
+        if not cached.exists():
+            if not index.startswith("https://"):
+                raise SystemExit(f"extra index is not https: {index}")
+            with urllib.request.urlopen(f"{index.rstrip('/')}/{name}/", timeout=60) as response:  # noqa: S310
+                cached.write_bytes(response.read())
+        links = re.findall(r'href="(?:[^"#]*/)?([^"/#]+\.(?:whl|tar\.gz|zip))', cached.read_text())
+        return [urllib.parse.unquote(f) for f in links]
 
     def _get(self, path):
         cached = self.cache / (path.strip("/").replace("/", "__") + ".json")
@@ -145,6 +165,10 @@ class PyPI:
         return data
 
     def files(self, name, version):
+        if "+" in version:
+            prefix = f"{normalise(name).replace('-', '_')}-{version}-".lower()
+            return sorted({f for index in self.extra_indexes for f in self._simple(index, name)
+                           if f.lower().startswith(prefix)})
         return [u["filename"] for u in self._get(f"{name}/{version}")["urls"]]
 
     def releases(self, name):

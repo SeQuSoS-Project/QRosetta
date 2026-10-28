@@ -9,19 +9,25 @@ python driver.py corpus <runner|compiler> <in-dir> <out-dir>
     in a process each) and environment.json (Python, installed distributions).
 python driver.py timing <runner> <in-dir> <out-dir>
     Each <in-dir>/timing/*.json payload through ``main.py --endpoint`` in a process each.
+python driver.py imports <runner|compiler> <in-dir> <out-dir>
+    Imports ``main`` and every top-level module of the SDK distributions in <in-dir>/sdk.json;
+    writes imports.json ({module: null, or the end of the traceback}).
 """
 
 import base64
 import hashlib
+import importlib
 import importlib.metadata
 import json
 import logging
 import os
 import platform
+import re
 import signal
 import subprocess
 import sys
 import time
+import traceback
 from pathlib import Path
 
 APP = Path.cwd()
@@ -71,6 +77,36 @@ def _environment():
                    key=lambda x: x[0].lower())
     return {"python": platform.python_version(), "implementation": platform.python_implementation(),
             "libc": platform.libc_ver(), "distributions": [f"{n}=={v}" for n, v in dists]}
+
+
+def _normalise(name):
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def sdk_modules(distributions):
+    """Top-level import names of ``distributions`` (private names left out), sorted."""
+    wanted = {_normalise(d) for d in distributions}
+    found = set()
+    for module, dists in importlib.metadata.packages_distributions().items():
+        if not module.startswith("_") and wanted & {_normalise(d) for d in dists}:
+            found.add(module)
+    return sorted(found)
+
+
+def import_check(distributions, app):
+    """{module: None if it imports, else the last lines of its traceback} for ``main`` (from
+    ``app``) and the top-level modules of ``distributions``."""
+    logging.disable(logging.CRITICAL)
+    if str(app) not in sys.path:
+        sys.path.insert(0, str(app))
+    results = {}
+    for name in ["main", *sdk_modules(distributions)]:
+        try:
+            importlib.import_module(name)
+            results[name] = None
+        except BaseException:
+            results[name] = "".join(traceback.format_exc().splitlines(keepends=True)[-12:])
+    return results
 
 
 def corpus(kind, in_dir, out_dir):
@@ -139,5 +175,8 @@ if __name__ == "__main__":
     out_dir.mkdir(parents=True, exist_ok=True)
     if mode == "corpus":
         corpus(kind_or_runner, in_dir, out_dir)
+    elif mode == "imports":
+        sdk = json.loads((in_dir / "sdk.json").read_text())
+        (out_dir / "imports.json").write_text(json.dumps(import_check(sdk, APP), indent=1))
     else:
         timing(in_dir, out_dir)

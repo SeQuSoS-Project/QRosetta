@@ -24,11 +24,14 @@ TABLE = eol.load_table()
 _B3 = "base image and lock not yet requalified (Wave B3)"
 _NGINX = "Alpine: no repository pinning rule yet (Wave B4, nginx)"
 REQUALIFIED = {
+    "runners/pennylane-lightning-runner/Dockerfile",
+    "runners/pyquil-runner/Dockerfile",
     "runners/pytket-qiskit-runner/Dockerfile",
     "runners/pytket-quest-runner/Dockerfile",
     "runners/pytket-qulacs-runner/Dockerfile",
     "runners/qibo-runner/Dockerfile",
     "runners/qsim-cirq-runner/Dockerfile",
+    "runners/torch-quantum-runner/Dockerfile",
 }
 EXPECTED_FAIL = {
     **{p.relative_to(REPO).as_posix(): _B3

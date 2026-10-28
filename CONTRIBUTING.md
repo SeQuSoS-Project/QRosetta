@@ -308,8 +308,9 @@ compiler image on a new base. It writes a candidate (Dockerfile with the new bas
 and `--require-hashes`; a wheel check of every pin against the new Python on PyPI; the lock from
 `compile_lock.sh`) to `$HOME/.tmp/requal/<service>/candidate`, stops with exit status 3 when an SDK
 package has no build for the new Python, then builds the image as it is and with the candidate
-(`localhost/qr-requal-<service>:old|new`), runs the fixed-seed corpus and `--self-test` in both
-without network, times runners on one pinned CPU, and writes the evidence file (`--report`). Edit
+(`localhost/qr-requal-<service>:old|new`), stops when the new image fails to import `main` or a
+top-level module of the SDK that the old image imports, runs the fixed-seed corpus and
+`--self-test` in both without network, times runners on one pinned CPU, and writes the evidence file (`--report`). Edit
 the candidate and rerun with `--candidate <dir>`; `--relax <package>` drops a pin from the lock's
 constraints; `--scan` adds a Trivy count of both images. When the outputs are identical, copy the
 candidate's three files into the service directory and remove the image from the strict expected
