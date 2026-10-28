@@ -16,7 +16,6 @@ compilers/quartz-compiler/Dockerfile DL4006 2
 compilers/quartz-compiler/Dockerfile SC2046 1
 compilers/staq-compiler/Dockerfile DL3003 1
 compilers/staq-compiler/Dockerfile DL3008 1
-compilers/staq-compiler/Dockerfile DL3042 1
 compilers/staq-compiler/Dockerfile DL3066 1
 compilers/staq-compiler/Dockerfile DL4006 1
 compilers/synthetiq-compiler/Dockerfile DL3003 1
