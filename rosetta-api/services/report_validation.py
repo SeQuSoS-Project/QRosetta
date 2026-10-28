@@ -1,6 +1,7 @@
 """Shape checks for reports a client submits (export, history, publication rendering)."""
 
 import math
+import sys
 
 from fastapi import HTTPException
 
@@ -30,14 +31,21 @@ def _depth(value, limit=MAX_REPORT_DEPTH + 1) -> int:
     return deepest
 
 
+_LARGEST_FLOAT_INT = int(sys.float_info.max)
+
+
 def _non_finite_path(value):
-    """Location of the first NaN or infinite number in ``value`` (``"a.b[2]"``), else None.
-    JSON has no such numbers, but Python's parser reads ``NaN`` and ``Infinity``."""
+    """``(location, problem)`` of the first NaN or infinite number in ``value``, or of an
+    integer beyond the double-precision range, which no conversion to float survives
+    (``"a.b[2]"``), else None. JSON has no NaN or Infinity, but Python's parser reads them, and
+    it reads integers of any length."""
     stack = [(value, "")]
     while stack:
         node, path = stack.pop()
         if isinstance(node, float) and not math.isfinite(node):
-            return path or "(top level)"
+            return path or "(top level)", "is NaN or infinite"
+        if isinstance(node, int) and not isinstance(node, bool) and abs(node) > _LARGEST_FLOAT_INT:
+            return path or "(top level)", "is an integer beyond the double-precision range"
         if isinstance(node, dict):
             stack.extend((child, f"{path}.{key}" if path else str(key)) for key, child in node.items())
         elif isinstance(node, list):
@@ -46,6 +54,7 @@ def _non_finite_path(value):
 
 
 _PAIR_LISTS = ("pairwise_agreement", "divergences_found")
+_BACKEND_MAPS = ("simulators", "ordering_map")
 
 
 def report_caps() -> dict:
@@ -68,10 +77,18 @@ def _size_problems(reports: list) -> list:
             value = report.get(field)
             if isinstance(value, list) and len(value) > keys:
                 return [f"{field} holds {len(value)} entries; at most {keys} per circuit are accepted"]
+        for section in ("performance_report", "resource_report"):
+            rows = report.get(section).get("ranking") if isinstance(report.get(section), dict) else None
+            if isinstance(rows, (list, dict)) and len(rows) > keys:
+                return [f"{section}.ranking holds {len(rows)} entries; at most {keys} per circuit "
+                        f"are accepted"]
         divergence = report.get("divergence_report")
         if not isinstance(divergence, dict):
             continue
         for field, value in divergence.items():
+            if isinstance(value, dict) and field in _BACKEND_MAPS and len(value) > keys:
+                return [f"divergence_report.{field} holds more than {keys} entries; at most "
+                        f"{keys} backends and {pairs} pairs per circuit are accepted"]
             if not isinstance(value, list):
                 continue
             matrix = bool(value) and all(isinstance(row, list) for row in value)
@@ -123,9 +140,9 @@ def report_problems(results) -> list:
     if depth > MAX_REPORT_DEPTH:
         problems.append(f"the report nests {depth} levels deep; at most {MAX_REPORT_DEPTH} are accepted")
     else:
-        where = _non_finite_path(results)
-        if where is not None:
-            problems.append(f"{where} is NaN or infinite; a report holds finite numbers or null")
+        found = _non_finite_path(results)
+        if found is not None:
+            problems.append(f"{found[0]} {found[1]}; a report holds finite numbers or null")
     for report in reports:
         keys = compiler_keys(report) if isinstance(report, dict) else []
         if "" in keys:

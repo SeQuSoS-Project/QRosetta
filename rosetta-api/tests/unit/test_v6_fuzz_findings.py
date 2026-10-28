@@ -205,3 +205,29 @@ def test_v6_09_tket_note_is_unchanged_on_the_bundled_circuits(monkeypatch):
         r"gate\s+([A-Za-z_]\w*)\s*(?:\(([^)]*)\))?[^{]*\{([^}]*)\}"))
     assert [qe.tket_rounded_parameters(t) for t in texts] == new
     assert len(texts) > 330
+
+
+def _cnx_texts():
+    import random
+    rng = random.Random(3)
+    pieces = ["c4x q[0],q[1],q[2],q[3],q[4];", "c4x q[0],q[1];", "c4x q[0], q[1], q[2];",
+              "if(c==1) c4x q[0],q[1],q[2],q[3];", "  c4x  q[1],q[0],q[2];", "h q[0];",
+              "\n", "\n\n   ", "x q[1];", "if (c==2)\n  c4x q[0],q[1];", "\t"]
+    texts = [HEAD + "qreg q[5];\ncreg c[2];\n" + "".join(rng.choice(pieces) for _ in range(30))
+             for _ in range(300)]
+    return texts + _bundled_and_templates()
+
+
+def test_v6_12_cnx_renaming_is_unchanged_and_linear(monkeypatch):
+    import re
+
+    from services import circuit_resolver as cr
+    texts = _cnx_texts()
+    new = [cr._name_cnx_by_size(t) for t in texts]
+    monkeypatch.setattr(cr, "_PYTKET_CNX_RE", re.compile(
+        r"^(\s*(?:if\s*\([^)]*\)\s*)?)c4x(\s+)([^;]*);", re.MULTILINE))
+    assert [cr._name_cnx_by_size(t) for t in texts] == new
+    monkeypatch.undo()
+    start = time.perf_counter()
+    cr._name_cnx_by_size("\n" * MB + "c4x q[0],q[1];")
+    assert time.perf_counter() - start < 0.5
