@@ -155,6 +155,12 @@ Units are MiB (1024²) throughout, although field names say `_mb`.
 
 *Evidence.* "Sequential" ran the two groups in parallel; response transfer counted as overlap.
 
+### Host-load notice expiry
+
+*Rule.* A host-load notice (`services/host_load.py`) expires `NOTICE_TTL_SEC` (30 s) after its last heartbeat measured on the monotonic clock; its start, end and expiry time, like every run interval in the registry, are wall-clock times. A step of the wall clock (NTP, a resumed laptop or VM) does not end an open notice.
+
+*Evidence (2026-10-28, V7-07).* Expiry compared wall-clock times, so a forward step of the wall clock ended every open notice at once: with the clock moved 1 h forward and no time passed, `expire_due` ended a `build` notice that had just begun. The CLI's next heartbeat then got 404 and stopped, and runs during the rest of the build were not counted in `server_overlapping_host_load` (`test_v7_clock_skew.py::test_v7_07_a_wall_clock_step_does_not_end_a_host_load_notice`).
+
 ### Kubernetes job slots
 
 *Rule.* In Kubernetes mode (CSC Rahti) at most `K8S_MAX_CONCURRENT_JOBS` (`QROSETTA_K8S_MAX_CONCURRENT_JOBS`, 3 on Rahti) runner/compiler Jobs exist at a time across the API process (`dispatcher_k8s.JOB_SLOTS` in [`rosetta-api/services/dispatcher_k8s.py`](rosetta-api/services/dispatcher_k8s.py)); a Job is created only when a slot is free, so its deadline starts then. The wait is `queue_wait_sec`, capped at `RUNNER_QUEUE_MAX_WAIT_SEC`; reports record `k8s_job_slots`. A run that never gets a slot, or whose pod the quota refuses until its timeout (read from the Job's FailedCreate events), is `timeout` + `never_started`, not `offline`. The setting is read only from `QROSETTA_K8S_MAX_CONCURRENT_JOBS`; a bare `K8S_MAX_CONCURRENT_JOBS` is ignored.
@@ -913,9 +919,15 @@ The target for a runner or compiler image is the newest CPython (3.13 first, els
 
 ### CLI retries
 
-*Rule.* The CLI repeats a request that starts no work on the server (GET, and POST to the export, summary, publication and plan routes) when it gets no answer, the transfer breaks off, or the server answers 502, 503, 504 or 429 with Retry-After of at most 30 s: up to three more times, after 1, 2 and 4 s; a download starts again from the beginning. A run (POST /compare, /compare_measured, /run_batch_suite, /experiments) is never sent twice. A download shorter than its Content-Length is a broken transfer. Waiting for a job allows up to five failed polls in a row. Downloads give the server 330 s per socket operation (nginx's own read timeout), since a crate is built before its first byte.
+*Rule.* The CLI repeats a request that starts no work on the server (GET, and POST to the export, summary, publication and plan routes) when it gets no answer, the transfer breaks off, or the server answers 502, 503, 504 or 429 with Retry-After of at most 30 s: up to three more times, after 1, 2 and 4 s; a download starts again from the beginning. A run (POST /compare, /compare_measured, /run_batch_suite, /experiments) is never sent twice. A download shorter than its Content-Length is a broken transfer. Waiting for a job rides out failed polls as in "Waiting through an API restart". Downloads give the server 330 s per socket operation (nginx's own read timeout), since a crate is built before its first byte.
 
 *Evidence (2026-10-28).* `http.client.IncompleteRead` was not caught, so a dropped download ended `qrosetta run` as an internal error with no STATUS; `read(amt)` returned a short body without an error, so a cut-off download could be saved as complete; polls and downloads had no retry and a crate had 30 s to send its first byte (`test_v1_08_cli_transfer_retries.py`).
+
+### Waiting through an API restart
+
+*Rule.* The page and the CLI keep polling a job while the server gives no answer: a refused connection, or 502, 503 or 504 from the proxy (the page also retries any other error status). The next poll comes after 3, 6, 12, 24, then every 30 s, for up to 5 minutes from the first failed poll; the page shows that it is waiting for the server. A 404 for the job ends the wait: on the page as a terminal error that, after failed polls, says the restart lost the job; in the CLI as exit 14 `job_lost`, with STATUS `job-lost` in the job's directory (so `wait --all` does not wait for it again), the planned jobs not submitted, and `qrosetta run --request <plan.json>` as the hint. After 5 minutes without an answer the page stops waiting and keeps the job in its list of earlier runs, and the CLI exits 11 with `qrosetta wait job:<id>` as the hint. nginx answers a 502 or 504 it generates itself (the API cannot be reached, or did not answer in 330 s) with a JSON `detail`; a 502 or 504 the API sends passes through. Neither client shows an HTML error page as source: the page and the CLI name it as a proxy's error page.
+
+*Evidence (2026-10-28, V7).* An API restart loses every job in memory, and while it restarts nginx answers with its HTML 502 page. The page stopped polling after 19.5 s with "Failed to fetch job status: 502", before the API was back, and a submit printed the HTML source. The CLI gave up after five failed polls (about a minute with its own retries), printed the HTML source, and on the restarted server's 404 exited 14 with no STATUS, so `wait --all` kept offering a job that no longer existed (`test_v7_api_restart.py`, `test_v7_cli_lost_job.py`). In `test_v7_live_restart.py` the API process, killed while `qrosetta run` waited and started again under uvicorn, answered `/health` 3.7 s later (2.8 s on its first start); a container recreate adds the engine's own start time. Five minutes covers that with room to spare, at the cost of one poll every 30 s.
 
 ### API compatibility for older CLIs
 

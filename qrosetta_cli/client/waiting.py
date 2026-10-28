@@ -1,7 +1,8 @@
 """Following a job (spec §6.18 progress, Q7): polling GET /jobs/{id} (first after 1.5 s, then
-every 3 s), one stderr line whenever the live statuses change, labelled through /config
-status_labels; SIGINT, SIGTERM and SIGHUP stop the waiting and leave the job running; a SIGINT
-during a submit request waits for the answer, up to 10 s, so the job id is not lost."""
+every 3 s; after a poll that gets no answer, 3, 6, 12, 24, then 30 s, for up to 5 minutes), one
+stderr line whenever the live statuses change, labelled through /config status_labels; a 404
+for the job is JobLost; SIGINT, SIGTERM and SIGHUP stop the waiting and leave the job running;
+a SIGINT during a submit request waits for the answer, up to 10 s, so the job id is not lost."""
 
 import _thread
 import signal
@@ -15,8 +16,9 @@ from qrosetta_cli.errors import CliError, Exit
 
 POLL_FIRST_SEC = 1.5
 POLL_EVERY_SEC = 3.0
+POLL_BACKOFF_MAX_SEC = 30.0
+POLL_OUTAGE_PATIENCE_SEC = 300.0
 SUBMIT_GRACE_SEC = 10
-POLL_FAILURES_ALLOWED = 5
 FINISHED = ("completed", "failed", "cancelled")
 
 
@@ -71,16 +73,26 @@ def _poll_failure(exc):
     return isinstance(exc, Transient) or exc.http_status in (502, 503, 504)
 
 
+def poll_retry_delay(failures):
+    """Seconds before the next poll after `failures` failed polls in a row: 3, 6, 12, 24, then 30."""
+    return min(POLL_EVERY_SEC * 2 ** max(0, failures - 1), POLL_BACKOFF_MAX_SEC)
+
+
+class JobLost(CliError):
+    """The server answered 404 for a job this client submitted: a restart lost it, or it expired."""
+
+
 def wait_job(conn, job_id, title, wait_timeout=None):
     """Poll until the job finishes and return its final envelope. WaitTimeout after
-    `wait_timeout` seconds; a 404 is exit 14 (unknown or expired). A poll that gets no answer
-    or a 502/503/504 (after the request's own retries) is repeated at the next interval, up to
-    POLL_FAILURES_ALLOWED polls in a row."""
+    `wait_timeout` seconds; a 404 raises JobLost (exit 14). A poll that gets no answer or a
+    502/503/504 (after the request's own retries) is repeated after `poll_retry_delay`, for up to
+    POLL_OUTAGE_PATIENCE_SEC from the first failure in a row, then exit 11."""
     labels = conn.config.get("status_labels") or {}
     start = clock()
     delay = POLL_FIRST_SEC
     last = None
     failures = 0
+    failing_since = None
     while True:
         if wait_timeout is not None:
             left = wait_timeout - (clock() - start)
@@ -91,13 +103,28 @@ def wait_job(conn, job_id, title, wait_timeout=None):
         try:
             env = conn.get(f"/jobs/{job_id}", what=f"job {job_id[:8]}", hint="qrosetta jobs")
         except CliError as exc:
-            if not _poll_failure(exc) or failures >= POLL_FAILURES_ALLOWED:
+            if exc.code == Exit.NOT_FOUND:
+                raise JobLost(
+                    exc.message, Exit.NOT_FOUND, "job_lost", http_status=exc.http_status, detail=exc.detail
+                ) from None
+            if not _poll_failure(exc):
                 raise
             failures += 1
-            output.progress(f"{title}: {exc.message} Polling again in {POLL_EVERY_SEC:g} s.")
-            delay = POLL_EVERY_SEC
+            failing_since = clock() if failing_since is None else failing_since
+            if clock() - failing_since >= POLL_OUTAGE_PATIENCE_SEC:
+                raise CliError(
+                    f"No answer from {getattr(conn, 'url', 'the server')} for {POLL_OUTAGE_PATIENCE_SEC / 60:g} minutes while waiting for "
+                    f"job {job_id[:8]} (last: {exc.message}). The job may still be running there.",
+                    Exit.UNREACHABLE,
+                    "unreachable",
+                    hint=f"qrosetta wait job:{job_id[:8]} once the server answers",
+                    http_status=exc.http_status,
+                ) from None
+            delay = poll_retry_delay(failures)
+            output.progress(f"{title}: {exc.message} Polling again in {delay:g} s.")
             continue
         failures = 0
+        failing_since = None
         line = status_line(env, labels, title)
         if line != last:
             output.progress(line)

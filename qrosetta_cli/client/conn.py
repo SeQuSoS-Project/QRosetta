@@ -64,13 +64,26 @@ def with_retries(method, path, send, retry=None):
         attempt += 1
 
 
+PROXY_PAGE = "an HTML error page from a proxy in front of the API; the API may be stopped or restarting"
+
+
+def _is_html(resp):
+    return "html" in resp.content_type.lower() or resp.body.lstrip()[:1] == b"<"
+
+
 def http_error(method, path, resp, what=None, hint=None):
     """The CliError for an error status, with the server's detail verbatim; `hint` replaces the
-    status's default hint for a client error."""
+    status's default hint for a client error. An HTML body (a proxy's error page) is named, not
+    printed."""
     code, reason, default_hint = status_error(resp.status, resp.headers.get("retry-after"))
     hint = hint if hint and resp.status < 500 and resp.status not in (401, 403, 429) else default_hint
     parsed = resp.json()
-    detail = parsed if parsed is not None else resp.body.decode("utf-8", "replace")
+    if parsed is not None:
+        detail = parsed
+    elif _is_html(resp):
+        detail = PROXY_PAGE if resp.status in RETRY_STATUSES else "an HTML page"
+    else:
+        detail = resp.body.decode("utf-8", "replace")
     text = detail.get("detail", detail) if isinstance(detail, dict) else detail
     if resp.status == 404:
         code, reason = Exit.NOT_FOUND, "not_found"

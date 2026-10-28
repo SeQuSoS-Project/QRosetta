@@ -36,6 +36,15 @@ def oversized_statevector_preparation(qasm: str, apply_preprocessing: bool) -> d
     return prepare_statevector_dispatch(qasm, apply_preprocessing)
 
 
+def marked_slow_statevector_preparation(qasm: str, apply_preprocessing: bool) -> dict:
+    """prepare_statevector_dispatch after writing this process's pid to the file named by
+    QROSETTA_TEST_PREP_MARKER and sleeping 30 s."""
+    with open(os.environ["QROSETTA_TEST_PREP_MARKER"], "w") as fh:
+        fh.write(str(os.getpid()))
+    time.sleep(30)
+    return prepare_statevector_dispatch(qasm, apply_preprocessing)
+
+
 def oversized_quirk_drawing(qasm: str):
     """quirk_url after holding 400 MiB for 30 s."""
     allocate(400)

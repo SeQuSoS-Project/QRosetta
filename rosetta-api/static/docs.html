@@ -127,6 +127,15 @@
                     the jobs submitted while signed in and clears their results from the screen.
                 </p>
                 <p>
+                    When the server stops answering while the page waits for a job (the API is restarting,
+                    or the proxy in front of it reports it unreachable), the page says it is waiting for the
+                    server and checks again after 3, 6, 12 and 24 seconds, then every 30 seconds, for up to
+                    5 minutes. A restart loses every job in progress: when the server answers again without
+                    the job, the page says so and the run has to be submitted again. After 5 minutes without
+                    an answer the page stops waiting; the job stays in this browser's list, so reloading the
+                    page once the server is back offers it again.
+                </p>
+                <p>
                     The page opens any job by its ID from a link of the form <code>/#job=&lt;job ID&gt;</code>,
                     which the <code>qrosetta</code> command prints after <code>run</code>, <code>wait</code>
                     and <code>selftest</code>: it waits for the job as Show results does and shows its results,
