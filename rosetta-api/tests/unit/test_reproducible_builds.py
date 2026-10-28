@@ -23,7 +23,7 @@ TABLE = eol.load_table()
 
 _B3 = "base image and lock not yet requalified (Wave B3)"
 _NGINX = "Alpine: no repository pinning rule yet (Wave B4, nginx)"
-REQUALIFIED = {"runners/pytket-qulacs-runner/Dockerfile"}
+REQUALIFIED = {"runners/pytket-qulacs-runner/Dockerfile", "runners/pytket-qiskit-runner/Dockerfile"}
 EXPECTED_FAIL = {
     **{p.relative_to(REPO).as_posix(): _B3
        for d in ("runners", "compilers") for p in sorted((REPO / d).glob("*/Dockerfile"))
