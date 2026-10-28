@@ -1,17 +1,13 @@
 """Run the old and new adapter on one corpus inside a runner container and compare outputs.
 
 Usage (inside the container): python compare_paths.py <n_circuits> [measured] [levels]
-main_old.py and main.py must sit in the working directory."""
+main_old.py and main.py must sit in the working directory. ``random_circuit`` is also the corpus
+generator of scripts/requalify/."""
 import json
 import random
 import sys
 import logging
-
-logging.disable(logging.CRITICAL)
-sys.path.insert(0, ".")
 import importlib
-old = importlib.import_module("main_old")
-new = importlib.import_module("main")
 
 ONE = ["x", "y", "z", "h", "s", "sdg", "t", "tdg", "sx"]
 ONE_P = ["rx", "ry", "rz", "u1"]
@@ -69,6 +65,10 @@ def strip(result):
 
 
 def main():
+    logging.disable(logging.CRITICAL)
+    sys.path.insert(0, ".")
+    old = importlib.import_module("main_old")
+    new = importlib.import_module("main")
     n = int(sys.argv[1])
     measured = len(sys.argv) > 2 and sys.argv[2] == "measured"
     levels = [int(x) for x in sys.argv[3].split(",")] if len(sys.argv) > 3 else [0]

@@ -303,6 +303,18 @@ constraints, so a pin moves only when `requirements.txt`, the base image's Pytho
 the lock forces it. To move one package, edit its version in the lock and run the script. The API's
 lock is generated this way; runner and compiler locks move to it when their image is requalified.
 
+`scripts/requalify/requalify.sh <service> <python-base@sha256:...>` requalifies a runner or
+compiler image on a new base. It writes a candidate (Dockerfile with the new base, the apt snapshot
+and `--require-hashes`; a wheel check of every pin against the new Python on PyPI; the lock from
+`compile_lock.sh`) to `$HOME/.tmp/requal/<service>/candidate`, stops with exit status 3 when an SDK
+package has no build for the new Python, then builds the image as it is and with the candidate
+(`localhost/qr-requal-<service>:old|new`), runs the fixed-seed corpus and `--self-test` in both
+without network, times runners on one pinned CPU, and writes the evidence file (`--report`). Edit
+the candidate and rerun with `--candidate <dir>`; `--relax <package>` drops a pin from the lock's
+constraints; `--scan` adds a Trivy count of both images. When the outputs are identical, copy the
+candidate's three files into the service directory and remove the image from the strict expected
+failures of `test_base_image_eol.py` and `test_reproducible_builds.py`.
+
 ## 7. Registering the runner
 
 A runner is listed in five places. `config.py` is the only one the application reads at
