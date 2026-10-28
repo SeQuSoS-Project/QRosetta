@@ -121,12 +121,13 @@ def test_constant_expression_evaluator():
 
 def test_gate_limit_counts_gate_statements_only(monkeypatch):
     from config import settings
-    qasm = HEADER + "gate g a { x a; x a; }\nqreg q[1];\ncreg c[1];\n" + "h q[0];\n" * 5
-    assert count_gate_statements(qasm) == 5
-    monkeypatch.setattr(settings, "MAX_QASM_GATES", 5)
+    qasm = (HEADER + "gate g a { x a; x a; }\ngate e a { }\nopaque o a;\nqreg q[1];\ncreg c[1];\n"
+            + "h q[0];\n" * 5)
+    assert count_gate_statements(qasm) == 9
+    monkeypatch.setattr(settings, "MAX_QASM_GATES", 9)
     validate_request(qasm)
-    monkeypatch.setattr(settings, "MAX_QASM_GATES", 4)
-    assert "5 gate statements exceeds the limit of 4" in _detail(qasm)
+    monkeypatch.setattr(settings, "MAX_QASM_GATES", 8)
+    assert "9 gate statements exceeds the limit of 8" in _detail(qasm)
 
 
 def test_exp_is_evaluated_before_the_round_trip():

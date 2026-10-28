@@ -22,12 +22,15 @@ _SIGNATURE_RE = re.compile(r"^(?:gate|opaque)\s+[A-Za-z_]\w*\s*(?:\(([^)]*)\))?\
 _EMPTY_STATEMENT_RE = re.compile(r"(?:^|[;{}])\s*(;)")
 _NAME_RE = re.compile(r"(?<![\w.])[A-Za-z_]\w*")
 _LINE_OR_BLOCK_START_RE = re.compile(r"//[^\n]*|/\*")
+_NESTED_QREG_RE = re.compile(r"\bqreg\s+\w+\s*\[")
 _FUNCTIONS = {"sin", "cos", "tan", "exp", "ln", "sqrt"}
 _ALLOWED_CONTROLS = {"\t", "\n", "\r"}
 _CONTROL_NAMES = {"\x00": "null", "\x0b": "vertical tab", "\x0c": "form feed", "\x7f": "delete"}
 _BUILTINS = {"U", "CX"}
 _BUILTIN_SIGNATURES = {"U": (3, 1), "CX": (0, 2)}
 _NON_GATES = {"measure", "reset", "barrier"}
+_KEYWORDS = {"OPENQASM", "include", "qreg", "creg", "gate", "opaque", "if", "pi"} | _NON_GATES \
+    | _FUNCTIONS
 _KINDS = {"qreg": "quantum register", "creg": "classical register",
           "gate": "gate", "opaque": "opaque gate"}
 HEADER_MESSAGE = ("The circuit must start with the header 'OPENQASM 2.0;' (comments may come "
@@ -48,6 +51,21 @@ def _blank_comments(qasm: str) -> str:
 
 def _line(code: str, offset: int) -> int:
     return code.count("\n", 0, offset) + 1
+
+
+class _LineCounter:
+    """Line numbers of one text's offsets, counted from the previous offset while offsets
+    increase (one pass over the text for a loop over its statements)."""
+
+    def __init__(self, code: str):
+        self.code, self.offset, self.line = code, 0, 1
+
+    def __call__(self, offset: int) -> int:
+        if offset < self.offset:
+            self.offset, self.line = 0, 1
+        self.line += self.code.count("\n", self.offset, offset)
+        self.offset = offset
+        return self.line
 
 
 def _statements(code: str):
@@ -117,6 +135,7 @@ def _check_header(code: str, items: list) -> None:
 
 
 MAX_INTEGER_DIGITS = 30
+MAX_PARAMETER_CHARS = 1000
 _INTEGER_RE = re.compile(r"\[\s*(\d+)\s*\]|==\s*(\d+)")
 
 
@@ -192,6 +211,12 @@ def _check_call(code, offset, text, op, known, included, where=""):
                  f"{' or in qelib1.inc' if included else ''}.{_suggestion(op, known)}")
 
 
+def _not_a_statement(line, text, where=""):
+    shown = text if len(text) <= 40 else text[:37] + "..."
+    _bad_request(f"Line {line}: '{shown}'{where} is not a statement. Each statement starts "
+                 f"with a gate name, 'measure', 'reset', 'barrier' or 'if', and ends with ';'.")
+
+
 def _check_opaque_call(line, op, opaque, uses_opaque):
     """400 for a top-level call of an opaque gate or of a gate whose expansion calls one."""
     if op in opaque:
@@ -209,7 +234,8 @@ def _check_opaque_call(line, op, opaque, uses_opaque):
 
 
 def _check_shape(line, op, params, operands, signatures, where=""):
-    """400 for a gate call with the wrong number of parameters or operands."""
+    """400 for a gate call with the wrong number of parameters or operands, or a parameter of
+    more than MAX_PARAMETER_CHARS characters."""
     if op in _NON_GATES:
         return
     n_params, n_qubits = signatures[op]
@@ -221,6 +247,10 @@ def _check_shape(line, op, params, operands, signatures, where=""):
         _bad_request(f"Line {line}: '{op}'{where} acts on {_plural(n_qubits, 'qubit')}, but the "
                      f"call lists {_plural(len([o for o in operands if o]), 'operand')} "
                      f"(operands are separated by commas).")
+    for param in params or []:
+        if len(param) > MAX_PARAMETER_CHARS:
+            _bad_request(f"Line {line}: a parameter of '{op}'{where} is {len(param)} characters "
+                         f"long; a gate parameter has at most {MAX_PARAMETER_CHARS}.")
 
 
 def _check_body_operands(line, op, operands, qubit_args, where):
@@ -323,12 +353,20 @@ def _register_name_problem(name: str):
 
 
 def check_block_comments(qasm: str) -> None:
-    """400 naming the line of the first '/*' outside a '//' comment; OpenQASM 2.0 has line
-    comments only."""
+    """400 naming the line of the first '/*' outside a '//' comment (OpenQASM 2.0 has line
+    comments only), or of a '//' comment holding a '/*' with no '*/' after it in the same
+    comment, which code that removes '/* */' comments before '//' ones would pair with a
+    '*/' on a later line."""
     for m in _LINE_OR_BLOCK_START_RE.finditer(qasm):
-        if m.group(0) == "/*":
+        text = m.group(0)
+        if text == "/*":
             _bad_request(f"Line {_line(qasm, m.start())}: '/* ... */' comments are not part of "
                          f"OpenQASM 2.0; write each comment line with '//' instead.")
+        if "/*" in text and text.rfind("*/") < text.rfind("/*") + 2:
+            _bad_request(f"Line {_line(qasm, m.start())}: the '//' comment holds '/*' with no "
+                         f"'*/' after it on the same line. Parts of the toolchain remove "
+                         f"'/* ... */' text before '//' comments and would remove the lines up "
+                         f"to the next '*/'; remove the '/*' or close it on this line.")
 
 
 def definition_line(qasm: str, name: str):
@@ -339,7 +377,8 @@ def definition_line(qasm: str, name: str):
 
 
 def check_structure(qasm: str) -> None:
-    """Nothing for a circuit with no qreg (the qubit check reports it). Otherwise 400 for a
+    """Nothing for a circuit with no qreg (the qubit check reports it), and 400 for one whose
+    only qreg is not a top-level statement. Otherwise 400 for a
     missing, repeated or short-form header, an empty statement, a name declared twice
     (registers, gates and opaque gates share one namespace; it also holds U, CX and, with
     ``include "qelib1.inc"``, the qelib1 gates), a register name that does not start with a
@@ -354,6 +393,10 @@ def check_structure(qasm: str) -> None:
     code = _blank_comments(qasm)
     items = list(_statements(code))
     if not any(_REG_RE.match(" ".join(t.split())) and t.startswith("qreg") for _, t in items):
+        nested = _NESTED_QREG_RE.search(code)
+        if nested:
+            _bad_request(f"Line {_line(code, nested.start())}: 'qreg' declares a register only as "
+                         f"a statement of its own, outside gate bodies.")
         return
     _check_header(code, items)
     _check_integers(code, items)
@@ -364,13 +407,17 @@ def check_structure(qasm: str) -> None:
         signatures.update(_qelib1_signatures())
     known = set(signatures)
     declared, registers, opaque, uses_opaque, offsets = {}, {}, {}, {}, {}
+    line_of = _LineCounter(code)
     for offset, text in items[1:]:
         flat = " ".join(text.split())
         reg, definition = _REG_RE.match(flat), _DEF_RE.match(flat)
         if not (reg or definition):
             continue
         kind, name = (reg or definition).group(1), (reg or definition).group(2)
-        line = _line(code, offset)
+        line = line_of(offset)
+        if name in _KEYWORDS:
+            _bad_request(f"Line {line}: '{name}' is an OpenQASM 2.0 keyword and cannot name a "
+                         f"{_KINDS[kind]}; rename it.")
         if name in declared:
             first_kind, first_line = declared[name]
             _bad_request(
@@ -385,6 +432,9 @@ def check_structure(qasm: str) -> None:
                 f"share one set of names in OpenQASM 2.0; rename the register.")
         if reg and _register_name_problem(name):
             _bad_request(f"Line {line}: {_register_name_problem(name)}.")
+        if reg and int(reg.group(3)) == 0:
+            _bad_request(f"Line {line}: register '{name}' has size 0; a register holds at least "
+                         f"one {'qubit' if kind == 'qreg' else 'bit'}.")
         declared[name] = (kind, line)
         offsets[name] = offset
         if reg:
@@ -400,9 +450,9 @@ def check_structure(qasm: str) -> None:
             for inner_offset, inner in _statements(body):
                 inner_flat = " ".join(inner.split())
                 op = _OP_RE.match(inner_flat)
+                inner_line = line_of(body_offset + inner_offset)
                 if not op:
-                    continue
-                inner_line = _line(code, body_offset + inner_offset)
+                    _not_a_statement(inner_line, inner_flat, where)
                 _check_call(code, body_offset + inner_offset, inner, op.group(2), known,
                             included, where=where)
                 params, args = _call_parts(inner_flat, op.end())
@@ -419,16 +469,17 @@ def check_structure(qasm: str) -> None:
         if kind == "opaque":
             opaque[name] = line
         known.add(name)
+    line_of = _LineCounter(code)
     for offset, text in items[1:]:
         flat = " ".join(text.split())
         if _REG_RE.match(flat) or _DEF_RE.match(flat) or _INCLUDE_RE.match(flat):
             continue
         op = _OP_RE.match(flat)
+        line = line_of(offset)
         if not op:
-            continue
+            _not_a_statement(line, flat)
         name = op.group(2)
         _check_call(code, offset, flat, name, known, included)
-        line = _line(code, offset)
         used = [name] + _NAME_RE.findall(flat[op.end():])
         if op.group(1) is not None:
             used.append(op.group(1))

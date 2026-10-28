@@ -453,17 +453,35 @@ With `apply_preprocessing=True` (the default) the API and the runners apply tran
 - `/* */` comments (bundled circuits exempt);
 - register names not starting a–z;
 - use before declaration;
-- a register size, index or if-value of more than 30 digits (checked before any is converted to an integer).
+- a register size, index or if-value of more than 30 digits (checked before any is converted to an integer);
+- a statement that does not start with a name (`,q[1];`, a stray `{ ... }`), at top level or in a gate body;
+- a `}` with no open `{`, a `{` inside a gate body, or a `{` never closed;
+- a `qreg` that is not a top-level statement;
+- a register of size 0;
+- a gate parameter of more than 1,000 characters;
+- a `//` comment holding `/*` with no `*/` after it in the same comment (checked first, before any other pass removes comments).
 
 Spaced indices `q [0]` are normalised with preprocessing on (`API:` note).
 
-*Evidence.* `qreg q[1]; qreg q[2]` merged into a different circuit, and all backends agreed on it. An unequal broadcast was rewritten; opaque calls were dropped silently; block comments were silently removed. 328 bundled files pass. 2026-10-28: a 5,000-digit register size or index raised Python's integer-string limit (ValueError) and the route answered 500; `/visualize/quirk` read register sizes before validating (`test_v1_13_pathological_numbers.py`).
+*Evidence.* `qreg q[1]; qreg q[2]` merged into a different circuit, and all backends agreed on it. An unequal broadcast was rewritten; opaque calls were dropped silently; block comments were silently removed. 328 bundled files pass. 2026-10-28: a 5,000-digit register size or index raised Python's integer-string limit (ValueError) and the route answered 500; `/visualize/quirk` read register sizes before validating (`test_v1_13_pathological_numbers.py`). 2026-10-28 (V6 fuzzing, `test_v6_fuzz_findings.py`): `OPENQASM 2.0;qreg q[3];creg meas[3];measure q[1]->meas[0];,q[1];` passed the structure check and raised AttributeError in `parse_measurement_layout` (500); `OPENQASM;gate {{}qreg q[3];...` hid the qreg from the structure check (no top-level qreg, so it returned early) while the qubit count read it, with the same 500. `// see /* here` ... `// */` was accepted, and the API's register merge and round-trip, which remove `/* */` before `//`, dropped every line in between from the dispatched circuit: `h q[0]` was missing from what every backend ran, and a `qreg r[30]` there was not counted against the qubit cap. 61,000 `creg z[0];` declarations, a never-called gate body of 199,000 statements and a 500,000-term parameter took 1.0, 1.9 and 2.1 s to validate on an E-core; each is now a 400 within 0.5 s.
 
 ### Expanded-gate broadcast width
 
 *Rule.* A register operand counts as a broadcast only when the whole identifier is not followed by `[`. Register sizes come from the comment-free statements.
 
 *Evidence (2026-10-07).* `qa[0]` matched the bare register `q`. With `qreg q[22]; qreg qa[2];`, 9,998 × `x qa[0]` counted as 219,958 applications and was rejected. `// qreg q[24];` changed the counted width.
+
+### Gate statement count
+
+*Rule.* `MAX_QASM_GATES` (10,000, `limits.max_qasm_gate_statements`) counts operation statements at top level and inside gate definitions; a gate or opaque definition with an empty body counts as one. The header, includes and register declarations are not counted.
+
+*Evidence (2026-10-28).* Statements inside gate bodies were not counted, so a definition that is never called could hold the whole 1 MB (199,000 statements) and took 1.9 s to validate, 41,000 one-statement definitions 1.5 s. The largest bundled circuit by this count is grover-v-chain_n22 with 8,730 (1,199 at top level).
+
+### Classical bits
+
+*Rule.* The creg declarations of a circuit add up to at most `MAX_CLASSICAL_BITS` (1,024, `limits.max_classical_bits`); a size of more than 30 digits counts as over the limit. Checked right after the syntax check, before anything builds per-bit tables. Not lifted by `bypass_limits`.
+
+*Evidence (2026-10-28).* `parse_measurement_layout` (validator, preparation, runners) builds a dictionary entry per classical bit: `creg c[10000000];` (65 bytes) took 15.8 s and 3.3 GiB in the validator, and Atheris found `creg ans[6666666668];` by exceeding its 1 GiB limit; the API container's limit is 2G. The largest bundled circuit declares 46 classical bits.
 
 ### Gate parameters
 
@@ -681,6 +699,12 @@ Compilers are separate from the simulators: their output is a circuit, which is 
 
 *Evidence (2026-10-27).* A crate explained itself only through JSON-LD and this repository's manual; the CLI spec (S13) asks for a reader who has neither.
 
+### CSV cells in crates
+
+*Rule.* CSV files in crates and experiment bundles hold values as recorded, without a quote prefix for cells that start with `=`, `+`, `-` or `@`; the crate README (tables folder) and the experiment README say so and tell the reader to import the files as CSV text.
+
+*Evidence (2026-10-28, V6).* A prefix would change the data a CSV reader sees: negative numbers (`-0.5`) and SDK error texts that start with `-` would become text with a leading quote, and the publication tables would no longer equal the page's CSV (parity rule). The cells that a spreadsheet could read as a formula come from the run's own report: its circuit and run names, runner error texts and compiler refusals; a crate goes to the account that ran the job or uploaded the report.
+
 ### Image identity reported by the runner
 
 *Rule.* Each runner and compiler image writes `/usr/local/share/qrosetta-image/identity` at build (`source`, `release`, `git_sha` from the build arguments `QROSETTA_IMAGE_SOURCE`, `QROSETTA_RELEASE`, `QROSETTA_GIT_SHA`; compose passes `built_locally`, a release pipeline passes `release`, a plain `docker build` leaves `unknown`) and copies its Dockerfile and `requirements.lock` to `/usr/local/share/qrosetta-build/`. The new values are build arguments and a file, never `ENV`, so the container's environment, and with it the environment the timed child inherits through `spawn`, is unchanged. The serving process reads the file, the build-file hashes, the container runtime's view (Apptainer path and sha256, podman's `/run/.containerenv`) and the `hypervisor` CPU flag once at startup ([`shared/qrosetta_commons/image_identity.py`](shared/qrosetta_commons/image_identity.py)) and adds `image_identity` and `build_files` to each result after the child has returned, beside `queue_wait_sec`; the Kubernetes and batch CLI paths add them after `run_with_uniform_measurement` returns. `runner_image` is the Job's image in Kubernetes mode, else the image the runtime showed the runner (`runner_image_basis`). Each result that ran gets `specimen` and the report `specimens`: `all_published` (one release), `all_built_locally`, `mixed`, `unknown` or `none_ran`, with per-backend detail, the image commits and a note when they differ or are `-dirty`. The roll-up uses only values the image baked. ([`rosetta-api/tests/unit/test_image_identity.py`](rosetta-api/tests/unit/test_image_identity.py), [`test_specimens.py`](rosetta-api/tests/unit/test_specimens.py))
@@ -872,6 +896,12 @@ The target for a runner or compiler image is the newest CPython (3.13 first, els
 *Rule.* The schema is versioned with Alembic (`rosetta-api/migrations/`); the API upgrades to head in its startup handler, never on import ([`rosetta-api/db/migrate.py`](rosetta-api/db/migrate.py)), under a lock: an exclusive `flock` on `<database>.migrate-lock` for SQLite, `pg_advisory_xact_lock` for PostgreSQL. A database without `alembic_version` that holds any of the four tables is brought to revision `0001` (missing tables, nullable columns and indexes added; a missing non-nullable column stops startup) and stamped. `create_all` and `add_missing_nullable_columns` are gone. `test_db_migrations.py` checks that the baseline emits the models' DDL on SQLite and PostgreSQL and that autogenerate finds no difference from the models.
 
 *Evidence (2026-10-28).* `add_missing_nullable_columns` added `run_histories.job_id` to databases created before it without the column's index: a copy of the local stack's database (54 users, 132 runs, 69 share links) had no `ix_run_histories_job_id`; adopting the copy added the index, kept every row, and left no difference from the models. Eight processes running the former import-time `create_all` on one new SQLite file at once: 19 of 20 trials had a process fail with `table users already exists`; the same with `upgrade_database`: 0 of 20. The unit tests' xdist workers all inherited the controller's `DATABASE_URL`, so this race broke collection on the integration branch. Four processes in `test_concurrent_starts_migrate_once` failed in 4 of 6 runs with the lock removed and passed in 5 of 5 with it.
+
+### Regular expressions on submitted text
+
+*Rule.* A regular expression applied to text a client submits (circuits, names, report fields) runs in linear time: no `\s*` or `.*?` that can scan to the end of the text from many start positions, and no ambiguous nested repeats. `scripts/fuzz/redos.py` lists every literal pattern in the API, the shared package, the runners and the compilers and times each on 1 MB adversarial inputs (methods as the code calls them); API-side ones stay under 1 s. Runner and compiler patterns are measured and recorded, and changed only with an image requalification.
+
+*Evidence (2026-10-28, V6).* `^\s*OPENQASM` (MULTILINE, `search`) in the validator scanned every following blank line from every line start: 40,000 newlines took 1.7 s, a 1 MB body about 18 minutes of one API worker. `bare_circuit_name` (`/plan`, bodies up to 4 MiB) took 0.42 s on a name of 20,000 spaces and grows with the square. Runner side, with preprocessing off: 80,000 blank lines cost qibo's barrier removal 13.7 s and quimb's `p` rewrite 46.6 s (`defects-V6.md`).
 
 ## Interface and API behaviour
 

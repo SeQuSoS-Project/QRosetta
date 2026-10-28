@@ -22,7 +22,11 @@ FOLDERS = {
     "compiled_circuits": "The output circuit of each compile-only service. These were not simulated.",
     "figures": ("Figures made from results.json; each figure has a .spec.json with its view and "
                 "parameters."),
-    "tables": "Tables made from results.json; each table's caption is in its description.",
+    "tables": ("Tables made from results.json; each table's caption is in its description. CSV "
+               "cells hold the values as recorded. A cell that starts with =, +, - or @ is a "
+               "value (a negative number, an SDK's error text, a circuit name), not a formula; "
+               "import the files as CSV text, since a spreadsheet that opens them directly may "
+               "evaluate such a cell."),
     "reference": "Reference text, such as the glossary of the agreement labels.",
     "runners": ("Each runner image's pinned Python environment (requirements.lock), included only "
                 "when its sha256 equals the hash the image reported for itself."),

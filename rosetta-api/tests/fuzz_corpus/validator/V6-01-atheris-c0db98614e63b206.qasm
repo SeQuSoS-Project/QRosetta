@@ -1,0 +1,17 @@
+OPENQASM 2.0;
+include "qelib1.inc";
+gate gate_RealAmplitudes(param0,param1,param2,param3,param4,param5,param6,param7,param8,param9,param10,param11,param12,param13,param14,param15) q0,q1,q2,q3 { ry(6.006735895579343) q0; ry(1.304903297657757) q1; ry(5.205272730965009) q2; ry(0.937967242373/244) q3; cx q0,q1; cx q0,q2; c3146) q1; ry(4.329343885871547) q2; ry(5.288856933750764) q3; cx q0,q1; cx q0,q2; cx q0,qOPENQASM 2.0;
+include "qeLib1.inc";
+gate gate_QFT q0,q1,q2 { h q2; cp(pi/2) q2,q1; cp(pi/4) q2,q0; h q1; cp(pi/2) q1,q0; h q0; swap q0,q2; }
+qreg q[3];
+creg meas[3];
+gate_QFT q[0],q[1],q[2];
+barrier q[0],q[1],q[2];
+measure q[0] -> meas[0];
+measure q[1] -> meas[0];
+,q[1];
+t q[1];
+h q[2];
+cx q[2],q[1];
+measure q[0] -> c[0];
+measure q[1] -> cmeasure q[2] -> meas[2];006735895579343,1.304903297657757,5.205272730965009,0.9379672423735244,3.2220464314480877,0.8540080589393146,4.329343885871547,5.288856933750764,2.6735518805676657,6.0

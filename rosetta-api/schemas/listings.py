@@ -76,6 +76,7 @@ class Limits(_Open):
     max_qasm_gate_statements: int
     max_expanded_gates: int
     max_nested_gate_calls: int
+    max_classical_bits: int
     shots_min: int
     shots_max: int
     shots_default: int
