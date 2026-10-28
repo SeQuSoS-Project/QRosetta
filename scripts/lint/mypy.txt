@@ -14,3 +14,4 @@ shared/qrosetta_commons/qasm_expressions.py arg-type 1
 shared/qrosetta_commons/qasm_expressions.py assignment 5
 shared/qrosetta_commons/qasm_expressions.py var-annotated 6
 shared/qrosetta_commons/qiskit_circuits.py var-annotated 1
+shared/qrosetta_commons/seeds.py redundant-expr 1

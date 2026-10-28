@@ -666,9 +666,11 @@ python3.12 -m venv ~/.cache/qrosetta-semgrep
 SEMGREP=~/.cache/qrosetta-semgrep/bin/semgrep scripts/lint/check.sh semgrep
 ```
 
-`.pre-commit-config.yaml` runs ruff and the secret check below on each commit if you use
-[pre-commit](https://pre-commit.com): run `scripts/install_hooks.sh` first, then
-`pre-commit install`, which replaces only the pre-commit hook.
+`.pre-commit-config.yaml` runs file checks (YAML, TOML, merge markers, files over 2 MB), ruff,
+mypy over the CLI, codespell (`[tool.codespell]` in `pyproject.toml` lists the accepted words),
+zizmor and the secret check below on each commit if you use [pre-commit](https://pre-commit.com):
+run `scripts/install_hooks.sh` first, then `pre-commit install`, which replaces only the pre-commit
+hook.
 
 Code that runs inside a timed window, and the images that carry it, is not changed to satisfy a
 lint rule; its findings stay in the baseline until the image is next requalified.

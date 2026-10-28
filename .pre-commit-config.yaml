@@ -1,13 +1,44 @@
-# Optional pre-commit (https://pre-commit.com) hooks: ruff and the secret check of
-# scripts/hooks/pre-commit. Run scripts/install_hooks.sh first (it installs gitleaks and the pre-push
-# hook), then `pre-commit install`, which replaces only the pre-commit hook. CI runs the same checks.
+# Optional pre-commit (https://pre-commit.com) hooks: file checks, ruff, mypy over the CLI, codespell,
+# zizmor and the secret check of scripts/hooks/pre-commit. Run scripts/install_hooks.sh first (it
+# installs gitleaks and the pre-push hook), then `pre-commit install`, which replaces only the
+# pre-commit hook. CI runs the same checks.
 repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        args: [--maxkb=2048]
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: f12be1ebaa5351c1fc76472de98db2c3446c8253  # frozen: v0.16.10
     hooks:
       - id: ruff-check
       - id: ruff-format
         files: ^qrosetta_cli/.*\.py$
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: 2834ec6639549dd6796205c8f011dedcd587288b  # frozen: v2.4.0
+    hooks:
+      - id: mypy
+        files: ^qrosetta_cli/.*\.py$
+        args: [qrosetta_cli]
+        pass_filenames: false
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: 57b21406f092110c18776e39b0bda50d37c945c8  # frozen: v2.4.3
+    hooks:
+      - id: codespell
+        exclude: ^(experiments|rosetta-api/benchmarks|rosetta-api/static/vendor|rosetta-api/static/css)/|\.(json|lock|qasm|inc|patch|svg)$
+
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: c92afdf2c6ca336aaa8f39e2bd8d48f62dbd8e1f  # frozen: v1.31.1
+    hooks:
+      - id: zizmor
 
   - repo: local
     hooks:

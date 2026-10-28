@@ -187,6 +187,24 @@ extend-immutable-calls = [
 "rosetta-api/tests/unit/test_qrosetta_views_app.py" = ["F811"]
 "rosetta-api/tests/unit/test_v1_06_cli_trust_boundaries.py" = ["F811"]
 
+# pytest settings for every test run in the repository (the unit suite from rosetta-api/, the CLI job,
+# tests/integration): pytest 9 (rosetta-api/tests/requirements.txt), unknown markers and settings
+# refused, an xfail that passes is a failure, a deprecation warning raised in qrosetta_cli is an error.
+# No test paths: the unit suite runs from rosetta-api/, where the app finds static/. No pytest-asyncio
+# setting: the CLI job runs without it.
+[tool.pytest.ini_options]
+minversion = "9.0"
+addopts = ["-ra", "--strict-config", "--strict-markers"]
+xfail_strict = true
+filterwarnings = ["error::DeprecationWarning:qrosetta_cli.*"]
+
+# Spelling (codespell, pre-commit hook). Data, vendored and bundled files are skipped; the words are
+# SDK names (Aer, Braket, Nam), FastAPI's `dependant`, variable names (aLo, aCounts, anc, statics),
+# in-toto, Myers' O(ND), and the typo the CLI's suggestion test types on purpose.
+[tool.codespell]
+skip = "*.json,*.lock,*.qasm,*.inc,*.patch,*.svg,./experiments,./rosetta-api/benchmarks,./rosetta-api/static/vendor,./rosetta-api/static/css"
+ignore-words-list = "acounts,aer,alo,anc,braket,dependant,intoto,nam,nd,statics,stauts"
+
 # Type checking (mypy) of qrosetta_cli/ and shared/qrosetta_commons/, run by `scripts/lint/check.sh
 # mypy` against the baseline scripts/lint/mypy.txt (qrosetta_commons with --python-version 3.10, the
 # runner images' oldest Python). Installed packages are not read, so every environment, CI's included,
@@ -200,6 +218,7 @@ strict_equality = true
 warn_unreachable = true
 warn_unused_ignores = true
 warn_redundant_casts = true
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 
 # Coverage of the unit suite, run from rosetta-api/ with --cov-config=../pyproject.toml: the API
 # code there, the shared library and the CLI. Reported only; no threshold yet.
