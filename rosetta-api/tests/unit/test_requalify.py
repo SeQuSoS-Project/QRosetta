@@ -109,9 +109,23 @@ def test_rewrite_keeps_every_other_line_and_names_what_it_left(tmp_path):
     ("x-1-cp312-cp312-manylinux_2_42_x86_64.whl", (3, 12), False),
     ("x-1-cp312-cp312-manylinux_2_28_aarch64.whl", (3, 12), False),
     ("x-1-cp312-cp312-win_amd64.whl", (3, 12), False),
+    ("torch-2.2.2+cpu-cp312-cp312-linux_x86_64.whl", (3, 12), True),
+    ("torch-2.2.2+cpu-cp312-cp312-linux_aarch64.whl", (3, 12), False),
 ])
 def test_wheel_fits(filename, py, fits):
     assert candidate.wheel_fits(filename, py, glibc=(2, 41)) is fits
+
+
+def test_local_version_pins_are_looked_up_in_the_extra_index(tmp_path):
+    lock = "--extra-index-url https://download.pytorch.org/whl/cpu\n\ntorch==2.2.2+cpu \\\n    --hash=sha256:0\n"
+    assert candidate.extra_indexes(lock) == ["https://download.pytorch.org/whl/cpu"]
+    pypi = candidate.PyPI(tmp_path, candidate.extra_indexes(lock))
+    page = tmp_path / "simple__https_download_pytorch_org_whl_cpu__torch.html"
+    page.write_text('<a href="/whl/cpu/torch-2.2.2%2Bcpu-cp312-cp312-linux_x86_64.whl#sha256=0">x</a>\n'
+                    '<a href="/whl/cpu/torch-2.2.2+cpu-cp312-cp312-linux_x86_64.whl#sha256=0">x</a>\n'
+                    '<a href="/whl/cpu/torch-2.2.20+cpu-cp313-cp313-linux_x86_64.whl#sha256=0">x</a>\n'
+                    '<a href="/whl/cpu/torch-2.3.0+cpu-cp313-cp313-linux_x86_64.whl#sha256=0">x</a>\n')
+    assert pypi.files("torch", "2.2.2+cpu") == ["torch-2.2.2+cpu-cp312-cp312-linux_x86_64.whl"]
 
 
 def test_parse_lock_reads_hashed_and_plain_locks():

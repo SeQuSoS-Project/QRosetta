@@ -90,8 +90,10 @@ def prepare(svc, service_id, new_base, cand_dir, relax, work, state):
     track_pull(new_base, state)
     new_python, glibc = base_facts(new_base)
     sdk = {cand.normalise(n) for n in registry.sdk_packages((service_dir / "main.py").read_text())}
-    pins = cand.parse_lock((service_dir / "requirements.lock").read_text())
-    rows = cand.wheel_check(pins, old_python, new_python, sdk, cand.PyPI(work / "pypi-cache"), glibc)
+    lock_text = (service_dir / "requirements.lock").read_text()
+    pins = cand.parse_lock(lock_text)
+    pypi = cand.PyPI(work / "pypi-cache", cand.extra_indexes(lock_text))
+    rows = cand.wheel_check(pins, old_python, new_python, sdk, pypi, glibc)
     record = {"service": service_id, "old_bases": old_bases, "new_base": new_base, "old_python": old_python,
               "new_python": new_python, "glibc": glibc, "sdk_packages": sorted(sdk), "wheel_check": rows,
               "stop": [], "replaced": {}, "relaxed": list(relax), "manual": []}
