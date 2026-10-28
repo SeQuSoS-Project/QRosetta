@@ -3,12 +3,25 @@ spill directory and SQLite database in a temporary directory, not the server's o
 the schema at head; every test starts with empty rate-limit counters, and runs are not refused
 for the free space left on the disk that holds the spill directory. X-Forwarded-For is trusted from
 any peer (TestClient's peer is "testclient"), so tests choose a client address with it;
-test_v5_06_trusted_proxies.py checks the list itself."""
+test_v5_06_trusted_proxies.py checks the list itself. Below Python 3.11 the files that import the
+CLI (which requires 3.11) are not collected; the CLI job runs them on 3.11 and later."""
 import os
+import re
 import sys
 import tempfile
 
 import pytest
+
+_CLI_IMPORT = re.compile(r"^\s*(from|import) qrosetta_cli\b", re.MULTILINE)
+
+
+def pytest_ignore_collect(collection_path, config):
+    if sys.version_info >= (3, 11) or collection_path.suffix != ".py":
+        return None
+    try:
+        return bool(_CLI_IMPORT.search(collection_path.read_text(encoding="utf-8"))) or None
+    except OSError:
+        return None
 
 
 def _own_per_process(name: str, make) -> None:
