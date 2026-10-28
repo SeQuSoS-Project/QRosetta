@@ -18,6 +18,7 @@ import candidate  # noqa: E402
 import compare  # noqa: E402
 import corpus  # noqa: E402
 import driver  # noqa: E402
+import engine  # noqa: E402
 import registry  # noqa: E402
 import report  # noqa: E402
 import timing  # noqa: E402
@@ -277,3 +278,11 @@ def test_import_regressions_are_the_imports_only_the_new_image_fails():
     assert compare.import_regressions(old, {**old, "main": "ModuleNotFoundError: pkg_resources"}) == {
         "main": "ModuleNotFoundError: pkg_resources"}
     assert compare.import_regressions(old, {"main": None}) == {"qrisp": "not attempted in the new image"}
+
+
+def test_the_overlay_copies_every_candidate_file_but_the_prepare_record(tmp_path):
+    for name in ("Dockerfile", "requirements.txt", "requirements.lock", "build-requirements.txt", "prepare.json"):
+        (tmp_path / name).write_text(name)
+    (tmp_path / "pypi-cache").mkdir()
+    assert engine.overlay_names(tmp_path) == ["Dockerfile", "build-requirements.txt", "requirements.lock",
+                                              "requirements.txt"]

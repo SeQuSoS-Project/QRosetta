@@ -313,7 +313,7 @@ top-level module of the SDK that the old image imports, runs the fixed-seed corp
 `--self-test` in both without network, times runners on one pinned CPU, and writes the evidence file (`--report`). Edit
 the candidate and rerun with `--candidate <dir>`; `--relax <package>` drops a pin from the lock's
 constraints; `--scan` adds a Trivy count of both images. When the outputs are identical, copy the
-candidate's three files into the service directory and remove the image from the strict expected
+candidate's files (every file but `prepare.json`) into the service directory and remove the image from the strict expected
 failures of `test_base_image_eol.py` and `test_reproducible_builds.py`.
 
 ## 7. Registering the runner
