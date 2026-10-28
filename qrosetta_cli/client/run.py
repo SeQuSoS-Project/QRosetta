@@ -262,6 +262,36 @@ class Follower:
             text, reason_code, "detached", hint=f"qrosetta wait job:{job_id[:8]}", data=self.data(self.results_dir)
         )
 
+    def lost_job(self, job_id, job_dir, title, kind, lost, remaining=0):
+        """The CliError for a job the server answered 404 for while it was followed: STATUS
+        `job-lost` in its directory, a `lost` line in the job index, and a message naming both
+        causes, the planned jobs not submitted and how to run the plan again."""
+        results.write_status(job_dir, results.JOB_LOST)
+        jobindex.append(self.ctx.env, {"job_id": job_id, "status": "lost", "save_status": results.JOB_LOST})
+        self.jobs.append(
+            {
+                "job_id": job_id,
+                "kind": kind,
+                "title": title,
+                "status": "lost",
+                "save_status": results.JOB_LOST,
+                "dir": job_dir,
+            }
+        )
+        ttl = self.conn.limit("job_ttl_sec")
+        text = (
+            f"The server no longer has job {job_id[:8]}: it restarted while the job ran (a restart loses every "
+            f"job in progress), or the job finished more than {duration_text(ttl) if ttl else 'its retention time'} "
+            f"ago. Its results are lost; {job_dir}{os.sep}STATUS says {results.JOB_LOST}."
+        )
+        if remaining:
+            text += f" {remaining} planned job{'s' if remaining > 1 else ''} not submitted."
+        plan = os.path.join(os.path.dirname(job_dir), results.PLAN_FILE)
+        hint = f"qrosetta run --request {plan}" if os.path.isfile(plan) else "submit the run again"
+        return CliError(
+            text, Exit.NOT_FOUND, "job_lost", hint=hint, http_status=lost.http_status, data=self.data(self.results_dir)
+        )
+
     def follow(self, job_id, job_dir, title, kind, started=None, remaining=0, previous=None, before_save=None):
         """Wait for one job and save it; returns its data entry. `before_save(envelope)` runs
         between the two, for files that must be in place before STATUS."""
@@ -274,6 +304,8 @@ class Follower:
         except waiting.Stopped as stop:
             jobindex.append(self.ctx.env, {"job_id": job_id, "detached": True})
             raise self.stop_message(job_id, stop.code, remaining) from None
+        except waiting.JobLost as lost:
+            raise self.lost_job(job_id, job_dir, title, kind, lost, remaining) from None
         except waiting.WaitTimeout:
             output.progress(f"--wait-timeout reached; job {job_id[:8]} keeps running on the server.")
             self.codes.append(Exit.WAIT_TIMEOUT)
