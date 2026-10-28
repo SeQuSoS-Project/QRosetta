@@ -25,7 +25,6 @@ _PY311 = "Python 3.11 reaches end of life in 2027-10; requalify on 3.12 or 3.13 
 EXPECTED_FAIL = {
     "compilers/bqskit-compiler/Dockerfile": _PY310,
     "compilers/qmap-compiler/Dockerfile": _PY311,
-    "compilers/qsynth-compiler/Dockerfile": _PY311,
     "runners/cuquantum-runner/Dockerfile": _PY310,
     "runners/myqlm-runner/Dockerfile": _PY310,
     "runners/pennylane-default-runner/Dockerfile": _PY310,

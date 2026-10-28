@@ -6,7 +6,6 @@ compilers/cirq-compiler/Dockerfile DL3066 1
 compilers/pyzx-compiler/Dockerfile DL3066 1
 compilers/qmap-compiler/Dockerfile DL3042 1
 compilers/qmap-compiler/Dockerfile DL3066 1
-compilers/qsynth-compiler/Dockerfile DL3042 1
 compilers/qsynth-compiler/Dockerfile DL3066 1
 compilers/quartz-compiler/Dockerfile DL3003 1
 compilers/quartz-compiler/Dockerfile DL3008 2
