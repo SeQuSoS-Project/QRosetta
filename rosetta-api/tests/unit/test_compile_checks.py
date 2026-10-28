@@ -105,7 +105,7 @@ def test_every_image_that_checks_with_qiskit_installs_it():
         source = main.read_text()
         if "compile_checks" in source or "qiskit" in source:
             lock = (main.parent / "requirements.lock").read_text()
-            assert re.search(r"^qiskit==2\.5\.2$", lock, re.M), main.parent.name
+            assert re.search(r"^qiskit==2\.5\.2(?: \\)?$", lock, re.M), main.parent.name
             assert re.search(r"^qiskit==2\.5\.2$", (main.parent / "requirements.txt").read_text(), re.M)
 
 
