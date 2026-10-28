@@ -10,7 +10,6 @@ compilers/qsynth-compiler/Dockerfile DL3042 1
 compilers/qsynth-compiler/Dockerfile DL3066 1
 compilers/quartz-compiler/Dockerfile DL3003 1
 compilers/quartz-compiler/Dockerfile DL3008 2
-compilers/quartz-compiler/Dockerfile DL3042 1
 compilers/quartz-compiler/Dockerfile DL3066 1
 compilers/quartz-compiler/Dockerfile DL4006 2
 compilers/quartz-compiler/Dockerfile SC2046 1
