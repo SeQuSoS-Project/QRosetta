@@ -34,7 +34,6 @@ EXPECTED_FAIL = {
     "runners/cuquantum-runner/Dockerfile": _PY310,
     "runners/myqlm-runner/Dockerfile": _PY310,
     "runners/pennylane-default-runner/Dockerfile": _PY310,
-    "runners/pyquil-runner/Dockerfile": _PY310,
     "runners/pytket-braket-runner/Dockerfile": _PY310 + "; disabled runner",
     "runners/pytket-cirq-runner/Dockerfile": _PY310,
     "runners/pytket-projectq-runner/Dockerfile": _PY310 + "; disabled runner",
