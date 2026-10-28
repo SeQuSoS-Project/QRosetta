@@ -27,6 +27,7 @@ REQUALIFIED = {
     "runners/pytket-qiskit-runner/Dockerfile",
     "runners/pytket-quest-runner/Dockerfile",
     "runners/pytket-qulacs-runner/Dockerfile",
+    "runners/qsim-cirq-runner/Dockerfile",
 }
 EXPECTED_FAIL = {
     **{p.relative_to(REPO).as_posix(): _B3
