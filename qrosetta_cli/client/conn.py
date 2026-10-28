@@ -78,10 +78,12 @@ def http_error(method, path, resp, what=None, hint=None):
     code, reason, default_hint = status_error(resp.status, resp.headers.get("retry-after"))
     hint = hint if hint and resp.status < 500 and resp.status not in (401, 403, 429) else default_hint
     parsed = resp.json()
-    if parsed is None and _is_html(resp):
+    if parsed is not None:
+        detail = parsed
+    elif _is_html(resp):
         detail = PROXY_PAGE if resp.status in RETRY_STATUSES else "an HTML page"
     else:
-        detail = parsed if parsed is not None else resp.body.decode("utf-8", "replace")
+        detail = resp.body.decode("utf-8", "replace")
     text = detail.get("detail", detail) if isinstance(detail, dict) else detail
     if resp.status == 404:
         code, reason = Exit.NOT_FOUND, "not_found"
