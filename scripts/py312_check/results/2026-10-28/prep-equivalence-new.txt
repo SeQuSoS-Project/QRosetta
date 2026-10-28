@@ -1,0 +1,2 @@
+compared=1948 differences=0 exceptions_matched=72 stopped_at_limit=28 limit=1024 MiB
+exit 0
