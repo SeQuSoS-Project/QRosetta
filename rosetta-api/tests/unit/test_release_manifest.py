@@ -118,7 +118,7 @@ def test_generated_compose_equals_the_repository_compose_but_for_build_and_image
 def test_sdk_versions_come_from_each_image_lock_file(records):
     by_id = {r["id"]: r for r in records}
     lock = (REPO / "runners" / "pytket-qiskit-runner" / "requirements.lock").read_text()
-    qiskit = re.search(r"^qiskit==(\S+)$", lock, re.M).group(1)
+    qiskit = re.search(r"^qiskit==([^\s\\]+)", lock, re.M).group(1)
     assert by_id["qiskit"]["sdk_versions"]["qiskit"] == qiskit
     assert set(by_id["qiskit"]["sdk_versions"]) == {"pytket", "pytket-qiskit", "qiskit", "qiskit-aer"}
     assert by_id["api"]["sdk_versions"] == {}
