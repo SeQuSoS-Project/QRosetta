@@ -53,6 +53,8 @@ def parse_args(argv):
     p.add_argument("--skip-corpus", action="store_true")
     p.add_argument("--skip-timing", action="store_true")
     p.add_argument("--scan", action="store_true", help="Trivy scan of both images")
+    p.add_argument("--device", action="append", default=[],
+                   help="pass this device to every container (nvidia.com/gpu=all for a GPU runner)")
     p.add_argument("--keep-images", action="store_true", help="keep the images for another run")
     p.add_argument("--work", type=Path)
     p.add_argument("--report", type=Path)
@@ -165,7 +167,7 @@ def build_images(svc, service_id, cand_dir, work, state):
     return built
 
 
-def check_imports(svc, images, work):
+def check_imports(svc, images, work, extra=()):
     """Import ``main`` and the SDK's top-level modules in both images; stop when the new image
     fails an import the old one passes."""
     in_dir = work / "imports-in"
@@ -182,7 +184,7 @@ def check_imports(svc, images, work):
         code, _ = engine.run_in_container(
             images[label]["tag"], ["python", "/home/appuser/requal-in/driver.py", "imports", svc["kind"],
                                    "/home/appuser/requal-in", "/home/appuser/requal-out"],
-            in_dir, out, work / f"imports-{label}.log", memory, timeout=1800)
+            in_dir, out, work / f"imports-{label}.log", memory, extra=extra, timeout=1800)
         if code != 0 or not (out / "imports.json").exists():
             raise SystemExit(f"import check in the {label} image failed; log: {work / f'imports-{label}.log'}")
         results[label] = json.loads((out / "imports.json").read_text())
@@ -193,7 +195,7 @@ def check_imports(svc, images, work):
     return results
 
 
-def run_corpus(svc, images, cases, work):
+def run_corpus(svc, images, cases, work, extra=()):
     in_dir = work / "corpus-in"
     if in_dir.exists():
         shutil.rmtree(in_dir)
@@ -210,7 +212,7 @@ def run_corpus(svc, images, cases, work):
         code, elapsed = engine.run_in_container(
             images[label]["tag"], ["python", "/home/appuser/requal-in/driver.py", "corpus", svc["kind"],
                                    "/home/appuser/requal-in", "/home/appuser/requal-out"],
-            in_dir, out, work / f"corpus-{label}.log", memory, timeout=8 * 3600)
+            in_dir, out, work / f"corpus-{label}.log", memory, extra=extra, timeout=8 * 3600)
         return label, {"exit": code, "elapsed_sec": round(elapsed, 1), "dir": out}
 
     with ThreadPoolExecutor(max_workers=2) as pool:
@@ -290,11 +292,11 @@ def main(argv=None):
             return 0
         images = build_images(svc, args.service, cand_dir, work, state)
         evidence["images"] = {k: {kk: vv for kk, vv in v.items()} for k, v in images.items()}
-        evidence["imports"] = check_imports(svc, images, work)
+        evidence["imports"] = check_imports(svc, images, work, engine.device_args(args.device))
         if not args.skip_corpus:
             cases = corpus.build(svc["kind"], svc["levels"], args.sv, args.measured, args.deep,
                                  args.single_register, args.max_gates)
-            runs = run_corpus(svc, images, cases, work)
+            runs = run_corpus(svc, images, cases, work, engine.device_args(args.device))
             evidence["corpus_runs"] = {k: {"exit": v["exit"], "elapsed_sec": v["elapsed_sec"]} for k, v in runs.items()}
             evidence["corpus"] = compare.compare_corpus(runs["old"]["dir"], runs["new"]["dir"], cases, args.service)
             evidence["cli_check"] = (compare.compare_cli(runs["old"]["dir"], "old")

@@ -315,3 +315,8 @@ def test_an_isolated_case_returns_its_result_or_a_harness_error():
     assert driver.isolated(_kill_self, {}) == {"harness_error": "case process killed by signal 9"}
     assert driver.isolated(_sleep, {"sec": 30}, timeout=0.5) == {"harness_error": "case exceeded 0.5 s"}
     assert driver.isolated(_raise, {}) == {"harness_error": "RuntimeError: bad input"}
+
+
+def test_device_options_reach_the_container_arguments():
+    assert engine.device_args([]) == []
+    assert engine.device_args(["nvidia.com/gpu=all"]) == ["--device", "nvidia.com/gpu=all"]

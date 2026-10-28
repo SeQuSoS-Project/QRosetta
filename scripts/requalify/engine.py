@@ -19,6 +19,11 @@ THREAD_ENV = ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUM
               "NUMBA_NUM_THREADS")
 
 
+def device_args(devices):
+    """``--device`` options for every device name in ``devices``."""
+    return [arg for device in devices for arg in ("--device", device)]
+
+
 def run(args, check=True, capture=True, env=None, timeout=None, prefix=()):
     return subprocess.run([*prefix, ENGINE, *args], check=check, text=True, env=env, timeout=timeout,
                           stdout=subprocess.PIPE if capture else None,

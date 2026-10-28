@@ -48,6 +48,7 @@ def run(images, args, work):
     for name, spec in corpus.timing_payloads(args.repeats).items():
         (in_dir / "timing" / name).write_text(json.dumps(spec))
     cpus = siblings(args.cpu)
+    devices = engine.device_args(getattr(args, "device", []))
     rounds = []
     for number in range(args.rounds):
         order = ("old", "new") if number % 2 == 0 else ("new", "old")
@@ -63,7 +64,7 @@ def run(images, args, work):
                 engine.run_in_container(
                     images[label]["tag"], ["python", "/home/appuser/requal-in/driver.py", "timing", "runner",
                                            "/home/appuser/requal-in", "/home/appuser/requal-out"],
-                    in_dir, out, work / f"timing-r{number}-{label}.log", "1g", extra=["--cpus", "1.0"],
+                    in_dir, out, work / f"timing-r{number}-{label}.log", "1g", extra=["--cpus", "1.0", *devices],
                     env={"QROSETTA_CPU_AFFINITY": str(args.cpu)}, prefix=("taskset", "-c", str(args.cpu)),
                     timeout=3600)
                 results[label] = {p.name: json.loads(p.read_text()) for p in out.glob("*.json")}
