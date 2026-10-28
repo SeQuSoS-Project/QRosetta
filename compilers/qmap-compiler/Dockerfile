@@ -1,4 +1,13 @@
-FROM python:3.11-slim@sha256:9358444059ed78e2975ada2c189f1c1a3144a5dab6f35bff8c981afb38946634
+FROM python:3.13-slim@sha256:aaf08c5490d52cd92bc27142a5215b1e47355a5eaf9adfad2a0fbc022d0b5490
+
+# apt reads the Debian archive as of DEBIAN_SNAPSHOT (default from release/debian-snapshot.conf).
+ARG DEBIAN_SNAPSHOT=20261020T213255Z
+RUN sed -i \
+      -e "s|^URIs: http://deb.debian.org/debian\$|URIs: https://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}|" \
+      -e "s|^URIs: http://deb.debian.org/debian-security\$|URIs: https://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT}|" \
+      -e "s|^Signed-By:|Check-Valid-Until: no\nSigned-By:|" \
+      /etc/apt/sources.list.d/debian.sources && \
+    test "$(grep -c "^URIs: https://snapshot.debian.org/archive/debian[a-z-]*/${DEBIAN_SNAPSHOT}\$" /etc/apt/sources.list.d/debian.sources)" = 2
 
 RUN useradd -m appuser
 WORKDIR /home/appuser/app
@@ -6,10 +15,11 @@ WORKDIR /home/appuser/app
 COPY compilers/qmap-compiler/requirements.txt .
 COPY compilers/qmap-compiler/requirements.lock .
 ENV PIP_DEFAULT_TIMEOUT=1000
-RUN pip install --no-cache-dir -r requirements.lock
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
 COPY shared /tmp/shared-src
-RUN pip install /tmp/shared-src
+RUN pip install --no-cache-dir --no-deps --no-build-isolation --no-index /tmp/shared-src && \
+    rm -rf /tmp/shared-src
 
 COPY compilers/qmap-compiler/Dockerfile compilers/qmap-compiler/requirements.lock /usr/local/share/qrosetta-build/
 COPY compilers/qmap-compiler/main.py .
