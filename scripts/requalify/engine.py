@@ -19,6 +19,11 @@ THREAD_ENV = ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUM
               "NUMBA_NUM_THREADS")
 
 
+def device_args(devices):
+    """``--device`` options for every device name in ``devices``."""
+    return [arg for device in devices for arg in ("--device", device)]
+
+
 def run(args, check=True, capture=True, env=None, timeout=None, prefix=()):
     return subprocess.run([*prefix, ENGINE, *args], check=check, text=True, env=env, timeout=timeout,
                           stdout=subprocess.PIPE if capture else None,
@@ -39,6 +44,12 @@ def image_size(ref):
     return int(run(["image", "inspect", "--format", "{{.Size}}", ref]).stdout.strip())
 
 
+def overlay_names(overlay_dir):
+    """The files of a candidate directory that go over the service directory: every regular file
+    except the harness's own ``prepare.json`` (a build stage's hash-pinned requirements, for one)."""
+    return sorted(p.name for p in Path(overlay_dir).iterdir() if p.is_file() and p.name != "prepare.json")
+
+
 def stage_context(dest, overlay_dir=None, service_dir=None):
     """Copy the working tree (tracked and untracked, not ignored) to ``dest``, then the files of
     ``overlay_dir`` over ``service_dir``. Returns the sha256 of the staged tree."""
@@ -55,9 +66,8 @@ def stage_context(dest, overlay_dir=None, service_dir=None):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, target)
     if overlay_dir is not None:
-        for name in ("Dockerfile", "requirements.txt", "requirements.lock"):
-            if (overlay_dir / name).exists():
-                shutil.copy2(overlay_dir / name, dest / service_dir / name)
+        for name in overlay_names(overlay_dir):
+            shutil.copy2(overlay_dir / name, dest / service_dir / name)
     digest = hashlib.sha256()
     for path in sorted(p for p in dest.rglob("*") if p.is_file()):
         digest.update(path.relative_to(dest).as_posix().encode() + b"\0")

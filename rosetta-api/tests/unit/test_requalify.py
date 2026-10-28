@@ -18,6 +18,7 @@ import candidate  # noqa: E402
 import compare  # noqa: E402
 import corpus  # noqa: E402
 import driver  # noqa: E402
+import engine  # noqa: E402
 import registry  # noqa: E402
 import report  # noqa: E402
 import timing  # noqa: E402
@@ -277,3 +278,46 @@ def test_import_regressions_are_the_imports_only_the_new_image_fails():
     assert compare.import_regressions(old, {**old, "main": "ModuleNotFoundError: pkg_resources"}) == {
         "main": "ModuleNotFoundError: pkg_resources"}
     assert compare.import_regressions(old, {"main": None}) == {"qrisp": "not attempted in the new image"}
+
+
+def test_the_overlay_copies_every_candidate_file_but_the_prepare_record(tmp_path):
+    for name in ("Dockerfile", "requirements.txt", "requirements.lock", "build-requirements.txt", "prepare.json"):
+        (tmp_path / name).write_text(name)
+    (tmp_path / "pypi-cache").mkdir()
+    assert engine.overlay_names(tmp_path) == ["Dockerfile", "build-requirements.txt", "requirements.lock",
+                                              "requirements.txt"]
+
+
+def _exit_hard(payload):
+    import os
+    os._exit(payload["status"])
+
+
+def _kill_self(payload):
+    import os
+    import signal
+    os.kill(os.getpid(), signal.SIGKILL)
+
+
+def _sleep(payload):
+    import time
+    time.sleep(payload["sec"])
+
+
+def _raise(payload):
+    raise RuntimeError("bad input")
+
+
+def test_an_isolated_case_returns_its_result_or_a_harness_error():
+    assert driver.isolated(lambda p: {"value": p["x"] * 2, "list": (1, 2)}, {"x": 3}) == {"value": 6, "list": [1, 2]}
+    assert driver.isolated(_exit_hard, {"status": 3}) == {
+        "harness_error": "case process exited with status 3 and no result"}
+    assert driver.isolated(_kill_self, {}) == {"harness_error": "case process killed by signal 9"}
+    assert driver.isolated(_sleep, {"sec": 30}, timeout=0.5) == {"harness_error": "case exceeded 0.5 s"}
+    assert driver.isolated(_raise, {}) == {"harness_error": "RuntimeError: bad input"}
+    assert driver.isolated(lambda p: object(), {})["harness_error"].startswith("TypeError:")
+
+
+def test_device_options_reach_the_container_arguments():
+    assert engine.device_args([]) == []
+    assert engine.device_args(["nvidia.com/gpu=all"]) == ["--device", "nvidia.com/gpu=all"]

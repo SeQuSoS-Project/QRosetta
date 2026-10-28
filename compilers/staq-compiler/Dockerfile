@@ -2,7 +2,16 @@ ARG STAQ_VERSION=3.5
 ARG STAQ_SHA256=838402b6ca541200740cc3ab989b3026f3b001ebf3e1ce7d89ae7f09a0e33195
 ARG STAQ_CXXFLAGS="-std=c++17 -O2 -DNDEBUG -DUSE_OPENQASM2_SPECS=false"
 
-FROM python:3.11-slim@sha256:9358444059ed78e2975ada2c189f1c1a3144a5dab6f35bff8c981afb38946634 AS staq-build
+FROM python:3.13-slim@sha256:aaf08c5490d52cd92bc27142a5215b1e47355a5eaf9adfad2a0fbc022d0b5490 AS staq-build
+
+# apt reads the Debian archive as of DEBIAN_SNAPSHOT (default from release/debian-snapshot.conf).
+ARG DEBIAN_SNAPSHOT=20261020T213255Z
+RUN sed -i \
+      -e "s|^URIs: http://deb.debian.org/debian\$|URIs: https://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}|" \
+      -e "s|^URIs: http://deb.debian.org/debian-security\$|URIs: https://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT}|" \
+      -e "s|^Signed-By:|Check-Valid-Until: no\nSigned-By:|" \
+      /etc/apt/sources.list.d/debian.sources && \
+    test "$(grep -c "^URIs: https://snapshot.debian.org/archive/debian[a-z-]*/${DEBIAN_SNAPSHOT}\$" /etc/apt/sources.list.d/debian.sources)" = 2
 
 ARG STAQ_VERSION
 ARG STAQ_SHA256
@@ -18,7 +27,16 @@ RUN curl -sSL -o staq.tar.gz "https://github.com/softwareQinc/staq/archive/refs/
         -Iinclude -Iqasmtools/include -isystem libs -isystem libs/third_party \
         src/staq/main.cpp -o /build/staq-bin -pthread
 
-FROM python:3.11-slim@sha256:9358444059ed78e2975ada2c189f1c1a3144a5dab6f35bff8c981afb38946634
+FROM python:3.13-slim@sha256:aaf08c5490d52cd92bc27142a5215b1e47355a5eaf9adfad2a0fbc022d0b5490
+
+# apt reads the Debian archive as of DEBIAN_SNAPSHOT (default from release/debian-snapshot.conf).
+ARG DEBIAN_SNAPSHOT=20261020T213255Z
+RUN sed -i \
+      -e "s|^URIs: http://deb.debian.org/debian\$|URIs: https://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}|" \
+      -e "s|^URIs: http://deb.debian.org/debian-security\$|URIs: https://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT}|" \
+      -e "s|^Signed-By:|Check-Valid-Until: no\nSigned-By:|" \
+      /etc/apt/sources.list.d/debian.sources && \
+    test "$(grep -c "^URIs: https://snapshot.debian.org/archive/debian[a-z-]*/${DEBIAN_SNAPSHOT}\$" /etc/apt/sources.list.d/debian.sources)" = 2
 
 ARG STAQ_VERSION
 ARG STAQ_SHA256
@@ -30,10 +48,11 @@ COPY --from=staq-build /build/staq-bin /usr/local/bin/staq
 COPY compilers/staq-compiler/requirements.txt .
 COPY compilers/staq-compiler/requirements.lock .
 ENV PIP_DEFAULT_TIMEOUT=1000
-RUN pip install --no-cache-dir -r requirements.lock
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
 COPY shared /tmp/shared-src
-RUN pip install /tmp/shared-src
+RUN pip install --no-cache-dir --no-deps --no-build-isolation --no-index /tmp/shared-src && \
+    rm -rf /tmp/shared-src
 
 COPY compilers/staq-compiler/Dockerfile compilers/staq-compiler/requirements.lock /usr/local/share/qrosetta-build/
 COPY compilers/staq-compiler/main.py .

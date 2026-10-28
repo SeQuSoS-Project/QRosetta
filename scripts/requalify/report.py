@@ -138,8 +138,8 @@ def write(path, ev):
         out += ["## Corpus", "",
                 "Fixed seeds (circuits 20261002, payloads 20261028). Runners: each case through "
                 "`run_with_uniform_measurement(process_run[_measured], payload)`, the function the CLI path "
-                "and the isolated child call (warm-up + one timed run); compilers: `process_compile(payload)`. "
-                "One process per image, `--network none`.", "",
+                "and the isolated child call (warm-up + one timed run); compilers: `process_compile(payload)`, "
+                "each case in a child forked from that process. One process per image, `--network none`.", "",
                 "| Part | Cases | Identical | Different | Known jitter | Errors (old) |", "|---|---|---|---|---|---|"]
         for kind, v in c["by_kind"].items():
             out.append(f"| {kind} | {v.get('cases', 0)} | {v.get('identical', 0)} | {v.get('different', 0)} "

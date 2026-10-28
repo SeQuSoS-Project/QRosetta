@@ -24,17 +24,8 @@ _PY310 = "Python 3.10 reached end of life on 2026-10-01; requalify on 3.12 or 3.
 _PY311 = "Python 3.11 reaches end of life in 2027-10; requalify on 3.12 or 3.13 (Wave B3)"
 EXPECTED_FAIL = {
     "compilers/bqskit-compiler/Dockerfile": _PY310,
-    "compilers/pyzx-compiler/Dockerfile": _PY310,
-    "compilers/cirq-compiler/Dockerfile": _PY311,
-    "compilers/qmap-compiler/Dockerfile": _PY311,
-    "compilers/qsynth-compiler/Dockerfile": _PY311,
-    "compilers/quartz-compiler/Dockerfile": _PY311,
-    "compilers/staq-compiler/Dockerfile": _PY311,
-    "compilers/synthetiq-compiler/Dockerfile": _PY311,
-    "runners/cuquantum-runner/Dockerfile": _PY310,
     "runners/myqlm-runner/Dockerfile": _PY310,
     "runners/pennylane-default-runner/Dockerfile": _PY310,
-    "runners/pytket-braket-runner/Dockerfile": _PY310 + "; disabled runner",
     "runners/pytket-cirq-runner/Dockerfile": _PY310,
     "runners/pytket-projectq-runner/Dockerfile": _PY310 + "; disabled runner",
     "runners/qrisp-runner/Dockerfile": _PY310,
