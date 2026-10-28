@@ -17,6 +17,7 @@ sys.path.insert(0, str(REPO / "scripts" / "requalify"))
 import candidate  # noqa: E402
 import compare  # noqa: E402
 import corpus  # noqa: E402
+import driver  # noqa: E402
 import registry  # noqa: E402
 import report  # noqa: E402
 import timing  # noqa: E402
@@ -241,3 +242,24 @@ def test_timing_summary_uses_accepted_rounds_only():
     assert summary["old"]["total_ms"] == 22.0 and summary["old"]["errors"] == 1 and summary["old"]["samples"] == 2
     assert summary["new"]["total_ms"] == 33.0 and summary["new"]["cpus"] == [4]
     assert summary["new"]["distinct_outputs"] == 1
+
+
+def test_import_check_names_the_module_that_fails(tmp_path, monkeypatch):
+    app = tmp_path / "app"
+    app.mkdir()
+    (app / "main.py").write_text("import pkg_resources_gone_for_the_test\n")
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    monkeypatch.delitem(sys.modules, "main", raising=False)
+    assert "pytest" in driver.sdk_modules(["PyTest"])
+    result = driver.import_check(["pytest"], app)
+    assert result["pytest"] is None
+    assert "ModuleNotFoundError: No module named 'pkg_resources_gone_for_the_test'" in result["main"]
+    monkeypatch.delitem(sys.modules, "main", raising=False)
+
+
+def test_import_regressions_are_the_imports_only_the_new_image_fails():
+    old = {"main": None, "qrisp": None, "broken_everywhere": "ImportError: x"}
+    assert compare.import_regressions(old, dict(old)) == {}
+    assert compare.import_regressions(old, {**old, "main": "ModuleNotFoundError: pkg_resources"}) == {
+        "main": "ModuleNotFoundError: pkg_resources"}
+    assert compare.import_regressions(old, {"main": None}) == {"qrisp": "not attempted in the new image"}

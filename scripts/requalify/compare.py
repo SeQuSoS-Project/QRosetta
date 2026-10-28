@@ -151,3 +151,10 @@ def distribution_moves(old_env, new_env):
         return {d.split("==")[0].lower(): d.split("==", 1)[1] for d in env["distributions"]}
     a, b = pins(old_env), pins(new_env)
     return [{"name": k, "old": a.get(k), "new": b.get(k)} for k in sorted(set(a) | set(b)) if a.get(k) != b.get(k)]
+
+
+def import_regressions(old, new):
+    """Modules that import in the old image and fail in the new one (or are missing there):
+    {module: the new image's traceback tail}."""
+    return {name: new.get(name) or "not attempted in the new image"
+            for name, error in old.items() if error is None and new.get(name, "") is not None}

@@ -125,6 +125,14 @@ def write(path, ev):
                        f"| {img['size'] / 1e6:.1f} | "
                        f"{'yes' if img['rebuilt'] else 'reused (same context)'} | {img['build_sec']} |")
         out.append("")
+        imports = ev.get("imports", {})
+        if imports:
+            for label in ("old", "new"):
+                failed = sorted(k for k, v in imports.get(label, {}).items() if v is not None)
+                out.append(f"Import check, {label} image: `main` and {len(imports.get(label, {})) - 1} SDK "
+                           f"module(s) ({', '.join(k for k in imports.get(label, {}) if k != 'main')}); "
+                           + ("all import." if not failed else "failing: " + ", ".join(failed) + "."))
+            out.append("")
     if "corpus" in ev:
         c = ev["corpus"]
         out += ["## Corpus", "",
