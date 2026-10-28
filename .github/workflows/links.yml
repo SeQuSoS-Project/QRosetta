@@ -1,0 +1,54 @@
+# Weekly link check of the top-level documents, docs/verification/ and the manual page
+# (rosetta-api/static/docs.html) with lychee, a pinned release binary checked against its published
+# sha256; settings in scripts/lint/lychee.toml. It depends on other sites being up, so it runs on a
+# schedule and on request, not on pushes or pull requests.
+name: Links
+
+on:
+  schedule:
+    - cron: "37 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: links-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lychee:
+    name: link check (lychee)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install lychee
+        env:
+          LYCHEE_VERSION: 0.24.2
+          LYCHEE_SHA256: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
+        run: |
+          archive="lychee-x86_64-unknown-linux-gnu.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$archive" \
+            "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/${archive}"
+          echo "${LYCHEE_SHA256}  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" --strip-components=1 \
+            lychee-x86_64-unknown-linux-gnu/lychee
+
+      # The read-only job token lets lychee check github.com links through the API.
+      - name: Check the links
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          "$RUNNER_TEMP/lychee" --no-progress --config scripts/lint/lychee.toml \
+            --format markdown --output "$RUNNER_TEMP/links.md" \
+            README.md CONTRIBUTING.md DESIGN_DECISIONS.md THIRD_PARTY_NOTICES.md SECURITY.md \
+            SUPPORT.md CHANGELOG.md CODE_OF_CONDUCT.md 'docs/verification/*.md' \
+            rosetta-api/static/docs.html || status=$?
+          cat "$RUNNER_TEMP/links.md" >> "$GITHUB_STEP_SUMMARY"
+          exit "${status:-0}"

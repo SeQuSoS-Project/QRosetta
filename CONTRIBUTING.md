@@ -682,6 +682,18 @@ it uses with a comment saying why, set `persist-credentials: false` on every che
 `${{ }}` values to scripts through `env:`. Locally: `zizmor --persona pedantic .` from the
 repository root (add `--offline` without a GitHub token).
 
+The CI job `types` runs mypy 2.4.0 (`scripts/lint/mypy-requirements.txt`, hash-pinned) through
+`scripts/lint/check.sh mypy` over `qrosetta_cli/` and `shared/qrosetta_commons/` (the latter as
+Python 3.10), with `[tool.mypy]` in `pyproject.toml`. It does not read installed packages, so a run
+on your machine sees what CI sees. The baseline `scripts/lint/mypy.txt` holds only
+`qrosetta_commons` errors; new CLI code meets every enabled check. Locally: `pip install
+mypy==2.4.0`, then `scripts/lint/check.sh mypy`.
+
+The workflow `links.yml` checks the links in the top-level documents, `docs/verification/` and
+`rosetta-api/static/docs.html` with [lychee](https://lychee.cli.rs) every Monday and on request, not
+on pushes, because it depends on other sites. Settings and the one excluded URL are in
+`scripts/lint/lychee.toml`, which also gives the local command.
+
 The unit job on Python 3.12 also records line coverage (`[tool.coverage]` in `pyproject.toml`)
 and uploads `coverage.xml` as the artifact `coverage-unit-py3.12`. There is no threshold.
 

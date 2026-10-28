@@ -1,6 +1,7 @@
 """scripts/lint/baseline.py: shellcheck, hadolint, semgrep and mypy findings above the baseline fail,
 findings at or below it pass, and the committed baselines parse; the mypy baseline holds no CLI file,
-and CI's types job installs the hash-pinned mypy and runs the check."""
+CI's types job installs the hash-pinned mypy and runs the check, and the weekly link check runs
+a checksum-pinned lychee over documents that exist."""
 import importlib.util
 import json
 import re
@@ -109,3 +110,21 @@ def test_ci_types_job_installs_the_hash_pinned_mypy_and_runs_the_check():
     requirements = [line for line in pins.splitlines() if line and not line.startswith(("#", " "))]
     assert requirements[0].startswith("mypy==")
     assert all(re.fullmatch(r"[a-z0-9-]+==[0-9.]+ \\", line) for line in requirements)
+
+
+def test_links_workflow_is_scheduled_and_checks_documents_that_exist():
+    workflow = (_REPO / ".github" / "workflows" / "links.yml").read_text()
+    triggers = workflow.split("\non:\n", 1)[1].split("\n\n", 1)[0]
+    assert re.findall(r"^  ([a-z_]+):", triggers, re.M) == ["schedule", "workflow_dispatch"]
+    assert re.search(r"LYCHEE_SHA256: [0-9a-f]{64}\n", workflow)
+    assert "sha256sum -c -" in workflow and "--config scripts/lint/lychee.toml" in workflow
+    run = workflow.split("- name: Check the links", 1)[1]
+    listed = run.split('/links.md"', 1)[1].split("|| status", 1)[0]
+    inputs = re.findall(r"[\w/.*-]+\.(?:md|html)", listed)
+    assert inputs
+    for pattern in inputs:
+        assert list(_REPO.glob(pattern)), f"links.yml checks {pattern}, which matches no file"
+    for name in ("README.md", "CONTRIBUTING.md", "DESIGN_DECISIONS.md", "THIRD_PARTY_NOTICES.md",
+                 "SECURITY.md", "SUPPORT.md", "CHANGELOG.md", "CODE_OF_CONDUCT.md", "docs/verification/*.md",
+                 "rosetta-api/static/docs.html"):
+        assert name in inputs
