@@ -203,7 +203,8 @@ def _ended(process) -> str:
         except ValueError:
             name = f"signal {-code}"
         if -code == signal.SIGKILL:
-            return f"killed by {name}, which the kernel sends when memory runs out"
+            return (f"killed by {name}, which the kernel sends when memory runs out and a forced "
+                    f"stop also sends; this server did not record which")
         return f"killed by {name}"
     return f"exit code {code}"
 
