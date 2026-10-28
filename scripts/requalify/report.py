@@ -61,6 +61,11 @@ def _row(ev):
         f = {k: v["counts"]["fixed"] for k, v in scan.items()}
         scan_text = (f" Trivy fixed CRITICAL/HIGH {f['old'].get('CRITICAL', 0)}/{f['old'].get('HIGH', 0)} → "
                      f"{f['new'].get('CRITICAL', 0)}/{f['new'].get('HIGH', 0)}.")
+    timing_text = ""
+    if timing:
+        timing_text = (f" Timing pinned to CPU {ev['args'].get('cpu')}, "
+                       f"{len([r for r in ev.get('timing_rounds', []) if r['accepted']])} alternated rounds"
+                       f"{f', load {min(loads):.1f}–{max(loads):.1f}' if loads else ''}: {timing}.")
     sizes = ev.get("images", {})
     size_text = (f" Image {sizes['old']['size'] / 1e6:.0f} → {sizes['new']['size'] / 1e6:.0f} MB." if sizes else "")
     rule = (f"`{ev['svc']['dir']}/Dockerfile` runs `{prep['new_base'].split('@')[0]}` by digest (Python "
@@ -69,9 +74,7 @@ def _row(ev):
     evidence = (f"{ev['started'][:10]}: Python {_py(prep['old_python'])} → {_py(prep['new_python'])} at one commit. "
                 f"{_verdict(ev)} ({parts}); self-test "
                 f"{'identical' if ev.get('selftest', {}).get('old') == ev.get('selftest', {}).get('new') else 'differs'}; "
-                f"{len(prep.get('lock_moves', []))} lock pins moved. Timing pinned to CPU {ev['args'].get('cpu')}, "
-                f"{len([r for r in ev.get('timing_rounds', []) if r['accepted']])} alternated rounds"
-                f"{f', load {min(loads):.1f}–{max(loads):.1f}' if loads else ''}: {timing}.{scan_text}{size_text}")
+                f"{len(prep.get('lock_moves', []))} lock pins moved.{timing_text}{scan_text}{size_text}")
     return f"| {ev['service']} image Python | {rule} | {evidence} |"
 
 
