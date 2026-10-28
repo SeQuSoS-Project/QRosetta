@@ -1,6 +1,7 @@
 """Harness 4: client-supplied reports with odd values, sent in process to every route that
 reads one (POST /export, /summary, /publication/artifacts, /publication/render,
-/timing-caveats). The oracle: no 5xx, every answer within ``REQUEST_LIMIT_SEC``, crate ZIP
+/timing-caveats). The oracle: no 5xx, every answer within ``REQUEST_LIMIT_SEC`` and without
+raising the process's peak RSS by more than ``MEMORY_LIMIT_MIB``, crate ZIP
 member names free of control, bidi and '..' parts. Crate CSV cells that a spreadsheet would
 read as a formula (first character = + - @, tab or CR) are counted, not failed: crate tables
 hold values as recorded (DESIGN_DECISIONS.md, "CSV cells in crates").
@@ -15,6 +16,7 @@ import io
 import json
 import logging
 import os
+import resource
 import random
 import sys
 import tempfile
@@ -27,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fuzz_targets  # noqa: E402,F401  (sets sys.path for the API)
 
 REQUEST_LIMIT_SEC = 10.0
+MEMORY_LIMIT_MIB = 256
 csv.field_size_limit(sys.maxsize)
 FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
 BIDI = "\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069\u200e\u200f\u061c"
@@ -193,9 +196,11 @@ def run(seconds: float, outdir: Path, seed: int = 0) -> dict:
                 data = json.dumps(body, allow_nan=False).encode()
             except (ValueError, RecursionError):
                 continue
+            peak_before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
             start = time.perf_counter()
             response = client.post(path, content=data, headers={"Content-Type": "application/json"})
             elapsed = time.perf_counter() - start
+            grew = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024 - peak_before
             stats["requests"] += 1
             key = f"{path} {response.status_code}"
             stats["by_status"][key] = stats["by_status"].get(key, 0) + 1
@@ -204,6 +209,8 @@ def run(seconds: float, outdir: Path, seed: int = 0) -> dict:
                 problems.append(f"status {response.status_code}: {response.text[:200]}")
             if elapsed > REQUEST_LIMIT_SEC:
                 problems.append(f"took {elapsed:.1f} s")
+            if grew > MEMORY_LIMIT_MIB:
+                problems.append(f"raised the process's peak RSS by {grew:.0f} MiB")
             if path == "/export" and response.status_code == 200:
                 problems += check_crate(response.content, stats)
             if problems:

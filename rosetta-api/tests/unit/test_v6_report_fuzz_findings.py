@@ -102,3 +102,66 @@ def test_v6_13_formula_like_cells_are_written_as_recorded_and_the_readme_says_so
 def test_v6_13_the_experiment_readme_says_so_too():
     from services.experiment_artifacts import TRIAGE_README
     assert "is a\n    value (a negative number" in TRIAGE_README
+
+
+@pytest.mark.parametrize("name", ["V6-14-render-long-label.json", "V6-14-render-simulators-string.json"])
+def test_v6_14_saved_render_requests_are_a_400_at_once(client, name):
+    start = time.perf_counter()
+    r = _post(client, "/publication/render", json.loads((CORPUS / name).read_text()))
+    assert r.status_code == 400, r.text
+    assert "backends are named by runner ids" in r.json()["detail"]
+    assert time.perf_counter() - start < 2
+
+
+def _set(report, where, value):
+    report = copy.deepcopy(report)
+    if where == "simulators":
+        report["divergence_report"]["simulators"] = value
+    elif where == "simulators[0]":
+        report["divergence_report"]["simulators"][0] = value
+    elif where == "pair":
+        report["divergence_report"]["pairwise_agreement"][0]["simulators"][0] = value
+    elif where == "ranking":
+        report["performance_report"]["ranking"][0]["simulator"] = value
+    else:
+        report["raw_results"][0]["simulator"] = value
+    return report
+
+
+@pytest.mark.parametrize("where,value", [
+    ("simulators", "q" * 10_000), ("simulators[0]", "y" * 200_000), ("simulators[0]", "a" * 65),
+    ("pair", "Qiskit"), ("ranking", "=cmd|' /C calc'!A0"), ("raw", "q" * 65),
+])
+@pytest.mark.parametrize("path,extra", ROUTES)
+def test_v6_14_backend_names_must_be_runner_keys(client, path, extra, where, value):
+    r = _post(client, path, {"results": _set(MEASURED, where, value), **extra})
+    assert r.status_code == 400, r.text
+    assert "backends are named by runner ids or <id>~opt<L>~run<N> of at most 64" in r.json()["detail"]
+
+
+@pytest.mark.parametrize("path,extra", [
+    ("/publication/render", {"artifact_id": "agreement_distribution", "format": "svg"}),
+    ("/export", {}), ("/summary", {})])
+@pytest.mark.parametrize("field", ["agreement", "registered_transform", "verdict_counts"])
+def test_v6_15_a_label_drawn_on_a_figure_is_at_most_64_characters(client, path, extra, field):
+    report = copy.deepcopy(MEASURED)
+    divergence = report["divergence_report"]
+    if field == "verdict_counts":
+        divergence["statistical_test_summary"] = {"verdict_counts": {"y" * 900_000: 1}}
+    else:
+        divergence["pairwise_agreement"][0][field] = "y" * 900_000
+    start = time.perf_counter()
+    r = _post(client, path, {"results": report, **extra})
+    assert r.status_code == 400, r.text
+    assert "holds a label of 900000 characters; labels and codes have at most 64" in r.json()["detail"]
+    assert time.perf_counter() - start < 2
+
+
+def test_v6_15_saved_render_request_is_a_400(client):
+    body = json.loads((CORPUS / "V6-15-render-long-agreement-label.json").read_text())
+    assert _post(client, "/publication/render", body).status_code == 400
+
+
+def test_v6_14_runner_keys_up_to_the_length_pass(client):
+    report = _set(MEASURED, "simulators[0]", "a" * 64)
+    assert "runner ids" not in _post(client, "/summary", {"results": report}).text
