@@ -90,6 +90,7 @@ def test_a_run_after_the_notice_ended_does_not_count_it():
 def test_a_notice_expires_after_its_last_heartbeat(monkeypatch):
     now = {"t": 1000.0}
     monkeypatch.setattr(host_load, "_clock", lambda: now["t"])
+    monkeypatch.setattr(host_load, "_ticks", lambda: now["t"])
 
     async def scenario():
         notice = await host_load.begin("probe")

@@ -155,6 +155,12 @@ Units are MiB (1024²) throughout, although field names say `_mb`.
 
 *Evidence.* "Sequential" ran the two groups in parallel; response transfer counted as overlap.
 
+### Host-load notice expiry
+
+*Rule.* A host-load notice (`services/host_load.py`) expires `NOTICE_TTL_SEC` (30 s) after its last heartbeat measured on the monotonic clock; its start, end and expiry time, like every run interval in the registry, are wall-clock times. A step of the wall clock (NTP, a resumed laptop or VM) does not end an open notice.
+
+*Evidence (2026-10-28, V7-07).* Expiry compared wall-clock times, so a forward step of the wall clock ended every open notice at once: with the clock moved 1 h forward and no time passed, `expire_due` ended a `build` notice that had just begun. The CLI's next heartbeat then got 404 and stopped, and runs during the rest of the build were not counted in `server_overlapping_host_load` (`test_v7_clock_skew.py::test_v7_07_a_wall_clock_step_does_not_end_a_host_load_notice`).
+
 ### Kubernetes job slots
 
 *Rule.* In Kubernetes mode (CSC Rahti) at most `K8S_MAX_CONCURRENT_JOBS` (`QROSETTA_K8S_MAX_CONCURRENT_JOBS`, 3 on Rahti) runner/compiler Jobs exist at a time across the API process (`dispatcher_k8s.JOB_SLOTS` in [`rosetta-api/services/dispatcher_k8s.py`](rosetta-api/services/dispatcher_k8s.py)); a Job is created only when a slot is free, so its deadline starts then. The wait is `queue_wait_sec`, capped at `RUNNER_QUEUE_MAX_WAIT_SEC`; reports record `k8s_job_slots`. A run that never gets a slot, or whose pod the quota refuses until its timeout (read from the Job's FailedCreate events), is `timeout` + `never_started`, not `offline`. The setting is read only from `QROSETTA_K8S_MAX_CONCURRENT_JOBS`; a bare `K8S_MAX_CONCURRENT_JOBS` is ignored.

@@ -5,7 +5,8 @@ registry interval of kind ``host_load``, which runs overlapping it count as
 holds the run gate like a shared dispatch, so an exclusive run waits until it ends. A notice
 ends with its end request, or NOTICE_TTL_SEC after its last heartbeat. A stop or remove notice
 marks its services: a run that then loses its connection to one of them records
-``stopped_by_user``."""
+``stopped_by_user``. Interval ends are wall-clock times, like run intervals; whether a notice
+has expired is decided on the monotonic clock, so a step of the wall clock does not end it."""
 
 import asyncio
 import time
@@ -23,6 +24,7 @@ STOP_KEEP_SEC = 3600.0
 MAX_OPEN = 16
 
 _clock = time.time
+_ticks = time.monotonic
 
 
 class NoticeNotFound(KeyError):
@@ -40,6 +42,7 @@ class Notice:
     services: tuple
     started: float
     last_beat: float
+    beat_ticks: float
     run_id: int
     gate_held: bool
     token: object = field(default_factory=object)
@@ -74,22 +77,22 @@ async def _close(notice: Notice, ended: float) -> None:
         await GATE.release_host_load()
 
 
-async def expire_due(now: float = None) -> list:
-    """End every notice whose last heartbeat is older than NOTICE_TTL_SEC, as of its expiry
-    time; return their ids."""
-    now = _clock() if now is None else now
-    due = [n for n in list(_OPEN.values()) if now - n.last_beat >= NOTICE_TTL_SEC]
+async def expire_due() -> list:
+    """End every notice whose last heartbeat is NOTICE_TTL_SEC or more ago on the monotonic
+    clock, as of its expiry time; return their ids."""
+    ticks = _ticks()
+    due = [n for n in list(_OPEN.values()) if ticks - n.beat_ticks >= NOTICE_TTL_SEC]
     for notice in due:
         await _close(notice, notice.last_beat + NOTICE_TTL_SEC)
-    cutoff = now - STOP_KEEP_SEC
+    cutoff = _clock() - STOP_KEEP_SEC
     _STOPS[:] = [s for s in _STOPS if s["ended"] is None or s["ended"] >= cutoff]
     return [n.id for n in due]
 
 
 async def _expiry_loop() -> None:
     while _OPEN:
-        nearest = min(n.last_beat for n in _OPEN.values()) + NOTICE_TTL_SEC
-        await asyncio.sleep(max(0.5, nearest - _clock()))
+        nearest = min(n.beat_ticks for n in _OPEN.values()) + NOTICE_TTL_SEC
+        await asyncio.sleep(max(0.5, nearest - _ticks()))
         await expire_due()
 
 
@@ -106,7 +109,7 @@ async def begin(kind: str, services=None) -> dict:
         raise TooManyNotices()
     now = _clock()
     notice = Notice(id=uuid.uuid4().hex, kind=kind, services=tuple(services or ()), started=now,
-                    last_beat=now, run_id=0, gate_held=GATE.hold_host_load())
+                    last_beat=now, beat_ticks=_ticks(), run_id=0, gate_held=GATE.hold_host_load())
     notice.run_id = REGISTRY.start(notice.token, kind="host_load", started=now)
     _OPEN[notice.id] = notice
     if kind in STOPPING_KINDS:
@@ -121,7 +124,7 @@ async def heartbeat(notice_id: str) -> dict:
     notice = _OPEN.get(notice_id)
     if notice is None:
         raise NoticeNotFound(notice_id)
-    notice.last_beat = _clock()
+    notice.last_beat, notice.beat_ticks = _clock(), _ticks()
     _ensure_expiry()
     return notice.public()
 
