@@ -286,3 +286,32 @@ def test_the_overlay_copies_every_candidate_file_but_the_prepare_record(tmp_path
     (tmp_path / "pypi-cache").mkdir()
     assert engine.overlay_names(tmp_path) == ["Dockerfile", "build-requirements.txt", "requirements.lock",
                                               "requirements.txt"]
+
+
+def _exit_hard(payload):
+    import os
+    os._exit(payload["status"])
+
+
+def _kill_self(payload):
+    import os
+    import signal
+    os.kill(os.getpid(), signal.SIGKILL)
+
+
+def _sleep(payload):
+    import time
+    time.sleep(payload["sec"])
+
+
+def _raise(payload):
+    raise RuntimeError("bad input")
+
+
+def test_an_isolated_case_returns_its_result_or_a_harness_error():
+    assert driver.isolated(lambda p: {"value": p["x"] * 2, "list": (1, 2)}, {"x": 3}) == {"value": 6, "list": [1, 2]}
+    assert driver.isolated(_exit_hard, {"status": 3}) == {
+        "harness_error": "case process exited with status 3 and no result"}
+    assert driver.isolated(_kill_self, {}) == {"harness_error": "case process killed by signal 9"}
+    assert driver.isolated(_sleep, {"sec": 30}, timeout=0.5) == {"harness_error": "case exceeded 0.5 s"}
+    assert driver.isolated(_raise, {}) == {"harness_error": "RuntimeError: bad input"}

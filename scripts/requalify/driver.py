@@ -2,10 +2,10 @@
 
 python driver.py corpus <runner|compiler> <in-dir> <out-dir>
     Every case of <in-dir>/corpus.jsonl through the function the image's CLI path calls
-    (runner: run_with_uniform_measurement(process_run[_measured], payload); compiler:
-    process_compile(payload)), in this one process. Writes results.jsonl (statevectors as sha256
-    and byte length), vectors.jsonl (statevectors as sent), selftest.txt (``main.py
-    --self-test``), cli.jsonl (the cases listed in cli_cases.json through ``main.py --endpoint``
+    (runner: run_with_uniform_measurement(process_run[_measured], payload), in this one process;
+    compiler: process_compile(payload), each in a child forked from this process, so a case killed
+    for memory is recorded). Writes results.jsonl (statevectors as sha256 and byte length),
+    vectors.jsonl (statevectors as sent), selftest.txt (``main.py --self-test``), cli.jsonl (the cases listed in cli_cases.json through ``main.py --endpoint``
     in a process each) and environment.json (Python, installed distributions).
 python driver.py timing <runner> <in-dir> <out-dir>
     Each <in-dir>/timing/*.json payload through ``main.py --endpoint`` in a process each.
@@ -23,6 +23,7 @@ import logging
 import os
 import platform
 import re
+import select
 import signal
 import subprocess
 import sys
@@ -56,6 +57,47 @@ class _CaseTimeout(Exception):
 
 def _alarm(signum, frame):
     raise _CaseTimeout(f"case exceeded {CASE_TIMEOUT_SEC} s")
+
+
+def isolated(func, payload, timeout=CASE_TIMEOUT_SEC):
+    """``func(payload)`` in a forked child, so a case that is killed (out of memory, a crash in
+    native code) or runs past ``timeout`` becomes a ``harness_error`` record instead of ending the
+    corpus run. The result travels back as JSON."""
+    read_fd, write_fd = os.pipe()
+    pid = os.fork()
+    if pid == 0:
+        os.close(read_fd)
+        try:
+            data = json.dumps({"result": func(payload)})
+        except BaseException as exc:
+            data = json.dumps({"exception": f"{type(exc).__name__}: {exc}"})
+        with os.fdopen(write_fd, "w") as fh:
+            fh.write(data)
+        os._exit(0)
+    os.close(write_fd)
+    chunks, deadline, timed_out = [], time.monotonic() + timeout, False
+    with os.fdopen(read_fd, "rb") as fh:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not select.select([fh], [], [], remaining)[0]:
+                timed_out = True
+                os.kill(pid, signal.SIGKILL)
+                break
+            chunk = os.read(fh.fileno(), 1 << 20)
+            if not chunk:
+                break
+            chunks.append(chunk)
+    _, status = os.waitpid(pid, 0)
+    if timed_out:
+        return {"harness_error": f"case exceeded {timeout} s"}
+    if os.WIFSIGNALED(status):
+        return {"harness_error": f"case process killed by signal {os.WTERMSIG(status)}"}
+    if not chunks:
+        return {"harness_error": f"case process exited with status {os.WEXITSTATUS(status)} and no result"}
+    reply = json.loads(b"".join(chunks))
+    if "exception" in reply:
+        return {"harness_error": reply["exception"]}
+    return reply["result"]
 
 
 def _cli(endpoint, payload, workdir, env=None):
@@ -126,7 +168,7 @@ def corpus(kind, in_dir, out_dir):
             return run_with_uniform_measurement(func, dict(case["payload"]))
     else:
         def run(case):
-            return main.process_compile(dict(case["payload"]))
+            return isolated(main.process_compile, dict(case["payload"]))
 
     signal.signal(signal.SIGALRM, _alarm)
     with open(in_dir / "corpus.jsonl") as cases, open(out_dir / "results.jsonl", "w") as results, \
