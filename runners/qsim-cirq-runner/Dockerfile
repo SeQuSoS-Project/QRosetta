@@ -1,4 +1,13 @@
-FROM python:3.10-slim@sha256:4ba18b066cee17f2696cf9a2ba564d7d5eb05a91d6a949326780aa7c6912160d
+FROM python:3.12-slim@sha256:12316debbfb86890f6b2d825820612741ba527ad5a44e3902759141d572bfe8f
+
+# apt reads the Debian archive as of DEBIAN_SNAPSHOT (default from release/debian-snapshot.conf).
+ARG DEBIAN_SNAPSHOT=20261020T213255Z
+RUN sed -i \
+      -e "s|^URIs: http://deb.debian.org/debian\$|URIs: https://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}|" \
+      -e "s|^URIs: http://deb.debian.org/debian-security\$|URIs: https://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT}|" \
+      -e "s|^Signed-By:|Check-Valid-Until: no\nSigned-By:|" \
+      /etc/apt/sources.list.d/debian.sources && \
+    test "$(grep -c "^URIs: https://snapshot.debian.org/archive/debian[a-z-]*/${DEBIAN_SNAPSHOT}\$" /etc/apt/sources.list.d/debian.sources)" = 2
 
 # Create a non-root user
 RUN useradd -m appuser
@@ -8,11 +17,12 @@ WORKDIR /home/appuser/app
 COPY runners/qsim-cirq-runner/requirements.txt .
 COPY runners/qsim-cirq-runner/requirements.lock .
 ENV PIP_DEFAULT_TIMEOUT=1000
-RUN pip install --no-cache-dir -r requirements.lock
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
 # Copy shared library and install it
 COPY shared /tmp/shared-src
-RUN pip install /tmp/shared-src
+RUN pip install --no-cache-dir --no-deps --no-build-isolation --no-index /tmp/shared-src && \
+    rm -rf /tmp/shared-src
 
 # Copy application code
 COPY runners/qsim-cirq-runner/main.py .

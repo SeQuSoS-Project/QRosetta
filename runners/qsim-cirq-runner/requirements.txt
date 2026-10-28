@@ -9,3 +9,4 @@ numpy==1.26.4
 gunicorn==23.0.0
 boto3==1.35.99
 botocore==1.35.99
+setuptools==79.0.1
