@@ -1,6 +1,7 @@
 """The fuzz harnesses in scripts/fuzz run for a few seconds each on their seed inputs, so they
 keep working without the long runs, and every saved fuzz finding replays within the
 validator's oracle under every request option."""
+import logging
 import sys
 import time
 from pathlib import Path
@@ -99,9 +100,19 @@ def test_grammar_harness_quick(data):
 
 
 def test_report_harness_quick(tmp_path, monkeypatch):
+    """The harness switches the rate limiter and logging off and moves the mock S3 directory
+    for the whole process; the test puts all three back."""
     import report_fuzz
+    import services.storage as storage
+    from services.security import limiter
     monkeypatch.setenv("TMPDIR", str(tmp_path))
-    stats = report_fuzz.run(4, tmp_path / "findings", seed=1)
+    monkeypatch.setattr(limiter, "enabled", limiter.enabled)
+    monkeypatch.setattr(storage, "MOCK_S3_DIR", storage.MOCK_S3_DIR)
+    disabled = logging.root.manager.disable
+    try:
+        stats = report_fuzz.run(4, tmp_path / "findings", seed=1)
+    finally:
+        logging.disable(disabled)
     assert stats["requests"] >= 5
     assert not list((tmp_path / "findings").glob("*.txt"))
 
