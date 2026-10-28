@@ -315,6 +315,7 @@ def test_an_isolated_case_returns_its_result_or_a_harness_error():
     assert driver.isolated(_kill_self, {}) == {"harness_error": "case process killed by signal 9"}
     assert driver.isolated(_sleep, {"sec": 30}, timeout=0.5) == {"harness_error": "case exceeded 0.5 s"}
     assert driver.isolated(_raise, {}) == {"harness_error": "RuntimeError: bad input"}
+    assert driver.isolated(lambda p: object(), {})["harness_error"].startswith("TypeError:")
 
 
 def test_device_options_reach_the_container_arguments():

@@ -66,14 +66,16 @@ def isolated(func, payload, timeout=CASE_TIMEOUT_SEC):
     read_fd, write_fd = os.pipe()
     pid = os.fork()
     if pid == 0:
-        os.close(read_fd)
         try:
-            data = json.dumps({"result": func(payload)})
-        except BaseException as exc:
-            data = json.dumps({"exception": f"{type(exc).__name__}: {exc}"})
-        with os.fdopen(write_fd, "w") as fh:
-            fh.write(data)
-        os._exit(0)
+            os.close(read_fd)
+            try:
+                data = json.dumps({"result": func(payload)})
+            except BaseException as exc:
+                data = json.dumps({"exception": f"{type(exc).__name__}: {exc}"})
+            with os.fdopen(write_fd, "w") as fh:
+                fh.write(data)
+        finally:
+            os._exit(0)
     os.close(write_fd)
     chunks, deadline, timed_out = [], time.monotonic() + timeout, False
     with os.fdopen(read_fd, "rb") as fh:
@@ -176,7 +178,8 @@ def corpus(kind, in_dir, out_dir):
         for line in cases:
             case = json.loads(line)
             started = time.monotonic()
-            signal.alarm(CASE_TIMEOUT_SEC)
+            if kind == "runner":
+                signal.alarm(CASE_TIMEOUT_SEC)
             try:
                 result = run(case)
             except _CaseTimeout as exc:
@@ -190,6 +193,8 @@ def corpus(kind, in_dir, out_dir):
                                       "result": result}) + "\n")
             if raw is not None:
                 vectors.write(json.dumps({"id": case["id"], "statevector": raw}) + "\n")
+            results.flush()
+            vectors.flush()
 
     cli_ids = set(json.loads((in_dir / "cli_cases.json").read_text()))
     work = out_dir / "cli-work"
