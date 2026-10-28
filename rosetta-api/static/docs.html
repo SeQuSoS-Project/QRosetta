@@ -429,6 +429,12 @@
                         <code>GET /config</code>), at top level and inside gate definitions; a definition with an
                         empty body counts as one. The header, the <code>include</code> line and register
                         declarations are not counted.</li>
+                    <li>At most 1,024 classical bits over all <code>creg</code> declarations
+                        (<code>limits.max_classical_bits</code>). Every register holds at least one qubit or
+                        bit, a gate parameter has at most 1,000 characters, and OpenQASM keywords
+                        (<code>gate</code>, <code>measure</code>, <code>pi</code>, <code>sin</code>, ...) cannot
+                        name a register or gate. A <code>//</code> comment that holds <code>/*</code> needs a
+                        <code>*/</code> after it on the same line.</li>
                     <li>At most 200,000 gate applications after expanding user gate definitions and register
                         broadcasts (<code>limits.max_expanded_gates</code>), so a short circuit of nested gate
                         definitions cannot expand to millions of gates, and at most 4,096 applications of user-defined gates

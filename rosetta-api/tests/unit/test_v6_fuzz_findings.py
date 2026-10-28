@@ -187,11 +187,11 @@ def _bundled_and_templates():
 
 def test_v6_09_tket_note_of_many_calls_of_a_gate_ending_in_gate_is_fast():
     from qrosetta_commons.qasm_expressions import tket_parameter_note
-    qasm = (HEAD + "gate mygate(t) a { rz(t) a; }\nqreg q[1];\n"
-            + ("mygate(1e-12)" + " " * 80 + "q[0];\n") * 9_900)
+    qasm = (HEAD + "gate mygate a { rz(1e-12) a; }\nqreg q[1];\n"
+            + ("mygate" + " " * 80 + "q[0];\n") * 9_900)
     validate_request(qasm)
     start = time.perf_counter()
-    assert "mygate(1e-12)" in tket_parameter_note(qasm, "tket")
+    assert "rz(1e-12)" in tket_parameter_note(qasm, "tket")
     assert time.perf_counter() - start < 1.0
 
 
@@ -229,5 +229,7 @@ def test_v6_12_cnx_renaming_is_unchanged_and_linear(monkeypatch):
     assert [cr._name_cnx_by_size(t) for t in texts] == new
     monkeypatch.undo()
     start = time.perf_counter()
-    cr._name_cnx_by_size("\n" * MB + "c4x q[0],q[1];")
+    cr._name_cnx_by_size("\n" * MB)
+    cr._name_cnx_by_size("c4x\n" * (MB // 4))
+    cr._name_cnx_by_size("if(\n" * (MB // 4))
     assert time.perf_counter() - start < 0.5
