@@ -5,6 +5,7 @@ into the file is an error rather than a silent default."""
 
 import os
 from dataclasses import dataclass, field
+from typing import Any
 
 from qrosetta_cli.errors import CliError, Exit, usage
 
@@ -110,7 +111,7 @@ class Config:
     loaded: bool = False
 
     def get(self, *keys, default=None):
-        node = self.data
+        node: Any = self.data
         for key in keys:
             if not isinstance(node, dict) or key not in node:
                 return default

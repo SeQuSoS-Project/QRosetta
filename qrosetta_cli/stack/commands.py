@@ -349,7 +349,7 @@ def cmd_build(ctx):
 def _server_profiles(ctx):
     """Profiles from the server's /runners and /compilers `profiles` fields (S7)."""
     transport = ctx.transport()
-    names = {}
+    names: dict = {}
     for path in ("/runners", "/compilers"):
         resp = transport.request("GET", path, timeout=30)
         data = resp.json()

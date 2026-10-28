@@ -151,7 +151,7 @@ def cmd_login(ctx):
     email = _email(ctx)
     password = _password(ctx, email)
     conn = Conn(ctx, with_token=False)
-    body = urllib.parse.urlencode({"username": email, "password": password}).encode()
+    body: bytes | None = urllib.parse.urlencode({"username": email, "password": password}).encode()
     password = None
     resp = conn.transport.request(
         "POST", "/auth/token", body=body, headers={"Content-Type": "application/x-www-form-urlencoded"}
@@ -209,16 +209,20 @@ def _sign_out_on_server(ctx, server, token):
     except CliError as exc:
         if exc.reason in ("server_too_old", "api_levels"):
             return None
-        output.warn(f"{server.url} was not reached ({exc.message}); the token stays valid until it expires.",
-                    "server_not_reached")
+        output.warn(
+            f"{server.url} was not reached ({exc.message}); the token stays valid until it expires.",
+            "server_not_reached",
+        )
         return False
     if not conn.has("logout"):
         return None
     try:
         resp = conn.transport.request("POST", "/auth/logout", headers={"Authorization": f"Bearer {token}"})
     except CliError as exc:
-        output.warn(f"{server.url} was not reached ({exc.message}); the token stays valid until it expires.",
-                    "server_not_reached")
+        output.warn(
+            f"{server.url} was not reached ({exc.message}); the token stays valid until it expires.",
+            "server_not_reached",
+        )
         return False
     if resp.status in (204, 401):
         return True
@@ -244,8 +248,10 @@ def cmd_logout(ctx):
         _write_store(path, store, ctx.env)
         expiry = _parse_iso(entry.get("expires_at")) if isinstance(entry, dict) else None
         if revoked:
-            output.result(f"Signed out of {server.url}: the server refuses every earlier token of this account, "
-                          "on every device, and the stored token is deleted.")
+            output.result(
+                f"Signed out of {server.url}: the server refuses every earlier token of this account, "
+                "on every device, and the stored token is deleted."
+            )
         else:
             output.result(f"Signed out of {server.url}: the stored token is deleted.")
         if revoked is None:

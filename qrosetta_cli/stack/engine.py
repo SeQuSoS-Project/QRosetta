@@ -343,7 +343,7 @@ class Engine:
         cmd = self.compose_args(*args) if compose else [self.name, *args]
         kwargs = {"stderr": subprocess.PIPE, "text": True} if capture_errors else {}
         proc = self._popen(cmd, cwd=self.project_dir, env=self.env, start_new_session=own_session, **kwargs)
-        tail = collections.deque(maxlen=40)
+        tail: collections.deque = collections.deque(maxlen=40)
         stream = getattr(proc, "stderr", None) if capture_errors else None
         if stream is not None and hasattr(stream, "readline"):
             thread = threading.Thread(target=_tee, args=(stream, tail), daemon=True)

@@ -1,0 +1,20 @@
+# lychee settings for the link check of the top-level documents, docs/verification/ and the manual
+# (.github/workflows/links.yml, weekly). Run locally from the repository root:
+#   lychee --config scripts/lint/lychee.toml README.md CONTRIBUTING.md DESIGN_DECISIONS.md \
+#     THIRD_PARTY_NOTICES.md SECURITY.md SUPPORT.md CHANGELOG.md CODE_OF_CONDUCT.md \
+#     'docs/verification/*.md' rosetta-api/static/docs.html
+# With GITHUB_TOKEN set, github.com links are checked through the API instead of being rate-limited.
+
+include_fragments = "full"
+max_concurrency = 8
+max_retries = 3
+retry_wait_time = 5
+timeout = 30
+exclude_loopback = true
+exclude_private = true
+
+exclude = [
+    # The group's tab on this page is selected by the page's script from the fragment; the HTML
+    # has no element with that id.
+    '^https://users\.jyu\.fi/~mhaghpyz/#qpa$',
+]

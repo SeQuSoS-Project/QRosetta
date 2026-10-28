@@ -173,7 +173,8 @@ def _runner_ids(conn, cache):
 
 def settings_from_args(args, conn):
     """The settings the flags give, nothing else (spec P6)."""
-    s, cache = Settings(), {}
+    s = Settings()
+    cache: dict = {}
     if args.shots is not None:
         s.put("n_shots", args.shots, "--shots")
     if args.seed is not None:
@@ -262,7 +263,7 @@ def settings_from_args(args, conn):
 
 
 def compilers_from_args(args, conn):
-    out = {}
+    out: dict = {}
     if not args.compiler:
         return out
     rows = {r.get("id"): r for r in conn.get("/compilers")}

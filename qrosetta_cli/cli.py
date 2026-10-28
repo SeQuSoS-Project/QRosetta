@@ -1120,19 +1120,18 @@ def main(argv=None, checkout=None, engine_factory=None, transport_factory=None, 
     except BrokenPipeError:
         output.discard_output()
         return int(Exit.SIGPIPE)
-    except Exception:
+    except Exception as failure:
         from qrosetta_cli.commands import write_log
 
         path = write_log(env, traceback.format_exc())
-        exc_type, exc_value = sys.exc_info()[:2]
-        exc = CliError(
-            f"internal error ({exc_type.__name__}: {exc_value}).",
+        internal = CliError(
+            f"internal error ({type(failure).__name__}: {failure}).",
             Exit.INTERNAL,
             "internal",
             hint=path or "rerun with the same arguments and report the traceback",
         )
-        code, error = exc.code, exc.as_dict()
-        _print_error(exc)
+        code, error = internal.code, internal.as_dict()
+        _print_error(internal)
     if output.json_mode():
         server = ctx.server_block if ctx is not None else None
         output.emit_envelope(output.envelope(schema, code, data=data, error=error, server=server, outcome=outcome))

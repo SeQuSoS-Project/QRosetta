@@ -19,7 +19,7 @@ class CircuitRef:
     kind: str
     token: str
     name: str = ""
-    qubits: int = None
+    qubits: int | None = None
     params: dict = field(default_factory=dict)
 
 

@@ -29,13 +29,13 @@ saved. Findings are grouped by operation, check, status and message, each with t
 request and a curl line.
 
 Schemathesis is not in the CI requirements. Set up a separate venv; the unit-test
-requirements pin numpy 1.26.4, and Schemathesis 4.32 needs pytest >= 8.4, so pytest is
-raised to 8.4.2, which pytest-asyncio 0.23.7 accepts:
+requirements pin numpy 1.26.4 and pytest 9.0.3, which Schemathesis 4.32 accepts (pytest >= 8.4,
+< 10):
 
 ```bash
 python3.12 -m venv ~/.tmp/fuzz-venv
 ~/.tmp/fuzz-venv/bin/pip install -r rosetta-api/requirements.txt -r rosetta-api/tests/requirements.txt ./shared
-~/.tmp/fuzz-venv/bin/pip install schemathesis==4.32.3 pytest==8.4.2
+~/.tmp/fuzz-venv/bin/pip install schemathesis==4.32.3
 ```
 
 Run from the repository root:

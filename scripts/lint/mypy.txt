@@ -1,0 +1,17 @@
+# mypy findings scripts/lint/check.sh accepts: file, code, count.
+# Lower or delete a line when you fix a finding; a count above its line fails the check.
+shared/qrosetta_commons/compile_service.py assignment 1
+shared/qrosetta_commons/counts.py union-attr 4
+shared/qrosetta_commons/counts.py var-annotated 2
+shared/qrosetta_commons/cpu.py var-annotated 1
+shared/qrosetta_commons/helpers.py assignment 3
+shared/qrosetta_commons/helpers.py attr-defined 1
+shared/qrosetta_commons/helpers.py misc 2
+shared/qrosetta_commons/helpers.py union-attr 1
+shared/qrosetta_commons/helpers.py var-annotated 3
+shared/qrosetta_commons/memory.py union-attr 1
+shared/qrosetta_commons/qasm_expressions.py arg-type 1
+shared/qrosetta_commons/qasm_expressions.py assignment 5
+shared/qrosetta_commons/qasm_expressions.py var-annotated 6
+shared/qrosetta_commons/qiskit_circuits.py var-annotated 1
+shared/qrosetta_commons/seeds.py redundant-expr 1

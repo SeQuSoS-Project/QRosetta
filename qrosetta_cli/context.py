@@ -3,6 +3,7 @@ for the engine and the transport that tests replace."""
 
 import sys
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -11,23 +12,23 @@ class Result:
     rule version, names and matches of a run), and a payload schema other than the command's."""
 
     code: int = 0
-    data: object = None
-    outcome: dict = None
-    schema: str = None
+    data: Any = None
+    outcome: dict | None = None
+    schema: str | None = None
 
 
 @dataclass
 class Context:
-    args: object
+    args: Any
     env: dict
-    cfg: object
-    checkout: str = None
-    engine_factory: object = None
-    transport_factory: object = None
-    stdin: object = None
-    tty: bool = None
-    server_block: dict = None
-    _server: object = field(default=None, repr=False)
+    cfg: Any
+    checkout: str | None = None
+    engine_factory: Any = None
+    transport_factory: Any = None
+    stdin: Any = None
+    tty: bool | None = None
+    server_block: dict | None = None
+    _server: Any = field(default=None, repr=False)
 
     def __post_init__(self):
         if self.stdin is None:

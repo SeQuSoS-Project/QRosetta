@@ -127,7 +127,8 @@ def _check(checks, name, status, detail):
 
 def image_checks(engine, stack, row, img, require_signature, env):
     """[{check, status PASS|WARN|FAIL|SKIP, detail}] for one present image."""
-    checks, release = [], stack.release
+    checks: list = []
+    release = stack.release
     service, sid = row["compose_service"], row["id"]
     _check(
         checks,

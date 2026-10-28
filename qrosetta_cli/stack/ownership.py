@@ -70,7 +70,7 @@ class Container:
     service: str
     running: bool
     pod: str = ""
-    target: Target = None
+    target: Target | None = None
     image: str = ""
     config_hash: str = ""
 

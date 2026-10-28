@@ -1,7 +1,10 @@
-"""scripts/lint/baseline.py: shellcheck, hadolint and semgrep findings above the baseline fail,
-findings at or below it pass, and the committed baselines parse."""
+"""scripts/lint/baseline.py: shellcheck, hadolint, semgrep and mypy findings above the baseline fail,
+findings at or below it pass, and the committed baselines parse; the mypy baseline holds no CLI file,
+CI's types job installs the hash-pinned mypy and runs the check, and the weekly link check runs
+a checksum-pinned lychee over documents that exist."""
 import importlib.util
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -72,9 +75,56 @@ def test_semgrep_findings_are_keyed_by_file_and_rule_name():
     assert len(baseline.compare(rows, {("a.py", "exec-detected"): 1})[0]) == 2
 
 
-@pytest.mark.parametrize("name", ["shellcheck.txt", "hadolint.txt", "semgrep.txt"])
+@pytest.mark.parametrize("name", ["shellcheck.txt", "hadolint.txt", "semgrep.txt", "mypy.txt"])
 def test_committed_baselines_name_existing_files(name):
     accepted = baseline.read_baseline((_REPO / "scripts" / "lint" / name).read_text())
     assert accepted
     for path, _ in accepted:
         assert (_REPO / path).is_file(), f"{name} lists {path}, which does not exist"
+
+
+def test_mypy_errors_are_keyed_by_file_and_error_code_and_notes_are_ignored():
+    lines = [
+        {"file": "a.py", "line": 3, "message": "m", "hint": None, "code": "union-attr", "severity": "error"},
+        {"file": "a.py", "line": 3, "message": "n", "hint": None, "code": None, "severity": "note"},
+        {"file": "a.py", "line": 7, "message": "syntax", "hint": None, "code": None, "severity": "error"},
+    ]
+    out = "\n".join(json.dumps(r) for r in lines) + "\n\n"
+    rows = baseline.findings("mypy", out)
+    assert [(r[0], r[1], r[2]) for r in rows] == [("a.py", "union-attr", 3), ("a.py", "error", 7)]
+    assert baseline.findings("mypy", "") == []
+
+
+def test_the_cli_has_no_accepted_mypy_errors():
+    accepted = baseline.read_baseline((_REPO / "scripts" / "lint" / "mypy.txt").read_text())
+    assert not [path for path, _ in accepted if path.startswith("qrosetta_cli/")]
+
+
+def test_ci_types_job_installs_the_hash_pinned_mypy_and_runs_the_check():
+    workflow = (_REPO / ".github" / "workflows" / "ci.yml").read_text()
+    job = re.split(r"\n  [a-z][a-z0-9-]*:\n", workflow.split("\n  types:\n", 1)[1], maxsplit=1)[0]
+    job = " ".join(job.split())
+    assert "--require-hashes --only-binary=:all: -r scripts/lint/mypy-requirements.txt" in job
+    assert "scripts/lint/check.sh mypy" in job
+    pins = (_REPO / "scripts" / "lint" / "mypy-requirements.txt").read_text()
+    requirements = [line for line in pins.splitlines() if line and not line.startswith(("#", " "))]
+    assert requirements[0].startswith("mypy==")
+    assert all(re.fullmatch(r"[a-z0-9-]+==[0-9.]+ \\", line) for line in requirements)
+
+
+def test_links_workflow_is_scheduled_and_checks_documents_that_exist():
+    workflow = (_REPO / ".github" / "workflows" / "links.yml").read_text()
+    triggers = workflow.split("\non:\n", 1)[1].split("\n\n", 1)[0]
+    assert re.findall(r"^  ([a-z_]+):", triggers, re.M) == ["schedule", "workflow_dispatch"]
+    assert re.search(r"LYCHEE_SHA256: [0-9a-f]{64}\n", workflow)
+    assert "sha256sum -c -" in workflow and "--config scripts/lint/lychee.toml" in workflow
+    run = workflow.split("- name: Check the links", 1)[1]
+    listed = run.split('/links.md"', 1)[1].split("|| status", 1)[0]
+    inputs = re.findall(r"[\w/.*-]+\.(?:md|html)", listed)
+    assert inputs
+    for pattern in inputs:
+        assert list(_REPO.glob(pattern)), f"links.yml checks {pattern}, which matches no file"
+    for name in ("README.md", "CONTRIBUTING.md", "DESIGN_DECISIONS.md", "THIRD_PARTY_NOTICES.md",
+                 "SECURITY.md", "SUPPORT.md", "CHANGELOG.md", "CODE_OF_CONDUCT.md", "docs/verification/*.md",
+                 "rosetta-api/static/docs.html"):
+        assert name in inputs

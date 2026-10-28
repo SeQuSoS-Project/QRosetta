@@ -174,7 +174,7 @@ def lines_and_findings(block):
     if compilers:
         probed += f" and {len(compilers)} compiler{'s' * (len(compilers) != 1)}"
     lines = [f"Images      {probed} probed now: {counts[PASS]} passed, {counts[WARN]} warned, {counts[FAIL]} failed"]
-    skipped = {}
+    skipped: dict = {}
     for image in images:
         for c in image["checks"]:
             if c["status"] == SKIP:
