@@ -9,7 +9,7 @@ import time
 
 import pytest
 
-from tests.unit._fault_runners import api_with_runners, assert_no_raw_exception_text  # noqa: F401
+from tests.unit._fault_runners import assert_no_raw_exception_text, fault_api
 
 pytest.importorskip("pytket")
 
@@ -18,6 +18,10 @@ from services import prep_worker  # noqa: E402
 from tests.unit import prep_probes  # noqa: E402
 
 BELL = 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[2];\nh q[0];\ncx q[0],q[1];\n'
+
+@pytest.fixture
+def api_with_runners(tmp_path, monkeypatch):
+    yield from fault_api(tmp_path, monkeypatch)
 
 
 @pytest.fixture

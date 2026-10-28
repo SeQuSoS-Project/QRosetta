@@ -7,9 +7,7 @@ and no exception text reaches the client."""
 import pytest
 
 from services import dispatcher_http
-from tests.unit._fault_runners import (  # noqa: F401
-    FAULTS, api_with_runners, assert_no_raw_exception_text,
-)
+from tests.unit._fault_runners import FAULTS, assert_no_raw_exception_text, fault_api
 
 BELL = 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[2];\nh q[0];\ncx q[0],q[1];\n'
 
@@ -29,6 +27,10 @@ EXPECTED = {
     "oversized_declared": ("error", "(it is larger than 0 MiB)"),
     "oversized_chunked": ("error", "(it is larger than 0 MiB)"),
 }
+
+@pytest.fixture
+def api_with_runners(tmp_path, monkeypatch):
+    yield from fault_api(tmp_path, monkeypatch)
 
 
 @pytest.fixture(autouse=True)

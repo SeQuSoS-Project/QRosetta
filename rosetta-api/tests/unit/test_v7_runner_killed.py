@@ -13,7 +13,7 @@ import time
 import psutil
 import pytest
 
-from tests.unit._fault_runners import (  # noqa: F401
+from tests.unit._fault_runners import (
     FaultRunner, Api, assert_no_raw_exception_text, wire_runners,
 )
 

@@ -12,7 +12,7 @@ import pytest
 
 from config import settings
 from services import job_store
-from tests.unit._fault_runners import api_with_runners, assert_no_raw_exception_text  # noqa: F401
+from tests.unit._fault_runners import assert_no_raw_exception_text, fault_api
 
 pytest.importorskip("pytket")
 
@@ -28,6 +28,10 @@ RUN_ROUTES = [
     ("/experiments", {"circuits": [{"qasm_string": BELL}], "mode": "statevector",
                       "preprocessing_modes": [True, False]}),
 ]
+
+@pytest.fixture
+def api_with_runners(tmp_path, monkeypatch):
+    yield from fault_api(tmp_path, monkeypatch)
 
 
 def _usage_mib():

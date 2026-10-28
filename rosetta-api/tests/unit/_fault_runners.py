@@ -236,11 +236,10 @@ def wire_runners(monkeypatch, runners: dict, run_timeout: int = 1, queue_budget:
     availability.clear_cache()
 
 
-@pytest.fixture
-def api_with_runners(tmp_path, monkeypatch):
-    """``make(faults)`` -> Api for the real app whose runners are FaultRunners, one per entry
-    of ``faults`` (name -> fault or None). Circuit preparation runs in a thread, rate limits
-    are off and the spill directory is the test's own."""
+def fault_api(tmp_path, monkeypatch):
+    """Generator for a fixture: yields ``make(faults)`` -> Api for the real app whose runners
+    are FaultRunners, one per entry of ``faults`` (name -> fault or None). Circuit preparation
+    runs in a thread, rate limits are off and the spill directory is the test's own."""
     pytest.importorskip("pytket")
     import services.availability as availability
     import services.job_manager as job_manager
