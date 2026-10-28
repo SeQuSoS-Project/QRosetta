@@ -39,7 +39,6 @@ EXPECTED_FAIL = {
     "runners/pytket-projectq-runner/Dockerfile": _PY310 + "; disabled runner",
     "runners/qrisp-runner/Dockerfile": _PY310,
     "runners/quimb-runner/Dockerfile": _PY311,
-    "runners/torch-quantum-runner/Dockerfile": _PY310,
 }
 
 

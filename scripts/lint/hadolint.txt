@@ -60,7 +60,4 @@ runners/quimb-runner/Dockerfile DL3008 1
 runners/quimb-runner/Dockerfile DL3015 1
 runners/quimb-runner/Dockerfile DL3042 1
 runners/quimb-runner/Dockerfile DL3066 1
-runners/torch-quantum-runner/Dockerfile DL3008 1
-runners/torch-quantum-runner/Dockerfile DL3015 1
-runners/torch-quantum-runner/Dockerfile DL3042 1
 runners/torch-quantum-runner/Dockerfile DL3066 1
