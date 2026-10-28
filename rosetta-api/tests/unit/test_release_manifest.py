@@ -124,6 +124,13 @@ def test_sdk_versions_come_from_each_image_lock_file(records):
     assert by_id["api"]["sdk_versions"] == {}
 
 
+def test_locked_versions_read_a_hash_pinned_lock(tmp_path):
+    lock = tmp_path / "requirements.lock"
+    lock.write_text("# header\nqiskit==1.2.4 \\\n    --hash=sha256:" + "0" * 64 + " \\\n    --hash=sha256:" + "1" * 64
+                    + "\n    # via -r requirements.in\nPyJWT==2.15.1 ; python_version >= '3.9'\nnumpy==1.26.4\n")
+    assert mm.locked_versions(lock) == {"qiskit": "1.2.4", "pyjwt": "2.15.1", "numpy": "1.26.4"}
+
+
 def test_image_labels_resolve_the_default_project(records):
     for r in records:
         assert r["image_labels"] == {"org.qrosetta.image.project": "qsimulators",

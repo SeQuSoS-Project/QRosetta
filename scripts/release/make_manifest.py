@@ -92,8 +92,9 @@ def locked_versions(lock):
     if lock.is_file():
         for line in lock.read_text().splitlines():
             name, sep, version = line.split("#", 1)[0].strip().partition("==")
-            if sep:
-                found[_canonical(name)] = version.split(";")[0].strip()
+            version = version.split(";")[0].split()
+            if sep and version:
+                found[_canonical(name)] = version[0]
     return found
 
 
