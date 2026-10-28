@@ -8,6 +8,7 @@ import collections
 import hashlib
 import sys
 import time
+import warnings
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -19,6 +20,7 @@ from qasm_grammar import programs  # noqa: E402
 
 
 def run(seconds: float, outdir: Path, qiskit: bool = True) -> collections.Counter:
+    warnings.filterwarnings("ignore", category=FutureWarning)
     outdir.mkdir(parents=True, exist_ok=True)
     stats = collections.Counter()
     deadline = time.monotonic() + seconds
