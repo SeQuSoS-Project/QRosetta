@@ -24,6 +24,7 @@ TABLE = eol.load_table()
 _B3 = "base image and lock not yet requalified (Wave B3)"
 _NGINX = "Alpine: no repository pinning rule yet (Wave B4, nginx)"
 REQUALIFIED = {
+    "compilers/synthetiq-compiler/Dockerfile",
     "compilers/quartz-compiler/Dockerfile",
     "compilers/staq-compiler/Dockerfile",
     "compilers/cirq-compiler/Dockerfile",

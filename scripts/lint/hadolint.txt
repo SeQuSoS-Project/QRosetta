@@ -19,7 +19,6 @@ compilers/staq-compiler/Dockerfile DL3066 1
 compilers/staq-compiler/Dockerfile DL4006 1
 compilers/synthetiq-compiler/Dockerfile DL3003 1
 compilers/synthetiq-compiler/Dockerfile DL3008 2
-compilers/synthetiq-compiler/Dockerfile DL3042 1
 compilers/synthetiq-compiler/Dockerfile DL3066 1
 compilers/synthetiq-compiler/Dockerfile DL4006 1
 infra/Dockerfile.frontend DL3064 1

@@ -26,7 +26,6 @@ EXPECTED_FAIL = {
     "compilers/bqskit-compiler/Dockerfile": _PY310,
     "compilers/qmap-compiler/Dockerfile": _PY311,
     "compilers/qsynth-compiler/Dockerfile": _PY311,
-    "compilers/synthetiq-compiler/Dockerfile": _PY311,
     "runners/cuquantum-runner/Dockerfile": _PY310,
     "runners/myqlm-runner/Dockerfile": _PY310,
     "runners/pennylane-default-runner/Dockerfile": _PY310,
