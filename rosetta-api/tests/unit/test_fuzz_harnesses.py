@@ -1,7 +1,6 @@
 """The fuzz harnesses in scripts/fuzz run for a few seconds each on their seed inputs, so they
 keep working without the long runs, and every saved fuzz finding replays within the
 validator's oracle under every request option."""
-import random
 import sys
 import time
 from pathlib import Path
@@ -116,14 +115,54 @@ def test_redos_inventory_covers_the_validator_patterns():
     assert len(entries) >= 120
 
 
-def test_redos_quick_on_the_validator_patterns():
+def test_redos_quick_on_the_api_patterns():
     import redos
     entries = [e for e in redos.inventory()
-               if e["file"] in ("rosetta-api/services/validator.py",
-                                "rosetta-api/services/qasm_structure.py")]
-    rng = random.Random(0)
+               if e["scope"] == "api" and e["pattern"] not in redos.GUARDED]
+    assert len(entries) > 60
     start = time.perf_counter()
-    for entry in rng.sample(entries, k=min(8, len(entries))):
+    for entry in entries:
         worst = redos._check_pattern(entry, size=64_000, kill_sec=5.0)
-        assert worst["sec"] < 0.5, (entry["pattern"], worst)
+        assert worst["sec"] < 0.25, (entry["file"], entry["line"], entry["pattern"], worst)
     assert time.perf_counter() - start < 120
+
+
+def test_redos_guarded_patterns_are_the_documented_ones():
+    import redos
+    guarded = {(e["file"], e["pattern"]) for e in redos.inventory()
+               if e["pattern"] in redos.GUARDED}
+    assert {file for file, _ in guarded} <= {
+        "rosetta-api/services/validator.py", "shared/qrosetta_commons/counts.py",
+        "shared/qrosetta_commons/helpers.py", "shared/qrosetta_commons/qasm_expressions.py"}
+
+
+_JSON = st.recursive(
+    st.none() | st.booleans() | st.integers() | st.floats(allow_nan=True)
+    | st.text(alphabet=st.sampled_from("ab=+-@\u202e\u2066 ~/.0q[]"), max_size=12),
+    lambda children: st.lists(children, max_size=5)
+    | st.dictionaries(st.sampled_from(["raw_results", "divergence_report", "simulators",
+                                       "pairwise_agreement", "n_shots", "counts", "simulator",
+                                       "benchmark_summary", "error", "x"]), children, max_size=5),
+    max_leaves=40)
+
+
+@QUICK
+@given(_JSON)
+def test_report_validation_takes_any_json(value):
+    from fastapi import HTTPException
+
+    from services.report_validation import reject_invalid_report, report_problems
+    assert isinstance(report_problems(value), list)
+    try:
+        reject_invalid_report(value)
+    except HTTPException as exc:
+        assert exc.status_code == 400
+
+
+def test_report_validation_of_a_million_keys_is_fast():
+    from services.report_validation import report_problems
+    report = {f"k{i}": i for i in range(1_000_000)}
+    start = time.perf_counter()
+    report_problems(report)
+    report_problems({"raw_results": [], "divergence_report": report})
+    assert time.perf_counter() - start < 5

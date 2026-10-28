@@ -46,6 +46,19 @@ GENERIC_PUMPS = [
     "tdg ", "\\", "%", "\x00",
 ]
 SUFFIXES = ["", "!", "\x00", "{", ";"]
+GUARDED = {
+    r"/\*.*?\*/": ("client circuits reach it only after check_block_comments, which refuses "
+                   "every '/*' not closed in its own line comment (test_v6_03)"),
+    r"\b(?:gate)\s+[^{;]*\{[^}]*\}": ("client circuits cannot use 'gate' as a name, so each "
+                                      "match reaches its '{' within the definition (test_v6_08)"),
+    r"\bmeasure\b[^;]*;": ("client circuits cannot use 'measure' as a name, so each match ends at "
+                           "its statement's ';' (test_v6_08)"),
+    r"\bgate\s+([A-Za-z_]\w*)\s*(?:\(([^)]*)\))?[^{]*\{([^}]*)\}": (
+        "client circuits cannot use 'gate' as a name, so each match reaches its '{' within the "
+        "definition (test_v6_09)"),
+}
+"""API and shared patterns over the limit on raw adversarial text that client text reaches only
+after a check that refuses the inputs which make them slow; the reason names the check."""
 
 
 def _const_str(node):
@@ -250,11 +263,16 @@ def main(argv=None):
     for entry in entries:
         entry["worst"] = _check_pattern(entry, args.size, args.kill_sec)
         flag = "OVER" if entry["worst"]["sec"] > args.limit_sec else "ok"
-        over += flag == "OVER"
-        print(f"{flag:4} {entry['worst']['sec']:8.3f}s {entry['scope']:8} {entry['file']}:"
+        if flag == "OVER" and entry["scope"] in ("api", "shared") and entry["pattern"] in GUARDED:
+            flag = "guarded"
+        over += flag == "OVER" and entry["scope"] in ("api", "shared")
+        print(f"{flag:7} {entry['worst']['sec']:8.3f}s {entry['scope']:8} {entry['file']}:"
               f"{entry['line']} {entry['pattern']!r} pump={entry['worst']['pump']!r} "
               f"{entry['worst']['method']}", flush=True)
-    print(f"{len(entries)} patterns, {over} over {args.limit_sec} s on {args.size} bytes")
+    sealed = sum(1 for e in entries if e["scope"] in ("runner", "compiler")
+                 and e["worst"]["sec"] > args.limit_sec)
+    print(f"{len(entries)} patterns on {args.size} bytes: {over} in the API or shared/ over "
+          f"{args.limit_sec} s and not guarded, {sealed} in runners or compilers over it")
     if args.json:
         Path(args.json).write_text(json.dumps(entries, indent=2))
     return 1 if over else 0
