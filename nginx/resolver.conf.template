@@ -1,0 +1,1 @@
+resolver ${QROSETTA_RESOLVER} valid=5s ipv6=off;

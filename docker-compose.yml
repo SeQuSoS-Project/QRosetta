@@ -26,7 +26,7 @@ services:
       org.qrosetta.kind: core
     container_name: nginx-reverse-proxy
     ports:
-      - "${QROSETTA_HTTP_BIND:-127.0.0.1:8080}:80"
+      - "${QROSETTA_HTTP_BIND:-127.0.0.1:8080}:8080"
     depends_on:
       api:
         condition: service_healthy

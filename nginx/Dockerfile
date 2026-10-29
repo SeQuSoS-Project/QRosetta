@@ -1,17 +1,18 @@
-FROM nginx:alpine@sha256:8b1e78743a03dbb2c95171cc58639fef29abc8816598e27fb910ed2e621e589a
+FROM nginxinc/nginx-unprivileged:1.31.7-alpine3.24@sha256:b5047b9b76845eac124358373c6852377c52e4b05834a47647e955dd91cb8f1e
 
 ARG QROSETTA_GIT_SHA=unknown
 ENV QROSETTA_IMAGE_GIT_SHA=${QROSETTA_GIT_SHA}
 
-# Remove default config
+# The base image's entrypoint sources the resolver script, then renders the resolver template into
+# conf.d, substituting QROSETTA_* only; nginx runs as uid 101 and listens on 8080.
+ENV NGINX_ENVSUBST_FILTER=^QROSETTA_
 RUN rm /etc/nginx/conf.d/default.conf
-
-# Copy our custom config
+COPY --chmod=0755 nginx/14-qrosetta-resolver.envsh /docker-entrypoint.d/14-qrosetta-resolver.envsh
+COPY nginx/resolver.conf.template /etc/nginx/templates/resolver.conf.template
 COPY nginx/nginx.conf /etc/nginx/nginx.conf
 
-# Copy static frontend files from the API directory
 COPY rosetta-api/static /usr/share/nginx/html
 
-# Dynamically set the DNS resolver at runtime based on /etc/resolv.conf
-# This ensures it works in both Docker (127.0.0.11) and Rahti (Internal Cluster DNS)
-CMD ["/bin/sh", "-c", "export DNS_RESOLVER=$(grep nameserver /etc/resolv.conf | awk '{print $2}' | head -n1); echo \"Using DNS Resolver: $DNS_RESOLVER\"; sed -i \"s/127.0.0.11/$DNS_RESOLVER/g\" /etc/nginx/nginx.conf; nginx -g 'daemon off;'"]
+EXPOSE 8080
+
+USER 101

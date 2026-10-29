@@ -1,6 +1,7 @@
 """Reproducible image builds: every Debian stage of every Dockerfile points apt at snapshot.debian.org
 through ARG DEBIAN_SNAPSHOT, whose default equals release/debian-snapshot.conf, before any apt-get; every
-pip install is hash-checked (--require-hashes) or installs a local path without the index or
+Alpine stage takes its packages from its base digest only (Alpine keeps no snapshot archive, so no apk
+add or apk upgrade); every pip install is hash-checked (--require-hashes) or installs a local path without the index or
 dependencies. Dockerfiles in EXPECTED_FAIL are strict expected failures awaiting requalification.
 Stdlib and pytest only."""
 
@@ -22,7 +23,6 @@ SNAPSHOT_FILE = REPO / "release" / "debian-snapshot.conf"
 TABLE = eol.load_table()
 
 _B3 = "base image and lock not yet requalified (Wave B3)"
-_NGINX = "Alpine: no repository pinning rule yet (Wave B4, nginx)"
 REQUALIFIED = {
     "compilers/cirq-compiler/Dockerfile",
     "compilers/pyzx-compiler/Dockerfile",
@@ -46,11 +46,10 @@ EXPECTED_FAIL = {
     **{p.relative_to(REPO).as_posix(): _B3
        for d in ("runners", "compilers") for p in sorted((REPO / d).glob("*/Dockerfile"))
        if p.relative_to(REPO).as_posix() not in REQUALIFIED},
-    "nginx/Dockerfile": _NGINX,
-    "infra/Dockerfile.frontend": _NGINX,
 }
 
 _PIP = re.compile(r"(?:^|\s)(?:python3?\s+-m\s+)?pip3?\s+install\b(.*)")
+_APK_CHANGE = re.compile(r"\bapk\s+(?:--?\S+\s+)*(?:add|upgrade)\b")
 _SNAPSHOT_REF = r"snapshot\.debian\.org/archive/{archive}/\$\{{?DEBIAN_SNAPSHOT\}}?"
 
 
@@ -101,6 +100,13 @@ def problems_of(path, expected_snapshot):
         if stage.parent is not None:
             continue
         family = eol.classify(stage, TABLE).os_family
+        if family == "alpine":
+            if not eol.split_ref(stage.ref)[2]:
+                problems.append(f"{from_rest}: Alpine base not pinned by digest")
+            problems += [f"{from_rest}: apk installs or upgrades packages (Alpine has no snapshot archive): "
+                         f"{rest.strip()}" for keyword, rest in instructions
+                         if keyword == "RUN" and _APK_CHANGE.search(rest)]
+            continue
         if family != "debian":
             problems.append(f"{from_rest}: no repository pinning rule for OS {family!r}")
             continue
@@ -173,6 +179,10 @@ RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 RUN pip install --no-cache-dir --no-deps --no-build-isolation --no-index /tmp/shared-src && rm -rf /tmp/shared-src
 """
 
+_ALPINE_OK = """FROM nginx:alpine@sha256:8b1e78743a03dbb2c95171cc58639fef29abc8816598e27fb910ed2e621e589a
+RUN rm /etc/nginx/conf.d/default.conf && apk info -v
+"""
+
 
 def _write(tmp_path, text):
     path = tmp_path / "Dockerfile"
@@ -191,10 +201,16 @@ def _write(tmp_path, text):
      ["apt runs before the snapshot source is set"]),
     ("ARG DEBIAN_SNAPSHOT=20260101T000000Z\n" + _DEBIAN_OK.replace(
         "ARG DEBIAN_SNAPSHOT=20260101T000000Z", "ARG DEBIAN_SNAPSHOT"), []),
-    ("FROM nginx:alpine@sha256:8b1e78743a03dbb2c95171cc58639fef29abc8816598e27fb910ed2e621e589a\n",
-     ["no repository pinning rule for OS 'alpine'"]),
+    (_ALPINE_OK, []),
+    (_ALPINE_OK.replace("nginx:alpine@sha256:8b1e78743a03dbb2c95171cc58639fef29abc8816598e27fb910ed2e621e589a",
+                        "nginx:1.31.7-alpine3.24"),
+     ["Alpine base not pinned by digest"]),
+    (_ALPINE_OK + "RUN apk add --no-cache curl\n", ["apk installs or upgrades packages"]),
+    (_ALPINE_OK + "RUN apk --no-cache upgrade\n", ["apk installs or upgrades packages"]),
+    ("FROM ubuntu:24.04@sha256:" + "0" * 64 + "\n", ["no repository pinning rule for OS"]),
 ], ids=["compliant", "no-hashes", "local-with-index", "pip-upgrade", "other-snapshot", "no-security-archive",
-        "apt-before-snapshot", "global-arg-default", "alpine"])
+        "apt-before-snapshot", "global-arg-default", "alpine", "alpine-no-digest", "alpine-apk-add",
+        "alpine-apk-upgrade", "unknown-os"])
 def test_rules(tmp_path, text, expected):
     problems = problems_of(_write(tmp_path, text), "20260101T000000Z")
     assert len(problems) == len(expected), problems
