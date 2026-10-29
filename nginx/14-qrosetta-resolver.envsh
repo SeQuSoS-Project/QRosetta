@@ -1,0 +1,5 @@
+#!/bin/sh
+# Sets QROSETTA_RESOLVER to the container's first nameserver (Docker 127.0.0.11, podman's
+# aardvark-dns, or the cluster DNS), which resolver.conf.template hands to nginx.
+QROSETTA_RESOLVER=$(awk '$1 == "nameserver" { if ($2 ~ ":") print "[" $2 "]"; else print $2; exit }' /etc/resolv.conf)
+export QROSETTA_RESOLVER

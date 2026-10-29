@@ -4,7 +4,6 @@
 # triaged 2026-10-28; the reason for each line follows it.
 infra/nginx-frontend.conf request-host-used 1  # X-Forwarded-Host, used by the API only to compare with Origin (same_origin.py), never to build a URL
 infra/rahti/api.yaml allow-privilege-escalation-no-securitycontext 1  # Kubernetes mode is experimental in v2.0.0; securityContext proposed (defects-V5 V5-05)
-nginx/Dockerfile missing-user 1  # nginx master runs as container root; open defect V5-04
 nginx/nginx.conf missing-internal 1  # @proxy is a named location, which is internal already
 nginx/nginx.conf request-host-used 1  # Host, used by the API only to compare with Origin, never to build a URL
 qrosetta_cli/client/account.py insecure-file-permissions 1  # chmod 0700 of the credentials directory: the restrictive mode is the point

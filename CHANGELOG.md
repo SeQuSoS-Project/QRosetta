@@ -196,6 +196,8 @@ limits, the counts keys and the statistics all changed (see Changed).
 
 #### Page and local stack
 
+- The nginx images run as uid 101 on `nginxinc/nginx-unprivileged` 1.31.7 (Alpine 3.24), pinned by
+  digest, and listen on 8080 inside the container; the published address is unchanged.
 - nginx is published on `127.0.0.1:8080` (`QROSETTA_HTTP_BIND`) instead of port 80 on every
   interface.
 - The page is ES modules with Tailwind CSS served from the nginx image; nothing loads from a CDN.

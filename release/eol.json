@@ -70,6 +70,13 @@
       "python": null,
       "nginx": "1.31.1",
       "verified": "2026-10-27: /etc/os-release (Alpine 3.23.4) and NGINX_VERSION of the pulled image"
+    },
+    "sha256:b5047b9b76845eac124358373c6852377c52e4b05834a47647e955dd91cb8f1e": {
+      "image": "nginxinc/nginx-unprivileged:1.31.7-alpine3.24",
+      "os": {"family": "alpine", "release": "3.24"},
+      "python": null,
+      "nginx": "1.31.7",
+      "verified": "2026-10-29: /etc/os-release (Alpine 3.24.2) and nginx -v (nginx/1.31.7) of the pulled image"
     }
   },
   "servers": {
