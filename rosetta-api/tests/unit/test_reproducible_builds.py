@@ -32,6 +32,7 @@ REQUALIFIED = {
     "compilers/staq-compiler/Dockerfile",
     "compilers/synthetiq-compiler/Dockerfile",
     "runners/cuquantum-runner/Dockerfile",
+    "runners/myqlm-runner/Dockerfile",
     "runners/pennylane-default-runner/Dockerfile",
     "runners/pennylane-lightning-runner/Dockerfile",
     "runners/pyquil-runner/Dockerfile",

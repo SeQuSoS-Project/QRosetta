@@ -22,7 +22,6 @@ compilers/synthetiq-compiler/Dockerfile DL4006 1
 infra/Dockerfile.frontend DL3064 1
 rosetta-api/Dockerfile DL3066 1
 runners/cuquantum-runner/Dockerfile DL3066 1
-runners/myqlm-runner/Dockerfile DL3042 1
 runners/myqlm-runner/Dockerfile DL3066 1
 runners/pennylane-default-runner/Dockerfile DL3066 1
 runners/pennylane-lightning-runner/Dockerfile DL3066 1
