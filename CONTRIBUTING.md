@@ -258,8 +258,10 @@ more than 32 bits fails in `serialize_fn`.
 
 Follow the existing pattern (`runners/qibo-runner/Dockerfile` is a minimal example):
 
-- Pin the base image by digest: `FROM python:3.10-slim@sha256:...` (or whichever tag/digest your
-  SDK needs; check its supported Python versions first).
+- Pin the base image by digest: `FROM python:3.13-slim@sha256:...`, or `python:3.12-slim` when a pin
+  in your lock has no cp313 wheel (the API and most runners run 3.12, Qibo and six compilers 3.13).
+  Use the digest the other Dockerfiles already pin for that tag, and never go below 3.12
+  (`release/eol.json`, `test_base_image_eol.py`).
 - Create and switch to a non-root user (`appuser`), with `HOME=/home/appuser` and group
   permissions set so the image also runs under OpenShift's arbitrary-UID model.
 - Install from `requirements.lock`, not `requirements.txt`, for the reproducible build. A lock with
@@ -394,8 +396,9 @@ one runner executes at once (default 1; further requests queue and report
 `queue_wait_sec`).
 
 **Display names.** The UI shows the raw canonical id unless you add a label to both
-registers: `rosetta-api/static/js/config.js` `RUNNER_DISPLAY_NAMES` (long, vendor-qualified,
-for the config panel) and `rosetta-api/static/js/status_cards.js` `_RUNNER_NAMES` (short, for
+registers: `rosetta-api/static/js/runner_key.js` `RUNNER_DISPLAY_NAMES` (long, vendor-qualified,
+for the Backends popover and figures; `services/publication/theme.py` `BACKEND_DISPLAY_NAMES`
+repeats it) and `rosetta-api/static/js/status_cards.js` `_RUNNER_NAMES` (short, for
 the status cards). Add a row for the backend's statevector and measured bit order to the
 table in `rosetta-api/static/docs.html` (`#bitorder`).
 
@@ -408,7 +411,9 @@ table in `rosetta-api/static/docs.html` (`#bitorder`).
   ```
 
   `PYTHONPATH` must include `../shared`: an older `qrosetta_commons` installed in the
-  virtualenv otherwise shadows the working copy.
+  virtualenv otherwise shadows the working copy. The suite needs pytest 9 (`minversion = "9.0"` in
+  the root `pyproject.toml`; `rosetta-api/tests/requirements.txt` pins 9.0.3), and runs from
+  `rosetta-api/` only, because the app mounts `static/` relative to the working directory.
 - Build and start the runner (`./qrosetta build my_sdk_runner && ./qrosetta start --detach
   my_sdk_runner`, which also starts nginx and the API). Runners expose no port and ship no curl, so exercise them from inside the
   container:
@@ -496,11 +501,11 @@ Write the revision against a scratch database at head, from `rosetta-api/`:
 ```bash
 export DATABASE_URL=sqlite:///$HOME/.tmp/schema-scratch.db
 PYTHONPATH=.:../shared python -m db.migrate
-PYTHONPATH=.:../shared alembic revision --autogenerate --rev-id 0002 -m "add users display name"
+PYTHONPATH=.:../shared alembic revision --autogenerate --rev-id 0003 -m "add users display name"
 ```
 
-Revision ids are sequential four-digit numbers (`0001` is the baseline), so two branches that
-both add `0002` conflict visibly instead of creating two heads. Read the generated file before
+Revision ids are sequential four-digit numbers (`0001` is the baseline, `0002` adds
+`users.tokens_valid_after`), so two branches that both add `0003` conflict visibly instead of creating two heads. Read the generated file before
 committing it: autogenerate does not see renames (it writes a drop and an add) and does not
 compare server defaults. Migrations run in batch mode (`render_as_batch`), which SQLite needs
 for anything beyond adding a column; keep the generated `with op.batch_alter_table(...)` blocks.
@@ -620,7 +625,7 @@ other spelling):
    notices are there). Step 2 also writes each notice on every run, and discards it, so a dry run
    fails when a notice cannot be written. The job waits for `openapi`, which writes the API
    description from the tagged code (`scripts/release/release_assets.py openapi`, with the API's
-   locked dependencies on Python 3.10); no image is pushed when that fails.
+   locked dependencies on Python 3.12); no image is pushed when that fails.
 4. `wheel` writes the manifest (with the pushed digests, image ids and the signing workflow's
    identity, if any), builds the sdist and the wheel, and checks them with `check_dist.py`
    against the tag.

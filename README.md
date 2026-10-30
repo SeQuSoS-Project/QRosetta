@@ -362,10 +362,12 @@ the manifests, and waits for the rollout.
 
 ```bash
 cd rosetta-api
-pip install -r requirements.txt -r tests/requirements.txt
+pip install -r requirements.txt -r tests/requirements.txt   # Python 3.12, the API image's
 pip install ../shared
 PYTHONPATH=.:../shared pytest tests/unit/ -n auto
 ```
+
+The suite needs pytest 9 (`tests/requirements.txt` pins 9.0.3) and runs from `rosetta-api/`.
 
 `PYTHONPATH` includes `../shared` so the working copy of `qrosetta_commons` is tested even
 when an older copy is installed in the virtualenv.
@@ -388,12 +390,14 @@ probes against them; the rest need the full stack. See the README there.
 │   ├── routers/             Request validation and HTTP shaping
 │   ├── services/            Business logic, dispatch, analysis, export
 │   ├── schemas/             Pydantic request/response models
-│   ├── db/                  SQLAlchemy models and session handling
+│   ├── db/                  SQLAlchemy models, session handling and the startup migration
+│   ├── migrations/          Alembic revisions of the database schema
 │   ├── static/              Web frontend
 │   └── tests/unit/          Unit test suite (run by CI)
 ├── runners/<name>-runner/   One directory per simulator backend
-├── shared/qrosetta_commons/ The benchmarking contract shared by every runner
-├── scripts/                 Boot and deployment scripts
+├── compilers/<name>-compiler/ One directory per compile-only service
+├── shared/qrosetta_commons/ The benchmarking contract shared by every runner and compiler
+├── scripts/                 Boot, deployment, release, lint and requalification scripts
 └── tests/integration/       Live-stack checks (need the stack up)
 ```
 
@@ -403,9 +407,17 @@ Report vulnerabilities privately, as `SECURITY.md` describes; never in a public 
 
 - Only Nginx is publicly reachable; runners expose no ports and the API is not on the public
   network.
-- The API, runner and compiler containers run as an unprivileged `appuser`. In the nginx
-  container the master process runs as root (the stock image) and the workers as `nginx`.
+- The API, runner and compiler containers run as an unprivileged `appuser`, and nginx as uid 101
+  (`nginxinc/nginx-unprivileged`), listening on port 8080 inside its container.
+- Every response carries a Content-Security-Policy, `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy: no-referrer`, `Cross-Origin-Opener-Policy: same-origin` and
+  `X-Frame-Options: DENY`; the pages run no inline script or style.
+- A POST, PUT, PATCH or DELETE sent by a page on another site is refused with 403, and a JSON
+  route reads a body only with a JSON `Content-Type` (415 otherwise). Requests without an `Origin`
+  header, such as the CLI's, are unaffected.
 - Passwords are hashed with bcrypt and never logged or stored in plaintext; sessions are JWT.
+  Logout ends every session of the account on the server, and deleting an account needs its
+  password.
 - Every endpoint that reads or writes user data requires authentication and filters by the
   authenticated user.
 - Circuit size, gate count, qubit count, upload size, and run fan-out are all capped
