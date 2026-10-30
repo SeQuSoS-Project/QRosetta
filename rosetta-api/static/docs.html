@@ -96,7 +96,7 @@
 
                         <section id="quickstart">
                 <h2>Quickstart: your first run</h2>
-                <p>On a local install started with <code>scripts/safe_boot.sh</code> or <code>docker compose up</code>, the page is at <code>http://localhost:8080</code>, reachable from this machine only; <code>QROSETTA_HTTP_BIND</code> (in <code>.env</code> or the environment, default <code>127.0.0.1:8080</code>) sets the address and port nginx is published on, for example <code>0.0.0.0:8080</code> for every interface. Publish it beyond this machine only on a trusted network: in local mode any client may skip the circuit-size, gate-count and experiment-size limits.</p>
+                <p>On a local install started with <code>./qrosetta start</code> (or <code>scripts/safe_boot.sh</code>, which builds the images and then runs it), the page is at <code>http://localhost:8080</code>, reachable from this machine only; <code>QROSETTA_HTTP_BIND</code> (in <code>.env</code> or the environment, default <code>127.0.0.1:8080</code>) sets the address and port nginx is published on, for example <code>0.0.0.0:8080</code> for every interface. Publish it beyond this machine only on a trusted network: in local mode any client may skip the circuit-size, gate-count and experiment-size limits.</p>
                 <p>The page opens with a three-qubit GHZ circuit in the editor, Statevector ticked and every backend the server offers selected.</p>
                 <ol class="list-decimal pl-5 space-y-1 mb-4 text-gray-700">
                     <li>Press <strong>Run Editor Code</strong>, at the bottom of the left column, where Run, Mode, Run Name and the settings chips always stay in view. The button label says what will run, for example "Run Editor Code · Statevector · 14 backends", or "40 runs on 14 backends" in multi-run mode. While the run is in progress, the results area shows the table the result will fill, with each backend's state in its Status column.</li>
@@ -1937,7 +1937,11 @@
                     limit; a playlist error names the task as <code>tasks[i]</code>, counted from 0). A 413
                     is a body over the request limit; one over the proxy's 5 MB limit gets the same JSON
                     shape. 409 is a job in the wrong state or of the wrong kind (for example asking an
-                    ordinary job for an experiment bundle).
+                    ordinary job for an experiment bundle). A 415 is a body sent to a JSON route without
+                    a JSON <code>Content-Type</code> (<code>application/json</code> or a
+                    <code>+json</code> type). A 403 with the detail "Requests from other sites are
+                    refused." is a POST, PUT, PATCH or DELETE whose <code>Origin</code> header names
+                    another site; a script that sends no <code>Origin</code> header is not affected.
                 </p>
                 <p>
                     Run, export, render, lookup and account routes are rate-limited. A request whose
