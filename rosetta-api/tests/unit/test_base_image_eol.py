@@ -23,7 +23,6 @@ IMAGES = eol.load_images(REPO, TABLE)
 _PY310 = "Python 3.10 reached end of life on 2026-10-01; requalify on 3.12 or 3.13 (Wave B3)"
 _PY311 = "Python 3.11 reaches end of life in 2027-10; requalify on 3.12 or 3.13 (Wave B3)"
 EXPECTED_FAIL = {
-    "compilers/bqskit-compiler/Dockerfile": _PY310,
     "runners/pytket-projectq-runner/Dockerfile": _PY310 + "; disabled runner",
     "runners/quimb-runner/Dockerfile": _PY311,
 }

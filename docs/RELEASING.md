@@ -40,8 +40,11 @@ the git remote `public` (`SeQuSoS-Project/QRosetta`) and the version is `X.Y.Z`.
 2. The nginx images (`nginx/Dockerfile`, `infra/Dockerfile.frontend`, Alpine 3.23) enter the
    end-of-life window on 2026-11-01, and `test_base_image_eol.py` fails on `main` from that day
    (`A8.md`). Move both to a current `nginx:alpine` digest on Alpine 3.24 before tagging.
-3. The runner and compiler images still run Python 3.10, which reached end of life on
-   2026-10-01. If they ship as they are, the release notes say so.
+3. Since 2026-10-30 every runner and compiler image runs Python 3.12 or 3.13 except two: the
+   quimb runner runs 3.11, which reaches end of life in 2027-10 and is already inside the
+   12-month window (its 3.12 candidate is held: simulation +25.5 % and +11.9 % on two cells), and
+   the disabled ProjectQ runner, which is not published, runs 3.10. If quimb ships on 3.11, the
+   release notes say so.
 4. `CHANGELOG.md` has no `[2.0.0]` section yet. The `plan` job stops a final tag until it has a
    dated one.
 5. Owner items that the files depend on: ORCIDs (`CITATION.cff`, `.zenodo.json`,

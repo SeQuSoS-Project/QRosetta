@@ -24,6 +24,7 @@ TABLE = eol.load_table()
 
 _B3 = "base image and lock not yet requalified (Wave B3)"
 REQUALIFIED = {
+    "compilers/bqskit-compiler/Dockerfile",
     "compilers/cirq-compiler/Dockerfile",
     "compilers/pyzx-compiler/Dockerfile",
     "compilers/qmap-compiler/Dockerfile",

@@ -61,7 +61,7 @@ version = { attr = "qrosetta_cli.__version__" }
 # Lint and format settings (ruff); they do not change the wheel. CONTRIBUTING.md (Lint gates)
 # describes the CI jobs and the per-file baseline at the end of this file.
 [tool.ruff]
-# The API image and most runner images run Python 3.10; the CLI needs 3.11 (requires-python above).
+# shared/ still runs on Python 3.10 in the disabled ProjectQ runner image; the CLI needs 3.11 (requires-python above).
 target-version = "py310"
 per-file-target-version = { "qrosetta_cli/**" = "py311" }
 line-length = 120
