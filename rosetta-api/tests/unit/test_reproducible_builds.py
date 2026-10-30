@@ -35,6 +35,7 @@ REQUALIFIED = {
     "runners/pennylane-lightning-runner/Dockerfile",
     "runners/pyquil-runner/Dockerfile",
     "runners/pytket-braket-runner/Dockerfile",
+    "runners/pytket-cirq-runner/Dockerfile",
     "runners/pytket-qiskit-runner/Dockerfile",
     "runners/pytket-quest-runner/Dockerfile",
     "runners/pytket-qulacs-runner/Dockerfile",
