@@ -1,5 +1,6 @@
-"""A real runner (runners/<dir>/main.py) served by uvicorn on a free loopback port in its own
-process, for the failure-injection tests that kill runner processes (V7)."""
+"""A real runner (runners/<dir>/main.py), or the shared scaffolding around test processors
+(tests/unit/_watcher_server.py), served by uvicorn on a free loopback port in its own process,
+for the failure-injection tests that kill runner processes or drop their callers (V7)."""
 
 import os
 import signal
@@ -28,12 +29,16 @@ class RealRunner:
 
     def __init__(self, directory: str, start_timeout: float = 120.0):
         runner_dir = REPO / "runners" / directory
+        self._start([sys.executable, "-c", _SERVE], runner_dir,
+                    [str(runner_dir), str(REPO / "shared")], f"runner {directory}", start_timeout)
+
+    def _start(self, command, cwd, pythonpath, name, start_timeout):
         self.port = _free_port()
         self.url = f"http://127.0.0.1:{self.port}"
         env = {k: v for k, v in os.environ.items() if not k.startswith("QROSETTA_HOST_")}
-        env["PYTHONPATH"] = os.pathsep.join([str(runner_dir), str(REPO / "shared")])
+        env["PYTHONPATH"] = os.pathsep.join(pythonpath)
         env.setdefault("TMPDIR", os.environ.get("TMPDIR", str(Path.home() / ".tmp")))
-        self.process = subprocess.Popen([sys.executable, "-c", _SERVE, str(self.port)], cwd=runner_dir,
+        self.process = subprocess.Popen([*command, str(self.port)], cwd=cwd,
                                         env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                                         start_new_session=True)
         deadline = time.monotonic() + start_timeout
@@ -45,10 +50,10 @@ class RealRunner:
             except OSError:
                 pass
             if self.process.poll() is not None:
-                raise RuntimeError(f"runner {directory} exited: {self.process.stderr.read().decode()[-2000:]}")
+                raise RuntimeError(f"{name} exited: {self.process.stderr.read().decode()[-2000:]}")
             if time.monotonic() > deadline:
                 self.close()
-                raise RuntimeError(f"runner {directory} did not start in {start_timeout:g} s")
+                raise RuntimeError(f"{name} did not start in {start_timeout:g} s")
             time.sleep(0.2)
 
     @property
@@ -80,3 +85,14 @@ class RealRunner:
         self.process.wait(10)
         if self.process.stderr is not None:
             self.process.stderr.close()
+
+
+class ScaffoldServer(RealRunner):
+    """``tests/unit/_watcher_server.py``: the shared runner (``kind`` runner) or compiler
+    (``compiler``) scaffolding around ``_isolated_fixture.sleeps_from_circuit``, served with the
+    uvicorn event loop ``loop`` and HTTP implementation ``http``."""
+
+    def __init__(self, kind: str, loop: str, http: str, start_timeout: float = 60.0):
+        api_dir = REPO / "rosetta-api"
+        self._start([sys.executable, "-m", "tests.unit._watcher_server", kind, loop, http], api_dir,
+                    [str(api_dir), str(REPO / "shared")], f"{kind} scaffold", start_timeout)

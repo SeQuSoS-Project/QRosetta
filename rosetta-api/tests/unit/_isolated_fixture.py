@@ -75,6 +75,17 @@ def reports_watched_pid(payload):
     return {"watched_alive": process_alive(payload["watch_pid"])}
 
 
+def sleeps_from_circuit(payload):
+    """Reads ``pid_file`` and ``sleep`` from ``circuit_data`` (JSON, since the HTTP payload
+    models keep only their own fields), appends this process's pid to ``pid_file``, sleeps."""
+    import json
+    spec = json.loads(payload["circuit_data"])
+    with open(spec["pid_file"], "a") as fh:
+        fh.write(f"{os.getpid()}\n")
+    time.sleep(spec.get("sleep", 0))
+    return {"result": spec.get("sleep", 0), "execution_time_sec": 0.01}
+
+
 def serve_one_slow_run(pid_file, measured):
     """Acts as a runner worker: awaits one slow run through ExecutionSlots until killed."""
     import asyncio

@@ -1050,6 +1050,51 @@ class ExecutionSlots:
         return result
 
 
+DISCONNECT_POLL_SEC = 1.0
+
+
+async def _cancel_until_done(task) -> None:
+    """Cancel ``task`` every DISCONNECT_POLL_SEC until it has finished. A cancellation of the
+    caller meanwhile is held back until then, so a started run's slot is released only after
+    its child has been reaped; it is raised afterwards."""
+    caller_cancelled = False
+    while not task.done():
+        task.cancel()
+        try:
+            await _asyncio.wait({task}, timeout=DISCONNECT_POLL_SEC)
+        except _asyncio.CancelledError:
+            caller_cancelled = True
+    if not task.cancelled():
+        task.exception()
+    if caller_cancelled:
+        raise _asyncio.CancelledError()
+
+
+async def run_while_connected(request, run):
+    """Await ``run`` (an ``ExecutionSlots.run`` coroutine) as a task in the serving process,
+    asking every DISCONNECT_POLL_SEC whether the HTTP client is still connected. When it has
+    gone, the task is cancelled: a queued run leaves the queue without starting, and a started
+    run's child process group is killed and reaped before its slot is released; returns None.
+    A cancellation of the handler itself cancels the task the same way and is then raised."""
+    task = _asyncio.ensure_future(run)
+    started = time.monotonic()
+    try:
+        while True:
+            done, _ = await _asyncio.wait({task}, timeout=DISCONNECT_POLL_SEC)
+            if done:
+                return task.result()
+            if await request.is_disconnected():
+                break
+    except _asyncio.CancelledError:
+        await _cancel_until_done(task)
+        raise
+    await _cancel_until_done(task)
+    get_logger("qrosetta-runner").warning(
+        f"The caller of {request.url.path} disconnected after {time.monotonic() - started:.1f} s; "
+        f"its run was stopped and its execution slot released.")
+    return None
+
+
 def register_health_endpoint(app) -> None:
     """``GET /health``: 200 while the serving process answers. It reads nothing and never
     waits for an execution slot, so it answers while a run is in progress."""
@@ -1064,12 +1109,15 @@ def register_runner_endpoints(app, process_run, process_run_measured, max_concur
     """Register ``/run``, ``/run_measured`` and ``/health`` on a runner app.
 
     Both endpoints share one ``ExecutionSlots`` (``RUNNER_MAX_CONCURRENT``, default 1), so
-    concurrent requests to this runner queue instead of sharing its CPU and memory.
+    concurrent requests to this runner queue instead of sharing its CPU and memory. A request
+    whose client disconnects leaves the queue, or has its run stopped (``run_while_connected``).
     ``GET /capabilities`` answers from this serving process, never from a run's child:
     ``available``, ``reason`` and ``device`` from ``capabilities`` (a callable returning them;
     without one the runner is available), and the image's commit, identity file values and
     build-file hashes.
     """
+    from fastapi import Request
+
     from qrosetta_commons.models import CircuitPayload, MeasuredCircuitPayload
 
     slots = ExecutionSlots(max_concurrent)
@@ -1089,12 +1137,12 @@ def register_runner_endpoints(app, process_run, process_run_measured, max_concur
                 "reason": info.get("reason"), "device": info.get("device"), **image}
 
     @app.post("/run")
-    async def run_circuit(payload: CircuitPayload):
-        return await slots.run(process_run, payload.model_dump())
+    async def run_circuit(payload: CircuitPayload, request: Request):
+        return await run_while_connected(request, slots.run(process_run, payload.model_dump()))
 
     @app.post("/run_measured")
-    async def run_measured_circuit(payload: MeasuredCircuitPayload):
-        return await slots.run(process_run_measured, payload.model_dump())
+    async def run_measured_circuit(payload: MeasuredCircuitPayload, request: Request):
+        return await run_while_connected(request, slots.run(process_run_measured, payload.model_dump()))
 
 
 def _self_test_probes(process_run, process_run_measured, sv_order, counts_order):

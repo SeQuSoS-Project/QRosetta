@@ -16,7 +16,7 @@ from qrosetta_commons.helpers import (
     GATE_METRICS_FROM_QASM, IMAGE_GIT_SHA, MAX_QUBITS_COMPILE, ExecutionSlots, _stamp_code_sha,
     check_qubits_limit, count_qasm_gates_and_depth, count_qasm_gates_by_name,
     add_file_arguments, batch_environment, get_num_qubits_from_qasm, get_sdk_versions,
-    register_health_endpoint, run_cli_job,
+    register_health_endpoint, run_cli_job, run_while_connected,
 )
 
 COMPILE_MAX_QUBITS = MAX_QUBITS_COMPILE
@@ -130,7 +130,10 @@ def register_compiler_endpoint(app, process_compile, max_concurrent=None) -> Non
     """Register ``POST /compile``, ``GET /health`` and ``GET /capabilities`` (available, with
     ``compiler_versions()``). Compile requests share one ``ExecutionSlots`` queue of
     ``COMPILER_MAX_CONCURRENT`` slots (default 2; compiles are not timed) and each runs in a
-    killable spawned process, as runner requests do, without the timing instrument."""
+    killable spawned process, as runner requests do, without the timing instrument. A request
+    whose client disconnects leaves the queue, or has its compile stopped (``run_while_connected``)."""
+    from fastapi import Request
+
     from qrosetta_commons.models import CompilePayload
 
     if max_concurrent is None:
@@ -145,8 +148,8 @@ def register_compiler_endpoint(app, process_compile, max_concurrent=None) -> Non
                 "image_identity": _image_identity.capability_fields()["image_identity"]}
 
     @app.post("/compile")
-    async def compile_circuit(payload: CompilePayload):
-        return await slots.run(process_compile, payload.model_dump(), measured=False)
+    async def compile_circuit(payload: CompilePayload, request: Request):
+        return await run_while_connected(request, slots.run(process_compile, payload.model_dump(), measured=False))
 
 
 def run_compiler_self_test(process_compile, levels, equivalent, out=None, extra_probes=None,

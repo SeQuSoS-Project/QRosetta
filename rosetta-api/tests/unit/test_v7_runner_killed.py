@@ -3,7 +3,7 @@
 dispatching over HTTP. Killing the run's child process fails only that backend, names the
 signal, and frees the runner's execution slot for the next run; killing the runner's server
 process (as `podman kill` does) fails only that backend, takes the child with it, and the next
-job without it runs. A run whose caller went away keeps the runner's slot (V7-08, open)."""
+job without it runs. A run whose caller went away is stopped and frees the runner's slot (V7-08)."""
 
 import http.client
 import json
@@ -177,17 +177,29 @@ def _post(port, body, timeout):
         conn.close()
 
 
-@pytest.mark.xfail(strict=True, reason="V7-08: a runner keeps running, and holding its slot for, a run whose "
-                                       "caller went away (the API restarted); proposed fix in defects-V7.md")
 def test_v7_08_a_run_whose_caller_went_away_does_not_hold_the_runner_slot():
     qibo = RealRunner("qibo-runner")
     try:
-        with pytest.raises(OSError):
-            _post(qibo.port, {"circuit_data": _slow_circuit(60, n=14), "timing_repeats": 10,
-                              "hard_timeout_seconds": 120, "max_queue_wait_seconds": 60}, timeout=1.0)
+        conn = http.client.HTTPConnection("127.0.0.1", qibo.port, timeout=120)
+        conn.request("POST", "/run", headers={"Content-Type": "application/json"}, body=json.dumps(
+            {"circuit_data": _slow_circuit(60, n=14), "timing_repeats": 10, "hard_timeout_seconds": 120,
+             "max_queue_wait_seconds": 60}))
+        deadline = time.monotonic() + 60
+        while not qibo.run_children() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        children = qibo.run_children()
+        assert children, "the run's child never started"
+        time.sleep(1.0)
+        conn.close()
+        dropped_at = time.monotonic()
+        while any(c.is_running() and c.status() != psutil.STATUS_ZOMBIE for c in children) \
+                and time.monotonic() < dropped_at + 10:
+            time.sleep(0.02)
+        ended_after = time.monotonic() - dropped_at
+        assert ended_after < 2.5, f"the abandoned run's child ran {ended_after:.1f} s after its caller went away"
         result = _post(qibo.port, {"circuit_data": PLUS, "hard_timeout_seconds": 60,
                                    "max_queue_wait_seconds": 60}, timeout=120)
         assert not result.get("error"), result.get("error")
-        assert result["queue_wait_sec"] < 1.0, f"waited {result['queue_wait_sec']:.1f} s behind an abandoned run"
+        assert result["queue_wait_sec"] < 0.5, f"waited {result['queue_wait_sec']:.1f} s behind an abandoned run"
     finally:
         qibo.close()
