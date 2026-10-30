@@ -213,7 +213,8 @@ limits, the counts keys and the statistics all changed (see Changed).
   table render waits at most 20 s for the renderer before answering 503.
 - The page and `qrosetta` keep waiting for a job through an API restart (up to 5 minutes, with
   backoff); a job the restarted server no longer has is reported as lost (`qrosetta` exit 14,
-  STATUS `job-lost`). nginx answers 502 and 504 with a JSON `detail`.
+  STATUS `job-lost`); `qrosetta wait` started while the API is down waits for its handshake the
+  same way. nginx answers 502 and 504 with a JSON `detail`.
 - `qrosetta` retries reads after a dropped connection or a 502, 503 or 504, never resubmits a run,
   and gives every container-engine call a timeout.
 
