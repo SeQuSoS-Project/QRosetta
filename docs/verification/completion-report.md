@@ -3,7 +3,7 @@
 State of the exit criteria in [test-plan.md](test-plan.md) §5 after the overnight run of 2026-10-27/29 on
 the branch `overnight/integration`. The criteria are still proposed; the owner confirms them. Evidence
 files named below are in the run's audit directory (`docs/audits/2026-10-28-overnight/`, not tracked).
-The risk register's status column has not been updated in this pass.
+The risk register's status column was updated on 2026-10-30 from the same evidence.
 
 | # | Criterion | State | Evidence or what is missing |
 |---|---|---|---|

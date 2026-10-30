@@ -29,14 +29,21 @@ the git remote `public` (`SeQuSoS-Project/QRosetta`) and the version is `X.Y.Z`.
 - The workflow refuses a tag that is not `v` followed by `qrosetta_cli.__version__` spelled as
   canonical PEP 440 (`v2.0.0rc1`, never `v2.0.0-rc1`).
 
-## Release-blocking items known on 2026-10-28
+## Release-blocking items known on 2026-10-30
 
-1. The Trivy gate fails 20 of the 21 release images (`docs/audits/2026-10-28-overnight/defects-A7.md`,
-   D-A7-1): every Python image carries openssl CVE-2026-31789 from its pinned base digest, and
-   most carry fixable CRITICAL findings in perl-base, anyio, certifi, pillow, PyJWT, qiskit
-   (CVE-2025-2000, 5 images) or torch (CVE-2025-32434). While it fails, the `images` job fails and
-   nothing is published. The fix is the Wave B rebuild on new base digests with requalification;
-   a finding may go into `.trivyignore` only with its reason, who accepted it and a review date.
+1. The Trivy gate (`image.sh scan`: a CRITICAL vulnerability with a fixed version fails the image)
+   still fails every published runner image, 12 of the 21 release images, going by the scans of the
+   2026-10-28 requalifications (`DESIGN_DECISIONS.md`, "Runner images on Python 3.12 and 3.13" and
+   "Qulacs image on Python 3.12"; quimb on its old 3.11 base, 4 fixable CRITICAL). The new base digests
+   removed the openssl and perl-base findings. What remains is in the locks: anyio 4.14.1,
+   starlette 0.38.6 (under fastapi 0.115.0) and urllib3 2.7.0 in every runner; PyJWT, certifi,
+   cryptography, pillow, pyasn1, msgpack or protobuf in some; and the pinned SDKs qiskit 0.45.3 and
+   1.2.4 (CVE-2025-2000) and torch 2.2.2 (CVE-2025-32434). The API image and the 7 published
+   compiler images had no fixable CRITICAL; the nginx image (1.31.7, Alpine 3.24) has not been
+   scanned. The remaining work is a lock bump per runner image for the packages outside the SDK,
+   requalified like the Python move (`scripts/requalify/requalify.sh`), and for the SDK pins a
+   `.trivyignore` entry with its reason, who accepted it and a review date. While one image fails,
+   the `images` job fails and nothing is published.
 2. Since 2026-10-30 every runner and compiler image runs Python 3.12 or 3.13 except two: the
    quimb runner runs 3.11, which reaches end of life in 2027-10 and is already inside the
    12-month window (its 3.12 candidate is held: simulation +25.5 % and +11.9 % on two cells), and
