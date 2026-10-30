@@ -102,3 +102,4 @@ memory/
 # LaTeX paper draft (kept out of this code repo; edited locally / synced with Overleaf)
 /latex/
 
+.hypothesis/
