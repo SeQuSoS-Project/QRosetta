@@ -113,7 +113,7 @@ def test_pull_by_digest_with_tmpdir_in_the_cache_then_status_shows_pulled(env, i
     assert [c[2:] for c in calls(fake, ["pull"])] == [[refs["qiskit"]]]
     pull_env = next(e for c, e in fake.calls if c[1] == "pull")
     assert pull_env["TMPDIR"] == str(tmp_path / "cache" / "qrosetta" / "tmp")
-    assert (tmp_path / "cache" / "qrosetta" / "tmp").is_dir() and not pull_env["TMPDIR"].startswith("/tmp")
+    assert (tmp_path / "cache" / "qrosetta" / "tmp").is_dir()
     assert doc["data"]["pulled"][0]["id"] == "qiskit" and doc["data"]["failed"] == []
     assert run(["pull", "--core"], env, fake) == 0
     assert sorted(c[2] for c in calls(fake, ["pull"])) == sorted(refs.values())

@@ -67,6 +67,8 @@ jobs:
         # Coverage on the 3.12 leg only; [tool.coverage] in pyproject.toml says what is measured.
         env:
           PYTEST_ADDOPTS: ${{ matrix.python-version == '3.12' && '--cov --cov-config=../pyproject.toml --cov-report=term:skip-covered --cov-report=xml:coverage.xml' || '' }}
+          # Shared runners, and coverage on the 3.12 leg, run the speed tests' code 1.2-1.3x slower.
+          QROSETTA_TEST_TIME_SCALE: "2"
         run: python -m pytest tests/unit -q -n auto
 
       - name: Upload coverage report
@@ -120,6 +122,8 @@ jobs:
 
       - name: Run unit tests
         working-directory: rosetta-api
+        env:
+          QROSETTA_TEST_TIME_SCALE: "2"
         run: python -m pytest tests/unit -q -n auto
 
   cli:
@@ -331,8 +335,10 @@ jobs:
         run: git ls-files | scripts/hooks/forbidden_paths.sh
 
       - name: No secrets anywhere in history
+        # archive/* keeps the history from before the 2026-10-21 rewrite, with revoked credentials.
         run: |
-          "$RUNNER_TEMP/gitleaks" git --config .gitleaks.toml --redact --no-banner .
+          "$RUNNER_TEMP/gitleaks" git --config .gitleaks.toml --redact --no-banner \
+            --log-opts="--exclude=refs/remotes/origin/archive/* --exclude=refs/tags/archive/* --all" .
 
   integration:
     # Builds nginx, the API and three runners from this commit with the repository's compose file

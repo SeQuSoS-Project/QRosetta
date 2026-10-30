@@ -14,8 +14,9 @@ import services.job_manager as job_manager  # noqa: E402
 from services import prep_worker  # noqa: E402
 from qrosetta_commons.helpers import encode_statevector  # noqa: E402
 from services import job_store  # noqa: E402
+from tests.unit._time_scale import seconds  # noqa: E402
 
-BUDGET_SEC = 0.25
+BUDGET_SEC = seconds(0.25)
 RUNNERS = [f"r{i}" for i in range(14)]
 
 

@@ -10,6 +10,7 @@ from fastapi import HTTPException
 pytest.importorskip("pytket")
 
 from services.validator import validate_request, validate_submission  # noqa: E402
+from tests.unit._time_scale import seconds  # noqa: E402
 
 CORPUS = Path(__file__).resolve().parents[1] / "fuzz_corpus" / "validator"
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "fuzz"))
@@ -31,7 +32,7 @@ def _timed_refusal_or_pass(qasm, limit=1.0, **kwargs):
     except HTTPException as exc:
         assert exc.status_code in (400, 413)
     elapsed = time.perf_counter() - start
-    assert elapsed < limit, f"{elapsed:.2f} s"
+    assert elapsed < seconds(limit), f"{elapsed:.2f} s"
 
 
 @pytest.mark.parametrize("mode", ["statevector", "measured", "compile"])
@@ -99,7 +100,7 @@ def test_v6_05_more_than_max_classical_bits_is_a_400_at_once(decl):
     start = time.perf_counter()
     detail = _refusal(HEAD + f"qreg q[1];\n{decl}\nmeasure q[0] -> c[0];\n", mode="measured")
     assert detail.startswith("Circuit declares more than 1024 classical bits")
-    assert time.perf_counter() - start < 0.5
+    assert time.perf_counter() - start < seconds(0.5)
 
 
 def test_v6_05_classical_bits_up_to_the_limit_pass():
@@ -138,7 +139,7 @@ def test_v6_06_every_large_input_shape_takes_under_a_second():
             validate_submission(qasm, "statevector", statevector=True)
         except HTTPException as exc:
             assert exc.status_code in (400, 413), name
-        assert time.perf_counter() - start < 1.5, name
+        assert time.perf_counter() - start < seconds(1.5), name
 
 
 def test_v6_07_a_run_name_of_whitespace_is_planned_at_once():
@@ -148,7 +149,7 @@ def test_v6_07_a_run_name_of_whitespace_is_planned_at_once():
     from services import plan_text
     start = time.perf_counter()
     assert plan_text.bare_circuit_name(" " * 1_000_000 + "x") == "x"
-    assert time.perf_counter() - start < 0.5
+    assert time.perf_counter() - start < seconds(0.5)
     space = "".join(sorted(plan_text._WS_SET))
     regex = re.compile(rf"(?:[{space}]*\([0-9]+q\))+[{space}]*\Z")
     rng = random.Random(7)
@@ -172,7 +173,7 @@ def test_v6_08_keywords_cannot_name_registers_or_gates(decl, kind):
 def test_v6_08_a_register_named_gate_is_refused_before_the_quadratic_pass():
     start = time.perf_counter()
     _refusal(HEAD + "qreg gate[2];\nbarrier gate" + " , gate" * 140_000 + ";\n", mode="measured")
-    assert time.perf_counter() - start < 1.0
+    assert time.perf_counter() - start < seconds(1.0)
 
 
 def _bundled_and_templates():
@@ -192,7 +193,7 @@ def test_v6_09_tket_note_of_many_calls_of_a_gate_ending_in_gate_is_fast():
     validate_request(qasm)
     start = time.perf_counter()
     assert "rz(1e-12)" in tket_parameter_note(qasm, "tket")
-    assert time.perf_counter() - start < 1.0
+    assert time.perf_counter() - start < seconds(1.0)
 
 
 def test_v6_09_tket_note_is_unchanged_on_the_bundled_circuits(monkeypatch):
@@ -232,4 +233,4 @@ def test_v6_12_cnx_renaming_is_unchanged_and_linear(monkeypatch):
     cr._name_cnx_by_size("\n" * MB)
     cr._name_cnx_by_size("c4x\n" * (MB // 4))
     cr._name_cnx_by_size("if(\n" * (MB // 4))
-    assert time.perf_counter() - start < 0.5
+    assert time.perf_counter() - start < seconds(0.5)

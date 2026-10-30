@@ -14,6 +14,7 @@ SCRIPTS = Path(__file__).resolve().parents[3] / "scripts" / "fuzz"
 sys.path.insert(0, str(SCRIPTS))
 
 import fuzz_targets  # noqa: E402
+from tests.unit._time_scale import seconds  # noqa: E402
 from hypothesis import HealthCheck, given, settings, strategies as st  # noqa: E402
 
 QUICK = settings(max_examples=60, deadline=None, database=None, derandomize=True,
@@ -134,8 +135,8 @@ def test_redos_quick_on_the_api_patterns():
     start = time.perf_counter()
     for entry in entries:
         worst = redos._check_pattern(entry, size=64_000, kill_sec=5.0)
-        assert worst["sec"] < 0.25, (entry["file"], entry["line"], entry["pattern"], worst)
-    assert time.perf_counter() - start < 120
+        assert worst["sec"] < seconds(0.25), (entry["file"], entry["line"], entry["pattern"], worst)
+    assert time.perf_counter() - start < seconds(120)
 
 
 def test_redos_guarded_patterns_are_the_documented_ones():
@@ -176,4 +177,4 @@ def test_report_validation_of_a_million_keys_is_fast():
     start = time.perf_counter()
     report_problems(report)
     report_problems({"raw_results": [], "divergence_report": report})
-    assert time.perf_counter() - start < 5
+    assert time.perf_counter() - start < seconds(5)

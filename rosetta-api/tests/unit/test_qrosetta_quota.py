@@ -104,7 +104,7 @@ def test_no_cpu_quota_starts_through_the_generated_override(fake, project, env, 
     assert data["override_sha256"] == hashlib.sha256(text.encode()).hexdigest()
     setting = localstack.stack_settings(env, "qr")
     assert setting["cpu_quota"] is False and setting["since"] == data["since"]
-    assert all(not p.startswith("/tmp") for p in (path, localstack.settings_path(env)))
+    assert all(p.startswith(env["XDG_STATE_HOME"] + os.sep) for p in (path, localstack.settings_path(env)))
 
 
 def test_the_setting_is_kept_until_cpu_quota_restores_it(fake, project, env, capsys, monkeypatch):
