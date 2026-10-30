@@ -4,17 +4,22 @@ the checks a command needing a level or feature makes."""
 from qrosetta_cli.errors import CliError, Exit
 
 CLI_API_LEVELS = (1, 1)
+CONFIG_TIMEOUT_SEC = 10
 UPGRADE_HINT = "pipx upgrade qrosetta, or upgrade the server to platform 2.0.0 or later"
 
 
-def fetch_config(transport, timeout=10):
+def fetch_config(transport, timeout=CONFIG_TIMEOUT_SEC):
     """GET /config as JSON, or a CliError: unreachable (11), or an answer that is not the
     Quantum Rosetta config (12)."""
-    resp = transport.request("GET", "/config", timeout=timeout)
+    return read_config(transport.url, transport.request("GET", "/config", timeout=timeout))
+
+
+def read_config(url, resp):
+    """The JSON of a GET /config answer, or exit 12 when it is not the Quantum Rosetta config."""
     data = resp.json()
     if resp.status != 200 or not isinstance(data, dict) or "limits" not in data:
         raise CliError(
-            f"{transport.url} answered GET /config with HTTP {resp.status}, not Quantum Rosetta's configuration.",
+            f"{url} answered GET /config with HTTP {resp.status}, not Quantum Rosetta's configuration.",
             Exit.INCOMPATIBLE,
             "not_quantum_rosetta",
             hint="qrosetta config show",

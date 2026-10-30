@@ -1,6 +1,7 @@
-"""A server connection for the run and result commands: GET /config read once and checked
-against the handshake, JSON requests whose error statuses become CliErrors, and downloads
-streamed to a .part file that is renamed into place only when complete."""
+"""A server connection for the run and result commands: GET /config read once (through an
+outage for `qrosetta wait`) and checked against the handshake, JSON requests whose error
+statuses become CliErrors, and downloads streamed to a .part file that is renamed into place
+only when complete."""
 
 import json
 import os
@@ -102,14 +103,56 @@ def body_bytes(payload):
     return json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
 
-class Conn:
-    """One server, its /config and the transport that reaches it."""
+def config_through_outage(transport, job_ids, hint, wait_timeout=None):
+    """GET /config for a command that follows jobs already submitted. No answer, or HTTP
+    502/503/504 (a proxy in front of a stopped or restarting API), is asked again after
+    `waiting.poll_retry_delay` (3, 6, 12, 24, then 30 s) for up to POLL_OUTAGE_PATIENCE_SEC from
+    the first failure, then exit 11 naming the jobs with `hint`; any other answer is read at once
+    by `handshake.read_config`. WaitTimeout once `wait_timeout` seconds have passed."""
+    what = f"job {job_ids[0][:8]}" if len(job_ids) == 1 else f"{len(job_ids)} jobs"
+    start = waiting.clock()
+    failures = 0
+    failing_since = None
+    while True:
+        try:
+            resp = transport.request("GET", "/config", timeout=handshake.CONFIG_TIMEOUT_SEC)
+        except Transient as exc:
+            last = exc
+        else:
+            if resp.status not in RETRY_STATUSES:
+                return handshake.read_config(transport.url, resp)
+            last = http_error("GET", "/config", resp)
+        failures += 1
+        failing_since = waiting.clock() if failing_since is None else failing_since
+        if waiting.clock() - failing_since >= waiting.POLL_OUTAGE_PATIENCE_SEC:
+            raise CliError(
+                f"No answer from {transport.url} for {waiting.POLL_OUTAGE_PATIENCE_SEC / 60:g} minutes while waiting "
+                f"for {what} (last: {last.message}). The job{'s' if len(job_ids) > 1 else ''} may still be running "
+                "there.",
+                Exit.UNREACHABLE,
+                "unreachable",
+                hint=f"{hint} once the server answers",
+                http_status=last.http_status,
+            ) from None
+        delay = waiting.poll_retry_delay(failures)
+        if wait_timeout is not None:
+            left = wait_timeout - (waiting.clock() - start)
+            if left <= 0:
+                raise waiting.WaitTimeout()
+            delay = min(delay, left)
+        output.progress(f"Waiting for {what}: {last.message} Asking again in {delay:g} s.")
+        waiting.pause(delay)
 
-    def __init__(self, ctx, features=(), with_token=True, server=None):
+
+class Conn:
+    """One server, its /config and the transport that reaches it. `fetch(transport)` replaces
+    `handshake.fetch_config` for reading /config."""
+
+    def __init__(self, ctx, features=(), with_token=True, server=None, fetch=None):
         self.ctx = ctx
         self.server = server or ctx.server()
         self.transport = ctx.transport(with_token=with_token, server=self.server)
-        self.config = handshake.fetch_config(self.transport)
+        self.config = (fetch or handshake.fetch_config)(self.transport)
         self.block = handshake.check(self.config, features)
         if server is None:
             ctx.note_handshake(self.block)

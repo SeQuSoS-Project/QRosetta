@@ -44,6 +44,12 @@ holding the server), so set --wait-timeout below the CI job's time limit.
 
 Ctrl-C stops waiting; the job keeps running, and `qrosetta wait job:ID` saves it later."""
 
+WAIT_NOTES = """
+While the server gives no answer, or a proxy answers 502, 503 or 504 for it (the API is stopped or
+restarting), wait asks again after 3, 6, 12, 24, then every 30 s, for up to 5 minutes, both before
+following the first job and between polls; after that it exits 11, and the jobs may still be running.
+That time counts toward --wait-timeout. A job the server answers 404 for is lost (exit 14)."""
+
 SPECS = {
     "start": Spec(
         "stack.commands:cmd_start",
@@ -296,6 +302,7 @@ SPECS = {
         "follow detached jobs and save them where their run created their directories",
         ("qrosetta wait", "qrosetta wait job:1a2b3c4d", "qrosetta wait --all"),
         group="Runs",
+        notes=WAIT_NOTES,
     ),
     "jobs list": Spec(
         "client.jobs:cmd_jobs",

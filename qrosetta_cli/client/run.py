@@ -9,7 +9,7 @@ import time
 
 from qrosetta_cli import __version__, localstack, mode as modes, output
 from qrosetta_cli.client import handshake, jobindex, outcomes, replay, results, runplan, save, waiting
-from qrosetta_cli.client.conn import Conn, body_bytes
+from qrosetta_cli.client.conn import Conn, body_bytes, config_through_outage
 from qrosetta_cli.client.transport import origin
 from qrosetta_cli.context import Result
 from qrosetta_cli.errors import CliError, Exit, usage, worst
@@ -555,22 +555,21 @@ def _unfinished(entry):
     return status is None or status == results.CRATE_DEFERRED
 
 
-def cmd_wait(ctx):
+def _wait_targets(ctx, url):
+    """The job index entries `qrosetta wait` follows on the server at `url`: the jobs named,
+    every unfinished one with --all, else the latest unfinished one."""
     args = ctx.args
-    conn = Conn(ctx)
-    wait_timeout = _wait_timeout(ctx)
-    here = origin(conn.url)
-    known = [e for e in jobindex.entries(ctx.env) if e.get("server") == here]
+    known = [e for e in jobindex.entries(ctx.env) if e.get("server") == origin(url)]
     if args.all:
         targets = [e for e in known if _unfinished(e)]
     elif args.jobs:
         targets = []
         for ref in args.jobs:
             job_id = ref[4:] if ref.startswith("job:") else ref
-            entry = jobindex.find(ctx.env, job_id, conn.url)
+            entry = jobindex.find(ctx.env, job_id, url)
             if entry is None:
                 raise CliError(
-                    f"No job {job_id!r} for {conn.url} in the job index.",
+                    f"No job {job_id!r} for {url} in the job index.",
                     Exit.NOT_FOUND,
                     "job_unknown",
                     hint="qrosetta jobs",
@@ -578,8 +577,65 @@ def cmd_wait(ctx):
             targets.append(entry)
     else:
         targets = [e for e in known if _unfinished(e)][-1:]
+    if not targets:
+        raise CliError(
+            f"No unfinished job for {url} in the job index.",
+            Exit.NOT_FOUND,
+            "job_unknown",
+            hint="qrosetta jobs",
+        )
+    return targets
+
+
+def _wait_connect(ctx, targets, wait_timeout):
+    """The connection for `qrosetta wait`, its handshake waiting through an outage
+    (`config_through_outage`); None when --wait-timeout passes first."""
+    ids = [e["job_id"] for e in targets]
+    if len(ids) == 1:
+        hint = f"qrosetta wait job:{ids[0][:8]}"
+    else:
+        hint = "qrosetta wait --all" if ctx.args.all else "qrosetta wait " + " ".join(f"job:{i[:8]}" for i in ids)
+    try:
+        with waiting.stop_signals():
+            try:
+                return Conn(ctx, fetch=lambda transport: config_through_outage(transport, ids, hint, wait_timeout))
+            except KeyboardInterrupt:
+                raise waiting.Stopped(Exit.SIGINT) from None
+    except waiting.Stopped as stop:
+        raise CliError(
+            f"Stopped waiting for {ctx.server().url} to answer; "
+            + ("the jobs keep" if len(ids) > 1 else "the job keeps")
+            + " running there.",
+            stop.code,
+            "detached",
+            hint=hint,
+        ) from None
+    except waiting.WaitTimeout:
+        output.progress(f"--wait-timeout reached before {ctx.server().url} answered.")
+        output.progress(hint)
+        return None
+
+
+def cmd_wait(ctx):
+    args = ctx.args
+    wait_timeout = _wait_timeout(ctx)
+    targets = _wait_targets(ctx, ctx.server().url)
+    started = waiting.clock()
+    conn = _wait_connect(ctx, targets, wait_timeout)
+    if conn is None:
+        jobs = [
+            {"job_id": e["job_id"], "title": e.get("title"), "status": None, "save_status": None, "dir": e.get("dir")}
+            for e in targets
+        ]
+        return Result(
+            Exit.WAIT_TIMEOUT,
+            {"results_dir": None, "jobs": jobs},
+            outcomes.block(outcomes.parse(ctx.opt("fail_on")), [], None),
+        )
+    if wait_timeout is not None:
+        wait_timeout = max(0.0, wait_timeout - (waiting.clock() - started))
     fail_on = _fail_on(ctx, conn) if ctx.opt("fail_on") else []
-    follower = None
+    follower = Follower(ctx, conn, None, fail_on or targets[0].get("fail_on") or [], wait_timeout)
     for entry in targets:
         job_dir = entry.get("dir")
         if not job_dir or not os.path.isdir(job_dir):
@@ -599,8 +655,6 @@ def cmd_wait(ctx):
         crate_body = (entry.get("save") or {}).get("crate") or {}
         previous = results.read_json(os.path.join(job_dir, "job.json")) or {}
         saver = save.Saver(conn, items, minimal, crate_body, confirm_large(ctx, interactive=False), patient=True)
-        if follower is None:
-            follower = Follower(ctx, conn, saver, fail_on or entry.get("fail_on") or [], wait_timeout)
         follower.saver = saver
         follower.follow(
             entry["job_id"], job_dir, entry.get("title") or entry["job_id"][:8], entry.get("kind"), previous=previous
@@ -608,12 +662,5 @@ def cmd_wait(ctx):
         inv = entry.get("invocation")
         if inv and results.invocation_complete(inv):
             results.update_latest(os.path.dirname(inv), inv)
-    if follower is None:
-        raise CliError(
-            f"No unfinished job for {conn.url} in the job index.",
-            Exit.NOT_FOUND,
-            "job_unknown",
-            hint="qrosetta jobs",
-        )
     follower.closing_hint(None)
     return Result(follower.code(), follower.data(), follower.outcome())

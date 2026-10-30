@@ -3,7 +3,8 @@ outage of proxy 502 pages or refused connections with backoff, on a virtual cloc
 restarted server no longer has ends the wait with exit 14 `job_lost`, STATUS `job-lost`, the
 planned jobs not submitted and how to run the plan again, and is not waited for again; an
 outage longer than 5 minutes is exit 11; no HTML page is printed and nothing ends as an internal
-error."""
+error. `qrosetta wait` started during the outage waits the same way for its GET /config handshake
+(D-C1-1), while an answer that is not Quantum Rosetta's and one-shot commands fail at once."""
 
 import json
 import os
@@ -204,3 +205,123 @@ def test_a_404_on_the_first_poll_is_still_a_lost_job(env, circuit, capsys, vcloc
     doc, _err = envelope(capsys)
     assert doc["error"]["reason"] == "job_lost"
     assert doc["error"]["message"].startswith("The server no longer has job ")
+
+
+class Down(Scripted):
+    """Every request gets ``outage`` (an nginx 502 page, no connection, or a 200 HTML page) while
+    ``down`` is set and the virtual clock is before ``down_until``."""
+
+    def __init__(self, clock, outage="nginx", **kwargs):
+        super().__init__(**kwargs)
+        self.clock, self.outage = clock, outage
+        self.down = False
+        self.down_until = float("inf")
+
+    def request(self, method, path, query=None, body=None, headers=None, timeout=None):
+        if self.down and self.clock.now < self.down_until:
+            self.log.append((method, path, query))
+            if self.outage == "nginx":
+                return Response(502, {"content-type": "text/html"}, NGINX_502)
+            if self.outage == "html":
+                return Response(200, {"content-type": "text/html"}, b"<html><body>Welcome</body></html>")
+            raise Transient(f"No answer from {self.url}: timed out.", Exit.UNREACHABLE, "unreachable",
+                            hint="qrosetta status")
+        return super().request(method, path, query=query, body=body, headers=headers, timeout=timeout)
+
+
+def _detached(env, circuit, capsys, server, count=1):
+    for _ in range(count):
+        assert run(["run", circuit, "--detach"], env, server) == 0
+    capsys.readouterr()
+    server.down = True
+    return list(server.jobs)
+
+
+@pytest.mark.parametrize("outage", ["nginx", "refused"])
+def test_wait_started_while_the_api_is_down_waits_for_it(env, circuit, capsys, vclock, outage):
+    server = Down(vclock, outage=outage)
+    (job_id,) = _detached(env, circuit, capsys, server)
+    server.down_until = 90.0
+    code = run(["wait", "--json"], env, server)
+    doc, err = envelope(capsys)
+    assert code == Exit.OK
+    (job,) = doc["data"]["jobs"]
+    assert job["job_id"] == job_id and job["status"] == "completed"
+    assert results.read_status(job["dir"]) == "complete"
+    assert vclock.now >= 90.0
+    assert server.paths().count("/config") >= 5
+    assert f"Waiting for job {job_id[:8]}: " in err and "Asking again in 24 s." in err
+    assert "<html" not in err and "nginx" not in err
+
+
+def test_wait_gives_up_after_five_minutes_without_an_answer(env, circuit, capsys, vclock):
+    server = Down(vclock, outage="nginx")
+    (job_id,) = _detached(env, circuit, capsys, server)
+    code = run(["wait", f"job:{job_id[:8]}", "--json"], env, server)
+    doc, err = envelope(capsys)
+    assert code == Exit.UNREACHABLE and doc["error"]["reason"] == "unreachable"
+    message = doc["error"]["message"]
+    assert message.startswith(f"No answer from http://localhost:8080 for 5 minutes while waiting for job {job_id[:8]} ")
+    assert "an HTML error page from a proxy in front of the API; the API may be stopped or restarting" in message
+    assert message.endswith("The job may still be running there.")
+    assert doc["error"]["hint"] == f"qrosetta wait job:{job_id[:8]} once the server answers"
+    assert doc["error"]["http_status"] == 502
+    assert 300 <= vclock.now <= 330
+    assert "<html" not in err and "<html" not in json.dumps(doc)
+    (_inv,), (job_dir,) = _job_dirs(env)
+    assert results.read_status(job_dir) is None
+
+
+def test_wait_all_names_every_job_when_it_gives_up(env, circuit, capsys, vclock):
+    server = Down(vclock, outage="refused")
+    _detached(env, circuit, capsys, server, count=2)
+    code = run(["wait", "--all", "--json"], env, server)
+    doc, _err = envelope(capsys)
+    assert code == Exit.UNREACHABLE
+    assert "while waiting for 2 jobs (last: No answer from http://localhost:8080: timed out.)" in \
+        doc["error"]["message"]
+    assert doc["error"]["message"].endswith("The jobs may still be running there.")
+    assert doc["error"]["hint"] == "qrosetta wait --all once the server answers"
+
+
+def test_wait_timeout_during_the_outage_is_exit_7_and_the_job_stays_unsaved(env, circuit, capsys, vclock):
+    server = Down(vclock, outage="nginx")
+    (job_id,) = _detached(env, circuit, capsys, server)
+    code = run(["wait", "--wait-timeout", "1m", "--json"], env, server)
+    doc, err = envelope(capsys)
+    assert code == Exit.WAIT_TIMEOUT and doc["error"] is None
+    assert [(j["job_id"], j["status"]) for j in doc["data"]["jobs"]] == [(job_id, None)]
+    assert 60 <= vclock.now <= 61
+    assert f"qrosetta wait job:{job_id[:8]}" in err
+
+
+@pytest.mark.parametrize("answer", ["html", "404"])
+def test_wait_fails_at_once_on_an_answer_that_is_not_quantum_rosetta(env, circuit, capsys, vclock, answer):
+    server = Down(vclock, outage="html")
+    _detached(env, circuit, capsys, server)
+    if answer == "404":
+        server.down = False
+        server.routes[("GET", "/config")] = (404, {"detail": "Not Found"})
+    calls = len(server.log)
+    code = run(["wait", "--json"], env, server)
+    doc, _err = envelope(capsys)
+    assert code == Exit.INCOMPATIBLE and doc["error"]["reason"] == "not_quantum_rosetta"
+    assert vclock.now == 0
+    assert [p for _m, p, _q in server.log[calls:]] == ["/config"]
+
+
+def test_one_shot_commands_still_fail_at_once_while_the_api_is_down(env, circuit, capsys, vclock):
+    server = Down(vclock, outage="nginx")
+    job_ids = _detached(env, circuit, capsys, server)
+    assert run(["info", "--json"], env, server) not in (Exit.OK, Exit.INTERNAL)
+    assert run(["jobs", "status", job_ids[0][:8], "--json"], env, server) not in (Exit.OK, Exit.INTERNAL)
+    capsys.readouterr()
+    assert vclock.now == 0
+
+
+def test_wait_with_nothing_to_wait_for_does_not_wait_for_the_server(env, capsys, vclock):
+    server = Down(vclock, outage="refused")
+    server.down = True
+    assert run(["wait"], env, server) == Exit.NOT_FOUND
+    assert "No unfinished job" in capsys.readouterr().err
+    assert vclock.now == 0 and server.paths() == []
