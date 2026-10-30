@@ -101,7 +101,8 @@ limits, the counts keys and the statistics all changed (see Changed).
   share-link routes under `/history/runs/{id}/share-links` and `POST /shared/circuits`,
   `GET /compilers`, `GET /examples`, `GET /quickload`, `POST /timing-caveats`,
   `GET /jobs/{id}/selftest-result`.
-- `GET /health` (the process answers) and `GET /ready` (the database and job storage work).
+- `GET /health` (the process answers) and `GET /ready` (the database and job storage work); every
+  runner and compiler answers `GET /health` too.
 - `GET /config` publishes every limit the page checks, the default of every request field
   (`request_defaults`), a server handshake (`platform_version`, `api_levels`, features), status
   labels and the roles of summary outcomes.
@@ -133,6 +134,16 @@ limits, the counts keys and the statistics all changed (see Changed).
   `Licence.txt`, `CITATION.cff`, `.zenodo.json` and `codemeta.json`.
 - `SECURITY.md`, `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), `SUPPORT.md`, this changelog,
   issue forms and a pull request template.
+- The GitHub release of a final version carries the wheel, the sdist, an SPDX SBOM and a source
+  notice per published image, the OpenAPI description, the image list with verify commands,
+  `SHA256SUMS` and a provenance bundle over all of them; the attached copies are checked before the
+  release is published.
+- Release images are scanned with Trivy: a CRITICAL vulnerability with a fixed version stops the
+  release unless `.trivyignore` accepts it with a reason and a review date. A monthly workflow
+  rebuilds every image without cache, self-tests and scans it.
+- `scripts/requalify/requalify.sh`, which builds a runner or compiler image with its old and its new
+  base from one commit and compares their outputs on a fixed-seed corpus, their self-tests and
+  their timings.
 
 ### Changed
 
@@ -176,6 +187,9 @@ limits, the counts keys and the statistics all changed (see Changed).
   from inside gate definitions and 200,000 gate applications in all.
 - Circuits are prepared in a separate process with a 1024 MiB memory limit and a 120 s time
   limit; bundled circuits known to exceed them are refused before they are sent.
+- At most 1,024 classical bits over all `creg` declarations; register sizes, indices and
+  `if` values of more than 30 digits, keywords as register or gate names, and a `//` comment that
+  opens `/*` without closing it on the same line are refused.
 
 #### API and server
 
@@ -193,6 +207,29 @@ limits, the counts keys and the statistics all changed (see Changed).
   payloads over 96 KiB go through S3.
 - myQLM is not deployed on the hosted server, because its licence forbids use over a network;
   local stacks keep it.
+- Every runner and compiler response is checked before use; a malformed one is that backend's
+  error ("INVALID RESPONSE") and the rest of the job continues.
+- A supplied report may hold at most 1,000 circuits and 48 backends per circuit, and a figure or
+  table render waits at most 20 s for the renderer before answering 503.
+- The page and `qrosetta` keep waiting for a job through an API restart (up to 5 minutes, with
+  backoff); a job the restarted server no longer has is reported as lost (`qrosetta` exit 14,
+  STATUS `job-lost`). nginx answers 502 and 504 with a JSON `detail`.
+- `qrosetta` retries reads after a dropped connection or a 502, 503 or 504, never resubmits a run,
+  and gives every container-engine call a timeout.
+
+#### Images
+
+- The API image runs Python 3.12. The runner images run Python 3.12 (Qibo 3.13) and the compiler
+  images Python 3.13 (Q-Synth 3.12), except the quimb runner (3.11) and the disabled ProjectQ runner
+  (3.10). In the API image and every moved image the base is pinned by digest, apt reads a fixed
+  snapshot.debian.org date, and pip installs a lock with a hash for every package.
+- Each moved runner and compiler image was requalified: on a fixed-seed corpus the old and the new
+  image gave the same outputs (Cirq within its run-to-run variation; BQSKit's compiles, which vary
+  run to run in either image, all pass their equivalence check) and the same self-test results.
+  Timings changed: on the requalification circuits simulation times moved by −17 % (Cirq) to +9 %
+  (myQLM) and compilation times by −40 % (Qibo) to +14 % (myQLM), so timings from earlier images
+  are not comparable with these.
+- The Qrisp, TorchQuantum and cuQuantum images no longer carry a compiler toolchain.
 
 #### Page and local stack
 
@@ -209,6 +246,8 @@ limits, the counts keys and the statistics all changed (see Changed).
   least 24 px tall, the Backends table and the manual's tables take keyboard focus, the share page's
   links are underlined, and focus scrolls clear of the fixed notices.
 - `README.MD` is now `README.md`.
+- Swagger UI at `/docs` is served from a vendored copy; ReDoc at `/redoc` loads from jsDelivr with an
+  integrity hash.
 
 ### Removed
 
@@ -277,6 +316,22 @@ limits, the counts keys and the statistics all changed (see Changed).
   server; `POST /auth/password` changes the password and ends earlier sessions too. Tokens must
   carry `exp`, `iat` and `sub`. A sign-in for an unknown email takes as long as a wrong password.
 - Kubernetes runner and compiler pods mount no service-account token.
+- Every response carries a Content-Security-Policy, `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy: no-referrer`, `Cross-Origin-Opener-Policy: same-origin` and
+  `X-Frame-Options: DENY`; the pages hold no inline script, event handler or style.
+- A POST, PUT, PATCH or DELETE from a page on another site is refused (403), and JSON routes read a
+  body only with a JSON `Content-Type` (415).
+- Deleting an account needs its password.
+- X-Forwarded-For is read only from the proxies in `QROSETTA_TRUSTED_PROXIES` (by default nginx in a
+  local stack), so a runner or compiler cannot choose its rate-limit key.
+- The job spill directory must belong to the API's user; it is recreated with mode 0700 at startup,
+  and only files the process wrote are read back.
+- Image builds leave out databases, `data/` directories, env files and `node_modules`; no secret was
+  found in any of the 24 images.
+- Request bodies are counted as they arrive, so a chunked body stops at the 1 MiB limit without nginx
+  in front.
+- Crates and experiment bundles that hold a bundled MQT Bench or QASMBench circuit carry that suite's
+  licence.
 - Dependencies in the API image raised for advisories: anyio 4.14.2, certifi 2026.10.19, pyasn1
   0.6.4, urllib3 2.8.0, requests 2.33.1, Starlette 1.7.0; PyJWT replaces python-jose
   (PYSEC-2026-4298).
