@@ -41,6 +41,7 @@ REQUALIFIED = {
     "runners/pytket-quest-runner/Dockerfile",
     "runners/pytket-qulacs-runner/Dockerfile",
     "runners/qibo-runner/Dockerfile",
+    "runners/qrisp-runner/Dockerfile",
     "runners/qsim-cirq-runner/Dockerfile",
     "runners/torch-quantum-runner/Dockerfile",
 }
