@@ -169,3 +169,13 @@ def test_the_qibo_fusion_model_reads_the_executed_text_at_levels_one_and_up():
         rows = v4_check.evaluate([case], {case["name"]: {"qibo": result}}, "statevector",
                                  dispatched={case["name"]: {"qibo": case["qasm"]}})
         assert rows[0]["status"] == "FAIL" and rows[0].get("explained_by") == labelled
+
+
+def test_the_qrisp_run_model_reproduces_the_manuals_figures():
+    model = next(m for m in v4_check.DEFECT_MODELS if m["id"] == "qrisp-run-definitions")
+    lib = ref.GateLibrary(overrides=model["overrides"])
+    head = 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[2];\n'
+    cu3 = ref.statevector(head + "x q[0];\nh q[1];\ncu3(0.7,0.3,0.1) q[0],q[1];\n", lib)
+    assert sum(abs(cu3[i]) ** 2 for i in (2, 3)) == pytest.approx(0.192, abs=5e-4)
+    cu1 = ref.statevector(head + "h q[0];\nh q[1];\ncu1(0.6) q[0],q[1];\nh q[0];\nh q[1];\n", lib)
+    assert abs(cu1[1]) ** 2 == pytest.approx(0.0125, abs=5e-5)

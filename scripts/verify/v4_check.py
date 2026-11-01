@@ -21,9 +21,7 @@ PENNYLANE_UNITARY_GATES = ("cu3", "csx", "c3x", "c4x", "c3sqrtx", "rccx", "rc3x"
 
 def _qibo_cu3(matrix, params):
     theta, phi, lam = params
-    out = np.eye(4, dtype=complex)
-    out[np.ix_([1, 3], [1, 3])] = np.exp(-0.5j * (phi + lam)) * ref.u_matrix(theta, phi, lam)
-    return out
+    return _controlled(np.exp(-0.5j * (phi + lam)) * ref.u_matrix(theta, phi, lam))
 
 
 def _identity(matrix, params):
@@ -34,6 +32,15 @@ def _defined_gates_dropped(text):
     """Every gate the executed text defines acts as the identity."""
     return {name: _identity for name in re.findall(r"\bgate\s+([A-Za-z_][A-Za-z0-9_]*)", text)}
 
+
+def _controlled(u):
+    out = np.eye(4, dtype=complex)
+    out[np.ix_([1, 3], [1, 3])] = u
+    return out
+
+
+_QRISP_RUN = ref.GateLibrary("gate cu1run(l) a,b { p(3*l/8) a; p(l) b; cx a,b; p(-l/2) b; cx a,b; p(-l/2) b; }")
+_QRISP_RUN.add_definitions(ref.QELIB1.read_text())
 
 _CU1_AS_CRZ = ref.GateLibrary(overrides={"cu1": lambda m, p: ref.GateLibrary().matrix("crz", p)}, nested=True)
 
@@ -46,12 +53,19 @@ DEFECT_MODELS = (
     {"id": "qibo-cu3-phase", "backends": ("qibo",),
      "documented": "qibo cu3 is controlled(e^{-i(phi+lambda)/2} U3)",
      "overrides": {"cu3": _qibo_cu3}},
-    {"id": "qrisp-cu1-as-crz", "backends": ("qrisp",),
+    {"id": "qrisp-cu1-as-crz", "backends": ("qrisp",), "modes": ("statevector",),
      "documented": "qrisp runs cu1 as crz; csx and c3sqrtx, which Qrisp takes from Qiskit's "
                    "definitions through cu1, follow (csx acts as crx(pi/2))",
      "overrides": {"cu1": lambda m, p: _CU1_AS_CRZ.matrix("cu1", p),
                    "csx": lambda m, p: _CU1_AS_CRZ.matrix("csx", p),
                    "c3sqrtx": lambda m, p: _CU1_AS_CRZ.matrix("c3sqrtx", p)}},
+    {"id": "qrisp-run-definitions", "backends": ("qrisp",), "modes": ("measured",),
+     "documented": "Qrisp 0.5 QuantumCircuit.run() rewrites each gate into its definition: cu1 "
+                   "becomes p(3l/8) on the control, then p(l), cx, p(-l/2), cx, p(-l/2) on the "
+                   "target; cu3 applies the transposed target matrix; csx acts as crx(pi/2)",
+     "overrides": {"cu1": lambda m, p: _QRISP_RUN.matrix("cu1run", p),
+                   "cu3": lambda m, p: _controlled(ref.u_matrix(*p).T),
+                   "csx": lambda m, p: _CU1_AS_CRZ.matrix("csx", p)}},
     {"id": "qibo-fuse-drops-defined-gates", "backends": ("qibo",), "executed": True, "min_level": 1,
      "documented": "found by V4 on 2026-11-01: qibo 0.3.1 Circuit.from_qasm stores each call of a "
                    "gate the text defines as a FusedGate, and Circuit.fuse(), which the adapter "
@@ -254,7 +268,8 @@ def explain(row_, case, result, dispatched, mode):
     answer on ``dispatched`` (the circuit it received), or on the text it executed for a model
     marked ``executed``."""
     models = [m for m in DEFECT_MODELS if row_["backend"] in m["backends"]
-              and (result.get("optimization_level") or 0) >= m.get("min_level", 0)]
+              and (result.get("optimization_level") or 0) >= m.get("min_level", 0)
+              and mode in m.get("modes", (mode,))]
     combined = [{"id": "+".join(m["id"] for m in models), "models": models}] if len(models) > 1 else []
     for model in [{"id": m["id"], "models": [m]} for m in models] + combined:
         executed = any(m.get("executed") for m in model["models"])
