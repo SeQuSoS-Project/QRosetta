@@ -87,6 +87,10 @@ limits, the counts keys and the statistics all changed (see Changed).
   gets its own derived seed, recorded as `runner_seed`.
 - A self-test with known answers from an independent numpy reference (`GET /selftest`,
   `qrosetta selftest`), compared with each backend separately.
+- `scripts/verify/`: known-answer checks of every `qelib1.inc` gate, built from its definition by a
+  numpy reference, and qubit-relabelling, register-split and inverse relations, run through a
+  server as a user; a wrong answer is labelled when a model of a documented upstream behaviour
+  reproduces it.
 - Every result records the image it ran from (commit, build-file hashes, whether it was built
   locally or released, emulation); reports summarise them as `specimens` and carry
   `run_completeness`.
@@ -143,7 +147,7 @@ limits, the counts keys and the statistics all changed (see Changed).
   rebuilds every image without cache, self-tests and scans it.
 - `scripts/requalify/requalify.sh`, which builds a runner or compiler image with its old and its new
   base from one commit and compares their outputs on a fixed-seed corpus, their self-tests and
-  their timings.
+  their timings. `--bump NAME==VERSION` raises named pins on an unchanged base.
 
 ### Changed
 
@@ -221,9 +225,9 @@ limits, the counts keys and the statistics all changed (see Changed).
 #### Images
 
 - The API image runs Python 3.12. The runner images run Python 3.12 (Qibo 3.13) and the compiler
-  images Python 3.13 (Q-Synth 3.12), except the quimb runner (3.11) and the disabled ProjectQ runner
-  (3.10). In the API image and every moved image the base is pinned by digest, apt reads a fixed
-  snapshot.debian.org date, and pip installs a lock with a hash for every package.
+  images Python 3.13 (Q-Synth 3.12), except the disabled ProjectQ runner (3.10). In the API image
+  and every moved image the base is pinned by digest, apt reads a fixed snapshot.debian.org date,
+  and pip installs a lock with a hash for every package.
 - Each moved runner and compiler image was requalified: on a fixed-seed corpus the old and the new
   image gave the same outputs (Cirq within its run-to-run variation; BQSKit's compiles, which vary
   run to run in either image, all pass their equivalence check) and the same self-test results.
@@ -231,6 +235,15 @@ limits, the counts keys and the statistics all changed (see Changed).
   (myQLM) and compilation times by −40 % (Qibo) to +14 % (myQLM), so timings from earlier images
   are not comparable with these.
 - The Qrisp, TorchQuantum and cuQuantum images no longer carry a compiler toolchain.
+- The quimb runner image runs Python 3.12. Its simulation time varies by up to 2.7 times between
+  runs of one circuit in either image (cotengra's unseeded contraction-path search), so compare
+  quimb timings only over several runs with `timing_repeats` of at least 5.
+- Every published runner and compiler image serves with FastAPI 0.136.3 and Starlette 1.7.0, as
+  the API does, and takes the fixed versions of anyio, certifi, urllib3, PyJWT, pillow,
+  cryptography and other packages outside the SDKs; each image was requalified and gives the same
+  outputs. Vulnerabilities left in the images are listed in `docs/RELEASING.md`.
+- The nginx images no longer contain curl or nginx's optional dynamic modules (geoip, image
+  filter, njs, xslt), which nginx never loaded.
 
 #### Page and local stack
 

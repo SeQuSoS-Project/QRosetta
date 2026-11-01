@@ -2,11 +2,9 @@ FROM nginxinc/nginx-unprivileged:1.31.7-alpine3.24@sha256:b5047b9b76845eac124358
 
 # nginx loads no dynamic module and nothing here calls curl: removing the optional modules and
 # curl takes curl, libgd, freetype and brotli out of the image.
-USER root
-RUN apk del --no-cache curl nginx-module-geoip nginx-module-image-filter nginx-module-njs nginx-module-xslt
-
-# Remove default nginx config
-RUN rm /etc/nginx/conf.d/default.conf
+USER 0
+RUN apk del --no-cache curl nginx-module-geoip nginx-module-image-filter nginx-module-njs nginx-module-xslt && \
+    rm /etc/nginx/conf.d/default.conf
 
 # The entrypoint renders templates into conf.d at start, substituting QROSETTA_* only;
 # QROSETTA_PROXY_TOKEN is set on the Cloud Run service by deploy_frontend.sh.

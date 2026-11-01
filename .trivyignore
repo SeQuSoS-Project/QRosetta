@@ -2,3 +2,17 @@
 # line). Each entry names the image, why the fixed version cannot be taken now (for a runner or
 # compiler: the SDK version is part of what the image measures, and changing it needs
 # requalification), who accepted it, and the date it is reviewed again.
+
+# qiskit 1.2.4 (qiskit, pennylane-default, pennylane-lightning) and 0.45.3 (qrisp, torchquantum):
+# CVE-2025-2000 is code execution while reading a QPY file (qiskit.qpy.load). No runner reads QPY:
+# every runner receives OpenQASM 2.0 text (checked 2026-11-01: no qpy reference in runners/ or
+# shared/). The fixed qiskit (1.4.2) is another measured SDK version and needs requalification.
+# Accepted by Shaswato Sarker, 2026-11-01; reviewed again by 2027-05-01.
+CVE-2025-2000 exp:2027-05-01
+
+# torch 2.2.2+cpu (torchquantum): CVE-2025-32434 is code execution in torch.load with
+# weights_only=True. The runner never calls torch.load; torchquantum's only calls are in its
+# dataset classes (torchquantum/dataset/vowel.py), which the runner never builds. The fixed torch
+# (2.6.0) is another measured SDK version and needs requalification.
+# Accepted by Shaswato Sarker, 2026-11-01; reviewed again by 2027-05-01.
+CVE-2025-32434 exp:2027-05-01
