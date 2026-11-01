@@ -157,3 +157,15 @@ def test_a_fail_is_labelled_only_by_a_model_that_reproduces_it():
         rows = v4_check.evaluate([case], {case["name"]: {backend: result}}, "statevector",
                                  dispatched={case["name"]: {backend: case["qasm"]}})
         assert rows[0]["status"] == "FAIL" and rows[0].get("explained_by") == labelled
+
+
+def test_the_qibo_fusion_model_reads_the_executed_text_at_levels_one_and_up():
+    case = next(c for c in v4_cases.build() if c["name"] == "gate-ch-0")
+    executed = case["qasm"].replace('include "qelib1.inc";\n', 'include "qelib1.inc";\n'
+                                    "gate ch a,b { h b; sdg b; cx a,b; h b; t b; cx a,b; t b; h b; s b; x b; s a; }\n")
+    dropped = ref.statevector(executed, ref.GateLibrary(overrides={"ch": lambda m, p: np.eye(4, dtype=complex)}))
+    for level, labelled in ((2, "qibo-fuse-drops-defined-gates"), (0, None)):
+        result = _result(dropped, "msb", transpiled_qasm=executed, optimization_level=level)
+        rows = v4_check.evaluate([case], {case["name"]: {"qibo": result}}, "statevector",
+                                 dispatched={case["name"]: {"qibo": case["qasm"]}})
+        assert rows[0]["status"] == "FAIL" and rows[0].get("explained_by") == labelled

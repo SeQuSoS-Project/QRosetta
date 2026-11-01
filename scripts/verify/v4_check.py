@@ -7,6 +7,7 @@ circuit: no answer, which the platform reports as such); NO_RESULT (timeout, off
 result in the report)."""
 
 import base64
+import re
 
 import numpy as np
 from scipy.stats import chi2
@@ -23,6 +24,15 @@ def _qibo_cu3(matrix, params):
     out = np.eye(4, dtype=complex)
     out[np.ix_([1, 3], [1, 3])] = np.exp(-0.5j * (phi + lam)) * ref.u_matrix(theta, phi, lam)
     return out
+
+
+def _identity(matrix, params):
+    return np.eye(matrix.shape[0], dtype=complex)
+
+
+def _defined_gates_dropped(text):
+    """Every gate the executed text defines acts as the identity."""
+    return {name: _identity for name in re.findall(r"\bgate\s+([A-Za-z_][A-Za-z0-9_]*)", text)}
 
 
 _CU1_AS_CRZ = ref.GateLibrary(overrides={"cu1": lambda m, p: ref.GateLibrary().matrix("crz", p)}, nested=True)
@@ -42,6 +52,11 @@ DEFECT_MODELS = (
      "overrides": {"cu1": lambda m, p: _CU1_AS_CRZ.matrix("cu1", p),
                    "csx": lambda m, p: _CU1_AS_CRZ.matrix("csx", p),
                    "c3sqrtx": lambda m, p: _CU1_AS_CRZ.matrix("c3sqrtx", p)}},
+    {"id": "qibo-fuse-drops-defined-gates", "backends": ("qibo",), "executed": True, "min_level": 1,
+     "documented": "found by V4 on 2026-11-01: qibo 0.3.1 Circuit.from_qasm stores each call of a "
+                   "gate the text defines as a FusedGate, and Circuit.fuse(), which the adapter "
+                   "applies at optimization levels 1 and 2, drops it",
+     "overrides_from_text": _defined_gates_dropped},
 )
 
 FIDELITY_TOLERANCE = 1e-5
@@ -235,19 +250,30 @@ def evaluate(cases, raw_by_task, mode, shots=None, dispatched=None):
 
 
 def explain(row_, case, result, dispatched, mode):
-    """Label a FAIL row with the documented model that reproduces the backend's answer on
-    ``dispatched`` (the circuit it received), if one does."""
-    for model in DEFECT_MODELS:
-        if row_["backend"] not in model["backends"]:
+    """Label a FAIL row with the model, or the backend's models together, that reproduces its
+    answer on ``dispatched`` (the circuit it received), or on the text it executed for a model
+    marked ``executed``."""
+    models = [m for m in DEFECT_MODELS if row_["backend"] in m["backends"]
+              and (result.get("optimization_level") or 0) >= m.get("min_level", 0)]
+    combined = [{"id": "+".join(m["id"] for m in models), "models": models}] if len(models) > 1 else []
+    for model in [{"id": m["id"], "models": [m]} for m in models] + combined:
+        executed = any(m.get("executed") for m in model["models"])
+        circuit = result.get("transpiled_qasm") if executed else dispatched
+        if not circuit:
             continue
-        library = ref.GateLibrary(overrides=model["overrides"])
+        overrides = {}
+        for m in model["models"]:
+            overrides.update(m.get("overrides") or {})
+            if m.get("overrides_from_text"):
+                overrides.update(m["overrides_from_text"](circuit))
+        library = ref.GateLibrary(overrides=overrides)
         try:
             if mode == "statevector":
-                expected = ref.statevector(dispatched, library)
+                expected = ref.statevector(circuit, library)
                 state = decode(result["statevector"])
                 fit = ref.fidelity(ref.to_order(expected, result["qubit_ordering"]), state) >= 1 - FIDELITY_TOLERANCE
             else:
-                distribution = ref.clbit_distribution(dispatched, library)
+                distribution = ref.clbit_distribution(circuit, library)
                 counts = {(k if result["qubit_ordering"] == "lsb" else k[::-1]): v for k, v in result["counts"].items()}
                 p_value, _df, outside = goodness_of_fit(counts, distribution)
                 fit = outside == 0 and p_value >= row_.get("holm_threshold", ALPHA)
