@@ -1097,7 +1097,7 @@ The target for a runner or compiler image is the newest CPython (3.13 first, els
 The SDK behaviours below are reported by the comparison as disagreement. A workaround for only these backends would bias preprocessing, so none is applied.
 
 - PennyLane `from_qasm` swaps control and target on `QubitUnitary` (cu3, custom gates).
-- qibo `cu3` is controlled(e^{-i(φ+λ)/2}·U3). qibo: expressions on gate parameters raise TypeError.
+- qibo `cu3` is controlled(e^{-i(φ+λ)/2}·U3). qibo: expressions on gate parameters raise TypeError. qibo 0.3.1: `Circuit.fuse()` (optimization levels 1 and 2) drops every call of a gate the circuit defines, including the qelib1 definitions the adapter inserts with preprocessing on.
 - qrisp runs `cu1` as `crz`. qrisp 0.5's `QuantumCircuit.run()` returns all shots as |0…0⟩ on 12+-qubit circuits with a spread-out distribution (`h q[0]; ch q[0],q[k]` for k=1..11; the statevector path is correct). Qrisp 0.5.2: the definitions of cu1, cu3 and c3sqrtx differ from their matrices; csx acts as crx(π/2); the `run()` outcome cutoff; statevector truncation; qelib1's four-parameter `cu` is rejected.
 - torchquantum's `qiskit2tq` uses register-local indices with several qregs, so the torchquantum adapter refuses multi-qreg circuits when `apply_preprocessing=False` (the API's register merge makes them work with preprocessing on).
 - quimb 1.13.0 substitutes gate parameters by substring (`g(t, t2)` gives `rz(t2)` the value `t` followed by `2`); with preprocessing on, the round-trip inlines the definition first.
