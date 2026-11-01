@@ -6,6 +6,10 @@ ENV QROSETTA_IMAGE_GIT_SHA=${QROSETTA_GIT_SHA}
 # The base image's entrypoint sources the resolver script, then renders the resolver template into
 # conf.d, substituting QROSETTA_* only; nginx runs as uid 101 and listens on 8080.
 ENV NGINX_ENVSUBST_FILTER=^QROSETTA_
+# nginx loads no dynamic module and nothing here calls curl: removing the optional modules and
+# curl takes curl, libgd, freetype and brotli out of the image.
+USER root
+RUN apk del --no-cache curl nginx-module-geoip nginx-module-image-filter nginx-module-njs nginx-module-xslt
 RUN rm /etc/nginx/conf.d/default.conf
 COPY --chmod=0755 nginx/14-qrosetta-resolver.envsh /docker-entrypoint.d/14-qrosetta-resolver.envsh
 COPY nginx/resolver.conf.template /etc/nginx/templates/resolver.conf.template
