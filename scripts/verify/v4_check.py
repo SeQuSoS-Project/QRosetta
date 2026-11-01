@@ -7,7 +7,9 @@ circuit: no answer, which the platform reports as such); NO_RESULT (timeout, off
 result in the report)."""
 
 import base64
+import json
 import re
+from pathlib import Path
 
 import numpy as np
 from scipy.stats import chi2
@@ -42,6 +44,10 @@ def _controlled(u):
 _QRISP_RUN = ref.GateLibrary("gate cu1run(l) a,b { p(3*l/8) a; p(l) b; cx a,b; p(-l/2) b; cx a,b; p(-l/2) b; }")
 _QRISP_RUN.add_definitions(ref.QELIB1.read_text())
 
+_QRISP_C3SQRTX_RUN = np.array(
+    [[complex(*v) for v in row] for row in json.loads(
+        (Path(__file__).with_name("fixtures") / "qrisp-0.5.2-c3sqrtx-run.json").read_text())["matrix"]])
+
 _CU1_AS_CRZ = ref.GateLibrary(overrides={"cu1": lambda m, p: ref.GateLibrary().matrix("crz", p)}, nested=True)
 
 DEFECT_MODELS = (
@@ -62,10 +68,12 @@ DEFECT_MODELS = (
     {"id": "qrisp-run-definitions", "backends": ("qrisp",), "modes": ("measured",),
      "documented": "Qrisp 0.5 QuantumCircuit.run() rewrites each gate into its definition: cu1 "
                    "becomes p(3l/8) on the control, then p(l), cx, p(-l/2), cx, p(-l/2) on the "
-                   "target; cu3 applies the transposed target matrix; csx acts as crx(pi/2)",
+                   "target; cu3 applies the transposed target matrix; csx acts as crx(pi/2); c3sqrtx is "
+                   "Qrisp's own transpiled unitary (fixtures/qrisp-0.5.2-c3sqrtx-run.json)",
      "overrides": {"cu1": lambda m, p: _QRISP_RUN.matrix("cu1run", p),
                    "cu3": lambda m, p: _controlled(ref.u_matrix(*p).T),
-                   "csx": lambda m, p: _CU1_AS_CRZ.matrix("csx", p)}},
+                   "csx": lambda m, p: _CU1_AS_CRZ.matrix("csx", p),
+                   "c3sqrtx": lambda m, p: _QRISP_C3SQRTX_RUN}},
     {"id": "qibo-fuse-drops-defined-gates", "backends": ("qibo",), "executed": True, "min_level": 1,
      "documented": "found by V4 on 2026-11-01: qibo 0.3.1 Circuit.from_qasm stores each call of a "
                    "gate the text defines as a FusedGate, and Circuit.fuse(), which the adapter "
