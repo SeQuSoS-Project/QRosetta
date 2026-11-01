@@ -175,8 +175,9 @@ class PyPI:
         return self._get(name)["releases"]
 
 
-def _version_key(version):
+def version_key(version):
     return [int(x) for x in re.findall(r"\d+", version)]
+
 
 
 def _is_final(version):
@@ -196,8 +197,8 @@ def wheel_check(pins, old_python, new_python, sdk, pypi, glibc=(2, 41)):
         row = {"name": name, "version": version, "old_wheel": old_ok, "new_wheel": new_ok,
                "sdist": has_sdist, "sdk": key in sdk, "nearest": None}
         if old_ok and not new_ok and key not in sdk:
-            for candidate in sorted(pypi.releases(name), key=_version_key):
-                if _version_key(candidate) <= _version_key(version) or not _is_final(candidate):
+            for candidate in sorted(pypi.releases(name), key=version_key):
+                if version_key(candidate) <= version_key(version) or not _is_final(candidate):
                     continue
                 if any(wheel_fits(f["filename"], new_python, glibc)
                        for f in pypi.releases(name)[candidate] if f["filename"].endswith(".whl")):

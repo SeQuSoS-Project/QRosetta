@@ -43,7 +43,8 @@ def parse_args(argv):
     p.add_argument("--prepare-only", action="store_true")
     p.add_argument("--relax", action="append", default=[], help="drop this pin from the lock constraints")
     p.add_argument("--bump", action="append", default=[], metavar="NAME==VERSION",
-                   help="move this pin where the service's requirements or lock name it (others ignored)")
+                   help="raise this pin to VERSION where the service's requirements or lock name it "
+                        "at a lower version (others ignored)")
     p.add_argument("--sv", type=int, default=150, help="random statevector circuits (runners) or circuits (compilers)")
     p.add_argument("--measured", type=int, default=150, help="random measured circuits (runners)")
     p.add_argument("--deep", type=int, default=4, help="deep circuits (500-3000 gates) per mode")
@@ -123,8 +124,10 @@ def prepare(svc, service_id, new_base, cand_dir, relax, work, state, bumps=()):
                                       f"{new_python[0]}.{new_python[1]} and no later release has one")
     if record["stop"]:
         return record
-    named = set(pins) | set(cand.parse_lock((service_dir / "requirements.txt").read_text()))
-    bumped = {name: version for name, version in (b.split("==", 1) for b in bumps) if cand.normalise(name) in named}
+    named = {**cand.parse_lock((service_dir / "requirements.txt").read_text()), **pins}
+    bumped = {name: version for name, version in (b.split("==", 1) for b in bumps)
+              if cand.normalise(name) in named
+              and cand.version_key(version) > cand.version_key(named[cand.normalise(name)][1])}
     record["bumped"] = bumped
     if cand_dir.exists():
         shutil.rmtree(cand_dir)

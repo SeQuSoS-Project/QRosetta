@@ -186,14 +186,15 @@ def test_a_bump_keeps_the_base_and_moves_only_named_pins(tmp_path, monkeypatch):
     (svc_dir / "Dockerfile").write_text(dockerfile)
     (svc_dir / "main.py").write_text("")
     (svc_dir / "requirements.txt").write_text("fastapi==0.115.0\nsdk==1.0\n")
-    (svc_dir / "requirements.lock").write_text("anyio==4.14.1 \\\n    --hash=sha256:00\nfastapi==0.115.0\nsdk==1.0\n")
+    (svc_dir / "requirements.lock").write_text("anyio==4.14.1 \\\n    --hash=sha256:00\nfastapi==0.115.0\nsdk==1.0\n"
+                                               "newer==2.0\n")
     monkeypatch.setattr(requalify, "REPO", tmp_path)
     monkeypatch.setattr(requalify, "track_pull", lambda ref, state: None)
     monkeypatch.setattr(requalify, "base_facts", lambda base: ((3, 12), (2, 41)))
     monkeypatch.setattr(requalify.cand, "wheel_check", lambda *a, **k: [])
     monkeypatch.setattr(requalify.cand, "compile_lock", lambda cand_dir, base, env: None)
     record = requalify.prepare({"dir": "runners/x-runner"}, "x", None, tmp_path / "cand", [], tmp_path, {},
-                               ["anyio==4.14.2", "fastapi==0.136.3", "absent==9"])
+                               ["anyio==4.14.2", "fastapi==0.136.3", "absent==9", "newer==1.5"])
     assert record["new_base"] == NEW_BASE and record["bumped"] == {"anyio": "4.14.2", "fastapi": "0.136.3"}
     assert (tmp_path / "cand" / "Dockerfile").read_text() == dockerfile
     assert (tmp_path / "cand" / "requirements.txt").read_text() == "fastapi==0.136.3\nsdk==1.0\n"
