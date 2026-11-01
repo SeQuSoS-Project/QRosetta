@@ -21,6 +21,7 @@ import driver  # noqa: E402
 import engine  # noqa: E402
 import registry  # noqa: E402
 import report  # noqa: E402
+import requalify  # noqa: E402
 import timing  # noqa: E402
 
 sys.path.remove(str(REPO / "scripts" / "requalify"))
@@ -169,6 +170,34 @@ def test_write_constraints_replaces_and_drops_pins(tmp_path):
     candidate.write_constraints(tmp_path / "cand", src, {"dep": "1.2"}, ["loose"])
     assert (tmp_path / "cand" / "requirements.txt").read_text() == "dep==1.2\nsdk==1.0\n"
     assert (tmp_path / "cand" / "requirements.lock").read_text() == "# header\ndep==1.2\nsdk==1.0\n"
+
+
+def test_bump_arguments_are_checked():
+    assert requalify.parse_args(["qiskit", "--bump", "anyio==4.14.2"]).bump == ["anyio==4.14.2"]
+    for argv in (["qiskit"], ["qiskit", "--bump", "anyio>=4"], ["qiskit", "--candidate", "x", "--bump", "a==1"]):
+        with pytest.raises(SystemExit):
+            requalify.parse_args(argv)
+
+
+def test_a_bump_keeps_the_base_and_moves_only_named_pins(tmp_path, monkeypatch):
+    svc_dir = tmp_path / "runners" / "x-runner"
+    svc_dir.mkdir(parents=True)
+    dockerfile = f"FROM {NEW_BASE}\nARG DEBIAN_SNAPSHOT=1\nRUN pip install --require-hashes -r requirements.lock\n"
+    (svc_dir / "Dockerfile").write_text(dockerfile)
+    (svc_dir / "main.py").write_text("")
+    (svc_dir / "requirements.txt").write_text("fastapi==0.115.0\nsdk==1.0\n")
+    (svc_dir / "requirements.lock").write_text("anyio==4.14.1 \\\n    --hash=sha256:00\nfastapi==0.115.0\nsdk==1.0\n")
+    monkeypatch.setattr(requalify, "REPO", tmp_path)
+    monkeypatch.setattr(requalify, "track_pull", lambda ref, state: None)
+    monkeypatch.setattr(requalify, "base_facts", lambda base: ((3, 12), (2, 41)))
+    monkeypatch.setattr(requalify.cand, "wheel_check", lambda *a, **k: [])
+    monkeypatch.setattr(requalify.cand, "compile_lock", lambda cand_dir, base, env: None)
+    record = requalify.prepare({"dir": "runners/x-runner"}, "x", None, tmp_path / "cand", [], tmp_path, {},
+                               ["anyio==4.14.2", "fastapi==0.136.3", "absent==9"])
+    assert record["new_base"] == NEW_BASE and record["bumped"] == {"anyio": "4.14.2", "fastapi": "0.136.3"}
+    assert (tmp_path / "cand" / "Dockerfile").read_text() == dockerfile
+    assert (tmp_path / "cand" / "requirements.txt").read_text() == "fastapi==0.136.3\nsdk==1.0\n"
+    assert [m["name"] for m in record["lock_moves"]] == ["anyio", "fastapi"]
 
 
 def test_corpus_is_fixed_and_covers_every_part():

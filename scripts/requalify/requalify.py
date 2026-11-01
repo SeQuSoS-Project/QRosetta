@@ -4,6 +4,7 @@ no network, compare every output field, time both on three circuits pinned to on
 scan both with Trivy, write the evidence file, and remove the images it built or pulled.
 
     requalify.py <service> <python-base@sha256:...>   prepare the candidate, then requalify
+    requalify.py <service> --bump NAME==VERSION ...   same base, these pins moved, then requalify
     requalify.py <service> --candidate DIR            requalify an existing candidate directory
     requalify.py <service> <base> --prepare-only      write the candidate and the wheel check only
 
@@ -41,6 +42,8 @@ def parse_args(argv):
     p.add_argument("--candidate", type=Path, help="directory with Dockerfile, requirements.txt, requirements.lock")
     p.add_argument("--prepare-only", action="store_true")
     p.add_argument("--relax", action="append", default=[], help="drop this pin from the lock constraints")
+    p.add_argument("--bump", action="append", default=[], metavar="NAME==VERSION",
+                   help="move this pin where the service's requirements or lock name it (others ignored)")
     p.add_argument("--sv", type=int, default=150, help="random statevector circuits (runners) or circuits (compilers)")
     p.add_argument("--measured", type=int, default=150, help="random measured circuits (runners)")
     p.add_argument("--deep", type=int, default=4, help="deep circuits (500-3000 gates) per mode")
@@ -59,8 +62,13 @@ def parse_args(argv):
     p.add_argument("--work", type=Path)
     p.add_argument("--report", type=Path)
     args = p.parse_args(argv)
-    if bool(args.new_base) == bool(args.candidate):
-        p.error("give exactly one of <new-base> and --candidate")
+    if args.candidate and (args.new_base or args.bump):
+        p.error("--candidate takes neither <new-base> nor --bump")
+    if not (args.new_base or args.bump or args.candidate):
+        p.error("give <new-base>, --bump or --candidate")
+    for bump in args.bump:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*==\S+", bump):
+            p.error(f"--bump takes NAME==VERSION, not {bump!r}")
     return args
 
 
@@ -80,14 +88,18 @@ def base_facts(base):
     return (int(major), int(minor)), tuple(int(x) for x in libc.split("."))
 
 
-def prepare(svc, service_id, new_base, cand_dir, relax, work, state):
+def prepare(svc, service_id, new_base, cand_dir, relax, work, state, bumps=()):
     """Write the candidate into ``cand_dir``; return its prepare record (``stop`` set when an SDK
-    package has no build for the new Python)."""
-    if "@sha256:" not in new_base:
-        raise SystemExit("the new base must be pinned by digest")
+    package has no build for the new Python). Without ``new_base`` the base stays and the
+    Dockerfile is copied unchanged; ``bumps`` (NAME==VERSION) move the pins the service names."""
     service_dir = REPO / svc["dir"]
     dockerfile = (service_dir / "Dockerfile").read_text()
     old_bases = cand.python_bases(dockerfile)
+    same_base = new_base is None
+    if same_base:
+        new_base = old_bases[-1]
+    if "@sha256:" not in new_base:
+        raise SystemExit("the new base must be pinned by digest")
     old_python = cand.python_of_tag(old_bases[-1]) if old_bases else None
     track_pull(new_base, state)
     new_python, glibc = base_facts(new_base)
@@ -111,10 +123,16 @@ def prepare(svc, service_id, new_base, cand_dir, relax, work, state):
                                       f"{new_python[0]}.{new_python[1]} and no later release has one")
     if record["stop"]:
         return record
+    named = set(pins) | set(cand.parse_lock((service_dir / "requirements.txt").read_text()))
+    bumped = {name: version for name, version in (b.split("==", 1) for b in bumps) if cand.normalise(name) in named}
+    record["bumped"] = bumped
     if cand_dir.exists():
         shutil.rmtree(cand_dir)
-    cand.write_constraints(cand_dir, service_dir, record["replaced"], relax)
-    new_dockerfile, changes, manual = cand.rewrite_dockerfile(dockerfile, new_base, cand.snapshot_default())
+    cand.write_constraints(cand_dir, service_dir, {**record["replaced"], **bumped}, relax)
+    if same_base:
+        new_dockerfile, changes, manual = dockerfile, [], []
+    else:
+        new_dockerfile, changes, manual = cand.rewrite_dockerfile(dockerfile, new_base, cand.snapshot_default())
     (cand_dir / "Dockerfile").write_text(new_dockerfile)
     record["dockerfile_changes"], record["manual"] = changes, manual
     env = dict(os.environ, TMPDIR=str(HOME_TMP), ENGINE=engine.ENGINE)
@@ -276,8 +294,8 @@ def main(argv=None):
     evidence = {"service": args.service, "svc": svc, "args": {k: str(v) for k, v in vars(args).items()},
                 "started": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "git_sha": git_sha()}
     try:
-        if args.new_base:
-            record = prepare(svc, args.service, args.new_base, cand_dir, args.relax, work, state)
+        if args.new_base or args.bump:
+            record = prepare(svc, args.service, args.new_base, cand_dir, args.relax, work, state, args.bump)
         else:
             path = cand_dir / "prepare.json"
             record = json.loads(path.read_text()) if path.exists() else {}

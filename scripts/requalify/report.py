@@ -71,7 +71,9 @@ def _row(ev):
     rule = (f"`{ev['svc']['dir']}/Dockerfile` runs `{prep['new_base'].split('@')[0]}` by digest (Python "
             f"{_py(prep['new_python'])}), with the apt snapshot and a hash-pinned lock from `compile_lock.sh`. "
             f"Changing its base needs `scripts/requalify/requalify.sh {ev['service']}` with identical outputs.")
-    evidence = (f"{ev['started'][:10]}: Python {_py(prep['old_python'])} → {_py(prep['new_python'])} at one commit. "
+    move = (f"Python {_py(prep['old_python'])} → {_py(prep['new_python'])}" if prep['old_python'] != prep['new_python']
+            else f"lock bump on Python {_py(prep['new_python'])}")
+    evidence = (f"{ev['started'][:10]}: {move} at one commit. "
                 f"{_verdict(ev)} ({parts}); self-test "
                 f"{'identical' if ev.get('selftest', {}).get('old') == ev.get('selftest', {}).get('new') else 'differs'}; "
                 f"{len(prep.get('lock_moves', []))} lock pins moved.{timing_text}{scan_text}{size_text}")
@@ -102,6 +104,9 @@ def write(path, ev):
                           f"{r['name']}=={r['version']} (old Python: {'wheel' if r['old_wheel'] else 'no wheel'}"
                           f"{', sdist' if r['sdist'] else ''}{', nearest with a build ' + r['nearest'] if r['nearest'] else ''})"
                           for r in missing) + "."))
+        if prep.get("bumped"):
+            out.append("- Pins moved on request (`--bump`): "
+                       + ", ".join(f"{k} → {v}" for k, v in prep["bumped"].items()) + ".")
         if prep.get("replaced"):
             out.append("- Pins moved to the nearest release with a build: "
                        + ", ".join(f"{k} → {v}" for k, v in prep["replaced"].items()) + ".")
