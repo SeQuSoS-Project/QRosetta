@@ -29,26 +29,27 @@ the git remote `public` (`SeQuSoS-Project/QRosetta`) and the version is `X.Y.Z`.
 - The workflow refuses a tag that is not `v` followed by `qrosetta_cli.__version__` spelled as
   canonical PEP 440 (`v2.0.0rc1`, never `v2.0.0-rc1`).
 
-## Release-blocking items known on 2026-10-30
+## Release-blocking items known on 2026-11-01
 
-1. The Trivy gate (`image.sh scan`: a CRITICAL vulnerability with a fixed version fails the image)
-   still fails every published runner image, 12 of the 21 release images, going by the scans of the
-   2026-10-28 requalifications (`DESIGN_DECISIONS.md`, "Runner images on Python 3.12 and 3.13" and
-   "Qulacs image on Python 3.12"; quimb on its old 3.11 base, 4 fixable CRITICAL). The new base digests
-   removed the openssl and perl-base findings. What remains is in the locks: anyio 4.14.1,
-   starlette 0.38.6 (under fastapi 0.115.0) and urllib3 2.7.0 in every runner; PyJWT, certifi,
-   cryptography, pillow, pyasn1, msgpack or protobuf in some; and the pinned SDKs qiskit 0.45.3 and
-   1.2.4 (CVE-2025-2000) and torch 2.2.2 (CVE-2025-32434). The API image and the 7 published
-   compiler images had no fixable CRITICAL; the nginx image (1.31.7, Alpine 3.24) has not been
-   scanned. The remaining work is a lock bump per runner image for the packages outside the SDK,
-   requalified like the Python move (`scripts/requalify/requalify.sh`), and for the SDK pins a
-   `.trivyignore` entry with its reason, who accepted it and a review date. While one image fails,
-   the `images` job fails and nothing is published.
-2. Since 2026-10-30 every runner and compiler image runs Python 3.12 or 3.13 except two: the
-   quimb runner runs 3.11, which reaches end of life in 2027-10 and is already inside the
-   12-month window (its 3.12 candidate is held: simulation +25.5 % and +11.9 % on two cells), and
-   the disabled ProjectQ runner, which is not published, runs 3.10. If quimb ships on 3.11, the
-   release notes say so.
+The Trivy gate and the quimb runner's Python were cleared on 2026-11-01 (DESIGN_DECISIONS.md,
+"Dependency bumps in the published runner and compiler images"): every published runner and
+compiler image was requalified with raised locks, quimb moved to Python 3.12, and the nginx images
+dropped curl and the unused modules. With `.trivyignore` (qiskit CVE-2025-2000 in five runners and
+torch CVE-2025-32434 in TorchQuantum, accepted until 2027-05-01) no release image has a fixable
+CRITICAL. Fixable HIGH findings left: qiskit CVE-2025-1403 (QPY, as CVE-2025-2000) and torch in
+the SDK pins; protobuf 4.25.9 in the Cirq and qsim images (cirq-google 1.4.1 requires < 5);
+setuptools 79.0.1's vendored wheel and jaraco.context in the Cirq, qsim and TorchQuantum images
+(pinned because cirq_google and qiskit_ibm_runtime import `pkg_resources`); pip's vendored msgpack
+and setuptools in the Python 3.13 base of Qibo and the compilers. myQLM, cuQuantum and BQSKit,
+which are never published, keep the earlier web stack until they are requalified.
+
+1. Known issue for the release notes: Qibo 0.3.1's `Circuit.fuse()`, which the Qibo adapter
+   applies at optimization levels 1 and 2, drops every gate the circuit defines, including the
+   `qelib1.inc` definitions the adapter inserts with preprocessing on (found by V4; manual, known
+   backend issues). Level 0 is not affected.
+2. If the published nginx base changes, rescan: the 2026-10-19 build of
+   `nginx-unprivileged:1.31.7-alpine3.24` carries brotli-libs 1.2.0-r1 (CRITICAL), which the image
+   now removes with the modules that need it.
 3. `CHANGELOG.md` has no `[2.0.0]` section yet. The `plan` job stops a final tag until it has a
    dated one.
 4. Owner items that the files depend on: ORCIDs (`CITATION.cff`, `.zenodo.json`,
