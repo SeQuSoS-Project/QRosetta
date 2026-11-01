@@ -115,12 +115,14 @@ def _cx_matrix() -> np.ndarray:
 class GateLibrary:
     """Gate definitions (qelib1.inc plus any a circuit declares) and their matrices."""
 
-    def __init__(self, text: str = None, overrides: dict = None):
+    def __init__(self, text: str = None, overrides: dict = None, nested: bool = False):
         """``overrides``: gate name -> function(matrix, params) -> the matrix used instead of
-        that gate's own; every other gate, and the matrix an override receives, are built from
-        the definitions without overrides."""
+        that gate's own. Unless ``nested``, every other gate, and the matrix an override
+        receives, are built from the definitions without overrides; with ``nested`` the
+        overrides also apply inside the definitions."""
         self.defs = {}
         self.overrides = dict(overrides or {})
+        self.nested = nested
         self.add_definitions(text if text is not None else QELIB1.read_text())
 
     def add_definitions(self, text: str):
@@ -157,7 +159,7 @@ class GateLibrary:
         return self._matrix(name, params)
 
     def _sub(self, name, params):
-        return self._matrix(name, params) if self.overrides else self.matrix(name, params)
+        return self.matrix(name, params) if self.nested or not self.overrides else self._matrix(name, params)
 
     def _matrix(self, name, params):
         if name == "U":

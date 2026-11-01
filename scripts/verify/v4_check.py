@@ -7,7 +7,6 @@ circuit: no answer, which the platform reports as such); NO_RESULT (timeout, off
 result in the report)."""
 
 import base64
-import math
 
 import numpy as np
 from scipy.stats import chi2
@@ -26,6 +25,8 @@ def _qibo_cu3(matrix, params):
     return out
 
 
+_CU1_AS_CRZ = ref.GateLibrary(overrides={"cu1": lambda m, p: ref.GateLibrary().matrix("crz", p)}, nested=True)
+
 DEFECT_MODELS = (
     {"id": "pennylane-qubitunitary-wire-order", "backends": ("pennylane-default", "pennylane-lightning"),
      "documented": "PennyLane from_qasm swaps control and target on QubitUnitary (cu3, custom gates): "
@@ -36,9 +37,11 @@ DEFECT_MODELS = (
      "documented": "qibo cu3 is controlled(e^{-i(phi+lambda)/2} U3)",
      "overrides": {"cu3": _qibo_cu3}},
     {"id": "qrisp-cu1-as-crz", "backends": ("qrisp",),
-     "documented": "qrisp runs cu1 as crz (and csx, defined through cu1, acts as crx(pi/2))",
-     "overrides": {"cu1": lambda m, p: ref.GateLibrary().matrix("crz", p),
-                   "csx": lambda m, p: ref.GateLibrary().matrix("crx", (math.pi / 2,))}},
+     "documented": "qrisp runs cu1 as crz; csx and c3sqrtx, which Qrisp takes from Qiskit's "
+                   "definitions through cu1, follow (csx acts as crx(pi/2))",
+     "overrides": {"cu1": lambda m, p: _CU1_AS_CRZ.matrix("cu1", p),
+                   "csx": lambda m, p: _CU1_AS_CRZ.matrix("csx", p),
+                   "c3sqrtx": lambda m, p: _CU1_AS_CRZ.matrix("c3sqrtx", p)}},
 )
 
 FIDELITY_TOLERANCE = 1e-5
