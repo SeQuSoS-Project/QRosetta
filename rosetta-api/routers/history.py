@@ -1,7 +1,7 @@
 """Saved-circuit and run-history routes, all scoped to the authenticated user."""
 
 from services.report_validation import REPORT_SHAPE_ERRORS, reject_invalid_report, unreadable_report
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -9,7 +9,7 @@ import db.models as models
 import schemas
 import services.history as history_service
 from db.database import get_db
-from services.security import get_current_user
+from services.security import get_current_user, history_write_rate_limit, run_rate_limit
 from services.exporter import build_export_context, build_ro_crate, crate_name
 from services.publication.views import ParameterError
 from services.job_manager import job_with_report_or_error
@@ -59,7 +59,9 @@ _RUN_NOT_FOUND_DOC = "No saved run with that id belongs to this account."
 
 @router.post("/circuits", response_model=schemas.SavedCircuitResponse, status_code=status.HTTP_201_CREATED,
              responses=responses((400, "The text does not parse as OpenQASM 2.0, or is over the compile-only qubit cap (max_qubits_compile in GET /config)."), 413))
+@history_write_rate_limit
 def create_saved_circuit(
+    request: Request,
     circuit: schemas.SavedCircuitCreate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
@@ -74,7 +76,9 @@ def create_saved_circuit(
 
 @router.patch("/circuits/{circuit_id}", response_model=schemas.SavedCircuitResponse,
               responses=responses((404, "No saved circuit with that id belongs to this account.")))
+@history_write_rate_limit
 def rename_saved_circuit(
+    request: Request,
     circuit_id: str,
     update: schemas.SavedCircuitUpdate,
     db: Session = Depends(get_db),
@@ -89,7 +93,9 @@ def rename_saved_circuit(
 
 @router.delete("/circuits/{circuit_id}", status_code=status.HTTP_204_NO_CONTENT,
                responses=responses((404, "No saved circuit with that id belongs to this account.")))
+@history_write_rate_limit
 def delete_saved_circuit(
+    request: Request,
     circuit_id: str,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
@@ -117,7 +123,9 @@ def get_saved_circuits(
                  (400, "The report names a runner key of the wrong form, or has the wrong shape inside raw_results."),
                  (404, "circuit_id is not one of this account's saved circuits."),
                  (422, "The body is neither a single-circuit report (raw_results list) nor a batch report (benchmark_summary list), or circuit_id is not a string or differs between the query and the body. Body: {\"detail\": [{\"loc\": [...], \"msg\": str, \"type\": str}]}.")))
+@history_write_rate_limit
 def save_run(
+    request: Request,
     run_payload: dict,
     circuit_id: str | None = None,
     db: Session = Depends(get_db),
@@ -162,7 +170,9 @@ def save_run(
                      (404, "Unknown or expired job id, and this account has not saved it."),
                      (409, "The job has not finished, failed before any runner ran, or is an experiment."),
                      422)})
+@history_write_rate_limit
 def save_run_from_job(
+    request: Request,
     job_id: str,
     response: Response,
     body: schemas.RunHistoryFromJob | None = None,
@@ -270,7 +280,9 @@ def get_run_summary(
 
 @router.patch("/runs/{run_id}", response_model=schemas.RunHistoryResponse,
               responses=responses((404, _RUN_NOT_FOUND_DOC)))
+@history_write_rate_limit
 def update_run_name(
+    request: Request,
     run_id: str,
     update_data: schemas.RunHistoryUpdate,
     db: Session = Depends(get_db),
@@ -285,7 +297,9 @@ def update_run_name(
 
 @router.delete("/runs", response_model=schemas.RunHistoryBatchDeleteResponse,
                responses=responses((404, "None of the ids is a run of this account; nothing was deleted.")))
+@history_write_rate_limit
 def batch_delete_runs(
+    request: Request,
     payload: schemas.RunHistoryBatchDelete,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
@@ -311,7 +325,9 @@ def batch_delete_runs(
         (400, "An export option the report cannot take (e.g. a publication view parameter), or a "
               "field of an uploaded report that holds a value of the wrong type or shape."),
         (404, _RUN_NOT_FOUND_DOC))})
+@run_rate_limit
 def export_run_as_ro_crate(
+    request: Request,
     run_id: str,
     payload: schemas.ExportPayload | None = None,
     db: Session = Depends(get_db),

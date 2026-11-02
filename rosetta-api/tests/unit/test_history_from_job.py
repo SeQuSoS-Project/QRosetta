@@ -1,4 +1,6 @@
 """POST /history/runs/from_job/{job_id} and the timestamps of saved runs."""
+import inspect
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -156,7 +158,7 @@ def test_concurrent_saves_of_one_job_store_one_run(monkeypatch):
 
     def save():
         response = Response(status_code=201)
-        run = history_router.save_run_from_job("race-job-0001", response, None, None, user)
+        run = inspect.unwrap(history_router.save_run_from_job)(None, "race-job-0001", response, None, None, user)
         codes.append(response.status_code)
         ids.append(run.id)
     try:
@@ -208,8 +210,8 @@ def test_saves_in_flight_when_the_job_expires_store_one_run(monkeypatch):
     ids = []
 
     def save():
-        run = history_router.save_run_from_job("expiring-save-1", Response(status_code=201), None,
-                                               None, user)
+        run = inspect.unwrap(history_router.save_run_from_job)(None, "expiring-save-1", Response(status_code=201),
+                                                               None, None, user)
         ids.append(run.id)
     try:
         threads = [threading.Thread(target=save) for _ in range(savers)]

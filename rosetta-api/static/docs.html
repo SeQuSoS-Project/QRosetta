@@ -1952,7 +1952,10 @@
                     <code>limits.run_rate_limit</code> in <code>GET /config</code> for runs, exports and
                     circuit lookups, 10 a minute by default; rendering a figure or table,
                     <code>limits.render_rate_limit</code>, 120 a minute; full-report and bundle downloads
-                    30 a minute; creating a share link 20 a minute. Runs, exports, circuit lookups and
+                    30 a minute; creating a share link 20 a minute; saving, renaming or deleting saved
+                    circuits and runs, <code>limits.history_write_rate_limit</code>, 60 a minute (240 a
+                    minute per client address, <code>limits.history_write_rate_limit_per_address</code>);
+                    exporting a saved run counts as an export. Runs, exports, circuit lookups and
                     rendering also have a limit per client address whatever the accounts
                     (<code>limits.run_rate_limit_per_address</code>, 60 a minute by default, and
                     <code>limits.render_rate_limit_per_address</code>, 240 a minute), so several accounts

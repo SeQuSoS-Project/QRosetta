@@ -87,6 +87,8 @@ class Limits(_Open):
     run_rate_limit_per_address: str
     render_rate_limit: str
     render_rate_limit_per_address: str
+    history_write_rate_limit: str
+    history_write_rate_limit_per_address: str
     login_rate_limit: str
     register_rate_limit: str
     access_token_expire_sec: int

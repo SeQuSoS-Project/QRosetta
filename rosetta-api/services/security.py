@@ -217,6 +217,8 @@ def limit_with_address_ceiling(limit_value: str, ceiling: str):
 run_rate_limit = limit_with_address_ceiling(settings.RUN_RATE_LIMIT, settings.RUN_RATE_LIMIT_PER_ADDRESS)
 render_rate_limit = limit_with_address_ceiling(settings.RENDER_RATE_LIMIT,
                                                settings.RENDER_RATE_LIMIT_PER_ADDRESS)
+history_write_rate_limit = limit_with_address_ceiling(settings.HISTORY_WRITE_RATE_LIMIT,
+                                                      settings.HISTORY_WRITE_RATE_LIMIT_PER_ADDRESS)
 
 
 TOKEN_CLOCK_TOLERANCE_SEC = 2

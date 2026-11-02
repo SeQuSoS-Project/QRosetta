@@ -155,7 +155,10 @@ async def get_config():
     ``run_rate_limit`` (requests per client to each run, export and lookup route; 429 above
     it) and ``run_rate_limit_per_address`` (requests per client address to each of those
     routes, whatever the accounts), ``render_rate_limit`` and ``render_rate_limit_per_address``
-    (the same pair for the two publication render routes), ``login_rate_limit`` and
+    (the same pair for the two publication render routes), ``history_write_rate_limit`` and
+    ``history_write_rate_limit_per_address`` (the same pair for the routes that save, rename or
+    delete saved circuits and runs; the saved-run export counts under ``run_rate_limit``),
+    ``login_rate_limit`` and
     ``register_rate_limit`` (requests per client address to POST /auth/token and
     POST /auth/register; 429 above them),
     ``access_token_expire_sec`` (lifetime of a sign-in token),
@@ -235,6 +238,8 @@ async def get_config():
             "run_rate_limit_per_address": settings.RUN_RATE_LIMIT_PER_ADDRESS,
             "render_rate_limit": settings.RENDER_RATE_LIMIT,
             "render_rate_limit_per_address": settings.RENDER_RATE_LIMIT_PER_ADDRESS,
+            "history_write_rate_limit": settings.HISTORY_WRITE_RATE_LIMIT,
+            "history_write_rate_limit_per_address": settings.HISTORY_WRITE_RATE_LIMIT_PER_ADDRESS,
             "login_rate_limit": settings.LOGIN_RATE_LIMIT,
             "register_rate_limit": settings.REGISTER_RATE_LIMIT,
             "access_token_expire_sec": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,

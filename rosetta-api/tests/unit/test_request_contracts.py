@@ -180,6 +180,8 @@ def test_config_exposes_mode_thresholds_and_limits(client):
         "run_rate_limit_per_address": settings.RUN_RATE_LIMIT_PER_ADDRESS,
         "render_rate_limit": settings.RENDER_RATE_LIMIT,
         "render_rate_limit_per_address": settings.RENDER_RATE_LIMIT_PER_ADDRESS,
+        "history_write_rate_limit": settings.HISTORY_WRITE_RATE_LIMIT,
+        "history_write_rate_limit_per_address": settings.HISTORY_WRITE_RATE_LIMIT_PER_ADDRESS,
         "login_rate_limit": settings.LOGIN_RATE_LIMIT,
         "register_rate_limit": settings.REGISTER_RATE_LIMIT,
         "access_token_expire_sec": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
