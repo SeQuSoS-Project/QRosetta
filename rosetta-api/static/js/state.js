@@ -33,6 +33,7 @@ export const Store = {
         bypassRequiresAccount: false,
         maxExportItems: 60,
         maxLabelLength: 200,
+        maxSavedRuns: 1000,
         emailMaxLength: 254,
         passwordMinChars: 8,
         passwordMaxBytes: 72,
@@ -135,6 +136,7 @@ export const Store = {
                 }
                 this.state.maxExportItems = num(limits.max_export_items) ?? this.state.maxExportItems;
                 this.state.maxLabelLength = num(limits.max_label_length) ?? this.state.maxLabelLength;
+                this.state.maxSavedRuns = num(limits.max_saved_runs) ?? this.state.maxSavedRuns;
                 this.state.emailMaxLength = num(limits.email_max_length) ?? this.state.emailMaxLength;
                 this.state.passwordMinChars = num(limits.password_min_chars) ?? this.state.passwordMinChars;
                 this.state.passwordMaxBytes = num(limits.password_max_bytes) ?? this.state.passwordMaxBytes;

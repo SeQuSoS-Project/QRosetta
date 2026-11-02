@@ -198,6 +198,8 @@ def test_config_exposes_mode_thresholds_and_limits(client):
         "max_report_runner_keys": settings.MAX_TOTAL_RUNS,
         "max_report_pairs": settings.MAX_TOTAL_RUNS * (settings.MAX_TOTAL_RUNS - 1) // 2,
         "max_label_length": settings.MAX_LABEL_LENGTH,
+        "max_saved_runs": settings.MAX_SAVED_RUNS,
+        "max_saved_circuits": settings.MAX_SAVED_CIRCUITS,
         "email_max_length": 254,
         "password_min_chars": 8,
         "password_max_bytes": 72,

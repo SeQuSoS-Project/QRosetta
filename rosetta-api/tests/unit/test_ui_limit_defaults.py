@@ -29,6 +29,7 @@ def test_state_defaults_match_the_server_limits():
     assert _state_default("maxExportItems") == settings.MAX_EXPORT_ITEMS
     assert _state_default("jobTtlSec") == type(settings).model_fields["JOB_TTL_SEC"].default
     assert _state_default("maxLabelLength") == settings.MAX_LABEL_LENGTH
+    assert _state_default("maxSavedRuns") == settings.MAX_SAVED_RUNS
 
 
 def test_html_inputs_do_not_exceed_the_server_limits():

@@ -98,10 +98,20 @@ function _offerSignInAndRetry(jobId, name) {
     });
 }
 
+/** Saved runs of the signed-in account as the History list last showed them, kept up to date by
+ * saves from this page; null until the list has loaded, and after a sign-out. */
+let _knownRunCount = /** @type {number|null} */ (null);
+document.addEventListener('signed-out', () => { _knownRunCount = null; });
+
 /** Save a finished job to the signed-in user's history from the server's copy of the report.
  * Returns the saved run id, or null (with a visible notice) when saving failed. */
 export async function saveRunToHistory(jobId, name = null) {
     if (!getState().authToken || !jobId) return null;
+    const max = getState().maxSavedRuns;
+    if (_knownRunCount !== null && _knownRunCount >= max) {
+        showHistoryNotice(`This run was not saved to your history. This account keeps at most ${max.toLocaleString('en')} saved runs; delete some to save more.`);
+        return null;
+    }
     try {
         const res = await fetch(`${BASE_URL}/history/runs/from_job/${encodeURIComponent(jobId)}`, {
             method: 'POST',
@@ -132,6 +142,7 @@ export async function saveRunToHistory(jobId, name = null) {
         if (!res.ok) throw new Error(await formatApiError(res));
         const data = await res.json().catch(() => null);
         const id = typeof data === 'string' ? data : (data?.id || data?.run_id || null);
+        if (_knownRunCount !== null && res.status === 201) _knownRunCount += 1;
         showHistoryNotice('');
         return id;
     } catch (e) {
@@ -173,6 +184,7 @@ export async function openHistoryModal() {
 
         const runs = await response.json();
         if (generation !== _listGeneration) return;
+        _knownRunCount = runs.length;
         if (runs.length === 0) {
             list.innerHTML = '<li class="py-4 text-center text-sm text-gray-500">No previous runs found.</li>';
             return;

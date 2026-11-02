@@ -175,7 +175,8 @@ async def get_config():
     refused), ``max_export_items``
     (publication items of one RO-Crate export),
     ``max_label_length`` (characters of a run, circuit, task or author name; control and
-    invisible formatting characters are rejected) and the account limits
+    invisible formatting characters are rejected), ``max_saved_runs`` and ``max_saved_circuits``
+    (what one account keeps in History; 409 above them) and the account limits
     ``email_max_length``, ``password_min_chars`` and ``password_max_bytes`` (UTF-8).
     ``default_n_shots`` is the shot count the measured, batch and experiment endpoints use
     when ``n_shots`` is omitted. The top-level keys repeat the qubit, size and gate limits.
@@ -254,6 +255,8 @@ async def get_config():
             "max_export_items": settings.MAX_EXPORT_ITEMS,
             **report_caps(),
             "max_label_length": settings.MAX_LABEL_LENGTH,
+            "max_saved_runs": settings.MAX_SAVED_RUNS,
+            "max_saved_circuits": settings.MAX_SAVED_CIRCUITS,
             "email_max_length": EMAIL_MAX_LENGTH,
             "password_min_chars": PASSWORD_MIN_CHARS,
             "password_max_bytes": PASSWORD_MAX_BYTES,

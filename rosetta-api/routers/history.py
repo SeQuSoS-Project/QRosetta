@@ -58,7 +58,8 @@ _RUN_NOT_FOUND_DOC = "No saved run with that id belongs to this account."
 
 
 @router.post("/circuits", response_model=schemas.SavedCircuitResponse, status_code=status.HTTP_201_CREATED,
-             responses=responses((400, "The text does not parse as OpenQASM 2.0, or is over the compile-only qubit cap (max_qubits_compile in GET /config)."), 413))
+             responses=responses((400, "The text does not parse as OpenQASM 2.0, or is over the compile-only qubit cap (max_qubits_compile in GET /config)."),
+                                 (409, "The account already keeps the most saved circuits it may (limits.max_saved_circuits in GET /config)."), 413))
 @history_write_rate_limit
 def create_saved_circuit(
     request: Request,
@@ -70,8 +71,11 @@ def create_saved_circuit(
     must pass the checks of a compile-only run (parses as OpenQASM 2.0, at most
     max_qubits_compile qubits, MAX_QASM_SIZE bytes): 400 or 413 otherwise."""
     validate_request(circuit.qasm_string, mode="compile")
-    return history_service.create_circuit(
-        db, current_user.id, circuit.name, circuit.qasm_string)
+    try:
+        return history_service.create_circuit(
+            db, current_user.id, circuit.name, circuit.qasm_string)
+    except history_service.SavedLimitReached as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
 
 
 @router.patch("/circuits/{circuit_id}", response_model=schemas.SavedCircuitResponse,
@@ -122,6 +126,7 @@ def get_saved_circuits(
              responses=responses(
                  (400, "The report names a runner key of the wrong form, or has the wrong shape inside raw_results."),
                  (404, "circuit_id is not one of this account's saved circuits."),
+                 (409, "The account already keeps the most saved runs it may (limits.max_saved_runs in GET /config)."),
                  (422, "The body is neither a single-circuit report (raw_results list) nor a batch report (benchmark_summary list), or circuit_id is not a string or differs between the query and the body. Body: {\"detail\": [{\"loc\": [...], \"msg\": str, \"type\": str}]}.")))
 @history_write_rate_limit
 def save_run(
@@ -157,6 +162,8 @@ def save_run(
         return history_service.save_run(db, current_user.id, run_payload, circuit_id)
     except history_service.CircuitNotFound:
         raise HTTPException(status_code=404, detail=_CIRCUIT_NOT_FOUND)
+    except history_service.SavedLimitReached as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to save run history")
 
@@ -168,7 +175,7 @@ def save_run(
                  **responses(
                      (403, "Another signed-in account started this job, or this account is deactivated."),
                      (404, "Unknown or expired job id, and this account has not saved it."),
-                     (409, "The job has not finished, failed before any runner ran, or is an experiment."),
+                     (409, "The job has not finished, failed before any runner ran, or is an experiment; or the account already keeps the most saved runs it may (limits.max_saved_runs in GET /config)."),
                      422)})
 @history_write_rate_limit
 def save_run_from_job(
@@ -215,6 +222,8 @@ def save_run_from_job(
             return history_service.save_run(
                 db, current_user.id, {**report, "run_name": name, "job_id": job_id},
                 saved_from=history_service.SAVED_FROM_JOB)
+        except history_service.SavedLimitReached as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
         except Exception:
             raise HTTPException(status_code=500, detail="Failed to save run history")
 

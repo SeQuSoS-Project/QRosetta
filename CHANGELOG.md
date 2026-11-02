@@ -368,6 +368,8 @@ limits, the counts keys and the statistics all changed (see Changed).
   `S3_SECRET_KEY` (the `minioadmin` default is gone).
 - Saving, renaming and deleting saved circuits and runs is rate-limited (60 a minute per account,
   240 per address), and exporting a saved run counts as an export.
+- An account keeps at most 1,000 saved runs and 1,000 saved circuits (`GET /config` `limits`).
+- The account menu has Change Password; Logout clears the account's recent jobs in this browser.
 - A security log (`rosetta-security-events`, JSON lines) records sign-ins, failed sign-ins,
   registrations, sign-outs, password changes, account deletions, 401/403 answers, cross-site
   refusals and rate-limit hits, without passwords, tokens or bodies.

@@ -105,6 +105,8 @@ class Limits(_Open):
     max_report_runner_keys: int
     max_report_pairs: int
     max_label_length: int
+    max_saved_runs: int
+    max_saved_circuits: int
     email_max_length: int
     password_min_chars: int
     password_max_bytes: int

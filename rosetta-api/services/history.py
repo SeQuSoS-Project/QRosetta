@@ -12,6 +12,7 @@ import db.models as models
 from qrosetta_commons.helpers import get_logger
 from schemas.benchmark import printable_name
 from schemas.timestamps import utc_iso
+from config import settings
 from services.share_links import delete_links
 from services.storage import delete_run_reports, fetch_run_report, save_run_report
 
@@ -26,8 +27,22 @@ class CircuitNotFound(ValueError):
     """No saved circuit with that id belongs to this user."""
 
 
+class SavedLimitReached(ValueError):
+    """The account already keeps the most saved runs or circuits it may (MAX_SAVED_RUNS,
+    MAX_SAVED_CIRCUITS)."""
+
+    def __init__(self, what: str, limit: int):
+        super().__init__(f"This account keeps at most {limit:,} saved {what}; delete some to save more.")
+
+
+def _check_room(db: Session, user_id: int, model, what: str, limit: int) -> None:
+    if db.query(model).filter(model.user_id == user_id).count() >= limit:
+        raise SavedLimitReached(what, limit)
+
+
 def create_circuit(db: Session, user_id: int, name: str, qasm_string: str) -> models.SavedCircuit:
-    """Store a named circuit for ``user_id``."""
+    """Store a named circuit for ``user_id``; SavedLimitReached at MAX_SAVED_CIRCUITS."""
+    _check_room(db, user_id, models.SavedCircuit, "circuits", settings.MAX_SAVED_CIRCUITS)
     circuit = models.SavedCircuit(user_id=user_id, name=name, qasm_string=qasm_string)
     db.add(circuit)
     db.commit()
@@ -104,11 +119,13 @@ def save_run(db: Session, user_id: int, run_payload: dict,
     ``saved_from`` is set here, never taken from the payload: ``server_job`` for a report
     copied from this server's job, ``upload`` for one a client supplied. An upload's
     ``job_id`` is stored as ``source_job_id`` (the id the client gave). CircuitNotFound
-    when ``circuit_id`` is not one of ``user_id``'s saved circuits."""
+    when ``circuit_id`` is not one of ``user_id``'s saved circuits; SavedLimitReached at
+    MAX_SAVED_RUNS."""
     if circuit_id is not None and not db.query(models.SavedCircuit).filter(
             models.SavedCircuit.id == circuit_id,
             models.SavedCircuit.user_id == user_id).first():
         raise CircuitNotFound(circuit_id)
+    _check_room(db, user_id, models.RunHistory, "runs", settings.MAX_SAVED_RUNS)
     run_id = str(uuid.uuid4())
     run_payload = {**run_payload, "saved_from": saved_from}
     if saved_from == SAVED_FROM_UPLOAD and "job_id" in run_payload:

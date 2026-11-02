@@ -104,6 +104,8 @@ class Settings(BaseSettings):
     MAX_REPORT_TASKS: int = 1000
     RENDER_LOCK_WAIT_SEC: float = 20.0
     MAX_LABEL_LENGTH: int = 200
+    MAX_SAVED_RUNS: int = 1000
+    MAX_SAVED_CIRCUITS: int = 1000
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

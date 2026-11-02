@@ -1955,7 +1955,10 @@
                     30 a minute; creating a share link 20 a minute; saving, renaming or deleting saved
                     circuits and runs, <code>limits.history_write_rate_limit</code>, 60 a minute (240 a
                     minute per client address, <code>limits.history_write_rate_limit_per_address</code>);
-                    exporting a saved run counts as an export. Runs, exports, circuit lookups and
+                    exporting a saved run counts as an export. An account keeps at most 1,000 saved runs
+                    and 1,000 saved circuits (<code>limits.max_saved_runs</code>,
+                    <code>limits.max_saved_circuits</code>); a save beyond them is refused with 409 until
+                    some are deleted. Runs, exports, circuit lookups and
                     rendering also have a limit per client address whatever the accounts
                     (<code>limits.run_rate_limit_per_address</code>, 60 a minute by default, and
                     <code>limits.render_rate_limit_per_address</code>, 240 a minute), so several accounts
