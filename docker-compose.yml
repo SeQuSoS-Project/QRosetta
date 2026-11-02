@@ -9,6 +9,13 @@ name: ${QROSETTA_PROJECT:-qsimulators}
 x-qrosetta-labels: &qrosetta-labels
   org.qrosetta.project: ${QROSETTA_PROJECT:-qsimulators}
 
+# Every service: no Linux capabilities and no privilege gain through setuid files. Each service
+# also caps its processes at 1024 (deploy.resources.limits.pids); a runner's isolated child and
+# its threads stay far below it.
+x-qrosetta-hardening: &qrosetta-hardening
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
 services:
   # --- Service 1: Nginx ( The Bridge ) ---
   nginx:
@@ -25,6 +32,7 @@ services:
       org.qrosetta.id: nginx
       org.qrosetta.kind: core
     container_name: nginx-reverse-proxy
+    <<: *qrosetta-hardening
     ports:
       - "${QROSETTA_HTTP_BIND:-127.0.0.1:8080}:8080"
     depends_on:
@@ -38,6 +46,7 @@ services:
         limits:
           cpus: "0.2"
           memory: "128M"
+          pids: 1024
 
   # --- Service 2: The API ( The Brain ) ---
   api:
@@ -54,6 +63,7 @@ services:
       org.qrosetta.id: api
       org.qrosetta.kind: core
     container_name: rosetta-api
+    <<: *qrosetta-hardening
     environment:
       - RUNNER_TIMEOUT_SEC=${RUNNER_TIMEOUT_SEC:-300}
       - RUNNER_QUEUE_MAX_WAIT_SEC=${RUNNER_QUEUE_MAX_WAIT_SEC:-1800}
@@ -89,6 +99,7 @@ services:
         limits:
           cpus: "0.5"
           memory: "2G"
+          pids: 1024
 
   # --- Services 3-10: The Runners ( The Hands ) ---
 
@@ -109,6 +120,7 @@ services:
       org.qrosetta.kind: runner
       org.qrosetta.profiles: "minimal,cpu,gpu,full"
     container_name: pytket-qiskit-runner
+    <<: *qrosetta-hardening
     environment:
       - QROSETTA_HOST_OS=${QROSETTA_HOST_OS:-}
       - QROSETTA_HOST_ARCH=${QROSETTA_HOST_ARCH:-}
@@ -127,6 +139,7 @@ services:
         limits:
           cpus: "1.0"
           memory: "1G"
+          pids: 1024
 
   pytket_cirq_runner:
     build:
@@ -145,6 +158,7 @@ services:
       org.qrosetta.kind: runner
       org.qrosetta.profiles: "minimal,cpu,gpu,full"
     container_name: pytket-cirq-runner
+    <<: *qrosetta-hardening
     environment:
       - QROSETTA_HOST_OS=${QROSETTA_HOST_OS:-}
       - QROSETTA_HOST_ARCH=${QROSETTA_HOST_ARCH:-}
@@ -163,6 +177,7 @@ services:
         limits:
           cpus: "1.0"
           memory: "1G"
+          pids: 1024
 
   pytket_qulacs_runner:
     build:
@@ -181,6 +196,7 @@ services:
       org.qrosetta.kind: runner
       org.qrosetta.profiles: "minimal,cpu,gpu,full"
     container_name: pytket-qulacs-runner
+    <<: *qrosetta-hardening
     environment:
       - QROSETTA_HOST_OS=${QROSETTA_HOST_OS:-}
       - QROSETTA_HOST_ARCH=${QROSETTA_HOST_ARCH:-}
@@ -199,6 +215,7 @@ services:
         limits:
           cpus: "1.0"
           memory: "1G"
+          pids: 1024
 
   pytket_braket_runner:
     build:
@@ -216,6 +233,7 @@ services:
       org.qrosetta.id: braket
       org.qrosetta.kind: runner
     container_name: pytket-braket-runner
+    <<: *qrosetta-hardening
     environment:
       - QROSETTA_HOST_OS=${QROSETTA_HOST_OS:-}
       - QROSETTA_HOST_ARCH=${QROSETTA_HOST_ARCH:-}
@@ -234,6 +252,7 @@ services:
         limits:
           cpus: "1.0"
           memory: "1G"
+          pids: 1024
 
   pytket_projectq_runner:
     build:
@@ -251,6 +270,7 @@ services:
       org.qrosetta.id: projectq
       org.qrosetta.kind: runner
     container_name: pytket-projectq-runner
+    <<: *qrosetta-hardening
     environment:
       - QROSETTA_HOST_OS=${QROSETTA_HOST_OS:-}
       - QROSETTA_HOST_ARCH=${QROSETTA_HOST_ARCH:-}
@@ -269,6 +289,7 @@ services:
         limits:
           cpus: "1.0"
           memory: "1G"
+          pids: 1024
 
   pytket_quest_runner:
     build:
@@ -287,6 +308,7 @@ services:
       org.qrosetta.kind: runner
       org.qrosetta.profiles: "cpu,gpu,full"
     container_name: pytket-quest-runner
+    <<: *qrosetta-hardening
     environment:
       - QROSETTA_HOST_OS=${QROSETTA_HOST_OS:-}
       - QROSETTA_HOST_ARCH=${QROSETTA_HOST_ARCH:-}
@@ -305,6 +327,7 @@ services:
         limits:
           cpus: "1.0"
           memory: "1G"
+          pids: 1024
 
   pennylane_lightning_runner:
     build:
@@ -323,6 +346,7 @@ services:
       org.qrosetta.kind: runner
       org.qrosetta.profiles: "cpu,gpu,full"
     container_name: pennylane-lightning-runner
+    <<: *qrosetta-hardening
     environment:
       - QROSETTA_HOST_OS=${QROSETTA_HOST_OS:-}
       - QROSETTA_HOST_ARCH=${QROSETTA_HOST_ARCH:-}
@@ -341,6 +365,7 @@ services:
         limits:
           cpus: "1.0"
           memory: "1G"
+          pids: 1024
 
   pennylane_default_runner:
     build:
@@ -359,6 +384,7 @@ services:
       org.qrosetta.kind: runner
       org.qrosetta.profiles: "cpu,gpu,full"
     container_name: pennylane-default-runner
+    <<: *qrosetta-hardening
     environment:
       - QROSETTA_HOST_OS=${QROSETTA_HOST_OS:-}
       - QROSETTA_HOST_ARCH=${QROSETTA_HOST_ARCH:-}
@@ -377,6 +403,7 @@ services:
         limits:
           cpus: "1.0"
           memory: "1G"
+          pids: 1024
 
   qibo_runner:
     build:
@@ -395,6 +422,7 @@ services:
       org.qrosetta.kind: runner
       org.qrosetta.profiles: "cpu,gpu,full"
     container_name: qibo-runner
+    <<: *qrosetta-hardening
     environment:
       - QROSETTA_HOST_OS=${QROSETTA_HOST_OS:-}
       - QROSETTA_HOST_ARCH=${QROSETTA_HOST_ARCH:-}
@@ -413,6 +441,7 @@ services:
         limits:
           cpus: "1.0"
           memory: "1G"
+          pids: 1024
 
   qrisp_runner:
     build:
@@ -431,6 +460,7 @@ services:
       org.qrosetta.kind: runner
       org.qrosetta.profiles: "cpu,gpu,full"
     container_name: qrisp-runner
+    <<: *qrosetta-hardening
     environment:
       - QROSETTA_HOST_OS=${QROSETTA_HOST_OS:-}
       - QROSETTA_HOST_ARCH=${QROSETTA_HOST_ARCH:-}
@@ -449,6 +479,7 @@ services:
         limits:
           cpus: "1.0"
           memory: "1G"
+          pids: 1024
 
   myqlm_runner:
     build:
@@ -467,6 +498,7 @@ services:
       org.qrosetta.kind: runner
       org.qrosetta.profiles: "cpu,gpu,full"
     container_name: myqlm-runner
+    <<: *qrosetta-hardening
     environment:
       - QROSETTA_HOST_OS=${QROSETTA_HOST_OS:-}
       - QROSETTA_HOST_ARCH=${QROSETTA_HOST_ARCH:-}
@@ -485,6 +517,7 @@ services:
         limits:
           cpus: "1.0"
           memory: "1G"
+          pids: 1024
 
   pyquil_runner:
     build:
@@ -503,6 +536,7 @@ services:
       org.qrosetta.kind: runner
       org.qrosetta.profiles: "cpu,gpu,full"
     container_name: pyquil-runner
+    <<: *qrosetta-hardening
     environment:
       - QROSETTA_HOST_OS=${QROSETTA_HOST_OS:-}
       - QROSETTA_HOST_ARCH=${QROSETTA_HOST_ARCH:-}
@@ -521,6 +555,7 @@ services:
         limits:
           cpus: "1.0"
           memory: "1G"
+          pids: 1024
 
   qsim_cirq_runner:
     build:
@@ -539,6 +574,7 @@ services:
       org.qrosetta.kind: runner
       org.qrosetta.profiles: "cpu,gpu,full"
     container_name: qsim-cirq-runner
+    <<: *qrosetta-hardening
     environment:
       - QROSETTA_HOST_OS=${QROSETTA_HOST_OS:-}
       - QROSETTA_HOST_ARCH=${QROSETTA_HOST_ARCH:-}
@@ -557,6 +593,7 @@ services:
         limits:
           cpus: "1.0"
           memory: "1G"
+          pids: 1024
 
   torch_quantum_runner:
     build:
@@ -575,6 +612,7 @@ services:
       org.qrosetta.kind: runner
       org.qrosetta.profiles: "cpu,gpu,full"
     container_name: torch-quantum-runner
+    <<: *qrosetta-hardening
     environment:
       - QROSETTA_HOST_OS=${QROSETTA_HOST_OS:-}
       - QROSETTA_HOST_ARCH=${QROSETTA_HOST_ARCH:-}
@@ -593,6 +631,7 @@ services:
         limits:
           cpus: "1.0"
           memory: "1G"
+          pids: 1024
 
   quimb_runner:
     build:
@@ -611,6 +650,7 @@ services:
       org.qrosetta.kind: runner
       org.qrosetta.profiles: "cpu,gpu,full"
     container_name: quimb-runner
+    <<: *qrosetta-hardening
     environment:
       - QROSETTA_HOST_OS=${QROSETTA_HOST_OS:-}
       - QROSETTA_HOST_ARCH=${QROSETTA_HOST_ARCH:-}
@@ -629,6 +669,7 @@ services:
         limits:
           cpus: "1.0"
           memory: "1G"
+          pids: 1024
 
   cuquantum_runner:
     build:
@@ -647,6 +688,7 @@ services:
       org.qrosetta.kind: runner
       org.qrosetta.profiles: "gpu,full"
     container_name: cuquantum-runner
+    <<: *qrosetta-hardening
     environment:
       - QROSETTA_HOST_OS=${QROSETTA_HOST_OS:-}
       - QROSETTA_HOST_ARCH=${QROSETTA_HOST_ARCH:-}
@@ -665,6 +707,7 @@ services:
         limits:
           cpus: "1.0"
           memory: "1G"
+          pids: 1024
 
 # --- Compile-only services: circuit text in, circuit text out, never simulated ---
 
@@ -685,6 +728,7 @@ services:
       org.qrosetta.kind: compiler
       org.qrosetta.profiles: "compilers,full"
     container_name: bqskit-compiler
+    <<: *qrosetta-hardening
     environment:
       - QROSETTA_HOST_OS=${QROSETTA_HOST_OS:-}
       - QROSETTA_HOST_ARCH=${QROSETTA_HOST_ARCH:-}
@@ -702,6 +746,7 @@ services:
         limits:
           cpus: "2.0"
           memory: "2G"
+          pids: 1024
 
   pyzx_compiler:
     build:
@@ -720,6 +765,7 @@ services:
       org.qrosetta.kind: compiler
       org.qrosetta.profiles: "compilers,full"
     container_name: pyzx-compiler
+    <<: *qrosetta-hardening
     environment:
       - QROSETTA_HOST_OS=${QROSETTA_HOST_OS:-}
       - QROSETTA_HOST_ARCH=${QROSETTA_HOST_ARCH:-}
@@ -737,6 +783,7 @@ services:
         limits:
           cpus: "2.0"
           memory: "2G"
+          pids: 1024
 
   qmap_compiler:
     build:
@@ -755,6 +802,7 @@ services:
       org.qrosetta.kind: compiler
       org.qrosetta.profiles: "compilers,full"
     container_name: qmap-compiler
+    <<: *qrosetta-hardening
     environment:
       - QROSETTA_HOST_OS=${QROSETTA_HOST_OS:-}
       - QROSETTA_HOST_ARCH=${QROSETTA_HOST_ARCH:-}
@@ -772,6 +820,7 @@ services:
         limits:
           cpus: "2.0"
           memory: "2G"
+          pids: 1024
 
   cirq_compiler:
     build:
@@ -790,6 +839,7 @@ services:
       org.qrosetta.kind: compiler
       org.qrosetta.profiles: "compilers,full"
     container_name: cirq-compiler
+    <<: *qrosetta-hardening
     environment:
       - QROSETTA_HOST_OS=${QROSETTA_HOST_OS:-}
       - QROSETTA_HOST_ARCH=${QROSETTA_HOST_ARCH:-}
@@ -807,6 +857,7 @@ services:
         limits:
           cpus: "2.0"
           memory: "2G"
+          pids: 1024
 
   staq_compiler:
     build:
@@ -825,6 +876,7 @@ services:
       org.qrosetta.kind: compiler
       org.qrosetta.profiles: "compilers,full"
     container_name: staq-compiler
+    <<: *qrosetta-hardening
     environment:
       - QROSETTA_HOST_OS=${QROSETTA_HOST_OS:-}
       - QROSETTA_HOST_ARCH=${QROSETTA_HOST_ARCH:-}
@@ -842,6 +894,7 @@ services:
         limits:
           cpus: "2.0"
           memory: "2G"
+          pids: 1024
 
   qsynth_compiler:
     build:
@@ -860,6 +913,7 @@ services:
       org.qrosetta.kind: compiler
       org.qrosetta.profiles: "compilers,full"
     container_name: qsynth-compiler
+    <<: *qrosetta-hardening
     environment:
       - QROSETTA_HOST_OS=${QROSETTA_HOST_OS:-}
       - QROSETTA_HOST_ARCH=${QROSETTA_HOST_ARCH:-}
@@ -877,6 +931,7 @@ services:
         limits:
           cpus: "2.0"
           memory: "2G"
+          pids: 1024
 
   quartz_compiler:
     build:
@@ -895,6 +950,7 @@ services:
       org.qrosetta.kind: compiler
       org.qrosetta.profiles: "compilers,full"
     container_name: quartz-compiler
+    <<: *qrosetta-hardening
     environment:
       - QROSETTA_HOST_OS=${QROSETTA_HOST_OS:-}
       - QROSETTA_HOST_ARCH=${QROSETTA_HOST_ARCH:-}
@@ -912,6 +968,7 @@ services:
         limits:
           cpus: "2.0"
           memory: "2G"
+          pids: 1024
 
   synthetiq_compiler:
     build:
@@ -930,6 +987,7 @@ services:
       org.qrosetta.kind: compiler
       org.qrosetta.profiles: "compilers,full"
     container_name: synthetiq-compiler
+    <<: *qrosetta-hardening
     environment:
       - QROSETTA_HOST_OS=${QROSETTA_HOST_OS:-}
       - QROSETTA_HOST_ARCH=${QROSETTA_HOST_ARCH:-}
@@ -947,6 +1005,7 @@ services:
         limits:
           cpus: "2.0"
           memory: "2G"
+          pids: 1024
 
 # --- NETWORK DEFINITIONS ---
 networks:
