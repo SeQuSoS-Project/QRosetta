@@ -38,6 +38,8 @@ from services.report_filters import (
 logger = get_logger("rosetta-exporter")
 
 PROCESS_RUN_CRATE_PROFILE = "https://w3id.org/ro/wfrun/process/0.5"
+RO_CRATE_CONTEXT = "https://w3id.org/ro/crate/1.1/context"
+WORKFLOW_RUN_CONTEXT = "https://w3id.org/ro/terms/workflow-run/context"  # defines sha256
 _GIT_SHA = re.compile(r"^[0-9a-f]{7,40}$")
 _ACTION_STATUS_COMPLETED = "http://schema.org/CompletedActionStatus"
 _ACTION_STATUS_FAILED = "http://schema.org/FailedActionStatus"
@@ -1346,7 +1348,7 @@ def _build_ro_crate_metadata(ctx: ExportContext,
         graph.append(node)
 
     return {
-        "@context": "https://w3id.org/ro/crate/1.1/context",
+        "@context": [RO_CRATE_CONTEXT, WORKFLOW_RUN_CONTEXT],
         "@graph": graph,
     }
 

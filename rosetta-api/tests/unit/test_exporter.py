@@ -242,7 +242,8 @@ class TestBuildRoCrate:
         meta_path = [n for n in zf.namelist() if n.endswith("ro-crate-metadata.json")][0]
         meta = json.loads(zf.read(meta_path))
 
-        assert meta["@context"] == "https://w3id.org/ro/crate/1.1/context"
+        assert meta["@context"] == ["https://w3id.org/ro/crate/1.1/context",
+                                    "https://w3id.org/ro/terms/workflow-run/context"]
         assert "@graph" in meta
         assert isinstance(meta["@graph"], list)
 
