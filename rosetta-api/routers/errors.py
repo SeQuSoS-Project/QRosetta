@@ -180,6 +180,9 @@ def _body_parse_item(exc: StarletteHTTPException):
 
 
 async def _http_exception_handler(request: Request, exc: StarletteHTTPException):
+    if exc.status_code in (401, 403) and not request.url.path.startswith("/auth/"):
+        from services.security_events import security_event
+        security_event("access.denied", request, status=exc.status_code)
     body_item = _body_parse_item(exc)
     if body_item is not None:
         return JSONResponse(status_code=422, content={"detail": [body_item]})
@@ -192,6 +195,8 @@ async def _http_exception_handler(request: Request, exc: StarletteHTTPException)
 
 async def _rate_limit_handler(request: Request, exc: RateLimitExceeded):
     from routers.rate_limit import rate_limit_headers
+    from services.security_events import security_event
+    security_event("rate_limit.exceeded", request, limit=str(exc.detail))
     headers = {}
     view_limit = getattr(request.state, "view_rate_limit", None)
     if view_limit is not None:

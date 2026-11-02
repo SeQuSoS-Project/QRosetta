@@ -92,6 +92,10 @@ class RefuseCrossSite:
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http" and scope["method"] in STATE_CHANGING_METHODS \
                 and request_is_cross_site(dict(scope.get("headers") or [])):
+            from starlette.requests import Request
+            from services.security_events import security_event
+            origin = dict(scope.get("headers") or []).get(b"origin", b"").decode("latin-1")[:200]
+            security_event("cross_site.refused", Request(scope), origin=origin or None)
             await JSONResponse(status_code=403, content={"detail": CROSS_SITE_DETAIL})(scope, receive, send)
             return
         await self.app(scope, receive, send)

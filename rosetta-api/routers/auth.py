@@ -14,6 +14,7 @@ from db.database import get_db
 from services.security import access_token_for, address_key, get_current_user, limiter, rate_limit_key
 from config import settings
 from routers.errors import responses
+from services.security_events import email_digest, security_event
 from qrosetta_commons.helpers import get_logger
 
 logger = get_logger("rosetta-auth")
@@ -33,9 +34,13 @@ def register(request: Request, user: schemas.UserCreate, db: Session = Depends(g
     already registered, compared case-insensitively. Limited per client address
     (``limits.register_rate_limit`` in GET /config, 5 a minute by default)."""
     try:
-        return accounts.register(db, user.email, user.password)
+        created = accounts.register(db, user.email, user.password)
     except accounts.EmailAlreadyRegistered:
+        security_event("auth.register_refused", request, reason="email_registered",
+                       email_sha256=email_digest(user.email))
         raise HTTPException(status_code=400, detail="Email already registered")
+    security_event("auth.register", request, user_id=created.id)
+    return created
 
 
 @router.post("/token", response_model=schemas.Token, responses=responses(
@@ -57,6 +62,8 @@ def login_for_access_token(
     (``limits.login_rate_limit`` in GET /config, 10 a minute by default); every attempt that
     passes form validation counts, successful or not."""
     if schemas.password_too_long(form_data.password):
+        security_event("auth.login_failed", request, reason="password_too_long",
+                       email_sha256=email_digest(form_data.username))
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Password must be at most {schemas.PASSWORD_MAX_BYTES} bytes (UTF-8)",
@@ -64,17 +71,21 @@ def login_for_access_token(
     try:
         user = accounts.authenticate(db, form_data.username, form_data.password)
     except accounts.AccountDeactivated:
+        security_event("auth.login_failed", request, reason="deactivated",
+                       email_sha256=email_digest(form_data.username))
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This account has been deactivated",
         )
     except accounts.InvalidCredentials:
+        security_event("auth.login_failed", request, reason="credentials",
+                       email_sha256=email_digest(form_data.username))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
+    security_event("auth.login", request, user_id=user.id)
     return _token_response(user)
 
 
@@ -95,6 +106,7 @@ def logout(request: Request, current_user: models.User = Depends(get_current_use
     browser or command line, is refused from now on (401). Signing in again issues a new token.
     Limited per account at the sign-in rate (``limits.login_rate_limit``)."""
     accounts.sign_out(db, current_user)
+    security_event("auth.logout", request, user_id=current_user.id)
     return None
 
 
@@ -112,7 +124,9 @@ def change_password(request: Request, body: schemas.PasswordChange,
     try:
         accounts.change_password(db, current_user, body.current_password, body.new_password)
     except accounts.InvalidCredentials:
+        security_event("auth.password_change_failed", request, user_id=current_user.id)
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Incorrect password")
+    security_event("auth.password_changed", request, user_id=current_user.id)
     return _token_response(current_user)
 
 
@@ -135,7 +149,9 @@ def delete_user_me(request: Request, body: schemas.AccountDeletion,
     try:
         accounts.confirm_password(current_user, body.password)
     except accounts.InvalidCredentials:
+        security_event("auth.account_delete_failed", request, user_id=current_user.id)
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Incorrect password")
+    user_id = current_user.id
     try:
         accounts.delete_account(db, current_user)
     except accounts.StoredReportsNotDeleted:
@@ -143,4 +159,5 @@ def delete_user_me(request: Request, body: schemas.AccountDeletion,
     except Exception:
         logger.error("Failed to delete account", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to delete account")
+    security_event("auth.account_deleted", request, user_id=user_id)
     return None
