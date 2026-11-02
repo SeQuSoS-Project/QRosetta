@@ -283,7 +283,7 @@ Units are MiB (1024²) throughout, although field names say `_mb`.
 
 *Rule.* Benjamini–Yekutieli across the m comparable pairs (valid under the dependence of pairs sharing a backend's sample); a pair is distinguishable only if both χ² and G pass. Power and `recommended_shots_per_backend` at α/(m·c_m), df = tested bins − 1, w = TV. Outcomes with expected count < 5 are pooled; power is computed on the tested table at δ_tested = δ − min(P_pool, Q_pool) (the most TV pooling can hide; power = α′ when ≤ 0); not significant with power < 0.8 → `inconclusive_low_shots`. Default n_shots 8200. Noncentrality λ = 4·n_i·n_j/(n_i+n_j)·w² (`effective_total_shots` in [`rosetta-api/services/analysis/divergence/statistics.py`](rosetta-api/services/analysis/divergence/statistics.py)), equal to N·w² for equal shots; the marginal tests use the same.
 
-*Evidence.* BH with raw-α power: 0.62 achieved vs 0.80 reported at 1570 shots; the per-run FDR was ~19.5% from clustered flags. BY Monte Carlo (14 backends): P(any false flag) 0–1.7%, per-pair power 0.91–0.93 at the recommended shots (4444/5435/6619/8199 for 2/4/8/16 outcomes). 2026-10-07: 8200 vs 50 shots was labelled consistent at a reported power of 0.995; the true power was 0.109. Monte Carlo rejection rates were 0.111/0.494/0.386 for 8200v50/8200v400/300v5000, against model 0.109/0.497/0.391.
+*Evidence.* BH with raw-α power: 0.62 achieved vs 0.80 reported at 1570 shots; the per-run FDR was ~19.5% from clustered flags. BY Monte Carlo (14 backends, 2026-11-02, 2,000–4,000 runs per scenario): P(any full-table false flag) 0.6–1.1% with all correct; per-pair power 0.921–0.927 against the least favourable TV 0.05 alternative at the minimum shots 4444/5435/6619/8199 for 2/4/8/16 outcomes (recommended, with the 10% margin, 4900/6000/7300/9100). 2026-10-07: 8200 vs 50 shots was labelled consistent at a reported power of 0.995; the true power was 0.109. Monte Carlo rejection rates were 0.112/0.492/0.397 for 8200v50/8200v400/300v5000 (4,000, 12,000 and 4,000 runs, 2026-11-02), against model 0.109/0.497/0.391.
 
 ### Power with unequal shots
 
@@ -313,19 +313,19 @@ Units are MiB (1024²) throughout, although field names say `_mb`.
 
 *Rule.* Williams' correction (`g_test.williams_q`).
 
-*Evidence.* Uncorrected G rejected a true null in 95% of 65,536-bin tables at 1e6 shots; 15% corrected.
+*Evidence (2026-11-02).* On 2,000 tables of 65,536 uniform outcomes with 1e6 shots per backend at α = 0.05, uncorrected G rejected a true null in 94.7%, Williams-corrected G in 6.2% and Pearson chi-square in 4.2%. A pair needs both tests, so chi-square bounds the pair's rate. (An earlier note said 15% corrected.)
 
 ### Shot advice
 
 *Rule.* No recommendation, and `resolvable_by_more_shots` null, above a Good–Turing unseen mass (share of shots in singletons) of 0.5 (`support_characterised`). Likewise when the lower bound is above δ/2, or when it comes from pooling with singletons. Recommendation = minimum × 1.1, rounded to 2 significant figures (`recommendation_margin`). Holm p-values are recorded; `significant_fwer` on distinguishable pairs.
 
-*Evidence.* A 10 × n_shots artifact came from the pooling threshold; 67 of 728 pairs stayed inconclusive at the minimum, 0 of 728 at +10%. Earlier, at 22 qubits: recommended 167599, and a rerun gave the same inconclusive verdict with no recommendation. With one wrong backend among 14, correct-vs-correct pairs were flagged in 8–9% of runs under BY (1.5–2% with all correct).
+*Evidence.* A 10 × n_shots artifact came from the pooling threshold; 67 of 728 pairs stayed inconclusive at the minimum, 0 of 728 at +10%. Earlier, at 22 qubits: recommended 167599, and a rerun gave the same inconclusive verdict with no recommendation. With one wrong backend among 14, correct-vs-correct pairs were flagged in 7.3–9.8% of runs under BY (0.6–1.1% with all correct; 2026-11-02).
 
 ### Single-bit marginal tests
 
 *Rule.* A secondary, pre-specified analysis on every comparable measured pair with ≥ 2-bit keys: per classical bit a 2×2 table (counts of 0/1), chi-square + Williams G, Holm over all tested bits of all pairs at α (FWER), both required; expected count < 5 or constant in both → bit not tested. Output `marginal_assessment` + `metrics.marginal_test`; it never changes `measured_assessment` or its power calibration and never yields agreement. It is counted as a disagreement by the verdict rule (the pair's recorded `pair_verdict`, shown by the badges, the Agreement tab chip and the Summary block), in crates (`by_marginal_assessment`) and in experiment prevalence rows (`count_basis=marginal_assessment`). [`rosetta-api/services/analysis/divergence/marginals.py`](rosetta-api/services/analysis/divergence/marginals.py); ANALYSIS_VERSION divergence-2026.10.08.3.
 
-*Evidence (added 2026-10-02).* BY was tried first. On a 22-qubit job with Qrisp wrong on 19 bits, ~228 true flags loosened BY and 5 correct-correct pairs were flagged; Holm on the same report kept all 13 Qrisp pairs and dropped the 5. Holm Monte Carlo (14 backends × 16 bits × 8200 shots, 40 runs): global null 1/40 runs with any flag; one backend +0.05 on 4 bits: 1/40 runs with a false flag on a correct pair, per-pair power 1.000.
+*Evidence (added 2026-10-02).* BY was tried first. On a 22-qubit job with Qrisp wrong on 19 bits, ~228 true flags loosened BY and 5 correct-correct pairs were flagged; Holm on the same report kept all 13 Qrisp pairs and dropped the 5. Holm Monte Carlo (14 backends × 16 independent bits × 8,200 shots, 2026-11-02): global null 4.5% of runs with any flag (8,000 runs, 95% CI 4.1–5.0%; raw p-values below Holm's first threshold at 0.95 times the nominal rate); one backend +0.05 on 4 bits: 4.6% of runs with a false flag on a correct pair (2,000 runs, 3.7–5.6%), per-pair power 1.000. The earlier figure, 1/40 runs, came from 40 runs.
 
 ### 1-bit keys
 
@@ -335,9 +335,9 @@ Units are MiB (1024²) throughout, although field names say `_mb`.
 
 ### False-flag figures
 
-*Rule.* 0.8–1.0% of runs with every backend correct. With one grossly wrong backend, 6.0–6.7% under BY and 2.7–3.3% that also pass Holm.
+*Rule.* With every backend correct (14 backends, 8,200 shots), the full-table test flags at least one pair in 0.6–1.1% of runs. Counting the single-bit marginal tests, which the page also shows, at least one pair is flagged in 3.9–4.8% of runs with 2–4-bit keys and 4.5% with 16-bit keys: each family runs at α = 0.05, and the marginal family's Holm correction holds its family-wise rate just under that. With one backend wrong by TV 0.40, a correct pair is flagged in 7.3–9.4% of runs under BY and 3.2–4.3% also under Holm; realised FDR 0.8–1.1% per run.
 
-*Evidence.* 2000-run Monte Carlo per scenario.
+*Evidence (2026-11-02).* `scripts/verify/false_flags.py`, 2,000–8,000 runs per scenario through the aggregator's own functions (`create_counts_report`, `annotate_divergence_report`), 95% intervals in the V8 report. The 2026-10-08 figures (0.8–1.0%; 6.0–6.7% and 2.7–3.3%) were not reproduced; their scenarios were not recorded. Under the null, chi-square p-values meet P(p ≤ a) ≤ a within two Monte Carlo standard errors at a = 0.001, 0.01 and 0.05 on every branch (pooled, left-out outcomes, exact, lsb × msb, 1-bit keys, unequal shots, marginals); the exact conditional test is conservative (0.3–0.6% at 0.05). Fault injection: 2,784 of 2,784 statevector faults (bit reversal, label flip, qubit swap, sign flip, deleted gate) flagged and 0 of 2,400 controls (global phase, complex64 rounding, correct msb declaration); 1,041 of 1,057 measured mutants flagged, every one with TV ≥ 0.02.
 
 ## Agreement analysis
 

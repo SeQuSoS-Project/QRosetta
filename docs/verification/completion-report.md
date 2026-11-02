@@ -20,4 +20,6 @@ The risk register's status column was updated on 2026-10-30 from the same eviden
 
 RO-Crate profile (risk row 18, proposed criterion): the four crate kinds pass rocrate-validator's Process Run Crate 0.5 at REQUIRED level since 2026-11-02 (the `sha256` key needed the Workflow Run context). RECOMMENDED findings left: `SoftwareApplication` ids are crate-local (`#runner-…`), not absolute URIs; actions name no Person or Organization agent unless the exporter is given an author; `publisher` is not an Organization; three singleton arrays; a client-supplied crate omits software versions and URLs by design (only "as supplied").
 
-Remaining work, in order: V8; the page parts of V7's runbook (a person at the browser).
+Statistical validation (V8, 2026-11-02, report `docs/audits/2026-11-02-v8/V8.md`): no defect in the measured-mode analysis; p-values calibrated under the null on every branch; mutation score 100% on statevector faults with no control flagged, 98.5% on measured mutants (all misses below TV 0.02). Four published figures did not hold and were replaced in DESIGN_DECISIONS.md with the new measurements. With every backend correct, the page shows at least one flag in 3.9–4.8% of runs, because the full-table and single-bit families each run at α = 0.05; the rule was kept and the combined rate is now stated.
+
+Remaining work, in order: the page parts of V7's runbook (a person at the browser).
