@@ -47,9 +47,17 @@ import bcrypt
 import jwt
 
 
+MIN_SECRET_KEY_BYTES = 32
+
+
 def _resolve_secret_key() -> str:
-    """Return SECRET_KEY; raise outside local mode if unset, else generate a per-process key."""
+    """Return SECRET_KEY (refused below MIN_SECRET_KEY_BYTES, the HS256 key size); raise outside
+    local mode if unset, else generate a per-process key."""
     if settings.SECRET_KEY:
+        if len(settings.SECRET_KEY.encode()) < MIN_SECRET_KEY_BYTES:
+            raise RuntimeError(
+                f"SECRET_KEY must be at least {MIN_SECRET_KEY_BYTES} bytes "
+                "(for example: openssl rand -base64 48).")
         return settings.SECRET_KEY
     if settings.EXECUTION_MODE != "local":
         raise RuntimeError(

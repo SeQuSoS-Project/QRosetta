@@ -19,6 +19,8 @@ os.makedirs(MOCK_S3_DIR, exist_ok=True)
 
 s3_client = None
 if settings.STORAGE_MODE == "s3":
+    if not (settings.S3_ACCESS_KEY and settings.S3_SECRET_KEY):
+        raise RuntimeError("S3_ACCESS_KEY and S3_SECRET_KEY are required when STORAGE_MODE is s3.")
     s3_client = boto3.client(
         's3',
         endpoint_url=settings.S3_ENDPOINT_URL,

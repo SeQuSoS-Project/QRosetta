@@ -55,3 +55,18 @@ def test_v1_09_local_mode_runs_one_worker_with_the_ephemeral_key():
     assert "SECRET_KEY" not in api, "compose gives the API a key; then more workers would be safe"
     assert not re.search(r"^\s+command:", api, re.M), "a compose command could change the worker count"
     assert "WEB_CONCURRENCY" not in api and "GUNICORN_CMD_ARGS" not in api
+
+
+def test_a_set_key_shorter_than_32_bytes_is_refused_in_every_mode():
+    for mode in ("local", "kubernetes"):
+        proc = _import_security(EXECUTION_MODE=mode, SECRET_KEY="k" * 31)
+        assert proc.returncode != 0 and "at least 32 bytes" in proc.stderr
+    assert _import_security(EXECUTION_MODE="kubernetes", SECRET_KEY="k" * 32).returncode == 0
+
+
+def test_s3_storage_needs_both_keys():
+    base = {k: v for k, v in os.environ.items() if not k.startswith("S3_")}
+    base["PYTHONPATH"] = os.pathsep.join([str(API), str(ROOT / "shared")])
+    proc = subprocess.run([sys.executable, "-c", "import services.storage"], cwd=API, capture_output=True,
+                          text=True, timeout=120, env={**base, "STORAGE_MODE": "s3"})
+    assert proc.returncode != 0 and "S3_ACCESS_KEY and S3_SECRET_KEY are required" in proc.stderr

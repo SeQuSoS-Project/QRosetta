@@ -151,6 +151,7 @@ items:
       # The router appends the connecting address to X-Forwarded-For; the API keys rate
       # limits on that last entry.
       haproxy.router.openshift.io/set-forwarded-headers: append
+      haproxy.router.openshift.io/hsts_header: max-age=31536000
   spec:
     to:
       kind: Service

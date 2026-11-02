@@ -68,7 +68,9 @@ def excluded(path: str) -> bool:
     "rosetta-api/.coverage", "rosetta-api/.coverage.host.123", "rosetta-api/htmlcov/index.html",
     "rosetta-api/coverage.xml", "rosetta-api/node_modules/x/index.js", "shared/build/lib/x.py",
     "shared/qrosetta_commons.egg-info/PKG-INFO", ".venv/bin/python", "rosetta-api/.venv/bin/python",
-    "rosetta-api/.mypy_cache/x", "CLAUDE.md", "rosetta-api/CLAUDE.md"])
+    "rosetta-api/.mypy_cache/x", "CLAUDE.md", "rosetta-api/CLAUDE.md", "rosetta-api/export/x.zip",
+    "rosetta-api/experiments/run1/bundle.zip", "rosetta-api/static/tailwind.config.js",
+    "rosetta-api/static/tsconfig.json"])
 def test_v1_10_host_files_are_left_out_of_the_build_context(path):
     assert excluded(path), path
 

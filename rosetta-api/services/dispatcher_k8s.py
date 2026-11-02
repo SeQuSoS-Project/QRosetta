@@ -44,6 +44,8 @@ JOB_SLOTS = threading.BoundedSemaphore(settings.K8S_MAX_CONCURRENT_JOBS)
 
 
 def _make_s3_client():
+    if not (settings.S3_ACCESS_KEY and settings.S3_SECRET_KEY):
+        raise RuntimeError("S3_ACCESS_KEY and S3_SECRET_KEY are required in Kubernetes mode.")
     return boto3.client(
         "s3",
         endpoint_url=settings.S3_ENDPOINT_URL,
