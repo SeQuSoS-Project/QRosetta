@@ -264,14 +264,19 @@ def test_runner_and_compiler_updates_are_labelled_sealed_and_open_no_pip_version
             assert all(g.get("applies-to") == "security-updates" for g in update["groups"].values())
 
 
-def test_dependabot_keeps_python_minor_versions_and_boto_below_1_36():
+RESULT_SHAPING = ("pytket", "numpy", "scipy", "pydantic", "matplotlib")
+MAJOR_MINOR = ["version-update:semver-major", "version-update:semver-minor"]
+
+
+def test_dependabot_keeps_python_minor_versions_boto_below_1_36_and_result_shaping_pins():
     for update in _dependabot()["updates"]:
         if update["package-ecosystem"] == "docker":
-            assert {"dependency-name": "python",
-                    "update-types": ["version-update:semver-major", "version-update:semver-minor"]} in update["ignore"]
+            assert {"dependency-name": "python", "update-types": MAJOR_MINOR} in update["ignore"]
         if update["package-ecosystem"] == "pip" and "/rosetta-api" in _dirs(update):
-            ignored = {i["dependency-name"]: i["versions"] for i in update["ignore"]}
-            assert ignored == {"boto3": [">=1.36.0"], "botocore": [">=1.36.0"]}
+            versions = {i["dependency-name"]: i["versions"] for i in update["ignore"] if "versions" in i}
+            assert versions == {"boto3": [">=1.36.0"], "botocore": [">=1.36.0"]}
+            kinds = {i["dependency-name"]: i["update-types"] for i in update["ignore"] if "update-types" in i}
+            assert kinds == {name: MAJOR_MINOR for name in RESULT_SHAPING}
 
 
 def _image_script(tmp_path, action, docker_body, **env):

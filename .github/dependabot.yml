@@ -43,6 +43,20 @@ updates:
         versions: [">=1.36.0"]
       - dependency-name: botocore
         versions: [">=1.36.0"]
+      # These produce results: the circuit preparation (pytket), the analysis (numpy, scipy), the
+      # request and report models (pydantic) and the figures (matplotlib). A minor or major
+      # version moves only with the equivalence checks of DESIGN_DECISIONS.md "API image on
+      # Python 3.12"; patch releases still arrive.
+      - dependency-name: pytket
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: numpy
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: scipy
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: pydantic
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: matplotlib
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       api-python:
         applies-to: version-updates
