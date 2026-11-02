@@ -18,4 +18,6 @@ The risk register's status column was updated on 2026-10-30 from the same eviden
 | E9 | `qrosetta selftest` PASS on release images on a reference host | Partly | C1 (2026-10-30): PASS on images built locally from e23b32f on the development host (22 image probes, 819 pairs agree, 0 FAIL; 14 WARNs per mode for local builds). Release images (GHCR) not built yet. |
 | E10 | axe 0 serious/critical; keyboard-only pass complete | Met on the branch | A12: axe-core 4.14.0, 33 states at 1280x800 and 390x844, 0 critical, 0 serious; keyboard pass Run -> Summary complete. The local stack serves this page since the 2026-10-30 rebuild. |
 
+RO-Crate profile (risk row 18, proposed criterion): the four crate kinds pass rocrate-validator's Process Run Crate 0.5 at REQUIRED level since 2026-11-02 (the `sha256` key needed the Workflow Run context). RECOMMENDED findings left: `SoftwareApplication` ids are crate-local (`#runner-…`), not absolute URIs; actions name no Person or Organization agent unless the exporter is given an author; `publisher` is not an Organization; three singleton arrays; a client-supplied crate omits software versions and URLs by design (only "as supplied").
+
 Remaining work, in order: V8; ASVS checklist; the page parts of V7's runbook (a person at the browser).

@@ -277,6 +277,9 @@ limits, the counts keys and the statistics all changed (see Changed).
 
 ### Fixed
 
+- RO-Crates use the Workflow Run context next to the RO-Crate 1.1 context, so the `sha256` key of
+  every File is defined; the crates pass rocrate-validator's Process Run Crate 0.5 profile at
+  REQUIRED level (`scripts/verify/validate_crates.sh`).
 - At optimization levels 1 and 2 the Qibo adapter's gate fusion dropped every gate the circuit
   defines, including the `qelib1.inc` definitions it inserts with preprocessing on (Qibo 0.3.1's
   `Circuit.fuse()`). It now leaves such a circuit unfused and says so in `preprocessing_applied`.

@@ -91,7 +91,10 @@ verification documents in `docs/verification/`, and the v1.0.0 example crate in 
 
 1. On `main`, bump to `X.Y.Zrc1` in the first six files above (`CHANGELOG.md` keeps
    `[Unreleased]`; leave the two date fields out). Run the unit suite and
-   `./scripts/check_frontend_types.sh`, commit, and `git push public main`.
+   `./scripts/check_frontend_types.sh`. On a local stack built from the commit, export a
+   statevector job, a measured job with a compile-only service, a playlist and a supplied report,
+   and check them with `scripts/verify/validate_crates.sh <zip> ...` (Process Run Crate 0.5,
+   REQUIRED level). Commit, and `git push public main`.
 2. Tag the commit and push the tag:
 
    ```bash
