@@ -277,6 +277,7 @@ limits, the counts keys and the statistics all changed (see Changed).
 
 ### Fixed
 
+- An experiment bundle whose label has non-ASCII characters could not be downloaded (500).
 - RO-Crates use the Workflow Run context next to the RO-Crate 1.1 context, so the `sha256` key of
   every File is defined; the crates pass rocrate-validator's Process Run Crate 0.5 profile at
   REQUIRED level (`scripts/verify/validate_crates.sh`).
@@ -359,6 +360,21 @@ limits, the counts keys and the statistics all changed (see Changed).
   0.6.4, urllib3 2.8.0, requests 2.33.1, Starlette 1.7.0; PyJWT replaces python-jose
   (PYSEC-2026-4298).
 - Commits and pushes are scanned for credentials (gitleaks hooks and a CI job).
+- Registration and password change refuse the 2,086 most common passwords of 8 or more
+  characters (SecLists, MIT).
+- Access tokens carry `aud=qrosetta-api`, which the server requires; tokens issued before the
+  change are refused once.
+- `SECRET_KEY` must be at least 32 bytes; S3 storage and Kubernetes mode need `S3_ACCESS_KEY` and
+  `S3_SECRET_KEY` (the `minioadmin` default is gone).
+- Saving, renaming and deleting saved circuits and runs is rate-limited (60 a minute per account,
+  240 per address), and exporting a saved run counts as an export.
+- A security log (`rosetta-security-events`, JSON lines) records sign-ins, failed sign-ins,
+  registrations, sign-outs, password changes, account deletions, 401/403 answers, cross-site
+  refusals and rate-limit hits, without passwords, tokens or bodies.
+- Every container drops all Linux capabilities, runs with `no-new-privileges` and is limited to
+  1,024 processes; the Cloud Run frontend and the Rahti route send HSTS; nginx declares UTF-8.
+- Locally built images no longer pick up `export/` and `experiments/` directories below the
+  repository root.
 
 ## [1.0.0] - 2026-06-17
 
