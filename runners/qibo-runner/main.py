@@ -45,6 +45,10 @@ _QELIB1_NOTE = (
 _FUSION_NOTE_SUFFIX = (
     " transpiled_qasm is the circuit before fusion, since fused blocks have no OpenQASM 2.0 "
     "form.")
+_FUSION_SKIPPED_NOTE = (
+    "qibo.Circuit.fuse(max_qubits={max_qubits}) not applied: the circuit calls gates defined in "
+    "its text, which Circuit.from_qasm stores as FusedGate, and qibo 0.3.1's fuse() drops a "
+    "FusedGate already in the queue, so the circuit runs unfused at this level.")
 _ADD_MEASUREMENTS_NOTE = (
     "qibo.gates.M(all qubits): one non-collapsing measurement of every qubit is appended to "
     "the measurement-free circuit, because Circuit.from_qasm marks a measurement followed by "
@@ -61,10 +65,14 @@ def _parse(qasm_str: str, optimization_level: int = 0) -> tuple[Circuit, list[st
     Level 0: no optimization
     Level 1: fuse single-qubit gate runs (max_qubits=1)
     Level 2+: fuse up to 2-qubit blocks (max_qubits=2)
+    Fusion is skipped when the circuit calls a gate its text defines.
     """
     circuit = Circuit.from_qasm(qasm_str)
     preprocessing_applied = [_FROM_QASM_NOTE]
-    if optimization_level >= 2:
+    if optimization_level >= 1 and any(isinstance(g, gates.FusedGate) for g in circuit.queue):
+        preprocessing_applied.append(_FUSION_SKIPPED_NOTE.format(
+            max_qubits=2 if optimization_level >= 2 else 1))
+    elif optimization_level >= 2:
         circuit = circuit.fuse(max_qubits=2)
         preprocessing_applied.append(
             "qibo.Circuit.fuse(max_qubits=2): Fuses consecutive gate sequences acting on up "

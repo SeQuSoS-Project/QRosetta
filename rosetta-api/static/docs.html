@@ -2150,11 +2150,13 @@
                                 visible in the counts.</td></tr>
                         <tr><td>qibo 0.3.1, optimization levels 1 and 2</td>
                             <td><code>Circuit.from_qasm</code> stores each call of a gate the circuit defines as a
-                                <code>FusedGate</code>, and <code>Circuit.fuse()</code>, which the adapter applies at
-                                levels 1 and 2, drops it: the gate is not executed. With preprocessing on this
-                                includes the <code>qelib1.inc</code> definitions the adapter inserts for gates Qibo's
-                                parser lacks (<code>ch</code>, <code>cswap</code>, <code>c3x</code>,
-                                <code>c4x</code>); level 0 runs them.</td>
+                                <code>FusedGate</code>, and <code>Circuit.fuse()</code>, Qibo's optimization at
+                                levels 1 and 2, drops it, so the gate would not be executed. This includes the
+                                <code>qelib1.inc</code> definitions the adapter inserts with preprocessing on for
+                                gates Qibo's parser lacks (<code>ch</code>, <code>cswap</code>, <code>c3x</code>,
+                                <code>c4x</code>). The adapter therefore leaves such a circuit unfused
+                                and says so in <code>preprocessing_applied</code>; circuits without defined gates are
+                                fused as before.</td>
                             <td>Statevector, level 2: <code>gate g a,b { h b; cx a,b; } qreg q[2]; x q[0];
                                 g q[0],q[1];</code>. Expected: q[0] = 1 and q[1] in (|0⟩ + |1⟩)/√2; Qibo returns
                                 |q0=1, q1=0⟩, fidelity 0.5.</td></tr>

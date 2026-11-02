@@ -235,6 +235,12 @@ Units are MiB (1024²) throughout, although field names say `_mb`.
 
 *Evidence.* Aer fuses above 14 qubits at opt level 0 (qiskit grew 1.18× from 14 → 15 qubits vs qulacs 1.72×).
 
+### Qibo fusion and defined gates
+
+*Rule.* At optimization levels 1 and 2 the Qibo adapter calls `Circuit.fuse(max_qubits=1|2)` unless the parsed queue holds a `FusedGate`, which `Circuit.from_qasm` makes for each call of a gate the text defines (a user gate, or a `qelib1.inc` definition the adapter inserts with preprocessing on). Such a circuit runs unfused, and `preprocessing_applied` says `qibo.Circuit.fuse(max_qubits=N) not applied` with the reason.
+
+*Evidence (2026-11-01).* Qibo 0.3.1's `fuse()` drops a `FusedGate` already in the queue: `gate g a,b { h b; cx a,b; } x q[0]; g q[0],q[1];` keeps only `X` after fusion (fidelity 0.5). V4 found 49 wrong statevectors at level 2 (`docs/audits/2026-11-01-v4/V4.md`). Requalification of the change (`scripts/requalify/requalify.sh qibo`, old and new image at one commit; the new image also uninstalls pip): every case differs in `runner_code_sha256`; at level 0 nothing else changed; at levels 1–2, 317 cases gained the note, 192 statevectors changed and each now equals the unfused (level 0) statevector of the same circuit, and of 107 changed count tables 101 fit the `qelib1.inc` reference distribution (chi-square, p > 1e-4) against 53 before, the other 6 fitting the documented Qibo cu3 phase. Owner decision 2026-11-01.
+
 ### No duplicate engines / cuQuantum
 
 *Rule.* cuQuantum = qiskit-aer-gpu 0.15.1 with `cuStateVec_enable=True` on an NVIDIA GPU (Qiskit 1.4.4). Without a usable GPU it is unavailable (`GET /capabilities`, `/runners` `available:false`) and never falls back to CPU Aer. GPU passthrough is local-only (a local Compose override with `devices: [nvidia.com/gpu=all]`); Kubernetes uses `requires_gpu` + `QROSETTA_GPU_AVAILABLE`. Memory fields are host RSS; the GPU is not under the CPU quota.
@@ -809,6 +815,19 @@ The target for a runner or compiler image is the newest CPython (3.13 first, els
 
 Self-test identical in all 19 images. Timing: 5 alternated rounds of 5 repeats, 1-minute load 1.2–2.7, every round accepted; outputs equal in every runner cell except quimb's statevector cells, where each image gave 5 distinct statevectors in 5 rounds. Peak RSS of the runner processes 1–2 MiB higher (the newer web stack). With `.trivyignore` the release gate finds no fixable CRITICAL in any of them. myQLM, cuQuantum and BQSKit (built only on the user's machine) and the disabled Braket and ProjectQ runners keep the earlier web stack until they are requalified.
 
+*Evidence (2026-11-02).* Second round, for the fixable HIGH findings (Trivy fixed CRITICAL/HIGH old → new, findings with a fix, no ignore file):
+
+| Image | Change | Corpus | Simulation / compilation old → new | Trivy |
+|---|---|---|---|---|
+| Qibo | the fusion change (see Qibo fusion and defined gates); pip uninstalled | see Qibo fusion and defined gates | −0.2 % to +1.2 % / −0.6 % to +0.2 % (the timing circuits define no gates) | 0/5 → 0/0 |
+| Cirq, qsim | setuptools 79.0.1 → 81.0.0, the last release with `pkg_resources` (vendors wheel 0.46.3, jaraco.context 6.1.0) | 2,202 each; Cirq 214 within its statevector jitter, qsim identical | Cirq −0.6 % to +0.1 % / −1.3 % to +1.2 %; qsim −0.4 % to +2.5 % / −1.1 % to +1.4 % | 0/3 → 0/1 (protobuf) |
+| TorchQuantum | setuptools 81.0.0, keras 3.14.0 → 3.15.0 | 2,202 identical | −0.8 % to +1.2 % / −0.4 % to +0.7 % | 2/5 → 2/1 (qiskit, torch) |
+| myQLM (not published) | the bump list of the first round, pyopenssl 26.3.0 → 26.4.0 (for cryptography 50); thrift stays at 0.21.0, which `qat-comm` 1.9.0 pins | 734 identical | −1.3 % to +0.6 % / −2.8 % to +1.3 % | 6/32 → 0/2 (thrift) |
+| cuQuantum (not published, GPU) | the bump list of the first round | 2,936; 20 at levels 2–3 differ by ≤ 1.7e-15, the GPU build's run-to-run variation | −8.3 % to +5.6 % (4 qubits × 2,200 gates; the others within 1.2 %) / −1.6 % to +1.1 % | 1/6 → 0/0 |
+| PyZX, Cirq compiler, QMAP, staq, Quartz, Synthetiq | pip uninstalled after the installs (pip 26.2.2's SBOM lists vendored msgpack 1.1.2, urllib3 2.7.0 and setuptools 70.3.0) | 326, 326, 326, 489, 163, 326 identical | not timed | 0/5 → 0/0 |
+
+Self-tests identical. Timing on CPU 4, 5 alternated rounds, load 1.3–2.8, every round accepted. The API image takes pyasn1 0.6.5 (from 0.6.4), the only pin that moved in its lock.
+
 ### Compiler images on Python 3.12 and 3.13
 
 *Rule.* The compiler images in the table below run the Python named there (3.13 where every pin in the lock, the SDK included, has a cp313 build, else 3.12), pinned by digest, with the apt snapshot and a hash-pinned lock (see Reproducible image builds). A stage that builds a native component (staq, Quartz, Synthetiq) moves to the same base and snapshot as the final image. Each image was requalified with `scripts/requalify/requalify.sh <service>` against its Python 3.10 or 3.11 image built from the same commit (see Supported Python and base images): the default compiler corpus (150 random circuits, 4 deep circuits of 500–3,000 gates on up to 16 qubits, and the self-test circuits without their measurements, at every offered level) through `process_compile`, every record field compared (compiled text, gate metrics, passes, refusals, `sdk_versions`), and `--self-test` compared. Compilers are not timed: a compile time is not a performance claim (see Compile-only services).
@@ -1123,7 +1142,7 @@ Self-test identical in all 19 images. Timing: 5 alternated rounds of 5 repeats, 
 The SDK behaviours below are reported by the comparison as disagreement. A workaround for only these backends would bias preprocessing, so none is applied.
 
 - PennyLane `from_qasm` swaps control and target on `QubitUnitary` (cu3, custom gates).
-- qibo `cu3` is controlled(e^{-i(φ+λ)/2}·U3). qibo: expressions on gate parameters raise TypeError. qibo 0.3.1: `Circuit.fuse()` (optimization levels 1 and 2) drops every call of a gate the circuit defines, including the qelib1 definitions the adapter inserts with preprocessing on.
+- qibo `cu3` is controlled(e^{-i(φ+λ)/2}·U3). qibo: expressions on gate parameters raise TypeError. qibo 0.3.1: `Circuit.fuse()` drops every call of a gate the circuit defines; the adapter leaves such circuits unfused (see Qibo fusion and defined gates).
 - qrisp runs `cu1` as `crz`. qrisp 0.5's `QuantumCircuit.run()` returns all shots as |0…0⟩ on 12+-qubit circuits with a spread-out distribution (`h q[0]; ch q[0],q[k]` for k=1..11; the statevector path is correct). Qrisp 0.5.2: the definitions of cu1, cu3 and c3sqrtx differ from their matrices; csx acts as crx(π/2); the `run()` outcome cutoff; statevector truncation; qelib1's four-parameter `cu` is rejected.
 - torchquantum's `qiskit2tq` uses register-local indices with several qregs, so the torchquantum adapter refuses multi-qreg circuits when `apply_preprocessing=False` (the API's register merge makes them work with preprocessing on).
 - quimb 1.13.0 substitutes gate parameters by substring (`g(t, t2)` gives `rz(t2)` the value `t` followed by `2`); with preprocessing on, the round-trip inlines the definition first.

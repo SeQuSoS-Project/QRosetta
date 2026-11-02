@@ -16,3 +16,16 @@ CVE-2025-2000 exp:2027-05-01
 # (2.6.0) is another measured SDK version and needs requalification.
 # Accepted by Shaswato Sarker, 2026-11-01; reviewed again by 2027-05-01.
 CVE-2025-32434 exp:2027-05-01
+
+# qiskit 1.2.4 and 0.45.3 (the five runners above): CVE-2025-1403 is denial of service while reading
+# a QPY file. No runner reads QPY (see CVE-2025-2000); the fixed qiskit (1.3.0) is another measured
+# SDK version. Proposed on 2026-11-01 for Shaswato Sarker's acceptance on the reasoning he accepted
+# for CVE-2025-2000; reviewed again by 2027-05-01.
+CVE-2025-1403 exp:2027-05-01
+
+# protobuf 4.25.9 (cirq, qsim-cirq): CVE-2026-0994 is a recursion-depth bypass when parsing
+# protobuf data, a denial of service. The runners never parse protobuf from a request (they take
+# OpenQASM text); protobuf is loaded by cirq_google, which pytket-cirq imports, and cirq-google 1.4.1
+# requires protobuf < 5 (fixed: 5.29.6, 6.33.5). Moving it means another Cirq SDK version.
+# Proposed on 2026-11-01 for Shaswato Sarker's acceptance; reviewed again by 2027-05-01.
+CVE-2026-0994 exp:2027-05-01

@@ -76,8 +76,10 @@ ENV PIP_DEFAULT_TIMEOUT=1000
 RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
 COPY shared /tmp/shared-src
+# pip is not used at run time; uninstalling it removes the packages it vendors.
 RUN pip install --no-cache-dir --no-deps --no-build-isolation --no-index /tmp/shared-src && \
-    rm -rf /tmp/shared-src
+    rm -rf /tmp/shared-src && \
+    python -m pip uninstall --yes pip
 
 COPY compilers/quartz-compiler/Dockerfile compilers/quartz-compiler/requirements.lock compilers/quartz-compiler/shift10-normalise.patch compilers/quartz-compiler/gen_nam_ecc.cpp compilers/quartz-compiler/quartz_greedy.cpp compilers/quartz-compiler/build-requirements.txt /usr/local/share/qrosetta-build/
 COPY --from=quartz-build /build/ecc/Nam_complete_ECC_set.json /usr/local/share/qrosetta-build/

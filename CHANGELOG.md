@@ -241,7 +241,10 @@ limits, the counts keys and the statistics all changed (see Changed).
 - Every published runner and compiler image serves with FastAPI 0.136.3 and Starlette 1.7.0, as
   the API does, and takes the fixed versions of anyio, certifi, urllib3, PyJWT, pillow,
   cryptography and other packages outside the SDKs; each image was requalified and gives the same
-  outputs. Vulnerabilities left in the images are listed in `docs/RELEASING.md`.
+  outputs. The myQLM, cuQuantum and BQSKit images, which are built on the user's machine, take the
+  same versions. The Cirq, qsim and TorchQuantum images use setuptools 81.0.0, the last release
+  with `pkg_resources`; the Python 3.13 images uninstall pip after installing their lock.
+  Vulnerabilities left in the images are listed in `docs/RELEASING.md`.
 - The nginx images no longer contain curl or nginx's optional dynamic modules (geoip, image
   filter, njs, xslt), which nginx never loaded.
 
@@ -274,6 +277,9 @@ limits, the counts keys and the statistics all changed (see Changed).
 
 ### Fixed
 
+- At optimization levels 1 and 2 the Qibo adapter's gate fusion dropped every gate the circuit
+  defines, including the `qelib1.inc` definitions it inserts with preprocessing on (Qibo 0.3.1's
+  `Circuit.fuse()`). It now leaves such a circuit unfused and says so in `preprocessing_applied`.
 - The Qrisp adapter returned an all-zero state and all-zero counts when the SDK call failed.
 - Bit-order labels of several adapters were wrong, and Qiskit and cuQuantum (levels 2–3), PyQuil
   (1–2) and Cirq (2) returned permuted statevectors after optimisation.
