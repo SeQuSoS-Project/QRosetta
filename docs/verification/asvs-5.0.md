@@ -33,6 +33,8 @@ Of the 45 fails: 12 fixed on 2026-11-02, 4 partly fixed, 14 closed by the statem
 | 15.2.3 | Partly fixed | .dockerignore now leaves out export/ and experiments/ at any depth and the page's build configs (d49087c). The API image still carries tests/ (used to run the unit suite inside the image when the API's Python changes). |
 | 11 (SECRET_KEY) | Fixed | Outside the assessed set: a SECRET_KEY under 32 bytes stops the API (d49087c). |
 
+The open parts of the four partly fixed rows are accepted: 16.2.2 and 16.4.1 until the shared logger of the sealed images changes with a requalification, 16.3.3 by volume (every 400 and 422 would be a security event), and 15.2.3 because the unit suite runs inside the API image when its Python changes.
+
 ## Closed by documentation or accepted
 
 | ID | Statement |
