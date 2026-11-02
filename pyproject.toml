@@ -205,7 +205,7 @@ filterwarnings = ["error::DeprecationWarning:qrosetta_cli.*"]
 # SDK names (Aer, Braket, Nam), FastAPI's `dependant`, variable names (aLo, aCounts, anc, statics),
 # in-toto, Myers' O(ND), and the typo the CLI's suggestion test types on purpose.
 [tool.codespell]
-skip = "*.json,*.lock,*.qasm,*.inc,*.patch,*.svg,./experiments,./rosetta-api/benchmarks,./rosetta-api/static/vendor,./rosetta-api/static/css"
+skip = "*.json,*.lock,*.qasm,*.inc,*.patch,*.svg,./rosetta-api/schemas/common_passwords.txt,./experiments,./rosetta-api/benchmarks,./rosetta-api/static/vendor,./rosetta-api/static/css"
 ignore-words-list = "acounts,aer,alo,anc,braket,dependant,intoto,nam,nd,statics,stauts"
 
 # Type checking (mypy) of qrosetta_cli/ and shared/qrosetta_commons/, run by `scripts/lint/check.sh

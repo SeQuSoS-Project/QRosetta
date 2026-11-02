@@ -1,6 +1,8 @@
 # Pydantic request/response models for the /auth endpoints.
 
 import re
+from functools import lru_cache
+from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -50,12 +52,25 @@ class UserCreate(BaseModel):
         return check_new_password(value)
 
 
+_COMMON_PASSWORDS_FILE = Path(__file__).with_name("common_passwords.txt")
+
+
+@lru_cache(maxsize=1)
+def _common_passwords() -> frozenset:
+    lines = _COMMON_PASSWORDS_FILE.read_text(encoding="utf-8").splitlines()
+    return frozenset(line for line in lines if line and not line.startswith("#"))
+
+
 def check_new_password(value: str) -> str:
-    """``value`` if it is an acceptable password for an account, else ValueError."""
+    """``value`` if it is an acceptable password for an account, else ValueError: at least
+    PASSWORD_MIN_CHARS characters, at most PASSWORD_MAX_BYTES bytes (UTF-8), and not one of the
+    common passwords in common_passwords.txt (compared case-insensitively)."""
     if len(value) < PASSWORD_MIN_CHARS:
         raise ValueError(f"password must be at least {PASSWORD_MIN_CHARS} characters")
     if password_too_long(value):
         raise ValueError(f"password must be at most {PASSWORD_MAX_BYTES} bytes (UTF-8)")
+    if value.lower() in _common_passwords():
+        raise ValueError("password is one of the most common passwords; choose another")
     return value
 
 

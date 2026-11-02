@@ -30,8 +30,9 @@ router = APIRouter(
 @limiter.limit(settings.REGISTER_RATE_LIMIT, key_func=address_key)
 def register(request: Request, user: schemas.UserCreate, db: Session = Depends(get_db)):
     """Create an account with an email and password. 422 for an invalid email (format, over
-    254 characters) or password (under 8 characters, over 72 bytes); 400 if the email is
-    already registered, compared case-insensitively. Limited per client address
+    254 characters) or password (under 8 characters, over 72 bytes, or one of the most common
+    passwords); 400 if the email is already registered, compared case-insensitively. Limited
+    per client address
     (``limits.register_rate_limit`` in GET /config, 5 a minute by default)."""
     try:
         created = accounts.register(db, user.email, user.password)
@@ -117,7 +118,8 @@ def logout(request: Request, current_user: models.User = Depends(get_current_use
 def change_password(request: Request, body: schemas.PasswordChange,
                     current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Replace the account's password. The body carries the current password (403 when it does
-    not match, nothing changed) and the new one (422 under 8 characters or over 72 bytes).
+    not match, nothing changed) and the new one (422 under 8 characters, over 72 bytes, or one of
+    the most common passwords).
     Every access token issued before the change is refused from then on; the answer carries a
     new token for the caller. Limited per account at the sign-in rate
     (``limits.login_rate_limit``); every attempt counts."""
