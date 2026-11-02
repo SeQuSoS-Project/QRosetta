@@ -17,6 +17,7 @@ _VOID = {"input", "br", "img", "meta", "link", "hr", "source", "area", "col", "w
 MODALS = {
     "auth-modal": "auth.js",
     "delete-account-modal": "auth.js",
+    "change-password-modal": "auth.js",
     "history-modal": "history.js",
     "gen-modal": "batch.js",
     "visualizer-panel": "renderers.js",

@@ -272,8 +272,11 @@ export async function handleRegisterSubmit() {
 }
 
 /** Sign out on the server, which then refuses every earlier token of the account on any
- * device, and on this page. The page signs out even when the server cannot be reached. */
+ * device, and on this page, and forget the account's recorded jobs in this browser. The page
+ * signs out even when the server cannot be reached. An expired session keeps the jobs, so they
+ * can be resumed after signing in again. */
 export async function signOut() {
+    forgetAccountJobs(signedInAccount());
     if (getState().authToken) {
         try {
             await fetch(`${BASE_URL}/auth/logout`, { method: 'POST', headers: getAuthHeaders() });
@@ -318,6 +321,72 @@ function _showDeleteError(message) {
     box.classList.toggle('hidden', !message);
     if (message) _deletePassword().setAttribute('aria-invalid', 'true');
     else _deletePassword().removeAttribute('aria-invalid');
+}
+
+const _currentPassword = () => /** @type {HTMLInputElement} */ (document.getElementById('change-password-current'));
+const _newPassword = () => /** @type {HTMLInputElement} */ (document.getElementById('change-password-new'));
+
+function _showChangePasswordError(message, field = null) {
+    const box = document.getElementById('change-password-error');
+    box.textContent = message;
+    box.classList.toggle('hidden', !message);
+    for (const input of [_currentPassword(), _newPassword()]) {
+        if (message && (field === null || input === field)) input.setAttribute('aria-invalid', 'true');
+        else input.removeAttribute('aria-invalid');
+    }
+}
+
+/** Open the Change Password dialog. */
+export function handleChangePassword() {
+    _currentPassword().value = '';
+    _newPassword().value = '';
+    _showChangePasswordError('');
+    openModal(document.getElementById('change-password-modal'),
+        { initialFocus: '#change-password-current', onEscape: closeChangePasswordModal });
+}
+
+export function closeChangePasswordModal() {
+    const modal = document.getElementById('change-password-modal');
+    _currentPassword().value = '';
+    _newPassword().value = '';
+    _showChangePasswordError('');
+    if (isModalOpen(modal)) closeModal(modal, { returnFocus: '#account-menu summary' });
+    else modal.classList.add('hidden');
+}
+
+/** Change the signed-in account's password (POST /auth/password). The server ends every earlier
+ * session and answers with a new token, which keeps this page signed in. */
+export async function submitChangePassword() {
+    const current = _currentPassword().value;
+    const next = _newPassword().value;
+    if (!current) { _showChangePasswordError("Enter your current password.", _currentPassword()); _currentPassword().focus(); return; }
+    if (!next) { _showChangePasswordError("Enter a new password.", _newPassword()); _newPassword().focus(); return; }
+
+    setSideLoading(true, "Changing password...");
+    try {
+        const res = await fetch(`${BASE_URL}/auth/password`, {
+            method: 'POST',
+            headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ current_password: current, new_password: next }),
+        });
+        if (res.status === 429) throw new Error(_rateLimitedText(res, 'password changes'));
+        if (res.status === 403) {
+            _showChangePasswordError("The current password is not correct.", _currentPassword());
+            _currentPassword().focus();
+            return;
+        }
+        if (!res.ok) throw new Error(await formatApiError(res));
+        const data = await res.json();
+        _setToken(data.access_token);
+        closeChangePasswordModal();
+        announce('Password changed. Other sessions of this account are signed out.');
+    } catch (e) {
+        console.error("Password change failed:", e);
+        _showChangePasswordError("The password was not changed. " + e.message, _newPassword());
+        _newPassword().focus();
+    } finally {
+        setSideLoading(false);
+    }
 }
 
 /** Open the Delete Account dialog, which asks for the account's password. */

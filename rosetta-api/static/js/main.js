@@ -7,7 +7,7 @@
 // checks every selector against the HTML.
 
 import { generateCircuit } from './app.js';
-import { closeAuthModal, closeDeleteAccountModal, handleDeleteAccount, handleLoginSubmit, handleRegisterSubmit, openAuthModal, signOut, submitDeleteAccount, toggleAuthMode } from './auth.js';
+import { closeAuthModal, closeChangePasswordModal, closeDeleteAccountModal, handleChangePassword, handleDeleteAccount, handleLoginSubmit, handleRegisterSubmit, openAuthModal, signOut, submitChangePassword, submitDeleteAccount, toggleAuthMode } from './auth.js';
 import { addEditorToPlaylist, addToBatch, applyPreset, clearBatch, closeGeneratorModal, importPlaylist, openGeneratorModal, runAutoGeneration } from './batch.js';
 import { bmAddAllShown, bmAddSelectedToBatch, bmRenderChecklist, bmToggleSelectAll, toggleBenchSuite } from './benchmarks_select.js';
 import { watchBidi } from './bidi_isolation.js';
@@ -38,6 +38,7 @@ const CONTROLS = [
     ['#btn-login-modal', 'click', () => openAuthModal()],
     ['#btn-history', 'click', () => openHistoryModal()],
     ['#btn-logout', 'click', () => signOut()],
+    ['#btn-change-password', 'click', () => handleChangePassword()],
     ['#btn-delete-account', 'click', () => handleDeleteAccount()],
     // Generate Circuits and Editor
     ['#btn-load', 'click', () => generateCircuit()],
@@ -86,6 +87,10 @@ const CONTROLS = [
     ['#btn-register-cancel', 'click', () => closeAuthModal()],
     ['#btn-show-login', 'click', () => toggleAuthMode('login')],
     // Delete Account dialog
+    ['#change-password-backdrop', 'click', () => closeChangePasswordModal()],
+    ['#change-password-new', 'keydown', onEnter(submitChangePassword)],
+    ['#btn-change-password-confirm', 'click', () => submitChangePassword()],
+    ['#btn-change-password-cancel', 'click', () => closeChangePasswordModal()],
     ['#delete-account-backdrop', 'click', () => closeDeleteAccountModal()],
     ['#delete-account-password', 'keydown', onEnter(submitDeleteAccount)],
     ['#btn-delete-account-confirm', 'click', () => submitDeleteAccount()],
