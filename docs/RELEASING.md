@@ -29,27 +29,25 @@ the git remote `public` (`SeQuSoS-Project/QRosetta`) and the version is `X.Y.Z`.
 - The workflow refuses a tag that is not `v` followed by `qrosetta_cli.__version__` spelled as
   canonical PEP 440 (`v2.0.0rc1`, never `v2.0.0-rc1`).
 
-## Release-blocking items known on 2026-11-01
+## Release-blocking items known on 2026-11-02
 
-The Trivy gate and the quimb runner's Python were cleared on 2026-11-01 (DESIGN_DECISIONS.md,
-"Dependency bumps in the published runner and compiler images"): every published runner and
-compiler image was requalified with raised locks, quimb moved to Python 3.12, and the nginx images
-dropped curl and the unused modules. With `.trivyignore` (qiskit CVE-2025-2000 in five runners and
-torch CVE-2025-32434 in TorchQuantum, accepted until 2027-05-01) no release image has a fixable
-CRITICAL. Fixable HIGH findings left: qiskit CVE-2025-1403 (QPY, as CVE-2025-2000) and torch in
-the SDK pins; protobuf 4.25.9 in the Cirq and qsim images (cirq-google 1.4.1 requires < 5);
-setuptools 79.0.1's vendored wheel and jaraco.context in the Cirq, qsim and TorchQuantum images
-(pinned because cirq_google and qiskit_ibm_runtime import `pkg_resources`); pip's vendored msgpack
-and setuptools in the Python 3.13 base of Qibo and the compilers. myQLM, cuQuantum and BQSKit,
-which are never published, keep the earlier web stack until they are requalified.
+The Trivy gate passes on every release image, and every fixable HIGH finding outside an SDK pin is
+gone (DESIGN_DECISIONS.md, "Dependency bumps in the published runner and compiler images", both
+rounds). What a scan without `.trivyignore` still reports, all fixed only by another measured SDK
+version:
 
-1. Known issue for the release notes: Qibo 0.3.1's `Circuit.fuse()`, which the Qibo adapter
-   applies at optimization levels 1 and 2, drops every gate the circuit defines, including the
-   `qelib1.inc` definitions the adapter inserts with preprocessing on (found by V4; manual, known
-   backend issues). Level 0 is not affected.
+| Finding | Images | In `.trivyignore` |
+|---|---|---|
+| qiskit CVE-2025-2000 (CRITICAL, QPY) | qiskit, PennyLane ×2, Qrisp, TorchQuantum | accepted by the owner until 2027-05-01 |
+| torch CVE-2025-32434 (CRITICAL, `torch.load`) | TorchQuantum | accepted by the owner until 2027-05-01 |
+| qiskit CVE-2025-1403 (HIGH, QPY) | the same five | proposed, awaiting the owner's acceptance |
+| protobuf CVE-2026-0994 (HIGH; cirq-google 1.4.1 requires < 5) | Cirq, qsim | proposed, awaiting the owner's acceptance |
+| thrift CVE-2026-41608, CVE-2026-43871 (HIGH; myQLM's `qat-comm` pins 0.21.0) | myQLM (never published) | no |
+
+1. The owner accepts or rejects the two proposed `.trivyignore` entries.
 2. If the published nginx base changes, rescan: the 2026-10-19 build of
    `nginx-unprivileged:1.31.7-alpine3.24` carries brotli-libs 1.2.0-r1 (CRITICAL), which the image
-   now removes with the modules that need it.
+   removes with the modules that need it.
 3. `CHANGELOG.md` has no `[2.0.0]` section yet. The `plan` job stops a final tag until it has a
    dated one.
 4. Owner items that the files depend on: ORCIDs (`CITATION.cff`, `.zenodo.json`,
