@@ -39,7 +39,7 @@ def _forge(header: dict, claims: dict, key: bytes = None, digest=hashlib.sha256)
 def _claims(w, user_id, **over):
     user = w.get_user(user_id)
     now = int(time.time())
-    claims = {"sub": user.email, "uid": user_id, "iat": now - 5, "exp": now + 600}
+    claims = {"sub": user.email, "uid": user_id, "iat": now - 5, "exp": now + 600, "aud": security.TOKEN_AUDIENCE}
     claims.update(over)
     return {k: v for k, v in claims.items() if v is not None}
 
@@ -105,11 +105,18 @@ def test_header_fields_naming_keys_are_not_read(w, monkeypatch):
     assert fetched == []
 
 
-def test_the_decoder_requires_exp_iat_and_sub():
-    assert security.REQUIRED_CLAIMS == ("exp", "iat", "sub")
-    token = jwt.encode({"sub": "a@example.org", "iat": int(time.time())}, security.SECRET_KEY, algorithm="HS256")
+def test_the_decoder_requires_exp_iat_sub_and_this_audience():
+    assert security.REQUIRED_CLAIMS == ("exp", "iat", "sub", "aud")
+    token = jwt.encode({"sub": "a@example.org", "iat": int(time.time()), "aud": security.TOKEN_AUDIENCE},
+                       security.SECRET_KEY, algorithm="HS256")
     with pytest.raises(jwt.MissingRequiredClaimError):
         security.decode_access_token(token)
+    now = int(time.time())
+    for aud in (None, "another-service", ["another-service"]):
+        claims = {"sub": "a@example.org", "iat": now, "exp": now + 60, "aud": aud}
+        token = jwt.encode({k: v for k, v in claims.items() if v is not None}, security.SECRET_KEY, algorithm="HS256")
+        with pytest.raises(jwt.PyJWTError):
+            security.decode_access_token(token)
 
 
 def test_deleted_and_deactivated_accounts_are_refused(w):
@@ -248,5 +255,6 @@ def test_the_signature_key_is_at_least_256_bits():
 def test_tokens_last_the_configured_time():
     from config import settings
     token = security.create_access_token({"sub": "a@example.org"}, timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES))
-    claims = jwt.decode(token, security.SECRET_KEY, algorithms=["HS256"])
+    claims = security.decode_access_token(token)
+    assert claims["aud"] == security.TOKEN_AUDIENCE
     assert claims["exp"] - claims["iat"] == settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60

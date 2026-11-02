@@ -76,7 +76,8 @@ SECRET_KEY = _resolve_secret_key()
 
 ALGORITHM = "HS256"
 
-REQUIRED_CLAIMS = ("exp", "iat", "sub")
+REQUIRED_CLAIMS = ("exp", "iat", "sub", "aud")
+TOKEN_AUDIENCE = "qrosetta-api"
 
 BCRYPT_MAX_PASSWORD_BYTES = 72
 
@@ -97,11 +98,11 @@ def get_password_hash(password):
     return hashed.decode('utf-8')
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None):
-    """Signed JWT carrying ``data`` plus ``iat`` (issue time, integer seconds) and ``exp``
-    (default 15 minutes after issue)."""
+    """Signed JWT carrying ``data`` plus ``aud`` (TOKEN_AUDIENCE), ``iat`` (issue time, integer
+    seconds) and ``exp`` (default 15 minutes after issue)."""
     to_encode = data.copy()
     now = datetime.now(timezone.utc)
-    to_encode.update({"iat": int(now.timestamp()),
+    to_encode.update({"aud": TOKEN_AUDIENCE, "iat": int(now.timestamp()),
                       "exp": now + (expires_delta or timedelta(minutes=15))})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -119,10 +120,11 @@ def access_token_for(user, expires_delta: timedelta | None = None) -> str:
 
 
 def decode_access_token(token: str) -> dict:
-    """Claims of a token signed by this server with HS256 and carrying ``exp``, ``iat`` and
-    ``sub``; jwt.PyJWTError otherwise (bad signature, another algorithm, expired, ``iat`` in the
-    future, a required claim missing). Header fields such as ``kid`` and ``jku`` are not read."""
-    return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM],
+    """Claims of a token signed by this server with HS256 and carrying ``exp``, ``iat``, ``sub``
+    and ``aud`` equal to TOKEN_AUDIENCE; jwt.PyJWTError otherwise (bad signature, another
+    algorithm, expired, ``iat`` in the future, another audience, a required claim missing).
+    Header fields such as ``kid`` and ``jku`` are not read."""
+    return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], audience=TOKEN_AUDIENCE,
                       options={"require": list(REQUIRED_CLAIMS)})
 
 

@@ -6,7 +6,6 @@ from types import SimpleNamespace
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-import jwt
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -52,7 +51,7 @@ def _me(client, token):
 
 def test_token_carries_uid_and_iat(client):
     token = _register_and_login(client, "claims@example.com")
-    claims = jwt.decode(token, security.SECRET_KEY, algorithms=[security.ALGORITHM])
+    claims = security.decode_access_token(token)
     assert claims["sub"] == "claims@example.com"
     assert isinstance(claims["uid"], int)
     assert isinstance(claims["iat"], int)
