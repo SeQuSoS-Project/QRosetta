@@ -9,7 +9,7 @@ Assessed on 2026-11-02 at commit 4205598 (branch `post-audit/asvs-crate-deps`), 
 | V11–V17 | 50 | 22 | 26 | 2 |
 | All | 146 | 79 | 45 | 22 |
 
-Of the 45 fails: 12 fixed on 2026-11-02, 4 partly fixed, 14 closed by the statements in this document (documented or accepted), and 15 that need an owner decision (12 rows below; 2.4.1, fixed, also has an open part there). The per-requirement tables at the end are the reviewers' findings as written, before the fixes.
+Of the 45 fails: 12 fixed on 2026-11-02, 4 partly fixed, 14 closed by the statements in this document (documented or accepted), and 15 that needed an owner decision; the owner decided all of them on 2026-11-02 (6 fixed, 9 accepted; table below). The per-requirement tables at the end are the reviewers' findings as written, before the fixes.
 
 ## Fixed or partly fixed on 2026-11-02
 
@@ -52,22 +52,24 @@ Of the 45 fails: 12 fixed on 2026-11-02, 4 partly fixed, 14 closed by the statem
 | 16.2.3 | Section 'Logs' below. |
 | 16.2.4 | Section 'Logs' below. |
 
-## Owner decisions
+## Owner decisions (2026-11-02)
 
-| ID | Finding | Recommendation |
+The owner followed the recommendations on 2026-11-02.
+
+| ID | Finding | Decision |
 |---|---|---|
-| 6.2.2 | Change-password dialog in the page (POST /auth/password exists; neither the page nor the CLI offers it). | Add it (a dialog like Delete Account); about an hour. |
-| 6.2.8 | The page retries a failed sign-in with the trimmed password, for accounts registered before 2026-10-06, when the page trimmed passwords. | Keep for v2.0.0 and remove in the next release; accept in writing. |
-| 7.5.2 | Users cannot list their sessions or end one; only 'sign out everywhere'. | Accept: tokens last 30 minutes. |
-| 8.2.2 | Job ids are capabilities: anyone holding a signed-in user's job id can read the job (CLAUDE.md §8). | Accept for v2.0.0, or require the owner's token on job reads when owner_user_id is set (breaks sharing a job link while signed out). |
-| 13.2.1 | API and runners/compilers do not authenticate each other on isolated_net (risk R19). | Accept for v2.0.0 (no published port, internal network); a shared secret needs the sealed images requalified. |
-| 13.2.5, 13.3.2 | Kubernetes mode: no egress NetworkPolicy; Job pods hold the bucket-wide S3 key (R24). | Accept while Kubernetes mode is experimental. |
-| 13.3.1 | No secret-rotation procedure written; old internal branches still hold rotated credentials. | Write the procedure in docs/ops; the branches are your call (internal repository). |
-| 14.2.1, 16.2.5 | Job ids, which work like passwords, travel in URL paths and appear in nginx and API access logs. | Accept (local logs, 30 min to 24 h retention); or drop the id from access logs. |
-| 14.3.1 | The page keeps an account's job records in localStorage after sign-out (6 h for pending jobs) so the user can resume after signing in again. | Clear them on an explicit sign-out (keep them on expiry). |
-| 15.1.1, 15.2.1 | No remediation time frames for vulnerable components; thrift in myQLM (pinned by qat-comm) neither fixed nor accepted. | Add to SECURITY.md: Critical 7 days, High 30, Medium 90, Low next release; accept thrift (myQLM is never published). |
-| 16.4.2, 16.4.3 | Logs live in the container engine on the same host; no shipping. | Accept for local mode; operators of a public deployment ship logs. |
-| 2.4.1 (caps) | No per-account cap on saved circuits and runs. | Add caps (e.g. 1,000 runs, 1,000 circuits per account) published in GET /config. |
+| 6.2.2 | Change-password dialog missing | Fixed: Change Password in the account menu (9f379fd). |
+| 6.2.8 | The page retries a failed sign-in with the trimmed password, for accounts registered before 2026-10-06 | Accepted for v2.0.0; the retry goes in the next release. |
+| 7.5.2 | No list of sessions, no ending a single one | Accepted: tokens last 30 minutes; sign-out ends all sessions. |
+| 8.2.2 | Job ids are capabilities | Accepted (SECURITY.md, "Behaviour that is not a vulnerability"). |
+| 13.2.1 | API and runners/compilers do not authenticate each other (R19) | Accepted for v2.0.0: internal network without published ports; changing it needs the sealed images requalified. |
+| 13.2.5, 13.3.2 | Kubernetes mode: no egress NetworkPolicy, bucket-wide S3 key in Job pods (R24) | Accepted while Kubernetes mode is experimental. |
+| 13.3.1 | No secret-rotation procedure | Fixed: SECURITY.md, "Rotating a server's secrets" (24d274e). |
+| 14.2.1, 16.2.5 | Job ids in URL paths and access logs | Accepted: local logs, jobs kept 30 minutes (24 hours in the local compose file). |
+| 14.3.1 | The account's job list stays in localStorage after sign-out | Fixed: Logout clears it; an expired session keeps it for resuming (9f379fd). |
+| 15.1.1, 15.2.1 | No remediation time frames; thrift in myQLM | Fixed: SECURITY.md, "Time to a fix" (Critical 7 days, High 30, Medium 90); thrift accepted there (myQLM is never published) (24d274e). |
+| 16.4.2, 16.4.3 | Logs stay on the host, not shipped | Accepted for local mode; this document's "Logs" section tells operators of a public deployment to ship the security log. |
+| 2.4.1 (caps) | No per-account cap on saved circuits and runs | Fixed: at most 1,000 of each, published in GET /config (156779c). |
 
 ## Files the server accepts
 
