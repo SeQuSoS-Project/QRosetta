@@ -113,6 +113,11 @@ def test_summary_of_runs_has_intervals():
     assert 0 <= out["any_false_flag_differs"]["lo"] <= out["any_false_flag_differs"]["hi"] <= 1
 
 
+def test_unequal_pair_rejections_are_counted():
+    rejected = false_flags.unequal_pair_runs((8200, 400, range(20)))
+    assert 0 <= rejected <= 20
+
+
 def test_stated_minimum_shots_are_the_platform_minimum():
     rows = false_flags.recommended_shots()
     assert {k: v["minimum"] for k, v in rows.items()} == false_flags.STATED_SHOTS
@@ -135,6 +140,14 @@ def test_calibration_rows_judge_against_a_plus_two_mcse():
     assert rows[0]["ok_at_0.05"] and rows[0]["P(p<=0.05)"] == pytest.approx(0.05, abs=0.002)
     bad = [{"chi2": 0.0001, "g": 0.0001, "branch": "b"}] * 100
     assert not v8_calibration.calibration_rows("x", bad, ("chi2",))[0]["ok_at_0.05"]
+
+
+def test_calibration_rows_split_by_branch():
+    samples = ([{"chi2": 0.5, "g": 0.5, "branch": "a"}] * 3
+               + [{"chi2": 0.001, "g": 0.001, "branch": "b"}] * 3)
+    rows = v8_calibration.calibration_rows("x", samples, ("chi2",), min_branch=2)
+    assert [(r["branch"], r["n"]) for r in rows] == [("all", 6), ("a", 3), ("b", 3)]
+    assert rows[2]["P(p<=0.01)"] == 1.0
 
 
 def test_swap_qubits_exchanges_two_qubits():

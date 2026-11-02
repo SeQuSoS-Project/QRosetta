@@ -11,6 +11,7 @@ DIR/calibration_summary.csv (P(p <= a) with MCSE at a = 0.001, 0.01, 0.05, KS di
 uniform), DIR/calibration_hist.csv (counts per p-value bin) and DIR/qq_<generator>.png."""
 
 import argparse
+import csv
 import json
 import math
 import sys
@@ -110,28 +111,36 @@ def _chunk(args):
     return name, out
 
 
-def calibration_rows(name, samples, tests):
+def _row(name, test, branch, p):
+    n = len(p)
+    row = {"generator": name, "test": test, "branch": branch, "n": n}
+    for a in LEVELS:
+        est = float((p <= a).sum() / n)
+        mcse = math.sqrt(a * (1 - a) / n)
+        row[f"P(p<={a:g})"] = est
+        row[f"mcse_at_{a:g}"] = mcse
+        row[f"ok_at_{a:g}"] = bool(est <= a + 2 * mcse)
+    ks = kstest(p, "uniform")
+    row["ks_d"] = float(ks.statistic)
+    row["ks_p"] = float(ks.pvalue)
+    row["share_p_eq_1"] = float((p >= 1 - 1e-12).mean())
+    return row
+
+
+def calibration_rows(name, samples, tests, min_branch=1000):
+    """One row per test over all samples ("all"), and one per realised branch with at least
+    ``min_branch`` samples. A row is ok at level a when P(p <= a) <= a + 2 MCSE, MCSE taken at a."""
+    branches = {}
+    for s in samples:
+        branches.setdefault(s["branch"], []).append(s)
     rows = []
     for test in tests:
-        p = np.array([s[test] for s in samples], dtype=float)
-        n = len(p)
-        row = {"generator": name, "test": test, "n": n}
-        for a in LEVELS:
-            k = int((p <= a).sum())
-            est = k / n
-            mcse = math.sqrt(a * (1 - a) / n)
-            row[f"P(p<={a:g})"] = est
-            row[f"mcse_at_{a:g}"] = mcse
-            row[f"ok_at_{a:g}"] = bool(est <= a + 2 * mcse)
-        ks = kstest(p, "uniform")
-        row["ks_d"] = float(ks.statistic)
-        row["ks_p"] = float(ks.pvalue)
-        row["share_p_eq_1"] = float((p >= 1 - 1e-12).mean())
-        branches = {}
-        for s in samples:
-            branches[s["branch"]] = branches.get(s["branch"], 0) + 1
-        row["branches"] = json.dumps(branches, sort_keys=True)
-        rows.append(row)
+        rows.append(_row(name, test, "all", np.array([s[test] for s in samples], dtype=float)))
+        if len(branches) > 1:
+            for branch, group in sorted(branches.items()):
+                if len(group) >= min_branch:
+                    rows.append(_row(name, test, branch,
+                                     np.array([s[test] for s in group], dtype=float)))
     return rows
 
 
@@ -197,11 +206,10 @@ def main(argv=None):
         rows += calibration_rows(name, recs, tests)
         if not args.no_plots:
             qq_plot(out / f"qq_{name}.png", name, recs, tests)
-    header = list(rows[0])
-    lines = [",".join(header)]
-    for r in rows:
-        lines.append(",".join(f'"{r[h]}"' if h == "branches" else str(r[h]) for h in header))
-    (out / "calibration_summary.csv").write_text("\n".join(lines) + "\n")
+    with open(out / "calibration_summary.csv", "w", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
     hist = ["generator,test," + ",".join(f"[{BINS[i]:g},{min(BINS[i + 1], 1):g})"
                                           for i in range(len(BINS) - 1))]
     for name, recs in samples.items():

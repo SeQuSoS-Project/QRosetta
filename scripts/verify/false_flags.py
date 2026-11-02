@@ -3,6 +3,7 @@ analysis (create_counts_report + the verdicts the aggregator records) on seeded 
 
     PYTHONPATH=rosetta-api:shared python scripts/verify/false_flags.py --out DIR [--runs N]
         [--only NAME,...] [--workers W]
+    PYTHONPATH=rosetta-api:shared python scripts/verify/false_flags.py --out DIR --follow-up RUNS
 
 Every scenario has 14 backends (b00..b13) sampled independently; b13 is the wrong backend where a
 scenario has one. Run r of scenario s uses numpy generators seeded (MASTER_SEED, s, r, backend), so
@@ -186,6 +187,93 @@ def unequal_shots_single_pair(runs):
     return out
 
 
+TAIL_THRESHOLDS = (1e-3, 1e-4, 0.05 / 1456, 1e-5)
+
+
+def marginal_family_run(run):
+    """One report's single-bit marginal family under the global null (14 backends x 16
+    independent bits, P(1) = 0.5, 8200 shots) through marginal_block and
+    apply_marginal_correction: whether any bit was flagged, the family size, and how many raw
+    chi-square and G p-values fell below each of TAIL_THRESHOLDS (0.05/1456 is Holm's first
+    step for the full family)."""
+    from services.analysis.divergence.marginals import apply_marginal_correction, marginal_block
+    p = SCENARIOS["F-marginal-null"]["backends"][0]["p"]
+    counts = [c.sample_counts(np.random.default_rng([MASTER_SEED, 4242, run, b]), p, SHOTS)
+              for b in range(N_BACKENDS)]
+    blocks = [marginal_block(counts[i], counts[j], "lsb")
+              for i in range(N_BACKENDS) for j in range(i + 1, N_BACKENDS)]
+    apply_marginal_correction(blocks)
+    bits = [bit for block in blocks for bit in block["bits"] if bit["tested"]]
+    chi2 = np.array([bit["chi2_p_value"] for bit in bits])
+    g = np.array([bit["g_p_value"] for bit in bits])
+    m = len(bits)
+    return {"any_flag": any(block["assessment"] == "marginal_distinguishable" for block in blocks),
+            "any_chi2_bonferroni": bool(chi2.min() < 0.05 / m),
+            "m": m,
+            "chi2_below": [int((chi2 < t).sum()) for t in TAIL_THRESHOLDS],
+            "g_below": [int((g < t).sum()) for t in TAIL_THRESHOLDS]}
+
+
+def unequal_pair_runs(args):
+    """Rejections of the raw chi-square at alpha 0.05 for runs of one unequal-shot pair."""
+    from services.analysis.divergence.statistics import _statistical_agreement_test
+    n_i, n_j, runs = args
+    rejected = 0
+    for r in runs:
+        rng = np.random.default_rng([MASTER_SEED, 999, n_i, n_j, r])
+        ci = c.sample_counts(rng, np.array([0.5, 0.5]), n_i)
+        cj = c.sample_counts(rng, np.array([0.45, 0.55]), n_j)
+        rejected += _statistical_agreement_test(ci, cj, "direct", "a", "b")["chi2"]["p_value"] < 0.05
+    return rejected
+
+
+def _extra_task(args):
+    kind, payload = args
+    if kind == "marginal":
+        return kind, [marginal_family_run(r) for r in payload]
+    return kind, (payload[0], payload[1], unequal_pair_runs(payload))
+
+
+def follow_up(out_dir, runs, pair_runs, workers):
+    """The marginal family under the global null with ``runs`` reports, and the 8200-vs-400
+    single-pair rejection rate with ``pair_runs`` runs; writes follow_up.json."""
+    from services.analysis.divergence.statistics import _power_at_shots, effective_total_shots
+    tasks = [("marginal", list(range(i, min(i + 20, runs)))) for i in range(0, runs, 20)]
+    tasks += [("pair", (8200, 400, list(range(i, min(i + 500, pair_runs)))))
+              for i in range(0, pair_runs, 500)]
+    marginal, rejected = [], 0
+    start = time.time()
+    with Pool(workers) as pool:
+        for done, (kind, value) in enumerate(pool.imap_unordered(_extra_task, tasks), 1):
+            if kind == "marginal":
+                marginal.extend(value)
+            else:
+                rejected += value[2]
+            if done % 50 == 0 or done == len(tasks):
+                print(f"{done}/{len(tasks)} chunks, {time.time() - start:.0f} s", flush=True)
+    n = len(marginal)
+    m_total = sum(r["m"] for r in marginal)
+    tails = {}
+    for name in ("chi2", "g"):
+        for k, t in enumerate(TAIL_THRESHOLDS):
+            rate = c.clustered_rate([r[f"{name}_below"][k] for r in marginal],
+                                    [r["m"] for r in marginal])
+            tails[f"{name}<{t:.3g}"] = {**rate, "nominal": t, "ratio": rate["estimate"] / t}
+    result = {
+        "marginal_family": {
+            "runs": n, "mean_family_size": m_total / n,
+            "any_flag_holm_both_tests": c.proportion(sum(r["any_flag"] for r in marginal), n),
+            "any_chi2_bonferroni": c.proportion(sum(r["any_chi2_bonferroni"] for r in marginal), n),
+            "tail_rates": tails},
+        "unequal_8200v400": {"rejection": c.proportion(rejected, pair_runs),
+                             "model": _power_at_shots(0.05, 0.05, 1,
+                                                      effective_total_shots(8200, 400)),
+                             "stated_monte_carlo": 0.494, "stated_model": 0.497},
+        "wall_seconds": time.time() - start}
+    (Path(out_dir) / "follow_up.json").write_text(json.dumps(result, indent=1, default=float))
+    print(f"wrote {Path(out_dir) / 'follow_up.json'}")
+
+
 def _fmt(x):
     return "" if x is None or (isinstance(x, float) and math.isnan(x)) else f"{x:.6g}"
 
@@ -214,9 +302,15 @@ def main(argv=None):
     ap.add_argument("--only", default="", help="comma-separated scenario names")
     ap.add_argument("--workers", type=int, default=0)
     ap.add_argument("--chunk", type=int, default=20)
+    ap.add_argument("--follow-up", type=int, default=0, metavar="RUNS",
+                    help="run only the marginal-family and 8200-vs-400 follow-up with RUNS reports")
     args = ap.parse_args(argv)
     cpus = c.set_up_process()
     workers = args.workers or len(cpus)
+    if args.follow_up:
+        Path(args.out).mkdir(parents=True, exist_ok=True)
+        follow_up(args.out, args.follow_up, args.follow_up * 2, workers)
+        return 0
     names = [n for n in NAMES if not args.only or n in args.only.split(",")]
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
