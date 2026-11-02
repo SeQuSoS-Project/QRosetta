@@ -40,17 +40,16 @@ version:
 |---|---|---|
 | qiskit CVE-2025-2000 (CRITICAL, QPY) | qiskit, PennyLane ×2, Qrisp, TorchQuantum | accepted by the owner until 2027-05-01 |
 | torch CVE-2025-32434 (CRITICAL, `torch.load`) | TorchQuantum | accepted by the owner until 2027-05-01 |
-| qiskit CVE-2025-1403 (HIGH, QPY) | the same five | proposed, awaiting the owner's acceptance |
-| protobuf CVE-2026-0994 (HIGH; cirq-google 1.4.1 requires < 5) | Cirq, qsim | proposed, awaiting the owner's acceptance |
+| qiskit CVE-2025-1403 (HIGH, QPY) | the same five | accepted by the owner until 2027-05-01 |
+| protobuf CVE-2026-0994 (HIGH; cirq-google 1.4.1 requires < 5) | Cirq, qsim | accepted by the owner until 2027-05-01 |
 | thrift CVE-2026-41608, CVE-2026-43871 (HIGH; myQLM's `qat-comm` pins 0.21.0) | myQLM (never published) | no |
 
-1. The owner accepts or rejects the two proposed `.trivyignore` entries.
-2. If the published nginx base changes, rescan: the 2026-10-19 build of
+1. If the published nginx base changes, rescan: the 2026-10-19 build of
    `nginx-unprivileged:1.31.7-alpine3.24` carries brotli-libs 1.2.0-r1 (CRITICAL), which the image
    removes with the modules that need it.
-3. `CHANGELOG.md` has no `[2.0.0]` section yet. The `plan` job stops a final tag until it has a
+2. `CHANGELOG.md` has no `[2.0.0]` section yet. The `plan` job stops a final tag until it has a
    dated one.
-4. Owner items that the files depend on: ORCIDs (`CITATION.cff`, `.zenodo.json`,
+3. Owner items that the files depend on: ORCIDs (`CITATION.cff`, `.zenodo.json`,
    `codemeta.json`), the support email (SoftwareX metadata C8), the contact in the written offer
    of `THIRD_PARTY_NOTICES.md`.
 
