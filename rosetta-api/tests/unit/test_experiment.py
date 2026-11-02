@@ -282,3 +282,18 @@ def test_task_label_names_the_benchmark_suite_and_omits_unknown_qubit_counts():
     assert task_label("ghz", 4, "mqt") == "ghz (4q) [MQT Bench]"
     assert task_label("adder_n4.qasm", 0, "qasmbench") == "adder_n4.qasm [QASMBench]"
     assert task_label("ghz", 4, "preset") == "ghz (4q)"
+
+
+def test_a_bundle_with_a_non_ascii_label_downloads(monkeypatch):
+    from fastapi.testclient import TestClient
+    from main import app
+    _install_fake_batch(monkeypatch, [])
+    payload = ExperimentPayload(
+        circuits=[ExperimentCircuit(source="qasm", qasm_string=BELL_QASM, name="ベル", qubits=2)],
+        mode="measured", preprocessing_modes=[True], seed=1, label="日本 run Ä")
+    job_id, job = _run_experiment(payload)
+    assert job["bundle_name"] == "experiment_run-a"
+    assert any(name.startswith("inputs/000_circuit") for name in _bundle(job))
+    resp = TestClient(app).get(f"/experiments/{job_id}/bundle")
+    assert resp.status_code == 200
+    assert resp.headers["content-disposition"] == 'attachment; filename="experiment_run-a.zip"'

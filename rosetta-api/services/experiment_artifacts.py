@@ -22,6 +22,7 @@ import csv
 import hashlib
 import io
 import json
+import unicodedata
 
 from qrosetta_commons.helpers import get_num_qubits_from_qasm
 from services.report_filters import fingerprint_statevectors
@@ -183,8 +184,10 @@ def recorded_value(summary: list, key: str, missing=("", "unknown")):
 
 
 def slug(text: str) -> str:
-    """Lowercase alphanumeric slug with '-' separators ('circuit' if empty)."""
-    return "".join(c if c.isalnum() else "-" for c in str(text).lower()).strip("-") or "circuit"
+    """Lowercase ASCII alphanumeric slug with '-' separators, accents dropped ('circuit' if
+    empty); it names files in the bundle and the bundle in a Content-Disposition header."""
+    plain = "".join(c for c in unicodedata.normalize("NFKD", str(text)) if not unicodedata.combining(c))
+    return "".join(c if c.isascii() and c.isalnum() else "-" for c in plain.lower()).strip("-") or "circuit"
 
 
 def strip_statevectors(report: dict) -> dict:
