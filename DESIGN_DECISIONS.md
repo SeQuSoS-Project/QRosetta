@@ -824,6 +824,7 @@ Self-test identical in all 19 images. Timing: 5 alternated rounds of 5 repeats, 
 | TorchQuantum | setuptools 81.0.0, keras 3.14.0 → 3.15.0 | 2,202 identical | −0.8 % to +1.2 % / −0.4 % to +0.7 % | 2/5 → 2/1 (qiskit, torch) |
 | myQLM (not published) | the bump list of the first round, pyopenssl 26.3.0 → 26.4.0 (for cryptography 50); thrift stays at 0.21.0, which `qat-comm` 1.9.0 pins | 734 identical | −1.3 % to +0.6 % / −2.8 % to +1.3 % | 6/32 → 0/2 (thrift) |
 | cuQuantum (not published, GPU) | the bump list of the first round | 2,936; 20 at levels 2–3 differ by ≤ 1.7e-15, the GPU build's run-to-run variation | −8.3 % to +5.6 % (4 qubits × 2,200 gates; the others within 1.2 %) / −1.6 % to +1.1 % | 1/6 → 0/0 |
+| BQSKit (not published) | the web-stack bump of the first round; pip uninstalled | 207 (`--sv 60 --max-gates 15 --deep 0`, see BQSKit output reproducibility); 32 differ in the compiled circuit, its gate metrics and the infidelity in `passes_applied` only, every output compiled and passed its equivalence check | not timed | 0/8 → 0/0 |
 | PyZX, Cirq compiler, QMAP, staq, Quartz, Synthetiq | pip uninstalled after the installs (pip 26.2.2's SBOM lists vendored msgpack 1.1.2, urllib3 2.7.0 and setuptools 70.3.0) | 326, 326, 326, 489, 163, 326 identical | not timed | 0/5 → 0/0 |
 
 Self-tests identical. Timing on CPU 4, 5 alternated rounds, load 1.3–2.8, every round accepted. The API image takes pyasn1 0.6.5 (from 0.6.4), the only pin that moved in its lock.
