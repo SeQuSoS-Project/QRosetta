@@ -155,6 +155,9 @@ def test_figures_in_a_crate_take_the_requested_circuit_name():
 
 
 class _Db:
+    def query(self, model): return self
+    def filter(self, *conditions): return self
+    def count(self): return 0
     def add(self, row): pass
     def commit(self): pass
     def refresh(self, row): pass
