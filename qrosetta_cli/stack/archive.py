@@ -30,8 +30,11 @@ def identity_from_history(steps):
         m = _ARGS.search(step.split(IDENTITY_PATH)[0])
         if not m:
             return {"source": None, "release": None, "git_sha": None}
-        found = {arg: re.search(rf"(?:^|\s){arg}=(\S*)", m.group(2)) for arg in IDENTITY_ARGS}
-        return {name: (found[arg].group(1) if found[arg] else None) or None for arg, name in IDENTITY_ARGS.items()}
+        values = {}
+        for arg, name in IDENTITY_ARGS.items():
+            found = re.search(rf"(?:^|\s){arg}=(\S*)", m.group(2))
+            values[name] = (found.group(1) if found else None) or None
+        return values
     return None
 
 

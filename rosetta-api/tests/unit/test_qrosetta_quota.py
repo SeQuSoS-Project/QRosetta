@@ -239,3 +239,22 @@ def test_doctor_probes_services_with_the_lifecycle_token(env, capsys):
     doctor.check_live(rep, {"server": None}, server, env)
     assert any(c.id == "runners" and "cached availability: the server did not take the lifecycle token" in c.message
                for c in rep.checks)
+
+
+def test_doctor_lists_services_outside_the_running_stack_as_not_started(env):
+    runners = [{"id": "qiskit", "enabled": True, "available": True},
+               {"id": "quest", "enabled": True, "available": False, "error_kind": "dns"},
+               {"id": "braket", "enabled": False, "available": False}]
+    compilers = [{"id": "pyzx", "enabled": True, "available": False, "error_kind": "dns"}]
+    server = FakeServer(runners=runners, compilers=compilers)
+    rep = doctor.Report()
+    doctor.check_live(rep, {"server": None}, server, env, running={"qiskit"})
+    rows = [(c.id, c.status, c.message) for c in rep.checks if c.id in ("runners", "compilers")]
+    assert ("runners", "INFO", "not started in this stack: quest (`qrosetta status` lists them)") in rows
+    assert any(r[:2] == ("runners", "PASS") and r[2].startswith("1 runners available") for r in rows)
+    assert ("compilers", "INFO", "not started in this stack: pyzx (`qrosetta status` lists them)") in rows
+    assert not any(r[1] == "WARN" for r in rows)
+    rep = doctor.Report()
+    doctor.check_live(rep, {"server": None}, server, env, running={"qiskit", "quest"})
+    assert any(c.id == "runners" and c.status == "WARN" and "1 of 2 runners available" in c.message
+               for c in rep.checks)

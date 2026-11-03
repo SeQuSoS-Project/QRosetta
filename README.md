@@ -146,13 +146,27 @@ The installed command carries the release manifest, which names every published 
 digest; `pull` checks each image's digest and labels, and its signature when `cosign` is on the
 `PATH` (`--require-signature` refuses an unverified one). `qrosetta pull --all` fetches every
 published image. myQLM, cuQuantum and BQSKit are not published (their licences,
-`THIRD_PARTY_NOTICES.md`); they need a checkout and `qrosetta build`. With rootless podman,
-Docker Compose reaches podman through its API socket: `qrosetta doctor` fails `podman_socket`
-until `systemctl --user enable --now podman.socket` has run. On Fedora, `sudo dnf install podman
-docker-compose pipx` installs the rest; `pipx ensurepath` puts `qrosetta` on the `PATH`. In a
-virtual machine `selftest` adds a warning per runner that timings are not comparable with
-bare-metal runs. This sequence was run on a fresh Fedora 45 virtual machine with 2.0.0rc2
-(2026-11-03): `doctor` reported only the podman socket, and `selftest` passed.
+`THIRD_PARTY_NOTICES.md`); they need a checkout and `qrosetta build`.
+
+Setting up the host:
+
+- Fedora: `sudo dnf install podman docker-compose pipx`, then `systemctl --user enable --now
+  podman.socket` (Docker Compose reaches rootless podman through that socket; `qrosetta doctor`
+  fails `podman_socket` until it runs).
+- Ubuntu: `sudo apt install docker.io docker-compose-v2 pipx`, then `sudo usermod -aG docker
+  $USER` and log in again (membership of the docker group is equivalent to root on that host).
+- Both: `pipx ensurepath` puts `qrosetta` on the `PATH`. Neither distribution packages cosign:
+  take `cosign-linux-amd64` from https://github.com/sigstore/cosign/releases, check it against
+  that release's `cosign_checksums.txt`, and install it on the `PATH` as `cosign`.
+- Over SSH, run `sudo loginctl enable-linger $USER` once before the first `start`. Without it,
+  logging out removes `/run/user/<uid>` and the lifecycle token in it: the stack keeps running,
+  but `doctor` and the self-test fall back to cached availability, and `remove` cannot record
+  its host load.
+
+In a virtual machine `selftest` adds a warning per runner that timings are not comparable with
+bare-metal runs. This sequence was run with 2.0.0rc2 on fresh virtual machines on 2026-11-03,
+Fedora 45 with rootless podman and Ubuntu 26.04 with Docker: `doctor` reported only the podman
+socket on Fedora, and `selftest` passed on both.
 
 The rest of this README describes the commands from a checkout (`./qrosetta ...`); an installed
 `qrosetta` takes the same commands, apart from `build`.

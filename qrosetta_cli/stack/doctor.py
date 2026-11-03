@@ -251,7 +251,7 @@ def check_disk(host, rep, choice):
             )
         else:
             rep.add("disk", "PASS", f"{label} {path}: {free / GIB:.1f} GiB free")
-    tmp = host.free_bytes("/var/tmp")
+    tmp = host.free_bytes("/var/tmp") if choice and choice.name == "podman" else None
     if tmp is not None:
         rep.add("disk", "INFO", f"/var/tmp: {tmp / GIB:.1f} GiB free (podman stages image layers there)")
 
@@ -275,7 +275,10 @@ def check_extras(host, rep):
     rep.add("apptainer", "INFO", f"Apptainer at {tool}" if tool else "Apptainer not installed (HPC images only)")
 
 
-def check_live(rep, config, transport, env=None):
+def check_live(rep, config, transport, env=None, running=None):
+    """Server, readiness and service availability. ``running``: the ids of the services this
+    stack runs, when known; an enabled service outside it is listed as not started, not as a
+    failed probe."""
     from qrosetta_cli.client import handshake
 
     block = handshake.server_block(config)
@@ -312,6 +315,13 @@ def check_live(rep, config, transport, env=None):
         if not isinstance(data, list):
             continue
         enabled = [e for e in data if isinstance(e, dict) and e.get("enabled")]
+        if running is not None:
+            absent = [e["id"] for e in enabled if e.get("id") not in running]
+            enabled = [e for e in enabled if e.get("id") in running]
+            if absent:
+                rep.add(label, "INFO", f"not started in this stack: {', '.join(absent)} (`qrosetta status` lists them)")
+            if not enabled:
+                continue
         down = [e for e in enabled if not e.get("available")]
         if not down:
             rep.add(label, "PASS", f"{len(enabled)} {label} available ({how})")
@@ -375,10 +385,24 @@ def run(ctx, host=None):
     check_credentials(host, rep, servers.credentials_path(ctx.cfg, ctx.env))
     check_extras(host, rep)
     if config is not None:
-        check_live(rep, config, transport, ctx.env)
+        check_live(rep, config, transport, ctx.env, _running_services(ctx))
     else:
         rep.add("server", "INFO", f"no Quantum Rosetta answers at {server.url}; live checks skipped")
     return rep
+
+
+def _running_services(ctx):
+    """Ids of the services whose containers this stack runs, or None when the stack cannot be
+    read (no compose, no published manifest, another engine error)."""
+    from qrosetta_cli.stack import ownership
+    from qrosetta_cli.stack.commands import open_stack
+
+    try:
+        _, engine, stack = open_stack(ctx)
+        found = ownership.scan(engine, stack)
+    except (CliError, OSError):
+        return None
+    return {stack.services[c.service].id for c in found.running() if c.service in stack.services}
 
 
 def print_report(rep):
