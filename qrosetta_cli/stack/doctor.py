@@ -61,6 +61,19 @@ class Host:
     def exists(self, path):
         return os.path.exists(path)
 
+    def running_services(self, ctx):
+        """Ids of the services whose containers this stack runs, or None when the stack cannot
+        be read (no compose, no published manifest, another engine error)."""
+        from qrosetta_cli.stack import ownership
+        from qrosetta_cli.stack.commands import open_stack
+
+        try:
+            _, engine, stack = open_stack(ctx)
+            found = ownership.scan(engine, stack)
+        except (CliError, OSError):
+            return None
+        return {stack.services[c.service].id for c in found.running() if c.service in stack.services}
+
     def free_bytes(self, path):
         probe = path
         while probe and not os.path.exists(probe):
@@ -385,24 +398,10 @@ def run(ctx, host=None):
     check_credentials(host, rep, servers.credentials_path(ctx.cfg, ctx.env))
     check_extras(host, rep)
     if config is not None:
-        check_live(rep, config, transport, ctx.env, _running_services(ctx))
+        check_live(rep, config, transport, ctx.env, host.running_services(ctx))
     else:
         rep.add("server", "INFO", f"no Quantum Rosetta answers at {server.url}; live checks skipped")
     return rep
-
-
-def _running_services(ctx):
-    """Ids of the services whose containers this stack runs, or None when the stack cannot be
-    read (no compose, no published manifest, another engine error)."""
-    from qrosetta_cli.stack import ownership
-    from qrosetta_cli.stack.commands import open_stack
-
-    try:
-        _, engine, stack = open_stack(ctx)
-        found = ownership.scan(engine, stack)
-    except (CliError, OSError):
-        return None
-    return {stack.services[c.service].id for c in found.running() if c.service in stack.services}
 
 
 def print_report(rep):

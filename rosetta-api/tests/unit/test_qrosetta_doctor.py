@@ -24,13 +24,17 @@ PODMAN_INFO = {"version": {"Version": "5.4.0"}, "host": {"security": {"rootless"
 class FakeHost(doctor.Host):
     def __init__(self, env, files=None, paths=(), docker="missing", podman="ok", system="Linux",
                  machine="x86_64", port_free=True, free=50 * doctor.GIB, compose="Docker Compose version v2.30.0",
-                 modes=None):
+                 modes=None, running=None):
         self.env = env
+        self.running = running
         self.files = {"/etc/subuid": "u:100000:65536\n", "/etc/subgid": "u:100000:65536\n",
                       CONTROLLERS: "cpu io memory pids\n", **(files or {})}
         self.paths = {"/sys/fs/cgroup/cgroup.controllers", f"{env['XDG_RUNTIME_DIR']}/podman/podman.sock", *paths}
         self.docker, self.podman, self._system, self._machine = docker, podman, system, machine
         self._port_free, self._free, self.compose, self.modes = port_free, free, compose, modes or {}
+
+    def running_services(self, ctx):
+        return self.running
 
     def which(self, name):
         state = {"docker": self.docker, "podman": self.podman}.get(name, "missing")
@@ -162,6 +166,8 @@ def test_live_checks_with_a_running_server(env):
     checks = _by_id(_doctor(env, FakeHost(env), server=new))
     assert checks["server"][0].status == "PASS" and "cannot resolve qiskit" in checks["runners"][0].message
     assert checks["ready"][0].status == "SKIP"
+    checks = _by_id(_doctor(env, FakeHost(env, running={"cirq"}), server=new))
+    assert checks["runners"][0].status == "INFO" and "not started in this stack: qiskit" in checks["runners"][0].message
 
 
 @pytest.mark.parametrize("answer,status,words", [
