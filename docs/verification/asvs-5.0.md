@@ -111,7 +111,7 @@ The API writes three streams to stdout, kept by the container engine (`qrosetta 
 
 ### ASVS 5.0.0 — V1 to V5 (Quantum Rosetta)
 
-Checkout: `/home/sarkers/Documents/vscode/qsimulators`, branch `post-audit/asvs-crate-deps`, HEAD 4205598. Scope: every L1 requirement of V1–V5, plus the L2 requirements of V2, V4 and V5. Paths are relative to the repository root; `api/` stands for `rosetta-api/`, `tests/` for `rosetta-api/tests/unit/`. Audit reports cited as `V2.md` etc. are in `docs/audits/2026-10-28-overnight/`.
+Branch `post-audit/asvs-crate-deps`, HEAD 4205598. Scope: every L1 requirement of V1–V5, plus the L2 requirements of V2, V4 and V5. Paths are relative to the repository root; `api/` stands for `rosetta-api/`, `tests/` for `rosetta-api/tests/unit/`. Audit reports cited as `V2.md` etc. are in `docs/audits/2026-10-28-overnight/`.
 
 Counts: 46 assessed, Pass 29, Fail 8, N/A 9. No file in the repository was changed.
 
@@ -203,7 +203,7 @@ Upload paths that exist: the page's Import QASM (`accept=".qasm,.txt"`) and play
 
 ### ASVS 5.0.0 — V6 to V10 (Quantum Rosetta)
 
-Repository `/home/sarkers/Documents/vscode/qsimulators`, branch `post-audit/asvs-crate-deps` at 901d1ee, read 2026-11-02. Nothing in the repository was changed.
+Branch `post-audit/asvs-crate-deps` at 901d1ee, read 2026-11-02. Nothing in the repository was changed.
 Scope: every L1 requirement of V6–V10, plus every L2 requirement of V7, V8 and V9.
 Paths are relative to the repository root; `api/` stands for `rosetta-api/`.
 
