@@ -297,6 +297,16 @@ def test_identity_is_parsed_from_podman_and_buildkit_history():
     assert archive.identity_from_history(["/bin/sh -c pip install x"]) is None
 
 
+def test_identity_is_read_past_a_build_argument_whose_value_has_spaces():
+    step = ("RUN |7 DEBIAN_SNAPSHOT=20261020T213255Z STAQ_VERSION=3.5 STAQ_SHA256=8384 "
+            "STAQ_CXXFLAGS=-std=c++17 -O2 -DNDEBUG -DUSE_OPENQASM2_SPECS=false "
+            "QROSETTA_GIT_SHA=ac7a091 QROSETTA_IMAGE_SOURCE=release QROSETTA_RELEASE=2.0.0rc2 /bin/sh -c "
+            "mkdir -p /usr/local/share/qrosetta-image && printf 'source=%s' \"$QROSETTA_IMAGE_SOURCE\" "
+            "> /usr/local/share/qrosetta-image/identity")
+    assert archive.identity_from_history([step]) == {"source": "release", "release": "2.0.0rc2",
+                                                     "git_sha": "ac7a091"}
+
+
 # --- save and load ---------------------------------------------------------------------------
 
 

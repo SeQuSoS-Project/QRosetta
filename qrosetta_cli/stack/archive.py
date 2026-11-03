@@ -22,16 +22,16 @@ _MAX_CONFIG_BYTES = 16 * 1024 * 1024
 
 def identity_from_history(steps):
     """{source, release, git_sha} from the build step that wrote the identity file, or None when
-    no step did (an image built before images recorded their source, or a core image)."""
+    no step did (an image built before images recorded their source, or a core image). Each
+    argument is found by name: another build argument's value may contain spaces."""
     for step in steps:
         if IDENTITY_PATH not in (step or ""):
             continue
         m = _ARGS.search(step.split(IDENTITY_PATH)[0])
         if not m:
             return {"source": None, "release": None, "git_sha": None}
-        tokens = m.group(2).split()[: int(m.group(1))]
-        args = dict(t.split("=", 1) for t in tokens if "=" in t)
-        return {name: (args.get(arg) or None) for arg, name in IDENTITY_ARGS.items()}
+        found = {arg: re.search(rf"(?:^|\s){arg}=(\S*)", m.group(2)) for arg in IDENTITY_ARGS}
+        return {name: (found[arg].group(1) if found[arg] else None) or None for arg, name in IDENTITY_ARGS.items()}
     return None
 
 
