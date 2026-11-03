@@ -12,8 +12,11 @@ the git remote `public` (`SeQuSoS-Project/QRosetta`) and the version is `X.Y.Z`.
   (https://pypi.org/help/#file-name-reuse). A wheel with a mistake costs a version number: fix
   forward with `X.Y.Z.post1` for a packaging-only fix, else `X.Y.(Z+1)`. The same holds on
   TestPyPI, so a failed release candidate is followed by `rc2`.
-- GHCR packages start private. Once a package is public it cannot be made private again
-  (https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility).
+- A package that `publish-images` creates is linked to this public repository and takes its
+  visibility: the rc2 images (2026-11-03) were public at once, pullable without a login, and
+  nothing had to be switched per package. A public package cannot be made private again
+  (https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility),
+  so whatever a release-candidate tag pushes is published.
 - With immutable releases on, a published release accepts no new asset
   (https://docs.github.com/en/code-security/supply-chain-security/understanding-your-software-supply-chain/immutable-releases).
   The workflow therefore drafts the release, attaches every file, checks the attached copies and
@@ -60,8 +63,10 @@ version:
   with the owner as required reviewer and tag rule `v*` (done 2026-10-27).
 - Zenodo: log in with GitHub and switch on `SeQuSoS-Project/QRosetta` before the first final
   tag.
-- GHCR: allow public packages for the organisation; set the repository variable
-  `QROSETTA_PUBLISH_IMAGES` to `true`.
+- GHCR: allow public packages for the organisation (an organisation owner; done); set the
+  repository variable `QROSETTA_PUBLISH_IMAGES` to `true` (done).
+- Both GitHub environments need a deployment rule of type **tag** `v*`; a **branch** rule `v*`
+  refuses every tag (`testpypi` had one until 2026-11-03).
 - Repository settings: immutable releases on (Settings, General, Releases); a ruleset on
   `refs/tags/v*` that forbids update and deletion; private vulnerability reporting on.
 - A GPG or SSH signing key registered on the GitHub account, and git set to use it
@@ -107,8 +112,7 @@ verification documents in `docs/verification/`, and the v1.0.0 example crate in 
    attests them, and puts the wheel on TestPyPI once the `testpypi` environment is approved.
    `release-assets` runs too: the run page then holds the artifact `release-assets` with exactly
    the files the release page would carry. No GitHub release is made, so Zenodo sees nothing.
-4. Check each new GHCR package (image list, notice, SBOM), make it public, and run the
-   clean-machine checks below with `pipx install --index-url https://test.pypi.org/simple/
+4. Check the image list, notices and SBOMs in the artifact, and run the clean-machine checks below with `pipx install --index-url https://test.pypi.org/simple/
    qrosetta==X.Y.Zrc1` in place of the PyPI install, the files of the `release-assets` artifact
    in place of the release page, and steps 11 and 12 left out.
 
@@ -251,7 +255,8 @@ followed by what it should print.
    `qrosetta status` lists the five services as running.
 
 10. `qrosetta selftest` prints no `FAIL` line and ends with `PASS. Results: ...` (a virtual
-    machine adds a hypervisor warning: `PASS (1 warnings). Results: ...`); exit 0.
+    machine adds one hypervisor warning per probed runner and one for the job, e.g.
+    `PASS (4 warnings). Results: ...` for the minimal profile); exit 0.
 
 11. The DOI resolves:
 
