@@ -40,7 +40,7 @@ def _wait_until_gone(pid, seconds=5.0):
             with open(f"/proc/{pid}/stat") as fh:
                 if fh.read().split(") ", 1)[1].startswith("Z"):
                     return True
-        except FileNotFoundError:
+        except (FileNotFoundError, ProcessLookupError):
             return True
         time.sleep(0.05)
     return False

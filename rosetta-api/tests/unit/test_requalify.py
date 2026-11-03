@@ -5,6 +5,7 @@ exclusions. Stdlib and pytest only; no container engine."""
 import base64
 import importlib.util
 import json
+import logging
 import struct
 import sys
 from pathlib import Path
@@ -296,7 +297,11 @@ def test_import_check_names_the_module_that_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "path", list(sys.path))
     monkeypatch.delitem(sys.modules, "main", raising=False)
     assert "pytest" in driver.sdk_modules(["PyTest"])
-    result = driver.import_check(["pytest"], app)
+    disabled = logging.root.manager.disable
+    try:
+        result = driver.import_check(["pytest"], app)
+    finally:
+        logging.disable(disabled)
     assert result["pytest"] is None
     assert "ModuleNotFoundError: No module named 'pkg_resources_gone_for_the_test'" in result["main"]
     monkeypatch.delitem(sys.modules, "main", raising=False)

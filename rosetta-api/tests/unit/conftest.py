@@ -1,11 +1,12 @@
 """Unit-test setup: each test process (each xdist worker, and the controller) has its own job
 spill directory and SQLite database in a temporary directory, not the server's or ./data, with
 the schema at head; every test starts with the rate limiter on and its counters empty, and fails
-if it leaves the limiter off; runs are not refused for the free space left on the disk that
+if it leaves the limiter or logging switched off; runs are not refused for the free space left on the disk that
 holds the spill directory. X-Forwarded-For is trusted from
 any peer (TestClient's peer is "testclient"), so tests choose a client address with it;
 test_v5_06_trusted_proxies.py checks the list itself. Below Python 3.11 the files that import the
 CLI (which requires 3.11) are not collected; the CLI job runs them on 3.11 and later."""
+import logging
 import os
 import re
 import sys
@@ -61,6 +62,15 @@ def _fresh_rate_limits():
         security.limiter.enabled = True
         pytest.fail("the test left the rate limiter switched off for the tests after it; "
                     "switch it off with monkeypatch.setattr(limiter, 'enabled', False)")
+
+
+@pytest.fixture(autouse=True)
+def _logging_left_on():
+    yield
+    if logging.root.manager.disable:
+        logging.disable(logging.NOTSET)
+        pytest.fail("the test left logging.disable() on for the tests after it; "
+                    "restore logging.root.manager.disable when it ends")
 
 
 @pytest.fixture(autouse=True)

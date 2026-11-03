@@ -15,4 +15,5 @@ rosetta-api/services/job_store.py insecure-file-permissions 1  # chmod 0700 of t
 rosetta-api/services/prep_worker.py avoid-pickle 8  # pipe between the API and its own preparation child process
 scripts/disconnect_watch/in_image.py dynamic-urllib-use-detected 1  # GET of a fixed http://127.0.0.1 health URL inside the evidence container
 scripts/requalify/candidate.py dynamic-urllib-use-detected 2  # PyPI's JSON API and the lock's extra index, which the harness refuses unless it is https
+scripts/verify/v4_run.py dynamic-urllib-use-detected 2  # the server under test named by --base-url, which main refuses unless it is http(s)
 scripts/requalify/engine.py dangerous-subprocess-use-tainted-env-args 3  # argument list for the container engine, no shell; the harness's own environment
