@@ -128,7 +128,38 @@ The stack runs in two modes, selected by `EXECUTION_MODE`:
 
 Requires Linux on x86_64, rootless podman 4.4+ (recommended) or Docker Engine 20.10+, with
 Docker Compose v2 as the compose provider (see [Starting and stopping](#starting-and-stopping)),
-and Python 3.11+. A full build needs about 25 GB of disk for the images.
+and Python 3.11+. There are two ways in: install the `qrosetta` command from PyPI and pull the
+published images, or clone the repository and build every image yourself.
+
+### From PyPI, with the published images
+
+```bash
+pipx install qrosetta                 # the qrosetta command only (standard library, Python 3.11+)
+qrosetta doctor                       # host checks, each problem with its fix
+qrosetta pull --profile minimal       # API, nginx, Qiskit, Qulacs and Cirq from ghcr.io, by digest
+qrosetta start -d --profile minimal   # returns when the API is ready and the runners answer
+qrosetta selftest                     # known-answer checks; results under ./qrosetta-results
+qrosetta run algorithm:ghz:3 -m statevector,measured
+```
+
+The installed command carries the release manifest, which names every published image by
+digest; `pull` checks each image's digest and labels, and its signature when `cosign` is on the
+`PATH` (`--require-signature` refuses an unverified one). `qrosetta pull --all` fetches every
+published image. myQLM, cuQuantum and BQSKit are not published (their licences,
+`THIRD_PARTY_NOTICES.md`); they need a checkout and `qrosetta build`. With rootless podman,
+Docker Compose reaches podman through its API socket: `qrosetta doctor` fails `podman_socket`
+until `systemctl --user enable --now podman.socket` has run. On Fedora, `sudo dnf install podman
+docker-compose pipx` installs the rest; `pipx ensurepath` puts `qrosetta` on the `PATH`. In a
+virtual machine `selftest` adds a warning per runner that timings are not comparable with
+bare-metal runs. This sequence was run on a fresh Fedora 45 virtual machine with 2.0.0rc2
+(2026-11-03): `doctor` reported only the podman socket, and `selftest` passed.
+
+The rest of this README describes the commands from a checkout (`./qrosetta ...`); an installed
+`qrosetta` takes the same commands, apart from `build`.
+
+### From a checkout, building the images
+
+A full build needs about 25 GB of disk for the images.
 
 ```bash
 git clone https://github.com/SeQuSoS-Project/QRosetta.git
@@ -300,8 +331,7 @@ Disk space per profile, in GB (10^9 bytes); each profile includes the API and ng
 These are the uncompressed layer sizes of the images built on 2026-10-27 from this repository's
 Dockerfiles, with the base-image layers counted once and every other layer once per image (the
 release builds each image on its own machine, so only base layers are shared). The registry
-sends compressed layers, so the download is smaller; its size is not measured yet because no
-image has been published. The last column is what an installed `qrosetta` cannot pull: those
+sends compressed layers, so the download is smaller; its size is not measured yet. The last column is what an installed `qrosetta` cannot pull: those
 images come from `qrosetta build` in a checkout. A checkout that builds all 24 images uses
 about 19 GB, because local builds share more layers.
 
