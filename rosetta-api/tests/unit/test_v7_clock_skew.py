@@ -1,5 +1,6 @@
 """V7(f) Failure injection, clock skew with a patched wall clock: access tokens (PyJWT's clock
-moved after the token was issued), share-link expiry, job retention, and host-load notices,
+moved after the token was issued; ``iat`` is in whole seconds, so a clock less than a second
+behind the issuer cannot be told apart), share-link expiry, job retention, and host-load notices,
 whose expiry is decided on the monotonic clock so that a wall-clock step does not end them."""
 
 import asyncio
@@ -56,7 +57,7 @@ def _me(w, token):
     (settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60 - 60, 200),
     (settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60 + 1, 401),
     (24 * 3600, 401),
-    (-1, 401),
+    (-2, 401),
     (-10, 401),
 ])
 def test_a_token_follows_the_servers_clock_with_no_leeway(w, verifier_clock, shift_sec, status):

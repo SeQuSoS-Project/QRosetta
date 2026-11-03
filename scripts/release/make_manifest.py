@@ -43,7 +43,9 @@ _SELF_TEST = {
     "runner": ["python", "main.py", "--self-test"],
     "compiler": ["python", "main.py", "--self-test"],
     "api": ["python", "-c", "import main"],
-    "nginx": ["nginx", "-t"],
+    "nginx": ["sh", "-c", "QROSETTA_RESOLVER=127.0.0.11 envsubst '$QROSETTA_RESOLVER' "
+                       "< /etc/nginx/templates/resolver.conf.template > /etc/nginx/conf.d/resolver.conf "
+                       "&& nginx -t"],
 }
 
 
