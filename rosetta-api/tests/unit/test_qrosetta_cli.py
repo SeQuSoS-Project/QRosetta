@@ -613,6 +613,45 @@ def test_start_explains_engine_failures(fake, project, env, capsys):
     assert "127.0.0.1:8080 is in use" in err and err.strip().splitlines()[-1] == "qrosetta start -d --bind 127.0.0.1:8090"
 
 
+def _unhealthy_api(fake):
+    _stopped(fake)
+    fake.up_error = ("Container rosetta-api  Error dependency api failed to start\n"
+                     "dependency failed to start: container rosetta-api is unhealthy\n")
+    fake.containers["c-rosetta-api"]["State"].update(Running=True, Health={"Status": "unhealthy", "Log": [
+        {"ExitCode": 1, "Output": "first check"},
+        {"ExitCode": 1, "Output": "Traceback (most recent call last):\nConnectionRefusedError: [Errno 111]\n"}]})
+    fake.logs["c-rosetta-api"] = ("2026-11-04T12:10:25Z GET /config 200\n",
+                                  "2026-11-04T12:10:20Z [INFO] Booting worker with pid: 3\n"
+                                  "2026-11-04T12:10:30Z [ERROR] Worker (pid:3) was sent SIGKILL!\n")
+    return fake
+
+
+def test_start_unhealthy_api_prints_its_last_health_check_and_log(fake, project, env, capsys):
+    foreign = fake.add("rosetta-api-copy", {"com.docker.compose.project": "other",
+                                            "com.docker.compose.service": "api"})
+    assert cli(_unhealthy_api(fake), project, env, ["start", "-d"]) == Exit.ENGINE
+    err = capsys.readouterr().err
+    assert "failed its health check (GET /health inside the container)" in err and "page cache" not in err
+    assert "Last health check of rosetta-api: exit code 1" in err and "ConnectionRefusedError" in err
+    assert "first check" not in err
+    lines = err.splitlines()
+    start = lines.index("Last 3 lines of its log:")
+    assert [x.split()[0] for x in lines[start + 1:start + 4]] == [
+        "2026-11-04T12:10:20Z", "2026-11-04T12:10:25Z", "2026-11-04T12:10:30Z"]
+    assert lines[-1] == "qrosetta logs api --tail 50"
+    logs = [c for c, _ in fake.calls if c[1:2] == ["logs"]]
+    assert logs == [["podman", "logs", "--timestamps", "--tail", "20", "c-rosetta-api"]]
+    assert foreign not in json.dumps(logs) and not fake.destructive_calls()
+
+
+def test_start_unhealthy_api_without_its_container_keeps_the_engine_message(fake, project, env, capsys):
+    del _unhealthy_api(fake).containers["c-rosetta-api"]
+    assert cli(fake, project, env, ["start", "-d"]) == Exit.ENGINE
+    err = capsys.readouterr().err
+    assert "failed its health check" in err and "Last health check" not in err
+    assert not [c for c, _ in fake.calls if c[1:2] == ["logs"]]
+
+
 def test_start_bind_reaches_compose_and_warns_off_loopback(fake, project, env, capsys, monkeypatch):
     monkeypatch.setattr(serve, "_sleep", lambda s: None)
     assert cli(_stopped(fake), project, env, ["start", "-d", "--bind", "0.0.0.0:9000"], server=FakeServer()) == 0

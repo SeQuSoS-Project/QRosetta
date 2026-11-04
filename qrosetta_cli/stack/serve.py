@@ -309,13 +309,49 @@ def up_flags(adding, recreate=False):
     return (["--force-recreate"] if recreate else []) + (["--no-deps"] if adding else [])
 
 
-def up(engine, services, adding, bind=None, recreate=False):
+def api_health_report(engine, stack, tail=20):
+    """The API container's last health check and the last `tail` lines of its log, read from this
+    stack's labelled API container; '' when there is none."""
+    service = getattr(stack.by_id().get("api"), "name", None)
+    api = next((c for c in own.scan(engine, stack).containers if c.service == service), None)
+    if api is None:
+        return ""
+    items = own._inspect(engine, "container", [api.id])
+    state = (items[0].get("State") or {}) if items else {}
+    checks = (state.get("Health") or state.get("Healthcheck") or {}).get("Log") or []
+    lines = []
+    if checks:
+        last = checks[-1]
+        lines.append(f"Last health check of {api.name}: exit code {last.get('ExitCode')}")
+        lines += ["  " + x for x in (last.get("Output") or "").strip().splitlines()[-5:]]
+    out = engine.cli("logs", "--timestamps", "--tail", str(tail), api.id)
+    logged = sorted((out.stdout or "").splitlines() + (out.stderr or "").splitlines(), key=lambda x: x.split(" ", 1)[0])
+    if logged:
+        lines.append(f"Last {len(logged[-tail:])} lines of its log:")
+        lines += ["  " + x for x in logged[-tail:]]
+    return "\n".join(lines)
+
+
+def up_failure(engine, stack, text, bind):
+    """The error for a failed `compose up`, with the API's health report when it was unhealthy."""
+    err = engine_error(text, "`compose up` failed", bind)
+    if err.reason == "api_unhealthy" and stack is not None:
+        try:
+            report = api_health_report(engine, stack)
+        except CliError:
+            report = ""
+        if report:
+            err.message += "\n" + report
+    return err
+
+
+def up(engine, services, adding, bind=None, recreate=False, stack=None):
     """`compose up -d` for `services`; when adding to a running stack, the others are left alone."""
     proc = engine.spawn(
         ["up", "-d", "--no-build", *up_flags(adding, recreate), *services], own_session=False, capture_errors=True
     )
     if wait_spawned(proc, CHANGE_TIMEOUT_SEC, [engine.name, "compose", "up"]) != 0:
-        raise engine_error(spawned_tail(proc), "`compose up` failed", bind)
+        raise up_failure(engine, stack, spawned_tail(proc), bind)
 
 
 def _entries(transport, path, query, headers=None):
@@ -525,7 +561,7 @@ class Server:
         tail = spawned_tail(self.child)
         self.child = None
         if code != 0:
-            raise engine_error(tail, "`compose up` failed", self.bind)
+            raise up_failure(self.engine, self.stack, tail, self.bind)
 
     def _follow(self):
         tail = "20"

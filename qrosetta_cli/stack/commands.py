@@ -158,14 +158,14 @@ def cmd_start(ctx):
                 hostload.notice(ctx, url, kind, stale_ids, expect_server_gone=gone),
                 guard.engine_lock(ctx.env, "start"),
             ):
-                serve.up(engine, recreated, adding, bind, recreate=True)
+                serve.up(engine, recreated, adding, bind, recreate=True, stack=stack)
         with hostload.notice(ctx, url if fresh_start else None, "start", ids):
             if fresh_start:
                 progress(
                     f"Starting {len(fresh_start)} services" + (" beside the running ones" if adding else "") + "..."
                 )
                 with guard.engine_lock(ctx.env, "start"):
-                    serve.up(engine, fresh_start, adding, bind)
+                    serve.up(engine, fresh_start, adding, bind, stack=stack)
             elif not stale:
                 progress("Every requested service is already running.")
             ready = serve.wait_ready(ctx, engine, stack, services)

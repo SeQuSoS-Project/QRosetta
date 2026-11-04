@@ -298,6 +298,8 @@ signed images on GHCR; and every result records the image, commit and host condi
 
 - The API's container healthcheck allows 120 s for a first start (it allowed about a minute), so a
   slow first start on a new machine no longer stops `qrosetta start` with "container rosetta-api is unhealthy".
+- When the API container fails its health check, `qrosetta start` prints the last health-check
+  output and the last 20 lines of the API's log; it used to guess a cold page cache.
 - `qrosetta doctor` and the missing-Compose error name the install step for the host's distribution
   (from `/etc/os-release`: apt on Ubuntu and Debian, dnf on Fedora, the Compose plugin binary on RHEL
   with podman); they suggested apt on every host.

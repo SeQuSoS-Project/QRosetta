@@ -152,6 +152,7 @@ class FakeEngine:
         self.config_name = None
         self.extra_services = {}
         self.up_error = ""
+        self.logs = {}
         self.recreated = []
         self.config_edits = {}
         self.hash_supported = True
@@ -363,6 +364,9 @@ class FakeEngine:
             return "\n".join(hits), 0
         if a[:2] == ["container", "inspect"]:
             return json.dumps([c for c in self.containers.values() if c["Id"] in a[2:]]), 0
+        if a[0] == "logs":
+            out, err = self.logs.get(a[-1], ("", ""))
+            return out, 0, err
         if a[0] == "stop":
             for cid in a[1:]:
                 self.containers[cid]["State"]["Running"] = False

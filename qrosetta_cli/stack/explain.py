@@ -118,8 +118,8 @@ ROWS = [
     (
         r"dependency failed to start: container \S*(?:rosetta-api|api)\S* is unhealthy",
         lambda m, t, b: (
-            "The API did not become healthy within its healthcheck window. Starting again usually "
-            "succeeds once the page cache is warm.",
+            "The API container was running but failed its health check (GET /health inside the "
+            "container) until the healthcheck window ended.",
             "api_unhealthy",
             "qrosetta logs api --tail 50",
         ),
