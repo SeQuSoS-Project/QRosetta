@@ -181,3 +181,12 @@ def test_no_page_text_links_the_removed_known_issues_section():
 def test_the_manual_points_to_no_known_issue_entry():
     text = (STATIC / "docs.html").read_text()
     assert not re.search(r"see\s+the\s+known\s+issue", text)
+
+
+def test_manual_names_the_performance_notes_as_the_page_writes_them():
+    docs = (STATIC / "docs.html").read_text()
+    ranking = (JS / "ranking_renderer.js").read_text()
+    for label in ("Caveats", "Measurement notes"):
+        assert f'"{label}"' in docs and label in ranking, label
+    for stale in ("Before comparing times", "How these times are measured", "every run was on a CPU"):
+        assert stale not in docs and stale not in ranking, stale
