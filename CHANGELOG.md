@@ -82,6 +82,9 @@ signed images on GHCR; and every result records the image, commit and host condi
 - Each run records CPU throttling, the CPUs it ran on and their maximum frequency, container CPU
   time over the simulation window, queue waits, and the overlapping runs of its own job and of
   other jobs. The server derives timing caveats from these and the page shows them.
+- `qrosetta start` (beside a running stack), `stop`, `remove` and `build` tell the API while they
+  load the host; runs that overlap them record it (`server_overlapping_host_load`) and carry the
+  timing caveat `host_load`.
 - Measured comparisons: a `measured_assessment` per pair (`consistent_within_shot_noise`,
   `inconclusive_low_shots`, `ambiguous`, `distinguishable`, `not_comparable`) from chi-square and
   Williams-corrected G-tests under Benjamini–Yekutieli correction, with the test's power and a
@@ -290,7 +293,7 @@ signed images on GHCR; and every result records the image, commit and host condi
 - `GET /download_latest_report`; use `GET /jobs/{id}/report`.
 - The Configuration panel and the benchmark drawer; their controls are in the settings chips and
   the Playlist's Bench popover.
-- python-jose: tokens are signed with PyJWT, and sessions from before the change stay valid.
+- python-jose: tokens are signed with PyJWT.
 - cuQuantum's fallback to CPU Aer.
 - The `runners/` source mount into the API container.
 
@@ -338,6 +341,8 @@ signed images on GHCR; and every result records the image, commit and host condi
   compile failed was reported as done.
 - Cancelling a run freed its execution slot while its process still ran, and a runner worker killed
   mid-run left the run's process alive.
+- A runner or compiler kept running, or still started, a request whose caller had gone away, and
+  held its execution slot until the run ended.
 - `DELETE /auth/me` failed with a foreign-key error on PostgreSQL.
 - Server errors (500) for a malformed `Content-Length`, a non-UTF-8 JSON body, NaN or a field of the
   wrong type in a supplied report, and a registration that lost a race for its email are now 4xx.
