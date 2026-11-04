@@ -159,6 +159,14 @@ Setting up the host:
 - Both: `pipx ensurepath` puts `qrosetta` on the `PATH`. Neither distribution packages cosign:
   take `cosign-linux-amd64` from https://github.com/sigstore/cosign/releases, check it against
   that release's `cosign_checksums.txt`, and install it on the `PATH` as `cosign`.
+- RHEL 10: `sudo dnf install podman`, then `systemctl --user enable --now podman.socket`. RHEL
+  packages neither Docker Compose nor pipx (pipx is in EPEL). Save `docker-compose-linux-x86_64`
+  from https://github.com/docker/compose/releases as `~/.docker/cli-plugins/docker-compose` and
+  make it executable; in place of `pipx install qrosetta`, install into a virtual environment
+  (no sudo needed): `python3 -m venv ~/.local/share/qrosetta`, then
+  `~/.local/share/qrosetta/bin/pip install qrosetta` and
+  `mkdir -p ~/.local/bin && ln -sf ~/.local/share/qrosetta/bin/qrosetta ~/.local/bin/qrosetta`.
+  The same `pip` command with `--upgrade` updates it. cosign as above.
 - Over SSH, run `sudo loginctl enable-linger $USER` once before the first `start`. Without it,
   logging out removes `/run/user/<uid>` and the lifecycle token in it: the stack keeps running,
   but `doctor` and the self-test fall back to cached availability, and `remove` cannot record
