@@ -123,6 +123,18 @@ def test_large_measured_runs_are_warned_about():
     assert "24-qubit" in text and "60 s" in text and "300 s" in text
 
 
+def test_manual_names_the_circuits_behind_the_24_qubit_timeouts():
+    docs = (STATIC / "docs.html").read_text()
+    assert "about half of them did not finish" not in docs
+    assert "24-qubit QFT of 340 gates" in docs and "circuit of 94 gates finished on all 14" in docs
+
+
+def test_manual_power_example_is_the_recorded_rerun():
+    docs = (STATIC / "docs.html").read_text()
+    assert "80.4%" not in docs
+    assert "in 79.2% for p₀ = 0.475" in docs and "flagged 93.1%" in docs
+
+
 def test_analysing_comes_from_the_job_phase():
     src = (JS / "status_cards.js").read_text()
     assert "allRunsFinished" not in src and "activeFor" not in src
