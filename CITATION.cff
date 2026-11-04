@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 message: "If you use QRosetta in academic work, please cite the software using this metadata."
 type: software
-version: "2.0.0rc2"
+version: "2.0.0rc3"
 title: "Quantum Rosetta (QRosetta): A Reproducible Microservice Platform for Cross-Simulator Benchmarking and Agreement Analysis"
 authors:
   - family-names: Sarker
