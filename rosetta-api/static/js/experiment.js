@@ -41,7 +41,7 @@ function _prevalenceText(summary) {
             };
         }
         return {
-            heading: 'Pairs by distance label (this summary records no shot-noise assessment; the bundle results/ hold it per pair)',
+            heading: 'Pairs by distance label (shot-noise assessments per pair in the bundle\'s results/)',
             text: keys.map(k => `${k}: ${counts[k]}`).join(' · ') + tail,
         };
     }
@@ -79,13 +79,11 @@ export function experimentCompilerNote(compilers, compilersWith) {
     if (entries.length) {
         const n = entries.reduce((sum, [, l]) => sum + l.length, 0);
         const list = entries.map(([id, l]) => `${id} level${l.length === 1 ? '' : 's'} ${l.join(', ')}`).join('; ');
-        return `Compile-only services ran with this experiment (${n} level${n === 1 ? '' : 's'}: ${list}), once per circuit and `
-            + 'preprocessing setting. They are not in the counts above; the bundle holds their outputs under '
-            + 'compiled_circuits/<setting>/<circuit>/ and one row per compile in compiled_circuits.csv.';
+        return `${n} level${n === 1 ? '' : 's'} (${list}), once per circuit and setting; not in the counts above. `
+            + 'Outputs in the bundle under compiled_circuits/ and compiled_circuits.csv.';
     }
     if (compilersWith) {
-        return `The compile-only services requested with this run ran with ${compilersWith}; their outputs are in that `
-            + "experiment's bundle, not this one.";
+        return `Ran with ${compilersWith}; outputs are in that experiment's bundle, not this one.`;
     }
     return null;
 }
@@ -115,9 +113,8 @@ export function renderExperimentResult(results, panel, { jobId, name, title, com
     const compilerNote = experimentCompilerNote(compilers, compilersWith);
     if (compilerNote) _line(card, 'Compile-only services', compilerNote);
     panel.appendChild(card);
-    _line(panel, null, 'The bundle holds the inputs, every per-circuit result, a conformance matrix, an agreement-prevalence '
-        + 'table and a provenance manifest. Each error signature is marked untriaged, for you to classify as adapter, SDK, '
-        + `by design or resource. The server keeps the bundle for ${durationText(getState().jobTtlSec)}.`, 'text-gray-600 mb-3');
+    _line(panel, null, 'Bundle: inputs, per-circuit results, conformance matrix, agreement prevalence and provenance manifest; '
+        + `error signatures untriaged for classification. Available for ${durationText(getState().jobTtlSec)}.`, 'text-gray-600 mb-3');
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'py-2 px-4 rounded-md text-sm font-medium text-white bg-emerald-700 hover:bg-emerald-800';

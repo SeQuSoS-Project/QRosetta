@@ -49,7 +49,7 @@ export function emptyStateModel(input) {
     if (!modes.length) {
         return {
             ...base, tabs: ['Summary', 'Circuits', 'Exports'], title: `Ready to compile ${what}`,
-            text: `Run compiles it with ${_plural(input.compilerCount, 'ticked compile-only level')}; the compiled circuits appear in the Circuits tab. Nothing is simulated.`,
+            text: `Compiled with ${_plural(input.compilerCount, 'ticked compile-only level')}; outputs appear in the Circuits tab. Nothing is simulated.`,
             table: null,
         };
     }
@@ -62,14 +62,14 @@ export function emptyStateModel(input) {
     if (input.preprocessing === 'both') {
         return {
             ...base, tabs: [], title: `Ready to run an experiment on ${what}`,
-            text: `Run Experiment runs it on ${targets} ${modeText}, with SDK preprocessing on and then off; the results per setting and a downloadable bundle appear here.`,
+            text: `Runs on ${targets} ${modeText}, with SDK preprocessing on and then off; results per setting and a bundle appear here.`,
             table: _table('Backends', BACKEND_COLUMNS, input.backends),
         };
     }
     if (list) {
         return {
             ...base, tabs: ['Suite Summary', 'Exports'], title: `Ready to run ${what}`,
-            text: `Run sends each circuit to ${targets} ${modeText}; each row of this table becomes one circuit's outcome, with its full report under Details.`,
+            text: `Each circuit runs on ${targets} ${modeText}; each row shows one circuit's outcome, with its report under Details.`,
             table: _table('Playlist', PLAYLIST_COLUMNS, input.playlist.map((name, i) => ({ key: String(i), name }))),
         };
     }

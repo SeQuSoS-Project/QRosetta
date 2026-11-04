@@ -302,7 +302,7 @@ export function renderSuiteSummary(data, title) {
         if (compileOnly) {
             const note = document.createElement('p');
             note.className = 'mb-3 text-sm text-gray-700';
-            note.textContent = 'Compile only: no simulator was run. Details opens a circuit\'s compiled outputs, their passes and the reasons for the ones that did not compile.';
+            note.textContent = 'Compile only. Details shows each circuit\'s compiled outputs, passes and refusal reasons.';
             panel.appendChild(note);
             panel.appendChild(renderCompileSuiteTable(summary, viewDetail));
             showTab('suite-summary');
@@ -407,7 +407,7 @@ export async function generateAndVisualize() {
         showVisualizerTab();
     } catch (err) {
         console.error("Visualizer API Error:", err);
-        alert("Could not auto-generate Quirk visualizer for this specific circuit.\nDetails: " + err.message);
+        alert("Quirk view not available for this circuit.\nDetails: " + err.message);
     } finally {
         if (btn) {
             btn.innerHTML = originalText;

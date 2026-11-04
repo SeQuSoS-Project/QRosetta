@@ -131,7 +131,7 @@ export function renderDivergenceTables(report, panel, config = {}, rawResults = 
                     const alignedVal = rec?.metrics?.[spec.aligned];
                     if (rec?.metrics?.label_aligned_basis === 'bit_reversal' && typeof alignedVal === 'number') {
                         aligned = fmtNum(alignedVal);
-                        title += `; after the bit reversal the declared orderings imply: ${alignedVal}`;
+                        title += `; after declared bit reversal: ${alignedVal}`;
                     }
                 }
                 STATUS_STYLES[style].cell.split(' ').forEach(c => td.classList.add(c));
@@ -321,8 +321,8 @@ export function _agreementMetricsBlock(p) {
 
 const _TEST_METHOD = {
     asymptotic: 'asymptotic (chi-square distribution)',
-    exact_conditional: 'exact conditional (2 × 2 table with expected counts below 5)',
-    degenerate: 'no test: both backends returned the same single outcome (p = 1)',
+    exact_conditional: 'exact conditional (2 × 2, expected counts below 5)',
+    degenerate: 'not tested: one identical outcome (p = 1)',
     not_tested: 'no test: one outcome bin after pooling',
 };
 
@@ -365,7 +365,7 @@ export function _statisticalTestBlock(st) {
     ]));
     const model = document.createElement('div');
     model.className = 'text-[11px] text-gray-500 mt-1';
-    model.textContent = `Power model: ${pw.model}. The verdict is reported alongside the descriptive label.`;
+    model.textContent = `Power model: ${pw.model}.`;
     wrap.appendChild(model);
     return wrap;
 }
@@ -522,7 +522,7 @@ export function _agreementSummaryStrip(report, pairs) {
         .forEach(label => {
             const pill = assessed && label !== 'not_comparable'
                 ? _chip('bg-white text-gray-600 border-gray-300', `distance: ${labelText(label)} · ${counts[label]}`,
-                    _codeTip(label, 'Descriptive JS/Hellinger label; the shot-noise assessment on the left is the verdict.'))
+                    _codeTip(label, 'Descriptive JS/Hellinger label; the shot-noise assessment is the verdict.'))
                 : _chip(STATUS_STYLES[AGREEMENT_STYLE[label] || 'offline'].badge, `${labelText(label)} · ${counts[label]}`, _codeTip(label));
             strip.appendChild(pill);
         });
@@ -581,7 +581,7 @@ export function _agreementHeatmap(report, pairs, config) {
     caption.textContent = 'Agreement class by pair';
     const captionNote = document.createElement('span');
     captionNote.className = 'sr-only';
-    captionNote.textContent = '. Each cell names the class of the row and column backends; the symbol in the cell matches the key below the table.';
+    captionNote.textContent = '. Symbols: see the key below.';
     caption.appendChild(captionNote);
     table.appendChild(caption);
     const thead = document.createElement('thead');
@@ -667,8 +667,8 @@ function _distanceNote(p, unaligned) {
     span.className = 'text-[11px] text-gray-500 whitespace-nowrap';
     span.textContent = `distance: ${labelText(p.agreement)}${unaligned ? ' (in the undeclared basis)' : ''}`;
     const verdict = labelText(measuredAssessment(p) || p.metrics?.statistical_test?.verdict);
-    span.title = `Descriptive: ${labelDefinition(p.agreement) || 'the JS/Hellinger distance label'} `
-        + `The verdict for this pair is "${verdict}", from the shot-noise test. Code: ${p.agreement}`;
+    span.title = `${labelDefinition(p.agreement) || 'Descriptive JS/Hellinger distance label.'} `
+        + `Verdict: "${verdict}". Code: ${p.agreement}`;
     return span;
 }
 
@@ -756,7 +756,7 @@ export function _agreementPairTable(pairs) {
         const metric = document.createElement('span');
         metric.className = 'text-xs text-gray-500 font-mono text-right';
         metric.title = p.mode === 'statevector'
-            ? 'Fidelity under the transform the label names; for a pair that disagrees, in the basis the declared qubit orderings imply'
+            ? 'Fidelity under the labelled transform (declared basis for disagreeing pairs)'
             : 'JS divergence under the transform the label names';
         metric.textContent = pairMetricText(p);
 
@@ -770,7 +770,7 @@ export function _agreementPairTable(pairs) {
             if (p.marginal_assessment === 'marginal_distinguishable') {
                 const clbits = (p.metrics?.marginal_test?.differing_clbits || []).join(', ');
                 verdict.appendChild(_chip(STATUS_STYLES.anomaly.badge, labelText('marginal_distinguishable'),
-                    `Single-bit marginal test (Holm-corrected): clbit ${clbits} differs, so the distributions differ`));
+                    `Single-bit marginal (Holm-corrected): clbit ${clbits} differs`));
             }
             sum.appendChild(verdict);
             sum.appendChild(metric);
@@ -779,7 +779,7 @@ export function _agreementPairTable(pairs) {
             sum.appendChild(_chip(STATUS_STYLES[_pairStyle(p)].badge,
                 unaligned ? `${labelText(p.agreement)} · in the undeclared basis` : labelText(p.agreement),
                 unaligned
-                    ? `Matches only in the basis the declared qubit orderings do not imply; counted as a disagreement. Code: ${p.agreement}`
+                    ? `Matches only in the undeclared basis; a disagreement. Code: ${p.agreement}`
                     : (p.agreement === 'agree_after_normalization'
                         ? `${_codeTip(p.agreement)} Label after normalisation: ${p.metrics?.normalized_agreement ?? '—'}`
                         : _codeTip(p.agreement))));
@@ -817,7 +817,7 @@ export function renderAgreementPanel(report, panel, config = {}) {
     if (!Array.isArray(pairs) || pairs.length === 0) {
         const empty = document.createElement('p');
         empty.className = 'text-sm text-gray-500 italic';
-        empty.textContent = 'No explained-cause agreement evidence in this report (older schema, single backend, or no comparable pairs).';
+        empty.textContent = 'No agreement evidence in this report.';
         panel.appendChild(empty);
         return;
     }

@@ -166,8 +166,8 @@ def test_compile_only_headline_names_the_levels_that_did_not_compile():
     panes = [pane("staq", 1, "x"), pane("qmap", 1, status="error"), pane("bqskit", 2, status="timeout"),
              pane("synthetiq", 0, status="error", refusal="input")]
     lines = call_js(["summary_renderer.js"], [("compileHeadline", [panes])])[0]
-    assert lines[0] == "Compile only: no simulator was run. 1 of 4 compiles returned a circuit."
-    assert "Refused (the compiler cannot compile this input correctly): synthetiq level 0." in lines
+    assert lines[0] == "Compile only. 1 of 4 compiles returned a circuit."
+    assert "Refused (input not supported correctly): synthetiq level 0." in lines
     assert "Timed out: bqskit level 2." in lines and "Failed: qmap level 1." in lines
 
 
@@ -184,10 +184,10 @@ def test_compile_reasons_are_given_once_per_reason_and_listed_first():
     assert reasons[0]["names"] == ["bqskit level 1", "pyzx level 1", "qmap level 0"]
     assert reasons[0]["text"].startswith("not run: compile-only services take the unitary part")
     assert len(reasons) == 2 and reasons[1]["names"] == ["staq level 2"]
-    assert lines[-1].endswith("the reasons are listed first under Compile-only services below.")
+    assert lines[-1].endswith("Reasons for the others: Compile-only services, below.")
     ok = [{**pane("staq", 1), "text": "x", "status": "ok", "gateCount": 1}]
     (ok_lines,) = call_js(["summary_renderer.js"], [("compileHeadline", [ok])])
-    assert ok_lines[-1] == "The outputs and their passes are in the Circuits tab."
+    assert ok_lines[-1] == "Outputs and passes: Circuits tab."
 
 
 @requires_node

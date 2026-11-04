@@ -51,7 +51,7 @@ function _linkRow(link, onRevoked) {
         const revoke = _el('button', 'text-xs text-red-700 hover:text-red-900 underline', 'Revoke');
         revoke.type = 'button';
         revoke.onclick = async () => {
-            if (!window.confirm('Revoke this link? Anyone who has it will no longer be able to open it.')) return;
+            if (!window.confirm('Revoke this link? It stops working for everyone.')) return;
             revoke.disabled = true;
             try {
                 await _request(`/history/share-links/${encodeURIComponent(link.id)}`, { method: 'DELETE' });
@@ -89,7 +89,7 @@ function _createdNotice(token, expiresAt) {
     row.appendChild(makeCopyIconButton(() => field.value, 'Copy link'));
     box.appendChild(row);
     box.appendChild(_el('p', 'text-xs text-amber-900',
-        `Anyone with this link can read the circuit texts of this run until ${_when(expiresAt)}. The link is shown only now; revoke it below to stop it working.`));
+        `Valid until ${_when(expiresAt)} for anyone who has it. Shown only once; revoke below.`));
     return box;
 }
 
@@ -101,19 +101,19 @@ async function _savedRunId(notice) {
     const { authToken, currentHistoryRunId, currentJobId } = getState();
     if (!authToken) {
         notice.replaceChildren(_el('p', 'text-xs text-gray-700',
-            `Sign in first (Login / Register at the top of the page). A run started without signing in can still be saved while the server keeps it, at least ${durationText(getState().jobTtlSec)} after it finished.`));
+            `Sign in to save and share. Runs started without signing in can be saved for ${durationText(getState().jobTtlSec)} after they finish.`));
         return null;
     }
     if (currentHistoryRunId) return currentHistoryRunId;
     if (!currentJobId || !_saveRun) {
         notice.replaceChildren(_el('p', 'text-xs text-gray-700',
-            'This report did not come from a job run in this session, so it cannot be saved from here. Open a saved run from History to share it.'));
+            'Only runs from this session can be saved here. To share a saved run, open it from History.'));
         return null;
     }
     const runId = await _saveRun(currentJobId);
     if (!runId) {
         notice.replaceChildren(_el('p', 'text-xs text-red-700',
-            `The run could not be saved (see the notice above the results). The server keeps a job for at least ${durationText(getState().jobTtlSec)} after it finishes.`));
+            `The run could not be saved; see the notice above the results. Jobs are kept for ${durationText(getState().jobTtlSec)} after they finish.`));
         return null;
     }
     if (getState().currentJobId === currentJobId) dispatch('SET_HISTORY_RUN_ID', runId);
@@ -131,7 +131,7 @@ export function renderShareControls(container, report = null) {
     const section = _el('section', 'space-y-2 p-3 border border-gray-200 rounded-md bg-gray-50');
     section.appendChild(_el('h3', 'text-sm font-semibold text-gray-900', 'Save and share'));
     section.appendChild(_el('p', 'text-xs text-gray-600',
-        'A read-only link opens a page with the circuit texts of this saved run: the submitted, dispatched and executed circuits, the compiler input and compiled circuits when there are any, with their transforms and SDK versions. It shows no results, timings or errors. Anyone who has the link can open it until it expires, so share it like a password and revoke it when it is no longer needed.'));
+        'A read-only link to this run\'s circuit texts, transforms and SDK versions; no results, timings or errors. Anyone with the link can open it until it expires.'));
     const controls = _el('div', 'flex flex-wrap items-center gap-2');
     const save = _el('button', 'text-xs font-medium bg-white hover:bg-gray-100 text-gray-800 border border-gray-300 rounded-md px-3 py-1', 'Save to history');
     save.type = 'button';

@@ -140,7 +140,7 @@ export function confirmUnsavedRun() {
     if (at === null || at > Date.now() + 5000) return true;
     _expireSession();
     const when = new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    if (confirm(`Your sign-in expired at ${when}, so this run would not be saved to your History.\n\nOK runs it without saving; Cancel lets you sign in first.`)) return true;
+    if (confirm(`Sign-in expired at ${when}; this run would not be saved to History.\n\nOK: run without saving. Cancel: sign in first.`)) return true;
     openAuthModal();
     return false;
 }
@@ -234,7 +234,7 @@ export async function handleRegisterSubmit() {
     const problem = emailProblem
         || (charCount(password) < passwordMinChars ? `The password needs at least ${passwordMinChars} characters.`
         : new TextEncoder().encode(password).length > passwordMaxBytes
-            ? `The password can be at most ${passwordMaxBytes} bytes long (UTF-8; most accented letters and symbols take two or more bytes).`
+            ? `The password can be at most ${passwordMaxBytes} bytes (accented letters and symbols take 2 or more).`
             : null);
     if (problem) {
         _showAuthError('register', problem, [emailProblem ? 'register-email' : 'register-password']);
@@ -428,7 +428,7 @@ export async function submitDeleteAccount() {
         closeDeleteAccountModal();
         forgetAccountJobs(signedInAccount());
         handleLogout();
-        alert("Your account and its saved runs were deleted, and you are signed out.");
+        alert("Account and saved runs deleted; signed out.");
     } catch (e) {
         console.error("Account deletion failed:", e);
         _showDeleteError("The account was not deleted. " + e.message);

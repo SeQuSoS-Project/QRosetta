@@ -114,44 +114,40 @@ function _timingNote(rawResults, reportCaveats) {
     const ok = (rawResults || []).filter(r => r && !r.error);
     const samples = new Set(ok.map(_timingCount));
     let note = (samples.size === 1 && samples.has(1))
-        ? 'Each value is one timed run (n=1) after one discarded warm-up run.'
-        : `Timed runs per backend: ${[...samples].sort((a, b) => a - b).join(', ')}, after one discarded warm-up run. `
-            + 'With more than one, a value is the median of the timed runs ± their sample standard deviation, with n; '
-            + 'Total is median compilation + median simulation (execution_time_sec) ± the standard deviation of the per-run totals. '
-            + 'Memory fields and outputs come from the first timed run; the per-run samples are in the raw JSON.';
+        ? 'One timed run per backend (n = 1) after one discarded warm-up.'
+        : `Timed runs per backend: ${[...samples].sort((a, b) => a - b).join(', ')}, after one discarded warm-up. `
+            + 'Values are medians ± sample standard deviation; Total is median compilation + median simulation. '
+            + 'Memory and outputs come from the first timed run.';
     const quota = cpuQuotaPhrase(ok);
     const limit = quota ? `${quota} (cgroup quota) and 1 thread` : '1 thread (quota not reported)';
     note += ok.some(isGpuRun)
-        ? ` CPU runners: ${limit} each. GPU runners run kernels on the GPU with `
-            + 'host-side work under the same quota; times across devices compare different hardware.'
-        : ` Each runner is limited to ${limit}.`;
+        ? ` CPU runners: ${limit} each; GPU runners use the same quota for host-side work. Times across devices compare different hardware.`
+        : ` Each runner: ${limit}.`;
     const throttled = ok.filter(r => throttleText(r)).length;
-    if (!(samples.size === 1 && samples.has(1))) note += ' A ≈ next to a rank means its per-run totals overlap those of the next rank.';
+    if (!(samples.size === 1 && samples.has(1))) note += ' ≈: run times overlap the next rank.';
     const classes = (reportCaveats || []).find(c => c?.code === 'cross_backend_core_speeds')?.detail?.classes_mhz;
     if (Array.isArray(classes)) {
-        note += ` The simulation windows ran on CPUs of different speed classes (maximum ${coreClassesText(classes)}), `
-            + 'so part of a difference between backends can be the core they ran on (tag "mixed cores" when one backend\'s own runs mixed them).';
+        note += ` Simulation windows ran on CPUs of different speed classes (maximum ${coreClassesText(classes)}); part of a difference can come from the core.`;
     }
     const heldBack = Math.max(0, ...ok.filter(r => r.exclusive !== true).map(r => (typeof r.gate_wait_sec === 'number' ? r.gate_wait_sec : 0)));
-    if (heldBack >= 1) note += ` This job waited ${fmtNum(heldBack, 1)} s while an exclusive run held the server (gate_wait_sec); the wait is not in the timings.`;
+    if (heldBack >= 1) note += ` Waited ${fmtNum(heldBack, 1)} s for an exclusive run (not in the timings).`;
     if (ok.length && ok.every(r => r.exclusive === true)) {
-        note += ' Exclusive run: the backends ran one at a time with no other run in flight on this server.';
+        note += ' Exclusive run: one backend at a time, no other run on the server.';
     } else {
         const others = ok.filter(r => typeof r.server_overlapping_runs === 'number' && r.server_overlapping_runs > 0).length;
-        if (others) note += ` ${others} run(s) overlapped with runs of other jobs on this server (server_overlapping_runs); for timings meant for comparison, use an exclusive run.`;
+        if (others) note += ` ${others} run(s) overlapped other jobs; use an exclusive run for comparable timings.`;
     }
     const unstableRuns = ok.filter(r => unstableText(r)).length;
-    if (unstableRuns) note += ` ${unstableRuns} run(s) had timed runs spreading by more than ${UNSTABLE_LABEL} (tag "unstable").`;
+    if (unstableRuns) note += ` ${unstableRuns} run(s) spread by more than ${UNSTABLE_LABEL} ("unstable").`;
     const overlapping = Math.max(0, ...ok.map(r => (typeof r.overlapping_runs === 'number' ? r.overlapping_runs : 0)));
     if (overlapping > 0) {
-        note += ` Runs overlapped in time (up to ${overlapping} other run(s) of this job while one was running) and competed for the host's cores and memory bandwidth, `
-            + 'which can slow some backends more than others; for timings meant for comparison, use the Sequential ordering or an exclusive run.';
+        note += ` Runs of this job overlapped (up to ${overlapping} at once) and shared cores and memory bandwidth; use Sequential ordering or an exclusive run for comparable timings.`;
     }
     const outside = ok.filter(r => outsideProcessText(r)).length;
-    if (outside) note += ` ${outside} run(s) did part of their simulation work outside the measured process (tag "outside process").`;
-    if (throttled) note += ` ${throttled} run(s) were held by the CPU quota during the simulation window (tag "throttled"); that wait is in their timings.`;
+    if (outside) note += ` ${outside} run(s) worked outside the measured process ("outside process").`;
+    if (throttled) note += ` ${throttled} run(s) throttled by the CPU quota; included in their timings ("throttled").`;
     const waited = (rawResults || []).filter(r => typeof r?.queue_wait_sec === 'number' && r.queue_wait_sec >= QUEUE_WAIT_SHOWN_SEC).length;
-    if (waited) note += ` ${waited} run(s) waited ${QUEUE_WAIT_SHOWN_SEC} s or more for their runner to finish another run (tag "queued"); the wait is not in these timings.`;
+    if (waited) note += ` ${waited} run(s) queued ${QUEUE_WAIT_SHOWN_SEC} s or more behind another run; not in the timings ("queued").`;
     return note;
 }
 
@@ -161,8 +157,8 @@ function _memoryNote(rawResults, unranked) {
     const unrankedIds = new Set(unranked.map(r => r.simulator));
     const names = gpu.map(r => _displayRunnerName(r.simulator)).join(', ');
     return gpu.every(r => unrankedIds.has(r.simulator))
-        ? ` Memory fields are host RSS. GPU device memory is not measured, so the GPU run of ${names} is not ranked by memory; its host-side values are listed after the ranked runs.`
-        : ` Memory fields are host RSS. GPU device memory is not measured, so the rank and memory values of the GPU run of ${names} describe host memory only.`;
+        ? ` Host RSS only; GPU device memory is not measured, so ${names} is listed unranked.`
+        : ` Host RSS only; for ${names} the values exclude GPU device memory.`;
 }
 
 const TH_CLASS = 'px-2 py-2 text-left text-[11px] leading-tight font-medium text-gray-500 align-bottom';
@@ -303,18 +299,17 @@ export function renderRankingTable(report, key, unit, panel, config = {}, rawRes
     const otherUnranked = isMemory ? unranked.filter(r => r.reason !== 'gpu_memory_not_measured') : unranked;
     const caveats = isMemory ? [] : _timingCaveats(reportCaveats);
     hFrag.querySelector('.tpl-summary-text').textContent = `${report.summary || ''}`
-        + (caveats.length ? ` Before comparing times: ${caveats.join('; ')}.` : '')
-        + (allCpu ? ' Every run was on a CPU.' : (rawResults || []).some(isGpuRun) ? ' Runs tagged GPU simulated on a GPU; the others on a CPU.' : '')
-        + (!isMemory && uniformRuns > 1 ? ` Each backend had ${uniformRuns} timed runs; ± is their standard deviation.` : '')
-        + (otherUnranked.length ? ` ${otherUnranked.length} ${otherUnranked.length === 1 ? 'run is' : 'runs are'} not ranked; `
-            + `${otherUnranked.length === 1 ? 'it is' : 'they are'} listed after the ranked runs.` : '');
+        + (caveats.length ? ` Caveats: ${caveats.join('; ')}.` : '')
+        + (allCpu ? '' : (rawResults || []).some(isGpuRun) ? ' Runs tagged GPU ran on a GPU.' : '')
+        + (!isMemory && uniformRuns > 1 ? ` ${uniformRuns} timed runs per backend; ± is the standard deviation.` : '')
+        + (otherUnranked.length ? ` ${otherUnranked.length} unranked ${otherUnranked.length === 1 ? 'run' : 'runs'} listed last.` : '');
     panel.appendChild(hFrag);
     if (note.trim()) {
         const how = document.createElement('details');
         how.className = 'mb-4 text-sm text-gray-700';
         const sum = document.createElement('summary');
         sum.className = 'cursor-pointer select-none text-xs font-semibold text-gray-600';
-        sum.textContent = isMemory ? 'About these memory values' : 'How these times are measured, and what affected them in this run';
+        sum.textContent = isMemory ? 'About these memory values' : 'Measurement notes';
         how.appendChild(sum);
         const p = document.createElement('p');
         p.className = 'mt-1 text-xs leading-snug';
@@ -361,9 +356,8 @@ export function renderRankingTable(report, key, unit, panel, config = {}, rawRes
         rankTd.className = 'px-2 py-2 text-sm text-gray-500 whitespace-nowrap align-top';
         rankTd.textContent = String(r.rank ?? i + 1);
         if (r.overlaps_next === true && ranked[i + 1]) {
-            rankTd.appendChild(_tag('≈', `${TAG_AMBER} !ml-0.5`, `Overlaps rank ${i + 2} (${_displayRunnerName(ranked[i + 1].simulator)}): `
-                + 'this backend\'s slowest timed run took at least as long as that backend\'s fastest, so these runs do not separate the two. '
-                + 'It reflects the spread within this job only: medians also move between jobs (about 3% on this host), so ranks without ≈ can still swap.'));
+            rankTd.appendChild(_tag('≈', `${TAG_AMBER} !ml-0.5`, `Overlaps rank ${i + 2} (${_displayRunnerName(ranked[i + 1].simulator)}): the run times do not separate the two. `
+                + 'Medians also vary between jobs (about 3% on this host).'));
         }
         tr.appendChild(rankTd);
         const simTd = document.createElement('td');

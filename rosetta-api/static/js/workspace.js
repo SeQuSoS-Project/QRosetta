@@ -137,7 +137,7 @@ export function updateWorkspace() {
 function _showRunBlocked(button, problems) {
     const box = document.getElementById('run-blocked-msg');
     if (box) {
-        box.textContent = problems.length ? `Run is unavailable until the Backends chip's multi-run counts are fixed: ${problems.join(' ')}` : '';
+        box.textContent = problems.length ? `Fix the multi-run counts under Backends: ${problems.join(' ')}` : '';
         box.classList.toggle('hidden', !problems.length);
     }
     if (getState().isProcessing) return;
@@ -186,9 +186,8 @@ export const SLOW_MEASURED_QUBITS = 22;
 
 /** The pre-run warning for a measured circuit of `qubits` qubits above SLOW_MEASURED_QUBITS. */
 export function slowMeasuredWarning(qubits, timeout, timeoutMax) {
-    return `Measured runs of more than ${SLOW_MEASURED_QUBITS} qubits take minutes on several backends: at 24 qubits about half `
-        + `of them did not finish within the ${timeoutMax} s maximum timeout, and some used about 1 GiB of memory. `
-        + `Expect timeouts for this ${qubits}-qubit circuit at the current timeout of ${timeout ?? '—'} s.`;
+    return `Measured runs above ${SLOW_MEASURED_QUBITS} qubits take minutes on several backends; at 24 qubits about half `
+        + `exceeded the ${timeoutMax} s maximum. Expect timeouts for this ${qubits}-qubit circuit at ${timeout ?? '—'} s.`;
 }
 
 const _timeoutSeconds = () => {
@@ -294,8 +293,8 @@ function _renderStopped(entry) {
     const box = _el('div', 'p-4 bg-gray-50 border border-gray-300 rounded text-sm text-gray-800 space-y-2');
     box.setAttribute('role', 'status');
     box.appendChild(_el('h3', 'text-base font-semibold text-gray-900', 'Stopped waiting'));
-    box.appendChild(_el('p', '', `${job.title}: the job keeps running on the server, which keeps its results for ${durationText(getState().jobTtlSec)} after it finishes. `
-        + 'Show results waits for it again; reopening this page also offers it.'));
+    box.appendChild(_el('p', '', `${job.title} continues on the server; its results are kept for ${durationText(getState().jobTtlSec)} after it finishes. `
+        + 'Show results resumes waiting.'));
     const id = _el('p', 'text-xs text-gray-600', 'Job ID: ');
     id.appendChild(_el('code', 'font-mono select-all', job.job_id));
     box.appendChild(id);
@@ -383,7 +382,7 @@ function _announceShown(entry) {
     const run = document.getElementById('btn-run');
     if (focusIsLost(run) || document.getElementById('loader')?.contains(document.activeElement)) focusHeading(_shownHeading());
     const { job } = entry;
-    if (entry.stopped) { announce(`Stopped waiting for ${job.title}. The job keeps running on the server.`); return; }
+    if (entry.stopped) { announce(`Stopped waiting for ${job.title}; the job continues on the server.`); return; }
     if (!entry.results) { announce(`The run failed: ${job.title}. ${entry.error || ''}`); return; }
     const err = entry.results.error || entry.results.job_error;
     if (err) { announce(`The run failed: ${job.title}. ${typeof err === 'string' ? err : ''}`); return; }
@@ -623,10 +622,10 @@ function _recentJobRow(job) {
     const name = job.run_name || job.title;
     const short = `job ${job.job_id.slice(0, 8)}`;
     const text = job.state === 'finished'
-        ? `${name} (${short}) finished at ${_clock(job.finished_at)}; the server keeps its results until ${_clock(job.finished_at + finishedKeepMs())}.`
+        ? `${name} (${short}) finished at ${_clock(job.finished_at)}; results kept until ${_clock(job.finished_at + finishedKeepMs())}.`
         : job.state === 'stopped'
-            ? `${name} (${short}), submitted at ${_clock(job.submitted_at)}: you stopped waiting for it.`
-            : `${name} (${short}), submitted at ${_clock(job.submitted_at)}: its results were not shown yet.`;
+            ? `${name} (${short}), submitted at ${_clock(job.submitted_at)}: waiting stopped.`
+            : `${name} (${short}), submitted at ${_clock(job.submitted_at)}: results not yet shown.`;
     const notStarted = job.state !== 'finished' && Array.isArray(job.remaining) && job.remaining.length
         ? ` Not started: ${job.remaining.join('; ')}.` : '';
     li.appendChild(_el('span', 'flex-1 min-w-0', `${text}${notStarted}`));

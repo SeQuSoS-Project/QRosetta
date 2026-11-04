@@ -58,7 +58,7 @@ function _applyRetention() {
     const seconds = getState().jobTtlSec;
     setFinishedKeepMs(seconds * 1000);
     const stop = document.getElementById('btn-stop-waiting');
-    if (stop) stop.title = `The job keeps running on the server. Its results can be shown later from this page or after reopening it, for ${durationText(seconds)} after it finishes.`;
+    if (stop) stop.title = `The job continues on the server; its results can be reopened from this page for ${durationText(seconds)} after it finishes.`;
 }
 
 /** Execution-target menu, timeout and shots bounds, run-setting defaults (request_defaults)
@@ -92,7 +92,7 @@ function _applyServerConfig(config) {
     const pwHint = document.getElementById('register-password-hint');
     if (pwHint) {
         const { passwordMinChars: min, passwordMaxBytes: max } = getState();
-        pwHint.textContent = `At least ${min} characters and at most ${max} bytes: up to ${max} plain ASCII characters, fewer with accented letters or symbols, which take 2 to 4 bytes each.`;
+        pwHint.textContent = `At least ${min} characters, at most ${max} bytes (accented letters and symbols take 2–4 bytes). Common passwords are refused.`;
     }
     const rInput = /** @type {HTMLInputElement|null} */ (document.getElementById('timing-repeats-input'));
     if (rInput) {
@@ -110,10 +110,10 @@ function _applyServerConfig(config) {
     _setDefaultChecked(/** @type {HTMLInputElement|null} */ (document.getElementById('bypass-limits-checkbox')), getState().defaultBypassLimits);
     const tHelp = document.getElementById('timeout-help');
     if (tHelp) {
-        tHelp.textContent = `Covers process start, the warm-up run and every timed run. Allowed: ${tMin}–${tMax} s.`
+        tHelp.textContent = `Covers start-up, warm-up and every timed run; ${tMin}–${tMax} s.`
             + (typeof config?.queue_max_wait_sec !== 'number' ? ''
-                : mode === 'local' ? ` Waiting for a busy backend is not counted (at most ${config.queue_max_wait_sec} s).`
-                : mode === 'kubernetes' ? ` Waiting for a free slot on the cluster is not counted (at most ${config.queue_max_wait_sec} s).`
+                : mode === 'local' ? ` Queueing is not counted (at most ${config.queue_max_wait_sec} s).`
+                : mode === 'kubernetes' ? ` Waiting for a cluster slot is not counted (at most ${config.queue_max_wait_sec} s).`
                 : '');
     }
 
@@ -319,7 +319,7 @@ window.onload = async () => {
 
     } catch (error) {
         console.error("Failed to load algorithms:", error);
-        welcomeMessage.innerHTML = `<div class="p-4 bg-red-100 text-red-700 rounded"><strong>Connection Error:</strong> Could not load algorithms from ${BASE_URL}. Is the server running?</div>`;
+        welcomeMessage.innerHTML = `<div class="p-4 bg-red-100 text-red-700 rounded"><strong>Connection error:</strong> the algorithm list could not be loaded from ${BASE_URL}.</div>`;
         welcomeMessage.classList.remove('text-gray-500');
     }
 
@@ -371,7 +371,7 @@ export function updateQubitConstraints(e) {
         input.max = String(sel.sizes[sel.sizes.length - 1] ?? 1);
         const current = parseInt(input.value, 10);
         input.value = String(nearestSize(sel.sizes, Number.isFinite(current) ? current : sel.sizes[0]));
-        if (desc) desc.textContent = `MQT Bench algorithm. Sizes in the suite: ${sel.sizes[0]}–${sel.sizes[sel.sizes.length - 1]} qubits; the Qubits field picks one.`;
+        if (desc) desc.textContent = `MQT Bench algorithm, ${sel.sizes[0]}–${sel.sizes[sel.sizes.length - 1]} qubits.`;
         return;
     }
 
@@ -433,7 +433,7 @@ document.addEventListener('open-circuit', e => { _openCircuit(/** @type {CustomE
 /** Load the selected circuit into the editor; `initial` marks the load at page start, which is not announced. */
 export async function generateCircuit(initial = false) {
     if (getState().isProcessing) return;
-    if (editorHasEdits() && !confirm('Load replaces the circuit in the editor, which you have edited. Continue?')) return;
+    if (editorHasEdits() && !confirm('Replace the edited circuit in the editor?')) return;
     const algoId = /** @type {HTMLSelectElement} */ (document.getElementById('algo-select')).value;
     const sel = selectionFor(algoId);
     if (sel.kind !== 'algorithm') {
@@ -454,7 +454,7 @@ export async function generateCircuit(initial = false) {
     const qubits = parseInt(document.getElementById('algo-qubits').value);
 
     if (!algoId || isNaN(qubits)) {
-        alert("Please select an algorithm and specify a valid number of qubits.");
+        alert("Select an algorithm and a valid number of qubits.");
         return;
     }
     const sizeProblem = _loadQubitProblem(qubits);

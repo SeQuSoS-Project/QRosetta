@@ -82,8 +82,8 @@ async function _fetchFigureBlob(id, fmt, scale, params = {}, signal = undefined)
         signal,
     });
     if (resp.status === 413) {
-        throw new Error(`this report is larger than the server's upload limit of ${formatBytes(getState().maxRequestBytes)}, so the server cannot draw it from the copy in this browser. `
-            + `A run from this session is drawn from the server copy for ${durationText(getState().jobTtlSec)} after it completes; an RO-Crate exported from a saved run includes the figures.`);
+        throw new Error(`the report exceeds the upload limit of ${formatBytes(getState().maxRequestBytes)}. `
+            + `Runs from this session are drawn from the server copy for ${durationText(getState().jobTtlSec)}; an RO-Crate of a saved run includes the figures.`);
     }
     if (!resp.ok) throw new Error(await formatApiError(resp));
     return await resp.blob();
@@ -288,7 +288,7 @@ function _renderBuilder() {
     host.append(review);
     if (S.editingId !== null && getState().exportItems.some(x => x.id === S.editingId)) {
         const bar = el('div', 'qr-export-editing');
-        bar.append(el('span', 'flex-1', `Editing “${ui.label}” from the export. Press Update in export to keep the changes.`));
+        bar.append(el('span', 'flex-1', `Editing “${ui.label}”. Update in export saves the changes.`));
         const stop = button('qr-btn', 'Stop editing');
         stop.addEventListener('click', () => { S.editingId = null; _renderBuilder(); _renderAside(); });
         bar.append(stop);
@@ -373,7 +373,7 @@ function _renderPreview(r) {
         const det = el('details', 'self-stretch');
         det.append(el('summary', 'qr-export-heading cursor-pointer', 'LaTeX source'));
         det.append(el('pre', 'qr-export-code', tbl.getText('latex')));
-        det.append(el('p', 'text-xs text-gray-500 mt-1', `To paste it into your own document, add \\usepackage{${ART_LATEX_PACKAGES}} to its preamble.`));
+        det.append(el('p', 'text-xs text-gray-500 mt-1', `Requires \\usepackage{${ART_LATEX_PACKAGES}}.`));
         preview.append(det);
     } else if (S.tab === 'data' && tbl) {
         preview.append(el('div', 'qr-export-heading self-start', `CSV: the numbers behind this ${fig ? 'figure' : 'table'}`));
@@ -401,7 +401,7 @@ function _hint(r) {
     const bars = sel.rows.length * Math.max(1, sel.cp.sims.length);
     if (bars <= DENSE_BARS) return null;
     const box = el('div', 'qr-export-hint flex flex-wrap items-center gap-2');
-    box.append(el('span', '', `${bars} bars in one panel. Differences between backends read more easily as`));
+    box.append(el('span', '', `${bars} bars in one panel. Clearer as`));
     const fix = button('qr-btn', 'Difference from reference');
     fix.addEventListener('click', () => _set('layout', 'diff'));
     box.append(fix);
@@ -432,7 +432,7 @@ function _paintFigure(paper, figId, params) {
         paper.innerHTML = '';
         const img = el('img', 'block w-full h-auto');
         img.src = url;
-        img.alt = `${VIEW_UI_BY_ID[S.viewId].label}${VIEW_BY_ID[S.viewId]?.table ? '. The plotted values are in the Table tab of this view.' : ''}`;
+        img.alt = `${VIEW_UI_BY_ID[S.viewId].label}${VIEW_BY_ID[S.viewId]?.table ? '. Values in the Table tab.' : ''}`;
         paper.append(img);
         S.lastFigure = { view: S.viewId, url };
     };
@@ -482,7 +482,7 @@ function _renderJson(preview) {
         cb.type = 'checkbox'; cb.id = 'json-show-sv'; cb.checked = S.jsonWithSv;
         cb.dataset.focus = 'json-show-sv';
         cb.addEventListener('change', () => { S.jsonWithSv = cb.checked; _keepFocus(_renderBuilder); });
-        lab.append(cb, document.createTextNode('Show statevector amplitudes (they can be hundreds of thousands of lines)'));
+        lab.append(cb, document.createTextNode('Show statevector amplitudes (can be very long)'));
         preview.append(lab);
     }
     preview.append(el('pre', 'qr-export-code', JSON.stringify(_jsonShown(), null, 2)));
@@ -592,7 +592,7 @@ function _outcomesControl(p) {
             const words = t.value.split(/[\s,]+/).filter(Boolean);
             const nums = words.map(Number);
             if (!words.length || nums.some(v => !Number.isInteger(v))) {
-                S.bitsText[S.viewId] = { text: t.value, error: 'Give classical bit numbers separated by commas, e.g. 0, 5, 11.' };
+                S.bitsText[S.viewId] = { text: t.value, error: 'Classical bit numbers, separated by commas (e.g. 0, 5, 11).' };
                 _keepFocus(_renderBuilder);
                 return;
             }
@@ -613,7 +613,7 @@ function _outcomesControl(p) {
 }
 
 function _outcomesHelp(p) {
-    if (p.outcomes === 'bits') return 'Sums out the other bits: k chosen bits give 2^k outcomes, every one shown.';
+    if (p.outcomes === 'bits') return 'Other bits summed out; k bits give 2^k outcomes.';
     const sizes = (S.results.raw_results || []).map(x => x.counts)
         .filter(c => c && typeof c === 'object').map(c => Object.keys(c).length);
     if (!sizes.length) return null;
@@ -816,7 +816,7 @@ function _renderActions() {
     const cap = getState().maxExportItems;
     if (!editing && !existing && items.length >= cap) {
         add.disabled = true;
-        add.title = `One export holds at most ${cap} items. Remove an item under Added to add this one.`;
+        add.title = `At most ${cap} items per export.`;
         host.append(add, el('span', 'text-xs text-gray-500', `${cap} of ${cap} items added`));
         return;
     }

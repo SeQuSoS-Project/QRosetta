@@ -237,10 +237,10 @@ function _powerLevelText(pairs) {
         const m = lvl.m !== null ? `, m = ${fmtInt(lvl.m)} tested pairs` : '';
         const cm = lvl.cm !== null ? `, c_m = ${fmtNum(lvl.cm)}` : '';
         const level = lvl.cm !== null ? 'α/(m·c_m)' : 'α/m';
-        return `Power is computed for a single test at ${level} = ${fmtNum(lvl.alphaUsed)} (α = ${lvl.alpha ?? '—'}${m}${cm}).`;
+        return `Power at ${level} = ${fmtNum(lvl.alphaUsed)} (α = ${lvl.alpha ?? '—'}${m}${cm}).`;
     }
     const alpha = pairs.map(pairPowerLevel).find(l => l.alpha !== null)?.alpha;
-    return `This report records no adjusted significance level, so power is shown at the unadjusted α = ${alpha ?? '—'}.`;
+    return `Power at the unadjusted α = ${alpha ?? '—'} (no adjusted level recorded).`;
 }
 
 function _measuredItem(p, { power = true } = {}) {
@@ -249,7 +249,7 @@ function _measuredItem(p, { power = true } = {}) {
 
 function _note(block, text) {
     const note = document.createElement('p');
-    note.className = 'text-sm mt-2';
+    note.className = 'text-xs mt-2';
     note.textContent = text;
     block.insertBefore(note, block.querySelector('details, ul'));
 }
@@ -263,11 +263,11 @@ function _knownIssuesNote(block, pairs, named) {
     const listed = KNOWN_ISSUE_BACKENDS.filter(id => ids.has(id));
     if (!listed.length) return;
     const note = document.createElement('p');
-    note.className = 'text-sm mt-2';
+    note.className = 'text-xs mt-2';
     const names = listed.map(_displayRunnerName);
     const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
-    note.append(document.createTextNode(`The manual's `), knownIssuesLink(),
-        document.createTextNode(` section lists documented upstream behaviour of ${list}, each with a circuit that reproduces it. Compare your circuit with those before checking it against a reference.`));
+    note.append(document.createTextNode(`Documented upstream behaviour of ${list}, with reproducing circuits: `), knownIssuesLink(),
+        document.createTextNode('.'));
     block.insertBefore(note, block.querySelector('details, ul'));
 }
 
@@ -333,9 +333,8 @@ function _renderStatevectorBlocks(panel, pairs, tol, named) {
 
     if (disagree.length) {
         const block = _block(`Disagree (${disagree.length})`, 'anomaly', _byBackend(disagree).map(p => _pairItem(p, _disagreementText(p))), 'residual_disagreement');
-        _note(block, 'A pair disagrees when no registered transform explains the difference, when it agrees only after an '
-            + 'undeclared qubit permutation, or when it matches only in the basis the declared qubit orderings do not imply. '
-            + 'The report does not decide which backend is wrong; check against an independent reference.');
+        _note(block, 'No registered transform explains the difference, or the states match only after an undeclared qubit '
+            + 'permutation or in the undeclared basis. Which backend is wrong is not determined.');
         _knownIssuesNote(block, disagree, named);
         panel.appendChild(block);
     }
@@ -379,10 +378,8 @@ function _inconclusiveBlocks(panel, pairs) {
         const unseen = Math.max(...uncharacterised.map(p => p.metrics.statistical_test.unseen_mass_good_turing ?? 0));
         const block = _block(`Inconclusive, the sample does not yet show the outcome distribution (${uncharacterised.length})`, 'inconclusive',
             uncharacterised.map(p => _measuredItem(p)), 'inconclusive_low_shots');
-        _note(block, `Outcomes seen only once carry up to ${fmtProb(unseen)} of the shots (Good–Turing estimate of the probability of `
-            + 'outcomes not yet seen), so the outcome distribution is spread over more outcomes than the sample covers. No shot '
-            + 'count can be recommended from it, and the number needed may exceed the platform maximum. Measuring fewer qubits '
-            + '(only the ones of interest) gives the test a distribution it can resolve.');
+        _note(block, `Outcomes seen once hold up to ${fmtProb(unseen)} of the shots (Good–Turing unseen mass); the sample does not cover `
+            + 'the distribution, so no shot count can be recommended. Measuring fewer qubits reduces the outcome space.');
         panel.appendChild(block);
     }
     if (lowPower.length) {
@@ -392,25 +389,21 @@ function _inconclusiveBlocks(panel, pairs) {
         const advice = rec ? `: more shots would help: ${pooledPairs ? 'at least ' : ''}~${fmtInt(rec)} per backend` : '';
         const block = _block(`Inconclusive, test power below ${target} (${lowPower.length})${advice}`, 'inconclusive',
             lowPower.map(p => _measuredItem(p)), 'low_power');
-        _note(block, 'Neither test finds a significant difference, but the power to detect the target gap is below '
-            + `${target}, so these pairs are neither consistent nor in disagreement. ${_powerLevelText(lowPower)}`
-            + (rec ? ` The power model reaches ${target} at about ${fmtInt(rec)} shots per backend.` : '')
-            + (pooledPairs ? ' Rare outcomes were pooled for some of these pairs; the recommendation assumes the outcomes seen so far '
-                + 'are all there are, so with more shots new outcomes can appear and raise it.' : ''));
+        _note(block, `No significant difference, but power is below ${target}. ${_powerLevelText(lowPower)}`
+            + (rec ? ` About ${fmtInt(rec)} shots per backend reach ${target}.` : '')
+            + (pooledPairs ? ' Rare outcomes were pooled; outcomes not yet seen can raise this estimate.' : ''));
         panel.appendChild(block);
     }
     if (lowCounts.length) {
         const block = _block(`Inconclusive, expected counts below 5${pooling} (${lowCounts.length}): more shots would help`, 'inconclusive',
             lowCounts.map(p => _measuredItem(p)), 'low_expected_counts');
-        _note(block, 'Some outcomes are too rare in this sample for the chi-square and G-test to be reliable, so the tests '
-            + 'cannot decide either way.');
+        _note(block, 'Outcomes too rare for reliable chi-square and G-tests.');
         panel.appendChild(block);
     }
     if (tooRare.length) {
         const block = _block(`Inconclusive, outcomes too rare for the test at any practical shot count (${tooRare.length})`, 'inconclusive',
             tooRare.map(p => _measuredItem(p)), 'low_expected_counts');
-        _note(block, `Expected counts stay below 5${pooling}, and the report records that more shots would not change `
-            + 'this at a practical shot count. The distance label and the metrics are the available evidence for these pairs.');
+        _note(block, `Expected counts stay below 5${pooling} at any practical shot count; the distance label and metrics are the available evidence.`);
         panel.appendChild(block);
     }
 }
@@ -441,13 +434,8 @@ function _renderMarginalBlock(panel, pairs, data, alpha, named) {
     const summary = data.divergence_report?.statistical_test_summary?.marginal_test_summary || {};
     const names = _clbitNames(data.input_qasm);
     const block = _block(`Single-bit marginals differ (${flagged.length})`, 'anomaly', _byBackend(flagged).map(p => _marginalItem(p, names)), 'marginal_distinguishable');
-    _note(block, `For each classical bit, the two backends' counts of that bit being 0 and 1 are compared (chi-square and `
-        + `G-test, both required, Holm-corrected over all ${summary.family_size ?? '—'} bit tests at α = ${alpha ?? '—'}, so the `
-        + `chance of any false flag in this list is at most α). Equal distributions have equal marginals, so a differing bit `
-        + 'shows the two distributions differ, also where the full-distribution test has too few shots, and a pair can be '
-        + 'listed here and also under its shot-noise assessment below (that test looks at the whole distribution with a '
-        + 'total-variation threshold). Pairs not listed may still differ: equal marginals do not show agreement. This test '
-        + 'and the full-distribution test are separate families, each at α.');
+    _note(block, `Per classical bit: chi-square and G-test, both required, Holm-corrected over ${summary.family_size ?? '—'} bit tests `
+        + `at α = ${alpha ?? '—'}. A differing marginal means the distributions differ; equal marginals do not imply agreement.`);
     _knownIssuesNote(block, flagged, named);
     panel.appendChild(block);
 }
@@ -476,9 +464,8 @@ function _renderMeasuredBlocks(panel, pairs, tol, data, alpha, named) {
         && !pairs.some(p => p.marginal_assessment === 'marginal_distinguishable');
     if (allConsistent) {
         const frag = _cloneTemplate('tpl-summary-success-banner');
-        frag.querySelector('.tpl-msg').textContent = `All ${pairs.length} pairs are consistent within shot noise (${test}) `
-            + `and within JS ≤ ${tol.js} nats and Hellinger ≤ ${tol.hellinger} in the label-aligned basis. `
-            + 'Consistent means the tests found no difference at the stated power; it does not show the distributions are equal. '
+        frag.querySelector('.tpl-msg').textContent = `All ${pairs.length} pairs are consistent within shot noise (${test}), `
+            + `with JS ≤ ${tol.js} nats and Hellinger ≤ ${tol.hellinger}. Not a proof of equality. `
             + _powerLevelText(pairs);
         panel.appendChild(frag);
         return;
@@ -493,8 +480,7 @@ function _renderMeasuredBlocks(panel, pairs, tol, data, alpha, named) {
     ];
     if (groups.ambiguous.length) parts.push(`${groups.ambiguous.length} inconclusive (the two tests disagree)`);
     if (groups.untested.length) parts.push(`${groups.untested.length} without a shot-noise test`);
-    ov.textContent = `Of ${pairs.length} pairs: ${parts.join(', ')}; ${pairs.length - comparable.length} not comparable (${test}). `
-        + 'Each pair is listed once under its shot-noise assessment, with its JS/Hellinger distance label beside it; pairs whose single-bit marginals differ are also listed in their own block.';
+    ov.textContent = `Of ${pairs.length} pairs: ${parts.join(', ')}; ${pairs.length - comparable.length} not comparable (${test}).`;
     panel.appendChild(ov);
     _renderMarginalBlock(panel, pairs, data, alpha, named);
 
@@ -502,13 +488,10 @@ function _renderMeasuredBlocks(panel, pairs, tol, data, alpha, named) {
         const block = _block(`Distinguishable beyond shot noise (${groups.distinguishable.length})`, 'anomaly',
             _byBackend(groups.distinguishable).map(p => _measuredItem(p, { power: false })), 'distinguishable');
         _note(block, corr === 'BY'
-            ? `The Benjamini–Yekutieli correction controls the false discovery rate at q = ${alpha ?? '—'} under any dependence `
-                + 'between the tests, including pairs that share a backend and so share its sample. On average up to that '
-                + 'fraction of the flagged pairs are flagged by chance, so a few flagged pairs among many can be false '
-                + 'discoveries; flags that all involve one backend can come from one unusual sample of that backend.'
-            : `The ${correctionLongName(corr)} correction controls the false discovery rate at q = ${alpha ?? '—'} for `
-                + 'independent or positively dependent (PRDS) tests; pairs that share a backend share its sample and are '
-                + 'dependent. A few flagged pairs among many can be false discoveries.');
+            ? `Benjamini–Yekutieli: false discovery rate q = ${alpha ?? '—'} under any dependence. A few flags among many can be `
+                + 'chance; flags sharing one backend can come from one unusual sample.'
+            : `${correctionLongName(corr)}: false discovery rate q = ${alpha ?? '—'} for independent or positively dependent tests; `
+                + 'pairs sharing a backend are dependent.');
         _knownIssuesNote(block, groups.distinguishable, named);
         panel.appendChild(block);
     }
@@ -540,16 +523,16 @@ function _renderMeasuredBlocks(panel, pairs, tol, data, alpha, named) {
         if (powers.length) {
             const lo = Math.min(...powers), hi = Math.max(...powers);
             const range = fmtProb(lo) === fmtProb(hi) ? fmtProb(lo) : `${fmtProb(lo)}–${fmtProb(hi)}`;
-            notes.push(`Test power ${range} to detect a total-variation gap of `
-                + `${consistent[0].metrics?.statistical_test?.power?.delta_tv ?? '—'}; power is the chance the test would flag a gap of that size. `
+            notes.push(`Power ${range} to detect a total-variation gap of `
+                + `${consistent[0].metrics?.statistical_test?.power?.delta_tv ?? '—'}. `
                 + _powerLevelText(consistent));
         }
         const marginalFlags = consistent.filter(p => p.marginal_assessment === 'marginal_distinguishable').length;
         if (marginalFlags) {
-            notes.push(`${marginalFlags} of these pairs have a single-bit marginal that differs (listed above): the shot-noise test finds no total-variation gap of the stated size, but the distributions are not equal.`);
+            notes.push(`${marginalFlags} of these differ in a single-bit marginal (above), so their distributions are not equal.`);
         }
         if (aboveThreshold) {
-            notes.push(`${aboveThreshold} of these do not meet the descriptive JS ≤ ${tol.js} / Hellinger ≤ ${tol.hellinger} thresholds in the label-aligned basis; those thresholds depend on the shot count, and the test finds no difference beyond shot noise.`);
+            notes.push(`${aboveThreshold} of these exceed the descriptive JS ≤ ${tol.js} / Hellinger ≤ ${tol.hellinger} thresholds, which depend on the shot count.`);
         }
         notes.forEach(t => _note(block, t));
         panel.appendChild(block);
@@ -565,7 +548,7 @@ function _renderAgreementBlocks(panel, data, nOk, named) {
 
     if (nOk < 2) {
         panel.appendChild(_block(`No comparison: ${nOk} backend(s) returned a result`, 'offline',
-            ['At least two successful backends are needed for a pairwise comparison.']));
+            ['A comparison needs at least two successful backends.']));
         return;
     }
 
@@ -575,7 +558,7 @@ function _renderAgreementBlocks(panel, data, nOk, named) {
             + (d.fidelity !== undefined ? ` (fidelity ${fmtNum(d.fidelity)})` : '')
             + (d.js_divergence !== undefined ? ` (JS ${fmtNum(d.js_divergence)})` : ''));
         panel.appendChild(_block(
-            `This report has no pairwise agreement records; ${divs.length} divergence(s) recorded`,
+            `No pairwise agreement records; ${divs.length} divergence(s) recorded`,
             divs.length ? 'divergence' : 'offline', items));
         return;
     }
@@ -633,7 +616,7 @@ function _renderFailures(panel, raws) {
             b.textContent = _displayRunnerName(r.simulator);
             frag.appendChild(b);
             const why = r.never_started
-                ? `never started: ${userFacingError(r.error) || 'it stayed queued for the whole wait budget'}`
+                ? `never started: ${userFacingError(r.error) || 'queued for the whole wait budget'}`
                 : (cfg.text || userFacingError(r.error) || RUNNER_STATUS_LABEL[st]);
             frag.appendChild(document.createTextNode(`: ${why}`));
             return frag;
@@ -692,7 +675,7 @@ export function compileOutcome(pane) {
 }
 
 const COMPILE_OUTCOME_TEXT = {
-    refused: 'Refused (the compiler cannot compile this input correctly)',
+    refused: 'Refused (input not supported correctly)',
     rejected: 'Output rejected by its check',
     skipped: 'Not run',
     timeout: 'Timed out',
@@ -702,13 +685,13 @@ const COMPILE_OUTCOME_TEXT = {
 /** Headline of a compile-only run: how many compiles returned a circuit, then the others by outcome, by name. */
 export function compileHeadline(panes) {
     const ok = panes.filter(p => compileOutcome(p) === 'compiled').length;
-    const lines = [`Compile only: no simulator was run. ${ok} of ${panes.length} compile${panes.length === 1 ? '' : 's'} returned a circuit.`];
+    const lines = [`Compile only. ${ok} of ${panes.length} compile${panes.length === 1 ? '' : 's'} returned a circuit.`];
     Object.entries(COMPILE_OUTCOME_TEXT).forEach(([outcome, text]) => {
         const names = panes.filter(p => compileOutcome(p) === outcome).map(_compileName);
         if (names.length) lines.push(`${text}: ${names.join(', ')}.`);
     });
-    lines.push(ok === panes.length ? 'The outputs and their passes are in the Circuits tab.'
-        : 'The outputs and their passes are in the Circuits tab; the reasons are listed first under Compile-only services below.');
+    lines.push(ok === panes.length ? 'Outputs and passes: Circuits tab.'
+        : 'Outputs and passes: Circuits tab. Reasons for the others: Compile-only services, below.');
     return lines;
 }
 
@@ -780,7 +763,7 @@ function _renderCompiles(panel, data) {
     const items = [...reasons.map(r => _compileItem(r.names, r.text)),
         ...panes.filter(p => compileOutcome(p) === 'compiled').map(p => _compileItem([_compileName(p)], _compileText(p)))];
     const block = _block(`Compile-only services (${panes.length})`, 'neutral', items, null, reasons.length > 0);
-    _note(block, 'Compiled circuits are text: they are not simulated, timed or compared. Gate counts use each compiler\'s own gate set, so they are not comparable across compilers. The Circuits tab shows each output with its passes.');
+    _note(block, 'Not simulated, timed or compared. Gate counts follow each compiler\'s gate set and are not comparable across compilers.');
     panel.appendChild(block);
 }
 
@@ -804,7 +787,7 @@ function _renderRunDetails(panel, data, raws) {
     details.className = 'mt-4 border rounded bg-white';
     const summary = document.createElement('summary');
     summary.className = 'px-3 py-2 cursor-pointer text-sm font-semibold text-gray-700 select-none';
-    summary.textContent = 'Run details per backend (device, precision, seeds, queue wait, preprocessing)';
+    summary.textContent = 'Run details per backend';
     details.appendChild(summary);
 
     const body = document.createElement('div');
@@ -854,19 +837,19 @@ function _renderRunDetails(panel, data, raws) {
         _kv(grid, 'simulation method', r.simulation_method);
         const wait = queueWaitText(r);
         if (wait) _kv(grid, 'queue wait', wait);
-        if (r.never_started) _kv(grid, 'started', 'no: the run stayed queued until its wait budget ran out');
+        if (r.never_started) _kv(grid, 'started', 'no (wait budget exhausted)');
         if (r.timed_out) _kv(grid, 'timed out', 'yes');
         _kv(grid, 'qubit ordering', r.qubit_ordering);
         _kv(grid, 'sampling method', r.sampling_method);
         _kv(grid, 'runner seed', r.runner_seed);
         if (r.runner_seed !== undefined && r.seed_honoured === false) {
-            _kv(grid, 'seed honoured', 'no: this backend ignores the seed, so its counts are not reproducible');
+            _kv(grid, 'seed honoured', 'no; counts not reproducible');
         }
         _kv(grid, 'dispatch group', r.dispatch_group);
-        if (typeof r.concurrent_runs === 'number') _kv(grid, 'dispatched with', `${r.concurrent_runs - 1} other run(s) in its phase or a phase in flight beside it (phase ${r.dispatch_phase ?? 1})`);
-        if (typeof r.overlapping_runs === 'number') _kv(grid, 'overlapped with', `${r.overlapping_runs} other run(s) of this job while it ran`);
-        if (typeof r.server_overlapping_runs === 'number') _kv(grid, 'other jobs', `${r.server_overlapping_runs} run(s) of other jobs in flight (dispatched or queued) while it ran`);
-        if (r.exclusive === true) _kv(grid, 'exclusive', `yes; waited ${fmtNum(r.exclusive_wait_sec ?? 0, 1)} s for the server to be idle`);
+        if (typeof r.concurrent_runs === 'number') _kv(grid, 'dispatched with', `${r.concurrent_runs - 1} other run(s) (phase ${r.dispatch_phase ?? 1})`);
+        if (typeof r.overlapping_runs === 'number') _kv(grid, 'overlapped with', `${r.overlapping_runs} other run(s) of this job`);
+        if (typeof r.server_overlapping_runs === 'number') _kv(grid, 'other jobs', `${r.server_overlapping_runs} run(s) of other jobs`);
+        if (r.exclusive === true) _kv(grid, 'exclusive', `yes; waited ${fmtNum(r.exclusive_wait_sec ?? 0, 1)} s`);
         _kv(grid, 'timed runs', r.timing_samples);
         const env = r.cpu_environment;
         if (env) {
@@ -890,7 +873,7 @@ function _renderRunDetails(panel, data, raws) {
             _kv(grid, 'thread env', Object.entries(r.thread_env).map(([k, v]) => `${k}=${v ?? 'unset'}`).join(', '));
         }
         if (r.statevector_omitted_for_display) {
-            _kv(grid, 'statevector', 'not in this browser copy (over 14 qubits); in the server copy of the job');
+            _kv(grid, 'statevector', 'omitted here (over 14 qubits); in the server copy');
         }
         card.appendChild(grid);
 

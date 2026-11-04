@@ -9,7 +9,7 @@ export const LABELS = {
     agree_up_to_global_phase: { short: 'Agree up to a global phase', anchor: 'taxonomy',
         definition: 'The statevectors match after removing a global phase, which no measurement can see.' },
     agree_after_bit_reversal: { short: 'Agree after bit reversal', anchor: 'bitorder',
-        definition: 'The statevectors match after the bit reversal that the two backends\' declared qubit orderings imply: one backend writes qubit 0 as the rightmost bit of a basis state, the other as the leftmost, so the same state is written in reverse. This is agreement. A state that reads the same both ways (a Bell or GHZ state) is listed here too for every pair of one LSB and one MSB backend.' },
+        definition: 'The statevectors match after the bit reversal implied by the two declared qubit orderings (qubit 0 rightmost in one, leftmost in the other). Counted as agreement.' },
     agree_after_qubit_permutation: { short: 'Match only after an undeclared qubit permutation', anchor: 'taxonomy',
         definition: 'The outputs match only after reordering qubits in a way neither backend declares. Counted as a disagreement.' },
     agree_after_normalization: { short: 'Agree after normalisation', anchor: 'taxonomy',
@@ -19,21 +19,21 @@ export const LABELS = {
     not_comparable: { short: 'Not comparable', anchor: 'taxonomy',
         definition: 'The two outputs could not be compared; the reason is recorded with the pair.' },
     distance_within_threshold: { short: 'Within the JS/Hellinger thresholds', anchor: 'stat',
-        definition: 'Descriptive only: the distance between the two count distributions is within the JS and Hellinger thresholds. The shot-noise test decides agreement.' },
+        definition: 'Descriptive: the distance between the count distributions is within the JS and Hellinger thresholds. Agreement is decided by the shot-noise test.' },
     distance_exceeds_threshold: { short: 'Above the JS/Hellinger thresholds', anchor: 'stat',
-        definition: 'Descriptive only: the distance is above the JS or Hellinger threshold. At low shot counts this can be shot noise; the shot-noise test decides.' },
+        definition: 'Descriptive: the distance is above the JS or Hellinger threshold, which at low shot counts can be shot noise. Agreement is decided by the shot-noise test.' },
     consistent_within_shot_noise: { short: 'Consistent within shot noise', anchor: 'stat',
-        definition: 'The tests found no difference beyond shot noise and had enough power to find a total-variation gap of the stated size. This does not show the distributions are equal.' },
+        definition: 'No difference beyond shot noise, with enough power to detect a total-variation gap of the stated size. Not a proof of equality.' },
     inconclusive_low_shots: { short: 'Inconclusive', anchor: 'stat',
-        definition: 'No difference was found, but the test had too little power at this shot count, or too many outcomes were rare.' },
+        definition: 'No difference found, but the test lacks power at this shot count or too many outcomes are rare.' },
     ambiguous: { short: 'Inconclusive: the two tests disagree', anchor: 'stat',
         definition: 'One of the chi-square and G-tests is significant and the other is not.' },
     distinguishable: { short: 'Distinguishable beyond shot noise', anchor: 'stat',
         definition: 'Both the chi-square and the G-test are significant after the multiple-testing correction.' },
     marginal_distinguishable: { short: 'A single-bit marginal differs', anchor: 'stat',
-        definition: 'For at least one classical bit, how often it reads 1 differs between the two backends by more than chance allows. The distributions are therefore not equal.' },
+        definition: 'For at least one classical bit, the frequency of 1 differs beyond chance, so the distributions differ.' },
     no_marginal_difference_detected: { short: 'No single-bit marginal differs', anchor: 'stat',
-        definition: 'No classical bit\'s frequency differs significantly. This does not show the distributions are equal.' },
+        definition: 'No classical bit\'s frequency differs significantly. Not a proof of equality.' },
     low_power: { short: 'Test power too low', anchor: 'stat',
         definition: 'The test could not reliably detect a gap of the stated size at this shot count.' },
     low_expected_counts: { short: 'Too few counts per outcome', anchor: 'stat',
@@ -43,13 +43,13 @@ export const LABELS = {
     timeout: { short: 'Timeout', anchor: 'reading', definition: 'The backend did not finish within its time budget.' },
     offline: { short: 'Offline', anchor: 'reading', definition: 'The backend could not be reached.' },
     shared_dispatch: { short: 'Shared dispatch', anchor: 'timing-caveats',
-        definition: 'Dispatched beside other runs of the same job (not an exclusive run); runs in one phase share the host\'s cores and memory bandwidth.' },
+        definition: 'Dispatched beside other runs of the same job, sharing the host\'s cores and memory bandwidth.' },
     overlapping_runs: { short: 'Runs of this job overlapped', anchor: 'timing-caveats',
         definition: 'Other runs of this job were executing while this run executed.' },
     server_overlapping_runs: { short: 'Other jobs ran on the server', anchor: 'timing-caveats',
         definition: 'Runs of other jobs on this server were executing while this run executed.' },
     host_load: { short: 'Host load from qrosetta', anchor: 'timing-caveats',
-        definition: 'The qrosetta command reported load it put on this host (starting, stopping, building, pulling or probing containers) while this run executed.' },
+        definition: 'qrosetta started, stopped, built, pulled or probed containers on this host during the run.' },
     throttled: { short: 'Throttled by the CPU quota', anchor: 'timing-caveats',
         definition: 'The CPU quota held the runner for at least 1% of the simulation window; that wait is part of simulation_time_sec.' },
     compilation_throttled: { short: 'Compilation throttled by the CPU quota', anchor: 'timing-caveats',
@@ -59,17 +59,17 @@ export const LABELS = {
     mixed_cores: { short: 'Mixed core speeds', anchor: 'timing-caveats',
         definition: 'The timed runs of this backend ran on CPUs of different speed classes (maximum frequencies more than 10% apart).' },
     outside_process: { short: 'Work outside the measured process', anchor: 'timing-caveats',
-        definition: 'The runner\'s container used at least 5 ms and 10% more CPU than the simulating process during the simulation window; that work is not in the process\'s CPU and memory fields.' },
+        definition: 'The container used at least 5 ms and 10% more CPU than the simulating process during the simulation window; that work is not in the process fields.' },
     single_timed_run: { short: 'One timed run (n=1)', anchor: 'timing-caveats',
         definition: 'One timed run (timing_repeats = 1): run-to-run variation is not measured.' },
     no_cpu_quota: { short: 'No CPU quota', anchor: 'timing-caveats',
-        definition: 'No CPU quota was in force for the runner, so its CPU share depended on other load on the host.' },
+        definition: 'No CPU quota applied; the runner\'s CPU share depended on other load on the host.' },
     virtualised_host: { short: 'Ran in a virtual machine', anchor: 'timing-caveats',
         definition: 'The host CPU reports the hypervisor flag: the runner ran in a virtual machine.' },
     emulated_cpu: { short: 'Emulated CPU', anchor: 'timing-caveats',
-        definition: 'The CPU model the runner saw is an emulated one, so timings do not describe native execution.' },
+        definition: 'The runner saw an emulated CPU model; timings do not describe native execution.' },
     emulated_image: { short: 'Image emulated on this host', anchor: 'timing-caveats',
-        definition: 'The runner\'s image is built for another machine architecture than the host\'s, so it ran under emulation and its timings do not describe native execution.' },
+        definition: 'The image targets another architecture and ran under emulation; timings do not describe native execution.' },
     non_x86_64: { short: 'Not x86_64', anchor: 'timing-caveats',
         definition: 'The runner reported a machine architecture other than x86_64.' },
     cross_backend_core_speeds: { short: 'Backends on CPUs of different speeds', anchor: 'timing-caveats',
@@ -77,8 +77,8 @@ export const LABELS = {
     cross_backend_cpu_quota: { short: 'Backends under different CPU quotas', anchor: 'timing-caveats',
         definition: 'Backends ran under different CPU quotas.' },
     cross_backend_image_commits: { short: 'Backends from images of different commits', anchor: 'timing-caveats',
-        definition: 'Backends ran from images built from different commits, so the measurement code may differ between them.' },
-    input: { short: 'Refused: input', anchor: 'compilers', definition: 'The compiler cannot compile this input correctly, so it did not try.' },
+        definition: 'Backend images were built from different commits; the measurement code may differ.' },
+    input: { short: 'Refused: input', anchor: 'compilers', definition: 'The compiler cannot compile this input correctly and did not run.' },
     output_check: { short: 'Refused: output check failed', anchor: 'compilers', definition: 'The compiled circuit failed its equivalence or layout check.' },
     missing_statevector: { short: 'No statevector', anchor: 'taxonomy', definition: 'One run returned no statevector.' },
     statevector_parse_error: { short: 'Statevector unreadable', anchor: 'taxonomy', definition: 'A returned statevector could not be decoded.' },
@@ -136,26 +136,18 @@ export function docsLink(code, text = 'How this is decided') {
     return a;
 }
 
-/** A plain-language reading of a report's Summary for a reader new to the comparison, by mode. */
+/** How pairs are judged, by mode. */
 export const PLAIN_MEANING = {
-    statevector: 'Each backend computed the final quantum state of the circuit, and every pair of backends was compared. '
-        + 'Two backends agree when their states match to within rounding. "Agree after bit reversal" is also agreement: the two backends '
-        + 'write the qubits of a state in opposite order (qubit 0 rightmost or leftmost), and the states match once that is undone. '
-        + 'A backend that differs from the others has produced a different state; the report shows which pairs differ, not which backend is right.',
-    measured: 'Each backend simulated measuring the circuit many times (the shots) and counted the outcomes. Random sampling makes the counts '
-        + 'of two correct backends differ a little, so each pair is tested for a difference larger than that noise. "Consistent within shot noise" '
-        + 'means none was found; "Inconclusive" means more shots are needed to tell; "Distinguishable" or a differing single-bit marginal '
-        + 'means a real difference, so at least one of the two backends is wrong.',
+    statevector: 'A pair agrees when its states match within the fidelity tolerance: directly, up to a global phase, '
+        + 'or after the bit reversal the two declared qubit orderings imply. A differing pair does not identify which backend is wrong.',
+    measured: 'Each pair is tested for a difference beyond shot noise. Inconclusive pairs need more shots; '
+        + 'a distinguishable pair or a differing single-bit marginal means at least one of the two backends is wrong.',
 };
 
-/** The "What this means" paragraph for a report in `mode` ('statevector' or 'measured'). */
+/** One line on how pairs of a report in `mode` ('statevector' or 'measured') are judged. */
 export function plainMeaningNote(mode) {
-    const text = PLAIN_MEANING[mode === 'measured' ? 'measured' : 'statevector'];
     const p = document.createElement('p');
-    p.className = 'text-sm text-gray-700 mb-4';
-    const b = document.createElement('span');
-    b.className = 'font-medium';
-    b.textContent = 'What this means: ';
-    p.append(b, text);
+    p.className = 'text-xs text-gray-600 mb-4';
+    p.textContent = PLAIN_MEANING[mode === 'measured' ? 'measured' : 'statevector'];
     return p;
 }

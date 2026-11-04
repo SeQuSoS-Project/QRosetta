@@ -276,8 +276,8 @@ export function headlineSentences(data) {
     if (byOnlyLine) lines.push(byOnlyLine);
     if (measured && v.inconclusive) lines.push(`On the full-distribution test, ${v.inconclusive} of ${v.pairs} pairs are inconclusive at this shot count.`);
     lines.push(_chanceCaveat(v, h)
-        ? 'If a rerun confirms a difference, at least one of the two backends of that pair is wrong; the report does not decide which. Check against an independent reference.'
-        : 'A pair that differs shows that at least one of the two is wrong; the report does not decide which. Check against an independent reference.');
+        ? 'If a rerun confirms a difference, at least one backend of that pair is wrong; which one requires an independent reference.'
+        : 'In a differing pair at least one backend is wrong; which one requires an independent reference.');
     return { lines, verdicts: v, model: h, tone: 'anomaly' };
 }
 
@@ -308,8 +308,8 @@ export function testMethodNote(data) {
     const count = m => pairs.filter(p => p.metrics.statistical_test.test_method === m).length;
     const exact = count('exact_conditional'), degenerate = count('degenerate');
     const parts = [];
-    if (exact) parts.push(`${exact} of ${pairs.length} pairs have exact conditional p-values (2 × 2 tables with expected counts below 5)`);
-    if (degenerate) parts.push(`in ${degenerate} of ${pairs.length} pairs both backends returned the same single outcome, so there was nothing to test (p = 1)`);
+    if (exact) parts.push(`${exact} of ${pairs.length} pairs use exact conditional p-values (2 × 2 tables, expected counts below 5)`);
+    if (degenerate) parts.push(`${degenerate} of ${pairs.length} pairs returned one identical outcome and were not tested (p = 1)`);
     return parts.length ? `${_cap(parts.join('; '))}.` : null;
 }
 
@@ -320,20 +320,20 @@ export function nextSteps(data, v = backendVerdicts(data), h = headlineModel(v))
     const shots = recommendedShots(pairs);
     if (v.mode === 'measured' && v.inconclusive && shots) {
         steps.push(_recommendationIsLowerBound(pairs, shots)
-            ? `For the inconclusive pairs, the power model asks for at least ${fmtInt(shots)} shots per backend (this run used ${fmtInt(data.n_shots)}); outcomes not yet seen can raise it.`
+            ? `Inconclusive pairs: at least ${fmtInt(shots)} shots per backend recommended (this run: ${fmtInt(data.n_shots)}).`
             : pairs.some(p => typeof p.metrics?.statistical_test?.power?.recommendation_margin === 'number')
-                ? `For the inconclusive pairs, the power model asks for about ${fmtInt(shots)} shots per backend, 10% above its minimum (this run used ${fmtInt(data.n_shots)}); a pair close to the power threshold can still come out inconclusive.`
-                : `For the inconclusive pairs, the power model asks for about ${fmtInt(shots)} shots per backend (this run used ${fmtInt(data.n_shots)}).`);
+                ? `Inconclusive pairs: about ${fmtInt(shots)} shots per backend recommended (this run: ${fmtInt(data.n_shots)}).`
+                : `Inconclusive pairs: about ${fmtInt(shots)} shots per backend recommended (this run: ${fmtInt(data.n_shots)}).`);
     }
     if (h.failed.timeout.length) {
         const max = getState().timeoutMax;
         const atMax = typeof data.timeout_seconds === 'number' && typeof max === 'number' && data.timeout_seconds >= max;
         steps.push(atMax
-            ? `Timed-out backends: the timeout was already at the server maximum (${fmtInt(max)} s); run a smaller circuit.`
-            : 'Timed-out backends: raise the timeout in the Execution chip, or run a smaller circuit.');
+            ? `Timeouts: the timeout is already at the server maximum (${fmtInt(max)} s); use a smaller circuit.`
+            : 'Timeouts: raise the timeout (Execution) or use a smaller circuit.');
     }
-    if (h.failed.error.length) steps.push('Backends with errors: their messages are under "Errors" below.');
-    if (v.disagreeing) steps.push('To see the evidence for a pair, open the Agreement tab or the lists below.');
+    if (h.failed.error.length) steps.push('Errors: messages below under "Errors".');
+    if (v.disagreeing) steps.push('Pair evidence: Agreement tab and the lists below.');
     return steps;
 }
 
@@ -390,14 +390,14 @@ function _differsCell(b, flagged, measured, v, h, noun) {
     const robust = b.differsWith.length;
     const size = magnitudeText(v, flagged ? h : { reference: [] }, [b.key], measured, noun);
     const tip = robust
-        ? `Differs from: ${b.differsWith.map(_displayRunnerName).join(', ')}.${size ? ` ${size.charAt(0).toUpperCase()}${size.slice(1)}.` : ''}${flagged ? '' : ' The headline does not name this one.'}`
+        ? `Differs from: ${b.differsWith.map(_displayRunnerName).join(', ')}.${size ? ` ${size.charAt(0).toUpperCase()}${size.slice(1)}.` : ''}${flagged ? '' : ' Not named in the headline.'}`
         : '';
     const td = _countCell(robust, b.compared, flagged ? 'anomaly' : 'offline', tip);
     if (b.differsByOnly && b.compared) {
         const extra = document.createElement('span');
         extra.className = 'ml-1 text-gray-500';
         extra.textContent = `+${b.differsByOnly} BY only`;
-        setTip(extra, `Significant under Benjamini–Yekutieli but not under Holm's family-wise correction, with no single-bit marginal difference: ${b.byOnlyWith.map(_displayRunnerName).join(', ')}.`);
+        setTip(extra, `Significant under Benjamini–Yekutieli only, not under Holm: ${b.byOnlyWith.map(_displayRunnerName).join(', ')}.`);
         td.appendChild(extra);
     }
     return td;
@@ -441,18 +441,15 @@ export function renderBackendTable(panel, data, verdicts, model = headlineModel(
         _th('Backend'),
         _th('Status'),
         _th('Differs from', (measured
-            ? `Other ${noun}s this one is distinguishable from beyond shot noise, or differs from in a single-bit marginal. `
-            : `Other ${noun}s whose statevector this one disagrees with. `)
-            + `Red for the ${noun}s the headline names as differing; gray for the others. `
-            + (measured
-                ? `Hover a count for the median and range of total variation: for a ${noun} the headline names, against the ${noun}s it does not name; for the others, over the pairs that differ.`
-                : `Hover a count for the lowest fidelity: for a ${noun} the headline names, against the ${noun}s it does not name; for the others, over the pairs that differ.`)
-            + (measured ? ' "BY only" counts pairs significant under Benjamini–Yekutieli but not under Holm, which are not in the red or gray count.' : '')),
-        ...(measured ? [_th('Inconclusive with', `Full-distribution test. ${labelDefinition('inconclusive_low_shots')} A pair can also differ in a single-bit marginal.`)] : []),
-        _th('Bit order', 'The qubit ordering the backend declares: lsb = qubit 0 is the rightmost bit.'),
+            ? `${noun[0].toUpperCase()}${noun.slice(1)}s this one is distinguishable from, or differs from in a single-bit marginal. `
+            : `${noun[0].toUpperCase()}${noun.slice(1)}s whose statevector differs from this one. `)
+            + 'Red: named in the headline. Hover a count for the size of the difference.'
+            + (measured ? ' "BY only": significant under Benjamini–Yekutieli, not under Holm.' : '')),
+        ...(measured ? [_th('Inconclusive with', `Full-distribution test. ${labelDefinition('inconclusive_low_shots')}`)] : []),
+        _th('Bit order', 'Declared qubit ordering; lsb: qubit 0 rightmost.'),
         _th('Precision'),
-        _th('Total time (s)', 'Compilation + simulation of the timed run (median with Timing repeats above 1). Details in Performance.'),
-        _th('Peak memory (MiB)', 'Peak RSS of the simulating process over its whole life, including interpreter start, SDK imports and the warm-up run; for small circuits it is mostly the SDK footprint. Details in Performance.'),
+        _th('Total time (s)', 'Compilation + simulation (medians over timed runs).'),
+        _th('Peak memory (MiB)', 'Lifetime peak RSS of the simulating process, including SDK imports and warm-up.'),
     );
     const thead = document.createElement('thead');
     thead.appendChild(head);

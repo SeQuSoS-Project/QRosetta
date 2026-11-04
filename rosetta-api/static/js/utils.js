@@ -136,7 +136,7 @@ export async function copyImageToClipboard(blob, btn) {
         _flashCopied(btn);
     } catch (err) {
         console.error(err);
-        alert('Copy image failed (your browser may block image clipboard). Use Download instead.');
+        alert('Copying the image failed; use Download.');
     }
 }
 
@@ -173,19 +173,19 @@ export function _stripStatevectors(data) {
 const JOB_REPORT_TTL_MIN = 30;
 const DISPLAY_SV_MAX_QUBITS = 14;
 
-const EXPIRED_TEXT = `The server keeps a job's full report for ${JOB_REPORT_TTL_MIN} minutes after it completes, and this job's copy is no longer there (expired, or the server restarted).`;
+const EXPIRED_TEXT = `The server no longer holds this job's full report (kept ${JOB_REPORT_TTL_MIN} minutes after completion; lost on restart).`;
 /** What the browser-held copy of a report lacks. */
 function _browserCopyText(results) {
     if (results && results.statevector_storage === 'removed_before_storage') {
-        return 'This report was stored without statevectors.';
+        return 'Stored without statevectors.';
     }
-    return `The copy held in this browser does not include statevectors of circuits over ${DISPLAY_SV_MAX_QUBITS} qubits.`;
+    return `The browser copy omits statevectors of circuits over ${DISPLAY_SV_MAX_QUBITS} qubits.`;
 }
 
 /** How to export a report too large to upload: from a copy the server holds. */
 function _serverCopyAdvice() {
-    return `A run from this session is exported from the server's copy for ${JOB_REPORT_TTL_MIN} minutes after it completes, `
-        + 'and a saved run from your History (signed in) is exported from the stored copy; neither is uploaded.';
+    return `Runs from this session are exported from the server copy for ${JOB_REPORT_TTL_MIN} minutes; saved runs from History `
+        + 'are exported from the stored copy.';
 }
 
 /** Job id of the report on screen when it came from a job run in this session, else null. */
@@ -232,7 +232,7 @@ function _filenameFrom(response, fallback) {
 export async function downloadFullReport() {
     const jobId = _liveJobId();
     if (!jobId) {
-        alert(`This report was not produced by a job in this session, so the server holds no full copy of it. Use "Download displayed JSON". ${_browserCopyText(getState().currentSuiteData)}`);
+        alert(`The server holds no full copy of this report; use "Download displayed JSON". ${_browserCopyText(getState().currentSuiteData)}`);
         return;
     }
     try {
@@ -262,12 +262,12 @@ async function _exportBrowserCopy(results, options) {
         results: options.include_statevectors ? results : _stripStatevectors(results),
     });
     if (options.include_statevectors && bytes(body) > limit) {
-        const ok = confirm(`With statevectors, this report is larger than the server's upload limit of ${formatBytes(limit)} for exporting data held in the browser.\n\nExport it without statevectors?`);
+        const ok = confirm(`With statevectors, this report exceeds the upload limit of ${formatBytes(limit)}.\n\nExport without statevectors?`);
         if (!ok) return null;
         body = JSON.stringify({ ...options, include_statevectors: false, results: _stripStatevectors(results) });
     }
     if (bytes(body) > limit) {
-        throw new Error(`Without statevectors, the report held in this browser is ${formatBytes(bytes(body))}, over the server's upload limit of `
+        throw new Error(`Without statevectors the report is still ${formatBytes(bytes(body))}, over the upload limit of `
             + `${formatBytes(limit)}. ${_serverCopyAdvice()}`);
     }
     return fetch(`${BASE_URL}/export`, {
@@ -365,8 +365,8 @@ export async function exportRoCrate({ source = 'browser', includeStatevectors = 
 
         if (!response.ok) {
             if (response.status === 413) {
-                throw new Error(`The report is larger than the server's upload limit of ${formatBytes(getState().maxRequestBytes)}. `
-                    + (includeStatevectors ? "Uncheck 'Include raw statevectors' and try again." : _serverCopyAdvice()));
+                throw new Error(`The report exceeds the upload limit of ${formatBytes(getState().maxRequestBytes)}. `
+                    + (includeStatevectors ? "Turn off 'Include raw statevectors' and retry." : _serverCopyAdvice()));
             }
             throw new Error(await _errorDetail(response));
         }

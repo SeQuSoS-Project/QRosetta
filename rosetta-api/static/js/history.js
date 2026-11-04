@@ -34,9 +34,9 @@ export function savedRunHeading(data, runName) {
 export function savedRunSourceNote(data) {
     if (data?.saved_from === 'server_job') return null;
     if (data?.saved_from === 'upload') {
-        return { tag: 'Uploaded', text: 'This report was uploaded to History (POST /history/runs), not saved from a job this server ran. Its contents are as the uploader supplied them.' };
+        return { tag: 'Uploaded', text: 'Report uploaded to History, not saved from a job this server ran; contents as supplied.' };
     }
-    return { tag: 'Source not recorded', text: 'This report was saved before the server recorded where saved reports come from, so it cannot say whether this server produced it.' };
+    return { tag: 'Source not recorded', text: 'Saved before report sources were recorded; whether this server produced it is unknown.' };
 }
 
 function _formatServerTime(value) {
@@ -88,8 +88,7 @@ function _offerSignInAndRetry(jobId, name) {
             showHistoryNotice('Saved to your history.', 'success');
         }
     };
-    showHistoryNotice('Your session has expired, so this run was not saved to your history. '
-        + `Sign in again to save it; the server keeps the result for at least ${durationText(getState().jobTtlSec)} after the run finishes.`, 'error', {
+    showHistoryNotice(`Session expired; the run was not saved. Sign in again to save it within ${durationText(getState().jobTtlSec)} of the run finishing.`, 'error', {
         label: 'Sign in and save',
         onClick: () => {
             onNextLogin(retry);
@@ -109,7 +108,7 @@ export async function saveRunToHistory(jobId, name = null) {
     if (!getState().authToken || !jobId) return null;
     const max = getState().maxSavedRuns;
     if (_knownRunCount !== null && _knownRunCount >= max) {
-        showHistoryNotice(`This run was not saved to your history. This account keeps at most ${max.toLocaleString('en')} saved runs; delete some to save more.`);
+        showHistoryNotice(`Not saved: this account already has the maximum of ${max.toLocaleString('en')} saved runs.`);
         return null;
     }
     try {
@@ -152,7 +151,7 @@ export async function saveRunToHistory(jobId, name = null) {
     }
 }
 
-const RUN_IN_PROGRESS = 'A run is in progress. Past runs open in the results panel once it has finished; renaming, downloading and deleting work now.';
+const RUN_IN_PROGRESS = 'A run is in progress; past runs open once it finishes. Renaming, downloading and deleting are available.';
 
 let _listGeneration = 0;
 
@@ -162,10 +161,10 @@ export async function openHistoryModal() {
     if (selectAll) selectAll.checked = false;
     const list = document.getElementById('history-list');
     const generation = ++_listGeneration;
-    list.innerHTML = '<li class="py-4 text-center text-sm text-gray-500">Loading history...</li>';
+    list.innerHTML = '<li class="py-4 text-center text-sm text-gray-500">Loading history</li>';
 
     if (!getState().authToken) {
-        list.innerHTML = '<li class="py-4 text-center text-sm text-gray-500">Please login to view history.</li>';
+        list.innerHTML = '<li class="py-4 text-center text-sm text-gray-500">Sign in to view history.</li>';
         return;
     }
 
@@ -177,7 +176,7 @@ export async function openHistoryModal() {
         if (response.status === 401) {
             dispatch('SET_AUTH_TOKEN', null);
             updateAuthUI();
-            list.innerHTML = '<li class="py-4 text-center text-sm text-gray-500">Your session has expired. Sign in again to view your history.</li>';
+            list.innerHTML = '<li class="py-4 text-center text-sm text-gray-500">Session expired. Sign in again to view history.</li>';
             return;
         }
         if (!response.ok) throw new Error(await formatApiError(response));
@@ -186,7 +185,7 @@ export async function openHistoryModal() {
         if (generation !== _listGeneration) return;
         _knownRunCount = runs.length;
         if (runs.length === 0) {
-            list.innerHTML = '<li class="py-4 text-center text-sm text-gray-500">No previous runs found.</li>';
+            list.innerHTML = '<li class="py-4 text-center text-sm text-gray-500">No saved runs.</li>';
             return;
         }
 
@@ -508,7 +507,7 @@ document.addEventListener('signed-out', () => {
 });
 
 document.addEventListener('session-expired', () => {
-    showHistoryNotice('Your sign-in has expired. Runs you start now are not saved to your History; sign in again to save them.', 'error', {
+    showHistoryNotice('Sign-in expired: new runs are not saved to History until you sign in again.', 'error', {
         label: 'Sign in',
         onClick: () => openAuthModal(),
     });

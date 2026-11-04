@@ -218,9 +218,9 @@ def test_the_page_shows_the_servers_tags_only():
         ("throttleText", [tagged]), ("throttleText", [untagged]), ("throttleText", [throttled]),
         ("unstableText", [unstable]), ("outsideProcessText", [tagged]),
     ])
-    assert out[0].startswith("the CPU quota held this runner for 0.0500 s (50% of the simulation window)")
+    assert out[0].startswith("held by the CPU quota for 0.0500 s (50% of the simulation window)")
     assert out[1] is None and out[2] is None
-    assert out[3].startswith("its timed runs ranged from 0.1000 to 0.2000 s (2.00×)")
+    assert out[3].startswith("timed runs ranged from 0.1000 to 0.2000 s (2.00×)")
     assert out[4] is None
 
 

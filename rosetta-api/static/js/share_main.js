@@ -39,12 +39,12 @@ function _render(root, data, startTask = 0) {
     const saved = _when(data.saved_at);
     const expires = _when(data.link_expires_at);
     header.appendChild(_el('p', 'text-xs text-gray-500',
-        `${saved ? `Saved ${saved}. ` : ''}${expires ? `This read-only link works until ${expires}.` : ''}`));
+        `${saved ? `Saved ${saved}. ` : ''}${expires ? `Link valid until ${expires}.` : ''}`));
     if (data.report_source !== 'server_job') {
         header.appendChild(_el('p', 'text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded p-2',
             data.report_source === 'upload'
-                ? "This report was uploaded by the link's owner, not produced by this server's run of the circuit. The texts below are as the owner supplied them."
-                : 'This report was saved before the server recorded where saved reports come from, so it cannot say whether this server produced it.'));
+                ? "Uploaded by the link's owner; not produced by this server. The texts are as supplied."
+                : 'Saved before report sources were recorded; whether this server produced it is unknown.'));
     }
     root.appendChild(header);
     const panel = _el('div', 'mt-4');
@@ -84,7 +84,7 @@ async function main() {
     const [token, ...params] = window.location.hash.slice(1).split('&');
     const taskParam = params.map(p => p.split('=')).find(([key]) => key === 'task');
     if (!token) {
-        root.replaceChildren(_el('p', 'text-sm text-gray-600', 'This page needs the link you were given, including the part after #.'));
+        root.replaceChildren(_el('p', 'text-sm text-gray-600', 'Open the full link, including the part after #.'));
         return;
     }
     try {

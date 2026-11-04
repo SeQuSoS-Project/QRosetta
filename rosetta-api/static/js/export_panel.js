@@ -63,9 +63,9 @@ function plannedPaths(results, items, scope) {
 
 function _keptUntil(results) {
     const done = Date.parse(results?.finished_at || '');
-    if (!Number.isFinite(done)) return `Kept for ${JOB_REPORT_TTL_MIN} minutes after the job completes.`;
+    if (!Number.isFinite(done)) return `Available for ${JOB_REPORT_TTL_MIN} minutes after the job completes.`;
     const until = new Date(done + JOB_REPORT_TTL_MIN * 60000);
-    return `Kept until ${until.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (${JOB_REPORT_TTL_MIN} minutes after the job completed).`;
+    return `Available until ${until.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`;
 }
 
 function _radio(name, value, checked, title, help, onPick) {
@@ -97,18 +97,18 @@ function _sourceBlock(results, scope) {
     if (!sources.includes(ui.source)) ui.source = sources[0];
     const truncated = reportHasTruncatedSv(results);
     const browserHelp = truncated
-        ? 'Statevectors of circuits over 14 qubits are not in this copy.'
-        : 'The report as shown here.';
+        ? 'Without statevectors of circuits over 14 qubits.'
+        : 'As displayed.';
     if (sources.length > 1) {
         const pick = v => { ui.source = v; };
         if (sources[0] === 'server') {
-            box.append(_radio('crate-source', 'server', ui.source === 'server', 'Server copy, full', _keptUntil(results), pick));
+            box.append(_radio('crate-source', 'server', ui.source === 'server', 'Server copy (complete)', _keptUntil(results), pick));
         } else {
-            box.append(_radio('crate-source', 'saved', ui.source === 'saved', 'Saved run on the server', 'Statevectors are stored as a sha256 and length.', pick));
+            box.append(_radio('crate-source', 'saved', ui.source === 'saved', 'Saved run on the server', 'Statevectors stored as sha256 and length.', pick));
         }
-        box.append(_radio('crate-source', 'browser', ui.source === 'browser', 'Browser copy (displayed)', browserHelp, pick));
+        box.append(_radio('crate-source', 'browser', ui.source === 'browser', 'Browser copy', browserHelp, pick));
     } else {
-        box.append(el('div', 'text-xs text-gray-800', 'Browser copy (displayed)'), el('div', 'text-xs text-gray-500', browserHelp));
+        box.append(el('div', 'text-xs text-gray-800', 'Browser copy'), el('div', 'text-xs text-gray-500', browserHelp));
     }
     const svLabel = el('label', 'flex items-start gap-2 text-xs cursor-pointer');
     const sv = el('input', 'mt-0.5');
@@ -119,14 +119,14 @@ function _sourceBlock(results, scope) {
     sv.addEventListener('change', () => { ui.includeSv = sv.checked; });
     const svText = el('span', 'min-w-0');
     svText.append(el('span', 'block text-gray-800', 'Include raw statevectors'),
-        el('span', 'block text-gray-500', hasSv ? 'Off: results.json keeps a sha256 and length per statevector.' : 'This report has no statevectors.'));
+        el('span', 'block text-gray-500', hasSv ? 'Off: sha256 and length only.' : 'No statevectors in this report.'));
     svLabel.append(sv, svText);
     if (!hasSv) svLabel.classList.add('opacity-60', 'cursor-default');
     box.append(svLabel);
     if (scope !== 'report') {
         box.append(el('div', 'text-xs text-gray-500', scope === 'task'
-            ? 'This circuit is part of a playlist: the crate holds every circuit of it.'
-            : 'The crate holds every circuit of the playlist.'));
+            ? 'The crate covers the whole playlist.'
+            : 'The crate covers the whole playlist.'));
     }
     return box;
 }
@@ -245,26 +245,26 @@ export function renderExportPanel(aside, ctx) {
     aside.append(head);
 
     if (scope === 'error') {
-        aside.append(_reportOnly(ctx, 'This run failed before any backend ran, so there is no RO-Crate to export.'));
+        aside.append(_reportOnly(ctx, 'No RO-Crate: the run failed before any backend ran.'));
         return;
     }
 
-    const always = _section('Always included');
+    const always = _section('Standard contents');
     always.append(_sourceBlock(ctx.crateResults, scope),
-        _lockedRow('Circuits', 'The submitted circuit and the circuit each backend was sent and executed.'),
-        _lockedRow('Provenance', 'Run configuration, seeds, SDK versions, image commits and each runner’s lock file.'));
+        _lockedRow('Circuits', 'Submitted, dispatched and executed circuits.'),
+        _lockedRow('Provenance', 'Run settings, seeds, SDK versions, image commits, lock files.'));
     aside.append(always);
 
     const items = getState().exportItems;
     const added = _section('Added', String(items.length));
     const paths = plannedPaths(ctx.slugReport || ctx.results, items, scope);
     if (!items.length) {
-        added.append(el('div', 'qr-export-empty', 'Nothing added. Pick a view, set it up and press Add to export.'));
+        added.append(el('div', 'qr-export-empty', 'No items. Choose a view and press Add to export.'));
     } else {
         items.forEach(it => added.append(_itemRow(it, ctx)));
     }
     if (scope !== 'report' && items.length) {
-        added.append(el('div', 'text-xs text-gray-500', 'Each view is drawn for every circuit that offers it, with that circuit’s backends, reference and bits.'));
+        added.append(el('div', 'text-xs text-gray-500', 'Each view is drawn for every circuit that supports it.'));
     }
     aside.append(added);
 
@@ -315,7 +315,7 @@ export function renderExportPanel(aside, ctx) {
     const cap = getState().maxExportItems;
     if (items.length > cap) {
         crate.disabled = true;
-        crate.title = `One export holds at most ${cap} items; ${items.length} are added. Remove some under Added.`;
+        crate.title = `At most ${cap} items per export; ${items.length} added.`;
     }
     crate.addEventListener('click', () => {
         exportRoCrate({
@@ -328,7 +328,7 @@ export function renderExportPanel(aside, ctx) {
     });
     foot.append(crate);
     foot.append(el('div', 'text-xs text-gray-500 text-center',
-        `${addedPaths.length} file${addedPaths.length === 1 ? '' : 's'} from your selection, plus the report, circuits and provenance`
+        `${addedPaths.length} added file${addedPaths.length === 1 ? '' : 's'} plus the standard contents`
         + (scope === 'report' ? '' : ' for every circuit') + '.'));
     aside.append(foot);
     aside.append(_reportOnly(ctx));
@@ -342,12 +342,12 @@ function _reportOnly(ctx, note) {
     if (getState().currentJobId) {
         const full = button('qr-btn justify-start', 'Download full report', ICONS.download);
         full.id = 'download-btn';
-        full.title = `The server's untruncated report of this job, kept for ${durationText(getState().jobTtlSec)} after it completes`;
+        full.title = `Complete server report, available for ${durationText(getState().jobTtlSec)} after the job completes`;
         full.addEventListener('click', () => downloadFullReport());
         grid.append(full);
     }
     const shown = button('qr-btn justify-start', 'Download displayed JSON', ICONS.download);
-    shown.title = 'The report as held in this browser, including any statevectors it holds';
+    shown.title = 'The report as held in this browser';
     shown.addEventListener('click', () => downloadBlob(new Blob([_jsonText(ctx.results)], { type: 'application/json' }), 'rosetta_raw_report.json'));
     const copy = button('qr-btn justify-start', 'Copy', ICONS.copy);
     copy.title = 'Copy the report JSON';

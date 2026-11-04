@@ -152,7 +152,7 @@
                             class="py-2 px-4 rounded-md border border-transparent text-sm font-medium text-indigo-700 bg-indigo-100 hover:bg-indigo-200">+ Add</button>
                     </div>
                     <p id="algo-description" class="text-xs text-gray-500"></p>
-                    <p id="algo-not-loaded" role="status" class="hidden text-xs text-indigo-800">Selected, not loaded: the editor still holds the previous circuit. Load puts this one in the editor; + Add adds it to the playlist.</p>
+                    <p id="algo-not-loaded" role="status" class="hidden text-xs text-indigo-800">Load opens this circuit in the editor.</p>
                 </section>
 
                 <!-- === EDITOR === -->
@@ -160,7 +160,7 @@
                     <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                         <h2 id="ws-editor" class="text-lg font-semibold text-gray-800">Editor</h2>
                         <div class="flex items-baseline gap-2 min-w-0 flex-1 justify-end">
-                            <input autocomplete="off" type="text" id="ctx-algo-name" maxlength="400" value="No Circuit Loaded" aria-label="Circuit name" title="The circuit's name, used for + Add to Playlist and in reports"
+                            <input autocomplete="off" type="text" id="ctx-algo-name" maxlength="400" value="No Circuit Loaded" aria-label="Circuit name" title="Circuit name, used in the playlist and in reports"
                                 class="text-sm text-gray-800 bg-transparent border-b border-dashed border-gray-500 rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-0 flex-1 text-right">
                             <span id="ctx-circuit-stats" class="text-xs text-gray-500 whitespace-nowrap"></span>
                         </div>
@@ -222,11 +222,11 @@
                         <div class="qr-popover-footer">
                                 <button id="btn-bench-add-selected" data-busy-disable type="button"
                                     class="flex-1 py-1.5 px-2 rounded-md text-xs font-medium text-white bg-emerald-700 hover:bg-emerald-800">+ Add selected to Playlist (<span id="bench-selected-count">0</span>)</button>
-                                <button id="btn-bench-add-all" type="button" title="Every circuit the list shows: with no filter and no qubit cap, the whole suite"
+                                <button id="btn-bench-add-all" type="button" title="Add every circuit in the list"
                                     class="py-1.5 px-2 rounded-md text-xs font-medium text-emerald-800 bg-emerald-50 border border-emerald-300 hover:bg-emerald-100">+ Add all shown (<span id="bench-shown-count">0</span>)</button>
                         </div>
                     </div>
-                    <p id="playlist-empty-hint" class="text-xs text-yellow-800">Playlist is empty. Use + Add, Quick Load, Auto-Gen or Bench to collect circuits to run together as a batch.</p>
+                    <p id="playlist-empty-hint" class="text-xs text-yellow-800">Empty. Add circuits with + Add, Quick Load, Auto-Gen or Bench.</p>
                     <ul id="queue-list" class="hidden space-y-1 max-h-48 overflow-y-auto text-sm text-gray-700"></ul>
                 </section>
 
@@ -249,8 +249,8 @@
                         <fieldset class="flex flex-wrap items-center gap-x-3 gap-y-1">
                             <legend class="sr-only">Mode</legend>
                             <span class="font-medium text-gray-700" aria-hidden="true">Mode</span>
-                            <label class="inline-flex min-h-6 items-center" title="Every backend returns its final statevector; pairs are compared by fidelity."><input autocomplete="off" type="checkbox" id="mode-statevector" checked><span class="ml-1.5">Statevector</span></label>
-                            <label class="inline-flex min-h-6 items-center" title="Every backend samples measurement outcomes; pairs are compared with a shot-noise test."><input autocomplete="off" type="checkbox" id="mode-measured"><span class="ml-1.5">Measured</span></label>
+                            <label class="inline-flex min-h-6 items-center" title="Final statevectors, compared by fidelity"><input autocomplete="off" type="checkbox" id="mode-statevector" checked><span class="ml-1.5">Statevector</span></label>
+                            <label class="inline-flex min-h-6 items-center" title="Sampled outcomes, compared with a shot-noise test"><input autocomplete="off" type="checkbox" id="mode-measured"><span class="ml-1.5">Measured</span></label>
                         </fieldset>
                         <label class="flex items-center gap-1 flex-1 min-w-[12rem] text-xs text-gray-600"><span class="font-medium text-gray-700 whitespace-nowrap">Run Name (Optional)</span>
                             <input autocomplete="off" type="text" id="single-run-name" maxlength="400" placeholder="E.g., GHZ Final Opt" class="flex-1 min-w-0 border border-gray-300 rounded px-2 py-1 text-xs"></label>
@@ -259,7 +259,7 @@
                         <div id="shots-container-single" class="hidden inline-flex items-center gap-1 text-xs mr-1">
                             <label for="shots-single" class="font-medium text-gray-700">Shots</label>
                             <input autocomplete="off" type="number" id="shots-single" value="8200" min="1" step="1" class="w-20 border border-gray-300 rounded px-2 py-1 text-xs" aria-describedby="shots-hint-single">
-                            <span id="shots-hint-single" class="sr-only">When the shots are too few for a reliable comparison, the result says so and recommends a count.</span>
+                            <span id="shots-hint-single" class="sr-only">If the shots are too few for the comparison, the result recommends a count.</span>
                         </div>
                         <button type="button" id="chip-backends" data-popover="pop-backends" class="settings-chip inline-flex items-center gap-1 max-w-full px-2.5 py-1 rounded-full border text-xs whitespace-nowrap overflow-hidden text-ellipsis"></button>
                         <button type="button" id="chip-execution" data-popover="pop-execution" class="settings-chip inline-flex items-center gap-1 max-w-full px-2.5 py-1 rounded-full border text-xs whitespace-nowrap overflow-hidden text-ellipsis"></button>
@@ -297,18 +297,18 @@
                                 <label class="qr-label" for="timeout-input">Timeout per backend (seconds)</label>
                                 <input autocomplete="off" type="number" id="timeout-input" value="60" min="10" max="300" step="1" class="qr-input">
                             </div>
-                            <p id="timeout-help" class="qr-help">Covers process start, the warm-up run and every timed run.</p>
+                            <p id="timeout-help" class="qr-help">Covers start-up, warm-up and every timed run.</p>
                         </div>
                         <div class="qr-section">
                             <div class="qr-field">
                                 <label class="qr-label" for="timing-repeats-input">Timing repeats</label>
                                 <input autocomplete="off" type="number" id="timing-repeats-input" value="1" min="1" max="10" step="1" class="qr-input">
                             </div>
-                            <p class="qr-help">After one warm-up, compile and simulate this many times in the same process; times are the median. Each backend still gives one result. To compare separate runs of a backend with each other, use Multi-run mode in Backends.</p>
+                            <p class="qr-help">Timed runs after one warm-up, in one process; times are medians.</p>
                         </div>
                         <div id="exclusive-container" class="qr-section">
                             <label class="qr-option" for="exclusive-checkbox"><input autocomplete="off" type="checkbox" id="exclusive-checkbox">
-                                <span>Exclusive timing run<span class="qr-option-help">Backends run one at a time, and only while no other run is in flight on this server. Use it for timings you will compare or publish.</span></span></label>
+                                <span>Exclusive timing run<span class="qr-option-help">One backend at a time, with no other run on the server. For timings to be compared or published.</span></span></label>
                         </div>
                         <div class="qr-section">
                             <label class="qr-label" for="execution-target-select">Execution Environment</label>
@@ -322,10 +322,10 @@
                                     <button type="button" id="autosave-choose" class="qr-action">Choose folder</button>
                                     <span id="autosave-folder" class="text-xs text-gray-600">no folder chosen</span>
                                 </div>
-                                <p class="qr-help">Each completed run is written as a JSON file to a folder on this computer.</p>
+                                <p class="qr-help">Each completed run is saved as a JSON file.</p>
                                 <p id="autosave-status" class="text-xs"></p>
                             </div>
-                            <p id="autosave-unsupported" class="hidden qr-help text-amber-700">Saving to a folder needs Chrome or Edge (the File System Access API); this browser isn't supported.</p>
+                            <p id="autosave-unsupported" class="hidden qr-help text-amber-700">Requires Chrome or Edge (File System Access API).</p>
                         </div>
                     </div>
                 </div>
@@ -339,16 +339,16 @@
                             <p id="preprocessing-label" class="qr-label">Apply SDK Preprocessing</p>
                             <div class="qr-choices">
                                 <label class="qr-option"><input autocomplete="off" type="radio" name="preprocessing" value="on" checked>
-                                    <span>On<span class="qr-option-help">The API merges quantum registers and round-trips the circuit through pytket; each backend applies its own passes. Every change is listed per backend.</span></span></label>
+                                    <span>On<span class="qr-option-help">Registers merged, circuit round-tripped through pytket, backend passes applied. Every change is recorded.</span></span></label>
                                 <label class="qr-option"><input autocomplete="off" type="radio" name="preprocessing" value="off">
-                                    <span>Off<span class="qr-option-help">No pytket round-trip and none of the optional backend passes, so some backends reject some gates. Changes an adapter cannot run without still apply, and are listed per backend as applied regardless, as is the API&#39;s handling of measurements.</span></span></label>
+                                    <span>Off<span class="qr-option-help">No round-trip and no optional passes; some backends then reject some gates. Required adapter changes are applied regardless and recorded.</span></span></label>
                                 <label class="qr-option"><input autocomplete="off" type="radio" name="preprocessing" value="both">
-                                    <span>Both, as an experiment<span class="qr-option-help">Runs with it on and off; results per setting and a downloadable bundle.</span></span></label>
+                                    <span>Both, as an experiment<span class="qr-option-help">Runs with preprocessing on and off; results per setting and a bundle.</span></span></label>
                             </div>
                         </div>
                         <div id="bypass-limits-container" class="qr-section">
                             <label class="qr-option"><input autocomplete="off" type="checkbox" id="bypass-limits-checkbox">
-                                <span>Bypass API Safety Limits<span class="qr-option-help">Skips the playlist length limit and the experiment size limit, and on a local server the circuit size and statement-count limits. Qubit and circuit preparation limits still apply.</span><span id="bypass-limits-signin" class="qr-option-help hidden">On this server it needs a signed-in account. Sign in to use it.</span></span></label>
+                                <span>Bypass API Safety Limits<span class="qr-option-help">Lifts the playlist and experiment size limits, and on a local server the circuit size limits. Qubit and preparation limits still apply.</span><span id="bypass-limits-signin" class="qr-option-help hidden">Requires sign-in on this server.</span></span></label>
                         </div>
                     </div>
                 </div>
@@ -359,7 +359,7 @@
                     </div>
                     <div class="qr-popover-body">
                         <div class="qr-section">
-                            <p class="qr-help">Each ticked level compiles the run's circuit after the simulators finish; outputs are in the Circuits tab and are not simulated or compared. With none ticked, no compile-only service runs; with Statevector and Measured both unticked, only these run. Hover a level for what it runs.</p>
+                            <p class="qr-help">Compiled after the simulators finish; outputs appear in the Circuits tab and are not simulated or compared. With no mode ticked, only these run.</p>
                         </div>
                         <div id="compiler-grid" role="table" aria-label="Compile-only services" class="qr-section divide-y divide-gray-100 space-y-0"></div>
                     </div>
@@ -374,7 +374,7 @@
                     </div>
                     <div class="qr-popover-body">
                         <div class="qr-section">
-                            <p class="qr-help">A statevector pair agrees when fidelity ≥ 1 − fidelity tolerance; a phase within the phase tolerance counts as 0. The JS and Hellinger cut-offs are descriptive; the shot-noise test decides measured agreement.</p>
+                            <p class="qr-help">Statevector pairs agree when F ≥ 1 − fidelity tolerance. JS and Hellinger are descriptive; the shot-noise test decides measured agreement.</p>
                         </div>
                         <div class="qr-section grid grid-cols-2 gap-x-3 gap-y-2 space-y-0">
                             <label class="text-xs text-gray-800">Statevector fidelity tol
@@ -398,7 +398,7 @@
                         <div class="qr-section">
                             <label class="qr-label" for="seed-input">Sampling seed (measured)</label>
                             <input autocomplete="off" type="number" id="seed-input" placeholder="empty: a random seed, recorded in the report" min="0" step="1" class="qr-input">
-                            <p class="qr-help">Each backend gets its own seed derived from this one. Statevector runs use no seed.</p>
+                            <p class="qr-help">Each backend's seed is derived from this one. Statevector runs use none.</p>
                         </div>
                     </div>
                 </div>
@@ -415,7 +415,7 @@
                             <p class="text-sm text-gray-600 mt-1 mb-4 flex flex-wrap items-center gap-x-1.5">
                                 <span id="loader-progress"></span><span id="loader-progress-sep" class="hidden" aria-hidden="true">·</span>
                                 <span id="loader-elapsed">0 s elapsed</span>
-                                <button type="button" id="btn-stop-waiting" title="The job keeps running on the server. Its results can be shown later from this page or after reopening it, for 30 minutes after it finishes."
+                                <button type="button" id="btn-stop-waiting" title="The job continues on the server; its results can be reopened from this page for 30 minutes after it finishes."
                                     class="ml-2 text-indigo-700 hover:text-indigo-900 underline">Stop waiting</button>
                             </p>
                             <div id="batch-progress"></div>
@@ -473,8 +473,8 @@
             <h2 id="visualizer-title" class="flex-1 min-w-0 text-sm font-semibold text-gray-900">Quirk view of the editor circuit</h2>
             <a id="quirk-open-link" href="about:blank" target="_blank" rel="noopener" class="px-3 py-1 rounded border border-purple-300 bg-white text-purple-700 hover:bg-purple-50 text-sm font-medium">Open in Quirk</a>
             <button type="button" id="visualizer-close" class="px-3 py-1 rounded border border-red-300 bg-red-100 text-red-700 hover:bg-red-200 text-sm font-bold">❌ Close</button>
-            <p id="visualizer-keys" class="basis-full text-xs text-gray-600">Escape closes this view. Inside the Quirk frame, Quirk receives the keys: Tab out of the frame first, or use Close.</p>
-            <p class="lg:hidden basis-full text-xs text-gray-600">Quirk's page is wider than this screen: scroll inside it sideways, or use Open in Quirk for a tab of its own.</p>
+            <p id="visualizer-keys" class="basis-full text-xs text-gray-600">Escape closes this view; inside the Quirk frame, Tab out first or use Close.</p>
+            <p class="lg:hidden basis-full text-xs text-gray-600">Scroll the Quirk frame sideways, or use Open in Quirk.</p>
         </div>
         <div class="flex-1 min-h-0 relative overflow-hidden">
             <iframe id="quirk-iframe" title="Quirk circuit simulator" src="about:blank" class="border-0 w-full h-[calc(100%+120px)] -mt-[120px]"></iframe>
@@ -581,7 +581,7 @@
                                 <label for="register-password" class="block text-sm font-medium text-gray-700">Password</label>
                                 <input type="password" id="register-password" aria-describedby="register-password-hint register-error" autocomplete="new-password"
                                     class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2">
-                                <span id="register-password-hint" class="block mt-1 text-xs text-gray-600">At least 8 characters and at most 72 bytes: up to 72 plain ASCII characters, fewer with accented letters or symbols, which take 2 to 4 bytes each. Not one of the most common passwords.</span>
+                                <span id="register-password-hint" class="block mt-1 text-xs text-gray-600">At least 8 characters, at most 72 bytes (accented letters and symbols take 2–4 bytes). Common passwords are refused.</span>
                             </div>
                         </div>
                     </div>
@@ -612,7 +612,7 @@
                 <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                     <h3 class="text-lg leading-6 font-medium text-gray-900" id="delete-account-title">Delete Account</h3>
                     <div class="mt-4 space-y-4">
-                        <p id="delete-account-text" class="text-sm text-gray-700">Your account, its saved circuits and its run history will be deleted permanently. This cannot be undone. Enter your password to confirm.</p>
+                        <p id="delete-account-text" class="text-sm text-gray-700">Deletes the account, its saved circuits and its run history permanently. Enter your password to confirm.</p>
                         <div id="delete-account-error" role="alert"
                             class="hidden text-sm text-red-700 bg-red-50 p-2 rounded border border-red-200"></div>
                         <div>
@@ -643,7 +643,7 @@
                 <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                     <h3 class="text-lg leading-6 font-medium text-gray-900" id="change-password-title">Change Password</h3>
                     <div class="mt-4 space-y-4">
-                        <p id="change-password-text" class="text-sm text-gray-700">The new password applies at once. Every other session of the account, in other browsers and in qrosetta, is signed out; this one stays signed in.</p>
+                        <p id="change-password-text" class="text-sm text-gray-700">Applies at once. Other sessions of this account, including qrosetta, are signed out.</p>
                         <div id="change-password-error" role="alert"
                             class="hidden text-sm text-red-700 bg-red-50 p-2 rounded border border-red-200"></div>
                         <div>
@@ -655,7 +655,7 @@
                             <label for="change-password-new" class="block text-sm font-medium text-gray-700">New password</label>
                             <input type="password" id="change-password-new" aria-describedby="change-password-hint change-password-error" autocomplete="new-password"
                                 class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2">
-                            <span id="change-password-hint" class="block mt-1 text-xs text-gray-600">At least 8 characters and at most 72 bytes. Not one of the most common passwords.</span>
+                            <span id="change-password-hint" class="block mt-1 text-xs text-gray-600">At least 8 characters, at most 72 bytes. Common passwords are refused.</span>
                         </div>
                     </div>
                 </div>
@@ -747,7 +747,7 @@
     <template id="tpl-legend-measured">
         <div class="flex flex-wrap justify-start items-center gap-x-4 gap-y-1 text-xs text-gray-600 mb-4 p-2 bg-gray-50 rounded-lg border">
             <span class="font-bold">Legend:</span>
-            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-success"></span>Consistent within shot noise (no difference found; not proof of equality)</span>
+            <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-success"></span>Consistent within shot noise</span>
             <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-anomaly"></span>Distinguishable, or a single-bit marginal differs</span>
             <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-inconclusive"></span>Inconclusive (too few shots, or the two tests disagree)</span>
             <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-error"></span>Error</span>
@@ -783,7 +783,7 @@
                 <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-error"></span>ERR error</span>
                 <span class="flex items-center"><span class="w-3 h-3 inline-block rounded-full mr-1.5 tpl-dot-timeout"></span>T/O timeout</span>
             </div>
-            <p>Numbers are the direct values, without bit reversal. Where a pair is compared after the bit reversal its declared orderings imply, the value in that basis is shown below with ↺.</p>
+            <p>Direct values; ↺ marks the value after the declared bit reversal.</p>
         </div>
     </template>
 
@@ -807,8 +807,8 @@
                     <tr>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task</th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" title="Lowest total time (compilation + simulation; medians with Timing repeats above 1) among successful runs, with n. ≈ means its per-run totals overlap the runner-up's. When the fastest ran on a GPU, the fastest CPU backend is named too; times across devices compare different hardware.">Fastest (total time)</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" title="Lowest process peak RSS among successful CPU runs. For small circuits this is mostly the interpreter and SDK import footprint, not the simulation. GPU runs are not ranked by memory because GPU device memory is not measured.">Lowest process peak RSS</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" title="Lowest total time (compilation + simulation) among successful runs. ≈: its run times overlap the runner-up's.">Fastest (total time)</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase" title="Lowest process peak RSS among successful CPU runs; for small circuits mostly the SDK footprint.">Lowest process peak RSS</th>
                         <th></th>
                     </tr>
                 </thead>

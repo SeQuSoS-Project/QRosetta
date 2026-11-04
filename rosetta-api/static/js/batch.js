@@ -122,7 +122,7 @@ export function renderBatchQueue() {
         if (!stored) {
             const note = document.createElement('li');
             note.className = 'text-xs text-amber-700 py-1';
-            note.textContent = 'This browser could not store the batch, so it will be empty after a reload.';
+            note.textContent = 'This browser could not store the playlist; it will be empty after a reload.';
             queueList.appendChild(note);
         }
     }
@@ -146,7 +146,7 @@ export async function viewBatchItem(index) {
     if (getState().isProcessing) return;
     const item = getState().batchQueue[index];
     if (!item) return;
-    if (editorHasEdits() && !confirm('Open replaces the circuit in the editor, which you have edited. Continue?')) return;
+    if (editorHasEdits() && !confirm('Replace the edited circuit in the editor?')) return;
     _selectInMenu(item);
     let qasm = item.qasm_string;
     if (!qasm) {
@@ -189,7 +189,7 @@ export function removeFromBatch(index) {
 
 export function clearBatch() {
     const n = getState().batchQueue.length;
-    if (n && !confirm(`Remove all ${n} circuit${n === 1 ? '' : 's'} from the playlist? This cannot be undone; Export JSON keeps a copy.`)) return;
+    if (n && !confirm(`Remove all ${n} circuit${n === 1 ? '' : 's'} from the playlist? This cannot be undone (Export JSON keeps a copy).`)) return;
     dispatch('SET_BATCH_QUEUE', []);
     renderBatchQueue();
 }
@@ -252,7 +252,7 @@ export function openGeneratorModal() {
     }
     const cap = getDynamicMaxQubits();
     const note = document.getElementById('gen-cap-note');
-    if (note) note.textContent = `At most ${cap} qubits: the limit for ${qubitCapReason()}. Each algorithm also has its own maximum.`;
+    if (note) note.textContent = `At most ${cap} qubits (${qubitCapReason()}); each algorithm has its own maximum.`;
     ['gen-min', 'gen-max'].forEach(id => {
         const input = /** @type {HTMLInputElement|null} */ (document.getElementById(id));
         if (!input) return;
@@ -266,7 +266,7 @@ export function openGeneratorModal() {
 export function qubitCapReason() {
     const sv = /** @type {HTMLInputElement|null} */ (document.getElementById('mode-statevector'))?.checked ?? true;
     const ms = /** @type {HTMLInputElement|null} */ (document.getElementById('mode-measured'))?.checked ?? false;
-    if (sv) return ms ? 'statevector runs (measured runs allow more, but Statevector is ticked)' : 'statevector runs';
+    if (sv) return ms ? 'statevector runs, as Statevector is ticked' : 'statevector runs';
     return ms ? 'measured runs' : 'compile-only runs';
 }
 
@@ -303,7 +303,7 @@ export function runAutoGeneration() {
     if (maxQ > cap) notes.push(`Max Qubits ${maxQ} is over ${cap}, the limit for ${qubitCapReason()}.`);
     if (lowered.size) notes.push(`Qubit counts were limited for ${[...lowered].join('; ')}.`);
     if (added.length < count) {
-        notes.push(`${count - added.length} of ${count} circuits were not added: no qubit count in ${minQ}–${maxQ} fits the chosen algorithm and the ${cap}-qubit limit.`);
+        notes.push(`${count - added.length} of ${count} circuits not added: no qubit count in ${minQ}–${maxQ} fits the algorithm and the ${cap}-qubit limit.`);
     }
     if (notes.length) alert(notes.join('\n\n'));
     dispatch('SET_BATCH_QUEUE', [...st.batchQueue, ...added]);

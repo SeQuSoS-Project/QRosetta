@@ -81,12 +81,12 @@ export function getEnabledRunnerIds() {
 /** Why no backend can be selected, or null. */
 export function runnerSelectionProblem() {
     if (Object.keys(_runnerOptInfo).length === 0) {
-        return `The backend list could not be loaded from the server${_runnersLoadError ? ` (${_runnersLoadError})` : ''}. Reload the page to try again.`;
+        return `The backend list could not be loaded from the server${_runnersLoadError ? ` (${_runnersLoadError})` : ''}. Reload the page.`;
     }
     if (getTargetSimulators().length === 0) {
         return _multiRunEnabled
-            ? 'No backend has a run count. Open the Backends chip above the run button and set a count of at least 1 for one backend.'
-            : 'No backend is selected. Open the Backends chip above the run button and check at least one.';
+            ? 'No backend has a run count of at least 1 (Backends).'
+            : 'No backend selected (Backends).';
     }
     return null;
 }
@@ -198,7 +198,7 @@ export function renderConfigPanel(runners) {
     if (runners.length === 0) {
         const p = document.createElement('p');
         p.className = 'text-xs text-red-700';
-        p.textContent = 'The backend list could not be loaded from the server. Reload the page to try again.';
+        p.textContent = 'The backend list could not be loaded. Reload the page.';
         list.appendChild(p);
     }
 
@@ -283,7 +283,7 @@ export function renderConfigPanel(runners) {
     if (anyLocked) {
         const note = document.createElement('p');
         note.className = 'qr-help pt-1';
-        note.textContent = 'Struck through: disabled or unavailable on this server; hover a name for the reason.';
+        note.textContent = 'Struck through: unavailable on this server (hover for the reason).';
         list.appendChild(note);
     }
 

@@ -23,9 +23,9 @@ const KIND_CHIP = {
 
 const NORMALISATION_OPTIONS = [
     ['whitespace', 'Ignore whitespace and line breaks', 'Compare one statement per line, with single spaces between tokens.'],
-    ['comments', 'Ignore comments', "Drop // and /* */ comments, blank lines and trailing spaces before comparing. QMAP's '// i' and '// o' layout lines are kept, because they say which qubit is which."],
-    ['header', 'Ignore OPENQASM and include lines', 'Drop the version statement and include statements (qelib1.inc, hqslib1.inc, ...) before comparing.'],
-    ['angles', 'Compare angles by value', 'Evaluate each gate parameter that has no variables (pi/4, 0.25*pi, 0.7853981633974483) and compare it in radians rounded to 12 significant digits. Parameters with variables, as in gate bodies, are compared as written.'],
+    ['comments', 'Ignore comments', "Drop comments, blank lines and trailing spaces. QMAP's '// i' and '// o' layout lines are kept."],
+    ['header', 'Ignore OPENQASM and include lines', 'Drop the OPENQASM and include statements.'],
+    ['angles', 'Compare angles by value', 'Compare constant gate parameters (pi/4, 0.785398…) in radians to 12 significant digits; parameters with variables as written.'],
 ];
 
 function _el(tag, className, text) {
@@ -82,32 +82,32 @@ function _sourceNote(pane, uploaded) {
 }
 
 function _recordedNote(pane) {
-    if (pane.kind === 'input') return 'The circuit as submitted, before any change by the API.';
+    if (pane.kind === 'input') return 'As submitted, before any change by the API.';
     if (pane.kind === 'compile-input') {
-        return 'The circuit every compile-only service received: the submitted circuit as the API prepares it for statevector runners.';
+        return 'Input to every compile-only service: the submitted circuit as prepared for statevector runners.';
     }
     if (pane.kind === 'compiled' && pane.text === null) {
-        return 'A compile-only service was asked for this level and returned no circuit; the reason is below.';
+        return 'No circuit returned at this level; the reason is below.';
     }
     if (pane.kind === 'compiled') {
         const layout = pane.compilerId === 'qmap'
-            ? " The lines '// i' and '// o' list, for logical qubits 0, 1, 2, ..., the physical qubit of the chain that holds each one at the start and at the end."
+            ? " '// i' and '// o' give the physical qubit of each logical qubit at the start and at the end."
             : '';
-        return `The output of a compile-only service. Compiled circuits are not simulated, timed or compared. Gate count and depth are counted from this text.${layout}`;
+        return `Compiler output; not simulated, timed or compared. Gate count and depth are counted from this text.${layout}`;
     }
     if (pane.kind === 'dispatched') {
         const names = pane.runners.map(_displayRunnerName).join(', ');
-        return `The circuit the API sent to the ${pane.group} group${names ? `: ${names}` : ''}.`;
+        return `Sent by the API to the ${pane.group} group${names ? `: ${names}` : ''}.`;
     }
-    const group = pane.group ? ` Received the ${pane.group} circuit.` : '';
-    if (pane.text === null) return `This backend returned no circuit text.${group}`;
+    const group = pane.group ? ` From the ${pane.group} circuit.` : '';
+    if (pane.text === null) return `No circuit text returned.${group}`;
     if (pane.metrics.fromText === true) {
-        return `The circuit this backend executed, as its runner recorded it. Gate count and depth are counted from this text.${group}`;
+        return `As executed, recorded by the runner. Gate count and depth are counted from this text.${group}`;
     }
     if (pane.metrics.fromText === false) {
-        return `The circuit this backend executed, as its runner recorded it. Gate count and depth are counted from ${pane.metrics.basis}, not from this text, so the text and the counts can differ.${group}`;
+        return `As executed, recorded by the runner. Gate count and depth come from ${pane.metrics.basis}, not from this text.${group}`;
     }
-    return `The circuit this backend executed, as its runner recorded it.${group}`;
+    return `As executed, recorded by the runner.${group}`;
 }
 
 function _paneCard(pane, context) {
@@ -189,7 +189,7 @@ function _paneCard(pane, context) {
     bar.appendChild(_el('span', 'flex-1', `${lines} line${lines === 1 ? '' : 's'}${endsWithNewline(pane.text) ? '' : ', no final line break'}`));
     if (shown.count) {
         card.appendChild(_el('p', 'px-2 py-1 text-xs text-amber-900 bg-amber-50 border-b border-amber-200',
-            `This text holds ${shown.count} invisible formatting character${shown.count === 1 ? '' : 's'} (such as a direction override), shown below as ⟨U+…⟩. Copy and download keep the original text.`));
+            `${shown.count} invisible formatting character${shown.count === 1 ? '' : 's'}, shown as ⟨U+…⟩; copies and downloads keep the original.`));
     }
     bar.appendChild(makeCopyIconButton(() => pane.text, 'Copy this circuit'));
     const download = _el('button', 'text-xs text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-md px-2 py-1', '⬇ .qasm');
@@ -225,7 +225,7 @@ function _groupTable(groups, panes, selected, onSelect) {
     const wrap = _el('div', 'overflow-x-auto border border-gray-200 rounded-md');
     const table = _el('table', 'min-w-full text-xs');
     table.appendChild(_el('caption', 'text-left px-2 py-1 bg-gray-50 text-gray-600',
-        `${panes.length} recorded texts, ${groups.length} distinct. Rows that list several backends are byte-for-byte the same text.`));
+        `${panes.length} recorded texts, ${groups.length} distinct (backends in one row recorded identical text)`));
     const head = _el('tr');
     ['Kind', 'Circuit', 'Lines', 'Gates', 'Depth', 'Change', ''].forEach(t => {
         const th = _el('th', 'px-2 py-1 text-left font-medium text-gray-600 whitespace-nowrap', t);
@@ -308,7 +308,7 @@ function _renderDiff(out, a, b, options) {
     const bLines = comparableLines(b.text, options);
     const result = diffLines(aLines, bLines);
     if (!result.complete) {
-        out.appendChild(_el('p', 'text-xs text-gray-600', 'The two texts differ in too many lines for a line diff here. Compare the panes side by side, or download both and diff them locally.'));
+        out.appendChild(_el('p', 'text-xs text-gray-600', 'Too many differing lines for a diff here; compare side by side or download both.'));
         return;
     }
     const normalised = options.whitespace || options.comments || options.header || options.angles;
@@ -316,7 +316,7 @@ function _renderDiff(out, a, b, options) {
     summary.appendChild(_el('span', '', `${result.deleted} line${result.deleted === 1 ? '' : 's'} only in A, ${result.inserted} only in B`));
     summary.appendChild(document.createTextNode(normalised ? ' (normalised text).' : ' (raw text).'));
     if (!normalised && differOnlyInLineBreaks(a.text, b.text)) {
-        summary.appendChild(document.createTextNode(' The texts differ only in their line-break characters (CRLF or LF).'));
+        summary.appendChild(document.createTextNode(' Only the line-break characters differ (CRLF or LF).'));
     }
     if (!normalised && endsWithNewline(a.text) !== endsWithNewline(b.text)) {
         summary.appendChild(document.createTextNode(` Only ${endsWithNewline(a.text) ? 'A' : 'B'} ends with a line break.`));
@@ -337,9 +337,9 @@ function _diffSection(panes, initialId) {
     const result = { section, show: (/** @type {string} */ _id) => {} };
     section.appendChild(_el('h3', 'text-sm font-semibold text-gray-900', 'Diff'));
     section.appendChild(_el('p', 'text-xs text-gray-500',
-        "A line diff compares text only. Two texts can differ in every line and still describe the same circuit (gates rewritten, angles written differently, qubits relabelled), so the counts below say nothing about whether the circuits are equivalent."));
+        'Text comparison only: equivalent circuits can differ in every line.'));
     if (withText.length < 2) {
-        section.appendChild(_el('p', 'text-xs text-gray-500', 'This run recorded fewer than two circuit texts.'));
+        section.appendChild(_el('p', 'text-xs text-gray-500', 'Fewer than two circuit texts recorded.'));
         return result;
     }
     const [aId, bId] = diffPairFor(initialId, panes) || [withText[0].id, withText[1].id];
@@ -382,8 +382,8 @@ function _crateNote(report, sharePage) {
     if (sharePage) return '';
     const batch = typeof report.task_name === 'string';
     return batch
-        ? ' The RO-Crate holds the same texts for this task as circuits/<task>.qasm, dispatched_circuits/<task>/, transpiled_circuits/<task>/, compile_inputs/<task>.qasm and compiled_circuits/<task>/.'
-        : ' The RO-Crate holds the same texts as circuit.qasm, dispatched_circuits/, transpiled_circuits/, compile_input.qasm and compiled_circuits/.';
+        ? ' In the RO-Crate: circuits/<task>.qasm, dispatched_circuits/<task>/, transpiled_circuits/<task>/, compile_inputs/<task>.qasm, compiled_circuits/<task>/.'
+        : ' In the RO-Crate: circuit.qasm, dispatched_circuits/, transpiled_circuits/, compile_input.qasm, compiled_circuits/.';
 }
 
 /**
@@ -397,14 +397,14 @@ export function renderCircuitExplorer(report, panel, { extraControls = null, upl
     const panes = circuitPanes(report);
     const root = _el('div', 'space-y-4');
     root.appendChild(_el('p', 'text-xs text-gray-600 leading-snug',
-        'The circuit texts this run recorded: the circuit as submitted, the circuit the API sent to each dispatch group, the circuit each backend executed and, when compile-only services were selected, their input and output.' + _crateNote(report, sharePage)));
+        'Submitted, dispatched, executed and compiled circuit texts.' + _crateNote(report, sharePage)));
     if (extraControls) {
         const host = _el('div');
         extraControls(host, report);
         root.appendChild(host);
     }
     if (!panes.length) {
-        root.appendChild(_el('p', 'text-sm text-gray-500', 'This report holds no circuit text.'));
+        root.appendChild(_el('p', 'text-sm text-gray-500', 'No circuit text in this report.'));
         panel.appendChild(root);
         return;
     }
@@ -423,7 +423,7 @@ export function renderCircuitExplorer(report, panel, { extraControls = null, upl
         const group = groups.find(g => g.id === selected) || groups[0];
         const items = [];
         if (group.panes.length > 1) {
-            items.push(_el('p', 'text-xs text-gray-600', `The same text was recorded for: ${group.panes.map(paneTitle).join('; ')}. Notes below are for ${paneTitle(group.panes[0])}.`));
+            items.push(_el('p', 'text-xs text-gray-600', `Identical text recorded for: ${group.panes.map(paneTitle).join('; ')}. Notes below refer to ${paneTitle(group.panes[0])}.`));
         }
         items.push(_paneCard(group.panes[0], context));
         viewer.replaceChildren(...items);

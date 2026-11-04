@@ -6,32 +6,32 @@ import { formatRunnerLabel, parseRunnerKey } from './runner_key.js';
 import { setTip } from './tooltip.js';
 
 export const METRIC_DEFINITIONS = {
-    "compilation": "<b>Compilation Time:</b> Wall clock from t0 to t1 of a timed run: parse the QASM, apply this backend's transforms and build its native circuit. For Qulacs, QuEST, qsim, Qiskit and cuQuantum this includes converting the circuit into the simulator's own form (state allocation and gate application are in Simulation Time; see the manual). After one discarded warm-up run; with Timing repeats above 1, the median of the timed runs, with their spread and n.",
-    "simulation": "<b>Simulation Time:</b> Wall clock from t2 to t3 of a timed run: execute the circuit and return the statevector or draw the shots. Building the counts histogram from drawn shots is outside this window. After one discarded warm-up run; with Timing repeats above 1, the median of the timed runs, with their spread and n.",
-    "total_time": "<b>Total:</b> Compilation + Simulation. With Timing repeats above 1, median compilation + median simulation, ± the standard deviation of the per-run totals. Backends are ranked by this column.",
-    "cpu_time": "<b>CPU Time:</b> User+system CPU time of the whole isolated runner process: interpreter start, SDK import, warm-up and every timed run, so it grows with Timing repeats. It covers more than the wall-clock columns.",
-    "sim_cpu_time": "<b>Simulation CPU:</b> Process CPU time (all threads) from t2 to t3; with Timing repeats above 1, the median of the timed runs. Every runner is started with OMP_NUM_THREADS, MKL_NUM_THREADS, OPENBLAS_NUM_THREADS, NUMEXPR_NUM_THREADS and NUMBA_NUM_THREADS set to 1 (see thread_env in the raw JSON).",
-    "gate_count": "<b>Gate Count:</b> Number of gate statements in the circuit this backend executed (its transpiled_qasm).",
-    "circuit_depth": "<b>Depth:</b> Greedy-layering depth of the circuit this backend executed (its transpiled_qasm).",
-    "executed_gate_count": "<b>Gates:</b> The runner's gate_count for the circuit this backend executed. How it was counted is its gate_metrics_basis, given in the pane's note: from this text for most backends, from the executed tape for PennyLane.",
-    "executed_depth": "<b>Depth:</b> The runner's circuit_depth for the circuit this backend executed, counted the same way as Gates.",
-    "text_gate_count": "<b>Gates:</b> Number of top-level gate statements in this text, counted in the browser the same way as for compiled circuits: barriers, measurements, resets and statements inside gate definitions are not counted, a call of a user-defined gate counts once, and a statement on whole registers (h q; or cx a, b;) counts once per register index. Compare it with a compiled circuit's count to read a reduction, keeping in mind that compilers write different gate sets.",
-    "text_depth": "<b>Depth:</b> Greedy-layering depth of this text, counted the same way as for compiled circuits: one layer per gate statement whatever the gate; barriers are not counted.",
-    "compiled_gate_count":"<b>Gates:</b> Number of top-level gate statements in this compiled circuit's text. A ccx, a swap and an rz each count as one, and compilers write different gate sets (staq keeps ccx and cu1, Quartz writes h, x, rz and cx, Cirq writes cz plus single-qubit gates), so this number is not comparable across compilers; compare the 2+ qubit count or the per-gate counts, or translate the outputs to one gate set first.",
-    "compiled_multi_qubit_gate_count": "<b>On 2+ qubits:</b> Number of gate statements in this text that act on two or more qubits (a ccx counts once). Comparable across compilers only when they use the same multi-qubit gates.",
-    "compiled_depth": "<b>Depth:</b> Greedy-layering depth of this compiled circuit's text, one layer per gate statement whatever the gate. Barriers are not counted and do not align the wires, so the value can be lower than Qiskit's depth() of the same text.",
-    "proc_peak_rss": "<b>Process Peak RSS:</b> Peak RSS of the simulating process over its whole life: interpreter start, SDK import, warm-up and every timed run. For small circuits it is mostly the interpreter and SDK import footprint, not the state. Kernel high-water mark (VmHWM); a getrusage badge marks the ru_maxrss fallback. Resources are ranked by this column.",
-    "mem_delta": "<b>Mem Delta:</b> Peak RSS minus baseline RSS during the simulation window (pre-execute setup plus t2..t3 of the first timed run). Memory the warm-up freed but the process kept can be reused, so a state smaller than the SDK's cached memory can read near 0. Kernel high-water mark (VmHWM, reset when the window opens); a sampled badge marks 10 ms RSS polling, which can miss short peaks.",
-    "proc_peak": "<b>Window Peak:</b> Absolute peak RSS during the simulation window of the first timed run, measured the same way as Mem Delta.",
-    "theoretical_sv": "<b>Theoretical SV:</b> Size of a dense statevector for the declared qubits: 2^N × 16 bytes for complex128 backends, 2^N × 8 bytes for complex64 backends. quimb (tensor network) holds no dense statevector; its value is computed the same way from the precision it reports, for comparison.",
-    "fidelity_matrix": "<b>Fidelity Matrix:</b> |⟨ψi|ψj⟩|² between the normalised statevectors, unrounded. Green when F ≥ 1 − the fidelity tolerance recorded with the pair. A value other than 1 is printed with enough decimals to differ from 1.",
-    "relative_phase_matrix": "<b>Global phase offset arg⟨a|b⟩:</b> arg⟨ψi|ψj⟩ in radians. Green when |phase| ≤ the phase tolerance recorded with the pair. A non-zero value with fidelity at 1 means the two states differ only by a global phase.",
-    "statistical_distance_matrix (js_divergence)": "<b>JS Divergence:</b> Jensen–Shannon divergence between the two count distributions, each normalised by its observed total, in nats (maximum ln 2 ≈ 0.693). Green when ≤ the JS threshold recorded with the pair.",
-    "hellinger_distance_matrix": "<b>Hellinger Distance:</b> Hellinger distance between the two normalised count distributions (0 to 1). Green when ≤ the Hellinger threshold recorded with the pair.",
-    "pairwise_agreement": "<b>Explained-Cause Agreement:</b> Each statevector pair is compared in the basis its declared qubit orderings imply. Agreement: agree_directly, agree_up_to_global_phase, agree_after_bit_reversal (the reversal the declared orderings imply). Disagreement: residual_disagreement, agree_after_qubit_permutation (agrees only after an undeclared qubit permutation, searched up to 7 qubits), and pairs that match only in the basis the declared orderings do not imply. Measured pairs are judged by their shot-noise assessment; their distance label is descriptive. agree_after_normalization marks an agreeing pair whose input norm differed from 1 by more than the norm tolerance. not_comparable pairs carry a reason.",
-    "statistical_test": "<b>Shot-Noise Test:</b> Pearson chi-square (no continuity correction) and G-test of homogeneity on the counts, in the basis chosen from the declared orderings, with Benjamini–Yekutieli correction across all pairs, effect size and power at α/(m·c_m).",
-    "execution_time_sec": "<b>Execution Time:</b> Compilation + Simulation (medians when Timing repeats is above 1).",
-    "memory_usage_mb": "<b>Memory:</b> Peak RSS minus baseline RSS during the simulation window."
+    "compilation": "<b>Compilation Time:</b> t0 to t1: parse, apply this backend's transforms and build its native circuit; for Qulacs, QuEST, qsim, Qiskit and cuQuantum also the conversion to the simulator's own form. Median over timed runs, after one warm-up.",
+    "simulation": "<b>Simulation Time:</b> t2 to t3: execute and return the statevector or draw the shots; tallying counts is outside. Median over timed runs, after one warm-up.",
+    "total_time": "<b>Total:</b> Compilation + simulation (medians), ± standard deviation of the per-run totals. Ranking column.",
+    "cpu_time": "<b>CPU Time:</b> User + system CPU of the whole runner process, including start-up, SDK import and warm-up.",
+    "sim_cpu_time": "<b>Simulation CPU:</b> Process CPU time (all threads) from t2 to t3, median over timed runs. Runners run with one BLAS/OpenMP thread.",
+    "gate_count": "<b>Gate Count:</b> Gate statements in the executed circuit (transpiled_qasm).",
+    "circuit_depth": "<b>Depth:</b> Greedy-layering depth of the executed circuit (transpiled_qasm).",
+    "executed_gate_count": "<b>Gates:</b> The runner's gate_count for the executed circuit; its basis (text or executed tape) is in the pane's note.",
+    "executed_depth": "<b>Depth:</b> The runner's circuit_depth, counted like Gates.",
+    "text_gate_count": "<b>Gates:</b> Top-level gate statements in this text, as for compiled circuits; barriers, measurements and resets not counted, register-wide statements once per index.",
+    "text_depth": "<b>Depth:</b> Greedy-layering depth of this text, one layer per gate statement; barriers not counted.",
+    "compiled_gate_count": "<b>Gates:</b> Top-level gate statements in the compiled text. Compilers use different gate sets, so this count is not comparable across compilers.",
+    "compiled_multi_qubit_gate_count": "<b>On 2+ qubits:</b> Gate statements acting on two or more qubits. Comparable across compilers that use the same multi-qubit gates.",
+    "compiled_depth": "<b>Depth:</b> Greedy-layering depth of the compiled text, one layer per gate statement; barriers not counted.",
+    "proc_peak_rss": "<b>Process Peak RSS:</b> Lifetime peak RSS of the simulating process (VmHWM), including SDK import and warm-up. Ranking column.",
+    "mem_delta": "<b>Mem Delta:</b> Peak minus baseline RSS during the simulation window (VmHWM). Can read near 0 when the warm-up's freed memory is reused.",
+    "proc_peak": "<b>Window Peak:</b> Absolute peak RSS during the simulation window.",
+    "theoretical_sv": "<b>Theoretical SV:</b> Dense statevector size for the declared qubits: 2^N × 16 bytes (complex128) or × 8 bytes (complex64).",
+    "fidelity_matrix": "<b>Fidelity Matrix:</b> |⟨ψi|ψj⟩|² of the normalised statevectors. Green when F ≥ 1 − fidelity tolerance.",
+    "relative_phase_matrix": "<b>Global phase offset arg⟨a|b⟩:</b> arg⟨ψi|ψj⟩ in radians. Green when within the phase tolerance.",
+    "statistical_distance_matrix (js_divergence)": "<b>JS Divergence:</b> Jensen–Shannon divergence of the count distributions, in nats (maximum ln 2). Green when within the JS threshold.",
+    "hellinger_distance_matrix": "<b>Hellinger Distance:</b> Hellinger distance of the count distributions (0 to 1). Green when within the Hellinger threshold.",
+    "pairwise_agreement": "<b>Explained-Cause Agreement:</b> Statevector pairs agree directly, up to a global phase or after the declared bit reversal; anything else is a disagreement. Measured pairs are judged by the shot-noise test.",
+    "statistical_test": "<b>Shot-Noise Test:</b> Chi-square and G-test of homogeneity per pair, Benjamini–Yekutieli corrected, with effect size and power.",
+    "execution_time_sec": "<b>Execution Time:</b> Compilation + simulation (medians).",
+    "memory_usage_mb": "<b>Memory:</b> Peak minus baseline RSS during the simulation window."
 };
 
 export const STATUS_STYLES = {
@@ -259,9 +259,9 @@ export const TAG_AMBER = 'bg-amber-100 text-amber-800 border-amber-300';
 
 const BIT_ORDER_TAGS = {
     lsb: { label: 'LSB', color: 'bg-sky-100 text-sky-800 border-sky-300',
-           title: 'LSB: qubit 0 (and c[0]) is the least significant bit, written rightmost: in "01", qubit 0 is 1. Qiskit prints states this way. Pairs with an MSB backend are compared after reversing the bits.' },
+           title: 'LSB: qubit 0 is the rightmost bit (Qiskit\'s order). Compared with MSB backends after bit reversal.' },
     msb: { label: 'MSB', color: 'bg-white text-sky-800 border-sky-300',
-           title: 'MSB: qubit 0 (and c[0]) is the most significant bit, written leftmost: in "01", qubit 0 is 0 and qubit 1 is 1. Pairs with an LSB backend are compared after reversing the bits.' },
+           title: 'MSB: qubit 0 is the leftmost bit. Compared with LSB backends after bit reversal.' },
 };
 
 const SAMPLING_TAGS = {
@@ -301,7 +301,7 @@ export function deviceTitle(r) {
     if (!isGpuRun(r)) return `Device the simulation ran on: ${r?.device}`;
     const parts = [`Simulated on a GPU${r.gpu_name ? `: ${r.gpu_name}` : ''}.`];
     if (typeof r.custatevec_enabled === 'boolean') parts.push(`cuStateVec ${r.custatevec_enabled ? 'enabled' : 'not enabled'}.`);
-    parts.push('Host-side work runs under the same CPU quota as the CPU runners; GPU device memory is not measured.');
+    parts.push('Host-side work under the CPU quota; GPU memory not measured.');
     return parts.join(' ');
 }
 
@@ -370,7 +370,7 @@ export function throttleText(r) {
     const t = r.simulation_throttled_sec;
     const sim = r.simulation_time_sec;
     const share = typeof sim === 'number' && sim > 0 ? ` (${fmtNum(100 * t / sim, 0)}% of the simulation window)` : '';
-    return `the CPU quota held this runner for ${fmtNum(t, 4)} s${share}; that wait is part of simulation_time_sec`;
+    return `held by the CPU quota for ${fmtNum(t, 4)} s${share}, included in simulation_time_sec`;
 }
 
 /** Note for a run the server tagged outside_process (its container used more CPU than its simulating process during the window), or null. */
@@ -378,17 +378,15 @@ export function outsideProcessText(r) {
     if (!timingCaveat(r, 'outside_process')) return null;
     const cg = r.simulation_cgroup_cpu_time_sec;
     const own = r.simulation_cpu_time_sec;
-    return `the runner container used ${fmtNum(cg, 4)} s of CPU during the simulation window, `
-        + `the simulating process ${fmtNum(own, 4)} s: ${fmtNum(cg - own, 4)} s of work ran outside the measured process, `
-        + 'so its CPU time and memory fields leave that work out';
+    return `container CPU ${fmtNum(cg, 4)} s vs process ${fmtNum(own, 4)} s in the simulation window: `
+        + `${fmtNum(cg - own, 4)} s outside the measured process`;
 }
 
 /** Note for a run the server tagged host_load (host-load notices of the qrosetta command open during the run), or null. */
 export function hostLoadText(r) {
     if (!timingCaveat(r, 'host_load')) return null;
     const n = r.server_overlapping_host_load;
-    return `the qrosetta command reported ${fmtInt(n)} interval(s) of load it put on this host (starting, stopping, `
-        + 'building, pulling or probing containers) while this run executed (server_overlapping_host_load)';
+    return `${fmtInt(n)} interval(s) of qrosetta container activity on this host during the run`;
 }
 
 /** Core speed classes (MHz) as text, e.g. "4000/4100 MHz vs 5300 MHz". */
@@ -400,8 +398,7 @@ export function coreClassesText(classes) {
 export function mixedCoresText(r) {
     const classes = timingCaveat(r, 'mixed_cores')?.detail?.classes_mhz;
     if (!Array.isArray(classes)) return null;
-    return `its timed runs were on CPUs of different speed classes (maximum ${coreClassesText(classes)}), `
-        + 'so its samples mix faster and slower cores; simulation_cpus_samples in the raw JSON gives the CPUs of each run';
+    return `timed runs on CPUs of different speed classes (maximum ${coreClassesText(classes)})`;
 }
 
 /** Note for a run the server tagged unstable_repeats (simulation samples spread by more than 1.3×), or null. */
@@ -409,8 +406,7 @@ export function unstableText(r) {
     const detail = timingCaveat(r, 'unstable_repeats')?.detail;
     if (!detail) return null;
     const lo = detail.min_sec, hi = detail.max_sec;
-    return `its timed runs ranged from ${fmtNum(lo, 4)} to ${fmtNum(hi, 4)} s (${fmtNum(hi / lo, 2)}×), from competing load or the `
-        + 'backend\'s own run-to-run variation (quimb\'s randomised path search, for example); the median is less reliable than its n suggests';
+    return `timed runs ranged from ${fmtNum(lo, 4)} to ${fmtNum(hi, 4)} s (${fmtNum(hi / lo, 2)}×); the median is less reliable than its n suggests`;
 }
 
 /** The distinct CPU quotas (cores) reported by the runs, as a readable phrase, or null when none reported one. */
@@ -435,7 +431,7 @@ export const QUEUE_WAIT_SHOWN_SEC = 0.5;
 export function queueWaitText(r) {
     const w = r?.queue_wait_sec;
     if (typeof w !== 'number' || !(w >= QUEUE_WAIT_SHOWN_SEC)) return null;
-    return `waited ${fmtNum(w, 1)} s for the runner to finish another run; not included in timings`;
+    return `queued ${fmtNum(w, 1)} s behind another run (not in the timings)`;
 }
 
 /**

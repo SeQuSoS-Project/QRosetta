@@ -172,7 +172,7 @@ export function bmAddSelectedToBatch() {
     closePopover(true);
     if (added) document.dispatchEvent(new Event('circuit-list-added'));
     if (added < items.length) {
-        alert(`${items.length - added} of ${items.length} selected circuits were already in the playlist and were not added again.`);
+        alert(`${items.length - added} of ${items.length} selected circuits were already in the playlist.`);
     }
 }
 
@@ -184,7 +184,7 @@ export function bmAddAllShown() {
     closePopover(true);
     if (added) document.dispatchEvent(new Event('circuit-list-added'));
     if (added < items.length) {
-        alert(`${items.length - added} of ${items.length} circuits were already in the playlist and were not added again.`);
+        alert(`${items.length - added} of ${items.length} circuits were already in the playlist.`);
     }
 }
 

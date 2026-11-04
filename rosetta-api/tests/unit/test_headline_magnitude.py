@@ -95,7 +95,7 @@ def test_minority_differences_get_a_chance_caveat():
 
 def test_majority_differences_and_statevector_get_no_chance_caveat():
     out = _headline(_report(S, lambda a, b: "differ" if "quest" in (a, b) else "agree", measured=True))
-    assert out["model"]["chance"] == [] and out["lines"][-1].startswith("A pair that differs shows")
+    assert out["model"]["chance"] == [] and out["lines"][-1].startswith("In a differing pair at least one backend is wrong")
     out = _headline(_report(S, lambda a, b: "differ" if {a, b} in ({"quest", "qiskit"}, {"quest", "cirq"}) else "agree"))
     assert out["model"]["chance"] == []
     partly_inconclusive = _report(S, lambda a, b: "differ" if {a, b} in ({"quest", "qiskit"}, {"quest", "cirq"})
@@ -109,8 +109,8 @@ def test_test_method_note_counts_exact_and_degenerate_pairs():
     for p, m in zip(report["divergence_report"]["pairwise_agreement"], methods):
         p["metrics"]["statistical_test"]["test_method"] = m
     note = call_js(["overview_renderer.js"], [("testMethodNote", [report])])[0]
-    assert note == ("1 of 3 pairs have exact conditional p-values (2 × 2 tables with expected counts below 5); "
-                    "in 1 of 3 pairs both backends returned the same single outcome, so there was nothing to test (p = 1).")
+    assert note == ("1 of 3 pairs use exact conditional p-values (2 × 2 tables, expected counts below 5); "
+                    "1 of 3 pairs returned one identical outcome and were not tested (p = 1).")
     for p in report["divergence_report"]["pairwise_agreement"]:
         p["metrics"]["statistical_test"]["test_method"] = "asymptotic"
     assert call_js(["overview_renderer.js"], [("testMethodNote", [report])])[0] is None
