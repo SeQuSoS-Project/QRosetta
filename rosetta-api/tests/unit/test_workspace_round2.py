@@ -183,6 +183,17 @@ def test_the_manual_points_to_no_known_issue_entry():
     assert not re.search(r"see\s+the\s+known\s+issue", text)
 
 
+def test_no_public_document_points_to_the_removed_known_issues_section():
+    root = STATIC.parents[1]
+    docs = [root / name for name in ("README.md", "CHANGELOG.md", "CONTRIBUTING.md", "SUPPORT.md",
+                                     "DESIGN_DECISIONS.md")]
+    docs += sorted((root / "docs" / "verification").glob("*.md"))
+    for path in docs:
+        text = path.read_text()
+        assert not re.search(r"known\s+backend\s+issues?|known-issues|manual's\s+known", text,
+                             re.IGNORECASE), path.name
+
+
 def test_manual_names_the_performance_notes_as_the_page_writes_them():
     docs = (STATIC / "docs.html").read_text()
     ranking = (JS / "ranking_renderer.js").read_text()
