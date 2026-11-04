@@ -394,6 +394,8 @@ signed images on GHCR; and every result records the image, commit and host condi
 - Dependencies in the API image raised for advisories: anyio 4.14.2, certifi 2026.10.19, pyasn1
   0.6.5, urllib3 2.8.0, requests 2.33.1, Starlette 1.7.0; PyJWT replaces python-jose
   (PYSEC-2026-4298).
+- Swagger UI at `/docs` is `swagger-ui-dist` 5.34.1, which bundles DOMPurify 3.4.17
+  (GHSA-mrv2-3pqr-j5jr, GHSA-cg2g-xh64-v4q7, GHSA-c6gr-qvv4-5v3f).
 - Commits and pushes are scanned for credentials (gitleaks hooks and a CI job).
 - Registration and password change refuse the 2,086 most common passwords of 8 or more
   characters (SecLists, MIT).

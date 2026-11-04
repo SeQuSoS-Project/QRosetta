@@ -23,7 +23,7 @@ from services.status_labels import status_labels
 
 router = APIRouter()
 
-SWAGGER_UI_VERSION = "5.33.2"
+SWAGGER_UI_VERSION = "5.34.1"
 
 
 def _root_path(request: Request) -> str:
