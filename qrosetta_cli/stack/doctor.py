@@ -84,8 +84,13 @@ class Host:
             return None
 
     def port_free(self, host, port):
+        """Whether a server could listen on host:port now: SO_REUSEADDR, as nginx and the engines'
+        port forwarders set it, so connections of a server that has stopped do not count (on
+        Windows the option would let the probe bind over a listener)."""
         family = socket.AF_INET6 if ":" in host else socket.AF_INET
         with socket.socket(family, socket.SOCK_STREAM) as sock:
+            if os.name != "nt":
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 sock.bind((host, port))
                 return True

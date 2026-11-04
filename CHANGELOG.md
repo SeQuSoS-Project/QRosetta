@@ -302,6 +302,8 @@ signed images on GHCR; and every result records the image, commit and host condi
   output and the last 20 lines of the API's log; it used to guess a cold page cache.
 - `qrosetta doctor`'s fix for a port in use also says that later commands keep using the old port
   until `[lifecycle] bind` names the new one in the config file; `start --bind` alone is not kept.
+- `qrosetta doctor` no longer reports the port as in use for a minute after a server on it has
+  stopped (its probe now binds with SO_REUSEADDR, as nginx does).
 - `qrosetta doctor` and the missing-Compose error name the install step for the host's distribution
   (from `/etc/os-release`: apt on Ubuntu and Debian, dnf on Fedora, the Compose plugin binary on RHEL
   with podman); they suggested apt on every host.

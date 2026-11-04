@@ -282,3 +282,21 @@ def test_doctor_names_the_rhel_install_step(env):
                     files={"/etc/os-release": 'ID="rhel"\nID_LIKE="fedora"\nVERSION_ID="10.0"\n'})
     fix = [c for c in _doctor(env, host).failed if c.id == "compose"][0].fix
     assert "apt" not in fix and "~/.docker/cli-plugins/docker-compose" in fix
+
+
+def test_port_probe_ignores_closed_connections_and_finds_listeners(env):
+    import socket
+
+    host = doctor.Host(env)
+    server = socket.socket()
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(("127.0.0.1", 0))
+    server.listen()
+    port = server.getsockname()[1]
+    assert not host.port_free("127.0.0.1", port)
+    client = socket.create_connection(("127.0.0.1", port))
+    accepted, _ = server.accept()
+    accepted.close()
+    client.close()
+    server.close()
+    assert host.port_free("127.0.0.1", port)
