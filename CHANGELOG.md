@@ -302,6 +302,8 @@ signed images on GHCR; and every result records the image, commit and host condi
 
 - The API's container healthcheck allows 120 s for a first start (it allowed about a minute), so a
   slow first start on a new machine no longer stops `qrosetta start` with "container rosetta-api is unhealthy".
+- `qrosetta start` failed with "container rosetta-api is unhealthy" on podman before 5.8.0 (RHEL 10.1,
+  Debian 13): podman split the healthcheck's Python argument at its spaces. The check now has none.
 - When the API container fails its health check, `qrosetta start` prints the last health-check
   output and the last 20 lines of the API's log; it used to guess a cold page cache.
 - `qrosetta doctor`'s fix for a port in use also says that later commands keep using the old port

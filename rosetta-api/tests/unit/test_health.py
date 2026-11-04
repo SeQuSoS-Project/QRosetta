@@ -143,3 +143,19 @@ def test_compose_and_rahti_probe_the_health_routes():
     assert container["readinessProbe"]["httpGet"]["path"] == "/ready"
     liveness = container["livenessProbe"]
     assert liveness["periodSeconds"] * liveness["failureThreshold"] > 330
+
+
+def test_compose_healthcheck_arguments_hold_no_whitespace():
+    """podman before 5.8.0 joins a compat-API healthcheck test with spaces and splits it again,
+    so an argument holding a space reached python3 as several (`python3 -c import`)."""
+    import yaml
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[3]
+    compose = yaml.safe_load((repo / "docker-compose.yml").read_text())
+    for name, svc in compose["services"].items():
+        test = (svc.get("healthcheck") or {}).get("test")
+        if isinstance(test, list) and test and test[0] == "CMD":
+            assert all(not any(c.isspace() for c in arg) for arg in test), (name, test)
+    api = compose["services"]["api"]["healthcheck"]["test"]
+    assert api[:3] == ["CMD", "python3", "-c"]
+    compile(api[3], "<healthcheck>", "exec")
