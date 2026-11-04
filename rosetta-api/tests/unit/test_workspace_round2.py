@@ -121,6 +121,7 @@ def test_large_measured_runs_are_warned_about():
     limit, text = call_js(["workspace.js"], [("SLOW_MEASURED_QUBITS", []), ("slowMeasuredWarning", [24, 60, 300])])
     assert limit == 22
     assert "24-qubit" in text and "60 s" in text and "300 s" in text
+    assert "QFT" in text and "about half" not in text
 
 
 def test_manual_names_the_circuits_behind_the_24_qubit_timeouts():

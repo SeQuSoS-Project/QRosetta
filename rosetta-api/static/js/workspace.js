@@ -186,8 +186,8 @@ export const SLOW_MEASURED_QUBITS = 22;
 
 /** The pre-run warning for a measured circuit of `qubits` qubits above SLOW_MEASURED_QUBITS. */
 export function slowMeasuredWarning(qubits, timeout, timeoutMax) {
-    return `Measured runs above ${SLOW_MEASURED_QUBITS} qubits take minutes on several backends; at 24 qubits about half `
-        + `exceeded the ${timeoutMax} s maximum. Expect timeouts for this ${qubits}-qubit circuit at ${timeout ?? '—'} s.`;
+    return `Measured runs above ${SLOW_MEASURED_QUBITS} qubits take minutes on several backends; a 24-qubit QFT `
+        + `exceeded the ${timeoutMax} s maximum on half of them. Expect timeouts for this ${qubits}-qubit circuit at ${timeout ?? '—'} s.`;
 }
 
 const _timeoutSeconds = () => {
