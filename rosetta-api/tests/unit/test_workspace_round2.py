@@ -175,6 +175,7 @@ def test_no_page_text_links_the_removed_known_issues_section():
     for path in [STATIC / "index.html", STATIC / "docs.html", *JS.glob("*.js")]:
         text = path.read_text()
         assert "known-issues" not in text and "Known backend issues" not in text, path.name
+        assert not re.search(r"known\s+issues?\b", text, re.IGNORECASE), path.name
 
 
 def test_the_manual_points_to_no_known_issue_entry():
