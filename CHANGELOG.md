@@ -232,7 +232,8 @@ signed images on GHCR; and every result records the image, commit and host condi
   Jobs run images by digest when the deployment records them (`QROSETTA_IMAGE_DIGESTS`), and
   payloads over 96 KiB go through S3.
 - myQLM is not deployed on the hosted server, because its licence forbids use over a network;
-  local stacks keep it.
+  local stacks keep it. BQSKit, the Cirq compiler and Q-Synth are not deployed there either (the
+  project's image quota); the server lists them as unavailable.
 - Every runner and compiler response is checked before use; a malformed one is that backend's
   error ("INVALID RESPONSE") and the rest of the job continues.
 - A supplied report may hold at most 1,000 circuits and 48 backends per circuit, and a figure or
@@ -387,7 +388,8 @@ signed images on GHCR; and every result records the image, commit and host condi
 - The job spill directory must belong to the API's user; it is recreated with mode 0700 at startup,
   and only files the process wrote are read back.
 - Image builds leave out databases, `data/` directories, env files and `node_modules`; no secret was
-  found in any of the 24 images (gitleaks, 2026-10-28).
+  found in any of the 24 images (gitleaks over every layer, image history and configuration of the
+  images built from the 2.0.0rc4 Dockerfiles, 2026-11-04).
 - Request bodies are counted as they arrive, so a chunked body stops at the 1 MiB limit without nginx
   in front.
 - Crates and experiment bundles that hold a bundled MQT Bench or QASMBench circuit carry that suite's
