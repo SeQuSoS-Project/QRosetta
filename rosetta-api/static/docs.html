@@ -1564,10 +1564,8 @@
                             (PyZX would read each classical bit as an extra qubit). Level 1: <code>full_reduce</code> of the
                             ZX-diagram, then <code>extract_circuit</code>. Level 2: level 1, then
                             <code>basic_optimization</code> of the extracted circuit. PyZX's
-                            <code>basic_optimization</code> on the input itself is not offered (see the known
-                            issue below). Numbers in scientific notation are rewritten as plain decimals first, and
-                            the passes give the largest angle change from PyZX's rational phases (see the known
-                            issues). PyZX's parser lacks <code>c3x</code>, <code>c3sqrtx</code>, <code>c4x</code>,
+                            <code>basic_optimization</code> on the input itself is not offered. Numbers in scientific notation are rewritten as plain decimals first, and
+                            the passes give the largest angle change from PyZX's rational phases. PyZX's parser lacks <code>c3x</code>, <code>c3sqrtx</code>, <code>c4x</code>,
                             <code>rccx</code>, <code>rc3x</code> and <code>u0</code>; Qiskit's
                             <code>qelib1.inc</code> definitions of those the circuit uses are added to the circuit
                             given to PyZX and listed in the passes. Up to 10 qubits every output is checked with
@@ -1583,7 +1581,7 @@
                             output's <code>// i</code> and <code>// o</code> lines give the physical qubit of each
                             logical qubit at input and output. A circuit with a qubit that has no gates other than
                             barriers and identities (<code>id</code>, or a rotation by 0 such as
-                            <code>rz(0)</code>, which QMAP removes) is not mapped (see the known issue below). Every output is checked when it is produced:
+                            <code>rz(0)</code>, which QMAP removes) is not mapped. Every output is checked when it is produced:
                             both layout lines must be permutations of all the qubits, and up to 10 qubits the
                             output read through them must have the input's unitary (Qiskit operator equality
                             up to global phase); a compile that fails either check is recorded as an error,
@@ -1597,7 +1595,7 @@
                             <code>to_qasm(precision=16)</code> as one register <code>q</code> in declaration
                             order. This is Cirq's optimiser; the Cirq runner compiles through pytket instead. A
                             <code>cu3</code> that Cirq would import wrongly is refused, at top level or inside a
-                            gate definition and at any qubit count (see the known issue below), and up to 10
+                            gate definition and at any qubit count, and up to 10
                             qubits every output is checked against the input with Qiskit and refused when it
                             differs. Cirq imports <code>rc3x</code> as a 4-qubit matrix that its CZ gate set does
                             not decompose, so Qiskit's <code>qelib1.inc</code> definition of <code>rc3x</code> is
@@ -1620,7 +1618,7 @@
                             <code>rzz</code>, <code>c3x</code> and so on), Qiskit's definition is added to the
                             circuit given to staq and listed in the passes. A register or gate named
                             <code>r</code> or <code>cswap</code> is refused, because staq rejects it. staq reads
-                            numbers in single precision (see the known issue below); a literal that would change
+                            numbers in single precision; a literal that would change
                             by more than 1e-6 is refused before staq runs, and the passes give the largest
                             change single-precision reading makes to a constant angle of the circuit. Up to 10
                             qubits every output is checked with Qiskit: its process infidelity to the input must
@@ -1650,15 +1648,14 @@
                             verified by Quartz when the image is built, and the build fails unless its sha256
                             matches the recorded one; the 4-gate set took 15 minutes on 32 cores and removed no
                             more gates on eight test circuits. Quartz's search (<code>Graph::optimize</code>) is
-                            not offered, because it stops on wall-clock time, nor is its rotation merging (see
-                            the known issue below). Angles go to Quartz as exact fractions of π and come back
+                            not offered, because it stops on wall-clock time, nor is its rotation merging. Angles go to Quartz as exact fractions of π and come back
                             the same way, so an angle such as 0.3 appears as
                             <code>pi*238732414637843/2500000000000000</code>; the output keeps Quartz's gate lines
                             with the input's registers and declarations. Barriers are
                             removed first, since Quartz
                             rewrites across them; mid-circuit measurement, <code>reset</code> and
                             <code>if</code> are refused, since Quartz drops measurements. The library is built
-                            with one fix to its big-integer code (see the known issue below). Compile time grows
+                            with one fix to its big-integer code. Compile time grows
                             about with the square of the gate count after translation: 8 s for a 16-qubit QFT (3361
                             gates), about 50 s for 8000 gates; a compile past the job's timeout is recorded as
                             a timeout. Up to 10 qubits every output is checked against the input with
