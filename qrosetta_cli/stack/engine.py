@@ -72,8 +72,8 @@ def os_release_ids(text):
     for line in (text or "").splitlines():
         key, sep, value = line.partition("=")
         if sep:
-            fields[key.strip()] = value.strip().strip("\"'").lower()
-    return [fields.get("ID", ""), *fields.get("ID_LIKE", "").split()]
+            fields[key.strip().lower()] = value.strip().strip("\"'").lower()
+    return [fields.get("id", ""), *fields.get("id_like", "").split()]
 
 
 def compose_install_step(os_release, engine_name):
