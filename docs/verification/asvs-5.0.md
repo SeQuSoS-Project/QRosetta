@@ -9,7 +9,7 @@ Assessed on 2026-11-02 at commit 4205598 (branch `post-audit/asvs-crate-deps`), 
 | V11–V17 | 50 | 22 | 26 | 2 |
 | All | 146 | 79 | 45 | 22 |
 
-Of the 45 fails: 12 fixed on 2026-11-02, 4 partly fixed, 14 closed by the statements in this document (documented or accepted), and 15 that needed an owner decision; the owner decided all of them on 2026-11-02 (6 fixed, 9 accepted; table below). The per-requirement tables at the end are the reviewers' findings as written, before the fixes.
+Of the 45 fails: 12 fixed on 2026-11-02, 4 partly fixed, 14 closed by the statements in this document (documented or accepted), and 15 that needed an owner decision; the owner decided all of them on 2026-11-02 (5 fixed, 10 accepted; table below). The per-requirement tables at the end are the reviewers' findings as written, before the fixes.
 
 ## Fixed or partly fixed on 2026-11-02
 
