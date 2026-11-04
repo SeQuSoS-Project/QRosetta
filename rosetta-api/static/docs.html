@@ -2158,7 +2158,7 @@
                         <tr><td>Offline</td><td>The runner could not be reached (infrastructure).</td></tr>
                         <tr><td>Error</td><td>The backend rejected the circuit or crashed.</td></tr>
                         <tr><td>Timeout</td><td>The run exceeded the timeout (<code>timeout_kind: "run"</code>), or it stayed queued behind other runs until the queue cap and never started (<code>timeout_kind: "queue"</code>, <code>never_started: true</code>).</td></tr>
-                        <tr><td>Anomaly</td><td>Results exist, but a statevector pair disagrees (<code>residual_disagreement</code>, with or without <code>unaligned_basis_match</code>, or <code>agree_after_qubit_permutation</code>), or a measured pair is <code>distinguishable</code> beyond shot noise.</td></tr>
+                        <tr><td>Anomaly</td><td>Results exist, but a statevector pair disagrees (<code>residual_disagreement</code>, with or without <code>unaligned_basis_match</code>, or <code>agree_after_qubit_permutation</code>), or a measured pair is <code>distinguishable</code> beyond shot noise or has a differing single-bit marginal.</td></tr>
                     </tbody>
                 </table></div>
             </section>
