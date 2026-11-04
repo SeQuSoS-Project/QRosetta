@@ -238,7 +238,7 @@ Units are MiB (1024²) throughout, although field names say `_mb`.
 
 *Rule.* At optimization levels 1 and 2 the Qibo adapter calls `Circuit.fuse(max_qubits=1|2)` unless the parsed queue holds a `FusedGate`, which `Circuit.from_qasm` makes for each call of a gate the text defines (a user gate, or a `qelib1.inc` definition the adapter inserts with preprocessing on). Such a circuit runs unfused, and `preprocessing_applied` says `qibo.Circuit.fuse(max_qubits=N) not applied` with the reason.
 
-*Evidence (2026-11-01).* V4 found 49 wrong statevectors at level 2 for circuits that define gates. Requalification of the change (`scripts/requalify/requalify.sh qibo`, old and new image at one commit; the new image also uninstalls pip): every case differs in `runner_code_sha256`; at level 0 nothing else changed; at levels 1–2, 317 cases gained the note, 192 statevectors changed and each now equals the unfused (level 0) statevector of the same circuit, and of 107 changed count tables 101 fit the `qelib1.inc` reference distribution (chi-square, p > 1e-4) against 53 before, the other 6 fitting a Qibo cu3 behaviour recorded privately until it is reported upstream. Owner decision 2026-11-01.
+*Evidence (2026-11-01).* V4 found 49 wrong statevectors at level 2 for circuits that define gates. Requalification of the change (`scripts/requalify/requalify.sh qibo`, old and new image at one commit; the new image also uninstalls pip): every case differs in `runner_code_sha256`; at level 0 nothing else changed; at levels 1–2, 317 cases gained the note, 192 statevectors changed and each now equals the unfused (level 0) statevector of the same circuit, and of 107 changed count tables 101 fit the `qelib1.inc` reference distribution (chi-square, p > 1e-4) against 53 before, the other 6 fitting a backend behaviour that fusion does not involve. Owner decision 2026-11-01.
 
 ### No duplicate engines / cuQuantum
 
@@ -370,7 +370,7 @@ The default thresholds (fidelity 1e-5, phase 1e-6 rad, norm 1e-4, JS 0.01 nats, 
 
 *Rule.* lsb × msb pairs are classified and tested after bit reversal, same-label pairs directly, 1-qubit pairs directly; the basis is chosen from the declared labels, never from the data. A match only in the other basis (`unaligned_basis_match`) or only after an undeclared permutation (`agree_after_qubit_permutation`) is a disagreement. Measured: a pair within the JS/Hellinger thresholds only in the other basis is `distance_exceeds_threshold` with `metrics.unaligned_basis_match`. Introduced in ANALYSIS_VERSION divergence-2026.10.07.1.
 
-*Evidence.* Measured: direct-first testing flagged 42 correct pairs (p ≈ 1e-188). Statevector: PennyLane's cu3 control/target swap mimicked a bit reversal and was labelled agree_directly against lsb backends. On 2026-10-07, msb {'01'} vs msb {'10'} had been labelled `agree_after_bit_reversal` while distinguishable.
+*Evidence.* Measured: direct-first testing flagged 42 correct pairs (p ≈ 1e-188). Statevector: one backend's wrong statevector resembled a bit reversal of the others' and was labelled agree_directly against lsb backends. On 2026-10-07, msb {'01'} vs msb {'10'} had been labelled `agree_after_bit_reversal` while distinguishable.
 
 ### Permutation search implementation
 
@@ -510,7 +510,7 @@ Spaced indices `q [0]` are normalised with preprocessing on (`API:` note).
 
 *Rule.* User `gate`/`opaque` names that any runner's parser treats specially are rejected (400) in every mode ([`rosetta-api/services/reserved_gate_names.py`](rosetta-api/services/reserved_gate_names.py), read from the runner images); the pytket round-trip fails the job if a call became a barrier or a user gate lost its definition. Bundled MQT/QASMBench circuits are exempt.
 
-*Evidence.* pytket turned `sleep`/`orderN`/`groupN` into barriers and replaced prefix-matching definitions of built-ins (`yyphase`, `fsim`, `iswap`): all 14 backends agreed on a wrong state.
+*Evidence.* pytket's parser turned calls of some user gate names into barriers and replaced user definitions whose names start like its built-in operations with those operations: all 14 backends agreed on a wrong state.
 
 ### pytket in threads
 
@@ -526,9 +526,9 @@ Spaced indices `q [0]` are normalised with preprocessing on (`API:` note).
 
 ### Angle rounding in parsers and writers
 
-*Rule.* tket (pytket 1.33) sets a parameter within 1e-11 half-turns of a multiple of π/4 to it (also `rz(1e-11)` → 0). The API predicts it (`qasm_expressions.tket_rounded_parameters`: top-level constants and parameters inside called definitions with each call's values; parameters tket derives while rebasing, e.g. cu1/crz half-angles, are not predicted and the note says so; the evaluator is shared with the validator) and records it as an `API:` note after the round-trip, or appends a note to runners with `builds_with_tket` when it dispatches text tket has not built. This is computed in the API, never inside a runner's timing window. Qiskit-written texts use `exact_qasm2_dumps` ([`shared/qrosetta_commons/qiskit_circuits.py`](shared/qrosetta_commons/qiskit_circuits.py); bypasses `pi_check(eps=1e-12)`); qsim's text uses `to_qasm(precision=16)`. PyZX: scientific-notation literals are rewritten as plain decimals (its parser rejects them); passes report the largest angle change from its rational phases (denominator ≤ 2^20), read through PyZX's own parser.
+*Rule.* tket (pytket 1.33) sets a parameter within 1e-11 half-turns of a multiple of π/4 (0 included) to it. The API predicts it (`qasm_expressions.tket_rounded_parameters`: top-level constants and parameters inside called definitions with each call's values; parameters tket derives while rebasing, e.g. cu1/crz half-angles, are not predicted and the note says so; the evaluator is shared with the validator) and records it as an `API:` note after the round-trip, or appends a note to runners with `builds_with_tket` when it dispatches text tket has not built. This is computed in the API, never inside a runner's timing window. Qiskit-written texts use `exact_qasm2_dumps` ([`shared/qrosetta_commons/qiskit_circuits.py`](shared/qrosetta_commons/qiskit_circuits.py); bypasses `pi_check(eps=1e-12)`); qsim's text uses `to_qasm(precision=16)`. PyZX: scientific-notation literals are rewritten as plain decimals (its parser rejects them); passes report the largest angle change from its rational phases (denominator ≤ 2^20), read through PyZX's own parser.
 
-*Evidence (2026-10-02).* `rz(1.3e-13)` → 0 and `rz(3.14159265359)` → π in tket; `qasm2.dumps` wrote 1e-13 as 0 and π+1e-13 as π; Cirq's default precision 10 wrote `rz(1.3e-13)` as `rz(0)`; PyZX moved 0.123456789012345678 rad by 1.1e-9 rad (2.75e-9 worst over 2,000 random angles) and rejected `3.18e-06*pi`, which the round-trip writes for small angles.
+*Evidence (2026-10-02).* tket set angles within its tolerance of 0 and of π to 0 and π; `qasm2.dumps` wrote angles below 1e-12 as 0 and within 1e-12 of π as π; Cirq's default precision (10 digits) wrote small angles as 0; PyZX moved an angle by 1.1e-9 rad (2.75e-9 worst over 2,000 random angles) and rejected the scientific-notation literals the round-trip writes for small angles.
 
 ### QASM edits are per statement
 
@@ -540,11 +540,11 @@ Spaced indices `q [0]` are normalised with preprocessing on (`API:` note).
 
 *Rule.* With preprocessing on, the qibo and quimb adapters insert the `qelib1.inc` definitions (Qiskit 2.5.2 copy in [`shared/qrosetta_commons/qelib1_qiskit.inc`](shared/qrosetta_commons/qelib1_qiskit.inc)) of the qelib1 gates their parser lacks, in the compile window (it is a transform the adapter needs), listed in `preprocessing_applied`; quimb gets `U` written as `u3`. With preprocessing off they are rejected, as before. staq uses the same helper. qibo does not get `cp`/`cu` (the round-trip never emits them).
 
-*Evidence (2026-10-02).* 0 failures, every gate F = 1 to 12 digits against Qiskit's Statevector on 31 qelib1 gates; through the API with preprocessing on, ch/csx/cswap/c3x 4-backend pairs all agree. qibo 0.3.1 raises TypeError executing any 2+-qubit user gate whose body uses its parameters.
+*Evidence (2026-10-02).* 0 failures, every gate F = 1 to 12 digits against Qiskit's Statevector on 31 qelib1 gates; through the API with preprocessing on, ch/csx/cswap/c3x 4-backend pairs all agree.
 
 ### Implicit permutations
 
-*Rule.* Swaps removed by relabelling are written back as gates in `compile_fn`: `restore_final_layout` for Qiskit transpiles, `replace_implicit_wire_swaps` for pytket passes before `tk_to_*`. TorchQuantum stays capped at level 2 (Qiskit 0.45.3 level 3 deletes swaps with no layout). [`rosetta-api/tests/unit/test_implicit_permutations.py`](rosetta-api/tests/unit/test_implicit_permutations.py).
+*Rule.* Swaps removed by relabelling are written back as gates in `compile_fn`: `restore_final_layout` for Qiskit transpiles, `replace_implicit_wire_swaps` for pytket passes before `tk_to_*`. TorchQuantum stays capped at level 2. [`rosetta-api/tests/unit/test_implicit_permutations.py`](rosetta-api/tests/unit/test_implicit_permutations.py).
 
 *Evidence.* Qiskit and cuQuantum levels 2–3, PyQuil 1–2 and Cirq 2 returned permuted statevectors (72, 72, 176 and 88 cases); 0 after.
 
@@ -574,7 +574,7 @@ Compilers are separate from the simulators: their output is a circuit, which is 
 
 *Rule.* BQSKit levels 1–3 (one worker, seed 0, all-to-all, epsilon 1e-8); PyZX `full_reduce`+extract (1) and +`basic_optimization` of the extracted circuit (2); QMAP: Qiskit basis translation to u3+cx, then heuristic (0) / exact (1) mapping onto a linear chain.
 
-*Evidence.* BQSKit level 4: 195 s on a 4-qubit, 6-gate circuit. PyZX 0.10.6 `basic_optimization(to_basic_gates())` changed the unitary of 31–90% of random 3-qubit circuits (`x; rx(0.7)` reproduces); full_reduce paths 0/450. QMAP 3.10 maps `cu3`/`cp` as `cx` without an error; after decomposition 40/40 random circuits were equivalent up to layouts, and all five live outputs of a test job were equivalent.
+*Evidence.* BQSKit level 4: 195 s on a 4-qubit, 6-gate circuit. PyZX 0.10.6's `basic_optimization` on the input circuit changed the unitary of 31–90% of random 3-qubit circuits; full_reduce paths 0/450. QMAP 3.10 mapped some qelib1 gates wrongly without an error; after translation to u3+cx 40/40 random circuits were equivalent up to layouts, and all five live outputs of a test job were equivalent.
 
 ### Compilers not offered
 
@@ -604,13 +604,13 @@ Compilers are separate from the simulators: their output is a circuit, which is 
 
 *Rule.* Every BQSKit (tolerance 1e-6) and PyZX (1e-8) output up to 10 qubits is checked with Qiskit; "not checked above 10 qubits" otherwise. staq records its largest single-precision angle change. Raw SDK errors become `CompileRefused`.
 
-*Evidence.* No separate measurement was recorded for this rule. It follows from cases recorded in other entries of this section, where a compiler returned a circuit with a different unitary and reported no error: PyZX 0.10.6 `basic_optimization(to_basic_gates())` changed the unitary of 31–90% of random 3-qubit circuits; QMAP 3.10 mapped `cu3`/`cp` as `cx`; Cirq 1.7.0 imported some `cu3` gates with a −1 phase on the control's \|1⟩ branch.
+*Evidence.* No separate measurement was recorded for this rule. It follows from cases recorded in other entries of this section, where a compiler returned a circuit with a different unitary and reported no error: PyZX 0.10.6's `basic_optimization` on the input circuit changed the unitary of 31–90% of random 3-qubit circuits; QMAP 3.10 mapped some qelib1 gates wrongly; Cirq 1.7.0 imported some `cu3` gates with a −1 phase on the control's \|1⟩ branch (the Cirq compiler's refusal text).
 
 ### Compiler inputs
 
-*Rule.* BQSKit gets renamed qelib1 definitions of c3x, c3sqrtx, c4x, rc3x and u0, and wide user gates are flattened in operation order (never `Circuit.unfold`). Cirq gets rc3x's definition. QMAP exact is refused above 7 qubits, and identity-only qubits count as idle. Cirq level 1 sets final measurements aside. Compiled circuits carry no measurements. The CSV has `refusal_kind`, `refusal` and `reason`.
+*Rule.* BQSKit gets renamed qelib1 definitions of c3x, c3sqrtx, c4x, rc3x and u0, and wide user gates are flattened in operation order. Cirq gets rc3x's definition. QMAP exact is refused above 7 qubits, and identity-only qubits count as idle. Cirq level 1 sets final measurements aside. Compiled circuits carry no measurements. The CSV has `refusal_kind`, `refusal` and `reason`.
 
-*Evidence (2026-10-08).* BQSKit's parser read c3x, c3sqrtx, c4x and rc3x as 4–5 qubit gates and u0 without its parameter. After the change, BQSKit levels 1–2 on those gates, nested and colliding definitions: all equivalent (process infidelity ≤ 2e-15); 30 random 4–6 qubit circuits with those gates at level 1: 0 failures. BQSKit 1.2.1's `Circuit.unfold(point)` changed the unitary when gates preceded the unfolded one (infidelity 0.146 on a 2-qubit example).
+*Evidence (2026-10-08).* BQSKit's parser read c3x, c3sqrtx, c4x and rc3x as 4–5 qubit gates and u0 without its parameter. After the change, BQSKit levels 1–2 on those gates, nested and colliding definitions: all equivalent (process infidelity ≤ 2e-15); 30 random 4–6 qubit circuits with those gates at level 1: 0 failures.
 
 ### Compiler refusals
 
@@ -634,7 +634,7 @@ Compilers are separate from the simulators: their output is a circuit, which is 
 
 *Rule.* Every QMAP output is checked when produced: `// i` and `// o` must be full permutations, and up to 10 qubits the output read through them must have the input's unitary (Qiskit), else the compile is an error. Circuits with idle qubits are refused before mapping.
 
-*Evidence (2026-10-01).* QMAP 3.10 writes the identity layout when a qubit is idle; an input-side idle check was bypassed with `id q[1]`, which QMAP removes before writing a wrong layout.
+*Evidence (2026-10-01).* With an idle qubit QMAP 3.10 records a layout that does not match its output (the refusal text says so); an input-side check that counted only gate-free qubits as idle let through qubits whose only gates QMAP removes, so identities and rotations by 0 count as idle.
 
 ### PyZX input
 
@@ -652,7 +652,7 @@ Compilers are separate from the simulators: their output is a circuit, which is 
 
 *Rule.* Built with g++ from the sha256-pinned v3.5 tarball; -O1..-O3, no mapping. Gates of Qiskit's qelib1.inc missing from staq's library get Qiskit's definitions inserted (dependency order), listed in the passes; registers/gates named `r` or `cswap` are refused; a literal that float32 moves by > 1e-6, or below float32's smallest normal, is refused; outputs ≤ 10 qubits are accepted at process infidelity ≤ 1e-8 (value recorded).
 
-*Evidence.* staq's lexer uses `std::stof`: angles are single precision (`rz(0.3)` → `rz(0.300000011920929)`); infidelity < 1e-14 on 360 outputs.
+*Evidence.* staq's lexer reads literals in single precision (`std::stof`, as the precision note says); infidelity < 1e-14 on 360 outputs.
 
 ### Q-Synth compiler
 

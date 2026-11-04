@@ -194,6 +194,26 @@ def test_no_public_document_points_to_the_removed_known_issues_section():
                              re.IGNORECASE), path.name
 
 
+_REPRODUCER_LITERALS = (
+    "x; rx(0.7)", "id q[1]", "0.300000011920929", "1.3e-13", "3.14159265359",
+    "0.123456789012345678", "3.18e-06", "rz(1e-11)", "infidelity 0.146", "Circuit.unfold",
+    "0.45.3 level 3", "TypeError executing", "control/target swap", "Qibo cu3",
+    "to_basic_gates", "`cu3`/`cp`", "`sleep`/`orderN`",
+)
+
+
+def test_public_documents_carry_no_sdk_reproducer_literal():
+    root = STATIC.parents[1]
+    docs = [root / name for name in ("README.md", "CHANGELOG.md", "CONTRIBUTING.md", "SUPPORT.md",
+                                     "DESIGN_DECISIONS.md")]
+    docs += sorted((root / "docs" / "verification").glob("*.md"))
+    docs += [STATIC / "docs.html", STATIC / "index.html"]
+    for path in docs:
+        text = path.read_text()
+        found = [literal for literal in _REPRODUCER_LITERALS if literal in text]
+        assert not found, (path.name, found)
+
+
 def test_manual_names_the_performance_notes_as_the_page_writes_them():
     docs = (STATIC / "docs.html").read_text()
     ranking = (JS / "ranking_renderer.js").read_text()
