@@ -152,7 +152,7 @@ def selftest_plan() -> dict:
                       "FAILs; FAIL otherwise. SKIP rows do not change the outcome."),
         "tested": ("bit order, idle qubits, qubit permutation, cx direction, rz sign, measured key "
                    "order through the API path, sampling support and balance"),
-        "not_tested": ("gates with documented upstream behaviour (cu3, cu1, csx, QubitUnitary, "
-                       "user gates with parameters), mid-circuit measurement, circuits above 3 "
-                       "qubits, optimization levels above 0, preprocessing off"),
+        "not_tested": ("gates other than x, h, ry, rz and cx, user-defined gates, mid-circuit "
+                       "measurement, circuits above 3 qubits, optimization levels above 0, "
+                       "preprocessing off"),
     }

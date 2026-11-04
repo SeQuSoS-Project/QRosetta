@@ -189,6 +189,19 @@ def test_plan_expected_forms_follow_the_declared_orders():
     assert body["expected_sha256"] == plan.EXPECTED_SHA256
 
 
+def test_plan_names_the_gates_it_leaves_untested():
+    body = plan.selftest_plan()
+    used = set()
+    for c in body["circuits"]:
+        for line in c["qasm"].splitlines():
+            word = re.match(r"\s*([a-z][a-z0-9_]*)", line)
+            if word and word.group(1) not in {"openqasm", "include", "qreg", "creg", "barrier"}:
+                used.add(word.group(1))
+    assert used <= {"x", "h", "ry", "rz", "cx", "measure"}, used
+    assert body["not_tested"].startswith("gates other than x, h, ry, rz and cx")
+    assert "upstream" not in body["not_tested"]
+
+
 def test_runner_limits_match_the_compose_file():
     yaml = pytest.importorskip("yaml")
     compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
