@@ -13,7 +13,6 @@ import { setRunSaver } from './share_links.js';
 import { announceWorkspaceChange, initDomRefs, limitCodePoints, qasmInput, setAllButtons, welcomeMessage } from './dom.js';
 import { shotsRange, timeoutRange } from './run_inputs.js';
 import { setFinishedKeepMs, loadBatchQueue, loadEditorCircuit, loadLoadedSelection, loadRunModes, loadRunName, saveEditorCircuit, saveLoadedSelection, saveRunName } from './session_store.js';
-import { knownIssuesLink } from './labels.js';
 import { durationText, loadQubitProblem } from './request_limits.js';
 import { dispatch, getState } from './state.js';
 import { resetAgreementThresholds, setLoading } from './utils.js';
@@ -155,16 +154,6 @@ function _restoreRunName() {
     if (!input) return;
     if (!input.value) input.value = loadRunName();
     input.addEventListener('input', () => saveRunName(input.value));
-}
-
-/** Show `text` in `el`, with each mention of the manual's Known backend issues section as a link to it. */
-export function setTextWithManualLinks(el, text) {
-    const parts = String(text).split('Known backend issues');
-    el.replaceChildren();
-    parts.forEach((part, i) => {
-        if (i > 0) el.appendChild(knownIssuesLink());
-        if (part) el.appendChild(document.createTextNode(part));
-    });
 }
 
 /** Tick the run modes this tab (or, in a new tab, the last tab) used. */
@@ -358,7 +347,7 @@ export function updateQubitConstraints(e) {
         input.disabled = true;
         input.title = `A fixed ${sel.qubits}-qubit circuit.`;
         if (desc) {
-            setTextWithManualLinks(desc, sel.kind === 'example'
+            desc.textContent = (sel.kind === 'example'
                 ? `${sel.example?.description || ''} For ${sel.example?.mode} mode: Load ticks ${sel.example?.mode === 'measured' ? 'Measured' : 'Statevector'}.`.trim()
                 : `QASMBench circuit, ${sel.qubits} qubits.`);
         }

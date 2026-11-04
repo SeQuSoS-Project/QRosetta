@@ -49,7 +49,6 @@
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#endpoints">Reports and exports</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#accounts">Accounts, history &amp; autosave</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#limits">Limitations</a></li>
-                <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#known-issues">Known backend issues</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#contributing">Adding a simulator</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#glossary">Glossary</a></li>
                 <li><a class="toc-link block pl-3 py-0.5 text-gray-600 hover:text-indigo-600 border-l-2 border-transparent -ml-px" href="#faq">FAQ</a></li>
@@ -89,8 +88,7 @@
                     QRosetta compares outputs against each other; it has no independent way to check
                     whether any of them is mathematically correct. When two backends disagree, the report
                     does not say which one is wrong: check the circuit against an independent reference,
-                    such as an exact simulation you write yourself. <a href="#known-issues">Known backend
-                    issues</a> lists the disagreements testers have traced to a specific backend.
+                    such as an exact simulation you write yourself.
                 </p>
             </section>
 
@@ -101,7 +99,7 @@
                 <ol class="list-decimal pl-5 space-y-1 mb-4 text-gray-700">
                     <li>Press <strong>Run Editor Code</strong>, at the bottom of the left column, where Run, Mode, Run Name and the settings chips always stay in view. The button label says what will run, for example "Run Editor Code · Statevector · 14 backends", or "40 runs on 14 backends" in multi-run mode. While the run is in progress, the results area shows the table the result will fill, with each backend's state in its Status column.</li>
                     <li>Read the <strong>Summary</strong> tab. Its first line says how many backends returned a result; the next line names any backend that differs from the others, for example "Qrisp differs from all 13 other backends", and says whether the rest agree with each other. A GHZ circuit should read "Every comparable pair of backends agrees". The Backends table gives one row per backend: its status, how many others it differs from, its bit order, precision, time and peak memory. Below it, <strong>Evidence</strong> lists the pairs grouped by verdict.</li>
-                    <li>For a measured run, choose <em>Sampler bias, 16 qubits</em> in the <strong>Examples</strong> group of the Quantum Algorithms menu and press <strong>Load</strong>. This ticks Measured. Open the <strong>Seed</strong> chip above the run button and set a <strong>Sampling seed</strong> (for example 42) so a rerun draws the same shots, then press Run Editor Code. Expect the full-distribution test to call most pairs inconclusive (16 qubits have 65,536 outcomes, far more than 8,200 shots cover; the Summary gives the shots the test would need) and the single-bit marginal test to name Qrisp, whose sampler is biased on this circuit (see <a href="#known-issues">Known backend issues</a>).</li>
+                    <li>For a measured run, tick <strong>Measured</strong> under Mode. Open the <strong>Seed</strong> chip above the run button and set a <strong>Sampling seed</strong> (for example 42) so a rerun draws the same shots, then press Run Editor Code. On a circuit with many outcomes, expect the full-distribution test to call pairs inconclusive; the Summary gives the shots the test would need.</li>
                     <li>Open the other tabs when you need them: <strong>Agreement</strong> (a heatmap of every pair, the evidence per pair, and the raw matrices), <strong>Performance</strong> (times and memory), <strong>Circuits</strong> (what each backend executed), <strong>Exports</strong> (figures and tables you set up, the RO-Crate and the report files).</li>
                 </ol>
                 <p>
@@ -308,7 +306,7 @@
                         <code>ch</code>, <code>cy</code>, <code>csx</code>, <code>rxx</code>, <code>rzz</code>,
                         <code>ccx</code>, <code>cswap</code>, <code>c3x</code> and <code>c4x</code> as written. tket sets a parameter within 1e-11 half-turns of a multiple of
                         π/4 to that multiple; when that happens the <code>API:</code> entries list each moved
-                        parameter (see <a href="#known-issues">Known backend issues</a>).
+                        parameter.
                         In measured mode the native group also receives a measure-all when the circuit has no
                         measurements; this happens with preprocessing off too. With preprocessing off there is
                         no register merge and no pytket round-trip in any group; statevector mode still removes
@@ -609,7 +607,7 @@
                         <tr><td><code>agree_up_to_global_phase</code></td><td>Same orderings; outputs match after removing an overall (unobservable) global phase.</td></tr>
                         <tr><td><code>agree_after_bit_reversal</code></td><td>One <code>lsb</code> and one <code>msb</code> backend; outputs match after the bit reversal the declarations imply. <code>transform_effect.global_phase_aligned</code> marks a global phase offset, and <code>metrics.label_aligned_relative_phase_rad</code> gives it.</td></tr>
                         <tr><td rowspan="3">Disagree</td><td><code>residual_disagreement</code></td><td>No registered transform explains the difference.</td></tr>
-                        <tr><td><code>residual_disagreement</code> with <code>metrics.unaligned_basis_match</code></td><td>The outputs match only in the basis the declared orderings do not imply: directly although the orderings differ, or after bit reversal although they are the same. <code>unaligned_basis_match</code> names that basis. Either a declared ordering is wrong, or a gate defect happens to mimic a bit reversal (see <a href="#known-issues">Known backend issues</a>).</td></tr>
+                        <tr><td><code>residual_disagreement</code> with <code>metrics.unaligned_basis_match</code></td><td>The outputs match only in the basis the declared orderings do not imply: directly although the orderings differ, or after bit reversal although they are the same. <code>unaligned_basis_match</code> names that basis. Either a declared ordering is wrong, or a gate defect happens to mimic a bit reversal.</td></tr>
                         <tr><td><code>agree_after_qubit_permutation</code></td><td>The outputs match only after a qubit permutation that neither declared ordering implies (searched up to 7 qubits). A permutation is not a convention either backend declares, so this is a disagreement.</td></tr>
                         <tr><td>Note</td><td><code>agree_after_normalization</code></td><td>An agreement with a note: at least one input statevector has a norm differing from 1 by more than <code>norm_tolerance</code>, and the normalised vectors agree. <code>metrics.normalized_agreement</code> holds the label the normalised pair receives (for example <code>agree_directly</code>), and the UI groups the pair by that label.</td></tr>
                         <tr><td>—</td><td><code>not_comparable</code></td><td>At least one side lacks usable output; the pair cannot be compared. <code>metrics.reason</code> names the cause (see the <a href="#glossary">glossary</a>).</td></tr>
@@ -1135,9 +1133,7 @@
                     <code>status</code> is FAIL when any row fails, else WARN when any row warns, else
                     PASS; <code>backends</code> gives each backend's worst row. The circuits use only
                     <code>x</code>, <code>h</code>, <code>ry</code>, <code>rz</code>, <code>cx</code> and
-                    <code>measure</code>, so a PASS says nothing about gates with
-                    <a href="#known-issues">known backend issues</a> (<code>cu3</code>, <code>cu1</code>,
-                    <code>csx</code>, <code>QubitUnitary</code>), mid-circuit measurement, larger circuits,
+                    <code>measure</code>, so a PASS says nothing about other gates, mid-circuit measurement, larger circuits,
                     other optimization levels or preprocessing off.
                 </p>
             </section>
@@ -1695,8 +1691,7 @@
                     rebuilt from QMAP's <code>// i</code> and <code>// o</code> lines), and that the output
                     declares as many qubits as the input. The same check runs on every output up to 10
                     qubits when it is produced. The
-                    probes include the circuits of the known issues below and a circuit with a
-                    <code>creg</code>.
+                    probes include a circuit with a <code>creg</code>.
                 </p>
                 <p>
                     With preprocessing on, compilers receive the pytket-rewritten circuit (see
@@ -1727,7 +1722,7 @@
                 <div class="table-scroll"><table>
                     <thead><tr><th>Tab</th><th>What it shows</th></tr></thead>
                     <tbody>
-                        <tr><td>Summary</td><td>A headline, then a Backends table, then the evidence. The headline says how many backends returned a result, names failed ones as Offline, Error or Timeout, and names the backends that differ from the others. It is built from the pairs that differ; an inconclusive pair counts as neither agreement nor difference. When one set of at most four backends, fewer than half of those with a result, is the only set of that size that appears in every pair that differs, those backends are named with how many backends they differ from ("Qibo differs from all 13 other backends"; "Qrisp differs from 7 of 13 other backends"; backends in that set that agree with each other are named together: "PL Default and PL Lightning agree with each other and differ from every other backend (12)"), followed by a sentence about the other backends, among which no pair differs. Otherwise, when the backends that differ from at least one other split into two to four groups, at least two of them with two or more members, with no differing pair inside a group and every compared pair between groups differing, the groups are listed as differing from each other; a backend that differs from none is named apart. Otherwise up to four differing pairs are listed by name, and in measured mode, when each backend of these pairs differs from no other, the headline suggests rerunning with another seed, since a single flagged pair can be a chance result. Otherwise the backends that differ from more than half of those they were compared with are named: those that agree with each other together, the groups with the largest difference from the other backends first, up to four backends, and the rest of them in a sentence of their own ("Qrisp and TorchQuantum also differ from more than half of the backends they were compared with"); then the differing pairs among the others. Each named backend or group carries the size of its difference, measured against the backends the headline does not name, so that a pair of two named backends does not set it: the lowest label-aligned fidelity (statevector), or the median and range of the total variation (measured; the largest of several noisy values overstates the difference). When groups differ from each other, the size is taken over the pairs between groups. In measured mode, a named backend that differs from fewer than half of the others and is consistent with all the rest gets a caveat: with many pairs tested, one backend's unusual sample can differ from a few others by chance (in simulation with every backend correct, a pair was flagged in 0.7–1% of 14-backend runs at 100 and 8,200 shots), so rerun with another seed to confirm. In a multi-run report the same sentences count runs ("all 4 PL Default runs"). Red in the Backends table marks exactly the backends the headline names as differing. A measured pair that is distinguishable under Benjamini–Yekutieli but not under Holm's family-wise correction, and has no differing single-bit marginal, is listed on its own line as significant under BY only and does not shape the headline; when one backend is in every such pair (two or more), the headline names it as distinguishable under Benjamini–Yekutieli but not under Holm. "No single-bit marginal differs" is said only when the marginal test ran (it needs keys of two or more bits). It uses the same rule as the pair badges: a statevector pair differs when it disagrees (<a href="#taxonomy">Agreement classification</a>); a measured pair differs when it is distinguishable beyond shot noise or a single-bit marginal differs. In measured mode the full-distribution and marginal counts are given apart, and the number of inconclusive pairs with the shots the power model asks for ("at least" when the recommendation is a lower bound, see <code>recommendation_is_lower_bound</code>). When backends timed out, the next step suggests raising the timeout unless the run already used the server maximum. A pair that differs shows that one of the two is wrong; the report does not decide which. The Backends table gives per backend its status, how many backends it differs from (hover for the names and the size of its difference, against the backends the headline does not name for a named backend and over its differing pairs otherwise; red for the backends the headline names, gray for the others, with pairs significant under BY only added as "+N BY only"), in measured mode how many it is inconclusive with, its declared bit order, precision, total time and peak memory. <strong>Evidence</strong> follows, with a legend for the mode: statevector pairs in the three label groups; measured pairs grouped only by <code>measured_assessment</code>, each pair once with its JS/Hellinger distance label as detail; pairs whose single-bit marginals differ in their own block; inconclusive pairs split by cause; not comparable pairs with the reason. A block of differing pairs that involves a backend listed under <a href="#known-issues">Known backend issues</a> links that section, naming those backends; whether the documented behaviour explains a given circuit is left to the reader. Lists of differing pairs are never folded and are ordered by the backend they share; lists of agreeing pairs over twelve items are folded. Power is shown to three decimals with the α/(m·c_m), m and c_m it was computed at. A collapsible section lists the analysis version and git commit, then per-backend run details. A compile-only run (<code>simulated: false</code>) shows a headline naming the compiles that were refused, rejected by their output check, not run, timed out or failed, then its compile records; a compile-only Playlist run shows one row per circuit with the compiles that returned a circuit and those that did not.</td></tr>
+                        <tr><td>Summary</td><td>A headline, then a Backends table, then the evidence. The headline says how many backends returned a result, names failed ones as Offline, Error or Timeout, and names the backends that differ from the others. It is built from the pairs that differ; an inconclusive pair counts as neither agreement nor difference. When one set of at most four backends, fewer than half of those with a result, is the only set of that size that appears in every pair that differs, those backends are named with how many backends they differ from ("Qibo differs from all 13 other backends"; "Qrisp differs from 7 of 13 other backends"; backends in that set that agree with each other are named together: "PL Default and PL Lightning agree with each other and differ from every other backend (12)"), followed by a sentence about the other backends, among which no pair differs. Otherwise, when the backends that differ from at least one other split into two to four groups, at least two of them with two or more members, with no differing pair inside a group and every compared pair between groups differing, the groups are listed as differing from each other; a backend that differs from none is named apart. Otherwise up to four differing pairs are listed by name, and in measured mode, when each backend of these pairs differs from no other, the headline suggests rerunning with another seed, since a single flagged pair can be a chance result. Otherwise the backends that differ from more than half of those they were compared with are named: those that agree with each other together, the groups with the largest difference from the other backends first, up to four backends, and the rest of them in a sentence of their own ("Qrisp and TorchQuantum also differ from more than half of the backends they were compared with"); then the differing pairs among the others. Each named backend or group carries the size of its difference, measured against the backends the headline does not name, so that a pair of two named backends does not set it: the lowest label-aligned fidelity (statevector), or the median and range of the total variation (measured; the largest of several noisy values overstates the difference). When groups differ from each other, the size is taken over the pairs between groups. In measured mode, a named backend that differs from fewer than half of the others and is consistent with all the rest gets a caveat: with many pairs tested, one backend's unusual sample can differ from a few others by chance (in simulation with every backend correct, a pair was flagged in 0.7–1% of 14-backend runs at 100 and 8,200 shots), so rerun with another seed to confirm. In a multi-run report the same sentences count runs ("all 4 PL Default runs"). Red in the Backends table marks exactly the backends the headline names as differing. A measured pair that is distinguishable under Benjamini–Yekutieli but not under Holm's family-wise correction, and has no differing single-bit marginal, is listed on its own line as significant under BY only and does not shape the headline; when one backend is in every such pair (two or more), the headline names it as distinguishable under Benjamini–Yekutieli but not under Holm. "No single-bit marginal differs" is said only when the marginal test ran (it needs keys of two or more bits). It uses the same rule as the pair badges: a statevector pair differs when it disagrees (<a href="#taxonomy">Agreement classification</a>); a measured pair differs when it is distinguishable beyond shot noise or a single-bit marginal differs. In measured mode the full-distribution and marginal counts are given apart, and the number of inconclusive pairs with the shots the power model asks for ("at least" when the recommendation is a lower bound, see <code>recommendation_is_lower_bound</code>). When backends timed out, the next step suggests raising the timeout unless the run already used the server maximum. A pair that differs shows that one of the two is wrong; the report does not decide which. The Backends table gives per backend its status, how many backends it differs from (hover for the names and the size of its difference, against the backends the headline does not name for a named backend and over its differing pairs otherwise; red for the backends the headline names, gray for the others, with pairs significant under BY only added as "+N BY only"), in measured mode how many it is inconclusive with, its declared bit order, precision, total time and peak memory. <strong>Evidence</strong> follows, with a legend for the mode: statevector pairs in the three label groups; measured pairs grouped only by <code>measured_assessment</code>, each pair once with its JS/Hellinger distance label as detail; pairs whose single-bit marginals differ in their own block; inconclusive pairs split by cause; not comparable pairs with the reason. Lists of differing pairs are never folded and are ordered by the backend they share; lists of agreeing pairs over twelve items are folded. Power is shown to three decimals with the α/(m·c_m), m and c_m it was computed at. A collapsible section lists the analysis version and git commit, then per-backend run details. A compile-only run (<code>simulated: false</code>) shows a headline naming the compiles that were refused, rejected by their output check, not run, timed out or failed, then its compile records; a compile-only Playlist run shows one row per circuit with the compiles that returned a circuit and those that did not.</td></tr>
                         <tr><td>Performance</td><td>Times, then memory: ranked successful runs, then the unranked runs with their status and reason. A run on a GPU carries a GPU tag under its name (hover for the GPU); the header says when every run was on a CPU. Each column uses one number format: fixed decimals chosen so its smallest value shows three significant digits, or scientific notation throughout when a value is below 1e-6. The header names conditions in this run that can bias a comparison (backends ran at the same time, other jobs on the server, throttling, unstable repetitions, CPUs of different speeds, one timed run per backend); "How these times are measured" gives the details. With Timing repeats above 1, each time cell shows the median with ± the sample standard deviation below it; the header gives the number of timed runs when every backend had the same, and each cell gives n when they differ. Process Peak RSS includes interpreter start, SDK imports and the warm-up run, so for small circuits it is mostly the SDK footprint. Tooltips on each column give the measurement window; they open on hover, keyboard focus or tap.</td></tr>
                         
                         <tr><td>Agreement</td><td>Counts per label, a heatmap with one cell per pair (coloured by the same verdict as the Summary, with a symbol per class that the key below repeats: = agree or consistent within shot noise, φ agree up to a global phase, ↺ agree after the declared bit reversal, P agree only after a qubit permutation, N agree after normalisation, ≠ disagree or distinguishable, ? inconclusive, – not comparable; click a cell to open its evidence), and the evidence per pair: label, metrics, tolerances, statistical test and provenance (seeds, ordering, SDK versions, preprocessing). Labels are shown in words with the recorded code in the tooltip; the pair list can be filtered by verdict and by backend. Each statevector row shows the fidelity under the transform its label names; for a pair that disagrees it is the fidelity in the basis the declared orderings imply (F(bit-rev) for an <code>lsb</code>×<code>msb</code> pair), with the other basis' value added when the pair matches only there, and a pair that agrees up to a global phase shows that phase, also after the declared bit reversal. Agreement after the declared bit reversal is blue on badges, legends, heatmap and export charts. A measured row leads with its shot-noise assessment; its JS/Hellinger distance label follows in gray after "distance:", which describes the distance and does not decide agreement. <strong>Divergence matrices</strong> (collapsed) hold the N×N fidelity, global phase offset arg⟨a|b⟩, JS-divergence (nats) and Hellinger values. Each number is the direct value, before any bit reversal; for a pair compared after the bit reversal its declared orderings imply, the value in that basis is shown below it with ↺. Cells are coloured by the pair's verdict, not by the number, so an <code>lsb</code>×<code>msb</code> pair that agrees after the declared reversal is coloured as agreeing although its direct fidelity is low. OFF, ERR and T/O mark failed runs, n/c a pair that is not comparable. Cells are rounded for display: four decimals, more for a fidelity that would otherwise round to 1, and three significant digits in scientific notation below 1e-3. Hover a cell for the unrounded value.</td></tr>
@@ -2099,307 +2094,6 @@
                 </ul>
             </section>
 
-            <section id="known-issues">
-                <h2>Known backend issues</h2>
-                <p>
-                    The discrepancies below come from the SDKs or their QASM importers, not from QRosetta.
-                    For simulators, the report shows them as disagreements (statevector) or distinguishable
-                    pairs (measured). For compile-only services, the rows say what the compiler's adapter
-                    does instead: refuse the circuit, avoid the defective call, or apply a recorded fix. QRosetta does not decide which side of a disagreement is wrong. Testers
-                    checked each case below against an independent exact simulator written from the
-                    <code>qelib1.inc</code> gate definitions; the table names the backend that differed from
-                    it. Check your own circuits the same way before attributing a disagreement. Every
-                    circuit starts with <code>OPENQASM 2.0; include "qelib1.inc";</code>.
-                </p>
-                <div class="table-scroll"><table>
-                    <thead><tr><th>Backend</th><th>Behaviour</th><th>Circuit to reproduce</th></tr></thead>
-                    <tbody>
-                        <tr><td>Qrisp (measured mode)</td>
-                            <td>Qrisp 0.5's <code>QuantumCircuit.run()</code> returns every shot as |0…0⟩ on
-                                circuits of 12 or more qubits whose outcome spreads over many basis states, while
-                                <code>statevector_array()</code> of the same circuit is correct. Seen on the circuit
-                                to the right from n = 12 (correct up to n = 11) and on chains of controlled
-                                rotations from 12–13 qubits. The measured report marks Qrisp distinguishable from
-                                every other backend. Cause: <code>run()</code> drops every outcome whose
-                                probability is below 5e-4 times the largest one
-                                (<code>qrisp.simulator.numerics_config.cutoff_ratio</code>) and renormalises the
-                                rest. In the circuit to the right |0…0⟩ has probability 0.5 and each of the other
-                                2048 outcomes 0.5/2048 ≈ 2.4e-4, below the cutoff of 2.5e-4; with the cutoff set
-                                to 0, Qrisp gives 0.504.</td>
-                            <td><code>qreg q[12]; creg c[12]; h q[0];</code> then <code>ch q[0],q[k];</code> for
-                                k = 1…11, then <code>measure q[i] -> c[i];</code> for every i. Expected: |0…0⟩ with
-                                probability 0.5; Qrisp: 1.0.</td></tr>
-                        <tr><td>PennyLane (lightning and default.qubit)</td>
-                            <td>pennylane-qiskit's <code>from_qasm</code> converts some gates to a
-                                <code>QubitUnitary</code> of Qiskit's matrix, which lists the first operand as least
-                                significant, and applies it to the wires in written order, where PennyLane treats
-                                the first wire as most significant: the gate acts with its operand order reversed
-                                (for a two-qubit gate, control and target swapped). Affected: <code>cu3</code>,
-                                <code>cu</code>, <code>csx</code>, <code>c3x</code>, <code>c4x</code>,
-                                <code>c3sqrtx</code>, <code>rccx</code>, <code>rc3x</code> and custom gates.
-                                <code>cu1</code>, <code>cp</code>, <code>crz</code>, <code>ch</code>, <code>cy</code>,
-                                <code>cz</code>, <code>crx</code>, <code>cry</code>, <code>swap</code>,
-                                <code>rxx</code>, <code>rzz</code>, <code>cswap</code> and <code>ccx</code> are
-                                correct. A <code>QubitUnitary</code> on three or more wires appears in the executed
-                                text as an <code>opaque</code> gate with its matrix in comments, so the reversal
-                                can be read there. Happens with
-                                preprocessing on and off for the gates the pytket round-trip keeps
-                                (<code>cu3</code>, <code>csx</code>, <code>c3x</code>, <code>c4x</code>); with preprocessing
-                                on, the round-trip decomposes <code>cu</code>, <code>rccx</code>, <code>rc3x</code> and
-                                <code>c3sqrtx</code>, and those then agree. On some
-                                circuits the swapped output equals the bit-reversed correct one, and the pair is
-                                then a disagreement with <code>unaligned_basis_match</code>.</td>
-                            <td>Statevector: <code>qreg q[2]; x q[0]; cu3(0.7,0.3,0.1) q[0],q[1];</code>. The
-                                other backends put about 12% of the probability on |q0=1, q1=1⟩; both
-                                PennyLane runners return |q0=1, q1=0⟩ exactly, as if q[1] were the control.</td></tr>
-                        <tr><td>qibo</td>
-                            <td><code>cu3(θ,φ,λ)</code> acts as controlled(e<sup>−i(φ+λ)/2</sup>·U3(θ,φ,λ)):
-                                a relative phase on the control's |1⟩ branch that <code>qelib1.inc</code>'s
-                                <code>cu3</code> does not have.</td>
-                            <td>Statevector: <code>qreg q[2]; h q[0]; cu3(0.7,0.3,0.1) q[0],q[1];</code>. In
-                                measured mode add <code>h q[0];</code> before measuring so the phase becomes
-                                visible in the counts.</td></tr>
-                        <tr><td>qibo 0.3.1, optimization levels 1 and 2</td>
-                            <td><code>Circuit.from_qasm</code> stores each call of a gate the circuit defines as a
-                                <code>FusedGate</code>, and <code>Circuit.fuse()</code>, Qibo's optimization at
-                                levels 1 and 2, drops it, so the gate would not be executed. This includes the
-                                <code>qelib1.inc</code> definitions the adapter inserts with preprocessing on for
-                                gates Qibo's parser lacks (<code>ch</code>, <code>cswap</code>, <code>c3x</code>,
-                                <code>c4x</code>). The adapter therefore leaves such a circuit unfused
-                                and says so in <code>preprocessing_applied</code>; circuits without defined gates are
-                                fused as before.</td>
-                            <td>Statevector, level 2: <code>gate g a,b { h b; cx a,b; } qreg q[2]; x q[0];
-                                g q[0],q[1];</code>. Expected: q[0] = 1 and q[1] in (|0⟩ + |1⟩)/√2; Qibo returns
-                                |q0=1, q1=0⟩, fidelity 0.5.</td></tr>
-                        <tr><td>Qrisp</td>
-                            <td><code>cu1(λ)</code> has the matrix of <code>crz(λ)</code>, which differs from
-                                <code>qelib1.inc</code>'s <code>cu1</code> by a phase on the control's |1⟩ branch,
-                                and <code>statevector_array()</code> applies that matrix. The pytket round-trip keeps
-                                <code>cu1</code>, so this happens with preprocessing on and off. <code>cp</code> is
-                                correct in Qrisp, and the round-trip writes it as <code>u3</code> and
-                                <code>cx</code>. In measured mode <code>cu1</code> gives a third result (see the
-                                row on gate definitions below).</td>
-                            <td>Statevector: <code>qreg q[2]; h q[0]; x q[1]; cu1(0.9) q[0],q[1];</code>.</td></tr>
-                        <tr><td>Qrisp 0.5, measured mode: gate definitions</td>
-                            <td><code>QuantumCircuit.run()</code> first rewrites each gate into its definition
-                                (<code>QuantumCircuit.transpile()</code>), while <code>statevector_array()</code>
-                                applies each gate's matrix. For three <code>qelib1.inc</code> gates the two differ,
-                                so Qrisp's counts disagree with Qrisp's own statevector:
-                                <code>cu1(λ)</code>'s definition is <code>p(3λ/8)</code> on the control, then
-                                <code>p(λ)</code>, <code>cx</code>, <code>p(−λ/2)</code>, <code>cx</code>,
-                                <code>p(−λ/2)</code> on the target, which matches neither <code>cu1</code> nor
-                                <code>crz</code>; <code>cu3(θ,φ,λ)</code>'s
-                                definition applies the transposed target matrix, U3(−θ,λ,φ), where the matrix is
-                                correct; <code>c3sqrtx</code>'s definition and matrix differ from each other and
-                                from <code>qelib1.inc</code>. With preprocessing on, the round-trip decomposes
-                                <code>c3sqrtx</code> and keeps <code>cu1</code> and <code>cu3</code>. A random
-                                5-qubit, 40-gate circuit with two <code>cu1</code> gates gave total variation 0.19
-                                between Qrisp's exact <code>run()</code> distribution and its statevector with
-                                preprocessing on (0.08 off); written with <code>cp</code> or <code>crz</code>
-                                instead, 0.</td>
-                            <td>Measured, 200,000 shots, preprocessing off: <code>qreg q[2]; creg c[2]; h q[0];
-                                h q[1]; cu1(0.6) q[0],q[1]; h q[0]; h q[1]; measure q -&gt; c;</code>. P(c[0] = 1,
-                                c[1] = 0) is 0.0218 for <code>qelib1.inc</code>'s <code>cu1</code>, 0.0005 in
-                                Qrisp's statevector (its <code>crz</code>), 0.0125 in Qrisp's counts. For
-                                <code>cu3</code>: <code>qreg q[2]; creg c[2]; x q[0]; h q[1];
-                                cu3(0.7,0.3,0.1) q[0],q[1]; measure q -&gt; c;</code>; exact P(q[1] = 1) 0.8205,
-                                Qrisp's statevector 0.8205, Qrisp's counts 0.192.</td></tr>
-                        <tr><td>Qrisp 0.5: <code>csx</code></td>
-                            <td><code>csx</code> acts as <code>crx(π/2)</code>: Qrisp's controlled gate leaves out
-                                the e<sup>iπ/4</sup> phase of <code>sx</code> on the control's |1⟩ branch, in both
-                                modes. The pytket round-trip keeps <code>csx</code>, so this happens with
-                                preprocessing on and off.</td>
-                            <td>Statevector: <code>qreg q[2]; h q[0]; csx q[0],q[1]; h q[0];</code>. Exact
-                                P(|00⟩) 0.625; Qrisp 0.7286 (the value for <code>crx(pi/2)</code>).</td></tr>
-                        <tr><td>Qrisp 0.5, statevector mode, 15 or more qubits</td>
-                            <td>Qrisp's simulator sets matrix entries below 1e-5 in magnitude to 0
-                                (<code>numerics_config.float_tresh</code>) and drops tensor entries below 5e-4 times
-                                the largest (<code>cutoff_ratio</code>). On wide, dense states this loses norm:
-                                infidelities up to 3e-4 against Qiskit in the circuits tested at 15–17 qubits,
-                                where the other complex64 backends (qsim, TorchQuantum) stay near 1e-12, so the
-                                pair can fall outside the default fidelity tolerance of 1e-5. At 14 qubits the
-                                loss stayed below 1e-5. With both thresholds set to 0 the same circuits give about
-                                1e-7, the complex64 level. The adapter only reads
-                                <code>statevector_array()</code> and converts it to complex128.</td>
-                            <td>Statevector, 16 qubits: four layers of <code>ry</code> with random angles on
-                                every qubit, with <code>cx q[i],q[j]</code> for every i &lt; j between layers
-                                (424 gates). MQT Bench <code>twolocalrandom</code> at 16 qubits: norm 0.99998,
-                                1 − F = 4.5e-5.</td></tr>
-                        <tr><td>Qrisp 0.5, measured mode, wider circuits</td>
-                            <td>On a 16-qubit circuit of <code>h</code>, <code>ry</code>, <code>rz</code>,
-                                <code>rx</code> and <code>cx</code> only, Qrisp's sampled single-bit frequencies differ
-                                from the circuit's exact marginals by up to 0.02 (|z| up to 12.7 at 30,000 shots),
-                                while Qrisp's statevector for the same circuit is right (fidelity 1 − 1e-13 with
-                                Qiskit). The full-distribution test is often inconclusive on such circuits; the
-                                single-bit marginal test flags Qrisp's pairs. The outcome cutoff described in the
-                                first Qrisp row explains part of it: <code>run()</code> keeps 4,091 of the 65,536
-                                outcomes, and with the cutoff and <code>float_tresh</code> set to 0 P(clbit 13 = 1)
-                                moves from 0.0405 to 0.0505 of the exact 0.0572. The rest is not explained.</td>
-                            <td><code>rosetta-api/circuits/qrisp_measured_bias_16q.qasm</code> in the source
-                                (<code>h</code> on every qubit, then fixed-angle <code>ry</code>, <code>cx</code>,
-                                <code>rz</code> and <code>rx</code> layers, <code>measure q -&gt; c</code>), 30,000 shots:
-                                P(clbit 13 = 1) 0.040 from Qrisp, 0.0579 from Qiskit's samples, 0.0572 exact.</td></tr>
-                        <tr><td>quimb 1.13.0</td>
-                            <td>The QASM parser substitutes a gate definition's parameters with plain text
-                                replacement, so a parameter whose name starts with another parameter's name
-                                (<code>t</code> and <code>t2</code>) receives a wrong value, without an error.</td>
-                            <td>Statevector: <code>qreg q[1]; gate g(t, t2) a { rz(t2) a; } h q[0]; g(0.1, 0.7) q[0];</code>.
-                                quimb applies <code>rz(0.12)</code> instead of <code>rz(0.7)</code>. With preprocessing on,
-                                the pytket round-trip inlines the definition first and quimb agrees.</td></tr>
-                        <tr><td>PyZX 0.10.6 (compile-only)</td>
-                            <td><code>basic_optimization(circuit.to_basic_gates())</code> changes the unitary when
-                                an X, S or swap is followed by an X- or Y-rotation on the same qubit. In random
-                                3-qubit circuits of 10 gates (150 for each of three gate sets) it changed the
-                                unitary of 31% to 90%, depending on the gate set; <code>full_reduce</code> with <code>extract_circuit</code>, with or
-                                without a final <code>basic_optimization</code>, changed none of 450. The PyZX
-                                compiler therefore never applies <code>basic_optimization</code> to its input.</td>
-                            <td><code>qreg q[1]; x q[0]; rx(0.7) q[0];</code> through
-                                <code>pyzx.basic_optimization(pyzx.Circuit.from_qasm(text).to_basic_gates())</code>
-                                returns <code>h; rz(0.777…π); h</code>, which is not X·RX(0.7).</td></tr>
-                        <tr><td>MQT QMAP 3.10.0 (compile-only)</td>
-                            <td><code>mqt.qmap.sc.map_</code> maps singly-controlled gates other than
-                                <code>cx</code> (<code>cu3</code>, <code>cp</code>) as plain <code>cx</code> without
-                                an error, also with pre- and post-mapping optimizations off; gates with two
-                                controls and <code>swap</code> are rejected with an error asking for a decomposed
-                                circuit. The QMAP compiler therefore decomposes to <code>u3</code> and
-                                <code>cx</code> first.</td>
-                            <td><code>qreg q[3]; h q[0]; cu3(0.3,0.2,0.1) q[0],q[1]; cu1(pi/4) q[1],q[2];</code>
-                                mapped onto a 3-qubit line: the output holds <code>h</code>, <code>cx q[0],q[1]</code>
-                                and <code>cx q[1],q[2]</code> only.</td></tr>
-                        <tr><td>MQT QMAP 3.10.0 (compile-only), idle qubits</td>
-                            <td>When a qubit has no gates, <code>map_</code> reuses its wire and still writes the
-                                identity layout in <code>// i</code> and <code>// o</code> (and in
-                                <code>initial_layout</code>), so the layout lines do not describe the output. QMAP
-                                removes <code>id</code> and rotations by 0 before mapping, so a qubit with only
-                                those is idle too. The QMAP compiler therefore does not map such circuits.</td>
-                            <td><code>qreg q[3]; h q[0]; cx q[0],q[2];</code> on a 3-qubit line: output
-                                <code>cx q[0],q[1]</code> with <code>// i 0 1 2</code> and
-                                <code>// o 0 1</code>; the same with <code>rz(0) q[1];</code> added.</td></tr>
-                        <tr><td>BQSKit 1.2.1 (compile-only)</td>
-                            <td><code>Circuit.unfold(point)</code> of a gate defined in the circuit
-                                (<code>CircuitGate</code>) that is not in the first cycle places some of its
-                                body's gates before gates that preceded it, so the circuit's unitary changes;
-                                <code>Circuit.unfold_all()</code> keeps it. The BQSKit compiler replaces wide
-                                definitions by rebuilding the circuit in operation order, as
-                                <code>unfold_all</code> does.</td>
-                            <td><code>gate g a,b { h b; cx a,b; t b; cx a,b; h b; } qreg q[2]; h q[0]; g
-                                q[0],q[1];</code> decoded with BQSKit's OpenQASM 2.0 parser: after
-                                <code>unfold((1, 0))</code> the last <code>h</code> comes first and the process
-                                infidelity to the decoded circuit is 0.146; after <code>unfold_all()</code>, 0.</td></tr>
-                        <tr><td>Cirq 1.7.0 (compile-only)</td>
-                            <td><code>circuit_from_qasm</code> imports <code>cu3(θ,φ,λ)</code> with the wrong
-                                unitary when θ mod 4π lies in [2π, 4π), for example any small negative θ: the
-                                controlled operation gets a phase of −1 on the control's |1⟩ branch. Every other
-                                qelib1 gate and parameter range tested imports correctly. The Cirq compiler
-                                refuses such a <code>cu3</code>; the Cirq and qsim runners are not affected,
-                                since they build their circuits through pytket.</td>
-                            <td><code>qreg q[2]; cu3(-0.4,0.4,-1.1) q[0],q[1];</code> imported by
-                                <code>cirq.contrib.qasm_import.circuit_from_qasm</code> and compared with
-                                Qiskit's operator: not equal; θ = 0.4 or θ = −0.4 + 4π: equal.</td></tr>
-                        <tr><td>staq 3.5 (compile-only)</td>
-                            <td>The lexer reads every real literal with <code>std::stof</code>, so each angle
-                                is rounded to single precision before any pass runs. Outputs stay equivalent
-                                (infidelity below 1e-14 on 360 random 3–4 qubit outputs), but their angles
-                                differ from the input after about the eighth significant digit. The staq
-                                compiler's passes give the largest such change for the circuit (2.09e-08 rad
-                                for <code>rz(0.7853981643974483)</code>, read as 0.785398185253143).</td>
-                            <td><code>qreg q[1]; rz(0.3) q[0];</code> with <code>staq -O1</code> prints
-                                <code>rz(0.300000011920929) q[0];</code>.</td></tr>
-                        <tr><td>pytket 1.33.0 (tket), angles</td>
-                            <td>When tket builds a circuit it sets every gate parameter within 1e-11 half-turns
-                                (about 3.1e-11 rad) of a multiple of π/4 to that multiple, so an angle below
-                                about 3.1e-11 rad becomes 0. This happens in the pytket round-trip (preprocessing
-                                on) and in the runners that build their circuit with tket (Qiskit, Cirq, Qulacs,
-                                QuEST, qsim, PyQuil) with preprocessing on or off. When it moves a parameter the
-                                result lists which, by how much, and where (an <code>API:</code> entry for the
-                                round-trip, otherwise an entry on each of those runners), for parameters as
-                                written and inside called gate definitions with each call's values. Parameters tket
-                                derives itself while rebasing, such as the half-angles of <code>cu1</code> or
-                                <code>crz</code>, are rounded the same way and not listed: <code>cu1(4e-11)</code>
-                                runs as a <code>cu1</code> whose half-angle rotations are 0.</td>
-                            <td><code>qreg q[1]; rz(1.3e-13) q[0];</code> and <code>rz(3.14159265359) q[0];</code>
-                                through <code>circuit_from_qasm_str</code>: the parameters are 0 and exactly 1
-                                half-turn.</td></tr>
-                        <tr><td>qibo 0.3.1, two-qubit gate definitions with parameters</td>
-                            <td><code>Circuit.from_qasm</code> accepts a user <code>gate</code> definition on two
-                                or more qubits whose body uses its parameters, but executing the circuit raises
-                                <code>TypeError: can't multiply sequence by non-int of type 'complex'</code>.
-                                One-qubit definitions and definitions without parameters run. With preprocessing
-                                on the API inlines every definition first, so only runs with preprocessing off
-                                are affected.</td>
-                            <td><code>gate g(t) a,b { rz(t) a; rz(t) b; } qreg q[2]; g(0.3) q[0],q[1];</code>,
-                                then <code>circuit()</code>.</td></tr>
-                        <tr><td>PyZX 0.10.6 (compile-only), angles</td>
-                            <td>The QASM parser reads a number in scientific notation (<code>1.25e-1</code>) as an
-                                expression with a variable <code>e</code> and rejects it, and pytket writes small
-                                angles that way (<code>3.18e-06*pi</code>). The PyZX compiler rewrites such numbers
-                                as plain decimals with the same value and lists the rewrite. PyZX keeps every
-                                phase as a fraction of π with denominator at most 1,048,576, which moves a generic
-                                angle by up to about 3e-8 rad; each compile's passes give the largest change for
-                                its circuit.</td>
-                            <td><code>qreg q[1]; rz(0.123456789012345678) q[0];</code>: PyZX stores 40942/1041847
-                                half-turns, 1.1e-9 rad from the literal.</td></tr>
-                        <tr><td>pytket 1.33.0 (API preprocessing)</td>
-                            <td><code>circuit_to_qasm_str</code> writes every multi-controlled X as
-                                <code>c4x</code>, whatever its number of qubits, so a <code>c3x</code> came back as
-                                a <code>c4x</code> with four operands, which is not valid OpenQASM 2.0 and which 8 of
-                                14 simulators and every compiler rejected. The API renames each such call by its
-                                operand count (<code>cx</code>, <code>ccx</code>, <code>c3x</code>, <code>c4x</code>)
-                                and records it as an <code>API:</code> change.</td>
-                            <td><code>qreg q[4]; h q[0]; c3x q[0],q[1],q[2],q[3];</code> through
-                                <code>circuit_from_qasm_str</code> and <code>circuit_to_qasm_str</code> gives
-                                <code>c4x q[0],q[1],q[2],q[3];</code>.</td></tr>
-                        <tr><td>Q-Synth 5.1 (compile-only), time-outs</td>
-                            <td><code>peephole_synthesis</code> gives each CNOT slice a share of the time budget,
-                                retries timed-out slices with the time left, and keeps a slice's original gates
-                                when the retry also times out; the result's <code>timed_out</code> stays false.
-                                The Q-Synth compiler records every slice's last solver call and reports such a
-                                compile as an error.</td>
-                            <td>A 9-qubit circuit of 80 CNOTs with the 240 s budget returned the 80 CNOTs
-                                reordered, with <code>timed_out</code> false.</td></tr>
-                        <tr><td>staq 3.5 (compile-only), names</td>
-                            <td>With <code>USE_OPENQASM2_SPECS=false</code> staq's library adds <code>r</code> and
-                                <code>cswap</code> to <code>qelib1.inc</code>, and OpenQASM 2.0 gates and registers
-                                share one namespace, so staq rejects a register or gate declared under either
-                                name. The staq compiler refuses such circuits with that reason.</td>
-                            <td><code>qreg q[1]; qreg r[1]; h r[0];</code>: staq reports
-                                <code>Identifier "r" previously declared</code>.</td></tr>
-                        <tr><td>Quartz 0.3.2 (compile-only), big integers</td>
-                            <td>Angles are exact rationals (multiples of π) held in Quartz's own big-integer
-                                type. Shifting a zero by a whole number of 9-digit limbs left a leading zero
-                                limb, so the zero was not recognised and <code>gcd</code> recursed until the
-                                stack overflowed (segmentation fault, 6 of 400 random circuits). The image
-                                applies a one-line fix (<code>shift10-normalise.patch</code>: normalise after
-                                every shift); with it, 0 of 400 crashed or changed the unitary.</td>
-                            <td><code>quartz::Unsigned</code>: <code>1250000000000 % 625000000000</code> returns
-                                a zero stored as two limbs, and <code>gcd(1875000000000, 1250000000000)</code>
-                                never ends.</td></tr>
-                        <tr><td>Quartz 0.3.2 (compile-only), rotation merging</td>
-                            <td><code>Graph::rotation_merging(rz)</code> moves an <code>rz</code> past an
-                                <code>x</code> without negating its angle, which changes the unitary. 79 of 303
-                                random circuits changed when it ran before greedy rewriting. The Quartz compiler
-                                does not use it.</td>
-                            <td><code>qreg q[2]; rz(pi/2) q[1]; x q[1]; rz(-pi/4) q[1]; cx q[0],q[1];</code>
-                                becomes <code>x q[1]; rz(pi/4) q[1]; cx q[0],q[1];</code>; the angle should be
-                                −3π/4.</td></tr>
-                        <tr><td>Quartz 0.3.2 (compile-only), measurements and barriers</td>
-                            <td>Quartz's QASM reader drops <code>measure</code> statements and rewrites across
-                                barriers, both without a message. The Quartz compiler removes final measurements
-                                and barriers itself, adds the measurements back after rewriting and refuses
-                                mid-circuit measurement.</td>
-                            <td><code>qreg q[1]; creg c[1]; h q[0]; measure q[0] -&gt; c[0];</code> comes back
-                                as <code>h q[0];</code>; <code>h q[0]; barrier q[0]; h q[0];</code> comes back
-                                empty.</td></tr>
-                        <tr><td>TorchQuantum</td>
-                            <td>Rejects a circuit with more than one <code>qreg</code> when preprocessing is
-                                off (an Error, not a wrong result). With preprocessing on the API merges the
-                                registers first.</td>
-                            <td>Either mode, preprocessing off: <code>qreg a[1]; qreg b[1]; h a[0];
-                                cx a[0],b[0];</code>.</td></tr>
-                    </tbody>
-                </table></div>
-            </section>
-
             <section id="contributing">
                 <h2>Adding a simulator</h2>
                 <p>
@@ -2477,8 +2171,7 @@
                     Usually because of a convention: a different declared qubit ordering or an unobservable
                     global phase. The agreement classification accounts for these so that a convention
                     difference is reported as agreement. A difference that no declared convention explains
-                    is reported as a disagreement; <a href="#known-issues">Known backend issues</a> lists the
-                    ones testers have traced.
+                    is reported as a disagreement.
                 </p>
                 <h3>Is a "distance exceeds threshold" pair a bug?</h3>
                 <p>

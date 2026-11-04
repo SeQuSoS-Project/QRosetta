@@ -486,7 +486,7 @@ the base image the Dockerfile uses.
 
 Before offering a level, run `python main.py --self-test` in the image and compile random
 circuits through it with an independent equivalence check. Do not offer a pipeline that
-changes the unitary of an input beyond its stated tolerance; record why in the manual's known issues instead.
+changes the unitary of an input beyond its stated tolerance.
 
 ## Changing the database schema
 

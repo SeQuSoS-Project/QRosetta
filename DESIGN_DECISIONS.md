@@ -18,7 +18,6 @@ Dates are when the evidence was collected (YYYY-MM-DD). Where a unit test enforc
 - [Provenance and reproducibility](#provenance-and-reproducibility)
 - [Security and accounts](#security-and-accounts)
 - [Interface and API behaviour](#interface-and-api-behaviour)
-- [Upstream behaviour not worked around](#upstream-behaviour-not-worked-around)
 
 ## Terms
 
@@ -239,7 +238,7 @@ Units are MiB (1024²) throughout, although field names say `_mb`.
 
 *Rule.* At optimization levels 1 and 2 the Qibo adapter calls `Circuit.fuse(max_qubits=1|2)` unless the parsed queue holds a `FusedGate`, which `Circuit.from_qasm` makes for each call of a gate the text defines (a user gate, or a `qelib1.inc` definition the adapter inserts with preprocessing on). Such a circuit runs unfused, and `preprocessing_applied` says `qibo.Circuit.fuse(max_qubits=N) not applied` with the reason.
 
-*Evidence (2026-11-01).* Qibo 0.3.1's `fuse()` drops a `FusedGate` already in the queue: `gate g a,b { h b; cx a,b; } x q[0]; g q[0],q[1];` keeps only `X` after fusion (fidelity 0.5). V4 found 49 wrong statevectors at level 2 (`docs/audits/2026-11-01-v4/V4.md`). Requalification of the change (`scripts/requalify/requalify.sh qibo`, old and new image at one commit; the new image also uninstalls pip): every case differs in `runner_code_sha256`; at level 0 nothing else changed; at levels 1–2, 317 cases gained the note, 192 statevectors changed and each now equals the unfused (level 0) statevector of the same circuit, and of 107 changed count tables 101 fit the `qelib1.inc` reference distribution (chi-square, p > 1e-4) against 53 before, the other 6 fitting the documented Qibo cu3 phase. Owner decision 2026-11-01.
+*Evidence (2026-11-01).* V4 found 49 wrong statevectors at level 2 for circuits that define gates. Requalification of the change (`scripts/requalify/requalify.sh qibo`, old and new image at one commit; the new image also uninstalls pip): every case differs in `runner_code_sha256`; at level 0 nothing else changed; at levels 1–2, 317 cases gained the note, 192 statevectors changed and each now equals the unfused (level 0) statevector of the same circuit, and of 107 changed count tables 101 fit the `qelib1.inc` reference distribution (chi-square, p > 1e-4) against 53 before, the other 6 fitting the documented Qibo cu3 phase. Owner decision 2026-11-01.
 
 ### No duplicate engines / cuQuantum
 
@@ -539,7 +538,7 @@ Spaced indices `q [0]` are normalised with preprocessing on (`API:` note).
 
 ### Missing qelib1 gates (qibo, quimb)
 
-*Rule.* With preprocessing on, the qibo and quimb adapters insert the `qelib1.inc` definitions (Qiskit 2.5.2 copy in [`shared/qrosetta_commons/qelib1_qiskit.inc`](shared/qrosetta_commons/qelib1_qiskit.inc)) of the qelib1 gates their parser lacks, in the compile window (it is a transform the adapter needs), listed in `preprocessing_applied`; quimb gets `U` written as `u3`. With preprocessing off they are rejected, as before. staq uses the same helper. qibo does not get `cp`/`cu` (the round-trip never emits them; see [Upstream behaviour not worked around](#upstream-behaviour-not-worked-around)).
+*Rule.* With preprocessing on, the qibo and quimb adapters insert the `qelib1.inc` definitions (Qiskit 2.5.2 copy in [`shared/qrosetta_commons/qelib1_qiskit.inc`](shared/qrosetta_commons/qelib1_qiskit.inc)) of the qelib1 gates their parser lacks, in the compile window (it is a transform the adapter needs), listed in `preprocessing_applied`; quimb gets `U` written as `u3`. With preprocessing off they are rejected, as before. staq uses the same helper. qibo does not get `cp`/`cu` (the round-trip never emits them).
 
 *Evidence (2026-10-02).* 0 failures, every gate F = 1 to 12 digits against Qiskit's Statevector on 31 qelib1 gates; through the API with preprocessing on, ch/csx/cswap/c3x 4-backend pairs all agree. qibo 0.3.1 raises TypeError executing any 2+-qubit user gate whose body uses its parameters.
 
@@ -1138,15 +1137,3 @@ Self-tests identical. Timing on CPU 4, 5 alternated rounds, load 1.3–2.8, ever
 
 *Evidence (2026-10-28).* Runner errors, preprocessing notes, SDK versions, devices, compiler refusals and uploaded report text were shown with U+202E active, so `‮gnp.exe‬` read as `exe.png` and an unterminated override could reorder the rest of its line (V2-05). `Label` fields already refuse these characters; runner and report text is not a label. In headless Chrome, a paragraph built from `Error: `, `‮gnp.exe` and ` (qulacs)` holds a `<bdi>` around the middle text and the same text content; plain text is not wrapped ([`test_accessibility_browser.py`](rosetta-api/tests/unit/test_accessibility_browser.py), [`test_bidi_isolation.py`](rosetta-api/tests/unit/test_bidi_isolation.py)).
 
-## Upstream behaviour not worked around
-
-The SDK behaviours below are reported by the comparison as disagreement. A workaround for only these backends would bias preprocessing, so none is applied.
-
-- PennyLane `from_qasm` swaps control and target on `QubitUnitary` (cu3, custom gates).
-- qibo `cu3` is controlled(e^{-i(φ+λ)/2}·U3). qibo: expressions on gate parameters raise TypeError. qibo 0.3.1: `Circuit.fuse()` drops every call of a gate the circuit defines; the adapter leaves such circuits unfused (see Qibo fusion and defined gates).
-- qrisp runs `cu1` as `crz`. qrisp 0.5's `QuantumCircuit.run()` returns all shots as |0…0⟩ on 12+-qubit circuits with a spread-out distribution (`h q[0]; ch q[0],q[k]` for k=1..11; the statevector path is correct). Qrisp 0.5.2: the definitions of cu1, cu3 and c3sqrtx differ from their matrices; csx acts as crx(π/2); the `run()` outcome cutoff; statevector truncation; qelib1's four-parameter `cu` is rejected.
-- torchquantum's `qiskit2tq` uses register-local indices with several qregs, so the torchquantum adapter refuses multi-qreg circuits when `apply_preprocessing=False` (the API's register merge makes them work with preprocessing on).
-- quimb 1.13.0 substitutes gate parameters by substring (`g(t, t2)` gives `rz(t2)` the value `t` followed by `2`); with preprocessing on, the round-trip inlines the definition first.
-- cirq-core 1.7.0 imports rc3x as a MatrixGate it cannot write.
-- Qiskit 0.45.3 level 3 deletes a trailing swap without recording a layout.
-- BQSKit 1.2.1's `Circuit.unfold(point)` changes the unitary when gates precede the unfolded gate.

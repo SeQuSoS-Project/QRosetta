@@ -64,9 +64,8 @@ outcomes and backends; the report computes the power for every pair and recommen
 count when it falls short. The default is 8200 shots per backend, enough for up to 16 outcomes with 14 backends (8199 needed) (`default_n_shots` in
 `GET /config`).
 
-The tool reports disagreements; it does not decide which backend is wrong. The manual
-(`docs.html`, "Known backend issues") lists upstream SDK discrepancies testers have traced
-against an independent reference, with circuits to reproduce them.
+The tool reports disagreements; it does not decide which backend is wrong. Check a disagreement
+against an independent reference before attributing it to a backend.
 
 Measured runs record a master seed; each backend receives a `runner_seed` made of the first
 4 bytes of `sha256(f"{master}:{runner_key}")`, read big-endian with the top bit cleared, so

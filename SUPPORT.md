@@ -12,8 +12,7 @@
   [info@qrosetta.dev](mailto:info@qrosetta.dev).
 
 Before asking, check the written guide (`docs.html` on a running stack, for example
-<http://localhost:8080/docs.html>): its "Known backend issues" section lists SDK behaviours that
-show up as disagreement on purpose, and `DESIGN_DECISIONS.md` gives the rule and evidence behind
+<http://localhost:8080/docs.html>), and `DESIGN_DECISIONS.md` for the rule and evidence behind
 each measurement and analysis choice.
 
 ## What to attach

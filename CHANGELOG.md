@@ -67,8 +67,7 @@ signed images on GHCR; and every result records the image, commit and host condi
 - Optional auto-save of completed runs to a local folder, in browsers with the File System Access
   API.
 - Keyboard, screen-reader and forced-colours support; narrow screens are usable.
-- The written guide, `docs.html`, with the metric formulas, defaults, the submit-time checks and
-  known backend issues.
+- The written guide, `docs.html`, with the metric formulas, defaults and the submit-time checks.
 
 #### Measurement and analysis
 
@@ -101,8 +100,7 @@ signed images on GHCR; and every result records the image, commit and host condi
   `qrosetta selftest`), compared with each backend separately.
 - `scripts/verify/`: known-answer checks of every `qelib1.inc` gate, built from its definition by a
   numpy reference, and qubit-relabelling, register-split and inverse relations, run through a
-  server as a user; a wrong answer is labelled when a model of a documented upstream behaviour
-  reproduces it.
+  server as a user.
 - Every result records the image it ran from (commit, build-file hashes, whether it was built
   locally or released, emulation); reports summarise them as `specimens` and carry
   `run_completeness`.
@@ -307,9 +305,8 @@ signed images on GHCR; and every result records the image, commit and host condi
 - RO-Crates use the Workflow Run context next to the RO-Crate 1.1 context, so the `sha256` key of
   every File is defined; the crates pass rocrate-validator's Process Run Crate 0.5 profile at
   REQUIRED level (`scripts/verify/validate_crates.sh`).
-- At optimization levels 1 and 2 the Qibo adapter's gate fusion dropped every gate the circuit
-  defines, including the `qelib1.inc` definitions it inserts with preprocessing on (Qibo 0.3.1's
-  `Circuit.fuse()`). It now leaves such a circuit unfused and says so in `preprocessing_applied`.
+- At optimization levels 1 and 2 the Qibo adapter no longer fuses a circuit that defines gates; it
+  says so in `preprocessing_applied`.
 - The Qrisp adapter returned an all-zero state and all-zero counts when the SDK call failed.
 - Bit-order labels of several adapters were wrong, and Qiskit and cuQuantum (levels 2–3), PyQuil
   (1–2) and Cirq (2) returned permuted statevectors after optimisation.

@@ -7,7 +7,7 @@ import {
     executionTags, precisionTag, queueWaitText, renderPreprocessingList, throttleText, outsideProcessText,
 } from './render_helpers.js';
 import { getEnabledRunnerIds } from './config.js';
-import { KNOWN_ISSUE_BACKENDS, docsLink, knownIssuesLink, plainMeaningNote } from './labels.js';
+import { docsLink, plainMeaningNote } from './labels.js';
 import { parseRunnerKey } from './runner_key.js';
 import { circuitPanes } from './circuit_panes.js';
 import {
@@ -254,23 +254,6 @@ function _note(block, text) {
     block.insertBefore(note, block.querySelector('details, ul'));
 }
 
-/** A note in a block of differing pairs naming the backends the headline names (`named`, else
- * every backend in the block) that have documented upstream behaviour, with a link to it. */
-function _knownIssuesNote(block, pairs, named) {
-    const keys = pairs.flatMap(p => p.simulators || []);
-    const scope = Array.isArray(named) && named.length ? keys.filter(k => named.includes(k)) : keys;
-    const ids = new Set(scope.map(k => parseRunnerKey(k).simId));
-    const listed = KNOWN_ISSUE_BACKENDS.filter(id => ids.has(id));
-    if (!listed.length) return;
-    const note = document.createElement('p');
-    note.className = 'text-xs mt-2';
-    const names = listed.map(_displayRunnerName);
-    const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
-    note.append(document.createTextNode(`Documented upstream behaviour of ${list}, with reproducing circuits: `), knownIssuesLink(),
-        document.createTextNode('.'));
-    block.insertBefore(note, block.querySelector('details, ul'));
-}
-
 function _notComparableBlock(panel, pairs) {
     const notComparable = pairs.filter(p => p.agreement === 'not_comparable');
     if (!notComparable.length) return;
@@ -335,7 +318,6 @@ function _renderStatevectorBlocks(panel, pairs, tol, named) {
         const block = _block(`Disagree (${disagree.length})`, 'anomaly', _byBackend(disagree).map(p => _pairItem(p, _disagreementText(p))), 'residual_disagreement');
         _note(block, 'No registered transform explains the difference, or the states match only after an undeclared qubit '
             + 'permutation or in the undeclared basis. Which backend is wrong is not determined.');
-        _knownIssuesNote(block, disagree, named);
         panel.appendChild(block);
     }
     if (bitOrder.length) {
@@ -436,7 +418,6 @@ function _renderMarginalBlock(panel, pairs, data, alpha, named) {
     const block = _block(`Single-bit marginals differ (${flagged.length})`, 'anomaly', _byBackend(flagged).map(p => _marginalItem(p, names)), 'marginal_distinguishable');
     _note(block, `Per classical bit: chi-square and G-test, both required, Holm-corrected over ${summary.family_size ?? '—'} bit tests `
         + `at α = ${alpha ?? '—'}. A differing marginal means the distributions differ; equal marginals do not imply agreement.`);
-    _knownIssuesNote(block, flagged, named);
     panel.appendChild(block);
 }
 
@@ -492,7 +473,6 @@ function _renderMeasuredBlocks(panel, pairs, tol, data, alpha, named) {
                 + 'chance; flags sharing one backend can come from one unusual sample.'
             : `${correctionLongName(corr)}: false discovery rate q = ${alpha ?? '—'} for independent or positively dependent tests; `
                 + 'pairs sharing a backend are dependent.');
-        _knownIssuesNote(block, groups.distinguishable, named);
         panel.appendChild(block);
     }
     if (groups.ambiguous.length) {

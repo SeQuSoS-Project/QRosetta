@@ -12,9 +12,9 @@ def client():
 def test_examples_are_listed_and_served(client):
     listed = client.get("/examples").json()
     names = [e["name"] for e in listed]
-    assert "qrisp_measured_bias_16q.qasm" in names
-    entry = next(e for e in listed if e["name"] == "qrisp_measured_bias_16q.qasm")
-    assert entry["mode"] == "measured" and entry["qubits"] == 16
+    assert "rotation_1q.qasm" in names and "qrisp_measured_bias_16q.qasm" not in names
+    entry = next(e for e in listed if e["name"] == "rotation_1q.qasm")
+    assert entry["mode"] == "statevector" and entry["qubits"] == 1
     assert "ghz_state_3q.qasm" not in names and "bell_state_2q.qasm" not in names
     r = client.get("/examples/ghz_state_3q.qasm")
     assert r.status_code == 200 and r.json()["qasm"].startswith("OPENQASM 2.0;")

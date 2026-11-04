@@ -171,6 +171,7 @@ def test_popover_closes_when_tabbing_out():
     assert "e.key !== 'Tab'" in src and "_nextAfter(" in src and "focusout" in src
 
 
-def test_example_description_links_known_issues():
-    src = (JS / "app.js").read_text()
-    assert "setTextWithManualLinks(desc," in src and "knownIssuesLink()" in src
+def test_no_page_text_links_the_removed_known_issues_section():
+    for path in [STATIC / "index.html", STATIC / "docs.html", *JS.glob("*.js")]:
+        text = path.read_text()
+        assert "known-issues" not in text and "Known backend issues" not in text, path.name

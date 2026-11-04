@@ -15,11 +15,6 @@ _NOT_LISTED = {"bell_state_2q.qasm", "ghz_state_3q.qasm"}
 
 _META = {
     "rotation_1q.qasm": ("Single rotation", "One qubit, ry(0.5): the smallest circuit with a non-trivial amplitude.", "statevector"),
-    "qrisp_measured_bias_16q.qasm": (
-        "Sampler bias, 16 qubits",
-        "With 16 qubits the full-distribution test needs far more shots than the default, and the "
-        "single-bit marginal test shows a backend whose sampler is biased "
-        "(see Known backend issues in the manual).", "measured"),
 }
 
 
