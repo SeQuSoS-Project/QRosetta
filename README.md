@@ -125,9 +125,11 @@ The stack runs in two modes, selected by `EXECUTION_MODE`:
 
 ## Getting started
 
-Requires Linux on x86_64, rootless podman 4.4+ (recommended) or Docker Engine 20.10+, with
-Docker Compose v2 as the compose provider (see [Starting and stopping](#starting-and-stopping)),
-and Python 3.11+. There are two ways in: install the `qrosetta` command from PyPI and pull the
+Requires Linux on x86_64, rootless podman 4.7+ (recommended; `qrosetta` runs `podman compose`,
+which podman added in 4.7.0) or Docker Engine, with Docker Compose v2 as the compose provider (see
+[Starting and stopping](#starting-and-stopping)), and Python 3.11+. Releases are tested with
+rootless podman 5.8.2 and 6.1.3 and with Docker 29.1.3 (Compose 5.5.0, 5.6.0 and 2.40.3); older
+versions are untested. There are two ways in: install the `qrosetta` command from PyPI and pull the
 published images, or clone the repository and build every image yourself.
 
 ### From PyPI, with the published images
@@ -279,8 +281,9 @@ again while the containers stop prints a warning; a third Ctrl-C stops waiting a
 containers still running.
 
 On standby the containers are stopped and hold no memory; `start` brings them back in about
-10 seconds. Running and idle, the 24 containers used 3.0 to 6.1 GiB (`qrosetta status`, page
-cache included). `remove` keeps the images and the `qsimulators_rosetta_db_data` volume, which
+10 seconds. Running and idle for five minutes after a few hours of use, the 24 containers used
+3.6 GiB and the five of the `minimal` profile 1.0 GiB (`qrosetta status`, page cache included;
+measured 2026-11-04). `remove` keeps the images and the `qsimulators_rosetta_db_data` volume, which
 holds the SQLite database (accounts, saved circuits, run history) and the saved run reports. Results of jobs that were not saved are lost
 whenever the API container stops. `remove --all` removes the containers, pods, networks, this
 stack's images and its data volume in one command: it first lists every object with its size and
@@ -344,20 +347,21 @@ checkout `pull` exits 12 and prints the `qrosetta build` command.
 
 Disk space per profile, in GB (10^9 bytes); each profile includes the API and nginx:
 
-| Profile | Images | Published images, after `pull` | Built on your machine |
-|---|---|---|---|
-| `minimal` | 5 | 2.5 | none |
-| `cpu` | 15 | 12.0 | myQLM, 1.2 |
-| `gpu` | 16 | 12.0 | myQLM and cuQuantum, 5.3 |
-| `compilers` | 10 | 3.8 | BQSKit, 0.5 |
-| `full` | 24 | 14.9 | all three, 5.8 |
+| Profile | Images | Published images, after `pull` | Download | Built on your machine |
+|---|---|---|---|---|
+| `minimal` | 5 | 2.7 | 0.85 | none |
+| `cpu` | 15 | 11.7 | 3.6 | myQLM, 1.3 |
+| `gpu` | 16 | 11.7 | 3.6 | myQLM and cuQuantum, 5.1 |
+| `compilers` | 10 | 3.9 | 1.3 | BQSKit, 0.5 |
+| `full` | 24 | 14.6 | 4.6 | all three, 5.6 |
 
-These are the uncompressed layer sizes of the images built on 2026-10-27 from this repository's
-Dockerfiles, with the base-image layers counted once and every other layer once per image (the
-release builds each image on its own machine, so only base layers are shared). The registry
-sends compressed layers, so the download is smaller; its size is not measured yet. The last column is what an installed `qrosetta` cannot pull: those
-images come from `qrosetta build` in a checkout. A checkout that builds all 24 images uses
-about 19 GB, because local builds share more layers.
+The first size column is the uncompressed layer size of the images built from this repository's
+Dockerfiles at the 2.0.0rc4 release (measured 2026-11-04), with the base-image layers counted once
+and every other layer once per image (the release builds each image on its own machine, so only
+base layers are shared). Download is the sum of the distinct compressed layers the registry sends
+for the published 2.0.0rc4 images of the profile, read from their manifests. The last column is
+what an installed `qrosetta` cannot pull: those images come from `qrosetta build` in a checkout.
+A checkout that builds all 24 images uses about 19 GB, because local builds share more layers.
 
 A pulled image is this stack's in the same way as a built one: the generated compose file names
 it by digest, so `start` and `status` find it through its repo digest, and its two labels let

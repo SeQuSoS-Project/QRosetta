@@ -2,8 +2,10 @@
 recorded engine message per row)."""
 
 import json
+import re
 import stat
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -300,3 +302,12 @@ def test_port_probe_ignores_closed_connections_and_finds_listeners(env):
     client.close()
     server.close()
     assert host.port_free("127.0.0.1", port)
+
+
+def test_documented_podman_minimum_has_the_compose_subcommand():
+    """Every compose call is `<engine> compose ...`; podman added `podman compose` in 4.7.0."""
+    root = Path(__file__).resolve().parents[3]
+    for name in ("README.md", "docs/RELEASING.md"):
+        found = re.findall(r"rootless podman (\d+)\.(\d+)(?:\+| or later)", (root / name).read_text())
+        assert found, name
+        assert all((int(a), int(b)) >= (4, 7) for a, b in found), name
