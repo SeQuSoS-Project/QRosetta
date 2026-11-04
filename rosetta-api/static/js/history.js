@@ -444,7 +444,7 @@ export async function loadHistoricalRun(runId, runName, createdAt) {
         title.append(strong, ' ');
         if (runName) {
             const idTag = document.createElement('span');
-            idTag.className = 'text-xs font-mono ml-2 opacity-75';
+            idTag.className = 'text-xs font-mono ml-2';
             idTag.textContent = `(${String(runId).substring(0, 8)})`;
             const when = document.createElement('span');
             when.className = 'ml-2';
@@ -466,7 +466,7 @@ export async function loadHistoricalRun(runId, runName, createdAt) {
         }
         const closeBtn = document.createElement('button');
         closeBtn.type = 'button';
-        closeBtn.className = 'text-yellow-600 hover:text-yellow-900 font-bold underline';
+        closeBtn.className = 'text-yellow-800 hover:text-yellow-900 font-bold underline';
         closeBtn.textContent = 'Close Results & Return to Editor';
         closeBtn.addEventListener('click', clearHistoryView);
         historyBanner.append(title, closeBtn);

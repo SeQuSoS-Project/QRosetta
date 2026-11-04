@@ -203,3 +203,23 @@ def test_white_text_backgrounds_reach_4_5_to_1():
 ])
 def test_first_sentence_of_an_announcement(text, first):
     assert call_js(["announce.js"], [("firstSentence", [text])]) == [first]
+
+
+def _text_colours():
+    """text-<hue>-<shade> -> hex, read from the built css/tailwind.css (plain class only)."""
+    css = (_STATIC / "css" / "tailwind.css").read_text()
+    return {name: f"#{int(r):02x}{int(g):02x}{int(b):02x}" for name, r, g, b in
+            re.findall(r"(?<![\w:\\-])\.text-([a-z]+-\d{2,3})\{[^}]*?color:rgb\((\d+) (\d+) (\d+)", css)}
+
+
+def test_saved_run_banner_text_reaches_4_5_to_1():
+    source = (_JS / "history.js").read_text()
+    start = source.index('historyBanner.id = "history-active-banner"')
+    block = source[start:source.index("historyBanner.append", start)]
+    texts, backgrounds = _text_colours(), _background_colours()
+    banner_bg = backgrounds["yellow-50"]
+    assert "opacity-" not in block
+    names = re.findall(r"(?<![\w:-])text-((?:yellow|amber)-\d{3})\b", block)
+    assert names and all(name in texts for name in names), names
+    low = [(name, round(_contrast(texts[name], banner_bg), 2)) for name in names if _contrast(texts[name], banner_bg) < 4.5]
+    assert not low, low
