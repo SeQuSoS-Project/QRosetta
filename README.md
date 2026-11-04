@@ -229,7 +229,7 @@ without it. Locally, leaving it empty generates a random key per process.
 ./qrosetta logs [NAME]               # follow the logs
 ./qrosetta stop                      # standby: stop every container, keep containers, images and data
 ./qrosetta remove                    # remove containers and networks; keep images and data
-./qrosetta remove --images           # also remove the images (about 20 GB for a full build)
+./qrosetta remove --images           # also remove the images (about 19 GB for a full build)
 ./qrosetta remove --data --confirm qsimulators   # also delete the database and saved runs
 ./qrosetta remove --all --confirm qsimulators    # containers, networks, images and data, listed first
 ./qrosetta start -d --no-cpu-quota   # start without the compose CPU limits (hosts without cpu delegation)
