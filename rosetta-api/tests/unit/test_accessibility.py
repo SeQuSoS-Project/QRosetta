@@ -223,3 +223,17 @@ def test_saved_run_banner_text_reaches_4_5_to_1():
     assert names and all(name in texts for name in names), names
     low = [(name, round(_contrast(texts[name], banner_bg), 2)) for name in names if _contrast(texts[name], banner_bg) < 4.5]
     assert not low, low
+
+
+def test_export_preview_boxes_are_focusable_named_regions():
+    source = (_JS / "artifacts_renderer.js").read_text()
+    assert source.count("'qr-export-code'") == 1
+    helper = source[source.index("function _codeBlock"):].split("\n}\n")[0]
+    assert "'qr-export-code'" in helper
+    assert "tabIndex = 0" in helper and "setAttribute('role', 'region')" in helper and "setAttribute('aria-label', label)" in helper
+    calls = re.findall(r"_codeBlock\([^;]*?, '([^']+)'\)", source)
+    assert len(calls) == 6 and all(calls), calls
+    assert source.count("'qr-export-table'") == 1
+    table = source[source.index("function _tableEl"):].split("\n}\n")[0]
+    assert "'qr-export-table'" in table
+    assert "tabIndex = 0" in table and "setAttribute('role', 'region')" in table and "setAttribute('aria-label'," in table

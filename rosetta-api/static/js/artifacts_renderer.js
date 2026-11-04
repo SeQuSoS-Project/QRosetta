@@ -372,19 +372,28 @@ function _renderPreview(r) {
         preview.append(_tableEl(tableData));
         const det = el('details', 'self-stretch');
         det.append(el('summary', 'qr-export-heading cursor-pointer', 'LaTeX source'));
-        det.append(el('pre', 'qr-export-code', tbl.getText('latex')));
+        det.append(_codeBlock(tbl.getText('latex'), 'LaTeX source'));
         det.append(el('p', 'text-xs text-gray-500 mt-1', `Requires \\usepackage{${ART_LATEX_PACKAGES}}.`));
         preview.append(det);
     } else if (S.tab === 'data' && tbl) {
         preview.append(el('div', 'qr-export-heading self-start', `CSV: the numbers behind this ${fig ? 'figure' : 'table'}`));
-        preview.append(el('pre', 'qr-export-code', tbl.getText('csv')));
+        preview.append(_codeBlock(tbl.getText('csv'), 'CSV'));
         if (fig) {
             preview.append(el('div', 'qr-export-heading self-start', 'Figure spec, saved beside the figure in the crate'));
-            preview.append(el('pre', 'qr-export-code', _specText(r, fig)));
+            preview.append(_codeBlock(_specText(r, fig), 'Figure spec'));
         }
     } else if (txt) {
-        preview.append(el('pre', 'qr-export-code', txt.getText(txt.formats[0])));
+        preview.append(_codeBlock(txt.getText(txt.formats[0]), 'Text'));
     }
+}
+
+/** A preview text box: it scrolls, so it is a focusable region named by `label`. */
+function _codeBlock(text, label) {
+    const pre = el('pre', 'qr-export-code', text);
+    pre.tabIndex = 0;
+    pre.setAttribute('role', 'region');
+    pre.setAttribute('aria-label', label);
+    return pre;
 }
 
 function _specText(r, fig) {
@@ -410,6 +419,9 @@ function _hint(r) {
 
 function _tableEl(data) {
     const wrap = el('div', 'qr-export-table');
+    wrap.tabIndex = 0;
+    wrap.setAttribute('role', 'region');
+    wrap.setAttribute('aria-label', 'Table preview');
     const table = el('table', 'min-w-full text-xs');
     const thead = el('thead');
     const hr = el('tr');
@@ -485,7 +497,7 @@ function _renderJson(preview) {
         lab.append(cb, document.createTextNode('Show statevector amplitudes (can be very long)'));
         preview.append(lab);
     }
-    preview.append(el('pre', 'qr-export-code', JSON.stringify(_jsonShown(), null, 2)));
+    preview.append(_codeBlock(JSON.stringify(_jsonShown(), null, 2), 'Report JSON'));
 }
 
 function _qasmBackends() {
@@ -500,7 +512,7 @@ function _qasmText() {
 function _renderQasm(preview) {
     const sims = _qasmBackends();
     if (!sims.includes(S.qasmBackend)) S.qasmBackend = sims[0] || null;
-    preview.append(el('pre', 'qr-export-code', _qasmText() ?? 'No executed circuit was recorded.'));
+    preview.append(_codeBlock(_qasmText() ?? 'No executed circuit was recorded.', 'Executed circuit'));
 }
 
 function _row(label, control, help) {
