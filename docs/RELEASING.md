@@ -185,7 +185,7 @@ what it counts as provenance.
 
 ## Clean-machine checks
 
-On a fresh virtual machine (Fedora or RHEL with rootless podman 4.4 or later, or Ubuntu LTS with
+On a fresh virtual machine (Fedora or RHEL with rootless podman 4.7 or later, or Ubuntu LTS with
 Docker Engine), not logged in to `ghcr.io`, with Docker Compose v2 as the compose provider and the
 host set up as README.md "Setting up the host" says (on RHEL, `qrosetta doctor` names the Compose
 step), Python 3.11 or later, pipx, cosign 3 and the GitHub CLI (`gh auth login` done). `docker` below may be `podman` throughout. Each command is
