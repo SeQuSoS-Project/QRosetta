@@ -69,7 +69,8 @@ def excluded(path: str) -> bool:
     "rosetta-api/coverage.xml", "rosetta-api/node_modules/x/index.js", "shared/build/lib/x.py",
     "shared/qrosetta_commons.egg-info/PKG-INFO", ".venv/bin/python", "rosetta-api/.venv/bin/python",
     "rosetta-api/.mypy_cache/x", "CLAUDE.md", "rosetta-api/CLAUDE.md", "rosetta-api/export/x.zip",
-    "rosetta-api/experiments/run1/bundle.zip", "rosetta-api/static/tailwind.config.js",
+    "rosetta-api/experiments/run1/bundle.zip", "qrosetta-results/20261104-142938Z-selftest/plan.json",
+    "rosetta-api/static/tailwind.config.js",
     "rosetta-api/static/tsconfig.json"])
 def test_v1_10_host_files_are_left_out_of_the_build_context(path):
     assert excluded(path), path
@@ -94,3 +95,10 @@ def test_v1_10_the_api_context_of_this_checkout_holds_none_of_them():
             dirnames[:] = [d for d in dirnames if not excluded(f"{rel_dir}/{d}")]
             kept += [f"{rel_dir}/{f}" for f in filenames if not excluded(f"{rel_dir}/{f}")]
     assert kept and not [p for p in kept if forbidden.search(p)]
+
+
+def test_cli_results_directory_is_not_tracked_by_git():
+    """`qrosetta run`/`selftest` write to ./qrosetta-results by default, which is the checkout
+    when started there."""
+    patterns = [line.strip() for line in (ROOT / ".gitignore").read_text().splitlines()]
+    assert "qrosetta-results/" in patterns

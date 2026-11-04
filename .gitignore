@@ -50,6 +50,8 @@ Thumbs.db
 !.vscode/tasks.json
 
 # Project Specific & Reports
+# Results of `qrosetta run`/`selftest` started in the checkout (their default directory)
+qrosetta-results/
 export/
 *.log
 full_quantum_report.json

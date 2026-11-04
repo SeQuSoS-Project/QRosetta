@@ -38,6 +38,7 @@ docker-compose.override.yml
 latex
 **/export
 **/experiments
+qrosetta-results
 # Build configuration of the page (scripts/build_css.sh, scripts/check_frontend_types.sh), not served.
 rosetta-api/static/tailwind.config.js
 rosetta-api/static/tsconfig.json
