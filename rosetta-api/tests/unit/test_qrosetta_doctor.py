@@ -197,6 +197,8 @@ def test_doctor_command_exit_codes_and_envelope(env, monkeypatch, capsys):
     validate_envelope(doc)
     assert doc["error"]["code"] == "checks_failed" and doc["data"]["failed"] == 1
     assert doc["error"]["hint"] == "qrosetta start -d --bind 127.0.0.1:8090"
+    port = next(c for c in doc["data"]["checks"] if c["id"] == "port")
+    assert '[lifecycle] bind = "127.0.0.1:8090"' in port["fix"] and "Later commands use 127.0.0.1:8080" in port["fix"]
 
 
 RECORDED = [

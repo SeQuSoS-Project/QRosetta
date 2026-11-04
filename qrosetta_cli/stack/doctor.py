@@ -240,7 +240,14 @@ def check_port(host, rep, bind, answers):
     elif answers:
         rep.add("port", "PASS", f"{bind} is in use by a running Quantum Rosetta")
     else:
-        rep.add("port", "FAIL", f"{bind} is in use", f"qrosetta start -d --bind {OTHER_BIND}")
+        rep.add(
+            "port",
+            "FAIL",
+            f"{bind} is in use",
+            f"qrosetta start -d --bind {OTHER_BIND}\n"
+            f'Later commands use {bind} until [lifecycle] bind = "{OTHER_BIND}" is in the file '
+            "`qrosetta config path` prints; with it, `start` needs no --bind.",
+        )
 
 
 def check_disk(host, rep, choice):
