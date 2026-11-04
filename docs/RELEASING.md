@@ -52,9 +52,6 @@ version:
    removes with the modules that need it.
 2. `CHANGELOG.md` has no `[2.0.0]` section yet. The `plan` job stops a final tag until it has a
    dated one.
-3. Owner items that the files depend on: ORCIDs (`CITATION.cff`, `.zenodo.json`,
-   `codemeta.json`), the support email (SoftwareX metadata C8), the contact in the written offer
-   of `THIRD_PARTY_NOTICES.md`.
 
 ## One-time setup (owner)
 

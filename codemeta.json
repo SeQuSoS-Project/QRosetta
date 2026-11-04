@@ -30,21 +30,24 @@
   "author": [
     {
       "type": "Person",
+      "id": "https://orcid.org/0000-0001-7066-2104",
       "givenName": "Shaswato",
       "familyName": "Sarker",
-      "affiliation": {"type": "Organization", "name": "University of Jyvaskyla"}
+      "affiliation": {"type": "Organization", "name": "University of Jyväskylä"}
     },
     {
       "type": "Person",
+      "id": "https://orcid.org/0000-0003-3427-5961",
       "givenName": "Majid",
       "familyName": "Haghparast",
-      "affiliation": {"type": "Organization", "name": "University of Jyvaskyla"}
+      "affiliation": {"type": "Organization", "name": "University of Jyväskylä"}
     },
     {
       "type": "Person",
+      "id": "https://orcid.org/0000-0002-8540-9918",
       "givenName": "Tommi",
       "familyName": "Mikkonen",
-      "affiliation": {"type": "Organization", "name": "University of Jyvaskyla"}
+      "affiliation": {"type": "Organization", "name": "University of Jyväskylä"}
     }
   ],
   "funding": [

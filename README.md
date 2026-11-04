@@ -5,7 +5,7 @@ reports both what each backend cost and whether they agree with each other. Each
 in its own container with its own pinned dependencies, behind a single benchmarking contract,
 so results are comparable across SDKs that could not otherwise share a process.
 
-QRosetta is developed by the [Quantum Programming and Algorithms (QPA) Research Group](https://users.jyu.fi/~mhaghpyz/#qpa) at the [University of Jyvaskyla](https://www.jyu.fi/en) in Finland.
+QRosetta is developed by the [Quantum Programming and Algorithms (QPA) Research Group](https://users.jyu.fi/~mhaghpyz/#qpa) at the [University of Jyväskylä](https://www.jyu.fi/en) in Finland.
 
 Every result set exports as a self-contained RO-Crate 1.1 archive holding the original
 circuit, the circuit the API dispatched to each backend, the circuit each backend executed,
@@ -471,13 +471,14 @@ Report vulnerabilities privately, as `SECURITY.md` describes; never in a public 
 
 ## Contributors
 
-- Shaswato Sarker - *University of Jyvaskyla*
-- Majid Haghparast - *University of Jyvaskyla*
-- Tommi Mikkonen - *University of Jyvaskyla*
+- Shaswato Sarker - *University of Jyväskylä*
+- Majid Haghparast - *University of Jyväskylä*
+- Tommi Mikkonen - *University of Jyväskylä*
 
 ## Contact
 
-Majid Haghparast <<majid.m.haghparast@jyu.fi>>
+Questions and support: <info@qrosetta.dev>. Principal investigator: Majid Haghparast
+<<majid.m.haghparast@jyu.fi>>. Vulnerabilities: `SECURITY.md`.
 
 ## Acknowledgement
 

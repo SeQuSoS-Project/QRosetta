@@ -8,8 +8,8 @@
 - Ideas for new backends, compilers, analyses or commands: the feature request form on the same
   page.
 - Vulnerabilities: never in an issue. Follow `SECURITY.md`.
-- Questions that cannot be public (unpublished circuits, collaborations): email Majid Haghparast at
-  [majid.m.haghparast@jyu.fi](mailto:majid.m.haghparast@jyu.fi).
+- Questions that cannot be public (unpublished circuits, collaborations): email
+  [info@qrosetta.dev](mailto:info@qrosetta.dev).
 
 Before asking, check the written guide (`docs.html` on a running stack, for example
 <http://localhost:8080/docs.html>): its "Known backend issues" section lists SDK behaviours that

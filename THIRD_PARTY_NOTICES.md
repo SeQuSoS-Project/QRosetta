@@ -84,8 +84,8 @@ does.
 Written offer: for at least three years after the last image of a release is published, the
 maintainers will provide anyone, on request, the complete corresponding source code of every GPL-
 or LGPL-licensed component in that image, for no more than the cost of performing the transfer.
-Ask through the issue tracker of <https://github.com/SeQuSoS-Project/QRosetta>, naming the image and
-its digest.
+Ask through the issue tracker of <https://github.com/SeQuSoS-Project/QRosetta> or by email to
+<info@qrosetta.dev>, naming the image and its digest.
 
 ### Components under the MPL-2.0 and the EPL-2.0
 

@@ -6,15 +6,18 @@
   "creators": [
     {
       "name": "Sarker, Shaswato",
-      "affiliation": "University of Jyvaskyla"
+      "affiliation": "University of Jyväskylä",
+      "orcid": "0000-0001-7066-2104"
     },
     {
       "name": "Haghparast, Majid",
-      "affiliation": "University of Jyvaskyla"
+      "affiliation": "University of Jyväskylä",
+      "orcid": "0000-0003-3427-5961"
     },
     {
       "name": "Mikkonen, Tommi",
-      "affiliation": "University of Jyvaskyla"
+      "affiliation": "University of Jyväskylä",
+      "orcid": "0000-0002-8540-9918"
     }
   ],
   "license": "Apache-2.0",
