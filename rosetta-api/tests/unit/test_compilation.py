@@ -416,6 +416,14 @@ def test_every_offered_level_fits_the_compile_job_cap():
     assert sum(len(v) for v in payload.compilers.values()) == settings.max_compile_jobs()
 
 
+def test_the_manual_states_the_compile_job_cap():
+    from pathlib import Path
+    from config import settings
+    docs = (Path(__file__).resolve().parents[2] / "static" / "docs.html").read_text()
+    assert f"{settings.max_compile_jobs()} with the eight compilers" in docs
+    assert len([c for c in settings.get_compiler_services().values() if c.get("enabled", True)]) == 8
+
+
 MID_CIRCUIT = ('OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[2];\ncreg c[2];\nh q[0];\n'
                'measure q[0] -> c[0];\ncx q[0],q[1];\nmeasure q -> c;\n')
 

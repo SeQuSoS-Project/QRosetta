@@ -1438,7 +1438,7 @@
                     comparison: compiled circuits are kept in the report's <code>compiled_circuits</code>,
                     apart from <code>raw_results</code>. Tick levels in the <strong>Compile-only
                     services</strong> chip's popover, or send <code>compilers</code> (compiler id → list of distinct levels,
-                    at most 15 compiles per circuit) with <code>/compare</code>, <code>/compare_measured</code>
+                    at most one compile per level of every enabled compiler for each circuit, 17 with the eight compilers) with <code>/compare</code>, <code>/compare_measured</code>
                     or <code>/run_batch_suite</code>; <code>GET /compilers</code> lists them with the versions each
                     running compiler image reports (<code>versions</code>: pip SDK versions, native components
                     built from source, build-file sha256 and image commit; null in Kubernetes mode, where no
