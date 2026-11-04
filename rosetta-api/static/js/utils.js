@@ -6,7 +6,7 @@ import { BASE_URL, apiDetailText, getAuthHeaders } from './api.js';
 
 import { endRunView } from './status_cards.js';
 import { dispatch, getState } from './state.js';
-import { formatBytes, printableLabel } from './request_limits.js';
+import { durationText, formatBytes, printableLabel } from './request_limits.js';
 
 export let _loaderElapsedTimer = null;
 
@@ -170,10 +170,9 @@ export function _stripStatevectors(data) {
     return data;
 }
 
-const JOB_REPORT_TTL_MIN = 30;
 const DISPLAY_SV_MAX_QUBITS = 14;
 
-const EXPIRED_TEXT = `The server no longer holds this job's full report (kept ${JOB_REPORT_TTL_MIN} minutes after completion; lost on restart).`;
+const _expiredText = () => `The server no longer holds this job's full report (kept ${durationText(getState().jobTtlSec)} after completion; lost on restart).`;
 /** What the browser-held copy of a report lacks. */
 function _browserCopyText(results) {
     if (results && results.statevector_storage === 'removed_before_storage') {
@@ -184,7 +183,7 @@ function _browserCopyText(results) {
 
 /** How to export a report too large to upload: from a copy the server holds. */
 function _serverCopyAdvice() {
-    return `Runs from this session are exported from the server copy for ${JOB_REPORT_TTL_MIN} minutes; saved runs from History `
+    return `Runs from this session are exported from the server copy for ${durationText(getState().jobTtlSec)}; saved runs from History `
         + 'are exported from the stored copy.';
 }
 
@@ -238,7 +237,7 @@ export async function downloadFullReport() {
     try {
         const res = await fetch(`${BASE_URL}/jobs/${encodeURIComponent(jobId)}/report`, { headers: getAuthHeaders() });
         if (res.status === 404) {
-            alert(`${EXPIRED_TEXT} Use "Download displayed JSON" instead. ${_browserCopyText(getState().currentSuiteData)}`);
+            alert(`${_expiredText()} Use "Download displayed JSON" instead. ${_browserCopyText(getState().currentSuiteData)}`);
             return;
         }
         if (res.status === 409) {
@@ -342,7 +341,7 @@ export async function exportRoCrate({ source = 'browser', includeStatevectors = 
             });
             if (response.status === 404 || response.status === 409) {
                 const why = response.status === 404
-                    ? EXPIRED_TEXT
+                    ? _expiredText()
                     : `The server has no exportable copy of this job: ${await _errorDetail(response)}`;
                 if (!confirm(`${why}\n\nExport the copy held in this browser instead? ${_browserCopyText(results)}`)) return;
                 response = null;

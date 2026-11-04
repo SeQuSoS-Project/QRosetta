@@ -88,6 +88,9 @@
                     <div class="flex items-center gap-2 sm:gap-4">
                         <span id="run-save-note" class="hidden lg:inline text-xs text-gray-500"></span>
                         <div id="auth-container" class="flex items-center gap-2">
+                            <button id="btn-recent-runs" type="button" data-busy-disable aria-controls="resume-job-banner" aria-expanded="false"
+                                title="Runs from this browser that the server still keeps"
+                                class="whitespace-nowrap text-sm font-medium text-gray-600 hover:text-indigo-700 bg-white px-2 sm:px-3 py-1.5 rounded-md border border-gray-200 transition-colors">Recent runs</button>
                             <a href="docs.html" target="_blank" rel="noopener"
                                 class="text-sm font-medium text-gray-600 hover:text-indigo-700 bg-white px-2 sm:px-3 py-1.5 rounded-md border border-gray-200 transition-colors">Docs</a>
                             <button id="btn-login-modal"
@@ -435,6 +438,7 @@
                     <div id="resume-job-banner" role="status" aria-labelledby="resume-job-title" class="hidden p-3 border-b border-amber-200 bg-amber-50 text-sm text-amber-900 space-y-1">
                         <p id="resume-job-title" class="font-medium">Earlier runs from this browser</p>
                         <ul id="resume-job-list" class="space-y-1"></ul>
+                        <p id="resume-job-empty" class="hidden">No runs from this browser are still on the server.</p>
                     </div>
 
                     <div class="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden" id="tab-content">

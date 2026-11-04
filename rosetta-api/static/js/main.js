@@ -11,7 +11,7 @@ import { closeAuthModal, closeChangePasswordModal, closeDeleteAccountModal, hand
 import { addEditorToPlaylist, addToBatch, applyPreset, clearBatch, closeGeneratorModal, importPlaylist, openGeneratorModal, runAutoGeneration } from './batch.js';
 import { bmAddAllShown, bmAddSelectedToBatch, bmRenderChecklist, bmToggleSelectAll, toggleBenchSuite } from './benchmarks_select.js';
 import { watchBidi } from './bidi_isolation.js';
-import { runWorkspace, stopWaiting, updateWorkspace } from './workspace.js';
+import { runWorkspace, stopWaiting, toggleRecentJobs, updateWorkspace } from './workspace.js';
 import { keepFocusClearOf } from './notice_focus.js';
 import { closeHistoryModal, deleteSelectedHistory, downloadSelectedHistory, openHistoryModal, toggleSelectAllHistory } from './history.js';
 import { closeVisualizer, generateAndVisualize, renderSuiteSummary } from './renderers.js';
@@ -37,6 +37,7 @@ const CONTROLS = [
     // Header and account
     ['#btn-login-modal', 'click', () => openAuthModal()],
     ['#btn-history', 'click', () => openHistoryModal()],
+    ['#btn-recent-runs', 'click', () => toggleRecentJobs()],
     ['#btn-logout', 'click', () => signOut()],
     ['#btn-change-password', 'click', () => handleChangePassword()],
     ['#btn-delete-account', 'click', () => handleDeleteAccount()],

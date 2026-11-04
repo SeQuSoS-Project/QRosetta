@@ -149,6 +149,7 @@ export function updateAuthUI() {
     const loginBtn = document.getElementById('btn-login-modal');
     const userProfile = document.getElementById('user-profile');
     const emailDisplay = document.getElementById('user-email-display');
+    document.getElementById('btn-recent-runs')?.classList.toggle('hidden', !!getState().authToken);
 
     if (getState().authToken) {
         if (loginBtn) loginBtn.classList.add('hidden');

@@ -108,6 +108,14 @@ export function durationText(seconds) {
     return `${n} second${n === 1 ? '' : 's'}`;
 }
 
+/** A local clock time for `ms`, with the date when it is not the day of `now`. */
+export function clockText(ms, now = Date.now()) {
+    const d = new Date(ms);
+    const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return d.toDateString() === new Date(now).toDateString()
+        ? time : `${d.toLocaleDateString([], { day: 'numeric', month: 'short' })}, ${time}`;
+}
+
 /** `n` with thousands separators. */
 export function groupDigits(n) {
     return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');

@@ -7,7 +7,7 @@ import { ICONS, PRESETS, VIEW_UI_BY_ID, itemFormats } from './export_view_ui.js'
 import { makeButton as button, makeEl as el } from './render_helpers.js';
 import { readPref, writePref } from './session_store.js';
 import { dispatch, getState } from './state.js';
-import { durationText, printableLabel } from './request_limits.js';
+import { clockText, durationText, printableLabel } from './request_limits.js';
 import { limitCodePoints } from './dom.js';
 import {
     copyText, crateSources, downloadBlob, downloadFullReport, exportRoCrate, hasStatevectors,
@@ -16,7 +16,6 @@ import {
 
 const AUTHOR_KEY = 'rosetta_export_author';
 const AFFILIATION_KEY = 'rosetta_export_affiliation';
-const JOB_REPORT_TTL_MIN = 30;
 const ui = { source: null, includeSv: false, confirmPreset: null, filesOpen: false, creditsOpen: false };
 
 /** Forget per-report choices (source, statevectors, a pending preset change). */
@@ -63,9 +62,9 @@ function plannedPaths(results, items, scope) {
 
 function _keptUntil(results) {
     const done = Date.parse(results?.finished_at || '');
-    if (!Number.isFinite(done)) return `Available for ${JOB_REPORT_TTL_MIN} minutes after the job completes.`;
-    const until = new Date(done + JOB_REPORT_TTL_MIN * 60000);
-    return `Available until ${until.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`;
+    const ttl = getState().jobTtlSec;
+    if (!Number.isFinite(done)) return `Available for ${durationText(ttl)} after the job completes.`;
+    return `Available until ${clockText(done + ttl * 1000)}.`;
 }
 
 function _radio(name, value, checked, title, help, onPick) {

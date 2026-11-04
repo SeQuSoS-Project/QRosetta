@@ -45,6 +45,9 @@ signed images on GHCR; and every result records the image, commit and host condi
 
 #### Web page
 
+- **Recent runs** in the page header for signed-out users opens this browser's list of runs the
+  server still keeps; times in that list and in the Exports panel show the date when it is not today,
+  and the Exports panel uses the server's retention time instead of a fixed 30 minutes.
 - A workspace of Generate Circuits, Editor, Playlist and a Run footer; each group of run settings
   is a chip in the footer that opens its own popover.
 - One searchable Quantum Algorithms menu over the algorithm templates, bundled examples, MQT Bench

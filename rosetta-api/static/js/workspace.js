@@ -15,7 +15,7 @@ import { clearHistoryState, saveRunToHistory } from './history.js';
 import { confirmUnsavedRun, signedInAccount } from './auth.js';
 import { clearReport, renderDetailReport, renderSuiteSummary, showTab } from './renderers.js';
 import { planProblemTexts, planRequest, runButtonLabel } from './run_plan.js';
-import { durationText, labelProblem, printableLabel } from './request_limits.js';
+import { clockText, durationText, labelProblem, printableLabel } from './request_limits.js';
 import { showRunErrors, validateRunInputs } from './run_inputs.js';
 import { finishedKeepMs, forgetJob, isJobsStorageKey, listJobs, markJobFinished, markJobStopped, recordJob, saveEditorCircuit, saveRunModes } from './session_store.js';
 import { dispatch, getState } from './state.js';
@@ -274,7 +274,7 @@ let _shownIndex = -1;
 let _inFlightAccount = null;
 let _dropInFlight = false;
 
-const _clock = ms => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const _clock = ms => clockText(ms);
 
 function _el(tag, className = '', text = '') {
     const node = document.createElement(tag);
@@ -637,7 +637,9 @@ function _recentJobRow(job) {
     dismiss.addEventListener('click', () => {
         forgetJob(job.job_id);
         li.remove();
-        if (!document.querySelector('#resume-job-list li')) document.getElementById('resume-job-banner')?.classList.add('hidden');
+        const banner = document.getElementById('resume-job-banner');
+        const list = document.getElementById('resume-job-list');
+        if (banner && list) _setOfferShown(banner, list, false);
     });
     li.append(show, dismiss);
     return li;
@@ -656,16 +658,25 @@ async function _serverHasJob(jobId) {
     }
 }
 
-let _offerOptions = { unfinishedOnly: false };
+let _offerOptions = { unfinishedOnly: false, onRequest: false };
+
+/** Show or hide the recent-jobs banner; an empty list is shown (with its note) only when asked for. */
+function _setOfferShown(banner, list, onRequest) {
+    const any = !!list.querySelector('li');
+    document.getElementById('resume-job-empty')?.classList.toggle('hidden', any || !onRequest);
+    banner.classList.toggle('hidden', !any && !onRequest);
+    document.getElementById('btn-recent-runs')?.setAttribute('aria-expanded', String(!banner.classList.contains('hidden')));
+}
 
 /**
  * Offer the jobs this browser submitted whose results can still be fetched: unfinished ones
  * (the page was closed, or Stop waiting was pressed) and, unless `unfinishedOnly`, finished
  * ones the server still keeps. The jobs on screen are left out, and a job the server no longer
  * has (it answers 404, for example after a restart) is dropped from the list and forgotten.
+ * `onRequest` (the Recent runs button) shows the banner even when the list is empty.
  */
-export function offerRecentJobs({ unfinishedOnly = false } = {}) {
-    _offerOptions = { unfinishedOnly };
+export function offerRecentJobs({ unfinishedOnly = false, onRequest = false } = {}) {
+    _offerOptions = { unfinishedOnly, onRequest };
     const banner = document.getElementById('resume-job-banner');
     const list = document.getElementById('resume-job-list');
     if (!banner || !list) return;
@@ -674,13 +685,27 @@ export function offerRecentJobs({ unfinishedOnly = false } = {}) {
     const jobs = listJobs(now, signedInAccount()).filter(j => !onScreen.has(j.job_id) && (!unfinishedOnly || j.state !== 'finished'));
     const rows = jobs.map(job => _recentJobRow(job));
     list.replaceChildren(...rows);
-    banner.classList.toggle('hidden', jobs.length === 0);
+    _setOfferShown(banner, list, onRequest);
     jobs.forEach(async (job, i) => {
         if (await _serverHasJob(job.job_id)) return;
         forgetJob(job.job_id);
         rows[i].remove();
-        if (!list.querySelector('li')) banner.classList.add('hidden');
+        _setOfferShown(banner, list, _offerOptions.onRequest);
     });
+}
+
+/** The Recent runs button: open the list of this browser's runs the server still keeps, or close it. */
+export function toggleRecentJobs() {
+    const banner = document.getElementById('resume-job-banner');
+    if (!banner) return;
+    if (!banner.classList.contains('hidden')) {
+        banner.classList.add('hidden');
+        _offerOptions = { ..._offerOptions, onRequest: false };
+        document.getElementById('btn-recent-runs')?.setAttribute('aria-expanded', 'false');
+        return;
+    }
+    offerRecentJobs({ onRequest: true });
+    banner.scrollIntoView?.({ block: 'nearest' });
 }
 
 window.addEventListener?.('storage', e => {
