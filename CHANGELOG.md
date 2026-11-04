@@ -11,6 +11,12 @@ Everything since v1.0.0, to be released as 2.0.0. Timings, memory figures, count
 labels from v1.0.0 are not comparable with this version: the measurement windows, the resource
 limits, the counts keys and the statistics all changed (see Changed).
 
+In short: every backend now measures through one shared instrument under the same CPU, memory and
+thread limits; measured comparisons are statistical tests with stated power instead of distance
+thresholds alone; eight compile-only services sit beside the 16 simulators; a self-test checks each
+backend against answers no backend computes; `qrosetta` installs from PyPI and runs the stack from
+signed images on GHCR; and every result records the image, commit and host conditions it ran under.
+
 ### Added
 
 #### `qrosetta` command
@@ -78,7 +84,10 @@ limits, the counts keys and the statistics all changed (see Changed).
   `inconclusive_low_shots`, `ambiguous`, `distinguishable`, `not_comparable`) from chi-square and
   Williams-corrected G-tests under Benjamini–Yekutieli correction, with the test's power and a
   recommended shot count; exact conditional tests for sparse 2×2 tables; single-bit marginal
-  tests under Holm correction.
+  tests under Holm correction. With every backend correct, 0.6–1.1 % of runs show a full-table
+  flag and 3.9–4.8 % show at least one flag of either family (each family at α 0.05); in fault
+  injection every measured fault of total variation 0.02 or more was flagged (`DESIGN_DECISIONS.md`,
+  False-flag figures).
 - Statevector and measured pairs are compared in the basis their declared bit orders imply.
 - Every new report records `pair_verdict` on each pair and per-backend counts; the server computes
   them for older reports (`GET /jobs/{id}/summary`, `GET /history/runs/{id}/summary`,
@@ -148,6 +157,15 @@ limits, the counts keys and the statistics all changed (see Changed).
 - `scripts/requalify/requalify.sh`, which builds a runner or compiler image with its old and its new
   base from one commit and compares their outputs on a fixed-seed corpus, their self-tests and
   their timings. `--bump NAME==VERSION` raises named pins on an unchanged base.
+- Published images are public on GHCR (`ghcr.io/sequsos-project/qrosetta-*`), signed with cosign
+  by the release workflow, with build-provenance and SBOM attestations. Release candidates put the
+  wheel on TestPyPI and make no GitHub release.
+- The README describes installing from PyPI with the published images, with the host setup for
+  Fedora (rootless podman) and Ubuntu (Docker); the sequence was run on fresh Fedora 45 and Ubuntu
+  26.04 virtual machines with 2.0.0rc2.
+- `docs/verification/`: the test plan with its threat model, the risk register, the ASVS 5.0
+  assessment, and the completion report of the release criteria with their evidence.
+- `docs/RELEASING.md`: release order, the files a version bump touches and the clean-machine checks.
 
 ### Changed
 
