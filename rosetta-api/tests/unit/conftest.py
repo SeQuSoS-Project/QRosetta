@@ -1,6 +1,8 @@
 """Unit-test setup: each test process (each xdist worker, and the controller) has its own job
 spill directory and SQLite database in a temporary directory, not the server's or ./data, with
-the schema at head; every test starts with the rate limiter on and its counters empty, and fails
+the schema at head; every test starts with the rate limiter on and its counters empty, and with
+the CLI's output settings at their defaults (a `main([..., "--json"])` call leaves --json mode on
+for every later test in the process that prints through qrosetta_cli.output directly), and fails
 if it leaves the limiter or logging switched off; runs are not refused for the free space left on the disk that
 holds the spill directory. X-Forwarded-For is trusted from
 any peer (TestClient's peer is "testclient"), so tests choose a client address with it;
@@ -62,6 +64,14 @@ def _fresh_rate_limits():
         security.limiter.enabled = True
         pytest.fail("the test left the rate limiter switched off for the tests after it; "
                     "switch it off with monkeypatch.setattr(limiter, 'enabled', False)")
+
+
+@pytest.fixture(autouse=True)
+def _fresh_cli_output():
+    output = sys.modules.get("qrosetta_cli.output")
+    if output is not None:
+        output.configure()
+    yield
 
 
 @pytest.fixture(autouse=True)
