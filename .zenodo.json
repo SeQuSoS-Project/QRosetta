@@ -1,7 +1,7 @@
 {
   "title": "Quantum Rosetta (QRosetta): A Reproducible Microservice Platform for Cross-Simulator Benchmarking and Agreement Analysis",
   "upload_type": "software",
-  "version": "2.0.0rc4",
+  "version": "2.0.0rc5",
   "description": "QRosetta is a microservice platform for running one OpenQASM 2.0 circuit across heterogeneous quantum simulator backends and comparing their resource use, endpoint semantics, raw outputs, and pairwise agreement under a common runner contract.",
   "creators": [
     {
