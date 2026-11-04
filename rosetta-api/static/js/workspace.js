@@ -540,7 +540,7 @@ export async function runWorkspace() {
     if (problems.length) { _showRefusal(problems); return; }
     _showRefusal([]);
     if (ws.source === 'editor') saveEditorCircuit(qasmInput.value, getState().currentAlgoName);
-    document.getElementById('resume-job-banner')?.classList.add('hidden');
+    _hideRecentJobs();
     await _runAll(runs, ws);
 }
 
@@ -558,7 +558,7 @@ export async function resumeJob(job) {
     resetStopPolling();
     clearReport();
     clearHistoryState();
-    document.getElementById('resume-job-banner')?.classList.add('hidden');
+    _hideRecentJobs();
     _revealResults();
     dispatch('SET_PROCESSING', true);
     startRunView({ tabs: _TABS_BY_KIND[job.kind] ?? ['Summary', 'Agreement', 'Performance', 'Circuits', 'Exports'], nameOf: _displayRunnerName });
@@ -694,14 +694,19 @@ export function offerRecentJobs({ unfinishedOnly = false, onRequest = false } = 
     });
 }
 
+/** Close the recent-runs list, and say so on the Recent runs button. */
+function _hideRecentJobs() {
+    document.getElementById('resume-job-banner')?.classList.add('hidden');
+    _offerOptions = { ..._offerOptions, onRequest: false };
+    document.getElementById('btn-recent-runs')?.setAttribute('aria-expanded', 'false');
+}
+
 /** The Recent runs button: open the list of this browser's runs the server still keeps, or close it. */
 export function toggleRecentJobs() {
     const banner = document.getElementById('resume-job-banner');
     if (!banner) return;
     if (!banner.classList.contains('hidden')) {
-        banner.classList.add('hidden');
-        _offerOptions = { ..._offerOptions, onRequest: false };
-        document.getElementById('btn-recent-runs')?.setAttribute('aria-expanded', 'false');
+        _hideRecentJobs();
         return;
     }
     offerRecentJobs({ onRequest: true });

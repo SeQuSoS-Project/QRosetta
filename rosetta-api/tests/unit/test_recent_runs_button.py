@@ -37,3 +37,15 @@ def test_only_signed_out_users_see_it():
 
 def test_the_manual_names_it():
     assert "<strong>Recent runs</strong>" in (STATIC / "docs.html").read_text()
+
+
+def test_every_close_of_the_list_resets_aria_expanded():
+    workspace = (JS / "workspace.js").read_text()
+    hides = [m.start() for m in re.finditer(r"getElementById\('resume-job-banner'\)\?\.classList\.add\('hidden'\)", workspace)]
+    helper = workspace[workspace.index("function _hideRecentJobs"):]
+    helper = helper.split("\n}\n")[0]
+    assert len(hides) == 1 and workspace.index("function _hideRecentJobs") < hides[0] < workspace.index("function _hideRecentJobs") + len(helper)
+    assert "setAttribute('aria-expanded', 'false')" in helper
+    for caller in ("export async function runWorkspace", "export async function resumeJob", "export function toggleRecentJobs"):
+        body = workspace[workspace.index(caller):].split("\n}\n")[0]
+        assert "_hideRecentJobs()" in body, caller
