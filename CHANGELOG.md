@@ -147,7 +147,7 @@ signed images on GHCR; and every result records the image, commit and host condi
   never published.
 - An Apptainer launch wrapper for one runner or compiler job and an untested Slurm job template;
   runners and compilers read a payload from a file and write the result to one.
-- `DESIGN_DECISIONS.md`, `CONTRIBUTING.md`, `THIRD_PARTY_NOTICES.md` (with the MQT Bench licence),
+- `DESIGN_DECISIONS.md`, `CONTRIBUTING.md`, `THIRD_PARTY_NOTICES.md` (with the MQT Bench and QASMBench licences),
   `Licence.txt`, `CITATION.cff`, `.zenodo.json` and `codemeta.json`.
 - `SECURITY.md`, `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), `SUPPORT.md`, this changelog,
   issue forms and a pull request template.
@@ -251,19 +251,20 @@ signed images on GHCR; and every result records the image, commit and host condi
   and every moved image the base is pinned by digest, apt reads a fixed snapshot.debian.org date,
   and pip installs a lock with a hash for every package.
 - Each moved runner and compiler image was requalified: on a fixed-seed corpus the old and the new
-  image gave the same outputs (Cirq within its run-to-run variation; BQSKit's compiles, which vary
+  image gave the same outputs (Cirq, Qiskit and cuQuantum at levels 2–3 and PennyLane's executed text
+  within their run-to-run variation; BQSKit's compiles, which vary
   run to run in either image, all pass their equivalence check) and the same self-test results.
   Timings changed: on the requalification circuits simulation times moved by −17 % (Cirq) to +9 %
   (myQLM) and compilation times by −40 % (Qibo) to +14 % (myQLM), so timings from earlier images
   are not comparable with these.
-- The Qrisp, TorchQuantum and cuQuantum images no longer carry a compiler toolchain.
+- The Qrisp, TorchQuantum, quimb and cuQuantum images no longer carry a compiler toolchain.
 - The quimb runner image runs Python 3.12. Its simulation time varies by up to 2.7 times between
   runs of one circuit in either image (cotengra's unseeded contraction-path search), so compare
   quimb timings only over several runs with `timing_repeats` of at least 5.
 - Every published runner and compiler image serves with FastAPI 0.136.3 and Starlette 1.7.0, as
   the API does, and takes the fixed versions of anyio, certifi, urllib3, PyJWT, pillow,
   cryptography and other packages outside the SDKs; each image was requalified and gives the same
-  outputs. The myQLM, cuQuantum and BQSKit images, which are built on the user's machine, take the
+  outputs apart from documented run-to-run variation. The myQLM, cuQuantum and BQSKit images, which are built on the user's machine, take the
   same versions. The Cirq, qsim and TorchQuantum images use setuptools 81.0.0, the last release
   with `pkg_resources`; the Python 3.13 images uninstall pip after installing their lock.
   Vulnerabilities left in the images are listed in `docs/RELEASING.md`.
@@ -325,8 +326,8 @@ signed images on GHCR; and every result records the image, commit and host condi
 - The configured runner timeout was ignored in local mode.
 - torchquantum 0.1.8 crashed with NameError on u1, cu1, u2, cu2, toffoli, rc3x, rccx and other
   gates.
-- PennyLane's warm-up ran inside its compilation window; PennyLane deleted gates written on a
-  barrier's line; qibo deleted the statement after a `// barrier` comment.
+- PennyLane's warm-up ran inside its compilation window; the PennyLane adapter deleted gates written
+  on a barrier's line; the qibo adapter deleted the statement after a `// barrier` comment.
 - Two simultaneous submissions could swap gate definitions.
 - Shot-noise power with unequal shot counts was overstated (8200 against 50 shots: reported 0.995,
   true 0.109).
@@ -372,7 +373,7 @@ signed images on GHCR; and every result records the image, commit and host condi
 - Share-link tokens are stored as SHA-256 hashes and travel in the URL fragment and a POST body.
 - Logout (page, `qrosetta logout`, `POST /auth/logout`) ends every session of the account on the
   server; `POST /auth/password` changes the password and ends earlier sessions too. Tokens must
-  carry `exp`, `iat` and `sub`. A sign-in for an unknown email takes as long as a wrong password.
+  carry `exp`, `iat`, `sub` and `aud`. A sign-in for an unknown email takes as long as a wrong password.
 - Kubernetes runner and compiler pods mount no service-account token.
 - Every response carries a Content-Security-Policy, `X-Content-Type-Options: nosniff`,
   `Referrer-Policy: no-referrer`, `Cross-Origin-Opener-Policy: same-origin` and
@@ -385,13 +386,13 @@ signed images on GHCR; and every result records the image, commit and host condi
 - The job spill directory must belong to the API's user; it is recreated with mode 0700 at startup,
   and only files the process wrote are read back.
 - Image builds leave out databases, `data/` directories, env files and `node_modules`; no secret was
-  found in any of the 24 images.
+  found in any of the 24 images (gitleaks, 2026-10-28).
 - Request bodies are counted as they arrive, so a chunked body stops at the 1 MiB limit without nginx
   in front.
 - Crates and experiment bundles that hold a bundled MQT Bench or QASMBench circuit carry that suite's
   licence.
 - Dependencies in the API image raised for advisories: anyio 4.14.2, certifi 2026.10.19, pyasn1
-  0.6.4, urllib3 2.8.0, requests 2.33.1, Starlette 1.7.0; PyJWT replaces python-jose
+  0.6.5, urllib3 2.8.0, requests 2.33.1, Starlette 1.7.0; PyJWT replaces python-jose
   (PYSEC-2026-4298).
 - Commits and pushes are scanned for credentials (gitleaks hooks and a CI job).
 - Registration and password change refuse the 2,086 most common passwords of 8 or more
