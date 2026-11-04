@@ -13,7 +13,7 @@ from qrosetta_cli import config as cfgmod  # noqa: E402
 from qrosetta_cli.cli import main  # noqa: E402
 from qrosetta_cli.context import Context  # noqa: E402
 from qrosetta_cli.errors import CliError, Exit  # noqa: E402
-from qrosetta_cli.stack import doctor, explain  # noqa: E402
+from qrosetta_cli.stack import doctor, engine as eng, explain  # noqa: E402
 
 UID = 1000
 CONTROLLERS = f"/sys/fs/cgroup/user.slice/user-{UID}.slice/user@{UID}.service/cgroup.controllers"
@@ -127,7 +127,8 @@ def test_neither_engine_is_a_failure_with_the_docker_group_line(env):
 
 @pytest.mark.parametrize("kwargs,check,fix", [
     ({"system": "Darwin", "machine": "arm64"}, "os", "Linux x86_64"),
-    ({"compose": "podman-compose version 1.2.0"}, "compose", "--no-install-recommends docker-compose-v2"),
+    ({"compose": "podman-compose version 1.2.0", "files": {"/etc/os-release": 'ID=ubuntu\nID_LIKE=debian\n'}},
+     "compose", "sudo apt install --no-install-recommends docker-compose-v2"),
     ({"files": {"/etc/subuid": ""}}, "subuid", "usermod --add-subuids"),
     ({"files": {CONTROLLERS: "memory pids\n"}}, "cgroup", "Delegate=cpu memory pids"),
     ({"port_free": False}, "port", "qrosetta start -d --bind 127.0.0.1:8090"),
@@ -259,3 +260,23 @@ def test_probe_kinds(kind, words):
 
 def test_check_error_codes_are_cli_errors():
     assert isinstance(explain.engine_error("x", "y"), CliError)
+
+
+@pytest.mark.parametrize("os_release,engine,step", [
+    ('NAME="Ubuntu"\nID=ubuntu\nID_LIKE=debian\n', "docker", "sudo apt install docker-compose-v2"),
+    ('ID=linuxmint\nID_LIKE="ubuntu debian"\n', "podman", "sudo apt install --no-install-recommends docker-compose-v2"),
+    ("ID=debian\n", "podman", "sudo apt install --no-install-recommends docker-compose"),
+    ("ID=fedora\n", "podman", "sudo dnf install docker-compose"),
+    ('ID="rhel"\nID_LIKE="fedora"\n', "podman", "~/.docker/cli-plugins/docker-compose"),
+    ('ID="rocky"\nID_LIKE="rhel centos fedora"\n', "docker", "sudo dnf install docker-compose-plugin"),
+    ("", "podman", "~/.docker/cli-plugins/docker-compose"),
+])
+def test_compose_install_step_follows_the_distribution(os_release, engine, step):
+    assert step in eng.compose_install_step(os_release, engine)
+
+
+def test_doctor_names_the_rhel_install_step(env):
+    host = FakeHost(env, compose="Error: looking up compose provider failed",
+                    files={"/etc/os-release": 'ID="rhel"\nID_LIKE="fedora"\nVERSION_ID="10.0"\n'})
+    fix = [c for c in _doctor(env, host).failed if c.id == "compose"][0].fix
+    assert "apt" not in fix and "~/.docker/cli-plugins/docker-compose" in fix

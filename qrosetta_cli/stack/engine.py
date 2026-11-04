@@ -60,13 +60,43 @@ def wait_spawned(proc, timeout, cmd):
         raise timed_out(cmd, timeout) from None
 
 
-COMPOSE_INSTALL = (
-    "Install Docker Compose v2: on Ubuntu or Debian `sudo apt install docker-compose-v2` (with podman add "
-    "--no-install-recommends, so docker.io is not pulled in). Elsewhere, with Docker install the "
-    "docker-compose-plugin package (https://docs.docker.com/compose/install/linux/); with podman, save the "
-    "docker-compose binary from https://github.com/docker/compose/releases as "
-    "~/.docker/cli-plugins/docker-compose and make it executable. podman-compose 1.x is not supported."
+COMPOSE_PLUGIN_STEP = (
+    "save docker-compose-linux-x86_64 from https://github.com/docker/compose/releases as "
+    "~/.docker/cli-plugins/docker-compose and make it executable"
 )
+
+
+def os_release_ids(text):
+    """The ID and ID_LIKE values of an /etc/os-release text, lower case."""
+    fields = {}
+    for line in (text or "").splitlines():
+        key, sep, value = line.partition("=")
+        if sep:
+            fields[key.strip()] = value.strip().strip("\"'").lower()
+    return [fields.get("ID", ""), *fields.get("ID_LIKE", "").split()]
+
+
+def compose_install_step(os_release, engine_name):
+    """How to install Docker Compose v2 for `engine_name` on the distribution `os_release` describes."""
+    ids = os_release_ids(os_release)
+    quiet = " --no-install-recommends" if engine_name == "podman" else ""
+    if "ubuntu" in ids:
+        return f"sudo apt install{quiet} docker-compose-v2"
+    if "debian" in ids:
+        return f"sudo apt install{quiet} docker-compose"
+    if ids[0] == "fedora":
+        return "sudo dnf install docker-compose"
+    if engine_name == "docker" and {"rhel", "centos", "fedora"} & set(ids):
+        return "sudo dnf install docker-compose-plugin (from Docker's repository)"
+    return COMPOSE_PLUGIN_STEP
+
+
+def read_os_release():
+    try:
+        with open("/etc/os-release", encoding="utf-8") as fh:
+            return fh.read()
+    except OSError:
+        return ""
 
 
 @dataclass
@@ -269,8 +299,10 @@ class Engine:
         env=None,
         info=None,
         reason="",
+        os_release=read_os_release,
     ):
         self.name = name
+        self.os_release = os_release
         self.project_dir = project_dir
         self.project = project or project_name(env)
         self.files = compose_files(project_dir)
@@ -362,7 +394,8 @@ class Engine:
         if out.returncode != 0 or "docker compose" not in text.lower():
             raise CliError(
                 f"qrosetta needs Docker Compose v2, and `{self.name} compose version` printed: "
-                f"{text.splitlines()[0] if text else 'nothing'}. " + COMPOSE_INSTALL,
+                f"{text.splitlines()[0] if text else 'nothing'}. To install it: "
+                f"{compose_install_step(self.os_release(), self.name)}. podman-compose 1.x is not supported.",
                 Exit.ENGINE,
                 "compose_missing",
                 hint="qrosetta doctor",

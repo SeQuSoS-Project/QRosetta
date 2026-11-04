@@ -295,6 +295,9 @@ signed images on GHCR; and every result records the image, commit and host condi
 
 ### Fixed
 
+- `qrosetta doctor` and the missing-Compose error name the install step for the host's distribution
+  (from `/etc/os-release`: apt on Ubuntu and Debian, dnf on Fedora, the Compose plugin binary on RHEL
+  with podman); they suggested apt on every host.
 - An experiment bundle whose label has non-ASCII characters could not be downloaded (500).
 - RO-Crates use the Workflow Run context next to the RO-Crate 1.1 context, so the `sha256` key of
   every File is defined; the crates pass rocrate-validator's Process Run Crate 0.5 profile at

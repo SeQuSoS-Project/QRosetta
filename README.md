@@ -155,6 +155,8 @@ Setting up the host:
   fails `podman_socket` until it runs).
 - Ubuntu: `sudo apt install docker.io docker-compose-v2 pipx`, then `sudo usermod -aG docker
   $USER` and log in again (membership of the docker group is equivalent to root on that host).
+- Ubuntu with podman instead of Docker: `sudo apt install --no-install-recommends docker-compose-v2
+  pipx` (without `docker.io`), then `systemctl --user enable --now podman.socket`.
 - Both: `pipx ensurepath` puts `qrosetta` on the `PATH`. Neither distribution packages cosign:
   take `cosign-linux-amd64` from https://github.com/sigstore/cosign/releases, check it against
   that release's `cosign_checksums.txt`, and install it on the `PATH` as `cosign`.

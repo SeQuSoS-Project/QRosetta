@@ -166,13 +166,12 @@ def check_compose(host, rep, choice):
     if ok:
         rep.add("compose", "PASS", text.splitlines()[0])
     else:
-        extra = " --no-install-recommends" if choice.name == "podman" else ""
         rep.add(
             "compose",
             "FAIL",
             f"`{choice.name} compose` is not Docker Compose v2 "
             f"({text.splitlines()[0] if text else 'no output'}); podman-compose 1.x is not supported",
-            f"sudo apt install{extra} docker-compose-v2",
+            eng.compose_install_step(host.read("/etc/os-release"), choice.name),
         )
 
 

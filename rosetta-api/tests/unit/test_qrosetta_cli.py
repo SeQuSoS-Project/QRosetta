@@ -125,8 +125,9 @@ def test_engine_choice_is_the_first_whose_info_answers():
 
 def test_compose_v1_or_podman_compose_is_refused_with_install_steps(project, env):
     run = lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, "podman-compose version 1.2.0\n", "")
+    ubuntu = lambda: "ID=ubuntu\nID_LIKE=debian\n"
     with pytest.raises(CliError, match="Docker Compose v2.*podman-compose version 1.2.0.*docker-compose-v2") as err:
-        Engine("podman", str(project), run=run, env=env).check_compose()
+        Engine("podman", str(project), run=run, env=env, os_release=ubuntu).check_compose()
     assert err.value.code == Exit.ENGINE
 
 
