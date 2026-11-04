@@ -57,7 +57,10 @@ version:
 
 - PyPI and TestPyPI trusted publishers for `qrosetta`: repository `SeQuSoS-Project/QRosetta`,
   workflow `release-images.yml`, environments `pypi` and `testpypi`; both GitHub environments
-  with the owner as required reviewer and tag rule `v*` (done 2026-10-27).
+  with the owner as required reviewer and tag rule `v*` (done 2026-10-27). Until the first upload
+  the PyPI project does not exist and the publisher is a pending one, which reserves no name
+  (https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/): before the first
+  final tag, check that https://pypi.org/manage/account/publishing/ still lists it.
 - Zenodo: log in with GitHub and switch on `SeQuSoS-Project/QRosetta` before the first final
   tag.
 - GHCR: allow public packages for the organisation (an organisation owner; done); set the
@@ -183,8 +186,9 @@ what it counts as provenance.
 ## Clean-machine checks
 
 On a fresh virtual machine (Fedora or RHEL with rootless podman 4.4 or later, or Ubuntu LTS with
-Docker Engine), not logged in to `ghcr.io`, with Python 3.11 or later, pipx, cosign 3 and the
-GitHub CLI (`gh auth login` done). `docker` below may be `podman` throughout. Each command is
+Docker Engine), not logged in to `ghcr.io`, with Docker Compose v2 as the compose provider and the
+host set up as README.md "Setting up the host" says (on RHEL, `qrosetta doctor` names the Compose
+step), Python 3.11 or later, pipx, cosign 3 and the GitHub CLI (`gh auth login` done). `docker` below may be `podman` throughout. Each command is
 followed by what it should print.
 
 1. Install from PyPI.
