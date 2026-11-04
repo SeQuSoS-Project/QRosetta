@@ -808,8 +808,8 @@
                         lower bound (<code>recommendation_is_lower_bound</code>): new outcomes appear with more shots and
                         can raise it. It is also a lower bound when the recommendation comes from pooling rare outcomes and
                         some outcomes were seen once: outcomes seen once in n shots stop being pooled at 10n shots per
-                        backend, so the recommendation often lands exactly there (82,000 for a 12-qubit circuit at 8,200
-                        shots), and the outcomes not yet seen are not in the calculation. For a 12-qubit QFT at 8,200 shots it recommended 84,838, and at 100,000 shots every
+                        backend, so the minimum often lands exactly there (82,000 for a 12-qubit circuit at 8,200
+                        shots, recommended as 91,000), and the outcomes not yet seen are not in the calculation. For a 12-qubit QFT at 8,200 shots the minimum was 84,838, and at 100,000 shots every
                         pair was consistent.</li>
                     <li><strong>Power model</strong>: the effect size is Cohen's
                         <code>w = δ<sub>tested</sub></code>, the smallest w any distribution pair at total
