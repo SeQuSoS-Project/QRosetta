@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     QUARTZ_COMPILER_URL: str = "http://quartz-compiler:8000"
     SYNTHETIQ_COMPILER_URL: str = "http://synthetiq-compiler:8000"
 
-    PLATFORM_VERSION: str = os.getenv("QROSETTA_VERSION", "2.0.0rc3")
+    PLATFORM_VERSION: str = os.getenv("QROSETTA_VERSION", "2.0.0rc4")
     REPOSITORY_URL: str = os.getenv("QROSETTA_REPOSITORY_URL",
                                     "https://github.com/SeQuSoS-Project/QRosetta").rstrip("/")
 
