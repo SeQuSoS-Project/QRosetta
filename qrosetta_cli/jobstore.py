@@ -11,7 +11,9 @@ from qrosetta_cli.errors import usage
 MIB = 1024 * 1024
 MIN_RETENTION_SEC = 60
 API_MEMORY_LIMIT_MIB = 2048
-CHANGE_HINT = "change: qrosetta config path → [lifecycle] jobs_kept, job_storage, job_memory, job_retention"
+CHANGE_HINT = (
+    "settings: [lifecycle] jobs_kept, job_storage, job_memory, job_retention in the file `qrosetta config path` names"
+)
 
 _SIZE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*(MiB|GiB)?\s*$", re.IGNORECASE)
 _DURATION = re.compile(r"^\s*(\d+)\s*([smh])?\s*$", re.IGNORECASE)

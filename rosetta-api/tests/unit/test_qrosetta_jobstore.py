@@ -31,8 +31,8 @@ def project(tmp_path):
 
 
 DEFAULT_LINE = ("Finished jobs: kept up to 24 h, at most 200, in up to 4.0 GiB of job storage and 512 MiB "
-                "of memory (change: qrosetta config path → [lifecycle] jobs_kept, job_storage, job_memory, "
-                "job_retention)")
+                "of memory (settings: [lifecycle] jobs_kept, job_storage, job_memory, job_retention in the "
+                "file `qrosetta config path` names)")
 
 
 @pytest.mark.parametrize("value, mib", [(4096, 4096), ("4096", 4096), ("4096MiB", 4096), ("4GiB", 4096),
