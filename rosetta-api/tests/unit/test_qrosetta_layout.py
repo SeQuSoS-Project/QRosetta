@@ -337,3 +337,15 @@ def test_selftest_screen_lines_keep_the_json_lines(tmp_path):
                         "Read the jobs' summaries:", "  qrosetta show summary"]
     passed = selftest.screen_lines(lines[:2] + lines[-1:], [], [], "/r")
     assert passed[-2:] == ["Self-test passed. Results: /r/", "Summaries:  qrosetta show summary"]
+
+
+# --- version ---------------------------------------------------------------------------------------
+
+
+def test_version_prints_aligned_rows(env, project, capsys):
+    assert main(["version"], checkout=str(project), env=env, transport_factory=Unreachable()) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out[0].startswith("qrosetta ") and out[1] == ""
+    keys = [line[2:].split("  ")[0] for line in out[2:]]
+    assert keys == ["Python", "Mode", "CLI API levels", "Release manifest", "Server"]
+    assert len({line.index(line[2:].split("  ", 1)[1].lstrip(), 2) for line in out[2:]}) == 1

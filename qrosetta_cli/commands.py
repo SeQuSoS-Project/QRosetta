@@ -25,20 +25,27 @@ def cmd_version(ctx):
     except CliError as exc:
         state = "not answering" if exc.code == Exit.UNREACHABLE else exc.message
     py = platform.python_version()
-    result(
-        f"qrosetta {__version__} (Python {py}, {mode.name} mode{': ' + mode.project_dir if mode.project_dir else ''})"
-    )
-    result(f"CLI API levels {handshake.CLI_API_LEVELS[0]}-{handshake.CLI_API_LEVELS[1]}")
     block_manifest = {"release": None, "index": None}
     if mode.name == "installed":
         release = manifest.load()
-        result(f"Release manifest: {manifest.describe(release)}")
+        described = manifest.describe(release)
         block_manifest.update(
             release=(release or {}).get("platform_version"), images_published=manifest.images_published(release)
         )
     else:
-        result("Release manifest: none (images are built from the checkout; the manifest arrives with release 2.0.0)")
-    result(f"Server {server.url} ({server.source}): {state}")
+        described = "none (images are built from the checkout; the manifest arrives with release 2.0.0)"
+    rows = [
+        ("Python", py),
+        ("Mode", f"{mode.name} mode" + (f", {mode.project_dir}" if mode.project_dir else "")),
+        ("CLI API levels", f"{handshake.CLI_API_LEVELS[0]}-{handshake.CLI_API_LEVELS[1]}"),
+        ("Release manifest", described),
+        ("Server", f"{server.url} ({server.source}): {state}"),
+    ]
+    width = max(len(k) for k, _ in rows)
+    result(f"qrosetta {__version__}")
+    result("")
+    for key, value in rows:
+        result(f"  {key:<{width}}  {value}")
     return Result(
         0,
         {

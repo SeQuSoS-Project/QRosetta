@@ -91,7 +91,7 @@ def test_version_reports_the_manifest_in_installed_mode(env, capsys):
     ship(release(published=False))
     assert run(["version"], env) == 0
     out = capsys.readouterr().out
-    assert "installed mode" in out and "Release manifest: release 9.9.9 (images not published)" in out
+    assert "installed mode" in out and "  Release manifest  release 9.9.9 (images not published)" in out.splitlines()
     assert run(["version", "--json"], env) == 0
     doc = json.loads(capsys.readouterr().out)
     assert doc["data"]["manifest"] == {"release": "9.9.9", "index": None, "images_published": False}
@@ -100,7 +100,7 @@ def test_version_reports_the_manifest_in_installed_mode(env, capsys):
 
 def test_without_a_manifest_version_says_so(env, capsys):
     assert run(["version"], env) == 0
-    assert "Release manifest: none in this package" in capsys.readouterr().out
+    assert "  Release manifest  none in this package" in capsys.readouterr().out.splitlines()
 
 
 def test_images_published_needs_every_distributable_digest_and_no_other():
