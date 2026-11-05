@@ -8,7 +8,7 @@ stack started without the CPU quota. Exit 9 when any check FAILs."""
 import os
 import time
 
-from qrosetta_cli import __version__, localstack, output
+from qrosetta_cli import __version__, layout, localstack, output
 from qrosetta_cli.client import imageprobes, jobindex, results, save, waiting
 from qrosetta_cli.client.conn import Conn, body_bytes
 from qrosetta_cli.client.run import Follower, confirm_large, plan_document
@@ -18,6 +18,7 @@ from qrosetta_cli.errors import CliError, Exit, usage
 
 FEATURE = "selftest"
 QUOTA_CHECK = "cpu_quota_cores"
+UNREACHABLE = "unreachable"
 
 
 def _split(values):
@@ -60,7 +61,26 @@ def backends_under_test(ctx, conn, runner_rows=None):
         for r in rows
         if r.get("enabled") and r["id"] not in keys
     ]
+    if conn.local and any(why == UNREACHABLE for _, why in left):
+        left = _not_started(ctx, left)
     return keys, left
+
+
+def _not_started(ctx, left):
+    """On a local stack, a backend the server cannot reach whose service this stack has no
+    container for is "not started in this stack (profile NAME)"; "unreachable" stays for a
+    started service that does not answer."""
+    try:
+        stack = ctx.local_stack(ctx) if ctx.local_stack else None
+    except CliError:
+        stack = None
+    if not stack:
+        return left
+    where = f" (profile {stack['profile']})" if stack.get("profile") else ""
+    return [
+        (key, f"not started in this stack{where}" if why == UNREACHABLE and key not in stack["created"] else why)
+        for key, why in left
+    ]
 
 
 def _route(spec, job_id):
@@ -82,6 +102,25 @@ def _apply_cli_rule(evaluation, quota_off, applied):
     return evaluation
 
 
+def screen_lines(lines, fails, warns, invocation):
+    """The terminal form of the result `lines` (selftest.json keeps those): the part and image
+    lines, each failure and warning as a check row, what happened, and the command that shows
+    the jobs' summaries, last."""
+    head = [line for line in lines[:-1] if not line.startswith(("FAIL        ", "WARN        "))]
+    out = list(head)
+    if fails or warns:
+        out += [""] + layout.rows([("FAIL", "", t) for t in fails] + [("WARN", "", t) for t in warns])
+    tail = f", {layout.plural(len(warns), 'warning')}" if warns else ""
+    where = f"Results: {invocation}{os.sep}"
+    if fails:
+        out += ["", f"Self-test failed: {layout.plural(len(fails), 'check')} failed{tail}. {where}"]
+        out += ["", "Read the jobs' summaries:", "  qrosetta show summary"]
+    else:
+        out += ["", f"Self-test passed{f' with {tail[2:]}' if warns else ''}. {where}"]
+        out += ["Summaries:  qrosetta show summary"]
+    return out
+
+
 def cmd_selftest(ctx):
     conn = Conn(ctx, features=("plan",))
     if not conn.has(FEATURE):
@@ -95,7 +134,14 @@ def cmd_selftest(ctx):
     runner_rows, runner_why = _runner_rows(ctx, conn)
     keys, left = backends_under_test(ctx, conn, runner_rows)
     if not keys:
-        raise CliError("No backend is available to test.", Exit.UNREACHABLE, "no_backends", hint="qrosetta status")
+        raise CliError(
+            "No backend is available to test.",
+            Exit.UNREACHABLE,
+            "no_backends",
+            hint="qrosetta status",
+            evidence=[f"{k}: {why}" for k, why in left],
+            step="List the services and their state:",
+        )
     quota_off = conn.local and localstack.cpu_quota(ctx.env, ctx.cfg)[0] is False
     output.progress(f"Backends under test: {', '.join(keys)}")
     images: dict
@@ -114,6 +160,7 @@ def cmd_selftest(ctx):
                 Exit.REFUSED,
                 "request_too_large",
                 hint="qrosetta selftest --backends KEYS",
+                step="Test fewer backends:",
             )
         runs.append(
             {
@@ -252,9 +299,8 @@ def cmd_selftest(ctx):
         f"{f' ({len(dict.fromkeys(warns))} warnings)' if warns and not fails else ''}. Results: "
         f"{invocation}{os.sep}"
     )
-    for line in lines:
+    for line in screen_lines(lines, fails, list(dict.fromkeys(warns)), invocation):
         output.result(line)
-    output.result("qrosetta show summary")
     combined = {
         "schema": "qrosetta.cli/selftest@1",
         "cli_version": __version__,

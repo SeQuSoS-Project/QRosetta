@@ -8,13 +8,14 @@ import json
 
 import pytest
 
-from tests.unit._qrosetta_fake import FakeEngine, FakeServer, Unreachable
+from tests.unit._qrosetta_fake import FakeEngine, FakeServer, Unreachable, ours
 from tests.unit.test_qrosetta_contracts import validate_envelope
 from tests.unit.test_qrosetta_doctor import CONTROLLERS, FakeHost, _doctor
 
 from qrosetta_cli import config as cfgmod  # noqa: E402
 from qrosetta_cli import layout, output  # noqa: E402
 from qrosetta_cli.cli import main  # noqa: E402
+from qrosetta_cli.client import selftest  # noqa: E402
 from qrosetta_cli.context import Context  # noqa: E402
 from qrosetta_cli.errors import CliError, Exit  # noqa: E402
 from qrosetta_cli.stack import doctor, preflight  # noqa: E402
@@ -286,3 +287,53 @@ def test_unhealthy_api_json_message_keeps_the_health_report(project, env, capsys
     message = doc["error"]["message"]
     assert message.startswith("`compose up` failed: The API container was running but failed its health check")
     assert "\nLast health check of rosetta-api: exit code 1\n" in message and "Last 3 lines of its log:" in message
+
+
+# --- selftest -----------------------------------------------------------------------------------------
+
+
+class _Conn:
+    local = True
+
+    def __init__(self, rows):
+        self.rows = rows
+
+
+def test_selftest_names_backends_outside_the_started_profile(env):
+    rows = [{"id": "qiskit", "enabled": True, "available": True},
+            {"id": "quimb", "enabled": True, "available": False, "unavailable_reason": "unreachable"},
+            {"id": "cirq", "enabled": True, "available": False, "unavailable_reason": "unreachable"},
+            {"id": "cuquantum", "enabled": True, "available": False, "unavailable_reason": "no usable GPU"}]
+    stack = {"running": {"qiskit"}, "created": {"qiskit", "cirq", "cuquantum"}, "profile": "minimal"}
+    ctx = Context(args=type("A", (), {"backends": None})(), env=env, cfg=cfgmod.Config("/none", False),
+                  local_stack=lambda c: stack)
+    keys, left = selftest.backends_under_test(ctx, _Conn(rows), rows)
+    assert keys == ["qiskit"]
+    assert dict(left) == {"quimb": "not started in this stack (profile minimal)", "cirq": "unreachable",
+                          "cuquantum": "no usable GPU"}
+    stack["profile"] = None
+    assert dict(selftest.backends_under_test(ctx, _Conn(rows), rows)[1])["quimb"] == "not started in this stack"
+    ctx.local_stack = lambda c: None
+    assert dict(selftest.backends_under_test(ctx, _Conn(rows), rows)[1])["quimb"] == "unreachable"
+
+
+def test_local_services_names_the_profile_whose_backends_were_created(project, env):
+    fake = FakeEngine().standard()
+    ctx = Context(args=type("A", (), {})(), env=env, cfg=cfgmod.Config("/none", False), checkout=str(project),
+                  engine_factory=lambda d: Engine(fake.engine, d, run=fake, popen=fake.popen, env=env))
+    assert doctor.local_services(ctx) == {"running": {"api", "nginx"}, "created": {"api", "nginx"}, "profile": None}
+    fake.add("qiskit-runner", ours("qiskit_runner"), image="i-qiskit")
+    assert doctor.local_services(ctx)["profile"] == "minimal"
+
+
+def test_selftest_screen_lines_keep_the_json_lines(tmp_path):
+    lines = ["Images      1 runner probed now: 1 passed, 0 warned, 0 failed", "Statevector FAIL (1 failed)",
+             "FAIL        statevector (qiskit): wrong state", "WARN        caveat", "Not tested  quimb: unreachable",
+             "FAIL (1 failed). Results: /r/"]
+    out = selftest.screen_lines(lines, ["statevector (qiskit): wrong state"], ["caveat"], "/r")
+    assert out[:3] == lines[:2] + ["Not tested  quimb: unreachable"]
+    assert "FAIL  statevector (qiskit): wrong state" in out and "WARN  caveat" in out
+    assert out[-4:] == ["Self-test failed: 1 check failed, 1 warning. Results: /r/", "",
+                        "Read the jobs' summaries:", "  qrosetta show summary"]
+    passed = selftest.screen_lines(lines[:2] + lines[-1:], [], [], "/r")
+    assert passed[-2:] == ["Self-test passed. Results: /r/", "Summaries:  qrosetta show summary"]

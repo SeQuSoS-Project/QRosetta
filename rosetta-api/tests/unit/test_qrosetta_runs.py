@@ -517,7 +517,8 @@ def test_selftest_fail_is_exit_9_and_the_cpu_quota_rule(env, capsys, tmp_path):
                                "measured": _evaluation("measured", "FAIL")})
     assert run(["selftest"], env, server) == Exit.SELFTEST_FAILED
     out = capsys.readouterr().out
-    assert "FAIL        statevector (qiskit)" in out and "FAIL        cpu_quota_cores (qiskit)" in out
+    assert "FAIL  statevector (qiskit)" in out and "FAIL  cpu_quota_cores (qiskit)" in out
+    assert out.splitlines()[-3:] == ["", "Read the jobs' summaries:", "  qrosetta show summary"]
     cfg = tmp_path / "cfg" / "qrosetta"
     cfg.mkdir(parents=True, exist_ok=True)
     (cfg / "config.toml").write_text("[lifecycle]\ncpu_quota = false\n")
