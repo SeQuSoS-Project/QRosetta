@@ -34,8 +34,28 @@ _CANONICAL_ORDER_NOTE = (
     "outcomes sorted by outcome index. Qrisp builds that outcome list by iterating a set of "
     "tensor factors, whose order differs between processes, so the seeded numpy.random.choice "
     "draw mapped to different outcomes in each process. numpy's and Python's global RNGs are "
-    "seeded with the runner seed. Required by the adapter, applied regardless of "
-    "apply_preprocessing.")
+    "seeded with the runner seed. The sorting runs inside Qrisp's run() call, which samples from "
+    "the sorted list, so its time is part of simulation_time_sec. Required by the adapter, applied "
+    "regardless of apply_preprocessing.")
+
+
+def _outcome_order(outcomes):
+    """Indices that sort ``outcomes`` by integer value, ties in their original order.
+
+    Distinct non-negative integers in a range at most a few times their number (Qrisp's outcomes
+    of a spread-out distribution) are ordered by scattering them into that range; other integer
+    arrays by a stable argsort; anything else by Python's sort.
+    """
+    if not (isinstance(outcomes, np.ndarray) and outcomes.dtype.kind in "iu" and outcomes.ndim == 1):
+        return sorted(range(len(outcomes)), key=lambda i: int(outcomes[i]))
+    n = outcomes.size
+    if n and int(outcomes.min()) >= 0 and int(outcomes.max()) < 4 * n + 1024:
+        slots = np.full(int(outcomes.max()) + 1, -1, dtype=np.int64)
+        slots[outcomes] = np.arange(n, dtype=np.int64)
+        order = slots[slots >= 0]
+        if order.size == n:
+            return order
+    return np.argsort(outcomes, kind="stable")
 
 
 def _canonical_multi_measure():
@@ -50,7 +70,7 @@ def _canonical_multi_measure():
         if return_res_states:
             return result
         outcomes, probabilities = result
-        order = sorted(range(len(outcomes)), key=lambda i: int(outcomes[i]))
+        order = _outcome_order(outcomes)
         if isinstance(outcomes, np.ndarray):
             outcomes = outcomes[order]
         else:
