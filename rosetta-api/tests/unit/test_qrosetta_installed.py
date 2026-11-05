@@ -79,7 +79,7 @@ def test_start_and_status_refuse_until_the_images_are_published(env, tmp_path, c
         doc = json.loads(out)
         assert doc["error"]["reason"] == "images_not_published" and doc["error"]["hint"] == installed.SOURCE_ROUTE
     else:
-        assert "are not published" in err and err.strip().splitlines()[-1] == installed.SOURCE_ROUTE
+        assert "are not published" in err and err.strip().splitlines()[-1].strip() == installed.SOURCE_ROUTE
     for step in ("git clone https://github.com/SeQuSoS-Project/QRosetta", "./qrosetta build", "./qrosetta start"):
         assert step in installed.SOURCE_ROUTE
     assert opened == []
@@ -158,7 +158,7 @@ def test_published_start_names_pull_commands_for_images_not_yet_pulled(env, caps
     assert fake.compose_calls("up")[0][-2:] == ["nginx", "api"]
     fake = published_engine(missing=("api",))
     assert run(["start", "-d"], env, fake=fake, server=FakeServer(fresh=True)) == Exit.ENGINE
-    assert capsys.readouterr().err.strip().splitlines()[-1] == "qrosetta pull api"
+    assert capsys.readouterr().err.strip().splitlines()[-1].strip() == "qrosetta pull api"
 
 
 def test_installed_start_recreates_a_service_whose_generated_configuration_changed(env, tmp_path, capsys,

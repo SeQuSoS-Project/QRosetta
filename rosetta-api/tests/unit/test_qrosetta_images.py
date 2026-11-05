@@ -93,7 +93,7 @@ def test_pull_in_a_checkout_points_to_build_and_touches_no_engine(env, project, 
     fake = FakeEngine().standard()
     assert run(["pull", "qiskit"], env, fake, checkout=project) == Exit.INCOMPATIBLE
     err = capsys.readouterr().err
-    assert "carries no release manifest" in err and err.strip().splitlines()[-1] == "qrosetta build qiskit"
+    assert "carries no release manifest" in err and err.strip().splitlines()[-1].strip() == "qrosetta build qiskit"
     assert fake.calls == []
 
 
@@ -130,7 +130,7 @@ def test_pull_by_digest_with_tmpdir_in_the_cache_then_status_shows_pulled(env, i
 def test_pull_without_a_target_is_a_usage_error_and_myqlm_is_never_pulled(env, installed, capsys):
     fake = registry_engine()
     assert run(["pull"], env, fake) == Exit.USAGE
-    assert capsys.readouterr().err.strip().splitlines()[-1] == "qrosetta pull --profile minimal"
+    assert capsys.readouterr().err.strip().splitlines()[-1].strip() == "qrosetta pull --profile minimal"
     assert run(["pull", "myqlm", "--json"], env, fake) == 0
     doc = json.loads(capsys.readouterr().out)
     assert doc["data"]["not_published"][0]["id"] == "myqlm" and not calls(fake, ["pull"])
@@ -140,11 +140,17 @@ def test_pull_retries_once_after_a_network_error_and_never_after_a_missing_image
     fake = registry_engine()
     fake.pull_errors = ["Error: reading blob: toomanyrequests: retry later"]
     assert run(["pull", "api"], env, fake) == 0
-    assert len(calls(fake, ["pull"])) == 2 and "retrying" in capsys.readouterr().err
+    captured = capsys.readouterr()
+    assert len(calls(fake, ["pull"])) == 2 and "retrying" in captured.err
+    assert captured.out.splitlines()[-1] == "Next step:  qrosetta start -d"
     fake = registry_engine()
     fake.pull_errors = ["dial tcp: i/o timeout", "dial tcp: i/o timeout"]
     assert run(["pull", "api"], env, fake) == Exit.ENGINE
     assert len(calls(fake, ["pull"])) == 2
+    err = capsys.readouterr().err.splitlines()
+    head = err.index("qrosetta: 1 of 1 images were not pulled.")
+    assert err[head + 2].startswith("  api: pulling ") and err[head + 2].endswith("dial tcp: i/o timeout")
+    assert err[-2:] == ["Pull them again once the cause is resolved:", "  qrosetta pull api"]
     fake = registry_engine()
     fake.registry.clear()
     assert run(["pull", "api"], env, fake) == Exit.ENGINE

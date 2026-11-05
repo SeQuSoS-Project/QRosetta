@@ -44,6 +44,7 @@ def refuse_if_busy(ctx, url, command, flag, overridden, effect):
             Exit.BUSY,
             "runs_in_flight",
             hint=f"qrosetta {command} {flag}",
+            step=f"To {command} anyway (the server records it):",
         )
     output.warn(
         f"{count} dispatch{'es' if count != 1 else ''} in flight; continuing because of {flag}. The "
@@ -76,6 +77,7 @@ def engine_lock(env, what):
                 Exit.BUSY,
                 "engine_locked",
                 hint="qrosetta status",
+                step="List the services and their state:",
             ) from None
         os.ftruncate(fd, 0)
         os.pwrite(fd, f"{os.getpid()} {what}".encode(), 0)

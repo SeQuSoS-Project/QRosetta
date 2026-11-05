@@ -164,7 +164,7 @@ def test_stop_refuses_while_runs_are_in_flight_unless_forced(fake, project, env,
     busy = FakeServer(gate={"exclusive_running": False, "shared_running": 2})
     assert cli(fake, project, env, ["stop"], server=busy) == Exit.BUSY
     err = capsys.readouterr().err
-    assert "2 dispatches are in flight" in err and err.strip().splitlines()[-1] == "qrosetta stop --force"
+    assert "2 dispatches are in flight" in err and err.strip().splitlines()[-1].strip() == "qrosetta stop --force"
     assert not fake.destructive_calls()
     assert cli(fake, project, env, ["stop", "--force"], server=busy) == 0
     assert fake.commands("stop") and "continuing because of --force" in capsys.readouterr().err
@@ -201,7 +201,7 @@ def test_remove_data_needs_the_project_name(fake, project, env, capsys):
     assert cli(fake, project, env, ["remove", "--data"]) == Exit.USAGE
     err = capsys.readouterr().err
     assert "qr_db (32.9 MiB)" in err and "saved run reports" in err and "compose project `qr`" in err
-    assert err.strip().splitlines()[-1] == "qrosetta remove --data --confirm qr"
+    assert err.strip().splitlines()[-1].strip() == "qrosetta remove --data --confirm qr"
     assert cli(fake, project, env, ["remove", "--data", "--confirm", "delete"]) == Exit.USAGE
     assert cli(fake, project, env, ["remove", "--data"], tty=True, stdin=_Lines("yes\n")) == Exit.USAGE
     assert not fake.commands("rm") and "qr_db" in fake.volumes
@@ -299,7 +299,7 @@ def test_start_detach_names_runners_that_never_became_ready(fake, project, env, 
                                                "error_kind": "dns"}])
     assert cli(_stopped(fake), project, env, ["start", "-d"], server=server) == Exit.ENGINE
     err = capsys.readouterr().err
-    assert "cannot resolve qiskit on the internal network" in err and err.strip().splitlines()[-1] == "qrosetta doctor"
+    assert "cannot resolve qiskit on the internal network" in err and err.strip().splitlines()[-1].strip() == "qrosetta doctor"
 
 
 READY_BLOCK = {"platform_version": "2.0.0", "api_levels": [1, 1], "features": {"readiness": 1}}
@@ -347,7 +347,7 @@ def test_start_adds_only_missing_services_and_respects_runs_in_flight(fake, proj
     busy = FakeServer(gate={"exclusive_running": True, "shared_running": 0}, fresh=True)
     assert cli(fake, project, env, ["start", "-d", "qiskit"], server=busy) == Exit.BUSY
     assert not fake.compose_calls("up")
-    assert capsys.readouterr().err.strip().splitlines()[-1] == "qrosetta start --yes"
+    assert capsys.readouterr().err.strip().splitlines()[-1].strip() == "qrosetta start --yes"
     assert cli(fake, project, env, ["start", "-d", "qiskit", "--yes"], server=busy) == 0
     up = fake.compose_calls("up")[0]
     assert up[-5:] == ["up", "-d", "--no-build", "--no-deps", "qiskit_runner"]
@@ -397,7 +397,7 @@ def test_recreating_running_containers_is_refused_while_runs_are_in_flight(fake,
     assert cli(fake, project, env, ["start", "-d"], server=busy) == Exit.BUSY
     err = capsys.readouterr().err
     assert "recreating the containers of qiskit on new images stops them" in err
-    assert err.strip().splitlines()[-1] == "qrosetta start --yes"
+    assert err.strip().splitlines()[-1].strip() == "qrosetta start --yes"
     assert not fake.compose_calls("up") and fake.containers["c-qiskit-runner"]["Image"] == "i-qiskit"
     assert cli(fake, project, env, ["start", "-d", "--yes"], server=busy) == 0
     assert fake.recreated == ["c-qiskit-runner"]
@@ -610,7 +610,7 @@ def test_start_explains_engine_failures(fake, project, env, capsys):
     fake.up_error = "Error: rootlessport listen tcp 127.0.0.1:8080: bind: address already in use\n"
     assert cli(_stopped(fake), project, env, ["start", "-d"]) == Exit.ENGINE
     err = capsys.readouterr().err
-    assert "127.0.0.1:8080 is in use" in err and err.strip().splitlines()[-1] == "qrosetta start -d --bind 127.0.0.1:8090"
+    assert "127.0.0.1:8080 is in use" in err and err.strip().splitlines()[-1].strip() == "qrosetta start -d --bind 127.0.0.1:8090"
 
 
 def _unhealthy_api(fake):
@@ -635,10 +635,10 @@ def test_start_unhealthy_api_prints_its_last_health_check_and_log(fake, project,
     assert "Last health check of rosetta-api: exit code 1" in err and "ConnectionRefusedError" in err
     assert "first check" not in err
     lines = err.splitlines()
-    start = lines.index("Last 3 lines of its log:")
+    start = lines.index("  Last 3 lines of its log:")
     assert [x.split()[0] for x in lines[start + 1:start + 4]] == [
         "2026-11-04T12:10:20Z", "2026-11-04T12:10:25Z", "2026-11-04T12:10:30Z"]
-    assert lines[-1] == "qrosetta logs api --tail 50"
+    assert lines[-2:] == ["Read the API's log:", "  qrosetta logs api --tail 50"]
     logs = [c for c, _ in fake.calls if c[1:2] == ["logs"]]
     assert logs == [["podman", "logs", "--timestamps", "--tail", "20", "c-rosetta-api"]]
     assert foreign not in json.dumps(logs) and not fake.destructive_calls()
@@ -864,7 +864,7 @@ def test_build_exits_16_when_the_baked_commit_is_unknown(fake, project, env, mon
     monkeypatch.setattr(subprocess, "call", lambda cmd, env, cwd, **kw: 0)
     assert cli(fake, project, env, ["build", "api"]) == Exit.ENGINE
     err = capsys.readouterr().err
-    assert "without a baked commit: api" in err and err.strip().splitlines()[-1].endswith("qrosetta build api")
+    assert "without a baked commit: api" in err and err.strip().splitlines()[-1].strip().endswith("qrosetta build api")
     monkeypatch.setattr(subprocess, "call", lambda cmd, env, cwd, **kw: 2)
     assert cli(fake, project, env, ["build", "api"]) == Exit.ENGINE
 

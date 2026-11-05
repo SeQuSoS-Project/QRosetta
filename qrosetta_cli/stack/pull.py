@@ -8,7 +8,7 @@ import os
 import re
 import time
 
-from qrosetta_cli import config as cfgmod, manifest as mf, mode as modes
+from qrosetta_cli import config as cfgmod, layout, manifest as mf, mode as modes
 from qrosetta_cli.context import Result
 from qrosetta_cli.errors import CliError, Exit, usage
 from qrosetta_cli.output import progress, result
@@ -49,6 +49,7 @@ def _checkout_refusal(names):
         Exit.INCOMPATIBLE,
         "checkout_builds_images",
         hint=f"qrosetta build {keys}",
+        step="Build the images in this checkout:",
     )
 
 
@@ -116,6 +117,7 @@ def _one(engine, stack, manifest, service, ref, require_signature, env, n, total
             Exit.ENGINE,
             "signature_not_verified",
             hint="qrosetta images verify --require-signature",
+            step="Check the signatures of the images present:",
         )
     if status != "verified":
         progress(f"  signature not checked: {detail}")
@@ -125,7 +127,11 @@ def _one(engine, stack, manifest, service, ref, require_signature, env, n, total
     problems = check_pulled(stack, service, ref, img)
     if problems:
         raise CliError(
-            f"{sid}: {'; '.join(problems)}.", Exit.ENGINE, "pulled_image_mismatch", hint="qrosetta images verify"
+            f"{sid}: {'; '.join(problems)}.",
+            Exit.ENGINE,
+            "pulled_image_mismatch",
+            hint="qrosetta images verify",
+            step="Check the images present:",
         )
     if img.labels.get(own.QR_IMAGE_PROJECT) != stack.name:
         progress(
@@ -195,16 +201,22 @@ def cmd_pull(ctx):
     }
     if pulled:
         total = sum(p["size_bytes"] or 0 for p in pulled)
-        result(
-            f"{len(pulled)} images of Quantum Rosetta {data['release']} present ({human_bytes(total)}); "
-            "`qrosetta start -d` starts them."
-        )
+        result(f"{len(pulled)} images of Quantum Rosetta {data['release']} present ({human_bytes(total)}).")
     if failed:
-        raise CliError(
+        err = CliError(
             f"{len(failed)} of {len(jobs)} images were not pulled: {', '.join(f['id'] for f in failed)}.",
             Exit.ENGINE,
             failed[0]["reason"],
             hint=f"qrosetta pull {' '.join(f['id'] for f in failed)}",
             data=data,
+            evidence=[
+                f["message"] if f["message"].startswith(f"{f['id']}: ") else f"{f['id']}: {f['message']}"
+                for f in failed
+            ],
+            step="Pull them again once the cause is resolved:",
         )
+        err.headline = f"{len(failed)} of {len(jobs)} images were not pulled."
+        raise err
+    if pulled:
+        result(layout.next_step("qrosetta start -d"))
     return Result(0, data)

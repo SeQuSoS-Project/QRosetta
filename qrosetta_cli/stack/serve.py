@@ -15,6 +15,7 @@ from qrosetta_cli.stack import actions, guard, hostload
 from qrosetta_cli.stack import ownership as own
 from qrosetta_cli.stack import project as st
 from qrosetta_cli.stack.engine import CHANGE_TIMEOUT_SEC, spawned_tail, wait_spawned
+from qrosetta_cli.layout import step_for
 from qrosetta_cli.stack.explain import engine_error, probe_message
 
 ASK_TIMEOUT_SEC = 10
@@ -133,6 +134,7 @@ def plan_start(engine, stack, requested=None, env=None):
             Exit.ENGINE,
             "image_missing",
             hint=hint,
+            step="Pull the images:" if stack.release else "Build the images:",
         )
     return [s for s in candidates if s not in missing], missing, git_sha_env(stack, images, env)
 
@@ -295,11 +297,15 @@ def check_startable(engine, found):
     lines = own.blockers(engine, found)
     if lines:
         first_cmd = next((line.split(": ")[-1] for line in lines if f"{engine.name} " in line), "qrosetta status")
+        hint = first_cmd if first_cmd.startswith(engine.name) else "qrosetta status"
         raise CliError(
             "Not started. " + "\n".join(lines),
             Exit.ENGINE,
             "name_conflict",
-            hint=first_cmd if first_cmd.startswith(engine.name) else "qrosetta status",
+            hint=hint,
+            headline="Not started: names this stack uses are held by objects that are not this stack's.",
+            evidence=lines,
+            step="Remove the first of them (qrosetta does not):" if hint != "qrosetta status" else None,
         )
 
 
@@ -341,6 +347,8 @@ def up_failure(engine, stack, text, bind):
         except CliError:
             report = ""
         if report:
+            err.headline = err.message
+            err.evidence = report.splitlines()
             err.message += "\n" + report
     return err
 
@@ -390,6 +398,9 @@ def wait_ready(ctx, engine, stack, services, timeout=READY_TIMEOUT_SEC):
                 Exit.ENGINE,
                 "api_unhealthy",
                 hint="qrosetta logs api --tail 50",
+                headline=f"The API at {url} was not ready within {timeout} s.",
+                evidence=[why] if why else [],
+                step="Read the API's log:",
             )
         _sleep(READY_POLL_SEC)
     fresh, ready, entries = None, set(), {}
@@ -446,7 +457,13 @@ def wait_ready(ctx, engine, stack, services, timeout=READY_TIMEOUT_SEC):
                 lines.append(message)
                 hints.append(hint)
             raise CliError(
-                f"Not ready after {timeout} s: " + "; ".join(lines) + ".", Exit.ENGINE, "not_ready", hint=hints[0]
+                f"Not ready after {timeout} s: " + "; ".join(lines) + ".",
+                Exit.ENGINE,
+                "not_ready",
+                hint=hints[0],
+                headline=f"{len(lines)} of {len(wanted)} runners and compilers not ready after {timeout} s.",
+                evidence=lines,
+                step=step_for(hints[0]),
             )
         _sleep(READY_POLL_SEC)
 

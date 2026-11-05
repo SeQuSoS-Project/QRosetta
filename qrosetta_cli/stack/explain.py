@@ -150,14 +150,20 @@ def explain(text, bind=None):
 
 
 def engine_error(text, context, bind=None):
-    """A CliError (exit 16) for a failed engine call."""
+    """A CliError (exit 16) for a failed engine call, with the sentence over its command."""
+    from qrosetta_cli.layout import step_for
+
     known = explain(text, bind)
     if known:
         message, reason, hint = known
-        return CliError(f"{context}: {message}", Exit.ENGINE, reason, hint)
+        return CliError(f"{context}: {message}", Exit.ENGINE, reason, hint, step=step_for(hint))
     lines = [line for line in (text or "").strip().splitlines() if line.strip()]
     return CliError(
-        f"{context}: {lines[-1] if lines else 'no output'}", Exit.ENGINE, "engine_error", hint="qrosetta doctor"
+        f"{context}: {lines[-1] if lines else 'no output'}",
+        Exit.ENGINE,
+        "engine_error",
+        hint="qrosetta doctor",
+        step=step_for("qrosetta doctor"),
     )
 
 

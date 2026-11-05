@@ -16,7 +16,7 @@ from qrosetta_cli import config as cfgmod  # noqa: E402
 from qrosetta_cli import layout, output  # noqa: E402
 from qrosetta_cli.cli import main  # noqa: E402
 from qrosetta_cli.context import Context  # noqa: E402
-from qrosetta_cli.errors import Exit  # noqa: E402
+from qrosetta_cli.errors import CliError, Exit  # noqa: E402
 from qrosetta_cli.stack import doctor, preflight  # noqa: E402
 from qrosetta_cli.stack.engine import Engine  # noqa: E402
 
@@ -258,3 +258,31 @@ def test_start_with_passing_checks_reaches_compose(project, env, capsys, monkeyp
     assert _cli(fake, project, env, ["start", "-d"], FakeHost(env), server=FakeServer(fresh=True)) == 0
     assert any("up" in c for c, _ in fake.calls)
     assert capsys.readouterr().out.splitlines()[-1] == "Next step:  qrosetta selftest"
+
+
+# --- errors ---------------------------------------------------------------------------------------
+
+
+def test_errors_with_evidence_print_what_happened_the_evidence_and_the_command_last(capsys):
+    err = CliError("Not ready after 180 s: a; b.", Exit.ENGINE, "not_ready", hint="qrosetta logs qiskit --tail 50",
+                   headline="2 of 3 runners and compilers not ready after 180 s.", evidence=["a", "b"],
+                   step="Read the log of qiskit:")
+    from qrosetta_cli.cli import _print_error
+
+    _print_error(err)
+    assert capsys.readouterr().err.splitlines() == [
+        "qrosetta: 2 of 3 runners and compilers not ready after 180 s.", "", "  a", "  b", "",
+        "Read the log of qiskit:", "  qrosetta logs qiskit --tail 50"]
+    assert err.as_dict()["message"] == "Not ready after 180 s: a; b."
+    _print_error(CliError("Plain.", hint="qrosetta status"))
+    assert capsys.readouterr().err.splitlines() == ["qrosetta: Plain.", "qrosetta status"]
+
+
+def test_unhealthy_api_json_message_keeps_the_health_report(project, env, capsys):
+    from tests.unit.test_qrosetta_cli import _unhealthy_api, cli
+
+    assert cli(_unhealthy_api(FakeEngine().standard()), project, env, ["start", "-d", "--json"]) == Exit.ENGINE
+    doc = json.loads(capsys.readouterr().out)
+    message = doc["error"]["message"]
+    assert message.startswith("`compose up` failed: The API container was running but failed its health check")
+    assert "\nLast health check of rosetta-api: exit code 1\n" in message and "Last 3 lines of its log:" in message

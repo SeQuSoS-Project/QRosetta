@@ -228,7 +228,7 @@ def test_the_token_never_appears_in_output_errors_or_the_log(tmp_path, capsys, m
 
 def test_api_unreachable_is_exit_11(capsys):
     assert _api(["GET", "/config"], Unreachable()) == Exit.UNREACHABLE
-    assert capsys.readouterr().err.strip().splitlines()[-1] == "qrosetta status"
+    assert capsys.readouterr().err.strip().splitlines()[-1].strip() == "qrosetta status"
 
 
 def _imports(path):

@@ -96,7 +96,11 @@ def report_left(left):
     """Exit 16 when containers still run after stop or remove."""
     if left:
         raise CliError(
-            f"Still running: {', '.join(c.name for c in left)}.", Exit.ENGINE, "still_running", hint="qrosetta status"
+            f"Still running: {', '.join(c.name for c in left)}.",
+            Exit.ENGINE,
+            "still_running",
+            hint="qrosetta status",
+            step="List the services and their state:",
         )
     return 0
 
