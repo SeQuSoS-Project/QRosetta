@@ -1764,7 +1764,13 @@
                     server a job can go long before its retention time. A sweep that runs every 10 minutes
                     removes jobs past either limit, so a job can stay up to 10 minutes longer. The times the
                     page gives for a kept job ("kept until 10:15 at the latest") are the longest it is
-                    kept; a job the server has removed answers 404, as after a restart.
+                    kept; a job the server has removed answers 404, as after a restart. On a local stack
+                    the three limits (24 hours, 200 jobs, 4,096 MiB of job storage) are set in the
+                    <code>qrosetta</code> config file (<code>qrosetta config path</code> prints where): under
+                    <code>[lifecycle]</code>, <code>job_retention = "48h"</code>, <code>jobs_kept = 500</code>
+                    and <code>job_storage = "16GiB"</code>, then <code>qrosetta start -d</code>, which recreates
+                    the API with them. <code>qrosetta start</code>, <code>status</code> and
+                    <code>doctor</code> print the values in use.
                 </p>
                 <p>
                     These reports are kept on the API's local disk, within a budget of 10,240 MiB by

@@ -293,7 +293,17 @@ outcomes (Python objects, measured 2026-11-05). 200 kept jobs therefore take fro
 about 4.1 GiB; the upper end is more than the API container's 2 GiB memory limit. The untruncated
 reports go to disk inside the API container, at most 4,096 MiB on a local stack
 (`QROSETTA_JOB_SPILL_MAX_MIB`; one 18-qubit statevector job on 14 backends takes 79 MB). `qrosetta
-stop`, and any restart of the API container, frees both. `remove` keeps the images and the `qsimulators_rosetta_db_data` volume, which
+stop`, and any restart of the API container, frees both. `qrosetta start` and `qrosetta status` print
+the three values. To change them, for example on a machine with more memory and disk, put new
+values under `[lifecycle]` in the config file and start again; `start` recreates the API with them:
+
+```bash
+qrosetta config path        # the config file; `qrosetta config init` writes one
+# [lifecycle]  jobs_kept = 500   job_storage = "16GiB"   job_retention = "48h"
+```
+
+`QROSETTA_JOB_MAX_KEPT`, `QROSETTA_JOB_SPILL_MAX_MIB` and `QROSETTA_JOB_TTL_SEC` in the environment
+override the file. `remove` keeps the images and the `qsimulators_rosetta_db_data` volume, which
 holds the SQLite database (accounts, saved circuits, run history) and the saved run reports. Results of jobs that were not saved are lost
 whenever the API container stops. `remove --all` removes the containers, pods, networks, this
 stack's images and its data volume in one command: it first lists every object with its size and
@@ -334,7 +344,8 @@ environment, so `COMPOSE_PROJECT_NAME` in the shell or in `.env` never redirects
 project. `--project-dir` or `QROSETTA_PROJECT_DIR` (formerly `QROSETTA_HOME`, still read with a
 warning) points the command at another directory holding the compose file. The optional config
 file `~/.config/qrosetta/config.toml` (`qrosetta config path`, `qrosetta config show`) holds the
-server, engine, exit action and bind address; it holds no run setting.
+server, engine, exit action, bind address and the local API's finished-job limits; it holds no run
+setting.
 
 Containers and networks created before these labels existed carry only the compose label, and
 images built before them carry none. `qrosetta status` lists them; remove the containers and

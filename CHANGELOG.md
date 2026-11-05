@@ -226,7 +226,10 @@ signed images on GHCR; and every result records the image, commit and host condi
   beyond that, the sweep every 10 minutes removes the oldest that finished more than 30 minutes
   ago. The local stack's job storage budget is 4,096 MiB (`QROSETTA_JOB_SPILL_MAX_MIB`). The page
   and `qrosetta` give a kept job's retention as the longest it is kept ("for up to 24 hours",
-  "until 10:15 at the latest").
+  "until 10:15 at the latest"). On a local stack the three limits are config keys,
+  `[lifecycle] jobs_kept`, `job_storage` ("16GiB") and `job_retention` ("48h"), which `qrosetta start`
+  passes to the API (the environment variables override them); `start`, `status` and `doctor` print
+  them, and `doctor` warns when the job storage is larger than the image store's free space.
 - Rate limits count per signed-in account, with a per-address ceiling on runs, exports and
   rendering; sign-in and registration count per address.
 - The API runs FastAPI 0.136.3 on Starlette 1.7.0. Responses carry `Vary: Origin`, file responses
