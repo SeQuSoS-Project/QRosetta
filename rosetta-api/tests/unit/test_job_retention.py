@@ -44,6 +44,13 @@ def test_local_compose_keeps_jobs_for_a_day():
     assert "QROSETTA_JOB_TTL_SEC=${QROSETTA_JOB_TTL_SEC:-86400}" in env
 
 
+def test_local_compose_gives_the_api_a_4_gib_job_storage_budget():
+    compose = yaml.safe_load((_REPO / "docker-compose.yml").read_text())
+    env = compose["services"]["api"]["environment"]
+    assert "QROSETTA_JOB_SPILL_MAX_MIB=${QROSETTA_JOB_SPILL_MAX_MIB:-4096}" in env
+    assert type(settings).model_fields["JOB_SPILL_MAX_MIB"].default == 10240
+
+
 def test_config_publishes_the_retention():
     from fastapi.testclient import TestClient
     from main import app
@@ -254,3 +261,4 @@ def test_an_evicted_job_reads_as_not_found(monkeypatch):
         r = client.get(path)
         assert r.status_code == 404 and r.json()["detail"] == job_store.JOB_NOT_FOUND
     assert client.get("/jobs/rt-f001").status_code == 200
+

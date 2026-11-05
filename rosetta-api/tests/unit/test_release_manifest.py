@@ -115,6 +115,14 @@ def test_generated_compose_equals_the_repository_compose_but_for_build_and_image
             assert not str(volume).startswith(("/", ".", "~")), f"{name} has a bind mount {volume}"
 
 
+def test_installed_compose_keeps_the_api_job_storage_budget(records):
+    manifest = mm.build_manifest("1.0.0", "abc", digests=_all_digests(records), records=records)
+    doc = installed.compose_document(json.loads(json.dumps(manifest)))
+    env = doc["services"]["api"]["environment"]
+    assert "QROSETTA_JOB_SPILL_MAX_MIB=${QROSETTA_JOB_SPILL_MAX_MIB:-4096}" in env
+    assert "QROSETTA_JOB_TTL_SEC=${QROSETTA_JOB_TTL_SEC:-86400}" in env
+
+
 def test_sdk_versions_come_from_each_image_lock_file(records):
     by_id = {r["id"]: r for r in records}
     lock = (REPO / "runners" / "pytket-qiskit-runner" / "requirements.lock").read_text()
