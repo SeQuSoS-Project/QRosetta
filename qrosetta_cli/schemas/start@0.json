@@ -8,12 +8,15 @@
   "properties": {
     "finished_jobs": {
       "type": "object",
-      "description": "the finished-job settings `start` gives the API: [lifecycle] jobs_kept, job_storage and job_retention of the config file, overridden by QROSETTA_JOB_MAX_KEPT, QROSETTA_JOB_SPILL_MAX_MIB and QROSETTA_JOB_TTL_SEC",
+      "description": "the finished-job settings `start` gives the API: [lifecycle] jobs_kept, job_storage, job_memory and job_retention of the config file, overridden by QROSETTA_JOB_MAX_KEPT, QROSETTA_JOB_SPILL_MAX_MIB, QROSETTA_JOB_MEMORY_MAX_MIB and QROSETTA_JOB_TTL_SEC",
       "properties": {
         "jobs_kept": {
           "type": "integer"
         },
         "job_storage_mib": {
+          "type": "integer"
+        },
+        "job_memory_mib": {
           "type": "integer"
         },
         "job_retention_sec": {

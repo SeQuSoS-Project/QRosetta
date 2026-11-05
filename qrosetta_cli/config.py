@@ -29,12 +29,14 @@ CLI_ENV = (
     "TERM",
     "QROSETTA_JOB_MAX_KEPT",
     "QROSETTA_JOB_SPILL_MAX_MIB",
+    "QROSETTA_JOB_MEMORY_MAX_MIB",
     "QROSETTA_JOB_TTL_SEC",
 )
 SHARED_WITH_COMPOSE = (
     "QROSETTA_PROJECT",
     "QROSETTA_JOB_MAX_KEPT",
     "QROSETTA_JOB_SPILL_MAX_MIB",
+    "QROSETTA_JOB_MEMORY_MAX_MIB",
     "QROSETTA_JOB_TTL_SEC",
 )
 
@@ -49,6 +51,7 @@ SCHEMA = {
         "cpu_quota": _BOOL,
         "jobs_kept": jobstore.parse_jobs_kept,
         "job_storage": jobstore.parse_job_storage,
+        "job_memory": jobstore.parse_job_storage,
         "job_retention": jobstore.parse_job_retention,
     },
     "results": {"dir": _STR},
@@ -84,9 +87,12 @@ TEMPLATE = """\
 # jobs_kept = 200                    # finished jobs the local API keeps; beyond it the oldest
 #                                    # go from 30 minutes after they finished
 # job_storage = "4GiB"               # the API's disk budget for job reports: "8GiB", "4096MiB"
+# job_memory = "512MiB"              # estimated API memory finished jobs may hold; beyond it the
+#                                    # oldest go from 30 minutes after they finished
 # job_retention = "24h"              # longest a finished job is kept: "90m", "3600s"; >= 1 minute
 #                                    # (each overridden by QROSETTA_JOB_MAX_KEPT,
-#                                    # QROSETTA_JOB_SPILL_MAX_MIB, QROSETTA_JOB_TTL_SEC)
+#                                    # QROSETTA_JOB_SPILL_MAX_MIB, QROSETTA_JOB_MEMORY_MAX_MIB,
+#                                    # QROSETTA_JOB_TTL_SEC)
 
 [output]
 # experimental_notice = true

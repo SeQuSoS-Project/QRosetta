@@ -1,5 +1,6 @@
 """The local server's finished-job settings that `start` gives compose: how many finished jobs the
-API keeps, its job storage budget, and how long it keeps a finished job. Each comes from its
+API keeps, its job storage budget, the memory its finished jobs may hold, and how long it keeps a
+finished job. Each comes from its
 environment variable, else the config file's [lifecycle] key, else the compose default. None of
 them is a measurement setting."""
 
@@ -9,7 +10,8 @@ from qrosetta_cli.errors import usage
 
 MIB = 1024 * 1024
 MIN_RETENTION_SEC = 60
-CHANGE_HINT = "change: qrosetta config path → [lifecycle] jobs_kept, job_storage, job_retention"
+API_MEMORY_LIMIT_MIB = 2048
+CHANGE_HINT = "change: qrosetta config path → [lifecycle] jobs_kept, job_storage, job_memory, job_retention"
 
 _SIZE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*(MiB|GiB)?\s*$", re.IGNORECASE)
 _DURATION = re.compile(r"^\s*(\d+)\s*([smh])?\s*$", re.IGNORECASE)
@@ -57,6 +59,7 @@ def parse_job_retention(value):
 SETTINGS = {
     "jobs_kept": ("QROSETTA_JOB_MAX_KEPT", 200, parse_jobs_kept),
     "job_storage": ("QROSETTA_JOB_SPILL_MAX_MIB", 4096, parse_job_storage),
+    "job_memory": ("QROSETTA_JOB_MEMORY_MAX_MIB", 512, parse_job_storage),
     "job_retention": ("QROSETTA_JOB_TTL_SEC", 86400, parse_job_retention),
 }
 ENV_VARS = tuple(var for var, _, _ in SETTINGS.values())
@@ -96,10 +99,12 @@ def _hours(seconds):
 
 
 def describe(settings):
-    """'Finished jobs: kept up to 24 h, at most 200, in up to 4.0 GiB of job storage'."""
+    """'Finished jobs: kept up to 24 h, at most 200, in up to 4.0 GiB of job storage and 512 MiB of
+    memory'."""
     return (
         f"Finished jobs: kept up to {_hours(settings['job_retention'][0])}, at most "
         f"{settings['jobs_kept'][0]}, in up to {settings['job_storage'][0] / 1024:.1f} GiB of job storage"
+        f" and {settings['job_memory'][0]} MiB of memory"
     )
 
 
@@ -112,6 +117,7 @@ def block(settings):
     return {
         "jobs_kept": settings["jobs_kept"][0],
         "job_storage_mib": settings["job_storage"][0],
+        "job_memory_mib": settings["job_memory"][0],
         "job_retention_sec": settings["job_retention"][0],
         "sources": {key: source for key, (_, source) in settings.items()},
     }

@@ -122,6 +122,7 @@ def test_installed_compose_keeps_the_api_job_storage_budget(records):
     assert "QROSETTA_JOB_SPILL_MAX_MIB=${QROSETTA_JOB_SPILL_MAX_MIB:-4096}" in env
     assert "QROSETTA_JOB_TTL_SEC=${QROSETTA_JOB_TTL_SEC:-86400}" in env
     assert "QROSETTA_JOB_MAX_KEPT=${QROSETTA_JOB_MAX_KEPT:-200}" in env
+    assert "QROSETTA_JOB_MEMORY_MAX_MIB=${QROSETTA_JOB_MEMORY_MAX_MIB:-512}" in env
 
 
 def test_sdk_versions_come_from_each_image_lock_file(records):

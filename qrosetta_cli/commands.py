@@ -78,6 +78,7 @@ def _effective(ctx):
     jobs = jobstore.resolve(env, cfg)
     add("lifecycle.jobs_kept", jobs["jobs_kept"][0], jobs["jobs_kept"][1])
     add("lifecycle.job_storage", f"{jobs['job_storage'][0]} MiB", jobs["job_storage"][1])
+    add("lifecycle.job_memory", f"{jobs['job_memory'][0]} MiB", jobs["job_memory"][1])
     add("lifecycle.job_retention", f"{jobs['job_retention'][0]} s", jobs["job_retention"][1])
     value, source = cfgmod.env_or_config(env, "QROSETTA_RESULTS_DIR", cfg, "results", "dir")
     add("results.dir", os.path.abspath(cfgmod.expand(value or "./qrosetta-results", env)), source)

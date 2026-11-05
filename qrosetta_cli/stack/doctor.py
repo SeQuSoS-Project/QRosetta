@@ -287,7 +287,8 @@ def check_disk(host, rep, choice):
 
 def check_jobs(host, rep, cfg, store_free):
     """The finished-job settings `start` gives the API, and a warning when the job storage budget
-    is more than the image store's free space less 1 GiB (the reports live in the API container)."""
+    is more than the image store's free space less 1 GiB (the reports live in the API container),
+    or the job memory budget is at least the API container's memory limit less 512 MiB."""
     try:
         jobs = jobstore.resolve(host.env, cfg)
     except CliError as exc:
@@ -302,6 +303,15 @@ def check_jobs(host, rep, cfg, store_free):
             f"job storage {budget / GIB:.1f} GiB is more than the image store's free space less 1 GiB "
             f"({max(store_free - GIB, 0) / GIB:.1f} GiB)",
             "set [lifecycle] job_storage lower (qrosetta config path), or free space in the image store",
+        )
+    memory, ceiling = jobs["job_memory"][0], jobstore.API_MEMORY_LIMIT_MIB - 512
+    if memory >= ceiling:
+        rep.add(
+            "jobs",
+            "WARN",
+            f"job memory {memory} MiB is at least the API container's {jobstore.API_MEMORY_LIMIT_MIB} MiB "
+            f"memory limit less 512 MiB ({ceiling} MiB)",
+            "set [lifecycle] job_memory lower (qrosetta config path)",
         )
 
 

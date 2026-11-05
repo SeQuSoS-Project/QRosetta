@@ -1,7 +1,7 @@
-"""The local server's finished-job settings: [lifecycle] jobs_kept, job_storage and
-job_retention in the config file, overridden by QROSETTA_JOB_MAX_KEPT, QROSETTA_JOB_SPILL_MAX_MIB
-and QROSETTA_JOB_TTL_SEC, passed to compose by start and status, shown by start, status, doctor
-and config show."""
+"""The local server's finished-job settings: [lifecycle] jobs_kept, job_storage, job_memory and
+job_retention in the config file, overridden by QROSETTA_JOB_MAX_KEPT, QROSETTA_JOB_SPILL_MAX_MIB,
+QROSETTA_JOB_MEMORY_MAX_MIB and QROSETTA_JOB_TTL_SEC, passed to compose by start and status, shown
+by start, status, doctor and config show."""
 import json
 import re
 
@@ -30,8 +30,9 @@ def project(tmp_path):
     return tmp_path
 
 
-DEFAULT_LINE = ("Finished jobs: kept up to 24 h, at most 200, in up to 4.0 GiB of job storage "
-                "(change: qrosetta config path → [lifecycle] jobs_kept, job_storage, job_retention)")
+DEFAULT_LINE = ("Finished jobs: kept up to 24 h, at most 200, in up to 4.0 GiB of job storage and 512 MiB "
+                "of memory (change: qrosetta config path → [lifecycle] jobs_kept, job_storage, job_memory, "
+                "job_retention)")
 
 
 @pytest.mark.parametrize("value, mib", [(4096, 4096), ("4096", 4096), ("4096MiB", 4096), ("4GiB", 4096),
@@ -71,6 +72,14 @@ def test_defaults_are_the_compose_defaults_and_the_api_count_default():
         assert f"{var}=${{{var}:-{default}}}" in api_env, key
     config_py = (REPO / "rosetta-api" / "config.py").read_text()
     assert re.search(r'JOB_MAX_KEPT: int = Field\(default=200, validation_alias="QROSETTA_JOB_MAX_KEPT"\)', config_py)
+    assert re.search(r'JOB_MEMORY_MAX_MIB: int = Field\(default=512, validation_alias="QROSETTA_JOB_MEMORY_MAX_MIB"\)',
+                     config_py)
+
+
+def test_the_api_memory_limit_is_the_compose_one():
+    compose = yaml.safe_load((REPO / "docker-compose.yml").read_text())
+    assert compose["services"]["api"]["deploy"]["resources"]["limits"]["memory"] == "2G"
+    assert jobstore.API_MEMORY_LIMIT_MIB == 2048
 
 
 def _cfg(tmp_path, text):
@@ -81,12 +90,15 @@ def _cfg(tmp_path, text):
 
 def test_config_keys_load_and_nonsense_is_refused_naming_the_key(tmp_path):
     pytest.importorskip("tomllib")
-    cfg = _cfg(tmp_path, '[lifecycle]\njobs_kept = 300\njob_storage = "8GiB"\njob_retention = "48h"\n')
+    cfg = _cfg(tmp_path, '[lifecycle]\njobs_kept = 300\njob_storage = "8GiB"\njob_memory = "1GiB"\n'
+                         'job_retention = "48h"\n')
     got = jobstore.resolve({}, cfg)
     assert got == {"jobs_kept": (300, "config lifecycle.jobs_kept"),
                    "job_storage": (8192, "config lifecycle.job_storage"),
+                   "job_memory": (1024, "config lifecycle.job_memory"),
                    "job_retention": (172800, "config lifecycle.job_retention")}
     for text, key in (('job_storage = "8 gigs"', "job_storage"), ("jobs_kept = 0", "jobs_kept"),
+                      ('job_memory = "0MiB"', "job_memory"), ('job_memory = "half"', "job_memory"),
                       ('job_retention = "10s"', "job_retention"), ('jobs_kept = "many"', "jobs_kept")):
         with pytest.raises(CliError) as err:
             _cfg(tmp_path, f"[lifecycle]\n{text}\n")
@@ -101,8 +113,17 @@ def test_the_environment_wins_over_the_config_and_the_config_over_the_default(tm
     assert got["job_storage"] == (16384, "env QROSETTA_JOB_SPILL_MAX_MIB")
     assert got["jobs_kept"] == (300, "config lifecycle.jobs_kept")
     assert got["job_retention"] == (86400, "default")
+    assert got["job_memory"] == (512, "default")
     assert jobstore.compose_env(got) == {"QROSETTA_JOB_SPILL_MAX_MIB": "16384", "QROSETTA_JOB_MAX_KEPT": "300",
-                                         "QROSETTA_JOB_TTL_SEC": "86400"}
+                                         "QROSETTA_JOB_MEMORY_MAX_MIB": "512", "QROSETTA_JOB_TTL_SEC": "86400"}
+    cfg = _cfg(tmp_path, '[lifecycle]\njob_memory = "256MiB"\n')
+    assert jobstore.resolve({}, cfg)["job_memory"] == (256, "config lifecycle.job_memory")
+    got = jobstore.resolve({"QROSETTA_JOB_MEMORY_MAX_MIB": "1GiB"}, cfg)
+    assert got["job_memory"] == (1024, "env QROSETTA_JOB_MEMORY_MAX_MIB")
+    assert jobstore.compose_env(got)["QROSETTA_JOB_MEMORY_MAX_MIB"] == "1024"
+    with pytest.raises(CliError) as err:
+        jobstore.resolve({"QROSETTA_JOB_MEMORY_MAX_MIB": "lots"}, cfg)
+    assert err.value.reason == "job_setting_invalid" and err.value.hint == "unset QROSETTA_JOB_MEMORY_MAX_MIB"
     with pytest.raises(CliError) as err:
         jobstore.resolve({"QROSETTA_JOB_TTL_SEC": "soon"}, cfg)
     assert err.value.reason == "job_setting_invalid" and err.value.hint == "unset QROSETTA_JOB_TTL_SEC"
@@ -112,11 +133,14 @@ def test_the_environment_wins_over_the_config_and_the_config_over_the_default(tm
 def test_the_line_and_block():
     got = jobstore.resolve({}, None)
     assert jobstore.line(got) == DEFAULT_LINE
-    assert jobstore.block(got) == {"jobs_kept": 200, "job_storage_mib": 4096, "job_retention_sec": 86400,
+    assert jobstore.block(got) == {"jobs_kept": 200, "job_storage_mib": 4096, "job_memory_mib": 512,
+                                   "job_retention_sec": 86400,
                                    "sources": {"jobs_kept": "default", "job_storage": "default",
-                                               "job_retention": "default"}}
-    other = jobstore.resolve({"QROSETTA_JOB_TTL_SEC": "90m", "QROSETTA_JOB_SPILL_MAX_MIB": "8GiB"}, None)
-    assert jobstore.describe(other) == "Finished jobs: kept up to 90 min, at most 200, in up to 8.0 GiB of job storage"
+                                               "job_memory": "default", "job_retention": "default"}}
+    other = jobstore.resolve({"QROSETTA_JOB_TTL_SEC": "90m", "QROSETTA_JOB_SPILL_MAX_MIB": "8GiB",
+                              "QROSETTA_JOB_MEMORY_MAX_MIB": "1GiB"}, None)
+    assert jobstore.describe(other) == ("Finished jobs: kept up to 90 min, at most 200, in up to 8.0 GiB of job "
+                                        "storage and 1024 MiB of memory")
 
 
 def _api_up_env(fake):
@@ -132,15 +156,15 @@ def test_start_passes_the_settings_to_compose_and_a_change_recreates_the_api(pro
     validate_envelope(doc)
     assert doc["data"]["finished_jobs"]["jobs_kept"] == 200 and not fake.recreated
     config = project / "qr.toml"
-    config.write_text('[lifecycle]\njobs_kept = 300\njob_storage = "8GiB"\n')
+    config.write_text('[lifecycle]\njobs_kept = 300\njob_storage = "8GiB"\njob_memory = "128MiB"\n')
     assert cli(fake, project, dict(env, QROSETTA_CONFIG=str(config)), ["start", "-d"],
                server=FakeServer(fresh=True)) == 0
     err = capsys.readouterr().err
     assert fake.recreated == ["c-rosetta-api"]
     up = _api_up_env(fake)
     assert up["QROSETTA_JOB_MAX_KEPT"] == "300" and up["QROSETTA_JOB_SPILL_MAX_MIB"] == "8192"
-    assert up["QROSETTA_JOB_TTL_SEC"] == "86400"
-    assert "Finished jobs: kept up to 24 h, at most 300, in up to 8.0 GiB of job storage" in err
+    assert up["QROSETTA_JOB_TTL_SEC"] == "86400" and up["QROSETTA_JOB_MEMORY_MAX_MIB"] == "128"
+    assert "Finished jobs: kept up to 24 h, at most 300, in up to 8.0 GiB of job storage and 128 MiB of memory" in err
     fake.recreated.clear()
     assert cli(fake, project, dict(env, QROSETTA_CONFIG=str(config), QROSETTA_JOB_MAX_KEPT="250"),
                ["start", "-d"], server=FakeServer(fresh=True)) == 0
@@ -157,6 +181,7 @@ def test_status_prints_the_line_and_carries_the_values(project, env, capsys, mon
     doc = json.loads(capsys.readouterr().out)
     validate_envelope(doc)
     assert doc["data"]["finished_jobs"]["job_retention_sec"] == 7200
+    assert doc["data"]["finished_jobs"]["job_memory_mib"] == 512
     assert doc["data"]["finished_jobs"]["sources"]["job_retention"] == "env QROSETTA_JOB_TTL_SEC"
     rows = {r["id"]: r for r in doc["data"]["services"]}
     assert rows["api"]["config_current"] is False and rows["nginx"]["config_current"] is True
@@ -186,4 +211,17 @@ def test_config_show_lists_the_settings_with_their_source(env, capsys):
                                              "source": "env QROSETTA_JOB_SPILL_MAX_MIB"}
     assert rows["lifecycle.jobs_kept"]["value"] == 200 and rows["lifecycle.jobs_kept"]["source"] == "default"
     assert rows["lifecycle.job_retention"]["value"] == "86400 s"
+    assert rows["lifecycle.job_memory"] == {"key": "lifecycle.job_memory", "value": "512 MiB", "source": "default"}
     assert main(["config", "show"], env=dict(env, QROSETTA_JOB_MAX_KEPT="0")) == Exit.USAGE
+
+
+@pytest.mark.parametrize("memory, warned", [("512MiB", False), ("1535", False), ("1536", True), ("4GiB", True)])
+def test_doctor_warns_when_the_job_memory_nears_the_api_memory_limit(env, memory, warned):
+    wide = dict(env, QROSETTA_JOB_MEMORY_MAX_MIB=memory)
+    rows = _by_id(_doctor(wide, FakeHost(wide, free=50 * doctor.GIB)))["jobs"]
+    assert [c.status for c in rows] == (["INFO", "WARN"] if warned else ["INFO"])
+    if warned:
+        mib = jobstore.parse_job_storage(memory)
+        assert rows[1].message == (f"job memory {mib} MiB is at least the API container's 2048 MiB memory limit "
+                                   f"less 512 MiB (1536 MiB)")
+        assert rows[1].fix == "set [lifecycle] job_memory lower (qrosetta config path)"

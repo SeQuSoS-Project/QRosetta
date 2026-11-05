@@ -43,11 +43,11 @@ CONFIG = {
 # are not part of compose's config hash).
 HASHED_VARS = {"nginx": ("QROSETTA_HTTP_BIND",), "api": ("QROSETTA_GIT_SHA", "QROSETTA_LIFECYCLE_TOKEN_PATH",
                                                          "QROSETTA_JOB_MAX_KEPT", "QROSETTA_JOB_SPILL_MAX_MIB",
-                                                         "QROSETTA_JOB_TTL_SEC")}
+                                                         "QROSETTA_JOB_MEMORY_MAX_MIB", "QROSETTA_JOB_TTL_SEC")}
 RUNNER_VARS = ("QROSETTA_HOST_OS", "QROSETTA_HOST_ARCH")
 # `${VAR:-default}` interpolates the default when VAR is unset, so either gives one hash.
 INTERPOLATION_DEFAULTS = {"QROSETTA_JOB_MAX_KEPT": "200", "QROSETTA_JOB_SPILL_MAX_MIB": "4096",
-                          "QROSETTA_JOB_TTL_SEC": "86400"}
+                          "QROSETTA_JOB_MEMORY_MAX_MIB": "512", "QROSETTA_JOB_TTL_SEC": "86400"}
 
 RELEASE_DIGEST = "sha256:" + "ab" * 32
 REGISTRY = "ghcr.io/sequsos-project"
