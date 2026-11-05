@@ -26,9 +26,10 @@ PODMAN_INFO = {"version": {"Version": "5.4.0"}, "host": {"security": {"rootless"
 class FakeHost(doctor.Host):
     def __init__(self, env, files=None, paths=(), docker="missing", podman="ok", system="Linux",
                  machine="x86_64", port_free=True, free=50 * doctor.GIB, compose="Docker Compose version v2.30.0",
-                 modes=None, running=None):
+                 modes=None, running=None, published=()):
         self.env = env
         self.running = running
+        self.published = published
         self.files = {"/etc/subuid": "u:100000:65536\n", "/etc/subgid": "u:100000:65536\n",
                       CONTROLLERS: "cpu io memory pids\n", **(files or {})}
         self.paths = {"/sys/fs/cgroup/cgroup.controllers", f"{env['XDG_RUNTIME_DIR']}/podman/podman.sock", *paths}
@@ -37,6 +38,12 @@ class FakeHost(doctor.Host):
 
     def running_services(self, ctx):
         return self.running
+
+    def images_present(self, ctx):
+        return None
+
+    def web_addresses(self, engine_name, project):
+        return list(self.published)
 
     def which(self, name):
         state = {"docker": self.docker, "podman": self.podman}.get(name, "missing")

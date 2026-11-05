@@ -3,6 +3,7 @@ answers. Exit 0 unless a check FAILs (17)."""
 
 import os
 import platform
+import re
 import shlex
 import shutil
 import socket
@@ -126,6 +127,25 @@ class Host:
             return os.stat(path).st_mode
         except OSError:
             return None
+
+    def web_addresses(self, engine_name, project):
+        """The addresses (host:port) the running web server container of compose project
+        `project` publishes, from `<engine> ps` filtered by both ownership labels."""
+        from qrosetta_cli.stack import ownership
+        from qrosetta_cli.stack import project as st
+
+        cmd = [engine_name, "ps", "--format", "{{.Ports}}"]
+        for label in (
+            f"{ownership.PROJECT_LABEL}={project}",
+            f"{ownership.QR_LABEL}={project}",
+            f"{st.ID_LABEL}=nginx",
+        ):
+            cmd += ["--filter", f"label={label}"]
+        try:
+            out = self.run(cmd, capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.SubprocessError):
+            return []
+        return re.findall(r"(\[?[0-9A-Fa-f.:]*\]?:\d+)->", out.stdout or "") if out.returncode == 0 else []
 
     def images_present(self, ctx):
         """Whether the images of this stack's core services are present, or None when the stack

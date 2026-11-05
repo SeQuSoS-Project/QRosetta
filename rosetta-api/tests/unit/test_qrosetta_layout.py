@@ -5,6 +5,7 @@ doctor's numbered fixes in the order to apply them and its next step, start's pr
 
 import io
 import json
+import subprocess
 
 import pytest
 
@@ -215,7 +216,7 @@ def test_start_stops_before_compose_when_a_check_fails(project, env, capsys):
     assert fake.calls == []
 
 
-def test_start_pre_checks_use_the_bind_it_will_publish_and_accept_its_own_stack(project, env, monkeypatch):
+def test_start_pre_checks_use_the_bind_it_will_publish_and_accept_its_own_stack(env):
     seen = []
 
     class Host(FakeHost):
@@ -223,14 +224,32 @@ def test_start_pre_checks_use_the_bind_it_will_publish_and_accept_its_own_stack(
             seen.append((host, port))
             return False
 
-    host = Host(env, running={"nginx", "api"})
     ctx = Context(args=type("A", (), {"bind": "127.0.0.1:9000"})(), env=env, cfg=cfgmod.Config("/none", False),
                   transport_factory=Unreachable())
-    rep = preflight.run(ctx, host, preflight.effective_bind(ctx), True)
-    assert seen == [("127.0.0.1", 9000)] and not rep.failed
+    ours = Host(env, published=["127.0.0.1:8080"])
+    rep = preflight.run(ctx, ours, preflight.effective_bind(ctx), True)
+    assert seen == [("127.0.0.1", 9000)] and [c.id for c in rep.failed] == ["port"]
+    assert rep.failed[0].reason == "port_in_use"
     assert [c.id for c in rep.checks] == ["engine", "compose", "podman_socket", "port"]
-    assert preflight.run(ctx, FakeHost(env, port_free=False), "127.0.0.1:9000", True).failed[0].id == "port"
-    assert preflight.run(ctx, FakeHost(env, port_free=False), "127.0.0.1:9000", True).failed[0].reason == "port_in_use"
+    rep = preflight.run(ctx, ours, "127.0.0.1:8080", True)
+    assert not rep.failed and "running Quantum Rosetta" in rep.checks[-1].message
+    assert not preflight.run(ctx, Host(env, published=["0.0.0.0:8080"]), "127.0.0.1:8080", True).failed
+    assert preflight._same_address("[::]:8080", "127.0.0.1:8080")
+    assert not preflight._same_address("127.0.0.1:8080", "127.0.0.1:8090")
+
+
+def test_web_addresses_reads_the_labelled_web_server_container():
+    calls = []
+
+    def run(cmd, **kw):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, "127.0.0.1:8080->8080/tcp, [::1]:8080->8080/tcp\n", "")
+
+    host = doctor.Host({}, run=run)
+    assert host.web_addresses("podman", "qr") == ["127.0.0.1:8080", "[::1]:8080"]
+    assert calls[0][:4] == ["podman", "ps", "--format", "{{.Ports}}"]
+    assert {calls[0][i + 1] for i, a in enumerate(calls[0]) if a == "--filter"} == {
+        "label=com.docker.compose.project=qr", "label=org.qrosetta.project=qr", "label=org.qrosetta.id=nginx"}
 
 
 @pytest.mark.parametrize("controllers,quota_on,blocked,reason", [
