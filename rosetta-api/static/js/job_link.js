@@ -40,7 +40,7 @@ export function linkedJobTitle(envelope, jobId) {
 
 /** What the page says when the server has no job `jobId`; `keptFor` is the retention as text. */
 export function missingJobText(jobId, keptFor) {
-    return `The server has no job ${String(jobId).slice(0, 8)}. It keeps a finished job for ${keptFor} `
+    return `The server has no job ${String(jobId).slice(0, 8)}. It keeps a finished job for up to ${keptFor} `
         + 'after it finishes and forgets every job when it restarts, so this link has expired. '
         + 'A run made with the qrosetta command saved its results on that machine: '
         + `qrosetta show summary --result job:${String(jobId).slice(0, 8)}`;

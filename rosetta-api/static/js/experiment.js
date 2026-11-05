@@ -114,7 +114,7 @@ export function renderExperimentResult(results, panel, { jobId, name, title, com
     if (compilerNote) _line(card, 'Compile-only services', compilerNote);
     panel.appendChild(card);
     _line(panel, null, 'Bundle: inputs, per-circuit results, conformance matrix, agreement prevalence and provenance manifest; '
-        + `error signatures untriaged for classification. Available for ${durationText(getState().jobTtlSec)}.`, 'text-gray-600 mb-3');
+        + `error signatures untriaged for classification. Available for up to ${durationText(getState().jobTtlSec)}.`, 'text-gray-600 mb-3');
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'py-2 px-4 rounded-md text-sm font-medium text-white bg-emerald-700 hover:bg-emerald-800';

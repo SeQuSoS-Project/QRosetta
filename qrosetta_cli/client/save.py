@@ -3,8 +3,9 @@ summary, circuit texts, crate; an experiment's bundle instead), SHA256SUMS, and 
 
 On a local stack whose server offers gated saves, the report and the crate are requested with
 ?gated=true, admitted only while no dispatch is in flight; a busy gate defers the crate, which
-`wait` finishes, saving ungated once the deferral reaches 10 minutes before the job's retention
-ends. Every ungated save records whether /config showed other dispatches in flight."""
+`wait` finishes, saving ungated once the deferral reaches 10 minutes before the server may delete
+the job (`kept_for`). Every ungated save records whether /config showed other dispatches in
+flight."""
 
 import calendar
 import json
@@ -29,6 +30,18 @@ REPORT_GATE_WAIT_SEC = 60
 CRATE_GATE_WAIT_SEC = 30
 DEFER_MARGIN_SEC = 600
 BACKOFF_SEC = (2, 4, 8, 15, 30, 60)
+
+
+def kept_for(conn):
+    """Seconds the server keeps every finished job: limits.job_ttl_sec, or
+    limits.job_evictable_after_sec when shorter and the server also bounds the number of finished
+    jobs it holds (limits.job_max_kept), since it may then delete a job from that age on."""
+    ttl = conn.limit("job_ttl_sec")
+    ttl = ttl if isinstance(ttl, (int, float)) and ttl > 0 else 1800
+    evictable = conn.limit("job_evictable_after_sec")
+    if conn.limit("job_max_kept") and isinstance(evictable, (int, float)) and evictable > 0:
+        return min(ttl, evictable)
+    return ttl
 
 
 def parse_items(values):
@@ -245,7 +258,7 @@ class Saver:
                 if "circuits" in self.items:
                     fetch("circuits", "GET", f"/jobs/{job_id}/circuit-texts")
                 if "crate" in self.items:
-                    crate = self._crate(job_dir, job_id, record, ttl, fetch, use_gate)
+                    crate = self._crate(job_dir, job_id, record, kept_for(self.conn), fetch, use_gate)
         if "summary" in files:
             summary = results.read_json(os.path.join(job_dir, FILES["summary"]))
         results.write_json(os.path.join(job_dir, "job.json"), record)
@@ -271,14 +284,14 @@ class Saver:
             "record": record,
         }
 
-    def _crate(self, job_dir, job_id, record, ttl, fetch, use_gate):
+    def _crate(self, job_dir, job_id, record, kept, fetch, use_gate):
         path = os.path.join(job_dir, FILES["crate"])
         if not use_gate:
             fetch("crate", "POST", f"/jobs/{job_id}/export", self.crate_body)
             return "saved" if os.path.isfile(path) else "failed"
         since = record.get("crate_deferred_since") or output.utc_now()
         start = _epoch(since) or time.time()
-        deadline = start + (ttl or 1800) - DEFER_MARGIN_SEC
+        deadline = start + kept - DEFER_MARGIN_SEC
         wait = max(0, deadline - time.time()) if self.patient else CRATE_GATE_WAIT_SEC
         if fetch("crate", "POST", f"/jobs/{job_id}/export", self.crate_body, gate_wait=wait):
             if record.get("crate_deferred_since"):
@@ -286,7 +299,7 @@ class Saver:
             return "saved" if os.path.isfile(path) else "failed"
         if self.patient:
             output.progress(
-                "The server stayed busy until 10 minutes before the job expires; building the crate "
+                "The server stayed busy until 10 minutes before it may delete the job; building the crate "
                 "now, beside the runs in flight (recorded in job.json)."
             )
             fetch("crate", "POST", f"/jobs/{job_id}/export", self.crate_body)

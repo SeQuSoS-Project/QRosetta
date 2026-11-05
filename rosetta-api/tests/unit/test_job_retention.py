@@ -262,3 +262,18 @@ def test_an_evicted_job_reads_as_not_found(monkeypatch):
         assert r.status_code == 404 and r.json()["detail"] == job_store.JOB_NOT_FOUND
     assert client.get("/jobs/rt-f001").status_code == 200
 
+
+def test_page_texts_give_the_retention_as_a_longest_time():
+    retention = re.compile(r"(.{0,12})\$\{durationText\((?:getState\(\)\.jobTtlSec|ttl|seconds)\)\}")
+    until = re.compile(r"until \$\{(?:clockText|_clock)\([^`]*?\)\}([^`]*)`")
+    found = 0
+    for path in sorted(_JS.glob("*.js")):
+        src = path.read_text()
+        for before in retention.findall(src):
+            found += 1
+            assert before.endswith("up to "), (path.name, before)
+        for after in until.findall(src):
+            found += 1
+            assert after.startswith(" at the latest"), (path.name, after)
+    assert found >= 13
+    assert "for up to ${keptFor}" in (_JS / "job_link.js").read_text()

@@ -101,7 +101,7 @@ async function _savedRunId(notice) {
     const { authToken, currentHistoryRunId, currentJobId } = getState();
     if (!authToken) {
         notice.replaceChildren(_el('p', 'text-xs text-gray-700',
-            `Sign in to save and share. Runs started without signing in can be saved for ${durationText(getState().jobTtlSec)} after they finish.`));
+            `Sign in to save and share. Runs started without signing in can be saved for up to ${durationText(getState().jobTtlSec)} after they finish.`));
         return null;
     }
     if (currentHistoryRunId) return currentHistoryRunId;
@@ -113,7 +113,7 @@ async function _savedRunId(notice) {
     const runId = await _saveRun(currentJobId);
     if (!runId) {
         notice.replaceChildren(_el('p', 'text-xs text-red-700',
-            `The run could not be saved; see the notice above the results. Jobs are kept for ${durationText(getState().jobTtlSec)} after they finish.`));
+            `The run could not be saved; see the notice above the results. Jobs are kept for up to ${durationText(getState().jobTtlSec)} after they finish.`));
         return null;
     }
     if (getState().currentJobId === currentJobId) dispatch('SET_HISTORY_RUN_ID', runId);

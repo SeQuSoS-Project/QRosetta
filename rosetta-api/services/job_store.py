@@ -41,8 +41,17 @@ def retention_text(seconds: int) -> str:
     return f"{seconds} second{'' if seconds == 1 else 's'}"
 
 
-JOB_NOT_FOUND = (f"Job not found. Jobs are kept for {retention_text(settings.JOB_TTL_SEC)} after "
-                 f"they finish and are lost if the server restarts; submit the run again.")
+def _kept_text() -> str:
+    """'up to 24 hours (the oldest go from 30 minutes on while the server holds more than 200)'."""
+    text = f"up to {retention_text(settings.JOB_TTL_SEC)}"
+    if settings.JOB_TTL_SEC > settings.JOB_EVICTABLE_AFTER_SEC:
+        text += (f" (the oldest go from {retention_text(settings.JOB_EVICTABLE_AFTER_SEC)} on while "
+                 f"the server holds more than {settings.JOB_MAX_KEPT})")
+    return text
+
+
+JOB_NOT_FOUND = (f"Job not found. Finished jobs are kept for {_kept_text()} and are lost if the "
+                 f"server restarts; submit the run again.")
 
 _JSON_OPTIONS = {"ensure_ascii": False, "allow_nan": False, "indent": None, "separators": (",", ":")}
 
@@ -75,8 +84,8 @@ def storage_problem():
     if used >= budget * _MIB:
         return (f"The server's storage for job results is full: it holds {used / _MIB:,.0f} MiB "
                 f"and its limit is {budget:,} MiB (limits.job_storage_max_mib in GET /config). "
-                f"Finished jobs are deleted {retention_text(settings.JOB_TTL_SEC)} after they "
-                f"finish, and while the storage is full from "
+                f"Finished jobs are deleted at the latest {retention_text(settings.JOB_TTL_SEC)} "
+                f"after they finish, and while the storage is full from "
                 f"{retention_text(settings.JOB_EVICTABLE_AFTER_SEC)} after they finish, oldest "
                 f"first; submit again later.")
     try:

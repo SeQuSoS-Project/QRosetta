@@ -97,6 +97,19 @@ def _fmt_seconds(value):
     return f"{sec:g} s"
 
 
+def _jobs_kept(lim):
+    """'up to 24 h after they finish; over 200 finished, the oldest go from 30 min on'."""
+    text = f"up to {_fmt_seconds(lim.get('job_ttl_sec'))} after they finish"
+    ttl, evictable = lim.get("job_ttl_sec"), lim.get("job_evictable_after_sec")
+    shorter = isinstance(evictable, (int, float)) and (not isinstance(ttl, (int, float)) or evictable < ttl)
+    if lim.get("job_max_kept") and shorter:
+        text += (
+            f"; over {lim['job_max_kept']} finished, the oldest go from "
+            f"{_fmt_seconds(lim['job_evictable_after_sec'])} on"
+        )
+    return text
+
+
 def _fmt_bytes(value):
     try:
         n = int(value)
@@ -208,7 +221,7 @@ def cmd_info(ctx):
             f"{lim.get('max_batch_tasks', '-')} circuits per playlist, "
             f"{lim.get('max_qasm_gate_statements', '-')} gate statements per circuit",
         ),
-        ("Jobs kept", _fmt_seconds(lim.get("job_ttl_sec")) + " after they finish"),
+        ("Jobs kept", _jobs_kept(lim)),
     ]
     width = max(len(k) for k, _ in rows)
     for key, value in rows:

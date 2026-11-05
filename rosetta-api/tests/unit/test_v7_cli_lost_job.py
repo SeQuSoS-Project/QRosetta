@@ -117,8 +117,8 @@ def test_v7_05_a_job_lost_in_a_restart_is_exit_14_with_its_status_and_the_plan_t
     (inv,), (job_dir,) = _job_dirs(env)
     message = doc["error"]["message"]
     assert message.startswith("The server no longer has job ")
-    assert ": it restarted while the job ran (a restart loses every job in progress), or the job finished more " \
-           "than 24 h ago. Its results are lost; " in message
+    assert ": it restarted while the job ran (a restart loses every job in progress), or the job finished and " \
+           "the server deleted it (it keeps finished jobs for up to 24 h). Its results are lost; " in message
     assert message.endswith(f"{job_dir}{os.sep}STATUS says job-lost.")
     assert doc["error"]["hint"] == f"qrosetta run --request {os.path.join(inv, 'plan.json')}"
     assert results.read_status(job_dir) == "job-lost"

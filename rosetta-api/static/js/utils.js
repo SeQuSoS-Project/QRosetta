@@ -172,7 +172,7 @@ export function _stripStatevectors(data) {
 
 const DISPLAY_SV_MAX_QUBITS = 14;
 
-const _expiredText = () => `The server no longer holds this job's full report (kept ${durationText(getState().jobTtlSec)} after completion; lost on restart).`;
+const _expiredText = () => `The server no longer holds this job's full report (kept up to ${durationText(getState().jobTtlSec)} after completion; lost on restart).`;
 /** What the browser-held copy of a report lacks. */
 function _browserCopyText(results) {
     if (results && results.statevector_storage === 'removed_before_storage') {
@@ -183,7 +183,7 @@ function _browserCopyText(results) {
 
 /** How to export a report too large to upload: from a copy the server holds. */
 function _serverCopyAdvice() {
-    return `Runs from this session are exported from the server copy for ${durationText(getState().jobTtlSec)}; saved runs from History `
+    return `Runs from this session are exported from the server copy for up to ${durationText(getState().jobTtlSec)}; saved runs from History `
         + 'are exported from the stored copy.';
 }
 

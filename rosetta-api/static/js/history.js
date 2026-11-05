@@ -88,7 +88,7 @@ function _offerSignInAndRetry(jobId, name) {
             showHistoryNotice('Saved to your history.', 'success');
         }
     };
-    showHistoryNotice(`Session expired; the run was not saved. Sign in again to save it within ${durationText(getState().jobTtlSec)} of the run finishing.`, 'error', {
+    showHistoryNotice(`Session expired; the run was not saved. Sign in again to save it; the server keeps the run for up to ${durationText(getState().jobTtlSec)} after it finished.`, 'error', {
         label: 'Sign in and save',
         onClick: () => {
             onNextLogin(retry);

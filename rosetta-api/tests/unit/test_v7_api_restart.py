@@ -19,9 +19,9 @@ ROOT = Path(__file__).resolve().parents[3]
 HARNESS = Path(__file__).with_name("poll_harness.mjs")
 PATIENCE_MS = 5 * 60 * 1000
 RUNNING = {"kind": "json", "status": 200, "body": {"job_id": "job-1", "status": "processing", "phase": "dispatching"}}
-GONE = {"kind": "json", "status": 404, "body": {"detail": "Job not found. Jobs are kept for 30 minutes after "
-                                                          "they finish and are lost if the server restarts; "
-                                                          "submit the run again."}}
+GONE = {"kind": "json", "status": 404, "body": {"detail": "Job not found. Finished jobs are kept for up to 30 "
+                                                          "minutes and are lost if the server restarts; submit "
+                                                          "the run again."}}
 NGINX_502 = {"kind": "html", "status": 502}
 NO_CONNECTION = {"kind": "network"}
 DONE = {"kind": "json", "status": 200, "body": {"job_id": "job-1", "status": "completed", "phase": "done",

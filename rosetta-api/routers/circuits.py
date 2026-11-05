@@ -43,7 +43,7 @@ def _job_circuits(job_id: str, task: Optional[int]) -> dict:
 @limiter.limit("120/minute")
 async def get_job_circuit_texts(request: Request, job_id: str,
                                 task: Optional[int] = Query(None, ge=0, description="For a playlist job: one circuit's index in benchmark_summary.")):
-    """The circuit texts of a finished job, kept for limits.job_ttl_sec seconds after it
+    """The circuit texts of a finished job, kept for up to limits.job_ttl_sec seconds after it
     completes: per circuit, the panes of the page's Circuits view (submitted, dispatched per
     runner group, executed per backend, compile input, compiled) with their ids and the
     share-link allowlist's fields (transforms, gate metrics, status, SDK versions; no error

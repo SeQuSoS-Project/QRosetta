@@ -63,8 +63,8 @@ function plannedPaths(results, items, scope) {
 function _keptUntil(results) {
     const done = Date.parse(results?.finished_at || '');
     const ttl = getState().jobTtlSec;
-    if (!Number.isFinite(done)) return `Available for ${durationText(ttl)} after the job completes.`;
-    return `Available until ${clockText(done + ttl * 1000)}.`;
+    if (!Number.isFinite(done)) return `Available for up to ${durationText(ttl)} after the job completes.`;
+    return `Available until ${clockText(done + ttl * 1000)} at the latest.`;
 }
 
 function _radio(name, value, checked, title, help, onPick) {
@@ -341,7 +341,7 @@ function _reportOnly(ctx, note) {
     if (getState().currentJobId) {
         const full = button('qr-btn justify-start', 'Download full report', ICONS.download);
         full.id = 'download-btn';
-        full.title = `Complete server report, available for ${durationText(getState().jobTtlSec)} after the job completes`;
+        full.title = `Complete server report, available for up to ${durationText(getState().jobTtlSec)} after the job completes`;
         full.addEventListener('click', () => downloadFullReport());
         grid.append(full);
     }

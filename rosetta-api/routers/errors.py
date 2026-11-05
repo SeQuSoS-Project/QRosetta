@@ -39,7 +39,7 @@ ERROR_RESPONSES = {
     503: ("The server's job storage is over its budget (limits.job_storage_max_mib in GET "
           "/config) or its disk is nearly full (limits.job_storage_min_free_mib) after finished "
           "jobs older than limits.job_evictable_after_sec were deleted; finished jobs are "
-          "deleted limits.job_ttl_sec seconds after they finish. Retry-After gives the "
+          "deleted at the latest limits.job_ttl_sec seconds after they finish. Retry-After gives the "
           "seconds to wait."),
     429: ("Too many requests: the client has used up one of the route's rate limits "
           "(counted per account for a valid bearer token, else per client address; run, "

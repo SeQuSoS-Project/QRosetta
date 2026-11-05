@@ -57,7 +57,7 @@ function _applyRetention() {
     const seconds = getState().jobTtlSec;
     setFinishedKeepMs(seconds * 1000);
     const stop = document.getElementById('btn-stop-waiting');
-    if (stop) stop.title = `The job continues on the server; its results can be reopened from this page for ${durationText(seconds)} after it finishes.`;
+    if (stop) stop.title = `The job continues on the server; its results can be reopened from this page for up to ${durationText(seconds)} after it finishes.`;
 }
 
 /** Execution-target menu, timeout and shots bounds, run-setting defaults (request_defaults)

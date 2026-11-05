@@ -127,7 +127,7 @@ export function updateWorkspace() {
     if (note) {
         note.textContent = getState().authToken
             ? 'Runs are saved to your History.'
-            : `Not signed in: results are kept for ${durationText(getState().jobTtlSec)}.`;
+            : `Not signed in: results are kept for up to ${durationText(getState().jobTtlSec)}.`;
     }
     _showLimitWarning(ws);
     _renderEmptyState(ws);
@@ -293,7 +293,7 @@ function _renderStopped(entry) {
     const box = _el('div', 'p-4 bg-gray-50 border border-gray-300 rounded text-sm text-gray-800 space-y-2');
     box.setAttribute('role', 'status');
     box.appendChild(_el('h3', 'text-base font-semibold text-gray-900', 'Stopped waiting'));
-    box.appendChild(_el('p', '', `${job.title} continues on the server; its results are kept for ${durationText(getState().jobTtlSec)} after it finishes. `
+    box.appendChild(_el('p', '', `${job.title} continues on the server; its results are kept for up to ${durationText(getState().jobTtlSec)} after it finishes. `
         + 'Show results resumes waiting.'));
     const id = _el('p', 'text-xs text-gray-600', 'Job ID: ');
     id.appendChild(_el('code', 'font-mono select-all', job.job_id));
@@ -622,7 +622,7 @@ function _recentJobRow(job) {
     const name = job.run_name || job.title;
     const short = `job ${job.job_id.slice(0, 8)}`;
     const text = job.state === 'finished'
-        ? `${name} (${short}) finished at ${_clock(job.finished_at)}; results kept until ${_clock(job.finished_at + finishedKeepMs())}.`
+        ? `${name} (${short}) finished at ${_clock(job.finished_at)}; results kept until ${_clock(job.finished_at + finishedKeepMs())} at the latest.`
         : job.state === 'stopped'
             ? `${name} (${short}), submitted at ${_clock(job.submitted_at)}: waiting stopped.`
             : `${name} (${short}), submitted at ${_clock(job.submitted_at)}: results not yet shown.`;

@@ -182,7 +182,7 @@ async def publication_render(request: Request, payload: schemas.PublicationRende
 async def job_publication_render(request: Request, job_id: str,
                                  payload: schemas.PublicationJobRenderRequest):
     """Render a single publication figure or table from the server's copy of a finished
-    job, kept for limits.job_ttl_sec seconds after it completes; ``task`` picks a circuit of a playlist job and
+    job, kept for up to limits.job_ttl_sec seconds after it completes; ``task`` picks a circuit of a playlist job and
     ``circuit_name`` names the circuit in titles and captions in place of the copy's own.
     GET /jobs/{job_id}/publication/artifacts lists the artifact ids. 404 for an unknown or
     expired job, an unknown artifact or task; 409 for an unfinished job or one with no

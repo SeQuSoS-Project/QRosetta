@@ -52,7 +52,7 @@ def duration_text(seconds):
 
 
 def retention_text(ttl, now=None):
-    """'for 24 h, until 10:15 tomorrow'."""
+    """'for up to 24 h, until 10:15 tomorrow at the latest'."""
     if not ttl:
         return "for as long as the server keeps finished jobs"
     now = time.time() if now is None else now
@@ -62,7 +62,19 @@ def retention_text(ttl, now=None):
         if time.localtime(now).tm_yday == until.tm_yday
         else (" tomorrow" if ttl < 172800 else time.strftime(" on %Y-%m-%d", until))
     )
-    return f"for {duration_text(ttl)}, until {time.strftime('%H:%M', until)}{day}"
+    return f"for up to {duration_text(ttl)}, until {time.strftime('%H:%M', until)}{day} at the latest"
+
+
+def kept_text(conn):
+    """How long the server keeps finished jobs, from limits.job_ttl_sec and, when published,
+    limits.job_max_kept and limits.job_evictable_after_sec."""
+    ttl, most = conn.limit("job_ttl_sec"), conn.limit("job_max_kept")
+    text = f"it keeps finished jobs for up to {duration_text(ttl)}" if ttl else "it keeps finished jobs for a while"
+    evictable = conn.limit("job_evictable_after_sec")
+    shorter = isinstance(evictable, (int, float)) and (not isinstance(ttl, (int, float)) or evictable < ttl)
+    if most and shorter:
+        text += f", and deletes the oldest from {duration_text(evictable)} on while it holds more than {most}"
+    return text
 
 
 def confirm_large(ctx, interactive=True):
@@ -222,7 +234,7 @@ def crate_line(conn, job_id, info):
     if info["crate"] == "deferred":
         record = info.get("record") or {}
         since = save._epoch(record.get("crate_deferred_since")) or time.time()
-        until = time.strftime("%H:%M", time.localtime(since + (ttl or 1800) - save.DEFER_MARGIN_SEC))
+        until = time.strftime("%H:%M", time.localtime(since + save.kept_for(conn) - save.DEFER_MARGIN_SEC))
         return f"Crate: deferred until the server is idle (up to {until}); `qrosetta wait job:{job_id[:8]}` finishes it"
     return f"Crate: `qrosetta export crate --result job:{job_id[:8]}` (the server keeps the job {retention_text(ttl)})"
 
@@ -254,7 +266,7 @@ class Follower:
         ttl = self.conn.limit("job_ttl_sec")
         text = (
             f"Stopped waiting. Job {job_id[:8]} keeps running on the server; it is kept for "
-            f"{duration_text(ttl) if ttl else 'a while'} after it finishes (this server's retention)."
+            f"{'up to ' + duration_text(ttl) if ttl else 'a while'} after it finishes (this server's retention)."
         )
         if remaining:
             text += f" {remaining} planned job{'s' if remaining > 1 else ''} not submitted."
@@ -278,11 +290,10 @@ class Follower:
                 "dir": job_dir,
             }
         )
-        ttl = self.conn.limit("job_ttl_sec")
         text = (
             f"The server no longer has job {job_id[:8]}: it restarted while the job ran (a restart loses every "
-            f"job in progress), or the job finished more than {duration_text(ttl) if ttl else 'its retention time'} "
-            f"ago. Its results are lost; {job_dir}{os.sep}STATUS says {results.JOB_LOST}."
+            f"job in progress), or the job finished and the server deleted it ({kept_text(self.conn)}). "
+            f"Its results are lost; {job_dir}{os.sep}STATUS says {results.JOB_LOST}."
         )
         if remaining:
             text += f" {remaining} planned job{'s' if remaining > 1 else ''} not submitted."

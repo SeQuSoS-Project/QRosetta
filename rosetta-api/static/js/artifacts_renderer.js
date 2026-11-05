@@ -83,7 +83,7 @@ async function _fetchFigureBlob(id, fmt, scale, params = {}, signal = undefined)
     });
     if (resp.status === 413) {
         throw new Error(`the report exceeds the upload limit of ${formatBytes(getState().maxRequestBytes)}. `
-            + `Runs from this session are drawn from the server copy for ${durationText(getState().jobTtlSec)}; an RO-Crate of a saved run includes the figures.`);
+            + `Runs from this session are drawn from the server copy for up to ${durationText(getState().jobTtlSec)}; an RO-Crate of a saved run includes the figures.`);
     }
     if (!resp.ok) throw new Error(await formatApiError(resp));
     return await resp.blob();
