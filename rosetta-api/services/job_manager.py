@@ -4,7 +4,8 @@
 statevectors replaced by a placeholder) and ``full_results`` (the untruncated report, on
 disk, served by ``GET /jobs/{job_id}/report`` and exported by ``POST /jobs/{job_id}/export``).
 A batch writes each task's full report to disk as the task finishes, so memory holds one
-task's report at a time. Both copies are evicted together (``expired_job_ids``).
+task's report at a time. Both copies are evicted together (``expired_job_ids``,
+``make_room_for_results``, ``evict_over_count``).
 """
 
 import asyncio
@@ -545,6 +546,17 @@ def evictable_job_ids(now: float = None) -> list:
     return [job_id for _finished, job_id in sorted(finished)]
 
 
+async def _evict_finished(job_id, reason: str) -> bool:
+    """Remove a finished job and its files; False when it is gone or no longer finished."""
+    job = ACTIVE_JOBS.get(job_id)
+    if not isinstance(job, dict) or job.get("status") not in ("completed", "failed"):
+        return False
+    dict.pop(ACTIVE_JOBS, job_id, None)
+    await asyncio.to_thread(remove_job_files, job_id)
+    logger.info(f"Evicted finished job {job_id} {reason}")
+    return True
+
+
 async def make_room_for_results():
     """While the job store is over its budget or its disk is nearly full, evict finished jobs
     older than ``JOB_EVICTABLE_AFTER_SEC``, oldest first; return the problem that remains, or
@@ -553,16 +565,31 @@ async def make_room_for_results():
     if not problem:
         return None
     for job_id in evictable_job_ids():
-        job = ACTIVE_JOBS.get(job_id)
-        if not isinstance(job, dict) or job.get("status") not in ("completed", "failed"):
+        if not await _evict_finished(job_id, "to free job storage"):
             continue
-        dict.pop(ACTIVE_JOBS, job_id, None)
-        await asyncio.to_thread(remove_job_files, job_id)
-        logger.info(f"Evicted finished job {job_id} to free job storage")
         problem = await asyncio.to_thread(storage_problem)
         if not problem:
             return None
     return problem
+
+
+def over_count_job_ids(now: float = None) -> list:
+    """The finished jobs beyond ``settings.JOB_MAX_KEPT``: as many of ``evictable_job_ids``,
+    oldest first, as the finished jobs held exceed the bound (fewer when not enough of them
+    finished more than ``JOB_EVICTABLE_AFTER_SEC`` ago)."""
+    finished = sum(1 for job in list(ACTIVE_JOBS.values())
+                   if isinstance(job, dict) and job.get("status") in ("completed", "failed"))
+    excess = finished - settings.JOB_MAX_KEPT
+    return evictable_job_ids(now)[:excess] if excess > 0 else []
+
+
+async def evict_over_count() -> int:
+    """Evict ``over_count_job_ids``, oldest first; returns how many were evicted."""
+    evicted = 0
+    for job_id in over_count_job_ids():
+        if await _evict_finished(job_id, f"to keep at most {settings.JOB_MAX_KEPT} finished jobs"):
+            evicted += 1
+    return evicted
 
 
 async def require_job_storage() -> None:

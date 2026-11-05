@@ -29,6 +29,7 @@ export const Store = {
         jobStorageMaxMib: 10240,
         jobStorageMinFreeMib: 1024,
         jobTtlSec: 1800,
+        jobMaxKept: 200,
         bundledOverPrepLimit: /** @type {{ source: string, algorithm: string, qubits: number }[]} */ ([]),
         bypassRequiresAccount: false,
         maxExportItems: 60,
@@ -128,6 +129,7 @@ export const Store = {
                 this.state.jobStorageMaxMib = num(limits.job_storage_max_mib) ?? this.state.jobStorageMaxMib;
                 this.state.jobStorageMinFreeMib = num(limits.job_storage_min_free_mib) ?? this.state.jobStorageMinFreeMib;
                 this.state.jobTtlSec = num(limits.job_ttl_sec) ?? this.state.jobTtlSec;
+                this.state.jobMaxKept = num(limits.job_max_kept) ?? this.state.jobMaxKept;
                 if (Array.isArray(payload.bundled_over_prep_limit)) this.state.bundledOverPrepLimit = payload.bundled_over_prep_limit;
                 if (typeof payload.bypass_limits_requires_account === 'boolean') {
                     this.state.bypassRequiresAccount = payload.bypass_limits_requires_account;

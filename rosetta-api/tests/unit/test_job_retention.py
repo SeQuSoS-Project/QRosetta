@@ -126,3 +126,131 @@ def test_page_texts_read_the_retention():
         assert not re.search(r"\b30 minutes\b", src), name
     assert "FINISHED_KEEP_MS" not in (_JS / "workspace.js").read_text()
     assert "setFinishedKeepMs(seconds * 1000)" in (_JS / "app.js").read_text()
+
+
+def test_max_kept_comes_from_the_environment(monkeypatch):
+    monkeypatch.delenv("QROSETTA_JOB_MAX_KEPT", raising=False)
+    assert Settings().JOB_MAX_KEPT == 200
+    monkeypatch.setenv("QROSETTA_JOB_MAX_KEPT", "5000")
+    assert Settings().JOB_MAX_KEPT == 5000
+    monkeypatch.setenv("QROSETTA_JOB_MAX_KEPT", "0")
+    assert Settings().JOB_MAX_KEPT == 1
+
+
+def test_config_publishes_the_kept_count():
+    from fastapi.testclient import TestClient
+    from main import app
+    limits = TestClient(app).get("/config").json()["limits"]
+    assert limits["job_max_kept"] == settings.JOB_MAX_KEPT == 200
+
+
+def _many(now, finished_ages, unfinished=0):
+    for i, age in enumerate(finished_ages):
+        job_id = f"rt-f{i:03d}"
+        job_manager.ACTIVE_JOBS[job_id] = {"status": "failed" if i % 3 == 0 else "completed",
+                                           "target": "local", "finished_at": now - age}
+    for i in range(unfinished):
+        job_manager.ACTIVE_JOBS[f"rt-u{i:03d}"] = {"status": "processing", "target": "local",
+                                                   "submitted_at": now - 99999}
+
+
+def _ours():
+    return {j for j in job_manager.ACTIVE_JOBS if str(j).startswith("rt-")}
+
+
+def _spill(job_id):
+    import os
+    os.makedirs(job_store.job_dir(job_id), exist_ok=True)
+    with open(job_store._path(job_id), "wb") as fh:
+        fh.write(b"x")
+    with open(os.path.join(job_store.job_dir(job_id), "task-00000.pickle"), "wb") as fh:
+        fh.write(b"x")
+
+
+def _foreign_finished():
+    return sum(1 for j, job in job_manager.ACTIVE_JOBS.items() if not str(j).startswith("rt-")
+               and isinstance(job, dict) and job.get("status") in ("completed", "failed"))
+
+
+def test_over_the_bound_the_oldest_old_finished_jobs_go_with_their_files(monkeypatch):
+    import os
+    now = time.time()
+    ages = [4000 + 10 * i for i in range(8)] + [60, 120, 1799]
+    _many(now, ages, unfinished=4)
+    for job_id in _ours():
+        _spill(job_id)
+    monkeypatch.setattr(settings, "JOB_MAX_KEPT", 5 + _foreign_finished())
+    evicted = asyncio.run(job_manager.evict_over_count())
+    assert evicted == 6
+    gone = {f"rt-f{i:03d}" for i in range(2, 8)}
+    assert not gone & _ours()
+    kept = {"rt-f000", "rt-f001", "rt-f008", "rt-f009", "rt-f010"} | {f"rt-u{i:03d}" for i in range(4)}
+    assert _ours() == kept
+    for job_id in gone:
+        assert not os.path.exists(job_store._path(job_id)) and not os.path.exists(job_store.job_dir(job_id))
+    for job_id in kept:
+        assert os.path.exists(job_store._path(job_id))
+
+
+def test_jobs_younger_than_the_eviction_age_and_unfinished_jobs_stay(monkeypatch):
+    now = time.time()
+    _many(now, [3000, 1700, 900, 60, 10], unfinished=6)
+    monkeypatch.setattr(settings, "JOB_MAX_KEPT", 1 + _foreign_finished())
+    assert job_manager.over_count_job_ids(now) == ["rt-f000"]
+    asyncio.run(job_manager.evict_over_count())
+    assert _ours() == {"rt-f001", "rt-f002", "rt-f003", "rt-f004"} | {f"rt-u{i:03d}" for i in range(6)}
+
+
+def test_within_the_bound_nothing_is_evicted(monkeypatch):
+    now = time.time()
+    _many(now, [90000, 50000, 7200])
+    monkeypatch.setattr(settings, "JOB_MAX_KEPT", 3 + _foreign_finished())
+    assert job_manager.over_count_job_ids(now) == []
+    assert asyncio.run(job_manager.evict_over_count()) == 0
+    assert {"rt-f000", "rt-f001", "rt-f002"} <= _ours()
+
+
+def test_each_eviction_is_logged(monkeypatch, caplog):
+    import logging
+    now = time.time()
+    _many(now, [9000, 8000, 7000])
+    monkeypatch.setattr(settings, "JOB_MAX_KEPT", 1 + _foreign_finished())
+    with caplog.at_level(logging.INFO):
+        asyncio.run(job_manager.evict_over_count())
+    lines = [r.getMessage() for r in caplog.records if "to keep at most" in r.getMessage()]
+    assert lines == [f"Evicted finished job rt-f000 to keep at most {settings.JOB_MAX_KEPT} finished jobs",
+                     f"Evicted finished job rt-f001 to keep at most {settings.JOB_MAX_KEPT} finished jobs"]
+
+
+def test_the_periodic_sweep_applies_the_bound(monkeypatch):
+    import main
+    now = time.time()
+    _many(now, [9000, 8000, 7000, 6000])
+    monkeypatch.setattr(settings, "JOB_MAX_KEPT", 2 + _foreign_finished())
+    monkeypatch.setattr(settings, "JOB_TTL_SEC", 86400)
+    sleeps = []
+
+    async def sleep(seconds):
+        sleeps.append(seconds)
+        if len(sleeps) > 1:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(main.asyncio, "sleep", sleep)
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(main._cleanup_old_jobs())
+    assert sleeps == [600, 600]
+    assert {"rt-f000", "rt-f001"}.isdisjoint(_ours()) and {"rt-f002", "rt-f003"} <= _ours()
+
+
+def test_an_evicted_job_reads_as_not_found(monkeypatch):
+    from fastapi.testclient import TestClient
+    from main import app
+    now = time.time()
+    _many(now, [9000, 8000])
+    monkeypatch.setattr(settings, "JOB_MAX_KEPT", 1 + _foreign_finished())
+    asyncio.run(job_manager.evict_over_count())
+    client = TestClient(app)
+    for path in ("/jobs/rt-f000", "/jobs/rt-f000/report"):
+        r = client.get(path)
+        assert r.status_code == 404 and r.json()["detail"] == job_store.JOB_NOT_FOUND
+    assert client.get("/jobs/rt-f001").status_code == 200

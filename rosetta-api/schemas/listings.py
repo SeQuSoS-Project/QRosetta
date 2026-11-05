@@ -99,6 +99,7 @@ class Limits(_Open):
     job_storage_max_mib: float
     job_storage_min_free_mib: float
     job_ttl_sec: float
+    job_max_kept: int
     job_evictable_after_sec: float
     max_export_items: int
     max_report_tasks: int

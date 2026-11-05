@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     JOB_SPILL_MIN_FREE_MIB: int = int(os.getenv("QROSETTA_JOB_SPILL_MIN_FREE_MIB", "1024"))
     JOB_TTL_SEC: int = Field(default=1800, validation_alias="QROSETTA_JOB_TTL_SEC")
     JOB_EVICTABLE_AFTER_SEC: int = 1800
+    JOB_MAX_KEPT: int = Field(default=200, validation_alias="QROSETTA_JOB_MAX_KEPT")
     MIN_SHOTS: int = 1
     MAX_SHOTS: int = 1_000_000
     DEFAULT_SHOTS: int = 8200
@@ -109,9 +110,9 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    @field_validator("K8S_MAX_CONCURRENT_JOBS", mode="after")
+    @field_validator("K8S_MAX_CONCURRENT_JOBS", "JOB_MAX_KEPT", mode="after")
     @classmethod
-    def _at_least_one_slot(cls, value: int) -> int:
+    def _at_least_one(cls, value: int) -> int:
         return max(1, value)
 
     @field_validator("JOB_TTL_SEC", mode="after")
