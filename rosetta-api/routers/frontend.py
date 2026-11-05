@@ -173,7 +173,11 @@ async def get_config():
     86400 in the local compose file; the longest a finished job is kept),
     ``job_max_kept`` (finished jobs the server holds; beyond it, the oldest that finished more
     than ``job_evictable_after_sec`` ago are deleted by the sweep every 10 minutes;
-    QROSETTA_JOB_MAX_KEPT, 200 by default), ``job_evictable_after_sec`` (while the job storage is
+    QROSETTA_JOB_MAX_KEPT, 200 by default), ``job_memory_max_mib`` (estimated API memory the
+    finished jobs' in-memory copies may hold; above it, the oldest that finished more than
+    ``job_evictable_after_sec`` ago are deleted when a job finishes and by the sweep, while
+    younger ones are kept even over it; QROSETTA_JOB_MEMORY_MAX_MIB, 512 by default),
+    ``job_evictable_after_sec`` (while the job storage is
     over a limit, finished jobs older than this are deleted oldest first before a run is
     refused), ``max_export_items``
     (publication items of one RO-Crate export),
@@ -255,6 +259,7 @@ async def get_config():
             "job_storage_min_free_mib": settings.JOB_SPILL_MIN_FREE_MIB,
             "job_ttl_sec": settings.JOB_TTL_SEC,
             "job_max_kept": settings.JOB_MAX_KEPT,
+            "job_memory_max_mib": settings.JOB_MEMORY_MAX_MIB,
             "job_evictable_after_sec": settings.JOB_EVICTABLE_AFTER_SEC,
             "max_export_items": settings.MAX_EXPORT_ITEMS,
             **report_caps(),

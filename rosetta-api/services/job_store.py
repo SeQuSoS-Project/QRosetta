@@ -10,6 +10,9 @@ The directory has a budget (``settings.JOB_SPILL_MAX_MIB``) and a free-disk floo
 report is always written, so the budget can be exceeded by the reports of jobs already
 running.
 
+Each finished job records ``MEMORY_ESTIMATE``, an estimate of the bytes its entry holds in
+memory (``memory_estimate``), computed when it is assigned; ``store`` computes it in a thread.
+
 The directory is the API process's own: at startup an existing one must be a directory (not a
 link) owned by the process's user, and it is removed and created again with mode 0700;
 otherwise the API does not start. Only files this process wrote are ever unpickled."""
@@ -42,11 +45,13 @@ def retention_text(seconds: int) -> str:
 
 
 def _kept_text() -> str:
-    """'up to 24 hours (the oldest go from 30 minutes on while the server holds more than 200)'."""
+    """'up to 24 hours (the oldest go from 30 minutes on while the server holds more than 200 or
+    they need more than 512 MiB of its memory)'."""
     text = f"up to {retention_text(settings.JOB_TTL_SEC)}"
     if settings.JOB_TTL_SEC > settings.JOB_EVICTABLE_AFTER_SEC:
         text += (f" (the oldest go from {retention_text(settings.JOB_EVICTABLE_AFTER_SEC)} on while "
-                 f"the server holds more than {settings.JOB_MAX_KEPT})")
+                 f"the server holds more than {settings.JOB_MAX_KEPT} or they need more than "
+                 f"{settings.JOB_MEMORY_MAX_MIB:,} MiB of its memory)")
     return text
 
 
@@ -235,10 +240,39 @@ def spill_task_report(job_id, index: int, report: dict):
         return report
 
 
+MEMORY_ESTIMATE = "memory_estimate_bytes"
+FINISHED = ("completed", "failed")
+_BYTES_PER_JSON_SEPARATOR = 32
+_ESTIMATE_JSON = {"ensure_ascii": False, "allow_nan": True, "separators": (",", ":"),
+                  "default": lambda obj: type(obj).__name__}
+
+
+def memory_estimate(job: dict) -> int:
+    """Estimated bytes a job entry holds in memory: the length of its compact JSON (the worker
+    task left out, other non-JSON values written as their type name) plus 32 for each ',' and
+    ':' in it. Calibrated against tracemalloc on Python 3.12 (DESIGN_DECISIONS.md, "API memory
+    and job retention")."""
+    text = json.dumps({k: v for k, v in job.items() if k not in ("worker", MEMORY_ESTIMATE)},
+                      **_ESTIMATE_JSON)
+    return len(text) + _BYTES_PER_JSON_SEPARATOR * (text.count(",") + text.count(":"))
+
+
+def _estimated(job_id, job):
+    if not (isinstance(job, dict) and job.get("status") in FINISHED):
+        return job
+    try:
+        estimate = memory_estimate(job)
+    except Exception as exc:
+        logger.warning(f"No memory estimate for job {job_id}: {type(exc).__name__}: {exc}")
+        estimate = 0
+    return {**job, MEMORY_ESTIMATE: estimate}
+
+
 class JobTable(dict):
-    """dict of job_id -> job whose ``full_results`` dicts are written to disk on assignment.
-    A job's ``owner_user_id`` survives every later assignment that does not set it.
-    ``store`` is the assignment for the event loop: it writes the report in a thread."""
+    """dict of job_id -> job whose ``full_results`` dicts are written to disk on assignment;
+    a finished job gets its ``MEMORY_ESTIMATE`` then. A job's ``owner_user_id`` survives every
+    later assignment that does not set it. ``store`` is the assignment for the event loop: it
+    writes the report and computes the estimate in a thread."""
 
     def _with_owner(self, job_id, job):
         previous = dict.get(self, job_id)
@@ -259,18 +293,23 @@ class JobTable(dict):
                                f"{type(exc).__name__}: {exc}")
         return job
 
+    @classmethod
+    def _prepared(cls, job_id, job):
+        return _estimated(job_id, cls._spilled(job_id, job))
+
     def __setitem__(self, job_id, job):
-        super().__setitem__(job_id, self._spilled(job_id, self._with_owner(job_id, job)))
+        super().__setitem__(job_id, self._prepared(job_id, self._with_owner(job_id, job)))
 
     async def store(self, job_id, job) -> bool:
-        """Assign ``job`` once its report is written, writing it in a worker thread; readers
-        see the previous entry until then. A job evicted meanwhile is not added back and its
-        files are removed. Returns whether the job was stored."""
-        spilled = await asyncio.to_thread(self._spilled, job_id, job)
+        """Assign ``job`` once its report is written, writing it and computing its memory
+        estimate in a worker thread; readers see the previous entry until then. A job evicted
+        meanwhile is not added back and its files are removed. Returns whether the job was
+        stored."""
+        prepared = await asyncio.to_thread(self._prepared, job_id, self._with_owner(job_id, job))
         if not dict.__contains__(self, job_id):
             await asyncio.to_thread(remove_job_files, job_id)
             return False
-        super().__setitem__(job_id, self._with_owner(job_id, spilled))
+        super().__setitem__(job_id, self._with_owner(job_id, prepared))
         return True
 
     def pop(self, job_id, *default):

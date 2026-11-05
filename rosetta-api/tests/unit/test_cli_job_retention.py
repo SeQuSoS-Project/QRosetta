@@ -53,3 +53,12 @@ def test_a_deferred_crate_line_names_the_earliest_deletion_minus_the_margin():
     info = {"crate": "deferred", "status": "completed",
             "record": {"crate_deferred_since": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(since))}}
     assert "(up to 09:20)" in run.crate_line(_Conn(**LOCAL), "abcdef0123", info)
+
+
+def test_kept_text_and_info_row_name_the_memory_budget_when_published():
+    limits = {**LOCAL, "job_memory_max_mib": 512}
+    assert run.kept_text(_Conn(**limits)) == (
+        "it keeps finished jobs for up to 24 h, and deletes the oldest from 30 min on while it holds more "
+        "than 200 or they need more than 512 MiB of its memory")
+    assert reads._jobs_kept(limits) == (
+        "up to 24 h after they finish; over 200 finished or 512 MiB of memory, the oldest go from 30 min on")

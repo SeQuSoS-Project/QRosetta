@@ -16,7 +16,7 @@ from db.migrate import upgrade_database
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from services.security import limiter
-from services.job_manager import ACTIVE_JOBS, evict_over_count, expired_job_ids
+from services.job_manager import ACTIVE_JOBS, evict_beyond_bounds, expired_job_ids
 from services.job_store import reset_spill_dir
 from config import settings
 from qrosetta_commons.helpers import get_logger
@@ -38,7 +38,8 @@ class _SuppressAlgorithmsFilter(logging.Filter):
 logging.getLogger("uvicorn.access").addFilter(_SuppressAlgorithmsFilter())
 
 async def _cleanup_old_jobs():
-    """Every 10 minutes: evict expired jobs, then finished jobs beyond JOB_MAX_KEPT."""
+    """Every 10 minutes: evict expired jobs, then finished jobs beyond JOB_MAX_KEPT or
+    JOB_MEMORY_MAX_MIB."""
     while True:
         await asyncio.sleep(600)
         expired = expired_job_ids()
@@ -46,7 +47,7 @@ async def _cleanup_old_jobs():
             ACTIVE_JOBS.pop(jid, None)
         if expired:
             logger.info(f"Evicted {len(expired)} expired jobs from ACTIVE_JOBS")
-        await evict_over_count()
+        await evict_beyond_bounds()
 
 def _upgrade_schema():
     migration = upgrade_database(engine)

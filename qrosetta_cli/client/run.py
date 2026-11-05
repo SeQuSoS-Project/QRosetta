@@ -67,13 +67,15 @@ def retention_text(ttl, now=None):
 
 def kept_text(conn):
     """How long the server keeps finished jobs, from limits.job_ttl_sec and, when published,
-    limits.job_max_kept and limits.job_evictable_after_sec."""
-    ttl, most = conn.limit("job_ttl_sec"), conn.limit("job_max_kept")
+    limits.job_max_kept, limits.job_memory_max_mib and limits.job_evictable_after_sec."""
+    ttl, most, memory = conn.limit("job_ttl_sec"), conn.limit("job_max_kept"), conn.limit("job_memory_max_mib")
     text = f"it keeps finished jobs for up to {duration_text(ttl)}" if ttl else "it keeps finished jobs for a while"
     evictable = conn.limit("job_evictable_after_sec")
     shorter = isinstance(evictable, (int, float)) and (not isinstance(ttl, (int, float)) or evictable < ttl)
     if most and shorter:
         text += f", and deletes the oldest from {duration_text(evictable)} on while it holds more than {most}"
+        if memory:
+            text += f" or they need more than {memory} MiB of its memory"
     return text
 
 

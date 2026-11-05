@@ -30,7 +30,8 @@ from services.exporter import runner_lock_files
 from services.job_store import JobStorageFull, job_dir, require_storage
 from services.run_registry import EXCLUSIVE, releases_exclusive
 from services.job_manager import (
-    ACTIVE_JOBS, _resolve_seed, effective_thresholds, make_room_for_results, run_batch_tasks,
+    ACTIVE_JOBS, _resolve_seed, effective_thresholds, finish_job, make_room_for_results,
+    run_batch_tasks,
     set_phase, start_job, task_label, task_qubits,
 )
 from qrosetta_commons.helpers import get_logger
@@ -367,12 +368,12 @@ async def worker_experiment(job_id: str, payload: ExperimentPayload):
         if job_id not in ACTIVE_JOBS:
             await asyncio.to_thread(shutil.rmtree, job_dir(job_id), True)
             return
-        ACTIVE_JOBS[job_id] = {
+        await finish_job(job_id, {
             "status": "completed", "kind": "experiment", "target": payload.execution_target,
             "results": {"experiment_summary": experiment_summary},
             "runner_statuses": runner_statuses, "progress": progress,
             "bundle_path": bundle_path, "bundle_name": bundle_name, "finished_at": time.time(),
-        }
+        })
         logger.info(f"--- Experiment {job_id} complete: {cells} cells, {n_err} errors to triage ---")
 
     except Exception as e:

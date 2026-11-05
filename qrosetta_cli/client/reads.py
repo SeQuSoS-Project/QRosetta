@@ -98,15 +98,16 @@ def _fmt_seconds(value):
 
 
 def _jobs_kept(lim):
-    """'up to 24 h after they finish; over 200 finished, the oldest go from 30 min on'."""
+    """'up to 24 h after they finish; over 200 finished or 512 MiB of memory, the oldest go from
+    30 min on'."""
     text = f"up to {_fmt_seconds(lim.get('job_ttl_sec'))} after they finish"
     ttl, evictable = lim.get("job_ttl_sec"), lim.get("job_evictable_after_sec")
     shorter = isinstance(evictable, (int, float)) and (not isinstance(ttl, (int, float)) or evictable < ttl)
     if lim.get("job_max_kept") and shorter:
-        text += (
-            f"; over {lim['job_max_kept']} finished, the oldest go from "
-            f"{_fmt_seconds(lim['job_evictable_after_sec'])} on"
-        )
+        over = f"{lim['job_max_kept']} finished"
+        if lim.get("job_memory_max_mib"):
+            over += f" or {lim['job_memory_max_mib']} MiB of memory"
+        text += f"; over {over}, the oldest go from {_fmt_seconds(lim['job_evictable_after_sec'])} on"
     return text
 
 

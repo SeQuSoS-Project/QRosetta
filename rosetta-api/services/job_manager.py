@@ -5,7 +5,7 @@ statevectors replaced by a placeholder) and ``full_results`` (the untruncated re
 disk, served by ``GET /jobs/{job_id}/report`` and exported by ``POST /jobs/{job_id}/export``).
 A batch writes each task's full report to disk as the task finishes, so memory holds one
 task's report at a time. Both copies are evicted together (``expired_job_ids``,
-``make_room_for_results``, ``evict_over_count``).
+``make_room_for_results``, ``evict_beyond_bounds``).
 """
 
 import asyncio
@@ -18,8 +18,9 @@ from services.report_provenance import run_completeness
 from services.error_text import client_error_text, internal_error_text
 from services.availability import filter_available
 from services.compilation import compile_circuit, queue_compile_statuses
-from services.job_store import (JOB_NOT_FOUND, JobStorageFull, JobTable, full_report,
-                                remove_job_files, spill_task_report, storage_problem)
+from services.job_store import (FINISHED, JOB_NOT_FOUND, MEMORY_ESTIMATE, JobStorageFull, JobTable,
+                                full_report, remove_job_files, retention_text, spill_task_report,
+                                storage_problem)
 from services.run_registry import EXCLUSIVE, circuit_section, claim_exclusive, releases_exclusive
 from services.validator import validate_request
 from services.dispatcher import (
@@ -573,23 +574,68 @@ async def make_room_for_results():
     return problem
 
 
-def over_count_job_ids(now: float = None) -> list:
-    """The finished jobs beyond ``settings.JOB_MAX_KEPT``: as many of ``evictable_job_ids``,
-    oldest first, as the finished jobs held exceed the bound (fewer when not enough of them
-    finished more than ``JOB_EVICTABLE_AFTER_SEC`` ago)."""
-    finished = sum(1 for job in list(ACTIVE_JOBS.values())
-                   if isinstance(job, dict) and job.get("status") in ("completed", "failed"))
-    excess = finished - settings.JOB_MAX_KEPT
-    return evictable_job_ids(now)[:excess] if excess > 0 else []
+def finished_jobs_held() -> tuple:
+    """``(count, bytes)``: the finished jobs held and the sum of their ``MEMORY_ESTIMATE``."""
+    finished = [job for job in list(ACTIVE_JOBS.values())
+                if isinstance(job, dict) and job.get("status") in FINISHED]
+    return len(finished), sum(job.get(MEMORY_ESTIMATE, 0) for job in finished)
 
 
-async def evict_over_count() -> int:
-    """Evict ``over_count_job_ids``, oldest first; returns how many were evicted."""
+def _memory_text(nbytes: float) -> str:
+    return f"{nbytes / 2**20:,.0f} MiB"
+
+
+def beyond_bounds_job_ids(now: float = None) -> list:
+    """``[(job_id, reason)]``: of ``evictable_job_ids``, oldest first, as many as it takes to
+    bring the finished jobs held to at most ``settings.JOB_MAX_KEPT`` and their summed
+    ``MEMORY_ESTIMATE`` to at most ``settings.JOB_MEMORY_MAX_MIB`` (fewer when not enough of
+    them finished more than ``JOB_EVICTABLE_AFTER_SEC`` ago)."""
+    count, held = finished_jobs_held()
+    budget = settings.JOB_MEMORY_MAX_MIB * 2**20
+    chosen = []
+    for job_id in evictable_job_ids(now):
+        if count <= settings.JOB_MAX_KEPT and held <= budget:
+            break
+        if count > settings.JOB_MAX_KEPT:
+            reason = f"to keep at most {settings.JOB_MAX_KEPT} finished jobs"
+        else:
+            reason = (f"to keep finished jobs within {settings.JOB_MEMORY_MAX_MIB:,} MiB of memory "
+                      f"(estimated {_memory_text(held)})")
+        chosen.append((job_id, reason))
+        count -= 1
+        held -= ACTIVE_JOBS.get(job_id, {}).get(MEMORY_ESTIMATE, 0)
+    return chosen
+
+
+_over_budget_logged = False
+
+
+async def evict_beyond_bounds() -> int:
+    """Evict ``beyond_bounds_job_ids``, oldest first; returns how many were evicted. When the
+    finished jobs still hold more than the memory budget, none of them being old enough to
+    evict, says so in the log once until they are within it again."""
+    global _over_budget_logged
     evicted = 0
-    for job_id in over_count_job_ids():
-        if await _evict_finished(job_id, f"to keep at most {settings.JOB_MAX_KEPT} finished jobs"):
+    for job_id, reason in beyond_bounds_job_ids():
+        if await _evict_finished(job_id, reason):
             evicted += 1
+    _count, held = finished_jobs_held()
+    if held <= settings.JOB_MEMORY_MAX_MIB * 2**20:
+        _over_budget_logged = False
+    elif not _over_budget_logged:
+        _over_budget_logged = True
+        logger.warning(
+            f"Finished jobs hold an estimated {_memory_text(held)}, more than the "
+            f"{settings.JOB_MEMORY_MAX_MIB:,} MiB budget; each finished less than "
+            f"{retention_text(settings.JOB_EVICTABLE_AFTER_SEC)} ago, so all are kept until they are older")
     return evicted
+
+
+async def finish_job(job_id, job) -> bool:
+    """``ACTIVE_JOBS.store`` the finished job, then ``evict_beyond_bounds``."""
+    stored = await ACTIVE_JOBS.store(job_id, job)
+    await evict_beyond_bounds()
+    return stored
 
 
 async def require_job_storage() -> None:
@@ -747,7 +793,7 @@ async def _run_single_job(job_id: str, execution_target: str, runner_statuses: d
             report["run_completeness"] = run_completeness("completed", 1, 1, 1)
             job = _completed_job(execution_target, report, runner_statuses)
         set_phase("exporting")
-        await ACTIVE_JOBS.store(job_id, job)
+        await finish_job(job_id, job)
     except Exception as e:
         logger.error(f"Job {job_id} failed", exc_info=True)
         ACTIVE_JOBS[job_id] = _failed_job(execution_target, internal_error_message("job", e), runner_statuses)
@@ -948,4 +994,4 @@ async def _run_batch_suite(job_id: str, payload: BatchPayload, runner_statuses: 
                              results={**full_report, "benchmark_summary": displayed},
                              progress=progress)
     set_phase("exporting")
-    await ACTIVE_JOBS.store(job_id, job)
+    await finish_job(job_id, job)

@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     JOB_TTL_SEC: int = Field(default=1800, validation_alias="QROSETTA_JOB_TTL_SEC")
     JOB_EVICTABLE_AFTER_SEC: int = 1800
     JOB_MAX_KEPT: int = Field(default=200, validation_alias="QROSETTA_JOB_MAX_KEPT")
+    JOB_MEMORY_MAX_MIB: int = Field(default=512, validation_alias="QROSETTA_JOB_MEMORY_MAX_MIB")
     MIN_SHOTS: int = 1
     MAX_SHOTS: int = 1_000_000
     DEFAULT_SHOTS: int = 8200
@@ -110,7 +111,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    @field_validator("K8S_MAX_CONCURRENT_JOBS", "JOB_MAX_KEPT", mode="after")
+    @field_validator("K8S_MAX_CONCURRENT_JOBS", "JOB_MAX_KEPT", "JOB_MEMORY_MAX_MIB", mode="after")
     @classmethod
     def _at_least_one(cls, value: int) -> int:
         return max(1, value)
