@@ -222,6 +222,11 @@ signed images on GHCR; and every result records the image, commit and host condi
 - Requests with unknown fields are refused with 422, and error responses carry `detail` only.
 - Job reports are kept on disk; retention is set by `QROSETTA_JOB_TTL_SEC`, a playlist holds at
   most 400 circuits, and job storage has a disk budget (503 with `Retry-After` while it is full).
+- The server holds at most `QROSETTA_JOB_MAX_KEPT` finished jobs (200, `limits.job_max_kept`):
+  beyond that, the sweep every 10 minutes removes the oldest that finished more than 30 minutes
+  ago. The local stack's job storage budget is 4,096 MiB (`QROSETTA_JOB_SPILL_MAX_MIB`). The page
+  and `qrosetta` give a kept job's retention as the longest it is kept ("for up to 24 hours",
+  "until 10:15 at the latest").
 - Rate limits count per signed-in account, with a per-address ceiling on runs, exports and
   rendering; sign-in and registration count per address.
 - The API runs FastAPI 0.136.3 on Starlette 1.7.0. Responses carry `Vary: Origin`, file responses

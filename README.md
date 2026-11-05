@@ -73,9 +73,10 @@ no two backends draw the same shot sequence. Any change the API makes to the cir
 is listed with an `API:` prefix in `preprocessing_applied`, and each dispatched circuit is
 written to the RO-Crate.
 
-The server keeps each finished job's untruncated report for `QROSETTA_JOB_TTL_SEC`: 24 hours in
-the local stack, 30 minutes by default otherwise (`GET /config` `limits.job_ttl_sec`; a sweep
-every 10 minutes removes older jobs). Recreating the API container, which `qrosetta start` does
+The server keeps each finished job's untruncated report for up to `QROSETTA_JOB_TTL_SEC`: 24 hours
+in the local stack, 30 minutes by default otherwise (`GET /config` `limits.job_ttl_sec`). It holds
+at most `QROSETTA_JOB_MAX_KEPT` finished jobs (200, `limits.job_max_kept`); beyond that, the oldest
+that finished more than 30 minutes ago are removed. A sweep every 10 minutes applies both. Recreating the API container, which `qrosetta start` does
 after a rebuild, removes every job; save a run to keep it. `GET /jobs/{job_id}/report` returns
 it as JSON and `POST /jobs/{job_id}/export` builds the RO-Crate from it. The copy sent to the
 browser omits statevectors of circuits over 14 qubits. `POST /export` builds a crate from a
@@ -283,7 +284,16 @@ containers still running.
 On standby the containers are stopped and hold no memory; `start` brings them back in about
 10 seconds. Running and idle for five minutes after a few hours of use, the 24 containers used
 3.6 GiB and the five of the `minimal` profile 1.0 GiB (`qrosetta status`, page cache included;
-measured 2026-11-04). `remove` keeps the images and the `qsimulators_rosetta_db_data` volume, which
+measured 2026-11-04). Finished jobs add to this: the API keeps each one for up to 24 hours, and
+while it holds more than 200 the oldest go from 30 minutes after they finished. A kept job holds
+0.23–0.34 MiB of the API's memory for a 5-qubit circuit on 5 backends, 1.3 MiB for an 18-qubit
+statevector circuit on 14 backends, and 21 MiB for a 24-qubit measured circuit on 14 backends at
+8,200 shots with a spread-out distribution, whose display copy grows with the number of distinct
+outcomes (Python objects, measured 2026-11-05). 200 kept jobs therefore take from about 50 MiB to
+about 4.1 GiB; the upper end is more than the API container's 2 GiB memory limit. The untruncated
+reports go to disk inside the API container, at most 4,096 MiB on a local stack
+(`QROSETTA_JOB_SPILL_MAX_MIB`; one 18-qubit statevector job on 14 backends takes 79 MB). `qrosetta
+stop`, and any restart of the API container, frees both. `remove` keeps the images and the `qsimulators_rosetta_db_data` volume, which
 holds the SQLite database (accounts, saved circuits, run history) and the saved run reports. Results of jobs that were not saved are lost
 whenever the API container stops. `remove --all` removes the containers, pods, networks, this
 stack's images and its data volume in one command: it first lists every object with its size and
