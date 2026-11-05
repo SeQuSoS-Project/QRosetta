@@ -4,11 +4,11 @@ import os
 import platform
 import subprocess
 
-from qrosetta_cli import jobstore, localstack, mode as modes, output
+from qrosetta_cli import jobstore, layout, localstack, mode as modes, output
 from qrosetta_cli.context import Result
 from qrosetta_cli.errors import CliError, Exit
 from qrosetta_cli.output import progress, result
-from qrosetta_cli.stack import actions, guard, hostload, installed, profiles, quota, serve
+from qrosetta_cli.stack import actions, guard, hostload, installed, preflight, profiles, quota, serve
 from qrosetta_cli.stack import ownership as own
 from qrosetta_cli.stack import project as st
 from qrosetta_cli.stack.engine import TRANSFER_TIMEOUT_SEC, Engine, choose_engine, timed_out
@@ -58,6 +58,7 @@ def check_host(allow_emulation, system=None, machine=None):
             Exit.ENGINE,
             "wrong_architecture",
             hint="qrosetta start --allow-emulation",
+            step="Start under emulation (results record it, and timings are not comparable):",
         )
     output.warn(
         f"starting on {system} {machine} under emulation; results of images built from this version on "
@@ -116,8 +117,9 @@ def cmd_start(ctx):
     check_host(args.allow_emulation)
     if modes.detect(ctx.opt("project_dir"), ctx.env, ctx.checkout).name == "installed":
         installed.require_published()
-    hostload.ensure_token(ctx.env)
     cpu_quota, _ = quota.wanted(ctx)
+    preflight.check(ctx, cpu_quota)
+    hostload.ensure_token(ctx.env)
     _, engine, stack = open_stack(ctx, cpu_quota)
     quota.check_host(engine, cpu_quota)
     setting = quota.record(ctx.env, stack.name, cpu_quota, stack.cpu_override_sha256)
@@ -176,6 +178,7 @@ def cmd_start(ctx):
         url = serve.announce_running(engine, stack)
         progress(jobstore.line(jobs))
         progress("`qrosetta stop` puts it on standby; `qrosetta remove` removes it.")
+        result(layout.next_step("qrosetta selftest"))
         return Result(
             0,
             {

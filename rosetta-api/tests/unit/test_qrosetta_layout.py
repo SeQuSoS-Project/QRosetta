@@ -8,16 +8,17 @@ import json
 
 import pytest
 
-from tests.unit._qrosetta_fake import Unreachable
+from tests.unit._qrosetta_fake import FakeEngine, FakeServer, Unreachable
 from tests.unit.test_qrosetta_contracts import validate_envelope
-from tests.unit.test_qrosetta_doctor import FakeHost, _doctor
+from tests.unit.test_qrosetta_doctor import CONTROLLERS, FakeHost, _doctor
 
 from qrosetta_cli import config as cfgmod  # noqa: E402
 from qrosetta_cli import layout, output  # noqa: E402
 from qrosetta_cli.cli import main  # noqa: E402
 from qrosetta_cli.context import Context  # noqa: E402
 from qrosetta_cli.errors import Exit  # noqa: E402
-from qrosetta_cli.stack import doctor  # noqa: E402
+from qrosetta_cli.stack import doctor, preflight  # noqa: E402
+from qrosetta_cli.stack.engine import Engine  # noqa: E402
 
 
 class Stream(io.StringIO):
@@ -178,3 +179,82 @@ def test_doctor_json_is_unchanged_and_the_terminal_report_is_not_repeated_on_std
     fixes = {c["id"]: c["fix"] for c in doc["data"]["checks"]}
     assert fixes["podman_socket"] == "systemctl --user enable --now podman.socket"
     assert fixes["port"].startswith("qrosetta start -d --bind 127.0.0.1:8090\nLater commands use")
+
+
+# --- start's pre-checks --------------------------------------------------------------------------
+
+
+def _cli(fake, project, env, argv, host, server=None):
+    return main(argv, checkout=str(project), env=env, tty=False,
+                engine_factory=lambda d: Engine(fake.engine, d, run=fake, popen=fake.popen, env=env),
+                transport_factory=server or Unreachable(), host_factory=lambda e: host)
+
+
+def _stopped():
+    fake = FakeEngine().standard()
+    for c in fake.containers.values():
+        c["State"]["Running"] = False
+    return fake
+
+
+def test_start_stops_before_compose_when_a_check_fails(project, env, capsys):
+    fake = _stopped()
+    assert _cli(fake, project, env, ["start", "-d"], FakeHost(env, port_free=False)) == Exit.ENGINE
+    assert fake.calls == []
+    err = capsys.readouterr().err
+    lines = err.splitlines()
+    assert lines[0] == "qrosetta: not started, because 1 check failed."
+    assert "FAIL  port           127.0.0.1:8080 is in use" in lines and "PASS  engine" in err
+    assert "  1. Use port 8090 for this and every later command:" in lines
+    assert lines[-1] == "       qrosetta start -d" and "subuid" not in err and "disk" not in err
+    assert _cli(fake, project, env, ["start", "-d", "--json"], FakeHost(env, port_free=False)) == Exit.ENGINE
+    doc = json.loads(capsys.readouterr().out)
+    validate_envelope(doc)
+    assert doc["error"]["reason"] == "port_in_use" and doc["error"]["hint"] == "qrosetta start -d --bind 127.0.0.1:8090"
+    assert fake.calls == []
+
+
+def test_start_pre_checks_use_the_bind_it_will_publish_and_accept_its_own_stack(project, env, monkeypatch):
+    seen = []
+
+    class Host(FakeHost):
+        def port_free(self, host, port):
+            seen.append((host, port))
+            return False
+
+    host = Host(env, running={"nginx", "api"})
+    ctx = Context(args=type("A", (), {"bind": "127.0.0.1:9000"})(), env=env, cfg=cfgmod.Config("/none", False),
+                  transport_factory=Unreachable())
+    rep = preflight.run(ctx, host, preflight.effective_bind(ctx), True)
+    assert seen == [("127.0.0.1", 9000)] and not rep.failed
+    assert [c.id for c in rep.checks] == ["engine", "compose", "podman_socket", "port"]
+    assert preflight.run(ctx, FakeHost(env, port_free=False), "127.0.0.1:9000", True).failed[0].id == "port"
+    assert preflight.run(ctx, FakeHost(env, port_free=False), "127.0.0.1:9000", True).failed[0].reason == "port_in_use"
+
+
+@pytest.mark.parametrize("controllers,quota_on,blocked,reason", [
+    ("cpu io memory pids\n", True, False, None),
+    ("cpu io memory\n", True, False, None),
+    ("io memory pids\n", True, True, "cpu_controller_missing"),
+    ("io memory pids\n", False, False, None),
+    ("cpu io pids\n", False, True, "memory_controller_missing"),
+])
+def test_start_refuses_on_cgroup_delegation_as_before(env, controllers, quota_on, blocked, reason):
+    ctx = Context(args=type("A", (), {})(), env=env, cfg=cfgmod.Config("/none", False),
+                  transport_factory=Unreachable())
+    rep = preflight.run(ctx, FakeHost(env, files={CONTROLLERS: controllers}), "127.0.0.1:8080", quota_on)
+    assert bool(rep.failed) is blocked
+    if blocked:
+        assert rep.failed[0].id == "cgroup" and rep.failed[0].reason == reason
+        assert any("qrosetta start -d --no-cpu-quota" in cmds for _, cmds in rep.failed[0].steps) == (
+            reason == "cpu_controller_missing")
+
+
+def test_start_with_passing_checks_reaches_compose(project, env, capsys, monkeypatch):
+    from qrosetta_cli.stack import serve
+
+    monkeypatch.setattr(serve, "_sleep", lambda s: None)
+    fake = _stopped()
+    assert _cli(fake, project, env, ["start", "-d"], FakeHost(env), server=FakeServer(fresh=True)) == 0
+    assert any("up" in c for c, _ in fake.calls)
+    assert capsys.readouterr().out.splitlines()[-1] == "Next step:  qrosetta selftest"
