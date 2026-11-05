@@ -7,6 +7,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
+from qrosetta_cli import jobstore
 from qrosetta_cli.errors import CliError, Exit, usage
 
 EXIT_ACTIONS = ("standby", "remove", "ask")
@@ -26,14 +27,30 @@ CLI_ENV = (
     "NO_COLOR",
     "CLICOLOR_FORCE",
     "TERM",
+    "QROSETTA_JOB_MAX_KEPT",
+    "QROSETTA_JOB_SPILL_MAX_MIB",
+    "QROSETTA_JOB_TTL_SEC",
 )
-SHARED_WITH_COMPOSE = ("QROSETTA_PROJECT",)
+SHARED_WITH_COMPOSE = (
+    "QROSETTA_PROJECT",
+    "QROSETTA_JOB_MAX_KEPT",
+    "QROSETTA_JOB_SPILL_MAX_MIB",
+    "QROSETTA_JOB_TTL_SEC",
+)
 
 _STR, _BOOL, _LIST = "string", "boolean", "list of strings"
 SCHEMA = {
     "default_server": _STR,
     "servers": {"*": {"url": _STR, "allow_insecure_http": _BOOL}},
-    "lifecycle": {"engine": ("docker", "podman"), "on_exit": EXIT_ACTIONS, "bind": _STR, "cpu_quota": _BOOL},
+    "lifecycle": {
+        "engine": ("docker", "podman"),
+        "on_exit": EXIT_ACTIONS,
+        "bind": _STR,
+        "cpu_quota": _BOOL,
+        "jobs_kept": jobstore.parse_jobs_kept,
+        "job_storage": jobstore.parse_job_storage,
+        "job_retention": jobstore.parse_job_retention,
+    },
     "results": {"dir": _STR},
     "auth": {"credentials": _STR},
     "output": {
@@ -64,6 +81,12 @@ TEMPLATE = """\
 # bind = "127.0.0.1:8080"
 # cpu_quota = true                   # false: start every service without its CPU limit, as
 #                                    # `start --no-cpu-quota`; results record it
+# jobs_kept = 200                    # finished jobs the local API keeps; beyond it the oldest
+#                                    # go from 30 minutes after they finished
+# job_storage = "4GiB"               # the API's disk budget for job reports: "8GiB", "4096MiB"
+# job_retention = "24h"              # longest a finished job is kept: "90m", "3600s"; >= 1 minute
+#                                    # (each overridden by QROSETTA_JOB_MAX_KEPT,
+#                                    # QROSETTA_JOB_SPILL_MAX_MIB, QROSETTA_JOB_TTL_SEC)
 
 [output]
 # experimental_notice = true
@@ -140,6 +163,11 @@ def _check(node, schema, where, path):
             raise usage(f"{path}: '{here}' must be true or false.", hint=f"edit {path}", reason="config_invalid")
         elif rule == _LIST and not (isinstance(value, list) and all(isinstance(v, str) for v in value)):
             raise usage(f"{path}: '{here}' must be a list of strings.", hint=f"edit {path}", reason="config_invalid")
+        elif callable(rule):
+            try:
+                rule(value)
+            except ValueError as exc:
+                raise usage(f"{path}: '{here}' {exc}.", hint=f"edit {path}", reason="config_invalid") from None
         elif isinstance(rule, tuple) and value not in rule:
             raise usage(
                 f"{path}: '{here}' must be one of {', '.join(rule)}, not {value!r}.",

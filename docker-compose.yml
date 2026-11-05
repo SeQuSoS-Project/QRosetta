@@ -75,6 +75,7 @@ services:
       - MAX_QUBITS_COMPILE=${MAX_QUBITS_COMPILE:-24}
       - QROSETTA_JOB_TTL_SEC=${QROSETTA_JOB_TTL_SEC:-86400}
       - QROSETTA_JOB_SPILL_MAX_MIB=${QROSETTA_JOB_SPILL_MAX_MIB:-4096}
+      - QROSETTA_JOB_MAX_KEPT=${QROSETTA_JOB_MAX_KEPT:-200}
       - QROSETTA_LIFECYCLE_TOKEN_FILE=/run/secrets/lifecycle_token
     volumes:
       - rosetta_db_data:/home/appuser/app/data

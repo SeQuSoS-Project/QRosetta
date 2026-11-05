@@ -480,10 +480,12 @@ class Server:
         bind=None,
         notice=None,
         stale=(),
+        jobs_line=None,
     ):
         self.engine, self.stack, self.action = engine, stack, action
         self.services, self.adding, self.bind = services, adding, bind
         self.stale = list(stale)
+        self.jobs_line = jobs_line
         self.ask = ask or (lambda q: output.prompt(q, timeout=ASK_TIMEOUT_SEC))
         self.tty = tty
         self.lock = lock or (lambda what: _null_lock())
@@ -551,6 +553,8 @@ class Server:
                 self._compose_up(self.services, False)
         progress("")
         announce_running(self.engine, self.stack)
+        if self.jobs_line:
+            progress(self.jobs_line)
         result("Press Ctrl-C to stop it.")
 
     def _compose_up(self, services, recreate):

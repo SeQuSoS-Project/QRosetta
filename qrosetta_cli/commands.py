@@ -5,7 +5,7 @@ import platform
 import subprocess
 import sys
 
-from qrosetta_cli import __version__, config as cfgmod, localstack, manifest, mode as modes, output
+from qrosetta_cli import __version__, config as cfgmod, jobstore, localstack, manifest, mode as modes, output
 from qrosetta_cli.context import Result
 from qrosetta_cli.errors import CliError, Exit, usage
 from qrosetta_cli.output import progress, result
@@ -75,6 +75,10 @@ def _effective(ctx):
     )
     quota, since, source = localstack.cpu_quota(env, cfg)
     add("lifecycle.cpu_quota", quota, f"{source}, since {since}" if since else source)
+    jobs = jobstore.resolve(env, cfg)
+    add("lifecycle.jobs_kept", jobs["jobs_kept"][0], jobs["jobs_kept"][1])
+    add("lifecycle.job_storage", f"{jobs['job_storage'][0]} MiB", jobs["job_storage"][1])
+    add("lifecycle.job_retention", f"{jobs['job_retention'][0]} s", jobs["job_retention"][1])
     value, source = cfgmod.env_or_config(env, "QROSETTA_RESULTS_DIR", cfg, "results", "dir")
     add("results.dir", os.path.abspath(cfgmod.expand(value or "./qrosetta-results", env)), source)
     from qrosetta_cli.client import servers

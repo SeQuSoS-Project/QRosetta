@@ -4,7 +4,7 @@ import os
 import platform
 import subprocess
 
-from qrosetta_cli import localstack, mode as modes, output
+from qrosetta_cli import jobstore, localstack, mode as modes, output
 from qrosetta_cli.context import Result
 from qrosetta_cli.errors import CliError, Exit
 from qrosetta_cli.output import progress, result
@@ -85,13 +85,17 @@ def host_compose_env(system=None, machine=None, run=subprocess.run):
 
 def set_up_env(ctx, engine, bind=None):
     """Put in the engine's environment the variables `start` gives compose besides the caller's:
-    this host's OS and machine, the lifecycle token's path (start writes the token there) and the
-    bind address. `status` sets them too, so `compose config --hash` gives there what it gives
-    `start`; QROSETTA_GIT_SHA comes from `serve.git_sha_env`."""
+    this host's OS and machine, the lifecycle token's path (start writes the token there), the
+    bind address and the finished-job settings (`jobstore.resolve`). `status` sets them too, so
+    `compose config --hash` gives there what it gives `start`; QROSETTA_GIT_SHA comes from
+    `serve.git_sha_env`. Returns the finished-job settings."""
+    jobs = jobstore.resolve(ctx.env, ctx.cfg)
+    engine.env.update(jobstore.compose_env(jobs))
     engine.env.update(host_compose_env())
     engine.env[hostload.COMPOSE_VAR] = hostload.token_path(ctx.env)
     if bind:
         engine.env["QROSETTA_HTTP_BIND"] = bind
+    return jobs
 
 
 def _recreate_effect(stack, stale):
@@ -120,7 +124,7 @@ def cmd_start(ctx):
     if not cpu_quota:
         output.warn(quota.describe_off(setting.get("since")), "cpu_quota_off")
     bind = _bind(ctx)
-    set_up_env(ctx, engine, bind)
+    jobs = set_up_env(ctx, engine, bind)
     found = own.scan(engine, stack)
     serve.check_startable(engine, found)
     requested = serve.requested_services(stack, args.services, args.profile, ctx.cfg)
@@ -170,6 +174,7 @@ def cmd_start(ctx):
                 progress("Every requested service is already running.")
             ready = serve.wait_ready(ctx, engine, stack, services)
         url = serve.announce_running(engine, stack)
+        progress(jobstore.line(jobs))
         progress("`qrosetta stop` puts it on standby; `qrosetta remove` removes it.")
         return Result(
             0,
@@ -181,6 +186,7 @@ def cmd_start(ctx):
                 "not_started": [stack.services[s].id for s in missing],
                 "ready": ready,
                 "cpu_quota": quota.block(stack, ctx.env),
+                "finished_jobs": jobstore.block(jobs),
             },
         )
     if adding:
@@ -198,6 +204,7 @@ def cmd_start(ctx):
         bind=bind,
         notice=_notices(ctx, engine, stack),
         stale=stale,
+        jobs_line=jobstore.line(jobs),
     )
     return Result(server.run(), None)
 
@@ -258,10 +265,10 @@ def cmd_remove(ctx):
 
 def cmd_status(ctx):
     mode, engine, stack = open_stack(ctx)
-    set_up_env(ctx, engine, ctx.cfg.get("lifecycle", "bind"))
+    jobs = set_up_env(ctx, engine, ctx.cfg.get("lifecycle", "bind"))
     from qrosetta_cli.stack.status import status
 
-    return Result(0, status(ctx, engine, stack, mode))
+    return Result(0, status(ctx, engine, stack, mode, jobs))
 
 
 def cmd_logs(ctx):

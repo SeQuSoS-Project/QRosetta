@@ -9,7 +9,7 @@ import stat
 import subprocess
 from dataclasses import dataclass, field
 
-from qrosetta_cli import localstack
+from qrosetta_cli import jobstore, localstack
 from qrosetta_cli.errors import CliError, Exit
 from qrosetta_cli.output import result
 from qrosetta_cli.stack import engine as eng, hostload, quota
@@ -256,6 +256,8 @@ def check_port(host, rep, bind, answers):
 
 
 def check_disk(host, rep, choice):
+    """Free space of the image store and cache; returns the image store's free bytes or None."""
+    store_free = None
     places = [
         ("image store", eng.image_store(choice.name, choice.info) if choice else ""),
         ("cache", os.path.join(host.env.get("XDG_CACHE_HOME") or os.path.join(host.env.get("HOME") or "~", ".cache"))),
@@ -266,6 +268,8 @@ def check_disk(host, rep, choice):
         free = host.free_bytes(path)
         if free is None:
             continue
+        if label == "image store":
+            store_free = free
         if free < LOW_DISK_GIB * GIB:
             rep.add(
                 "disk",
@@ -278,6 +282,27 @@ def check_disk(host, rep, choice):
     tmp = host.free_bytes("/var/tmp") if choice and choice.name == "podman" else None
     if tmp is not None:
         rep.add("disk", "INFO", f"/var/tmp: {tmp / GIB:.1f} GiB free (podman stages image layers there)")
+    return store_free
+
+
+def check_jobs(host, rep, cfg, store_free):
+    """The finished-job settings `start` gives the API, and a warning when the job storage budget
+    is more than the image store's free space less 1 GiB (the reports live in the API container)."""
+    try:
+        jobs = jobstore.resolve(host.env, cfg)
+    except CliError as exc:
+        rep.add("jobs", "FAIL", exc.message, exc.hint or "")
+        return
+    rep.add("jobs", "INFO", jobstore.line(jobs))
+    budget = jobs["job_storage"][0] * jobstore.MIB
+    if store_free is not None and budget > store_free - GIB:
+        rep.add(
+            "jobs",
+            "WARN",
+            f"job storage {budget / GIB:.1f} GiB is more than the image store's free space less 1 GiB "
+            f"({max(store_free - GIB, 0) / GIB:.1f} GiB)",
+            "set [lifecycle] job_storage lower (qrosetta config path), or free space in the image store",
+        )
 
 
 def check_credentials(host, rep, path):
@@ -405,7 +430,7 @@ def run(ctx, host=None):
     except CliError:
         config = None
     check_port(host, rep, bind, config is not None)
-    check_disk(host, rep, choice)
+    check_jobs(host, rep, ctx.cfg, check_disk(host, rep, choice))
     check_credentials(host, rep, servers.credentials_path(ctx.cfg, ctx.env))
     check_extras(host, rep)
     if config is not None:

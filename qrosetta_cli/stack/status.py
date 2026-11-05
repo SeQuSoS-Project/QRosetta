@@ -3,6 +3,7 @@ whatever the stack's state. Provenance is that of the image each container was c
 with the image now under the service's tag when that is another, and whether the compose file
 now gives the container's service another configuration."""
 
+from qrosetta_cli import jobstore
 from qrosetta_cli import manifest as mf
 from qrosetta_cli.errors import CliError
 from qrosetta_cli.output import progress, result
@@ -164,7 +165,7 @@ def collect(engine, stack, found, env=None):
     return rows, images, memory
 
 
-def status(ctx, engine, stack, mode):
+def status(ctx, engine, stack, mode, jobs=None):
     found = own.scan(engine, stack)
     rows, images, memory = collect(engine, stack, found, ctx.env)
     running = [r for r in rows if r["state"] == "running"]
@@ -233,6 +234,8 @@ def status(ctx, engine, stack, mode):
     cpu = quota.block(stack, ctx.env)
     if not cpu["enabled"]:
         result(quota.describe_off(cpu["since"]))
+    jobs = jobs or jobstore.resolve(ctx.env, ctx.cfg)
+    result(jobstore.line(jobs))
     return {
         "url": url,
         "published": address,
@@ -247,6 +250,7 @@ def status(ctx, engine, stack, mode):
         "server": block,
         "services": rows,
         "cpu_quota": cpu,
+        "finished_jobs": jobstore.block(jobs),
         "data_volumes": [{"name": v.name, "bytes": sizes.get(v.name)} for v in volumes],
         "foreign": own.leftovers(engine, found),
     }

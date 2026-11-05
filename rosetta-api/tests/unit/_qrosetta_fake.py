@@ -41,8 +41,13 @@ CONFIG = {
 
 # The variables docker-compose.yml interpolates into each service's configuration (build args
 # are not part of compose's config hash).
-HASHED_VARS = {"nginx": ("QROSETTA_HTTP_BIND",), "api": ("QROSETTA_GIT_SHA", "QROSETTA_LIFECYCLE_TOKEN_PATH")}
+HASHED_VARS = {"nginx": ("QROSETTA_HTTP_BIND",), "api": ("QROSETTA_GIT_SHA", "QROSETTA_LIFECYCLE_TOKEN_PATH",
+                                                         "QROSETTA_JOB_MAX_KEPT", "QROSETTA_JOB_SPILL_MAX_MIB",
+                                                         "QROSETTA_JOB_TTL_SEC")}
 RUNNER_VARS = ("QROSETTA_HOST_OS", "QROSETTA_HOST_ARCH")
+# `${VAR:-default}` interpolates the default when VAR is unset, so either gives one hash.
+INTERPOLATION_DEFAULTS = {"QROSETTA_JOB_MAX_KEPT": "200", "QROSETTA_JOB_SPILL_MAX_MIB": "4096",
+                          "QROSETTA_JOB_TTL_SEC": "86400"}
 
 RELEASE_DIGEST = "sha256:" + "ab" * 32
 REGISTRY = "ghcr.io/sequsos-project"
@@ -193,7 +198,7 @@ class FakeEngine:
         """What `compose config --hash` prints for `service` under `env`: a digest of its
         configuration, the variables compose interpolates into it, and any edit of the file."""
         config = dict(CONFIG["services"], **self.extra_services).get(service, {})
-        values = {k: env.get(k) for k in HASHED_VARS.get(service, RUNNER_VARS)}
+        values = {k: env.get(k) or INTERPOLATION_DEFAULTS.get(k) for k in HASHED_VARS.get(service, RUNNER_VARS)}
         text = json.dumps([config, values, self.config_edits.get(service, 0)], sort_keys=True)
         return hashlib.sha256(text.encode()).hexdigest()
 
