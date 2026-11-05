@@ -366,6 +366,11 @@ signed images on GHCR; and every result records the image, commit and host condi
 - Experiment bundles failed to build when a runner error was blank.
 - The hosted frontend could not serve `docs.html`.
 - Images could not be read by a container user other than `appuser`, as under Apptainer.
+- Qrisp measured runs whose outcomes are spread out over many bitstrings: the adapter ordered
+  Qrisp's outcomes with a Python sort inside the timed window. With `h` on 24 qubits this took
+  about 15.6 s of a 16.6 s simulation time and twice the memory, so the run swapped under the
+  runner's 1 GiB limit and was sometimes killed. The ordering now uses numpy (1.0 s in all; 58
+  instead of 283 ms at 20 qubits); counts are unchanged.
 
 ### Security
 
