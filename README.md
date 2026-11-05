@@ -285,25 +285,27 @@ On standby the containers are stopped and hold no memory; `start` brings them ba
 10 seconds. Running and idle for five minutes after a few hours of use, the 24 containers used
 3.6 GiB and the five of the `minimal` profile 1.0 GiB (`qrosetta status`, page cache included;
 measured 2026-11-04). Finished jobs add to this: the API keeps each one for up to 24 hours, and
-while it holds more than 200 the oldest go from 30 minutes after they finished. A kept job holds
-0.23–0.34 MiB of the API's memory for a 5-qubit circuit on 5 backends, 1.3 MiB for an 18-qubit
-statevector circuit on 14 backends, and 21 MiB for a 24-qubit measured circuit on 14 backends at
-8,200 shots with a spread-out distribution, whose display copy grows with the number of distinct
-outcomes (Python objects, measured 2026-11-05). 200 kept jobs therefore take from about 50 MiB to
-about 4.1 GiB; the upper end is more than the API container's 2 GiB memory limit. The untruncated
+while it holds more than 200, or their estimated memory exceeds 512 MiB, the oldest go from 30
+minutes after they finished. A kept job holds 0.23–0.34 MiB of the API's memory for a 5-qubit
+circuit on 5 backends, 1.3 MiB for an 18-qubit statevector circuit on 14 backends, and 21 MiB for a
+24-qubit measured circuit on 14 backends at 8,200 shots with a spread-out distribution, whose
+display copy grows with the number of distinct outcomes (Python objects, measured 2026-11-05). The
+512 MiB budget therefore holds about 24 of the large measured jobs; jobs younger than 30 minutes are
+never removed, so a burst of them can take the API past the budget until they age. The untruncated
 reports go to disk inside the API container, at most 4,096 MiB on a local stack
 (`QROSETTA_JOB_SPILL_MAX_MIB`; one 18-qubit statevector job on 14 backends takes 79 MB). `qrosetta
 stop`, and any restart of the API container, frees both. `qrosetta start` and `qrosetta status` print
-the three values. To change them, for example on a machine with more memory and disk, put new
+the four values. To change them, for example on a machine with more memory and disk, put new
 values under `[lifecycle]` in the config file and start again; `start` recreates the API with them:
 
 ```bash
 qrosetta config path        # the config file; `qrosetta config init` writes one
-# [lifecycle]  jobs_kept = 500   job_storage = "16GiB"   job_retention = "48h"
+# [lifecycle]  jobs_kept = 500   job_storage = "16GiB"   job_memory = "1GiB"   job_retention = "48h"
 ```
 
-`QROSETTA_JOB_MAX_KEPT`, `QROSETTA_JOB_SPILL_MAX_MIB` and `QROSETTA_JOB_TTL_SEC` in the environment
-override the file. `remove` keeps the images and the `qsimulators_rosetta_db_data` volume, which
+`QROSETTA_JOB_MAX_KEPT`, `QROSETTA_JOB_SPILL_MAX_MIB`, `QROSETTA_JOB_MEMORY_MAX_MIB` and
+`QROSETTA_JOB_TTL_SEC` in the environment override the file. `doctor` warns when `job_memory` is
+1,536 MiB or more, which leaves the 2 GiB API container less than 512 MiB for its own work. `remove` keeps the images and the `qsimulators_rosetta_db_data` volume, which
 holds the SQLite database (accounts, saved circuits, run history) and the saved run reports. Results of jobs that were not saved are lost
 whenever the API container stops. `remove --all` removes the containers, pods, networks, this
 stack's images and its data volume in one command: it first lists every object with its size and

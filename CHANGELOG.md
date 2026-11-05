@@ -230,6 +230,11 @@ signed images on GHCR; and every result records the image, commit and host condi
   `[lifecycle] jobs_kept`, `job_storage` ("16GiB") and `job_retention` ("48h"), which `qrosetta start`
   passes to the API (the environment variables override them); `start`, `status` and `doctor` print
   them, and `doctor` warns when the job storage is larger than the image store's free space.
+- Finished jobs also have a memory budget, `QROSETTA_JOB_MEMORY_MAX_MIB` (512,
+  `limits.job_memory_max_mib`, `[lifecycle] job_memory` locally): while the estimated memory of the
+  kept jobs exceeds it, the oldest that finished more than 30 minutes ago are removed, when a job
+  finishes and in the 10-minute sweep. A 24-qubit measured job on 14 backends holds about 21 MiB, so
+  the budget keeps about 24 of them.
 - Rate limits count per signed-in account, with a per-address ceiling on runs, exports and
   rendering; sign-in and registration count per address.
 - The API runs FastAPI 0.136.3 on Starlette 1.7.0. Responses carry `Vary: Origin`, file responses
