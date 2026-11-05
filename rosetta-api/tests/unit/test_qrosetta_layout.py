@@ -234,8 +234,15 @@ def test_start_pre_checks_use_the_bind_it_will_publish_and_accept_its_own_stack(
     rep = preflight.run(ctx, ours, "127.0.0.1:8080", True)
     assert not rep.failed and "running Quantum Rosetta" in rep.checks[-1].message
     assert not preflight.run(ctx, Host(env, published=["0.0.0.0:8080"]), "127.0.0.1:8080", True).failed
-    assert preflight._same_address("[::]:8080", "127.0.0.1:8080")
-    assert not preflight._same_address("127.0.0.1:8080", "127.0.0.1:8090")
+    assert doctor.same_address("[::]:8080", "127.0.0.1:8080")
+    assert not doctor.same_address("127.0.0.1:8080", "127.0.0.1:8090")
+
+
+def test_doctor_counts_the_port_as_this_stacks_while_its_api_does_not_answer(env):
+    rows = [c for c in _doctor(env, FakeHost(env, port_free=False, published=["127.0.0.1:8080"])).checks
+            if c.id == "port"]
+    assert rows[0].status == "PASS" and "running Quantum Rosetta" in rows[0].message
+    assert _doctor(env, FakeHost(env, port_free=False, published=["127.0.0.1:9000"])).failed[0].id == "port"
 
 
 def test_web_addresses_reads_the_labelled_web_server_container():

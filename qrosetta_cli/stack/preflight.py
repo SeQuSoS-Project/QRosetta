@@ -2,10 +2,9 @@
 only), cgroup delegation (where `quota.check_host` refuses) and port checks. A failure stops
 `start` with doctor's rows and numbered fixes and exit 16; nothing is started."""
 
-import ipaddress
 import sys
 
-from qrosetta_cli import layout, localstack, output
+from qrosetta_cli import layout, output
 from qrosetta_cli.client import servers
 from qrosetta_cli.errors import CliError, Exit
 from qrosetta_cli.stack import doctor, quota
@@ -19,29 +18,12 @@ def effective_bind(ctx):
     return ctx.opt("bind") or ctx.cfg.get("lifecycle", "bind") or servers.DEFAULT_BIND
 
 
-def _same_address(published, bind):
-    """Whether the address compose publishes the web server on is `bind` (a wildcard host
-    covers every address on its port)."""
-    p_host, _, p_port = published.rpartition(":")
-    b_host, _, b_port = bind.rpartition(":")
-    p_host, b_host = p_host.strip("[]"), b_host.strip("[]")
-    return p_port == b_port and (p_host == b_host or _unspecified(p_host) or _unspecified(b_host))
-
-
-def _unspecified(host):
-    try:
-        return not host or ipaddress.ip_address(host).is_unspecified
-    except ValueError:
-        return False
-
-
 def _ours(ctx, host, engine_name, bind):
     """Whether the busy port is this stack's: its running web server container publishes it
     (also while the API is unhealthy), or a Quantum Rosetta answers there."""
     from qrosetta_cli.client import handshake
 
-    project = localstack.project(ctx.env)
-    if engine_name and any(_same_address(a, bind) for a in host.web_addresses(engine_name, project)):
+    if doctor.publishes(host, engine_name, ctx.env, bind):
         return True
     server = servers.Server(servers.LOCAL, servers.bind_url(bind), "start --bind")
     try:

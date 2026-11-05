@@ -1,6 +1,7 @@
 """`qrosetta doctor` (spec §6.10): host checks with their fixes, then live checks when a stack
 answers. Exit 0 unless a check FAILs (17)."""
 
+import ipaddress
 import os
 import platform
 import re
@@ -380,6 +381,28 @@ def check_controllers(host, rep, choice, quota_on=True):
     )
 
 
+def same_address(published, bind):
+    """Whether the address a container publishes is `bind` (a wildcard host covers every
+    address on its port)."""
+    p_host, _, p_port = published.rpartition(":")
+    b_host, _, b_port = bind.rpartition(":")
+    p_host, b_host = p_host.strip("[]"), b_host.strip("[]")
+    return p_port == b_port and (p_host == b_host or _unspecified(p_host) or _unspecified(b_host))
+
+
+def _unspecified(host):
+    try:
+        return not host or ipaddress.ip_address(host).is_unspecified
+    except ValueError:
+        return False
+
+
+def publishes(host, engine_name, env, bind):
+    """Whether this stack's running web server container is published on `bind`."""
+    project = localstack.project(env)
+    return bool(engine_name) and any(same_address(a, bind) for a in host.web_addresses(engine_name, project))
+
+
 def check_port(host, rep, bind, answers, cfg=None):
     """`answers`: whether a Quantum Rosetta answers at `bind` (a callable is asked only when the
     port is in use); `cfg` lets the fix name the config file."""
@@ -645,7 +668,8 @@ def run(ctx, host=None):
         ctx.note_handshake(handshake.server_block(config))
     except CliError:
         config = None
-    check_port(host, rep, bind, config is not None, ctx.cfg)
+    name = choice.name if choice else None
+    check_port(host, rep, bind, config is not None or (lambda: publishes(host, name, ctx.env, bind)), ctx.cfg)
     check_jobs(host, rep, ctx.cfg, check_disk(host, rep, choice))
     check_credentials(host, rep, servers.credentials_path(ctx.cfg, ctx.env))
     check_extras(host, rep)
