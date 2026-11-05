@@ -2,6 +2,7 @@
 file, and oldest-first eviction of finished jobs when the job storage crosses a limit."""
 import asyncio
 import re
+import sys
 import time
 from pathlib import Path
 
@@ -333,6 +334,7 @@ def test_the_estimate_is_computed_off_the_event_loop(monkeypatch):
     assert threads and threading.main_thread() not in threads
 
 
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="estimate calibrated on the API image's Python 3.12")
 @pytest.mark.parametrize("build", [
     lambda: _report(20000),
     lambda: {"pairwise": [{"a": f"b{i}", "fidelity": i / 7, "tv": i / 11} for i in range(10000)]},

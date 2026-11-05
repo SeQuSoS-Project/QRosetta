@@ -18,9 +18,14 @@ pytestmark = pytest.mark.skipif(not _MAIN.exists(), reason="runner sources not p
 
 @pytest.fixture(scope="module")
 def adapter():
+    from qrosetta_commons import helpers
+    declared = list(helpers._DECLARED_SDK_PACKAGES)
     spec = importlib.util.spec_from_file_location("qrisp_runner_main_under_test", _MAIN)
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        helpers._DECLARED_SDK_PACKAGES[:] = declared
     return module
 
 
