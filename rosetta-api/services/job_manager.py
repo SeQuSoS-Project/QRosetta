@@ -632,8 +632,14 @@ async def evict_beyond_bounds() -> int:
 
 
 async def finish_job(job_id, job) -> bool:
-    """``ACTIVE_JOBS.store`` the finished job, then ``evict_beyond_bounds``."""
+    """``ACTIVE_JOBS.store`` the finished job, log its memory estimate, then
+    ``evict_beyond_bounds``."""
     stored = await ACTIVE_JOBS.store(job_id, job)
+    if stored:
+        count, held = finished_jobs_held()
+        estimate = ACTIVE_JOBS.get(job_id, {}).get(MEMORY_ESTIMATE, 0)
+        logger.info(f"Job {job_id} finished; estimated memory {estimate / 2**20:,.2f} MiB; {count} finished "
+                    f"jobs hold {_memory_text(held)} of {settings.JOB_MEMORY_MAX_MIB:,} MiB")
     await evict_beyond_bounds()
     return stored
 

@@ -432,6 +432,17 @@ def test_count_and_memory_bounds_apply_together(monkeypatch):
     assert {"rt-f003", "rt-f004"} <= _ours() and not {"rt-f000", "rt-f001", "rt-f002"} & _ours()
 
 
+def test_a_finishing_job_logs_its_memory_estimate(caplog):
+    import logging
+    job_manager.ACTIVE_JOBS["rt-log"] = job_manager.new_job("local")
+    with caplog.at_level(logging.INFO):
+        asyncio.run(job_manager.finish_job("rt-log", job_manager._completed_job("local", _report(5), {})))
+    estimate = job_manager.ACTIVE_JOBS["rt-log"][job_store.MEMORY_ESTIMATE]
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("Job rt-log finished")]
+    assert len(lines) == 1 and f"estimated memory {estimate / MIB:,.2f} MiB; " in lines[0]
+    assert lines[0].endswith(f" of {settings.JOB_MEMORY_MAX_MIB:,} MiB")
+
+
 def test_a_finishing_job_applies_the_bounds(monkeypatch):
     now = time.time()
     _sized(now, [(9000, 300)])
