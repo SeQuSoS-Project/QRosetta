@@ -1,6 +1,7 @@
 """Where qrosetta writes (spec P4): data to stdout; progress, prompts, warnings and errors to
 stderr. Under --json stdout carries only the envelope (spec Q3)."""
 
+import codecs
 import json
 import os
 import select
@@ -11,15 +12,63 @@ from typing import Any
 from qrosetta_cli import __version__
 from qrosetta_cli.errors import Exit
 
-_state: dict[str, Any] = {"json": False, "warnings": [], "notices": set(), "notice_enabled": True}
+_state: dict[str, Any] = {
+    "json": False,
+    "warnings": [],
+    "notices": set(),
+    "notice_enabled": True,
+    "color": "auto",
+    "env": None,
+}
 
 
-def configure(json_mode=False, experimental_notice=True):
-    _state.update(json=bool(json_mode), warnings=[], notices=set(), notice_enabled=experimental_notice)
+def configure(json_mode=False, experimental_notice=True, color=None, env=None):
+    """`color` is the config's [output] color (auto, always, never); `env` the environment
+    NO_COLOR, CLICOLOR_FORCE and TERM are read from (os.environ when None)."""
+    _state.update(
+        json=bool(json_mode),
+        warnings=[],
+        notices=set(),
+        notice_enabled=experimental_notice,
+        color=(color or "auto").strip().lower() if isinstance(color, str) else "auto",
+        env=env,
+    )
 
 
 def json_mode():
     return _state["json"]
+
+
+def _isatty(stream):
+    try:
+        return bool(stream.isatty())
+    except (AttributeError, ValueError, OSError):
+        return False
+
+
+def use_marks(stream=None):
+    """Whether `stream` takes the check marks (a terminal whose encoding is UTF-8); otherwise
+    rows print the words PASS, FAIL, WARN and INFO."""
+    stream = stream or sys.stdout
+    try:
+        utf8 = codecs.lookup(getattr(stream, "encoding", None) or "ascii").name == "utf-8"
+    except LookupError:
+        utf8 = False
+    return utf8 and _isatty(stream)
+
+
+def use_color(stream=None):
+    """Colour on `stream`: [output] color = never, then NO_COLOR, turn it off; color = always,
+    then CLICOLOR_FORCE (not 0), turn it on; TERM=dumb turns it off; otherwise on a terminal."""
+    env = os.environ if _state["env"] is None else _state["env"]
+    setting = _state["color"]
+    if setting == "never" or env.get("NO_COLOR"):
+        return False
+    if setting == "always" or env.get("CLICOLOR_FORCE", "0") not in ("", "0"):
+        return True
+    if env.get("TERM") == "dumb":
+        return False
+    return _isatty(stream or sys.stdout)
 
 
 def _write(stream, text):

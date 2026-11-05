@@ -1,5 +1,7 @@
-"""What every command receives: parsed arguments, environment, config, terminal, and factories
-for the engine and the transport that tests replace."""
+"""What every command receives: parsed arguments, environment, config, terminal, factories for
+the engine, the transport and the host doctor reads that tests replace, and `local_stack`, which
+reads the services this checkout's stack has (the client half calls it without importing the
+stack half)."""
 
 import sys
 from dataclasses import dataclass, field
@@ -27,6 +29,8 @@ class Context:
     transport_factory: Any = None
     stdin: Any = None
     tty: bool | None = None
+    host_factory: Any = None
+    local_stack: Any = None
     server_block: dict | None = None
     _server: Any = field(default=None, repr=False)
 

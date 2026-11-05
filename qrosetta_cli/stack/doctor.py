@@ -3,13 +3,14 @@ answers. Exit 0 unless a check FAILs (17)."""
 
 import os
 import platform
+import shlex
 import shutil
 import socket
 import stat
 import subprocess
 from dataclasses import dataclass, field
 
-from qrosetta_cli import jobstore, localstack
+from qrosetta_cli import __version__, jobstore, layout, localstack, output
 from qrosetta_cli.errors import CliError, Exit
 from qrosetta_cli.output import result
 from qrosetta_cli.stack import engine as eng, hostload, quota
@@ -18,14 +19,37 @@ from qrosetta_cli.stack.explain import DELEGATE_DROPIN, OTHER_BIND, SUBUID_FIX, 
 GIB = 1024**3
 LOW_DISK_GIB = 10
 ORDER = ("PASS", "INFO", "WARN", "FAIL", "SKIP")
+FIX_ORDER = (
+    "os",
+    "engine",
+    "rootful_docker",
+    "compose",
+    "podman_socket",
+    "subuid",
+    "cgroup",
+    "port",
+    "disk",
+    "jobs",
+    "credentials",
+    "server",
+    "ready",
+    "runners",
+    "compilers",
+)
+DROPIN_LINES = DELEGATE_DROPIN.splitlines()
 
 
 @dataclass
 class Check:
+    """One check. `steps` ([(sentence, [commands])]) and `reason` (the exit reason `start` uses
+    when the check stops it) are for the terminal and `start`; the JSON carries `fix`."""
+
     id: str
     status: str
     message: str
     fix: str = ""
+    steps: list | None = None
+    reason: str | None = None
 
     def as_dict(self):
         return {"id": self.id, "status": self.status, "message": self.message, "fix": self.fix or None}
@@ -103,13 +127,54 @@ class Host:
         except OSError:
             return None
 
+    def images_present(self, ctx):
+        """Whether the images of this stack's core services are present, or None when the stack
+        cannot be read."""
+        from qrosetta_cli.stack import project as st
+        from qrosetta_cli.stack.commands import open_stack
+
+        try:
+            _, engine, stack = open_stack(ctx)
+            refs = [stack.image_for(s) for s in stack.core_services()]
+            return bool(refs) and set(refs) <= set(st.find_images(engine, refs))
+        except (CliError, OSError):
+            return None
+
+
+def local_services(ctx):
+    """{"running", "created": service ids, "profile": the profile whose runners and compilers are
+    exactly the created ones, else None} for this checkout's or installation's stack; None when
+    it cannot be read."""
+    from qrosetta_cli.stack import ownership, profiles
+    from qrosetta_cli.stack.commands import open_stack
+
+    try:
+        _, engine, stack = open_stack(ctx)
+        found = ownership.scan(engine, stack)
+        created = {c.service for c in found.containers if c.service in stack.services}
+        running = {c.service for c in found.running() if c.service in stack.services}
+        members = {
+            name: {s for s in svcs if stack.kind_of(s) in ("runner", "compiler")}
+            for name, svcs in profiles.built_in(stack).items()
+        }
+    except (CliError, OSError):
+        return None
+    backends = {s for s in created if stack.kind_of(s) in ("runner", "compiler")}
+    profile = next((name for name, svcs in members.items() if svcs and svcs == backends), None)
+    return {
+        "running": {stack.services[s].id for s in running},
+        "created": {stack.services[s].id for s in created},
+        "profile": profile,
+    }
+
 
 @dataclass
 class Report:
     checks: list = field(default_factory=list)
+    next_command: str | None = None
 
-    def add(self, cid, status, message, fix=""):
-        self.checks.append(Check(cid, status, message, fix))
+    def add(self, cid, status, message, fix="", steps=None, reason=None):
+        self.checks.append(Check(cid, status, message, fix, steps, reason))
 
     @property
     def failed(self):
@@ -132,6 +197,8 @@ def check_os(host, rep):
             "FAIL",
             f"{host.system()} {machine}: Quantum Rosetta images are linux/amd64 only",
             "use a Linux x86_64 machine",
+            [("Use a Linux x86_64 machine; Quantum Rosetta images are linux/amd64 only.", [])],
+            "wrong_architecture",
         )
 
 
@@ -145,7 +212,18 @@ def check_engine(host, rep, configured):
             if docker_refused
             else "install Docker with Compose v2, or rootless podman (README, Requirements)"
         )
-        rep.add("engine", "FAIL", exc.message, fix)
+        steps = (
+            [
+                (
+                    "Add your user to the docker group (root-equivalent), then reboot:",
+                    ["sudo usermod -aG docker $USER"],
+                ),
+                ("Or install rootless podman (README, Requirements).", []),
+            ]
+            if docker_refused
+            else [("Install Docker with Compose v2, or rootless podman (README, Requirements).", [])]
+        )
+        rep.add("engine", "FAIL", exc.message, fix, steps, exc.reason)
         return None
     status = "INFO" if choice.name == "podman" and "permission denied" in choice.reason else "PASS"
     rep.add(
@@ -171,13 +249,26 @@ def check_compose(host, rep, choice):
     if ok:
         rep.add("compose", "PASS", text.splitlines()[0])
     else:
+        step = eng.compose_install_step(host.read("/etc/os-release"), choice.name)
         rep.add(
             "compose",
             "FAIL",
             f"`{choice.name} compose` is not Docker Compose v2 "
             f"({text.splitlines()[0] if text else 'no output'}); podman-compose 1.x is not supported",
-            eng.compose_install_step(host.read("/etc/os-release"), choice.name),
+            step,
+            _compose_steps(step),
+            "compose_missing",
         )
+
+
+def _compose_steps(step):
+    """The install step as a sentence over its command, or as one sentence when it is prose."""
+    found = layout.parts(step)
+    if found and found[0][1]:
+        where = found[0][0].rstrip(":")
+        sentence = "Install Docker Compose v2" + (f" ({where[0].lower()}{where[1:]})" if where != "Run" else "")
+        return [(sentence + ":", found[0][1])]
+    return [(layout.sentence(f"install Docker Compose v2: {step}"), [])]
 
 
 def check_podman(host, rep, choice):
@@ -191,13 +282,32 @@ def check_podman(host, rep, choice):
             "FAIL",
             f"no podman API socket at {sock}; Docker Compose needs it",
             "systemctl --user enable --now podman.socket",
+            [
+                (
+                    "Start podman's API socket, which Docker Compose connects to:",
+                    ["systemctl --user enable --now podman.socket"],
+                )
+            ],
+            "podman_socket",
         )
     if not choice.rootless:
         return
     if _subids(host, "/etc/subuid") and _subids(host, "/etc/subgid"):
         rep.add("subuid", "PASS", f"subuid and subgid ranges for {host.user() or host.uid()}")
     else:
-        rep.add("subuid", "FAIL", f"no subuid/subgid entries for {host.user() or host.uid()}", SUBUID_FIX)
+        rep.add(
+            "subuid",
+            "FAIL",
+            f"no subuid/subgid entries for {host.user() or host.uid()}",
+            SUBUID_FIX,
+            [
+                (
+                    "Give your user subordinate UID and GID ranges, which rootless podman needs:",
+                    [c.strip() for c in SUBUID_FIX.split("&&")],
+                )
+            ],
+            "subuid_missing",
+        )
 
 
 def check_controllers(host, rep, choice, quota_on=True):
@@ -210,6 +320,8 @@ def check_controllers(host, rep, choice, quota_on=True):
             "FAIL",
             "rootless containers on cgroup v1: memory and CPU limits are absent",
             "boot with cgroup v2 (systemd.unified_cgroup_hierarchy=1)",
+            [("Boot with cgroup v2 (kernel parameter systemd.unified_cgroup_hierarchy=1).", [])],
+            "cgroup_v1",
         )
         return
     missing = [c for c in ("cpu", "memory", "pids") if c not in (have or set())]
@@ -224,25 +336,52 @@ def check_controllers(host, rep, choice, quota_on=True):
             "the cpu controller is not delegated to your user; the stack starts without "
             "the CPU quota (--no-cpu-quota), so timings are not comparable with runs under it",
             DELEGATE_DROPIN,
+            [("To run under the CPU quota, delegate the controllers to your user, then reboot:", DROPIN_LINES)],
         )
         return
+    steps = [
+        (
+            f"Delegate the {', '.join(missing)} controller{'s' * (len(missing) > 1)} to your user, then reboot:",
+            DROPIN_LINES,
+        )
+    ]
+    if missing == ["cpu"]:
+        steps.append(
+            ("Or, without sudo, start without the CPU quota (no CPU limits; results record it):", [quota.FLAG_HINT])
+        )
     rep.add(
         "cgroup",
         "FAIL",
         f"controllers not delegated to your user: {', '.join(missing)}; `start` cannot "
         "apply the " + ("CPU and memory limits" if "memory" in missing else "CPU limits"),
         without_flag if missing == ["cpu"] else DELEGATE_DROPIN,
+        steps,
+        "memory_controller_missing" if "memory" in missing else "cpu_controller_missing",
     )
 
 
-def check_port(host, rep, bind, answers):
+def check_port(host, rep, bind, answers, cfg=None):
+    """`answers`: whether a Quantum Rosetta answers at `bind` (a callable is asked only when the
+    port is in use); `cfg` lets the fix name the config file."""
     address, _, port = bind.rpartition(":")
     address = address.strip("[]") or "127.0.0.1"
     if not port.isdigit():
-        rep.add("port", "FAIL", f"{bind} is not ADDRESS:PORT", "edit [lifecycle] bind in the config file")
+        rep.add(
+            "port",
+            "FAIL",
+            f"{bind} is not ADDRESS:PORT",
+            "edit [lifecycle] bind in the config file",
+            [
+                (
+                    "Set [lifecycle] bind to ADDRESS:PORT in the config file, whose path this prints:",
+                    ["qrosetta config path"],
+                )
+            ],
+            "bind_invalid",
+        )
     elif host.port_free(address, int(port)):
         rep.add("port", "PASS", f"{bind} is free")
-    elif answers:
+    elif answers() if callable(answers) else answers:
         rep.add("port", "PASS", f"{bind} is in use by a running Quantum Rosetta")
     else:
         rep.add(
@@ -252,7 +391,33 @@ def check_port(host, rep, bind, answers):
             f"qrosetta start -d --bind {OTHER_BIND}\n"
             f'Later commands use {bind} until [lifecycle] bind = "{OTHER_BIND}" is in the file '
             "`qrosetta config path` prints; with it, `start` needs no --bind.",
+            port_steps(cfg),
+            "port_in_use",
         )
+
+
+def port_steps(cfg):
+    """Use OTHER_BIND from now on: the config file gets [lifecycle] bind (created, appended to, or
+    edited by hand when it has a [lifecycle] table), then `start -d` needs no --bind."""
+    port = OTHER_BIND.rpartition(":")[2]
+    head = f"Use port {port} for this and every later command:"
+    line = f'bind = "{OTHER_BIND}"'
+    if cfg is None:
+        return [(head, [f"qrosetta start -d --bind {OTHER_BIND}"])]
+    path = shlex.quote(cfg.path)
+    if not cfg.loaded:
+        commands = [
+            f"mkdir -p {shlex.quote(os.path.dirname(cfg.path) or '.')}",
+            f"printf '[lifecycle]\\n{line}\\n' > {path}",
+        ]
+    elif cfg.get("lifecycle") is None:
+        commands = [f"printf '\\n[lifecycle]\\n{line}\\n' >> {path}"]
+    else:
+        return [
+            (f"Use port {port} for this and every later command. In {cfg.path}, under [lifecycle], set:", [line]),
+            ("Then start:", ["qrosetta start -d"]),
+        ]
+    return [(head, commands + ["qrosetta start -d"])]
 
 
 def check_disk(host, rep, choice):
@@ -276,6 +441,7 @@ def check_disk(host, rep, choice):
                 "WARN",
                 f"{label} {path}: {free / GIB:.1f} GiB free (under {LOW_DISK_GIB} GiB)",
                 f"free space under {path}",
+                [(f"Free space under {path} ({LOW_DISK_GIB} GiB or more).", [])],
             )
         else:
             rep.add("disk", "PASS", f"{label} {path}: {free / GIB:.1f} GiB free")
@@ -320,7 +486,13 @@ def check_credentials(host, rep, path):
     if mode is None:
         return
     if mode & (stat.S_IRWXG | stat.S_IRWXO):
-        rep.add("credentials", "FAIL", f"{path} is readable by other users", f"chmod 600 {path}")
+        rep.add(
+            "credentials",
+            "FAIL",
+            f"{path} is readable by other users",
+            f"chmod 600 {path}",
+            [("Make the credentials file readable by your user only:", [f"chmod 600 {shlex.quote(path)}"])],
+        )
     else:
         rep.add("credentials", "PASS", f"{path} is private")
 
@@ -347,6 +519,7 @@ def check_live(rep, config, transport, env=None, running=None):
             "WARN",
             "the running server predates the version handshake (needs platform 2.0.0)",
             "rebuild the stack from this checkout: qrosetta build",
+            [("Rebuild the stack from this checkout:", ["qrosetta build"])],
         )
     else:
         try:
@@ -363,13 +536,25 @@ def check_live(rep, config, transport, env=None, running=None):
     elif api[0]:
         rep.add("ready", "PASS", "the API's database and job storage work (GET /ready)")
     else:
-        rep.add("ready", "FAIL", api[1], "qrosetta logs api --tail 50")
+        rep.add(
+            "ready",
+            "FAIL",
+            api[1],
+            "qrosetta logs api --tail 50",
+            [("Read the API's log:", ["qrosetta logs api --tail 50"])],
+        )
     headers = hostload.auth_headers(env or {})
     for path, label in (("/runners", "runners"), ("/compilers", "compilers")):
         try:
             data, how = _service_rows(transport, path, headers)
         except CliError as exc:
-            rep.add(label, "WARN", exc.message, "qrosetta status")
+            rep.add(
+                label,
+                "WARN",
+                exc.message,
+                "qrosetta status",
+                [("List the services and their state:", ["qrosetta status"])],
+            )
             continue
         if not isinstance(data, list):
             continue
@@ -395,6 +580,7 @@ def check_live(rep, config, transport, env=None, running=None):
             f"{len(enabled) - len(down)} of {len(enabled)} {label} available ({how}); not "
             "available: " + "; ".join(parts),
             "qrosetta start -d (adds the services that are not running)",
+            [("Start the services that are not running:", ["qrosetta start -d"])],
         )
 
 
@@ -439,7 +625,7 @@ def run(ctx, host=None):
         ctx.note_handshake(handshake.server_block(config))
     except CliError:
         config = None
-    check_port(host, rep, bind, config is not None)
+    check_port(host, rep, bind, config is not None, ctx.cfg)
     check_jobs(host, rep, ctx.cfg, check_disk(host, rep, choice))
     check_credentials(host, rep, servers.credentials_path(ctx.cfg, ctx.env))
     check_extras(host, rep)
@@ -447,20 +633,41 @@ def run(ctx, host=None):
         check_live(rep, config, transport, ctx.env, host.running_services(ctx))
     else:
         rep.add("server", "INFO", f"no Quantum Rosetta answers at {server.url}; live checks skipped")
+    rep.next_command = next_command(ctx, host, config is not None)
     return rep
 
 
+def next_command(ctx, host, answers):
+    """The one command to run after doctor: the self-test when a stack answers, `start -d` when
+    its core images are present, else pull (installed) or build (checkout) of the minimal profile."""
+    from qrosetta_cli import mode as modes
+
+    if answers:
+        return "qrosetta selftest"
+    if host.images_present(ctx):
+        return "qrosetta start -d"
+    try:
+        checkout = modes.detect(ctx.opt("project_dir"), ctx.env, ctx.checkout).name == "checkout"
+    except CliError:
+        checkout = False
+    return f"qrosetta {'build' if checkout else 'pull'} --profile minimal"
+
+
+def report_lines(rep, stream=None):
+    return [f"Quantum Rosetta {__version__}: checks for this computer", ""] + layout.checks_report(
+        rep.checks, FIX_ORDER, "qrosetta doctor", rep.next_command, stream
+    )
+
+
 def print_report(rep):
-    width = max(len(c.id) for c in rep.checks)
-    for c in rep.checks:
-        result(f"{c.status:<4}  {c.id:<{width}}  {c.message}")
-        for line in (c.fix or "").splitlines() if c.status in ("WARN", "FAIL") else []:
-            result(f"{'':4}  {'':<{width}}    {line}")
+    for line in report_lines(rep):
+        result(line)
 
 
 def cmd_doctor(ctx, host=None):
     from qrosetta_cli.context import Result
 
+    host = host or (ctx.host_factory(ctx.env) if ctx.host_factory else None)
     rep = run(ctx, host)
     print_report(rep)
     data = {
@@ -470,11 +677,13 @@ def cmd_doctor(ctx, host=None):
     }
     if rep.failed:
         first = rep.failed[0]
-        raise CliError(
+        err = CliError(
             f"{len(rep.failed)} check(s) failed: {', '.join(c.id for c in rep.failed)}.",
             Exit.CHECKS_FAILED,
             "checks_failed",
             hint=(first.fix or "qrosetta doctor").splitlines()[0],
             data=data,
         )
+        err.shown = not output.json_mode()
+        raise err
     return Result(0, data)

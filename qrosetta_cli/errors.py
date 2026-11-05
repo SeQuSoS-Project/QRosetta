@@ -75,9 +75,23 @@ def worst(codes):
 
 class CliError(Exception):
     """A problem reported as one message, with the exit code, a snake_case reason and the
-    command (or file to edit) printed last."""
+    command (or file to edit) printed last. On the terminal, `headline`, `evidence` (lines) and
+    `step` (the sentence over the command) lay it out as what happened, the evidence and what
+    to do; the envelope keeps `message`. `shown` means the command printed it already."""
 
-    def __init__(self, message, code=Exit.ENGINE, reason=None, hint=None, http_status=None, detail=None, data=None):
+    def __init__(
+        self,
+        message,
+        code=Exit.ENGINE,
+        reason=None,
+        hint=None,
+        http_status=None,
+        detail=None,
+        data=None,
+        headline=None,
+        evidence=None,
+        step=None,
+    ):
         super().__init__(message)
         self.data = data
         self.message = message
@@ -86,6 +100,10 @@ class CliError(Exception):
         self.hint = hint
         self.http_status = http_status
         self.detail = detail
+        self.headline = headline
+        self.evidence = list(evidence or [])
+        self.step = step
+        self.shown = False
 
     def as_dict(self):
         return {

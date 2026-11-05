@@ -191,7 +191,7 @@ def test_doctor_command_exit_codes_and_envelope(env, monkeypatch, capsys):
     monkeypatch.setattr(doctor, "Host", lambda e: FakeHost(env))
     assert main(["doctor"], env=env, transport_factory=Unreachable()) == 0
     out = capsys.readouterr().out
-    assert out.splitlines()[0].startswith("PASS")
+    assert out.splitlines()[0].endswith(": checks for this computer") and out.splitlines()[2].startswith("PASS  os")
     monkeypatch.setattr(doctor, "Host", lambda e: FakeHost(env, port_free=False))
     assert main(["doctor", "--json"], env=env, transport_factory=Unreachable()) == Exit.CHECKS_FAILED
     doc = json.loads(capsys.readouterr().out)

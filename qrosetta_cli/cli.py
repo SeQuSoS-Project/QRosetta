@@ -1042,6 +1042,14 @@ def _load(func):
 
 
 def _print_error(exc):
+    if exc.shown:
+        return
+    if exc.headline or exc.evidence or exc.step:
+        from qrosetta_cli import layout
+
+        for line in layout.error_lines(exc.headline or exc.message, exc.evidence, exc.step, exc.hint):
+            output.progress(line)
+        return
     output.progress(f"qrosetta: {exc.message}")
     if exc.hint:
         output.progress(exc.hint)
@@ -1052,7 +1060,17 @@ def _restore_sigpipe():
         signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
 
-def main(argv=None, checkout=None, engine_factory=None, transport_factory=None, env=None, stdin=None, tty=None):
+def main(
+    argv=None,
+    checkout=None,
+    engine_factory=None,
+    transport_factory=None,
+    env=None,
+    stdin=None,
+    tty=None,
+    host_factory=None,
+    local_stack=None,
+):
     """Run one command and return its exit code; `checkout` is the source tree the `qrosetta`
     script lives in."""
     if argv is None:
@@ -1075,6 +1093,8 @@ def main(argv=None, checkout=None, engine_factory=None, transport_factory=None, 
         output.configure(
             json_mode=bool(getattr(args, "json", False)),
             experimental_notice=cfg.get("output", "experimental_notice", default=True),
+            color=cfg.get("output", "color"),
+            env=env,
         )
         name = getattr(args, "spec_name", None)
         if name is None:
@@ -1106,6 +1126,8 @@ def main(argv=None, checkout=None, engine_factory=None, transport_factory=None, 
             transport_factory=transport_factory,
             stdin=stdin,
             tty=tty,
+            host_factory=host_factory,
+            local_stack=local_stack or (lambda c: _load("stack.doctor:local_services")(c)),
         )
         if name == "help":
             try:
