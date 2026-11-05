@@ -72,10 +72,16 @@ def use_color(stream=None):
 
 
 def _write(stream, text):
+    """Write and flush; a character the stream's encoding lacks prints as '?', and a stream
+    that has gone away sends the rest of the output to /dev/null."""
     try:
-        stream.write(text)
+        try:
+            stream.write(text)
+        except UnicodeEncodeError:
+            encoding = getattr(stream, "encoding", None) or "ascii"
+            stream.write(text.encode(encoding, "replace").decode(encoding))
         stream.flush()
-    except (OSError, ValueError, RuntimeError):
+    except (OSError, ValueError, RuntimeError, LookupError):
         discard_output()
 
 

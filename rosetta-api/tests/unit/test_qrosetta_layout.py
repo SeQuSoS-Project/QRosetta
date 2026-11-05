@@ -97,6 +97,17 @@ def test_doctor_prints_words_when_piped_and_marks_on_a_utf8_terminal(env, monkey
     assert "  ✓  os" in out and "PASS" not in out and "\033" not in out
 
 
+def test_a_character_the_encoding_lacks_prints_as_a_question_mark_and_output_goes_on(monkeypatch):
+    raw = io.BytesIO()
+    stream = io.TextIOWrapper(raw, encoding="ascii")
+    monkeypatch.setattr("sys.stdout", stream)
+    output.result("jobs  change: qrosetta config path → [lifecycle] jobs_kept")
+    output.result("Next step:  qrosetta selftest")
+    stream.flush()
+    assert raw.getvalue().decode().splitlines() == ["jobs  change: qrosetta config path ? [lifecycle] jobs_kept",
+                                                    "Next step:  qrosetta selftest"]
+
+
 # --- doctor: fixes, count sentence, next step --------------------------------------------------
 
 
