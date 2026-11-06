@@ -192,16 +192,23 @@ def plan_start(engine, stack, requested=None, env=None):
     missing = [s for s in candidates if stack.image_for(s) not in images]
     blocking = [s for s in missing if s in core or requested]
     if blocking:
-        keys = " ".join(stack.services[s].id for s in blocking)
-        hint = f"qrosetta pull {keys}" if stack.release else f"qrosetta build {keys}"
+        from qrosetta_cli.stack.buildkit import get_command
+
+        hint = get_command(stack, [stack.services[s].id for s in blocking])
         raise CliError(
             f"No image for {', '.join(stack.services[s].id for s in blocking)}.",
             Exit.ENGINE,
             "image_missing",
             hint=hint,
-            step="Pull the images:" if stack.release else "Build the images:",
+            step=_get_step(hint),
         )
     return [s for s in candidates if s not in missing], missing, git_sha_env(stack, images, env)
+
+
+def _get_step(hint):
+    if "&&" in hint:
+        return "Pull and build the images:"
+    return "Pull the images:" if hint.startswith("qrosetta pull") else "Build the images:"
 
 
 def git_sha_env(stack, images, env):

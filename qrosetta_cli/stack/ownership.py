@@ -213,9 +213,12 @@ def image_refusal(stack, service, ref, img):
 
 
 def owned_images(engine, stack):
-    """([(compose service, image)] of the images named after the stack's services that pass
-    `image_refusal`, [(ref, reason, built here)] for the rest)."""
+    """([(compose service, image)] of the images named after the stack's services, or under one of
+    its other image names (an installed stack's build-kit tags), that pass `image_refusal`,
+    [(ref, reason, built here)] for the rest)."""
     refs = {stack.image_for(svc): svc for svc in stack.services}
+    for ref, svc in stack.extra_image_refs.items():
+        refs.setdefault(ref, svc)
     owned, refused = [], []
     for ref, img in st.find_images(engine, list(refs)).items():
         service = refs[ref]

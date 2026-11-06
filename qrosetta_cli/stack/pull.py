@@ -2,7 +2,7 @@
 $XDG_CACHE_HOME/qrosetta/tmp), checks each image's repo digests and qrosetta labels, and checks
 its cosign signature first when cosign is installed (--require-signature makes it mandatory).
 A checkout builds its images instead. Services the release does not publish are named with
-the reason and the command that builds them."""
+the reason and the command that builds them. A pulled service stops running its build-kit image."""
 
 import os
 import re
@@ -12,7 +12,7 @@ from qrosetta_cli import config as cfgmod, layout, manifest as mf, mode as modes
 from qrosetta_cli.context import Result
 from qrosetta_cli.errors import CliError, Exit, usage
 from qrosetta_cli.output import progress, result
-from qrosetta_cli.stack import guard, hostload, installed, serve, signatures
+from qrosetta_cli.stack import buildkit, guard, hostload, installed, serve, signatures
 from qrosetta_cli.stack import ownership as own
 from qrosetta_cli.stack import project as st
 from qrosetta_cli.stack.actions import human_bytes
@@ -150,13 +150,25 @@ def cmd_pull(ctx):
     mode = modes.detect(ctx.opt("project_dir"), ctx.env, ctx.checkout)
     if mode.name == "checkout":
         _checkout_refusal(args.services)
-    manifest = installed.require_published()
+    manifest = mf.load()
+    if not mf.images_published(manifest):
+        if manifest is not None and buildkit.load() is not None:
+            raise CliError(
+                f"The images of Quantum Rosetta {manifest.get('platform_version')} are not published, so "
+                "there is nothing to pull; this package's build kit builds them on this machine.",
+                Exit.INCOMPATIBLE,
+                "images_not_published",
+                hint="qrosetta build --profile minimal",
+                step="Build the images:",
+            )
+        installed.refuse_unpublished(manifest)
     from qrosetta_cli.stack.commands import open_stack
 
     _, engine, stack = open_stack(ctx)
     wanted, skipped = targets(stack, manifest, args, ctx.cfg)
+    where = "" if buildkit.load() is not None else " in a checkout of this release"
     for sid, reason in skipped:
-        progress(f"{sid}: not published ({reason}). `qrosetta build {sid}` in a checkout of this release builds it.")
+        progress(f"{sid}: not published ({reason}). `qrosetta build {sid}`{where} builds it.")
     refs = mf.published_refs(manifest)
     by_service = mf.by_compose_service(manifest)
     jobs = [(s, refs[by_service[s]]) for s in wanted if by_service.get(s) in refs]
@@ -193,6 +205,12 @@ def cmd_pull(ctx):
                     "qrosetta: interrupted; finished images and layers are kept; rerun the same command to continue."
                 )
                 return Result(int(Exit.SIGINT), {"pulled": pulled, "failed": failed})
+    switched = buildkit.forget(ctx.env, stack.name, [p["id"] for p in pulled])
+    if switched:
+        progress(
+            f"{', '.join(switched)}: the stack runs the release images now, not the ones built locally from "
+            "the build kit; `qrosetta remove --images` removes both."
+        )
     data = {
         "release": manifest.get("platform_version"),
         "pulled": pulled,

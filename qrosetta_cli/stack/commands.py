@@ -8,7 +8,7 @@ from qrosetta_cli import jobstore, layout, localstack, manifest as mf, mode as m
 from qrosetta_cli.context import Result
 from qrosetta_cli.errors import CliError, Exit
 from qrosetta_cli.output import progress, result
-from qrosetta_cli.stack import actions, guard, hostload, installed, ports, preflight, profiles, quota, serve
+from qrosetta_cli.stack import actions, buildkit, guard, hostload, installed, ports, preflight, profiles, quota, serve
 from qrosetta_cli.stack import ownership as own
 from qrosetta_cli.stack import project as st
 from qrosetta_cli.stack.engine import TRANSFER_TIMEOUT_SEC, Engine, choose_engine, timed_out
@@ -18,30 +18,38 @@ def open_stack(ctx, cpu_quota=None):
     """(mode, engine, stack) for the checkout's compose project, or in installed mode for the
     compose file generated from the release manifest. With the CPU quota off (`cpu_quota`, else
     the recorded stack setting) compose also gets the override that removes the CPU limits.
-    Compose gets QROSETTA_NOT_INCLUDED, the services the release publishes no image of (empty in
-    a checkout), so that every command gives compose the API configuration `start` gives it."""
+    Compose gets QROSETTA_NOT_INCLUDED, the services the release publishes no image of and this
+    stack has not built from the build kit (empty in a checkout), so that every command gives
+    compose the API configuration `start` gives it."""
     mode = modes.detect(ctx.opt("project_dir"), ctx.env, ctx.checkout)
     release = None
     if mode.name == "checkout":
         project_dir = mode.project_dir
     else:
         project_dir, release = installed.prepare(ctx.env)
+    engine = make_engine(ctx, project_dir)
+    local = installed.localise(engine, release, ctx.env) if release else {}
+    engine.env[mf.NOT_INCLUDED_VAR] = ",".join(s for s in mf.not_included(release) if s not in local)
+    engine.check_compose()
+    stack = st.load_stack(engine)
+    stack.release = release
+    if release:
+        buildkit.annotate(stack, release, ctx.env)
+    if cpu_quota is None:
+        cpu_quota = localstack.cpu_quota(ctx.env, ctx.cfg, stack.name)[0]
+    quota.apply(engine, stack, cpu_quota, ctx.env)
+    return mode, engine, stack
+
+
+def make_engine(ctx, project_dir):
+    """The engine for the compose project in `project_dir`, with the host-load variables."""
     if ctx.engine_factory:
         engine = ctx.engine_factory(project_dir)
     else:
         choice = choose_engine(ctx.env, ctx.cfg.get("lifecycle", "engine"))
         engine = Engine(choice.name, project_dir, env=ctx.env, info=choice.info, reason=choice.reason)
     engine.env.update(hostload.compose_env(ctx.env))
-    engine.env[mf.NOT_INCLUDED_VAR] = ",".join(mf.not_included(release))
-    if release:
-        installed.localise(engine, release)
-    engine.check_compose()
-    stack = st.load_stack(engine)
-    stack.release = release
-    if cpu_quota is None:
-        cpu_quota = localstack.cpu_quota(ctx.env, ctx.cfg, stack.name)[0]
-    quota.apply(engine, stack, cpu_quota, ctx.env)
-    return mode, engine, stack
+    return engine
 
 
 def _bind(bind):
@@ -141,16 +149,7 @@ def cmd_start(ctx):
     services, missing, compose_env = serve.plan_start(engine, stack, requested, ctx.env)
     engine.env.update(compose_env)
     if missing:
-        names = ", ".join(stack.services[s].id for s in missing)
-        if stack.release:
-            keys = " ".join(stack.services[s].id for s in missing)
-            progress(
-                f"Not started (no image): {names}. `qrosetta pull {keys}` pulls them; "
-                "`qrosetta images load DIR` loads them from the release's image archives."
-            )
-        else:
-            keys = " ".join(stack.services[s].id for s in missing)
-            progress(f"Not started (no image): {names}. `qrosetta build {keys}` builds them.")
+        progress(" ".join(buildkit.missing_lines(stack, [stack.services[s].id for s in missing])))
     running = {c.service for c in found.containers if c.running}
     adding = bool(running)
     to_start = [s for s in services if s not in running]
@@ -302,6 +301,8 @@ def cmd_logs(ctx):
 
 
 def cmd_build(ctx):
+    if modes.detect(ctx.opt("project_dir"), ctx.env, ctx.checkout).name == "installed":
+        return buildkit.cmd_build(ctx)
     args = ctx.args
     _, engine, stack = open_stack(ctx)
     script = os.path.join(stack.project_dir, "scripts", "safe_boot.sh")
@@ -315,6 +316,23 @@ def cmd_build(ctx):
     requested = serve.requested_services(stack, args.services, args.profile, ctx.cfg) or []
     if args.profile:
         requested += [c for c in stack.core_services() if c not in requested]
+    built = requested or [
+        s for s in stack.services if s in stack.core_services() or "full" in stack.services[s].profiles
+    ]
+    done = run_build(ctx, engine, stack, script, requested, built, {})
+    if done is None:
+        return Result(int(Exit.SIGINT), None)
+    return Result(0, {"built": [stack.services[s].id for s in done]})
+
+
+def run_build(ctx, engine, stack, script, requested, built, extra_env, expected_sha=None):
+    """Run scripts/safe_boot.sh with QR_BUILD_ONLY for `requested` (all when empty), the engine
+    staging layers under $XDG_CACHE_HOME/qrosetta/tmp, then read the commit baked into each of
+    `built`: unknown, or other than `expected_sha` when given, exits 16. Returns the compose
+    services of `built` whose image exists, or None after Ctrl-C."""
+    from qrosetta_cli.stack.pull import cache_tmp
+
+    args = ctx.args
     found = own.scan(engine, stack)
     url = None
     if any(c.running for c in found.containers):
@@ -329,43 +347,48 @@ def cmd_build(ctx):
         QR_BUILD_SERVICES=" ".join(requested),
         COMPOSE_PROJECT_NAME=engine.project,
         COMPOSE_FILE=os.pathsep.join(engine.files),
+        TMPDIR=cache_tmp(ctx.env),
+        **extra_env,
     )
     try:
         with (
             guard.engine_lock(ctx.env, "build"),
             hostload.notice(ctx, url, "build", [stack.services[s].id for s in requested]),
         ):
-            code = subprocess.call(["bash", script], env=env, cwd=stack.project_dir, timeout=TRANSFER_TIMEOUT_SEC)
+            code = subprocess.call(
+                ["bash", script], env=env, cwd=os.path.dirname(os.path.dirname(script)), timeout=TRANSFER_TIMEOUT_SEC
+            )
     except subprocess.TimeoutExpired:
         raise timed_out(["bash", script], TRANSFER_TIMEOUT_SEC) from None
     except KeyboardInterrupt:
         progress("qrosetta: interrupted. `qrosetta status` shows what is running.")
-        return Result(int(Exit.SIGINT), None)
+        return None
     if code != 0:
         raise CliError(f"scripts/safe_boot.sh exited with {code}.", Exit.ENGINE, "build_failed", hint="qrosetta doctor")
-    built = requested or [
-        s for s in stack.services if s in stack.core_services() or "full" in stack.services[s].profiles
-    ]
     images = st.find_images(engine, [stack.image_for(s) for s in built])
-    unknown = [
+    wrong = [
         stack.services[s].id
         for s in built
-        if stack.image_for(s) in images and images[stack.image_for(s)].git_sha == "unknown"
+        if stack.image_for(s) in images
+        and (
+            images[stack.image_for(s)].git_sha == "unknown"
+            or (expected_sha is not None and images[stack.image_for(s)].git_sha != expected_sha)
+        )
     ]
-    if unknown:
+    if wrong:
+        what = "without a baked commit" if expected_sha is None else f"without the commit {expected_sha}"
         raise CliError(
-            f"Built images without a baked commit: {', '.join(unknown)}. The engine reused cached "
-            "layers built without QROSETTA_GIT_SHA.",
+            f"Built images {what}: {', '.join(wrong)}. The engine reused cached layers built without QROSETTA_GIT_SHA.",
             Exit.ENGINE,
             "build_commit_unknown",
-            hint=f"{engine.name} rmi {' '.join(stack.image_for(stack.resolve_service(k)) for k in unknown)} "
-            f"&& qrosetta build {' '.join(unknown)}",
+            hint=f"{engine.name} rmi {' '.join(stack.image_for(stack.resolve_service(k)) for k in wrong)} "
+            f"&& qrosetta build {' '.join(wrong)}",
         )
     for s in built:
         img = images.get(stack.image_for(s))
         if img and img.git_sha.endswith("-dirty"):
             output.warn(f"{stack.services[s].id} was built from {img.git_sha}: source not identifiable.", "dirty_build")
-    return Result(0, {"built": [stack.services[s].id for s in built if stack.image_for(s) in images]})
+    return [s for s in built if stack.image_for(s) in images]
 
 
 def _server_profiles(ctx):

@@ -115,10 +115,27 @@ def not_included(manifest):
     return sorted(not_distributable(manifest))
 
 
+def buildkit_present(path=None):
+    """Whether the package carries the build kit (release/buildkit.tar.gz and buildkit.json beside
+    the manifest), from which `qrosetta build` builds any service."""
+    directory = os.path.dirname(path or PATH)
+    return all(os.path.isfile(os.path.join(directory, n)) for n in ("buildkit.tar.gz", "buildkit.json"))
+
+
 def not_included_text(ids):
     """What the CLI says of the services `ids` (one or several) that this release does not include;
-    it begins with NOT_INCLUDED, which `selftest` groups by."""
-    return NOT_INCLUDED
+    it begins with NOT_INCLUDED, which `selftest` groups by. With the build kit it names the
+    build command, and that a service needing a GPU runs only on an NVIDIA GPU."""
+    ids = [i for i in ids if i]
+    if not ids or not buildkit_present():
+        return NOT_INCLUDED
+    try:
+        services = (load() or {}).get("services") or {}
+    except CliError:
+        services = {}
+    gpu = [i for i in ids if (services.get(i) or {}).get("requires_gpu")]
+    note = f" ({', '.join(gpu)} needs an NVIDIA GPU to run)" if gpu else ""
+    return f"{NOT_INCLUDED}; build {'it' if len(ids) == 1 else 'them'}: qrosetta build {' '.join(ids)}{note}"
 
 
 def loaded_tag(project, compose_service, release):

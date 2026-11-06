@@ -125,15 +125,16 @@ def test_fixes_are_numbered_in_the_order_to_apply_them_and_not_printed_under_row
     lines = doctor.report_lines(rep)
     text = "\n".join(lines)
     numbered = [line for line in lines if line[:5].strip().rstrip(".").isdigit()]
-    assert [n.split(".")[0].strip() for n in numbered] == ["1", "2", "3", "4", "5", "6"]
+    assert [n.split(".")[0].strip() for n in numbered] == ["1", "2", "3", "4", "5", "6", "7"]
     assert "Install Docker Compose v2" in numbered[0] and "podman's API socket" in numbered[1]
-    assert "Use port 8090" in numbered[2] and "Free space under" in numbered[3] and "Free space under" in numbered[4]
-    assert numbered[5] == "  6. Set [lifecycle] job_storage lower (qrosetta config path), or free space in the image store."
+    assert "Use port 8090" in numbered[2] and "Point podman at a larger file system" in numbered[3]
+    assert "Free space under" in numbered[4] and "Free space under" in numbered[5]
+    assert numbered[6] == "  7. Set [lifecycle] job_storage lower (qrosetta config path), or free space in the image store."
     rows = lines[2:lines.index("")]
     assert not any("systemctl" in r or "dnf install" in r for r in rows)
     assert "       sudo dnf install docker-compose" in lines
     assert "       systemctl --user enable --now podman.socket" in lines
-    assert "3 checks failed, 3 warnings. Resolve them, then run `qrosetta doctor` again." in lines
+    assert "3 checks failed, 4 warnings. Resolve them, then run `qrosetta doctor` again." in lines
     assert lines[-1].startswith("Next step once all checks pass:  qrosetta ") and "\n\n  1. " in text
 
 

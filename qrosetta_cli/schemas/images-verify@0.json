@@ -50,6 +50,7 @@
                 "status": {
                   "enum": [
                     "PASS",
+                    "INFO",
                     "WARN",
                     "FAIL",
                     "SKIP"

@@ -5,7 +5,7 @@ now gives the container's service another configuration."""
 
 import sys
 
-from qrosetta_cli import jobstore
+from qrosetta_cli import __version__, jobstore
 from qrosetta_cli import manifest as mf
 from qrosetta_cli.errors import CliError
 from qrosetta_cli.output import progress, result
@@ -44,7 +44,7 @@ def classify(stack, ref, img, service=None):
     recorded, never tags. In installed mode an image is `pulled` when it carries the digest the
     manifest names and `loaded` when its id is one the manifest records for the service (an
     image from `images load` has no registry digest); otherwise an image with a baked commit is
-    `built`, one without is `unknown`."""
+    `built` (with the release when it bakes a build-kit commit), one without is `unknown`."""
     sha = img.git_sha
     release = stack.release.get("platform_version") if stack.release else None
     if stack.release and "@" in ref and ref in img.digests:
@@ -61,7 +61,8 @@ def classify(stack, ref, img, service=None):
     if sid and mf.image_id_key(img.id) in mf.release_ids(stack.release, sid):
         return {"state": "loaded", "ref": ref, "digest": digest, "image_id": img.id, "git_sha": sha, "release": release}
     state = "built" if sha != "unknown" else "unknown"
-    return {"state": state, "ref": ref, "digest": digest, "image_id": img.id, "git_sha": sha, "release": None}
+    kit = __version__ if stack.release and sha.endswith("+buildkit") else None
+    return {"state": state, "ref": ref, "digest": digest, "image_id": img.id, "git_sha": sha, "release": kit}
 
 
 def container_image_record(stack, service, container, tagged, by_id):
@@ -104,6 +105,8 @@ def image_text(record):
     if record["state"] == "loaded":
         return f"loaded {record['release']} {st.image_key(record['image_id'])[:12]}"
     sha = record["git_sha"] or "unknown"
+    if record["state"] == "built" and record.get("release"):
+        return f"built locally from release {record['release']} ({sha.split('+')[0][:12]}+buildkit)"
     if record["state"] == "built":
         return f"built from {sha}" + (" (source not identifiable)" if sha.endswith("-dirty") else "")
     ident = (record["digest"] or record["image_id"] or "").split(":")[-1][:12]

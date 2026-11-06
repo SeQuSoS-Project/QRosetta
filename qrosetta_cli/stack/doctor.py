@@ -20,6 +20,9 @@ from qrosetta_cli.stack.explain import DELEGATE_DROPIN, OTHER_BIND, SUBUID_FIX, 
 
 GIB = 1024**3
 LOW_DISK_GIB = 10
+# The largest image a build writes: the TorchQuantum runner, 4.03 GB in the local store
+# (2026-11-06); podman stages its layers in TMPDIR, /var/tmp unless qrosetta sets it.
+LARGEST_BUILD_BYTES = 4_100_000_000
 ORDER = ("PASS", "INFO", "WARN", "FAIL", "SKIP")
 FIX_ORDER = (
     "os",
@@ -595,9 +598,43 @@ def check_disk(host, rep, choice):
         else:
             rep.add("disk", "PASS", f"{label} {path}: {free / GIB:.1f} GiB free")
     tmp = host.free_bytes("/var/tmp") if choice and choice.name == "podman" else None
-    if tmp is not None:
+    if tmp is not None and tmp < LARGEST_BUILD_BYTES:
+        rep.add(
+            "disk",
+            "WARN",
+            f"/var/tmp: {tmp / GIB:.1f} GiB free, less than the {LARGEST_BUILD_BYTES / GIB:.1f} GiB the largest "
+            "image build stages (podman stages image layers there unless TMPDIR says otherwise; qrosetta build, "
+            "pull and images load set TMPDIR to its cache)",
+            "set TMPDIR to a larger file system for podman commands run outside qrosetta",
+            [
+                (
+                    "Point podman at a larger file system for builds and pulls run outside qrosetta:",
+                    ["export TMPDIR=$HOME/.cache/qrosetta/tmp"],
+                )
+            ],
+        )
+    elif tmp is not None:
         rep.add("disk", "INFO", f"/var/tmp: {tmp / GIB:.1f} GiB free (podman stages image layers there)")
     return store_free
+
+
+def check_buildkit(rep, mode):
+    """Installed mode: whether the package carries the build kit `qrosetta build` uses."""
+    if mode != "installed":
+        return
+    from qrosetta_cli.stack import buildkit
+
+    try:
+        meta = buildkit.load()
+    except CliError as exc:
+        rep.add("buildkit", "WARN", exc.message, "reinstall qrosetta")
+        return
+    if meta is None:
+        rep.add("buildkit", "INFO", "no build kit in this package: `qrosetta build` needs a source checkout")
+    else:
+        rep.add(
+            "buildkit", "INFO", f"build kit present ({buildkit.describe(meta)}): `qrosetta build NAME` builds images"
+        )
 
 
 def check_jobs(host, rep, cfg, store_free):
@@ -811,6 +848,7 @@ def run(ctx, host=None):
         config is not None,
     )
     check_jobs(host, rep, ctx.cfg, check_disk(host, rep, choice))
+    check_buildkit(rep, _mode_name(ctx))
     check_credentials(host, rep, servers.credentials_path(ctx.cfg, ctx.env))
     check_extras(host, rep)
     if config is not None:
@@ -823,18 +861,32 @@ def run(ctx, host=None):
 
 def next_command(ctx, host, answers):
     """The one command to run after doctor: the self-test when a stack answers, `start -d` when
-    its core images are present, else pull (installed) or build (checkout) of the minimal profile."""
-    from qrosetta_cli import mode as modes
+    its core images are present, else build (checkout, or an installed release whose images are
+    not published but whose package carries the build kit) or pull of the minimal profile."""
 
     if answers:
         return "qrosetta selftest"
     if host.images_present(ctx):
         return "qrosetta start -d"
+    if _mode_name(ctx) == "checkout":
+        return "qrosetta build --profile minimal"
+    from qrosetta_cli import manifest as mf
+    from qrosetta_cli.stack import buildkit
+
     try:
-        checkout = modes.detect(ctx.opt("project_dir"), ctx.env, ctx.checkout).name == "checkout"
+        build = not mf.images_published(mf.load()) and buildkit.load() is not None
     except CliError:
-        checkout = False
-    return f"qrosetta {'build' if checkout else 'pull'} --profile minimal"
+        build = False
+    return f"qrosetta {'build' if build else 'pull'} --profile minimal"
+
+
+def _mode_name(ctx):
+    from qrosetta_cli import mode as modes
+
+    try:
+        return modes.detect(ctx.opt("project_dir"), ctx.env, ctx.checkout).name
+    except CliError:
+        return None
 
 
 def report_lines(rep, stream=None):

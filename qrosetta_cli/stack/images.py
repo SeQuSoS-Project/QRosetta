@@ -5,11 +5,11 @@ plus the cosign signature when cosign is installed. It runs no container."""
 
 import json
 
-from qrosetta_cli import manifest as mf
+from qrosetta_cli import __version__, manifest as mf
 from qrosetta_cli.context import Result
 from qrosetta_cli.errors import CliError, Exit, usage
 from qrosetta_cli.output import progress, result
-from qrosetta_cli.stack import archive, serve, signatures
+from qrosetta_cli.stack import archive, buildkit, serve, signatures
 from qrosetta_cli.stack import ownership as own
 from qrosetta_cli.stack import project as st
 from qrosetta_cli.stack.actions import human_bytes
@@ -69,13 +69,14 @@ def cmd_images_list(ctx):
         result("  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row)).rstrip())
     withheld = mf.not_distributable(stack.release)
     if withheld:
-        result(f"\nNot published by the release (licence): {', '.join(sorted(withheld))}; a checkout builds them.")
+        how = "`qrosetta build NAME` builds them" if buildkit.load() is not None else "a checkout builds them"
+        result(f"\nNot published by the release (licence): {', '.join(sorted(withheld))}; {how}.")
     missing = [r["id"] for r in table if r["state"] == "missing"]
     if missing:
-        how = "qrosetta pull" if stack.release else "qrosetta build"
+        how = buildkit.get_command(stack, missing)
         progress(
-            f"{len(missing)} missing: `{how} {' '.join(missing)}`"
-            + (" or `qrosetta images load DIR`." if stack.release else ".")
+            f"{len(missing)} missing: `{how}`"
+            + (" or `qrosetta images load DIR`." if stack.release and how.startswith("qrosetta pull") else ".")
         )
     return Result(
         0,
@@ -150,6 +151,7 @@ def image_checks(engine, stack, row, img, require_signature, env):
         if dirty
         else sha,
     )
+    kit = release is not None and buildkit.is_kit_commit(sha)
     if row["kind"] in ("runner", "compiler"):
         steps = history(engine, img.id)
         ident = archive.identity_from_history(steps) if steps is not None else None
@@ -167,10 +169,12 @@ def image_checks(engine, stack, row, img, require_signature, env):
             if ident["git_sha"] != sha:
                 problems.append(f"identity commit {ident['git_sha']} differs from the baked {sha}")
             if release:
-                if ident["source"] != "release":
-                    problems.append(f"source {ident['source']}, not release")
-                if ident["release"] != release.get("platform_version"):
-                    problems.append(f"release {ident['release']}, not {release.get('platform_version')}")
+                wanted = "built_locally" if kit else "release"
+                if ident["source"] != wanted:
+                    problems.append(f"source {ident['source']}, not {wanted}")
+                version = __version__ if kit else release.get("platform_version")
+                if ident["release"] != version:
+                    problems.append(f"release {ident['release']}, not {version}")
             elif ident["source"] not in ("built_locally", "release"):
                 problems.append(f"source {ident['source']!r} is neither built_locally nor release")
             _check(
@@ -180,6 +184,8 @@ def image_checks(engine, stack, row, img, require_signature, env):
                 "; ".join(problems)
                 or f"source={ident['source']} release={ident['release'] or '-'} git_sha={ident['git_sha']}",
             )
+    if kit:
+        return checks + kit_checks(stack, sid, img, sha, require_signature)
     if release:
         sid_known = sid in release.get("services", {})
         if row["state"] in ("pulled", "loaded"):
@@ -215,6 +221,39 @@ def image_checks(engine, stack, row, img, require_signature, env):
         if require_signature and status != "verified":
             state = "FAIL"
         _check(checks, "signature", state, detail)
+    return checks
+
+
+def kit_checks(stack, sid, img, sha, require_signature):
+    """The release checks of an image built from this package's build kit: the commit the kit
+    bakes, the API's platform version, and no signature (INFO; FAIL with --require-signature)."""
+    release = stack.release
+    version = __version__
+    meta = buildkit.load()
+    checks: list = [
+        {
+            "check": "release",
+            "status": "INFO",
+            "detail": f"built locally from the build kit of release {version}; not a published image",
+        }
+    ]
+    if meta is None:
+        _check(checks, "release commit", "FAIL", f"baked {sha}, but this package carries no build kit")
+    elif sha != buildkit.baked_commit(meta):
+        _check(
+            checks,
+            "release commit",
+            "FAIL",
+            f"baked {sha}, this package's build kit bakes {buildkit.baked_commit(meta)}",
+        )
+    if sid == "api" and img.env.get("QROSETTA_VERSION") != version:
+        _check(
+            checks, "platform version", "FAIL", f"QROSETTA_VERSION={img.env.get('QROSETTA_VERSION')}, release {version}"
+        )
+    detail = f"built locally: no signature; `qrosetta pull {sid}` fetches the signed release image"
+    if sid not in mf.published_refs(release):
+        detail = "built locally: no signature; the release publishes no image of it"
+    _check(checks, "signature", "FAIL" if require_signature else "INFO", detail)
     return checks
 
 
@@ -270,7 +309,7 @@ def cmd_images_verify(ctx):
             Exit.ENGINE,
             "images_unverified",
             data=data,
-            hint=("qrosetta pull " if stack.release else "qrosetta build ") + " ".join(failed),
+            hint=buildkit.get_command(stack, failed),
         )
     result(f"\n{present} of {len(report)} images present; every check of those passed.")
     return Result(0, data)

@@ -402,7 +402,7 @@ def test_destructive_engine_calls_take_targets_only_from_the_ownership_scan():
 
 
 def test_subprocess_is_used_only_by_the_engine_build_and_config_edit():
-    allowed = {("stack/commands.py", "cmd_build"), ("commands.py", "cmd_config_edit")}
+    allowed = {("stack/commands.py", "run_build"), ("commands.py", "cmd_config_edit")}
     for module, fn, call in _source_calls():
         f = call.func
         if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) and f.value.id in ("subprocess", "os"):

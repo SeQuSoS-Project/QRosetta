@@ -269,6 +269,12 @@ def cmd_images_load(ctx):
                 progress(f"  {exc.message}")
                 failed.append({"id": entry["service"], "reason": exc.reason, "message": exc.message})
     data = {"directory": directory, "loaded": loaded, "failed": failed}
+    if stack.release:
+        from qrosetta_cli.stack import buildkit
+
+        switched = buildkit.forget(ctx.env, stack.name, [e["id"] for e in loaded])
+        if switched:
+            progress(f"{', '.join(switched)}: the stack runs the loaded release images now, not the build-kit ones.")
     if loaded:
         result(
             f"Loaded {len(loaded)} images: {', '.join(e['id'] for e in loaded)}. `qrosetta images verify` "

@@ -95,7 +95,7 @@ SPECS = {
     "build": Spec(
         "stack.commands:cmd_build",
         "build@0",
-        "build images from this checkout (scripts/safe_boot.sh)",
+        "build images from this checkout, or from an installed package's build kit",
         ("qrosetta build --profile minimal", "qrosetta build qiskit"),
     ),
     "pull": Spec(
