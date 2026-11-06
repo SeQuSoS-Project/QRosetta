@@ -339,7 +339,7 @@ def cmd_build(ctx):
     record(ctx.env, project, {sid: tag(project, manifest["services"][sid]["compose_service"]) for sid in ids})
     refs = mf.published_refs(manifest)
     replaced = [s for s in ids if s in refs]
-    result(f"Built {len(ids)} images from the build kit: {', '.join(ids)}.")
+    result(f"Built {len(ids)} image{'' if len(ids) == 1 else 's'} from the build kit: {', '.join(ids)}.")
     if replaced:
         result(
             f"{', '.join(replaced)}: the stack runs these local builds instead of the published images; "

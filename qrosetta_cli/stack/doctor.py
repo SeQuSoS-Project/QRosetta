@@ -228,8 +228,14 @@ def local_services(ctx):
         "running": {stack.services[s].id for s in running},
         "created": {stack.services[s].id for s in created},
         "profile": profile,
-        "not_included": set(mf.not_included(stack.release)),
+        "not_included": stack_not_included(engine),
     }
+
+
+def stack_not_included(engine):
+    """The ids `open_stack` gave compose as QROSETTA_NOT_INCLUDED: the services the installed
+    release publishes no image of, less those built from the build kit."""
+    return {s for s in (engine.env.get(mf.NOT_INCLUDED_VAR) or "").split(",") if s}
 
 
 @dataclass
@@ -693,15 +699,22 @@ def check_extras(host, rep):
 
 
 def not_included_ids(ctx):
-    """The ids of the services the installed release publishes no image of; empty in a checkout."""
+    """The ids of the services the installed release publishes no image of and this stack has not
+    built from the build kit; empty in a checkout."""
     from qrosetta_cli import mode as modes
+    from qrosetta_cli.stack import buildkit
 
     try:
         if modes.detect(ctx.opt("project_dir"), ctx.env, ctx.checkout).name == "checkout":
             return set()
-        return set(mf.not_included(mf.load()))
+        manifest = mf.load()
     except CliError:
         return set()
+    project = localstack.project(ctx.env)
+    built = {
+        sid for sid, t in buildkit.recorded(ctx.env, project).items() if buildkit.tags(manifest, project).get(sid) == t
+    }
+    return set(mf.not_included(manifest)) - built
 
 
 def check_live(rep, config, transport, env=None, running=None, not_included=()):

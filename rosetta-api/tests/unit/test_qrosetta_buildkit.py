@@ -508,3 +508,20 @@ def test_not_included_text_names_the_build_command_only_with_a_kit(env):
     assert mf.not_included_text(["myqlm", "cuquantum"]) == (
         "not included in this release; build them: qrosetta build myqlm cuquantum "
         "(cuquantum needs an NVIDIA GPU to run)")
+
+
+def test_doctor_and_compose_leave_a_kit_build_out_of_the_not_included_list(env, monkeypatch):
+    from qrosetta_cli import config as cfgmod
+    from qrosetta_cli.context import Context
+    from qrosetta_cli.stack import doctor
+    ship()
+    fake, seen = engine_with_release(), []
+    monkeypatch.setattr(subprocess, "call", builder(fake, seen))
+    ctx = Context(args=type("A", (), {"project_dir": None})(), env=env, cfg=cfgmod.Config("/none", False),
+                  engine_factory=lambda d: Engine(fake.engine, d, run=fake, popen=fake.popen, env=env))
+    assert doctor.not_included_ids(ctx) == {"myqlm"} and doctor.local_services(ctx)["not_included"] == {"myqlm"}
+    assert run(["build", "myqlm"], env, fake) == 0
+    assert doctor.not_included_ids(ctx) == set() and doctor.local_services(ctx)["not_included"] == set()
+    fake.calls.clear()
+    assert run(["status"], env, fake) == 0
+    assert {e.get(mf.NOT_INCLUDED_VAR) for c, e in fake.calls if c[1] == "compose"} == {""}
