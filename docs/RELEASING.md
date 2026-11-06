@@ -1,17 +1,20 @@
 # Releasing Quantum Rosetta
 
-The release workflow (`.github/workflows/release-images.yml`, described step by step in
-`CONTRIBUTING.md`, "A release") builds, tests, publishes and attaches everything once a tag is
-pushed. This file gives the order a maintainer follows around it, the files a version bump
-touches, and the checks on a clean machine afterwards. Commands assume the public repository is
-the git remote `public` (`SeQuSoS-Project/QRosetta`) and the version is `X.Y.Z`.
+The release workflow (`.github/workflows/release-images.yml`; `CONTRIBUTING.md`, "A release",
+lists its jobs) builds, tests and publishes everything once a version tag is pushed. A maintainer
+bumps the version before the tag, approves the publishing environment during the run, and checks
+the published files and a clean install afterwards. Commands assume the public repository is the
+git remote `public` (`SeQuSoS-Project/QRosetta`) and the version is `X.Y.Z`.
 
 ## Facts that fix the order
 
 - PyPI never accepts a file name twice, even after the file or the whole release is deleted
   (https://pypi.org/help/#file-name-reuse). A wheel with a mistake costs a version number: fix
   forward with `X.Y.Z.post1` for a packaging-only fix, else `X.Y.(Z+1)`. The same holds on
-  TestPyPI, so a failed release candidate is followed by `rc2`.
+  TestPyPI, so a failed release candidate `rcN` is followed by `rcN+1`.
+- A ruleset forbids moving or deleting a `v*` tag. A run that fails for a reason in the code also
+  takes the next number; a run that fails for a transient reason (a registry or mirror error) is
+  re-run on the same tag (step 4 of the release candidate).
 - A package that `publish-images` creates is linked to this public repository and takes its
   visibility: the rc2 images (2026-11-03) were public at once, pullable without a login, and
   nothing had to be switched per package. A public package cannot be made private again
@@ -32,10 +35,10 @@ the git remote `public` (`SeQuSoS-Project/QRosetta`) and the version is `X.Y.Z`.
 - The workflow refuses a tag that is not `v` followed by `qrosetta_cli.__version__` spelled as
   canonical PEP 440 (`v2.0.0rc1`, never `v2.0.0-rc1`).
 
-## Release-blocking items known on 2026-11-02
+## Release-blocking items known on 2026-11-06
 
-The Trivy gate passes on every release image, and every fixable HIGH finding outside an SDK pin is
-gone (DESIGN_DECISIONS.md, "Dependency bumps in the published runner and compiler images", both
+The Trivy gate passed on every release image in the `v2.0.0rc5` run (2026-11-05), and every
+fixable HIGH finding outside an SDK pin is gone (DESIGN_DECISIONS.md, "Dependency bumps in the published runner and compiler images", both
 rounds). What a scan without `.trivyignore` still reports, all fixed only by another measured SDK
 version:
 
@@ -94,27 +97,63 @@ verification documents in `docs/verification/`, and the v1.0.0 example crate in 
 
 ## A release candidate (rehearsal, no GitHub release)
 
-1. On `main`, bump to `X.Y.Zrc1` in the first six files above (`CHANGELOG.md` keeps
-   `[Unreleased]`; leave the two date fields out). Run the unit suite and
-   `./scripts/check_frontend_types.sh`. On a local stack built from the commit, export a
-   statevector job, a measured job with a compile-only service, a playlist and a supplied report,
-   and check them with `scripts/verify/validate_crates.sh <zip> ...` (Process Run Crate 0.5,
-   REQUIRED level). Commit, and `git push public main`.
+`v2.0.0rc3` to `v2.0.0rc5` were made this way.
+
+1. On `main`, bump to `X.Y.ZrcN` in the first six files above (`CHANGELOG.md` keeps
+   `[Unreleased]`; leave the two date fields out); the `plan` job refuses a tag that differs from
+   `__version__`. Run the unit suite and `./scripts/check_frontend_types.sh`. On a local stack
+   built from the commit, export a statevector job, a measured job with a compile-only service, a
+   playlist and a supplied report, and check them with `scripts/verify/validate_crates.sh <zip>
+   ...` (Process Run Crate 0.5, REQUIRED level). Commit, push to `origin` and `public`, and wait
+   for CI on the public `main` to pass.
 2. Tag the commit and push the tag:
 
    ```bash
-   git tag -s vX.Y.Zrc1 -m "Quantum Rosetta X.Y.Zrc1"
-   git tag -v vX.Y.Zrc1          # expect: Good signature from ...
-   git push public vX.Y.Zrc1
+   git tag -s vX.Y.ZrcN -m "Quantum Rosetta X.Y.ZrcN"
+   git tag -v vX.Y.ZrcN          # expect: Good signature from ...
+   git push public vX.Y.ZrcN
    ```
 
-3. The run builds, self-tests and scans every image, pushes them to GHCR as `:X.Y.Zrc1`, signs and
-   attests them, and puts the wheel on TestPyPI once the `testpypi` environment is approved.
-   `release-assets` runs too: the run page then holds the artifact `release-assets` with exactly
-   the files the release page would carry. No GitHub release is made, so Zenodo sees nothing.
-4. Check the image list, notices and SBOMs in the artifact, and run the clean-machine checks below with `pipx install --index-url https://test.pypi.org/simple/
-   qrosetta==X.Y.Zrc1` in place of the PyPI install, the files of the `release-assets` artifact
-   in place of the release page, and steps 11 and 12 left out.
+3. The run builds, self-tests and scans every image, pushes them to GHCR as `:X.Y.ZrcN`, signs and
+   attests them, and builds the wheel. Approve the `testpypi` environment when the run asks for
+   it: the wheel goes to TestPyPI, and only then does `release-assets` run and leave the artifact
+   `release-assets` with the files the release page would carry. `publish to PyPI` and
+   `GitHub release (final versions)` are skipped, so Zenodo sees nothing.
+4. An image job can fail when snapshot.debian.org answers 503 during `apt-get` (the Quartz build
+   of rc4, the Synthetiq build of rc5). The cause is outside the repository: press "Re-run failed
+   jobs" on the run page (or `gh run rerun <run id> --failed -R SeQuSoS-Project/QRosetta`). The
+   failed job and every job that waited on it run again on the same tag; rc4 and rc5 were
+   published by attempt 2. Any other failure needs a fix and the next `rcN`.
+5. Check the published files:
+
+   ```bash
+   gh run download <run id> -R SeQuSoS-Project/QRosetta -n release-assets -D release
+   (cd release && sha256sum -c SHA256SUMS)
+   gh attestation verify release/qrosetta-X.Y.ZrcN-py3-none-any.whl -R SeQuSoS-Project/QRosetta
+   pip download --no-deps --index-url https://test.pypi.org/simple/ qrosetta==X.Y.ZrcN -d testpypi
+   cmp testpypi/qrosetta-X.Y.ZrcN-py3-none-any.whl release/qrosetta-X.Y.ZrcN-py3-none-any.whl
+   ```
+
+   Every file listed in `SHA256SUMS` reads `OK` (`SHA256SUMS` and the `.intoto.jsonl` bundle are
+   not in it), and the attestation verifies. Read the image list, the notices and the SBOMs.
+6. Run the clean-machine checks below with the TestPyPI install, the files of the
+   `release-assets` artifact in place of the release page, and steps 11 and 12 left out. Install
+   from TestPyPI into a virtual environment:
+
+   ```bash
+   python3 -m venv ~/qr-rc && ~/qr-rc/bin/pip install --index-url https://test.pypi.org/simple/ qrosetta==X.Y.ZrcN
+   ```
+
+   `pipx install --index-url https://test.pypi.org/simple/ ...` fails on a pipx that has no
+   shared environment yet, because pipx then installs pip from that index; the same command
+   succeeds when run a second time.
+7. Start the minimal profile and run `qrosetta selftest` on one host whose podman is older than
+   5.8.0: RHEL 10.1 or AlmaLinux 10.1 (podman 5.6.0), Debian 13 (5.4.2), or Ubuntu 26.04 with
+   podman (5.7.0). podman before 5.8.0 splits a healthcheck argument at its spaces
+   (containers/podman#27818), so rc3 and rc4 never became healthy there; the compose file's API
+   healthcheck has no whitespace in its arguments since rc5
+   (`test_compose_healthcheck_arguments_hold_no_whitespace`). An AlmaLinux 10.1 virtual machine
+   with its repositories pinned to `vault.almalinux.org/10.1` takes about 10 minutes to set up.
 
 ## The release
 
@@ -187,9 +226,10 @@ what it counts as provenance.
 
 On a fresh virtual machine (Fedora or RHEL with rootless podman 4.7 or later, or Ubuntu LTS with
 Docker Engine), not logged in to `ghcr.io`, with Docker Compose v2 as the compose provider and the
-host set up as README.md "Setting up the host" says (on RHEL, `qrosetta doctor` names the Compose
-step), Python 3.11 or later, pipx, cosign 3 and the GitHub CLI (`gh auth login` done). `docker` below may be `podman` throughout. Each command is
-followed by what it should print.
+host set up as README.md "Installing from PyPI" says for its distribution (`qrosetta doctor`
+names the Compose step), Python 3.11 or later, pipx, cosign 3 and the GitHub CLI (`gh auth login`
+done). `docker` below may be `podman` throughout. Each command is followed by what it should
+print. A host that already runs a stack from a checkout needs the changes in the next section.
 
 1. Install from PyPI.
 
@@ -200,8 +240,8 @@ followed by what it should print.
    `installed package qrosetta X.Y.Z, installed using Python 3.N.N`, then `These apps are now
    globally available` and `- qrosetta`.
 
-2. `qrosetta version` prints `qrosetta X.Y.Z (Python 3.N.N, installed mode)` and
-   `Release manifest: release X.Y.Z (images published)`.
+2. `qrosetta version` prints `qrosetta X.Y.Z`, then the rows `Mode  installed mode` and
+   `Release manifest  release X.Y.Z (images published)`.
 
 3. The release files are the attested ones, and PyPI has the same wheel.
 
@@ -256,8 +296,10 @@ followed by what it should print.
    `qrosetta status` lists the five services as running.
 
 10. `qrosetta selftest` prints no `FAIL` line and ends with `PASS. Results: ...` (a virtual
-    machine adds one hypervisor warning per probed runner and one for the job, e.g.
-    `PASS (4 warnings). Results: ...` for the minimal profile); exit 0.
+    machine adds one hypervisor warning per probed runner and one for the job, for example
+    `PASS (4 warnings). Results: ...` for the minimal profile); exit 0. The banner of step 9 and
+    the address `selftest` uses are `http://localhost:8080`, or the port `start` reported when
+    8080 was taken.
 
 11. The DOI resolves:
 
@@ -272,6 +314,36 @@ followed by what it should print.
     commit it points to.
 
 13. Clean up: `qrosetta remove --all --confirm qsimulators` and `pipx uninstall qrosetta`.
+
+## Clean install on a host that runs a checkout stack
+
+rc4 and rc5 were checked this way on the development host. A checkout and an installed
+`qrosetta` both use the compose project `qsimulators` by default, so an installed stack under that
+name would mount the checkout's database volume, and `remove --all --confirm qsimulators` would
+delete it. Use another project and separate state directories:
+
+```bash
+export QROSETTA_PROJECT=qrrc
+export XDG_STATE_HOME=~/qr-rc/state XDG_CACHE_HOME=~/qr-rc/cache XDG_CONFIG_HOME=~/qr-rc/config
+mkdir -p ~/qr-rc/config && ln -s ~/.config/containers ~/qr-rc/config/containers
+unset QROSETTA_PROJECT_DIR
+```
+
+The link keeps podman's `containers.conf` (for example its `image_copy_tmp_dir`) in effect. The
+container names are fixed in the compose file, so `start` refuses while the checkout's containers
+exist, even stopped: run `./qrosetta remove` without options in the checkout first, which keeps
+its images and data volume. Then:
+
+- `images verify --require-signature` fails the `labels` check of every image under the other
+  project, because release images are labelled for `qsimulators`. Run it once more with
+  `QROSETTA_PROJECT=qsimulators` (it only reads image data and signatures) and expect exit 0.
+- `remove --all --confirm qrrc` removes the containers, networks and volume of `qrrc` and leaves
+  the release images. Check that no other tag and no container uses them, then remove them by ID
+  (`podman rmi <id> ...`).
+- Restore the checkout stack with `./qrosetta start -d` in the checkout (`./qrosetta build` first
+  when the version changed), and check that its data is unchanged.
+
+## Image archives
 
 Image archives for a Zenodo upload (`qrosetta images save`) are written with an installed
 `qrosetta` after `qrosetta pull`: in installed mode `images load` accepts only published images,
