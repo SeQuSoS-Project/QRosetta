@@ -40,6 +40,9 @@ dist/
 
 # Release manifest: written by scripts/release/make_manifest.py in the release workflow
 qrosetta_cli/release/manifest.json
+# Build kit: written by scripts/release/make_buildkit.py in the release workflow
+qrosetta_cli/release/buildkit.tar.gz
+qrosetta_cli/release/buildkit.json
 
 # OS
 .DS_Store

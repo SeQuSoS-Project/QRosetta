@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Checks the sdist and wheel in a dist directory before they are published: the wheel holds
 qrosetta_cli and its metadata only, its version is the expected one, it has no dependencies, and
-it carries the licence files, the JSON schemas and (with --require-manifest) the release manifest.
+it carries the licence files, the JSON schemas, (with --require-manifest) the release manifest and
+(with --require-buildkit) a build kit whose sha256 and size match its metadata.
 `--prerelease VERSION` prints whether a canonical PEP 440 version is a pre-release (aN, bN, rcN
 or .devN; the release workflow sends those to TestPyPI only) and refuses any other spelling.
 Stdlib only."""
 
 import argparse
 import email.parser
+import hashlib
+import json
 import re
 import sys
 import tarfile
@@ -34,7 +37,28 @@ def _metadata(text):
     return email.parser.Parser().parsestr(text)
 
 
-def check_wheel(path, version, require_manifest=False):
+BUILDKIT_MAX_BYTES = 15 * 1024 * 1024
+
+
+def check_buildkit(zf, names):
+    """Problems with the build kit inside a wheel."""
+    kit, meta_name = "qrosetta_cli/release/buildkit.tar.gz", "qrosetta_cli/release/buildkit.json"
+    if kit not in names or meta_name not in names:
+        return [f"no {kit} with {meta_name}"]
+    data = zf.read(kit)
+    try:
+        meta = json.loads(zf.read(meta_name))
+    except ValueError as exc:
+        return [f"{meta_name} is not JSON: {exc}"]
+    problems = []
+    if meta.get("sha256") != hashlib.sha256(data).hexdigest() or meta.get("size") != len(data):
+        problems.append(f"{kit} does not match the sha256 and size {meta_name} records")
+    if len(data) > BUILDKIT_MAX_BYTES:
+        problems.append(f"{kit} is {len(data)} bytes, over {BUILDKIT_MAX_BYTES}")
+    return problems
+
+
+def check_wheel(path, version, require_manifest=False, require_buildkit=False):
     """A list of problems with the wheel at `path`; empty when it is fit to publish."""
     problems = []
     dist_info = f"qrosetta-{version}.dist-info/"
@@ -71,6 +95,8 @@ def check_wheel(path, version, require_manifest=False):
             problems.append(f"modules missing: {', '.join(sorted(modules - set(names)))}")
         if require_manifest and "qrosetta_cli/release/manifest.json" not in names:
             problems.append("no qrosetta_cli/release/manifest.json")
+        if require_buildkit:
+            problems += check_buildkit(zf, names)
     return problems
 
 
@@ -92,6 +118,7 @@ def main(argv=None):
     parser.add_argument("dist", nargs="?", help="directory holding one .whl and one .tar.gz")
     parser.add_argument("--version", help="the version both must carry")
     parser.add_argument("--require-manifest", action="store_true")
+    parser.add_argument("--require-buildkit", action="store_true")
     parser.add_argument("--prerelease", metavar="VERSION", help="print true or false and exit")
     args = parser.parse_args(argv)
     if args.prerelease is not None:
@@ -109,7 +136,8 @@ def main(argv=None):
         print(f"check_dist: expected one wheel and one sdist in {dist}, found {len(wheels)} and {len(sdists)}",
               file=sys.stderr)
         return 1
-    problems = check_wheel(wheels[0], args.version, args.require_manifest) + check_sdist(sdists[0], args.version)
+    problems = check_wheel(wheels[0], args.version, args.require_manifest, args.require_buildkit) + check_sdist(
+        sdists[0], args.version)
     for problem in problems:
         print(f"check_dist: {problem}", file=sys.stderr)
     if not problems:

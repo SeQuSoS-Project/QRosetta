@@ -8,7 +8,9 @@
 # QROSETTA_PUBLISH_IMAGES is 'true' it also pushes them to GHCR, signs them with cosign, attests
 # their provenance and attaches an SPDX SBOM (syft) as an attestation, writes each image's
 # source notice (artifact notice-<id>, scripts/release/image_notice.py) for the release page, and
-# writes the release manifest with their digests and image ids into the wheel. With the variable
+# writes the release manifest with their digests and image ids into the wheel. Every wheel also
+# carries the build kit of the tagged commit (scripts/release/make_buildkit.py), from which an
+# installed qrosetta builds any image, the three above included. With the variable
 # unset no image is pushed. No image is pushed either unless the openapi job has written the API
 # description from the tagged code (scripts/release/release_assets.py openapi).
 #
@@ -376,6 +378,9 @@ jobs:
             python scripts/release/make_manifest.py --version "$VERSION" --registry "$REGISTRY"
           fi
 
+      - name: Build kit
+        run: python scripts/release/make_buildkit.py
+
       - name: Build
         run: python -m build --outdir dist .
 
@@ -385,7 +390,7 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = push ]; then
             expected="${GITHUB_REF_NAME#v}"
           fi
-          python scripts/release/check_dist.py dist --version "$expected" --require-manifest
+          python scripts/release/check_dist.py dist --version "$expected" --require-manifest --require-buildkit
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

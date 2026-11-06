@@ -3,11 +3,15 @@
 # QR_BUILD_JOBS builds that many images at a time (default 1); build logs and times go to
 # QR_BUILD_LOG_DIR (default ~/.tmp/qrosetta-build); QR_BUILD_ONLY=1 stops after building.
 # QR_BUILD_SERVICES builds only the named compose services; QR_ENGINE runs podman instead of docker.
+# QR_GIT_SHA is the commit to bake instead of this checkout's (an installed qrosetta building from
+# its build kit, which is no git checkout); QR_IMAGE_TAG tags each image <name>:QR_IMAGE_TAG
+# instead of <name>:latest; QR_PYTHON is the Python that reads the compose configuration.
 # Starting is `qrosetta start`, which puts the stack on standby or removes it on Ctrl-C.
 
 cd "$(dirname "$0")/.." || exit 1
 
 docker() { command "${QR_ENGINE:-docker}" "$@"; }
+python3() { command "${QR_PYTHON:-python3}" "$@"; }
 
 # The compose project (image names, labels) is QROSETTA_PROJECT, as for qrosetta.
 export QROSETTA_PROJECT="${QROSETTA_PROJECT:-qsimulators}"
@@ -19,7 +23,9 @@ echo ">>> [INIT] Starting safe boot..."
 export RUNNER_TIMEOUT_SEC=300
 
 # Recorded as git_sha in every run report; "-dirty" marks uncommitted changes.
-if QROSETTA_GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null); then
+if [ -n "${QR_GIT_SHA:-}" ]; then
+  QROSETTA_GIT_SHA="$QR_GIT_SHA"
+elif QROSETTA_GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null); then
   if [ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]; then
     QROSETTA_GIT_SHA="${QROSETTA_GIT_SHA}-dirty"
   fi
@@ -89,6 +95,8 @@ b = svc["build"]
 args = " ".join("--build-arg " + shlex.quote(f"{k}={v}") for k, v in (b.get("args") or {}).items())
 args += "".join(" --label " + shlex.quote(f"{k}={v}") for k, v in (b.get("labels") or {}).items())
 image = svc.get("image") or d["name"] + "-" + sys.argv[1]
+if os.environ.get("QR_IMAGE_TAG") and ":" not in image.rsplit("/", 1)[-1]:
+    image += ":" + os.environ["QR_IMAGE_TAG"]
 dockerfile = os.path.join(b["context"], b["dockerfile"])
 print(shlex.quote(image), shlex.quote(b["dockerfile"]), shlex.quote(b["context"]), shlex.quote(dockerfile), args)
 ' "$1") || return 1
