@@ -1151,118 +1151,132 @@
             <section id="reproducibility">
                 <h2>Reproducibility</h2>
                 <ul>
-                    <li><strong>Seeds.</strong> Every measured run has a master seed: the one you set in the
-                        the Seed chip, or one the API generates and records at <code>seed</code>. Each backend
-                        receives <code>runner_seed</code> = the first 4 bytes of
-                        <code>sha256("&lt;master seed&gt;:&lt;runner key&gt;")</code>, read big-endian, top bit
-                        cleared; the runner key includes any <code>~opt&lt;L&gt;~run&lt;N&gt;</code> suffix.
-                        The formula is recorded at <code>seed_derivation</code>. <code>seed_honoured</code> is
-                        false for a backend whose sampler ignores the seed (Braket, which is disabled on this
-                        server). In a batch every task uses the same master seed, so each backend receives
-                        the same <code>runner_seed</code> in every task.</li>
-                    <li><strong>Executed SDK versions</strong> are captured by each backend and written into
-                        the provenance.</li>
-                    <li id="specimens"><strong>Which image each backend ran from.</strong> Every runner and
-                        compiler result carries <code>image_identity</code>, which the runner's serving
-                        process reads at startup from a file in the image and adds after the run returns: the
-                        <code>source</code> its image recorded at build (<code>release</code> for an image
-                        built by the release pipeline, <code>built_locally</code> for a local build, "not
-                        recorded" for images built before images recorded it), the release, the commit, what
-                        the container runtime shows the process (Apptainer's image path and sha256; a podman
-                        container's image and id only when privileged), whether the host CPU reports the
-                        <code>hypervisor</code> flag, and <code>emulation</code>: the machine the image's Python
-                        interpreter is built for (its ELF header), the host's OS and machine as
-                        <code>qrosetta start</code> passed them, and <code>emulated</code>, true when the two
-                        machines differ and null when the stack was started without <code>qrosetta start</code>.
-                        <code>build_files</code> holds the sha256 of the
-                        Dockerfile and <code>requirements.lock</code> the image copied. <code>runner_image</code>
-                        is the image the API created a Kubernetes Job with, else the image the runtime showed the
-                        runner (<code>runner_image_basis</code> says which). Each result that ran gets a
-                        <code>specimen</code> and the report a <code>specimens</code> roll-up:
+                    <li><strong>Seeds.</strong> Every measured run has a master seed: the one entered in
+                        the Seed chip, or one the API generates; the report records it at
+                        <code>seed</code>. Each backend receives <code>runner_seed</code> = the first 4
+                        bytes of <code>sha256("&lt;master seed&gt;:&lt;runner key&gt;")</code>, read
+                        big-endian, with the top bit cleared; the runner key includes any
+                        <code>~opt&lt;L&gt;~run&lt;N&gt;</code> suffix. The report records the formula at
+                        <code>seed_derivation</code>. <code>seed_honoured</code> is false for a backend
+                        whose sampler ignores the seed (Braket, which is disabled). In a playlist every
+                        circuit uses the same master seed, so each backend receives the same
+                        <code>runner_seed</code> for every circuit.</li>
+                    <li><strong>SDK versions.</strong> Each backend reports the versions of the SDK
+                        packages it executed with, and the report keeps them in its provenance.</li>
+                    <li id="specimens"><strong>The image each backend ran from.</strong> Every runner and
+                        compiler result carries <code>image_identity</code>. The runner's serving process
+                        reads it at startup from a file in the image and adds it to each result after the
+                        run returns. It holds:
+                        <ul>
+                            <li>the <code>source</code> the image recorded at build:
+                                <code>release</code> for an image built by the release pipeline,
+                                <code>built_locally</code> for a local build, "not recorded" for an image
+                                built before images recorded it; then the release and the commit;</li>
+                            <li>what the container runtime shows the process: Apptainer's image path and
+                                sha256, or a podman container's image and id (the latter only when
+                                privileged);</li>
+                            <li>whether the host CPU reports the <code>hypervisor</code> flag;</li>
+                            <li><code>emulation</code>: the machine the image's Python interpreter is
+                                built for (read from its ELF header), the host's OS and machine as
+                                <code>qrosetta start</code> passed them, and <code>emulated</code>, true
+                                when the two machines differ and null when the stack was started without
+                                <code>qrosetta start</code>.</li>
+                        </ul>
+                        <code>build_files</code> holds the sha256 of the Dockerfile and the
+                        <code>requirements.lock</code> the image copied. <code>runner_image</code> is the
+                        image the API created a Kubernetes Job with, else the image the runtime showed the
+                        runner; <code>runner_image_basis</code> says which. Each result that ran gets a
+                        <code>specimen</code>, and the report a <code>specimens</code> summary:
                         <code>all_published</code> (one release), <code>all_built_locally</code>,
-                        <code>mixed</code> or <code>unknown</code>, with each backend's detail and the image
-                        commits; differing commits mean the measurement code may differ between backends. An
-                        RO-Crate includes a runner's <code>requirements.lock</code> from the server's source tree
-                        only when its sha256 equals the hash every result of that runner reports, and otherwise
-                        says why it is absent. The crate root states <code>specimens</code>,
+                        <code>mixed</code>, <code>unknown</code> or <code>none_ran</code>, with each
+                        backend's detail and the image commits. Differing commits mean the measurement code
+                        may differ between backends. An RO-Crate includes a runner's
+                        <code>requirements.lock</code> from the server's source tree only when its sha256
+                        equals the hash every result of that runner reports, and otherwise says why the file
+                        is absent. The crate root states <code>specimens</code>,
                         <code>timing_caveats</code> and <code>run_completeness</code>
                         (<code>complete</code>, <code>partial</code>, <code>failed</code>,
-                        <code>not_recorded</code> for older reports, or <code>not_checked</code> for a report the
-                        server did not produce, such as the browser's copy exported after the server's copy
-                        expired).</li>
-                    <li><strong>Run configuration.</strong> Reports record the agreement thresholds sent, the
-                        timeout and its scope, the optimization levels, <code>apply_preprocessing</code>, the
-                        API-side preprocessing, the dispatched circuits, <code>started_at</code> /
-                        <code>finished_at</code> and the git commit the API image was built from
+                        <code>not_recorded</code> for older reports, or <code>not_checked</code> for a report
+                        the server did not produce, such as an export from the Browser copy after the
+                        server's copy expired).</li>
+                    <li><strong>Run configuration.</strong> Reports record the agreement thresholds sent,
+                        the timeout and its scope, the optimization levels, <code>apply_preprocessing</code>,
+                        the API-side preprocessing, the dispatched circuits, <code>started_at</code> and
+                        <code>finished_at</code>, and the commit the API image was built from
                         (<code>git_sha</code>; a "-dirty" suffix marks uncommitted changes). The divergence
                         report records <code>analysis_version</code>, the version of the classification and
-                        test rules. Runner image digests are recorded only when the deployment sets
-                        <code>QROSETTA_IMAGE_DIGESTS</code>; in local mode the report says "not recorded".
-                        Each result carries <code>image_git_sha</code>, the commit its runner or compiler
-                        image was built from, and <code>runner_code_sha256</code> (for compilers
-                        <code>compiler_code_sha256</code>): sha256 over the bytes of the image's
-                        <code>main.py</code> followed by the bytes of every <code>.py</code> file of the
-                        installed <code>qrosetta_commons</code> package, in order of relative path. It identifies
-                        the adapter that produced the result; recompute it from a checkout with the same
-                        concatenation, not from <code>main.py</code> alone.</li>
+                        test rules. Runner image digests from the registry are recorded only when the
+                        deployment sets <code>QROSETTA_IMAGE_DIGESTS</code>; on a local server the report
+                        says "not recorded". Each result carries <code>image_git_sha</code>, the commit its
+                        runner or compiler image was built from, and <code>runner_code_sha256</code>
+                        (<code>compiler_code_sha256</code> for compilers): the sha256 of the bytes of the
+                        image's <code>main.py</code> followed by the bytes of every <code>.py</code> file
+                        of the installed <code>qrosetta_commons</code> package, in order of relative path.
+                        It identifies the adapter that produced the result. To recompute it from a
+                        checkout, hash the same concatenation; <code>main.py</code> alone gives a different
+                        value.</li>
                     <li><strong>Statevector hashes.</strong> A report stored or exported without
-                        statevectors (history, RO-Crates with <code>include_statevectors</code> false,
+                        statevectors (run history, RO-Crates with <code>include_statevectors</code> false,
                         experiment bundles) keeps <code>statevector_sha256</code> and
-                        <code>statevector_length</code> (amplitude count) for every backend. The hash is over
-                        the bytes the runner sent: little-endian <code>complex128</code> amplitudes for every
-                        backend. A backend that computes in <code>complex64</code> (its
-                        <code>precision</code> field says so) has its amplitudes widened to
-                        <code>complex128</code> before encoding, so the hash covers the widened values. An older
-                        report may carry <code>statevector_len</code> instead; exports and bundles write it
-                        as <code>statevector_length</code>. The hash is not stable across replays
+                        <code>statevector_length</code> (the number of amplitudes) for every backend. The
+                        hash covers the bytes the runner sent: little-endian <code>complex128</code>
+                        amplitudes for every backend. A backend that computes in <code>complex64</code>
+                        (its <code>precision</code> field says so) has its amplitudes widened to
+                        <code>complex128</code> before encoding, so the hash covers the widened values. An
+                        older report may carry <code>statevector_len</code> instead; exports and bundles
+                        write it as <code>statevector_length</code>. The hash is not stable across replays
                         for every backend: Cirq, for example, can differ in the last bits of some amplitudes
-                        between two runs of the same circuit. Compare replayed statevectors by fidelity.</li>
-                    <li><strong>RO-Crate export.</strong> A run exports as an RO-Crate conforming to the
-                        Process Run Crate profile, with the inputs, dispatched and executed circuits, per-backend
-                        results (counts, or statevector hashes unless statevectors are included), agreement
-                        evidence and provenance. <code>README.txt</code> at the crate's root explains it to
-                        a reader without this manual: the report source, completeness, which images
-                        ran (<code>specimens</code>), the timing caveats, where each kind of file is, the
-                        software version and commit, and a command that checks every file's hash; it is
-                        written from <code>ro-crate-metadata.json</code>. Every file in
-                        <code>ro-crate-metadata.json</code> has its
-                        <code>sha256</code> and <code>contentSize</code> (bytes); the agreement thresholds
-                        and, in measured mode, the test's α, target power and total-variation gap are
-                        PropertyValues of <code>#agreement-analysis</code>. Links to the source code point at
-                        the commit the API was built from in the repository the server is configured with
-                        (<code>QROSETTA_REPOSITORY_URL</code>); they resolve only when that commit has been
-                        published there, and a commit marked "-dirty" or unknown gets a link to the
-                        repository root.</li>
+                        between two runs of the same circuit. Compare replayed statevectors by
+                        fidelity.</li>
+                    <li><strong>RO-Crate export.</strong> A run exports as an RO-Crate that conforms to the
+                        Process Run Crate profile. It holds the inputs, the dispatched and executed
+                        circuits, the per-backend results (counts, or statevector hashes unless
+                        statevectors are included), the agreement evidence and the provenance.
+                        <code>README.txt</code> at the crate's root, written from
+                        <code>ro-crate-metadata.json</code>, describes the crate for a reader without this
+                        manual: the report source, completeness, which images ran
+                        (<code>specimens</code>), the timing caveats, where each kind of file is, the
+                        software version and commit, and a command that checks every file's hash. Every
+                        file in <code>ro-crate-metadata.json</code> has its <code>sha256</code> and
+                        <code>contentSize</code> (bytes). The agreement thresholds and, in measured mode,
+                        the test's α, target power and total-variation gap are PropertyValues of
+                        <code>#agreement-analysis</code>. Links to the source code point at the commit the
+                        API was built from, in the repository the server is configured with
+                        (<code>QROSETTA_REPOSITORY_URL</code>). They resolve only when that commit has been
+                        published there; a commit marked "-dirty" or unknown gets a link to the repository
+                        root.</li>
                 </ul>
                 <h3 id="replay">Replaying a run</h3>
-                <ol>
+                <ol class="list-decimal pl-5 space-y-1 mb-4 text-gray-700">
                     <li>Take the circuit from the crate's <code>circuit.qasm</code> (<code>circuits/</code>
-                        for a batch) or the experiment bundle's <code>inputs/*.qasm</code>, which hold the
-                        text as submitted; for a bundle, check each file against the manifest's
-                        <code>qasm_sha256</code>. Submit it as literal QASM; do not regenerate a preset.</li>
-                    <li>Send the effective values rather than the requested ones: the seed from
-                        <code>results.seed</code> (for an experiment,
-                        <code>effective_seeds_per_axis</code>); the thresholds from the report's
-                        <code>agreement_thresholds</code>, sent explicitly, because defaults can change between
-                        versions; an explicit runner list taken from <code>raw_results[].simulator</code>,
-                        because an empty list means every runner enabled at the time; and
-                        <code>n_shots</code>, <code>apply_preprocessing</code>,
-                        <code>optimization_level</code>, <code>runner_config</code>,
-                        <code>runner_phases</code>, <code>timing_repeats</code>,
-                        <code>timeout_seconds</code> and, when the run used compile-only services,
-                        <code>compilers</code> from the report's <code>compilers_requested</code>. The experiment manifest's <code>effective_config</code>
-                        records presets by name; replay them from the <code>inputs/*.qasm</code> files as
-                        literal QASM, as in step 1.</li>
+                        for a playlist) or from the experiment bundle's <code>inputs/*.qasm</code>, which
+                        hold the text as submitted; for a bundle, check each file against the manifest's
+                        <code>qasm_sha256</code>. Submit it as literal QASM; a regenerated algorithm can
+                        differ from the original.</li>
+                    <li>Send the values the run used, which can differ from those requested: the seed from
+                        <code>results.seed</code> (for an experiment, <code>effective_seeds_per_axis</code>);
+                        the thresholds from the report's <code>agreement_thresholds</code>, sent
+                        explicitly, because defaults can change between versions; an explicit runner list
+                        taken from <code>raw_results[].simulator</code>, because an empty list means every
+                        runner enabled at the time; and <code>n_shots</code>,
+                        <code>apply_preprocessing</code>, <code>optimization_level</code>,
+                        <code>runner_config</code>, <code>runner_phases</code>,
+                        <code>timing_repeats</code>, <code>timeout_seconds</code> and, when the run used
+                        compile-only services, <code>compilers</code> from the report's
+                        <code>compilers_requested</code>. The experiment manifest's
+                        <code>effective_config</code> records algorithms by name; replay them from the
+                        <code>inputs/*.qasm</code> files as literal QASM, as in step 1.</li>
                     <li>Compare in this order: <code>runner_seed</code> per backend; the dispatched and
-                        transpiled circuits, and <code>compile_input.qasm</code> and
-                        <code>compiled_circuits/</code>; counts, byte for byte; statevectors by fidelity (this needs
-                        the statevectors, so export with <code>include_statevectors</code> or use
-                        <code>GET /jobs/{job_id}/report</code>; from hashes alone only a bit-identical replay
-                        can be confirmed); then the verdicts.</li>
+                        transpiled circuits, <code>compile_input.qasm</code> and
+                        <code>compiled_circuits/</code>; the counts, byte for byte; the statevectors by
+                        fidelity (this needs the statevectors, so export with
+                        <code>include_statevectors</code> or use <code>GET /jobs/{job_id}/report</code>;
+                        hashes alone confirm only a bit-identical replay); then the verdicts.</li>
                     <li>If <code>git_sha</code>, <code>analysis_version</code> or a backend's
-                        <code>runner_code_sha256</code> differs between the two reports, verdicts can differ
-                        even when the counts are identical, and a changed adapter can change that backend's
-                        output. Re-derive the verdicts on the new version rather than comparing labels.</li>
+                        <code>runner_code_sha256</code> differs between the two reports, the verdicts can
+                        differ even when the counts are identical, and a changed adapter can change that
+                        backend's output. Derive the verdicts again on the new version before comparing
+                        labels.</li>
                 </ol>
             </section>
 
