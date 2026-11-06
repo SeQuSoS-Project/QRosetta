@@ -268,6 +268,9 @@ signed images on GHCR; and every result records the image, commit and host condi
   BQSKit) read "not included in this release" in `GET /runners` and `GET /compilers`, on the page,
   and in `qrosetta selftest`, `doctor` and `backends`, instead of "unreachable" or "not started in
   this stack"; a run naming one is refused with that reason.
+- `qrosetta selftest` lists the backends it did not test on one line per reason, with their number
+  (`Not tested  not started in this stack (profile minimal): quest, qibo, quimb (3)`);
+  `selftest.json` keeps one entry per backend.
 
 #### Images
 

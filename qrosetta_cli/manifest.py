@@ -116,7 +116,8 @@ def not_included(manifest):
 
 
 def not_included_text(ids):
-    """What the CLI says of the services `ids` (one or several) that this release does not include."""
+    """What the CLI says of the services `ids` (one or several) that this release does not include;
+    it begins with NOT_INCLUDED, which `selftest` groups by."""
     return NOT_INCLUDED
 
 

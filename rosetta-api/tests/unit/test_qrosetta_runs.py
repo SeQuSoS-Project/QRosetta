@@ -617,3 +617,34 @@ def test_wait_with_nothing_unfinished_is_not_found(env, capsys, argv):
     assert run([*argv, "--json"], env, Scripted()) == Exit.NOT_FOUND
     doc = envelope(capsys)
     assert doc["error"]["reason"] == "job_unknown" and "No unfinished job" in doc["error"]["message"]
+
+
+def test_selftest_lists_backends_not_tested_one_line_per_reason(env, capsys):
+    server = _selftest_server({"statevector": _evaluation("statevector"), "measured": _evaluation("measured")})
+    started = "not started in this stack (profile minimal)"
+    rows = [{"id": "qiskit", "enabled": True, "available": True, "default_selected": True}]
+    rows += [{"id": k, "enabled": True, "available": False, "unavailable_reason": started}
+             for k in ("quest", "qibo", "quimb")]
+    rows += [{"id": k, "enabled": True, "available": False, "unavailable_reason": "not included in this release"}
+             for k in ("myqlm", "cuquantum")]
+    rows.append({"id": "braket", "enabled": False, "available": False, "unavailable_reason": "disabled"})
+    server.routes[("GET", "/runners")] = (200, rows)
+    assert run(["selftest"], env, server) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert [line for line in out if line.startswith("Not tested  ") and "documented" not in line] == [
+        f"Not tested  {started}: quest, qibo, quimb (3)",
+        "Not tested  not included in this release: myqlm, cuquantum (2)"]
+    (inv,) = invocations(env)
+    doc = json.load(open(os.path.join(inv, "selftest.json")))
+    assert doc["not_tested"] == [{"backend": k, "reason": started} for k in ("quest", "qibo", "quimb")] + [
+        {"backend": k, "reason": "not included in this release"} for k in ("myqlm", "cuquantum")]
+    assert f"Not tested  {started}: quest, qibo, quimb (3)" in doc["lines"]
+
+
+def test_not_tested_lines_group_by_reason():
+    from qrosetta_cli.client import selftest
+    left = [("a", "unreachable"), ("b", "not included in this release"), ("c", "unreachable"),
+            ("d", "not included in this release; more")]
+    assert selftest.not_tested_lines(left) == ["Not tested  unreachable: a, c (2)",
+                                               "Not tested  not included in this release: b, d (2)"]
+    assert selftest.not_tested_lines([]) == []

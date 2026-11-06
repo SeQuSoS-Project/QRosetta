@@ -91,6 +91,18 @@ def _not_started(ctx, left):
     return [(key, reason(key, why)) for key, why in left]
 
 
+def not_tested_lines(left):
+    """One "Not tested" line per reason, naming its backends and their number, in the order the
+    reasons first occur; the backends the release does not include share one line."""
+    groups: dict = {}
+    for key, why in left:
+        groups.setdefault(mf.NOT_INCLUDED if why.startswith(mf.NOT_INCLUDED) else why, []).append(key)
+    return [
+        f"Not tested  {mf.not_included_text(keys) if why == mf.NOT_INCLUDED else why}: {', '.join(keys)} ({len(keys)})"
+        for why, keys in groups.items()
+    ]
+
+
 def _route(spec, job_id):
     method, _, path = (spec or "GET /jobs/{job_id}/selftest-result").partition(" ")
     return method.upper(), path.replace("{job_id}", job_id)
@@ -299,8 +311,7 @@ def cmd_selftest(ctx):
         lines.append(f"Tested      {plan['tested']}")
     if plan.get("not_tested"):
         lines.append(f"Not tested  {plan['not_tested']}")
-    if left:
-        lines.append("Not tested  " + "; ".join(f"{k}: {why}" for k, why in left))
+    lines += not_tested_lines(left)
     status = "FAIL" if fails else "PASS"
     lines.append(
         f"{status}{f' ({len(fails)} failed)' if fails else ''}"
