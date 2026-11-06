@@ -4,7 +4,7 @@ import os
 import platform
 import subprocess
 
-from qrosetta_cli import jobstore, layout, localstack, mode as modes, output
+from qrosetta_cli import jobstore, layout, localstack, manifest as mf, mode as modes, output
 from qrosetta_cli.context import Result
 from qrosetta_cli.errors import CliError, Exit
 from qrosetta_cli.output import progress, result
@@ -17,7 +17,9 @@ from qrosetta_cli.stack.engine import TRANSFER_TIMEOUT_SEC, Engine, choose_engin
 def open_stack(ctx, cpu_quota=None):
     """(mode, engine, stack) for the checkout's compose project, or in installed mode for the
     compose file generated from the release manifest. With the CPU quota off (`cpu_quota`, else
-    the recorded stack setting) compose also gets the override that removes the CPU limits."""
+    the recorded stack setting) compose also gets the override that removes the CPU limits.
+    Compose gets QROSETTA_NOT_INCLUDED, the services the release publishes no image of (empty in
+    a checkout), so that every command gives compose the API configuration `start` gives it."""
     mode = modes.detect(ctx.opt("project_dir"), ctx.env, ctx.checkout)
     release = None
     if mode.name == "checkout":
@@ -30,6 +32,7 @@ def open_stack(ctx, cpu_quota=None):
         choice = choose_engine(ctx.env, ctx.cfg.get("lifecycle", "engine"))
         engine = Engine(choice.name, project_dir, env=ctx.env, info=choice.info, reason=choice.reason)
     engine.env.update(hostload.compose_env(ctx.env))
+    engine.env[mf.NOT_INCLUDED_VAR] = ",".join(mf.not_included(release))
     if release:
         installed.localise(engine, release)
     engine.check_compose()

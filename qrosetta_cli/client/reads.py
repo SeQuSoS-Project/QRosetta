@@ -5,7 +5,7 @@ as tables or embedded verbatim under --json."""
 import difflib
 import os
 
-from qrosetta_cli import output
+from qrosetta_cli import manifest as mf, output
 from qrosetta_cli.client import handshake, refs, servers
 from qrosetta_cli.client.conn import Conn
 from qrosetta_cli.context import Result
@@ -296,7 +296,8 @@ def _note(entry):
     elif entry.get("reason") == "exclusive_run":
         notes.append("cached")
     if not entry.get("available"):
-        notes.append(entry.get("unavailable_reason") or "unavailable")
+        why = entry.get("unavailable_reason") or "unavailable"
+        notes.append(mf.not_included_text([entry.get("id")]) if why == mf.NOT_INCLUDED else why)
     if entry.get("error_kind"):
         notes.append(f"no answer ({entry['error_kind']})")
     if not entry.get("enabled", True) and "disabled" not in notes:

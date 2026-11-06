@@ -359,7 +359,8 @@ def test_local_services_names_the_profile_whose_backends_were_created(project, e
     fake = FakeEngine().standard()
     ctx = Context(args=type("A", (), {})(), env=env, cfg=cfgmod.Config("/none", False), checkout=str(project),
                   engine_factory=lambda d: Engine(fake.engine, d, run=fake, popen=fake.popen, env=env))
-    assert doctor.local_services(ctx) == {"running": {"api", "nginx"}, "created": {"api", "nginx"}, "profile": None}
+    assert doctor.local_services(ctx) == {"running": {"api", "nginx"}, "created": {"api", "nginx"}, "profile": None,
+                                            "not_included": set()}
     fake.add("qiskit-runner", ours("qiskit_runner"), image="i-qiskit")
     assert doctor.local_services(ctx)["profile"] == "minimal"
 

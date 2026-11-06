@@ -155,7 +155,7 @@ class PerEndpoint(_Open):
 class FreshProbe(BaseModel):
     """Fields a ``fresh=true`` request adds to each row."""
     fresh: Optional[bool] = Field(None, description="fresh=true only: this round probed the service.")
-    reason: Optional[str] = Field(None, description="fresh=true only: busy, exclusive_run, no_long_lived_services, disabled or not_deployed, else null.")
+    reason: Optional[str] = Field(None, description="fresh=true only: busy, exclusive_run, no_long_lived_services, disabled, not_deployed or not_included, else null.")
     error_kind: Optional[str] = Field(None, description="fresh=true only: dns, connect, timeout or http when the probe got no answer or an error status, else null.")
     probed_at: Optional[str] = Field(None, description="fresh=true only: UTC time of the probe, ISO 8601 ending in 'Z'.")
 
@@ -167,7 +167,7 @@ class RunnerRow(FreshProbe):
     id: str = Field(..., description="Canonical runner key, opaque to clients.")
     enabled: bool
     available: bool
-    unavailable_reason: Optional[str] = Field(..., description="Null when available; else disabled, not_deployed, unreachable or the runner's own reason.")
+    unavailable_reason: Optional[str] = Field(..., description="Null when available; else disabled, 'not deployed on this server', 'not included in this release', unreachable or the runner's own reason.")
     device: Optional[str] = Field(..., description="What the runner's /capabilities reported, else null.")
     requires_gpu: bool
     max_level: int

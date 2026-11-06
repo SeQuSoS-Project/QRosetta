@@ -75,6 +75,8 @@ class Settings(BaseSettings):
     GPU_AVAILABLE: bool = os.getenv("QROSETTA_GPU_AVAILABLE", "false").strip().lower() in ("1", "true", "yes")
     NOT_DEPLOYED: frozenset = frozenset(
         s.strip() for s in os.getenv("QROSETTA_NOT_DEPLOYED", "").split(",") if s.strip())
+    NOT_INCLUDED: frozenset = frozenset(
+        s.strip() for s in os.getenv("QROSETTA_NOT_INCLUDED", "").split(",") if s.strip())
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     SECRET_KEY: str = os.getenv("SECRET_KEY", "")
     PROXY_TOKEN: str = Field(default="", validation_alias="QROSETTA_PROXY_TOKEN")

@@ -104,6 +104,22 @@ def not_distributable(manifest):
     }
 
 
+NOT_INCLUDED_VAR = "QROSETTA_NOT_INCLUDED"
+NOT_INCLUDED = "not included in this release"
+
+
+def not_included(manifest):
+    """The sorted ids of the services `manifest` publishes no image of; [] without a manifest.
+    `start` passes them to the API as QROSETTA_NOT_INCLUDED, which reports them unavailable with
+    the reason NOT_INCLUDED."""
+    return sorted(not_distributable(manifest))
+
+
+def not_included_text(ids):
+    """What the CLI says of the services `ids` (one or several) that this release does not include."""
+    return NOT_INCLUDED
+
+
 def loaded_tag(project, compose_service, release):
     """The local tag `qrosetta images load` gives a release image: the image has no registry
     digest after a load, so the generated compose file names it by this tag."""

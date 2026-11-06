@@ -113,7 +113,7 @@ async def get_runners(request: Request, fresh: bool = False):
     ``fresh`` (true when this round probed it), ``reason`` ("busy": a dispatch to it is in
     flight, so it was not probed and reads available; "exclusive_run": an exclusive run holds
     the server, so the last cached values are served; "no_long_lived_services" in Kubernetes
-    mode; "disabled"; "not_deployed"), ``error_kind`` ("dns", "connect", "timeout" or "http"
+    mode; "disabled"; "not_deployed"; "not_included"), ``error_kind`` ("dns", "connect", "timeout" or "http"
     when the probe got no answer or an error status) and ``probed_at``. It needs a signed-in
     account or the local lifecycle token as the bearer token (401 otherwise, 403 for a
     deactivated account), is limited to 6 requests a minute per account or for the
@@ -291,7 +291,7 @@ async def get_compilers(request: Request, fresh: bool = False):
     ``fresh`` (true when this round probed it), ``reason`` ("busy": a dispatch to it is in
     flight, so it was not probed and reads available; "exclusive_run": an exclusive run holds
     the server, so the last cached values are served; "no_long_lived_services" in Kubernetes
-    mode; "disabled"; "not_deployed"), ``error_kind`` ("dns", "connect", "timeout" or "http"
+    mode; "disabled"; "not_deployed"; "not_included"), ``error_kind`` ("dns", "connect", "timeout" or "http"
     when the probe got no answer or an error status) and ``probed_at``. It needs a signed-in
     account or the local lifecycle token as the bearer token (401 otherwise, 403 for a
     deactivated account), is limited to 6 requests a minute per account or for the

@@ -16,6 +16,7 @@ from config import settings
 from qrosetta_commons.helpers import get_logger
 from services.circuit_resolver import StatevectorIncompatible, prepare_statevector_dispatch
 from services import prep_worker
+from services.availability import withheld_reason
 from services.dispatcher import dispatch_to_runners
 from services.run_registry import EXCLUSIVE
 
@@ -43,12 +44,12 @@ def enabled_compilers() -> dict:
 
 
 def validate_compilers(compilers: dict) -> None:
-    """400 for an unknown, disabled or undeployed compiler id, or a level the compiler does
+    """400 for an unknown, disabled, undeployed or not included compiler id, or a level the compiler does
     not offer."""
-    available = {cid: svc for cid, svc in enabled_compilers().items() if cid not in settings.NOT_DEPLOYED}
+    available = {cid: svc for cid, svc in enabled_compilers().items() if not withheld_reason(cid)}
     for cid, levels in (compilers or {}).items():
-        if cid in settings.NOT_DEPLOYED and cid in COMPILER_SERVICES:
-            raise HTTPException(status_code=400, detail=f"Compiler {cid!r} is not deployed on this server.")
+        if withheld_reason(cid) and cid in COMPILER_SERVICES:
+            raise HTTPException(status_code=400, detail=f"Compiler {cid!r} is {withheld_reason(cid)}.")
         if cid not in available:
             raise HTTPException(status_code=400, detail=(
                 f"Unknown or disabled compiler {cid!r}; available: {', '.join(sorted(available)) or 'none'}."))

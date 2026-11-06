@@ -12,7 +12,7 @@ import stat
 import subprocess
 from dataclasses import dataclass, field
 
-from qrosetta_cli import __version__, jobstore, layout, localstack, output
+from qrosetta_cli import __version__, jobstore, layout, localstack, manifest as mf, output
 from qrosetta_cli.errors import CliError, Exit
 from qrosetta_cli.output import result
 from qrosetta_cli.stack import engine as eng, hostload, ports, quota
@@ -164,8 +164,8 @@ class Host:
 
 def local_services(ctx):
     """{"running", "created": service ids, "profile": the profile whose runners and compilers are
-    exactly the created ones, else None} for this checkout's or installation's stack; None when
-    it cannot be read."""
+    exactly the created ones, else None, "not_included": the ids the installed release publishes
+    no image of} for this checkout's or installation's stack; None when it cannot be read."""
     from qrosetta_cli.stack import ownership, profiles
     from qrosetta_cli.stack.commands import open_stack
 
@@ -186,6 +186,7 @@ def local_services(ctx):
         "running": {stack.services[s].id for s in running},
         "created": {stack.services[s].id for s in created},
         "profile": profile,
+        "not_included": set(mf.not_included(stack.release)),
     }
 
 
@@ -564,10 +565,23 @@ def check_extras(host, rep):
     rep.add("apptainer", "INFO", f"Apptainer at {tool}" if tool else "Apptainer not installed (HPC images only)")
 
 
-def check_live(rep, config, transport, env=None, running=None):
+def not_included_ids(ctx):
+    """The ids of the services the installed release publishes no image of; empty in a checkout."""
+    from qrosetta_cli import mode as modes
+
+    try:
+        if modes.detect(ctx.opt("project_dir"), ctx.env, ctx.checkout).name == "checkout":
+            return set()
+        return set(mf.not_included(mf.load()))
+    except CliError:
+        return set()
+
+
+def check_live(rep, config, transport, env=None, running=None, not_included=()):
     """Server, readiness and service availability. ``running``: the ids of the services this
     stack runs, when known; an enabled service outside it is listed as not started, not as a
-    failed probe."""
+    failed probe. A service in ``not_included``, or one the server reports with the reason
+    ``mf.NOT_INCLUDED``, is listed as not included in this release."""
     from qrosetta_cli.client import handshake
 
     block = handshake.server_block(config)
@@ -617,6 +631,15 @@ def check_live(rep, config, transport, env=None, running=None):
         if not isinstance(data, list):
             continue
         enabled = [e for e in data if isinstance(e, dict) and e.get("enabled")]
+        withheld = [
+            e["id"]
+            for e in enabled
+            if e.get("id") in not_included
+            or (not e.get("available") and e.get("unavailable_reason") == mf.NOT_INCLUDED)
+        ]
+        enabled = [e for e in enabled if e.get("id") not in withheld]
+        if withheld:
+            rep.add(label, "INFO", f"{mf.not_included_text(withheld)}: {', '.join(withheld)}")
         if running is not None:
             absent = [e["id"] for e in enabled if e.get("id") not in running]
             enabled = [e for e in enabled if e.get("id") in running]
@@ -698,7 +721,7 @@ def run(ctx, host=None):
     check_credentials(host, rep, servers.credentials_path(ctx.cfg, ctx.env))
     check_extras(host, rep)
     if config is not None:
-        check_live(rep, config, transport, ctx.env, host.running_services(ctx))
+        check_live(rep, config, transport, ctx.env, host.running_services(ctx), not_included_ids(ctx))
     else:
         rep.add("server", "INFO", f"no Quantum Rosetta answers at {server.url}; live checks skipped")
     rep.next_command = next_command(ctx, host, config is not None)

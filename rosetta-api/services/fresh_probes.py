@@ -83,7 +83,7 @@ def _utc_now() -> str:
 
 def _wanted(services: dict) -> list:
     return [n for n, svc in services.items()
-            if svc.get("enabled", True) and n not in settings.NOT_DEPLOYED]
+            if svc.get("enabled", True) and not availability.withheld_reason(n)]
 
 
 def _cached_round(services: dict, reason: str) -> dict:

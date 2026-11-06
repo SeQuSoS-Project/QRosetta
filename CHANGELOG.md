@@ -264,6 +264,10 @@ signed images on GHCR; and every result records the image, commit and host condi
   `QROSETTA_HTTP_BIND`, `[lifecycle] bind`), `qrosetta start` publishes on the first free port of
   8081 to 8089 on 127.0.0.1, says which, and keeps using it until `qrosetta remove`; the other
   commands find the local server there. A chosen address that is in use is still refused.
+- On an installed release, the services the release publishes no image of (myQLM, cuQuantum,
+  BQSKit) read "not included in this release" in `GET /runners` and `GET /compilers`, on the page,
+  and in `qrosetta selftest`, `doctor` and `backends`, instead of "unreachable" or "not started in
+  this stack"; a run naming one is refused with that reason.
 
 #### Images
 

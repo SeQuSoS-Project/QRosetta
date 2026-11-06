@@ -10,7 +10,8 @@ Each entry is ``{"available": bool, "reason": str | None, "device": str | None}`
   only when QROSETTA_GPU_AVAILABLE is true; every other enabled runner is available.
 
 In both modes a service listed in QROSETTA_NOT_DEPLOYED (comma-separated ids) is unavailable
-with reason ``NOT_DEPLOYED``.
+with reason ``NOT_DEPLOYED``, and one listed in QROSETTA_NOT_INCLUDED (set by `qrosetta start` on
+an installed release for the services the release publishes no image of) with ``NOT_INCLUDED``.
 """
 
 import asyncio
@@ -29,8 +30,24 @@ AVAILABILITY_TTL_SEC = 60.0
 PROBE_TIMEOUT_SEC = 2.0
 UNREACHABLE = "unreachable"
 NOT_DEPLOYED = "not deployed on this server"
+NOT_INCLUDED = "not included in this release"
 
 _cache: dict = {}
+
+
+def withheld_reason(name: str):
+    """``NOT_DEPLOYED`` or ``NOT_INCLUDED`` for a service this server does not run by
+    configuration, else None."""
+    if name in settings.NOT_DEPLOYED:
+        return NOT_DEPLOYED
+    if name in settings.NOT_INCLUDED:
+        return NOT_INCLUDED
+    return None
+
+
+def withheld_code(reason) -> str:
+    """The short code of a ``withheld_reason``: ``not_deployed`` or ``not_included``."""
+    return "not_included" if reason == NOT_INCLUDED else "not_deployed"
 
 
 def _gpu_reason() -> str:
@@ -130,8 +147,8 @@ async def runner_availability(names=None, services=None) -> dict:
     services = services if services is not None else settings.get_runner_services()
     wanted = [n for n in (names if names is not None else services)
               if n in services and services[n].get("enabled", True)]
-    out = {n: {"available": False, "reason": NOT_DEPLOYED, "device": None}
-           for n in wanted if n in settings.NOT_DEPLOYED}
+    out = {n: {"available": False, "reason": withheld_reason(n), "device": None}
+           for n in wanted if withheld_reason(n)}
     wanted = [n for n in wanted if n not in out]
     if settings.EXECUTION_MODE != "local":
         return {**out, **{n: _registry_entry(services[n]) for n in wanted}}

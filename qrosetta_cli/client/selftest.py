@@ -8,7 +8,7 @@ stack started without the CPU quota. Exit 9 when any check FAILs."""
 import os
 import time
 
-from qrosetta_cli import __version__, layout, localstack, output
+from qrosetta_cli import __version__, layout, localstack, manifest as mf, output
 from qrosetta_cli.client import imageprobes, jobindex, results, save, waiting
 from qrosetta_cli.client.conn import Conn, body_bytes
 from qrosetta_cli.client.run import Follower, confirm_large, plan_document
@@ -61,13 +61,15 @@ def backends_under_test(ctx, conn, runner_rows=None):
         for r in rows
         if r.get("enabled") and r["id"] not in keys
     ]
+    left = [(key, mf.not_included_text([key]) if why == mf.NOT_INCLUDED else why) for key, why in left]
     if conn.local and any(why == UNREACHABLE for _, why in left):
         left = _not_started(ctx, left)
     return keys, left
 
 
 def _not_started(ctx, left):
-    """On a local stack, a backend the server cannot reach whose service this stack has no
+    """On a local stack, a backend the server cannot reach that the installed release publishes
+    no image of is "not included in this release"; one whose service this stack has no
     container for is "not started in this stack (profile NAME)"; "unreachable" stays for a
     started service that does not answer."""
     try:
@@ -77,10 +79,16 @@ def _not_started(ctx, left):
     if not stack:
         return left
     where = f" (profile {stack['profile']})" if stack.get("profile") else ""
-    return [
-        (key, f"not started in this stack{where}" if why == UNREACHABLE and key not in stack["created"] else why)
-        for key, why in left
-    ]
+    withheld = stack.get("not_included") or set()
+
+    def reason(key, why):
+        if why != UNREACHABLE:
+            return why
+        if key in withheld:
+            return mf.not_included_text([key])
+        return f"not started in this stack{where}" if key not in stack["created"] else why
+
+    return [(key, reason(key, why)) for key, why in left]
 
 
 def _route(spec, job_id):

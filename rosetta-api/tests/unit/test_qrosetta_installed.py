@@ -181,3 +181,17 @@ def test_installed_start_recreates_a_service_whose_generated_configuration_chang
     assert [c[c.index("up"):] for c in fake.compose_calls("up")] == [
         ["up", "-d", "--no-build", "--force-recreate", "--no-deps", "api"]]
     assert json.loads(capsys.readouterr().out)["data"]["recreations"] == [{"id": "api", "reasons": ["config"]}]
+
+
+def test_compose_gets_the_services_the_release_does_not_include(env, tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr(serve, "_sleep", lambda s: None)
+    ship(release())
+    assert mf.not_included(release()) == ["myqlm"]
+    for argv in (["status"], ["start", "-d"]):
+        fake = published_engine()
+        assert run(argv, env, fake=fake, server=FakeServer(fresh=True)) == 0
+        compose = [call_env for cmd, call_env in fake.calls if cmd[1] == "compose"]
+        assert compose and all(e.get(mf.NOT_INCLUDED_VAR) == "myqlm" for e in compose), argv
+    fake = published_engine()
+    assert run(["status"], dict(env, QROSETTA_NOT_INCLUDED="qiskit"), fake=fake) == 0
+    assert {e.get(mf.NOT_INCLUDED_VAR) for cmd, e in fake.calls if cmd[1] == "compose"} == {"myqlm"}
