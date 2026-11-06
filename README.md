@@ -1,555 +1,462 @@
 # Quantum Rosetta
 
-**Quantum Rosetta** runs one OpenQASM 2.0 circuit across many quantum simulator backends and
-reports both what each backend cost and whether they agree with each other. Each backend runs
-in its own container with its own pinned dependencies, behind a single benchmarking contract,
-so results are comparable across SDKs that could not otherwise share a process.
+Quantum Rosetta (QRosetta) runs one OpenQASM 2.0 circuit on up to 14 quantum simulator backends
+and records, for each backend, the compilation and simulation time, memory, CPU use and output,
+and, for each pair of backends, whether their outputs agree. Each backend runs in its own
+container with its own pinned SDK and the same measurement code. Every result exports as an
+RO-Crate 1.1 archive with the submitted circuit, the circuit each backend executed, the metrics,
+the seeds and the SDK versions. A run can also send its circuit to eight compile-only services
+(BQSKit, PyZX, MQT QMAP, Cirq, staq, Q-Synth, Quartz, Synthetiq), whose output circuits are
+recorded and exported but never simulated or compared.
 
-QRosetta is developed by the [Quantum Programming and Algorithms (QPA) Research Group](https://users.jyu.fi/~mhaghpyz/#qpa) at the [University of Jyväskylä](https://www.jyu.fi/en) in Finland.
+QRosetta is developed by the [Quantum Programming and Algorithms (QPA) Research
+Group](https://users.jyu.fi/~mhaghpyz/#qpa) at the [University of Jyväskylä](https://www.jyu.fi/en),
+Finland.
 
-Every result set exports as a self-contained RO-Crate 1.1 archive holding the original
-circuit, the circuit the API dispatched to each backend, the circuit each backend executed,
-the metrics, the counts (statevectors on request; otherwise their sha256 and length), the run
-configuration and seeds, and the SDK versions that produced them.
+## Requirements
 
-The Circuits tab shows those circuit texts side by side with a line diff between any two of
-them. A run can also send its circuit to compile-only services (BQSKit, PyZX, MQT QMAP, Cirq, staq, Q-Synth, Quartz, Synthetiq), which
-return circuit text only: their output is recorded, shown and exported, but never simulated or
-compared. A saved run can be shared through a read-only link that expires after 1 to 90 days; the
-link shows the circuit texts only, and its owner can revoke it.
+The local stack needs:
 
-## What it measures
+- Linux on x86_64. Other hosts start only with `qrosetta start --allow-emulation`, and their
+  timings are not comparable.
+- An engine: rootless podman 4.7 or later (podman added `podman compose` in 4.7.0), or Docker
+  Engine.
+- Docker Compose v2 as the compose provider: `docker compose version` or `podman compose version`
+  prints "Docker Compose version v2..." or later. podman-compose 1.x does not work.
+- Python 3.11 or later for the `qrosetta` command, which uses only the standard library.
+- Disk space for the images of the chosen profile (see [Profiles](#profiles)) and memory for the
+  running services (see [Memory, disk and finished jobs](#memory-disk-and-finished-jobs)).
 
-For each backend, per run:
+The `qrosetta` command also runs on macOS and Windows, where it can talk to a Quantum Rosetta
+server elsewhere (`--server URL`).
 
-| Metric | Meaning |
-| --- | --- |
-| `compilation_time_sec` | Wall clock, t0..t1: parse the QASM, transpile, build the backend's native circuit |
-| `simulation_time_sec` | Wall clock, t2..t3: execute and return the statevector or draw the shots |
-| `simulation_cpu_time_sec` | Process CPU time (all threads) over t2..t3 |
-| `cpu_time_sec` | Process CPU time of the whole runner process: interpreter start, SDK import, warm-up, timed runs |
-| `memory_usage_mb` | Peak RSS minus baseline RSS over the simulation window (kernel high-water mark, VmHWM) |
-| `process_peak_mb` | Absolute peak RSS over the simulation window |
-| `process_peak_rss_mb` | Peak RSS of the simulating process over its whole life; resources are ranked by this |
-| `theoretical_statevector_mb` | `(2^N x 16) / 1024^2` for complex128, `(2^N x 8) / 1024^2` for complex64: a dense statevector at the backend's precision, for reference |
-| `precision` | Amplitude dtype the backend simulated in (`complex128`, or `complex64` for qsim, Qrisp, TorchQuantum, Cirq's measured path) |
+## Installing from PyPI
 
-Each backend runs the circuit once as a discarded warm-up and then `timing_repeats` times
-timed (1 to 10, default 1). With one timed run every timing is a single sample
-(`timing_samples = 1`); with more, the time fields are medians and the per-run samples, mean
-and standard deviation are recorded beside them. Every runner is started with five thread
-variables set to 1: `OMP_NUM_THREADS`, `MKL_NUM_THREADS`, `OPENBLAS_NUM_THREADS`,
-`NUMEXPR_NUM_THREADS` and `NUMBA_NUM_THREADS`. Each runner has a 1-CPU quota and 1 GiB of
-memory. Every run records the CPU-quota throttling and container CPU time over
-its simulation window, the CPUs it ran on, and how many other runs overlapped it. For timings meant
-for comparison, use exclusive runs (`exclusive: true`, one backend at a time with no other run on the
-server), at least three jobs with `timing_repeats` of 5; the manual's "Timing and memory
-methodology" section gives the protocol. `memory_method` and `process_peak_rss_method` record `vmhwm`, or the fallback used
-(`sampled_10ms`, `getrusage`) where the kernel counter is unavailable.
+The `qrosetta` package holds the command and the release manifest, which names every published
+image by digest. The images come from `ghcr.io` with `qrosetta pull`.
 
-Across backends, per run, every pair gets an agreement label, computed in the basis the two
-backends' declared qubit orderings imply. Statevector pairs agree directly, up to a global
-phase, or after the bit reversal the declarations imply (an `lsb` against an `msb` backend),
-when fidelity, stored unrounded, is at least 1 - `fidelity_tolerance` (default 1e-5).
-`residual_disagreement` (including pairs that match only in the basis the declared orderings
-do not imply, flagged `unaligned_basis_match`) and `agree_after_qubit_permutation` (up to 7
-qubits) are disagreements. `agree_after_normalization` marks an agreeing pair whose input norm
-was off, and `not_comparable` carries a reason. The tolerances used are recorded in every pair
-record. Measured pairs are compared by Jensen-Shannon divergence (nats) and Hellinger
-distance, with a chi-square and G-test of homogeneity, Benjamini-Yekutieli corrected across
-pairs. A measured pair is consistent only when neither test is significant and the power to
-detect a total-variation gap of 0.05, computed at α/(m·c_m) for m tested pairs
-(c_m = 1 + 1/2 + … + 1/m), is at least 0.8. The shots this needs grow with the number of
-outcomes and backends; the report computes the power for every pair and recommends a shot
-count when it falls short. The default is 8200 shots per backend, enough for up to 16 outcomes with 14 backends (8199 needed) (`default_n_shots` in
-`GET /config`).
+### Fedora
 
-The tool reports disagreements; it does not decide which backend is wrong. Check a disagreement
-against an independent reference before attributing it to a backend.
-
-Measured runs record a master seed; each backend receives a `runner_seed` made of the first
-4 bytes of `sha256(f"{master}:{runner_key}")`, read big-endian with the top bit cleared, so
-no two backends draw the same shot sequence. Any change the API makes to the circuit before dispatch
-is listed with an `API:` prefix in `preprocessing_applied`, and each dispatched circuit is
-written to the RO-Crate.
-
-The server keeps each finished job's untruncated report for up to `QROSETTA_JOB_TTL_SEC`: 24 hours
-in the local stack, 30 minutes by default otherwise (`GET /config` `limits.job_ttl_sec`). It holds
-at most `QROSETTA_JOB_MAX_KEPT` finished jobs (200, `limits.job_max_kept`); beyond that, the oldest
-that finished more than 30 minutes ago are removed. A sweep every 10 minutes applies both. Recreating the API container, which `qrosetta start` does
-after a rebuild, removes every job; save a run to keep it. `GET /jobs/{job_id}/report` returns
-it as JSON and `POST /jobs/{job_id}/export` builds the RO-Crate from it. The copy sent to the
-browser omits statevectors of circuits over 14 qubits. `POST /export` builds a crate from a
-report in the request body, for runs loaded from history; every request body is limited to
-1,048,576 bytes, and the QASM text itself to 1,000,000 characters.
-
-## Architecture
-
-Three tiers, with Nginx as the only public-facing service.
-
-**Nginx** — reverse proxy and static file server. Serves the frontend and proxies API
-requests to the backend. The API is never exposed directly.
-
-**rosetta-api** — orchestration, circuit generation, and comparative analysis. FastAPI under
-Gunicorn/Uvicorn. Dispatches work to the runners, aggregates results, computes the agreement
-and performance reports off the request path, and builds the RO-Crate exports.
-
-**Runners** — 16 isolated simulator services, 14 enabled by default. Each implements the same
-two-endpoint contract (`POST /run` for statevectors, `POST /run_measured` for sampled counts)
-and returns the same set of fields.
-
-| Enabled | |
-| --- | --- |
-| Qiskit Aer, Cirq, Qulacs, QuEST | PennyLane Lightning, PennyLane Default |
-| qsim-Cirq, Qibo, Qrisp, myQLM | PyQuil, TorchQuantum, Quimb, cuQuantum |
-
-myQLM's simulator is in the proprietary `qat-*` packages (Bull myQLM EULA), which allow use
-only on the licensee's own computers and forbid third-party use and transfer over a network.
-It runs in a local stack; the Rahti deployment does not offer it and `rahti_push.sh` does not push it.
-
-The web UI runs every enabled backend unless you deselect some in the Backends chip above the run button. The
-cuQuantum runner is qiskit-aer-gpu 0.15.1 with cuStateVec enabled, on an NVIDIA GPU. On a host
-without one, `GET /runners` marks it unavailable with a reason, the backend list shows it
-greyed out, and it is not dispatched. Its kernels run on the GPU; its host-side work runs under
-the same CPU quota as the other runners, so its times compare different hardware. Memory
-fields are host RSS: GPU device memory is not measured, and GPU runs are not ranked by memory.
-
-Braket and ProjectQ ship with the stack but are disabled in `rosetta-api/config.py` because of
-persistent backend errors. Re-enable either by setting `enabled=True` there and adding it to
-`scripts/safe_boot.sh`.
-
-The stack runs in two modes, selected by `EXECUTION_MODE`:
-
-- `local` — Docker Compose. Runners are long-running HTTP services on an internal network.
-- `kubernetes` — CSC Rahti. Runners are ephemeral Jobs spawned per request, exchanging
-  results through S3.
-
-## Getting started
-
-Requires Linux on x86_64, rootless podman 4.7+ (recommended; `qrosetta` runs `podman compose`,
-which podman added in 4.7.0) or Docker Engine, with Docker Compose v2 as the compose provider (see
-[Starting and stopping](#starting-and-stopping)), and Python 3.11+. Releases are tested with
-rootless podman 5.8.2 and 6.1.3 and with Docker 29.1.3 (Compose 5.5.0, 5.6.0 and 2.40.3); older
-versions are untested. There are two ways in: install the `qrosetta` command from PyPI and pull the
-published images, or clone the repository and build every image yourself.
-
-### From PyPI, with the published images
+Tested on Fedora 45 with podman 6.1.3.
 
 ```bash
-pipx install qrosetta                 # the qrosetta command only (standard library, Python 3.11+)
-qrosetta doctor                       # host checks, each problem with its fix
-qrosetta pull --profile minimal       # API, nginx, Qiskit, Qulacs and Cirq from ghcr.io, by digest
-qrosetta start -d --profile minimal   # returns when the API is ready and the runners answer
-qrosetta selftest                     # known-answer checks; results under ./qrosetta-results
-qrosetta run algorithm:ghz:3 -m statevector,measured
+sudo dnf install podman docker-compose pipx
+systemctl --user enable --now podman.socket
+pipx ensurepath          # then open a new terminal
+pipx install qrosetta
 ```
 
-The installed command carries the release manifest, which names every published image by
-digest; `pull` checks each image's digest and labels, and its signature when `cosign` is on the
-`PATH` (`--require-signature` refuses an unverified one). `qrosetta pull --all` fetches every
-published image. myQLM, cuQuantum and BQSKit are not published (their licences,
-`THIRD_PARTY_NOTICES.md`); they need a checkout and `qrosetta build`.
+Docker Compose reaches rootless podman through `podman.socket`; `qrosetta doctor` fails the
+`podman_socket` check until it runs.
 
-Setting up the host:
+### Ubuntu with Docker
 
-- Fedora: `sudo dnf install podman docker-compose pipx`, then `systemctl --user enable --now
-  podman.socket` (Docker Compose reaches rootless podman through that socket; `qrosetta doctor`
-  fails `podman_socket` until it runs).
-- Ubuntu: `sudo apt install docker.io docker-compose-v2 pipx`, then `sudo usermod -aG docker
-  $USER` and log in again (membership of the docker group is equivalent to root on that host).
-- Ubuntu with podman instead of Docker: `sudo apt install podman` and `sudo apt install
-  --no-install-recommends docker-compose-v2 pipx` (without `docker.io`), then `systemctl --user
-  enable --now podman.socket`.
-- Both: `pipx ensurepath` puts `qrosetta` on the `PATH`. Neither distribution packages cosign:
-  take `cosign-linux-amd64` from https://github.com/sigstore/cosign/releases, check it against
-  that release's `cosign_checksums.txt`, and install it on the `PATH` as `cosign`.
-- RHEL 10: `sudo dnf install podman`, then `systemctl --user enable --now podman.socket`. RHEL
-  packages neither Docker Compose nor pipx (pipx is in EPEL). Save `docker-compose-linux-x86_64`
-  from https://github.com/docker/compose/releases as `~/.docker/cli-plugins/docker-compose` and
-  make it executable; in place of `pipx install qrosetta`, install into a virtual environment
-  (no sudo needed): `python3 -m venv ~/.local/share/qrosetta`, then
-  `~/.local/share/qrosetta/bin/pip install qrosetta` and
-  `mkdir -p ~/.local/bin && ln -sf ~/.local/share/qrosetta/bin/qrosetta ~/.local/bin/qrosetta`.
-  The same `pip` command with `--upgrade` updates it. cosign as above.
+Tested on Ubuntu 26.04 with Docker 29.1.3.
+
+```bash
+sudo apt install docker.io docker-compose-v2 pipx
+sudo usermod -aG docker $USER   # then log out and in again
+pipx ensurepath
+pipx install qrosetta
+```
+
+Membership of the `docker` group is equivalent to root on that host.
+
+### Ubuntu with podman
+
+Tested on Ubuntu 26.04 with podman 5.7.0.
+
+```bash
+sudo apt install podman
+sudo apt install --no-install-recommends docker-compose-v2 pipx   # without docker.io
+systemctl --user enable --now podman.socket
+pipx ensurepath
+pipx install qrosetta
+```
+
+### Debian
+
+Tested on Debian 13 with podman 5.4.2.
+
+```bash
+sudo apt install podman pipx
+sudo apt install --no-install-recommends docker-compose   # Debian's package is Compose v2
+systemctl --user enable --now podman.socket
+pipx ensurepath
+pipx install qrosetta
+```
+
+Debian's cloud images lack `dbus-user-session`; without it every podman call prints a warning
+about falling back to the cgroupfs manager. The stack runs the same either way.
+
+### RHEL 10, AlmaLinux 10 and Rocky Linux 10
+
+Tested on RHEL 10.2 with podman 5.8.2 and on RHEL 10.1 and AlmaLinux 10.1 with podman 5.6.0. RHEL
+packages neither Docker Compose nor pipx, so install Compose as a plugin binary and `qrosetta`
+into a virtual environment:
+
+```bash
+sudo dnf install podman
+systemctl --user enable --now podman.socket
+mkdir -p ~/.docker/cli-plugins
+# save docker-compose-linux-x86_64 from https://github.com/docker/compose/releases as
+# ~/.docker/cli-plugins/docker-compose, check it against the release's .sha256 file, then:
+chmod +x ~/.docker/cli-plugins/docker-compose
+python3 -m venv ~/.local/share/qrosetta
+~/.local/share/qrosetta/bin/pip install qrosetta
+mkdir -p ~/.local/bin && ln -sf ~/.local/share/qrosetta/bin/qrosetta ~/.local/bin/qrosetta
+```
+
+The same `pip install` with `--upgrade` updates it.
+
+### On every distribution
+
 - Over SSH, run `sudo loginctl enable-linger $USER` once before the first `start`. Without it,
   logging out removes `/run/user/<uid>` and the lifecycle token in it: the stack keeps running,
-  but `doctor` and the self-test fall back to cached availability, and `remove` cannot record
-  its host load.
+  but `doctor` and `selftest` fall back to cached availability, and `remove` cannot record its
+  host load.
+- To check image signatures, install cosign: take `cosign-linux-amd64` from
+  https://github.com/sigstore/cosign/releases, check it against that release's
+  `cosign_checksums.txt`, and put it on the `PATH` as `cosign`. None of these distributions
+  packages it. `qrosetta pull` checks each signature when `cosign` is on the `PATH`, and
+  `--require-signature` refuses an image it cannot verify.
+- In a virtual machine `selftest` warns once per runner that its timings are not comparable with
+  runs on physical hardware.
 
-In a virtual machine `selftest` adds a warning per runner that timings are not comparable with
-bare-metal runs. This sequence was run with 2.0.0rc2 on fresh virtual machines on 2026-11-03,
-Fedora 45 with rootless podman and Ubuntu 26.04 with Docker: `doctor` reported only the podman
-socket on Fedora, and `selftest` passed on both.
+## Profiles
 
-The rest of this README describes the commands from a checkout (`./qrosetta ...`); an installed
-`qrosetta` takes the same commands, apart from `build`.
+A profile is a set of services; the web server (nginx) and the API are added to every profile.
+`qrosetta profiles` lists them.
 
-### From a checkout, building the images
+| Profile | Services | Images | Size after `pull` (GB) | Download (GB) | Not published, build from a checkout |
+|---|---|---|---|---|---|
+| `minimal` | Qiskit, Qulacs, Cirq | 5 | 2.7 | 0.85 | none |
+| `cpu` | the 13 CPU simulators | 15 | 11.7 | 3.6 | myQLM (1.3 GB) |
+| `gpu` | `cpu` plus cuQuantum | 16 | 11.7 | 3.6 | myQLM and cuQuantum (5.1 GB) |
+| `compilers` | the eight compile-only services, no simulator | 10 | 3.9 | 1.3 | BQSKit (0.5 GB) |
+| `full` | every enabled service | 24 | 14.6 | 4.6 | all three (5.6 GB) |
 
-A full build needs about 25 GB of disk for the images.
+Use `minimal` to try the software, `cpu` or `full` for comparisons across simulators, and
+`compilers` to test compile-only services. A profile and service names combine: `qrosetta pull
+--profile compilers qiskit` and `qrosetta start -d --profile compilers qiskit` add one simulator to
+the compilers. A compile-only run needs no simulator (`qrosetta run FILE --compile-only --compiler
+pyzx=all`).
+
+myQLM, cuQuantum and BQSKit are not published, because their licences do not allow the project to
+distribute their images (`THIRD_PARTY_NOTICES.md`). They need a checkout and `qrosetta build`.
+cuQuantum also needs an NVIDIA GPU; without one it is listed as unavailable and never dispatched.
+
+Sizes are in GB (10^9 bytes), measured on 2026-11-04 for the 2.0.0rc4 images. "Size after
+`pull`" is the uncompressed layer size with the base-image layers counted once and every other
+layer once per image. "Download" is the sum of the distinct compressed layers the registry sends.
+A checkout that builds all 24 images uses about 19 GB, because local builds share more layers.
+
+## First run
+
+```bash
+qrosetta doctor                       # host checks; each problem comes with its fix
+qrosetta pull --profile minimal       # API, nginx, Qiskit, Qulacs and Cirq, by digest
+qrosetta start -d --profile minimal   # returns when the API and the runners are ready
+qrosetta selftest                     # known-answer checks; results under ./qrosetta-results
+```
+
+`start -d` waits up to 180 s for the API and every started runner and compiler, then prints where
+the server runs:
+
+```text
+✓  Quantum Rosetta is running at http://localhost:8080  (this computer only)
+     Manual    http://localhost:8080/docs.html
+     API docs  http://localhost:8080/docs
+
+Next step:  open http://localhost:8080 in a browser, or run `qrosetta selftest`
+```
+
+`qrosetta status` begins with the same lines. Open the address in a browser: the page starts with
+a GHZ circuit in the editor; press Run and read the Summary tab. The manual's Quickstart
+(`docs.html#quickstart`) goes through a first statevector run and a first measured run. From the
+command line:
+
+```bash
+qrosetta run algorithm:ghz:3 -m statevector,measured
+qrosetta show summary                 # the server's verdicts for the newest result
+qrosetta export crate                 # its RO-Crate
+```
+
+`selftest` compares every started backend with answers computed independently of any SDK and
+checks the host conditions that affect timings. It exits 0 when no check fails and names each
+backend outside the started profile as "not started in this stack".
+
+### Address and port
+
+The web server is published on `127.0.0.1:8080`, so only this computer can reach it. When another
+program holds port 8080 and no address was chosen, `start` publishes on the first free port from
+8081 to 8089 on 127.0.0.1 and prints `Port 8080 is in use by another program; using 8081.`
+It records the port for the project; `status`, `run` and the other commands find the server
+there, and `qrosetta remove` forgets it. An address is chosen with `start --bind ADDR:PORT`,
+`QROSETTA_HTTP_BIND` in the environment (or in a checkout's `.env`), or `bind` under
+`[lifecycle]` in the config file; a chosen address that is in use stops `start`.
+
+In local mode any client may lift the circuit-size, gate-count and experiment-size limits
+(`bypass_limits`). Publish the server on other interfaces only on a network you trust, for
+example `--bind 0.0.0.0:8080` (every IPv4 interface). The connection is plain HTTP. Ports below
+1024 need a rootful engine. With every interface published, the banner adds a Network row with
+this host's name and address.
+
+## What a run records
+
+Each backend runs the circuit once as a discarded warm-up, then `timing_repeats` times (1 to 10,
+default 1); with more than one repeat the times are medians, with the samples beside them.
+
+| Field | Meaning |
+| --- | --- |
+| `compilation_time_sec` | Wall clock from t0 to t1: parse the QASM, transpile, build the backend's native circuit |
+| `simulation_time_sec` | Wall clock from t2 to t3: run the circuit and return the statevector or the shots |
+| `simulation_cpu_time_sec` | CPU time of the simulating process from t2 to t3 |
+| `cpu_time_sec` | CPU time of the whole runner process: start, SDK import, warm-up and timed runs |
+| `memory_usage_mb` | Peak resident memory minus baseline over the simulation window (kernel VmHWM), in MiB |
+| `process_peak_rss_mb` | Peak resident memory of the simulating process over its whole life, in MiB |
+| `theoretical_statevector_mb` | Size of a dense statevector at the backend's precision: 2^N × 16 bytes (complex128) or 2^N × 8 bytes (complex64), in MiB |
+| `precision` | Amplitude type the backend simulated in: complex128, or complex64 for qsim, Qrisp, TorchQuantum and Cirq's measured path |
+
+Every runner has a 1-CPU quota and 1 GiB of memory and runs single-threaded (`OMP_NUM_THREADS`,
+`MKL_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `NUMEXPR_NUM_THREADS` and `NUMBA_NUM_THREADS` set to 1).
+Each result records CPU-quota throttling and container CPU time over its simulation window, the
+CPUs it ran on, and the runs that overlapped it. For timings meant for comparison, use exclusive
+runs (`exclusive: true`, `qrosetta run --exclusive`: one backend at a time, no other run on the
+server), at least three jobs with `timing_repeats` of 5; the manual's "Timing and memory
+methodology" section gives the protocol.
+
+Statevector pairs agree when their fidelity is at least 1 − 10⁻⁵, compared directly or after the
+bit reversal their declared qubit orders imply; a match found only after another qubit
+permutation counts as a disagreement. Measured pairs are compared by Jensen–Shannon divergence and
+Hellinger distance, with a chi-square test and a G-test (Benjamini–Yekutieli correction across
+pairs). A measured pair is reported consistent only when neither test is significant and the
+power to detect a total-variation distance of 0.05 is at least 0.8; otherwise the report gives the
+shot count that would reach it. The default is 8,200 shots per backend, enough for up to 16
+outcomes with 14 backends. QRosetta reports disagreements and does not decide which backend is
+wrong.
+
+A measured run records a master seed, and each backend gets its own seed derived from it, so no
+two backends draw the same shot sequence. Every change the API makes to a circuit before dispatch
+is listed with an `API:` prefix in each result's `preprocessing_applied`, and each dispatched
+circuit is written to the RO-Crate. The page's copy of a report omits statevectors of circuits
+over 14 qubits; the server's full report keeps them. A crate holds each statevector's sha256 and
+length, and the statevectors themselves when asked (`qrosetta run --statevectors`, or the option
+on the page's Exports tab).
+
+The manual (`docs.html` on a running server, or
+[rosetta-api/static/docs.html](https://github.com/SeQuSoS-Project/QRosetta/blob/main/rosetta-api/static/docs.html)
+in the repository) describes every field, label and threshold.
+[DESIGN_DECISIONS.md](https://github.com/SeQuSoS-Project/QRosetta/blob/main/DESIGN_DECISIONS.md)
+gives each measurement and analysis rule with the evidence for it.
+
+## Stopping and removing
+
+```bash
+qrosetta stop                                    # standby: containers stopped; images and data kept
+qrosetta start -d                                # back from standby in about 10 s
+qrosetta remove                                  # remove containers and networks; keep images and data
+qrosetta remove --images                         # also remove the images
+qrosetta remove --data --confirm qsimulators     # also delete the database and saved runs
+qrosetta remove --all --confirm qsimulators      # containers, networks, images and data, listed first
+```
+
+`stop`, `remove`, `build`, `pull`, and a `start` that adds or recreates services of a running
+stack, are refused while the server reports runs in flight; `stop --force`, `remove --force` and
+`--yes` on the others go ahead. A job in progress is lost when the API container stops.
+
+`start` in the foreground (without `-d`) follows the logs. Ctrl-C asks "Keep on standby or
+remove?" and takes standby after 10 s without an answer; SIGTERM and SIGHUP (sent by VS Code
+when a task stops) put the stack on standby. `--on-exit standby|remove|ask` or
+`QROSETTA_ON_EXIT` sets the action. In VS Code, *Terminal → Run Task → Quantum Rosetta: start*
+(`.vscode/tasks.json` in a checkout) runs it in a terminal panel.
+
+The database (accounts, saved circuits, run history) and the saved run reports are in the
+volume `qsimulators_rosetta_db_data`, which only `--data` and `--all` delete. Results directories,
+the config file and qrosetta's state and cache directories stay in every case.
+
+`qrosetta` acts only on objects that carry its project's labels: containers and networks with
+`com.docker.compose.project` and `org.qrosetta.project`, images with `org.qrosetta.image.project`
+and `org.qrosetta.service`, and the data volume by its compose name and labels. It removes them by
+ID and never prunes. For anything else in the way it prints the command that would remove it and
+leaves it alone. The project is `QROSETTA_PROJECT` (default `qsimulators`).
+
+## Memory, disk and finished jobs
+
+Limits per container: each runner 1 CPU and 1 GiB, each compile-only service 2 CPUs and 2 GiB,
+the API 0.5 CPU and 2 GiB, nginx 0.2 CPU and 128 MiB. Idle after a few hours of use, the 24
+containers of `full` used 3.6 GiB and the five of `minimal` 1.0 GiB, page cache included
+(`qrosetta status`, 2026-11-04). On standby the containers hold no memory.
+
+The API keeps finished jobs so that the page and `qrosetta` can fetch their reports and crates.
+`start` and `status` print the four bounds, which are set under `[lifecycle]` in the config file:
+
+| Key | Default | Environment variable | Meaning |
+|---|---|---|---|
+| `jobs_kept` | 200 | `QROSETTA_JOB_MAX_KEPT` | finished jobs kept |
+| `job_storage` | `"4GiB"` | `QROSETTA_JOB_SPILL_MAX_MIB` | disk for untruncated reports, inside the API container |
+| `job_memory` | `"512MiB"` | `QROSETTA_JOB_MEMORY_MAX_MIB` | API memory for finished jobs |
+| `job_retention` | `"24h"` | `QROSETTA_JOB_TTL_SEC` | longest time a finished job is kept |
+
+When there are more than `jobs_kept` jobs, or their memory exceeds `job_memory`, the oldest jobs
+that finished more than 30 minutes ago are removed; a sweep every 10 minutes applies the bounds.
+Jobs younger than 30 minutes are never removed, so a burst of large jobs can take the API past
+`job_memory` until they age. A kept job holds about 0.3 MiB of API memory for a 5-qubit circuit on
+5 backends, 1.3 MiB for an 18-qubit statevector circuit on 14 backends, and 21 MiB for a
+24-qubit measured circuit on 14 backends at 8,200 shots with a spread-out distribution. One
+18-qubit statevector job on 14 backends takes 79 MB of job storage. Stopping or recreating the
+API container removes every kept job; save a run to keep it.
+
+```bash
+qrosetta config path       # the config file; `qrosetta config init` writes a commented template
+# [lifecycle]
+# jobs_kept = 500
+# job_storage = "16GiB"
+# job_memory = "1GiB"
+# job_retention = "48h"
+```
+
+The environment variables override the file. `start` recreates the API with new values.
+`doctor` warns when `job_memory` is 1,536 MiB or more, which leaves the API less than 512 MiB for
+its own work.
+
+### CPU quota
+
+A rootless engine sets the runners' CPU quota only when systemd delegates the cgroup `cpu`
+controller to your user. `doctor` checks it, and on a host without it `start` stops and names the
+systemd drop-in that delegates it (sudo and a reboot). `start --no-cpu-quota` runs every service
+without its CPU limit instead, through a compose override that removes only
+`deploy.resources.limits.cpus` (memory limits stay; it needs Docker Compose 2.24 or later). The
+choice is kept for later starts until `start --cpu-quota`; `[lifecycle] cpu_quota = false` makes it
+the default. Results from such a stack record `cpu_quota_cores` as null and carry the "no CPU
+quota" timing caveat, and their timings are not comparable with runs under the quota.
+
+## Building from a checkout
 
 ```bash
 git clone https://github.com/SeQuSoS-Project/QRosetta.git
 cd QRosetta
-./qrosetta doctor          # host checks, each problem with its fix
-./qrosetta build           # builds every enabled service's image
-./qrosetta start -d        # starts the stack; returns when the API is ready and the runners answer
-./qrosetta selftest        # known-answer checks of every backend, results saved under ./qrosetta-results
-./qrosetta run algorithm:ghz:3 -m statevector,measured
-./qrosetta show summary    # the server's verdicts for the last run
+./qrosetta doctor
+./qrosetta build --profile minimal   # or ./qrosetta build for every enabled service
+./qrosetta start -d --profile minimal
+./qrosetta selftest
 ```
 
-The first build takes a while: it installs dependencies for 24 separate images, and compiles
-staq, Synthetiq and Quartz from source. `./qrosetta build --profile minimal` builds the core
-services plus Qiskit, Qulacs and Cirq. `.env` (copied from `.env.example`) is needed only to
-deploy a shared server; a local stack runs without it.
+`./qrosetta` runs the command from the checkout and takes the same commands as an installed
+`qrosetta`; `pull` is for installed mode and `build` for a checkout. A full build installs the
+dependencies of 24 images and compiles staq, Synthetiq and Quartz from source. It is the only way
+to get myQLM, cuQuantum and BQSKit.
 
-- Web UI — http://localhost:8080. The page opens with a GHZ circuit ready; press **Run**, then
-  read the Summary tab. The guide's Quickstart (`docs.html#quickstart`) walks through a first
-  statevector and a first measured run.
-- API reference — http://localhost:8080/docs (Swagger) and `docs.html` for the written guide
+`start` never builds. It names services without an image and starts the rest. It recreates a
+container whose image was rebuilt or whose compose configuration changed (for example after a
+`git pull`), and prints each one with the reason. `.env` (from `.env.example`) is needed only for
+a shared server; a local stack runs without it. Braket and ProjectQ are disabled in
+`rosetta-api/config.py` because of persistent errors; enabling one means setting `enabled=True`
+there and adding it to `scripts/safe_boot.sh`.
 
-nginx is published on `127.0.0.1:8080`, so only this computer can reach it. In local mode any
-client may skip the circuit-size, gate-count and experiment-size limits (`bypass_limits`), so
-publish it on other interfaces only on a network you trust: set
-`QROSETTA_HTTP_BIND` in `.env` or the environment, for example `QROSETTA_HTTP_BIND=0.0.0.0:8080`
-(every IPv4 interface) or `QROSETTA_HTTP_BIND=192.0.2.10:80` (one address; ports below 1024
-need a rootful engine). When another program holds 127.0.0.1:8080 and no address is set
-(`--bind`, `QROSETTA_HTTP_BIND`, `[lifecycle] bind`), `qrosetta start` uses the first free port of
-127.0.0.1:8081 to 8089, prints it, and keeps it until `qrosetta remove`; `status`, `run` and the
-other commands find the server there. A Quantum Rosetta that no container of yours publishes
-(another user's stack, a forwarded port) counts as another program. When another Quantum Rosetta
-project on this computer publishes the address, `start` refuses and names the command that stops
-it: the container names are fixed, so one project runs at a time. The integration tests read the
-address from `QROSETTA_BASE_URL`.
+To deploy a shared server, the repository has the scripts for the authors' own instance
+(Kubernetes mode on CSC Rahti with `scripts/rahti_push.sh`, a frontend on Google Cloud Run with
+`scripts/deploy_frontend.sh`), which need adapting to another cluster. Outside local mode the API
+refuses to start without `SECRET_KEY`.
 
-`SECRET_KEY` must be set whenever `EXECUTION_MODE` is not `local`; the API refuses to start
-without it. Locally, leaving it empty generates a random key per process.
+## Command reference
 
-### Starting and stopping
+`qrosetta help all` lists every command and `qrosetta COMMAND --help` gives its options and
+examples. Commands marked experimental may change between minor releases.
 
-`./qrosetta` (Python 3, standard library only) starts, stops and removes the local stack:
+| Command | Purpose |
+|---|---|
+| `doctor` | host checks, each with its fix |
+| `pull` | pull the release's images by digest, checking digests, labels and, with cosign, signatures (installed mode) |
+| `build` | build images from a checkout |
+| `start` | start the stack, or add services to a running one |
+| `status` | services, state, memory, image provenance and address |
+| `logs` | container logs |
+| `stop` | standby: stop the containers, keep everything |
+| `remove` (`rm`) | remove containers, pods and networks; with options, images and data |
+| `profiles` | profiles and their services |
+| `images list` (`ls`) | this stack's images: missing, pulled, loaded, built or unknown, with sizes |
+| `images verify` | check each image's labels, commit and build identity; in installed mode also its digest and signature |
+| `images save` (experimental) | write this stack's images to a directory of archives, for a machine without registry access |
+| `images load` | load archives written by `images save`, checked against their index |
+| `run` | plan through the server, run the jobs, follow them and save their results |
+| `wait` | follow detached jobs and save them |
+| `jobs list` (`ls`) | the jobs this computer submitted, with their server status |
+| `jobs status` | one job's status |
+| `selftest` | known-answer and environment checks of the backends, with reports and crates saved |
+| `show summary` | a result's outcomes, per-backend counts and caveats |
+| `show circuits`, `show diff`, `show artifacts`, `show views` (experimental) | a result's circuit texts, a diff of two of them, its figures and tables, the export views |
+| `export crate` | a result's RO-Crate ZIP |
+| `export report` | a result's full report JSON |
+| `export figure`, `export views` (experimental) | one figure or table of a result; the export views as JSON |
+| `info` | the server's version, API levels, features, run gate, request defaults and limits |
+| `backends` | the server's simulators: availability, levels, device, precision, bit order and profiles |
+| `compilers` | the server's compile-only services: availability, levels, profiles and versions |
+| `circuits algorithms`, `examples`, `mqt`, `qasmbench` | circuit catalogues (`algorithm:ID:QUBITS`, `example:NAME`, `mqt:ALGORITHM:QUBITS`, `qasmbench:NAME`) |
+| `circuits get` | one circuit's OpenQASM 2.0 text |
+| `login`, `logout`, `whoami` | sign in, sign out on the server, show the account |
+| `api` | one raw request to the server |
+| `config path`, `config show` | the config file's path; the effective settings and their sources |
+| `config init`, `config edit` (experimental) | write a commented template; open the file in `$VISUAL` or `$EDITOR` |
+| `version` | command version, install mode, release manifest and server version |
 
-```bash
-./qrosetta doctor                    # host checks, each problem with its fix
-./qrosetta build [NAME ...]          # build images with scripts/safe_boot.sh (default: every enabled service)
-./qrosetta build --profile minimal   # build the core services plus qiskit, qulacs and cirq
-./qrosetta start                     # start in this terminal and follow the logs
-./qrosetta start -d --profile minimal  # start in the background; return when the API is ready and its runners answer
-./qrosetta status                    # state, memory and image per service, data disk use, URL
-./qrosetta logs [NAME]               # follow the logs
-./qrosetta stop                      # standby: stop every container, keep containers, images and data
-./qrosetta remove                    # remove containers and networks; keep images and data
-./qrosetta remove --images           # also remove the images (about 19 GB for a full build)
-./qrosetta remove --data --confirm qsimulators   # also delete the database and saved runs
-./qrosetta remove --all --confirm qsimulators    # containers, networks, images and data, listed first
-./qrosetta start -d --no-cpu-quota   # start without the compose CPU limits (hosts without cpu delegation)
-./qrosetta images                    # each service's image: missing, pulled, loaded, built or unknown
-./qrosetta images verify             # labels, baked commit and build identity of every image
-./qrosetta images save -o DIR        # write this stack's images to DIR for a machine without a registry
-./qrosetta images load DIR           # load them there
-./qrosetta profiles                  # profiles and their services
-./qrosetta info                      # server version, API levels, request defaults and limits
-./qrosetta backends                  # simulators: availability, levels, precision, bit order, profiles
-./qrosetta circuits algorithms       # circuit catalogs; `circuits get algorithm:ghz:3` prints one circuit
-./qrosetta login                     # sign in; the token goes to ~/.local/state/qrosetta/credentials.json (0600)
-./qrosetta api GET /runners          # one raw request to the server
-./qrosetta help all                  # every command
-```
+Global options: `--json` (one JSON object on stdout), `--server URL|NAME`, `--config FILE`,
+`--project-dir DIR`. Data goes to stdout; progress, warnings and errors to stderr. Exit codes: 0
+done; 3 to 9 the command ran and reports an outcome (for example 5 a failed job, 9 a failed
+self-test; `run` exits 3 on a difference only with `--fail-on differs`); 10 and above a problem,
+and the last line names the fix (15 refused because runs are in flight, 16 an engine or image
+problem, 17 a failed `doctor` check).
 
-Services are named by their registry keys (`qiskit`, `cirq-transformers`, `api`, `nginx`), taken
-from the `org.qrosetta.id` label in `docker-compose.yml`; compose service and container names
-are accepted too. Profiles come from the `org.qrosetta.profiles` labels. Data goes to stdout and
-progress, warnings and errors to stderr; `--json` prints one JSON object instead. Exit codes:
-0 = done; 10 and above = a problem, and the last line names the fix (16 an engine or image
-problem, 15 refused because runs are in flight, 17 a failed `doctor` check). `stop`, `remove`,
-`build`, and `start` when it adds or recreates services of a running stack, are refused while
-the server reports runs in flight; `stop --force`, `remove --force`, `build --yes` and
-`start --yes` go ahead.
-
-`start` never builds. It names the services that have no image (`qrosetta build <service>`
-builds one) and starts the rest; without the nginx or API image it starts nothing. A container
-keeps the image it was created from when `build` puts a new image under its tag, and the
-configuration it was created with when `docker-compose.yml` changes (a new volume, variable or
-limit after a `git pull`). `start` recreates, with `compose up --force-recreate`, every requested
-service whose container (running or on standby) was created from another image than the one now
-under its tag, or whose `com.docker.compose.config-hash` label differs from what
-`compose config --hash` gives its service, and prints each one with its reason: "image rebuilt"
-with the commit of both images, "compose configuration changed", or both. The hash is computed
-with the environment `start` gives compose, including the address from `--bind` or
-`lifecycle.bind`, so a stack started with `--bind` is recreated on the default address by a
-later `start` without it. `status` shows the commit of the image each container was created
-from; when the tag now holds another image it names both, when the configuration changed it
-says so, and it prints the `start` command that recreates those containers. When a foreground `start` stops, it runs the exit
-action. On Ctrl-C it asks "Keep on standby or remove?" and takes standby
-after 10 seconds without an answer. SIGTERM and SIGHUP, which VS Code sends when a task is
-stopped or its terminal closed, put the stack on standby. `--on-exit standby|remove|ask` or
-`QROSETTA_ON_EXIT` sets the action; without a terminal, `ask` means standby. Pressing Ctrl-C
-again while the containers stop prints a warning; a third Ctrl-C stops waiting and lists the
-containers still running.
-
-On standby the containers are stopped and hold no memory; `start` brings them back in about
-10 seconds. Running and idle for five minutes after a few hours of use, the 24 containers used
-3.6 GiB and the five of the `minimal` profile 1.0 GiB (`qrosetta status`, page cache included;
-measured 2026-11-04). Finished jobs add to this: the API keeps each one for up to 24 hours, and
-while it holds more than 200, or their estimated memory exceeds 512 MiB, the oldest go from 30
-minutes after they finished. A kept job holds 0.23–0.34 MiB of the API's memory for a 5-qubit
-circuit on 5 backends, 1.3 MiB for an 18-qubit statevector circuit on 14 backends, and 21 MiB for a
-24-qubit measured circuit on 14 backends at 8,200 shots with a spread-out distribution, whose
-display copy grows with the number of distinct outcomes (Python objects, measured 2026-11-05). The
-512 MiB budget therefore holds about 24 of the large measured jobs; jobs younger than 30 minutes are
-never removed, so a burst of them can take the API past the budget until they age. The untruncated
-reports go to disk inside the API container, at most 4,096 MiB on a local stack
-(`QROSETTA_JOB_SPILL_MAX_MIB`; one 18-qubit statevector job on 14 backends takes 79 MB). `qrosetta
-stop`, and any restart of the API container, frees both. `qrosetta start` and `qrosetta status` print
-the four values. To change them, for example on a machine with more memory and disk, put new
-values under `[lifecycle]` in the config file and start again; `start` recreates the API with them:
-
-```bash
-qrosetta config path        # the config file; `qrosetta config init` writes one
-# [lifecycle]  jobs_kept = 500   job_storage = "16GiB"   job_memory = "1GiB"   job_retention = "48h"
-```
-
-`QROSETTA_JOB_MAX_KEPT`, `QROSETTA_JOB_SPILL_MAX_MIB`, `QROSETTA_JOB_MEMORY_MAX_MIB` and
-`QROSETTA_JOB_TTL_SEC` in the environment override the file. `doctor` warns when `job_memory` is
-1,536 MiB or more, which leaves the 2 GiB API container less than 512 MiB for its own work. `remove` keeps the images and the `qsimulators_rosetta_db_data` volume, which
-holds the SQLite database (accounts, saved circuits, run history) and the saved run reports. Results of jobs that were not saved are lost
-whenever the API container stops. `remove --all` removes the containers, pods, networks, this
-stack's images and its data volume in one command: it first lists every object with its size and
-what it leaves alone, then needs `--confirm <project>` or, on a terminal, the project name typed
-at its prompt. Results directories, the config file and qrosetta's state and cache directories
-stay.
-
-Each runner and compiler runs under a 1.0-CPU quota (`cpus: "1.0"` in `docker-compose.yml`). A
-rootless engine can set it only when systemd delegates the cgroup `cpu` controller to your user;
-`qrosetta doctor` checks this, and on a host that does not delegate it `start` stops before
-compose with the drop-in that delegates it (needs sudo and a reboot). `start --no-cpu-quota`
-runs every service without its CPU limit instead: qrosetta writes a compose override,
-`~/.local/state/qrosetta/compose.no-cpu-quota.yaml`, that resets only
-`deploy.resources.limits.cpus` (memory limits stay; `docker-compose.yml` is not edited), and
-needs Docker Compose 2.24 or later for its `!reset` tag. The choice is kept as a stack setting
-(`~/.local/state/qrosetta/stack-settings.json`), so later `start`, `status` and `logs` give
-compose the same files; `[lifecycle] cpu_quota = false` in the config makes it the default, and
-`start --cpu-quota` restores the quota. `start` warns every time it starts without the quota,
-`status` and `config show` print the setting, and plan.json records it with the override's
-sha256. Runs record it themselves: each result has `cpu_environment.cpu_quota_cores` null, the
-summary carries the "no CPU quota" timing caveat, and `selftest` turns its `cpu_quota_cores` FAIL
-into a WARN. Timings from such a stack are not comparable with runs under the quota.
-
-`qrosetta` acts only on what carries two labels for its project: compose's
-`com.docker.compose.project` and `org.qrosetta.project`, which `docker-compose.yml` puts on every
-container and network. An image must carry `org.qrosetta.image.project` and
-`org.qrosetta.service` for the service it is named after, and no other tag; the data volume must
-have the name and compose labels compose gave it (compose offers to recreate, and empty, a volume
-whose labels change, so it carries no qrosetta label). Containers, networks, volumes and images
-are stopped or removed by ID; a pod only when every container in it is the stack's. Anything else
-is left alone, and `start`, `stop`, `remove` and `status` name it with the command that would
-remove it. `start` refuses while another project's container holds one of the stack's fixed
-container names, or while containers or networks of the project lack the qrosetta label.
-
-The project is `QROSETTA_PROJECT` (default `qsimulators`). `qrosetta` passes it to compose with
-`-p`, names the compose files with `-f`, and removes every `COMPOSE_*` variable from compose's
-environment, so `COMPOSE_PROJECT_NAME` in the shell or in `.env` never redirects it to another
-project. `--project-dir` or `QROSETTA_PROJECT_DIR` (formerly `QROSETTA_HOME`, still read with a
-warning) points the command at another directory holding the compose file. The optional config
-file `~/.config/qrosetta/config.toml` (`qrosetta config path`, `qrosetta config show`) holds the
-server, engine, exit action, bind address and the local API's finished-job limits; it holds no run
-setting.
-
-Containers and networks created before these labels existed carry only the compose label, and
-images built before them carry none. `qrosetta status` lists them; remove the containers and
-networks once with the commands it prints (images and data stay), and `qrosetta start` creates
-them again with the labels. `remove --images` removes only images built after the change; for
-older ones it prints the `rmi` command.
-
-### Images: pull, verify, save and load
-
-A checkout builds its own images. An installed `qrosetta` (a wheel from PyPI or the Zenodo
-record) carries the release manifest, which names each published image by digest; `qrosetta
-pull NAME ...`, `pull --profile minimal`, `pull --core` or `pull --all` pulls them by digest with
-`TMPDIR` set to `~/.cache/qrosetta/tmp`, retries once after a network or registry error, and
-checks that the pulled image has the manifest's digest and the `org.qrosetta.image.project` and
-`org.qrosetta.service` labels of its service. When `cosign` is on the `PATH` it first checks the
-image's signature against the release workflow's identity; `--require-signature` refuses an
-image whose signature is not verified. myQLM, cuQuantum and BQSKit are never published (their licences,
-`THIRD_PARTY_NOTICES.md`); `pull` names them and the checkout command that builds them. In a
-checkout `pull` exits 12 and prints the `qrosetta build` command.
-
-Disk space per profile, in GB (10^9 bytes); each profile includes the API and nginx:
-
-| Profile | Images | Published images, after `pull` | Download | Built on your machine |
-|---|---|---|---|---|
-| `minimal` | 5 | 2.7 | 0.85 | none |
-| `cpu` | 15 | 11.7 | 3.6 | myQLM, 1.3 |
-| `gpu` | 16 | 11.7 | 3.6 | myQLM and cuQuantum, 5.1 |
-| `compilers` | 10 | 3.9 | 1.3 | BQSKit, 0.5 |
-| `full` | 24 | 14.6 | 4.6 | all three, 5.6 |
-
-The first size column is the uncompressed layer size of the images built from this repository's
-Dockerfiles at the 2.0.0rc4 release (measured 2026-11-04), with the base-image layers counted once
-and every other layer once per image (the release builds each image on its own machine, so only
-base layers are shared). Download is the sum of the distinct compressed layers the registry sends
-for the published 2.0.0rc4 images of the profile, read from their manifests. The last column is
-what an installed `qrosetta` cannot pull: those images come from `qrosetta build` in a checkout.
-A checkout that builds all 24 images uses about 19 GB, because local builds share more layers.
-
-A pulled image is this stack's in the same way as a built one: the generated compose file names
-it by digest, so `start` and `status` find it through its repo digest, and its two labels let
-`remove --images` remove it. Release images are labelled for project `qsimulators`; under another
-`QROSETTA_PROJECT` they are reported and never removed.
-
-`qrosetta images verify [NAME ...]` reads only inspect data and runs no container. Per image it
-checks the labels, the baked commit (`QROSETTA_IMAGE_GIT_SHA`), and for runners and compilers
-the identity written at build to `/usr/local/share/qrosetta-image/identity`, read from the build
-step in the image's history that wrote it. In installed mode it also checks the repo digest or
-image id against the manifest, the release and commit in the identity, the API image's
-`QROSETTA_VERSION`, and the cosign signature (`--require-signature` fails an unverified one). It
-exits 16 when a check fails.
-
-`qrosetta images save [NAME ...] -o DIR` (experimental) writes one `docker save` or `podman save`
-archive per image to `DIR`, with `DIR/qrosetta-images.json` listing the service, image id,
-config digest, baked commit, repo digest and the archive's sha256. Only images that pass the
-ownership checks are written. `qrosetta images load DIR [NAME ...]` reads each archive's image
-configuration before loading it: the archive must have the sha256 in the index, carry the labels
-of a known service, and in installed mode have the image id the release manifest records. The
-loaded image is tagged where the stack looks for it (`qsimulators-<service>` in a checkout,
-`qsimulators-<service>:<release>` in installed mode, which `status` shows as `loaded`). A tag held
-by an image that is not this stack's is left alone. `pull`, `images save` and `images load` are
-refused while the server reports runs in flight (`--yes` goes ahead) and are recorded as host load.
-
-Docker and podman both work. `qrosetta` uses the first of docker and podman whose `info`
-answers (`qrosetta doctor` says which and why); `QROSETTA_ENGINE=docker|podman` or
-`[lifecycle] engine` in the config chooses one. Either way the compose provider must be Docker
-Compose v2: `docker compose version` or `podman compose version` prints "Docker Compose version
-v2..." or later. On Ubuntu and Debian, `sudo apt install docker-compose-v2` (with podman add
-`--no-install-recommends`, so docker.io is not pulled in). Elsewhere, with Docker install the
-`docker-compose-plugin` package (https://docs.docker.com/compose/install/linux/); with podman,
-download the `docker-compose` binary for your platform from
-https://github.com/docker/compose/releases, save it as `~/.docker/cli-plugins/docker-compose` and
-make it executable, and `podman compose` uses it. podman-compose 1.x is not supported.
-
-In VS Code, *Terminal → Run Task → Quantum Rosetta: start* (`.vscode/tasks.json`) runs
-`qrosetta start` in a terminal panel; stopping the task puts the stack on standby. The other
-tasks run `stop`, `remove` and `status`.
-
-### Deploying a shared server
-
-A local stack needs none of this. These scripts deploy the authors' own instance (`kubernetes`
-mode on CSC Rahti, frontend on Google Cloud Run) and name its hosts and namespace; adapt them
-for another cluster:
-
-```bash
-./scripts/rahti_push.sh [namespace] [service ...]   # CSC Rahti (OpenShift)
-./scripts/deploy_frontend.sh                        # GCP Cloud Run: frontend
-```
-
-`rahti_push.sh` builds, tags each image with both its git hash and `:latest`, pushes, applies
-the manifests, and waits for the rollout.
-
-## Tests
-
-```bash
-cd rosetta-api
-pip install -r requirements.txt -r tests/requirements.txt   # Python 3.12, the API image's
-pip install ../shared
-PYTHONPATH=.:../shared pytest tests/unit/ -n auto
-```
-
-The suite needs pytest 9 (`tests/requirements.txt` pins 9.0.3) and runs from `rosetta-api/`.
-
-`PYTHONPATH` includes `../shared` so the working copy of `qrosetta_commons` is tested even
-when an older copy is installed in the virtualenv.
-
-`tests/integration/` holds live-stack checks that need a running stack. CI builds nginx, the
-API and three runners from each commit and runs the end-to-end tests and the runner contract
-probes against them; the rest need the full stack. See the README there.
-
-## Project layout
-
-```text
-.
-├── docker-compose.yml       Orchestration, healthchecks, resource limits
-├── qrosetta                 Start, stop and remove the local stack (runs qrosetta_cli/)
-├── qrosetta_cli/            The command's package (standard library only)
-├── nginx/                   Reverse proxy for the local stack
-├── infra/                   Rahti manifests and the Cloud Run frontend image
-├── rosetta-api/             The orchestrator
-│   ├── main.py              Mounts routers only
-│   ├── routers/             Request validation and HTTP shaping
-│   ├── services/            Business logic, dispatch, analysis, export
-│   ├── schemas/             Pydantic request/response models
-│   ├── db/                  SQLAlchemy models, session handling and the startup migration
-│   ├── migrations/          Alembic revisions of the database schema
-│   ├── static/              Web frontend
-│   └── tests/unit/          Unit test suite (run by CI)
-├── runners/<name>-runner/   One directory per simulator backend
-├── compilers/<name>-compiler/ One directory per compile-only service
-├── shared/qrosetta_commons/ The benchmarking contract shared by every runner and compiler
-├── scripts/                 Boot, deployment, release, lint and requalification scripts
-└── tests/integration/       Live-stack checks (need the stack up)
-```
+The release manifest lets `pull`, `images verify` and `images load` check every image against the
+published digest. `qrosetta images save -o DIR` and `qrosetta images load DIR` move images to a
+computer without registry access. `qrosetta` uses the first of docker and podman whose `info`
+answers; `QROSETTA_ENGINE=docker|podman` or `[lifecycle] engine` chooses one.
 
 ## Security
 
-Report vulnerabilities privately, as `SECURITY.md` describes; never in a public issue.
+Report vulnerabilities privately as
+[SECURITY.md](https://github.com/SeQuSoS-Project/QRosetta/blob/main/SECURITY.md) describes, never
+in a public issue. Only nginx is reachable from outside the stack; the API and the runners are on
+an internal network and the runners publish no port. Every container runs as an unprivileged
+user. Passwords are stored as bcrypt hashes, signing out ends every session of the account, and
+pages from other sites cannot send state-changing requests.
 
-- Only Nginx is publicly reachable; runners expose no ports and the API is not on the public
-  network.
-- The API, runner and compiler containers run as an unprivileged `appuser`, and nginx as uid 101
-  (`nginxinc/nginx-unprivileged`), listening on port 8080 inside its container.
-- Every response carries a Content-Security-Policy, `X-Content-Type-Options: nosniff`,
-  `Referrer-Policy: no-referrer`, `Cross-Origin-Opener-Policy: same-origin` and
-  `X-Frame-Options: DENY`; the pages run no inline script or style.
-- A POST, PUT, PATCH or DELETE sent by a page on another site is refused with 403, and a JSON
-  route reads a body only with a JSON `Content-Type` (415 otherwise). Requests without an `Origin`
-  header, such as the CLI's, are unaffected.
-- Passwords are hashed with bcrypt and never logged or stored in plaintext; sessions are JWT.
-  Logout ends every session of the account on the server, and deleting an account needs its
-  password.
-- Every endpoint that reads or writes user data requires authentication and filters by the
-  authenticated user.
-- Circuit size, gate count, qubit count, upload size, and run fan-out are all capped
-  server-side; public endpoints are rate-limited per signed-in account, else per client
-  address, with a per-address ceiling on runs, exports and rendering.
-- All `requirements.txt` files pin exact versions, with a `requirements.lock` alongside.
+## Contributing and support
 
-## Contributors
-
-- Shaswato Sarker - *University of Jyväskylä*
-- Majid Haghparast - *University of Jyväskylä*
-- Tommi Mikkonen - *University of Jyväskylä*
-
-## Contact
-
-Questions and support: <info@qrosetta.dev>. Principal investigator: Majid Haghparast
-<<majid.m.haghparast@jyu.fi>>. Vulnerabilities: `SECURITY.md`.
-
-## Acknowledgement
-
-This work has been supported by the Business Finland through project SeQuSoS (Grants No. 112/31/2024), and Research Council of Finland through project Profi 8 - qSIME (Grants No. 365343).
-
-## Contributing
-
-See `CONTRIBUTING.md` for the full guide to adding a simulator backend or an algorithm
-template, and `DESIGN_DECISIONS.md` for the measurement and analysis rules with the evidence
-behind each. Contributors follow the Code of Conduct (`CODE_OF_CONDUCT.md`); `SUPPORT.md` says
-where to ask for help and what to attach.
+[CONTRIBUTING.md](https://github.com/SeQuSoS-Project/QRosetta/blob/main/CONTRIBUTING.md) covers
+adding a simulator backend or compile-only service, the tests, and the release workflow.
+[SUPPORT.md](https://github.com/SeQuSoS-Project/QRosetta/blob/main/SUPPORT.md) says where to ask
+and what to attach. Contributors follow the
+[Code of Conduct](https://github.com/SeQuSoS-Project/QRosetta/blob/main/CODE_OF_CONDUCT.md).
 
 ## Versions
 
-Each release is a git tag; `CHANGELOG.md` lists what changed in each. `v1.0.0` (June 2026) was the first
-public snapshot. Do not reuse its results: its Qrisp adapter returned an all-zero state and all-zero
-counts when the SDK call failed (fixed in 5bb0574, July 2026), and the bit-order labels of several
-adapters were corrected after it. Use the newest release.
-
-## Licence
-
-Apache License 2.0 (`LICENSE`). Bundled benchmark circuits and other third-party files keep their
-own licences, listed in `THIRD_PARTY_NOTICES.md`.
-RO-Crates the server builds declare their contents under CC BY 4.0 (the crate's `#license`
-entity).
+Each release is a git tag, and
+[CHANGELOG.md](https://github.com/SeQuSoS-Project/QRosetta/blob/main/CHANGELOG.md) lists what
+changed. `v1.0.0` (June 2026) was the first public snapshot. Do not reuse its results: its Qrisp
+adapter returned an all-zero state and all-zero counts when the SDK call failed (fixed in July
+2026), and the bit-order labels of several adapters were corrected after it.
 
 ## Citing
 
-See `CITATION.cff`; `.zenodo.json` and `codemeta.json` carry the same title, version, authors and
-licence (`rosetta-api/tests/unit/test_citation_metadata.py`).
+Cite the version you used (`qrosetta version` prints it). The metadata is in
+[CITATION.cff](https://github.com/SeQuSoS-Project/QRosetta/blob/main/CITATION.cff), which GitHub
+offers as "Cite this repository"; `.zenodo.json` and `codemeta.json` give the same title, authors,
+version and licence.
+
+## Licence
+
+Apache License 2.0 ([LICENSE](https://github.com/SeQuSoS-Project/QRosetta/blob/main/LICENSE)).
+Bundled benchmark circuits and other third-party files keep their own licences, listed in
+[THIRD_PARTY_NOTICES.md](https://github.com/SeQuSoS-Project/QRosetta/blob/main/THIRD_PARTY_NOTICES.md).
+RO-Crates the server builds declare their contents under CC BY 4.0.
+
+## Authors and contact
+
+Shaswato Sarker, Majid Haghparast and Tommi Mikkonen, University of Jyväskylä.
+
+Questions and support: <info@qrosetta.dev>. Principal investigator: Majid Haghparast
+<majid.m.haghparast@jyu.fi>.
+
+This work was supported by Business Finland through the project SeQuSoS (grant 112/31/2024) and
+by the Research Council of Finland through the project Profi 8 – qSIME (grant 365343).
