@@ -1,9 +1,20 @@
-# Adding a new simulator backend or compile-only service
+# Contributing to Quantum Rosetta
 
-QRosetta dispatches one OpenQASM 2.0 circuit to a fleet of "runners" — one small FastAPI service
-per simulator SDK — and compares what comes back. Adding a simulator means adding one more
-runner that speaks the same contract as every other one. `runners/qibo-runner/main.py` is a
-short complete example to read alongside this guide.
+For any change:
+
+- Run `scripts/install_hooks.sh` once after cloning ([Secrets and private files](#secrets-and-private-files)).
+- Add a line under `## [Unreleased]` in `CHANGELOG.md` for a change a user can see.
+- Run the tests the pull request template lists (`.github/pull_request_template.md`).
+- A change to a measurement or analysis rule needs an entry in `DESIGN_DECISIONS.md` with its
+  evidence, and code inside a timed window needs identical outputs on the corpus and an
+  old-versus-new timing comparison.
+- Contributors follow the Code of Conduct (`CODE_OF_CONDUCT.md`).
+
+## Adding a simulator backend
+
+A runner is one small FastAPI service per simulator SDK. The API sends it a circuit, and it
+returns a result with the same fields as every other runner. Sections 1 to 8 describe how to add
+one; `runners/qibo-runner/main.py` (167 lines) is a complete example to read beside them.
 
 ## 1. Directory layout
 
@@ -14,7 +25,7 @@ runners/<name>-runner/
 ├── main.py              # the runner itself
 ├── Dockerfile
 ├── requirements.txt      # direct dependencies, pinned to exact versions
-└── requirements.lock     # full pip freeze of the built image, for reproducible builds
+└── requirements.lock     # every package with its sha256 hashes (section 6)
 ```
 
 The directory name must equal the hostname in the runner's `base_url` in `config.py`
@@ -259,7 +270,8 @@ more than 32 bits fails in `serialize_fn`.
 Follow the existing pattern (`runners/qibo-runner/Dockerfile` is a minimal example):
 
 - Pin the base image by digest: `FROM python:3.13-slim@sha256:...`, or `python:3.12-slim` when a pin
-  in your lock has no cp313 wheel (the API and most runners run 3.12, Qibo and six compilers 3.13).
+  in your lock has no cp313 wheel (the API, Q-Synth and most runners run 3.12; Qibo and seven
+  compilers run 3.13).
   Use the digest the other Dockerfiles already pin for that tag, and never go below 3.12
   (`release/eol.json`, `test_base_image_eol.py`).
 - Create and switch to a non-root user (`appuser`), with `HOME=/home/appuser` and group
@@ -289,21 +301,26 @@ before the `pip install` steps, and pin the specific packages needed.
 
 ## 6. `requirements.txt` and `requirements.lock`
 
-`requirements.txt` lists your runner's direct dependencies with exact pins (SDK, `fastapi`,
-`uvicorn[standard]`, `psutil`, `gunicorn`, plus whatever your SDK needs). `requirements.lock` is
-the full `pip freeze` output of a container built from that `requirements.txt`: build the image
-once, run `pip freeze` inside it, and commit the result with a comment noting the date. The
-Dockerfile installs from the lock file, and every exact pin in `requirements.txt` must have the
-same version in the lock (`test_requirements_lock_sync.py`). Dependabot does not read lock files,
-so a pull request of its that changes a `requirements.txt` fails that test until the lock is
-regenerated; for a runner or compiler it carries the label `sealed-image` and needs the image
-requalified (`DESIGN_DECISIONS.md`, Supported Python and base images) before it is merged.
+`requirements.txt` lists your runner's direct dependencies with exact pins (the SDK, `fastapi`,
+`uvicorn[standard]`, `psutil`, `gunicorn`, and what the SDK needs). `requirements.lock` lists every
+installed package with its sha256 hashes, and the Dockerfile installs from it with
+`--require-hashes`. Write it with
 
-`scripts/release/compile_lock.sh <service-dir> <base-image@sha256:...>` regenerates a lock with
-sha256 hashes: pip-tools runs pip's resolver inside the base image, with the current lock as
-constraints, so a pin moves only when `requirements.txt`, the base image's Python or a hand edit of
-the lock forces it. To move one package, edit its version in the lock and run the script. The API's
-lock is generated this way; runner and compiler locks move to it when their image is requalified.
+```bash
+scripts/release/compile_lock.sh runners/<name>-runner <base-image@sha256:...>
+```
+
+which runs pip-tools 7.6.2 inside the base image with the current lock as constraints, so a pin
+moves only when `requirements.txt`, the base image's Python or a hand edit of the lock forces it.
+To move one package, edit its version in the lock and run the script again. Every lock in the
+repository is written this way apart from the disabled ProjectQ runner's and Q-Synth's (written
+by hand because python-sat 1.8.dev13 is no longer on PyPI).
+
+Every exact pin in `requirements.txt` must have the same version in the lock
+(`test_requirements_lock_sync.py`). Dependabot does not read lock files, so its pull requests that
+change a runner's or compiler's `requirements.txt` fail that test until the lock is regenerated.
+They carry the label `sealed-image`: the image is requalified (below) before such a change is
+merged.
 
 `scripts/requalify/requalify.sh <service> <python-base@sha256:...>` requalifies a runner or
 compiler image on a new base. It writes a candidate (Dockerfile with the new base, the apt snapshot
@@ -361,7 +378,8 @@ and add the `MY_SDK_RUNNER_URL: str = "http://my-sdk-runner:8000"` field near th
 for a value the runner computes at run time. `tests/unit/test_registry_precision_ordering.py`
 compares them with the source, and `GET /runners` publishes them.
 
-**`docker-compose.yml`**, add a service block (copy an existing runner's block):
+**`docker-compose.yml`**, add a service block (copy an existing runner's block, here Qibo's with
+the names changed):
 
 ```yaml
 my_sdk_runner:
@@ -372,28 +390,43 @@ my_sdk_runner:
       - QROSETTA_GIT_SHA=${QROSETTA_GIT_SHA:-unknown}
       - QROSETTA_IMAGE_SOURCE=${QROSETTA_IMAGE_SOURCE:-built_locally}
       - QROSETTA_RELEASE=${QROSETTA_RELEASE:-}
+    labels:
+      org.qrosetta.image.project: ${QROSETTA_PROJECT:-qsimulators}
+      org.qrosetta.service: my_sdk_runner
+  labels:
+    <<: *qrosetta-labels
+    org.qrosetta.id: my-sdk
+    org.qrosetta.kind: runner
+    org.qrosetta.profiles: "cpu,gpu,full"
   container_name: my-sdk-runner
+  <<: *qrosetta-hardening
   environment:
+    - QROSETTA_HOST_OS=${QROSETTA_HOST_OS:-}
+    - QROSETTA_HOST_ARCH=${QROSETTA_HOST_ARCH:-}
     - OMP_NUM_THREADS=1
     - MKL_NUM_THREADS=1
     - OPENBLAS_NUM_THREADS=1
     - NUMEXPR_NUM_THREADS=1
     - NUMBA_NUM_THREADS=1
     - RUNNER_MAX_CONCURRENT=${RUNNER_MAX_CONCURRENT:-1}
+    - MAX_QUBITS_STATEVECTOR=${MAX_QUBITS_STATEVECTOR:-18}
+    - MAX_QUBITS_MEASURED=${MAX_QUBITS_MEASURED:-24}
   networks:
     - isolated_net
   deploy:
     resources:
       limits:
         cpus: "1.0"
-        memory: "512M"
+        memory: "1G"
+        pids: 1024
 ```
 
-Runners are internal-only: no exposed ports, reached by the API over `isolated_net` by
-container name. The five thread variables pin every runner to one thread, as the Kubernetes
-Job spec does; results record them in `thread_env`. `RUNNER_MAX_CONCURRENT` is how many runs
-one runner executes at once (default 1; further requests queue and report
-`queue_wait_sec`).
+Runners publish no port; the API reaches them over `isolated_net` by container name. The
+`org.qrosetta.*` labels let `qrosetta` recognise the container and image as the stack's, and
+`org.qrosetta.id` must equal the `config.py` key. The five thread variables pin every runner to
+one thread, as the Kubernetes Job spec does; results record them in `thread_env`.
+`RUNNER_MAX_CONCURRENT` is how many runs one runner executes at once (default 1; further requests
+queue and report `queue_wait_sec`).
 
 **Display names.** The UI shows the raw canonical id unless you add a label to both
 registers: `rosetta-api/static/js/runner_key.js` `RUNNER_DISPLAY_NAMES` (long, vendor-qualified,
@@ -402,38 +435,30 @@ repeats it) and `rosetta-api/static/js/status_cards.js` `_RUNNER_NAMES` (short, 
 the status cards). Add a row for the backend's statevector and measured bit order to the
 table in `rosetta-api/static/docs.html` (`#bitorder`).
 
-## 8. Testing before you're done
+## 8. Testing a new runner
 
-- Unit suite, from the repository root:
-
-  ```bash
-  cd rosetta-api && PYTHONPATH=.:../shared pytest tests/unit
-  ```
-
-  `PYTHONPATH` must include `../shared`: an older `qrosetta_commons` installed in the
-  virtualenv otherwise shadows the working copy. The suite needs pytest 9 (`minversion = "9.0"` in
-  the root `pyproject.toml`; `rosetta-api/tests/requirements.txt` pins 9.0.3), and runs from
-  `rosetta-api/` only, because the app mounts `static/` relative to the working directory.
-- Build and start the runner (`./qrosetta build my_sdk_runner && ./qrosetta start --detach
-  my_sdk_runner`, which also starts nginx and the API). Runners expose no port and ship no curl, so exercise them from inside the
-  container:
+- Run the unit suite ([Tests](#tests)).
+- Build and start the runner with `./qrosetta build my-sdk` and `./qrosetta start -d my-sdk`
+  (which also starts nginx and the API). Runners publish no port and carry no curl, so call them
+  inside the container (`podman` in place of `docker` on a podman host):
 
   ```bash
-  docker compose exec my_sdk_runner python main.py --self-test
-  docker compose exec my_sdk_runner python main.py --endpoint run_measured \
+  docker exec my-sdk-runner python main.py --self-test
+  docker exec my-sdk-runner python main.py --endpoint run_measured \
     --payload '{"circuit_data": "OPENQASM 2.0;\ninclude \"qelib1.inc\";\nqreg q[2];\ncreg c[2];\nh q[0];\ncx q[0],q[1];\nmeasure q[0] -> c[0];\nmeasure q[1] -> c[1];\n", "n_shots": 1000, "seed": 1}'
   ```
 
   Read the result: `error` is null, the statevector has `2^n` amplitudes, the counts sum to
   `n_shots`, `precision` and `device` are right, and `sdk_versions` lists the SDK.
-- Add your runner's id to `ACTIVE_STATEVECTOR_RUNNERS` and run
-  `tests/integration/test_runner_contract_asymmetric.py` against the live stack
-  (`./scripts/safe_boot.sh`). It sends the self-test probes through the API, so the runner
-  receives the rewritten circuit text of section 2.
+- Add the runner's id to `ACTIVE_STATEVECTOR_RUNNERS` and run
+  `tests/integration/test_runner_contract_asymmetric.py` against the running stack. It sends the
+  self-test probes through the API, so the runner receives the rewritten circuit text of
+  section 2.
+- `./qrosetta selftest --backends my-sdk` compares the runner with the known answers.
 
-### Where silent integrity bugs hide
+### Checks the tests do not make
 
-The unit suite and the self-test do not catch everything. Check these by hand:
+Check these by hand:
 
 - Work outside `t2..t3`. Simulating inside `compile_fn` reports a near-zero
   `simulation_time_sec` and memory delta; building counts inside `execute_fn` charges
@@ -478,11 +503,12 @@ The Dockerfile copies itself, `requirements.lock` and any patch, build source or
 the build uses to `/usr/local/share/qrosetta-build/`; each record carries their sha256, and a
 crate includes the server's copy of a file only when the hashes match.
 
-Then add the service to `docker-compose.yml` (isolated network, no ports, the thread
-variables, a CPU and memory limit), to the `COMPILERS` array of `scripts/safe_boot.sh` and to
+Then add the service to `docker-compose.yml` (copy a compiler's block: isolated network, no
+ports, the labels with `org.qrosetta.kind: compiler` and the `compilers,full` profiles, 2 CPUs and
+2 GiB), to the `COMPILERS` array of `scripts/safe_boot.sh` and to
 `SERVICE_MAP` in `scripts/rahti_push.sh`; `tests/unit/test_runner_registry_sync.py` fails until
-all of them agree with `config.py`. Pin `requirements.txt` and generate `requirements.lock` in
-the base image the Dockerfile uses.
+all of them agree with `config.py`. Pin `requirements.txt` and write `requirements.lock` with
+`scripts/release/compile_lock.sh` for the base image the Dockerfile uses.
 
 Before offering a level, run `python main.py --self-test` in the image and compile random
 circuits through it with an independent equivalence check. Do not offer a pipeline that
@@ -547,6 +573,36 @@ baseline is normalised (references inlined, titles and descriptions dropped), so
 upgrade that keeps the same fields reports nothing, and anything it does report is a change
 older CLIs would see.
 
+## Tests
+
+Unit suite, from `rosetta-api/` (the app mounts `static/` relative to the working directory), with
+Python 3.12, the API image's:
+
+```bash
+cd rosetta-api
+pip install -r requirements.txt -r tests/requirements.txt
+pip install ../shared
+PYTHONPATH=.:../shared COLUMNS=120 LINES=40 python -m pytest tests/unit/ -n auto
+```
+
+`PYTHONPATH` includes `../shared` so the working copy of `qrosetta_commons` is tested even when
+an older copy is installed. The suite needs pytest 9 (`minversion = "9.0"` in the root
+`pyproject.toml`; `tests/requirements.txt` pins 9.0.3). `COLUMNS` and `LINES` keep pytest's
+terminal size out of the child processes that `test_image_identity.py` compares. About ten tests
+measure durations or memory and can fail on a loaded machine, for example
+`test_event_loop_budget.py` and `test_parent_death.py`; they pass when run alone. Frontend changes also need `./scripts/check_frontend_types.sh`, and
+Tailwind class changes `./scripts/build_css.sh` with its output committed.
+
+`tests/integration/` holds checks against a running stack (`QROSETTA_BASE_URL`, default
+`http://localhost:8080`); its README lists what each file needs. The CI job `integration` builds
+nginx, the API and the Qiskit, Qulacs and Cirq runners from each commit and runs
+`test_e2e_nginx.py`, `test_e2e_cli.py` and `test_runner_contract_asymmetric.py` against them.
+Locally, on a full stack:
+
+```bash
+QROSETTA_E2E_REQUIRE_CURRENT=1 python -m pytest tests/integration/
+```
+
 ## Packaging the `qrosetta` command
 
 The `qrosetta` package on PyPI holds `qrosetta_cli/` and nothing else: no dependencies, Python
@@ -560,7 +616,7 @@ and `ARG QROSETTA_VERSION` in `rosetta-api/Dockerfile` repeat the number;
 `tests/unit/test_release_version.py` fails when the three differ, so a version change edits all
 three in one commit.
 
-**Building the wheel locally.** Keep temporary files out of `/tmp`:
+**Building the wheel locally.** On hosts with a small `/tmp`, keep temporary files elsewhere:
 
 ```bash
 python3 -m venv ~/.tmp/qr-build
@@ -568,7 +624,7 @@ python3 -m venv ~/.tmp/qr-build
 # Optional: a release manifest without image digests (needs PyYAML, pydantic, pydantic-settings)
 python scripts/release/make_manifest.py --git-sha "$(git rev-parse HEAD)"
 TMPDIR=~/.tmp ~/.tmp/qr-build/bin/python -m build --outdir ~/.tmp/qr-wheel .
-python3 scripts/release/check_dist.py ~/.tmp/qr-wheel --version 1.0.0 --require-manifest
+python3 scripts/release/check_dist.py ~/.tmp/qr-wheel --version "$(python3 -c 'import qrosetta_cli; print(qrosetta_cli.__version__)')" --require-manifest
 ```
 
 `check_dist.py` refuses a wheel with files outside `qrosetta_cli/`, another version, a
@@ -663,7 +719,8 @@ longer passes, or a CRITICAL vulnerability with a fix has been published since.
 **Image archives without a registry.** On a machine that has pulled (or built) the images,
 `qrosetta images save --profile minimal -o DIR` writes one archive per image and
 `DIR/qrosetta-images.json`; `qrosetta images load DIR` on the target machine checks each archive
-against the index before loading it. These archives are what the Zenodo record carries.
+against the index before loading it. Image archives for a Zenodo upload are written this way
+(`docs/RELEASING.md`).
 
 ## Lint gates
 
