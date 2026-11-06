@@ -128,7 +128,7 @@ The same `pip install` with `--upgrade` updates it.
 A profile is a set of services; the web server (nginx) and the API are added to every profile.
 `qrosetta profiles` lists them.
 
-| Profile | Services | Images | Size after `pull` (GB) | Download (GB) | Not published, build from a checkout |
+| Profile | Services | Images | Size after `pull` (GB) | Download (GB) | Not published; `qrosetta build` them |
 |---|---|---|---|---|---|
 | `minimal` | Qiskit, Qulacs, Cirq | 5 | 2.7 | 0.85 | none |
 | `cpu` | the 13 CPU simulators | 15 | 11.7 | 3.6 | myQLM (1.3 GB) |
@@ -143,7 +143,8 @@ the compilers. A compile-only run needs no simulator (`qrosetta run FILE --compi
 pyzx=all`).
 
 myQLM, cuQuantum and BQSKit are not published, because their licences do not allow the project to
-distribute their images (`THIRD_PARTY_NOTICES.md`). They need a checkout and `qrosetta build`.
+distribute their images (`THIRD_PARTY_NOTICES.md`). `qrosetta build NAME` builds them from the
+package's build kit (see "Build the images yourself").
 cuQuantum also needs an NVIDIA GPU; without one it is listed as unavailable and never dispatched.
 
 Sizes are in GB (10^9 bytes), measured on 2026-11-04 for the 2.0.0rc4 images. "Size after
@@ -331,6 +332,27 @@ choice is kept for later starts until `start --cpu-quota`; `[lifecycle] cpu_quot
 the default. Results from such a stack record `cpu_quota_cores` as null and carry the "no CPU
 quota" timing caveat, and their timings are not comparable with runs under the quota.
 
+## Build the images yourself (no git needed)
+
+The `qrosetta` package carries a build kit: the Dockerfiles of this release and the files they
+copy (about 2.6 MB). With it, `qrosetta` builds images on your computer instead of pulling them.
+It is also the way to get the three images the project does not publish (myQLM, cuQuantum and
+BQSKit).
+
+```bash
+qrosetta build --profile minimal     # the web server, the API, Qiskit, Cirq and Qulacs
+qrosetta build myqlm                 # one service; without a name, every service
+qrosetta start -d
+```
+
+Each image is tagged `qsimulators-<service>:<version>-buildkit` and records the release commit with
+`+buildkit`. `qrosetta status` shows such a service as "built locally from release X";
+`qrosetta selftest` passes with one provenance warning per backend, because the image was not
+pulled from the release. `qrosetta pull NAME` returns to the published image, and
+`qrosetta remove --images` deletes both kinds. Builds stage under `~/.cache/qrosetta/tmp`, not
+`/var/tmp`; `qrosetta doctor` warns when there is not enough room. cuQuantum builds without a GPU
+but runs only on an NVIDIA GPU.
+
 ## Building from a checkout
 
 ```bash
@@ -343,9 +365,8 @@ cd QRosetta
 ```
 
 `./qrosetta` runs the command from the checkout and takes the same commands as an installed
-`qrosetta`; `pull` is for installed mode and `build` for a checkout. A full build installs the
-dependencies of 24 images and compiles staq, Synthetiq and Quartz from source. It is the only way
-to get myQLM, cuQuantum and BQSKit.
+`qrosetta`; `pull` is for installed mode; `build` works in both. A full build installs the
+dependencies of 24 images and compiles staq, Synthetiq and Quartz from source.
 
 `start` never builds. It names services without an image and starts the rest. It recreates a
 container whose image was rebuilt or whose compose configuration changed (for example after a
@@ -368,7 +389,7 @@ examples. Commands marked experimental may change between minor releases.
 |---|---|
 | `doctor` | host checks, each with its fix |
 | `pull` | pull the release's images by digest, checking digests, labels and, with cosign, signatures (installed mode) |
-| `build` | build images from a checkout |
+| `build` | build images from this checkout, or from an installed package's build kit |
 | `start` | start the stack, or add services to a running one |
 | `status` | services, state, memory, image provenance and address |
 | `logs` | container logs |

@@ -128,8 +128,9 @@
                     <li>Open that address in a browser.</li>
                 </ol>
                 <p>
-                    In a checkout of the repository, <code>./qrosetta build</code> builds the images and
-                    replaces <code>pull</code>; the other commands are the same.
+                    <code>qrosetta build</code> builds the images on this computer instead of pulling them,
+                    from the build files the package carries or, in a checkout of the repository, from
+                    the working tree (<code>./qrosetta build</code>); the other commands are the same.
                 </p>
                 <p>
                     By default nginx is published on <code>127.0.0.1:8080</code>, so only this computer
@@ -2516,10 +2517,11 @@
                     Global options, accepted anywhere on the line: <code>--json</code>, <code>--server
                     URL|NAME</code> (a URL, or a <code>[servers.NAME]</code> table of the config; default
                     <code>local</code>), <code>--config FILE</code> and <code>--project-dir DIR</code> (the
-                    checkout whose compose file to use). In installed mode, without a checkout,
-                    <code>pull</code> fetches the release's images by digest; in checkout mode
-                    <code>build</code> builds them. The release does not publish the myQLM, cuQuantum and
-                    BQSKit images; build them from a checkout.
+                    checkout whose compose file to use). In installed mode, <code>pull</code> fetches the release's
+                    images by digest and <code>build</code> builds them from the build kit the package
+                    carries; in a checkout, <code>build</code> builds them from the working tree. The
+                    release does not publish the myQLM, cuQuantum and BQSKit images;
+                    <code>qrosetta build NAME</code> builds them.
                 </p>
                 <h3>Local stack</h3>
                 <div class="table-scroll"><table>
@@ -2527,7 +2529,7 @@
                     <tbody>
                         <tr><td><code>doctor</code></td><td>Host checks (system, engine, Compose v2, podman socket, subuid, cgroup delegation, port, disk, job settings, stored credentials, server readiness, runners, compilers), each problem with a numbered fix. Exit 17 on a FAIL.</td><td>—</td></tr>
                         <tr><td><code>pull</code></td><td>Pulls the release's images by digest (installed mode), checking digests, labels and, with <code>cosign</code> installed, signatures.</td><td><code>--profile P</code>, <code>--core</code>, <code>--all</code>, <code>--require-signature</code>, <code>--yes</code>, service names</td></tr>
-                        <tr><td><code>build</code></td><td>Builds images from the checkout with <code>scripts/safe_boot.sh</code>.</td><td><code>--profile P</code>, <code>--yes</code>, service names (default: every enabled service)</td></tr>
+                        <tr><td><code>build</code></td><td>Builds images on this computer: from the checkout, or in installed mode from the package's build kit.</td><td><code>--profile P</code>, <code>--yes</code>, service names (default: every enabled service)</td></tr>
                         <tr><td><code>start</code></td><td>Starts the stack, or adds services to a running one. Never builds; recreates a container whose image or compose configuration changed. Checks the engine, Compose, podman socket, cgroup and port before calling compose. In the foreground it follows the logs; <code>-d</code> returns when the API (<code>GET /ready</code>) and every started runner and compiler are ready, up to 180 s. Ends with the address the server runs at.</td><td><code>--profile P</code>, <code>-d</code>, <code>--bind ADDR:PORT</code>, <code>--on-exit standby|remove|ask</code>, <code>--no-cpu-quota</code> / <code>--cpu-quota</code>, <code>--yes</code>, <code>--allow-emulation</code>, service names</td></tr>
                         <tr><td><code>status</code></td><td>The address, then services, state, memory, the commit of each container's image, data disk use and the finished-job limits. Exit 0 whatever the state.</td><td>—</td></tr>
                         <tr><td><code>stop</code></td><td>Standby: stops the containers and keeps containers, images and data. Refused while runs are in flight.</td><td><code>--force</code></td></tr>
