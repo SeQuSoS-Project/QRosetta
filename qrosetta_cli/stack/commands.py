@@ -175,10 +175,12 @@ def cmd_start(ctx):
             elif not stale:
                 progress("Every requested service is already running.")
             ready = serve.wait_ready(ctx, engine, stack, services)
-        url = serve.announce_running(engine, stack)
+        url, address = serve.announce_published(engine, stack)
         progress(jobstore.line(jobs))
         progress("`qrosetta stop` puts it on standby; `qrosetta remove` removes it.")
-        result(layout.next_step("qrosetta selftest"))
+        serve.announce_running(url, address)
+        result("")
+        result(layout.next_step(serve.next_step_text(url)))
         return Result(
             0,
             {

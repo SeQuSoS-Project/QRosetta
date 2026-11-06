@@ -295,7 +295,8 @@ def test_start_with_passing_checks_reaches_compose(project, env, capsys, monkeyp
     fake = _stopped()
     assert _cli(fake, project, env, ["start", "-d"], FakeHost(env), server=FakeServer(fresh=True)) == 0
     assert any("up" in c for c, _ in fake.calls)
-    assert capsys.readouterr().out.splitlines()[-1] == "Next step:  qrosetta selftest"
+    assert capsys.readouterr().out.splitlines()[-1] == (
+        "Next step:  open http://localhost:8080 in a browser, or run `qrosetta selftest`")
 
 
 # --- errors ---------------------------------------------------------------------------------------

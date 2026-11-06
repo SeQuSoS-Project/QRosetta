@@ -3,6 +3,8 @@ whatever the stack's state. Provenance is that of the image each container was c
 with the image now under the service's tag when that is another, and whether the compose file
 now gives the container's service another configuration."""
 
+import sys
+
 from qrosetta_cli import jobstore
 from qrosetta_cli import manifest as mf
 from qrosetta_cli.errors import CliError
@@ -11,7 +13,7 @@ from qrosetta_cli.stack import actions, quota
 from qrosetta_cli.stack import ownership as own
 from qrosetta_cli.stack import project as st
 from qrosetta_cli.stack.actions import human_bytes, parse_size
-from qrosetta_cli.stack.serve import config_changed, config_hashes, git_sha_env, published
+from qrosetta_cli.stack.serve import config_changed, config_hashes, git_sha_env, published, running_lines
 
 
 def memory_by_container(engine, names):
@@ -181,7 +183,11 @@ def status(ctx, engine, stack, mode, jobs=None):
             ctx.note_handshake(block)
         except CliError:
             block = None
-        result(f"Quantum Rosetta is running at {url} ({_server_text(block)})")
+        for line in running_lines(url, address, sys.stdout, server_text=_server_text(block)):
+            result(line)
+        result("")
+    elif running:
+        result(running_lines(None, None, sys.stdout)[0])
     elif rows and any(r["state"] == "stopped" for r in rows):
         result(f"Quantum Rosetta is on standby: {sum(r['state'] == 'stopped' for r in rows)} containers stopped.")
     else:

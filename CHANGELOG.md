@@ -257,6 +257,9 @@ signed images on GHCR; and every result records the image, commit and host condi
   same way. nginx answers 502 and 504 with a JSON `detail`.
 - `qrosetta` retries reads after a dropped connection or a 502, 503 or 504, never resubmits a run,
   and gives every container-engine call a timeout.
+- `qrosetta start` ends with the address the server runs at, whether only this computer or other
+  computers can reach it (with this host's name and address when every interface is published),
+  and the addresses of the manual and the API docs; `qrosetta status` begins with the same lines.
 
 #### Images
 

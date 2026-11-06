@@ -209,7 +209,7 @@ deploy a shared server; a local stack runs without it.
   statevector and a first measured run.
 - API reference — http://localhost:8080/docs (Swagger) and `docs.html` for the written guide
 
-nginx is published on `127.0.0.1:8080`, so only this machine can reach it. In local mode any
+nginx is published on `127.0.0.1:8080`, so only this computer can reach it. In local mode any
 client may skip the circuit-size, gate-count and experiment-size limits (`bypass_limits`), so
 publish it on other interfaces only on a network you trust: set
 `QROSETTA_HTTP_BIND` in `.env` or the environment, for example `QROSETTA_HTTP_BIND=0.0.0.0:8080`

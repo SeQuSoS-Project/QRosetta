@@ -1,13 +1,16 @@
 """`qrosetta start`: bring the stack up, wait for its runners, follow its logs, and on Ctrl-C,
 SIGTERM or SIGHUP put it on standby or remove it."""
 
+import ipaddress
 import os
 import signal
+import socket
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 
-from qrosetta_cli import output
+from qrosetta_cli import layout, output
 from qrosetta_cli.config import EXIT_ACTIONS
 from qrosetta_cli.errors import CliError, Exit, usage
 from qrosetta_cli.output import progress, result
@@ -63,7 +66,7 @@ def check_bind(bind):
             reason="bind_invalid",
         )
     if host.strip("[]") not in LOOPBACK:
-        output.warn(f"{bind} is reachable from other machines, over plain HTTP without TLS.", "bind_public")
+        output.warn(f"{bind} is reachable from other computers, over plain HTTP without TLS.", "bind_public")
     return bind
 
 
@@ -93,18 +96,78 @@ def stack_url(engine, stack):
     return published(engine, stack)[0]
 
 
-def announce_running(engine, stack, to_stdout=True):
-    """Print the URL and the address the web server is published on."""
+def announce_published(engine, stack):
+    """The address the web server is published on, as a progress line; returns (URL, address)."""
     url, address = published(engine, stack)
-    say = result if to_stdout else progress
-    if not url:
-        say("Quantum Rosetta is running.")
+    if url:
+        progress(f"Published on {address}; `qrosetta start --bind ADDRESS:PORT` changes it.")
+    return url, address
+
+
+def _loopback(host):
+    try:
+        return host in LOOPBACK or ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def route_address():
+    """The IPv4 address of the interface this host's default route uses, or None. Connecting a
+    UDP socket only selects a route; no packet is sent."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("192.0.2.1", 9))
+            found = sock.getsockname()[0]
+    except OSError:
         return None
-    say(f"Quantum Rosetta is running at {url}")
-    host = address.rpartition(":")[0].strip("[]")
-    reach = "this machine only" if host in LOOPBACK else "reachable from other machines"
-    progress(f"Published on {address} ({reach}); `qrosetta start --bind ADDRESS:PORT` changes it.")
-    return url
+    return None if found == "0.0.0.0" or _loopback(found) else found
+
+
+def other_hosts():
+    """Names other computers may reach this host by: its host name and its default route's address."""
+    try:
+        name = socket.gethostname().strip()
+    except OSError:
+        name = ""
+    found = [] if not name or name.split(".")[0] == "localhost" else [name]
+    address = route_address()
+    return found + ([address] if address and address not in found else [])
+
+
+def running_lines(url, address, stream=None, server_text=None, hosts=None):
+    """Where Quantum Rosetta runs: the URL and who can reach it, then (indented) the server, the
+    URLs for other computers when every interface is published, the manual and the API docs;
+    without a URL, only that it runs."""
+    shown = layout.mark("PASS", stream)
+    if not url:
+        return [f"{shown}  Quantum Rosetta is running."]
+    host, _, port = (address or "").rpartition(":")
+    host = host.strip("[]")
+    reach = "this computer only" if _loopback(host) else "reachable from other computers"
+    items = [("Server", server_text)] if server_text else []
+    if host in ("", "0.0.0.0", "::"):
+        suffix = "" if port == "80" else f":{port}"
+        names = [f"[{h}]" if ":" in h else h for h in (hosts or other_hosts)()]
+        items += [("Network" if i == 0 else "", f"http://{h}{suffix}") for i, h in enumerate(names)]
+    items += [("Manual", f"{url}/docs.html"), ("API docs", f"{url}/docs")]
+    indent = " " * (len(layout.mark("PASS", stream, color=False)) + 4)
+    width = max(len(label) for label, _ in items)
+    return [f"{shown}  Quantum Rosetta is running at {url}  ({reach})"] + [
+        f"{indent}{label:<{width}}  {value}" for label, value in items
+    ]
+
+
+def announce_running(url, address):
+    """The lines that say where Quantum Rosetta runs, on stdout after a blank line on stderr."""
+    if output.json_mode():
+        return
+    progress("")
+    for line in running_lines(url, address, sys.stdout):
+        result(line)
+
+
+def next_step_text(url):
+    return f"open {url} in a browser, or run `qrosetta selftest`" if url else "qrosetta selftest"
 
 
 def requested_services(stack, names, profile, cfg=None):
@@ -569,9 +632,11 @@ class Server:
             with self.lock("start"), self.notice("start", ids) if self.adding else _null_lock():
                 self._compose_up(self.services, False)
         progress("")
-        announce_running(self.engine, self.stack)
+        url, address = announce_published(self.engine, self.stack)
         if self.jobs_line:
             progress(self.jobs_line)
+        announce_running(url, address)
+        result("")
         result("Press Ctrl-C to stop it.")
 
     def _compose_up(self, services, recreate):
