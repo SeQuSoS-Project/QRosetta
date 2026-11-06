@@ -6,8 +6,8 @@ import { BASE_URL, formatApiError, getAuthHeaders, pollJobStatus, pollingStopped
 import { autosaveRun } from './autosave.js';
 import { getCompilerSelection } from './compilers_config.js';
 import {
-    _parseQasmStats, getEnabledRunnerIds, getRunnerConfig, getRunnerPhases, getTargetSimulators, loadRunners,
-    runCountProblems, runnerSelectionProblem, updateContextBar,
+    _parseQasmStats, getRunnerConfig, getRunnerPhases, getTargetSimulators, loadRunners, noBackendRunning,
+    runCountProblems, runnerSelectionProblem, runnersLoaded, updateContextBar,
 } from './config.js';
 import { qasmInput } from './dom.js';
 import { renderExperimentResult } from './experiment.js';
@@ -163,7 +163,8 @@ function _emptyModel(ws) {
         preprocessing: ws.preprocessing,
         compilerCount: Object.values(ws.compilers).reduce((n, levels) => n + levels.length, 0),
         backends: plannedRunKeys(ws.common.target_simulators, ws.common.runner_config).sort(compareRunnerKeys).map(key => ({ key, name: _displayRunnerName(key) })),
-        backendsLoaded: getEnabledRunnerIds().length > 0,
+        backendsLoaded: runnersLoaded(),
+        noBackendRunning: noBackendRunning(),
         examples: exampleOptions(),
     });
 }

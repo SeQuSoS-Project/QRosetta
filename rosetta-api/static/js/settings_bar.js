@@ -4,7 +4,7 @@
 // the group's controls in a popover.
 
 import { getCompilerSelection } from './compilers_config.js';
-import { _multiRunEnabled, _orderingEnabled, getEnabledRunnerIds, getTargetSimulators } from './config.js';
+import { _multiRunEnabled, _orderingEnabled, getEnabledRunnerIds, getTargetSimulators, runnersLoaded } from './config.js';
 import { bindPopover } from './popover.js';
 import { THRESHOLD_INPUT_IDS, thresholdDefaults } from './utils.js';
 import { announceWorkspaceChange } from './dom.js';
@@ -23,7 +23,7 @@ function _summaries() {
     const st = getState();
     const defaultLevel = String(st.defaultOptimizationLevel);
     const level = /** @type {HTMLSelectElement|null} */ (document.getElementById('opt-global'))?.value || defaultLevel;
-    const backendParts = [`Backends: ${enabled ? `${selected}${selected === enabled ? '' : ` of ${enabled}`}` : 'loading'}`, `Global Opt ${level}`];
+    const backendParts = [`Backends: ${enabled ? `${selected}${selected === enabled ? '' : ` of ${enabled}`}` : runnersLoaded() ? 'none' : 'loading'}`, `Global Opt ${level}`];
     if (_multiRunEnabled) backendParts.push('multi-run');
     if (_orderingEnabled) backendParts.push('custom order');
 

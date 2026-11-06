@@ -6,6 +6,7 @@ import { _escapeHtml } from './utils.js';
 import { announceWorkspaceChange } from './dom.js';
 import { qasmGateMetrics, qregSizes } from './qasm_text.js';
 import { RUNNER_DISPLAY_NAMES } from './runner_key.js';
+import { imageVerb, notRunningLocally, partsElement, partsText, serviceHintParts, stackSummaryParts } from './stack_hints.js';
 
 /** Qubit cap of the run the mode boxes describe: statevector, measured, or compile-only when
  * neither is ticked. */
@@ -73,6 +74,17 @@ export function loadRunners() {
     return _runnersPromise;
 }
 
+/** True once GET /runners has answered with a list. */
+export function runnersLoaded() {
+    return Object.keys(_runnerOptInfo).length > 0;
+}
+
+/** True when no listed backend can run and at least one is listed as not running in this local stack. */
+export function noBackendRunning() {
+    const rows = Object.values(_runnerOptInfo);
+    return getEnabledRunnerIds().length === 0 && rows.some(r => notRunningLocally(r, getState().executionMode));
+}
+
 /** Canonical IDs of the runners the server has enabled, from GET /runners. */
 export function getEnabledRunnerIds() {
     return Object.values(_runnerOptInfo).filter(r => r.enabled !== false && r.available !== false).map(r => r.id);
@@ -84,6 +96,7 @@ export function runnerSelectionProblem() {
         return `The backend list could not be loaded from the server${_runnersLoadError ? ` (${_runnersLoadError})` : ''}. Reload the page.`;
     }
     if (getTargetSimulators().length === 0) {
+        if (noBackendRunning()) return 'No selected backend is running in this stack.';
         return _multiRunEnabled
             ? 'No backend has a run count of at least 1 (Backends).'
             : 'No backend selected (Backends).';
@@ -97,7 +110,9 @@ export function updateBackendSelectionSummary() {
     const selected = getTargetSimulators();
     let text;
     if (enabled.length === 0) {
-        text = _runnersLoadError ? 'Backends: list not loaded' : 'Backends: loading…';
+        text = _runnersLoadError ? 'Backends: list not loaded'
+            : !runnersLoaded() ? 'Backends: loading…'
+            : noBackendRunning() ? 'Backends: none running in this stack' : 'Backends: none available';
     } else if (_multiRunEnabled) {
         text = `Backends: ${selected.length} of ${enabled.length} enabled (multi-run counts)`;
     } else if (selected.length === enabled.length) {
@@ -149,6 +164,15 @@ export function renderConfigPanel(runners) {
     runners.forEach(r => { _runnerOptInfo[r.id] = r; });
 
     document.getElementById('backends-toggle-all')?.replaceWith(_toggleAllButton());
+
+    const mode = getState().executionMode;
+    const verb = imageVerb(runners);
+    const stackLine = stackSummaryParts(runners, mode, 'backends', verb);
+    if (stackLine) {
+        const notice = _section();
+        notice.appendChild(partsElement('p', 'qr-help', stackLine));
+        grid.appendChild(notice);
+    }
 
     const modes = _section();
     modes.innerHTML = `
@@ -234,6 +258,7 @@ export function renderConfigPanel(runners) {
         const isUnavailable = r.enabled !== false && r.available === false;
         const isDisabled = r.enabled === false || isUnavailable;
         const lockedNote = r.enabled === false ? 'Disabled on this server'
+            : notRunningLocally(r, mode) ? partsText(serviceHintParts(r.id, verb))
             : isUnavailable ? `Unavailable${r.unavailable_reason ? `: ${r.unavailable_reason}` : ' on this server'}` : '';
         if (isDisabled) anyLocked = true;
         const isDefaultChecked = r.default_selected !== false && !deselected.has(r.id);

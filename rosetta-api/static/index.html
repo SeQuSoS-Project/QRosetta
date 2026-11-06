@@ -59,6 +59,7 @@
     <link rel="modulepreload" href="js/export_view_ui.js">
     <link rel="modulepreload" href="js/overview_renderer.js">
     <link rel="modulepreload" href="js/qasm_text.js">
+    <link rel="modulepreload" href="js/stack_hints.js">
     <link rel="modulepreload" href="js/text_diff.js">
     <!-- /modulepreload -->
 </head>
@@ -361,6 +362,7 @@
                         <button type="button" id="compilers-toggle-all" class="qr-action">Toggle All</button>
                     </div>
                     <div class="qr-popover-body">
+                        <div id="compiler-stack-note" class="qr-section hidden"></div>
                         <div class="qr-section">
                             <p class="qr-help">Compiled after the simulators finish; outputs appear in the Circuits tab and are not simulated or compared. With no mode ticked, only these run.</p>
                         </div>

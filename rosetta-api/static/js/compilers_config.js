@@ -2,7 +2,10 @@
 // level), Toggle All, and reads which levels are ticked for the next run's `compilers` field.
 
 import { BASE_URL } from './api.js';
+import { loadRunners } from './config.js';
 import { announceWorkspaceChange } from './dom.js';
+import { getState } from './state.js';
+import { imageVerb, notRunningLocally, partsElement, serviceHintParts, stackSummaryParts } from './stack_hints.js';
 
 const GRID_ID = 'compiler-grid';
 
@@ -36,7 +39,8 @@ function _header(columns) {
     return row;
 }
 
-function _row(compiler, columns) {
+/** @param {Array<{text?: string, code?: string}>|null} hint the note for a compiler this local stack does not run */
+function _row(compiler, columns, hint) {
     const row = _el('div', 'py-1.5');
     row.setAttribute('role', 'row');
     const line = _el('div', 'flex items-center gap-1');
@@ -61,7 +65,8 @@ function _row(compiler, columns) {
         line.appendChild(cell);
     }
     row.appendChild(line);
-    if (!compiler.available) row.appendChild(_el('p', 'qr-help', `Unavailable: ${compiler.unavailable_reason || 'unknown'}`));
+    if (hint) row.appendChild(partsElement('p', 'qr-help', hint));
+    else if (!compiler.available) row.appendChild(_el('p', 'qr-help', `Unavailable: ${compiler.unavailable_reason || 'unknown'}`));
     const versions = _versionText(compiler.versions);
     if (versions) row.appendChild(_el('p', 'qr-help break-words', versions));
     return row;
@@ -90,15 +95,27 @@ export async function loadCompilers() {
     const grid = document.getElementById(GRID_ID);
     if (!grid) return;
     try {
-        const resp = await fetch(`${BASE_URL}/compilers`);
+        const [resp, runners] = await Promise.all([fetch(`${BASE_URL}/compilers`), loadRunners()]);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const compilers = (await resp.json()).filter(c => c.enabled);
         const columns = _levelColumns(compilers);
-        grid.replaceChildren(_header(columns), ...compilers.map(c => _row(c, columns)));
+        const mode = getState().executionMode;
+        const verb = imageVerb([...runners, ...compilers]);
+        const hint = c => (notRunningLocally(c, mode) ? serviceHintParts(c.id, verb) : null);
+        grid.replaceChildren(_header(columns), ...compilers.map(c => _row(c, columns, hint(c))));
+        _showStackNote(stackSummaryParts(compilers, mode, 'compile-only services', verb));
         if (!compilers.length) grid.replaceChildren(_el('p', 'text-xs text-gray-500', 'This server offers no compile-only services.'));
     } catch (e) {
         grid.replaceChildren(_el('p', 'text-xs text-red-700', `The compiler list could not be loaded (${e instanceof Error ? e.message : String(e)}).`));
     }
+}
+
+/** The line at the top of the popover, hidden when every compile-only service runs. */
+function _showStackNote(parts) {
+    const note = document.getElementById('compiler-stack-note');
+    if (!note) return;
+    note.replaceChildren(...(parts ? [partsElement('p', 'qr-help', parts)] : []));
+    note.classList.toggle('hidden', !parts);
 }
 
 /** The ticked compiler levels as {compiler id: [levels]}; {} when none is ticked. */

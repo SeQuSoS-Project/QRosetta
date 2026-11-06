@@ -299,6 +299,9 @@ signed images on GHCR; and every result records the image, commit and host condi
   is one shade darker, popover links and buttons, the mode checkboxes and the Bench rows are at
   least 24 px tall, the Backends table and the manual's tables take keyboard focus, the share page's
   links are underlined, and focus scrolls clear of the fixed notices.
+- On a local stack, a backend or compile-only service whose container is not running is listed as
+  not running in this stack, with the `qrosetta` commands that add it (`pull` for an installed
+  release, `build` for a checkout); each popover's first line counts the services that run.
 - `README.MD` is now `README.md`.
 - Swagger UI at `/docs` is served from a vendored copy; ReDoc at `/redoc` loads from jsDelivr with an
   integrity hash.

@@ -26,6 +26,7 @@ function _table(caption, columns, items) {
  * What the results area shows before a run.
  * @param {{source: 'editor'|'list', circuitName: string, playlist: string[], modes: {statevector: boolean, measured: boolean},
  *          preprocessing: string, compilerCount: number, backends: {key: string, name: string}[], backendsLoaded: boolean,
+ *          noBackendRunning?: boolean,
  *          examples: {value: string, label: string}[]}} input
  *   `backends` are {key, name} in report order, one per planned run (multi-run keys
  *   `<id>~opt<L>~run<N>`); `playlist` the playlist's item labels.
@@ -55,6 +56,9 @@ export function emptyStateModel(input) {
     }
     if (!input.backendsLoaded) {
         return { ...base, tabs: list ? ['Suite Summary', 'Exports'] : DETAIL_TABS, title: `Ready to run ${what}`, text: 'Loading the backend list.', table: null };
+    }
+    if (!n && input.noBackendRunning) {
+        return { ...base, tabs: [], title: 'No selected backend is running in this stack', text: 'Backends lists the commands that add them.', table: null };
     }
     if (!n) {
         return { ...base, tabs: [], title: 'No backend is ticked', text: 'Tick at least one backend under Backends.', table: null };
