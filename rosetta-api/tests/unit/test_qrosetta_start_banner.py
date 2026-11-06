@@ -71,9 +71,9 @@ def test_start_detach_ends_with_where_it_runs_then_the_next_step(project, env, c
     assert cli(stopped(), project, env, ["start", "-d"], FakeServer(fresh=True)) == 0
     out, err = capsys.readouterr()
     assert out.splitlines()[-5:] == [
-        "PASS  Quantum Rosetta is running at http://localhost:8080  (this computer only)",
-        "        Manual    http://localhost:8080/docs.html",
-        "        API docs  http://localhost:8080/docs",
+        "Quantum Rosetta is running at http://localhost:8080  (this computer only)",
+        "    Manual    http://localhost:8080/docs.html",
+        "    API docs  http://localhost:8080/docs",
         "",
         "Next step:  open http://localhost:8080 in a browser, or run `qrosetta selftest`",
     ]
@@ -90,11 +90,11 @@ def test_every_interface_lists_this_hosts_name_and_address_for_other_computers(p
     assert cli(fake, project, env, ["start", "-d", "--bind", "0.0.0.0:9000"], FakeServer(fresh=True)) == 0
     out, err = capsys.readouterr()
     assert out.splitlines()[-7:-2] == [
-        "PASS  Quantum Rosetta is running at http://localhost:9000  (reachable from other computers)",
-        "        Network   http://lab-pc:9000",
-        "                  http://192.0.2.10:9000",
-        "        Manual    http://localhost:9000/docs.html",
-        "        API docs  http://localhost:9000/docs",
+        "Quantum Rosetta is running at http://localhost:9000  (reachable from other computers)",
+        "    Network   http://lab-pc:9000",
+        "              http://192.0.2.10:9000",
+        "    Manual    http://localhost:9000/docs.html",
+        "    API docs  http://localhost:9000/docs",
     ]
     assert "0.0.0.0:9000 is reachable from other computers, over plain HTTP without TLS." in err
     assert "Published on 0.0.0.0:9000; `qrosetta start --bind ADDRESS:PORT` changes it." in err
@@ -102,7 +102,7 @@ def test_every_interface_lists_this_hosts_name_and_address_for_other_computers(p
 
 def test_one_non_loopback_address_is_its_own_url(monkeypatch):
     lines = serve.running_lines("http://192.168.1.5:8080", "192.168.1.5:8080", Stream(False, "utf-8"))
-    assert lines[0] == "PASS  Quantum Rosetta is running at http://192.168.1.5:8080  (reachable from other computers)"
+    assert lines[0] == "Quantum Rosetta is running at http://192.168.1.5:8080  (reachable from other computers)"
     assert not any("Network" in line for line in lines)
     assert serve.running_lines(URL, "127.0.0.2:8080", Stream(False, "utf-8"))[0].endswith("(this computer only)")
     assert serve.running_lines(URL, "[::1]:8080", Stream(False, "utf-8"))[0].endswith("(this computer only)")
@@ -114,7 +114,7 @@ def test_other_hosts_skip_localhost_names_and_a_missing_route(monkeypatch):
     monkeypatch.setattr(serve, "route_address", lambda: None)
     assert serve.other_hosts() == []
     lines = serve.running_lines(URL, "[::]:8080", Stream(False, "utf-8"), hosts=lambda: ["fe80::1"])
-    assert "        Network   http://[fe80::1]:8080" in lines
+    assert "    Network   http://[fe80::1]:8080" in lines
 
 
 def test_route_address_selects_a_route_without_sending(monkeypatch):
@@ -156,7 +156,7 @@ def test_no_published_port_says_only_that_it_runs(project, env, capsys):
     fake.port = ""
     assert cli(fake, project, env, ["start", "-d"], FakeServer(fresh=True)) == 0
     out = capsys.readouterr().out
-    assert out.splitlines()[-3:] == ["PASS  Quantum Rosetta is running.", "", "Next step:  qrosetta selftest"]
+    assert out.splitlines()[-3:] == ["Quantum Rosetta is running.", "", "Next step:  qrosetta selftest"]
     assert "Manual" not in out and "docs.html" not in out
 
 
@@ -176,9 +176,9 @@ def test_foreground_start_ends_with_where_it_runs_then_ctrl_c(project, env, caps
     server._up()
     out, err = capsys.readouterr()
     assert out.splitlines() == [
-        "PASS  Quantum Rosetta is running at http://localhost:8080  (this computer only)",
-        "        Manual    http://localhost:8080/docs.html",
-        "        API docs  http://localhost:8080/docs",
+        "Quantum Rosetta is running at http://localhost:8080  (this computer only)",
+        "    Manual    http://localhost:8080/docs.html",
+        "    API docs  http://localhost:8080/docs",
         "",
         "Press Ctrl-C to stop it.",
     ]
@@ -191,10 +191,10 @@ def test_status_starts_with_the_same_lines(project, env, capsys):
     assert cli(FakeEngine().standard(), project, env, ["status"], server) == 0
     out = capsys.readouterr().out
     assert out.splitlines()[:6] == [
-        "PASS  Quantum Rosetta is running at http://localhost:8080  (this computer only)",
-        "        Server    platform 2.0.0, API levels 1-1",
-        "        Manual    http://localhost:8080/docs.html",
-        "        API docs  http://localhost:8080/docs",
+        "Quantum Rosetta is running at http://localhost:8080  (this computer only)",
+        "    Server    platform 2.0.0, API levels 1-1",
+        "    Manual    http://localhost:8080/docs.html",
+        "    API docs  http://localhost:8080/docs",
         "",
         out.splitlines()[5],
     ]
@@ -205,15 +205,15 @@ def test_status_without_a_published_port_says_only_that_it_runs(project, env, ca
     fake = FakeEngine().standard()
     fake.port = ""
     assert cli(fake, project, env, ["status"]) == 0
-    assert capsys.readouterr().out.splitlines()[0] == "PASS  Quantum Rosetta is running."
+    assert capsys.readouterr().out.splitlines()[0] == "Quantum Rosetta is running."
 
 
 @pytest.mark.parametrize("stream,first,indent", [
     (Stream(True, "utf-8"), "✓  Quantum Rosetta is running at http://localhost:8080  (this computer only)", 5),
-    (Stream(True, "ascii"), "PASS  Quantum Rosetta is running at http://localhost:8080  (this computer only)", 8),
-    (Stream(False, "utf-8"), "PASS  Quantum Rosetta is running at http://localhost:8080  (this computer only)", 8),
+    (Stream(True, "ascii"), "Quantum Rosetta is running at http://localhost:8080  (this computer only)", 4),
+    (Stream(False, "utf-8"), "Quantum Rosetta is running at http://localhost:8080  (this computer only)", 4),
 ])
-def test_marks_on_a_utf8_terminal_and_words_otherwise_without_colour_under_no_color(stream, first, indent):
+def test_a_mark_on_a_utf8_terminal_and_none_otherwise_without_colour_under_no_color(stream, first, indent):
     output.configure(env={"NO_COLOR": "1"})
     lines = serve.running_lines(URL, "127.0.0.1:8080", stream)
     assert lines == [first, " " * indent + "Manual    http://localhost:8080/docs.html",

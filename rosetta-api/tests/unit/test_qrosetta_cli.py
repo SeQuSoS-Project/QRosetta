@@ -280,7 +280,7 @@ def test_start_detach_waits_for_fresh_probes(fake, project, env, capsys, monkeyp
     assert any(q == {"fresh": "true"} for _, p, q, _ in server.requests if p == "/runners")
     out, err = capsys.readouterr()
     assert "qiskit ready" in err
-    assert "PASS  Quantum Rosetta is running at http://localhost:8080  (this computer only)" in out.splitlines()
+    assert "Quantum Rosetta is running at http://localhost:8080  (this computer only)" in out.splitlines()
     assert "no on-demand probes" not in err
 
 
@@ -667,7 +667,7 @@ def test_announce_says_where_it_is_published_and_whether_other_computers_can_rea
     serve.announce_running(url, address)
     out, err = capsys.readouterr()
     assert "Published on 127.0.0.1:8080; `qrosetta start --bind ADDRESS:PORT` changes it." in err
-    assert out.splitlines()[0] == "PASS  Quantum Rosetta is running at http://localhost:8080  (this computer only)"
+    assert out.splitlines()[0] == "Quantum Rosetta is running at http://localhost:8080  (this computer only)"
     fake.port = "0.0.0.0:8080"
     serve.announce_running(*serve.announce_published(engine, stack))
     assert "(reachable from other computers)" in capsys.readouterr().out
@@ -778,8 +778,8 @@ def test_status_prints_the_table_on_stdout_and_exits_0(fake, project, env, capsy
     server = FakeServer(block={"platform_version": "2.0.0", "api_levels": [1, 1], "features": {}})
     assert cli(fake, project, env, ["status"], server=server) == 0
     out, err = capsys.readouterr()
-    assert out.splitlines()[:2] == ["PASS  Quantum Rosetta is running at http://localhost:8080  (this computer only)",
-                                     "        Server    platform 2.0.0, API levels 1-1"]
+    assert out.splitlines()[:2] == ["Quantum Rosetta is running at http://localhost:8080  (this computer only)",
+                                     "    Server    platform 2.0.0, API levels 1-1"]
     assert "SERVICE" in out and "qiskit" in out and "built from abc123" in out and "braket" in out
     assert "missing" in out and "podman rm -f old" in err
 

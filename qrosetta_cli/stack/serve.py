@@ -138,9 +138,11 @@ def running_lines(url, address, stream=None, server_text=None, hosts=None):
     """Where Quantum Rosetta runs: the URL and who can reach it, then (indented) the server, the
     URLs for other computers when every interface is published, the manual and the API docs;
     without a URL, only that it runs."""
-    shown = layout.mark("PASS", stream)
+    plain = layout.mark("PASS", stream, color=False)
+    words = plain == "PASS"
+    shown = "" if words else f"{layout.mark('PASS', stream)}  "
     if not url:
-        return [f"{shown}  Quantum Rosetta is running."]
+        return [f"{shown}Quantum Rosetta is running."]
     host, _, port = (address or "").rpartition(":")
     host = host.strip("[]")
     reach = "this computer only" if _loopback(host) else "reachable from other computers"
@@ -150,9 +152,9 @@ def running_lines(url, address, stream=None, server_text=None, hosts=None):
         names = [f"[{h}]" if ":" in h else h for h in (hosts or other_hosts)()]
         items += [("Network" if i == 0 else "", f"http://{h}{suffix}") for i, h in enumerate(names)]
     items += [("Manual", f"{url}/docs.html"), ("API docs", f"{url}/docs")]
-    indent = " " * (len(layout.mark("PASS", stream, color=False)) + 4)
+    indent = " " * (4 if words else len(plain) + 4)
     width = max(len(label) for label, _ in items)
-    return [f"{shown}  Quantum Rosetta is running at {url}  ({reach})"] + [
+    return [f"{shown}Quantum Rosetta is running at {url}  ({reach})"] + [
         f"{indent}{label:<{width}}  {value}" for label, value in items
     ]
 
