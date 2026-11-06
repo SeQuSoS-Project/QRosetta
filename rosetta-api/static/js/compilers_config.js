@@ -44,7 +44,7 @@ function _row(compiler, columns, hint) {
     const row = _el('div', 'py-1.5');
     row.setAttribute('role', 'row');
     const line = _el('div', 'flex items-center gap-1');
-    const name = _el('span', `flex-1 text-sm font-medium ${compiler.available ? 'text-gray-800' : 'text-gray-400 line-through'}`, compiler.name);
+    const name = _el('span', `flex-1 text-sm font-medium ${compiler.available ? 'text-gray-800' : 'text-gray-500 line-through'}`, compiler.name);
     name.setAttribute('role', 'cell');
     line.appendChild(name);
     const offered = compiler.optimization_levels || {};

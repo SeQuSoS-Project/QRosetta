@@ -115,3 +115,9 @@ def test_the_popovers_use_the_hints_and_keep_other_reasons():
 def test_the_reason_code_matches_the_server():
     from services.availability import UNREACHABLE
     assert f"const NOT_RUNNING = '{UNREACHABLE}';" in (_JS / "stack_hints.js").read_text()
+
+
+def test_an_unavailable_compiler_name_keeps_aa_contrast():
+    # text-gray-400 on white is 2.5:1; text-gray-500 is 4.8:1 (axe color-contrast, 2026-11-06).
+    src = (_JS / "compilers_config.js").read_text()
+    assert "'text-gray-500 line-through'" in src and "text-gray-400" not in src
