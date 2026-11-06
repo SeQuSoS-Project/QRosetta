@@ -18,13 +18,10 @@ def effective_bind(ctx):
     return ports.resolve(ctx).address
 
 
-def _ours(ctx, host, engine_name, bind, own=None):
-    """Whether the busy port is this stack's: its running web server container publishes it
-    (also while the API is unhealthy), or a Quantum Rosetta answers there."""
+def _answers(ctx, bind):
+    """Whether a Quantum Rosetta answers at `bind`."""
     from qrosetta_cli.client import handshake
 
-    if (own or doctor.own_addresses(host, engine_name, ctx.env))(bind):
-        return True
     server = servers.Server(servers.LOCAL, servers.bind_url(bind), "start --bind")
     try:
         handshake.fetch_config(ctx.transport(server=server, timeout=5), timeout=5)
@@ -47,15 +44,18 @@ def run(ctx, host, bind, cpu_quota, movable=False, recorded=False):
             quota.check_host(choice, cpu_quota, host.read, host.exists, host.uid())
         except CliError:
             doctor.check_controllers(host, rep, choice, cpu_quota)
-    own = doctor.own_addresses(host, choice and choice.name, ctx.env)
+    engine_name = choice.name if choice else None
+    own = doctor.own_addresses(host, engine_name, ctx.env)
     doctor.check_port(
         host,
         rep,
         bind,
-        lambda: _ours(ctx, host, choice and choice.name, bind, own),
+        lambda: own(bind),
         ctx.cfg,
         (lambda: ports.search(host, own, skip=bind)) if movable else None,
         recorded,
+        lambda: doctor.other_project(host, engine_name, ctx.env, bind),
+        lambda: _answers(ctx, bind),
     )
     rep.checks = [c for c in rep.checks if c.id in CHECKS]
     return rep
@@ -76,7 +76,7 @@ def decide(ctx, cpu_quota):
     failed = rep.failed
     if not failed:
         if rep.port_choice and rep.port_choice != bind.address:
-            output.progress(ports.moved_line(bind.address, rep.port_choice))
+            output.progress(ports.moved_line(bind.address, rep.port_choice, rep.port_holder))
             return ports.Bind(rep.port_choice, "fallback")
         return bind
     first = failed[0]

@@ -167,7 +167,7 @@ def test_low_disk_warns_and_credentials_mode_fails(env):
 def test_live_checks_with_a_running_server(env):
     old = FakeServer(runners=[{"id": "qiskit", "enabled": True, "available": False, "unavailable_reason": "unreachable"},
                               {"id": "cirq", "enabled": True, "available": True}])
-    checks = _by_id(_doctor(env, FakeHost(env, port_free=False), server=old))
+    checks = _by_id(_doctor(env, FakeHost(env, port_free=False, published=["127.0.0.1:8080"]), server=old))
     assert checks["port"][0].status == "PASS" and "running Quantum Rosetta" in checks["port"][0].message
     assert checks["server"][0].status == "WARN" and "predates" in checks["server"][0].message
     assert checks["runners"][0].status == "WARN" and "1 of 2 runners available" in checks["runners"][0].message

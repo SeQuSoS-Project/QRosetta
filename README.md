@@ -217,8 +217,11 @@ publish it on other interfaces only on a network you trust: set
 need a rootful engine). When another program holds 127.0.0.1:8080 and no address is set
 (`--bind`, `QROSETTA_HTTP_BIND`, `[lifecycle] bind`), `qrosetta start` uses the first free port of
 127.0.0.1:8081 to 8089, prints it, and keeps it until `qrosetta remove`; `status`, `run` and the
-other commands find the server there. The integration tests read the address from
-`QROSETTA_BASE_URL`.
+other commands find the server there. A Quantum Rosetta that no container of yours publishes
+(another user's stack, a forwarded port) counts as another program. When another Quantum Rosetta
+project on this computer publishes the address, `start` refuses and names the command that stops
+it: the container names are fixed, so one project runs at a time. The integration tests read the
+address from `QROSETTA_BASE_URL`.
 
 `SECRET_KEY` must be set whenever `EXECUTION_MODE` is not `local`; the API refuses to start
 without it. Locally, leaving it empty generates a random key per process.

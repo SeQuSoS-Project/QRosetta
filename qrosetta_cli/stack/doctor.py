@@ -148,6 +148,45 @@ class Host:
             return []
         return re.findall(r"(\[?[0-9A-Fa-f.:]*\]?:\d+)->", out.stdout or "") if out.returncode == 0 else []
 
+    def web_publishers(self, engine_name):
+        """[(address, compose project, working directory)] for each address that a running web
+        server container of any Quantum Rosetta project publishes (labelled org.qrosetta.id=nginx
+        and org.qrosetta.project), read with `ps` and `container inspect`."""
+        from qrosetta_cli.stack import ownership
+        from qrosetta_cli.stack import project as st
+
+        try:
+            listed = self.run(
+                [engine_name, "ps", "-a", "-q", "--filter", f"label={st.ID_LABEL}=nginx"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            ids = listed.stdout.split() if listed.returncode == 0 else []
+            if not ids:
+                return []
+            shown = self.run([engine_name, "container", "inspect", *ids], capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.SubprocessError):
+            return []
+        found = []
+        for item in ownership._json(shown) if shown.returncode == 0 else []:
+            labels = (item.get("Config") or {}).get("Labels") or {}
+            state = item.get("State") or {}
+            running = bool(state.get("Running")) or state.get("Status") in ownership.ACTIVE_STATES
+            if not running or not labels.get(ownership.QR_LABEL):
+                continue
+            for bindings in ((item.get("NetworkSettings") or {}).get("Ports") or {}).values():
+                for b in bindings or []:
+                    if isinstance(b, dict) and str(b.get("HostPort") or "").isdigit():
+                        found.append(
+                            (
+                                f"{b.get('HostIp') or ''}:{b['HostPort']}",
+                                labels.get(ownership.PROJECT_LABEL, ""),
+                                labels.get(WORKING_DIR_LABEL, ""),
+                            )
+                        )
+        return found
+
     def images_present(self, ctx):
         """Whether the images of this stack's core services are present, or None when the stack
         cannot be read."""
@@ -195,6 +234,7 @@ class Report:
     checks: list = field(default_factory=list)
     next_command: str | None = None
     port_choice: str | None = None
+    port_holder: str | None = None
 
     def add(self, cid, status, message, fix="", steps=None, reason=None):
         self.checks.append(Check(cid, status, message, fix, steps, reason))
@@ -414,11 +454,43 @@ def own_addresses(host, engine_name, env):
     return ours
 
 
-def check_port(host, rep, bind, answers, cfg=None, fallback=None, recorded=False):
-    """`answers`: whether a Quantum Rosetta answers at `bind` (a callable is asked only when the
-    port is in use); `cfg` lets the fix name the config file. `fallback` (given when the user did
-    not choose `bind`) returns the address `start` would use instead, or None; the row then says
-    so and `rep.port_choice` holds it. `recorded`: `start` chose `bind` earlier."""
+WORKING_DIR_LABEL = "com.docker.compose.project.working_dir"
+ANOTHER_SERVER = "used by another Quantum Rosetta (not this project)"
+
+
+def other_project(host, engine_name, env, bind):
+    """(project, working directory) of another Quantum Rosetta project whose running web server
+    container publishes `bind`, or None."""
+    if not engine_name:
+        return None
+    mine = localstack.project(env)
+    for address, project, working_dir in host.web_publishers(engine_name):
+        if project and project != mine and same_address(address, bind):
+            return project, working_dir
+    return None
+
+
+def stop_other_command(project, working_dir):
+    """The command that stops project `project`: QROSETTA_PROJECT selects it, and --project-dir
+    its checkout when the container names one."""
+    from qrosetta_cli import mode as modes
+
+    cmd = f"QROSETTA_PROJECT={shlex.quote(project)} qrosetta"
+    if working_dir and modes.is_checkout(working_dir):
+        cmd += f" --project-dir {shlex.quote(working_dir)}"
+    return cmd + " stop"
+
+
+def check_port(host, rep, bind, answers, cfg=None, fallback=None, recorded=False, other=None, another_server=False):
+    """`answers`: whether this project's web server publishes `bind` (a callable is asked only
+    when the port is in use); `cfg` lets the fix name the config file. `other` returns the
+    (project, working directory) of another Quantum Rosetta project publishing it, which is
+    refused whatever the source of `bind`: container names are fixed, so one project runs at a
+    time. `another_server`: whether a Quantum Rosetta that is not this project's answers there
+    (another user's stack, a forwarded port); it counts as another program. `fallback` (given
+    when the user did not choose `bind`) returns the address `start` would use instead, or None;
+    the row then says so and `rep.port_choice` holds it. `recorded`: `start` chose `bind`
+    earlier."""
     address, _, port = bind.rpartition(":")
     address = address.strip("[]") or "127.0.0.1"
     if not port.isdigit():
@@ -439,14 +511,32 @@ def check_port(host, rep, bind, answers, cfg=None, fallback=None, recorded=False
         rep.add("port", "PASS", f"{bind} is free" + (" (`qrosetta start` chose it earlier)" if recorded else ""))
     elif answers() if callable(answers) else answers:
         rep.add("port", "PASS", f"{bind} is in use by a running Quantum Rosetta")
-    elif fallback is not None and (other := fallback()):
-        rep.port_choice = other
-        rep.add("port", "INFO", f"{bind} is in use; `qrosetta start` will use {other}")
-    else:
+    elif other is not None and (holder := other()):
+        command = stop_other_command(*holder)
         rep.add(
             "port",
             "FAIL",
-            f"{ports.range_text()} are all in use" if fallback else f"{bind} is in use",
+            f"{bind} is used by Quantum Rosetta project '{holder[0]}' on this computer. "
+            "Only one project can run at a time.",
+            command,
+            [("Stop that project:", [command])],
+            "port_other_project",
+        )
+    elif fallback is not None and (moved := fallback()):
+        rep.port_choice = moved
+        server = another_server() if callable(another_server) else another_server
+        rep.port_holder = "quantum_rosetta" if server else "program"
+        rep.add(
+            "port", "INFO", f"{bind} is {ANOTHER_SERVER if server else 'in use'}; `qrosetta start` will use {moved}"
+        )
+    else:
+        server = not fallback and (another_server() if callable(another_server) else another_server)
+        rep.add(
+            "port",
+            "FAIL",
+            f"{ports.range_text()} are all in use"
+            if fallback
+            else f"{bind} is {ANOTHER_SERVER if server else 'in use'}",
             f"qrosetta start -d --bind {OTHER_BIND}\n"
             f'Later commands use {bind} until [lifecycle] bind = "{OTHER_BIND}" is in the file '
             "`qrosetta config path` prints; with it, `start` needs no --bind.",
@@ -707,15 +797,18 @@ def run(ctx, host=None):
         ctx.note_handshake(handshake.server_block(config))
     except CliError:
         config = None
-    ours = own_addresses(host, choice.name if choice else None, ctx.env)
+    engine_name = choice.name if choice else None
+    ours = own_addresses(host, engine_name, ctx.env)
     check_port(
         host,
         rep,
         bind,
-        config is not None or (lambda: ours(bind)),
+        lambda: ours(bind),
         ctx.cfg,
         None if chosen.chosen else (lambda: ports.search(host, ours, skip=bind)),
         chosen.source == "stack setting",
+        lambda: other_project(host, engine_name, ctx.env, bind),
+        config is not None,
     )
     check_jobs(host, rep, ctx.cfg, check_disk(host, rep, choice))
     check_credentials(host, rep, servers.credentials_path(ctx.cfg, ctx.env))

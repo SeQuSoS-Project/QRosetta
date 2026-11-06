@@ -263,7 +263,11 @@ signed images on GHCR; and every result records the image, commit and host condi
 - When another program holds 127.0.0.1:8080 and no address was chosen (`--bind`,
   `QROSETTA_HTTP_BIND`, `[lifecycle] bind`), `qrosetta start` publishes on the first free port of
   8081 to 8089 on 127.0.0.1, says which, and keeps using it until `qrosetta remove`; the other
-  commands find the local server there. A chosen address that is in use is still refused.
+  commands find the local server there. A chosen address that is in use is still refused. A
+  Quantum Rosetta that no container of this user publishes counts as another program
+  ("Port 8080 is used by another Quantum Rosetta (not this project); using 8081."); when another
+  project's web server on this computer publishes the address, `start` and `doctor` refuse and
+  name the command that stops that project.
 - On an installed release, the services the release publishes no image of (myQLM, cuQuantum,
   BQSKit) read "not included in this release" in `GET /runners` and `GET /compilers`, on the page,
   and in `qrosetta selftest`, `doctor` and `backends`, instead of "unreachable" or "not started in

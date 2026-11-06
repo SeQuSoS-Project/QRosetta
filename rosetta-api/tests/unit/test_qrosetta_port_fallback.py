@@ -300,7 +300,7 @@ def test_doctor_checks_the_recorded_address_and_talks_to_the_server_there(env):
         seen.append(srv.url)
         return server(srv, token, timeout)
 
-    row, rep = _port_row(env, Ports(env, taken={8083}), server=factory)
+    row, rep = _port_row(env, Ports(env, taken={8083}, published=["127.0.0.1:8083"]), server=factory)
     assert seen[0] == "http://localhost:8083"
     assert row.status == "PASS" and "running Quantum Rosetta" in row.message
 

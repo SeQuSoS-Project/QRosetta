@@ -91,7 +91,10 @@ def port_of(address):
     return address.rpartition(":")[2]
 
 
-def moved_line(old, new):
+def moved_line(old, new, holder="program"):
+    """`holder`: "quantum_rosetta" when a Quantum Rosetta of another project or user answers there."""
+    if holder == "quantum_rosetta":
+        return f"Port {port_of(old)} is used by another Quantum Rosetta (not this project); using {port_of(new)}."
     return f"Port {port_of(old)} is in use by another program; using {port_of(new)}."
 
 
