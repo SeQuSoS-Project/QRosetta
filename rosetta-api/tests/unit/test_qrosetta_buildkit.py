@@ -417,6 +417,7 @@ def test_pull_replaces_a_local_build_and_remove_images_removes_both(env, monkeyp
     removed = {a for c in fake.destructive_calls() for a in c}
     assert {"k-qiskit_runner", "k-myqlm_runner", "i-qiskit", "i-api", "i-nginx"} <= removed
     assert not fake.images
+    assert buildkit.recorded(env, "qr") == {}
 
 
 def test_without_published_images_the_kit_alone_makes_a_stack(env, monkeypatch, capsys):

@@ -272,6 +272,8 @@ def cmd_remove(ctx):
             everything=everything,
         )
     localstack.forget_bind(ctx.env, stack.name)
+    if args.images or everything:
+        buildkit.forget(ctx.env, stack.name, list(buildkit.recorded(ctx.env, stack.name)))
     return Result(
         0, {"images": args.images or everything, "data": args.data or everything, "all": everything, "removed": removed}
     )
