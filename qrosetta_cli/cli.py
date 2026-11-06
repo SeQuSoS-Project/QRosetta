@@ -37,7 +37,8 @@ difference is a result); 3, 8 and 4 when --fail-on matched an outcome whose role
 not established, or runs without output; 5 for a failed job; 7 at --wait-timeout.
 
 In CI: pin -b and --seed, and fail on differs and runs_without_output. differs_by_only is left out:
-with one backend grossly wrong, Benjamini-Yekutieli alone flags a correct pair in 6.0-6.7% of runs
+with one of 14 backends wrong by total variation 0.40 (8,200 shots), Benjamini-Yekutieli flags a
+pair of two correct backends in 7.3-9.4% of runs, and a flag that also passes Holm in 3.2-4.3%
 (DESIGN_DECISIONS.md, false-flag figures).
 A CI job's SIGTERM stops the waiting and leaves the job running on the server (and an exclusive run
 holding the server), so set --wait-timeout below the CI job's time limit.

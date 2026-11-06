@@ -367,3 +367,13 @@ def test_cli_owned_variables_are_disjoint_from_server_compose_and_script_names()
     clash = owned & _server_env_names()
     assert not clash, clash
     assert "QROSETTA_PROJECT" in _server_env_names()
+
+
+def test_the_false_flag_figures_in_run_help_are_the_recorded_ones():
+    text = (REPO / "DESIGN_DECISIONS.md").read_text()
+    rule = text[text.index("### False-flag figures"):].split("*Evidence", 1)[0]
+    figures = re.findall(r"\d+(?:\.\d+)?-\d+(?:\.\d+)?%", climod.RUN_NOTES)
+    assert figures == ["7.3-9.4%", "3.2-4.3%"]
+    for figure in figures:
+        assert figure.replace("-", "\N{EN DASH}") in rule, figure
+    assert "TV 0.40" in rule and "total variation 0.40" in climod.RUN_NOTES

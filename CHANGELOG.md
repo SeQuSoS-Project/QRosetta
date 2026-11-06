@@ -339,6 +339,9 @@ signed images on GHCR; and every result records the image, commit and host condi
   `../plan.json` as changed in every job folder but the last, because each later job rewrote it.
   A job folder's `SHA256SUMS` now lists its own files only; `plan.json` (and `selftest.json`) are
   in the result folder's own `SHA256SUMS`, written once every job is saved.
+- `qrosetta run --help` gave 6.0–6.7% for correct pairs flagged under Benjamini–Yekutieli with one
+  backend wrong, a figure the 2026-11-02 Monte Carlo did not reproduce; it now gives that run's
+  7.3–9.4% (3.2–4.3% also under Holm), as the manual does.
 - `qrosetta start` failed with "container rosetta-api is unhealthy" on podman before 5.8.0 (RHEL 10.1,
   Debian 13, Ubuntu 26.04 with podman): podman split the healthcheck's Python argument at its spaces.
   The check now has none, and it allows 120 s for a first start (it allowed about a minute).
