@@ -61,117 +61,235 @@
             <p class="text-sm text-indigo-600 font-medium">Documentation</p>
             <h1 class="text-3xl font-bold text-indigo-950 mb-3">QRosetta</h1>
             <p class="text-lg text-gray-600">
-                QRosetta takes one quantum circuit and runs it on many different quantum simulators.
-                It then compares the results and shows where the simulators agree and where they differ.
+                QRosetta (Quantum Rosetta) runs one quantum circuit on many quantum simulators and
+                compares their outputs pair by pair.
             </p>
 
             <section id="what">
                 <h2>Overview</h2>
                 <p>
-                    You provide one circuit, written in OpenQASM 2.0. QRosetta sends that circuit to a set
-                    of simulator backends: Qiskit (via Aer), Cirq, qsim, qibo, PennyLane (lightning and
-                    default.qubit), Qulacs, QuEST, quimb, myQLM, PyQuil, Qrisp, cuQuantum and TorchQuantum.
-                    <code>GET /runners</code> lists the ones the server has enabled. Several runners parse
-                    the QASM with pytket's parser. The Qiskit runner is one of them: it parses with
-                    pytket and converts the result with <code>tk_to_qiskit</code>. The cuQuantum runner,
-                    also built on Qiskit Aer, parses with Qiskit's own
-                    <code>QuantumCircuit.from_qasm_str</code>, so the two can read the same QASM
-                    differently; the Qiskit result's <code>preprocessing_applied</code> records the pytket parse. Every backend receives the circuit in the
-                    same request format and returns its result in the same response format, so the results
-                    can be compared directly.
+                    The input is a circuit in OpenQASM 2.0. QRosetta sends it to each selected simulator
+                    backend: Qiskit (Aer), Cirq, qsim, Qibo, PennyLane (lightning and default.qubit),
+                    Qulacs, QuEST, quimb, myQLM, PyQuil, Qrisp, cuQuantum and TorchQuantum.
+                    <code>GET /runners</code> lists the backends a server offers. The published release
+                    images do not include myQLM and cuQuantum, which their vendors distribute under their
+                    own licence terms; a checkout of the repository builds them, and cuQuantum also needs
+                    an NVIDIA GPU.
                 </p>
                 <p>
-                    QRosetta then compares the backends pairwise. For each pair, it checks whether their
-                    outputs agree and, if they don't, whether a known cause explains the difference. See
-                    <a href="#taxonomy">Agreement classification</a> for how that works.
+                    Every backend receives the circuit in the same request format and answers in the same
+                    result format. Several adapters parse the QASM text with pytket. The Qiskit adapter is
+                    one of them: it converts pytket's circuit with <code>tk_to_qiskit</code>, and its
+                    <code>preprocessing_applied</code> list records the pytket parse. The cuQuantum
+                    adapter, also built on Qiskit Aer, parses with Qiskit's own
+                    <code>QuantumCircuit.from_qasm_str</code>, so the two Aer-based backends can read the
+                    same text differently.
                 </p>
                 <p>
-                    QRosetta compares outputs against each other; it has no independent way to check
-                    whether any of them is mathematically correct. When two backends disagree, the report
-                    does not say which one is wrong: check the circuit against an independent reference,
-                    such as an exact simulation you write yourself.
+                    QRosetta compares the backends in pairs. For each pair it reports whether the outputs
+                    agree and, if they do not, whether a declared convention such as bit order accounts for
+                    the difference (<a href="#taxonomy">Agreement classification</a>).
+                </p>
+                <p>
+                    The comparison is relative: apart from the <a href="#selftest">self-test</a>, which
+                    uses fixed circuits with precomputed answers, QRosetta has no reference result. A
+                    disagreement shows that at least one backend of the pair is wrong and does not say
+                    which. To decide, check the circuit against an independent reference, such as an exact
+                    calculation of your own.
+                </p>
+                <p>
+                    A run can also send the circuit to compile-only services (eight circuit compilers).
+                    Their output circuits are recorded and shown, but neither simulated nor compared; see
+                    <a href="#compilers">Compile-only services</a>.
                 </p>
             </section>
 
-                        <section id="quickstart">
+            <section id="quickstart">
                 <h2>Quickstart: your first run</h2>
-                <p>On a local install started with <code>./qrosetta start</code> (or <code>scripts/safe_boot.sh</code>, which builds the images and then runs it), the page is at <code>http://localhost:8080</code>, reachable from this machine only; <code>QROSETTA_HTTP_BIND</code> (in <code>.env</code> or the environment, default <code>127.0.0.1:8080</code>) sets the address and port nginx is published on, for example <code>0.0.0.0:8080</code> for every interface. Publish it beyond this machine only on a trusted network: in local mode any client may skip the circuit-size, gate-count and experiment-size limits. A backend or compile-only service that the stack does not run, for example after <code>qrosetta start -d --profile minimal</code>, is struck through in the Backends and Compile-only services lists with the commands that add it: <code>qrosetta pull</code> for an installed release or <code>qrosetta build</code> for a checkout, then <code>qrosetta start -d</code> with its name.</p>
-                <p>The page opens with a three-qubit GHZ circuit in the editor, Statevector ticked and every backend the server offers selected.</p>
+                <h3>Start a local server</h3>
+                <p>
+                    The README in the repository lists the host requirements (Linux on x86_64, rootless
+                    podman 4.7 or later or Docker Engine, Docker Compose v2, Python 3.11 or later) and the
+                    packages to install on Fedora, Ubuntu and RHEL. With a published release:
+                </p>
                 <ol class="list-decimal pl-5 space-y-1 mb-4 text-gray-700">
-                    <li>Press <strong>Run Editor Code</strong>, at the bottom of the left column, where Run, Mode, Run Name and the settings chips always stay in view. The button label says what will run, for example "Run Editor Code · Statevector · 14 backends", or "40 runs on 14 backends" in multi-run mode. While the run is in progress, the results area shows the table the result will fill, with each backend's state in its Status column.</li>
-                    <li>Read the <strong>Summary</strong> tab. Its first line says how many backends returned a result; the next line names any backend that differs from the others, for example "Qrisp differs from all 13 other backends", and says whether the rest agree with each other. A GHZ circuit should read "Every comparable pair of backends agrees". The Backends table gives one row per backend: its status, how many others it differs from, its bit order, precision, time and peak memory. Below it, <strong>Evidence</strong> lists the pairs grouped by verdict.</li>
-                    <li>For a measured run, tick <strong>Measured</strong> under Mode. Open the <strong>Seed</strong> chip above the run button and set a <strong>Sampling seed</strong> (for example 42) so a rerun draws the same shots, then press Run Editor Code. On a circuit with many outcomes, expect the full-distribution test to call pairs inconclusive; the Summary gives the shots the test would need.</li>
-                    <li>Open the other tabs when you need them: <strong>Agreement</strong> (a heatmap of every pair, the evidence per pair, and the raw matrices), <strong>Performance</strong> (times and memory), <strong>Circuits</strong> (what each backend executed), <strong>Exports</strong> (figures and tables you set up, the RO-Crate and the report files).</li>
+                    <li><code>pipx install qrosetta</code> installs the <code>qrosetta</code> command.</li>
+                    <li><code>qrosetta doctor</code> checks the host and gives the fix for each problem it
+                        finds.</li>
+                    <li><code>qrosetta pull --profile minimal</code> fetches the API, nginx and the Qiskit,
+                        Qulacs and Cirq runners. <code>--profile full</code> fetches every published
+                        image.</li>
+                    <li><code>qrosetta start -d</code> starts every service whose image is present and
+                        returns when the API is ready and the runners answer. Its last lines give the
+                        address, for example <code>Quantum Rosetta is running at http://localhost:8080
+                        (this computer only)</code>, followed by the addresses of this manual and of the
+                        API reference.</li>
+                    <li>Open that address in a browser.</li>
                 </ol>
                 <p>
-                    Inputs are checked before a run is submitted. When something blocks the run (a shot
-                    count, timeout, seed or threshold out of range, a Run Name with an invisible character,
-                    too many circuits for the server), the run is not sent and a red <em>Not submitted</em>
-                    box above the Run button lists every problem; the field concerned is outlined in red
-                    inside its chip. The box is checked again whenever the workspace changes, so it lists
-                    only what still blocks the run. Requests the server rejects are shown with the
-                    server's message.
+                    In a checkout of the repository, <code>./qrosetta build</code> builds the images and
+                    replaces <code>pull</code>; the other commands are the same.
                 </p>
                 <p>
-                    <strong>Stop waiting</strong>, beside the elapsed time of a run in progress, stops the
-                    page from waiting; the job keeps running on the server. The results area then says
-                    <em>Stopped waiting</em>, gives the job ID and has a <strong>Show results</strong>
-                    button that waits for it again. This browser records every job it submitted: when the
-                    page is opened again (after a reload, Back and Forward, or in a new tab), <em>Earlier
-                    runs from this browser</em> above the results lists the jobs whose results were not
-                    shown, and finished jobs whose results the server still keeps (for up to <a href="#endpoints">its retention
-                    time</a> after they finish), each with Show results and Dismiss. A job the server no longer has (it answers
-                    404 for the job, for example after a restart) is dropped from the list when the list is
-                    shown. The list follows jobs started or dismissed in another tab. Without signing in,
-                    <strong>Recent runs</strong> in the header opens or closes the same list at any time. Logging out forgets
-                    the jobs submitted while signed in and clears their results from the screen.
+                    By default nginx is published on <code>127.0.0.1:8080</code>, so only this computer
+                    can reach the page. When another program holds port 8080 and no address has been set,
+                    <code>qrosetta start</code> takes the first free port from 8081 to 8089, prints the
+                    address and keeps it until <code>qrosetta remove</code>. <code>--bind ADDRESS:PORT</code>,
+                    or <code>QROSETTA_HTTP_BIND</code> in <code>.env</code> or the environment, sets the
+                    address, for example <code>0.0.0.0:8080</code> for every interface. Publish the page
+                    beyond this computer only on a trusted network: on a local server any client may
+                    lift the circuit-size, gate-count and experiment-size limits.
                 </p>
                 <p>
-                    When the server stops answering while the page waits for a job (the API is restarting,
-                    or the proxy in front of it reports it unreachable), the page says it is waiting for the
-                    server and checks again after 3, 6, 12 and 24 seconds, then every 30 seconds, for up to
-                    5 minutes. A restart loses every job in progress: when the server answers again without
-                    the job, the page says so and the run has to be submitted again. After 5 minutes without
-                    an answer the page stops waiting; the job stays in this browser's list, so reloading the
-                    page once the server is back offers it again.
+                    A backend or compile-only service that the stack does not run, for example after
+                    <code>--profile minimal</code>, is struck through in the Backends and Compile-only
+                    services popovers. The first line of each popover says how many services run and
+                    gives the commands that add all of them; the row of a service that is not running
+                    gives the commands that add that one, for a backend when the pointer rests on its row
+                    (<code>qrosetta pull</code> for an installed
+                    release or <code>qrosetta build</code> for a checkout, then
+                    <code>qrosetta start -d</code> with its name).
                 </p>
+
+                <h3>Run a circuit</h3>
+                <ol class="list-decimal pl-5 space-y-1 mb-4 text-gray-700">
+                    <li>On the first visit the editor holds a three-qubit GHZ circuit, Statevector is
+                        ticked under Mode, and every backend the server offers is selected. To start from
+                        another circuit, choose it in the <strong>Quantum Algorithms</strong> menu under
+                        Generate Circuits and press <strong>Load</strong> (see
+                        <a href="#circuits">Circuit sources</a>).</li>
+                    <li>Press the run button at the bottom of the left column. Its label states what will
+                        run, for example "Run Editor Code · Statevector · 14 backends". The Run choice,
+                        Mode, Run Name and the settings chips stay in view above it. During the run the
+                        results area shows the table the result will fill, with each backend's state in
+                        its Status column.</li>
+                    <li>Read the <strong>Summary</strong> tab. Its first line says how many backends
+                        returned a result. The next line names any backend that differs from the others,
+                        for example "Qrisp differs from all 13 other backends", and says whether the rest
+                        agree with each other; for the GHZ circuit it reads "Every comparable pair of
+                        backends agrees." The Backends table has one row per backend: status, the backends
+                        it differs from, bit order, precision, total time and peak memory.
+                        <strong>Evidence</strong>, below the table, lists the pairs by verdict.</li>
+                    <li>For a measured run, tick <strong>Measured</strong>. A Shots field (default 8,200)
+                        appears beside the settings chips. To make a rerun draw the same shots, open the
+                        <strong>Seed</strong> chip and enter a sampling seed, for example 42. On a
+                        circuit with many outcomes the full-distribution test may call pairs inconclusive;
+                        the Summary then gives the number of shots the test needs.</li>
+                    <li>The other tabs hold the detail: <strong>Agreement</strong> (a heatmap of every
+                        pair, the evidence per pair, the divergence matrices), <strong>Performance</strong>
+                        (times and memory), <strong>Circuits</strong> (the submitted, dispatched and
+                        executed text) and <strong>Exports</strong> (figures and tables, the RO-Crate and
+                        the report files).</li>
+                </ol>
+
+                <h3>Before and during a run</h3>
                 <p>
-                    The page opens any job by its ID from a link of the form <code>/#job=&lt;job ID&gt;</code>,
-                    which the <code>qrosetta</code> command prints after <code>run</code>, <code>wait</code>
-                    and <code>selftest</code>: it waits for the job as Show results does and shows its results,
-                    without adding it to this browser's list or saving it to the account. When the server no
-                    longer has the job, the results area says so.
+                    The page checks the inputs before it submits a run. If a value blocks the run (shots,
+                    timeout, seed or a threshold out of range, a Run Name with an invisible character, more
+                    circuits than the server accepts), nothing is sent: a red box above the run button,
+                    headed "Not submitted. Fix these inputs first:", lists every problem, and the field
+                    concerned is outlined in red inside its chip. The list is updated whenever the
+                    workspace changes. A request the server refuses is shown with the server's message.
                 </p>
                 <p>
                     While a run is in progress the Status column shows each backend's state: QUEUED (not
-                    started yet; no time is shown), SENT, then DONE, ERROR, TIMEOUT or OFFLINE with the
-                    seconds it took. While the server compares the results of the circuit (the job's
-                    <code>phase</code> is <code>analysing</code>), the progress line says <em>analysing
-                    results</em> and a playlist's running circuit reads ANALYSING; for measured runs with
-                    many outcomes this can take tens of seconds.
+                    started; no time shown), SENT, then DONE, ERROR, TIMEOUT or OFFLINE with the seconds
+                    it took. While the server compares the results (the job's <code>phase</code> is
+                    <code>analysing</code>), the progress line reads <em>analysing results</em> and a
+                    playlist's current circuit reads ANALYSING. For measured runs with many outcomes this
+                    step can take tens of seconds.
                 </p>
                 <p>
-                    Each browser tab keeps its own editor circuit, ticked modes (Statevector,
-                    Measured) and Run Name across reloads; a new tab starts from the last ones used. The playlist,
-                    the backend choice and the export preset are shared by all tabs. Other settings
-                    (preprocessing, Bypass API Safety Limits, timeout, thresholds, seed) start from their
-                    defaults when the page loads. On a screen narrower than 1024 pixels (phones and
-                    tablets) the workspace, the Run footer and the results follow each other in one
-                    scrolling column. A table wider than the results panel scrolls sideways, with a
-                    shadow at the edge that has more columns.
+                    <strong>Stop waiting</strong>, beside the elapsed time, stops the page from waiting;
+                    the job continues on the server. The results area then reads <em>Stopped waiting</em>,
+                    gives the job ID and offers <strong>Show results</strong>, which waits for the job
+                    again.
+                </p>
+                <p>
+                    If the server stops answering while the page waits (the API is restarting, or the
+                    proxy reports it unreachable), the page says it is waiting for the server and asks
+                    again after 3, 6, 12 and 24 seconds, then every 30 seconds, for up to 5 minutes. A
+                    restart of the API loses every job in progress: when the server answers without the
+                    job, the page says so, and the run has to be submitted again. After 5 minutes without
+                    an answer the page stops waiting; the job stays in this browser's list, so a reload
+                    after the server is back offers it again.
+                </p>
+
+                <h3>Returning to a run</h3>
+                <p>
+                    The browser records every job it submits. When the page is opened again (reload, Back
+                    and Forward, a new tab), <em>Earlier runs from this browser</em> above the results
+                    lists the jobs whose results were not shown and the finished jobs the server still
+                    keeps (for its <a href="#endpoints">retention time</a> after they finish), each with
+                    Show results and Dismiss. A job the server no longer has is dropped from the list. The
+                    list follows jobs started or dismissed in other tabs. When you are not signed in,
+                    <strong>Recent runs</strong> in the header opens and closes the list at any time.
+                    Logging out forgets the jobs submitted while signed in and clears their results from
+                    the screen.
+                </p>
+                <p>
+                    A link of the form <code>/#job=&lt;job ID&gt;</code>, which <code>qrosetta run</code>,
+                    <code>wait</code> and <code>selftest</code> print, opens that job's results. The page
+                    waits for the job as Show results does, without adding it to this browser's list or
+                    saving it to an account. If the server no longer has the job, the results area says
+                    so.
+                </p>
+                <p>
+                    Each browser tab keeps its own editor circuit, ticked modes and Run Name across
+                    reloads; a new tab starts from the values last used. The playlist, the backend
+                    selection and the export preset are shared by all tabs. The other settings
+                    (preprocessing, Bypass API Safety Limits, timeout, thresholds, seed) return to their
+                    defaults when the page loads. Below 1024 pixels of width the workspace, the Run footer
+                    and the results follow each other in one column. A table wider than the results panel
+                    scrolls sideways, with a shadow on the side that has more columns.
                 </p>
             </section>
 
-                        <section id="circuits">
+            <section id="circuits">
                 <h2>Circuit sources</h2>
-                <p>Each panel on the left has one job: <strong>Generate Circuits</strong> chooses a ready-made circuit, the <strong>Editor</strong> holds the circuit you are working on, and the <strong>Playlist</strong> holds circuits to run together.</p>
+                <p>
+                    The left column has three panels: <strong>Generate Circuits</strong> offers ready-made
+                    circuits, the <strong>Editor</strong> holds the circuit you are working on, and the
+                    <strong>Playlist</strong> holds circuits to run together.
+                </p>
                 <ul>
-                    <li><strong>Generate Circuits.</strong> The <strong>Quantum Algorithms</strong> menu holds every ready-made circuit in four groups: the generated algorithms (GHZ, Bell, QFT, Bernstein–Vazirani, Grover, VQE ansatz, random, bit-order probe), bundled <strong>Examples</strong> (<code>GET /examples</code>), <strong>MQT Bench</strong> algorithms and <strong>QASMBench</strong> circuits. Type in it to search all four. For an algorithm or an MQT Bench algorithm, Qubits sets the size (an MQT Bench size moves to the nearest one the suite has); examples and QASMBench circuits have a fixed size. The line under the menu describes the selection; for an example it names the mode it is meant for. <strong>Load</strong> puts the selection in the editor (asking first when that replaces your edits; loading an example ticks its mode); <strong>+ Add</strong> adds it to the playlist.</li>
-                    <li><strong>Editor.</strong> Paste or type OpenQASM 2.0; <strong>Import QASM</strong> reads a file into it and <strong>Export QASM</strong> saves it; <strong>+ Add to Playlist</strong> adds the editor's circuit to the playlist under the name above the editor.</li>
-                    <li><strong>Playlist.</strong> <strong>Quick Load</strong> fills it with a ready-made set (one of each algorithm, a GHZ scaling series, or the largest statevector circuits; the sets come from <code>GET /quickload</code>); <strong>Auto-Gen</strong> adds circuits of chosen algorithms at random qubit counts, up to the qubit limit of the ticked modes (the statevector limit while Statevector is ticked) and each algorithm's own maximum, and says when it lowered a count; <strong>Clear</strong> asks before emptying the playlist; <strong>Bench</strong> opens a list of MQT Bench or QASMBench circuits beside the button, with a name filter and a qubit cap, where you tick circuits and add them, or add every circuit the list shows (with no filter and no cap, the whole suite). Escape or a click elsewhere closes it.</li>
+                    <li><strong>Generate Circuits.</strong> The <strong>Quantum Algorithms</strong> menu
+                        lists four groups: the generated algorithms (GHZ, Bell, QFT, Bernstein–Vazirani,
+                        Grover, VQE ansatz, random, bit-order probe), the bundled <strong>Examples</strong>
+                        (<code>GET /examples</code>), <strong>MQT Bench</strong> algorithms and
+                        <strong>QASMBench</strong> circuits. Typing in the menu searches all four. For an
+                        algorithm or an MQT Bench algorithm, Qubits sets the size; an MQT Bench size moves
+                        to the nearest size the suite has. Examples and QASMBench circuits have a fixed
+                        size. The line under the menu describes the selection, and for an example names the
+                        mode it is meant for. <strong>Load</strong> puts the selection in the editor, asking
+                        first if that would replace your edits; loading an example also ticks its mode.
+                        <strong>+ Add</strong> adds the selection to the playlist.</li>
+                    <li><strong>Editor.</strong> Type or paste OpenQASM 2.0. <strong>Import QASM</strong>
+                        reads a file into the editor and <strong>Export QASM</strong> saves its text.
+                        <strong>+ Add to Playlist</strong> adds the editor's circuit to the playlist under
+                        the name above the editor.</li>
+                    <li><strong>Playlist.</strong> <strong>Quick Load</strong> adds a ready-made set
+                        (Sanity Check: every algorithm at 5 qubits; Scaling Test: GHZ from 5 qubits to the
+                        statevector limit; Memory Stress: random, Bernstein–Vazirani and VQE circuits at
+                        the statevector limit; the sets come from <code>GET /quickload</code>).
+                        <strong>Auto-Gen</strong> adds circuits of the chosen algorithms at random qubit
+                        counts, up to the limit of the ticked modes (the statevector limit while
+                        Statevector is ticked) and each algorithm's own maximum, and says when it lowered a
+                        count. <strong>Clear</strong> asks before it empties the playlist.
+                        <strong>Bench</strong> opens a list of MQT Bench or QASMBench circuits with a name
+                        filter and a qubit cap; tick circuits and add them, or add every circuit the list
+                        shows (with no filter and no cap, the whole suite). Escape or a click elsewhere
+                        closes the list. The playlist can be exported to a JSON file and imported again.</li>
                 </ul>
                 <p>
-                    In the run section at the bottom of the left column, <strong>Run</strong> switches between <strong>Editor code</strong> and <strong>Playlist</strong>; a warning appears there when a circuit has more qubits than a ticked mode allows, and when a measured circuit has more than 22 qubits, where several backends are likely to reach the timeout (a 24-qubit QFT of 340 gates did not finish within 300 s on 7 of 14 backends; a 24-qubit circuit of 94 gates finished on all 14 within 300 s, and 3 of them took longer than the default 60 s). Loading a circuit into the editor selects the editor; adding to the playlist selects the playlist. The playlist can be exported to and imported from a JSON file.
+                    <strong>Run</strong>, in the footer of the left column, switches between
+                    <strong>Editor code</strong> and <strong>Playlist</strong>. Loading a circuit into the
+                    editor selects Editor code; adding to the playlist selects Playlist. A warning appears
+                    in the footer when a circuit has more qubits than a ticked mode allows, and when a
+                    measured circuit has more than 22 qubits, where several backends are likely to reach
+                    the timeout. A 24-qubit QFT of 340 gates did not finish within 300 s on 7 of 14
+                    backends; a 24-qubit circuit of 94 gates finished on all 14 within 300 s, 3 of them
+                    after more than the default 60 s.
                 </p>
             </section>
 
