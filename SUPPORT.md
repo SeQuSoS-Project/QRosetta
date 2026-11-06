@@ -11,20 +11,21 @@
 - Questions that cannot be public (unpublished circuits, collaborations): email
   [info@qrosetta.dev](mailto:info@qrosetta.dev).
 
-Before asking, check the written guide (`docs.html` on a running stack, for example
-<http://localhost:8080/docs.html>), and `DESIGN_DECISIONS.md` for the rule and evidence behind
-each measurement and analysis choice.
+Before asking, run `qrosetta doctor`, which names a fix for each failed host check, and read the
+install steps for your distribution in `README.md`. The manual (`docs.html` on a running stack,
+for example <http://localhost:8080/docs.html>) describes every result field and label, and
+`DESIGN_DECISIONS.md` gives the rule and evidence behind each measurement and analysis choice.
 
 ## What to attach
 
 | Problem | Attach |
 | --- | --- |
 | Any | `qrosetta version --json` |
-| Local stack will not build, start or answer | `qrosetta doctor --json` and `qrosetta status --json` |
+| The local stack will not build, start or answer | `qrosetta doctor --json`, `qrosetta status --json` and `qrosetta logs api --no-follow` |
 | A run's result looks wrong | The circuit (`.qasm`) and the run's report (`qrosetta export report --result job:<id> -o report.json`) or RO-Crate (`qrosetta export crate --result job:<id>`, or Export RO-Crate on the page's Exports tab) |
 | A backend fails the self-test | The directory `qrosetta selftest` saved under `./qrosetta-results` |
 | The web page | Browser name and version, and the error from the browser console |
 
 Remove secrets before attaching anything: passwords, tokens, `SECRET_KEY`, `.env` files and
-database or S3 credentials. Reports and crates hold your circuits and results; attach them only if
-they may be public.
+database or S3 credentials. Reports and crates hold your circuits and results; attach them only
+if they may be public.
