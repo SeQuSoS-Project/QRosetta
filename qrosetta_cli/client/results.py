@@ -1,7 +1,7 @@
 """Results on disk (spec Q6): the results directory, one invocation directory per command with
 plan.json, one directory per job with request.json, job.json, the saved server files,
-SHA256SUMS and STATUS (written last, by rename), and `latest`, moved by rename only once every
-job of the newest invocation is saved. Result references (spec §5) resolve to these."""
+SHA256SUMS and STATUS (written last, by rename), the invocation's SHA256SUMS over plan.json and
+`latest`, both written only once every job of the invocation is saved. Result references (spec §5) resolve to these."""
 
 import hashlib
 import json
@@ -134,21 +134,25 @@ def _sha256(path):
     return h.hexdigest()
 
 
-def write_sums(job_dir):
-    """SHA256SUMS in GNU format: every file of the job directory and ../plan.json."""
+def _write_sums(directory):
+    """SHA256SUMS in GNU format over the files directly in `directory`, other than STATUS and
+    partial downloads."""
     names = sorted(
         n
-        for n in os.listdir(job_dir)
+        for n in os.listdir(directory)
         if n not in (STATUS_FILE, SUMS_FILE)
         and ".tmp" not in n
         and not n.endswith(".part")
-        and os.path.isfile(os.path.join(job_dir, n))
+        and os.path.isfile(os.path.join(directory, n))
     )
-    lines = [f"{_sha256(os.path.join(job_dir, n))}  {n}" for n in names]
-    plan = os.path.join(os.path.dirname(job_dir), PLAN_FILE)
-    if os.path.isfile(plan):
-        lines.append(f"{_sha256(plan)}  ../{PLAN_FILE}")
-    write_bytes(os.path.join(job_dir, SUMS_FILE), ("\n".join(lines) + "\n").encode("utf-8"))
+    lines = [f"{_sha256(os.path.join(directory, n))}  {n}" for n in names]
+    write_bytes(os.path.join(directory, SUMS_FILE), ("\n".join(lines) + "\n").encode("utf-8"))
+
+
+def write_sums(job_dir):
+    """The job directory's SHA256SUMS: every file in it. plan.json, which each later job of the
+    invocation rewrites, is in the invocation's own SHA256SUMS (`finish_invocation`)."""
+    _write_sums(job_dir)
 
 
 def job_dirs(invocation):
@@ -171,6 +175,17 @@ def invocation_complete(invocation):
     if not dirs or (isinstance(planned, int) and len(dirs) < planned):
         return False
     return all(read_status(d) is not None for d in dirs)
+
+
+def finish_invocation(parent, invocation):
+    """Once every planned job of `invocation` is submitted and saved, write its SHA256SUMS over
+    plan.json (and selftest.json), which no later step rewrites, then point `latest` at it.
+    Returns whether the invocation was complete."""
+    if not invocation_complete(invocation):
+        return False
+    _write_sums(invocation)
+    update_latest(parent, invocation)
+    return True
 
 
 def update_latest(parent, invocation):

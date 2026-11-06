@@ -338,8 +338,7 @@ def cmd_selftest(ctx):
         "lines": lines,
     }
     results.write_json(os.path.join(invocation, results.SELFTEST_FILE), combined)
-    if results.invocation_complete(invocation):
-        results.update_latest(parent, invocation)
+    results.finish_invocation(parent, invocation)
     data = {k: v for k, v in combined.items() if k not in ("schema", "cli_version")}
     data["results_dir"] = invocation
     return Result(Exit.SELFTEST_FAILED if fails else Exit.OK, data)

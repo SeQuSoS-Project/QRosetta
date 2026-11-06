@@ -68,8 +68,9 @@ def test_single_run_layout_status_last_and_latest(env, circuit, capsys):
     assert files == ["SHA256SUMS", "STATUS", "job.json", "report.json", "request.json", "summary.json"]
     assert results.read_status(job["dir"]) == "complete" and job["save_status"] == "complete"
     sums = open(os.path.join(job["dir"], "SHA256SUMS")).read().splitlines()
-    assert [line.split("  ")[1] for line in sums] == ["job.json", "report.json", "request.json", "summary.json",
-                                                      "../plan.json"]
+    assert [line.split("  ")[1] for line in sums] == ["job.json", "report.json", "request.json", "summary.json"]
+    assert [line.split("  ")[1] for line in open(os.path.join(inv, "SHA256SUMS")).read().splitlines()] == [
+        "plan.json"]
     plan = json.load(open(os.path.join(inv, "plan.json")))
     assert plan["schema"] == "qrosetta.cli/plan@1" and plan["job_dirs"] == [os.path.basename(job["dir"])]
     assert plan["results_dir"] == inv and plan["server"]["platform_version"] == "2.0.0"
@@ -648,3 +649,54 @@ def test_not_tested_lines_group_by_reason():
     assert selftest.not_tested_lines(left) == ["Not tested  unreachable: a, c (2)",
                                                "Not tested  not included in this release: b, d (2)"]
     assert selftest.not_tested_lines([]) == []
+
+
+def _verify_every_sums_file(root):
+    """Every SHA256SUMS under `root` checked as `sha256sum -c` would, from its own directory."""
+    import hashlib
+    checked = []
+    for here, _, names in os.walk(root):
+        if "SHA256SUMS" not in names:
+            continue
+        for line in open(os.path.join(here, "SHA256SUMS"), encoding="utf-8").read().splitlines():
+            digest, name = line.split("  ", 1)
+            with open(os.path.join(here, name), "rb") as fh:
+                assert hashlib.sha256(fh.read()).hexdigest() == digest, (here, name)
+            checked.append(os.path.relpath(os.path.join(here, name), root))
+    return sorted(checked)
+
+
+def test_every_sha256sums_of_a_two_job_run_verifies(env, circuit, capsys):
+    server = Scripted()
+    assert run(["run", circuit, "-m", "statevector,measured", "--json"], env, server) == 0
+    doc = envelope(capsys)
+    (inv,) = invocations(env)
+    dirs = [os.path.basename(j["dir"]) for j in doc["data"]["jobs"]]
+    assert len(dirs) == 2
+    checked = _verify_every_sums_file(inv)
+    assert "plan.json" in checked and not any(c.startswith("..") for c in checked)
+    for d in dirs:
+        assert {f"{d}/job.json", f"{d}/request.json", f"{d}/report.json"} <= set(checked)
+        assert ".." not in open(os.path.join(inv, d, "SHA256SUMS")).read()
+
+
+def test_every_sha256sums_of_a_selftest_verifies(env, capsys):
+    server = _selftest_server({"statevector": _evaluation("statevector"), "measured": _evaluation("measured")})
+    assert run(["selftest", "--json"], env, server) == 0
+    inv = envelope(capsys)["data"]["results_dir"]
+    checked = _verify_every_sums_file(inv)
+    assert {"plan.json", "selftest.json"} <= set(checked)
+    assert sum(c.endswith("/selftest-result.json") for c in checked) == 2
+
+
+def test_the_invocation_sums_wait_for_the_last_job(tmp_path):
+    inv = tmp_path / "inv"
+    (inv / "statevector-aaaaaaaa").mkdir(parents=True)
+    (inv / "statevector-aaaaaaaa" / "request.json").write_text("{}")
+    (inv / "plan.json").write_text(json.dumps({"planned_jobs": 2, "job_dirs": ["statevector-aaaaaaaa"]}))
+    results.write_status(str(inv / "statevector-aaaaaaaa"), "complete")
+    assert results.finish_invocation(str(tmp_path), str(inv)) is False
+    assert not (inv / "SHA256SUMS").exists() and not (tmp_path / "latest").exists()
+    (inv / "plan.json").write_text(json.dumps({"planned_jobs": 1, "job_dirs": ["statevector-aaaaaaaa"]}))
+    assert results.finish_invocation(str(tmp_path), str(inv)) is True
+    assert _verify_every_sums_file(str(inv)) == ["plan.json"] and (tmp_path / "latest").is_symlink()

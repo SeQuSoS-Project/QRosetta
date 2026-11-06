@@ -556,8 +556,7 @@ def cmd_run(ctx):
             if len(runs) - i - 1:
                 output.progress(f"{len(runs) - i - 1} planned jobs not submitted.")
             break
-    if results.invocation_complete(invocation):
-        results.update_latest(parent, invocation)
+    results.finish_invocation(parent, invocation)
     follower.closing_hint(invocation)
     return Result(follower.code(), follower.data(invocation), follower.outcome())
 
@@ -673,7 +672,7 @@ def cmd_wait(ctx):
             entry["job_id"], job_dir, entry.get("title") or entry["job_id"][:8], entry.get("kind"), previous=previous
         )
         inv = entry.get("invocation")
-        if inv and results.invocation_complete(inv):
-            results.update_latest(os.path.dirname(inv), inv)
+        if inv:
+            results.finish_invocation(os.path.dirname(inv), inv)
     follower.closing_hint(None)
     return Result(follower.code(), follower.data(), follower.outcome())
