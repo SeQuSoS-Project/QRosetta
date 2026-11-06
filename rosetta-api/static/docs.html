@@ -734,87 +734,86 @@
             <section id="taxonomy">
                 <h2>Agreement classification</h2>
                 <p>
-                    Two simulators can produce different-looking outputs because of a different
-                    <em>qubit-ordering convention</em> (endianness) or an unobservable <em>global phase</em>.
-                    For each backend pair, QRosetta checks a fixed list of transforms in order and reports the
-                    first one under which the two outputs agree, with the metric before and after it.
+                    Two correct simulators can return outputs that look different, because they order
+                    qubits differently (endianness) or differ by an unobservable global phase. For each
+                    pair of backends, QRosetta tries a fixed list of transforms in order and reports the
+                    first under which the two outputs agree, with the metric before and after it.
                 </p>
                 <p>
                     A statevector pair agrees when its fidelity, computed on normalised vectors and stored
                     unrounded, is at least 1 − <code>fidelity_tolerance</code>. The default tolerances are
                     <code>fidelity_tolerance = 1e-5</code>, <code>phase_tolerance = 1e-6</code> rad,
                     <code>norm_tolerance = 1e-4</code>, <code>js_threshold = 0.01</code> nats and
-                    <code>hellinger_threshold = 0.1</code> (the server reports its defaults at
-                    <code>GET /config</code>). They can be changed in the Agreement Thresholds chip; the
-                    values sent are recorded in the report's run configuration and in every pair record, and
-                    the pair record's values are the ones the label was computed with. The phase tolerance
-                    of 1e-6 rad sits above single-precision rounding (about 1e-8 rad for
-                    <code>complex64</code>), so a complex64 backend is not reported as carrying a global
-                    phase because of rounding alone.
+                    <code>hellinger_threshold = 0.1</code>; <code>GET /config</code> reports the server's
+                    defaults. The Agreement Thresholds chip changes them. The values sent are recorded in
+                    the report's run configuration and in every pair record, and the pair record holds the
+                    values its label was computed with. The phase tolerance of 1e-6 rad lies above
+                    single-precision rounding (about 1e-8 rad for <code>complex64</code>), so rounding
+                    alone does not make a <code>complex64</code> backend appear to carry a global
+                    phase.
                 </p>
                 <h3>Statevector labels</h3>
                 <p>
                     A statevector pair is labelled in the basis its two declared qubit orderings imply
                     (<code>metrics.label_aligned_basis</code>): the bit-reversed basis for an
-                    <code>lsb</code> backend against an <code>msb</code> backend, the direct basis otherwise.
-                    A one-qubit pair, or a pair where a backend declares no ordering, uses the direct basis
-                    (<code>metrics.basis_source</code> says which rule applied). The labels fall into three
-                    groups.
+                    <code>lsb</code> backend against an <code>msb</code> backend, the direct basis
+                    otherwise. A one-qubit pair, or a pair in which a backend declares no ordering, uses
+                    the direct basis; <code>metrics.basis_source</code> records which rule applied.
                 </p>
                 <div class="table-scroll"><table>
                     <thead><tr><th>Group</th><th>Label</th><th>Meaning</th></tr></thead>
                     <tbody>
-                        <tr><td rowspan="3">Agree</td><td><code>agree_directly</code></td><td>Same orderings; outputs match with no transform.</td></tr>
-                        <tr><td><code>agree_up_to_global_phase</code></td><td>Same orderings; outputs match after removing an overall (unobservable) global phase.</td></tr>
-                        <tr><td><code>agree_after_bit_reversal</code></td><td>One <code>lsb</code> and one <code>msb</code> backend; outputs match after the bit reversal the declarations imply. <code>transform_effect.global_phase_aligned</code> marks a global phase offset, and <code>metrics.label_aligned_relative_phase_rad</code> gives it.</td></tr>
-                        <tr><td rowspan="3">Disagree</td><td><code>residual_disagreement</code></td><td>No registered transform explains the difference.</td></tr>
-                        <tr><td><code>residual_disagreement</code> with <code>metrics.unaligned_basis_match</code></td><td>The outputs match only in the basis the declared orderings do not imply: directly although the orderings differ, or after bit reversal although they are the same. <code>unaligned_basis_match</code> names that basis. Either a declared ordering is wrong, or a gate defect happens to mimic a bit reversal.</td></tr>
-                        <tr><td><code>agree_after_qubit_permutation</code></td><td>The outputs match only after a qubit permutation that neither declared ordering implies (searched up to 7 qubits). A permutation is not a convention either backend declares, so this is a disagreement.</td></tr>
-                        <tr><td>Note</td><td><code>agree_after_normalization</code></td><td>An agreement with a note: at least one input statevector has a norm differing from 1 by more than <code>norm_tolerance</code>, and the normalised vectors agree. <code>metrics.normalized_agreement</code> holds the label the normalised pair receives (for example <code>agree_directly</code>), and the UI groups the pair by that label.</td></tr>
-                        <tr><td>—</td><td><code>not_comparable</code></td><td>At least one side lacks usable output; the pair cannot be compared. <code>metrics.reason</code> names the cause (see the <a href="#glossary">glossary</a>).</td></tr>
+                        <tr><td rowspan="3">Agree</td><td><code>agree_directly</code></td><td>Same orderings; the outputs match with no transform.</td></tr>
+                        <tr><td><code>agree_up_to_global_phase</code></td><td>Same orderings; the outputs match once an overall, unobservable phase is removed.</td></tr>
+                        <tr><td><code>agree_after_bit_reversal</code></td><td>One <code>lsb</code> and one <code>msb</code> backend; the outputs match after the bit reversal the declarations imply. <code>transform_effect.global_phase_aligned</code> marks a global phase offset, and <code>metrics.label_aligned_relative_phase_rad</code> gives it.</td></tr>
+                        <tr><td rowspan="3">Disagree</td><td><code>residual_disagreement</code></td><td>No registered transform accounts for the difference.</td></tr>
+                        <tr><td><code>residual_disagreement</code> with <code>metrics.unaligned_basis_match</code></td><td>The outputs match only in the basis the declared orderings do not imply: directly although the orderings differ, or after bit reversal although they are the same. <code>unaligned_basis_match</code> names that basis. Either a declared ordering is wrong, or a gate defect happens to look like a bit reversal.</td></tr>
+                        <tr><td><code>agree_after_qubit_permutation</code></td><td>The outputs match only after a qubit permutation that neither declared ordering implies (searched up to 7 qubits). Neither backend declares such a permutation, so the pair counts as a disagreement.</td></tr>
+                        <tr><td>Note</td><td><code>agree_after_normalization</code></td><td>At least one input statevector has a norm that differs from 1 by more than <code>norm_tolerance</code>, and the normalised vectors agree. <code>metrics.normalized_agreement</code> holds the label of the normalised pair (for example <code>agree_directly</code>), and the page groups the pair by that label.</td></tr>
+                        <tr><td>—</td><td><code>not_comparable</code></td><td>At least one side has no usable output. <code>metrics.reason</code> names the cause (see the <a href="#glossary">glossary</a>).</td></tr>
                     </tbody>
                 </table></div>
                 <h3>Measured labels</h3>
                 <div class="table-scroll"><table>
                     <thead><tr><th>Label</th><th>Meaning</th></tr></thead>
                     <tbody>
-                        <tr><td><code>distance_within_threshold</code></td><td>Same declared bit orders, or keys of one classical bit (<code>metrics.basis_source: "single_bit"</code>, where bit reversal changes nothing); distributions within the JS-divergence and Hellinger thresholds (descriptive; the statistical test gives the significance verdict).</td></tr>
-                        <tr><td><code>agree_after_bit_reversal</code></td><td>One <code>lsb</code> and one <code>msb</code> backend, with keys of two or more classical bits; within the thresholds after the bit reversal the declarations imply.</td></tr>
-                        <tr><td><code>agree_after_qubit_permutation</code></td><td>Within the thresholds after a bounded qubit permutation (≤&nbsp;7 qubits).</td></tr>
-                        <tr><td><code>distance_exceeds_threshold</code></td><td>Distributions exceed the thresholds in the basis the declared bit orders imply. With <code>metrics.unaligned_basis_match</code> they are within the thresholds only in the other basis (after bit reversal although the orders are the same, or directly although they differ), as in statevector mode; without it no qubit permutation brings them within.</td></tr>
-                        <tr><td><code>not_comparable</code></td><td>At least one side lacks usable output; <code>metrics.reason</code> names the cause.</td></tr>
+                        <tr><td><code>distance_within_threshold</code></td><td>Same declared bit orders, or keys of one classical bit (<code>metrics.basis_source: "single_bit"</code>, where bit reversal changes nothing); the distributions are within the JS-divergence and Hellinger thresholds. The label is descriptive; the statistical test decides significance.</td></tr>
+                        <tr><td><code>agree_after_bit_reversal</code></td><td>One <code>lsb</code> and one <code>msb</code> backend, keys of two or more classical bits; within the thresholds after the bit reversal the declarations imply.</td></tr>
+                        <tr><td><code>agree_after_qubit_permutation</code></td><td>Within the thresholds after a qubit permutation (searched up to 7 qubits).</td></tr>
+                        <tr><td><code>distance_exceeds_threshold</code></td><td>The distributions exceed the thresholds in the basis the declared bit orders imply. With <code>metrics.unaligned_basis_match</code> they are within the thresholds only in the other basis, as in statevector mode; without it no qubit permutation brings them within.</td></tr>
+                        <tr><td><code>not_comparable</code></td><td>At least one side has no usable output; <code>metrics.reason</code> names the cause.</td></tr>
                     </tbody>
                 </table></div>
                 <p>
-                    The measured labels are descriptive distance checks, and at small shot counts two
-                    samples of the same distribution routinely exceed them. Whether a measured pair
-                    disagrees is decided by its <code>measured_assessment</code>, derived from the
+                    The measured labels are distance checks, and at small shot counts two samples of the
+                    same distribution often exceed them. Whether a measured pair disagrees is decided by
+                    its <code>measured_assessment</code>, which comes from the
                     <a href="#stat">shot-noise test</a>:
                 </p>
                 <div class="table-scroll"><table>
                     <thead><tr><th><code>measured_assessment</code></th><th>Meaning</th></tr></thead>
                     <tbody>
-                        <tr><td><code>consistent_within_shot_noise</code></td><td>Neither test is significant after Benjamini–Yekutieli (BY) correction, and the power to detect a total-variation gap of 0.05, computed at α/(m·c_m), is at least 0.8. This holds even when the label is <code>distance_exceeds_threshold</code>. It is a failure to find a difference at that power, not a demonstration that the distributions are equal.</td></tr>
-                        <tr><td><code>inconclusive_low_shots</code></td><td>Either some expected counts are below 5 after rare outcomes are pooled on a table larger than 2 × 2 (<code>inconclusive_reason: low_expected_counts</code>; a 2 × 2 table is then tested exactly), or neither test is significant but the power to detect the target gap, computed at α/(m·c_m), is below 0.8 (<code>low_power</code>). <code>resolvable_by_more_shots</code> records whether more shots can resolve the pair; it is false when the outcomes are too rare for the test at any practical shot count. The pair is neither consistent nor in disagreement; the Summary tab groups these pairs by cause and gives the shot count the power model recommends when it exceeds the shots used.</td></tr>
-                        <tr><td><code>distinguishable</code></td><td>Both tests are significant after BY correction. Together with a differing single-bit marginal, this is what the Summary counts as a measured disagreement.</td></tr>
-                        <tr><td><code>ambiguous</code></td><td>Exactly one of the two tests is significant. Treated as inconclusive, not as a disagreement.</td></tr>
-                        <tr><td><code>not_comparable</code></td><td>The pair has no usable counts on at least one side.</td></tr>
+                        <tr><td><code>consistent_within_shot_noise</code></td><td>Neither test is significant after the Benjamini–Yekutieli (BY) correction, and the power to detect a total-variation gap of 0.05, computed at α/(m·c_m), is at least 0.8. This holds even when the label is <code>distance_exceeds_threshold</code>. The test found no difference at that power; it does not show that the distributions are equal.</td></tr>
+                        <tr><td><code>inconclusive_low_shots</code></td><td>Either some expected counts stay below 5 after rare outcomes are pooled, on a table larger than 2 × 2 (<code>inconclusive_reason: low_expected_counts</code>; a 2 × 2 table is tested exactly instead), or neither test is significant but the power, computed at α/(m·c_m), is below 0.8 (<code>low_power</code>). <code>resolvable_by_more_shots</code> records whether more shots can resolve the pair; it is false when the outcomes are too rare for the test at any shot count the server accepts. The pair counts as neither agreeing nor disagreeing. The Summary groups these pairs by cause and gives the shot count the power model recommends when it exceeds the shots used.</td></tr>
+                        <tr><td><code>distinguishable</code></td><td>Both tests are significant after the BY correction. A distinguishable pair, or a pair with a differing single-bit marginal (below), is what the Summary counts as a measured disagreement. A distinguishable pair that fails Holm's correction and has no differing marginal is listed apart, as significant under BY only.</td></tr>
+                        <tr><td><code>ambiguous</code></td><td>Exactly one of the two tests is significant. Treated as inconclusive.</td></tr>
+                        <tr><td><code>not_comparable</code></td><td>At least one side has no usable counts.</td></tr>
                     </tbody>
                 </table></div>
                 <p>
-                    For a report without <code>measured_assessment</code>, the UI reads
-                    <code>metrics.statistical_test.verdict</code> instead
+                    For an older report without <code>measured_assessment</code>, the server reads the
+                    assessment from <code>metrics.statistical_test.verdict</code>
                     (<code>consistent</code>, <code>inconclusive_low_shots</code>,
-                    <code>distinguishable</code>, <code>ambiguous</code>).
-                    A measured pair whose observed shot totals differ from the requested <code>n_shots</code>
-                    records both in <code>metrics.shot_total_mismatch</code>.
+                    <code>distinguishable</code>, <code>ambiguous</code>). A measured pair whose observed
+                    shot totals differ from the requested <code>n_shots</code> records both in
+                    <code>metrics.shot_total_mismatch</code>.
                 </p>
                 <div class="callout callout-note">
-                    <strong>Transforms are an analysis step on top of the stored data.</strong> When a pair
-                    is labelled "after bit reversal", the report shows both the direct metric and the
-                    post-transform metric. Each backend's output is stored as that backend returned it,
-                    and the fidelity matrix in the Agreement tab holds the direct fidelity, before any
-                    reversal.
+                    <strong>Transforms belong to the analysis; the stored data are unchanged.</strong>
+                    When a pair is labelled "after bit reversal", the report shows both the direct metric
+                    and the metric after the transform. Each backend's output is stored as the backend
+                    returned it, and the fidelity matrix in the Agreement tab holds the direct fidelity,
+                    before any reversal.
                 </div>
             </section>
 
@@ -831,9 +830,9 @@
                     <li><strong>Direct fidelity</strong>: <code>F = |⟨â|b̂⟩|² = |Σₖ conj(âₖ) b̂ₖ|²</code>,
                         clamped to [0, 1] and stored unrounded.</li>
                     <li><strong>Global phase offset</strong>: <code>φ = arg⟨â|b̂⟩</code> in radians, in
-                        (−π, π]. A value with <code>|φ| ≤ phase_tolerance</code> is reported as 0. This is
-                        the overall phase between the two states; a relative phase between components of a
-                        superposition shows up as reduced fidelity instead. The JSON field is
+                        (−π, π]; a value with <code>|φ| ≤ phase_tolerance</code> is reported as 0. This is
+                        the overall phase between the two states. A relative phase between components of
+                        a superposition lowers the fidelity instead. The JSON field is
                         <code>direct_relative_phase_rad</code> and the matrix is
                         <code>relative_phase_matrix</code>.</li>
                     <li><strong>Bit-reversed fidelity</strong>: <code>F_rev = |⟨â|R b̂⟩|²</code>, where
@@ -847,28 +846,29 @@
                         the pair records <code>too_many_qubits</code>.</li>
                 </ul>
                 <p>
-                    Labels are assigned in this order, with ε = <code>fidelity_tolerance</code> and the
-                    label-aligned fidelity F_al (F in the direct basis, F_rev in the bit-reversed basis;
-                    recorded as <code>metrics.label_aligned_fidelity</code>): in the direct basis,
-                    <code>agree_directly</code> if F ≥ 1 − ε and |φ| ≤ <code>phase_tolerance</code>, and
-                    <code>agree_up_to_global_phase</code> if F ≥ 1 − ε; in the bit-reversed basis,
-                    <code>agree_after_bit_reversal</code> if F_rev ≥ 1 − ε. Otherwise, if the fidelity in
-                    the other basis is ≥ 1 − ε, <code>residual_disagreement</code> with
-                    <code>unaligned_basis_match</code>; else <code>agree_after_qubit_permutation</code> if
-                    the permutation fidelity is ≥ 1 − ε; else <code>residual_disagreement</code>. An
-                    agreeing pair with <code>unnormalized_input</code> is relabelled
-                    <code>agree_after_normalization</code>. The Summary quotes the fidelity under the
-                    transform the label names, with the direct fidelity beside it.
+                    Let ε = <code>fidelity_tolerance</code> and let F_al be the label-aligned fidelity (F
+                    in the direct basis, F_rev in the bit-reversed basis; recorded as
+                    <code>metrics.label_aligned_fidelity</code>). Labels are assigned in this order. In the
+                    direct basis, <code>agree_directly</code> if F ≥ 1 − ε and |φ| ≤
+                    <code>phase_tolerance</code>, else <code>agree_up_to_global_phase</code> if
+                    F ≥ 1 − ε; in the bit-reversed basis, <code>agree_after_bit_reversal</code> if
+                    F_rev ≥ 1 − ε. Otherwise, <code>residual_disagreement</code> with
+                    <code>unaligned_basis_match</code> if the fidelity in the other basis is ≥ 1 − ε;
+                    else <code>agree_after_qubit_permutation</code> if the permutation fidelity is
+                    ≥ 1 − ε; else <code>residual_disagreement</code>. An agreeing pair with
+                    <code>unnormalized_input</code> is relabelled <code>agree_after_normalization</code>.
+                    The Summary quotes the fidelity under the transform the label names, with the direct
+                    fidelity beside it.
                 </p>
                 <h3>Counts</h3>
                 <p>
-                    Each backend's counts <code>c(x)</code> are normalised by its own observed total:
-                    <code>p(x) = c(x) / Σₓ c(x)</code>, over the union of outcomes of the two backends.
+                    Each backend's counts <code>c(x)</code> are normalised by its own observed total,
+                    <code>p(x) = c(x) / Σₓ c(x)</code>, over the union of the two backends' outcomes.
                 </p>
                 <ul>
                     <li><strong>Jensen–Shannon divergence</strong>:
                         <code>JS(p, q) = ½ Σ p ln(p/m) + ½ Σ q ln(q/m)</code> with
-                        <code>m = (p + q)/2</code>, natural logarithm, so it is in nats and lies in
+                        <code>m = (p + q)/2</code> and the natural logarithm, so it is in nats and lies in
                         [0, ln 2 ≈ 0.693].</li>
                     <li><strong>Hellinger distance</strong>:
                         <code>H(p, q) = (1/√2) ‖√p − √q‖₂ = √(1 − Σ √(p q))</code>, in [0, 1].</li>
@@ -883,41 +883,49 @@
                 </p>
                 <h3>Shot-noise tests</h3>
                 <p>
-                    The two backends' counts form a 2 × K contingency table <code>O</code> over the K
-                    outcomes observed by either backend (outcomes with zero counts on both sides are
-                    dropped). The table is built in the label-aligned basis: when the two backends declare
-                    different bit orders (<code>lsb</code> against <code>msb</code>), the second backend's
-                    keys are bit-reversed first; otherwise the keys are compared directly. The basis comes
-                    from the declared orderings, not from which basis gives the smaller distance, and is
-                    recorded as <code>statistical_test.basis</code>. When the keys have one classical bit,
-                    bit reversal changes nothing and the keys are compared directly
-                    (<code>basis_source: "single_bit"</code>), whatever the number of qubits. Outcomes whose
-                    expected count is below 5 are pooled into one bin, which holds only these rare outcomes;
-                    <code>pooled_outcomes</code> records how many when the bin holds two or more (a bin of one
-                    outcome is an ordinary column and records 0). The bin is tested as its own column when its
-                    expected count is at least 5, when the table meets Cochran's rule (no expected count below 1,
-                    at most 20% below 5), or, with two or more common outcomes, when its expected count is at
-                    least 1. Below 1 it is left out of the table (<code>untested_outcomes</code>). A common outcome is never merged into
-                    the bin: on a table of three or four outcomes that would hide a gap as large as the common
-                    outcome's probability (see the power model below). When the table is 2 × 2 and still fails the
-                    expected-count rule (one common outcome beside an undersized bin, as for a near-deterministic
-                    circuit whose rare outcome has probability 10<sup>−4</sup>, or exactly two observed outcomes,
-                    both rare), the chi-square approximation does not hold and both statistics get exact conditional
-                    p-values instead (<code>test_method: "exact_conditional"</code>, <code>chi2.method</code>,
-                    <code>g_test.method</code>): with the shots and the column totals fixed, the first backend's count in
-                    the second column is hypergeometric, and each p-value is the probability of a table whose statistic
-                    is at least the observed one. When both backends used the same number of shots this ordering gives
-                    the same p-value as Fisher's exact test; with unequal shot totals they can differ (rows of 100 and 37
-                    shots, <code>[[99, 1], [36, 1]]</code>: p = 1.0 here, 0.469 by Fisher's test, which orders tables by
-                    their probability). With three or more observed outcomes, all rare,
-                    the pair is inconclusive (<code>low_expected_counts</code>). When both backends returned the same
-                    single outcome there is nothing to test: the statistics are 0, the p-values 1 and
-                    <code>test_method</code> is <code>"degenerate"</code> (<code>"not_tested"</code> when pooling leaves
-                    one column, which is also a low-count case). The Summary headline says how many pairs have exact
-                    conditional p-values and how many were degenerate, and each pair's details give its method.
-                    With row totals <code>Rᵢ</code>, column
-                    totals <code>Cⱼ</code> and <code>N = Σ O</code>, the expected counts are
-                    <code>Eᵢⱼ = Rᵢ Cⱼ / N</code>.
+                    <strong>The table.</strong> The two backends' counts form a 2 × K contingency table
+                    <code>O</code> over the K outcomes either backend observed; outcomes with no counts on
+                    either side are dropped. The table is built in the label-aligned basis: when the two
+                    backends declare different bit orders (<code>lsb</code> against <code>msb</code>), the
+                    second backend's keys are bit-reversed first; otherwise the keys are compared
+                    directly. The basis follows the declared orderings, even when the other basis gives a
+                    smaller distance, and is recorded as <code>statistical_test.basis</code>. With keys of one
+                    classical bit, bit reversal changes nothing, and the keys are compared directly
+                    (<code>basis_source: "single_bit"</code>) whatever the number of qubits. With row
+                    totals <code>Rᵢ</code>, column totals <code>Cⱼ</code> and <code>N = Σ O</code>, the
+                    expected counts are <code>Eᵢⱼ = Rᵢ Cⱼ / N</code>.
+                </p>
+                <p>
+                    <strong>Rare outcomes.</strong> Outcomes whose expected count is below 5 are pooled
+                    into one bin, which holds only rare outcomes; <code>pooled_outcomes</code> records how
+                    many when the bin holds two or more (a bin of one outcome is an ordinary column and
+                    records 0). The bin is tested as a column of its own when its expected count is at
+                    least 5, when the table meets Cochran's rule (no expected count below 1, at most 20%
+                    below 5), or, with two or more common outcomes, when its expected count is at least 1.
+                    Below 1 the bin is left out of the table (<code>untested_outcomes</code>). A common
+                    outcome is never merged into the bin: on a table of three or four outcomes that would
+                    hide a gap as large as the common outcome's probability (see the power model below).
+                </p>
+                <p>
+                    <strong>Exact conditional p-values.</strong> A 2 × 2 table that still fails the
+                    expected-count rule (one common outcome beside an undersized bin, as for a
+                    near-deterministic circuit whose rare outcome has probability 10<sup>−4</sup>, or
+                    exactly two observed outcomes, both rare) is outside the range of the chi-square
+                    approximation. Both statistics then get exact conditional p-values
+                    (<code>test_method: "exact_conditional"</code>, <code>chi2.method</code>,
+                    <code>g_test.method</code>): with the shots and the column totals fixed, the first
+                    backend's count in the second column is hypergeometric, and each p-value is the
+                    probability of a table whose statistic is at least the observed one. With equal shot
+                    totals this ordering gives the same p-value as Fisher's exact test. With unequal
+                    totals the two can differ: for rows of 100 and 37 shots, <code>[[99, 1], [36,
+                    1]]</code>, p = 1.0 here and 0.469 by Fisher's test, which orders tables by their
+                    probability. With three or more observed outcomes, all rare, the pair is inconclusive
+                    (<code>low_expected_counts</code>). When both backends returned the same single
+                    outcome there is nothing to test: the statistics are 0, the p-values 1, and
+                    <code>test_method</code> is <code>"degenerate"</code> (<code>"not_tested"</code> when
+                    pooling leaves one column, which is also a low-count case). The Summary says how many
+                    pairs have exact conditional p-values and how many were degenerate, and each pair's
+                    details give its method.
                 </p>
                 <ul>
                     <li><strong>Pearson chi-square</strong>: <code>χ² = Σ (O − E)² / E</code>, no
@@ -925,98 +933,110 @@
                     <li><strong>G-test</strong>: <code>G = 2 Σ O ln(O / E)</code> divided by Williams'
                         correction <code>q = 1 + (N Σ 1/Rᵢ − 1)(N Σ 1/Cⱼ − 1) / (6 N (rows − 1)(K − 1))</code>,
                         same df (<code>g_test.statistic</code>; the uncorrected value is
-                        <code>statistic_uncorrected</code> and q is <code>williams_q</code>). Without it the
-                        G-test rejects far too often on tables with many bins of small expected counts: in
-                        simulation with no real difference (2,000 tables of 65,536 outcomes at 10<sup>6</sup> shots),
-                        95% were rejected at α = 0.05, 6.2% with the correction and 4.2% by the chi-square test.</li>
+                        <code>statistic_uncorrected</code> and q is <code>williams_q</code>). Without the
+                        correction the G-test rejects far too often on tables with many bins of small
+                        expected counts. In a simulation with no real difference (2,000 tables of 65,536
+                        outcomes at 10<sup>6</sup> shots, <code>scripts/verify/v8_calibration.py</code>),
+                        the uncorrected G-test rejected 94.7% of tables at α = 0.05, the corrected G-test
+                        6.2% and the chi-square test 4.2%.</li>
                     <li><strong>Cramér's V</strong>: <code>√(χ² / N)</code>.</li>
-                    <li><strong>Multiple comparisons</strong>, over the m tested pairs of the run, separately
-                        for each test. Benjamini–Yekutieli (<code>correction: "BY"</code>): with p-values
+                    <li><strong>Multiple comparisons</strong>, over the m tested pairs of the run, for each
+                        test separately. Benjamini–Yekutieli (<code>correction: "BY"</code>): with p-values
                         sorted <code>p₍₁₎ ≤ … ≤ p₍ₘ₎</code> and <code>c_m = Σᵢ₌₁..ₘ 1/i</code>,
                         <code>p̃₍ₖ₎ = min over j ≥ k of min(1, m c_m p₍ⱼ₎ / j)</code>, recorded as
                         <code>p_value_by</code>. A test is significant (<code>significant_by</code>) when its
                         BY-adjusted p-value is below α = 0.05. BY controls the false discovery rate at
-                        q = α under any dependence between the tests, which matters here because pairs that
-                        share a backend share that backend's sample. Among the pairs it flags, up to a
-                        fraction q are expected to be flagged by chance, so a few flagged pairs in a run
-                        with many can be false discoveries, and one unusual sample of one backend can flag
-                        several of its pairs at once. The Benjamini–Hochberg (<code>p_value_bh</code>) and
-                        Bonferroni (<code>min(1, m p)</code>, <code>p_value_bonferroni</code>) adjusted
-                        p-values are recorded for reference, and so are Holm's step-down adjusted p-values
-                        (<code>p_value_holm</code>, <code>significant_holm</code>), which control the family-wise
-                        error rate. A distinguishable pair carries <code>significant_fwer</code>: true when both
-                        tests also pass Holm. Under BY, genuine discoveries in other pairs lower the bar for every
-                        pair, so with one grossly wrong backend among 14 (total variation 0.40, 2 to 16 outcomes at 8,200 shots), at least one pair of two
-                        correct backends is flagged in 7.3–9.4% of runs, and in 3.2–4.3% of runs by a flag that also passes Holm
-                        (0.6–1.1% of runs when every backend is correct); the Summary marks a distinguishable pair that fails Holm as significant under
-                        BY only. A p-value that underflows to 0 is shown as
-                        <code>&lt;1e-300</code>, and values below 1e-3 in scientific notation.</li>
+                        q = α under any dependence between the tests; pairs that share a backend share its
+                        sample, so their tests are dependent. Up to a fraction q of the pairs BY flags are
+                        expected to be flagged by chance, and one unusual sample of one backend can flag
+                        several of its pairs at once. The Benjamini–Hochberg (<code>p_value_bh</code>),
+                        Bonferroni (<code>min(1, m p)</code>, <code>p_value_bonferroni</code>) and Holm
+                        step-down (<code>p_value_holm</code>, <code>significant_holm</code>) adjusted
+                        p-values are recorded as well; Holm's controls the family-wise error rate. A
+                        distinguishable pair carries <code>significant_fwer</code>, true when both tests
+                        also pass Holm. Under BY, real differences in other pairs lower the threshold for
+                        every pair. With one backend among 14 wrong by a total variation of 0.40 (2 to 16
+                        outcomes, 8,200 shots), at least one pair of two correct backends was flagged in
+                        7.3–9.4% of simulated runs, and by a flag that also passes Holm in 3.2–4.3%; with
+                        every backend correct, 0.6–1.1% of runs had any flag
+                        (<code>scripts/verify/false_flags.py</code>, 2,000 to 4,000 runs per scenario). The
+                        Summary marks a distinguishable pair that fails Holm as significant under BY only.
+                        A p-value that underflows to 0 is shown as <code>&lt;1e-300</code>, and values
+                        below 1e-3 in scientific notation.</li>
                     <li><strong>Verdict</strong>: <code>inconclusive_low_shots</code>
-                        (<code>low_expected_counts</code>) if no pooling gives adequate expected counts and the table is larger than 2 × 2; else
-                        <code>distinguishable</code> if both tests are significant, <code>ambiguous</code> if
-                        exactly one is, and, if neither is, <code>consistent</code> when the power at the
-                        observed shots, computed at α/(m·c_m), is at least 0.8 and
-                        <code>inconclusive_low_shots</code> (<code>low_power</code>) otherwise.
-                        <code>resolvable_by_more_shots</code>, beside <code>inconclusive_reason</code>, says
-                        whether more shots can turn an inconclusive pair into a verdict. It is null, and no shot
-                        count is recommended, when the sample does not show the outcome distribution:
-                        <code>unseen_mass_good_turing</code>, the share of shots in outcomes seen exactly once
-                        (the Good–Turing estimate of the probability of outcomes not yet seen), exceeds 0.5 for
-                        either backend (<code>support_characterised: false</code>). That happens when the circuit
-                        spreads its outcomes over far more basis states than the shots cover, for example a 22-qubit
-                        dense state at 8,200 shots; measuring only the qubits of interest gives the test a distribution
-                        it can resolve. When the unseen mass is between δ/2 and 0.5, the recommendation is given as a
-                        lower bound (<code>recommendation_is_lower_bound</code>): new outcomes appear with more shots and
-                        can raise it. It is also a lower bound when the recommendation comes from pooling rare outcomes and
-                        some outcomes were seen once: outcomes seen once in n shots stop being pooled at 10n shots per
-                        backend, so the minimum often lands exactly there (82,000 for a 12-qubit circuit at 8,200
-                        shots, recommended as 91,000), and the outcomes not yet seen are not in the calculation. For a 12-qubit QFT at 8,200 shots the minimum was 84,838, and at 100,000 shots every
-                        pair was consistent.</li>
+                        (<code>low_expected_counts</code>) if no pooling gives adequate expected counts and
+                        the table is larger than 2 × 2; else <code>distinguishable</code> if both tests are
+                        significant, <code>ambiguous</code> if exactly one is, and, if neither is,
+                        <code>consistent</code> when the power at the observed shots, computed at
+                        α/(m·c_m), is at least 0.8 and <code>inconclusive_low_shots</code>
+                        (<code>low_power</code>) otherwise.</li>
+                    <li><strong>Shot advice</strong>: <code>resolvable_by_more_shots</code>, beside
+                        <code>inconclusive_reason</code>, says whether more shots can turn an inconclusive
+                        pair into a verdict. It is null, and no shot count is recommended, when the sample
+                        does not characterise the outcome distribution:
+                        <code>unseen_mass_good_turing</code>, the share of shots in outcomes seen exactly
+                        once (the Good–Turing estimate of the probability of outcomes not yet seen),
+                        exceeds 0.5 for either backend (<code>support_characterised: false</code>). This
+                        happens when a circuit spreads its outcomes over far more basis states than the
+                        shots cover, for example a dense 22-qubit state at 8,200 shots; measuring only the
+                        qubits of interest gives the test a distribution it can resolve. When the unseen
+                        mass is between δ/2 and 0.5, the recommendation is a lower bound
+                        (<code>recommendation_is_lower_bound</code>), because more shots reveal new
+                        outcomes and can raise it. It is also a lower bound when the recommendation comes
+                        from pooling rare outcomes and some outcomes were seen once: outcomes seen once in
+                        n shots stop being pooled at 10n shots per backend, so the minimum often lands
+                        there (82,000 for a 12-qubit circuit at 8,200 shots, recommended as 91,000), and
+                        outcomes not yet seen do not enter the calculation. For a 12-qubit QFT at 8,200
+                        shots the minimum was 84,838, and at 100,000 shots every pair was
+                        consistent.</li>
                     <li><strong>Power model</strong>: the effect size is Cohen's
-                        <code>w = δ<sub>tested</sub></code>, the smallest w any distribution pair at total
-                        variation δ = 0.05 can have on the table the test sees (w ≥ TV). Pooling two or more rare
-                        outcomes into one bin can hide up to min(P, Q) of the total variation, where P and Q are the
-                        two backends' probabilities in the pooled bin, so <code>δ<sub>tested</sub> = δ − min(P, Q)</code>;
-                        leaving a bin out can hide up to max(P, Q), so <code>δ<sub>tested</sub> = δ − max(P, Q)</code>
-                        (recorded as <code>power.delta_tv_tested</code> and <code>power.pooled_probability</code>).
-                        Because the bin holds only rare outcomes, P and Q are small whenever the table has
-                        common outcomes.
-                        When δ<sub>tested</sub> ≤ 0 a gap of δ could sit entirely inside the pooled bin, the power is
-                        α′ and the pair is inconclusive, however small its p-values. The chi-square statistic then follows a noncentral
-                        χ² with <code>df = K − 1</code> and noncentrality
+                        <code>w = δ<sub>tested</sub></code>, the smallest w that any pair of distributions
+                        at total variation δ = 0.05 can have on the table the test sees (w ≥ TV). Pooling
+                        two or more rare outcomes into one bin can hide up to min(P, Q) of the total
+                        variation, where P and Q are the two backends' probabilities in the pooled bin, so
+                        <code>δ<sub>tested</sub> = δ − min(P, Q)</code>; leaving a bin out can hide up to
+                        max(P, Q), so <code>δ<sub>tested</sub> = δ − max(P, Q)</code> (recorded as
+                        <code>power.delta_tv_tested</code> and <code>power.pooled_probability</code>). The
+                        bin holds only rare outcomes, so P and Q are small whenever the table has common
+                        outcomes. When δ<sub>tested</sub> ≤ 0, a gap of δ could lie entirely inside the
+                        pooled bin; the power is then α′, and the pair is inconclusive however small its
+                        p-values. Otherwise the chi-square statistic follows a noncentral χ² with
+                        <code>df = K − 1</code> and noncentrality
                         <code>λ = 4·n<sub>i</sub>·n<sub>j</sub>/(n<sub>i</sub> + n<sub>j</sub>) · w²</code>,
-                        where n<sub>i</sub> and n<sub>j</sub> are the two backends' shot totals. With equal
-                        totals this is <code>N w²</code> (N = n<sub>i</sub> + n<sub>j</sub>); with unequal
-                        totals the smaller sample limits it, so 8,200 shots against 50 has the power of about
-                        200 shots split evenly. The single-bit marginal tests use the same noncentrality.
-                        <code>power_to_detect_delta_at_observed_shots = 1 − F(χ²₁₋α′,df ; df, λ)</code> with
-                        α′ = α/(m·c_m), the level BY applies to a single discovery among the m tested pairs
-                        of the run (recorded as <code>power.alpha_used</code>, <code>power.m_pairs</code> and
-                        <code>power.c_m</code>). It is the smallest level BY applies to any pair, so the power
-                        figure does not overstate the chance that the corrected test flags a gap of size δ.
-                        It is still the power of the chi-square test alone; the verdict needs both tests to
-                        be significant. Pairs tested with exact conditional p-values use the same model: at the
-                        alternatives it describes the counts are large and the asymptotic test applies. In
-                        simulation (P(rare) = p₀ against p₀ + δ, 14 backends of which one differs, 2,002
-                        differing pairs each, m = 91), both tests at α′ detected δ = 0.05 at 4,444 shots per
-                        backend in 100% of pairs for p₀ ≤ 0.1 and in 79.2% for p₀ = 0.475, against a model
-                        power of 0.800; BY over the run, where the other 12 pairs of that backend also
-                        differ, flagged 93.1%. The shots needed therefore grow with the number of outcomes (df) and
-                        with the number of backends (m); the report computes the power for each pair rather
-                        than assuming the default shot count is enough.
-                        <code>shots_per_backend_for_target_power</code> is ⌈N*/2⌉, where N* is the
-                        total giving power 0.8 at α/(m·c_m); when outcomes were pooled, it is the smallest count at
-                        which the observed proportions, scaled to that count, pool into a table with that power.
-                        <code>recommended_shots_per_backend</code> is that minimum times 1.1
-                        (<code>recommendation_margin</code>), rounded up to two significant figures and capped at the
-                        platform maximum. A rerun estimates the power again from its own table, whose outcome bins
-                        change with the shot count, so a rerun at exactly the minimum lands near 0.8: in simulation
-                        (5-qubit product state, 14 backends, 8 runs advised from 1,000 shots), 67 of 728 pairs stayed
-                        inconclusive at the minimum (about 10,000 shots) and none at the advised 11,000.
-                        <code>recommended_exceeds_actual</code> says whether the recommendation is
-                        more than the shots either backend used; the Summary recommends more shots only
-                        then. Because df uses the observed outcomes, the recommendation
-                        can be too small when the true support is larger.</li>
+                        where n<sub>i</sub> and n<sub>j</sub> are the two backends' shot totals. With
+                        equal totals this is <code>N w²</code> (N = n<sub>i</sub> + n<sub>j</sub>); with
+                        unequal totals the smaller sample limits it, so 8,200 shots against 50 have the
+                        power of about 200 shots split evenly. The single-bit marginal tests use the same
+                        noncentrality.
+                        <code>power_to_detect_delta_at_observed_shots = 1 − F(χ²₁₋α′,df ; df, λ)</code>
+                        with α′ = α/(m·c_m), the level BY applies to a single discovery among the m tested
+                        pairs of the run (recorded as <code>power.alpha_used</code>,
+                        <code>power.m_pairs</code> and <code>power.c_m</code>). It is the smallest level BY
+                        applies to any pair, so the power figure does not overstate the chance that the
+                        corrected test flags a gap of size δ. It is the power of the chi-square test
+                        alone, while the verdict needs both tests to be significant. Pairs tested with
+                        exact conditional p-values use the same model, because at the alternatives it
+                        describes the counts are large and the asymptotic test applies. In simulation
+                        (P(rare) = p₀ against p₀ + δ, 14 backends of which one differs, 2,002 differing
+                        pairs each, m = 91), both tests at α′ detected δ = 0.05 at 4,444 shots per backend
+                        in 100% of pairs for p₀ ≤ 0.1 and in 79.2% for p₀ = 0.475, against a model power
+                        of 0.800; BY over the run, in which the other 12 pairs of that backend also differ,
+                        flagged 93.1%. The shots needed therefore grow with the number of outcomes (df) and
+                        with the number of backends (m), and the report computes the power of each pair.
+                        <code>shots_per_backend_for_target_power</code> is ⌈N*/2⌉, where N* is the total
+                        that gives power 0.8 at α/(m·c_m); when outcomes were pooled, it is the smallest
+                        count at which the observed proportions, scaled to that count, pool into a table
+                        with that power. <code>recommended_shots_per_backend</code> is that minimum times
+                        1.1 (<code>recommendation_margin</code>), rounded up to two significant figures and
+                        capped at the platform maximum. A rerun estimates the power again from its own
+                        table, whose bins change with the shot count, so a rerun at exactly the minimum
+                        lands near 0.8. In simulation (5-qubit product state, 14 backends, 8 runs advised
+                        from 1,000 shots), 67 of 728 pairs stayed inconclusive at the minimum (about
+                        10,000 shots) and none at the recommended 11,000.
+                        <code>recommended_exceeds_actual</code> says whether the recommendation is more
+                        than the shots either backend used; the Summary recommends more shots only then.
+                        Because df counts the observed outcomes, the recommendation can be too small when
+                        the true support is larger.</li>
                 </ul>
             </section>
 
@@ -1024,14 +1044,15 @@
                 <h2>Bit order per backend</h2>
                 <p>
                     Each result declares <code>qubit_ordering</code>: <code>msb</code> when qubit 0 is the
-                    most significant bit of the statevector index or counts bitstring, <code>lsb</code> when it
-                    is the least significant. The labels below are what each runner declares;
-                    <code>tests/integration/test_runner_contract_asymmetric.py</code> checks them against an
-                    asymmetric circuit on the live stack. Statevector and counts pairs are compared in the
-                    basis these declarations imply. A pair that matches only in the other basis (after bit
-                    reversal although both declare the same ordering, or directly although they differ) is a
-                    disagreement with <code>unaligned_basis_match</code>: either a label below is wrong or a
-                    gate defect mimics a reversal.
+                    most significant bit of the statevector index or counts bitstring, <code>lsb</code>
+                    when it is the least significant. The table gives what each runner declares;
+                    <code>tests/integration/test_runner_contract_asymmetric.py</code> checks the
+                    declarations against an asymmetric circuit on a running stack. Statevector and counts
+                    pairs are compared in the basis these declarations imply. A pair that matches only in
+                    the other basis (after bit reversal although both declare the same ordering, or
+                    directly although they differ) is a disagreement with
+                    <code>unaligned_basis_match</code>: either a declaration below is wrong or a gate defect
+                    looks like a reversal.
                 </p>
                 <div class="table-scroll"><table>
                     <thead><tr><th>Backend</th><th>Statevector</th><th>Measured</th></tr></thead>
@@ -1046,72 +1067,84 @@
                 <h3>Counts keys</h3>
                 <p>
                     A counts key is a bitstring over every classical bit the circuit declares, including
-                    bits no <code>measure</code> statement writes; those read 0. Classical bits get one flat index in
-                    <code>creg</code> declaration order: with <code>creg c[2]; creg d[3];</code>,
-                    <code>c[0]</code>, <code>c[1]</code> are bits 0 and 1 and <code>d[0]</code>…<code>d[2]</code>
-                    are bits 2–4. In an <code>lsb</code> key, classical bit 0 is the rightmost character; in an
-                    <code>msb</code> key it is the leftmost. A circuit without measurements, in measured mode,
-                    gets a measure-all appended for backends that sample natively (see
-                    <a href="#preprocessing">Circuit preprocessing</a>): a new register named
-                    <code>meas</code> (<code>meas0</code>, <code>meas1</code>, … if the name is taken),
-                    declared after the circuit's own, with qubit k read into <code>meas[k]</code>.
-                    Backends that sample a final statevector read out the same register, so every key
-                    holds the declared classical bits (all 0) followed by <code>meas</code>.
+                    bits that no <code>measure</code> statement writes; those read 0. Classical bits get
+                    one flat index in <code>creg</code> declaration order: with <code>creg c[2]; creg
+                    d[3];</code>, <code>c[0]</code> and <code>c[1]</code> are bits 0 and 1 and
+                    <code>d[0]</code>…<code>d[2]</code> are bits 2–4. In an <code>lsb</code> key classical
+                    bit 0 is the rightmost character; in an <code>msb</code> key it is the leftmost.
+                </p>
+                <p>
+                    A circuit without measurements, run in measured mode, gets a measurement of every
+                    qubit for the backends that sample natively (see <a href="#preprocessing">Circuit
+                    preprocessing</a>): a new register named <code>meas</code> (<code>meas0</code>,
+                    <code>meas1</code>, … if that name is taken), declared after the circuit's own
+                    registers, with qubit k read into <code>meas[k]</code>. Backends whose final
+                    statevector is sampled read out the same register, so every key holds the declared
+                    classical bits (all 0) followed by <code>meas</code>.
                 </p>
             </section>
 
             <section id="stat">
                 <h2>The shot-noise statistical test</h2>
                 <p>
-                    In measured mode a fixed distance threshold is descriptive. With few shots, two samples
-                    of the same distribution can still differ noticeably. Alongside the JS/Hellinger label,
-                    QRosetta reports for every comparable pair:
+                    In measured mode a fixed distance threshold describes a pair but cannot judge it: with
+                    few shots, two samples of the same distribution can differ noticeably. Beside the
+                    JS/Hellinger label, QRosetta therefore reports for every comparable pair:
                 </p>
                 <ul>
-                    <li>A Pearson chi-square test (no continuity correction) and a G-test of homogeneity
-                        between the two count vectors, in the basis the two backends' declared bit orders
-                        select, with rare outcomes pooled;</li>
-                    <li>Benjamini–Yekutieli (FDR under any dependence) adjusted p-values across all pairs
-                        of the run, which decide significance, with Benjamini–Hochberg and Bonferroni
-                        adjusted values recorded beside them;</li>
-                    <li>Effect size (total variation, Cramér’s V) and a power estimate at α/(m·c_m) that
-                        uses the observed degrees of freedom (<code>power.df</code>).</li>
+                    <li>a Pearson chi-square test (no continuity correction) and a Williams-corrected
+                        G-test of homogeneity between the two count vectors, in the basis the two
+                        backends' declared bit orders select, with rare outcomes pooled;</li>
+                    <li>Benjamini–Yekutieli adjusted p-values across all pairs of the run (false
+                        discovery rate control under any dependence), which decide significance, with
+                        Benjamini–Hochberg, Holm and Bonferroni adjusted values recorded beside them;</li>
+                    <li>the effect size (total variation, Cramér's V) and the power to detect a total
+                        variation of 0.05 at α/(m·c_m), on the observed degrees of freedom
+                        (<code>power.df</code>).</li>
                 </ul>
                 <p>
                     The verdict is <code>consistent</code>, <code>distinguishable</code>,
                     <code>inconclusive_low_shots</code> or <code>ambiguous</code>, from the BY-adjusted
-                    p-values at α&nbsp;=&nbsp;0.05; <a href="#formulas">Metric formulas</a> gives the
-                    statistics, the corrections and the power model. Each backend samples with its own derived seed, so two
-                    backends never draw the same shot sequence; <code>shared_seed</code> records whether a
-                    pair's runner seeds were equal.
+                    p-values at α&nbsp;=&nbsp;0.05 and the power; <a href="#formulas">Metric formulas</a>
+                    gives the statistics, the corrections and the power model. Each backend samples with
+                    its own derived seed, so no two backends draw the same shot sequence;
+                    <code>shared_seed</code> records whether a pair's runner seeds were equal.
+                </p>
+                <h3>Single-bit marginals</h3>
+                <p>
+                    A circuit with many outcomes often gets <code>inconclusive_low_shots</code> at the
+                    default shots, because most outcomes are seen only a few times. As a second, separate
+                    analysis, every pair whose keys have two or more bits is also compared bit by bit: for
+                    each classical bit, the two backends' counts of that bit being 0 and 1 form a
+                    2&times;2 table, tested with the same chi-square and Williams-corrected G-test. All bit
+                    tests of all pairs form one family under Holm's correction at α&nbsp;=&nbsp;0.05, so
+                    the probability of any false flag in a report is at most α however many backends
+                    really differ. A bit differs when both tests are significant. A bit with an expected
+                    count below 5, or constant in both samples, is not tested. Equal distributions have
+                    equal marginals, so a differing bit shows that the two distributions differ; marginals
+                    that do not differ leave the question open.
                 </p>
                 <p>
-                    <strong>Single-bit marginals.</strong> A circuit with many outcomes (256 or more) often
-                    gets <code>inconclusive_low_shots</code> at the default shots, because most outcomes are
-                    seen a few times. As a second, separate analysis every pair whose keys have two or more
-                    bits is also compared bit by bit: for each classical bit, the two backends' counts of
-                    that bit being 0 and 1 form a 2&times;2 table, tested with the same chi-square and G-test.
-                    All bit tests of all pairs form one family under Holm's correction at α&nbsp;=&nbsp;0.05,
-                    so the chance of any false flag in a report is at most α however many backends really
-                    differ, and a bit differs when both tests are significant. A bit with an expected count
-                    below 5, or constant in both samples, is not tested. Equal distributions have equal
-                    marginals, so a differing bit shows that the two distributions differ; marginals that do
-                    not differ do not show that they agree. The full-distribution tests and the marginal tests
-                    are two families, each at α. Each pair records <code>marginal_assessment</code>
+                    The full-distribution tests and the marginal tests are two families, each at α. Each
+                    pair records <code>marginal_assessment</code>
                     (<code>marginal_distinguishable</code>, <code>no_marginal_difference_detected</code>,
                     <code>not_tested</code> or <code>not_applicable</code>) and
-                    <code>metrics.marginal_test</code> (each bit's P(1) on both sides, raw and Holm-adjusted
-                    p-values); <code>measured_assessment</code> is not changed by it, so a pair can be
-                    <code>consistent_within_shot_noise</code> (no total-variation gap of 0.05 found) and still
-                    have a differing marginal. The Summary lists such pairs in their own block, the Agreement
-                    tab marks them "marginal differs", batch badges count them as an anomaly, and crates and
-                    experiment bundles count them by <code>marginal_assessment</code>. In a simulation with 14
-                    backends over 16 independent bits at 8,200 shots, 4.5% of 8,000 runs had a false flag when all
-                    backends sampled the same distribution, 4.6% of 2,000 runs had one on a pair of correct backends when
-                    one backend was off by 0.05 in P(1) on four bits, and every pair with the wrong backend
-                    was flagged. Together the two families flag at least one pair in 3.9–4.8% of runs with
-                    every backend correct (keys of 2 to 4 bits), against 0.6–1.1% for the full-distribution
-                    test alone.
+                    <code>metrics.marginal_test</code> (each bit's P(1) on both sides, raw and
+                    Holm-adjusted p-values). The marginal analysis leaves <code>measured_assessment</code>
+                    unchanged, so a pair can be <code>consistent_within_shot_noise</code> (no
+                    total-variation gap of 0.05 found) and still have a differing marginal. The Summary
+                    lists such pairs in a block of their own, the Agreement tab marks them "marginal
+                    differs", playlist badges count them as anomalies, and crates and experiment bundles
+                    count them by <code>marginal_assessment</code>.
+                </p>
+                <p>
+                    In a simulation with 14 backends, 16 independent bits and 8,200 shots
+                    (<code>scripts/verify/false_flags.py</code>), 4.5% of 8,000 runs had a false marginal
+                    flag when every backend sampled the same distribution. With one backend off by 0.05
+                    in P(1) on four bits, 4.6% of 2,000 runs had a flag on a pair of correct backends, and
+                    every pair with the wrong backend was flagged. With every backend correct, the two
+                    families together flagged at least one pair in 3.9–4.8% of runs (keys of 2 to 4 bits),
+                    against 0.6–1.1% for the full-distribution test alone.
                 </p>
             </section>
 
